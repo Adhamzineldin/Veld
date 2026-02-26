@@ -42,6 +42,58 @@ const (
 	TEOF
 )
 
+// String returns the human-readable symbol for a TokenType, used in error messages.
+func (t TokenType) String() string {
+	switch t {
+	case TModel:
+		return "\"model\""
+	case TModule:
+		return "\"module\""
+	case TAction:
+		return "\"action\""
+	case TInput:
+		return "\"input\""
+	case TOutput:
+		return "\"output\""
+	case TMiddleware:
+		return "\"middleware\""
+	case TImport:
+		return "\"import\""
+	case TGET:
+		return "\"GET\""
+	case TPOST:
+		return "\"POST\""
+	case TPUT:
+		return "\"PUT\""
+	case TDELETE:
+		return "\"DELETE\""
+	case TPATCH:
+		return "\"PATCH\""
+	case TTypeString:
+		return "\"string\""
+	case TTypeInt:
+		return "\"int\""
+	case TTypeBool:
+		return "\"bool\""
+	case TLBrace:
+		return "\"{\""
+	case TRBrace:
+		return "\"}\""
+	case TColon:
+		return "\":\""
+	case TIdent:
+		return "identifier"
+	case TPath:
+		return "path (e.g. /auth/login)"
+	case TString:
+		return "string literal (e.g. \"models/auth.veld\")"
+	case TEOF:
+		return "end of file"
+	default:
+		return "unknown token"
+	}
+}
+
 // Token is a single lexical unit.
 type Token struct {
 	Type  TokenType

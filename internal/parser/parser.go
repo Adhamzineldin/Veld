@@ -70,7 +70,7 @@ func (p *Parser) consume() lexer.Token {
 func (p *Parser) expect(t lexer.TokenType) (lexer.Token, error) {
 	tok := p.consume()
 	if tok.Type != t {
-		return tok, fmt.Errorf("line %d: expected token type %d, got %q", tok.Line, t, tok.Value)
+		return tok, fmt.Errorf("line %d: expected %s, got %q", tok.Line, t, tok.Value)
 	}
 	return tok, nil
 }

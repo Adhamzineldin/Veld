@@ -11,7 +11,7 @@ async function main() {
     email: 'user@example.com',
     password: 'secret'
   })
-  console.log('Logged in:', user.age)
+  console.log('Logged in:', user)
 
   // Register — { email, password, name } typed as RegisterInput
   const newUser: User = await api.Auth.Register({
