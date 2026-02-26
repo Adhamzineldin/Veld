@@ -1,0 +1,6 @@
+{
+  "input": "../veld/schema.veld",
+  "backend": "python",
+  "frontend": "none",
+  "out": "../generated"
+}

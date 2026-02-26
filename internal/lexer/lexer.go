@@ -34,6 +34,8 @@ const (
 	TLBrace
 	TRBrace
 	TColon
+	TLBracket // [
+	TRBracket // ]
 
 	// Other
 	TIdent
@@ -81,6 +83,10 @@ func (t TokenType) String() string {
 		return "\"}\""
 	case TColon:
 		return "\":\""
+	case TLBracket:
+		return "\"[\""
+	case TRBracket:
+		return "\"]\""
 	case TIdent:
 		return "identifier"
 	case TPath:
@@ -147,6 +153,12 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 			l.pos++
 		} else if ch == '}' {
 			tokens = append(tokens, Token{TRBrace, "}", l.line})
+			l.pos++
+		} else if ch == '[' {
+			tokens = append(tokens, Token{TLBracket, "[", l.line})
+			l.pos++
+		} else if ch == ']' {
+			tokens = append(tokens, Token{TRBracket, "]", l.line})
 			l.pos++
 		} else if ch == ':' {
 			tokens = append(tokens, Token{TColon, ":", l.line})

@@ -4,8 +4,22 @@ process.env.VELD_API_URL = 'http://localhost:3000'
 
 import { api } from '../../generated/client/api'
 import type { User } from '../../generated/types/auth'
+import type { Food, FoodList } from '../../generated/types/food'
+
 
 async function main() {
+  // GET all foods — returns FoodList (items: Food[], total: number)
+  const foods: FoodList = await api.food.GetAllFoods()
+  console.log('Foods:', foods)
+
+  // POST add a food item
+  const newFood: Food = await api.food.AddFood({
+    name: 'Pizza',
+    price: 12,
+    tags: ['italian', 'hot']
+  })
+  console.log('Added food:', newFood)
+
   // Login — { email, password } typed as LoginInput
   const user: User = await api.Auth.Login({
     email: 'user@example.com',

@@ -110,11 +110,31 @@ func (p *Parser) parseField() (ast.Field, error) {
 	if _, err := p.expect(lexer.TColon); err != nil {
 		return ast.Field{}, err
 	}
-	typeTok := p.consume()
-	if typeTok.Type != lexer.TTypeString && typeTok.Type != lexer.TTypeInt && typeTok.Type != lexer.TTypeBool {
-		return ast.Field{}, fmt.Errorf("line %d: expected type (string, int, bool), got %q", typeTok.Line, typeTok.Value)
+
+	// Optional array prefix: []
+	isArray := false
+	if p.peek().Type == lexer.TLBracket {
+		p.consume() // consume [
+		if _, err := p.expect(lexer.TRBracket); err != nil {
+			return ast.Field{}, err
+		}
+		isArray = true
 	}
-	return ast.Field{Name: nameTok.Value, Type: typeTok.Value}, nil
+
+	typeTok := p.consume()
+	isValidType := typeTok.Type == lexer.TTypeString ||
+		typeTok.Type == lexer.TTypeInt ||
+		typeTok.Type == lexer.TTypeBool ||
+		typeTok.Type == lexer.TIdent // model reference
+	if !isValidType {
+		return ast.Field{}, fmt.Errorf("line %d: expected type (string, int, bool, or model name), got %q", typeTok.Line, typeTok.Value)
+	}
+
+	typeName := typeTok.Value
+	if isArray {
+		typeName = "[]" + typeName
+	}
+	return ast.Field{Name: nameTok.Value, Type: typeName}, nil
 }
 
 func (p *Parser) parseModule() (ast.Module, error) {
