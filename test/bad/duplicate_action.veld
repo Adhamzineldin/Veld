@@ -1,0 +1,15 @@
+// BAD: duplicate action names in a module
+model User { id: string }
+
+module Test {
+  action Get {
+    method:  GET
+    path:    /test/1
+    output:  User
+  }
+  action Get {
+    method:  GET
+    path:    /test/2
+    output:  User
+  }
+}

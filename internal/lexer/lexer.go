@@ -17,6 +17,13 @@ const (
 	TOutput
 	TMiddleware
 	TImport
+	TEnum
+	TDescription
+	TQuery
+	TDefault
+	TPrefix
+	TMethod  // keyword "method"
+	TKeyPath // keyword "path" (not the /path token)
 
 	// HTTP methods
 	TGET
@@ -28,7 +35,11 @@ const (
 	// Primitive types
 	TTypeString
 	TTypeInt
+	TTypeFloat
 	TTypeBool
+	TTypeDate
+	TTypeDatetime
+	TTypeUUID
 
 	// Punctuation
 	TLBrace
@@ -36,11 +47,16 @@ const (
 	TColon
 	TLBracket // [
 	TRBracket // ]
+	TQuestion // ?
+	TAt       // @
+	TLParen   // (
+	TRParen   // )
 
 	// Other
 	TIdent
 	TPath
 	TString // quoted string literal, e.g. "models/auth.veld"
+	TNumber // numeric literal for @default(123)
 	TEOF
 )
 
@@ -61,6 +77,20 @@ func (t TokenType) String() string {
 		return "\"middleware\""
 	case TImport:
 		return "\"import\""
+	case TEnum:
+		return "\"enum\""
+	case TDescription:
+		return "\"description\""
+	case TQuery:
+		return "\"query\""
+	case TDefault:
+		return "\"default\""
+	case TPrefix:
+		return "\"prefix\""
+	case TMethod:
+		return "\"method\""
+	case TKeyPath:
+		return "\"path\""
 	case TGET:
 		return "\"GET\""
 	case TPOST:
@@ -75,8 +105,16 @@ func (t TokenType) String() string {
 		return "\"string\""
 	case TTypeInt:
 		return "\"int\""
+	case TTypeFloat:
+		return "\"float\""
 	case TTypeBool:
 		return "\"bool\""
+	case TTypeDate:
+		return "\"date\""
+	case TTypeDatetime:
+		return "\"datetime\""
+	case TTypeUUID:
+		return "\"uuid\""
 	case TLBrace:
 		return "\"{\""
 	case TRBrace:
@@ -87,12 +125,22 @@ func (t TokenType) String() string {
 		return "\"[\""
 	case TRBracket:
 		return "\"]\""
+	case TQuestion:
+		return "\"?\""
+	case TAt:
+		return "\"@\""
+	case TLParen:
+		return "\"(\""
+	case TRParen:
+		return "\")\""
 	case TIdent:
 		return "identifier"
 	case TPath:
 		return "path (e.g. /auth/login)"
 	case TString:
 		return "string literal (e.g. \"models/auth.veld\")"
+	case TNumber:
+		return "number literal"
 	case TEOF:
 		return "end of file"
 	default:
@@ -137,7 +185,7 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 				l.pos++
 			}
 		} else if ch == '"' {
-			// Quoted string literal — used by import statements.
+			// Quoted string literal — used by import statements and descriptions.
 			l.pos++ // skip opening quote
 			start := l.pos
 			for l.pos < len(l.source) && l.source[l.pos] != '"' && l.source[l.pos] != '\n' {
@@ -160,8 +208,20 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 		} else if ch == ']' {
 			tokens = append(tokens, Token{TRBracket, "]", l.line})
 			l.pos++
+		} else if ch == '(' {
+			tokens = append(tokens, Token{TLParen, "(", l.line})
+			l.pos++
+		} else if ch == ')' {
+			tokens = append(tokens, Token{TRParen, ")", l.line})
+			l.pos++
 		} else if ch == ':' {
 			tokens = append(tokens, Token{TColon, ":", l.line})
+			l.pos++
+		} else if ch == '?' {
+			tokens = append(tokens, Token{TQuestion, "?", l.line})
+			l.pos++
+		} else if ch == '@' {
+			tokens = append(tokens, Token{TAt, "@", l.line})
 			l.pos++
 		} else if ch == '/' {
 			// Path token: reads until whitespace or brace.
@@ -173,6 +233,16 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 				l.pos++
 			}
 			tokens = append(tokens, Token{TPath, string(l.source[start:l.pos]), l.line})
+		} else if unicode.IsDigit(ch) || (ch == '-' && l.pos+1 < len(l.source) && unicode.IsDigit(l.source[l.pos+1])) {
+			// Number literal (for @default)
+			start := l.pos
+			if ch == '-' {
+				l.pos++
+			}
+			for l.pos < len(l.source) && (unicode.IsDigit(l.source[l.pos]) || l.source[l.pos] == '.') {
+				l.pos++
+			}
+			tokens = append(tokens, Token{TNumber, string(l.source[start:l.pos]), l.line})
 		} else if unicode.IsLetter(ch) || ch == '_' {
 			start := l.pos
 			for l.pos < len(l.source) &&
@@ -205,6 +275,20 @@ func classifyWord(word string, line int) Token {
 		return Token{TMiddleware, word, line}
 	case "import":
 		return Token{TImport, word, line}
+	case "enum":
+		return Token{TEnum, word, line}
+	case "description":
+		return Token{TDescription, word, line}
+	case "query":
+		return Token{TQuery, word, line}
+	case "default":
+		return Token{TDefault, word, line}
+	case "prefix":
+		return Token{TPrefix, word, line}
+	case "method":
+		return Token{TMethod, word, line}
+	case "path":
+		return Token{TKeyPath, word, line}
 	case "GET":
 		return Token{TGET, word, line}
 	case "POST":
@@ -219,8 +303,16 @@ func classifyWord(word string, line int) Token {
 		return Token{TTypeString, word, line}
 	case "int":
 		return Token{TTypeInt, word, line}
+	case "float":
+		return Token{TTypeFloat, word, line}
 	case "bool":
 		return Token{TTypeBool, word, line}
+	case "date":
+		return Token{TTypeDate, word, line}
+	case "datetime":
+		return Token{TTypeDatetime, word, line}
+	case "uuid":
+		return Token{TTypeUUID, word, line}
 	default:
 		return Token{TIdent, word, line}
 	}

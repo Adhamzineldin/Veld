@@ -1,0 +1,10 @@
+// BAD: undefined type in field → should suggest "User"
+model User {
+  id: string
+  name: string
+}
+
+model Profile {
+  user: Usr
+}
+

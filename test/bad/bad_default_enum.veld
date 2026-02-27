@@ -1,0 +1,7 @@
+// BAD: @default with invalid enum value
+enum Color { red green blue }
+
+model Item {
+  color: Color @default(yellow)
+}
+

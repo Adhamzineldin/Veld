@@ -39,9 +39,9 @@ func (e *TypeScriptEmitter) Emit(a ast.AST, outDir string) error {
 
 	// One import line per module.
 	for _, mod := range a.Modules {
-		types := collectUsedTypes(mod)
+		types := collectUsedTypes(a, mod)
 		if len(types) > 0 {
-			sb.WriteString(fmt.Sprintf("import type { %s } from '../types/%s'\n",
+			sb.WriteString(fmt.Sprintf("import type { %s } from '../types/%s';\n",
 				strings.Join(types, ", "), strings.ToLower(mod.Name)))
 		}
 	}
@@ -51,24 +51,24 @@ func (e *TypeScriptEmitter) Emit(a ast.AST, outDir string) error {
 	if needsPost {
 		sb.WriteString(`
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const base = process.env.VELD_API_URL ?? ''
+  const base = process.env.VELD_API_URL ?? '';
   const res = await fetch(base + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }
 `)
 	}
 	if needsGet {
 		sb.WriteString(`
 async function get<T>(path: string): Promise<T> {
-  const base = process.env.VELD_API_URL ?? ''
-  const res = await fetch(base + path)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  const base = process.env.VELD_API_URL ?? '';
+  const res = await fetch(base + path);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }
 `)
 	}
@@ -77,40 +77,157 @@ async function get<T>(path: string): Promise<T> {
 	for _, mod := range a.Modules {
 		sb.WriteString(fmt.Sprintf("  %s: {\n", mod.Name))
 		for _, act := range mod.Actions {
-			if act.Input != "" {
+			outputType := formatOutputType(act)
+			routePath := act.Path
+			if mod.Prefix != "" {
+				routePath = mod.Prefix + act.Path
+			}
+
+			if act.Description != "" {
+				sb.WriteString(fmt.Sprintf("    /** %s */\n", act.Description))
+			}
+
+			if act.Query != "" && act.Input != "" {
+				// Both body and query params
+				sb.WriteString(fmt.Sprintf("    %s: (input: %s, query?: %s): Promise<%s> =>\n", act.Name, act.Input, act.Query, outputType))
+				sb.WriteString(fmt.Sprintf("      post('%s' + (query ? '?' + new URLSearchParams(query as Record<string, string>).toString() : ''), input),\n", routePath))
+			} else if act.Query != "" {
+				// GET with query params
+				sb.WriteString(fmt.Sprintf("    %s: (query?: %s): Promise<%s> =>\n", act.Name, act.Query, outputType))
+				sb.WriteString(fmt.Sprintf("      get('%s' + (query ? '?' + new URLSearchParams(query as Record<string, string>).toString() : '')),\n", routePath))
+			} else if act.Input != "" {
 				sb.WriteString(fmt.Sprintf("    %s: (input: %s): Promise<%s> => post('%s', input),\n",
-					act.Name, act.Input, act.Output, act.Path))
+					act.Name, act.Input, outputType, routePath))
 			} else if act.Method == "GET" {
 				sb.WriteString(fmt.Sprintf("    %s: (): Promise<%s> => get('%s'),\n",
-					act.Name, act.Output, act.Path))
+					act.Name, outputType, routePath))
 			} else {
 				sb.WriteString(fmt.Sprintf("    %s: (): Promise<%s> => post('%s', {}),\n",
-					act.Name, act.Output, act.Path))
+					act.Name, outputType, routePath))
 			}
 		}
 		sb.WriteString("  },\n")
 	}
-	sb.WriteString("}\n")
+	sb.WriteString("};\n")
 
 	return os.WriteFile(filepath.Join(dir, "api.ts"), []byte(sb.String()), 0644)
 }
 
+// formatOutputType returns the TS type for an action output, handling arrays.
+func formatOutputType(act ast.Action) string {
+	base := veldScalarToTS(act.Output)
+	if act.OutputArray {
+		return base + "[]"
+	}
+	return base
+}
+
+// veldScalarToTS maps a Veld scalar or model name to TS.
+func veldScalarToTS(t string) string {
+	switch t {
+	case "int", "float":
+		return "number"
+	case "bool":
+		return "boolean"
+	case "date", "datetime", "uuid":
+		return "string"
+	default:
+		return t
+	}
+}
+
 // collectUsedTypes returns unique type names referenced in the module,
-// inputs before outputs, in action order.
-func collectUsedTypes(mod ast.Module) []string {
+// inputs before outputs, in action order, including enum types.
+func collectUsedTypes(a ast.AST, mod ast.Module) []string {
 	seen := make(map[string]bool)
-	var inputs, outputs []string
+	var result []string
+
+	enumNames := make(map[string]bool)
+	for _, en := range a.Enums {
+		enumNames[en.Name] = true
+	}
+
+	// Direct action references
 	for _, act := range mod.Actions {
-		if act.Input != "" && !seen[act.Input] {
-			seen[act.Input] = true
-			inputs = append(inputs, act.Input)
+		for _, name := range []string{act.Input, act.Output, act.Query} {
+			if name != "" && !seen[name] && !isPrimitive(name) {
+				seen[name] = true
+				result = append(result, name)
+			}
 		}
 	}
-	for _, act := range mod.Actions {
-		if act.Output != "" && !seen[act.Output] {
-			seen[act.Output] = true
-			outputs = append(outputs, act.Output)
+
+	// Transitive model references
+	byName := make(map[string]ast.Model, len(a.Models))
+	for _, m := range a.Models {
+		byName[m.Name] = m
+	}
+	usedModels := collectTransitiveModels(a, mod)
+	for _, m := range a.Models {
+		if !usedModels[m.Name] {
+			continue
+		}
+		if !seen[m.Name] {
+			seen[m.Name] = true
+			result = append(result, m.Name)
+		}
+		for _, f := range m.Fields {
+			base := f.Type
+			if _, isModel := byName[base]; isModel && !seen[base] {
+				seen[base] = true
+				result = append(result, base)
+			}
+			if enumNames[base] && !seen[base] {
+				seen[base] = true
+				result = append(result, base)
+			}
 		}
 	}
-	return append(inputs, outputs...)
+
+	return result
+}
+
+func isPrimitive(t string) bool {
+	switch t {
+	case "string", "int", "float", "bool", "date", "datetime", "uuid":
+		return true
+	}
+	return false
+}
+
+func collectTransitiveModels(a ast.AST, mod ast.Module) map[string]bool {
+	byName := make(map[string]ast.Model, len(a.Models))
+	for _, m := range a.Models {
+		byName[m.Name] = m
+	}
+	used := make(map[string]bool)
+	queue := []string{}
+	for _, act := range mod.Actions {
+		if act.Input != "" {
+			queue = append(queue, act.Input)
+		}
+		if act.Output != "" {
+			queue = append(queue, act.Output)
+		}
+		if act.Query != "" {
+			queue = append(queue, act.Query)
+		}
+	}
+	for len(queue) > 0 {
+		name := queue[0]
+		queue = queue[1:]
+		if used[name] {
+			continue
+		}
+		used[name] = true
+		if m, ok := byName[name]; ok {
+			for _, f := range m.Fields {
+				base := f.Type
+				if _, isModel := byName[base]; isModel && !used[base] {
+					queue = append(queue, base)
+				}
+			}
+		}
+	}
+	return used
 }

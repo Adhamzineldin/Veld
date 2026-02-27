@@ -1,0 +1,11 @@
+// BAD: undefined input/output types in action
+model User { id: string }
+
+module Test {
+  action Bad {
+    method:  POST
+    path:    /test
+    input:   FakeInput
+    output:  FakeOutput
+  }
+}

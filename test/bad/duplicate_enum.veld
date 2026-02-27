@@ -1,0 +1,10 @@
+// BAD: duplicate enum name
+enum Role {
+  admin
+  user
+}
+
+enum Role {
+  guest
+}
+

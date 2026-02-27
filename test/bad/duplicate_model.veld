@@ -1,0 +1,9 @@
+// BAD: duplicate model name
+model User {
+  id: string
+}
+
+model User {
+  name: string
+}
+

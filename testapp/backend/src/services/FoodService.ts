@@ -4,9 +4,9 @@ import type { IfoodService } from '../../../generated/interfaces/IfoodService'
 export class FoodService implements IfoodService {
 
   private foods: Food[] = [
-    { id: '1', name: 'Pizza',  price: 12, tags: ['italian', 'hot'] },
-    { id: '2', name: 'Burger', price: 8,  tags: ['american', 'fast-food'] },
-    { id: '3', name: 'Salad',  price: 7,  tags: ['healthy', 'cold'] },
+    { id: '1', name: 'Pizza',  price: 12, tags: ['italian', 'hot'], type: "meat"},
+    { id: '2', name: 'Burger', price: 8,  tags: ['american', 'fast-food'], type: "burger"},
+    { id: '3', name: 'Salad',  price: 7,  tags: ['healthy', 'cold'], type: "salatat"},
   ]
 
   async GetAllFoods(): Promise<FoodList> {

@@ -1,0 +1,5 @@
+// BAD: @default with wrong type (string default on int field)
+model Config {
+  retries: int @default("three")
+}
+

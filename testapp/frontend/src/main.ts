@@ -8,40 +8,55 @@ import type { Food, FoodList } from '../../generated/types/food'
 
 
 async function main() {
-  // GET all foods — returns FoodList (items: Food[], total: number)
+  // ── Public endpoints (no middleware) ──────────────────────────────────────
+
+  // GET all foods — no auth required
   const foods: FoodList = await api.food.GetAllFoods()
   console.log('Foods:', foods)
 
-  // POST add a food item
+  // POST add a food item — no auth required
   const newFood: Food = await api.food.AddFood({
     name: 'Pizza',
     price: 12,
-    tags: ['italian', 'hot']
+    tags: ['italian', 'hot'],
+    type: 'meat',
   })
   console.log('Added food:', newFood)
 
-  // Login — { email, password } typed as LoginInput
+  // ── Auth endpoints (RateLimit middleware on login) ────────────────────────
+
+  // Login — protected by RateLimit middleware on the server
   const user: User = await api.Auth.Login({
     email: 'user@example.com',
-    password: 'secret'
+    password: 'secret',
   })
   console.log('Logged in:', user)
 
-  // Register — { email, password, name } typed as RegisterInput
+  // Register — no middleware on this endpoint
   const newUser: User = await api.Auth.Register({
     email: 'new@example.com',
     password: 'pass123',
-    name: 'Alice'
+    name: 'Alice',
   })
   console.log('Registered:', newUser)
 
-  // GET — no body, returns User
-  const me: User = await api.Auth.Me()
-  console.log('Current user:', me)
+  // ── Protected endpoints (AuthGuard middleware) ───────────────────────────
+  // These will return 401 unless the server gets an Authorization header.
+  // In a real app you'd store the token from Login and attach it to requests.
 
-  // POST without body — returns { success: boolean }
-  const result = await api.Auth.Logout()
-  console.log('Logged out:', result)
+  try {
+    const me: User = await api.Auth.Me()
+    console.log('Current user:', me)
+  } catch (err) {
+    console.log('Me() rejected (expected — AuthGuard blocks without token):', (err as Error).message)
+  }
+
+  try {
+    const result = await api.Auth.Logout()
+    console.log('Logged out:', result)
+  } catch (err) {
+    console.log('Logout() rejected (expected — AuthGuard blocks without token):', (err as Error).message)
+  }
 }
 
 main().catch(console.error)
