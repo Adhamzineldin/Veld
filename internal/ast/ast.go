@@ -10,8 +10,9 @@ type AST struct {
 
 // Model is a named data type with typed fields.
 type Model struct {
-	Name   string  `json:"name"`
-	Fields []Field `json:"fields"`
+	Name       string  `json:"name"`
+	Fields     []Field `json:"fields"`
+	SourceFile string  `json:"-"` // absolute path; set by file loader, not serialised
 }
 
 // Field is a single property of a Model.
@@ -22,8 +23,9 @@ type Field struct {
 
 // Module groups related Actions.
 type Module struct {
-	Name    string   `json:"name"`
-	Actions []Action `json:"actions"`
+	Name       string   `json:"name"`
+	Actions    []Action `json:"actions"`
+	SourceFile string   `json:"-"` // absolute path; set by file loader, not serialised
 }
 
 // Action is a single API endpoint inside a Module.
