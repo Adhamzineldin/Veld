@@ -1,0 +1,62 @@
+// ── FEATURE: module description ──
+// ── FEATURE: prefix (route path prefix) ──
+// ── FEATURE: query keyword (URL query params) ──
+// ── FEATURE: output User[] (array output) ──
+// ── FEATURE: middleware in routes ──
+// ── FEATURE: all HTTP methods (GET, POST, PUT, DELETE, PATCH) ──
+module Users {
+  description: "User management and lookup"
+  prefix:      /api
+
+  action List {
+    description: "List users with optional filters"
+    method:      GET
+    path:        /users
+    query:       UserFilters
+    output:      User[]
+    middleware:   AuthGuard
+  }
+
+  action GetById {
+    description: "Get a single user by ID"
+    method:      GET
+    path:        /users/:id
+    output:      User
+    middleware:   AuthGuard
+  }
+
+  action Create {
+    description: "Create a new user"
+    method:      POST
+    path:        /users
+    input:       RegisterInput
+    output:      User
+    middleware:   AuthGuard
+  }
+
+  action Update {
+    description: "Update an existing user"
+    method:      PUT
+    path:        /users/:id
+    input:       RegisterInput
+    output:      User
+    middleware:   AuthGuard
+  }
+
+  action Patch {
+    description: "Partially update a user"
+    method:      PATCH
+    path:        /users/:id
+    input:       RegisterInput
+    output:      User
+    middleware:   AuthGuard
+  }
+
+  action Delete {
+    description: "Soft-delete a user"
+    method:      DELETE
+    path:        /users/:id
+    output:      SuccessResponse
+    middleware:   AuthGuard
+  }
+}

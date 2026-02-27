@@ -1,0 +1,24 @@
+// Auth-related data models.
+// Add new models here or create a new file (e.g. models/product.veld)
+// and import it from schema.veld.
+
+model LoginInput {
+  email:    string
+  password: string
+}
+
+model RegisterInput {
+  email:    string
+  password: string
+  name:     string
+}
+
+model User {
+  id:    string
+  email: string
+  name:  string
+}
+
+model SuccessResponse {
+  success: bool
+}

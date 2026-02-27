@@ -1,0 +1,9 @@
+// Entry point — imports all models and modules.
+// Add new import lines here as your API grows.
+
+import "models/auth.veld"
+import "modules/auth.veld"
+
+import "models/food.veld"
+import "modules/food.veld"
+

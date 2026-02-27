@@ -1,0 +1,6 @@
+{
+  "input": "schema.veld",
+  "backend": "node",
+  "frontend": "react",
+  "out": "../generated"
+}
