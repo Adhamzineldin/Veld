@@ -35,12 +35,12 @@ veld init                          # Scaffold new project (creates veld/ folder)
 veld validate                      # Validate contract (reads veld/veld.config.json)
 veld ast                           # Dump AST JSON
 veld generate                      # Generate (auto-detects veld/veld.config.json)
-veld generate --backend=node --frontend=react --input=veld/schema.veld --out=./generated
+veld generate --backend=node --frontend=typescript --input=veld/schema.veld --out=./generated
 ```
 
 Smoke test:
 ```bash
-veld generate --backend=node --frontend=react --input=testdata/auth.veld --out=./testdata/generated
+veld generate --backend=node --frontend=typescript --input=testdata/auth.veld --out=./testdata/generated
 ```
 
 ## Architecture
@@ -57,12 +57,21 @@ The pipeline is strictly linear — **only AST JSON passes between stages**:
 | Lexer | `internal/lexer/lexer.go` | Tokenizes `.veld` source text |
 | Parser | `internal/parser/parser.go` | Recursive descent; produces AST |
 | Validator | `internal/validator/validator.go` | Semantic checks on AST |
-| Emitter interface | `internal/emitter/emitter.go` | `Emit(ast AST, outDir string) error` |
-| Node emitter | `internal/emitter/node/node.go` | Generates TS types + interfaces + routes |
-| TypeScript emitter | `internal/emitter/typescript/typescript.go` | Generates frontend SDK |
-| CLI | `cmd/veld/main.go` | Cobra commands + import resolver |
+| Config | `internal/config/config.go` | Config file loading, flag merging, path resolution |
+| Loader | `internal/loader/loader.go` | Loads .veld files, resolves imports recursively |
+| Emitter registry | `internal/emitter/emitter.go` | `BackendEmitter` / `FrontendEmitter` interfaces + `init()`-based registry |
+| Emitter helpers | `internal/emitter/helpers.go` | Shared functions: `CollectTransitiveModels`, `CollectUsedTypes`, etc. |
+| TS helpers | `internal/emitter/tshelpers/` | Shared TypeScript type-mapping (`VeldTypeToTS`, `FormatOutputType`) |
+| Node emitter | `internal/emitter/backend/node/` | Backend: TS types + interfaces + routes + Zod schemas |
+| Python emitter | `internal/emitter/backend/python/` | Backend: Python TypedDict types + ABC interfaces + Flask routes |
+| TypeScript emitter | `internal/emitter/frontend/typescript/` | Frontend: fetch-based SDK (`client/api.ts`) |
+| Cache | `internal/cache/cache.go` | File mtime tracking for incremental builds |
+| CLI | `cmd/veld/main.go` | Cobra commands + generation orchestration |
 
-**Key isolation rule:** Parser and emitters are completely independent. No emitter may import lexer/parser packages.
+**Key isolation rules:**
+- Parser and emitters are completely independent. No emitter may import lexer/parser packages.
+- Emitters self-register via `init()`. Adding a new emitter = new package + one blank import in `main.go`.
+- Config resolution is decoupled from Cobra (uses `FlagOverrides` struct, not `*cobra.Command`).
 
 ## Project Structure (veld init output)
 
@@ -73,12 +82,11 @@ my-project/
 │   ├── schema.veld          ← entry point, imports other files
 │   ├── models/              ← model definitions
 │   └── modules/             ← module/action definitions
-├── generated/               ← veld output — never edit manually
-├── app/
-│   ├── services/            ← developer implements generated interfaces here
-│   └── repositories/
 └── README.md
 ```
+
+`generated/` is created automatically on first `veld generate`. No `app/` directory is
+scaffolded — project layout is left to the developer.
 
 ## Import System
 

@@ -12,7 +12,7 @@ async function main() {
 
   // GET all foods — no auth required
   const foods: FoodList = await api.food.GetAllFoods()
-  console.log('Foods:', foods)
+  console.log('Foods:', foods.items)
 
   // POST add a food item — no auth required
   const newFood: Food = await api.food.AddFood({

@@ -13,12 +13,15 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/veld-dev/veld/internal/ast"
 	"github.com/veld-dev/veld/internal/cache"
-	"github.com/veld-dev/veld/internal/emitter/node"
-	"github.com/veld-dev/veld/internal/emitter/python"
-	"github.com/veld-dev/veld/internal/emitter/typescript"
-	"github.com/veld-dev/veld/internal/lexer"
-	"github.com/veld-dev/veld/internal/parser"
+	"github.com/veld-dev/veld/internal/config"
+	"github.com/veld-dev/veld/internal/emitter"
+	"github.com/veld-dev/veld/internal/loader"
 	"github.com/veld-dev/veld/internal/validator"
+
+	// Register all emitters via init(). To add a new emitter, add one line here.
+	_ "github.com/veld-dev/veld/internal/emitter/backend/node"
+	_ "github.com/veld-dev/veld/internal/emitter/backend/python"
+	_ "github.com/veld-dev/veld/internal/emitter/frontend/typescript"
 )
 
 // ── ANSI color helpers ────────────────────────────────────────────────────────
@@ -38,192 +41,16 @@ func yellow(s string) string { return colorYellow + s + colorReset }
 func dim(s string) string    { return colorDim + s + colorReset }
 func bold(s string) string   { return colorBold + s + colorReset }
 
-// ── types ─────────────────────────────────────────────────────────────────────
-
-// rawConfig mirrors veld.config.json on disk.
-type rawConfig struct {
-	Input    string `json:"input"`
-	Backend  string `json:"backend"`
-	Frontend string `json:"frontend"`
-	Out      string `json:"out"`
-}
-
-// resolvedConfig has all paths resolved to be absolute.
-type resolvedConfig struct {
-	Input     string
-	Backend   string
-	Frontend  string
-	Out       string
-	ConfigDir string // absolute dir of veld.config.json; used for cache storage
-}
-
-// ── file loading ──────────────────────────────────────────────────────────────
-
-// parseVeldFile loads a .veld entry point and recursively follows import
-// statements. Returns the merged AST and the absolute paths of every .veld
-// file that was loaded (for watch / incremental purposes).
-func parseVeldFile(path string) (ast.AST, []string, error) {
-	var files []string
-	a, err := resolveVeldFile(path, make(map[string]bool), &files)
-	return a, files, err
-}
-
-func resolveVeldFile(path string, seen map[string]bool, files *[]string) (ast.AST, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return ast.AST{}, err
-	}
-	if seen[abs] {
-		return ast.AST{ASTVersion: "1.0.0"}, nil // circular import guard
-	}
-	seen[abs] = true
-	*files = append(*files, abs)
-
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return ast.AST{}, fmt.Errorf("reading %s: %w", path, err)
-	}
-	tokens, err := lexer.New(string(content)).Tokenize()
-	if err != nil {
-		return ast.AST{}, fmt.Errorf("lexing %s: %w", path, err)
-	}
-	a, err := parser.New(tokens).Parse()
-	if err != nil {
-		return ast.AST{}, fmt.Errorf("parsing %s: %w", path, err)
-	}
-
-	// Tag every definition with the file it came from (used by incremental gen).
-	for i := range a.Models {
-		a.Models[i].SourceFile = abs
-	}
-	for i := range a.Modules {
-		a.Modules[i].SourceFile = abs
-	}
-	for i := range a.Enums {
-		a.Enums[i].SourceFile = abs
-	}
-
-	// Resolve imports relative to this file's directory.
-	dir := filepath.Dir(abs)
-	merged := ast.AST{ASTVersion: "1.0.0"}
-	for _, imp := range a.Imports {
-		imported, err := resolveVeldFile(filepath.Join(dir, imp), seen, files)
-		if err != nil {
-			return ast.AST{}, fmt.Errorf("import %q: %w", imp, err)
-		}
-		merged.Models = append(merged.Models, imported.Models...)
-		merged.Modules = append(merged.Modules, imported.Modules...)
-		merged.Enums = append(merged.Enums, imported.Enums...)
-	}
-	merged.Models = append(merged.Models, a.Models...)
-	merged.Modules = append(merged.Modules, a.Modules...)
-	merged.Enums = append(merged.Enums, a.Enums...)
-	return merged, nil
-}
-
-// ── config resolution ─────────────────────────────────────────────────────────
-
-// findConfig locates veld.config.json and returns its contents plus its
-// absolute directory path.
-func findConfig() (rawConfig, string, error) {
-	candidates := []string{
-		"veld.config.json",
-		filepath.Join("veld", "veld.config.json"),
-	}
-	for _, p := range candidates {
-		data, err := os.ReadFile(p)
-		if err != nil {
-			continue
-		}
-		var cfg rawConfig
-		if err := json.Unmarshal(data, &cfg); err != nil {
-			return rawConfig{}, "", fmt.Errorf("parsing %s: %w", p, err)
-		}
-		abs, err := filepath.Abs(filepath.Dir(p))
-		if err != nil {
-			return rawConfig{}, "", err
-		}
-		return cfg, abs, nil
-	}
-	abs, _ := filepath.Abs(".")
-	return rawConfig{}, abs, nil
-}
-
-// buildResolvedConfig merges config file values with flag overrides and
-// resolves all paths to absolute form.
-func buildResolvedConfig(cmd *cobra.Command, backendFlag, frontendFlag, inputFlag, outFlag string) (resolvedConfig, error) {
-	cfg, cfgDir, err := findConfig()
-	if err != nil {
-		return resolvedConfig{}, err
-	}
-
-	if cmd.Flags().Changed("backend") {
-		cfg.Backend = backendFlag
-	}
-	if cmd.Flags().Changed("frontend") {
-		cfg.Frontend = frontendFlag
-	}
-	if cmd.Flags().Changed("input") {
-		cfg.Input = inputFlag
-		cfgDir, _ = filepath.Abs(".")
-	}
-	if cmd.Flags().Changed("out") {
-		cfg.Out = outFlag
-	}
-
-	if cfg.Backend == "" {
-		cfg.Backend = "node"
-	}
-	if cfg.Frontend == "" {
-		cfg.Frontend = "react"
-	}
-	if cfg.Out == "" {
-		cfg.Out = "./generated"
-	}
-
-	if cfg.Input == "" {
-		return resolvedConfig{}, fmt.Errorf("no input file (use --input or create veld/veld.config.json)")
-	}
-
-	return resolvedConfig{
-		Input:     filepath.Clean(filepath.Join(cfgDir, cfg.Input)),
-		Backend:   cfg.Backend,
-		Frontend:  cfg.Frontend,
-		Out:       filepath.Clean(filepath.Join(cfgDir, cfg.Out)),
-		ConfigDir: cfgDir,
-	}, nil
-}
-
-// resolveInput returns the .veld input path from args or config file.
-func resolveInput(args []string) (string, error) {
-	if len(args) == 1 {
-		return args[0], nil
-	}
-	cfg, cfgDir, err := findConfig()
-	if err != nil {
-		return "", err
-	}
-	if cfg.Input == "" {
-		return "", fmt.Errorf("no input file specified and no veld.config.json found")
-	}
-	return filepath.Clean(filepath.Join(cfgDir, cfg.Input)), nil
-}
-
-// ── shared generation logic ────────────────────────────────────────────────────
+// ── shared generation logic ───────────────────────────────────────────────────
 
 // runGenerate parses, validates, and emits output.
 //
-// When incremental is false (the default) every module is regenerated —
-// deterministic and safe for production pipelines.
-//
-// When incremental is true only modules whose source files changed since the
-// last run are regenerated; the result is written to .veld-cache.json in
-// ConfigDir. This is intended for local development only.
+// When incremental is false every module is regenerated.
+// When incremental is true only modules whose source files changed are regenerated.
 //
 // Returns (regeneratedModuleNames, veldFileList, error).
-// regeneratedModuleNames is nil when nothing needed to change (incremental only).
-func runGenerate(rc resolvedConfig, incremental bool) ([]string, []string, error) {
-	a, veldFiles, err := parseVeldFile(rc.Input)
+func runGenerate(rc config.ResolvedConfig, incremental bool) ([]string, []string, error) {
+	a, veldFiles, err := loader.Parse(rc.Input)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -234,8 +61,8 @@ func runGenerate(rc resolvedConfig, incremental bool) ([]string, []string, error
 		return nil, veldFiles, fmt.Errorf("contract validation failed")
 	}
 
-	// ── incremental: compute which modules need regeneration ──────────────────
-	var targetModules map[string]bool // nil → regenerate all
+	// ── incremental: compute which modules need regeneration ──────────────
+	var targetModules map[string]bool
 	var c *cache.Cache
 
 	if incremental {
@@ -243,7 +70,7 @@ func runGenerate(rc resolvedConfig, incremental bool) ([]string, []string, error
 		changedFiles := c.ChangedFiles(veldFiles)
 
 		if len(changedFiles) == 0 {
-			return nil, veldFiles, nil // nothing changed
+			return nil, veldFiles, nil
 		}
 
 		changedFileSet := make(map[string]bool, len(changedFiles))
@@ -251,8 +78,6 @@ func runGenerate(rc resolvedConfig, incremental bool) ([]string, []string, error
 			changedFileSet[f] = true
 		}
 
-		// If any model-defining file changed, all modules are dirty because the
-		// per-module types files include transitive model references.
 		anyModelFileChanged := false
 		for i := range a.Models {
 			if changedFileSet[a.Models[i].SourceFile] {
@@ -275,8 +100,6 @@ func runGenerate(rc resolvedConfig, incremental bool) ([]string, []string, error
 		}
 
 		if len(targetModules) == 0 {
-			// Files changed but no modules were affected (e.g. comment-only edit).
-			// Update cache so this file is not re-checked next run.
 			for _, f := range veldFiles {
 				c.Update(f)
 			}
@@ -285,8 +108,7 @@ func runGenerate(rc resolvedConfig, incremental bool) ([]string, []string, error
 		}
 	}
 
-	// ── emit: backend ─────────────────────────────────────────────────────────
-	// Filter the AST to only dirty modules when running incrementally.
+	// ── filter AST for incremental ───────────────────────────────────────
 	emitAST := a
 	if targetModules != nil {
 		filtered := make([]ast.Module, 0, len(targetModules))
@@ -298,30 +120,28 @@ func runGenerate(rc resolvedConfig, incremental bool) ([]string, []string, error
 		emitAST.Modules = filtered
 	}
 
-	switch rc.Backend {
-	case "node":
-		if err := node.New().Emit(emitAST, rc.Out); err != nil {
-			return nil, veldFiles, fmt.Errorf("node emitter: %w", err)
-		}
-	case "python":
-		if err := python.New().Emit(emitAST, rc.Out); err != nil {
-			return nil, veldFiles, fmt.Errorf("python emitter: %w", err)
-		}
-	default:
-		return nil, veldFiles, fmt.Errorf("unknown backend %q (supported: node, python)", rc.Backend)
+	// ── emit: backend ────────────────────────────────────────────────────
+	backend, err := emitter.GetBackend(rc.Backend)
+	if err != nil {
+		return nil, veldFiles, err
+	}
+	if err := backend.Emit(emitAST, rc.Out); err != nil {
+		return nil, veldFiles, fmt.Errorf("%s emitter: %w", rc.Backend, err)
 	}
 
-	// ── emit: frontend ────────────────────────────────────────────────────────
-	// The TypeScript client is one combined file, so always pass the full AST.
-	if rc.Frontend == "react" || rc.Frontend == "typescript" {
-		if err := typescript.New().Emit(a, rc.Out); err != nil {
-			return nil, veldFiles, fmt.Errorf("typescript emitter: %w", err)
+	// ── emit: frontend ───────────────────────────────────────────────────
+	frontend, err := emitter.GetFrontend(rc.Frontend)
+	if err != nil {
+		return nil, veldFiles, err
+	}
+	if frontend != nil {
+		// Frontend SDK always gets the full AST (combined output).
+		if err := frontend.Emit(a, rc.Out); err != nil {
+			return nil, veldFiles, fmt.Errorf("%s emitter: %w", rc.Frontend, err)
 		}
 	}
 
-	// ── update cache after a fully successful generation ─────────────────────
-	// Always write the cache — even on a full (non-incremental) build — so that
-	// subsequent incremental runs correctly start from this baseline.
+	// ── update cache ─────────────────────────────────────────────────────
 	if c == nil {
 		c = cache.Load(rc.ConfigDir)
 	}
@@ -339,9 +159,9 @@ func runGenerate(rc resolvedConfig, incremental bool) ([]string, []string, error
 	return names, veldFiles, nil
 }
 
-// printGenerateSummary prints a detailed breakdown of generated files.
-func printGenerateSummary(rc resolvedConfig, modules []string) {
-	// Relativize the output dir for nicer display
+// printGenerateSummary prints a detailed breakdown of generated files
+// by delegating to each emitter's Summary method.
+func printGenerateSummary(rc config.ResolvedConfig, modules []string) {
 	relOut := rc.Out
 	if cwd, err := os.Getwd(); err == nil {
 		if r, err := filepath.Rel(cwd, rc.Out); err == nil {
@@ -351,76 +171,19 @@ func printGenerateSummary(rc resolvedConfig, modules []string) {
 
 	fmt.Println(green("✓") + " Generated → " + bold(relOut))
 
-	// types/
-	typeFiles := make([]string, 0, len(modules))
-	for _, m := range modules {
-		typeFiles = append(typeFiles, strings.ToLower(m)+".ts")
-	}
-	if len(typeFiles) > 0 {
-		fmt.Printf("  %s  %s\n", dim("types/"), strings.Join(typeFiles, ", "))
-	}
-
-	// interfaces/
-	ifaceFiles := make([]string, 0, len(modules))
-	for _, m := range modules {
-		ifaceFiles = append(ifaceFiles, "I"+m+"Service.ts")
-	}
-	if len(ifaceFiles) > 0 {
-		fmt.Printf("  %s  %s\n", dim("interfaces/"), strings.Join(ifaceFiles, ", "))
-	}
-
-	// routes/
-	routeFiles := make([]string, 0, len(modules))
-	for _, m := range modules {
-		routeFiles = append(routeFiles, strings.ToLower(m)+".routes.ts")
-	}
-	if len(routeFiles) > 0 {
-		fmt.Printf("  %s  %s\n", dim("routes/"), strings.Join(routeFiles, ", "))
-	}
-
-	// schemas/
-	fmt.Printf("  %s  %s\n", dim("schemas/"), "schemas.ts")
-
-	// client/
-	fmt.Printf("  %s  %s\n", dim("client/"), "api.ts")
-}
-
-// printPythonGenerateSummary prints a detailed breakdown for Python backend.
-func printPythonGenerateSummary(rc resolvedConfig, modules []string) {
-	relOut := rc.Out
-	if cwd, err := os.Getwd(); err == nil {
-		if r, err := filepath.Rel(cwd, rc.Out); err == nil {
-			relOut = "./" + filepath.ToSlash(r)
+	// Backend summary
+	if be, err := emitter.GetBackend(rc.Backend); err == nil {
+		for _, line := range be.Summary(modules) {
+			fmt.Printf("  %s  %s\n", dim(line.Dir), line.Files)
 		}
 	}
 
-	fmt.Println(green("✓") + " Generated → " + bold(relOut))
-
-	typeFiles := make([]string, 0, len(modules))
-	for _, m := range modules {
-		typeFiles = append(typeFiles, strings.ToLower(m)+".py")
+	// Frontend summary
+	if fe, err := emitter.GetFrontend(rc.Frontend); err == nil && fe != nil {
+		for _, line := range fe.Summary(modules) {
+			fmt.Printf("  %s  %s\n", dim(line.Dir), line.Files)
+		}
 	}
-	if len(typeFiles) > 0 {
-		fmt.Printf("  %s  %s\n", dim("types/"), strings.Join(typeFiles, ", "))
-	}
-
-	ifaceFiles := make([]string, 0, len(modules))
-	for _, m := range modules {
-		ifaceFiles = append(ifaceFiles, "i_"+strings.ToLower(m)+"_service.py")
-	}
-	if len(ifaceFiles) > 0 {
-		fmt.Printf("  %s  %s\n", dim("interfaces/"), strings.Join(ifaceFiles, ", "))
-	}
-
-	routeFiles := make([]string, 0, len(modules))
-	for _, m := range modules {
-		routeFiles = append(routeFiles, strings.ToLower(m)+"_routes.py")
-	}
-	if len(routeFiles) > 0 {
-		fmt.Printf("  %s  %s\n", dim("routes/"), strings.Join(routeFiles, ", "))
-	}
-
-	fmt.Printf("  %s  %s\n", dim("client/"), "api.ts")
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
@@ -447,11 +210,11 @@ func newValidateCmd() *cobra.Command {
 		Short: "Parse and validate a .veld contract file",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := resolveInput(args)
+			path, err := config.ResolveInput(args)
 			if err != nil {
 				return err
 			}
-			a, _, err := parseVeldFile(path)
+			a, _, err := loader.Parse(path)
 			if err != nil {
 				return err
 			}
@@ -476,11 +239,11 @@ func newASTCmd() *cobra.Command {
 		Short: "Dump the AST JSON for a .veld contract file",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := resolveInput(args)
+			path, err := config.ResolveInput(args)
 			if err != nil {
 				return err
 			}
-			a, _, err := parseVeldFile(path)
+			a, _, err := loader.Parse(path)
 			if err != nil {
 				return err
 			}
@@ -505,7 +268,17 @@ func newGenerateCmd() *cobra.Command {
 			"Pass --incremental to skip modules whose source files have not changed\n" +
 			"(intended for local development, not production pipelines).",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildResolvedConfig(cmd, backendFlag, frontendFlag, inputFlag, outFlag)
+			flags := config.FlagOverrides{
+				Backend:     backendFlag,
+				Frontend:    frontendFlag,
+				Input:       inputFlag,
+				Out:         outFlag,
+				BackendSet:  cmd.Flags().Changed("backend"),
+				FrontendSet: cmd.Flags().Changed("frontend"),
+				InputSet:    cmd.Flags().Changed("input"),
+				OutSet:      cmd.Flags().Changed("out"),
+			}
+			rc, err := config.BuildResolved(flags)
 			if err != nil {
 				return err
 			}
@@ -525,16 +298,12 @@ func newGenerateCmd() *cobra.Command {
 				return nil
 			}
 
-			if rc.Backend == "python" {
-				printPythonGenerateSummary(rc, regenerated)
-			} else {
-				printGenerateSummary(rc, regenerated)
-			}
+			printGenerateSummary(rc, regenerated)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&backendFlag, "backend", "", "backend framework (node, python)")
-	cmd.Flags().StringVar(&frontendFlag, "frontend", "", "frontend framework (react, typescript)")
+	cmd.Flags().StringVar(&backendFlag, "backend", "", "backend target ("+strings.Join(emitter.ListBackends(), ", ")+")")
+	cmd.Flags().StringVar(&frontendFlag, "frontend", "", "frontend SDK ("+strings.Join(emitter.ListFrontends(), ", ")+", none)")
 	cmd.Flags().StringVar(&inputFlag, "input", "", "input .veld file")
 	cmd.Flags().StringVar(&outFlag, "out", "", "output directory")
 	cmd.Flags().BoolVar(&incrementalFlag, "incremental", false,
@@ -554,7 +323,17 @@ func newWatchCmd() *cobra.Command {
 			"the affected modules. Safe to run during development — never touches your\n" +
 			"application code. Use 'veld generate' for deterministic production builds.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildResolvedConfig(cmd, backendFlag, frontendFlag, inputFlag, outFlag)
+			flags := config.FlagOverrides{
+				Backend:     backendFlag,
+				Frontend:    frontendFlag,
+				Input:       inputFlag,
+				Out:         outFlag,
+				BackendSet:  cmd.Flags().Changed("backend"),
+				FrontendSet: cmd.Flags().Changed("frontend"),
+				InputSet:    cmd.Flags().Changed("input"),
+				OutSet:      cmd.Flags().Changed("out"),
+			}
+			rc, err := config.BuildResolved(flags)
 			if err != nil {
 				return err
 			}
@@ -562,7 +341,6 @@ func newWatchCmd() *cobra.Command {
 			fmt.Println(bold("veld watch") + "  •  watching for changes  •  Ctrl-C to stop")
 			fmt.Println()
 
-			// Initial full generation to establish a clean baseline and warm the cache.
 			regenerated, initFiles, genErr := runGenerate(rc, false)
 			if genErr != nil {
 				fmt.Fprintln(os.Stderr, red("error: ")+genErr.Error())
@@ -571,7 +349,6 @@ func newWatchCmd() *cobra.Command {
 			}
 			fmt.Println()
 
-			// Seed the mtime map from the initial file list.
 			mtimes := make(map[string]int64, len(initFiles))
 			for _, f := range initFiles {
 				if info, statErr := os.Stat(f); statErr == nil {
@@ -585,8 +362,6 @@ func newWatchCmd() *cobra.Command {
 			ticker := time.NewTicker(300 * time.Millisecond)
 			defer ticker.Stop()
 
-			// Track whether the last cycle had an error, to avoid printing the
-			// same error repeatedly until the file actually changes again.
 			lastError := false
 
 			for {
@@ -596,7 +371,6 @@ func newWatchCmd() *cobra.Command {
 					return nil
 
 				case <-ticker.C:
-					// Detect any mtime change among the currently watched files.
 					changed := false
 					for f, last := range mtimes {
 						info, statErr := os.Stat(f)
@@ -609,9 +383,6 @@ func newWatchCmd() *cobra.Command {
 						continue
 					}
 
-					// Update mtimes BEFORE running generation so that if
-					// generation fails we don't re-trigger on the same unchanged
-					// file in an infinite loop.
 					for f := range mtimes {
 						if info, statErr := os.Stat(f); statErr == nil {
 							mtimes[f] = info.ModTime().UnixNano()
@@ -637,7 +408,6 @@ func newWatchCmd() *cobra.Command {
 						lastError = false
 					}
 
-					// Refresh the watched file list to pick up newly added imports.
 					if newFiles != nil {
 						mtimes = make(map[string]int64, len(newFiles))
 						for _, f := range newFiles {
@@ -650,8 +420,8 @@ func newWatchCmd() *cobra.Command {
 			}
 		},
 	}
-	cmd.Flags().StringVar(&backendFlag, "backend", "", "backend framework (node, python)")
-	cmd.Flags().StringVar(&frontendFlag, "frontend", "", "frontend framework (react, typescript)")
+	cmd.Flags().StringVar(&backendFlag, "backend", "", "backend target ("+strings.Join(emitter.ListBackends(), ", ")+")")
+	cmd.Flags().StringVar(&frontendFlag, "frontend", "", "frontend SDK ("+strings.Join(emitter.ListFrontends(), ", ")+", none)")
 	cmd.Flags().StringVar(&inputFlag, "input", "", "input .veld file")
 	cmd.Flags().StringVar(&outFlag, "out", "", "output directory")
 	return cmd
@@ -668,7 +438,6 @@ func newInitCmd() *cobra.Command {
 }
 
 func runInit() error {
-	// Guard: refuse if already initialised.
 	for _, p := range []string{"veld/veld.config.json", "veld.config.json"} {
 		if _, err := os.Stat(p); err == nil {
 			fmt.Fprintln(os.Stderr, red("Error:")+" veld project already initialized in this directory")
@@ -684,9 +453,6 @@ func runInit() error {
 		{"veld/models/common.veld", modelsCommonVeldContent, "veld/models/common.veld"},
 		{"veld/modules/users.veld", modulesUsersVeldContent, "veld/modules/users.veld"},
 		{"veld/modules/auth.veld", modulesAuthVeldContent, "veld/modules/auth.veld"},
-		{"generated/.gitkeep", "", "generated/"},
-		{"app/services/.gitkeep", "", "app/services/"},
-		{"app/repositories/.gitkeep", "", "app/repositories/"},
 		{"README.md", initReadmeContent, "README.md"},
 	}
 
@@ -714,7 +480,7 @@ func runInit() error {
 const veldConfigContent = `{
   "input": "schema.veld",
   "backend": "node",
-  "frontend": "react",
+  "frontend": "typescript",
   "out": "../generated"
 }
 `
@@ -901,8 +667,7 @@ const initReadmeContent = "# My Veld Project\n\n" +
 	"| `veld/` | You | Contract source — models, modules, config |\n" +
 	"| `veld/models/` | You | Data type definitions (models, enums) |\n" +
 	"| `veld/modules/` | You | API endpoint definitions |\n" +
-	"| `generated/` | Veld | Auto-generated — do not edit |\n" +
-	"| `app/` | You | Business logic — never overwritten |\n\n" +
+	"| `generated/` | Veld | Auto-generated — do not edit |\n\n" +
 	"## Features\n\n" +
 	"- **Enums** — `enum Role { admin user guest }`\n" +
 	"- **Optional fields** — `bio?: string`\n" +
@@ -916,7 +681,7 @@ const initReadmeContent = "# My Veld Project\n\n" +
 	"## Workflow\n\n" +
 	"1. Edit files in `veld/models/` and `veld/modules/`\n" +
 	"2. Run `veld generate` to regenerate `generated/`\n" +
-	"3. Implement interfaces in `app/services/`\n" +
+	"3. Implement interfaces in your service layer\n" +
 	"4. Import the SDK in your frontend from `generated/client/api.ts`\n\n" +
 	"## Import system\n\n" +
 	"Split your contract across as many files as you like:\n\n" +
