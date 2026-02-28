@@ -21,7 +21,17 @@
       "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go build ./... 2>&1)",
       "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go test ./... 2>&1)",
       "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go test ./internal/emitter/backend/node/... -v 2>&1)",
-      "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go test ./internal/emitter/backend/python/... -v 2>&1)"
+      "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go test ./internal/emitter/backend/python/... -v 2>&1)",
+      "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go test ./internal/emitter/lang/... -v 2>&1)",
+      "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go test ./internal/emitter/backend/java/... -v 2>&1)",
+      "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go test ./internal/emitter/backend/csharp/... -v 2>&1)",
+      "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go test ./internal/emitter/backend/php/... -v 2>&1)",
+      "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go build ./... 2>&1 && go test ./... 2>&1)",
+      "Bash(echo php OK:*)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && go build ./... 2>&1)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && go test ./... 2>&1)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && go build -o veld.exe ./cmd/veld && ./veld.exe generate --backend=php --input=veld/app.veld --out=./generated --dry-run 2>&1)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && ./veld.exe generate --backend=php --input=testapp/veld/app.veld --out=./generated --dry-run 2>&1)"
     ]
   }
 }
