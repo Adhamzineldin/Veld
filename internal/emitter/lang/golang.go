@@ -29,15 +29,17 @@ func (a *GoAdapter) MapType(veldType string) (string, []string, error) {
 
 	// Built-in types
 	builtins := map[string]string{
-		"string": "string",
-		"int":    "int64",
-		"float":  "float64",
-		"bool":   "bool",
-		"date":   "time.Time",
-		"time":   "time.Time",
-		"bytes":  "[]byte",
-		"json":   "map[string]interface{}",
-		"any":    "interface{}",
+		"string":   "string",
+		"int":      "int64",
+		"float":    "float64",
+		"bool":     "bool",
+		"date":     "time.Time",
+		"datetime": "time.Time",
+		"time":     "time.Time",
+		"uuid":     "string",
+		"bytes":    "[]byte",
+		"json":     "map[string]interface{}",
+		"any":      "interface{}",
 	}
 
 	if goType, ok := builtins[veldType]; ok {

@@ -19,8 +19,10 @@ import (
 	"github.com/veld-dev/veld/internal/validator"
 
 	// Register all emitters via init(). To add a new emitter, add one line here.
+	_ "github.com/veld-dev/veld/internal/emitter/backend/go"
 	_ "github.com/veld-dev/veld/internal/emitter/backend/node"
 	_ "github.com/veld-dev/veld/internal/emitter/backend/python"
+	_ "github.com/veld-dev/veld/internal/emitter/backend/rust"
 	_ "github.com/veld-dev/veld/internal/emitter/frontend/typescript"
 )
 

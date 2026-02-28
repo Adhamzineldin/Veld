@@ -7,7 +7,21 @@
       "Bash(/c/Go/bin/go version:*)",
       "Bash(mkdir:*)",
       "Bash(../veld.exe generate:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && export PATH=\"/c/Program Files/Go/bin:$PATH\" && go build ./... 2>&1)",
+      "Bash(tail:*)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && export PATH=\"/c/Program Files/Go/bin:$PATH\" && go test ./internal/emitter/lang/... ./internal/emitter/codegen/... 2>&1)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && export PATH=\"/c/Program Files/Go/bin:$PATH\" && go test ./... 2>&1)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && export PATH=\"/c/Program Files/Go/bin:$PATH\" && go build -o veld.exe ./cmd/veld && ./veld.exe generate --backend=go --frontend=none --input=testapp/veld/app.veld --out=testapp/go-backend 2>&1)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld/testapp/go-backend\" && export PATH=\"/c/Program Files/Go/bin:$PATH\" && go mod tidy 2>&1 && go build ./... 2>&1)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && export PATH=\"/c/Program Files/Go/bin:$PATH\" && go test ./internal/emitter/backend/go/... -v 2>&1)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && export PATH=\"/c/Program Files/Go/bin:$PATH\" && go test ./internal/emitter/lang/... -v 2>&1)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && export PATH=\"/c/Program Files/Go/bin:$PATH\" && go test ./internal/emitter/backend/rust/... -v 2>&1)",
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && export PATH=\"/c/Program Files/Go/bin:$PATH\" && go build -o veld.exe ./cmd/veld && ./veld.exe generate --backend=rust --frontend=none --input=testapp/veld/app.veld --out=testapp/rust-backend 2>&1)",
+      "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go build ./... 2>&1)",
+      "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go test ./... 2>&1)",
+      "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go test ./internal/emitter/backend/node/... -v 2>&1)",
+      "Bash(cd \"D:\\\\Univeristy\\\\Graduation Project\\\\Veld\" && go test ./internal/emitter/backend/python/... -v 2>&1)"
     ]
   }
 }

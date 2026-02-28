@@ -1,98 +1,90 @@
 // Package gobackend provides a Go backend code generator for Veld.
+// It generates a complete, compilable Go HTTP service using the Chi router.
+//
+// Registration happens via init() — just blank-import this package in main.go:
+//
+//	_ "github.com/veld-dev/veld/internal/emitter/backend/go"
 package gobackend
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/veld-dev/veld/internal/ast"
 	"github.com/veld-dev/veld/internal/emitter"
 	"github.com/veld-dev/veld/internal/emitter/lang"
 )
 
+// goModuleName is the Go module path used in go.mod and internal imports.
+// Users should run `go mod edit -module <their-path>` after generating.
+const goModuleName = "example.com/veld-generated"
+
 func init() {
 	emitter.RegisterBackend("go", New())
 }
 
-// GoEmitter generates Go backend code from a Veld AST.
+// GoEmitter generates a complete Go HTTP backend from a Veld AST.
+// Uses the Chi router; all generated output is idiomatic Go.
 type GoEmitter struct {
 	adapter lang.LanguageAdapter
 }
 
-// New creates a new Go emitter with the Go language adapter.
+// New creates a GoEmitter with the standard Go language adapter.
 func New() *GoEmitter {
-	return &GoEmitter{
-		adapter: &lang.GoAdapter{},
-	}
+	return &GoEmitter{adapter: &lang.GoAdapter{}}
 }
 
-// IsBackend marks this as a backend emitter.
+// IsBackend satisfies the BackendEmitter marker interface.
 func (e *GoEmitter) IsBackend() {}
 
-// Emit generates Go backend code and writes it to outDir.
+// Emit generates all Go backend files into outDir.
+// The output is deterministic: same AST → identical files.
 func (e *GoEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) error {
 	if opts.DryRun {
-		fmt.Println("[DRY RUN] Go backend would generate:")
-		for _, m := range a.Modules {
-			fmt.Printf("  - module: %s\n", m.Name)
+		for _, line := range e.Summary(moduleNames(a.Modules)) {
+			fmt.Printf("  [dry-run] %s%s\n", line.Dir, line.Files)
 		}
 		return nil
 	}
 
-	// Create output directory structure
-	if err := os.MkdirAll(outDir, 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
+	if err := e.createDirs(outDir); err != nil {
+		return err
 	}
 
-	// Create subdirectories
-	dirs := []string{
-		filepath.Join(outDir, "internal", "models"),
-		filepath.Join(outDir, "internal", "routes"),
-		filepath.Join(outDir, "internal", "middleware"),
+	steps := []struct {
+		name string
+		fn   func() error
+	}{
+		{"types", func() error { return e.generateTypes(a, outDir) }},
+		{"middleware", func() error { return e.generateMiddleware(outDir) }},
+		{"routes setup", func() error { return e.generateRoutesSetup(a, outDir) }},
+		{"server", func() error { return e.generateServer(a, outDir) }},
+		{"main", func() error { return e.generateMain(outDir) }},
+		{"go.mod", func() error { return e.generateGoMod(outDir) }},
 	}
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+
+	for _, step := range steps {
+		if err := step.fn(); err != nil {
+			return fmt.Errorf("go emitter [%s]: %w", step.name, err)
 		}
 	}
 
-	// Generate types
-	if err := e.generateCommonTypes(a, outDir); err != nil {
-		return fmt.Errorf("failed to generate types: %w", err)
-	}
-
-	// Generate routes
-	if err := e.generateRoutesSetup(a, outDir); err != nil {
-		return fmt.Errorf("failed to generate routes: %w", err)
-	}
-
-	// Generate routes for each module
-	for _, m := range a.Modules {
-		if err := e.generateModuleRoutes(m, outDir); err != nil {
-			return fmt.Errorf("failed to generate routes for module %s: %w", m.Name, err)
+	// Per-module generation.
+	for _, mod := range a.Modules {
+		if err := e.generateInterface(a, mod, outDir); err != nil {
+			return fmt.Errorf("go emitter [interface for %s]: %w", mod.Name, err)
 		}
-	}
-
-	// Generate middleware
-	if err := e.generateErrorMiddleware(outDir); err != nil {
-		return fmt.Errorf("failed to generate middleware: %w", err)
-	}
-
-	// Generate server setup
-	if err := e.generateServerSetup(a, outDir); err != nil {
-		return fmt.Errorf("failed to generate server: %w", err)
-	}
-
-	// Generate go.mod
-	if err := e.generateGoMod(outDir); err != nil {
-		return fmt.Errorf("failed to generate go.mod: %w", err)
+		if err := e.generateModuleRoutes(a, mod, outDir); err != nil {
+			return fmt.Errorf("go emitter [routes for %s]: %w", mod.Name, err)
+		}
 	}
 
 	return nil
 }
 
-// Summary returns a summary of generated files.
+// Summary returns a human-readable description of the generated files.
 func (e *GoEmitter) Summary(modules []string) []emitter.SummaryLine {
 	var lines []emitter.SummaryLine
 
@@ -101,14 +93,28 @@ func (e *GoEmitter) Summary(modules []string) []emitter.SummaryLine {
 		Files: "types.go",
 	})
 
+	ifaceFiles := make([]string, len(modules))
+	for i, m := range modules {
+		ifaceFiles[i] = strings.ToLower(m) + ".go"
+	}
+	lines = append(lines, emitter.SummaryLine{
+		Dir:   "internal/interfaces/",
+		Files: strings.Join(ifaceFiles, ", "),
+	})
+
+	routeFiles := make([]string, len(modules)+1)
+	routeFiles[0] = "routes.go"
+	for i, m := range modules {
+		routeFiles[i+1] = strings.ToLower(m) + ".go"
+	}
 	lines = append(lines, emitter.SummaryLine{
 		Dir:   "internal/routes/",
-		Files: "routes.go",
+		Files: strings.Join(routeFiles, ", "),
 	})
 
 	lines = append(lines, emitter.SummaryLine{
 		Dir:   "internal/middleware/",
-		Files: "errors.go, logger.go",
+		Files: "errors.go",
 	})
 
 	lines = append(lines, emitter.SummaryLine{
@@ -117,4 +123,29 @@ func (e *GoEmitter) Summary(modules []string) []emitter.SummaryLine {
 	})
 
 	return lines
+}
+
+// createDirs ensures all required output directories exist.
+func (e *GoEmitter) createDirs(outDir string) error {
+	dirs := []string{
+		filepath.Join(outDir, "internal", "models"),
+		filepath.Join(outDir, "internal", "interfaces"),
+		filepath.Join(outDir, "internal", "routes"),
+		filepath.Join(outDir, "internal", "middleware"),
+	}
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", dir, err)
+		}
+	}
+	return nil
+}
+
+// moduleNames extracts module names from a slice of modules.
+func moduleNames(modules []ast.Module) []string {
+	names := make([]string, len(modules))
+	for i, m := range modules {
+		names[i] = m.Name
+	}
+	return names
 }

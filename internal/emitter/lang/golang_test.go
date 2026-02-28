@@ -20,12 +20,14 @@ func TestGoAdapterMapTypeBuiltins(t *testing.T) {
 	adapter := &GoAdapter{}
 
 	tests := map[string]string{
-		"string": "string",
-		"int":    "int64",
-		"float":  "float64",
-		"bool":   "bool",
-		"date":   "time.Time",
-		"bytes":  "[]byte",
+		"string":   "string",
+		"int":      "int64",
+		"float":    "float64",
+		"bool":     "bool",
+		"date":     "time.Time",
+		"datetime": "time.Time",
+		"uuid":     "string",
+		"bytes":    "[]byte",
 	}
 
 	for veldType, expected := range tests {

@@ -1,134 +1,157 @@
-// middleware.go - Middleware and server generation for Go backend
+// middleware.go - Middleware and server entry-point generation for Go backend
 package gobackend
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/veld-dev/veld/internal/ast"
 	"github.com/veld-dev/veld/internal/emitter/codegen"
+	"github.com/veld-dev/veld/internal/emitter/lang"
 )
 
-// generateErrorMiddleware generates error handling middleware.
-func (e *GoEmitter) generateErrorMiddleware(outDir string) error {
+// generateMiddleware writes internal/middleware/errors.go with panic recovery.
+func (e *GoEmitter) generateMiddleware(outDir string) error {
 	w := codegen.NewWriter("\t")
-
+	w.Writeln(header)
 	w.Writeln("package middleware")
 	w.BlankLine()
 
-	w.Writeln("import (")
-	w.Writeln("\t\"encoding/json\"")
-	w.Writeln("\t\"log\"")
-	w.Writeln("\t\"net/http\"")
-	w.Writeln(")")
+	im := codegen.NewImportManager()
+	im.Add("encoding/json", codegen.GroupStdlib)
+	im.Add("log", codegen.GroupStdlib)
+	im.Add("net/http", codegen.GroupStdlib)
+	w.Write(im.Format("go"))
 	w.BlankLine()
 
-	langStyle := e.adapter.CommentSyntax()
-	style := codegen.CommentStyle{
-		Single:   langStyle.Single,
-		Multi:    langStyle.Multi,
-		MultiEnd: langStyle.MultiEnd,
-	}
-	w.WriteComment("// RecoverPanic recovers from panics and returns a 500 error", style)
+	w.Writeln("// RecoverPanic is an HTTP middleware that recovers from panics,")
+	w.Writeln("// logs the error, and returns a 500 JSON response to the caller.")
 	w.WriteBlock("func RecoverPanic(next http.Handler) http.Handler {")
 	w.WriteBlock("return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {")
 	w.WriteBlock("defer func() {")
-	w.WriteBlock("if err := recover(); err != nil {")
-	w.Writeln("log.Printf(\"Panic recovered: %v\", err)")
+	w.WriteBlock("if rec := recover(); rec != nil {")
+	w.Writeln("log.Printf(\"panic recovered: %v\", rec)")
 	w.Writeln("w.Header().Set(\"Content-Type\", \"application/json\")")
 	w.Writeln("w.WriteHeader(http.StatusInternalServerError)")
-	w.Writeln("json.NewEncoder(w).Encode(map[string]interface{}{")
-	w.Writeln("\t\"error\": \"Internal server error\",")
-	w.Writeln("})")
+	w.Writeln("json.NewEncoder(w).Encode(map[string]interface{}{\"error\": \"internal server error\"}) //nolint:errcheck")
 	w.Dedent()
 	w.Writeln("}")
 	w.Dedent()
-	w.Writeln("}")
+	w.Writeln("}()")
+	w.BlankLine()
 	w.Writeln("next.ServeHTTP(w, r)")
 	w.Dedent()
 	w.Writeln("})")
 	w.Dedent()
 	w.Writeln("}")
 
-	filePath := filepath.Join(outDir, "internal", "middleware", "errors.go")
-	return os.WriteFile(filePath, w.Bytes(), 0644)
+	dir := filepath.Join(outDir, "internal", "middleware")
+	return os.WriteFile(filepath.Join(dir, "errors.go"), w.Bytes(), 0644)
 }
 
-// generateServerSetup generates server.go with server setup.
-func (e *GoEmitter) generateServerSetup(a ast.AST, outDir string) error {
+// generateServer writes server.go (server constructor + Services struct).
+func (e *GoEmitter) generateServer(a ast.AST, outDir string) error {
 	w := codegen.NewWriter("\t")
-
+	w.Writeln(header)
 	w.Writeln("package main")
 	w.BlankLine()
 
-	w.Writeln("import (")
-	w.Writeln("\t\"net/http\"")
-	w.Writeln("\t\"time\"")
-	w.Writeln("\t\"github.com/go-chi/chi/v5\"")
-	w.Writeln("\t\"yourmodule/internal/middleware\"")
-	w.Writeln("\t\"yourmodule/internal/routes\"")
-	w.Writeln(")")
+	im := codegen.NewImportManager()
+	im.Add("net/http", codegen.GroupStdlib)
+	im.Add("time", codegen.GroupStdlib)
+	im.Add("github.com/go-chi/chi/v5", codegen.GroupThirdParty)
+	im.Add(goModuleName+"/internal/interfaces", codegen.GroupLocal)
+	im.Add(goModuleName+"/internal/middleware", codegen.GroupLocal)
+	im.Add(goModuleName+"/internal/routes", codegen.GroupLocal)
+	w.Write(im.Format("go"))
 	w.BlankLine()
 
-	langStyle := e.adapter.CommentSyntax()
-	style := codegen.CommentStyle{
-		Single:   langStyle.Single,
-		Multi:    langStyle.Multi,
-		MultiEnd: langStyle.MultiEnd,
-	}
-	w.WriteComment("// Services holds all service implementations", style)
+	// Services struct — one field per module.
+	w.Writeln("// Services holds the concrete implementations of all service interfaces.")
+	w.Writeln("// Populate these fields with your own implementations before calling NewServer.")
 	w.WriteBlock("type Services struct {")
-	// TODO: Add service fields based on modules
+	for _, mod := range a.Modules {
+		fieldName := e.adapter.NamingConvention(mod.Name, lang.NamingContextExported)
+		ifaceType := "interfaces." + fieldName + "Service"
+		w.Writeln(fmt.Sprintf("%s %s", fieldName, ifaceType))
+	}
 	w.Dedent()
 	w.Writeln("}")
 	w.BlankLine()
 
-	w.WriteComment("// NewServer creates and configures the HTTP server", style)
-	w.WriteBlock("func NewServer(services *Services) *http.Server {")
+	// NewServer function.
+	w.Writeln("// NewServer creates and configures the HTTP server.")
+	w.WriteBlock("func NewServer(svc *Services) *http.Server {")
 	w.Writeln("r := chi.NewRouter()")
 	w.BlankLine()
-	w.WriteComment("// Add global middleware", style)
 	w.Writeln("r.Use(middleware.RecoverPanic)")
 	w.BlankLine()
-	w.WriteComment("// Setup routes", style)
-	w.Writeln("routes.SetupRoutes(r, services)")
+	w.Writeln(fmt.Sprintf("routes.SetupRoutes(r, %s)", buildServerSetupArgs(e, a.Modules)))
 	w.BlankLine()
 	w.WriteBlock("return &http.Server{")
 	w.Writeln("Addr:         \":8080\",")
 	w.Writeln("Handler:      r,")
 	w.Writeln("ReadTimeout:  15 * time.Second,")
 	w.Writeln("WriteTimeout: 15 * time.Second,")
+	w.Writeln("IdleTimeout:  60 * time.Second,")
 	w.Dedent()
 	w.Writeln("}")
 	w.Dedent()
 	w.Writeln("}")
+
+	return os.WriteFile(filepath.Join(outDir, "server.go"), w.Bytes(), 0644)
+}
+
+// generateMain writes main.go (the entry point).
+func (e *GoEmitter) generateMain(outDir string) error {
+	w := codegen.NewWriter("\t")
+	w.Writeln(header)
+	w.Writeln("package main")
 	w.BlankLine()
 
-	w.WriteComment("// main starts the HTTP server", style)
-	w.WriteBlock("func main() {")
-	w.Writeln("services := &Services{}")
-	w.Writeln("server := NewServer(services)")
+	im := codegen.NewImportManager()
+	im.Add("log", codegen.GroupStdlib)
+	w.Write(im.Format("go"))
 	w.BlankLine()
+
+	w.Writeln("func main() {")
+	w.Indent()
+	w.Writeln("svc := &Services{}")
+	w.Writeln("// TODO: initialise your service implementations here")
+	w.Writeln("// e.g. svc.Auth = &myapp.AuthServiceImpl{DB: db}")
+	w.BlankLine()
+	w.Writeln("server := NewServer(svc)")
+	w.Writeln("log.Printf(\"listening on %s\", server.Addr)")
 	w.Writeln("log.Fatal(server.ListenAndServe())")
 	w.Dedent()
 	w.Writeln("}")
 
-	filePath := filepath.Join(outDir, "server.go")
-	return os.WriteFile(filePath, w.Bytes(), 0644)
+	return os.WriteFile(filepath.Join(outDir, "main.go"), w.Bytes(), 0644)
 }
 
-// generateGoMod generates a basic go.mod file.
+// generateGoMod writes a minimal go.mod for the generated module.
 func (e *GoEmitter) generateGoMod(outDir string) error {
 	w := codegen.NewWriter("")
-
-	w.Writeln("module example.com/veld-generated")
+	w.Writeln(fmt.Sprintf("module %s", goModuleName))
 	w.BlankLine()
 	w.Writeln("go 1.21")
 	w.BlankLine()
 	w.Writeln("require (")
-	w.Writeln("\tgithub.com/go-chi/chi/v5 v5.0.10")
+	w.Writeln("\tgithub.com/go-chi/chi/v5 v5.0.12")
 	w.Writeln(")")
 
-	filePath := filepath.Join(outDir, "go.mod")
-	return os.WriteFile(filePath, w.Bytes(), 0644)
+	return os.WriteFile(filepath.Join(outDir, "go.mod"), w.Bytes(), 0644)
+}
+
+// buildServerSetupArgs builds the arguments to pass to routes.SetupRoutes from server.go.
+// e.g. "svc.Auth, svc.Food"
+func buildServerSetupArgs(e *GoEmitter, modules []ast.Module) string {
+	var parts []string
+	for _, mod := range modules {
+		fieldName := e.adapter.NamingConvention(mod.Name, lang.NamingContextExported)
+		parts = append(parts, "svc."+fieldName)
+	}
+	return strings.Join(parts, ", ")
 }

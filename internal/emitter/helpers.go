@@ -35,6 +35,11 @@ func ToOpenAPIPath(path string) string {
 	return paramRegex.ReplaceAllString(path, `{$1}`)
 }
 
+// ToChiPath converts /users/:id to /users/{id} for Chi router.
+func ToChiPath(path string) string {
+	return paramRegex.ReplaceAllString(path, `{$1}`)
+}
+
 // CollectTransitiveModels returns all model names needed by a module, following
 // model references in fields transitively.
 func CollectTransitiveModels(a ast.AST, mod ast.Module) map[string]bool {
