@@ -9,7 +9,7 @@ export interface IAuthService {
   /** Create a new user account */
   Register(input: RegisterInput): Promise<AuthResponse>;
   /** Get the currently authenticated user */
-  Me(userId: string): Promise<User>;
+  Me(): Promise<User>;
   /** Invalidate the current session */
-  Logout(userId: string): Promise<SuccessResponse>;
+  Logout(): Promise<SuccessResponse>;
 }

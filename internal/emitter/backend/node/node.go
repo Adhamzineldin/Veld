@@ -153,15 +153,25 @@ func (e *NodeEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) er
 		if act.Description != "" {
 			sb.WriteString(fmt.Sprintf("  /** %s */\n", act.Description))
 		}
-		if act.Input != "" && act.Query != "" {
-			sb.WriteString(fmt.Sprintf("  %s(input: %s, query: %s): Promise<%s>;\n", act.Name, act.Input, act.Query, outputType))
-		} else if act.Input != "" {
-			sb.WriteString(fmt.Sprintf("  %s(input: %s): Promise<%s>;\n", act.Name, act.Input, outputType))
-		} else if act.Query != "" {
-			sb.WriteString(fmt.Sprintf("  %s(query: %s): Promise<%s>;\n", act.Name, act.Query, outputType))
-		} else {
-			sb.WriteString(fmt.Sprintf("  %s(userId: string): Promise<%s>;\n", act.Name, outputType))
+		routePath := act.Path
+		if mod.Prefix != "" {
+			routePath = mod.Prefix + act.Path
 		}
+		pathParams := emitter.ExtractPathParams(routePath)
+
+		// Build parameter list: path params first, then input, then query
+		var params []string
+		for _, p := range pathParams {
+			params = append(params, p+": string")
+		}
+		if act.Input != "" {
+			params = append(params, "input: "+act.Input)
+		}
+		if act.Query != "" {
+			params = append(params, "query: "+act.Query)
+		}
+
+		sb.WriteString(fmt.Sprintf("  %s(%s): Promise<%s>;\n", act.Name, strings.Join(params, ", "), outputType))
 	}
 	sb.WriteString("}\n")
 
@@ -217,15 +227,25 @@ func (e *NodeEmitter) emitRoutes(_ ast.AST, mod ast.Module, outDir string) error
 
 		sb.WriteString(fmt.Sprintf("\n  router.%s('%s', %sasync (req: any, res: any) => {\n", method, routePath, mwArgs))
 
-		if act.Input != "" && act.Query != "" {
-			sb.WriteString(fmt.Sprintf("    const result = await service.%s(req.body, req.query);\n", act.Name))
-		} else if act.Input != "" {
-			sb.WriteString(fmt.Sprintf("    const result = await service.%s(req.body);\n", act.Name))
-		} else if act.Query != "" {
-			sb.WriteString(fmt.Sprintf("    const result = await service.%s(req.query);\n", act.Name))
-		} else {
-			sb.WriteString(fmt.Sprintf("    const result = await service.%s(req.user?.id);\n", act.Name))
+		// Build the service call arguments: path params, then input/query
+		pathParams := emitter.ExtractPathParams(routePath)
+		var callArgs []string
+		for _, p := range pathParams {
+			callArgs = append(callArgs, fmt.Sprintf("req.params.%s", p))
 		}
+		if act.Input != "" {
+			callArgs = append(callArgs, "req.body")
+		}
+		if act.Query != "" {
+			callArgs = append(callArgs, "req.query")
+		}
+
+		if len(callArgs) > 0 {
+			sb.WriteString(fmt.Sprintf("    const result = await service.%s(%s);\n", act.Name, strings.Join(callArgs, ", ")))
+		} else {
+			sb.WriteString(fmt.Sprintf("    const result = await service.%s();\n", act.Name))
+		}
+
 		sb.WriteString("    res.json(result);\n")
 		sb.WriteString("  });\n")
 	}

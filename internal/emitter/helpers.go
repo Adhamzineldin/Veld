@@ -1,10 +1,34 @@
 package emitter
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/veld-dev/veld/internal/ast"
 )
+
+// paramRegex matches Express-style path params like :id, :userId etc.
+var paramRegex = regexp.MustCompile(`:([a-zA-Z_][a-zA-Z0-9_]*)`)
+
+// ExtractPathParams returns the parameter names from a route path like /users/:id.
+func ExtractPathParams(path string) []string {
+	matches := paramRegex.FindAllStringSubmatch(path, -1)
+	params := make([]string, 0, len(matches))
+	for _, m := range matches {
+		params = append(params, m[1])
+	}
+	return params
+}
+
+// ToTemplateLiteral converts /users/:id to /users/${id} for JS template literals.
+func ToTemplateLiteral(path string) string {
+	return paramRegex.ReplaceAllString(path, `${$1}`)
+}
+
+// ToFlaskPath converts /users/:id to /users/<id> for Flask route registration.
+func ToFlaskPath(path string) string {
+	return paramRegex.ReplaceAllString(path, `<$1>`)
+}
 
 // CollectTransitiveModels returns all model names needed by a module, following
 // model references in fields transitively.

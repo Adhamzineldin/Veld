@@ -203,14 +203,22 @@ func (e *PythonEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) 
 	for _, act := range mod.Actions {
 		outputType := formatPyOutputType(act)
 		sb.WriteString(fmt.Sprintf("    @abstractmethod\n    def %s(self", emitter.ToSnakeCase(act.Name)))
-		if act.Input != "" && act.Query != "" {
-			sb.WriteString(fmt.Sprintf(", input: %s, query: %s", act.Input, act.Query))
-		} else if act.Input != "" {
+
+		routePath := act.Path
+		if mod.Prefix != "" {
+			routePath = mod.Prefix + act.Path
+		}
+		pathParams := emitter.ExtractPathParams(routePath)
+
+		// Path params first, then input, then query
+		for _, p := range pathParams {
+			sb.WriteString(fmt.Sprintf(", %s: str", emitter.ToSnakeCase(p)))
+		}
+		if act.Input != "" {
 			sb.WriteString(fmt.Sprintf(", input: %s", act.Input))
-		} else if act.Query != "" {
+		}
+		if act.Query != "" {
 			sb.WriteString(fmt.Sprintf(", query: %s", act.Query))
-		} else {
-			sb.WriteString(", user_id: str")
 		}
 		sb.WriteString(fmt.Sprintf(") -> %s:\n", outputType))
 		if act.Description != "" {
@@ -254,18 +262,40 @@ func (e *PythonEmitter) emitRoutes(_ ast.AST, mod ast.Module, outDir string) err
 			routePath = mod.Prefix + act.Path
 		}
 
+		pathParams := emitter.ExtractPathParams(routePath)
+		flaskPath := emitter.ToFlaskPath(routePath)
+
 		if act.Description != "" {
 			sb.WriteString(fmt.Sprintf("\n    # %s\n", act.Description))
 		}
-		sb.WriteString(fmt.Sprintf("\n    def %s():\n", fnName))
-		if act.Input != "" && act.Query != "" {
-			sb.WriteString(fmt.Sprintf("        result = service.%s(request.get_json(), request.args.to_dict())\n", emitter.ToSnakeCase(act.Name)))
-		} else if act.Input != "" {
-			sb.WriteString(fmt.Sprintf("        result = service.%s(request.get_json())\n", emitter.ToSnakeCase(act.Name)))
-		} else if act.Query != "" {
-			sb.WriteString(fmt.Sprintf("        result = service.%s(request.args.to_dict())\n", emitter.ToSnakeCase(act.Name)))
+
+		// Function signature with path params
+		if len(pathParams) > 0 {
+			pyParams := make([]string, len(pathParams))
+			for i, p := range pathParams {
+				pyParams[i] = emitter.ToSnakeCase(p)
+			}
+			sb.WriteString(fmt.Sprintf("\n    def %s(%s):\n", fnName, strings.Join(pyParams, ", ")))
 		} else {
-			sb.WriteString(fmt.Sprintf("        result = service.%s(None)\n", emitter.ToSnakeCase(act.Name)))
+			sb.WriteString(fmt.Sprintf("\n    def %s():\n", fnName))
+		}
+
+		// Build service call arguments
+		var callArgs []string
+		for _, p := range pathParams {
+			callArgs = append(callArgs, emitter.ToSnakeCase(p))
+		}
+		if act.Input != "" {
+			callArgs = append(callArgs, "request.get_json()")
+		}
+		if act.Query != "" {
+			callArgs = append(callArgs, "request.args.to_dict()")
+		}
+
+		if len(callArgs) > 0 {
+			sb.WriteString(fmt.Sprintf("        result = service.%s(%s)\n", emitter.ToSnakeCase(act.Name), strings.Join(callArgs, ", ")))
+		} else {
+			sb.WriteString(fmt.Sprintf("        result = service.%s()\n", emitter.ToSnakeCase(act.Name)))
 		}
 		sb.WriteString("        return jsonify(result)\n")
 
@@ -278,7 +308,7 @@ func (e *PythonEmitter) emitRoutes(_ ast.AST, mod ast.Module, outDir string) err
 
 		methods := fmt.Sprintf("['%s']", strings.ToUpper(act.Method))
 		sb.WriteString(fmt.Sprintf("    app.add_url_rule('%s', '%s', %s, methods=%s)\n",
-			routePath, fnName, fnName, methods))
+			flaskPath, fnName, fnName, methods))
 	}
 	sb.WriteString("\n")
 

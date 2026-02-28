@@ -28,14 +28,14 @@ export function authRouter(router: any, service: IAuthService, middleware: Middl
   // Get the currently authenticated user
 
   router.get('/auth/me', middleware.AuthGuard, async (req: any, res: any) => {
-    const result = await service.Me(req.user?.id);
+    const result = await service.Me();
     res.json(result);
   });
 
   // Invalidate the current session
 
   router.post('/auth/logout', middleware.AuthGuard, async (req: any, res: any) => {
-    const result = await service.Logout(req.user?.id);
+    const result = await service.Logout();
     res.json(result);
   });
 }

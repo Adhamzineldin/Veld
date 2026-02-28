@@ -2,5 +2,6 @@
   "input": "app.veld",
   "backend": "node",
   "frontend": "react",
+  "schemas": true,
   "out": "../generated"
 }

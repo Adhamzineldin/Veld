@@ -7,13 +7,13 @@ export interface IUsersService {
   /** List users with optional filters */
   List(query: UserFilters): Promise<User[]>;
   /** Get a single user by ID */
-  GetById(userId: string): Promise<User>;
+  GetById(id: string): Promise<User>;
   /** Create a new user */
   Create(input: RegisterInput): Promise<User>;
   /** Update an existing user */
-  Update(input: RegisterInput): Promise<User>;
+  Update(id: string, input: RegisterInput): Promise<User>;
   /** Partially update a user */
-  Patch(input: RegisterInput): Promise<User>;
+  Patch(id: string, input: RegisterInput): Promise<User>;
   /** Soft-delete a user */
-  Delete(userId: string): Promise<SuccessResponse>;
+  Delete(id: string): Promise<SuccessResponse>;
 }

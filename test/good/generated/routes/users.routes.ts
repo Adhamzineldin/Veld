@@ -19,7 +19,7 @@ export function usersRouter(router: any, service: IUsersService, middleware: Mid
   // Get a single user by ID
 
   router.get('/api/users/:id', middleware.AuthGuard, async (req: any, res: any) => {
-    const result = await service.GetById(req.user?.id);
+    const result = await service.GetById(req.params.id);
     res.json(result);
   });
 
@@ -33,21 +33,21 @@ export function usersRouter(router: any, service: IUsersService, middleware: Mid
   // Update an existing user
 
   router.put('/api/users/:id', middleware.AuthGuard, async (req: any, res: any) => {
-    const result = await service.Update(req.body);
+    const result = await service.Update(req.params.id, req.body);
     res.json(result);
   });
 
   // Partially update a user
 
   router.patch('/api/users/:id', middleware.AuthGuard, async (req: any, res: any) => {
-    const result = await service.Patch(req.body);
+    const result = await service.Patch(req.params.id, req.body);
     res.json(result);
   });
 
   // Soft-delete a user
 
   router.delete('/api/users/:id', middleware.AuthGuard, async (req: any, res: any) => {
-    const result = await service.Delete(req.user?.id);
+    const result = await service.Delete(req.params.id);
     res.json(result);
   });
 }
