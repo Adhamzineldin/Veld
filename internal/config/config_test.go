@@ -52,9 +52,6 @@ func TestBuildResolvedDefaults(t *testing.T) {
 	if rc.Frontend != "typescript" {
 		t.Errorf("expected default frontend 'typescript', got %q", rc.Frontend)
 	}
-	if rc.Schemas != false {
-		t.Error("expected schemas to default to false")
-	}
 }
 
 func TestBuildResolvedWithAllFields(t *testing.T) {
@@ -68,7 +65,6 @@ func TestBuildResolvedWithAllFields(t *testing.T) {
 		"backend": "python",
 		"frontend": "none",
 		"out": "../output",
-		"schemas": true,
 		"baseUrl": "/api/v1"
 	}`
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0644); err != nil {
@@ -91,9 +87,6 @@ func TestBuildResolvedWithAllFields(t *testing.T) {
 	}
 	if rc.Frontend != "none" {
 		t.Errorf("expected frontend 'none', got %q", rc.Frontend)
-	}
-	if rc.Schemas != true {
-		t.Error("expected schemas to be true")
 	}
 	if rc.BaseUrl != "/api/v1" {
 		t.Errorf("expected baseUrl '/api/v1', got %q", rc.BaseUrl)

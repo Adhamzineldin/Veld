@@ -9,7 +9,6 @@ import (
 
 // EmitOptions carries config-driven options to emitters.
 type EmitOptions struct {
-	Schemas bool   // whether to generate Zod schemas (node backend)
 	BaseUrl string // base URL for the frontend SDK (empty = env var fallback)
 	DryRun  bool   // if true, emit nothing — just validate
 }

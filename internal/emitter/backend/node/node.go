@@ -52,6 +52,7 @@ func (e *NodeEmitter) Summary(modules []string) []emitter.SummaryLine {
 		lines = append(lines, emitter.SummaryLine{Dir: "routes/", Files: strings.Join(routeFiles, ", ")})
 	}
 
+	lines = append(lines, emitter.SummaryLine{Dir: "schemas/", Files: "schemas.ts"})
 	return lines
 }
 
@@ -71,10 +72,8 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 			return fmt.Errorf("routes for module %s: %w", mod.Name, err)
 		}
 	}
-	if opts.Schemas {
-		if err := e.emitZodSchemas(a, outDir); err != nil {
-			return fmt.Errorf("zod schemas: %w", err)
-		}
+	if err := e.emitZodSchemas(a, outDir); err != nil {
+		return fmt.Errorf("zod schemas: %w", err)
 	}
 	return nil
 }

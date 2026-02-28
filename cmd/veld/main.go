@@ -179,9 +179,6 @@ func printGenerateSummary(rc config.ResolvedConfig, modules []string) {
 		for _, line := range be.Summary(modules) {
 			fmt.Printf("  %s  %s\n", dim(line.Dir), line.Files)
 		}
-		if rc.Schemas {
-			fmt.Printf("  %s  %s\n", dim("schemas/"), "schemas.ts")
-		}
 	}
 
 	// Frontend summary
@@ -277,7 +274,7 @@ func newASTCmd() *cobra.Command {
 
 func newGenerateCmd() *cobra.Command {
 	var backendFlag, frontendFlag, inputFlag, outFlag string
-	var incrementalFlag, dryRunFlag, schemasFlag bool
+	var incrementalFlag, dryRunFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "generate",
@@ -288,7 +285,6 @@ func newGenerateCmd() *cobra.Command {
 			"(intended for local development, not production pipelines).",
 		Example: "  veld generate\n" +
 			"  veld generate --backend=node --frontend=typescript\n" +
-			"  veld generate --schemas\n" +
 			"  veld generate --dry-run",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := config.FlagOverrides{
@@ -306,13 +302,7 @@ func newGenerateCmd() *cobra.Command {
 				return err
 			}
 
-			// --schemas flag overrides config
-			if cmd.Flags().Changed("schemas") {
-				rc.Schemas = schemasFlag
-			}
-
 			opts := emitter.EmitOptions{
-				Schemas: rc.Schemas,
 				BaseUrl: rc.BaseUrl,
 				DryRun:  dryRunFlag,
 			}
@@ -350,8 +340,6 @@ func newGenerateCmd() *cobra.Command {
 		"skip unchanged modules (dev only — not for production builds)")
 	cmd.Flags().BoolVar(&dryRunFlag, "dry-run", false,
 		"preview what would be generated without writing files")
-	cmd.Flags().BoolVar(&schemasFlag, "schemas", false,
-		"generate Zod validation schemas (opt-in)")
 	return cmd
 }
 
@@ -386,7 +374,6 @@ func newWatchCmd() *cobra.Command {
 			fmt.Println()
 
 			opts := emitter.EmitOptions{
-				Schemas: rc.Schemas,
 				BaseUrl: rc.BaseUrl,
 			}
 
