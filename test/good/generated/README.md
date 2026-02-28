@@ -7,7 +7,8 @@
 
 | Path | Description |
 |------|-------------|
-| `types/types.ts` | All TypeScript interfaces and enum types |
+| `types/{module}.ts` | TypeScript interfaces and enums per module |
+| `types/index.ts` | Barrel re-export of all type files |
 | `interfaces/` | Service contracts (one per module) |
 | `routes/` | Route registration functions with validation |
 | `schemas/schemas.ts` | Zod validation schemas |

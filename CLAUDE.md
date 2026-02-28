@@ -158,7 +158,10 @@ generated/
 ├── index.ts                    # Barrel export for clean imports
 ├── package.json                # @veld/generated package alias
 ├── README.md                   # Auto-generated documentation
-├── types/types.ts              # ALL TypeScript interfaces + enums (single file, no duplicates)
+├── types/
+│   ├── users.ts                # Types owned by Users module
+│   ├── auth.ts                 # Types owned by Auth module + re-exports shared from users.ts
+│   └── index.ts                # Barrel re-export of all module type files
 ├── interfaces/IAuthService.ts  # Service contracts (typed path params)
 ├── routes/auth.routes.ts       # Route handlers: try/catch, Zod validation, correct HTTP status codes
 ├── schemas/schemas.ts          # Zod validation schemas (supports extends)
@@ -170,7 +173,10 @@ generated/
 ```
 generated/
 ├── __init__.py
-├── types/__init__.py           # ALL TypedDicts + Literal enums (single file)
+├── types/
+│   ├── users.py                # Types owned by Users module
+│   ├── auth.py                 # Types owned by Auth module + re-imports shared
+│   └── __init__.py             # Barrel re-import of all module type files
 ├── interfaces/i_auth_service.py # ABC service contracts
 ├── routes/auth_routes.py       # Flask handlers: try/except, Pydantic validation, correct status codes
 └── schemas/schemas.py          # Pydantic BaseModel schemas
@@ -219,7 +225,7 @@ Generated `package.json` enables `@veld/generated` path alias. Add to `tsconfig.
 - Actions with no `input` generate no body parsing — service called with path params only
 - Actions with no `output` generate `void` return type (TS) / `None` (Python)
 - Validator errors include `file:line` context with source code snippet when available
-- Types are emitted into a single file (`types/types.ts` / `types/__init__.py`) — never duplicated across modules
+- Types are emitted into per-module files (`types/users.ts`, `types/auth.ts`). Each type is **defined** in exactly one file (the first module to use it). Other modules re-export shared types. A barrel `types/index.ts` re-exports everything.
 - `extends` generates TS `interface X extends Y` / Zod `.extend()` / Python class inheritance
 - `Map<string, V>` generates TS `Record<string, V>` / Python `Dict[str, V]`
 

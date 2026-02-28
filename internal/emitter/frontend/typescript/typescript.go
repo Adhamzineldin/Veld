@@ -75,7 +75,7 @@ func (e *TypeScriptEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOpti
 				typeList = append(typeList, m.Name)
 			}
 		}
-		sb.WriteString(fmt.Sprintf("import type { %s } from '../types/types';\n", strings.Join(typeList, ", ")))
+		sb.WriteString(fmt.Sprintf("import type { %s } from '../types';\n", strings.Join(typeList, ", ")))
 	}
 
 	// VeldApiError class
