@@ -6,22 +6,12 @@
   "patterns": [
     { "include": "#comment" },
     { "include": "#import-statement" },
-    { "include": "#model-declaration" },
-    { "include": "#module-declaration" },
-    { "include": "#enum-declaration" },
-    { "include": "#action-declaration" },
-    { "include": "#method-directive" },
-    { "include": "#path-directive" },
-    { "include": "#directive" },
-    { "include": "#annotation" },
-    { "include": "#map-type" },
-    { "include": "#primitive-type" },
-    { "include": "#string" },
-    { "include": "#optional-marker" },
-    { "include": "#array-marker" },
-    { "include": "#block" }
+    { "include": "#model-block" },
+    { "include": "#enum-block" },
+    { "include": "#module-block" }
   ],
   "repository": {
+
     "comment": {
       "name": "comment.line.double-slash.veld",
       "match": "//.*$"
@@ -36,121 +26,314 @@
       ]
     },
 
+    "number": {
+      "name": "constant.numeric.veld",
+      "match": "\\b\\d+(\\.\\d+)?\\b"
+    },
+
+    "boolean": {
+      "name": "constant.language.boolean.veld",
+      "match": "\\b(true|false)\\b"
+    },
+
     "import-statement": {
-      "comment": "import \"./path/to/file.veld\"",
-      "match": "^(import)\\s+(\"[^\"]+\")",
+      "comment": "import @models/auth  or  import @modules/food",
+      "match": "^\\s*(import)\\s+(@)(\\w+)(/)(\\w+)",
       "captures": {
         "1": { "name": "keyword.control.import.veld" },
-        "2": { "name": "string.quoted.double.veld" }
-      }
-    },
-
-    "model-declaration": {
-      "comment": "model Foo  /  model Foo extends Bar",
-      "match": "\\b(model)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(extends)\\s+([A-Za-z_][A-Za-z0-9_]*))?",
-      "captures": {
-        "1": { "name": "storage.type.veld" },
-        "2": { "name": "entity.name.type.veld" },
-        "3": { "name": "storage.modifier.veld" },
-        "4": { "name": "entity.name.type.veld" }
-      }
-    },
-
-    "module-declaration": {
-      "comment": "module Users",
-      "match": "\\b(module)\\s+([A-Za-z_][A-Za-z0-9_]*)",
-      "captures": {
-        "1": { "name": "storage.type.veld" },
-        "2": { "name": "entity.name.namespace.veld" }
-      }
-    },
-
-    "enum-declaration": {
-      "comment": "enum Role",
-      "match": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
-      "captures": {
-        "1": { "name": "storage.type.veld" },
-        "2": { "name": "entity.name.type.enum.veld" }
-      }
-    },
-
-    "action-declaration": {
-      "comment": "action GetUser",
-      "match": "\\b(action)\\s+([A-Za-z_][A-Za-z0-9_]*)",
-      "captures": {
-        "1": { "name": "keyword.other.action.veld" },
-        "2": { "name": "entity.name.function.veld" }
-      }
-    },
-
-    "method-directive": {
-      "comment": "method: GET — highlights the HTTP verb too",
-      "match": "^\\s*(method):\\s*(GET|POST|PUT|DELETE|PATCH)\\b",
-      "captures": {
-        "1": { "name": "keyword.other.directive.veld" },
-        "2": { "name": "support.constant.http-method.veld" }
-      }
-    },
-
-    "path-directive": {
-      "comment": "path: /users/:id  /  prefix: /api",
-      "match": "^\\s*(path|prefix):\\s*(/\\S*)",
-      "captures": {
-        "1": { "name": "keyword.other.directive.veld" },
-        "2": { "name": "string.other.path.veld" }
-      }
-    },
-
-    "directive": {
-      "comment": "description / input / output / query / middleware directives",
-      "match": "^\\s*(description|input|output|query|middleware)(?=\\s*:)",
-      "captures": {
-        "1": { "name": "keyword.other.directive.veld" }
+        "2": { "name": "punctuation.definition.keyword.veld" },
+        "3": { "name": "entity.name.namespace.veld" },
+        "4": { "name": "punctuation.separator.path.veld" },
+        "5": { "name": "entity.name.import.veld" }
       }
     },
 
     "annotation": {
-      "comment": "@default(value)",
-      "match": "(@[A-Za-z_][A-Za-z0-9_]*)(?:\\(([^)]*)\\))?",
+      "comment": "@default(value)  or  @required  etc.",
+      "match": "(@)([A-Za-z_][A-Za-z0-9_]*)(?:(\\()([^)]*)(\\)))?",
       "captures": {
-        "1": { "name": "entity.other.attribute-name.veld" },
-        "2": { "name": "constant.other.veld" }
-      }
-    },
-
-    "map-type": {
-      "comment": "Map<string, string>",
-      "match": "\\b(Map)<([A-Za-z_][A-Za-z0-9_]*),\\s*([A-Za-z_][A-Za-z0-9_]*)>",
-      "captures": {
-        "1": { "name": "support.class.builtin.veld" },
-        "2": { "name": "support.type.primitive.veld" },
-        "3": { "name": "support.type.primitive.veld" }
+        "1": { "name": "punctuation.definition.annotation.veld" },
+        "2": { "name": "entity.other.attribute-name.annotation.veld" },
+        "3": { "name": "punctuation.definition.arguments.veld" },
+        "4": { "name": "constant.other.annotation-value.veld" },
+        "5": { "name": "punctuation.definition.arguments.veld" }
       }
     },
 
     "primitive-type": {
       "comment": "Built-in scalar types",
       "name": "support.type.primitive.veld",
-      "match": "\\b(string|int|float|bool|date|datetime|uuid)\\b"
+      "match": "\\b(string|int|float|bool|date|datetime|uuid|bytes|json|any)\\b"
+    },
+
+    "generic-type": {
+      "comment": "List<T>",
+      "match": "\\b(List)(<)([A-Za-z_][A-Za-z0-9_]*)(>)",
+      "captures": {
+        "1": { "name": "entity.name.type.generic.veld" },
+        "2": { "name": "punctuation.definition.generic.begin.veld" },
+        "3": { "name": "entity.name.type.class.veld" },
+        "4": { "name": "punctuation.definition.generic.end.veld" }
+      }
+    },
+
+    "map-type": {
+      "comment": "Map<K, V>",
+      "match": "\\b(Map)(<)([A-Za-z_][A-Za-z0-9_]*)(,\\s*)([A-Za-z_][A-Za-z0-9_]*)(>)",
+      "captures": {
+        "1": { "name": "entity.name.type.generic.veld" },
+        "2": { "name": "punctuation.definition.generic.begin.veld" },
+        "3": { "name": "support.type.primitive.veld" },
+        "4": { "name": "punctuation.separator.comma.veld" },
+        "5": { "name": "entity.name.type.class.veld" },
+        "6": { "name": "punctuation.definition.generic.end.veld" }
+      }
+    },
+
+    "array-marker": {
+      "comment": "[] suffix for array types",
+      "name": "punctuation.definition.array.veld",
+      "match": "\\[\\]"
     },
 
     "optional-marker": {
-      "comment": "? suffix on field names",
+      "comment": "? suffix for optional fields",
       "name": "keyword.operator.optional.veld",
       "match": "\\?"
     },
 
-    "array-marker": {
-      "comment": "[] suffix on types",
-      "name": "keyword.operator.array.veld",
-      "match": "\\[\\]"
+    "type-reference": {
+      "comment": "PascalCase type reference (model or enum name)",
+      "name": "entity.name.type.class.veld",
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    },
+
+    "http-method-value": {
+      "comment": "HTTP method constant values",
+      "name": "constant.language.http-method.veld",
+      "match": "\\b(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\b"
+    },
+
+    "path-content": {
+      "comment": "Path value with :param highlighting",
+      "patterns": [
+        {
+          "comment": ":paramName path segment",
+          "match": "(:)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.path-param.veld" },
+            "2": { "name": "variable.other.path-parameter.veld" }
+          }
+        },
+        {
+          "name": "string.other.path.veld",
+          "match": "[^:\\s]+"
+        },
+        {
+          "name": "punctuation.separator.path.veld",
+          "match": "/"
+        }
+      ]
+    },
+
+    "field-type-content": {
+      "comment": "Type expression for field values: primitives, generics, maps, annotations",
+      "patterns": [
+        { "include": "#annotation" },
+        { "include": "#generic-type" },
+        { "include": "#map-type" },
+        { "include": "#primitive-type" },
+        { "include": "#array-marker" },
+        { "include": "#type-reference" },
+        { "include": "#string" }
+      ]
+    },
+
+    "type-expr-content": {
+      "comment": "Type expression for directive values (no annotations)",
+      "patterns": [
+        { "include": "#generic-type" },
+        { "include": "#map-type" },
+        { "include": "#primitive-type" },
+        { "include": "#array-marker" },
+        { "include": "#type-reference" }
+      ]
+    },
+
+    "model-block": {
+      "comment": "model Name { ... }  or  model Name extends Parent { ... }",
+      "begin": "^\\s*(model)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(extends)\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*(\\{)",
+      "end": "^\\s*\\}",
+      "beginCaptures": {
+        "1": { "name": "storage.type.model.veld" },
+        "2": { "name": "entity.name.type.model.veld" },
+        "3": { "name": "storage.modifier.extends.veld" },
+        "4": { "name": "entity.name.type.inherited.veld" },
+        "5": { "name": "punctuation.definition.block.begin.veld" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.block.end.veld" }
+      },
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#field-definition" }
+      ]
+    },
+
+    "field-definition": {
+      "comment": "fieldName: Type  or  fieldName?: Type  or  fieldName: Type @default(val)",
+      "match": "^\\s*([a-z_][A-Za-z0-9_]*)(\\??)\\s*(:)\\s*(.+?)\\s*(?://.*)?$",
+      "captures": {
+        "1": { "name": "variable.other.field.veld" },
+        "2": { "name": "keyword.operator.optional.veld" },
+        "3": { "name": "punctuation.separator.key-value.veld" },
+        "4": {
+          "patterns": [
+            { "include": "#annotation" },
+            { "include": "#generic-type" },
+            { "include": "#map-type" },
+            { "include": "#primitive-type" },
+            { "include": "#array-marker" },
+            { "include": "#type-reference" },
+            { "include": "#string" }
+          ]
+        }
+      }
+    },
+
+    "enum-block": {
+      "comment": "enum Role { admin user guest }",
+      "begin": "^\\s*(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(\\{)",
+      "end": "^\\s*\\}",
+      "beginCaptures": {
+        "1": { "name": "storage.type.enum.veld" },
+        "2": { "name": "entity.name.type.enum.veld" },
+        "3": { "name": "punctuation.definition.block.begin.veld" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.block.end.veld" }
+      },
+      "patterns": [
+        { "include": "#comment" },
+        {
+          "comment": "Enum values — one or more identifiers on a line",
+          "match": "\\b([a-zA-Z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "constant.other.enum-value.veld" }
+          }
+        }
+      ]
+    },
+
+    "module-block": {
+      "comment": "module Name { ... }",
+      "begin": "^\\s*(module)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(\\{)",
+      "end": "^\\s*\\}",
+      "beginCaptures": {
+        "1": { "name": "storage.type.module.veld" },
+        "2": { "name": "entity.name.namespace.module.veld" },
+        "3": { "name": "punctuation.definition.block.begin.veld" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.block.end.veld" }
+      },
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#action-block" },
+        { "include": "#description-directive" },
+        { "include": "#prefix-directive" }
+      ]
+    },
+
+    "action-block": {
+      "comment": "action GetUser { ... }",
+      "begin": "^\\s*(action)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(\\{)",
+      "end": "^\\s*\\}",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.action.veld" },
+        "2": { "name": "entity.name.function.action.veld" },
+        "3": { "name": "punctuation.definition.block.begin.veld" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.block.end.veld" }
+      },
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#method-directive" },
+        { "include": "#path-directive" },
+        { "include": "#type-directive" },
+        { "include": "#description-directive" }
+      ]
+    },
+
+    "description-directive": {
+      "comment": "description: \"...\"",
+      "begin": "^\\s*(description)\\s*(:)\\s*",
+      "end": "$",
+      "beginCaptures": {
+        "1": { "name": "support.function.directive.veld" },
+        "2": { "name": "punctuation.separator.key-value.veld" }
+      },
+      "patterns": [
+        { "include": "#string" }
+      ]
+    },
+
+    "prefix-directive": {
+      "comment": "prefix: /api/v1",
+      "begin": "^\\s*(prefix)\\s*(:)\\s*",
+      "end": "$",
+      "beginCaptures": {
+        "1": { "name": "support.function.directive.veld" },
+        "2": { "name": "punctuation.separator.key-value.veld" }
+      },
+      "patterns": [
+        { "include": "#path-content" }
+      ]
+    },
+
+    "method-directive": {
+      "comment": "method: GET",
+      "match": "^\\s*(method)\\s*(:)\\s*(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\b",
+      "captures": {
+        "1": { "name": "support.function.directive.veld" },
+        "2": { "name": "punctuation.separator.key-value.veld" },
+        "3": { "name": "constant.language.http-method.veld" }
+      }
+    },
+
+    "path-directive": {
+      "comment": "path: /users/:id",
+      "begin": "^\\s*(path)\\s*(:)\\s*",
+      "end": "$",
+      "beginCaptures": {
+        "1": { "name": "support.function.directive.veld" },
+        "2": { "name": "punctuation.separator.key-value.veld" }
+      },
+      "patterns": [
+        { "include": "#path-content" }
+      ]
+    },
+
+    "type-directive": {
+      "comment": "input: User  /  output: List<User>  /  query: Filter  /  middleware: AuthGuard",
+      "begin": "^\\s*(input|output|query|middleware)\\s*(:)\\s*",
+      "end": "$",
+      "beginCaptures": {
+        "1": { "name": "support.function.directive.veld" },
+        "2": { "name": "punctuation.separator.key-value.veld" }
+      },
+      "patterns": [
+        { "include": "#type-expr-content" }
+      ]
     },
 
     "block": {
-      "patterns": [
-        { "name": "punctuation.section.block.begin.veld", "match": "\\{" },
-        { "name": "punctuation.section.block.end.veld", "match": "\\}" }
-      ]
+      "name": "meta.block.veld",
+      "begin": "\\{",
+      "end": "\\}",
+      "beginCaptures": { "0": { "name": "punctuation.definition.block.begin.veld" } },
+      "endCaptures":   { "0": { "name": "punctuation.definition.block.end.veld" } }
     }
   }
 }

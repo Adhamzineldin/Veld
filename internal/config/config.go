@@ -9,11 +9,12 @@ import (
 
 // RawConfig mirrors veld.config.json on disk.
 type RawConfig struct {
-	Input    string `json:"input"`
-	Backend  string `json:"backend"`
-	Frontend string `json:"frontend"`
-	Out      string `json:"out"`
-	BaseUrl  string `json:"baseUrl,omitempty"` // baked into frontend SDK; empty = use env var
+	Input    string            `json:"input"`
+	Backend  string            `json:"backend"`
+	Frontend string            `json:"frontend"`
+	Out      string            `json:"out"`
+	BaseUrl  string            `json:"baseUrl,omitempty"` // baked into frontend SDK; empty = use env var
+	Aliases  map[string]string `json:"aliases,omitempty"` // custom @alias → relative dir, e.g. "auth": "services/auth"
 }
 
 // ResolvedConfig has all paths resolved to be absolute.
@@ -22,8 +23,9 @@ type ResolvedConfig struct {
 	Backend   string
 	Frontend  string
 	Out       string
-	ConfigDir string // absolute dir of veld.config.json; used for cache storage
-	BaseUrl   string // base URL for frontend SDK (empty = process.env.VELD_API_URL)
+	ConfigDir string            // absolute dir of veld.config.json; used for cache storage
+	BaseUrl   string            // base URL for frontend SDK (empty = process.env.VELD_API_URL)
+	Aliases   map[string]string // merged: default aliases + config overrides
 }
 
 // FlagOverrides carries CLI flag values that override config-file settings.
@@ -114,6 +116,12 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		return ResolvedConfig{}, fmt.Errorf("no input file (use --input or create veld/veld.config.json)")
 	}
 
+	// Merge default aliases with user-defined overrides
+	aliases := DefaultAliases()
+	for k, v := range cfg.Aliases {
+		aliases[k] = v
+	}
+
 	return ResolvedConfig{
 		Input:     filepath.Clean(filepath.Join(cfgDir, cfg.Input)),
 		Backend:   cfg.Backend,
@@ -121,7 +129,24 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		Out:       filepath.Clean(filepath.Join(cfgDir, cfg.Out)),
 		ConfigDir: cfgDir,
 		BaseUrl:   cfg.BaseUrl,
+		Aliases:   aliases,
 	}, nil
+}
+
+// DefaultAliases returns the built-in alias→folder mappings.
+// These work without any config (alias name = folder name).
+func DefaultAliases() map[string]string {
+	return map[string]string{
+		"models":   "models",
+		"modules":  "modules",
+		"types":    "types",
+		"enums":    "enums",
+		"schemas":  "schemas",
+		"services": "services",
+		"lib":      "lib",
+		"common":   "common",
+		"shared":   "shared",
+	}
 }
 
 // ResolveInput returns the .veld input path from positional args or config file.

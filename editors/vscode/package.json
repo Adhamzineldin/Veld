@@ -2,7 +2,7 @@
   "name": "veld-vscode",
   "displayName": "Veld",
   "description": "Veld contract language support — syntax highlighting, snippets, and diagnostics",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "veld-dev",
   "license": "MIT",
   "engines": {
@@ -34,6 +34,27 @@
         "language": "veld",
         "scopeName": "source.veld",
         "path": "./syntaxes/veld.tmLanguage.json"
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "veld",
+        "scopes": {
+          "type": ["entity.name.type.reference.veld"],
+          "class": ["entity.name.type.model.veld"],
+          "enum": ["entity.name.type.enum.veld"],
+          "namespace": ["entity.name.namespace.module.veld"],
+          "function": ["entity.name.function.action.veld"],
+          "property": ["variable.other.field.veld"],
+          "keyword": ["storage.type.veld"],
+          "parameter": ["support.function.directive.veld"],
+          "string": ["string.quoted.double.veld"],
+          "number": ["constant.numeric.veld"],
+          "comment": ["comment.line.double-slash.veld"],
+          "variable": ["entity.name.import.veld"],
+          "decorator": ["entity.other.attribute-name.annotation.veld"],
+          "enumMember": ["constant.language.http-method.veld"]
+        }
       }
     ],
     "snippets": [

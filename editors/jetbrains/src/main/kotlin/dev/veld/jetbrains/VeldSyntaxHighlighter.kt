@@ -34,9 +34,17 @@ class VeldSyntaxHighlighter : SyntaxHighlighterBase() {
 
             VeldTokenTypes.LBRACE, VeldTokenTypes.RBRACE -> arrayOf(BRACES)
             VeldTokenTypes.LT, VeldTokenTypes.GT -> arrayOf(BRACKETS)
+            VeldTokenTypes.LBRACKET, VeldTokenTypes.RBRACKET -> arrayOf(BRACKETS)
+            VeldTokenTypes.LPAREN, VeldTokenTypes.RPAREN -> arrayOf(BRACKETS)
             VeldTokenTypes.COLON -> arrayOf(COLON)
             VeldTokenTypes.COMMA -> arrayOf(COMMA)
             VeldTokenTypes.AT -> arrayOf(AT)
+            VeldTokenTypes.SLASH -> arrayOf(SLASH)
+            VeldTokenTypes.DOT -> arrayOf(DOT)
+            VeldTokenTypes.QUESTION -> arrayOf(QUESTION)
+
+            VeldTokenTypes.IMPORT_PATH -> arrayOf(IMPORT_PATH)
+            VeldTokenTypes.PATH_LITERAL -> arrayOf(PATH)
 
             VeldTokenTypes.IDENTIFIER -> arrayOf(IDENTIFIER)
             VeldTokenTypes.BAD_CHARACTER -> arrayOf(BAD_CHARACTER)
@@ -60,7 +68,11 @@ class VeldSyntaxHighlighter : SyntaxHighlighterBase() {
         val COLON = createTextAttributesKey("VELD_COLON", DefaultLanguageHighlighterColors.OPERATION_SIGN)
         val COMMA = createTextAttributesKey("VELD_COMMA", DefaultLanguageHighlighterColors.COMMA)
         val AT = createTextAttributesKey("VELD_AT", DefaultLanguageHighlighterColors.METADATA)
+        val SLASH = createTextAttributesKey("VELD_SLASH", DefaultLanguageHighlighterColors.OPERATION_SIGN)
+        val DOT = createTextAttributesKey("VELD_DOT", DefaultLanguageHighlighterColors.DOT)
+        val QUESTION = createTextAttributesKey("VELD_QUESTION", DefaultLanguageHighlighterColors.OPERATION_SIGN)
+        val IMPORT_PATH = createTextAttributesKey("VELD_IMPORT_PATH", DefaultLanguageHighlighterColors.METADATA)
+        val PATH = createTextAttributesKey("VELD_PATH", DefaultLanguageHighlighterColors.MARKUP_ATTRIBUTE)
         val BAD_CHARACTER = createTextAttributesKey("VELD_BAD_CHARACTER", DefaultLanguageHighlighterColors.INVALID_STRING_ESCAPE)
     }
 }
-

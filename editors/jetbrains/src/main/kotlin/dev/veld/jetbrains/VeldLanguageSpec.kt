@@ -15,7 +15,11 @@ object VeldLanguageSpec {
     val BUILTIN_TYPES = setOf("string", "int", "float", "bool", "date", "datetime", "uuid", "bytes", "json", "any")
     val DIRECTIVES = setOf("description", "prefix", "method", "path", "input", "output", "default")
     val SPECIAL_TYPES = setOf("List", "Map")
-    
+    val KNOWN_ANNOTATIONS = setOf(
+        "default", "required", "min", "max", "minLength", "maxLength",
+        "regex", "unique", "deprecated", "nullable", "index", "primaryKey"
+    )
+
     fun isKeyword(word: String) = KEYWORDS.contains(word)
     fun isHttpMethod(word: String) = HTTP_METHODS.contains(word)
     fun isBuiltinType(word: String) = BUILTIN_TYPES.contains(word)

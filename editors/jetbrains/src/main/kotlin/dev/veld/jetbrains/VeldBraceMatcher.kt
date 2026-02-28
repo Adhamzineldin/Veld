@@ -12,11 +12,12 @@ class VeldBraceMatcher : PairedBraceMatcher {
 
     override fun getPairs(): Array<BracePair> = arrayOf(
         BracePair(VeldTokenTypes.LBRACE, VeldTokenTypes.RBRACE, true),
-        BracePair(VeldTokenTypes.LT, VeldTokenTypes.GT, false)
+        BracePair(VeldTokenTypes.LT, VeldTokenTypes.GT, false),
+        BracePair(VeldTokenTypes.LPAREN, VeldTokenTypes.RPAREN, false),
+        BracePair(VeldTokenTypes.LBRACKET, VeldTokenTypes.RBRACKET, false)
     )
 
     override fun isPairedBracesAllowedBeforeType(lbraceType: IElementType, contextType: IElementType?): Boolean = true
 
     override fun getCodeConstructStart(file: PsiFile, openingBraceOffset: Int): Int = openingBraceOffset
 }
-

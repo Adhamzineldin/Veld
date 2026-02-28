@@ -58,7 +58,7 @@ func bold(s string) string   { return colorBold + s + colorReset }
 //
 // Returns (regeneratedModuleNames, veldFileList, error).
 func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOptions) ([]string, []string, error) {
-	a, veldFiles, err := loader.Parse(rc.Input)
+	a, veldFiles, err := loader.Parse(rc.Input, rc.Aliases)
 	if err != nil {
 		return nil, nil, err
 	}

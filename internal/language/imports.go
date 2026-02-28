@@ -30,7 +30,7 @@ func (spec *VeldLanguageSpec) ValidateImports(file *VeldFile, aliases map[string
 	var errors []VeldError
 
 	// Check each import
-	for importPath, resolvedPath := range file.Imports {
+	for importPath := range file.Imports {
 		// Track if this import is actually used
 		used := false
 
@@ -97,15 +97,19 @@ func (spec *VeldLanguageSpec) ValidateImports(file *VeldFile, aliases map[string
 	for _, model := range file.Models {
 		for _, field := range model.Fields {
 			typeName := extractBaseType(field.Type)
-			if !spec.IsBuiltinType(typeName) && !file.Models[typeName] && !file.Enums[typeName] {
-				// Check if it should come from an import
-				if !strings.Contains(field.Type, ".") {
-					errors = append(errors, VeldError{
-						File:    file.Path,
-						Line:    model.Line,
-						Message: fmt.Sprintf("Type '%s' not found. Did you forget to import it? Use: import @alias/%s", typeName, strings.ToLower(typeName)),
-						Code:    "ERROR_UNDEFINED_TYPE_MISSING_IMPORT",
-					})
+			if !spec.IsBuiltinType(typeName) {
+				_, hasModel := file.Models[typeName]
+				_, hasEnum := file.Enums[typeName]
+				if !hasModel && !hasEnum {
+					// Check if it should come from an import
+					if !strings.Contains(field.Type, ".") {
+						errors = append(errors, VeldError{
+							File:    file.Path,
+							Line:    model.Line,
+							Message: fmt.Sprintf("Type '%s' not found. Did you forget to import it? Use: import @alias/%s", typeName, strings.ToLower(typeName)),
+							Code:    "ERROR_UNDEFINED_TYPE_MISSING_IMPORT",
+						})
+					}
 				}
 			}
 		}

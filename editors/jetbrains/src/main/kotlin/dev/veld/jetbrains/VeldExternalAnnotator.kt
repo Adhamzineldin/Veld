@@ -3,14 +3,14 @@ package dev.veld.jetbrains
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.ExternalAnnotator
 import com.intellij.lang.annotation.HighlightSeverity
-import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiFile
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
 /**
- * External annotator that runs `veld validate` and displays errors
+ * External annotator that runs `veld validate` CLI and displays errors from the compiler.
+ * This supplements the in-editor VeldAnnotator with full compiler diagnostics.
  */
 class VeldExternalAnnotator : ExternalAnnotator<PsiFile, List<VeldValidationError>>() {
 
@@ -19,6 +19,7 @@ class VeldExternalAnnotator : ExternalAnnotator<PsiFile, List<VeldValidationErro
     override fun doAnnotate(collectedInfo: PsiFile): List<VeldValidationError>? {
         val project = collectedInfo.project
         val basePath = project.basePath ?: return null
+        val fileName = collectedInfo.virtualFile?.name ?: return null
 
         return try {
             val process = ProcessBuilder("veld", "validate")
@@ -29,22 +30,20 @@ class VeldExternalAnnotator : ExternalAnnotator<PsiFile, List<VeldValidationErro
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             val errors = mutableListOf<VeldValidationError>()
 
-            // Parse veld validate output: "error: file.veld:10: message"
             val errorRegex = Regex("""([^\s:]+\.veld):(\d+):\s+(.+)""")
 
             reader.lineSequence().forEach { line ->
-                val cleanLine = line.replace(Regex("\u001B\\[[0-9;]*m"), "") // Remove ANSI codes
+                val cleanLine = line.replace(Regex("\u001B\\[[0-9;]*m"), "")
                 errorRegex.find(cleanLine)?.let { match ->
-                    val (fileName, lineNum, message) = match.destructured
-                    errors.add(VeldValidationError(fileName, lineNum.toInt(), message))
+                    val (file, lineNum, message) = match.destructured
+                    errors.add(VeldValidationError(file, lineNum.toInt(), message))
                 }
             }
 
             process.waitFor()
             errors
-
         } catch (e: Exception) {
-            null // veld not found or other error
+            null
         }
     }
 
@@ -56,10 +55,11 @@ class VeldExternalAnnotator : ExternalAnnotator<PsiFile, List<VeldValidationErro
                     val lineEndOffset = file.text.indexOf('\n', lineStartOffset).let {
                         if (it < 0) file.text.length else it
                     }
-
-                    holder.newAnnotation(HighlightSeverity.ERROR, error.message)
-                        .range(TextRange(lineStartOffset, lineEndOffset))
-                        .create()
+                    if (lineStartOffset < lineEndOffset) {
+                        holder.newAnnotation(HighlightSeverity.ERROR, error.message)
+                            .range(TextRange(lineStartOffset, lineEndOffset))
+                            .create()
+                    }
                 }
             }
         }
@@ -68,14 +68,10 @@ class VeldExternalAnnotator : ExternalAnnotator<PsiFile, List<VeldValidationErro
     private fun getLineStartOffset(text: String, line: Int): Int {
         var currentLine = 1
         var offset = 0
-
         while (currentLine < line && offset < text.length) {
-            if (text[offset] == '\n') {
-                currentLine++
-            }
+            if (text[offset] == '\n') currentLine++
             offset++
         }
-
         return if (currentLine == line) offset else -1
     }
 }
@@ -85,4 +81,3 @@ data class VeldValidationError(
     val line: Int,
     val message: String
 )
-

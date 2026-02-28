@@ -4,12 +4,14 @@ import com.intellij.psi.tree.IElementType
 import com.intellij.psi.TokenType
 
 /**
- * Token types for Veld language
+ * Token types for Veld language.
+ * Every lexical construct has a dedicated token so the highlighter and parser can distinguish them.
  */
 object VeldTokenTypes {
     @JvmField val WHITE_SPACE = TokenType.WHITE_SPACE
     @JvmField val BAD_CHARACTER = TokenType.BAD_CHARACTER
 
+    // Literals
     @JvmField val COMMENT = IElementType("COMMENT", VeldLanguage)
     @JvmField val STRING = IElementType("STRING", VeldLanguage)
     @JvmField val NUMBER = IElementType("NUMBER", VeldLanguage)
@@ -35,5 +37,17 @@ object VeldTokenTypes {
     @JvmField val COLON = IElementType("COLON", VeldLanguage)
     @JvmField val COMMA = IElementType("COMMA", VeldLanguage)
     @JvmField val AT = IElementType("AT", VeldLanguage)
-}
+    @JvmField val SLASH = IElementType("SLASH", VeldLanguage)
+    @JvmField val DOT = IElementType("DOT", VeldLanguage)
+    @JvmField val QUESTION = IElementType("QUESTION", VeldLanguage)
+    @JvmField val LPAREN = IElementType("LPAREN", VeldLanguage)
+    @JvmField val RPAREN = IElementType("RPAREN", VeldLanguage)
+    @JvmField val LBRACKET = IElementType("LBRACKET", VeldLanguage)
+    @JvmField val RBRACKET = IElementType("RBRACKET", VeldLanguage)
 
+    // Import path token: the whole @alias/name portion after `import`
+    @JvmField val IMPORT_PATH = IElementType("IMPORT_PATH", VeldLanguage)
+
+    // Path literal: /foo/bar/:id
+    @JvmField val PATH_LITERAL = IElementType("PATH_LITERAL", VeldLanguage)
+}

@@ -1,0 +1,66 @@
+plugins {
+    id 'java'
+    id 'org.jetbrains.kotlin.jvm' version '2.1.10'
+    id 'org.jetbrains.intellij' version '1.17.4'
+}
+
+group = 'dev.veld'
+version = '0.4.0'
+
+repositories {
+    mavenCentral()
+    maven {
+        url = "https://www.jetbrains.com/intellij-repository/releases"
+    }
+    maven {
+        url = "https://www.jetbrains.com/intellij-repository/snapshots"
+    }
+}
+
+intellij {
+    version = '2024.1.7'
+    type = 'IC'
+    plugins = []
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    sourceCompatibility = '17'
+    targetCompatibility = '17'
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+patchPluginXml {
+    sinceBuild = '241'
+    untilBuild = '253.*'
+    changeNotes = """
+        <h3>0.1.0 - Initial Release</h3>
+        <ul>
+          <li>Syntax highlighting for .veld files</li>
+          <li>Code completion for keywords, types, models</li>
+          <li>Real-time validation</li>
+          <li>Import resolution with @alias/name</li>
+          <li>Works in ALL JetBrains IDEs</li>
+        </ul>
+    """
+}
+
+signPlugin {
+    certificateChain = System.getenv("CERTIFICATE_CHAIN")
+    privateKey = System.getenv("PRIVATE_KEY")
+    password = System.getenv("PRIVATE_KEY_PASSWORD")
+}
+
+publishPlugin {
+    token = System.getenv("PUBLISH_TOKEN")
+}
+
+

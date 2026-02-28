@@ -26,11 +26,48 @@ func (p *Parser) Parse() (ast.AST, error) {
 		switch p.peek().Type {
 		case lexer.TImport:
 			p.consume()
-			pathTok, err := p.expect(lexer.TString)
-			if err != nil {
-				return result, fmt.Errorf("import path: %w", err)
+			if p.peek().Type == lexer.TAt {
+				// @alias/name  or  @alias/*  format
+				p.consume() // consume @
+				aliasTok, err := p.expect(lexer.TIdent)
+				if err != nil {
+					return result, fmt.Errorf("import alias: %w", err)
+				}
+				pathTok, err := p.expect(lexer.TPath)
+				if err != nil {
+					return result, fmt.Errorf("import path: %w", err)
+				}
+				// pathTok.Value starts with "/" — strip the leading slash.
+				// Keep the @ prefix so the loader can distinguish alias-based
+				// imports (resolved from project root) from relative imports.
+				suffix := pathTok.Value[1:]
+				if suffix == "*" {
+					// Wildcard folder import: @alias/* — loader will glob the directory
+					result.Imports = append(result.Imports, "@"+aliasTok.Value+"/*")
+				} else {
+					// Single file: @alias/name — loader resolves from project root
+					result.Imports = append(result.Imports, "@"+aliasTok.Value+"/"+suffix+".veld")
+				}
+			} else if p.peek().Type == lexer.TIdent &&
+				p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TPath {
+				// Root-relative import without @: models/auth → same as @models/auth
+				// Tokens: TIdent("models") + TPath("/auth")
+				aliasTok := p.consume()
+				pathTok := p.consume() // TPath guaranteed by lookahead
+				suffix := pathTok.Value[1:]
+				if suffix == "*" {
+					result.Imports = append(result.Imports, "@"+aliasTok.Value+"/*")
+				} else {
+					result.Imports = append(result.Imports, "@"+aliasTok.Value+"/"+suffix+".veld")
+				}
+			} else {
+				// Legacy quoted string format: import "models/auth.veld"
+				pathTok, err := p.expect(lexer.TString)
+				if err != nil {
+					return result, fmt.Errorf("import path: %w", err)
+				}
+				result.Imports = append(result.Imports, pathTok.Value)
 			}
-			result.Imports = append(result.Imports, pathTok.Value)
 		case lexer.TModel:
 			m, err := p.parseModel()
 			if err != nil {
@@ -199,6 +236,20 @@ func (p *Parser) parseField() (ast.Field, error) {
 	isArray := false
 	isMap := false
 	mapValueType := ""
+
+	// List<T> syntax — equivalent to T[] (isArray = true)
+	if typeName == "List" && p.peek().Type == lexer.TLAngle {
+		p.consume() // <
+		elemTok := p.consume()
+		if !isTypeToken(elemTok.Type) && elemTok.Type != lexer.TIdent {
+			return ast.Field{}, fmt.Errorf("line %d: expected element type in List<T>, got %q", elemTok.Line, elemTok.Value)
+		}
+		if _, err := p.expect(lexer.TRAngle); err != nil {
+			return ast.Field{}, err
+		}
+		isArray = true
+		typeName = elemTok.Value
+	}
 
 	// Map<string, ValueType> syntax
 	if typeName == "Map" && p.peek().Type == lexer.TLAngle {

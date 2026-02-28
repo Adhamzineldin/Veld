@@ -1,6 +1,6 @@
 // Tests: import system
-import "models/user.veld"
-import "models/common.veld"
-import "modules/users.veld"
-import "modules/auth.veld"
+import @models/user
+import @models/common
+import @modules/users
+import @modules/auth
 

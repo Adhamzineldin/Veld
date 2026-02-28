@@ -2,6 +2,7 @@
 // ── FEATURE: multiple middleware per action ──
 // ── FEATURE: actions with no input (GET) ──
 // ── FEATURE: actions with no middleware ──
+
 module Auth {
   description: "Authentication and session management"
 

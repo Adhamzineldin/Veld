@@ -31,7 +31,12 @@
       "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && go build ./... 2>&1)",
       "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && go test ./... 2>&1)",
       "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && go build -o veld.exe ./cmd/veld && ./veld.exe generate --backend=php --input=veld/app.veld --out=./generated --dry-run 2>&1)",
-      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && ./veld.exe generate --backend=php --input=testapp/veld/app.veld --out=./generated --dry-run 2>&1)"
+      "Bash(cd \"D:/Univeristy/Graduation Project/Veld\" && ./veld.exe generate --backend=php --input=testapp/veld/app.veld --out=./generated --dry-run 2>&1)",
+      "Bash(node:*)",
+      "Bash(npx tsc:*)",
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(go build:*)"
     ]
   }
 }

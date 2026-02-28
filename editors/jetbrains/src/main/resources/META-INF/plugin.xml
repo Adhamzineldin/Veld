@@ -1,18 +1,23 @@
 <idea-plugin>
   <id>dev.veld.jetbrains</id>
   <name>Veld</name>
-  <version>0.1.0</version>
+  <version>0.4.0</version>
   <vendor email="support@veld.dev" url="https://veld.dev">Veld</vendor>
 
   <description><![CDATA[
-    <p>Veld contract language support for all JetBrains IDEs.</p>
+    <p>Professional Veld contract language support for all JetBrains IDEs.</p>
     <p>Features:</p>
     <ul>
-      <li>Syntax highlighting for .veld files</li>
-      <li>Code completion for models, enums, and types</li>
-      <li>Validation and error highlighting</li>
-      <li>Quick actions for code generation</li>
-      <li>File templates and live templates</li>
+      <li>Full syntax highlighting for .veld files</li>
+      <li>Context-aware code completion (models, enums, types, HTTP methods, directives)</li>
+      <li>Real-time validation and error highlighting</li>
+      <li>Go-to-definition for types and imports (Ctrl+Click)</li>
+      <li>Find references across files</li>
+      <li>Import resolution with @models/ and @modules/ paths</li>
+      <li>Brace matching and auto-closing</li>
+      <li>Code style settings</li>
+      <li>File templates for models, modules, and enums</li>
+      <li>Veld CLI integration (validate, generate)</li>
     </ul>
     <p>
       Veld is a contract-first API development tool that generates type-safe
@@ -21,23 +26,55 @@
   ]]></description>
 
   <change-notes><![CDATA[
+    <h3>0.4.0</h3>
+    <ul>
+      <li>Fixed Go-to-Definition: more robust leaf traversal (no longer relies on strict token type matching)</li>
+      <li>Fixed Annotation color: @default/@required now visually distinct from type references</li>
+      <li>Added @annotation code completion in field definitions (@default, @required, @min, @max, @minLength, @maxLength, @regex, @unique, @deprecated)</li>
+      <li>Annotation completions place cursor inside parentheses automatically</li>
+    </ul>
+    <h3>0.3.0</h3>
+    <ul>
+      <li>Fixed Go-to-Definition: Ctrl+Click / Ctrl+B now reliably navigates to type declarations</li>
+      <li>Fixed import path color (was string green, now distinct metadata color)</li>
+      <li>Fixed URL path color (was string green, now distinct)</li>
+      <li>Added enum value semantic highlighting (distinct constant color)</li>
+      <li>Added @annotation highlighting (e.g. @default(user) on fields)</li>
+      <li>Added :param highlighting in path directives</li>
+      <li>Fixed false validation errors for @default annotations on fields</li>
+      <li>Added query: and middleware: directive completion and type-checking</li>
+      <li>Improved model hover documentation with field table</li>
+      <li>Added block-context-aware annotator (correct enum vs model body detection)</li>
+    </ul>
+    <h3>0.2.0</h3>
+    <ul>
+      <li>Go-to-definition for types and import paths</li>
+      <li>Real-time in-editor validation (no CLI required)</li>
+      <li>Context-aware completions with imported models/enums</li>
+      <li>Import path autocompletion from filesystem</li>
+      <li>Fixed path literal highlighting (/ no longer marked as error)</li>
+      <li>Cross-file type resolution</li>
+    </ul>
     <h3>0.1.0 - Initial Release</h3>
     <ul>
       <li>Syntax highlighting for all Veld constructs</li>
       <li>File type association for .veld files</li>
       <li>Code completion for built-in types</li>
-      <li>Validation on-the-fly</li>
       <li>Quick actions for validate and generate</li>
     </ul>
   ]]></change-notes>
 
-  <!-- Compatible with all JetBrains products from 2023.1+ -->
+  <!-- Compatible with all JetBrains products -->
   <idea-version since-build="231.0"/>
 
   <!-- Plugin works in all JetBrains IDEs -->
   <depends>com.intellij.modules.platform</depends>
 
   <extensions defaultExtensionNs="com.intellij">
+    <!-- Project Service -->
+    <projectService
+        serviceImplementation="dev.veld.jetbrains.VeldProjectService"/>
+
     <!-- File Type -->
     <fileType
         name="Veld"
@@ -82,10 +119,25 @@
         language="Veld"
         implementationClass="dev.veld.jetbrains.VeldCompletionContributor"/>
 
-    <!-- External Annotator (for validation) -->
+    <!-- In-Editor Annotator (real-time validation) -->
+    <annotator
+        language="Veld"
+        implementationClass="dev.veld.jetbrains.VeldAnnotator"/>
+
+    <!-- External Annotator (CLI validation on save) -->
     <externalAnnotator
         language="Veld"
         implementationClass="dev.veld.jetbrains.VeldExternalAnnotator"/>
+
+    <!-- Documentation Provider (hover info) -->
+    <lang.documentationProvider
+        language="Veld"
+        implementationClass="dev.veld.jetbrains.VeldDocumentationProvider"/>
+
+    <!-- References (go-to-definition, find usages) -->
+    <psi.referenceContributor
+        language="Veld"
+        implementation="dev.veld.jetbrains.VeldReferenceContributor"/>
 
     <!-- File Templates -->
     <internalFileTemplate name="Veld Model"/>
@@ -132,7 +184,6 @@
   </actions>
 
   <projectListeners>
-    <!-- Listen for file changes to trigger validation -->
     <listener
         class="dev.veld.jetbrains.VeldFileChangeListener"
         topic="com.intellij.openapi.vfs.VirtualFileListener"/>

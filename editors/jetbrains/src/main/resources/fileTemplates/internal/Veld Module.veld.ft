@@ -1,0 +1,13 @@
+// ${NAME} module
+
+module ${NAME} {
+  description: "${DESCRIPTION}"
+  prefix: /${PREFIX}
+
+  action List${NAME} {
+    method: GET
+    path: /
+    output: List<${NAME}>
+  }
+}
+

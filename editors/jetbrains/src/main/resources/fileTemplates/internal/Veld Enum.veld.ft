@@ -1,0 +1,7 @@
+// ${NAME} enum
+
+enum ${NAME} {
+  value1
+  value2
+}
+
