@@ -1,0 +1,139 @@
+{
+  "Import File": {
+    "prefix": "import",
+    "body": "import \"${1:./path/to/file.veld}\"",
+    "description": "Import another .veld file"
+  },
+
+  "Model Declaration": {
+    "prefix": "model",
+    "body": [
+      "model ${1:ModelName} {",
+      "\t${2:fieldName}: ${3|string,int,float,bool,date,datetime,uuid|}",
+      "}"
+    ],
+    "description": "Define a Veld model"
+  },
+
+  "Model with Description": {
+    "prefix": "modeld",
+    "body": [
+      "model ${1:ModelName} {",
+      "\tdescription: \"${2:Model description}\"",
+      "\t${3:fieldName}: ${4|string,int,float,bool,date,datetime,uuid|}",
+      "}"
+    ],
+    "description": "Define a Veld model with a description"
+  },
+
+  "Model extends": {
+    "prefix": "modele",
+    "body": [
+      "model ${1:ChildModel} extends ${2:ParentModel} {",
+      "\t${3:extraField}: ${4|string,int,float,bool,date,datetime,uuid|}",
+      "}"
+    ],
+    "description": "Define a Veld model that extends another"
+  },
+
+  "Enum Declaration": {
+    "prefix": "enum",
+    "body": [
+      "enum ${1:EnumName} {",
+      "\t${2:value1} ${3:value2}",
+      "}"
+    ],
+    "description": "Define a Veld enum"
+  },
+
+  "Module Declaration": {
+    "prefix": "module",
+    "body": [
+      "module ${1:ModuleName} {",
+      "\tdescription: \"${2:Module description}\"",
+      "\tprefix: ${3:/api/${4:resource}}",
+      "",
+      "\taction ${5:ListAll} {",
+      "\t\tmethod: GET",
+      "\t\tpath: /",
+      "\t\toutput: ${6:ModelName}",
+      "\t}",
+      "}"
+    ],
+    "description": "Define a Veld module with one action"
+  },
+
+  "Action Declaration": {
+    "prefix": "action",
+    "body": [
+      "action ${1:ActionName} {",
+      "\tmethod: ${2|GET,POST,PUT,DELETE,PATCH|}",
+      "\tpath: ${3:/}",
+      "\t${4:input: ${5:ModelName}}",
+      "\t${6:output: ${7:ModelName}}",
+      "}"
+    ],
+    "description": "Define a Veld action"
+  },
+
+  "CRUD Actions": {
+    "prefix": "crud",
+    "body": [
+      "action List${1:Items} {",
+      "\tmethod: GET",
+      "\tpath: /",
+      "\toutput: ${2:Item}",
+      "}",
+      "",
+      "action Get${1:Items} {",
+      "\tmethod: GET",
+      "\tpath: /:id",
+      "\toutput: ${2:Item}",
+      "}",
+      "",
+      "action Create${1:Items} {",
+      "\tmethod: POST",
+      "\tpath: /",
+      "\tinput: ${2:Item}",
+      "\toutput: ${2:Item}",
+      "}",
+      "",
+      "action Update${1:Items} {",
+      "\tmethod: PUT",
+      "\tpath: /:id",
+      "\tinput: ${2:Item}",
+      "\toutput: ${2:Item}",
+      "}",
+      "",
+      "action Delete${1:Items} {",
+      "\tmethod: DELETE",
+      "\tpath: /:id",
+      "}"
+    ],
+    "description": "Generate a full set of CRUD actions"
+  },
+
+  "Optional Field": {
+    "prefix": "field?",
+    "body": "${1:fieldName}?: ${2|string,int,float,bool,date,datetime,uuid|}",
+    "description": "Define an optional model field"
+  },
+
+  "Array Field": {
+    "prefix": "field[]",
+    "body": "${1:fieldName}: ${2|string,int,float,bool,date,datetime,uuid|}[]",
+    "description": "Define an array model field"
+  },
+
+  "Map Field": {
+    "prefix": "fieldmap",
+    "body": "${1:fieldName}: Map<string, ${2|string,int,float,bool|}>",
+    "description": "Define a Map<string, V> model field"
+  },
+
+  "Field with Default": {
+    "prefix": "fielddef",
+    "body": "${1:fieldName}: ${2:EnumType} @default(${3:value})",
+    "description": "Define a field with a default value"
+  }
+}

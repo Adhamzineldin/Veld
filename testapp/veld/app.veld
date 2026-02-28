@@ -1,9 +1,8 @@
 // Entry point — imports all models and modules.
-// Add new import lines here as your API grows.
+// Using @models/ and @modules/ aliases for clear organization
 
-import "models/auth.veld"
-import "modules/auth.veld"
+import @models/auth
+import @modules/auth
 
-import "models/food.veld"
-import "modules/food.veld"
-
+import @models/food
+import @modules/food

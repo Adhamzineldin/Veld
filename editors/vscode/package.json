@@ -1,0 +1,87 @@
+{
+  "name": "veld-vscode",
+  "displayName": "Veld",
+  "description": "Veld contract language support — syntax highlighting, snippets, and diagnostics",
+  "version": "0.1.0",
+  "publisher": "veld-dev",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Linters"
+  ],
+  "keywords": ["veld", "api", "contract", "code-generation", "schema"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/veld-dev/veld-vscode"
+  },
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "veld",
+        "aliases": ["Veld", "veld"],
+        "extensions": [".veld"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "veld",
+        "scopeName": "source.veld",
+        "path": "./syntaxes/veld.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "veld",
+        "path": "./snippets/veld.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "veld.validate",
+        "title": "Veld: Validate Contract"
+      },
+      {
+        "command": "veld.generate",
+        "title": "Veld: Generate Code"
+      },
+      {
+        "command": "veld.generateDryRun",
+        "title": "Veld: Generate (Dry Run)"
+      }
+    ],
+    "configuration": {
+      "title": "Veld",
+      "properties": {
+        "veld.executablePath": {
+          "type": "string",
+          "default": "veld",
+          "description": "Path to the veld CLI executable. Defaults to 'veld' (must be on PATH)."
+        },
+        "veld.validateOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run 'veld validate' automatically when a .veld file is saved."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.24.0"
+  }
+}

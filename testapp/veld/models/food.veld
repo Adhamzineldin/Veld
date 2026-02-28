@@ -1,22 +1,19 @@
-// Food-related data models.
-// Demonstrates array field support: tags: string[], items: Food[]
-
+// Food-related data models
+// Supports arrays and complex types
 model Food {
-  id:    string
-  name:  string
+  id: string
+  name: string
   price: int
-  tags:  string[]
+  tags: List<string>
   type: string
 }
-
 model FoodList {
-  items: Food[]
+  items: List<Food>
   total: int
 }
-
 model CreateFoodInput {
-  name:  string
+  name: string
   price: int
-  tags:  string[]
+  tags: List<string>
   type: string
 }

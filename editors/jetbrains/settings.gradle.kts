@@ -1,0 +1,2 @@
+rootProject.name = "veld-jetbrains"
+

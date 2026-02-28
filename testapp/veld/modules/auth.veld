@@ -1,35 +1,35 @@
-// Auth module — all auth API endpoints.
-// Add new modules in separate files and import them from schema.veld.
+// Auth module — all authentication API endpoints
+
+import @models/auth
 
 module Auth {
+  description: "Authentication API"
+  prefix: /auth
 
   action Login {
-    method:     POST
-    path:       /auth/login
-    input:      LoginInput
-    output:     User
-    middleware:  RateLimit
+    method: POST
+    path: /login
+    input: LoginInput
+    output: User
   }
 
   action Register {
-    method:  POST
-    path:    /auth/register
-    input:   RegisterInput
-    output:  User
+    method: POST
+    path: /register
+    input: RegisterInput
+    output: User
   }
 
   action Me {
-    method:     GET
-    path:       /auth/current_user
-    output:     User
-    middleware:  AuthGuard
+    method: GET
+    path: /current_user
+    output: User
   }
 
   action Logout {
-    method:     POST
-    path:       /auth/logout
-    output:     SuccessResponse
-    middleware:  AuthGuard
+    method: POST
+    path: /logout
+    output: SuccessResponse
   }
-
 }
+

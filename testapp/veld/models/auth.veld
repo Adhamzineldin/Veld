@@ -1,22 +1,21 @@
 // Auth-related data models.
-// Add new models here or create a new file (e.g. models/product.veld)
-// and import it from schema.veld.
+// Defines user authentication and response types
 
 model LoginInput {
-  email:    string
+  email: string
   password: string
 }
 
 model RegisterInput {
-  email:    string
+  email: string
   password: string
-  name:     string
+  name: string
 }
 
 model User {
-  id:    string
+  id: string
   email: string
-  name:  string
+  name: string
 }
 
 model SuccessResponse {

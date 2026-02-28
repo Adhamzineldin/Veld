@@ -1,18 +1,17 @@
-// Food module — endpoints for the food API.
-
-module food {
-
+// Food module — endpoints for the food API
+import @models/food
+module Food {
+  description: "Food Management API"
+  prefix: /food
   action GetAllFoods {
-    method:  GET
-    path:    /food/all
-    output:  FoodList
+    method: GET
+    path: /all
+    output: FoodList
   }
-
   action AddFood {
-    method:  POST
-    path:    /food
-    input:   CreateFoodInput
-    output:  Food
+    method: POST
+    path: /
+    input: CreateFoodInput
+    output: Food
   }
-
 }

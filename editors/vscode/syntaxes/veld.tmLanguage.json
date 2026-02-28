@@ -1,0 +1,156 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Veld",
+  "scopeName": "source.veld",
+  "fileTypes": ["veld"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#import-statement" },
+    { "include": "#model-declaration" },
+    { "include": "#module-declaration" },
+    { "include": "#enum-declaration" },
+    { "include": "#action-declaration" },
+    { "include": "#method-directive" },
+    { "include": "#path-directive" },
+    { "include": "#directive" },
+    { "include": "#annotation" },
+    { "include": "#map-type" },
+    { "include": "#primitive-type" },
+    { "include": "#string" },
+    { "include": "#optional-marker" },
+    { "include": "#array-marker" },
+    { "include": "#block" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.double-slash.veld",
+      "match": "//.*$"
+    },
+
+    "string": {
+      "name": "string.quoted.double.veld",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        { "name": "constant.character.escape.veld", "match": "\\\\." }
+      ]
+    },
+
+    "import-statement": {
+      "comment": "import \"./path/to/file.veld\"",
+      "match": "^(import)\\s+(\"[^\"]+\")",
+      "captures": {
+        "1": { "name": "keyword.control.import.veld" },
+        "2": { "name": "string.quoted.double.veld" }
+      }
+    },
+
+    "model-declaration": {
+      "comment": "model Foo  /  model Foo extends Bar",
+      "match": "\\b(model)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(extends)\\s+([A-Za-z_][A-Za-z0-9_]*))?",
+      "captures": {
+        "1": { "name": "storage.type.veld" },
+        "2": { "name": "entity.name.type.veld" },
+        "3": { "name": "storage.modifier.veld" },
+        "4": { "name": "entity.name.type.veld" }
+      }
+    },
+
+    "module-declaration": {
+      "comment": "module Users",
+      "match": "\\b(module)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.type.veld" },
+        "2": { "name": "entity.name.namespace.veld" }
+      }
+    },
+
+    "enum-declaration": {
+      "comment": "enum Role",
+      "match": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.type.veld" },
+        "2": { "name": "entity.name.type.enum.veld" }
+      }
+    },
+
+    "action-declaration": {
+      "comment": "action GetUser",
+      "match": "\\b(action)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.other.action.veld" },
+        "2": { "name": "entity.name.function.veld" }
+      }
+    },
+
+    "method-directive": {
+      "comment": "method: GET — highlights the HTTP verb too",
+      "match": "^\\s*(method):\\s*(GET|POST|PUT|DELETE|PATCH)\\b",
+      "captures": {
+        "1": { "name": "keyword.other.directive.veld" },
+        "2": { "name": "support.constant.http-method.veld" }
+      }
+    },
+
+    "path-directive": {
+      "comment": "path: /users/:id  /  prefix: /api",
+      "match": "^\\s*(path|prefix):\\s*(/\\S*)",
+      "captures": {
+        "1": { "name": "keyword.other.directive.veld" },
+        "2": { "name": "string.other.path.veld" }
+      }
+    },
+
+    "directive": {
+      "comment": "description / input / output / query / middleware directives",
+      "match": "^\\s*(description|input|output|query|middleware)(?=\\s*:)",
+      "captures": {
+        "1": { "name": "keyword.other.directive.veld" }
+      }
+    },
+
+    "annotation": {
+      "comment": "@default(value)",
+      "match": "(@[A-Za-z_][A-Za-z0-9_]*)(?:\\(([^)]*)\\))?",
+      "captures": {
+        "1": { "name": "entity.other.attribute-name.veld" },
+        "2": { "name": "constant.other.veld" }
+      }
+    },
+
+    "map-type": {
+      "comment": "Map<string, string>",
+      "match": "\\b(Map)<([A-Za-z_][A-Za-z0-9_]*),\\s*([A-Za-z_][A-Za-z0-9_]*)>",
+      "captures": {
+        "1": { "name": "support.class.builtin.veld" },
+        "2": { "name": "support.type.primitive.veld" },
+        "3": { "name": "support.type.primitive.veld" }
+      }
+    },
+
+    "primitive-type": {
+      "comment": "Built-in scalar types",
+      "name": "support.type.primitive.veld",
+      "match": "\\b(string|int|float|bool|date|datetime|uuid)\\b"
+    },
+
+    "optional-marker": {
+      "comment": "? suffix on field names",
+      "name": "keyword.operator.optional.veld",
+      "match": "\\?"
+    },
+
+    "array-marker": {
+      "comment": "[] suffix on types",
+      "name": "keyword.operator.array.veld",
+      "match": "\\[\\]"
+    },
+
+    "block": {
+      "patterns": [
+        { "name": "punctuation.section.block.begin.veld", "match": "\\{" },
+        { "name": "punctuation.section.block.end.veld", "match": "\\}" }
+      ]
+    }
+  }
+}

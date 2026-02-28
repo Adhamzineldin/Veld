@@ -1,0 +1,141 @@
+<idea-plugin>
+  <id>dev.veld.jetbrains</id>
+  <name>Veld</name>
+  <version>0.1.0</version>
+  <vendor email="support@veld.dev" url="https://veld.dev">Veld</vendor>
+
+  <description><![CDATA[
+    <p>Veld contract language support for all JetBrains IDEs.</p>
+    <p>Features:</p>
+    <ul>
+      <li>Syntax highlighting for .veld files</li>
+      <li>Code completion for models, enums, and types</li>
+      <li>Validation and error highlighting</li>
+      <li>Quick actions for code generation</li>
+      <li>File templates and live templates</li>
+    </ul>
+    <p>
+      Veld is a contract-first API development tool that generates type-safe
+      backends and frontends from simple schema files.
+    </p>
+  ]]></description>
+
+  <change-notes><![CDATA[
+    <h3>0.1.0 - Initial Release</h3>
+    <ul>
+      <li>Syntax highlighting for all Veld constructs</li>
+      <li>File type association for .veld files</li>
+      <li>Code completion for built-in types</li>
+      <li>Validation on-the-fly</li>
+      <li>Quick actions for validate and generate</li>
+    </ul>
+  ]]></change-notes>
+
+  <!-- Compatible with all JetBrains products from 2023.1+ -->
+  <idea-version since-build="231.0"/>
+
+  <!-- Plugin works in all JetBrains IDEs -->
+  <depends>com.intellij.modules.platform</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <!-- File Type -->
+    <fileType
+        name="Veld"
+        implementationClass="dev.veld.jetbrains.VeldFileType"
+        fieldName="INSTANCE"
+        language="Veld"
+        extensions="veld"/>
+
+    <!-- Language -->
+    <lang.parserDefinition
+        language="Veld"
+        implementationClass="dev.veld.jetbrains.VeldParserDefinition"/>
+
+    <!-- Syntax Highlighter -->
+    <lang.syntaxHighlighterFactory
+        language="Veld"
+        implementationClass="dev.veld.jetbrains.VeldSyntaxHighlighterFactory"/>
+
+    <!-- Color Settings -->
+    <colorSettingsPage
+        implementation="dev.veld.jetbrains.VeldColorSettingsPage"/>
+
+    <!-- Code Style Settings -->
+    <codeStyleSettingsProvider
+        implementation="dev.veld.jetbrains.VeldCodeStyleSettingsProvider"/>
+
+    <langCodeStyleSettingsProvider
+        implementation="dev.veld.jetbrains.VeldLanguageCodeStyleSettingsProvider"/>
+
+    <!-- Commenter -->
+    <lang.commenter
+        language="Veld"
+        implementationClass="dev.veld.jetbrains.VeldCommenter"/>
+
+    <!-- Brace Matcher -->
+    <lang.braceMatcher
+        language="Veld"
+        implementationClass="dev.veld.jetbrains.VeldBraceMatcher"/>
+
+    <!-- Code Completion -->
+    <completion.contributor
+        language="Veld"
+        implementationClass="dev.veld.jetbrains.VeldCompletionContributor"/>
+
+    <!-- External Annotator (for validation) -->
+    <externalAnnotator
+        language="Veld"
+        implementationClass="dev.veld.jetbrains.VeldExternalAnnotator"/>
+
+    <!-- File Templates -->
+    <internalFileTemplate name="Veld Model"/>
+    <internalFileTemplate name="Veld Module"/>
+    <internalFileTemplate name="Veld Enum"/>
+  </extensions>
+
+  <actions>
+    <!-- Tools Menu Actions -->
+    <group id="Veld.ActionGroup" text="Veld" popup="true">
+      <add-to-group group-id="ToolsMenu" anchor="last"/>
+
+      <action id="Veld.Validate"
+              class="dev.veld.jetbrains.actions.VeldValidateAction"
+              text="Validate Contract"
+              description="Run veld validate on the current project"
+              icon="AllIcons.Actions.RunAll">
+        <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt V"/>
+      </action>
+
+      <action id="Veld.Generate"
+              class="dev.veld.jetbrains.actions.VeldGenerateAction"
+              text="Generate Code"
+              description="Run veld generate to create backend/frontend code"
+              icon="AllIcons.Actions.Compile">
+        <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt G"/>
+      </action>
+
+      <action id="Veld.GenerateDryRun"
+              class="dev.veld.jetbrains.actions.VeldGenerateDryRunAction"
+              text="Generate (Dry Run)"
+              description="Preview what veld generate would create"
+              icon="AllIcons.Actions.Preview">
+      </action>
+    </group>
+
+    <!-- Editor Popup Actions -->
+    <group id="Veld.EditorPopupMenu">
+      <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+      <separator/>
+      <reference ref="Veld.Validate"/>
+      <reference ref="Veld.Generate"/>
+    </group>
+  </actions>
+
+  <projectListeners>
+    <!-- Listen for file changes to trigger validation -->
+    <listener
+        class="dev.veld.jetbrains.VeldFileChangeListener"
+        topic="com.intellij.openapi.vfs.VirtualFileListener"/>
+  </projectListeners>
+</idea-plugin>
+
