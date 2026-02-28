@@ -1,5 +1,5 @@
 {
-  "input": "schema.veld",
+  "input": "app.veld",
   "backend": "node",
   "frontend": "react",
   "out": "../generated"

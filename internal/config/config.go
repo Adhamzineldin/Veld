@@ -13,6 +13,8 @@ type RawConfig struct {
 	Backend  string `json:"backend"`
 	Frontend string `json:"frontend"`
 	Out      string `json:"out"`
+	Schemas  *bool  `json:"schemas,omitempty"` // opt-in Zod schema generation (default false)
+	BaseUrl  string `json:"baseUrl,omitempty"` // baked into frontend SDK; empty = use env var
 }
 
 // ResolvedConfig has all paths resolved to be absolute.
@@ -22,6 +24,8 @@ type ResolvedConfig struct {
 	Frontend  string
 	Out       string
 	ConfigDir string // absolute dir of veld.config.json; used for cache storage
+	Schemas   bool   // whether to generate Zod schemas
+	BaseUrl   string // base URL for frontend SDK (empty = process.env.VELD_API_URL)
 }
 
 // FlagOverrides carries CLI flag values that override config-file settings.
@@ -112,12 +116,19 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		return ResolvedConfig{}, fmt.Errorf("no input file (use --input or create veld/veld.config.json)")
 	}
 
+	schemas := false
+	if cfg.Schemas != nil {
+		schemas = *cfg.Schemas
+	}
+
 	return ResolvedConfig{
 		Input:     filepath.Clean(filepath.Join(cfgDir, cfg.Input)),
 		Backend:   cfg.Backend,
 		Frontend:  cfg.Frontend,
 		Out:       filepath.Clean(filepath.Join(cfgDir, cfg.Out)),
 		ConfigDir: cfgDir,
+		Schemas:   schemas,
+		BaseUrl:   cfg.BaseUrl,
 	}, nil
 }
 

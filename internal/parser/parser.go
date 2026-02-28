@@ -84,7 +84,7 @@ func (p *Parser) expect(t lexer.TokenType) (lexer.Token, error) {
 // --- grammar rules ---
 
 func (p *Parser) parseEnum() (ast.Enum, error) {
-	p.consume() // 'enum'
+	startTok := p.consume() // 'enum'
 	nameTok, err := p.expect(lexer.TIdent)
 	if err != nil {
 		return ast.Enum{}, fmt.Errorf("enum name: %w", err)
@@ -93,7 +93,7 @@ func (p *Parser) parseEnum() (ast.Enum, error) {
 		return ast.Enum{}, err
 	}
 
-	en := ast.Enum{Name: nameTok.Value}
+	en := ast.Enum{Name: nameTok.Value, Line: startTok.Line}
 
 	// optional description: "..."
 	if p.peek().Type == lexer.TDescription {
@@ -123,7 +123,7 @@ func (p *Parser) parseEnum() (ast.Enum, error) {
 }
 
 func (p *Parser) parseModel() (ast.Model, error) {
-	p.consume() // 'model'
+	startTok := p.consume() // 'model'
 	nameTok, err := p.expect(lexer.TIdent)
 	if err != nil {
 		return ast.Model{}, fmt.Errorf("model name: %w", err)
@@ -132,7 +132,7 @@ func (p *Parser) parseModel() (ast.Model, error) {
 		return ast.Model{}, err
 	}
 
-	m := ast.Model{Name: nameTok.Value}
+	m := ast.Model{Name: nameTok.Value, Line: startTok.Line}
 
 	// optional description: "..."
 	if p.peek().Type == lexer.TDescription {
@@ -201,6 +201,7 @@ func (p *Parser) parseField() (ast.Field, error) {
 		Type:     typeName,
 		Optional: optional,
 		IsArray:  isArray,
+		Line:     nameTok.Line,
 	}
 
 	// Check for @default(value)
@@ -236,7 +237,7 @@ func (p *Parser) parseField() (ast.Field, error) {
 }
 
 func (p *Parser) parseModule() (ast.Module, error) {
-	p.consume() // 'module'
+	startTok := p.consume() // 'module'
 	nameTok, err := p.expect(lexer.TIdent)
 	if err != nil {
 		return ast.Module{}, fmt.Errorf("module name: %w", err)
@@ -245,7 +246,7 @@ func (p *Parser) parseModule() (ast.Module, error) {
 		return ast.Module{}, err
 	}
 
-	mod := ast.Module{Name: nameTok.Value}
+	mod := ast.Module{Name: nameTok.Value, Line: startTok.Line}
 
 	// optional description: "..."
 	if p.peek().Type == lexer.TDescription {
@@ -288,7 +289,8 @@ func (p *Parser) parseModule() (ast.Module, error) {
 }
 
 func (p *Parser) parseAction() (ast.Action, error) {
-	if _, err := p.expect(lexer.TAction); err != nil {
+	startTok, err := p.expect(lexer.TAction)
+	if err != nil {
 		return ast.Action{}, err
 	}
 	nameTok, err := p.expect(lexer.TIdent)
@@ -302,6 +304,7 @@ func (p *Parser) parseAction() (ast.Action, error) {
 	act := ast.Action{
 		Name:       nameTok.Value,
 		Middleware: []string{},
+		Line:       startTok.Line,
 	}
 
 	for p.peek().Type != lexer.TRBrace && p.peek().Type != lexer.TEOF {

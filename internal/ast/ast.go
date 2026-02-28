@@ -15,6 +15,7 @@ type Enum struct {
 	Description string   `json:"description,omitempty"`
 	Values      []string `json:"values"`
 	SourceFile  string   `json:"-"`
+	Line        int      `json:"-"` // line in source where this enum was defined
 }
 
 // Model is a named data type with typed fields.
@@ -23,6 +24,7 @@ type Model struct {
 	Description string  `json:"description,omitempty"`
 	Fields      []Field `json:"fields"`
 	SourceFile  string  `json:"-"` // absolute path; set by file loader, not serialised
+	Line        int     `json:"-"` // line in source where this model was defined
 }
 
 // Field is a single property of a Model.
@@ -32,6 +34,7 @@ type Field struct {
 	Optional bool   `json:"optional,omitempty"`
 	IsArray  bool   `json:"isArray,omitempty"`
 	Default  string `json:"default,omitempty"` // @default(value)
+	Line     int    `json:"-"`                 // line in source where this field was defined
 }
 
 // Module groups related Actions.
@@ -41,6 +44,7 @@ type Module struct {
 	Prefix      string   `json:"prefix,omitempty"` // route path prefix
 	Actions     []Action `json:"actions"`
 	SourceFile  string   `json:"-"` // absolute path; set by file loader, not serialised
+	Line        int      `json:"-"` // line in source where this module was defined
 }
 
 // Action is a single API endpoint inside a Module.
@@ -54,4 +58,5 @@ type Action struct {
 	OutputArray bool     `json:"outputArray,omitempty"` // output User[] → true
 	Query       string   `json:"query,omitempty"`       // query param model
 	Middleware  []string `json:"middleware"`
+	Line        int      `json:"-"` // line in source where this action was defined
 }

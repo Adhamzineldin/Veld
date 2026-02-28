@@ -2,6 +2,7 @@ package validator
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/veld-dev/veld/internal/ast"
@@ -18,6 +19,25 @@ var primitiveTypes = map[string]bool{
 	"uuid":     true,
 }
 
+// loc returns a "file:line:" prefix for error context.
+// If the source file is empty, it falls back to just the line number.
+func loc(file string, line int) string {
+	if file == "" && line == 0 {
+		return ""
+	}
+	name := file
+	if name != "" {
+		name = filepath.Base(name)
+	}
+	if name != "" && line > 0 {
+		return fmt.Sprintf("%s:%d: ", name, line)
+	}
+	if line > 0 {
+		return fmt.Sprintf("line %d: ", line)
+	}
+	return ""
+}
+
 // Validate performs semantic checks on a parsed AST and returns all errors found.
 func Validate(a ast.AST) []error {
 	var errs []error
@@ -26,17 +46,17 @@ func Validate(a ast.AST) []error {
 	enumNames := make(map[string]bool)
 	for _, en := range a.Enums {
 		if enumNames[en.Name] {
-			errs = append(errs, fmt.Errorf("duplicate enum name: %q", en.Name))
+			errs = append(errs, fmt.Errorf("%sduplicate enum name: %q", loc(en.SourceFile, en.Line), en.Name))
 		}
 		enumNames[en.Name] = true
 		if len(en.Values) == 0 {
-			errs = append(errs, fmt.Errorf("enum %q has no values", en.Name))
+			errs = append(errs, fmt.Errorf("%senum %q has no values", loc(en.SourceFile, en.Line), en.Name))
 		}
 		// Check duplicate values within an enum.
 		valSet := make(map[string]bool)
 		for _, v := range en.Values {
 			if valSet[v] {
-				errs = append(errs, fmt.Errorf("enum %q: duplicate value %q", en.Name, v))
+				errs = append(errs, fmt.Errorf("%senum %q: duplicate value %q", loc(en.SourceFile, en.Line), en.Name, v))
 			}
 			valSet[v] = true
 		}
@@ -46,10 +66,10 @@ func Validate(a ast.AST) []error {
 	modelNames := make(map[string]bool)
 	for _, m := range a.Models {
 		if modelNames[m.Name] {
-			errs = append(errs, fmt.Errorf("duplicate model name: %q", m.Name))
+			errs = append(errs, fmt.Errorf("%sduplicate model name: %q", loc(m.SourceFile, m.Line), m.Name))
 		}
 		if enumNames[m.Name] {
-			errs = append(errs, fmt.Errorf("name collision: %q is defined as both model and enum", m.Name))
+			errs = append(errs, fmt.Errorf("%sname collision: %q is defined as both model and enum", loc(m.SourceFile, m.Line), m.Name))
 		}
 		modelNames[m.Name] = true
 	}
@@ -68,7 +88,7 @@ func Validate(a ast.AST) []error {
 		fieldNames := make(map[string]bool)
 		for _, f := range m.Fields {
 			if fieldNames[f.Name] {
-				errs = append(errs, fmt.Errorf("model %q: duplicate field name %q", m.Name, f.Name))
+				errs = append(errs, fmt.Errorf("%smodel %q: duplicate field name %q", loc(m.SourceFile, f.Line), m.Name, f.Name))
 			}
 			fieldNames[f.Name] = true
 
@@ -76,15 +96,15 @@ func Validate(a ast.AST) []error {
 			if !primitiveTypes[baseType] && !modelNames[baseType] && !enumNames[baseType] {
 				suggestion := findSuggestion(baseType, allTypeNames)
 				if suggestion != "" {
-					errs = append(errs, fmt.Errorf("model %q, field %q: undefined type %q\n  did you mean %q?", m.Name, f.Name, baseType, suggestion))
+					errs = append(errs, fmt.Errorf("%smodel %q, field %q: undefined type %q (did you mean %q?)", loc(m.SourceFile, f.Line), m.Name, f.Name, baseType, suggestion))
 				} else {
-					errs = append(errs, fmt.Errorf("model %q, field %q: undefined type %q", m.Name, f.Name, baseType))
+					errs = append(errs, fmt.Errorf("%smodel %q, field %q: undefined type %q", loc(m.SourceFile, f.Line), m.Name, f.Name, baseType))
 				}
 			}
 
 			// Validate @default values
 			if f.Default != "" {
-				errs = append(errs, validateDefault(m.Name, f, enumNames, a.Enums)...)
+				errs = append(errs, validateDefault(m.Name, f, enumNames, a.Enums, m.SourceFile)...)
 			}
 		}
 	}
@@ -93,39 +113,39 @@ func Validate(a ast.AST) []error {
 	moduleNames := make(map[string]bool)
 	for _, mod := range a.Modules {
 		if moduleNames[mod.Name] {
-			errs = append(errs, fmt.Errorf("duplicate module name: %q", mod.Name))
+			errs = append(errs, fmt.Errorf("%sduplicate module name: %q", loc(mod.SourceFile, mod.Line), mod.Name))
 		}
 		moduleNames[mod.Name] = true
 
 		actionNames := make(map[string]bool)
 		for _, act := range mod.Actions {
 			if actionNames[act.Name] {
-				errs = append(errs, fmt.Errorf("module %q: duplicate action name: %q", mod.Name, act.Name))
+				errs = append(errs, fmt.Errorf("%smodule %q: duplicate action name: %q", loc(mod.SourceFile, act.Line), mod.Name, act.Name))
 			}
 			actionNames[act.Name] = true
 
 			if act.Input != "" && !modelNames[act.Input] {
 				suggestion := findSuggestion(act.Input, allTypeNames)
 				if suggestion != "" {
-					errs = append(errs, fmt.Errorf("module %q, action %q: undefined input type %q\n  did you mean %q?", mod.Name, act.Name, act.Input, suggestion))
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined input type %q (did you mean %q?)", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Input, suggestion))
 				} else {
-					errs = append(errs, fmt.Errorf("module %q, action %q: undefined input type %q", mod.Name, act.Name, act.Input))
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined input type %q", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Input))
 				}
 			}
 			if act.Output != "" && !modelNames[act.Output] && !enumNames[act.Output] && !primitiveTypes[act.Output] {
 				suggestion := findSuggestion(act.Output, allTypeNames)
 				if suggestion != "" {
-					errs = append(errs, fmt.Errorf("module %q, action %q: undefined output type %q\n  did you mean %q?", mod.Name, act.Name, act.Output, suggestion))
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined output type %q (did you mean %q?)", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Output, suggestion))
 				} else {
-					errs = append(errs, fmt.Errorf("module %q, action %q: undefined output type %q", mod.Name, act.Name, act.Output))
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined output type %q", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Output))
 				}
 			}
 			if act.Query != "" && !modelNames[act.Query] {
 				suggestion := findSuggestion(act.Query, allTypeNames)
 				if suggestion != "" {
-					errs = append(errs, fmt.Errorf("module %q, action %q: undefined query type %q\n  did you mean %q?", mod.Name, act.Name, act.Query, suggestion))
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined query type %q (did you mean %q?)", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Query, suggestion))
 				} else {
-					errs = append(errs, fmt.Errorf("module %q, action %q: undefined query type %q", mod.Name, act.Name, act.Query))
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined query type %q", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Query))
 				}
 			}
 		}
@@ -135,29 +155,30 @@ func Validate(a ast.AST) []error {
 }
 
 // validateDefault checks that a @default value is compatible with the field type.
-func validateDefault(modelName string, f ast.Field, enumNames map[string]bool, enums []ast.Enum) []error {
+func validateDefault(modelName string, f ast.Field, enumNames map[string]bool, enums []ast.Enum, sourceFile string) []error {
 	var errs []error
 	val := f.Default
+	prefix := loc(sourceFile, f.Line)
 
 	switch f.Type {
 	case "string", "date", "datetime", "uuid":
 		if !strings.HasPrefix(val, "\"") {
-			errs = append(errs, fmt.Errorf("model %q, field %q: @default for %s must be a string, got %s", modelName, f.Name, f.Type, val))
+			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for %s must be a string, got %s", prefix, modelName, f.Name, f.Type, val))
 		}
 	case "int":
 		if strings.HasPrefix(val, "\"") {
-			errs = append(errs, fmt.Errorf("model %q, field %q: @default for int must be a number, got %s", modelName, f.Name, val))
+			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for int must be a number, got %s", prefix, modelName, f.Name, val))
 		}
 		if strings.Contains(val, ".") {
-			errs = append(errs, fmt.Errorf("model %q, field %q: @default for int must be a whole number, got %s", modelName, f.Name, val))
+			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for int must be a whole number, got %s", prefix, modelName, f.Name, val))
 		}
 	case "float":
 		if strings.HasPrefix(val, "\"") {
-			errs = append(errs, fmt.Errorf("model %q, field %q: @default for float must be a number, got %s", modelName, f.Name, val))
+			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for float must be a number, got %s", prefix, modelName, f.Name, val))
 		}
 	case "bool":
 		if val != "true" && val != "false" {
-			errs = append(errs, fmt.Errorf("model %q, field %q: @default for bool must be true or false, got %s", modelName, f.Name, val))
+			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for bool must be true or false, got %s", prefix, modelName, f.Name, val))
 		}
 	default:
 		// Check enum defaults
@@ -172,7 +193,7 @@ func validateDefault(modelName string, f ast.Field, enumNames map[string]bool, e
 						}
 					}
 					if !found {
-						errs = append(errs, fmt.Errorf("model %q, field %q: @default(%s) is not a valid value for enum %q", modelName, f.Name, val, f.Type))
+						errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default(%s) is not a valid value for enum %q", prefix, modelName, f.Name, val, f.Type))
 					}
 					break
 				}

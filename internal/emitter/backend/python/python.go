@@ -55,7 +55,10 @@ func (e *PythonEmitter) Summary(modules []string) []emitter.SummaryLine {
 }
 
 // Emit writes all generated files into outDir.
-func (e *PythonEmitter) Emit(a ast.AST, outDir string) error {
+func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) error {
+	if opts.DryRun {
+		return nil
+	}
 	// Write top-level __init__.py files so generated/ is a proper package.
 	for _, sub := range []string{"", "types", "interfaces", "routes"} {
 		dir := filepath.Join(outDir, sub)

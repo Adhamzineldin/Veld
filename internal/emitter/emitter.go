@@ -7,9 +7,16 @@ import (
 	"github.com/veld-dev/veld/internal/ast"
 )
 
+// EmitOptions carries config-driven options to emitters.
+type EmitOptions struct {
+	Schemas bool   // whether to generate Zod schemas (node backend)
+	BaseUrl string // base URL for the frontend SDK (empty = env var fallback)
+	DryRun  bool   // if true, emit nothing — just validate
+}
+
 // Emitter writes generated output files for a given AST.
 type Emitter interface {
-	Emit(a ast.AST, outDir string) error
+	Emit(a ast.AST, outDir string, opts EmitOptions) error
 }
 
 // Summarizer optionally returns a human-friendly summary of what was generated.

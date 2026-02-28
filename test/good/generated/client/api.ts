@@ -2,21 +2,62 @@
 import type { User, UserFilters, RegisterInput, SuccessResponse, Role, Status } from '../types/users';
 import type { LoginInput, AuthResponse, RegisterInput, User, SuccessResponse, Role, Status } from '../types/auth';
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const base = process.env.VELD_API_URL ?? '';
-  const res = await fetch(base + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(await res.text());
+export class VeldApiError extends Error {
+  status: number;
+  body: string;
+  constructor(status: number, body: string) {
+    super(`Veld API error ${status}: ${body}`);
+    this.name = 'VeldApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
+const BASE = (typeof process !== 'undefined' && process.env?.VELD_API_URL) || '';
+
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(BASE + path);
+  if (!res.ok) throw new VeldApiError(res.status, await res.text());
   return res.json();
 }
 
-async function get<T>(path: string): Promise<T> {
-  const base = process.env.VELD_API_URL ?? '';
-  const res = await fetch(base + path);
-  if (!res.ok) throw new Error(await res.text());
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new VeldApiError(res.status, await res.text());
+  return res.json();
+}
+
+async function put<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new VeldApiError(res.status, await res.text());
+  return res.json();
+}
+
+async function patch<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new VeldApiError(res.status, await res.text());
+  return res.json();
+}
+
+async function del<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new VeldApiError(res.status, await res.text());
   return res.json();
 }
 
@@ -26,24 +67,33 @@ export const api = {
     List: (query?: UserFilters): Promise<User[]> =>
       get('/api/users' + (query ? '?' + new URLSearchParams(query as Record<string, string>).toString() : '')),
     /** Get a single user by ID */
-    GetById: (): Promise<User> => get('/api/users/:id'),
+    GetById: (id: string): Promise<User> =>
+      get(`/api/users/${id}`),
     /** Create a new user */
-    Create: (input: RegisterInput): Promise<User> => post('/api/users', input),
+    Create: (input: RegisterInput): Promise<User> =>
+      post('/api/users', input),
     /** Update an existing user */
-    Update: (input: RegisterInput): Promise<User> => post('/api/users/:id', input),
+    Update: (id: string, input: RegisterInput): Promise<User> =>
+      put(`/api/users/${id}`, input),
     /** Partially update a user */
-    Patch: (input: RegisterInput): Promise<User> => post('/api/users/:id', input),
+    Patch: (id: string, input: RegisterInput): Promise<User> =>
+      patch(`/api/users/${id}`, input),
     /** Soft-delete a user */
-    Delete: (): Promise<SuccessResponse> => post('/api/users/:id', {}),
+    Delete: (id: string): Promise<SuccessResponse> =>
+      del(`/api/users/${id}`, {}),
   },
   Auth: {
     /** Exchange credentials for a session token */
-    Login: (input: LoginInput): Promise<AuthResponse> => post('/auth/login', input),
+    Login: (input: LoginInput): Promise<AuthResponse> =>
+      post('/auth/login', input),
     /** Create a new user account */
-    Register: (input: RegisterInput): Promise<AuthResponse> => post('/auth/register', input),
+    Register: (input: RegisterInput): Promise<AuthResponse> =>
+      post('/auth/register', input),
     /** Get the currently authenticated user */
-    Me: (): Promise<User> => get('/auth/me'),
+    Me: (): Promise<User> =>
+      get('/auth/me'),
     /** Invalidate the current session */
-    Logout: (): Promise<SuccessResponse> => post('/auth/logout', {}),
+    Logout: (): Promise<SuccessResponse> =>
+      post('/auth/logout', {}),
   },
 };

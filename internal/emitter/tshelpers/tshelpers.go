@@ -27,7 +27,11 @@ func VeldTypeToTS(t string, isArray bool) string {
 }
 
 // FormatOutputType returns the TS type for an action output, handling arrays.
+// An empty output returns "void".
 func FormatOutputType(act ast.Action) string {
+	if act.Output == "" {
+		return "void"
+	}
 	base := VeldScalarToTS(act.Output)
 	if act.OutputArray {
 		return base + "[]"

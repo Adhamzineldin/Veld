@@ -52,12 +52,14 @@ func (e *NodeEmitter) Summary(modules []string) []emitter.SummaryLine {
 		lines = append(lines, emitter.SummaryLine{Dir: "routes/", Files: strings.Join(routeFiles, ", ")})
 	}
 
-	lines = append(lines, emitter.SummaryLine{Dir: "schemas/", Files: "schemas.ts"})
 	return lines
 }
 
 // Emit writes all generated files into outDir.
-func (e *NodeEmitter) Emit(a ast.AST, outDir string) error {
+func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) error {
+	if opts.DryRun {
+		return nil
+	}
 	for _, mod := range a.Modules {
 		if err := e.emitTypes(a, mod, outDir); err != nil {
 			return fmt.Errorf("types for module %s: %w", mod.Name, err)
@@ -69,8 +71,10 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string) error {
 			return fmt.Errorf("routes for module %s: %w", mod.Name, err)
 		}
 	}
-	if err := e.emitZodSchemas(a, outDir); err != nil {
-		return fmt.Errorf("zod schemas: %w", err)
+	if opts.Schemas {
+		if err := e.emitZodSchemas(a, outDir); err != nil {
+			return fmt.Errorf("zod schemas: %w", err)
+		}
 	}
 	return nil
 }
