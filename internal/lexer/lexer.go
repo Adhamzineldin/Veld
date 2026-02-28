@@ -51,6 +51,9 @@ const (
 	TAt       // @
 	TLParen   // (
 	TRParen   // )
+	TLAngle   // <
+	TRAngle   // >
+	TComma    // ,
 
 	// Other
 	TIdent
@@ -133,6 +136,12 @@ func (t TokenType) String() string {
 		return "\"(\""
 	case TRParen:
 		return "\")\""
+	case TLAngle:
+		return "\"<\""
+	case TRAngle:
+		return "\">\""
+	case TComma:
+		return "\",\""
 	case TIdent:
 		return "identifier"
 	case TPath:
@@ -223,6 +232,15 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 		} else if ch == '@' {
 			tokens = append(tokens, Token{TAt, "@", l.line})
 			l.pos++
+		} else if ch == '<' {
+			tokens = append(tokens, Token{TLAngle, "<", l.line})
+			l.pos++
+		} else if ch == '>' {
+			tokens = append(tokens, Token{TRAngle, ">", l.line})
+			l.pos++
+		} else if ch == ',' {
+			tokens = append(tokens, Token{TComma, ",", l.line})
+			l.pos++
 		} else if ch == '/' {
 			// Path token: reads until whitespace or brace.
 			start := l.pos
@@ -289,6 +307,10 @@ func classifyWord(word string, line int) Token {
 		return Token{TMethod, word, line}
 	case "path":
 		return Token{TKeyPath, word, line}
+	case "extends":
+		return Token{TIdent, word, line} // parsed contextually by parser
+	case "Map":
+		return Token{TIdent, word, line} // parsed contextually by parser
 	case "GET":
 		return Token{TGET, word, line}
 	case "POST":

@@ -58,9 +58,7 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 		return nil, nil, err
 	}
 	if errs := validator.Validate(a); len(errs) > 0 {
-		for _, e := range errs {
-			fmt.Fprintln(os.Stderr, red("  error: ")+e.Error())
-		}
+		printValidationErrors(errs, veldFiles)
 		return nil, veldFiles, fmt.Errorf("contract validation failed")
 	}
 
@@ -144,6 +142,11 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 		}
 	}
 
+	// ── generated/README.md ──────────────────────────────────────────────
+	if !opts.DryRun {
+		writeGeneratedReadme(rc.Out, emitAST)
+	}
+
 	// ── update cache ─────────────────────────────────────────────────────
 	if c == nil {
 		c = cache.Load(rc.ConfigDir)
@@ -205,11 +208,16 @@ service interfaces for any framework. Zero runtime dependencies.
   veld generate                Generate from veld.config.json
   veld generate --dry-run      Preview what would be generated
   veld watch                   Auto-regenerate on file changes
-  veld validate                Check contracts for errors`,
+  veld validate                Check contracts for errors
+  veld clean                   Remove generated output
+  veld openapi                 Export OpenAPI 3.0 spec`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(newValidateCmd(), newASTCmd(), newGenerateCmd(), newWatchCmd(), newInitCmd())
+	root.AddCommand(
+		newValidateCmd(), newASTCmd(), newGenerateCmd(), newWatchCmd(),
+		newInitCmd(), newCleanCmd(), newOpenAPICmd(),
+	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, red("Error: ")+err.Error())
 		os.Exit(1)
@@ -395,10 +403,11 @@ func newWatchCmd() *cobra.Command {
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 			defer stop()
 
-			ticker := time.NewTicker(300 * time.Millisecond)
+			ticker := time.NewTicker(200 * time.Millisecond)
 			defer ticker.Stop()
 
 			lastError := false
+			var debounceTimer *time.Timer
 
 			for {
 				select {
@@ -419,39 +428,46 @@ func newWatchCmd() *cobra.Command {
 						continue
 					}
 
+					// Update mtimes immediately
 					for f := range mtimes {
 						if info, statErr := os.Stat(f); statErr == nil {
 							mtimes[f] = info.ModTime().UnixNano()
 						}
 					}
 
-					ts := dim("[" + time.Now().Format("15:04:05") + "]")
-
-					regen, newFiles, genErr := runGenerate(rc, true, opts)
-					if genErr != nil {
-						if !lastError {
-							fmt.Fprintf(os.Stderr, "%s %s %v\n", ts, red("error:"), genErr)
-							fmt.Println()
-						}
-						lastError = true
-					} else if regen == nil {
-						fmt.Printf("%s %s nothing to regenerate\n", ts, green("✓"))
-						fmt.Println()
-						lastError = false
-					} else {
-						fmt.Printf("%s %s %s\n", ts, green("✓"), strings.Join(regen, ", "))
-						fmt.Println()
-						lastError = false
+					// Debounce: reset timer on every change, only fire after 500ms of quiet
+					if debounceTimer != nil {
+						debounceTimer.Stop()
 					}
+					debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
+						ts := dim("[" + time.Now().Format("15:04:05") + "]")
 
-					if newFiles != nil {
-						mtimes = make(map[string]int64, len(newFiles))
-						for _, f := range newFiles {
-							if info, statErr := os.Stat(f); statErr == nil {
-								mtimes[f] = info.ModTime().UnixNano()
+						regen, newFiles, genErr := runGenerate(rc, true, opts)
+						if genErr != nil {
+							if !lastError {
+								fmt.Fprintf(os.Stderr, "%s %s %v\n", ts, red("error:"), genErr)
+								fmt.Println()
+							}
+							lastError = true
+						} else if regen == nil {
+							fmt.Printf("%s %s nothing to regenerate\n", ts, green("✓"))
+							fmt.Println()
+							lastError = false
+						} else {
+							fmt.Printf("%s %s %s\n", ts, green("✓"), strings.Join(regen, ", "))
+							fmt.Println()
+							lastError = false
+						}
+
+						if newFiles != nil {
+							mtimes = make(map[string]int64, len(newFiles))
+							for _, f := range newFiles {
+								if info, statErr := os.Stat(f); statErr == nil {
+									mtimes[f] = info.ModTime().UnixNano()
+								}
 							}
 						}
-					}
+					})
 				}
 			}
 		},
@@ -461,6 +477,280 @@ func newWatchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&inputFlag, "input", "", "input .veld file")
 	cmd.Flags().StringVar(&outFlag, "out", "", "output directory")
 	return cmd
+}
+
+// ── clean ─────────────────────────────────────────────────────────────────────
+
+func newCleanCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "clean",
+		Short:   "Remove the generated output directory",
+		Example: "  veld clean",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rc, err := config.BuildResolved(config.FlagOverrides{})
+			if err != nil {
+				return err
+			}
+			if _, statErr := os.Stat(rc.Out); os.IsNotExist(statErr) {
+				fmt.Println(green("✓") + " Nothing to clean — output directory does not exist")
+				return nil
+			}
+			if err := os.RemoveAll(rc.Out); err != nil {
+				return fmt.Errorf("failed to remove %s: %w", rc.Out, err)
+			}
+			// Also remove cache.
+			cacheFile := filepath.Join(rc.ConfigDir, ".veld-cache.json")
+			os.Remove(cacheFile)
+			fmt.Println(green("✓") + " Cleaned " + bold(rc.Out))
+			return nil
+		},
+	}
+}
+
+// ── openapi ───────────────────────────────────────────────────────────────────
+
+func newOpenAPICmd() *cobra.Command {
+	var outputFile string
+	cmd := &cobra.Command{
+		Use:     "openapi",
+		Short:   "Export an OpenAPI 3.0 spec from the contract",
+		Example: "  veld openapi\n  veld openapi -o openapi.json",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path, err := config.ResolveInput(args)
+			if err != nil {
+				return err
+			}
+			a, _, err := loader.Parse(path)
+			if err != nil {
+				return err
+			}
+			if errs := validator.Validate(a); len(errs) > 0 {
+				for _, e := range errs {
+					fmt.Fprintln(os.Stderr, red("error: ")+e.Error())
+				}
+				return fmt.Errorf("contract validation failed")
+			}
+			spec := buildOpenAPISpec(a)
+			data, _ := json.MarshalIndent(spec, "", "  ")
+			if outputFile != "" {
+				if err := os.WriteFile(outputFile, data, 0644); err != nil {
+					return err
+				}
+				fmt.Println(green("✓") + " OpenAPI spec → " + bold(outputFile))
+				return nil
+			}
+			fmt.Println(string(data))
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "write to file instead of stdout")
+	return cmd
+}
+
+func buildOpenAPISpec(a ast.AST) map[string]interface{} {
+	paths := make(map[string]interface{})
+	for _, mod := range a.Modules {
+		tag := mod.Name
+		for _, act := range mod.Actions {
+			routePath := act.Path
+			if mod.Prefix != "" {
+				routePath = mod.Prefix + act.Path
+			}
+			// Convert :param to {param} for OpenAPI
+			oaPath := emitter.ToOpenAPIPath(routePath)
+			pathParams := emitter.ExtractPathParams(routePath)
+
+			op := map[string]interface{}{
+				"tags":        []string{tag},
+				"operationId": mod.Name + "_" + act.Name,
+				"responses": map[string]interface{}{
+					"200": map[string]interface{}{"description": "Success"},
+				},
+			}
+			if act.Description != "" {
+				op["summary"] = act.Description
+			}
+			if len(pathParams) > 0 {
+				params := make([]map[string]interface{}, 0, len(pathParams))
+				for _, p := range pathParams {
+					params = append(params, map[string]interface{}{
+						"name":     p,
+						"in":       "path",
+						"required": true,
+						"schema":   map[string]interface{}{"type": "string"},
+					})
+				}
+				op["parameters"] = params
+			}
+			if act.Input != "" {
+				op["requestBody"] = map[string]interface{}{
+					"required": true,
+					"content": map[string]interface{}{
+						"application/json": map[string]interface{}{
+							"schema": map[string]interface{}{"$ref": "#/components/schemas/" + act.Input},
+						},
+					},
+				}
+			}
+			method := strings.ToLower(act.Method)
+			if _, ok := paths[oaPath]; !ok {
+				paths[oaPath] = make(map[string]interface{})
+			}
+			paths[oaPath].(map[string]interface{})[method] = op
+		}
+	}
+
+	schemas := make(map[string]interface{})
+	for _, m := range a.Models {
+		props := make(map[string]interface{})
+		var required []string
+		for _, f := range m.Fields {
+			prop := map[string]interface{}{"type": oaType(f.Type)}
+			if f.IsArray {
+				prop = map[string]interface{}{
+					"type":  "array",
+					"items": map[string]interface{}{"type": oaType(f.Type)},
+				}
+			}
+			if f.IsMap {
+				prop = map[string]interface{}{
+					"type":                 "object",
+					"additionalProperties": map[string]interface{}{"type": oaType(f.MapValueType)},
+				}
+			}
+			props[f.Name] = prop
+			if !f.Optional {
+				required = append(required, f.Name)
+			}
+		}
+		schema := map[string]interface{}{
+			"type":       "object",
+			"properties": props,
+		}
+		if len(required) > 0 {
+			schema["required"] = required
+		}
+		if m.Description != "" {
+			schema["description"] = m.Description
+		}
+		schemas[m.Name] = schema
+	}
+	for _, en := range a.Enums {
+		schemas[en.Name] = map[string]interface{}{
+			"type": "string",
+			"enum": en.Values,
+		}
+	}
+
+	return map[string]interface{}{
+		"openapi": "3.0.3",
+		"info": map[string]interface{}{
+			"title":   "Veld API",
+			"version": "1.0.0",
+		},
+		"paths": paths,
+		"components": map[string]interface{}{
+			"schemas": schemas,
+		},
+	}
+}
+
+func oaType(t string) string {
+	switch t {
+	case "int":
+		return "integer"
+	case "float":
+		return "number"
+	case "bool":
+		return "boolean"
+	case "date", "datetime", "uuid", "string":
+		return "string"
+	default:
+		return t // model reference
+	}
+}
+
+// ── printErrorWithContext ─────────────────────────────────────────────────────
+
+func printValidationErrors(errs []error, veldFiles []string) {
+	// Cache file contents for context printing
+	fileCache := make(map[string][]string)
+	for _, f := range veldFiles {
+		data, err := os.ReadFile(f)
+		if err == nil {
+			fileCache[filepath.Base(f)] = strings.Split(string(data), "\n")
+		}
+	}
+
+	for _, e := range errs {
+		msg := e.Error()
+		fmt.Fprintln(os.Stderr, red("  error: ")+msg)
+
+		// Try to extract file:line from the message
+		parts := strings.SplitN(msg, ":", 3)
+		if len(parts) >= 3 {
+			fileName := parts[0]
+			lineStr := parts[1]
+			var lineNum int
+			if _, err := fmt.Sscanf(lineStr, "%d", &lineNum); err == nil && lineNum > 0 {
+				if lines, ok := fileCache[fileName]; ok && lineNum <= len(lines) {
+					line := lines[lineNum-1]
+					fmt.Fprintf(os.Stderr, "  %s │\n", dim(fmt.Sprintf("%4d", lineNum)))
+					fmt.Fprintf(os.Stderr, "  %s │ %s\n", dim(fmt.Sprintf("%4d", lineNum)), line)
+					fmt.Fprintf(os.Stderr, "  %s │\n", dim("    "))
+				}
+			}
+		}
+	}
+}
+
+// ── writeGeneratedReadme ─────────────────────────────────────────────────────
+
+func writeGeneratedReadme(outDir string, a ast.AST) {
+	var sb strings.Builder
+	sb.WriteString("# Generated by Veld\n\n")
+	sb.WriteString("> ⚠️ **DO NOT EDIT** — this entire directory is auto-generated by `veld generate`.\n")
+	sb.WriteString("> Any manual changes will be overwritten on the next run.\n\n")
+	sb.WriteString("## Structure\n\n")
+	sb.WriteString("| Path | Description |\n")
+	sb.WriteString("|------|-------------|\n")
+	sb.WriteString("| `types/types.ts` | All TypeScript interfaces and enum types |\n")
+	sb.WriteString("| `interfaces/` | Service contracts (one per module) |\n")
+	sb.WriteString("| `routes/` | Route registration functions with validation |\n")
+	sb.WriteString("| `schemas/schemas.ts` | Zod validation schemas |\n")
+	sb.WriteString("| `client/api.ts` | Frontend SDK (fetch-based, zero dependencies) |\n")
+	sb.WriteString("| `index.ts` | Barrel export for clean imports |\n")
+	sb.WriteString("| `package.json` | Package alias (`@veld/generated`) |\n\n")
+
+	sb.WriteString("## Modules\n\n")
+	for _, mod := range a.Modules {
+		sb.WriteString(fmt.Sprintf("- **%s**", mod.Name))
+		if mod.Description != "" {
+			sb.WriteString(fmt.Sprintf(" — %s", mod.Description))
+		}
+		sb.WriteString(fmt.Sprintf(" (%d actions)\n", len(mod.Actions)))
+	}
+
+	sb.WriteString("\n## Import Alias\n\n")
+	sb.WriteString("Add to your `tsconfig.json`:\n\n")
+	sb.WriteString("```json\n")
+	sb.WriteString("{\n")
+	sb.WriteString("  \"compilerOptions\": {\n")
+	sb.WriteString("    \"paths\": {\n")
+	sb.WriteString("      \"@veld/*\": [\"./generated/*\"]\n")
+	sb.WriteString("    }\n")
+	sb.WriteString("  }\n")
+	sb.WriteString("}\n")
+	sb.WriteString("```\n\n")
+	sb.WriteString("Then import:\n")
+	sb.WriteString("```typescript\n")
+	sb.WriteString("import type { User } from '@veld/types/types';\n")
+	sb.WriteString("import { api } from '@veld/client/api';\n")
+	sb.WriteString("```\n\n")
+	sb.WriteString("## Regenerate\n\n")
+	sb.WriteString("```bash\nveld generate\n```\n")
+
+	os.WriteFile(filepath.Join(outDir, "README.md"), []byte(sb.String()), 0644)
 }
 
 // ── init ──────────────────────────────────────────────────────────────────────
@@ -713,8 +1003,14 @@ const initReadmeContent = "# My Veld Project\n\n" +
 	"- **Default values** — `role: Role @default(user)`\n" +
 	"- **Route prefixes** — `prefix: /api`\n" +
 	"- **Array types** — `tags: string[]`, `output: User[]`\n" +
+	"- **Map types** — `metadata: Map<string, string>` → `Record<string, string>` / `Dict[str, str]`\n" +
+	"- **Model inheritance** — `model Admin extends User { ... }`\n" +
 	"- **Rich scalars** — `string`, `int`, `float`, `bool`, `date`, `datetime`, `uuid`\n" +
-	"- **Zod schemas** — auto-generated validation schemas\n\n" +
+	"- **Zod schemas** — auto-generated validation wired into route handlers\n" +
+	"- **Pydantic schemas** — auto-generated for Python backends\n" +
+	"- **Error handling** — try/catch in all route handlers, proper HTTP status codes\n" +
+	"- **OpenAPI export** — `veld openapi -o openapi.json`\n" +
+	"- **Import aliases** — `@veld/generated` package.json for clean imports\n\n" +
 	"## Workflow\n\n" +
 	"1. Edit files in `veld/models/` and `veld/modules/`\n" +
 	"2. Run `veld generate` to regenerate `generated/`\n" +
@@ -736,5 +1032,7 @@ const initReadmeContent = "# My Veld Project\n\n" +
 	"| `veld generate --incremental` | Regenerate changed modules only (dev) |\n" +
 	"| `veld watch` | Auto-regenerate on file save (dev) |\n" +
 	"| `veld validate` | Check contract for errors |\n" +
+	"| `veld clean` | Remove generated output |\n" +
+	"| `veld openapi` | Export OpenAPI 3.0 spec |\n" +
 	"| `veld ast` | Dump AST JSON for debugging |\n" +
 	"| `veld init` | Scaffold a new project |\n"

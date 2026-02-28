@@ -85,12 +85,51 @@ func Validate(a ast.AST) []error {
 
 	// Validate model field types.
 	for _, m := range a.Models {
+		// Validate extends (parent must exist, no circular inheritance).
+		if m.Extends != "" {
+			if !modelNames[m.Extends] {
+				errs = append(errs, fmt.Errorf("%smodel %q: extends unknown model %q", loc(m.SourceFile, m.Line), m.Name, m.Extends))
+			} else {
+				// Check for circular inheritance.
+				visited := map[string]bool{m.Name: true}
+				cur := m.Extends
+				for cur != "" {
+					if visited[cur] {
+						errs = append(errs, fmt.Errorf("%smodel %q: circular inheritance detected via %q", loc(m.SourceFile, m.Line), m.Name, cur))
+						break
+					}
+					visited[cur] = true
+					// Find parent model
+					found := false
+					for _, pm := range a.Models {
+						if pm.Name == cur {
+							cur = pm.Extends
+							found = true
+							break
+						}
+					}
+					if !found {
+						break
+					}
+				}
+			}
+		}
+
 		fieldNames := make(map[string]bool)
 		for _, f := range m.Fields {
 			if fieldNames[f.Name] {
 				errs = append(errs, fmt.Errorf("%smodel %q: duplicate field name %q", loc(m.SourceFile, f.Line), m.Name, f.Name))
 			}
 			fieldNames[f.Name] = true
+
+			// Map<string, V> — validate the value type
+			if f.IsMap {
+				vt := f.MapValueType
+				if !primitiveTypes[vt] && !modelNames[vt] && !enumNames[vt] {
+					errs = append(errs, fmt.Errorf("%smodel %q, field %q: undefined Map value type %q", loc(m.SourceFile, f.Line), m.Name, f.Name, vt))
+				}
+				continue // Map fields don't need normal type validation
+			}
 
 			baseType := f.Type
 			if !primitiveTypes[baseType] && !modelNames[baseType] && !enumNames[baseType] {

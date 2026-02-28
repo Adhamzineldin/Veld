@@ -30,6 +30,11 @@ func ToFlaskPath(path string) string {
 	return paramRegex.ReplaceAllString(path, `<$1>`)
 }
 
+// ToOpenAPIPath converts /users/:id to /users/{id} for OpenAPI specs.
+func ToOpenAPIPath(path string) string {
+	return paramRegex.ReplaceAllString(path, `{$1}`)
+}
+
 // CollectTransitiveModels returns all model names needed by a module, following
 // model references in fields transitively.
 func CollectTransitiveModels(a ast.AST, mod ast.Module) map[string]bool {
@@ -59,9 +64,20 @@ func CollectTransitiveModels(a ast.AST, mod ast.Module) map[string]bool {
 		}
 		used[name] = true
 		if m, ok := byName[name]; ok {
+			// Follow extends chain
+			if m.Extends != "" && !used[m.Extends] {
+				queue = append(queue, m.Extends)
+			}
 			for _, f := range m.Fields {
+				// Regular model references
 				if _, isModel := byName[f.Type]; isModel && !used[f.Type] {
 					queue = append(queue, f.Type)
+				}
+				// Map<string, V> value type references
+				if f.IsMap {
+					if _, isModel := byName[f.MapValueType]; isModel && !used[f.MapValueType] {
+						queue = append(queue, f.MapValueType)
+					}
 				}
 			}
 		}
@@ -86,6 +102,9 @@ func CollectUsedEnums(a ast.AST, mod ast.Module) map[string]bool {
 		for _, f := range m.Fields {
 			if enumNames[f.Type] {
 				usedEnums[f.Type] = true
+			}
+			if f.IsMap && enumNames[f.MapValueType] {
+				usedEnums[f.MapValueType] = true
 			}
 		}
 	}

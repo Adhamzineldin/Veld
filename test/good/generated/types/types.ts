@@ -22,10 +22,21 @@ export interface User {
   friends: User[];
 }
 
+export interface LoginInput {
+  email: string;
+  password: string;
+}
+
 export interface RegisterInput {
   email: string;
   password: string;
   name: string;
+}
+
+/** Returned after successful login or registration */
+export interface AuthResponse {
+  token: string;
+  user: User;
 }
 
 export interface SuccessResponse {
@@ -40,5 +51,12 @@ export interface UserFilters {
   search?: string;
   limit?: number;
   offset?: number;
+}
+
+/** Standard error envelope */
+export interface ErrorResponse {
+  code: number;
+  message: string;
+  details?: string;
 }
 

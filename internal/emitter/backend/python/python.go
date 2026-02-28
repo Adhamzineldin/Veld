@@ -14,27 +14,15 @@ func init() {
 	emitter.RegisterBackend("python", New())
 }
 
-// PythonEmitter generates Python TypedDict types, ABC service interfaces,
-// and Flask route files from a parsed AST.
 type PythonEmitter struct{}
 
-func (*PythonEmitter) IsBackend() {} // marker for BackendEmitter
+func (*PythonEmitter) IsBackend() {}
+func New() *PythonEmitter         { return &PythonEmitter{} }
 
-// New returns a PythonEmitter.
-func New() *PythonEmitter { return &PythonEmitter{} }
-
-// Summary returns a human-friendly breakdown of generated files.
 func (e *PythonEmitter) Summary(modules []string) []emitter.SummaryLine {
-	var lines []emitter.SummaryLine
-
-	typeFiles := make([]string, 0, len(modules))
-	for _, m := range modules {
-		typeFiles = append(typeFiles, strings.ToLower(m)+".py")
+	lines := []emitter.SummaryLine{
+		{Dir: "types/", Files: "__init__.py"},
 	}
-	if len(typeFiles) > 0 {
-		lines = append(lines, emitter.SummaryLine{Dir: "types/", Files: strings.Join(typeFiles, ", ")})
-	}
-
 	ifaceFiles := make([]string, 0, len(modules))
 	for _, m := range modules {
 		ifaceFiles = append(ifaceFiles, "i_"+strings.ToLower(m)+"_service.py")
@@ -42,7 +30,6 @@ func (e *PythonEmitter) Summary(modules []string) []emitter.SummaryLine {
 	if len(ifaceFiles) > 0 {
 		lines = append(lines, emitter.SummaryLine{Dir: "interfaces/", Files: strings.Join(ifaceFiles, ", ")})
 	}
-
 	routeFiles := make([]string, 0, len(modules))
 	for _, m := range modules {
 		routeFiles = append(routeFiles, strings.ToLower(m)+"_routes.py")
@@ -50,17 +37,16 @@ func (e *PythonEmitter) Summary(modules []string) []emitter.SummaryLine {
 	if len(routeFiles) > 0 {
 		lines = append(lines, emitter.SummaryLine{Dir: "routes/", Files: strings.Join(routeFiles, ", ")})
 	}
-
+	lines = append(lines, emitter.SummaryLine{Dir: "schemas/", Files: "schemas.py"})
 	return lines
 }
 
-// Emit writes all generated files into outDir.
 func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) error {
 	if opts.DryRun {
 		return nil
 	}
-	// Write top-level __init__.py files so generated/ is a proper package.
-	for _, sub := range []string{"", "types", "interfaces", "routes"} {
+	// Write __init__.py files so generated/ is a proper package.
+	for _, sub := range []string{"", "types", "interfaces", "routes", "schemas"} {
 		dir := filepath.Join(outDir, sub)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
@@ -73,41 +59,41 @@ func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 		}
 	}
 
+	if err := e.emitAllTypes(a, outDir); err != nil {
+		return fmt.Errorf("types: %w", err)
+	}
 	for _, mod := range a.Modules {
-		if err := e.emitTypes(a, mod, outDir); err != nil {
-			return fmt.Errorf("types for module %s: %w", mod.Name, err)
-		}
 		if err := e.emitInterface(a, mod, outDir); err != nil {
-			return fmt.Errorf("interface for module %s: %w", mod.Name, err)
+			return fmt.Errorf("interface for %s: %w", mod.Name, err)
 		}
 		if err := e.emitRoutes(a, mod, outDir); err != nil {
-			return fmt.Errorf("routes for module %s: %w", mod.Name, err)
+			return fmt.Errorf("routes for %s: %w", mod.Name, err)
 		}
+	}
+	if err := e.emitPydanticSchemas(a, outDir); err != nil {
+		return fmt.Errorf("pydantic schemas: %w", err)
 	}
 	return nil
 }
 
-// emitTypes writes generated/types/{module}.py with TypedDict classes and Literal enums.
-func (e *PythonEmitter) emitTypes(a ast.AST, mod ast.Module, outDir string) error {
-	dir := filepath.Join(outDir, "types")
+// ── types/__init__.py — single file with ALL TypedDicts ──────────────────────
 
-	usedNames := emitter.CollectTransitiveModels(a, mod)
-	usedEnums := emitter.CollectUsedEnums(a, mod)
-
+func (e *PythonEmitter) emitAllTypes(a ast.AST, outDir string) error {
 	needsList := false
 	needsOptional := false
-	needsLiteral := len(usedEnums) > 0
+	needsLiteral := len(a.Enums) > 0
+	needsDict := false
 
 	for _, m := range a.Models {
-		if !usedNames[m.Name] {
-			continue
-		}
 		for _, f := range m.Fields {
 			if f.IsArray {
 				needsList = true
 			}
 			if f.Optional {
 				needsOptional = true
+			}
+			if f.IsMap {
+				needsDict = true
 			}
 		}
 	}
@@ -126,13 +112,12 @@ func (e *PythonEmitter) emitTypes(a ast.AST, mod ast.Module, outDir string) erro
 	if needsLiteral {
 		typingImports = append(typingImports, "Literal")
 	}
-	sb.WriteString(fmt.Sprintf("from typing import %s\n", strings.Join(typingImports, ", ")))
-	sb.WriteString("\n")
+	if needsDict {
+		typingImports = append(typingImports, "Dict")
+	}
+	sb.WriteString(fmt.Sprintf("from typing import %s\n\n", strings.Join(typingImports, ", ")))
 
 	for _, en := range a.Enums {
-		if !usedEnums[en.Name] {
-			continue
-		}
 		if en.Description != "" {
 			sb.WriteString(fmt.Sprintf("# %s\n", en.Description))
 		}
@@ -144,18 +129,19 @@ func (e *PythonEmitter) emitTypes(a ast.AST, mod ast.Module, outDir string) erro
 	}
 
 	for _, m := range a.Models {
-		if !usedNames[m.Name] {
-			continue
-		}
 		if m.Description != "" {
 			sb.WriteString(fmt.Sprintf("# %s\n", m.Description))
 		}
-		sb.WriteString(fmt.Sprintf("class %s(TypedDict, total=False):\n", m.Name))
+		if m.Extends != "" {
+			sb.WriteString(fmt.Sprintf("class %s(%s, total=False):\n", m.Name, m.Extends))
+		} else {
+			sb.WriteString(fmt.Sprintf("class %s(TypedDict, total=False):\n", m.Name))
+		}
 		if len(m.Fields) == 0 {
 			sb.WriteString("    pass\n")
 		}
 		for _, f := range m.Fields {
-			pyType := veldTypeToPy(f.Type, f.IsArray)
+			pyType := veldFieldToPy(f)
 			if f.Optional {
 				pyType = fmt.Sprintf("Optional[%s]", pyType)
 			}
@@ -164,10 +150,11 @@ func (e *PythonEmitter) emitTypes(a ast.AST, mod ast.Module, outDir string) erro
 		sb.WriteString("\n")
 	}
 
-	return os.WriteFile(filepath.Join(dir, strings.ToLower(mod.Name)+".py"), []byte(sb.String()), 0644)
+	return os.WriteFile(filepath.Join(outDir, "types", "__init__.py"), []byte(sb.String()), 0644)
 }
 
-// emitInterface writes generated/interfaces/i_{module}_service.py as an ABC.
+// ── interfaces/i_{module}_service.py ─────────────────────────────────────────
+
 func (e *PythonEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) error {
 	dir := filepath.Join(outDir, "interfaces")
 	moduleLower := strings.ToLower(mod.Name)
@@ -189,7 +176,7 @@ func (e *PythonEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) 
 		sb.WriteString("from typing import List\n")
 	}
 	if len(usedTypes) > 0 {
-		sb.WriteString(fmt.Sprintf("from ..types.%s import %s\n", moduleLower, strings.Join(usedTypes, ", ")))
+		sb.WriteString(fmt.Sprintf("from ..types import %s\n", strings.Join(usedTypes, ", ")))
 	}
 	sb.WriteString("\n")
 
@@ -210,7 +197,6 @@ func (e *PythonEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) 
 		}
 		pathParams := emitter.ExtractPathParams(routePath)
 
-		// Path params first, then input, then query
 		for _, p := range pathParams {
 			sb.WriteString(fmt.Sprintf(", %s: str", emitter.ToSnakeCase(p)))
 		}
@@ -230,7 +216,8 @@ func (e *PythonEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) 
 	return os.WriteFile(filepath.Join(dir, fmt.Sprintf("i_%s_service.py", moduleLower)), []byte(sb.String()), 0644)
 }
 
-// emitRoutes writes generated/routes/{module}_routes.py.
+// ── routes/{module}_routes.py — with try/except, status codes, Pydantic ──────
+
 func (e *PythonEmitter) emitRoutes(_ ast.AST, mod ast.Module, outDir string) error {
 	dir := filepath.Join(outDir, "routes")
 	moduleLower := strings.ToLower(mod.Name)
@@ -238,13 +225,27 @@ func (e *PythonEmitter) emitRoutes(_ ast.AST, mod ast.Module, outDir string) err
 	allMiddleware := emitter.CollectModuleMiddleware(mod)
 	hasMiddleware := len(allMiddleware) > 0
 
+	// Collect schemas to import
+	seen := make(map[string]bool)
+	var schemaImports []string
+	for _, act := range mod.Actions {
+		if act.Input != "" && !seen[act.Input] {
+			seen[act.Input] = true
+			schemaImports = append(schemaImports, act.Input+"Schema")
+		}
+	}
+
 	var sb strings.Builder
 	sb.WriteString("# AUTO-GENERATED BY VELD — DO NOT EDIT\n")
 	sb.WriteString("from flask import request, jsonify\n")
 	if hasMiddleware {
 		sb.WriteString("from typing import Callable, Dict\n")
 	}
-	sb.WriteString(fmt.Sprintf("from ..interfaces.i_%s_service import I%sService\n\n", moduleLower, mod.Name))
+	sb.WriteString(fmt.Sprintf("from ..interfaces.i_%s_service import I%sService\n", moduleLower, mod.Name))
+	if len(schemaImports) > 0 {
+		sb.WriteString(fmt.Sprintf("from ..schemas.schemas import %s\n", strings.Join(schemaImports, ", ")))
+	}
+	sb.WriteString("\n")
 
 	if hasMiddleware {
 		sb.WriteString(fmt.Sprintf("def register_%s_routes(app, service: I%sService, middleware: Dict[str, Callable]) -> None:\n", moduleLower, mod.Name))
@@ -280,24 +281,38 @@ func (e *PythonEmitter) emitRoutes(_ ast.AST, mod ast.Module, outDir string) err
 			sb.WriteString(fmt.Sprintf("\n    def %s():\n", fnName))
 		}
 
-		// Build service call arguments
+		sb.WriteString("        try:\n")
+
+		// Build service call with Pydantic validation
 		var callArgs []string
 		for _, p := range pathParams {
 			callArgs = append(callArgs, emitter.ToSnakeCase(p))
 		}
 		if act.Input != "" {
-			callArgs = append(callArgs, "request.get_json()")
+			sb.WriteString(fmt.Sprintf("            input = %s(**request.get_json()).model_dump()\n", act.Input+"Schema"))
+			callArgs = append(callArgs, "input")
 		}
 		if act.Query != "" {
 			callArgs = append(callArgs, "request.args.to_dict()")
 		}
 
-		if len(callArgs) > 0 {
-			sb.WriteString(fmt.Sprintf("        result = service.%s(%s)\n", emitter.ToSnakeCase(act.Name), strings.Join(callArgs, ", ")))
-		} else {
-			sb.WriteString(fmt.Sprintf("        result = service.%s()\n", emitter.ToSnakeCase(act.Name)))
+		serviceCallStr := fmt.Sprintf("service.%s(%s)", emitter.ToSnakeCase(act.Name), strings.Join(callArgs, ", "))
+
+		switch {
+		case act.Method == "DELETE" && act.Output == "":
+			sb.WriteString(fmt.Sprintf("            %s\n", serviceCallStr))
+			sb.WriteString("            return '', 204\n")
+		case act.Method == "POST":
+			sb.WriteString(fmt.Sprintf("            result = %s\n", serviceCallStr))
+			sb.WriteString("            return jsonify(result), 201\n")
+		default:
+			sb.WriteString(fmt.Sprintf("            result = %s\n", serviceCallStr))
+			sb.WriteString("            return jsonify(result)\n")
 		}
-		sb.WriteString("        return jsonify(result)\n")
+
+		sb.WriteString("        except Exception as e:\n")
+		sb.WriteString("            status = getattr(e, 'status', getattr(e, 'status_code', 500))\n")
+		sb.WriteString("            return jsonify({'error': str(e)}), status\n")
 
 		if len(act.Middleware) > 0 {
 			for i := len(act.Middleware) - 1; i >= 0; i-- {
@@ -315,9 +330,104 @@ func (e *PythonEmitter) emitRoutes(_ ast.AST, mod ast.Module, outDir string) err
 	return os.WriteFile(filepath.Join(dir, moduleLower+"_routes.py"), []byte(sb.String()), 0644)
 }
 
-// ── python-specific helpers ───────────────────────────────────────────────────
+// ── schemas/schemas.py — Pydantic validation ─────────────────────────────────
+
+func (e *PythonEmitter) emitPydanticSchemas(a ast.AST, outDir string) error {
+	dir := filepath.Join(outDir, "schemas")
+
+	needsList := false
+	needsOptional := false
+	needsLiteral := len(a.Enums) > 0
+	needsDict := false
+
+	for _, m := range a.Models {
+		for _, f := range m.Fields {
+			if f.IsArray {
+				needsList = true
+			}
+			if f.Optional {
+				needsOptional = true
+			}
+			if f.IsMap {
+				needsDict = true
+			}
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString("# AUTO-GENERATED BY VELD — DO NOT EDIT\n")
+	sb.WriteString("from __future__ import annotations\n")
+	sb.WriteString("from pydantic import BaseModel\n")
+
+	typingImports := []string{}
+	if needsList {
+		typingImports = append(typingImports, "List")
+	}
+	if needsOptional {
+		typingImports = append(typingImports, "Optional")
+	}
+	if needsLiteral {
+		typingImports = append(typingImports, "Literal")
+	}
+	if needsDict {
+		typingImports = append(typingImports, "Dict")
+	}
+	if len(typingImports) > 0 {
+		sb.WriteString(fmt.Sprintf("from typing import %s\n", strings.Join(typingImports, ", ")))
+	}
+	sb.WriteString("\n")
+
+	for _, en := range a.Enums {
+		if en.Description != "" {
+			sb.WriteString(fmt.Sprintf("# %s\n", en.Description))
+		}
+		quoted := make([]string, len(en.Values))
+		for i, v := range en.Values {
+			quoted[i] = fmt.Sprintf("\"%s\"", v)
+		}
+		sb.WriteString(fmt.Sprintf("%s = Literal[%s]\n\n", en.Name, strings.Join(quoted, ", ")))
+	}
+
+	for _, m := range a.Models {
+		if m.Description != "" {
+			sb.WriteString(fmt.Sprintf("# %s\n", m.Description))
+		}
+		if m.Extends != "" {
+			sb.WriteString(fmt.Sprintf("class %sSchema(%sSchema):\n", m.Name, m.Extends))
+		} else {
+			sb.WriteString(fmt.Sprintf("class %sSchema(BaseModel):\n", m.Name))
+		}
+		if len(m.Fields) == 0 {
+			sb.WriteString("    pass\n\n")
+			continue
+		}
+		for _, f := range m.Fields {
+			pyType := veldFieldToPy(f)
+			fieldName := emitter.ToSnakeCase(f.Name)
+			if f.Optional {
+				if f.Default != "" {
+					sb.WriteString(fmt.Sprintf("    %s: Optional[%s] = %s\n", fieldName, pyType, pyDefault(f)))
+				} else {
+					sb.WriteString(fmt.Sprintf("    %s: Optional[%s] = None\n", fieldName, pyType))
+				}
+			} else if f.Default != "" {
+				sb.WriteString(fmt.Sprintf("    %s: %s = %s\n", fieldName, pyType, pyDefault(f)))
+			} else {
+				sb.WriteString(fmt.Sprintf("    %s: %s\n", fieldName, pyType))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	return os.WriteFile(filepath.Join(dir, "schemas.py"), []byte(sb.String()), 0644)
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
 
 func formatPyOutputType(act ast.Action) string {
+	if act.Output == "" {
+		return "None"
+	}
 	base := veldScalarToPy(act.Output)
 	if act.OutputArray {
 		return fmt.Sprintf("List[%s]", base)
@@ -340,10 +450,31 @@ func veldScalarToPy(t string) string {
 	}
 }
 
-func veldTypeToPy(t string, isArray bool) string {
-	base := veldScalarToPy(t)
-	if isArray {
+func veldFieldToPy(f ast.Field) string {
+	if f.IsMap {
+		return fmt.Sprintf("Dict[str, %s]", veldScalarToPy(f.MapValueType))
+	}
+	base := veldScalarToPy(f.Type)
+	if f.IsArray {
 		return fmt.Sprintf("List[%s]", base)
 	}
 	return base
+}
+
+func pyDefault(f ast.Field) string {
+	d := f.Default
+	if d == "true" {
+		return "True"
+	}
+	if d == "false" {
+		return "False"
+	}
+	if strings.HasPrefix(d, "\"") {
+		return d // already quoted
+	}
+	// Enum default
+	if f.Type != "int" && f.Type != "float" && f.Type != "bool" && f.Type != "string" {
+		return fmt.Sprintf("\"%s\"", d)
+	}
+	return d
 }

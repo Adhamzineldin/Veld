@@ -1,6 +1,10 @@
 package tshelpers
 
-import "github.com/veld-dev/veld/internal/ast"
+import (
+	"fmt"
+
+	"github.com/veld-dev/veld/internal/ast"
+)
 
 // VeldScalarToTS maps a Veld scalar or model name to its TypeScript equivalent.
 func VeldScalarToTS(t string) string {
@@ -24,6 +28,15 @@ func VeldTypeToTS(t string, isArray bool) string {
 		return base + "[]"
 	}
 	return base
+}
+
+// VeldFieldToTS maps a full Field to its TypeScript type string,
+// handling arrays, maps, and scalar types.
+func VeldFieldToTS(f ast.Field) string {
+	if f.IsMap {
+		return fmt.Sprintf("Record<string, %s>", VeldScalarToTS(f.MapValueType))
+	}
+	return VeldTypeToTS(f.Type, f.IsArray)
 }
 
 // FormatOutputType returns the TS type for an action output, handling arrays.

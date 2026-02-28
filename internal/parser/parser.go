@@ -128,11 +128,22 @@ func (p *Parser) parseModel() (ast.Model, error) {
 	if err != nil {
 		return ast.Model{}, fmt.Errorf("model name: %w", err)
 	}
+
+	m := ast.Model{Name: nameTok.Value, Line: startTok.Line}
+
+	// optional: model Child extends Parent {
+	if p.peek().Type == lexer.TIdent && p.peek().Value == "extends" {
+		p.consume() // 'extends'
+		parentTok, err := p.expect(lexer.TIdent)
+		if err != nil {
+			return ast.Model{}, fmt.Errorf("model extends: %w", err)
+		}
+		m.Extends = parentTok.Value
+	}
+
 	if _, err := p.expect(lexer.TLBrace); err != nil {
 		return ast.Model{}, err
 	}
-
-	m := ast.Model{Name: nameTok.Value, Line: startTok.Line}
 
 	// optional description: "..."
 	if p.peek().Type == lexer.TDescription {
@@ -186,6 +197,30 @@ func (p *Parser) parseField() (ast.Field, error) {
 
 	typeName := typeTok.Value
 	isArray := false
+	isMap := false
+	mapValueType := ""
+
+	// Map<string, ValueType> syntax
+	if typeName == "Map" && p.peek().Type == lexer.TLAngle {
+		p.consume() // <
+		keyTok := p.consume()
+		if keyTok.Value != "string" {
+			return ast.Field{}, fmt.Errorf("line %d: Map key type must be \"string\", got %q", keyTok.Line, keyTok.Value)
+		}
+		if _, err := p.expect(lexer.TComma); err != nil {
+			return ast.Field{}, fmt.Errorf("line %d: expected ',' in Map<string, V>", keyTok.Line)
+		}
+		valTok := p.consume()
+		if !isTypeToken(valTok.Type) && valTok.Type != lexer.TIdent {
+			return ast.Field{}, fmt.Errorf("line %d: expected value type in Map<string, V>, got %q", valTok.Line, valTok.Value)
+		}
+		if _, err := p.expect(lexer.TRAngle); err != nil {
+			return ast.Field{}, err
+		}
+		isMap = true
+		mapValueType = valTok.Value
+		typeName = "Map"
+	}
 
 	// Array suffix: name: string[] or name: User[]
 	if p.peek().Type == lexer.TLBracket {
@@ -197,11 +232,13 @@ func (p *Parser) parseField() (ast.Field, error) {
 	}
 
 	f := ast.Field{
-		Name:     nameTok.Value,
-		Type:     typeName,
-		Optional: optional,
-		IsArray:  isArray,
-		Line:     nameTok.Line,
+		Name:         nameTok.Value,
+		Type:         typeName,
+		Optional:     optional,
+		IsArray:      isArray,
+		IsMap:        isMap,
+		MapValueType: mapValueType,
+		Line:         nameTok.Line,
 	}
 
 	// Check for @default(value)

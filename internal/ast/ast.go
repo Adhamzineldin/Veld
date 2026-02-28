@@ -22,6 +22,7 @@ type Enum struct {
 type Model struct {
 	Name        string  `json:"name"`
 	Description string  `json:"description,omitempty"`
+	Extends     string  `json:"extends,omitempty"` // parent model name for inheritance
 	Fields      []Field `json:"fields"`
 	SourceFile  string  `json:"-"` // absolute path; set by file loader, not serialised
 	Line        int     `json:"-"` // line in source where this model was defined
@@ -29,12 +30,14 @@ type Model struct {
 
 // Field is a single property of a Model.
 type Field struct {
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Optional bool   `json:"optional,omitempty"`
-	IsArray  bool   `json:"isArray,omitempty"`
-	Default  string `json:"default,omitempty"` // @default(value)
-	Line     int    `json:"-"`                 // line in source where this field was defined
+	Name         string `json:"name"`
+	Type         string `json:"type"`
+	Optional     bool   `json:"optional,omitempty"`
+	IsArray      bool   `json:"isArray,omitempty"`
+	IsMap        bool   `json:"isMap,omitempty"`        // Map<string, V>
+	MapValueType string `json:"mapValueType,omitempty"` // the V in Map<string, V>
+	Default      string `json:"default,omitempty"`      // @default(value)
+	Line         int    `json:"-"`                      // line in source where this field was defined
 }
 
 // Module groups related Actions.
