@@ -1,0 +1,118 @@
+name: Publish Plugins
+
+# ─── HOW THIS WORKS ─────────────────────────────────────────────────────────
+#
+# Trigger:  Push a version tag →  git tag v0.2.0 && git push origin v0.2.0
+#
+# Pipeline: Build & Publish VS Code Extension + JetBrains Plugin
+#
+# Secrets needed (set in GitHub repo → Settings → Secrets → Actions):
+#   VSCE_PAT              — Azure DevOps Personal Access Token (Marketplace scope)
+#   JETBRAINS_PUBLISH_TOKEN — JetBrains Marketplace token
+#   JETBRAINS_CERT_CHAIN  — Certificate chain for plugin signing (optional)
+#   JETBRAINS_PRIVATE_KEY — Private key for plugin signing (optional)
+#   JETBRAINS_KEY_PASSWORD — Password for private key (optional)
+#
+# Pre-release tags (e.g. v0.2.0-beta.1) skip publishing.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  # ─── 1. Publish VS Code Extension ───────────────────────────────────────────
+  publish-vscode:
+    name: Publish VS Code Extension
+    runs-on: ubuntu-latest
+    if: "!contains(github.ref, '-')"  # skip pre-releases
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        working-directory: editors/vscode
+        run: npm ci
+
+      - name: Update version in package.json
+        working-directory: editors/vscode
+        run: |
+          npm version "${{ steps.version.outputs.VERSION }}" --no-git-tag-version --allow-same-version
+
+      - name: Compile TypeScript
+        working-directory: editors/vscode
+        run: npm run compile
+
+      - name: Package extension
+        working-directory: editors/vscode
+        run: npm run package
+
+      - name: Publish to VS Code Marketplace
+        working-directory: editors/vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          npx @vscode/vsce publish -p "$VSCE_PAT"
+
+  # ─── 2. Publish JetBrains Plugin ────────────────────────────────────────────
+  publish-jetbrains:
+    name: Publish JetBrains Plugin
+    runs-on: ubuntu-latest
+    if: "!contains(github.ref, '-')"  # skip pre-releases
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v3
+        with:
+          gradle-version: wrapper
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Update version in build.gradle
+        working-directory: editors/jetbrains
+        run: |
+          sed -i "s/^version = .*/version = '${{ steps.version.outputs.VERSION }}'/" build.gradle
+
+      - name: Build plugin
+        working-directory: editors/jetbrains
+        run: ./gradlew buildPlugin --no-daemon
+
+      - name: Verify plugin
+        working-directory: editors/jetbrains
+        run: ./gradlew verifyPlugin --no-daemon
+
+      - name: Publish to JetBrains Marketplace
+        working-directory: editors/jetbrains
+        env:
+          ORG_GRADLE_PROJECT_intellijPublishToken: ${{ secrets.JETBRAINS_PUBLISH_TOKEN }}
+          CERTIFICATE_CHAIN: ${{ secrets.JETBRAINS_CERT_CHAIN }}
+          PRIVATE_KEY: ${{ secrets.JETBRAINS_PRIVATE_KEY }}
+          PRIVATE_KEY_PASSWORD: ${{ secrets.JETBRAINS_KEY_PASSWORD }}
+        run: ./gradlew publishPlugin --no-daemon
