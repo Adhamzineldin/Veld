@@ -5,6 +5,7 @@ package setup
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -15,21 +16,46 @@ type Result struct {
 	Detail string // human-readable explanation
 }
 
+// Options carries optional directory overrides for setup.
+type Options struct {
+	BackendDir  string // directory containing backend project files (default: projectDir)
+	FrontendDir string // directory containing frontend project files (default: projectDir)
+}
+
 // Run inspects the project directory and patches config files for the given
 // backend/frontend combination. outDir is the generated output directory
-// (relative or absolute). All patching is idempotent.
-func Run(projectDir, backend, frontend, outDir string) []Result {
+// (relative or absolute). All patching is idempotent — if the output path
+// changed, existing entries are updated in place.
+func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result {
+	var o Options
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+	backendDir := projectDir
+	if o.BackendDir != "" {
+		backendDir = o.BackendDir
+	}
+	frontendDir := projectDir
+	if o.FrontendDir != "" {
+		frontendDir = o.FrontendDir
+	}
+
 	var results []Result
 	done := map[string]bool{} // dedup by patcher name
 
-	// Normalise outDir to be relative to projectDir.
-	relOut := outDir
-	if filepath.IsAbs(outDir) {
-		if r, err := filepath.Rel(projectDir, outDir); err == nil {
-			relOut = r
+	// relOutFor returns outDir relative to the given base directory (slash-normalised).
+	relOutFor := func(baseDir string) string {
+		rel := outDir
+		if filepath.IsAbs(outDir) {
+			if r, err := filepath.Rel(baseDir, outDir); err == nil {
+				rel = r
+			}
 		}
+		return filepath.ToSlash(rel)
 	}
-	relOut = filepath.ToSlash(relOut)
+
+	relOutBackend := relOutFor(backendDir)
+	relOutFrontend := relOutFor(frontendDir)
 
 	type patcher struct {
 		name string
@@ -43,6 +69,7 @@ func Run(projectDir, backend, frontend, outDir string) []Result {
 		patchers = append(patchers, patcher{"tsconfig", func(dir, out string) Result { return patchTSConfig(dir, out) }})
 	case "python":
 		patchers = append(patchers, patcher{"requirements", func(dir, _ string) Result { return patchRequirementsTxt(dir) }})
+		patchers = append(patchers, patcher{"conftest", func(dir, out string) Result { return patchConftest(dir, out) }})
 	case "go":
 		patchers = append(patchers, patcher{"gomod", func(dir, out string) Result { return patchGoMod(dir, out) }})
 	case "rust":
@@ -67,7 +94,7 @@ func Run(projectDir, backend, frontend, outDir string) []Result {
 			return Result{
 				File:   "Xcode",
 				Action: "manual",
-				Detail: "add " + relOut + "/client/ as a local Swift package dependency",
+				Detail: "add " + relOutFrontend + "/client/ as a local Swift package dependency",
 			}
 		}})
 	}
@@ -77,7 +104,22 @@ func Run(projectDir, backend, frontend, outDir string) []Result {
 			continue
 		}
 		done[p.name] = true
-		results = append(results, p.fn(projectDir, relOut))
+
+		// Backend patchers run against backendDir; frontend patchers against frontendDir.
+		dir := backendDir
+		relOut := relOutBackend
+		switch p.name {
+		case "tsconfig", "pubspec", "gradle", "swift":
+			// These may be used by both backend (node) and frontend.
+			// If a dedicated frontendDir was provided, prefer it; otherwise
+			// fall through to the backend dir (covers node backend tsconfig).
+			if o.FrontendDir != "" {
+				dir = frontendDir
+				relOut = relOutFrontend
+			}
+		}
+
+		results = append(results, p.fn(dir, relOut))
 	}
 
 	return results
@@ -120,6 +162,7 @@ func findFileGlob(dir, pattern string) string {
 // ── patchers ─────────────────────────────────────────────────────────────────
 
 // patchTSConfig adds @veld/* path alias to tsconfig.json compilerOptions.paths.
+// If the alias already exists but points to a different directory, it is updated.
 func patchTSConfig(dir, outDir string) Result {
 	path := findFile(dir, "tsconfig.json")
 	if path == "" {
@@ -132,9 +175,20 @@ func patchTSConfig(dir, outDir string) Result {
 	}
 	content := string(data)
 
-	// Already configured?
+	newMapping := "\"./" + outDir + "/*\""
+
+	// Already configured — check if path needs updating.
 	if strings.Contains(content, "@veld/*") {
-		return Result{File: "tsconfig.json", Action: "skipped", Detail: "@veld/* already configured"}
+		if strings.Contains(content, newMapping) {
+			return Result{File: "tsconfig.json", Action: "skipped", Detail: "@veld/* already points to " + outDir}
+		}
+		// Update the existing mapping to the new outDir.
+		re := regexp.MustCompile(`("@veld/\*"\s*:\s*\[\s*)"[^"]*"`)
+		content = re.ReplaceAllString(content, "${1}"+newMapping)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: "tsconfig.json", Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: "tsconfig.json", Action: "patched", Detail: "updated @veld/* path to " + outDir}
 	}
 
 	pathsEntry := `      "@veld/*": ["./' + outDir + '/*"]`
@@ -215,7 +269,54 @@ func patchRequirementsTxt(dir string) Result {
 	return Result{File: "requirements.txt", Action: "patched", Detail: "added pydantic>=2.0"}
 }
 
+// patchConftest creates or patches conftest.py to add the generated directory
+// to sys.path, so Python code can import from the generated folder directly:
+//
+//	from types import User
+//	from interfaces.i_users_service import IUsersService
+//
+// If conftest.py already contains the path, it is updated if the outDir changed.
+func patchConftest(dir, outDir string) Result {
+	path := filepath.Join(dir, "conftest.py")
+
+	marker := "# veld:generated-path"
+	newLine := `sys.path.insert(0, os.path.join(os.path.dirname(__file__), "` + outDir + `"))  ` + marker
+
+	// Check if conftest.py exists and already has our marker.
+	data, err := os.ReadFile(path)
+	if err == nil {
+		content := string(data)
+		if strings.Contains(content, marker) {
+			if strings.Contains(content, `"`+outDir+`"`) {
+				return Result{File: "conftest.py", Action: "skipped", Detail: "sys.path already points to " + outDir}
+			}
+			// Update the existing line.
+			re := regexp.MustCompile(`(?m)^.*` + regexp.QuoteMeta(marker) + `.*$`)
+			content = re.ReplaceAllString(content, newLine)
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				return Result{File: "conftest.py", Action: "not-found", Detail: err.Error()}
+			}
+			return Result{File: "conftest.py", Action: "patched", Detail: "updated sys.path to " + outDir}
+		}
+		// Marker not found — append it.
+		content = strings.TrimRight(content, "\n") + "\n\n" +
+			"import os, sys  # noqa: E401\n" + newLine + "\n"
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: "conftest.py", Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: "conftest.py", Action: "patched", Detail: "added sys.path for " + outDir}
+	}
+
+	// conftest.py doesn't exist — create it.
+	content := "# AUTO-GENERATED BY VELD — safe to extend\nimport os, sys  # noqa: E401\n" + newLine + "\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		return Result{File: "conftest.py", Action: "not-found", Detail: err.Error()}
+	}
+	return Result{File: "conftest.py", Action: "patched", Detail: "created conftest.py with sys.path for " + outDir}
+}
+
 // patchGoMod adds a replace directive for the generated module.
+// If the directive already exists but points to a different path, it is updated.
 func patchGoMod(dir, outDir string) Result {
 	path := findFile(dir, "go.mod")
 	if path == "" {
@@ -229,8 +330,19 @@ func patchGoMod(dir, outDir string) Result {
 	content := string(data)
 
 	marker := "veld/generated"
+	newDirective := "replace veld/generated => ./" + outDir
 	if strings.Contains(content, marker) {
-		return Result{File: "go.mod", Action: "skipped", Detail: "veld/generated replace already configured"}
+		// Check if the path already matches.
+		if strings.Contains(content, newDirective) {
+			return Result{File: "go.mod", Action: "skipped", Detail: "veld/generated replace already points to " + outDir}
+		}
+		// Update the existing replace directive.
+		re := regexp.MustCompile(`replace\s+veld/generated\s+=>\s+\S+`)
+		content = re.ReplaceAllString(content, newDirective)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: "go.mod", Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: "go.mod", Action: "patched", Detail: "updated replace directive to ./" + outDir}
 	}
 
 	directive := "\nreplace veld/generated => ./" + outDir + "\n"
@@ -242,6 +354,7 @@ func patchGoMod(dir, outDir string) Result {
 }
 
 // patchCargoToml adds generated dir to workspace members.
+// If an existing veld entry points to a different path, it is updated.
 func patchCargoToml(dir, outDir string) Result {
 	path := findFile(dir, "Cargo.toml")
 	if path == "" {
@@ -256,6 +369,17 @@ func patchCargoToml(dir, outDir string) Result {
 
 	if strings.Contains(content, outDir) {
 		return Result{File: "Cargo.toml", Action: "skipped", Detail: "generated dir already in workspace"}
+	}
+
+	// Check if there is a previous veld-generated path in members that needs updating.
+	// Look for old "generated" or similar path entries containing "generated" in the members array.
+	re := regexp.MustCompile(`"[^"]*generated[^"]*"`)
+	if strings.Contains(content, "[workspace]") && re.MatchString(content) {
+		content = re.ReplaceAllString(content, `"`+outDir+`"`)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: "Cargo.toml", Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: "Cargo.toml", Action: "patched", Detail: "updated workspace member to " + outDir}
 	}
 
 	if strings.Contains(content, "[workspace]") {
@@ -277,6 +401,7 @@ func patchCargoToml(dir, outDir string) Result {
 }
 
 // patchPomXML adds <module>generated</module> to pom.xml.
+// If a veld module entry already exists with a different path, it is updated.
 func patchPomXML(dir, outDir string) Result {
 	path := findFile(dir, "pom.xml")
 	if path == "" {
@@ -291,7 +416,17 @@ func patchPomXML(dir, outDir string) Result {
 
 	moduleTag := "<module>" + outDir + "</module>"
 	if strings.Contains(content, moduleTag) {
-		return Result{File: "pom.xml", Action: "skipped", Detail: "module already listed"}
+		return Result{File: "pom.xml", Action: "skipped", Detail: "module already listed with correct path"}
+	}
+
+	// Check for an existing veld-generated module entry with a different path.
+	re := regexp.MustCompile(`<module>[^<]*generated[^<]*</module>`)
+	if re.MatchString(content) {
+		content = re.ReplaceAllString(content, moduleTag)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: "pom.xml", Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: "pom.xml", Action: "patched", Detail: "updated module path to " + outDir}
 	}
 
 	if strings.Contains(content, "<modules>") {
@@ -308,6 +443,7 @@ func patchPomXML(dir, outDir string) Result {
 }
 
 // patchCsproj adds a ProjectReference to the first .csproj found.
+// If an existing veld reference points to a different path, it is updated.
 func patchCsproj(dir, outDir string) Result {
 	path := findFileGlob(dir, "*.csproj")
 	if path == "" {
@@ -322,7 +458,20 @@ func patchCsproj(dir, outDir string) Result {
 	content := string(data)
 
 	ref := outDir + "/" + outDir + ".csproj"
-	if strings.Contains(content, ref) || strings.Contains(content, "veld") {
+	if strings.Contains(content, ref) {
+		return Result{File: filename, Action: "skipped", Detail: "project reference already points to " + outDir}
+	}
+
+	// Check for an existing veld project reference with a different path.
+	re := regexp.MustCompile(`<ProjectReference\s+Include="[^"]*generated[^"]*\.csproj"\s*/>`)
+	if re.MatchString(content) || strings.Contains(content, "veld") {
+		if re.MatchString(content) {
+			content = re.ReplaceAllString(content, `<ProjectReference Include="`+ref+`" />`)
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				return Result{File: filename, Action: "not-found", Detail: err.Error()}
+			}
+			return Result{File: filename, Action: "patched", Detail: "updated ProjectReference to " + outDir}
+		}
 		return Result{File: filename, Action: "skipped", Detail: "project reference already configured"}
 	}
 
@@ -338,6 +487,7 @@ func patchCsproj(dir, outDir string) Result {
 }
 
 // patchComposerJSON adds PSR-4 autoload entry for the generated namespace.
+// If the namespace already exists with a different path, it is updated.
 func patchComposerJSON(dir, outDir string) Result {
 	path := findFile(dir, "composer.json")
 	if path == "" {
@@ -350,8 +500,22 @@ func patchComposerJSON(dir, outDir string) Result {
 	}
 	content := string(data)
 
+	newEntry := "\"" + outDir + "/\""
 	if strings.Contains(content, "Veld\\\\Generated") || strings.Contains(content, "Veld\\Generated") {
-		return Result{File: "composer.json", Action: "skipped", Detail: "Veld\\Generated namespace already configured"}
+		// Check if it already points to the correct path.
+		if strings.Contains(content, "Veld\\\\Generated\\\\\":") && strings.Contains(content, newEntry) {
+			return Result{File: "composer.json", Action: "skipped", Detail: "Veld\\Generated already points to " + outDir}
+		}
+		if strings.Contains(content, "Veld\\Generated\":") && strings.Contains(content, newEntry) {
+			return Result{File: "composer.json", Action: "skipped", Detail: "Veld\\Generated already points to " + outDir}
+		}
+		// Update the path.
+		re := regexp.MustCompile(`("Veld\\\\Generated\\\\"\s*:\s*)"[^"]*"`)
+		content = re.ReplaceAllString(content, "${1}"+newEntry)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: "composer.json", Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: "composer.json", Action: "patched", Detail: "updated Veld\\Generated path to " + outDir + "/"}
 	}
 
 	entry := "\"Veld\\\\Generated\\\\\": \"" + outDir + "/\""
@@ -374,6 +538,7 @@ func patchComposerJSON(dir, outDir string) Result {
 }
 
 // patchPubspecYAML adds veld_client path dependency to pubspec.yaml.
+// If veld_client already exists with a different path, it is updated.
 func patchPubspecYAML(dir, outDir string) Result {
 	path := findFile(dir, "pubspec.yaml")
 	if path == "" {
@@ -386,8 +551,18 @@ func patchPubspecYAML(dir, outDir string) Result {
 	}
 	content := string(data)
 
+	newPath := "./" + outDir + "/client"
 	if strings.Contains(content, "veld_client") {
-		return Result{File: "pubspec.yaml", Action: "skipped", Detail: "veld_client already configured"}
+		if strings.Contains(content, newPath) {
+			return Result{File: "pubspec.yaml", Action: "skipped", Detail: "veld_client already points to " + outDir}
+		}
+		// Update the existing path.
+		re := regexp.MustCompile(`(veld_client:\s*\n\s*path:\s*)\S+`)
+		content = re.ReplaceAllString(content, "${1}"+newPath)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: "pubspec.yaml", Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: "pubspec.yaml", Action: "patched", Detail: "updated veld_client path to " + newPath}
 	}
 
 	dep := "  veld_client:\n    path: ./" + outDir + "/client"
@@ -404,6 +579,7 @@ func patchPubspecYAML(dir, outDir string) Result {
 }
 
 // patchGradleKts adds include(":veld-client") + projectDir to settings.gradle.kts.
+// If the entry already exists with a different path, it is updated.
 func patchGradleKts(dir, outDir string) Result {
 	path := findFile(dir, "settings.gradle.kts")
 	if path == "" {
@@ -416,11 +592,25 @@ func patchGradleKts(dir, outDir string) Result {
 	}
 	content := string(data)
 
+	newProjectDir := `file("` + outDir + `/client")`
 	if strings.Contains(content, "veld-client") {
+		if strings.Contains(content, newProjectDir) {
+			return Result{File: "settings.gradle.kts", Action: "skipped", Detail: "veld-client already points to " + outDir}
+		}
+		// Update the existing projectDir path if the line exists.
+		re := regexp.MustCompile(`(project\(":veld-client"\)\.projectDir\s*=\s*)file\("[^"]*"\)`)
+		if re.MatchString(content) {
+			content = re.ReplaceAllString(content, "${1}"+newProjectDir)
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				return Result{File: "settings.gradle.kts", Action: "not-found", Detail: err.Error()}
+			}
+			return Result{File: "settings.gradle.kts", Action: "patched", Detail: "updated :veld-client project path to " + outDir}
+		}
+		// Include exists but no projectDir line — already configured.
 		return Result{File: "settings.gradle.kts", Action: "skipped", Detail: "veld-client already configured"}
 	}
 
-	entry := "\ninclude(\":veld-client\")\nproject(\":veld-client\").projectDir = file(\"" + outDir + "/client\")\n"
+	entry := "\ninclude(\":veld-client\")\nproject(\":veld-client\").projectDir = " + newProjectDir + "\n"
 	content = strings.TrimRight(content, "\n") + "\n" + entry
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return Result{File: "settings.gradle.kts", Action: "not-found", Detail: err.Error()}

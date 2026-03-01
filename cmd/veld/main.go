@@ -218,52 +218,110 @@ func printGenerateSummary(rc config.ResolvedConfig, modules []string) {
 	}
 }
 
-// printImportInstructions prints language-specific import hints after generation.
+// printImportInstructions prints language-specific import hints after generation
+// for both the backend AND the frontend.
 func printImportInstructions(rc config.ResolvedConfig) {
+	be := rc.Backend
 	fe := rc.Frontend
-	if fe == "" || fe == "none" || fe == "types-only" {
+
+	hasBackend := be != "" && be != "none" && be != "openapi" && be != "database" &&
+		be != "dockerfile" && be != "cicd" && be != "env" && be != "scaffold-tests"
+	hasFrontend := fe != "" && fe != "none" && fe != "types-only"
+
+	if !hasBackend && !hasFrontend {
 		return
+	}
+
+	// ── Relative output path for display ─────────────────────────────────
+	relOut := rc.Out
+	if cwd, err := os.Getwd(); err == nil {
+		if r, err := filepath.Rel(cwd, rc.Out); err == nil {
+			relOut = filepath.ToSlash(r)
+		}
 	}
 
 	fmt.Println()
 	fmt.Println(dim("  Import instructions:"))
 
-	switch fe {
-	case "typescript", "react", "vue", "angular", "svelte":
-		fmt.Println(dim("  Add to tsconfig.json:"))
-		fmt.Println(`    "paths": { "@veld/*": ["./generated/*"] }`)
+	// ── Backend ──────────────────────────────────────────────────────────
+	if hasBackend {
+		fmt.Println()
+		fmt.Println(dim("  Backend") + " (" + bold(be) + "):")
+
+		switch be {
+		case "node":
+			fmt.Println(dim("    Setup:") + ` add to tsconfig.json → "paths": { "@veld/*": ["./` + relOut + `/*"] }`)
+			fmt.Println(dim("    Types:    ") + ` import { User } from '@veld/types';`)
+			fmt.Println(dim("    Routes:   ") + ` import { usersRoutes } from '@veld/routes/users.routes';`)
+			fmt.Println(dim("    Interfaces:") + ` import { IUsersService } from '@veld/interfaces/IUsersService';`)
+		case "python":
+			fmt.Println(dim("    Setup:") + ` add to conftest.py → sys.path.insert(0, "` + relOut + `")`)
+			fmt.Println(dim("    Types:    ") + ` from types import User`)
+			fmt.Println(dim("    Routes:   ") + ` from routes.users_routes import users_bp`)
+			fmt.Println(dim("    Interfaces:") + ` from interfaces.i_users_service import IUsersService`)
+		case "go":
+			fmt.Println(dim("    Setup:") + ` add to go.mod → replace veld/generated => ./` + relOut)
+			fmt.Println(dim("    Types:    ") + ` import "veld/generated/internal/models"`)
+			fmt.Println(dim("    Routes:   ") + ` import "veld/generated/internal/routes"`)
+			fmt.Println(dim("    Interfaces:") + ` import "veld/generated/internal/interfaces"`)
+		case "rust":
+			fmt.Println(dim("    Setup:") + ` add to Cargo.toml [workspace] → members = ["` + relOut + `"]`)
+			fmt.Println(dim("    Types:    ") + ` use veld_generated::models::User;`)
+			fmt.Println(dim("    Routes:   ") + ` use veld_generated::routes;`)
+			fmt.Println(dim("    Interfaces:") + ` use veld_generated::services::IUsersService;`)
+		case "java":
+			fmt.Println(dim("    Setup:") + ` add to pom.xml → <module>` + relOut + `</module>`)
+			fmt.Println(dim("    Types:    ") + ` import veld.generated.models.User;`)
+			fmt.Println(dim("    Routes:   ") + ` import veld.generated.controllers.UsersController;`)
+			fmt.Println(dim("    Interfaces:") + ` import veld.generated.services.IUsersService;`)
+		case "csharp":
+			fmt.Println(dim("    Setup:") + ` add ProjectReference → ` + relOut + `/` + relOut + `.csproj`)
+			fmt.Println(dim("    Types:    ") + ` using Veld.Generated.Models;`)
+			fmt.Println(dim("    Routes:   ") + ` using Veld.Generated.Controllers;`)
+			fmt.Println(dim("    Interfaces:") + ` using Veld.Generated.Services;`)
+		case "php":
+			fmt.Println(dim("    Setup:") + ` add to composer.json → "Veld\\Generated\\": "` + relOut + `/"`)
+			fmt.Println(dim("    Types:    ") + ` use Veld\Generated\Models\User;`)
+			fmt.Println(dim("    Routes:   ") + ` // routes/api.php is auto-registered`)
+			fmt.Println(dim("    Interfaces:") + ` use Veld\Generated\Services\IUsersService;`)
+		}
 	}
 
-	switch fe {
-	case "typescript":
-		fmt.Println(dim("  Then:") + ` import { api } from '@veld/client/api';`)
-	case "react":
-		fmt.Println(dim("  Client:") + ` import { api } from '@veld/client/api';`)
-		fmt.Println(dim("  Hooks:") + `  import { useUsersListUsers } from '@veld/hooks';`)
-		fmt.Println(dim("  Requires:") + ` npm install @tanstack/react-query`)
-	case "vue":
-		fmt.Println(dim("  Client:") + ` import { api } from '@veld/client/api';`)
-		fmt.Println(dim("  Composables:") + ` import { useUsers } from '@veld/composables';`)
-	case "angular":
-		fmt.Println(dim("  Services:") + ` import { UsersService } from '@veld/services';`)
-	case "svelte":
-		fmt.Println(dim("  Client:") + ` import { api } from '@veld/client/api';`)
-		fmt.Println(dim("  Stores:") + `  import { createUsersStore } from '@veld/stores';`)
-	case "dart", "flutter":
-		fmt.Println(dim("  Add to pubspec.yaml:"))
-		fmt.Println(`    dependencies:`)
-		fmt.Println(`      veld_client:`)
-		fmt.Println(`        path: ./generated/client`)
-		fmt.Println(dim("  Then:") + ` import 'package:veld_client/api_client.dart';`)
-	case "kotlin":
-		fmt.Println(dim("  Add to settings.gradle.kts:"))
-		fmt.Println(`    include(":veld-client")`)
-		fmt.Println(`    project(":veld-client").projectDir = file("generated/client")`)
-		fmt.Println(dim("  Then:") + ` import veld.generated.client.*`)
-	case "swift":
-		fmt.Println(dim("  In Xcode: File -> Add Package Dependencies -> Add Local"))
-		fmt.Println(`    Select: generated/client/`)
-		fmt.Println(dim("  Then:") + ` import VeldClient`)
+	// ── Frontend ─────────────────────────────────────────────────────────
+	if hasFrontend {
+		fmt.Println()
+		fmt.Println(dim("  Frontend") + " (" + bold(fe) + "):")
+
+		switch fe {
+		case "typescript", "react", "vue", "angular", "svelte":
+			fmt.Println(dim("    Setup:") + ` add to tsconfig.json → "paths": { "@veld/*": ["./` + relOut + `/*"] }`)
+		}
+
+		switch fe {
+		case "typescript":
+			fmt.Println(dim("    Client:") + ` import { api } from '@veld/client/api';`)
+		case "react":
+			fmt.Println(dim("    Client:") + ` import { api } from '@veld/client/api';`)
+			fmt.Println(dim("    Hooks: ") + ` import { useUsersListUsers } from '@veld/hooks';`)
+			fmt.Println(dim("    Requires:") + ` npm install @tanstack/react-query`)
+		case "vue":
+			fmt.Println(dim("    Client:     ") + ` import { api } from '@veld/client/api';`)
+			fmt.Println(dim("    Composables:") + ` import { useUsers } from '@veld/composables';`)
+		case "angular":
+			fmt.Println(dim("    Services:") + ` import { UsersService } from '@veld/services';`)
+		case "svelte":
+			fmt.Println(dim("    Client:") + ` import { api } from '@veld/client/api';`)
+			fmt.Println(dim("    Stores: ") + ` import { createUsersStore } from '@veld/stores';`)
+		case "dart", "flutter":
+			fmt.Println(dim("    Setup:") + ` add to pubspec.yaml → veld_client: { path: ./` + relOut + `/client }`)
+			fmt.Println(dim("    Then: ") + ` import 'package:veld_client/api_client.dart';`)
+		case "kotlin":
+			fmt.Println(dim("    Setup:") + ` add to settings.gradle.kts → include(":veld-client")`)
+			fmt.Println(dim("    Then: ") + ` import veld.generated.client.*`)
+		case "swift":
+			fmt.Println(dim("    Setup:") + ` Xcode → File → Add Package Dependencies → Add Local`)
+			fmt.Println(dim("    Then: ") + ` import VeldClient`)
+		}
 	}
 
 	fmt.Println()
@@ -282,7 +340,7 @@ func printSetupResults(results []setup.Result) {
 		case "patched":
 			fmt.Printf("  %s %s — %s\n", green("✓"), r.File, r.Detail)
 		case "skipped":
-			fmt.Printf("  %s %s — %s\n", dim("·"), r.File, r.Detail)
+			fmt.Printf("  %s %s — %s\n", dim("·"), r.File, dim(r.Detail))
 		case "not-found":
 			fmt.Printf("  %s %s — %s\n", yellow("!"), r.File, r.Detail)
 		case "manual":
@@ -292,21 +350,55 @@ func printSetupResults(results []setup.Result) {
 }
 
 func newSetupCmd() *cobra.Command {
-	return &cobra.Command{
+	var backendDirFlag, frontendDirFlag string
+	var backendFlag, frontendFlag, inputFlag, outFlag string
+
+	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Auto-configure project files for seamless imports",
 		Long: "Patches config files (tsconfig.json, pubspec.yaml, go.mod, etc.) so that\n" +
 			"generated code can be imported without manual edits.\n\n" +
 			"Reads backend/frontend from veld.config.json and applies the appropriate patches.\n" +
-			"All patching is idempotent — running setup multiple times is safe.",
-		Example: "  veld setup",
+			"If the generated output path has changed, existing entries are updated in place.\n\n" +
+			"Use --backend-dir / --frontend-dir to point at project folders outside the\n" +
+			"current directory, so you don't need a config file in each folder.",
+		Example: "  veld setup\n" +
+			"  veld setup --backend-dir=../server --frontend-dir=../client\n" +
+			"  veld setup --out=./output --backend=go --frontend=react",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := config.BuildResolved(config.FlagOverrides{})
+			flags := config.FlagOverrides{
+				Backend:     backendFlag,
+				Frontend:    frontendFlag,
+				Input:       inputFlag,
+				Out:         outFlag,
+				BackendSet:  cmd.Flags().Changed("backend"),
+				FrontendSet: cmd.Flags().Changed("frontend"),
+				InputSet:    cmd.Flags().Changed("input"),
+				OutSet:      cmd.Flags().Changed("out"),
+			}
+			rc, err := config.BuildResolved(flags)
 			if err != nil {
 				return fmt.Errorf("could not load config: %w", err)
 			}
 			projectDir, _ := os.Getwd()
-			results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out)
+
+			opts := setup.Options{}
+			if cmd.Flags().Changed("backend-dir") {
+				abs, err := filepath.Abs(backendDirFlag)
+				if err != nil {
+					return fmt.Errorf("invalid --backend-dir: %w", err)
+				}
+				opts.BackendDir = abs
+			}
+			if cmd.Flags().Changed("frontend-dir") {
+				abs, err := filepath.Abs(frontendDirFlag)
+				if err != nil {
+					return fmt.Errorf("invalid --frontend-dir: %w", err)
+				}
+				opts.FrontendDir = abs
+			}
+
+			results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out, opts)
 			if len(results) == 0 {
 				fmt.Println(dim("  No config files to patch for this stack"))
 				return nil
@@ -315,6 +407,15 @@ func newSetupCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&backendDirFlag, "backend-dir", "",
+		"directory containing backend project files (default: current directory)")
+	cmd.Flags().StringVar(&frontendDirFlag, "frontend-dir", "",
+		"directory containing frontend project files (default: current directory)")
+	cmd.Flags().StringVar(&backendFlag, "backend", "", "backend target override")
+	cmd.Flags().StringVar(&frontendFlag, "frontend", "", "frontend SDK override")
+	cmd.Flags().StringVar(&inputFlag, "input", "", "input .veld file")
+	cmd.Flags().StringVar(&outFlag, "out", "", "output directory override")
+	return cmd
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
