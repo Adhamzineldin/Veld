@@ -39,8 +39,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: editors/vscode/package-lock.json
 
       - name: Extract version from tag
         id: version
@@ -48,7 +46,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: editors/vscode
-        run: npm ci
+        run: npm install
 
       - name: Update version in package.json
         working-directory: editors/vscode
@@ -90,6 +88,10 @@ jobs:
         uses: gradle/gradle-build-action@v3
         with:
           gradle-version: wrapper
+
+      - name: Make gradlew executable
+        working-directory: editors/jetbrains
+        run: chmod +x gradlew
 
       - name: Extract version from tag
         id: version
