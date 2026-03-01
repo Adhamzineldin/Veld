@@ -27,32 +27,46 @@ If the download fails, each wrapper falls back to `go install`.
 
 ## Release workflow
 
-To publish a new version:
+Releases are **fully automated** via GitHub Actions (`.github/workflows/release.yml`).
 
-1. **Build binaries** for all platforms (CI recommended):
-   - `veld-linux-amd64.tar.gz`
-   - `veld-linux-arm64.tar.gz`
-   - `veld-darwin-amd64.tar.gz`
-   - `veld-darwin-arm64.tar.gz`
-   - `veld-windows-amd64.zip`
+### How to release
 
-2. **Create GitHub Release** tagged `v{VERSION}` with all archives attached
+```bash
+# 1. Commit your changes
+git add -A && git commit -m "feat: your changes"
 
-3. **Publish packages**:
-   ```bash
-   # npm
-   cd packages/npm && npm publish
+# 2. Tag with a version
+git tag v0.2.0
 
-   # pip
-   cd packages/pip && python -m build && twine upload dist/*
+# 3. Push the tag
+git push origin v0.2.0
+```
 
-   # Homebrew — update sha256 in Formula/veld.rb, push to homebrew-tap repo
+That's it. The CI pipeline will:
 
-   # Composer
-   # Tag the repo — Packagist auto-updates from GitHub
+1. **Run tests** — `go test ./... -race`
+2. **Build binaries** — cross-compile for linux/darwin/windows × amd64/arm64
+3. **Create GitHub Release** — upload all archives + SHA256 checksums + auto-generated changelog
+4. **Publish to npm** — updates version and runs `npm publish`
+5. **Publish to PyPI** — updates version and runs `twine upload`
+6. **Update Homebrew formula** — computes SHA256 hashes and patches `Formula/veld.rb`
 
-   # Go — automatic via go install @latest
-   ```
+### Required secrets
+
+Set these in your GitHub repo → Settings → Secrets → Actions:
+
+| Secret | Required for | How to get |
+|--------|-------------|------------|
+| `NPM_TOKEN` | npm publish | npmjs.com → Access Tokens → Generate |
+| `PYPI_TOKEN` | pip publish | pypi.org → Account Settings → API tokens |
+| `HOMEBREW_TAP_TOKEN` | Homebrew tap push (optional) | GitHub PAT with `repo` scope on the tap repo |
+
+> `GITHUB_TOKEN` is provided automatically — no setup needed for the release itself.
+
+### Pre-release versions
+
+Tags with a hyphen (e.g. `v0.2.0-beta.1`) are published as **pre-release** on GitHub
+and **skip** npm/pip/Homebrew publishing.
 
 ## Directory structure
 

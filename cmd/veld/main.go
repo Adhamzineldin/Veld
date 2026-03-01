@@ -30,7 +30,9 @@ import (
 )
 
 // Version is the current Veld CLI version.
-const Version = "0.1.0"
+// Version is set at build time via: go build -ldflags "-X main.Version=v1.2.3"
+// Falls back to "dev" for local builds without ldflags.
+var Version = "0.1.0"
 
 // ── ANSI color helpers ────────────────────────────────────────────────────────
 
