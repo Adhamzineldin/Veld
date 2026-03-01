@@ -2,11 +2,12 @@ package ast
 
 // AST is the root of a parsed .veld contract.
 type AST struct {
-	ASTVersion string   `json:"astVersion"`
-	Imports    []string `json:"-"` // resolved by the file loader, not serialised
-	Models     []Model  `json:"models"`
-	Modules    []Module `json:"modules"`
-	Enums      []Enum   `json:"enums,omitempty"`
+	ASTVersion  string              `json:"astVersion"`
+	Imports     []string            `json:"-"` // resolved by the file loader, not serialised
+	Models      []Model             `json:"models"`
+	Modules     []Module            `json:"modules"`
+	Enums       []Enum              `json:"enums,omitempty"`
+	FileImports map[string][]string `json:"-"` // sourceFile → directly imported file paths
 }
 
 // Enum is a named set of string constants.

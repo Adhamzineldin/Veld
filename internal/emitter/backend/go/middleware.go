@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/veld-dev/veld/internal/ast"
-	"github.com/veld-dev/veld/internal/emitter/codegen"
-	"github.com/veld-dev/veld/internal/emitter/lang"
+	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/emitter/codegen"
+	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
 // generateMiddleware writes internal/middleware/errors.go with panic recovery.

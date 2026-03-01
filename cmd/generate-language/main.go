@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/veld-dev/veld/internal/language"
+	"github.com/Adhamzineldin/Veld/internal/language"
 )
 
 // GenerateLanguageFiles generates language definition files for plugins

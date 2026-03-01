@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/veld-dev/veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/ast"
 )
 
 const javaPackageModels = "com.example.generated.models"

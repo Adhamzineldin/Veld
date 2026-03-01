@@ -10,23 +10,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/cache"
+	"github.com/Adhamzineldin/Veld/internal/config"
+	"github.com/Adhamzineldin/Veld/internal/emitter"
+	"github.com/Adhamzineldin/Veld/internal/loader"
+	"github.com/Adhamzineldin/Veld/internal/validator"
 	"github.com/spf13/cobra"
-	"github.com/veld-dev/veld/internal/ast"
-	"github.com/veld-dev/veld/internal/cache"
-	"github.com/veld-dev/veld/internal/config"
-	"github.com/veld-dev/veld/internal/emitter"
-	"github.com/veld-dev/veld/internal/loader"
-	"github.com/veld-dev/veld/internal/validator"
 
 	// Register all emitters via init(). To add a new emitter, add one line here.
-	_ "github.com/veld-dev/veld/internal/emitter/backend/csharp"
-	_ "github.com/veld-dev/veld/internal/emitter/backend/go"
-	_ "github.com/veld-dev/veld/internal/emitter/backend/java"
-	_ "github.com/veld-dev/veld/internal/emitter/backend/node"
-	_ "github.com/veld-dev/veld/internal/emitter/backend/php"
-	_ "github.com/veld-dev/veld/internal/emitter/backend/python"
-	_ "github.com/veld-dev/veld/internal/emitter/backend/rust"
-	_ "github.com/veld-dev/veld/internal/emitter/frontend/typescript"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/csharp"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/go"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/java"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/node"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/php"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/python"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/rust"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/typescript"
 )
 
 // Version is the current Veld CLI version.
@@ -785,6 +785,7 @@ func runInit() error {
 		{"veld/veld.config.json", veldConfigContent, "veld/veld.config.json"},
 		{"veld/app.veld", appVeldContent, "veld/app.veld"},
 		{"veld/models/user.veld", modelsUserVeldContent, "veld/models/user.veld"},
+		{"veld/models/auth.veld", modelsAuthModelContent, "veld/models/auth.veld"},
 		{"veld/models/common.veld", modelsCommonVeldContent, "veld/models/common.veld"},
 		{"veld/modules/users.veld", modulesUsersVeldContent, "veld/modules/users.veld"},
 		{"veld/modules/auth.veld", modulesAuthVeldContent, "veld/modules/auth.veld"},
@@ -824,231 +825,236 @@ const veldConfigContent = `{
 }
 `
 
-const appVeldContent = `// Entry point — imports all models and modules.
-// Add new import lines here as your API grows.
+const appVeldContent = `// ── Veld Entry Point ─────────────────────────────────────────────────
 //
-// Two import styles are supported:
-//   import @models/user       ← alias-based (recommended)
-//   import "./models/user.veld"  ← relative path (legacy)
+// This file is the root of your Veld contract. It imports all modules.
+// Each module file imports the model files it needs.
+//
+// How it works:
+//   1. Define data types in veld/models/ (models, enums)
+//   2. Define API endpoints in veld/modules/ (modules with actions)
+//   3. Run "veld generate" to produce typed code in generated/
+//
+// Import syntax:
+//   import @models/user       → loads veld/models/user.veld
+//   import @modules/auth      → loads veld/modules/auth.veld
+//   import @models/*          → loads all .veld files in veld/models/
+//
+// Every file must explicitly import the files that define the types it
+// uses. Veld will error if a type is referenced but not imported.
+//
+// Middleware names (like RequireAuth) are just labels — you provide the
+// actual middleware functions when you register routes in your app.
+//
+// Run "veld validate" at any time to check your contract for errors.
+// ─────────────────────────────────────────────────────────────────────
 
-import @models/user
-import @models/common
 import @modules/users
 import @modules/auth
 `
 
-const modelsUserVeldContent = `// User-related data models.
-// Demonstrates: enums, optional fields, descriptions, all scalar types.
+const modelsUserVeldContent = `// User domain models and enums.
 
-enum Role {
+enum UserRole {
   admin
   user
   guest
 }
 
-enum Status {
-  active
-  inactive
-  pending
+model User {
+  description: "A platform user"
+  id:        uuid
+  email:     string
+  name:      string
+  bio?:      string
+  role:      UserRole   @default(user)
+  verified:  bool       @default(false)
+  createdAt: datetime
 }
 
-model User {
-  description: "Represents an authenticated platform user"
-  id:         uuid
-  email:      string
-  name:       string
-  bio?:       string
-  avatarUrl?: string
-  role:       Role        @default(user)
-  status:     Status      @default(active)
-  age?:       int
-  rating?:    float
-  verified:   bool        @default(false)
-  createdAt:  datetime
-  birthDate?: date
+model CreateUserInput {
+  description: "Data required to create a new user"
+  email:    string
+  name:     string
+  password: string
 }
+
+model UpdateUserInput {
+  description: "Fields that can be updated on a user"
+  name?: string
+  bio?:  string
+  role?: UserRole
+}
+`
+
+const modelsAuthModelContent = `// Authentication request and response models.
+
+import @models/user
 
 model LoginInput {
+  description: "Credentials for user login"
   email:    string
   password: string
 }
 
 model RegisterInput {
+  description: "Data for new account registration"
   email:    string
-  password: string
   name:     string
+  password: string
 }
 
-model AuthResponse {
-  description: "Returned after successful login or registration"
+model AuthToken {
+  description: "Token returned after successful authentication"
   token: string
   user:  User
 }
+`
 
-model SuccessResponse {
+const modelsCommonVeldContent = `// Shared types used across multiple modules.
+
+model SuccessMessage {
+  description: "Generic success response"
   success: bool
   message?: string
 }
-`
 
-const modelsCommonVeldContent = `// Shared/common types used across multiple modules.
-// Demonstrates: generic-style patterns, optional fields.
-
-model PaginatedResponse {
-  description: "Wraps any list response with pagination metadata"
-  total:    int
-  page:     int
-  pageSize: int
-  hasMore:  bool
-}
-
-model ErrorResponse {
-  description: "Standard error envelope returned by all endpoints"
-  code:     int
-  message:  string
-  details?: string
-}
-
-model UserFilters {
-  description: "Query parameters for filtering user lists"
-  role?:    string
-  status?:  string
-  search?:  string
-  limit?:   int
-  offset?:  int
+model ListQuery {
+  description: "Common query parameters for list endpoints"
+  search?: string
+  limit?:  int
+  offset?: int
 }
 `
 
-const modulesUsersVeldContent = `// Users module — CRUD and listing endpoints.
-// Demonstrates: query params, description, various HTTP methods, output arrays.
+const modulesUsersVeldContent = `// Users module — CRUD endpoints for user management.
+
+import @models/user
+import @models/common
 
 module Users {
-  description: "User management and lookup"
-  prefix:      /api
+  description: "User management"
+  prefix:      /api/users
 
-  action List {
-    description: "List users with optional filters"
+  action ListUsers {
+    description: "List all users with optional filters"
     method:      GET
-    path:        /users
-    query:       UserFilters
+    path:        /
+    query:       ListQuery
     output:      User[]
-    middleware:   AuthGuard
   }
 
-  action GetById {
+  action GetUser {
     description: "Get a single user by ID"
     method:      GET
-    path:        /users/:id
+    path:        /:id
     output:      User
-    middleware:   AuthGuard
   }
 
-  action Update {
+  action CreateUser {
+    description: "Create a new user"
+    method:      POST
+    path:        /
+    input:       CreateUserInput
+    output:      User
+  }
+
+  action UpdateUser {
     description: "Update an existing user"
     method:      PUT
-    path:        /users/:id
-    input:       RegisterInput
+    path:        /:id
+    input:       UpdateUserInput
     output:      User
-    middleware:   AuthGuard
   }
 
-  action Delete {
-    description: "Soft-delete a user"
+  action DeleteUser {
+    description: "Delete a user"
     method:      DELETE
-    path:        /users/:id
-    output:      SuccessResponse
-    middleware:   AuthGuard
+    path:        /:id
+    output:      SuccessMessage
   }
 }
 `
 
 const modulesAuthVeldContent = `// Auth module — authentication and session management.
-// Demonstrates: middleware, descriptions, POST/GET patterns.
+// Middleware names are labels — you provide the actual functions at runtime.
+
+import @models/user
+import @models/auth
+import @models/common
 
 module Auth {
   description: "Authentication and session management"
+  prefix:      /api/auth
 
   action Login {
-    description: "Exchange credentials for a session token"
+    description: "Log in with credentials"
     method:      POST
-    path:        /auth/login
+    path:        /login
     input:       LoginInput
-    output:      AuthResponse
+    output:      AuthToken
     middleware:   RateLimit
   }
 
   action Register {
-    description: "Create a new user account"
+    description: "Register a new account"
     method:      POST
-    path:        /auth/register
+    path:        /register
     input:       RegisterInput
-    output:      AuthResponse
+    output:      AuthToken
+    middleware:   RateLimit
   }
 
-  action Me {
+  action GetMe {
     description: "Get the currently authenticated user"
     method:      GET
-    path:        /auth/me
+    path:        /me
     output:      User
-    middleware:   AuthGuard
+    middleware:   RequireAuth
   }
 
   action Logout {
-    description: "Invalidate the current session"
+    description: "Log out and invalidate session"
     method:      POST
-    path:        /auth/logout
-    output:      SuccessResponse
-    middleware:   AuthGuard
+    path:        /logout
+    output:      SuccessMessage
+    middleware:   RequireAuth
   }
 }
 `
 
 const initReadmeContent = "# My Veld Project\n\n" +
 	"## Structure\n\n" +
-	"| Path | Owner | Purpose |\n" +
-	"|------|-------|--------|\n" +
-	"| `veld/` | You | Contract source — models, modules, config |\n" +
-	"| `veld/models/` | You | Data type definitions (models, enums) |\n" +
-	"| `veld/modules/` | You | API endpoint definitions |\n" +
-	"| `generated/` | Veld | Auto-generated — do not edit |\n\n" +
-	"## Features\n\n" +
-	"- **Enums** — `enum Role { admin user guest }`\n" +
-	"- **Optional fields** — `bio?: string`\n" +
-	"- **Descriptions** — `description: \"...\"`  → JSDoc/docstrings\n" +
-	"- **Query parameters** — `query: UserFilters`\n" +
-	"- **Default values** — `role: Role @default(user)`\n" +
-	"- **Route prefixes** — `prefix: /api`\n" +
-	"- **Array types** — `tags: string[]`, `output: User[]`\n" +
-	"- **Map types** — `metadata: Map<string, string>` → `Record<string, string>` / `Dict[str, str]`\n" +
-	"- **Model inheritance** — `model Admin extends User { ... }`\n" +
-	"- **Rich scalars** — `string`, `int`, `float`, `bool`, `date`, `datetime`, `uuid`\n" +
-	"- **Zod schemas** — auto-generated validation wired into route handlers\n" +
-	"- **Pydantic schemas** — auto-generated for Python backends\n" +
-	"- **Error handling** — try/catch in all route handlers, proper HTTP status codes\n" +
-	"- **OpenAPI export** — `veld openapi -o openapi.json`\n" +
-	"- **Import aliases** — `@veld/generated` package.json for clean imports\n\n" +
-	"## Workflow\n\n" +
-	"1. Edit files in `veld/models/` and `veld/modules/`\n" +
-	"2. Run `veld generate` to regenerate `generated/`\n" +
-	"3. Implement interfaces in your service layer\n" +
-	"4. Import the SDK in your frontend from `generated/client/api.ts`\n\n" +
-	"## Import system\n\n" +
-	"Split your contract across as many files as you like:\n\n" +
-	"```\n" +
-	"// veld/app.veld\n" +
-	"import \"models/user.veld\"\n" +
-	"import \"models/common.veld\"\n" +
-	"import \"modules/auth.veld\"\n" +
-	"import \"modules/users.veld\"\n" +
+	"| Path | Purpose |\n" +
+	"|------|--------|\n" +
+	"| `veld/` | Contract source — models, modules, config |\n" +
+	"| `veld/models/` | Data type definitions (models, enums) |\n" +
+	"| `veld/modules/` | API endpoint definitions |\n" +
+	"| `generated/` | Auto-generated code — do not edit |\n\n" +
+	"## Import System\n\n" +
+	"Every file must explicitly import the files that define the types it uses:\n\n" +
+	"```veld\n" +
+	"// veld/app.veld — imports modules\n" +
+	"import @modules/users\n" +
+	"import @modules/auth\n" +
 	"```\n\n" +
+	"```veld\n" +
+	"// veld/modules/users.veld — imports its own models\n" +
+	"import @models/user\n" +
+	"import @models/common\n\n" +
+	"module Users { ... }\n" +
+	"```\n\n" +
+	"Import paths don't include `.veld` — the parser adds it automatically.\n\n" +
+	"## Middleware\n\n" +
+	"Middleware names (like `RequireAuth`, `RateLimit`) are just labels in the contract.\n" +
+	"Veld generates typed middleware interfaces — you provide the implementations\n" +
+	"when registering routes in your app.\n\n" +
 	"## Commands\n\n" +
 	"| Command | Description |\n" +
 	"|---------|-------------|\n" +
-	"| `veld generate` | Full regeneration (safe for CI/CD) |\n" +
-	"| `veld generate --incremental` | Regenerate changed modules only (dev) |\n" +
-	"| `veld watch` | Auto-regenerate on file save (dev) |\n" +
+	"| `veld generate` | Generate typed code |\n" +
 	"| `veld validate` | Check contract for errors |\n" +
+	"| `veld watch` | Auto-regenerate on file save |\n" +
 	"| `veld clean` | Remove generated output |\n" +
 	"| `veld openapi` | Export OpenAPI 3.0 spec |\n" +
-	"| `veld ast` | Dump AST JSON for debugging |\n" +
-	"| `veld init` | Scaffold a new project |\n"
+	"| `veld ast` | Dump AST JSON for debugging |\n"

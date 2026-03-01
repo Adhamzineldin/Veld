@@ -3,8 +3,8 @@ package parser
 import (
 	"fmt"
 
-	"github.com/veld-dev/veld/internal/ast"
-	"github.com/veld-dev/veld/internal/lexer"
+	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/lexer"
 )
 
 // Parser builds an AST from a token slice produced by the Lexer.

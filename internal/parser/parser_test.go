@@ -3,7 +3,7 @@ package parser
 import (
 	"testing"
 
-	"github.com/veld-dev/veld/internal/lexer"
+	"github.com/Adhamzineldin/Veld/internal/lexer"
 )
 
 func parse(src string) error {

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/veld-dev/veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/ast"
 )
 
 // primitiveTypes is the set of built-in scalar type names.
@@ -187,6 +187,95 @@ func Validate(a ast.AST) []error {
 					errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined query type %q", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Query))
 				}
 			}
+
+			// Validate middleware names (warn about common typos)
+			for _, mw := range act.Middleware {
+				if mw == "" {
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: empty middleware name", loc(mod.SourceFile, act.Line), mod.Name, act.Name))
+				}
+			}
+		}
+	}
+
+	// ── Per-file import validation ──────────────────────────────────────
+	// If the loader provided a FileImports map, verify that every type
+	// referenced in a file is either defined in that same file or in a file
+	// it directly imports. This catches "works by accident" transitive refs.
+	if a.FileImports != nil {
+		errs = append(errs, validateFileImports(a)...)
+	}
+
+	return errs
+}
+
+// validateFileImports checks that each file only uses types it defines locally
+// or explicitly imports. Types available only through transitive imports are flagged.
+func validateFileImports(a ast.AST) []error {
+	var errs []error
+
+	// Build typeName → sourceFile map.
+	typeSource := make(map[string]string) // typeName → absolute source file path
+	for _, m := range a.Models {
+		if m.SourceFile != "" {
+			typeSource[m.Name] = m.SourceFile
+		}
+	}
+	for _, en := range a.Enums {
+		if en.SourceFile != "" {
+			typeSource[en.Name] = en.SourceFile
+		}
+	}
+
+	// checkTypeVisible verifies a type is accessible from the given file.
+	checkTypeVisible := func(typeName, fromFile string, line int, context string) {
+		if typeName == "" || primitiveTypes[typeName] {
+			return
+		}
+		defFile, ok := typeSource[typeName]
+		if !ok {
+			return // type doesn't exist — caught by earlier validation
+		}
+		if defFile == fromFile {
+			return // defined in the same file
+		}
+		// Check if fromFile directly imports defFile.
+		for _, imp := range a.FileImports[fromFile] {
+			if imp == defFile {
+				return // directly imported
+			}
+		}
+		errs = append(errs, fmt.Errorf(
+			"%s%s: type %q is defined in %s but not imported",
+			loc(fromFile, line), context, typeName, filepath.Base(defFile),
+		))
+	}
+
+	// Validate model field type references.
+	for _, m := range a.Models {
+		if m.SourceFile == "" {
+			continue
+		}
+		if m.Extends != "" {
+			checkTypeVisible(m.Extends, m.SourceFile, m.Line, fmt.Sprintf("model %q", m.Name))
+		}
+		for _, f := range m.Fields {
+			if f.IsMap {
+				checkTypeVisible(f.MapValueType, m.SourceFile, f.Line, fmt.Sprintf("model %q, field %q", m.Name, f.Name))
+			} else {
+				checkTypeVisible(f.Type, m.SourceFile, f.Line, fmt.Sprintf("model %q, field %q", m.Name, f.Name))
+			}
+		}
+	}
+
+	// Validate module action type references.
+	for _, mod := range a.Modules {
+		if mod.SourceFile == "" {
+			continue
+		}
+		for _, act := range mod.Actions {
+			checkTypeVisible(act.Input, mod.SourceFile, act.Line, fmt.Sprintf("module %q, action %q", mod.Name, act.Name))
+			checkTypeVisible(act.Output, mod.SourceFile, act.Line, fmt.Sprintf("module %q, action %q", mod.Name, act.Name))
+			checkTypeVisible(act.Query, mod.SourceFile, act.Line, fmt.Sprintf("module %q, action %q", mod.Name, act.Name))
 		}
 	}
 

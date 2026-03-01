@@ -3,7 +3,7 @@ package emitter
 import (
 	"testing"
 
-	"github.com/veld-dev/veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/ast"
 )
 
 func TestIsPrimitive(t *testing.T) {

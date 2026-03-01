@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/veld-dev/veld/internal/ast"
-	"github.com/veld-dev/veld/internal/emitter"
+	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/emitter"
 )
 
 func (e *NodeEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string) error {

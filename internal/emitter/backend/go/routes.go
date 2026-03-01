@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/veld-dev/veld/internal/ast"
-	"github.com/veld-dev/veld/internal/emitter"
-	"github.com/veld-dev/veld/internal/emitter/codegen"
-	"github.com/veld-dev/veld/internal/emitter/lang"
+	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/emitter"
+	"github.com/Adhamzineldin/Veld/internal/emitter/codegen"
+	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
 // generateRoutesSetup writes internal/routes/routes.go with:

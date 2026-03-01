@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/veld-dev/veld/internal/ast"
-	"github.com/veld-dev/veld/internal/emitter"
-	"github.com/veld-dev/veld/internal/emitter/backend/java"
+	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/emitter"
+	"github.com/Adhamzineldin/Veld/internal/emitter/backend/java"
 )
 
 func minimalAST() ast.AST {

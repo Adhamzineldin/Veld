@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/veld-dev/veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/ast"
 )
 
 func (e *NodeEmitter) emitBarrel(a ast.AST, outDir string) error {

@@ -3,7 +3,7 @@ package tshelpers
 import (
 	"fmt"
 
-	"github.com/veld-dev/veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/ast"
 )
 
 // VeldScalarToTS maps a Veld scalar or model name to its TypeScript equivalent.

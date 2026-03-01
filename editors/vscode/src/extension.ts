@@ -321,11 +321,12 @@ class VeldLanguageServer {
             }
 
             if (trimmed.startsWith('input:') || trimmed.startsWith('output:') ||
-                trimmed.startsWith('query:') || trimmed.startsWith('middleware:')) {
+                trimmed.startsWith('query:')) {
                 const colonIdx = trimmed.indexOf(':');
                 const typeExpr = trimmed.substring(colonIdx + 1).trim();
                 this.validateTypeExpr(typeExpr, line, i, doc, diagnostics);
             }
+            // middleware: values are just label names, not type references — skip type validation
 
             if (!trimmed.startsWith('method:') &&
                 !trimmed.startsWith('path:') &&
@@ -494,8 +495,13 @@ class VeldLanguageServer {
             return completions;
         }
 
-        if (trimmedBefore.match(/(input|output|query|middleware):\s*\w*$/)) {
+        if (trimmedBefore.match(/(input|output|query):\s*\w*$/)) {
             return this.getTypeCompletions(doc);
+        }
+
+        // middleware: values are label names — no type completions
+        if (trimmedBefore.match(/middleware:\s*\w*$/)) {
+            return completions;
         }
 
         // Annotation completion: field has a type and user typed "@"

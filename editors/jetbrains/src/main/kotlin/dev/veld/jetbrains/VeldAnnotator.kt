@@ -248,9 +248,9 @@ class VeldAnnotator : Annotator {
             return
         }
 
-        // ── input / output / query / middleware directives ───────────────────
+        // ── input / output / query directives — validate as type references ──
         if (trimmed.startsWith("input:") || trimmed.startsWith("output:") ||
-            trimmed.startsWith("query:") || trimmed.startsWith("middleware:")
+            trimmed.startsWith("query:")
         ) {
             val colonIdx = trimmed.indexOf(':')
             if (colonIdx >= 0) {
@@ -260,6 +260,9 @@ class VeldAnnotator : Annotator {
             }
             return
         }
+
+        // ── middleware directive — just a label name, not a type reference ───
+        if (trimmed.startsWith("middleware:")) return
 
         // ── description / prefix directives: no special highlighting ─────────
         if (trimmed.startsWith("description:")) return

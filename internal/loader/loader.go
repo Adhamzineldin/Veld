@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/veld-dev/veld/internal/ast"
-	"github.com/veld-dev/veld/internal/lexer"
-	"github.com/veld-dev/veld/internal/parser"
+	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/lexer"
+	"github.com/Adhamzineldin/Veld/internal/parser"
 )
 
 // Parse loads a .veld entry point and recursively follows import statements.
@@ -30,13 +30,15 @@ func Parse(path string, aliases ...map[string]string) (ast.AST, []string, error)
 	}
 
 	var files []string
-	a, err := resolveFile(path, rootDir, aliasMap, make(map[string]bool), &files)
+	fileImports := make(map[string][]string)
+	a, err := resolveFile(path, rootDir, aliasMap, make(map[string]bool), &files, fileImports)
+	a.FileImports = fileImports
 	return a, files, err
 }
 
 // resolveFile parses a single .veld file and recursively resolves its imports.
 // rootDir is the entry-point directory; aliasMap maps alias names to sub-paths.
-func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[string]bool, files *[]string) (ast.AST, error) {
+func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[string]bool, files *[]string, fileImports map[string][]string) (ast.AST, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return ast.AST{}, err
@@ -105,7 +107,10 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 				}
 				for _, entry := range entries {
 					if !entry.IsDir() && filepath.Ext(entry.Name()) == ".veld" {
-						imported, err := resolveFile(filepath.Join(aliasDir, entry.Name()), rootDir, aliasMap, seen, files)
+						importPath := filepath.Join(aliasDir, entry.Name())
+						importAbs, _ := filepath.Abs(importPath)
+						fileImports[abs] = append(fileImports[abs], importAbs)
+						imported, err := resolveFile(importPath, rootDir, aliasMap, seen, files, fileImports)
 						if err != nil {
 							return ast.AST{}, fmt.Errorf("import %q: %w", imp, err)
 						}
@@ -116,7 +121,10 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 				}
 			} else {
 				// Single alias-based file
-				imported, err := resolveFile(filepath.Join(aliasDir, name), rootDir, aliasMap, seen, files)
+				importPath := filepath.Join(aliasDir, name)
+				importAbs, _ := filepath.Abs(importPath)
+				fileImports[abs] = append(fileImports[abs], importAbs)
+				imported, err := resolveFile(importPath, rootDir, aliasMap, seen, files, fileImports)
 				if err != nil {
 					return ast.AST{}, fmt.Errorf("import %q: %w", imp, err)
 				}
@@ -126,7 +134,10 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 			}
 		} else {
 			// Legacy relative import: resolve from this file's directory
-			imported, err := resolveFile(filepath.Join(dir, imp), rootDir, aliasMap, seen, files)
+			importPath := filepath.Join(dir, imp)
+			importAbs, _ := filepath.Abs(importPath)
+			fileImports[abs] = append(fileImports[abs], importAbs)
+			imported, err := resolveFile(importPath, rootDir, aliasMap, seen, files, fileImports)
 			if err != nil {
 				return ast.AST{}, fmt.Errorf("import %q: %w", imp, err)
 			}

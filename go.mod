@@ -1,4 +1,4 @@
-module github.com/veld-dev/veld
+module github.com/Adhamzineldin/Veld
 
 go 1.22
 

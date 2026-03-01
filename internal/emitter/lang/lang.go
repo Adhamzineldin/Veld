@@ -1,7 +1,7 @@
 package lang
 
 import (
-	"github.com/veld-dev/veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/ast"
 )
 
 // LanguageMetadata describes capabilities and features of a language backend.

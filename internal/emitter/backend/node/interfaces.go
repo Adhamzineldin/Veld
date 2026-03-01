@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/veld-dev/veld/internal/ast"
-	"github.com/veld-dev/veld/internal/emitter"
-	"github.com/veld-dev/veld/internal/emitter/tshelpers"
+	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/emitter"
+	"github.com/Adhamzineldin/Veld/internal/emitter/tshelpers"
 )
 
 func (e *NodeEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) error {

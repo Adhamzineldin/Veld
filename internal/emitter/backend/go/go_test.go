@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/veld-dev/veld/internal/ast"
-	"github.com/veld-dev/veld/internal/emitter"
-	gobackend "github.com/veld-dev/veld/internal/emitter/backend/go"
+	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/emitter"
+	gobackend "github.com/Adhamzineldin/Veld/internal/emitter/backend/go"
 )
 
 // minimalAST returns a small but representative AST for testing.

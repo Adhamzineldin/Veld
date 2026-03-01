@@ -3,7 +3,7 @@
 //
 // Registration happens via init() — blank-import this package in cmd/veld/main.go:
 //
-//	_ "github.com/veld-dev/veld/internal/emitter/backend/rust"
+//	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/rust"
 package rustbackend
 
 import (
@@ -12,9 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/veld-dev/veld/internal/ast"
-	"github.com/veld-dev/veld/internal/emitter"
-	"github.com/veld-dev/veld/internal/emitter/lang"
+	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/emitter"
+	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
 func init() {

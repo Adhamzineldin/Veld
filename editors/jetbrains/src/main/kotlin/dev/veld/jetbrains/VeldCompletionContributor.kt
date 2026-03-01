@@ -111,10 +111,12 @@ class VeldCompletionContributor : CompletionContributor() {
             return CompletionContext.AFTER_METHOD_COLON
         }
 
-        // After "input: ", "output: ", "query: ", "middleware: " -> suggest types
-        if (before.matches(Regex("""(input|output|query|middleware):\s*\w*"""))) {
+        // After "input: ", "output: ", "query: " -> suggest types
+        if (before.matches(Regex("""(input|output|query):\s*\w*"""))) {
             return CompletionContext.AFTER_TYPE_COLON
         }
+
+        // middleware: values are label names, not types — no special context
 
         // Annotation completion: "fieldname: Type @" or "fieldname?: Type @something"
         // Triggered when the user types "@" after the type in a field definition

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/veld-dev/veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/ast"
 )
 
 func TestValidateEmpty(t *testing.T) {

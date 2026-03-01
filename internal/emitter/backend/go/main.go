@@ -3,7 +3,7 @@
 //
 // Registration happens via init() — just blank-import this package in main.go:
 //
-//	_ "github.com/veld-dev/veld/internal/emitter/backend/go"
+//	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/go"
 package gobackend
 
 import (
@@ -12,9 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/veld-dev/veld/internal/ast"
-	"github.com/veld-dev/veld/internal/emitter"
-	"github.com/veld-dev/veld/internal/emitter/lang"
+	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/emitter"
+	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
 // goModuleName is the Go module path used in go.mod and internal imports.
