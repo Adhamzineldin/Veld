@@ -15,7 +15,7 @@ object VeldFileType : LanguageFileType(VeldLanguage) {
 
     override fun getDefaultExtension(): String = "veld"
 
-    override fun getIcon(): Icon = IconLoader.getIcon("/icons/veld.svg", VeldFileType::class.java)
+    override fun getIcon(): Icon = IconLoader.getIcon("/icons/veld_16.png", VeldFileType::class.java)
 
     const val FILE_EXTENSION = "veld"
 }

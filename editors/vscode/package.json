@@ -13,6 +13,7 @@
     "Snippets",
     "Linters"
   ],
+  "icon": "icon.png",
   "keywords": ["veld", "api", "contract", "code-generation", "schema"],
   "repository": {
     "type": "git",
@@ -26,6 +27,10 @@
         "id": "veld",
         "aliases": ["Veld", "veld"],
         "extensions": [".veld"],
+        "icon": {
+          "light": "./icons/veld-file.png",
+          "dark": "./icons/veld-file.png"
+        },
         "configuration": "./language-configuration.json"
       }
     ],
