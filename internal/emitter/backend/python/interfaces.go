@@ -33,7 +33,7 @@ func (e *PythonEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) 
 		sb.WriteString("from typing import List\n")
 	}
 	if len(usedTypes) > 0 {
-		sb.WriteString(fmt.Sprintf("from ..types.%s import %s\n", moduleLower, strings.Join(usedTypes, ", ")))
+		sb.WriteString(fmt.Sprintf("from ..models.%s import %s\n", moduleLower, strings.Join(usedTypes, ", ")))
 	}
 
 	sb.WriteString(fmt.Sprintf("\n\nclass I%sService(ABC):\n", mod.Name))

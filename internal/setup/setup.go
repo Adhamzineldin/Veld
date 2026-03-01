@@ -270,10 +270,10 @@ func patchRequirementsTxt(dir string) Result {
 }
 
 // patchConftest creates or patches conftest.py to add the generated directory
-// to sys.path, so Python code can import from the generated folder directly:
+// to sys.path, so Python code can import from the veld_gen package:
 //
-//	from types import User
-//	from interfaces.i_users_service import IUsersService
+//	from veld_gen.models import User
+//	from veld_gen.interfaces.i_users_service import IUsersService
 //
 // If conftest.py already contains the path, it is updated if the outDir changed.
 func patchConftest(dir, outDir string) Result {

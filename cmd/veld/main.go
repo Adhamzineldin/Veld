@@ -255,10 +255,11 @@ func printImportInstructions(rc config.ResolvedConfig) {
 			fmt.Println(dim("    Routes:   ") + ` import { usersRoutes } from '@veld/routes/users.routes';`)
 			fmt.Println(dim("    Interfaces:") + ` import { IUsersService } from '@veld/interfaces/IUsersService';`)
 		case "python":
-			fmt.Println(dim("    Setup:") + ` add to conftest.py → sys.path.insert(0, "` + relOut + `")`)
-			fmt.Println(dim("    Types:    ") + ` from types import User`)
-			fmt.Println(dim("    Routes:   ") + ` from routes.users_routes import users_bp`)
-			fmt.Println(dim("    Interfaces:") + ` from interfaces.i_users_service import IUsersService`)
+			fmt.Println(dim("    Setup:") + ` run veld setup (patches conftest.py with sys.path)`)
+			fmt.Println(dim("    Models:    ") + ` from veld_gen.models import User`)
+			fmt.Println(dim("    Routes:    ") + ` from veld_gen.routes.users_routes import register_users_routes`)
+			fmt.Println(dim("    Interfaces:") + ` from veld_gen.interfaces.i_users_service import IUsersService`)
+			fmt.Println(dim("    Schemas:   ") + ` from veld_gen.schemas.schemas import UserSchema`)
 		case "go":
 			fmt.Println(dim("    Setup:") + ` add to go.mod → replace veld/generated => ./` + relOut)
 			fmt.Println(dim("    Types:    ") + ` import "veld/generated/internal/models"`)
@@ -389,6 +390,8 @@ func newSetupCmd() *cobra.Command {
 					return fmt.Errorf("invalid --backend-dir: %w", err)
 				}
 				opts.BackendDir = abs
+			} else if rc.BackendDir != "" {
+				opts.BackendDir = rc.BackendDir
 			}
 			if cmd.Flags().Changed("frontend-dir") {
 				abs, err := filepath.Abs(frontendDirFlag)
@@ -396,6 +399,8 @@ func newSetupCmd() *cobra.Command {
 					return fmt.Errorf("invalid --frontend-dir: %w", err)
 				}
 				opts.FrontendDir = abs
+			} else if rc.FrontendDir != "" {
+				opts.FrontendDir = rc.FrontendDir
 			}
 
 			results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out, opts)
@@ -590,7 +595,11 @@ func newGenerateCmd() *cobra.Command {
 
 			if setupFlag {
 				projectDir, _ := os.Getwd()
-				results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out)
+				setupOpts := setup.Options{
+					BackendDir:  rc.BackendDir,
+					FrontendDir: rc.FrontendDir,
+				}
+				results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out, setupOpts)
 				printSetupResults(results)
 			}
 			return nil
@@ -2021,8 +2030,77 @@ func runInit() error {
 	setupLine, _ := reader.ReadString('\n')
 	setupLine = strings.TrimSpace(strings.ToLower(setupLine))
 	if setupLine == "" || setupLine == "y" || setupLine == "yes" {
+		var backendDirPath, frontendDirPath string
+
+		// ── Ask for backend project directory ──────────────────────────
+		fmt.Println()
+		fmt.Print("  " + bold("Backend project directory") + dim(" (leave empty for current dir)") + ": ")
+		bLine, _ := reader.ReadString('\n')
+		bLine = strings.TrimSpace(bLine)
+		if bLine != "" {
+			abs, err := filepath.Abs(bLine)
+			if err == nil {
+				backendDirPath = abs
+			}
+		}
+
+		// ── Ask for frontend project directory ─────────────────────────
+		if selectedFrontend != "none" {
+			fmt.Print("  " + bold("Frontend project directory") + dim(" (leave empty for current dir)") + ": ")
+			fLine, _ := reader.ReadString('\n')
+			fLine = strings.TrimSpace(fLine)
+			if fLine != "" {
+				abs, err := filepath.Abs(fLine)
+				if err == nil {
+					frontendDirPath = abs
+				}
+			}
+		}
+
+		// ── Update config file with backendDir / frontendDir ───────────
+		if backendDirPath != "" || frontendDirPath != "" {
+			cfgDir, _ := filepath.Abs("veld")
+			relBackend := ""
+			relFrontend := ""
+			if backendDirPath != "" {
+				if r, err := filepath.Rel(cfgDir, backendDirPath); err == nil {
+					relBackend = filepath.ToSlash(r)
+				} else {
+					relBackend = filepath.ToSlash(backendDirPath)
+				}
+			}
+			if frontendDirPath != "" {
+				if r, err := filepath.Rel(cfgDir, frontendDirPath); err == nil {
+					relFrontend = filepath.ToSlash(r)
+				} else {
+					relFrontend = filepath.ToSlash(frontendDirPath)
+				}
+			}
+
+			updatedCfg := fmt.Sprintf(`{
+  "input": "app.veld",
+  "backend": "%s",
+  "frontend": "%s",
+  "out": "../generated",
+  "backendDir": "%s",
+  "frontendDir": "%s",
+  "aliases": {
+    "models": "models",
+    "modules": "modules"
+  }
+}
+`, selectedBackend, selectedFrontend, relBackend, relFrontend)
+			_ = os.WriteFile("veld/veld.config.json", []byte(updatedCfg), 0644)
+			fmt.Println("  " + green("✓") + " updated veld.config.json with project paths")
+		}
+
+		// ── Run setup ──────────────────────────────────────────────────
 		projectDir, _ := os.Getwd()
-		results := setup.Run(projectDir, selectedBackend, selectedFrontend, "../generated")
+		setupOpts := setup.Options{
+			BackendDir:  backendDirPath,
+			FrontendDir: frontendDirPath,
+		}
+		results := setup.Run(projectDir, selectedBackend, selectedFrontend, "../generated", setupOpts)
 		if len(results) > 0 {
 			printSetupResults(results)
 		}

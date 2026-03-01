@@ -9,25 +9,29 @@ import (
 
 // RawConfig mirrors veld.config.json on disk.
 type RawConfig struct {
-	Input      string            `json:"input"`
-	Backend    string            `json:"backend"`
-	Frontend   string            `json:"frontend"`
-	Out        string            `json:"out"`
-	BaseUrl    string            `json:"baseUrl,omitempty"`    // baked into frontend SDK; empty = use env var
-	Validation *bool             `json:"validation,omitempty"` // generate validation schemas; default true
-	Aliases    map[string]string `json:"aliases,omitempty"`    // custom @alias → relative dir, e.g. "auth": "services/auth"
+	Input       string            `json:"input"`
+	Backend     string            `json:"backend"`
+	Frontend    string            `json:"frontend"`
+	Out         string            `json:"out"`
+	BackendDir  string            `json:"backendDir,omitempty"`  // path to backend project dir (for setup)
+	FrontendDir string            `json:"frontendDir,omitempty"` // path to frontend project dir (for setup)
+	BaseUrl     string            `json:"baseUrl,omitempty"`     // baked into frontend SDK; empty = use env var
+	Validation  *bool             `json:"validation,omitempty"`  // generate validation schemas; default true
+	Aliases     map[string]string `json:"aliases,omitempty"`     // custom @alias → relative dir, e.g. "auth": "services/auth"
 }
 
 // ResolvedConfig has all paths resolved to be absolute.
 type ResolvedConfig struct {
-	Input      string
-	Backend    string
-	Frontend   string
-	Out        string
-	ConfigDir  string            // absolute dir of veld.config.json; used for cache storage
-	BaseUrl    string            // base URL for frontend SDK (empty = process.env.VELD_API_URL)
-	Validation bool              // generate validation schemas (default true)
-	Aliases    map[string]string // merged: default aliases + config overrides
+	Input       string
+	Backend     string
+	Frontend    string
+	Out         string
+	ConfigDir   string            // absolute dir of veld.config.json; used for cache storage
+	BackendDir  string            // absolute path to backend project dir (empty = projectDir)
+	FrontendDir string            // absolute path to frontend project dir (empty = projectDir)
+	BaseUrl     string            // base URL for frontend SDK (empty = process.env.VELD_API_URL)
+	Validation  bool              // generate validation schemas (default true)
+	Aliases     map[string]string // merged: default aliases + config overrides
 }
 
 // FlagOverrides carries CLI flag values that override config-file settings.
@@ -140,15 +144,28 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 	}
 
 	return ResolvedConfig{
-		Input:      filepath.Clean(filepath.Join(cfgDir, cfg.Input)),
-		Backend:    cfg.Backend,
-		Frontend:   cfg.Frontend,
-		Out:        filepath.Clean(filepath.Join(cfgDir, cfg.Out)),
-		ConfigDir:  cfgDir,
-		BaseUrl:    cfg.BaseUrl,
-		Validation: validation,
-		Aliases:    aliases,
+		Input:       filepath.Clean(filepath.Join(cfgDir, cfg.Input)),
+		Backend:     cfg.Backend,
+		Frontend:    cfg.Frontend,
+		Out:         filepath.Clean(filepath.Join(cfgDir, cfg.Out)),
+		ConfigDir:   cfgDir,
+		BackendDir:  resolveOptionalDir(cfgDir, cfg.BackendDir),
+		FrontendDir: resolveOptionalDir(cfgDir, cfg.FrontendDir),
+		BaseUrl:     cfg.BaseUrl,
+		Validation:  validation,
+		Aliases:     aliases,
 	}, nil
+}
+
+// resolveOptionalDir resolves a dir path relative to base. Returns "" if dir is empty.
+func resolveOptionalDir(base, dir string) string {
+	if dir == "" {
+		return ""
+	}
+	if filepath.IsAbs(dir) {
+		return filepath.Clean(dir)
+	}
+	return filepath.Clean(filepath.Join(base, dir))
 }
 
 // DefaultAliases returns the built-in alias→folder mappings.
