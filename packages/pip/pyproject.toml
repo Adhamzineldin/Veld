@@ -3,7 +3,7 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "veld"
+name = "maayn-veld"
 version = "0.1.0"
 description = "Contract-first, multi-stack API code generator"
 readme = "README.md"
@@ -20,9 +20,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/veld-dev/veld"
-Repository = "https://github.com/veld-dev/veld"
-Issues = "https://github.com/veld-dev/veld/issues"
+Homepage = "https://github.com/Adhamzineldin/Veld"
+Repository = "https://github.com/Adhamzineldin/Veld"
+Issues = "https://github.com/Adhamzineldin/Veld/issues"
 
 [project.scripts]
 veld = "veld.__main__:main"
