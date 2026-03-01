@@ -30,3 +30,5 @@ veld = "veld.__main__:main"
 [tool.setuptools.packages.find]
 include = ["veld*"]
 
+[tool.setuptools.package-data]
+veld = ["binaries/**/*"]

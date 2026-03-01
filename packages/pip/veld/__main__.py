@@ -1,8 +1,8 @@
 """
 Veld CLI — pip wrapper
 
-Downloads the correct pre-built Veld binary for the current platform
-from GitHub Releases on first run. Proxies all CLI arguments.
+Uses the bundled binary for the current platform.
+Binaries are included in the package for all supported platforms.
 
 Supported platforms:
   - linux-amd64, linux-arm64
@@ -15,16 +15,8 @@ import sys
 import platform
 import subprocess
 import stat
-import tarfile
-import zipfile
-import tempfile
-import urllib.request
 import shutil
 from pathlib import Path
-
-VERSION = "0.1.0"
-GITHUB_REPO = "Adhamzineldin/Veld"
-BASE_URL = f"https://github.com/{GITHUB_REPO}/releases/download/v{VERSION}"
 
 
 def get_platform_key() -> str | None:
@@ -59,114 +51,43 @@ def get_binary_name() -> str:
     return "veld.exe" if sys.platform == "win32" else "veld"
 
 
-def get_cache_dir() -> Path:
-    """Return the platform-appropriate cache directory."""
-    if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Caches"
-    else:
-        base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    return base / "veld" / VERSION
-
-
-def get_binary_path() -> Path:
-    """Return the expected path to the cached binary."""
-    return get_cache_dir() / get_binary_name()
-
-
-def download_binary() -> Path:
-    """Download and extract the veld binary, returning its path."""
+def get_bundled_binary_path() -> Path | None:
+    """Get the path to the bundled binary for this platform."""
     platform_key = get_platform_key()
-
     if not platform_key:
-        print(
-            f"Warning: Unsupported platform {platform.system()}-{platform.machine()}.",
-            file=sys.stderr,
-        )
-        try_go_install()
-        sys.exit(1)
-
-    binary_path = get_binary_path()
-
-    # Already downloaded
+        return None
+    
+    # Binaries are bundled in veld/binaries/{platform}/
+    package_dir = Path(__file__).parent
+    binary_path = package_dir / "binaries" / platform_key / get_binary_name()
+    
     if binary_path.exists():
         return binary_path
-
-    ext = ".zip" if sys.platform == "win32" else ".tar.gz"
-    url = f"{BASE_URL}/veld-{platform_key}{ext}"
-
-    print(f"Downloading veld {VERSION} for {platform_key}...", file=sys.stderr)
-    print(f"  {url}", file=sys.stderr)
-
-    cache_dir = get_cache_dir()
-    cache_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-            tmp_path = tmp.name
-            urllib.request.urlretrieve(url, tmp_path)
-
-        if ext == ".zip":
-            with zipfile.ZipFile(tmp_path, "r") as zf:
-                zf.extractall(cache_dir)
-        else:
-            with tarfile.open(tmp_path, "r:gz") as tf:
-                tf.extractall(cache_dir)
-
-        os.unlink(tmp_path)
-
-        # Make executable on Unix
-        if sys.platform != "win32":
-            binary_path.chmod(binary_path.stat().st_mode | stat.S_IEXEC)
-
-        if binary_path.exists():
-            print(f"✓ veld {VERSION} installed", file=sys.stderr)
-            return binary_path
-        else:
-            raise FileNotFoundError("Binary not found after extraction")
-
-    except Exception as e:
-        print(f"Warning: Could not download binary: {e}", file=sys.stderr)
-        try_go_install()
-        sys.exit(1)
-
-
-def try_go_install():
-    """Attempt to install veld via go install."""
-    print("Attempting fallback: go install github.com/Adhamzineldin/Veld/cmd/veld@latest", file=sys.stderr)
-    try:
-        subprocess.run(
-            ["go", "install", "github.com/Adhamzineldin/Veld/cmd/veld@latest"],
-            check=True,
-        )
-        print("✓ Installed veld via go install", file=sys.stderr)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        print("", file=sys.stderr)
-        print("Install veld manually:", file=sys.stderr)
-        print("  go install github.com/Adhamzineldin/Veld/cmd/veld@latest", file=sys.stderr)
-        print("", file=sys.stderr)
-        print("Or download from: https://github.com/Adhamzineldin/Veld/releases", file=sys.stderr)
+    
+    return None
 
 
 def find_binary() -> str:
-    """Find the veld binary, downloading if necessary."""
-    # Check cache first
-    cached = get_binary_path()
-    if cached.exists():
-        return str(cached)
+    """Find the veld binary, using bundled version or PATH."""
+    # Try bundled binary first
+    bundled = get_bundled_binary_path()
+    if bundled:
+        return str(bundled)
 
-    # Check PATH
+    # Fallback: check PATH
     which = shutil.which("veld")
     if which:
         return which
 
-    # Download
-    return str(download_binary())
+    # No binary found
+    print("Error: Could not find veld binary.", file=sys.stderr)
+    print("The package may be missing binaries for your platform.", file=sys.stderr)
+    print("Try reinstalling: pip install --force-reinstall maayn-veld", file=sys.stderr)
+    sys.exit(1)
 
 
 def main():
-    """Entry point — find or download the binary, then proxy all args."""
+    """Entry point — find bundled binary, then proxy all args."""
     binary = find_binary()
     args = sys.argv[1:]
 
@@ -175,7 +96,7 @@ def main():
         sys.exit(result.returncode)
     except FileNotFoundError:
         print("Error: Could not run veld binary.", file=sys.stderr)
-        print("Try reinstalling: pip install --force-reinstall veld", file=sys.stderr)
+        print("Try reinstalling: pip install --force-reinstall maayn-veld", file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:
         sys.exit(130)
@@ -183,4 +104,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

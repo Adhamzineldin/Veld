@@ -20,9 +20,44 @@ const os = require("os");
 const { execSync } = require("child_process");
 const zlib = require("zlib");
 
-const VERSION = "0.1.0";
 const GITHUB_REPO = "Adhamzineldin/Veld";
-const BASE_URL = `https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}`;
+const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+
+async function getLatestVersion() {
+  // Allow override via environment variable
+  if (process.env.VELD_VERSION) {
+    return process.env.VELD_VERSION.replace(/^v/, "");
+  }
+
+  try {
+    const https = require("https");
+    return new Promise((resolve, reject) => {
+      https.get(GITHUB_API, { timeout: 10000 }, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          try {
+            const json = JSON.parse(data);
+            const tag = json.tag_name || "";
+            resolve(tag.replace(/^v/, "") || "latest");
+          } catch {
+            resolve("latest");
+          }
+        });
+        res.on("error", () => resolve("latest"));
+      }).on("error", () => resolve("latest"));
+    });
+  } catch {
+    return "latest";
+  }
+}
+
+function getBaseUrl(version) {
+  if (version === "latest") {
+    return `https://github.com/${GITHUB_REPO}/releases/latest/download`;
+  }
+  return `https://github.com/${GITHUB_REPO}/releases/download/v${version}`;
+}
 
 function getPlatformKey() {
   const platform = os.platform();
@@ -53,9 +88,10 @@ function getBinaryName() {
   return os.platform() === "win32" ? "veld.exe" : "veld";
 }
 
-function getDownloadUrl(platformKey) {
+function getDownloadUrl(platformKey, version) {
   const ext = os.platform() === "win32" ? ".zip" : ".tar.gz";
-  return `${BASE_URL}/veld-${platformKey}${ext}`;
+  const baseUrl = getBaseUrl(version);
+  return `${baseUrl}/veld-${platformKey}${ext}`;
 }
 
 function download(url) {
@@ -135,7 +171,8 @@ async function main() {
     return;
   }
 
-  const url = getDownloadUrl(platformKey);
+  const version = await getLatestVersion();
+  const url = getDownloadUrl(platformKey, version);
   const destDir = path.join(__dirname, "bin-platform");
   const binaryName = getBinaryName();
   const binaryPath = path.join(destDir, binaryName);
@@ -146,7 +183,7 @@ async function main() {
     return;
   }
 
-  console.log(`Downloading veld ${VERSION} for ${platformKey}...`);
+  console.log(`Downloading veld ${version} for ${platformKey}...`);
   console.log(`  ${url}`);
 
   try {
@@ -164,7 +201,7 @@ async function main() {
     }
 
     if (fs.existsSync(binaryPath)) {
-      console.log(`✓ veld ${VERSION} installed successfully`);
+      console.log(`✓ veld ${version} installed successfully`);
     } else {
       throw new Error("Binary not found after extraction");
     }

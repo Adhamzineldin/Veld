@@ -229,6 +229,35 @@ jobs:
         run: |
           npm version "${{ steps.version.outputs.VERSION }}" --no-git-tag-version --allow-same-version
 
+      - name: Download and bundle binaries for npm
+        working-directory: packages/npm
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          BASE="https://github.com/Adhamzineldin/Veld/releases/download/v${VERSION}"
+          mkdir -p binaries
+          
+          # Download and extract binaries for all platforms
+          for PLATFORM in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64; do
+            EXT=".tar.gz"
+            if [[ "$PLATFORM" == *"windows"* ]]; then
+              EXT=".zip"
+            fi
+            
+            echo "Downloading $PLATFORM..."
+            curl -sL "${BASE}/veld-${PLATFORM}${EXT}" -o "/tmp/veld-${PLATFORM}${EXT}"
+            
+            mkdir -p "binaries/${PLATFORM}"
+            if [[ "$EXT" == ".zip" ]]; then
+              unzip -q "/tmp/veld-${PLATFORM}${EXT}" -d "binaries/${PLATFORM}"
+            else
+              tar -xzf "/tmp/veld-${PLATFORM}${EXT}" -C "binaries/${PLATFORM}"
+            fi
+            rm "/tmp/veld-${PLATFORM}${EXT}"
+          done
+          
+          # Make binaries executable
+          chmod +x binaries/*/veld 2>/dev/null || true
+
       - name: Publish to npm
         working-directory: packages/npm
         run: npm publish --access public
@@ -261,6 +290,35 @@ jobs:
         working-directory: packages/pip
         run: |
           sed -i "s/__version__ = .*/__version__ = \"${{ steps.version.outputs.VERSION }}\"/" veld/__init__.py
+
+      - name: Download and bundle binaries for pip
+        working-directory: packages/pip
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          BASE="https://github.com/Adhamzineldin/Veld/releases/download/v${VERSION}"
+          mkdir -p veld/binaries
+          
+          # Download and extract binaries for all platforms
+          for PLATFORM in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64; do
+            EXT=".tar.gz"
+            if [[ "$PLATFORM" == *"windows"* ]]; then
+              EXT=".zip"
+            fi
+            
+            echo "Downloading $PLATFORM..."
+            curl -sL "${BASE}/veld-${PLATFORM}${EXT}" -o "/tmp/veld-${PLATFORM}${EXT}"
+            
+            mkdir -p "veld/binaries/${PLATFORM}"
+            if [[ "$EXT" == ".zip" ]]; then
+              unzip -q "/tmp/veld-${PLATFORM}${EXT}" -d "veld/binaries/${PLATFORM}"
+            else
+              tar -xzf "/tmp/veld-${PLATFORM}${EXT}" -C "veld/binaries/${PLATFORM}"
+            fi
+            rm "/tmp/veld-${PLATFORM}${EXT}"
+          done
+          
+          # Make binaries executable
+          chmod +x veld/binaries/*/veld 2>/dev/null || true
 
       - name: Build and publish
         working-directory: packages/pip

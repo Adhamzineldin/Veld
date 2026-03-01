@@ -16,7 +16,7 @@
   "keywords": ["veld", "api", "contract", "code-generation", "schema"],
   "repository": {
     "type": "git",
-    "url": "https://github.com/veld-dev/veld-vscode"
+    "url": "https://github.com/Adhamzineldin/Veld"
   },
   "activationEvents": [],
   "main": "./out/extension.js",

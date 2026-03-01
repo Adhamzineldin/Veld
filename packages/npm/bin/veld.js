@@ -3,9 +3,8 @@
 /**
  * Veld CLI — npm wrapper
  *
- * This thin wrapper spawns the platform-specific Veld binary that was
- * downloaded during `npm install` (postinstall). All CLI arguments are
- * forwarded as-is.
+ * This wrapper uses the bundled binary for the current platform.
+ * Binaries are included in the package for all supported platforms.
  */
 
 "use strict";
@@ -15,15 +14,43 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 
+function getPlatformKey() {
+  const platform = os.platform();
+  const arch = os.arch();
+
+  const platformMap = {
+    linux: "linux",
+    darwin: "darwin",
+    win32: "windows",
+  };
+
+  const archMap = {
+    x64: "amd64",
+    arm64: "arm64",
+  };
+
+  const p = platformMap[platform];
+  const a = archMap[arch];
+
+  if (!p || !a) {
+    return null;
+  }
+
+  return `${p}-${a}`;
+}
+
 function getBinaryName() {
   return os.platform() === "win32" ? "veld.exe" : "veld";
 }
 
 function getBinaryPath() {
-  // Check local node_modules/.veld-bin first (postinstall puts it here)
-  const localBin = path.join(__dirname, "..", "bin-platform", getBinaryName());
-  if (fs.existsSync(localBin)) {
-    return localBin;
+  // Use bundled binary for this platform
+  const platformKey = getPlatformKey();
+  if (platformKey) {
+    const bundledBin = path.join(__dirname, "..", "binaries", platformKey, getBinaryName());
+    if (fs.existsSync(bundledBin)) {
+      return bundledBin;
+    }
   }
 
   // Fallback: check if veld is on PATH
@@ -46,7 +73,7 @@ try {
     process.exit(err.status);
   }
   console.error("Error: Could not run veld binary.");
-  console.error("Try reinstalling: npm install veld");
+  console.error("Try reinstalling: npm install @maayn/veld");
   console.error("");
   console.error("Or install manually:");
   console.error("  go install github.com/Adhamzineldin/Veld/cmd/veld@latest");

@@ -26,17 +26,16 @@ veld openapi                 # Export OpenAPI 3.0 spec
 
 ## How it works
 
-This npm package is a thin wrapper around the Veld Go binary. On `npm install`,
-a postinstall script downloads the correct pre-built binary for your platform
-from [GitHub Releases](https://github.com/Adhamzineldin/Veld/releases).
+This npm package includes pre-built binaries for all supported platforms.
+The wrapper script automatically selects the correct binary for your platform.
 
 **Supported platforms:**
 - Linux (x64, arm64)
 - macOS (x64, Apple Silicon)
 - Windows (x64)
 
-If the download fails (e.g. behind a corporate proxy), the installer falls back
-to `go install github.com/Adhamzineldin/Veld/cmd/veld@latest`.
+The package version matches the binary version, so `npm install @maayn/veld@0.2.0`
+installs exactly version 0.2.0. No runtime downloads needed - works offline!
 
 ## Alternative installation
 
