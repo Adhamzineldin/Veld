@@ -10,8 +10,12 @@ func TestFrontendAlias(t *testing.T) {
 	tests := []struct {
 		input, expected string
 	}{
-		{"react", "typescript"},
+		{"react", "react"},
+		{"react-hooks", "react"},
+		{"hooks", "react"},
+		{"ts", "typescript"},
 		{"typescript", "typescript"},
+		{"flutter", "dart"},
 		{"none", "none"},
 		{"python", "python"},
 	}
@@ -143,8 +147,8 @@ func TestBuildResolvedReactAlias(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if rc.Frontend != "typescript" {
-		t.Errorf("expected 'react' to alias to 'typescript', got %q", rc.Frontend)
+	if rc.Frontend != "react" {
+		t.Errorf("expected 'react' to resolve to 'react', got %q", rc.Frontend)
 	}
 }
 

@@ -90,14 +90,28 @@ func (e *RustEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		return fmt.Errorf("rust emitter [write main.rs]: %w", err)
 	}
 
+	// src/validation.rs — validation helpers (optional).
+	if opts.Validation {
+		validationData := e.generateValidation(a)
+		if err := os.WriteFile(filepath.Join(outDir, "src", "validation.rs"), validationData, 0644); err != nil {
+			return fmt.Errorf("rust emitter [write validation.rs]: %w", err)
+		}
+	}
+
+	// src/errors.rs — error types with IntoResponse.
+	errorsData := e.generateErrors()
+	if err := os.WriteFile(filepath.Join(outDir, "src", "errors.rs"), errorsData, 0644); err != nil {
+		return fmt.Errorf("rust emitter [write errors.rs]: %w", err)
+	}
+
 	// src/lib.rs — library crate root that declares modules.
-	libData := e.generateLibRs(a)
+	libData := e.generateLibRs(a, opts.Validation)
 	if err := os.WriteFile(filepath.Join(outDir, "src", "lib.rs"), libData, 0644); err != nil {
 		return fmt.Errorf("rust emitter [write lib.rs]: %w", err)
 	}
 
 	// Cargo.toml.
-	cargoData := e.generateCargoToml()
+	cargoData := e.generateCargoToml(opts.Validation)
 	if err := os.WriteFile(filepath.Join(outDir, "Cargo.toml"), cargoData, 0644); err != nil {
 		return fmt.Errorf("rust emitter [write Cargo.toml]: %w", err)
 	}
@@ -106,11 +120,15 @@ func (e *RustEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 }
 
 // generateLibRs writes the Rust crate root that declares all modules.
-func (e *RustEmitter) generateLibRs(a ast.AST) []byte {
+func (e *RustEmitter) generateLibRs(a ast.AST, withValidation bool) []byte {
 	var sb strings.Builder
 	sb.WriteString(header + "\n")
 	sb.WriteString("pub mod models;\n")
 	sb.WriteString("pub mod services;\n")
+	if withValidation {
+		sb.WriteString("pub mod validation;\n")
+	}
+	sb.WriteString("pub mod errors;\n")
 	sb.WriteString("pub mod router;\n")
 	for _, mod := range a.Modules {
 		modName := e.adapter.NamingConvention(mod.Name, lang.NamingContextPrivate)
@@ -147,8 +165,8 @@ func (e *RustEmitter) generateMainRs(a ast.AST) []byte {
 }
 
 // generateCargoToml writes a Cargo.toml with required dependencies.
-func (e *RustEmitter) generateCargoToml() []byte {
-	return []byte(`[package]
+func (e *RustEmitter) generateCargoToml(withValidation bool) []byte {
+	cargo := `[package]
 name = "veld-generated"
 version = "0.1.0"
 edition = "2021"
@@ -163,7 +181,12 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 async-trait = "0.1"
-`)
+`
+	if withValidation {
+		cargo += `validator = { version = "0.16", features = ["derive"] }
+`
+	}
+	return []byte(cargo)
 }
 
 // Summary returns a human-readable listing of generated files.

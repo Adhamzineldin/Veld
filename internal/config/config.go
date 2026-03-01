@@ -9,23 +9,25 @@ import (
 
 // RawConfig mirrors veld.config.json on disk.
 type RawConfig struct {
-	Input    string            `json:"input"`
-	Backend  string            `json:"backend"`
-	Frontend string            `json:"frontend"`
-	Out      string            `json:"out"`
-	BaseUrl  string            `json:"baseUrl,omitempty"` // baked into frontend SDK; empty = use env var
-	Aliases  map[string]string `json:"aliases,omitempty"` // custom @alias → relative dir, e.g. "auth": "services/auth"
+	Input      string            `json:"input"`
+	Backend    string            `json:"backend"`
+	Frontend   string            `json:"frontend"`
+	Out        string            `json:"out"`
+	BaseUrl    string            `json:"baseUrl,omitempty"`    // baked into frontend SDK; empty = use env var
+	Validation *bool             `json:"validation,omitempty"` // generate validation schemas; default true
+	Aliases    map[string]string `json:"aliases,omitempty"`    // custom @alias → relative dir, e.g. "auth": "services/auth"
 }
 
 // ResolvedConfig has all paths resolved to be absolute.
 type ResolvedConfig struct {
-	Input     string
-	Backend   string
-	Frontend  string
-	Out       string
-	ConfigDir string            // absolute dir of veld.config.json; used for cache storage
-	BaseUrl   string            // base URL for frontend SDK (empty = process.env.VELD_API_URL)
-	Aliases   map[string]string // merged: default aliases + config overrides
+	Input      string
+	Backend    string
+	Frontend   string
+	Out        string
+	ConfigDir  string            // absolute dir of veld.config.json; used for cache storage
+	BaseUrl    string            // base URL for frontend SDK (empty = process.env.VELD_API_URL)
+	Validation bool              // generate validation schemas (default true)
+	Aliases    map[string]string // merged: default aliases + config overrides
 }
 
 // FlagOverrides carries CLI flag values that override config-file settings.
@@ -36,19 +38,23 @@ type FlagOverrides struct {
 	Input    string
 	Out      string
 	// Changed tracks which flags were explicitly passed.
-	BackendSet  bool
-	FrontendSet bool
-	InputSet    bool
-	OutSet      bool
+	BackendSet      bool
+	FrontendSet     bool
+	InputSet        bool
+	OutSet          bool
+	NoValidation    bool // --no-validation flag
+	NoValidationSet bool
 }
 
 // frontendAlias normalises legacy frontend names.
 func frontendAlias(name string) string {
 	switch name {
-	case "react":
-		return "typescript"
 	case "flutter":
 		return "dart"
+	case "ts":
+		return "typescript"
+	case "hooks", "react-hooks":
+		return "react"
 	default:
 		return name
 	}
@@ -124,14 +130,24 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		aliases[k] = v
 	}
 
+	// Resolve validation: default true, config can set false, CLI can override.
+	validation := true
+	if cfg.Validation != nil {
+		validation = *cfg.Validation
+	}
+	if flags.NoValidationSet {
+		validation = !flags.NoValidation
+	}
+
 	return ResolvedConfig{
-		Input:     filepath.Clean(filepath.Join(cfgDir, cfg.Input)),
-		Backend:   cfg.Backend,
-		Frontend:  cfg.Frontend,
-		Out:       filepath.Clean(filepath.Join(cfgDir, cfg.Out)),
-		ConfigDir: cfgDir,
-		BaseUrl:   cfg.BaseUrl,
-		Aliases:   aliases,
+		Input:      filepath.Clean(filepath.Join(cfgDir, cfg.Input)),
+		Backend:    cfg.Backend,
+		Frontend:   cfg.Frontend,
+		Out:        filepath.Clean(filepath.Join(cfgDir, cfg.Out)),
+		ConfigDir:  cfgDir,
+		BaseUrl:    cfg.BaseUrl,
+		Validation: validation,
+		Aliases:    aliases,
 	}, nil
 }
 

@@ -132,7 +132,7 @@ func (e *GoEmitter) generateMain(outDir string) error {
 }
 
 // generateGoMod writes a minimal go.mod for the generated module.
-func (e *GoEmitter) generateGoMod(outDir string) error {
+func (e *GoEmitter) generateGoMod(outDir string, withValidation bool) error {
 	w := codegen.NewWriter("")
 	w.Writeln(fmt.Sprintf("module %s", goModuleName))
 	w.BlankLine()
@@ -140,6 +140,9 @@ func (e *GoEmitter) generateGoMod(outDir string) error {
 	w.BlankLine()
 	w.Writeln("require (")
 	w.Writeln("\tgithub.com/go-chi/chi/v5 v5.0.12")
+	if withValidation {
+		w.Writeln("\tgithub.com/go-playground/validator/v10 v10.19.0")
+	}
 	w.Writeln(")")
 
 	return os.WriteFile(filepath.Join(outDir, "go.mod"), w.Bytes(), 0644)
