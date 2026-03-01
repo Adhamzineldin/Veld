@@ -1,6 +1,20 @@
 name: Release
 
-# ─── Trigger: push a version tag like v0.1.0, v1.2.3 ───────────────────────
+# ─── HOW THIS WORKS ─────────────────────────────────────────────────────────
+#
+# Trigger:  Push a version tag →  git tag v0.2.0 && git push origin v0.2.0
+#
+# Pipeline: Test → Build (5 platforms) → GitHub Release → npm + pip + Homebrew
+#
+# Secrets needed (set in GitHub repo → Settings → Secrets → Actions):
+#   GITHUB_TOKEN    — automatic, no setup needed
+#   NPM_TOKEN       — from npmjs.com → Access Tokens → Automation
+#   PYPI_TOKEN      — from pypi.org → Account Settings → API tokens
+#
+# Pre-release tags (e.g. v0.2.0-beta.1) skip npm/pip/Homebrew publishing.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Trigger: push a version tag like v0.1.0, v1.2.3
 on:
   push:
     tags:

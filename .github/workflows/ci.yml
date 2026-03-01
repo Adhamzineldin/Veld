@@ -1,5 +1,10 @@
 name: CI
 
+# ─── RUNS ON ────────────────────────────────────────────────────────────────
+# Every push to master/main and every pull request.
+# No secrets needed — this is read-only (build + test + vet).
+# ─────────────────────────────────────────────────────────────────────────────
+
 on:
   push:
     branches: [master, main]
