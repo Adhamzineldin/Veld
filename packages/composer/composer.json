@@ -12,10 +12,10 @@
     "sdk",
     "schema"
   ],
-  "homepage": "https://github.com/veld-dev/veld",
+  "homepage": "https://github.com/Adhamzineldin/Veld",
   "support": {
-    "issues": "https://github.com/veld-dev/veld/issues",
-    "source": "https://github.com/veld-dev/veld"
+    "issues": "https://github.com/Adhamzineldin/Veld/issues",
+    "source": "https://github.com/Adhamzineldin/Veld"
   },
   "require": {
     "php": ">=7.4"

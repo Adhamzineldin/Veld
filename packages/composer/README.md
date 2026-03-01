@@ -30,7 +30,7 @@ veld generate
 
 This Composer package is a thin PHP wrapper around the Veld Go binary. On first
 run, it downloads the correct pre-built binary for your platform from
-[GitHub Releases](https://github.com/veld-dev/veld/releases) and caches it.
+[GitHub Releases](https://github.com/Adhamzineldin/Veld/releases) and caches it.
 
 **Supported platforms:**
 - Linux (x64, arm64)
@@ -38,19 +38,19 @@ run, it downloads the correct pre-built binary for your platform from
 - Windows (x64)
 
 If the download fails, the wrapper falls back to
-`go install github.com/veld-dev/veld/cmd/veld@latest`.
+`go install github.com/Adhamzineldin/Veld/cmd/veld@latest`.
 
 ## Alternative installation
 
 ```bash
 # npm
-npm install veld
+npm install @maayn/veld
 
 # pip
-pip install veld
+pip install maayn-veld
 
 # Go
-go install github.com/veld-dev/veld/cmd/veld@latest
+go install github.com/Adhamzineldin/Veld/cmd/veld@latest
 
 # Homebrew
 brew install veld

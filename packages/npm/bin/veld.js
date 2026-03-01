@@ -49,7 +49,7 @@ try {
   console.error("Try reinstalling: npm install veld");
   console.error("");
   console.error("Or install manually:");
-  console.error("  go install github.com/veld-dev/veld/cmd/veld@latest");
+  console.error("  go install github.com/Adhamzineldin/Veld/cmd/veld@latest");
   console.error("");
   console.error(err.message);
   process.exit(1);

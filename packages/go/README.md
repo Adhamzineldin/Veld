@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-go install github.com/veld-dev/veld/cmd/veld@latest
+go install github.com/Adhamzineldin/Veld/cmd/veld@latest
 ```
 
 This downloads, builds, and installs the `veld` binary to your `$GOPATH/bin`.
@@ -26,7 +26,7 @@ veld openapi                 # Export OpenAPI 3.0 spec
 ## Build from source
 
 ```bash
-git clone https://github.com/veld-dev/veld.git
+git clone https://github.com/Adhamzineldin/Veld.git
 cd veld
 go build -o veld ./cmd/veld
 ```
@@ -35,10 +35,10 @@ go build -o veld ./cmd/veld
 
 ```bash
 # npm
-npm install veld
+npm install @maayn/veld
 
 # pip
-pip install veld
+pip install maayn-veld
 
 # Homebrew
 brew install veld

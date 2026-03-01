@@ -21,7 +21,7 @@ const { execSync } = require("child_process");
 const zlib = require("zlib");
 
 const VERSION = "0.1.0";
-const GITHUB_REPO = "veld-dev/veld";
+const GITHUB_REPO = "Adhamzineldin/Veld";
 const BASE_URL = `https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}`;
 
 function getPlatformKey() {
@@ -110,9 +110,9 @@ async function extractZip(buffer, destDir) {
 }
 
 async function tryGoInstall() {
-  console.log("Attempting fallback: go install github.com/veld-dev/veld/cmd/veld@latest");
+  console.log("Attempting fallback: go install github.com/Adhamzineldin/Veld/cmd/veld@latest");
   try {
-    execSync("go install github.com/veld-dev/veld/cmd/veld@latest", {
+    execSync("go install github.com/Adhamzineldin/Veld/cmd/veld@latest", {
       stdio: "inherit",
     });
     console.log("✓ Installed veld via go install");
@@ -131,7 +131,7 @@ async function main() {
     );
     console.warn("Attempting go install fallback...");
     if (await tryGoInstall()) return;
-    console.warn("Install veld manually: go install github.com/veld-dev/veld/cmd/veld@latest");
+    console.warn("Install veld manually: go install github.com/Adhamzineldin/Veld/cmd/veld@latest");
     return;
   }
 
@@ -175,9 +175,9 @@ async function main() {
     if (await tryGoInstall()) return;
 
     console.warn("Install veld manually:");
-    console.warn("  go install github.com/veld-dev/veld/cmd/veld@latest");
+    console.warn("  go install github.com/Adhamzineldin/Veld/cmd/veld@latest");
     console.warn("");
-    console.warn("Or download from: https://github.com/veld-dev/veld/releases");
+    console.warn("Or download from: https://github.com/Adhamzineldin/Veld/releases");
   }
 }
 

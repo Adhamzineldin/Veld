@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-pip install veld
+pip install maayn-veld
 ```
 
 ## Usage
@@ -26,7 +26,7 @@ veld openapi                 # Export OpenAPI 3.0 spec
 
 This pip package is a thin wrapper around the Veld Go binary. On first run,
 it downloads the correct pre-built binary for your platform from
-[GitHub Releases](https://github.com/veld-dev/veld/releases) and caches it
+[GitHub Releases](https://github.com/Adhamzineldin/Veld/releases) and caches it
 in your platform's cache directory.
 
 **Supported platforms:**
@@ -35,16 +35,16 @@ in your platform's cache directory.
 - Windows (x64)
 
 If the download fails, the installer falls back to
-`go install github.com/veld-dev/veld/cmd/veld@latest`.
+`go install github.com/Adhamzineldin/Veld/cmd/veld@latest`.
 
 ## Alternative installation
 
 ```bash
 # npm
-npm install veld
+npm install @maayn/veld
 
 # Go
-go install github.com/veld-dev/veld/cmd/veld@latest
+go install github.com/Adhamzineldin/Veld/cmd/veld@latest
 
 # Homebrew
 brew install veld

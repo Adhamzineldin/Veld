@@ -5,9 +5,9 @@
 ## Install
 
 ```bash
-npm install veld
+npm install @maayn/veld
 # or
-npx veld generate
+npx @maayn/veld generate
 ```
 
 ## Usage
@@ -28,7 +28,7 @@ veld openapi                 # Export OpenAPI 3.0 spec
 
 This npm package is a thin wrapper around the Veld Go binary. On `npm install`,
 a postinstall script downloads the correct pre-built binary for your platform
-from [GitHub Releases](https://github.com/veld-dev/veld/releases).
+from [GitHub Releases](https://github.com/Adhamzineldin/Veld/releases).
 
 **Supported platforms:**
 - Linux (x64, arm64)
@@ -36,19 +36,19 @@ from [GitHub Releases](https://github.com/veld-dev/veld/releases).
 - Windows (x64)
 
 If the download fails (e.g. behind a corporate proxy), the installer falls back
-to `go install github.com/veld-dev/veld/cmd/veld@latest`.
+to `go install github.com/Adhamzineldin/Veld/cmd/veld@latest`.
 
 ## Alternative installation
 
 ```bash
 # Go (no npm needed)
-go install github.com/veld-dev/veld/cmd/veld@latest
+go install github.com/Adhamzineldin/Veld/cmd/veld@latest
 
 # Homebrew
 brew install veld
 
 # pip
-pip install veld
+pip install maayn-veld
 
 # Composer (PHP)
 composer require veld-dev/veld
@@ -56,7 +56,7 @@ composer require veld-dev/veld
 
 ## Links
 
-- [Documentation](https://github.com/veld-dev/veld)
+- [Documentation](https://github.com/Adhamzineldin/Veld)
 - [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=veld-dev.veld-vscode)
 - [JetBrains Plugin](https://plugins.jetbrains.com/plugin/veld)
 

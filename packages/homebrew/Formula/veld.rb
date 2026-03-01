@@ -9,26 +9,26 @@
 
 class Veld < Formula
   desc "Contract-first, multi-stack API code generator"
-  homepage "https://github.com/veld-dev/veld"
+  homepage "https://github.com/Adhamzineldin/Veld"
   version "0.1.0"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/veld-dev/veld/releases/download/v#{version}/veld-darwin-arm64.tar.gz"
+      url "https://github.com/Adhamzineldin/Veld/releases/download/v#{version}/veld-darwin-arm64.tar.gz"
       sha256 "PLACEHOLDER_SHA256_DARWIN_ARM64"
     else
-      url "https://github.com/veld-dev/veld/releases/download/v#{version}/veld-darwin-amd64.tar.gz"
+      url "https://github.com/Adhamzineldin/Veld/releases/download/v#{version}/veld-darwin-amd64.tar.gz"
       sha256 "PLACEHOLDER_SHA256_DARWIN_AMD64"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/veld-dev/veld/releases/download/v#{version}/veld-linux-arm64.tar.gz"
+      url "https://github.com/Adhamzineldin/Veld/releases/download/v#{version}/veld-linux-arm64.tar.gz"
       sha256 "PLACEHOLDER_SHA256_LINUX_ARM64"
     else
-      url "https://github.com/veld-dev/veld/releases/download/v#{version}/veld-linux-amd64.tar.gz"
+      url "https://github.com/Adhamzineldin/Veld/releases/download/v#{version}/veld-linux-amd64.tar.gz"
       sha256 "PLACEHOLDER_SHA256_LINUX_AMD64"
     end
   end

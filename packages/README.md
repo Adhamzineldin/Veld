@@ -11,7 +11,7 @@ user's platform from GitHub Releases.
 | **npm**    | `veld`                   | `npm install veld` / `npx veld generate`              |
 | **pip**    | `veld`                   | `pip install veld`                                    |
 | **Homebrew** | `veld-dev/tap/veld`    | `brew install veld-dev/tap/veld`                      |
-| **Go**     | `github.com/veld-dev/veld` | `go install github.com/veld-dev/veld/cmd/veld@latest` |
+| **Go**     | `github.com/Adhamzineldin/Veld` | `go install github.com/Adhamzineldin/Veld/cmd/veld@latest` |
 | **Composer** | `veld-dev/veld`        | `composer require veld-dev/veld`                      |
 
 ## How they work
@@ -19,7 +19,7 @@ user's platform from GitHub Releases.
 All wrappers follow the same pattern:
 
 1. On install (or first run), detect platform and architecture
-2. Download the pre-built binary from `https://github.com/veld-dev/veld/releases/download/v{VERSION}/veld-{os}-{arch}`
+2. Download the pre-built binary from `https://github.com/Adhamzineldin/Veld/releases/download/v{VERSION}/veld-{os}-{arch}`
 3. Cache the binary locally
 4. Proxy all CLI arguments to the binary
 

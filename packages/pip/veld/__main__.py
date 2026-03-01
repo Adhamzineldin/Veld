@@ -23,7 +23,7 @@ import shutil
 from pathlib import Path
 
 VERSION = "0.1.0"
-GITHUB_REPO = "veld-dev/veld"
+GITHUB_REPO = "Adhamzineldin/Veld"
 BASE_URL = f"https://github.com/{GITHUB_REPO}/releases/download/v{VERSION}"
 
 
@@ -134,19 +134,19 @@ def download_binary() -> Path:
 
 def try_go_install():
     """Attempt to install veld via go install."""
-    print("Attempting fallback: go install github.com/veld-dev/veld/cmd/veld@latest", file=sys.stderr)
+    print("Attempting fallback: go install github.com/Adhamzineldin/Veld/cmd/veld@latest", file=sys.stderr)
     try:
         subprocess.run(
-            ["go", "install", "github.com/veld-dev/veld/cmd/veld@latest"],
+            ["go", "install", "github.com/Adhamzineldin/Veld/cmd/veld@latest"],
             check=True,
         )
         print("✓ Installed veld via go install", file=sys.stderr)
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("", file=sys.stderr)
         print("Install veld manually:", file=sys.stderr)
-        print("  go install github.com/veld-dev/veld/cmd/veld@latest", file=sys.stderr)
+        print("  go install github.com/Adhamzineldin/Veld/cmd/veld@latest", file=sys.stderr)
         print("", file=sys.stderr)
-        print("Or download from: https://github.com/veld-dev/veld/releases", file=sys.stderr)
+        print("Or download from: https://github.com/Adhamzineldin/Veld/releases", file=sys.stderr)
 
 
 def find_binary() -> str:

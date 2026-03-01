@@ -13,7 +13,7 @@
  */
 
 define('VELD_VERSION', '0.1.0');
-define('GITHUB_REPO', 'veld-dev/veld');
+define('GITHUB_REPO', 'Adhamzineldin/Veld');
 
 function getPlatformKey(): ?string
 {
@@ -74,7 +74,7 @@ function downloadBinary(): string
 
     if (!$platformKey) {
         fwrite(STDERR, "Warning: Unsupported platform " . PHP_OS_FAMILY . "-" . php_uname('m') . "\n");
-        fwrite(STDERR, "Install veld manually: go install github.com/veld-dev/veld/cmd/veld@latest\n");
+        fwrite(STDERR, "Install veld manually: go install github.com/Adhamzineldin/Veld/cmd/veld@latest\n");
         exit(1);
     }
 
@@ -158,16 +158,16 @@ function downloadBinary(): string
 
 function tryGoInstall(): void
 {
-    fwrite(STDERR, "Attempting fallback: go install github.com/veld-dev/veld/cmd/veld@latest\n");
+    fwrite(STDERR, "Attempting fallback: go install github.com/Adhamzineldin/Veld/cmd/veld@latest\n");
     $exitCode = 0;
-    passthru('go install github.com/veld-dev/veld/cmd/veld@latest 2>&1', $exitCode);
+    passthru('go install github.com/Adhamzineldin/Veld/cmd/veld@latest 2>&1', $exitCode);
     if ($exitCode === 0) {
         fwrite(STDERR, "✓ Installed veld via go install\n");
         return;
     }
     fwrite(STDERR, "\nInstall veld manually:\n");
-    fwrite(STDERR, "  go install github.com/veld-dev/veld/cmd/veld@latest\n\n");
-    fwrite(STDERR, "Or download from: https://github.com/veld-dev/veld/releases\n");
+    fwrite(STDERR, "  go install github.com/Adhamzineldin/Veld/cmd/veld@latest\n\n");
+    fwrite(STDERR, "Or download from: https://github.com/Adhamzineldin/Veld/releases\n");
 }
 
 function findBinary(): string

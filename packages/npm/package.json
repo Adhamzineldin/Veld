@@ -11,13 +11,13 @@
     "sdk",
     "schema"
   ],
-  "homepage": "https://github.com/veld-dev/veld",
+  "homepage": "https://github.com/Adhamzineldin/Veld",
   "bugs": {
-    "url": "https://github.com/veld-dev/veld/issues"
+    "url": "https://github.com/Adhamzineldin/Veld/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/veld-dev/veld.git"
+    "url": "https://github.com/Adhamzineldin/Veld.git"
   },
   "license": "MIT",
   "bin": {
