@@ -2,23 +2,83 @@ name: Release
 
 # ─── HOW THIS WORKS ─────────────────────────────────────────────────────────
 #
-# Trigger:  Push a version tag →  git tag v0.2.0 && git push origin v0.2.0
+# Triggers:
+#   1. Push a version tag:  git tag v0.2.0 && git push origin v0.2.0
+#      → Auto-detects what changed since the last tag and only publishes
+#        affected targets.
 #
-# Pipeline: Test → Build (5 platforms) → GitHub Release → npm + pip + Homebrew
+#   2. Manual dispatch (Actions → Release → Run workflow):
+#      → Pick exactly which targets to publish via checkboxes.
+#
+# Auto-detection rules (tag push):
+#   cmd/ or internal/ or go.mod changed  →  binary + npm + pip + homebrew
+#   packages/npm/ changed                →  npm
+#   packages/pip/ changed                →  pip
+#   packages/homebrew/ changed           →  homebrew
+#   packages/composer/ changed           →  composer
+#   editors/vscode/ changed              →  vscode
+#   editors/jetbrains/ changed           →  jetbrains
+#
+# If NOTHING is detected as changed (e.g. docs-only commit), only the
+# GitHub Release is created (with binaries) but no packages are published.
 #
 # Secrets needed (set in GitHub repo → Settings → Secrets → Actions):
-#   GITHUB_TOKEN    — automatic, no setup needed
-#   NPM_TOKEN       — from npmjs.com → Access Tokens → Automation
-#   PYPI_TOKEN      — from pypi.org → Account Settings → API tokens
+#   GITHUB_TOKEN           — automatic, no setup needed
+#   NPM_TOKEN              — from npmjs.com (for npm publish)
+#   PYPI_TOKEN             — from pypi.org (for pip publish)
+#   VSCE_PAT               — Azure DevOps token (for VS Code Marketplace)
+#   JETBRAINS_PUBLISH_TOKEN — JetBrains Marketplace token
 #
-# Pre-release tags (e.g. v0.2.0-beta.1) skip npm/pip/Homebrew publishing.
+# Pre-release tags (e.g. v0.2.0-beta.1) create a GitHub Release but skip
+# all package/plugin publishing (unless manually overridden via dispatch).
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Trigger: push a version tag like v0.1.0, v1.2.3
 on:
   push:
     tags:
       - "v*"
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g. v0.3.0) — required for manual runs"
+        required: true
+        type: string
+      all:
+        description: "Publish everything"
+        required: false
+        type: boolean
+        default: false
+      binary:
+        description: "Build & release binary"
+        required: false
+        type: boolean
+        default: true
+      npm:
+        description: "Publish npm package"
+        required: false
+        type: boolean
+        default: false
+      pip:
+        description: "Publish pip package"
+        required: false
+        type: boolean
+        default: false
+      homebrew:
+        description: "Update Homebrew formula"
+        required: false
+        type: boolean
+        default: false
+      vscode:
+        description: "Publish VS Code extension"
+        required: false
+        type: boolean
+        default: false
+      jetbrains:
+        description: "Publish JetBrains plugin"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -27,28 +87,156 @@ env:
   GO_VERSION: "1.22"
 
 jobs:
-  # ─── 1. Run tests before building anything ──────────────────────────────────
+  # ─── Resolve version & detect what to publish ───────────────────────────────
+  resolve:
+    name: Resolve targets
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ctx.outputs.version }}
+      is_prerelease: ${{ steps.ctx.outputs.is_prerelease }}
+      publish_binary: ${{ steps.targets.outputs.binary }}
+      publish_npm: ${{ steps.targets.outputs.npm }}
+      publish_pip: ${{ steps.targets.outputs.pip }}
+      publish_homebrew: ${{ steps.targets.outputs.homebrew }}
+      publish_composer: ${{ steps.targets.outputs.composer }}
+      publish_vscode: ${{ steps.targets.outputs.vscode }}
+      publish_jetbrains: ${{ steps.targets.outputs.jetbrains }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for tag comparison
+
+      - name: Resolve version
+        id: ctx
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          if [[ "$VERSION" == *-* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "📦 Version: ${VERSION}"
+
+      - name: Detect changed paths
+        id: changes
+        run: |
+          VERSION="${{ steps.ctx.outputs.version }}"
+
+          # Find the previous tag
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${VERSION}$" | head -1)
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found — treating everything as changed"
+            echo "binary=true" >> "$GITHUB_OUTPUT"
+            echo "npm=true" >> "$GITHUB_OUTPUT"
+            echo "pip=true" >> "$GITHUB_OUTPUT"
+            echo "homebrew=true" >> "$GITHUB_OUTPUT"
+            echo "composer=true" >> "$GITHUB_OUTPUT"
+            echo "vscode=true" >> "$GITHUB_OUTPUT"
+            echo "jetbrains=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Comparing ${PREV_TAG}..HEAD"
+          CHANGED=$(git diff --name-only "${PREV_TAG}..HEAD" || echo "")
+          echo "$CHANGED"
+
+          # Map paths to targets
+          has() { echo "$CHANGED" | grep -qE "$1" && echo "true" || echo "false"; }
+
+          echo "binary=$(has '^(cmd/|internal/|go\.(mod|sum))')" >> "$GITHUB_OUTPUT"
+          echo "npm=$(has '^packages/npm/')" >> "$GITHUB_OUTPUT"
+          echo "pip=$(has '^packages/pip/')" >> "$GITHUB_OUTPUT"
+          echo "homebrew=$(has '^packages/homebrew/')" >> "$GITHUB_OUTPUT"
+          echo "composer=$(has '^packages/composer/')" >> "$GITHUB_OUTPUT"
+          echo "vscode=$(has '^editors/vscode/')" >> "$GITHUB_OUTPUT"
+          echo "jetbrains=$(has '^editors/jetbrains/')" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve final targets
+        id: targets
+        run: |
+          IS_DISPATCH="${{ github.event_name == 'workflow_dispatch' }}"
+          IS_PRERELEASE="${{ steps.ctx.outputs.is_prerelease }}"
+          ALL="${{ inputs.all }}"
+
+          resolve() {
+            local name=$1
+            local auto=$2     # auto-detected from git diff
+            local manual=$3   # manual dispatch checkbox
+
+            if [ "$IS_DISPATCH" = "true" ]; then
+              # Manual dispatch: use checkboxes (or "all" override)
+              if [ "$ALL" = "true" ] || [ "$manual" = "true" ]; then
+                echo "true"
+              else
+                echo "false"
+              fi
+            else
+              # Tag push: use auto-detection, but skip packages on pre-release
+              if [ "$IS_PRERELEASE" = "true" ] && [ "$name" != "binary" ]; then
+                echo "false"
+              else
+                # Binary changes cascade to npm/pip/homebrew
+                if [ "$name" = "npm" ] || [ "$name" = "pip" ] || [ "$name" = "homebrew" ]; then
+                  if [ "${{ steps.changes.outputs.binary }}" = "true" ] || [ "$auto" = "true" ]; then
+                    echo "true"
+                  else
+                    echo "false"
+                  fi
+                else
+                  echo "$auto"
+                fi
+              fi
+            fi
+          }
+
+          echo "binary=$(resolve binary ${{ steps.changes.outputs.binary }} ${{ inputs.binary }})" >> "$GITHUB_OUTPUT"
+          echo "npm=$(resolve npm ${{ steps.changes.outputs.npm }} ${{ inputs.npm }})" >> "$GITHUB_OUTPUT"
+          echo "pip=$(resolve pip ${{ steps.changes.outputs.pip }} ${{ inputs.pip }})" >> "$GITHUB_OUTPUT"
+          echo "homebrew=$(resolve homebrew ${{ steps.changes.outputs.homebrew }} ${{ inputs.homebrew }})" >> "$GITHUB_OUTPUT"
+          echo "composer=$(resolve composer ${{ steps.changes.outputs.composer }} false)" >> "$GITHUB_OUTPUT"
+          echo "vscode=$(resolve vscode ${{ steps.changes.outputs.vscode }} ${{ inputs.vscode }})" >> "$GITHUB_OUTPUT"
+          echo "jetbrains=$(resolve jetbrains ${{ steps.changes.outputs.jetbrains }} ${{ inputs.jetbrains }})" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          echo "### 🎯 Publish targets" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Target | Publish |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|---------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Binary / GitHub Release | \`${{ steps.targets.outputs.binary }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| npm | \`${{ steps.targets.outputs.npm }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| pip | \`${{ steps.targets.outputs.pip }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Homebrew | \`${{ steps.targets.outputs.homebrew }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Composer | \`${{ steps.targets.outputs.composer }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| VS Code | \`${{ steps.targets.outputs.vscode }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| JetBrains | \`${{ steps.targets.outputs.jetbrains }}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+  # ─── Test ───────────────────────────────────────────────────────────────────
   test:
     name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+      - run: go test ./... -race -count=1
+      - run: go vet ./...
 
-      - name: Test
-        run: go test ./... -race -count=1
-
-      - name: Vet
-        run: go vet ./...
-
-  # ─── 2. Build binaries for all platforms ────────────────────────────────────
+  # ─── Build binaries ────────────────────────────────────────────────────────
   build:
     name: Build (${{ matrix.goos }}-${{ matrix.goarch }})
-    needs: test
+    needs: [test, resolve]
+    if: needs.resolve.outputs.publish_binary == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -63,18 +251,12 @@ jobs:
             goarch: arm64
           - goos: windows
             goarch: amd64
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
       - name: Build binary
         env:
@@ -82,84 +264,65 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
+          VERSION="${{ needs.resolve.outputs.version }}"
           EXT=""
           if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
-
           go build \
             -ldflags "-s -w -X main.Version=${VERSION}" \
             -trimpath \
             -o "veld${EXT}" \
             ./cmd/veld
 
-          echo "✓ Built veld ${VERSION} for ${GOOS}/${GOARCH}"
-
       - name: Package archive
         run: |
           PLATFORM="${{ matrix.goos }}-${{ matrix.goarch }}"
-          ARCHIVE_NAME="veld-${PLATFORM}"
-
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            zip "${ARCHIVE_NAME}.zip" veld.exe
-            echo "ASSET=${ARCHIVE_NAME}.zip" >> "$GITHUB_ENV"
+            zip "veld-${PLATFORM}.zip" veld.exe
+            echo "ASSET=veld-${PLATFORM}.zip" >> "$GITHUB_ENV"
           else
-            tar -czf "${ARCHIVE_NAME}.tar.gz" veld
-            echo "ASSET=${ARCHIVE_NAME}.tar.gz" >> "$GITHUB_ENV"
+            tar -czf "veld-${PLATFORM}.tar.gz" veld
+            echo "ASSET=veld-${PLATFORM}.tar.gz" >> "$GITHUB_ENV"
           fi
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: veld-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.ASSET }}
           retention-days: 1
 
-  # ─── 3. Create GitHub Release with all binaries ─────────────────────────────
+  # ─── Create GitHub Release ─────────────────────────────────────────────────
   release:
     name: Create Release
-    needs: build
+    needs: [build, resolve]
+    if: needs.resolve.outputs.publish_binary == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # full history for changelog
+          fetch-depth: 0
 
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts/
 
-      - name: Collect release assets
+      - name: Collect assets
         run: |
           mkdir -p release/
           find artifacts/ -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release/ \;
-          ls -lh release/
-
-      - name: Generate SHA256 checksums
-        working-directory: release
-        run: |
-          sha256sum * > checksums.txt
-          cat checksums.txt
+          cd release && sha256sum * > checksums.txt && cat checksums.txt
 
       - name: Generate changelog
-        id: changelog
         run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-
-          # Find previous tag
+          VERSION="${{ needs.resolve.outputs.version }}"
           PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${VERSION}$" | head -1)
 
           echo "## What's Changed" > changelog.md
           echo "" >> changelog.md
-
           if [ -n "$PREV_TAG" ]; then
             echo "Changes since \`${PREV_TAG}\`:" >> changelog.md
             echo "" >> changelog.md
-            git log "${PREV_TAG}..${VERSION}" --pretty=format:"- %s (%h)" --no-merges >> changelog.md
+            git log "${PREV_TAG}..${VERSION}" --pretty=format:"- %s (%h)" --no-merges >> changelog.md 2>/dev/null || \
+            git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges >> changelog.md
           else
             echo "Initial release 🎉" >> changelog.md
           fi
@@ -167,38 +330,24 @@ jobs:
           echo "" >> changelog.md
           echo "" >> changelog.md
           echo "## Installation" >> changelog.md
-          echo "" >> changelog.md
           echo '```bash' >> changelog.md
-          echo "# npm" >> changelog.md
-          echo "npm install veld" >> changelog.md
-          echo "" >> changelog.md
-          echo "# pip" >> changelog.md
-          echo "pip install veld" >> changelog.md
-          echo "" >> changelog.md
-          echo "# Go" >> changelog.md
-          echo "go install github.com/veld-dev/veld/cmd/veld@${VERSION}" >> changelog.md
-          echo "" >> changelog.md
-          echo "# Homebrew" >> changelog.md
-          echo "brew install veld-dev/tap/veld" >> changelog.md
-          echo "" >> changelog.md
-          echo "# Composer" >> changelog.md
-          echo "composer require veld-dev/veld" >> changelog.md
+          echo "npm install veld        # npm" >> changelog.md
+          echo "pip install veld        # pip" >> changelog.md
+          echo "brew install veld-dev/tap/veld  # Homebrew" >> changelog.md
           echo '```' >> changelog.md
           echo "" >> changelog.md
           echo "## Checksums (SHA256)" >> changelog.md
-          echo "" >> changelog.md
           echo '```' >> changelog.md
           cat release/checksums.txt >> changelog.md
           echo '```' >> changelog.md
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.VERSION }}
-          name: Veld ${{ steps.version.outputs.VERSION }}
+          tag_name: ${{ needs.resolve.outputs.version }}
+          name: Veld ${{ needs.resolve.outputs.version }}
           body_path: changelog.md
           draft: false
-          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+          prerelease: ${{ needs.resolve.outputs.is_prerelease == 'true' }}
           files: |
             release/*.tar.gz
             release/*.zip
@@ -206,118 +355,80 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ─── 4. Publish npm package ─────────────────────────────────────────────────
+  # ─── Publish npm ───────────────────────────────────────────────────────────
   publish-npm:
     name: Publish npm
-    needs: release
+    needs: [release, resolve]
+    if: needs.resolve.outputs.publish_npm == 'true'
     runs-on: ubuntu-latest
-    if: "!contains(github.ref, '-')"  # skip pre-releases
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-
-      - name: Update package version
+      - name: Download and bundle binaries
         working-directory: packages/npm
         run: |
-          npm version "${{ steps.version.outputs.VERSION }}" --no-git-tag-version --allow-same-version
+          VERSION="${{ needs.resolve.outputs.version }}"
+          VERSION="${VERSION#v}"
+          npm version "${VERSION}" --no-git-tag-version --allow-same-version
 
-      - name: Download and bundle binaries for npm
-        working-directory: packages/npm
-        run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-          BASE="https://github.com/Adhamzineldin/Veld/releases/download/v${VERSION}"
+          BASE="https://github.com/Adhamzineldin/Veld/releases/download/${{ needs.resolve.outputs.version }}"
           mkdir -p binaries
-          
-          # Download and extract binaries for all platforms
           for PLATFORM in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64; do
             EXT=".tar.gz"
-            if [[ "$PLATFORM" == *"windows"* ]]; then
-              EXT=".zip"
-            fi
-            
-            echo "Downloading $PLATFORM..."
+            [[ "$PLATFORM" == *"windows"* ]] && EXT=".zip"
             curl -sL "${BASE}/veld-${PLATFORM}${EXT}" -o "/tmp/veld-${PLATFORM}${EXT}"
-            
             mkdir -p "binaries/${PLATFORM}"
             if [[ "$EXT" == ".zip" ]]; then
               unzip -q "/tmp/veld-${PLATFORM}${EXT}" -d "binaries/${PLATFORM}"
             else
               tar -xzf "/tmp/veld-${PLATFORM}${EXT}" -C "binaries/${PLATFORM}"
             fi
-            rm "/tmp/veld-${PLATFORM}${EXT}"
           done
-          
-          # Make binaries executable
           chmod +x binaries/*/veld 2>/dev/null || true
 
-      - name: Publish to npm
+      - name: Publish
         working-directory: packages/npm
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  # ─── 5. Publish pip package ─────────────────────────────────────────────────
+  # ─── Publish pip ───────────────────────────────────────────────────────────
   publish-pip:
     name: Publish pip
-    needs: release
+    needs: [release, resolve]
+    if: needs.resolve.outputs.publish_pip == 'true'
     runs-on: ubuntu-latest
-    if: "!contains(github.ref, '-')"
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-
-      - name: Update version in pyproject.toml
+      - name: Download and bundle binaries
         working-directory: packages/pip
         run: |
-          sed -i "s/^version = .*/version = \"${{ steps.version.outputs.VERSION }}\"/" pyproject.toml
+          VERSION="${{ needs.resolve.outputs.version }}"
+          VERSION="${VERSION#v}"
+          sed -i "s/^version = .*/version = \"${VERSION}\"/" pyproject.toml
+          sed -i "s/__version__ = .*/__version__ = \"${VERSION}\"/" veld/__init__.py
 
-      - name: Update version in __init__.py
-        working-directory: packages/pip
-        run: |
-          sed -i "s/__version__ = .*/__version__ = \"${{ steps.version.outputs.VERSION }}\"/" veld/__init__.py
-
-      - name: Download and bundle binaries for pip
-        working-directory: packages/pip
-        run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-          BASE="https://github.com/Adhamzineldin/Veld/releases/download/v${VERSION}"
+          BASE="https://github.com/Adhamzineldin/Veld/releases/download/${{ needs.resolve.outputs.version }}"
           mkdir -p veld/binaries
-          
-          # Download and extract binaries for all platforms
           for PLATFORM in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64; do
             EXT=".tar.gz"
-            if [[ "$PLATFORM" == *"windows"* ]]; then
-              EXT=".zip"
-            fi
-            
-            echo "Downloading $PLATFORM..."
+            [[ "$PLATFORM" == *"windows"* ]] && EXT=".zip"
             curl -sL "${BASE}/veld-${PLATFORM}${EXT}" -o "/tmp/veld-${PLATFORM}${EXT}"
-            
             mkdir -p "veld/binaries/${PLATFORM}"
             if [[ "$EXT" == ".zip" ]]; then
               unzip -q "/tmp/veld-${PLATFORM}${EXT}" -d "veld/binaries/${PLATFORM}"
             else
               tar -xzf "/tmp/veld-${PLATFORM}${EXT}" -C "veld/binaries/${PLATFORM}"
             fi
-            rm "/tmp/veld-${PLATFORM}${EXT}"
           done
-          
-          # Make binaries executable
           chmod +x veld/binaries/*/veld 2>/dev/null || true
 
       - name: Build and publish
@@ -330,61 +441,91 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
 
-  # ─── 6. Update Homebrew formula ─────────────────────────────────────────────
+  # ─── Update Homebrew ───────────────────────────────────────────────────────
   update-homebrew:
     name: Update Homebrew
-    needs: release
+    needs: [release, resolve]
+    if: needs.resolve.outputs.publish_homebrew == 'true'
     runs-on: ubuntu-latest
-    if: "!contains(github.ref, '-')"
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-
-      - name: Download release assets for SHA256
-        run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-          BASE="https://github.com/veld-dev/veld/releases/download/v${VERSION}"
-          mkdir -p /tmp/hashes
-
-          for PLATFORM in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do
-            curl -sL "${BASE}/veld-${PLATFORM}.tar.gz" -o "/tmp/hashes/veld-${PLATFORM}.tar.gz"
-          done
-
-      - name: Compute SHA256 hashes
+      - name: Download and hash
         id: hashes
         run: |
+          VERSION="${{ needs.resolve.outputs.version }}"
+          BASE="https://github.com/Adhamzineldin/Veld/releases/download/${VERSION}"
+          mkdir -p /tmp/hashes
+          for P in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do
+            curl -sL "${BASE}/veld-${P}.tar.gz" -o "/tmp/hashes/veld-${P}.tar.gz"
+          done
           echo "DARWIN_AMD64=$(sha256sum /tmp/hashes/veld-darwin-amd64.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "DARWIN_ARM64=$(sha256sum /tmp/hashes/veld-darwin-arm64.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "LINUX_AMD64=$(sha256sum /tmp/hashes/veld-linux-amd64.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "LINUX_ARM64=$(sha256sum /tmp/hashes/veld-linux-arm64.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
-      - name: Update Homebrew formula
+      - name: Update formula
         run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
+          VERSION="${{ needs.resolve.outputs.version }}"
+          VERSION="${VERSION#v}"
           FORMULA="packages/homebrew/Formula/veld.rb"
-
           sed -i "s/version \".*\"/version \"${VERSION}\"/" "$FORMULA"
           sed -i "s/PLACEHOLDER_SHA256_DARWIN_ARM64/${{ steps.hashes.outputs.DARWIN_ARM64 }}/" "$FORMULA"
           sed -i "s/PLACEHOLDER_SHA256_DARWIN_AMD64/${{ steps.hashes.outputs.DARWIN_AMD64 }}/" "$FORMULA"
           sed -i "s/PLACEHOLDER_SHA256_LINUX_ARM64/${{ steps.hashes.outputs.LINUX_ARM64 }}/" "$FORMULA"
           sed -i "s/PLACEHOLDER_SHA256_LINUX_AMD64/${{ steps.hashes.outputs.LINUX_AMD64 }}/" "$FORMULA"
-
-          echo "Updated formula:"
           cat "$FORMULA"
 
-      # If you have a separate homebrew-tap repo, push the formula there:
-      # - name: Push to homebrew-tap
-      #   uses: dmnemec/copy_file_to_another_repo_action@main
-      #   env:
-      #     API_TOKEN_GITHUB: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-      #   with:
-      #     source_file: packages/homebrew/Formula/veld.rb
-      #     destination_repo: veld-dev/homebrew-tap
-      #     destination_folder: Formula
-      #     user_email: ci@veld.dev
-      #     user_name: veld-ci
-      #     commit_message: "Update veld to v${{ steps.version.outputs.VERSION }}"
+  # ─── Publish VS Code Extension ─────────────────────────────────────────────
+  publish-vscode:
+    name: Publish VS Code
+    needs: [test, resolve]
+    if: needs.resolve.outputs.publish_vscode == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
+      - name: Build and publish
+        working-directory: editors/vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          VERSION="${{ needs.resolve.outputs.version }}"
+          VERSION="${VERSION#v}"
+          npm install
+          npm version "${VERSION}" --no-git-tag-version --allow-same-version
+          npm run compile
+          npm run package
+          npx @vscode/vsce publish -p "$VSCE_PAT" --no-yarn
+
+  # ─── Publish JetBrains Plugin ──────────────────────────────────────────────
+  publish-jetbrains:
+    name: Publish JetBrains
+    needs: [test, resolve]
+    if: needs.resolve.outputs.publish_jetbrains == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Build and publish
+        working-directory: editors/jetbrains
+        env:
+          JETBRAINS_PUBLISH_TOKEN: ${{ secrets.JETBRAINS_PUBLISH_TOKEN }}
+          CERTIFICATE_CHAIN: ${{ secrets.JETBRAINS_CERT_CHAIN }}
+          PRIVATE_KEY: ${{ secrets.JETBRAINS_PRIVATE_KEY }}
+          PRIVATE_KEY_PASSWORD: ${{ secrets.JETBRAINS_KEY_PASSWORD }}
+        run: |
+          VERSION="${{ needs.resolve.outputs.version }}"
+          VERSION="${VERSION#v}"
+          chmod +x gradlew
+          sed -i "s/^version = .*/version = '${VERSION}'/" build.gradle
+          ./gradlew buildPlugin --no-daemon
+          ./gradlew verifyPlugin --no-daemon
+          ./gradlew publishPlugin --no-daemon
