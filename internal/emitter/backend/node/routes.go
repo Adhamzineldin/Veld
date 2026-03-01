@@ -77,6 +77,19 @@ func writeRouteHandler(sb *strings.Builder, mod ast.Module, act ast.Action) erro
 		sb.WriteString(fmt.Sprintf("\n  // %s\n", act.Description))
 	}
 
+	// WebSocket actions generate a commented handler stub
+	if act.Method == "WS" {
+		sb.WriteString(fmt.Sprintf("\n  // WebSocket: %s\n", routePath))
+		sb.WriteString(fmt.Sprintf("  // To handle this route, set up a WebSocket server (e.g. 'ws' package)\n"))
+		sb.WriteString(fmt.Sprintf("  // and call service.%s(ws", act.Name))
+		pathParams := emitter.ExtractPathParams(routePath)
+		for _, p := range pathParams {
+			sb.WriteString(fmt.Sprintf(", %s", p))
+		}
+		sb.WriteString(") on connection.\n")
+		return nil
+	}
+
 	mwArgs := ""
 	for _, mw := range act.Middleware {
 		mwArgs += fmt.Sprintf("middleware.%s, ", mw)

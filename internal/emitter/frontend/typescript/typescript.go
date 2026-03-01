@@ -142,8 +142,12 @@ async function %s<T>(path: string, body?: unknown): Promise<T> {
 				routePath = mod.Prefix + act.Path
 			}
 
+			// Route doc comment: METHOD /full/path — Description
+			docMethod := strings.ToUpper(act.Method)
 			if act.Description != "" {
-				sb.WriteString(fmt.Sprintf("    /** %s */\n", act.Description))
+				sb.WriteString(fmt.Sprintf("    /** %s %s — %s */\n", docMethod, routePath, act.Description))
+			} else {
+				sb.WriteString(fmt.Sprintf("    /** %s %s */\n", docMethod, routePath))
 			}
 
 			pathParams := emitter.ExtractPathParams(routePath)

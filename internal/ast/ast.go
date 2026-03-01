@@ -61,6 +61,7 @@ type Action struct {
 	Output      string   `json:"output"`
 	OutputArray bool     `json:"outputArray,omitempty"` // output User[] → true
 	Query       string   `json:"query,omitempty"`       // query param model
+	Stream      string   `json:"stream,omitempty"`      // WebSocket message type for WS actions
 	Middleware  []string `json:"middleware"`
 	Line        int      `json:"-"` // line in source where this action was defined
 }

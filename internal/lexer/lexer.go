@@ -31,6 +31,10 @@ const (
 	TPUT
 	TDELETE
 	TPATCH
+	TWS
+
+	// WebSocket
+	TStream // keyword "stream"
 
 	// Primitive types
 	TTypeString
@@ -104,6 +108,10 @@ func (t TokenType) String() string {
 		return "\"DELETE\""
 	case TPATCH:
 		return "\"PATCH\""
+	case TWS:
+		return "\"WS\""
+	case TStream:
+		return "\"stream\""
 	case TTypeString:
 		return "\"string\""
 	case TTypeInt:
@@ -321,6 +329,10 @@ func classifyWord(word string, line int) Token {
 		return Token{TDELETE, word, line}
 	case "PATCH":
 		return Token{TPATCH, word, line}
+	case "WS":
+		return Token{TWS, word, line}
+	case "stream":
+		return Token{TStream, word, line}
 	case "string":
 		return Token{TTypeString, word, line}
 	case "int":

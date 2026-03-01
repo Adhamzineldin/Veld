@@ -15,6 +15,8 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/config"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 	"github.com/Adhamzineldin/Veld/internal/loader"
+	"github.com/Adhamzineldin/Veld/internal/lsp"
+	"github.com/Adhamzineldin/Veld/internal/schema"
 	"github.com/Adhamzineldin/Veld/internal/validator"
 	"github.com/spf13/cobra"
 
@@ -26,6 +28,9 @@ import (
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/php"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/python"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/rust"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/dart"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/kotlin"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/swift"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/typescript"
 )
 
@@ -217,13 +222,19 @@ service interfaces for any framework. Zero runtime dependencies.
   veld watch                   Auto-regenerate on file changes
   veld validate                Check contracts for errors
   veld clean                   Remove generated output
-  veld openapi                 Export OpenAPI 3.0 spec`,
+  veld openapi                 Export OpenAPI 3.0 spec
+  veld graphql                 Export GraphQL SDL schema
+  veld schema                  Generate database schema (Prisma/SQL)
+  veld diff                    Show changes since last generation
+  veld docs                    Generate API documentation
+  veld lsp                     Start the LSP server`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
 	root.AddCommand(
 		newValidateCmd(), newASTCmd(), newGenerateCmd(), newWatchCmd(),
-		newInitCmd(), newCleanCmd(), newOpenAPICmd(),
+		newInitCmd(), newCleanCmd(), newOpenAPICmd(), newGraphQLCmd(),
+		newSchemaCmd(), newDiffCmd(), newDocsCmd(), newLSPCmd(),
 	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, red("Error: ")+err.Error())
@@ -759,6 +770,736 @@ func writeGeneratedReadme(outDir string, a ast.AST) {
 	sb.WriteString("```bash\nveld generate\n```\n")
 
 	os.WriteFile(filepath.Join(outDir, "README.md"), []byte(sb.String()), 0644)
+}
+
+// ── graphql ───────────────────────────────────────────────────────────────────
+
+func newGraphQLCmd() *cobra.Command {
+	var outputFile string
+	cmd := &cobra.Command{
+		Use:     "graphql",
+		Short:   "Export a GraphQL SDL schema from the contract",
+		Example: "  veld graphql\n  veld graphql -o schema.graphql",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path, err := config.ResolveInput(args)
+			if err != nil {
+				return err
+			}
+			a, _, err := loader.Parse(path)
+			if err != nil {
+				return err
+			}
+			if errs := validator.Validate(a); len(errs) > 0 {
+				for _, e := range errs {
+					fmt.Fprintln(os.Stderr, red("error: ")+e.Error())
+				}
+				return fmt.Errorf("contract validation failed")
+			}
+			sdl := buildGraphQLSchema(a)
+			if outputFile != "" {
+				if err := os.WriteFile(outputFile, []byte(sdl), 0644); err != nil {
+					return err
+				}
+				fmt.Println(green("✓") + " GraphQL schema → " + bold(outputFile))
+				return nil
+			}
+			fmt.Print(sdl)
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "write to file instead of stdout")
+	return cmd
+}
+
+func buildGraphQLSchema(a ast.AST) string {
+	var sb strings.Builder
+
+	// Enums
+	for _, en := range a.Enums {
+		if en.Description != "" {
+			sb.WriteString(fmt.Sprintf("\"\"\"%s\"\"\"\n", en.Description))
+		}
+		sb.WriteString(fmt.Sprintf("enum %s {\n", en.Name))
+		for _, v := range en.Values {
+			sb.WriteString(fmt.Sprintf("  %s\n", v))
+		}
+		sb.WriteString("}\n\n")
+	}
+
+	// Types (models)
+	modelMap := make(map[string]ast.Model)
+	for _, m := range a.Models {
+		modelMap[m.Name] = m
+	}
+
+	// Track which models are used as input
+	inputModels := make(map[string]bool)
+	for _, mod := range a.Modules {
+		for _, act := range mod.Actions {
+			if act.Input != "" {
+				inputModels[act.Input] = true
+			}
+			if act.Query != "" {
+				inputModels[act.Query] = true
+			}
+		}
+	}
+
+	for _, m := range a.Models {
+		allFields := gqlFlattenFields(m, modelMap)
+		keyword := "type"
+		if inputModels[m.Name] {
+			keyword = "input"
+		}
+		if m.Description != "" {
+			sb.WriteString(fmt.Sprintf("\"\"\"%s\"\"\"\n", m.Description))
+		}
+		sb.WriteString(fmt.Sprintf("%s %s {\n", keyword, m.Name))
+		for _, f := range allFields {
+			gqlType := gqlFieldType(f)
+			sb.WriteString(fmt.Sprintf("  %s: %s\n", f.Name, gqlType))
+		}
+		sb.WriteString("}\n\n")
+	}
+
+	// Query and Mutation
+	var queries []string
+	var mutations []string
+
+	for _, mod := range a.Modules {
+		for _, act := range mod.Actions {
+			method := strings.ToUpper(act.Method)
+			routePath := act.Path
+			if mod.Prefix != "" {
+				routePath = mod.Prefix + act.Path
+			}
+
+			// Build args
+			var args []string
+			for _, p := range emitter.ExtractPathParams(routePath) {
+				args = append(args, fmt.Sprintf("%s: String!", p))
+			}
+			if act.Input != "" {
+				args = append(args, fmt.Sprintf("input: %s!", act.Input))
+			}
+			if act.Query != "" {
+				args = append(args, fmt.Sprintf("query: %s", act.Query))
+			}
+
+			argStr := ""
+			if len(args) > 0 {
+				argStr = "(" + strings.Join(args, ", ") + ")"
+			}
+
+			returnType := gqlReturnType(act)
+			opName := lcfirst(mod.Name) + act.Name
+			line := fmt.Sprintf("  %s%s: %s", opName, argStr, returnType)
+
+			if method == "GET" {
+				queries = append(queries, line)
+			} else {
+				mutations = append(mutations, line)
+			}
+		}
+	}
+
+	if len(queries) > 0 {
+		sb.WriteString("type Query {\n")
+		for _, q := range queries {
+			sb.WriteString(q + "\n")
+		}
+		sb.WriteString("}\n\n")
+	}
+
+	if len(mutations) > 0 {
+		sb.WriteString("type Mutation {\n")
+		for _, m := range mutations {
+			sb.WriteString(m + "\n")
+		}
+		sb.WriteString("}\n\n")
+	}
+
+	return sb.String()
+}
+
+func gqlType(t string) string {
+	switch t {
+	case "int":
+		return "Int"
+	case "float":
+		return "Float"
+	case "bool":
+		return "Boolean"
+	case "string", "date", "datetime", "uuid":
+		return "String"
+	default:
+		return t
+	}
+}
+
+func gqlFieldType(f ast.Field) string {
+	if f.IsMap {
+		return "String" // GraphQL doesn't have native map type
+	}
+	base := gqlType(f.Type)
+	if f.IsArray {
+		if f.Optional {
+			return fmt.Sprintf("[%s]", base)
+		}
+		return fmt.Sprintf("[%s!]!", base)
+	}
+	if f.Optional {
+		return base
+	}
+	return base + "!"
+}
+
+func gqlReturnType(act ast.Action) string {
+	if act.Output == "" {
+		return "Boolean"
+	}
+	base := gqlType(act.Output)
+	if act.OutputArray {
+		return fmt.Sprintf("[%s!]!", base)
+	}
+	return base + "!"
+}
+
+func gqlFlattenFields(m ast.Model, models map[string]ast.Model) []ast.Field {
+	if m.Extends == "" {
+		return m.Fields
+	}
+	parent, ok := models[m.Extends]
+	if !ok {
+		return m.Fields
+	}
+	return append(gqlFlattenFields(parent, models), m.Fields...)
+}
+
+func lcfirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToLower(s[:1]) + s[1:]
+}
+
+// ── schema ────────────────────────────────────────────────────────────────────
+
+func newSchemaCmd() *cobra.Command {
+	var format, outputFile string
+	cmd := &cobra.Command{
+		Use:     "schema",
+		Short:   "Generate a database schema from the contract",
+		Example: "  veld schema --format=prisma\n  veld schema --format=sql -o schema.sql",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path, err := config.ResolveInput(args)
+			if err != nil {
+				return err
+			}
+			a, _, err := loader.Parse(path)
+			if err != nil {
+				return err
+			}
+			if errs := validator.Validate(a); len(errs) > 0 {
+				for _, e := range errs {
+					fmt.Fprintln(os.Stderr, red("error: ")+e.Error())
+				}
+				return fmt.Errorf("contract validation failed")
+			}
+
+			var output string
+			switch format {
+			case "prisma":
+				output = schema.BuildPrisma(a)
+			case "sql":
+				output = schema.BuildSQL(a)
+			default:
+				return fmt.Errorf("unknown schema format %q (supported: prisma, sql)", format)
+			}
+
+			if outputFile != "" {
+				if err := os.WriteFile(outputFile, []byte(output), 0644); err != nil {
+					return err
+				}
+				fmt.Println(green("✓") + " Schema → " + bold(outputFile))
+				return nil
+			}
+			fmt.Print(output)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&format, "format", "prisma", "output format (prisma, sql)")
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "write to file instead of stdout")
+	return cmd
+}
+
+// ── diff ──────────────────────────────────────────────────────────────────────
+
+func newDiffCmd() *cobra.Command {
+	var statOnly, exitCode bool
+
+	cmd := &cobra.Command{
+		Use:   "diff",
+		Short: "Show changes between current and freshly generated output",
+		Long:  "Generates to a temporary directory and compares file-by-file with the\nexisting output. Useful for CI: `veld diff --exit-code` fails if stale.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			flags := config.FlagOverrides{}
+			rc, err := config.BuildResolved(flags)
+			if err != nil {
+				return err
+			}
+
+			// Generate to temp dir
+			tmpDir, err := os.MkdirTemp("", "veld-diff-*")
+			if err != nil {
+				return err
+			}
+			defer os.RemoveAll(tmpDir)
+
+			a, _, err := loader.Parse(rc.Input, rc.Aliases)
+			if err != nil {
+				return err
+			}
+			if errs := validator.Validate(a); len(errs) > 0 {
+				for _, e := range errs {
+					fmt.Fprintln(os.Stderr, red("error: ")+e.Error())
+				}
+				return fmt.Errorf("contract validation failed")
+			}
+
+			opts := emitter.EmitOptions{BaseUrl: rc.BaseUrl}
+			backend, err := emitter.GetBackend(rc.Backend)
+			if err != nil {
+				return err
+			}
+			if err := backend.Emit(a, tmpDir, opts); err != nil {
+				return err
+			}
+			frontend, err := emitter.GetFrontend(rc.Frontend)
+			if err != nil {
+				return err
+			}
+			if frontend != nil {
+				if err := frontend.Emit(a, tmpDir, opts); err != nil {
+					return err
+				}
+			}
+
+			// Compare
+			added, removed, modified := 0, 0, 0
+			var diffs []string
+
+			// Walk temp dir for new/modified files
+			filepath.Walk(tmpDir, func(path string, info os.FileInfo, err error) error {
+				if err != nil || info.IsDir() {
+					return nil
+				}
+				relPath, _ := filepath.Rel(tmpDir, path)
+				existingPath := filepath.Join(rc.Out, relPath)
+
+				newData, _ := os.ReadFile(path)
+				existData, readErr := os.ReadFile(existingPath)
+
+				if os.IsNotExist(readErr) {
+					added++
+					diffs = append(diffs, green("+ ")+relPath+" (new)")
+				} else if string(newData) != string(existData) {
+					modified++
+					if !statOnly {
+						diffs = append(diffs, yellow("~ ")+relPath+" (modified)")
+						// Show simple unified diff
+						oldLines := strings.Split(string(existData), "\n")
+						newLines := strings.Split(string(newData), "\n")
+						diffs = append(diffs, simpleDiff(oldLines, newLines, relPath)...)
+					} else {
+						diffs = append(diffs, yellow("~ ")+relPath)
+					}
+				}
+				return nil
+			})
+
+			// Walk existing dir for removed files
+			if _, statErr := os.Stat(rc.Out); statErr == nil {
+				filepath.Walk(rc.Out, func(path string, info os.FileInfo, err error) error {
+					if err != nil || info.IsDir() {
+						return nil
+					}
+					relPath, _ := filepath.Rel(rc.Out, path)
+					tmpPath := filepath.Join(tmpDir, relPath)
+					if _, statErr := os.Stat(tmpPath); os.IsNotExist(statErr) {
+						removed++
+						diffs = append(diffs, red("- ")+relPath+" (removed)")
+					}
+					return nil
+				})
+			}
+
+			if added == 0 && removed == 0 && modified == 0 {
+				fmt.Println(green("✓") + " Generated output is up to date")
+				return nil
+			}
+
+			for _, d := range diffs {
+				fmt.Println(d)
+			}
+			fmt.Printf("\n%d added, %d modified, %d removed\n", added, modified, removed)
+
+			if exitCode {
+				os.Exit(1)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&statOnly, "stat", false, "show summary only (files changed/added/removed)")
+	cmd.Flags().BoolVar(&exitCode, "exit-code", false, "exit with code 1 if changes detected (useful for CI)")
+	return cmd
+}
+
+func simpleDiff(oldLines, newLines []string, filename string) []string {
+	var result []string
+	result = append(result, dim(fmt.Sprintf("--- a/%s", filename)))
+	result = append(result, dim(fmt.Sprintf("+++ b/%s", filename)))
+
+	maxLen := len(oldLines)
+	if len(newLines) > maxLen {
+		maxLen = len(newLines)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		oldLine := ""
+		newLine := ""
+		if i < len(oldLines) {
+			oldLine = oldLines[i]
+		}
+		if i < len(newLines) {
+			newLine = newLines[i]
+		}
+		if oldLine != newLine {
+			if i < len(oldLines) {
+				result = append(result, red("-"+oldLine))
+			}
+			if i < len(newLines) {
+				result = append(result, green("+"+newLine))
+			}
+		}
+	}
+	return result
+}
+
+// ── docs ──────────────────────────────────────────────────────────────────────
+
+func newDocsCmd() *cobra.Command {
+	var format, outputFile string
+	cmd := &cobra.Command{
+		Use:     "docs",
+		Short:   "Generate API documentation from the contract",
+		Example: "  veld docs\n  veld docs --format=html -o docs.html\n  veld docs --format=markdown",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path, err := config.ResolveInput(args)
+			if err != nil {
+				return err
+			}
+			a, _, err := loader.Parse(path)
+			if err != nil {
+				return err
+			}
+			if errs := validator.Validate(a); len(errs) > 0 {
+				for _, e := range errs {
+					fmt.Fprintln(os.Stderr, red("error: ")+e.Error())
+				}
+				return fmt.Errorf("contract validation failed")
+			}
+
+			var output string
+			switch format {
+			case "html":
+				output = buildDocsHTML(a)
+			case "markdown", "md":
+				output = buildDocsMarkdown(a)
+			default:
+				return fmt.Errorf("unknown docs format %q (supported: html, markdown)", format)
+			}
+
+			if outputFile != "" {
+				if err := os.WriteFile(outputFile, []byte(output), 0644); err != nil {
+					return err
+				}
+				fmt.Println(green("✓") + " Docs → " + bold(outputFile))
+				return nil
+			}
+			fmt.Print(output)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&format, "format", "html", "output format (html, markdown)")
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "write to file instead of stdout")
+	return cmd
+}
+
+func buildDocsMarkdown(a ast.AST) string {
+	var sb strings.Builder
+	sb.WriteString("# API Documentation\n\n")
+	sb.WriteString("*Generated by Veld*\n\n")
+
+	// Table of contents
+	sb.WriteString("## Modules\n\n")
+	for _, mod := range a.Modules {
+		sb.WriteString(fmt.Sprintf("- [%s](#%s)\n", mod.Name, strings.ToLower(mod.Name)))
+	}
+	sb.WriteString("\n")
+
+	// Modules
+	for _, mod := range a.Modules {
+		sb.WriteString(fmt.Sprintf("## %s\n\n", mod.Name))
+		if mod.Description != "" {
+			sb.WriteString(mod.Description + "\n\n")
+		}
+
+		sb.WriteString("| Method | Path | Name | Description |\n")
+		sb.WriteString("|--------|------|------|-------------|\n")
+		for _, act := range mod.Actions {
+			routePath := act.Path
+			if mod.Prefix != "" {
+				routePath = mod.Prefix + act.Path
+			}
+			desc := act.Description
+			sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s | %s |\n", act.Method, routePath, act.Name, desc))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Models
+	sb.WriteString("## Models\n\n")
+	for _, m := range a.Models {
+		sb.WriteString(fmt.Sprintf("### %s\n\n", m.Name))
+		if m.Description != "" {
+			sb.WriteString(m.Description + "\n\n")
+		}
+		if m.Extends != "" {
+			sb.WriteString(fmt.Sprintf("*Extends %s*\n\n", m.Extends))
+		}
+
+		sb.WriteString("| Field | Type | Optional | Default |\n")
+		sb.WriteString("|-------|------|----------|---------|\n")
+		for _, f := range m.Fields {
+			typeName := f.Type
+			if f.IsArray {
+				typeName += "[]"
+			}
+			if f.IsMap {
+				typeName = fmt.Sprintf("Map<string, %s>", f.MapValueType)
+			}
+			opt := ""
+			if f.Optional {
+				opt = "yes"
+			}
+			sb.WriteString(fmt.Sprintf("| %s | `%s` | %s | %s |\n", f.Name, typeName, opt, f.Default))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Enums
+	if len(a.Enums) > 0 {
+		sb.WriteString("## Enums\n\n")
+		for _, en := range a.Enums {
+			sb.WriteString(fmt.Sprintf("### %s\n\n", en.Name))
+			if en.Description != "" {
+				sb.WriteString(en.Description + "\n\n")
+			}
+			sb.WriteString("Values: `" + strings.Join(en.Values, "`, `") + "`\n\n")
+		}
+	}
+
+	return sb.String()
+}
+
+func buildDocsHTML(a ast.AST) string {
+	var sb strings.Builder
+
+	sb.WriteString(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API Documentation — Veld</title>
+<style>
+:root {
+  --bg: #ffffff; --fg: #1a1a2e; --sidebar-bg: #f8f9fa; --border: #e0e0e0;
+  --accent: #6c5ce7; --accent-light: #a29bfe; --card-bg: #ffffff;
+  --method-get: #00b894; --method-post: #0984e3; --method-put: #fdcb6e;
+  --method-delete: #d63031; --method-patch: #e17055; --method-ws: #6c5ce7;
+  --code-bg: #f1f2f6;
+}
+[data-theme="dark"] {
+  --bg: #1a1a2e; --fg: #e0e0e0; --sidebar-bg: #16213e; --border: #2a2a4a;
+  --accent: #a29bfe; --accent-light: #6c5ce7; --card-bg: #16213e;
+  --code-bg: #0f3460;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--fg); display: flex; min-height: 100vh; }
+.sidebar { width: 260px; background: var(--sidebar-bg); border-right: 1px solid var(--border); padding: 24px 16px; position: fixed; height: 100vh; overflow-y: auto; }
+.sidebar h2 { font-size: 18px; margin-bottom: 16px; color: var(--accent); }
+.sidebar a { display: block; padding: 6px 12px; color: var(--fg); text-decoration: none; border-radius: 6px; margin-bottom: 2px; font-size: 14px; }
+.sidebar a:hover { background: var(--accent); color: white; }
+.main { margin-left: 260px; padding: 40px; max-width: 900px; width: 100%; }
+h1 { font-size: 28px; margin-bottom: 8px; }
+h2 { font-size: 22px; margin: 32px 0 12px; border-bottom: 2px solid var(--accent); padding-bottom: 4px; }
+h3 { font-size: 18px; margin: 24px 0 8px; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
+th { background: var(--sidebar-bg); font-weight: 600; }
+.method { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; color: white; }
+.method-GET { background: var(--method-get); } .method-POST { background: var(--method-post); }
+.method-PUT { background: var(--method-put); color: #333; } .method-DELETE { background: var(--method-delete); }
+.method-PATCH { background: var(--method-patch); } .method-WS { background: var(--method-ws); }
+code { background: var(--code-bg); padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+.desc { color: #888; font-size: 14px; margin: 4px 0 16px; }
+.toggle { position: fixed; top: 16px; right: 16px; background: var(--accent); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; z-index: 10; }
+#search { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 16px; font-size: 14px; background: var(--bg); color: var(--fg); }
+</style>
+</head>
+<body>
+<button class="toggle" onclick="toggleTheme()">Toggle Dark Mode</button>
+<nav class="sidebar">
+<h2>API Docs</h2>
+<input type="text" id="search" placeholder="Search..." oninput="filterNav(this.value)">
+`)
+
+	// Sidebar links
+	sb.WriteString("<div id=\"nav-links\">\n")
+	sb.WriteString("<strong>Modules</strong>\n")
+	for _, mod := range a.Modules {
+		sb.WriteString(fmt.Sprintf("<a href=\"#mod-%s\" class=\"nav-link\">%s</a>\n", strings.ToLower(mod.Name), mod.Name))
+	}
+	sb.WriteString("<br><strong>Models</strong>\n")
+	for _, m := range a.Models {
+		sb.WriteString(fmt.Sprintf("<a href=\"#model-%s\" class=\"nav-link\">%s</a>\n", strings.ToLower(m.Name), m.Name))
+	}
+	if len(a.Enums) > 0 {
+		sb.WriteString("<br><strong>Enums</strong>\n")
+		for _, en := range a.Enums {
+			sb.WriteString(fmt.Sprintf("<a href=\"#enum-%s\" class=\"nav-link\">%s</a>\n", strings.ToLower(en.Name), en.Name))
+		}
+	}
+	sb.WriteString("</div>\n</nav>\n<main class=\"main\">\n")
+
+	sb.WriteString("<h1>API Documentation</h1>\n<p class=\"desc\">Generated by Veld</p>\n\n")
+
+	// Modules
+	for _, mod := range a.Modules {
+		sb.WriteString(fmt.Sprintf("<h2 id=\"mod-%s\">%s</h2>\n", strings.ToLower(mod.Name), mod.Name))
+		if mod.Description != "" {
+			sb.WriteString(fmt.Sprintf("<p class=\"desc\">%s</p>\n", mod.Description))
+		}
+		sb.WriteString("<table><thead><tr><th>Method</th><th>Path</th><th>Name</th><th>Input</th><th>Output</th><th>Description</th></tr></thead><tbody>\n")
+		for _, act := range mod.Actions {
+			routePath := act.Path
+			if mod.Prefix != "" {
+				routePath = mod.Prefix + act.Path
+			}
+			output := act.Output
+			if act.OutputArray {
+				output += "[]"
+			}
+			if output == "" {
+				output = "void"
+			}
+			input := act.Input
+			if input == "" {
+				input = "—"
+			}
+			desc := act.Description
+			sb.WriteString(fmt.Sprintf("<tr><td><span class=\"method method-%s\">%s</span></td><td><code>%s</code></td><td>%s</td><td><code>%s</code></td><td><code>%s</code></td><td>%s</td></tr>\n",
+				act.Method, act.Method, routePath, act.Name, input, output, desc))
+		}
+		sb.WriteString("</tbody></table>\n\n")
+	}
+
+	// Models
+	sb.WriteString("<h2>Models</h2>\n")
+	for _, m := range a.Models {
+		sb.WriteString(fmt.Sprintf("<h3 id=\"model-%s\">%s", strings.ToLower(m.Name), m.Name))
+		if m.Extends != "" {
+			sb.WriteString(fmt.Sprintf(" <small>extends %s</small>", m.Extends))
+		}
+		sb.WriteString("</h3>\n")
+		if m.Description != "" {
+			sb.WriteString(fmt.Sprintf("<p class=\"desc\">%s</p>\n", m.Description))
+		}
+		sb.WriteString("<table><thead><tr><th>Field</th><th>Type</th><th>Optional</th><th>Default</th></tr></thead><tbody>\n")
+		for _, f := range m.Fields {
+			typeName := f.Type
+			if f.IsArray {
+				typeName += "[]"
+			}
+			if f.IsMap {
+				typeName = fmt.Sprintf("Map&lt;string, %s&gt;", f.MapValueType)
+			}
+			opt := ""
+			if f.Optional {
+				opt = "yes"
+			}
+			sb.WriteString(fmt.Sprintf("<tr><td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td></tr>\n", f.Name, typeName, opt, f.Default))
+		}
+		sb.WriteString("</tbody></table>\n\n")
+	}
+
+	// Enums
+	if len(a.Enums) > 0 {
+		sb.WriteString("<h2>Enums</h2>\n")
+		for _, en := range a.Enums {
+			sb.WriteString(fmt.Sprintf("<h3 id=\"enum-%s\">%s</h3>\n", strings.ToLower(en.Name), en.Name))
+			if en.Description != "" {
+				sb.WriteString(fmt.Sprintf("<p class=\"desc\">%s</p>\n", en.Description))
+			}
+			sb.WriteString("<p>Values: ")
+			for i, v := range en.Values {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				sb.WriteString(fmt.Sprintf("<code>%s</code>", v))
+			}
+			sb.WriteString("</p>\n\n")
+		}
+	}
+
+	sb.WriteString(`</main>
+<script>
+function toggleTheme() {
+  document.documentElement.toggleAttribute('data-theme',
+    !document.documentElement.hasAttribute('data-theme'));
+  document.documentElement.setAttribute('data-theme',
+    document.documentElement.hasAttribute('data-theme') ? 'dark' : '');
+}
+function filterNav(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.nav-link').forEach(a => {
+    a.style.display = a.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>
+`)
+
+	return sb.String()
+}
+
+// ── lsp (placeholder) ────────────────────────────────────────────────────────
+
+func newLSPCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "lsp",
+		Short: "Start the Veld LSP server (stdin/stdout)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLSPServer()
+		},
+	}
+}
+
+func runLSPServer() error {
+	server := lsp.NewServer()
+	return server.Run()
 }
 
 // ── init ──────────────────────────────────────────────────────────────────────

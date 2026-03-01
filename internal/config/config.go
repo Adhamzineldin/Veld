@@ -47,6 +47,8 @@ func frontendAlias(name string) string {
 	switch name {
 	case "react":
 		return "typescript"
+	case "flutter":
+		return "dart"
 	default:
 		return name
 	}

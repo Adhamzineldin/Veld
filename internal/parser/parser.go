@@ -403,8 +403,8 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				return act, err
 			}
 			methodTok := p.consume()
-			if !isHTTPMethod(methodTok.Type) {
-				return act, fmt.Errorf("line %d: expected HTTP method (GET, POST, PUT, DELETE, PATCH), got %q", methodTok.Line, methodTok.Value)
+			if !isHTTPMethod(methodTok.Type) && methodTok.Type != lexer.TWS {
+				return act, fmt.Errorf("line %d: expected HTTP method (GET, POST, PUT, DELETE, PATCH, WS), got %q", methodTok.Line, methodTok.Value)
 			}
 			act.Method = methodTok.Value
 		case lexer.TKeyPath:
@@ -465,6 +465,16 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				return act, err
 			}
 			act.Query = tok.Value
+		case lexer.TStream:
+			p.consume()
+			if _, err := p.expect(lexer.TColon); err != nil {
+				return act, err
+			}
+			tok, err := p.expect(lexer.TIdent)
+			if err != nil {
+				return act, err
+			}
+			act.Stream = tok.Value
 		case lexer.TMiddleware:
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {

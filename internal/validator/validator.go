@@ -188,6 +188,22 @@ func Validate(a ast.AST) []error {
 				}
 			}
 
+			// Validate WebSocket actions
+			if act.Method == "WS" {
+				if act.Stream == "" {
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: WS action requires stream type", loc(mod.SourceFile, act.Line), mod.Name, act.Name))
+				} else if !modelNames[act.Stream] && !enumNames[act.Stream] && !primitiveTypes[act.Stream] {
+					suggestion := findSuggestion(act.Stream, allTypeNames)
+					if suggestion != "" {
+						errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined stream type %q (did you mean %q?)", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Stream, suggestion))
+					} else {
+						errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined stream type %q", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Stream))
+					}
+				}
+			} else if act.Stream != "" {
+				errs = append(errs, fmt.Errorf("%smodule %q, action %q: stream field is only valid for WS actions", loc(mod.SourceFile, act.Line), mod.Name, act.Name))
+			}
+
 			// Validate middleware names (warn about common typos)
 			for _, mw := range act.Middleware {
 				if mw == "" {
@@ -276,6 +292,7 @@ func validateFileImports(a ast.AST) []error {
 			checkTypeVisible(act.Input, mod.SourceFile, act.Line, fmt.Sprintf("module %q, action %q", mod.Name, act.Name))
 			checkTypeVisible(act.Output, mod.SourceFile, act.Line, fmt.Sprintf("module %q, action %q", mod.Name, act.Name))
 			checkTypeVisible(act.Query, mod.SourceFile, act.Line, fmt.Sprintf("module %q, action %q", mod.Name, act.Name))
+			checkTypeVisible(act.Stream, mod.SourceFile, act.Line, fmt.Sprintf("module %q, action %q", mod.Name, act.Name))
 		}
 	}
 
