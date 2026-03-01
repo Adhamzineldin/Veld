@@ -247,7 +247,7 @@ tasks.signPlugin {
 ## Support
 
 For issues with the plugin:
-- GitHub Issues: https://github.com/veld-dev/veld/issues
+- GitHub Issues: https://github.com/Adhamzineldin/Veld/issues
 - Email: support@veld.dev
 - Marketplace Comments: https://plugins.jetbrains.com/plugin/PLUGIN_ID/reviews
 

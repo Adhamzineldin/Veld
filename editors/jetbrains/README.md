@@ -40,11 +40,17 @@ Official Veld language support for **all JetBrains IDEs** including IntelliJ IDE
 You must have the **Veld CLI** installed and available on your PATH:
 
 ```bash
-# Install via Go
-go install github.com/veld-dev/veld@latest
+# npm (recommended)
+npm install @maayn/veld
+
+# pip
+pip install maayn-veld
+
+# Go
+go install github.com/Adhamzineldin/Veld/cmd/veld@latest
 
 # Or download binary from releases
-# https://github.com/veld-dev/veld/releases
+# https://github.com/Adhamzineldin/Veld/releases
 ```
 
 Verify installation:
@@ -64,7 +70,7 @@ veld --version
 
 ### From Disk
 
-1. Download the plugin `.zip` file from [Releases](https://github.com/veld-dev/veld/releases)
+1. Download the plugin `.zip` file from [Releases](https://github.com/Adhamzineldin/Veld/releases)
 2. Go to **Settings/Preferences** → **Plugins**
 3. Click **⚙️** → **Install Plugin from Disk...**
 4. Select the downloaded `.zip` file
@@ -238,7 +244,7 @@ export ORG_GRADLE_PROJECT_intellijPublishToken=YOUR_TOKEN_HERE
 
 ## Contributing
 
-Found a bug or want to contribute? Visit our [GitHub repository](https://github.com/veld-dev/veld).
+Found a bug or want to contribute? Visit our [GitHub repository](https://github.com/Adhamzineldin/Veld).
 
 ## Release Notes
 
@@ -257,8 +263,8 @@ Found a bug or want to contribute? Visit our [GitHub repository](https://github.
 
 ## Related Projects
 
-- [Veld CLI](https://github.com/veld-dev/veld) - The main Veld compiler
-- [Veld VS Code Extension](https://marketplace.visualstudio.com/items?itemName=veld-dev.veld-vscode)
+- [Veld CLI](https://github.com/Adhamzineldin/Veld) - The main Veld compiler
+- [Veld VS Code Extension](https://marketplace.visualstudio.com/items?itemName=adhamzineldin.veld-vscode)
 
 ---
 

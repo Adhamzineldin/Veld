@@ -1,6 +1,6 @@
 # Veld VS Code Extension
 
-Syntax highlighting, snippets, and validation for the [Veld contract language](https://github.com/veld-dev/veld).
+Syntax highlighting, snippets, and validation for the [Veld contract language](https://github.com/Adhamzineldin/Veld).
 
 ## Features
 
@@ -32,11 +32,17 @@ Automatically runs `veld validate` when you save a `.veld` file and displays err
 You must have the **Veld CLI** installed and available on your PATH:
 
 ```bash
-# Install via Go
-go install github.com/veld-dev/veld@latest
+# npm (recommended)
+npm install @maayn/veld
+
+# pip
+pip install maayn-veld
+
+# Go
+go install github.com/Adhamzineldin/Veld/cmd/veld@latest
 
 # Or download binary from releases
-# https://github.com/veld-dev/veld/releases
+# https://github.com/Adhamzineldin/Veld/releases
 ```
 
 Verify installation:
@@ -122,7 +128,7 @@ The Veld CLI supports multiple backend languages:
 
 ## Contributing
 
-Found a bug or want to contribute? Visit our [GitHub repository](https://github.com/veld-dev/veld).
+Found a bug or want to contribute? Visit our [GitHub repository](https://github.com/Adhamzineldin/Veld).
 
 ## Release Notes
 

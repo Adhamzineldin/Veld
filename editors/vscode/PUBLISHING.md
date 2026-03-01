@@ -8,7 +8,7 @@
    ```
 
 2. **Create a Personal Access Token**:
-   - Go to https://dev.azure.com/veld-dev
+   - Go to https://dev.azure.com
    - User Settings → Personal Access Tokens → New Token
    - Name: "VS Code Extension Publishing"
    - Organization: All accessible organizations
@@ -17,7 +17,7 @@
 
 3. **Login to vsce**:
    ```bash
-   vsce login veld-dev
+   vsce login adhamzineldin
    # Paste your PAT when prompted
    ```
 
@@ -83,12 +83,12 @@ vsce publish patch  # 0.1.0 → 0.1.1
 ## Post-Publish
 
 1. **Verify on Marketplace**:
-   - Visit: https://marketplace.visualstudio.com/items?itemName=veld-dev.veld-vscode
+   - Visit: https://marketplace.visualstudio.com/items?itemName=adhamzineldin.veld-vscode
    - Check that description, screenshots, and install button work
 
 2. **Test Installation**:
    ```bash
-   code --install-extension veld-dev.veld-vscode
+   code --install-extension adhamzineldin.veld-vscode
    ```
 
 3. **Announce**:
@@ -150,7 +150,7 @@ Add secret `VSCE_PAT` to GitHub repository settings.
 ### Error: "Authentication failed"
 - Regenerate your Personal Access Token
 - Make sure it has **Marketplace (Manage)** scope
-- Login again with `vsce login veld-dev`
+- Login again with `vsce login adhamzineldin`
 
 ### Extension not activating
 - Check `activationEvents` in package.json
