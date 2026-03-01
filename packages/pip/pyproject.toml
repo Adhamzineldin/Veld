@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "veld"
+version = "0.1.0"
+description = "Contract-first, multi-stack API code generator"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+keywords = ["veld", "api", "code-generation", "contract-first", "typescript", "sdk"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Code Generators",
+]
+
+[project.urls]
+Homepage = "https://github.com/veld-dev/veld"
+Repository = "https://github.com/veld-dev/veld"
+Issues = "https://github.com/veld-dev/veld/issues"
+
+[project.scripts]
+veld = "veld.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["veld*"]
+

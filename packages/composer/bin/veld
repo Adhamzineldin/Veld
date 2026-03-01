@@ -1,0 +1,207 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Veld CLI — Composer wrapper
+ *
+ * This thin wrapper downloads the platform-specific Veld binary on first run
+ * and proxies all CLI arguments to it.
+ *
+ * Supported platforms:
+ *   - linux-amd64, linux-arm64
+ *   - darwin-amd64, darwin-arm64
+ *   - windows-amd64
+ */
+
+define('VELD_VERSION', '0.1.0');
+define('GITHUB_REPO', 'veld-dev/veld');
+
+function getPlatformKey(): ?string
+{
+    $os = PHP_OS_FAMILY;
+    $arch = php_uname('m');
+
+    $osMap = [
+        'Linux'   => 'linux',
+        'Darwin'  => 'darwin',
+        'Windows' => 'windows',
+    ];
+
+    $archMap = [
+        'x86_64'  => 'amd64',
+        'amd64'   => 'amd64',
+        'arm64'   => 'arm64',
+        'aarch64' => 'arm64',
+    ];
+
+    $p = $osMap[$os] ?? null;
+    $a = $archMap[$arch] ?? null;
+
+    if (!$p || !$a) {
+        return null;
+    }
+
+    return "{$p}-{$a}";
+}
+
+function getBinaryName(): string
+{
+    return PHP_OS_FAMILY === 'Windows' ? 'veld.exe' : 'veld';
+}
+
+function getCacheDir(): string
+{
+    if (PHP_OS_FAMILY === 'Windows') {
+        $base = getenv('LOCALAPPDATA') ?: (getenv('USERPROFILE') . '\\AppData\\Local');
+        return $base . '\\veld\\' . VELD_VERSION;
+    }
+
+    if (PHP_OS_FAMILY === 'Darwin') {
+        return getenv('HOME') . '/Library/Caches/veld/' . VELD_VERSION;
+    }
+
+    $xdg = getenv('XDG_CACHE_HOME') ?: (getenv('HOME') . '/.cache');
+    return $xdg . '/veld/' . VELD_VERSION;
+}
+
+function getBinaryPath(): string
+{
+    return getCacheDir() . DIRECTORY_SEPARATOR . getBinaryName();
+}
+
+function downloadBinary(): string
+{
+    $platformKey = getPlatformKey();
+
+    if (!$platformKey) {
+        fwrite(STDERR, "Warning: Unsupported platform " . PHP_OS_FAMILY . "-" . php_uname('m') . "\n");
+        fwrite(STDERR, "Install veld manually: go install github.com/veld-dev/veld/cmd/veld@latest\n");
+        exit(1);
+    }
+
+    $binaryPath = getBinaryPath();
+
+    // Already downloaded
+    if (file_exists($binaryPath)) {
+        return $binaryPath;
+    }
+
+    $ext = PHP_OS_FAMILY === 'Windows' ? '.zip' : '.tar.gz';
+    $baseUrl = 'https://github.com/' . GITHUB_REPO . '/releases/download/v' . VELD_VERSION;
+    $url = "{$baseUrl}/veld-{$platformKey}{$ext}";
+
+    fwrite(STDERR, "Downloading veld " . VELD_VERSION . " for {$platformKey}...\n");
+    fwrite(STDERR, "  {$url}\n");
+
+    $cacheDir = getCacheDir();
+    if (!is_dir($cacheDir)) {
+        mkdir($cacheDir, 0755, true);
+    }
+
+    $tmpFile = tempnam(sys_get_temp_dir(), 'veld');
+
+    // Download
+    $context = stream_context_create([
+        'http' => [
+            'follow_location' => true,
+            'timeout' => 120,
+        ],
+    ]);
+
+    $data = @file_get_contents($url, false, $context);
+    if ($data === false) {
+        fwrite(STDERR, "Error: Could not download binary from {$url}\n");
+        tryGoInstall();
+        exit(1);
+    }
+
+    file_put_contents($tmpFile, $data);
+
+    // Extract
+    if ($ext === '.zip') {
+        $zip = new ZipArchive();
+        if ($zip->open($tmpFile) === true) {
+            $zip->extractTo($cacheDir);
+            $zip->close();
+        } else {
+            fwrite(STDERR, "Error: Could not extract zip archive\n");
+            unlink($tmpFile);
+            exit(1);
+        }
+    } else {
+        // Use tar command
+        $escaped = escapeshellarg($tmpFile);
+        $escapedDir = escapeshellarg($cacheDir);
+        exec("tar -xzf {$escaped} -C {$escapedDir} 2>&1", $output, $exitCode);
+        if ($exitCode !== 0) {
+            fwrite(STDERR, "Error: Could not extract tar.gz archive\n");
+            unlink($tmpFile);
+            exit(1);
+        }
+    }
+
+    unlink($tmpFile);
+
+    // Make executable on Unix
+    if (PHP_OS_FAMILY !== 'Windows') {
+        chmod($binaryPath, 0755);
+    }
+
+    if (file_exists($binaryPath)) {
+        fwrite(STDERR, "✓ veld " . VELD_VERSION . " installed\n");
+        return $binaryPath;
+    }
+
+    fwrite(STDERR, "Error: Binary not found after extraction\n");
+    tryGoInstall();
+    exit(1);
+}
+
+function tryGoInstall(): void
+{
+    fwrite(STDERR, "Attempting fallback: go install github.com/veld-dev/veld/cmd/veld@latest\n");
+    $exitCode = 0;
+    passthru('go install github.com/veld-dev/veld/cmd/veld@latest 2>&1', $exitCode);
+    if ($exitCode === 0) {
+        fwrite(STDERR, "✓ Installed veld via go install\n");
+        return;
+    }
+    fwrite(STDERR, "\nInstall veld manually:\n");
+    fwrite(STDERR, "  go install github.com/veld-dev/veld/cmd/veld@latest\n\n");
+    fwrite(STDERR, "Or download from: https://github.com/veld-dev/veld/releases\n");
+}
+
+function findBinary(): string
+{
+    // Check cache first
+    $cached = getBinaryPath();
+    if (file_exists($cached)) {
+        return $cached;
+    }
+
+    // Check PATH
+    $which = PHP_OS_FAMILY === 'Windows' ? 'where veld 2>NUL' : 'which veld 2>/dev/null';
+    $output = [];
+    exec($which, $output, $exitCode);
+    if ($exitCode === 0 && !empty($output[0]) && file_exists(trim($output[0]))) {
+        return trim($output[0]);
+    }
+
+    // Download
+    return downloadBinary();
+}
+
+// ── Main ──
+
+$binary = findBinary();
+$args = array_slice($argv, 1);
+
+// Build command
+$cmd = escapeshellarg($binary);
+foreach ($args as $arg) {
+    $cmd .= ' ' . escapeshellarg($arg);
+}
+
+// Execute and proxy exit code
+passthru($cmd, $exitCode);
+exit($exitCode);
+

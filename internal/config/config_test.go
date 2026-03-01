@@ -169,3 +169,50 @@ func TestResolveInputFromArgs(t *testing.T) {
 		t.Errorf("expected 'my/file.veld', got %q", path)
 	}
 }
+
+func TestBuildResolvedAliasesMerge(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "veld", "veld.config.json")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Custom aliases: override "models" and add a new "auth" alias
+	cfg := `{
+		"input": "app.veld",
+		"aliases": {
+			"models": "custom/models",
+			"auth": "services/auth"
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "veld", "app.veld"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Custom alias should override default
+	if rc.Aliases["models"] != "custom/models" {
+		t.Errorf("expected aliases[models] = 'custom/models', got %q", rc.Aliases["models"])
+	}
+	// New alias should be added
+	if rc.Aliases["auth"] != "services/auth" {
+		t.Errorf("expected aliases[auth] = 'services/auth', got %q", rc.Aliases["auth"])
+	}
+	// Default aliases should still exist
+	if rc.Aliases["modules"] != "modules" {
+		t.Errorf("expected aliases[modules] = 'modules', got %q", rc.Aliases["modules"])
+	}
+	if rc.Aliases["shared"] != "shared" {
+		t.Errorf("expected aliases[shared] = 'shared', got %q", rc.Aliases["shared"])
+	}
+}

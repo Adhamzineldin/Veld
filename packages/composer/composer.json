@@ -1,0 +1,40 @@
+{
+  "name": "veld-dev/veld",
+  "description": "Contract-first, multi-stack API code generator. Write .veld contracts once, generate typed frontend SDKs and backend service interfaces.",
+  "type": "library",
+  "license": "MIT",
+  "keywords": [
+    "veld",
+    "api",
+    "code-generation",
+    "contract-first",
+    "typescript",
+    "sdk",
+    "schema"
+  ],
+  "homepage": "https://github.com/veld-dev/veld",
+  "support": {
+    "issues": "https://github.com/veld-dev/veld/issues",
+    "source": "https://github.com/veld-dev/veld"
+  },
+  "require": {
+    "php": ">=7.4"
+  },
+  "bin": [
+    "bin/veld"
+  ],
+  "scripts": {
+    "post-install-cmd": [
+      "Veld\\Installer::install"
+    ],
+    "post-update-cmd": [
+      "Veld\\Installer::install"
+    ]
+  },
+  "autoload": {
+    "psr-4": {
+      "Veld\\": "src/"
+    }
+  }
+}
+

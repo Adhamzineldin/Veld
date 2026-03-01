@@ -118,8 +118,18 @@ class VeldCompletionContributor : CompletionContributor() {
 
         // Annotation completion: "fieldname: Type @" or "fieldname?: Type @something"
         // Triggered when the user types "@" after the type in a field definition
-        if (before.matches(Regex("""[a-z_]\w*\??\s*:\s*\w+.*@\w*$"""))) {
+        // Must NOT match import lines (those are handled above)
+        if (before.matches(Regex("""[a-z_]\w*\??\s*:\s*\w+.*@\w*$""")) && !before.startsWith("import")) {
             return CompletionContext.AFTER_ANNOTATION_AT
+        }
+
+        // Standalone "@" typed inside a model block (annotation trigger)
+        if (before.endsWith("@") && !before.startsWith("import")) {
+            // Delegate to brace-depth check below — if inside model, return annotation context
+            val nestCtx = detectNestingContext(file)
+            if (nestCtx == CompletionContext.INSIDE_MODEL) {
+                return CompletionContext.AFTER_ANNOTATION_AT
+            }
         }
 
         // After "fieldname: " in a model context -> suggest types
@@ -128,6 +138,10 @@ class VeldCompletionContributor : CompletionContributor() {
         }
 
         // Determine nesting by counting braces up to the cursor line
+        return detectNestingContext(file)
+    }
+
+    private fun detectNestingContext(file: PsiFile): CompletionContext {
         return try {
             val text = file.text
             val lines = text.split("\n")
@@ -136,7 +150,6 @@ class VeldCompletionContributor : CompletionContributor() {
             var inAction = false
             var inModel = false
 
-            // Find which line has fullLine text and stop there
             for (line in lines) {
                 val trimmed = line.trim()
                 if (trimmed.startsWith("module ") && trimmed.contains("{")) inModule = true
@@ -151,8 +164,6 @@ class VeldCompletionContributor : CompletionContributor() {
                         if (depth <= 1) inAction = false
                     }
                 }
-
-                if (trimmed == fullLine.trim() || trimmed == before.trim()) break
             }
 
             when {
@@ -198,16 +209,25 @@ class VeldCompletionContributor : CompletionContributor() {
 
     private fun addImportPaths(result: CompletionResultSet, service: VeldProjectService, file: com.intellij.openapi.vfs.VirtualFile) {
         val root = service.findProjectRoot(file) ?: return
-        // Scan models/ and modules/ directories
-        for (dirName in listOf("models", "modules")) {
+        // Scan all standard alias directories
+        for (dirName in listOf("models", "modules", "types", "enums", "schemas", "services", "lib", "common")) {
             val dir = root.findChild(dirName) ?: continue
             for (child in dir.children) {
                 if (child.extension == "veld") {
                     val name = child.nameWithoutExtension
+                    // @alias/name style (recommended)
                     result.addElement(
                         LookupElementBuilder.create("@$dirName/$name")
                             .withIcon(AllIcons.FileTypes.Any_type)
                             .withTypeText("$dirName/$name.veld")
+                            .withTailText("  (alias)", true)
+                    )
+                    // "./path" style (relative)
+                    result.addElement(
+                        LookupElementBuilder.create("\"$dirName/$name.veld\"")
+                            .withIcon(AllIcons.FileTypes.Any_type)
+                            .withTypeText("$dirName/$name.veld")
+                            .withTailText("  (relative)", true)
                     )
                 }
             }

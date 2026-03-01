@@ -814,17 +814,25 @@ const veldConfigContent = `{
   "input": "app.veld",
   "backend": "node",
   "frontend": "typescript",
-  "out": "../generated"
+  "out": "../generated",
+  "aliases": {
+    "models": "models",
+    "modules": "modules"
+  }
 }
 `
 
 const appVeldContent = `// Entry point — imports all models and modules.
 // Add new import lines here as your API grows.
+//
+// Two import styles are supported:
+//   import @models/user       ← alias-based (recommended)
+//   import "./models/user.veld"  ← relative path (legacy)
 
-import "models/user.veld"
-import "models/common.veld"
-import "modules/users.veld"
-import "modules/auth.veld"
+import @models/user
+import @models/common
+import @modules/users
+import @modules/auth
 `
 
 const modelsUserVeldContent = `// User-related data models.

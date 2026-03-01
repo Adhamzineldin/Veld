@@ -103,7 +103,12 @@ scaffolded — project layout is left to the developer.
   "backend": "node",
   "frontend": "typescript",
   "out": "../generated",
-  "baseUrl": "/api/v1"
+  "baseUrl": "/api/v1",
+  "aliases": {
+    "models": "models",
+    "modules": "modules",
+    "auth": "services/auth"
+  }
 }
 ```
 
@@ -114,6 +119,18 @@ scaffolded — project layout is left to the developer.
 | `frontend` | `"typescript"` | Frontend emitter (`typescript`, `none`; `react` aliases to `typescript`) |
 | `out` | `"./generated"` | Output directory |
 | `baseUrl` | `""` | Baked into frontend SDK (empty = `process.env.VELD_API_URL`) |
+| `aliases` | built-in defaults | Custom `@alias` → relative dir mappings (merged with defaults: models, modules, types, enums, schemas, services, lib, common, shared) |
+
+### Import System
+
+Veld supports two import styles:
+
+```
+import @models/user          // Alias-based (recommended) — resolved from project root via aliases
+import "./models/user.veld"  // Relative path (legacy) — resolved relative to current file
+```
+
+Both styles are fully supported in the CLI, VS Code extension, and JetBrains plugin.
 
 ## .veld Contract Syntax
 

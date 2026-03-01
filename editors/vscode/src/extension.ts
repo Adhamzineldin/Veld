@@ -100,10 +100,11 @@ class VeldLanguageServer {
             const trimmed = lines[i].trim();
 
             if (trimmed.startsWith('import')) {
-                const match = trimmed.match(/import\s+@(\w+)\/(\w+)/);
-                if (match) {
-                    const alias = match[1];
-                    const name = match[2];
+                // Style 1: import @alias/name
+                const aliasMatch = trimmed.match(/import\s+@(\w+)\/(\w+)/);
+                if (aliasMatch) {
+                    const alias = aliasMatch[1];
+                    const name = aliasMatch[2];
                     const raw = `@${alias}/${name}`;
                     const projectRoot = this.findProjectRoot(filePath);
                     let resolvedPath: string | undefined;
@@ -111,6 +112,30 @@ class VeldLanguageServer {
                         const candidate = path.resolve(projectRoot, alias, `${name}.veld`);
                         if (fs.existsSync(candidate)) {
                             resolvedPath = candidate;
+                        }
+                    }
+                    doc.imports.push({ raw, alias, name, line: i, resolvedPath });
+                }
+                // Style 2: import "./path/to/file.veld" or import "path/to/file.veld"
+                const quotedMatch = trimmed.match(/import\s+"([^"]+)"/);
+                if (quotedMatch && !aliasMatch) {
+                    const importStr = quotedMatch[1];
+                    const name = path.basename(importStr, '.veld');
+                    const alias = path.dirname(importStr).replace(/^\.\//, '');
+                    const raw = importStr;
+                    const projectRoot = this.findProjectRoot(filePath);
+                    let resolvedPath: string | undefined;
+                    if (projectRoot) {
+                        // Try relative to current file first
+                        const relCandidate = path.resolve(path.dirname(filePath), importStr);
+                        if (fs.existsSync(relCandidate)) {
+                            resolvedPath = relCandidate;
+                        } else {
+                            // Try relative to project root
+                            const rootCandidate = path.resolve(projectRoot, importStr);
+                            if (fs.existsSync(rootCandidate)) {
+                                resolvedPath = rootCandidate;
+                            }
                         }
                     }
                     doc.imports.push({ raw, alias, name, line: i, resolvedPath });
@@ -253,6 +278,7 @@ class VeldLanguageServer {
 
             if (trimmed.startsWith('import')) {
                 const importMatch = trimmed.match(/import\s+@(\w+)\/(\w+)/);
+                const quotedImportMatch = trimmed.match(/import\s+"([^"]+)"/);
                 if (importMatch) {
                     const imp = doc.imports.find(im => im.line === i);
                     if (imp && !imp.resolvedPath) {
@@ -263,10 +289,20 @@ class VeldLanguageServer {
                             vscode.DiagnosticSeverity.Error
                         ));
                     }
+                } else if (quotedImportMatch) {
+                    const imp = doc.imports.find(im => im.line === i);
+                    if (imp && !imp.resolvedPath) {
+                        const quoteIdx = line.indexOf('"');
+                        diagnostics.push(new vscode.Diagnostic(
+                            new vscode.Range(i, quoteIdx >= 0 ? quoteIdx : 0, i, line.length),
+                            `Cannot resolve import "${quotedImportMatch[1]}". File not found.`,
+                            vscode.DiagnosticSeverity.Error
+                        ));
+                    }
                 } else if (trimmed.match(/import\s+/)) {
                     diagnostics.push(new vscode.Diagnostic(
                         new vscode.Range(i, 0, i, line.length),
-                        `Invalid import syntax. Use: import @models/name`,
+                        `Invalid import syntax. Use: import @models/name or import "./path/file.veld"`,
                         vscode.DiagnosticSeverity.Error
                     ));
                 }
@@ -406,8 +442,10 @@ class VeldLanguageServer {
             const projectRoot = this.findProjectRoot(uri.fsPath);
             // Detect if the user already typed "@" — if so, don't prepend it again
             const alreadyHasAt = trimmedBefore.includes('@');
+            // Detect if the user is typing a quoted relative path
+            const hasQuote = trimmedBefore.includes('"');
             if (projectRoot) {
-                for (const dirName of ['models', 'modules']) {
+                for (const dirName of ['models', 'modules', 'types', 'enums', 'schemas', 'services', 'lib', 'common']) {
                     const dirPath = path.join(projectRoot, dirName);
                     if (fs.existsSync(dirPath)) {
                         try {
@@ -415,16 +453,29 @@ class VeldLanguageServer {
                             for (const file of files) {
                                 if (file.endsWith('.veld')) {
                                     const name = file.replace('.veld', '');
-                                    const label = `@${dirName}/${name}`;
-                                    const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Module);
-                                    item.detail = `${dirName}/${file}`;
-                                    item.documentation = new vscode.MarkdownString(`Import from \`${dirName}/${file}\``);
-                                    item.filterText = label;
-                                    // If user already typed "@", insert without "@" to avoid double-@
+                                    // @alias/name style
+                                    const aliasLabel = `@${dirName}/${name}`;
+                                    const aliasItem = new vscode.CompletionItem(aliasLabel, vscode.CompletionItemKind.Module);
+                                    aliasItem.detail = `${dirName}/${file}`;
+                                    aliasItem.documentation = new vscode.MarkdownString(`Import from \`${dirName}/${file}\` (alias style)`);
+                                    aliasItem.filterText = aliasLabel;
                                     if (alreadyHasAt) {
-                                        item.insertText = `${dirName}/${name}`;
+                                        aliasItem.insertText = `${dirName}/${name}`;
                                     }
-                                    completions.push(item);
+                                    completions.push(aliasItem);
+
+                                    // ./relative style
+                                    if (!alreadyHasAt) {
+                                        const relLabel = `"${dirName}/${file}"`;
+                                        const relItem = new vscode.CompletionItem(relLabel, vscode.CompletionItemKind.File);
+                                        relItem.detail = `${dirName}/${file} (relative)`;
+                                        relItem.documentation = new vscode.MarkdownString(`Import from \`${dirName}/${file}\` (relative path style)`);
+                                        relItem.filterText = relLabel;
+                                        if (hasQuote) {
+                                            relItem.insertText = `${dirName}/${file}"`;
+                                        }
+                                        completions.push(relItem);
+                                    }
                                 }
                             }
                         } catch { /* ignore */ }
@@ -449,8 +500,17 @@ class VeldLanguageServer {
 
         // Annotation completion: field has a type and user typed "@"
         // Matches: "fieldName: Type @" or "fieldName?: Type @word"
+        // Must NOT match on import lines (those are handled above)
         if (trimmedBefore.match(/^[a-z_]\w*\??\s*:\s*\w+.*@\w*$/)) {
             return this.getAnnotationCompletions();
+        }
+
+        // Catch standalone "@" typed inside a model block (annotation trigger)
+        if (trimmedBefore.endsWith('@') && !trimmedBefore.startsWith('import')) {
+            const ctx = this.detectContext(lines, position.line);
+            if (ctx === 'model') {
+                return this.getAnnotationCompletions();
+            }
         }
 
         if (trimmedBefore.match(/^[a-z_]\w*:\s*\w*$/)) {
@@ -608,7 +668,8 @@ class VeldLanguageServer {
         // Import path hover
         if (trimmed.startsWith('import')) {
             const importMatch = trimmed.match(/import\s+@(\w+)\/(\w+)/);
-            if (importMatch) {
+            const quotedMatch = trimmed.match(/import\s+"([^"]+)"/);
+            if (importMatch || quotedMatch) {
                 const imp = doc.imports.find(im => im.line === position.line);
                 if (imp) {
                     const md = new vscode.MarkdownString();
@@ -929,6 +990,12 @@ class VeldSemanticTokensProvider implements vscode.DocumentSemanticTokensProvide
                     builder.push(i, fullStart + 1, pathMatch[1].length, 3, 0); // namespace
                     builder.push(i, fullStart + 1 + pathMatch[1].length, 1, 8, 0); // / separator
                     builder.push(i, fullStart + 1 + pathMatch[1].length + 1, pathMatch[2].length, 11, 0); // name
+                }
+
+                // Quoted import: import "path/to/file.veld"
+                const quotedMatch = line.match(/"([^"]+)"/);
+                if (quotedMatch && quotedMatch.index !== undefined && !pathMatch) {
+                    builder.push(i, quotedMatch.index, quotedMatch[0].length, 8, 0); // string
                 }
                 continue;
             }
