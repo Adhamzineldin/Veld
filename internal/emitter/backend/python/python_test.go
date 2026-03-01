@@ -74,11 +74,11 @@ func TestPythonEmitterEmit(t *testing.T) {
 	}
 
 	expectedFiles := []string{
-		filepath.Join(outDir, "veld_gen", "models", "auth.py"),
-		filepath.Join(outDir, "veld_gen", "models", "__init__.py"),
-		filepath.Join(outDir, "veld_gen", "interfaces", "i_auth_service.py"),
-		filepath.Join(outDir, "veld_gen", "routes", "auth_routes.py"),
-		filepath.Join(outDir, "veld_gen", "schemas", "schemas.py"),
+		filepath.Join(outDir, "models", "auth.py"),
+		filepath.Join(outDir, "models", "__init__.py"),
+		filepath.Join(outDir, "interfaces", "i_auth_service.py"),
+		filepath.Join(outDir, "routes", "auth_routes.py"),
+		filepath.Join(outDir, "schemas", "schemas.py"),
 	}
 	for _, f := range expectedFiles {
 		if _, err := os.Stat(f); os.IsNotExist(err) {
@@ -108,9 +108,9 @@ func TestPythonEmitterTypesContent(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(outDir, "veld_gen", "models", "auth.py"))
+	data, err := os.ReadFile(filepath.Join(outDir, "models", "auth.py"))
 	if err != nil {
-		t.Fatalf("ReadFile veld_gen/models/auth.py: %v", err)
+		t.Fatalf("ReadFile models/auth.py: %v", err)
 	}
 	content := string(data)
 
@@ -129,7 +129,7 @@ func TestPythonEmitterTypesContent(t *testing.T) {
 	}
 	for _, c := range checks {
 		if !strings.Contains(content, c.needle) {
-			t.Errorf("veld_gen/models/auth.py missing %s: want %q\ngot:\n%s", c.desc, c.needle, content)
+			t.Errorf("models/auth.py missing %s: want %q\ngot:\n%s", c.desc, c.needle, content)
 		}
 	}
 }
@@ -141,9 +141,9 @@ func TestPythonEmitterInterfaceContent(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(outDir, "veld_gen", "interfaces", "i_auth_service.py"))
+	data, err := os.ReadFile(filepath.Join(outDir, "interfaces", "i_auth_service.py"))
 	if err != nil {
-		t.Fatalf("ReadFile veld_gen/interfaces/i_auth_service.py: %v", err)
+		t.Fatalf("ReadFile interfaces/i_auth_service.py: %v", err)
 	}
 	content := string(data)
 
@@ -162,7 +162,7 @@ func TestPythonEmitterInterfaceContent(t *testing.T) {
 	}
 	for _, c := range checks {
 		if !strings.Contains(content, c.needle) {
-			t.Errorf("veld_gen/interfaces/i_auth_service.py missing %s: want %q\ngot:\n%s", c.desc, c.needle, content)
+			t.Errorf("interfaces/i_auth_service.py missing %s: want %q\ngot:\n%s", c.desc, c.needle, content)
 		}
 	}
 }
@@ -174,9 +174,9 @@ func TestPythonEmitterRoutesContent(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(outDir, "veld_gen", "routes", "auth_routes.py"))
+	data, err := os.ReadFile(filepath.Join(outDir, "routes", "auth_routes.py"))
 	if err != nil {
-		t.Fatalf("ReadFile veld_gen/routes/auth_routes.py: %v", err)
+		t.Fatalf("ReadFile routes/auth_routes.py: %v", err)
 	}
 	content := string(data)
 
@@ -197,7 +197,7 @@ func TestPythonEmitterRoutesContent(t *testing.T) {
 	}
 	for _, c := range checks {
 		if !strings.Contains(content, c.needle) {
-			t.Errorf("veld_gen/routes/auth_routes.py missing %s: want %q\ngot:\n%s", c.desc, c.needle, content)
+			t.Errorf("routes/auth_routes.py missing %s: want %q\ngot:\n%s", c.desc, c.needle, content)
 		}
 	}
 }
@@ -209,9 +209,9 @@ func TestPythonEmitterSchemasContent(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(outDir, "veld_gen", "schemas", "schemas.py"))
+	data, err := os.ReadFile(filepath.Join(outDir, "schemas", "schemas.py"))
 	if err != nil {
-		t.Fatalf("ReadFile veld_gen/schemas/schemas.py: %v", err)
+		t.Fatalf("ReadFile schemas/schemas.py: %v", err)
 	}
 	content := string(data)
 
@@ -229,7 +229,7 @@ func TestPythonEmitterSchemasContent(t *testing.T) {
 	}
 	for _, c := range checks {
 		if !strings.Contains(content, c.needle) {
-			t.Errorf("veld_gen/schemas/schemas.py missing %s: want %q\ngot:\n%s", c.desc, c.needle, content)
+			t.Errorf("schemas/schemas.py missing %s: want %q\ngot:\n%s", c.desc, c.needle, content)
 		}
 	}
 }
@@ -257,7 +257,7 @@ func TestPythonEmitterPathParams(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, _ := os.ReadFile(filepath.Join(outDir, "veld_gen", "routes", "items_routes.py"))
+	data, _ := os.ReadFile(filepath.Join(outDir, "routes", "items_routes.py"))
 	content := string(data)
 
 	// Flask uses <id> syntax in URL rules.
@@ -293,7 +293,7 @@ func TestPythonEmitterModulePrefix(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, _ := os.ReadFile(filepath.Join(outDir, "veld_gen", "routes", "users_routes.py"))
+	data, _ := os.ReadFile(filepath.Join(outDir, "routes", "users_routes.py"))
 	if !strings.Contains(string(data), "'/api/v1/users'") {
 		t.Error("module prefix should be prepended to the route path")
 	}
@@ -311,7 +311,7 @@ func TestPythonEmitterSummary(t *testing.T) {
 	for _, l := range lines {
 		dirs[l.Dir] = true
 	}
-	for _, want := range []string{"veld_gen/models/", "veld_gen/interfaces/", "veld_gen/routes/", "veld_gen/schemas/"} {
+	for _, want := range []string{"models/", "interfaces/", "routes/", "schemas/"} {
 		if !dirs[want] {
 			t.Errorf("Summary() missing entry for directory %q", want)
 		}

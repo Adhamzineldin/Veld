@@ -137,70 +137,6 @@ func TestPatchRequirementsTxt_NotFound(t *testing.T) {
 	}
 }
 
-// ── conftest.py tests ────────────────────────────────────────────────────────
-
-func TestPatchConftest_Created(t *testing.T) {
-	dir := t.TempDir()
-	r := patchConftest(dir, "generated")
-	if r.Action != "patched" {
-		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
-	}
-	data, _ := os.ReadFile(filepath.Join(dir, "conftest.py"))
-	content := string(data)
-	if !strings.Contains(content, "generated") {
-		t.Fatal("conftest.py should contain generated path")
-	}
-	if !strings.Contains(content, "sys.path") {
-		t.Fatal("conftest.py should contain sys.path insert")
-	}
-}
-
-func TestPatchConftest_Skipped(t *testing.T) {
-	dir := tmpProject(t, map[string]string{
-		"conftest.py": "import os, sys  # noqa: E401\nsys.path.insert(0, os.path.join(os.path.dirname(__file__), \"generated\"))  # veld:generated-path\n",
-	})
-	r := patchConftest(dir, "generated")
-	if r.Action != "skipped" {
-		t.Fatalf("expected skipped, got %s: %s", r.Action, r.Detail)
-	}
-}
-
-func TestPatchConftest_UpdatePath(t *testing.T) {
-	dir := tmpProject(t, map[string]string{
-		"conftest.py": "import os, sys  # noqa: E401\nsys.path.insert(0, os.path.join(os.path.dirname(__file__), \"old-output\"))  # veld:generated-path\n",
-	})
-	r := patchConftest(dir, "new-output")
-	if r.Action != "patched" {
-		t.Fatalf("expected patched (update), got %s: %s", r.Action, r.Detail)
-	}
-	data, _ := os.ReadFile(filepath.Join(dir, "conftest.py"))
-	content := string(data)
-	if !strings.Contains(content, "new-output") {
-		t.Fatal("conftest.py should now contain new-output")
-	}
-	if strings.Contains(content, "old-output") {
-		t.Fatal("conftest.py should no longer contain old-output")
-	}
-}
-
-func TestPatchConftest_AppendToExisting(t *testing.T) {
-	dir := tmpProject(t, map[string]string{
-		"conftest.py": "# existing conftest\nimport pytest\n",
-	})
-	r := patchConftest(dir, "generated")
-	if r.Action != "patched" {
-		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
-	}
-	data, _ := os.ReadFile(filepath.Join(dir, "conftest.py"))
-	content := string(data)
-	if !strings.Contains(content, "import pytest") {
-		t.Fatal("should preserve existing content")
-	}
-	if !strings.Contains(content, "sys.path") {
-		t.Fatal("should add sys.path insert")
-	}
-}
-
 // ── go.mod tests ─────────────────────────────────────────────────────────────
 
 func TestPatchGoMod_Patched(t *testing.T) {
@@ -425,17 +361,13 @@ func TestRun_PythonDart(t *testing.T) {
 		"pubspec.yaml":     "name: myapp\n\ndependencies:\n  flutter:\n    sdk: flutter\n",
 	})
 	results := Run(dir, "python", "dart", "generated")
-	if len(results) != 3 {
-		t.Fatalf("expected 3 results, got %d: %+v", len(results), results)
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d: %+v", len(results), results)
 	}
 	req := findResult(results, "requirements.txt")
 	pub := findResult(results, "pubspec.yaml")
-	conf := findResult(results, "conftest.py")
 	if req == nil || req.Action != "patched" {
 		t.Fatal("expected requirements.txt patched")
-	}
-	if conf == nil || conf.Action != "patched" {
-		t.Fatal("expected conftest.py patched")
 	}
 	if pub == nil || pub.Action != "patched" {
 		t.Fatal("expected pubspec.yaml patched")

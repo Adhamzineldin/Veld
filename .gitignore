@@ -43,3 +43,5 @@ editors/jetbrains/build/
 # ── IDEs ─────────────────────────────────────────────────────────────────────
 .vscode/
 # .idea/ is kept — contains Go SDK config needed for GoLand
+
+/Veld Test/

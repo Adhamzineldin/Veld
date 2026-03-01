@@ -255,7 +255,7 @@ func printImportInstructions(rc config.ResolvedConfig) {
 			fmt.Println(dim("    Routes:   ") + ` import { usersRoutes } from '@veld/routes/users.routes';`)
 			fmt.Println(dim("    Interfaces:") + ` import { IUsersService } from '@veld/interfaces/IUsersService';`)
 		case "python":
-			fmt.Println(dim("    Setup:") + ` run veld setup (patches conftest.py with sys.path)`)
+			fmt.Println(dim("    Setup:") + ` set "out" to the package name, e.g. "veld_gen"`)
 			fmt.Println(dim("    Models:    ") + ` from veld_gen.models import User`)
 			fmt.Println(dim("    Routes:    ") + ` from veld_gen.routes.users_routes import register_users_routes`)
 			fmt.Println(dim("    Interfaces:") + ` from veld_gen.interfaces.i_users_service import IUsersService`)
@@ -1985,17 +1985,24 @@ func runInit() error {
 	fmt.Printf("  → %s\n\n", green(selectedFrontend))
 
 	// ── Generate config with selections ────────────────────────────────────
+	// For Python, default to "veld_gen" as the output directory name
+	// so the folder itself is a valid Python package importable from cwd.
+	defaultOut := "../generated"
+	if selectedBackend == "python" {
+		defaultOut = "../veld_gen"
+	}
+
 	configJSON := fmt.Sprintf(`{
   "input": "app.veld",
   "backend": "%s",
   "frontend": "%s",
-  "out": "../generated",
+  "out": "%s",
   "aliases": {
     "models": "models",
     "modules": "modules"
   }
 }
-`, selectedBackend, selectedFrontend)
+`, selectedBackend, selectedFrontend, defaultOut)
 
 	type entry struct{ path, content, label string }
 	files := []entry{
@@ -2081,7 +2088,7 @@ func runInit() error {
   "input": "app.veld",
   "backend": "%s",
   "frontend": "%s",
-  "out": "../generated",
+  "out": "%s",
   "backendDir": "%s",
   "frontendDir": "%s",
   "aliases": {
@@ -2089,7 +2096,7 @@ func runInit() error {
     "modules": "modules"
   }
 }
-`, selectedBackend, selectedFrontend, relBackend, relFrontend)
+`, selectedBackend, selectedFrontend, defaultOut, relBackend, relFrontend)
 			_ = os.WriteFile("veld/veld.config.json", []byte(updatedCfg), 0644)
 			fmt.Println("  " + green("✓") + " updated veld.config.json with project paths")
 		}
@@ -2100,7 +2107,7 @@ func runInit() error {
 			BackendDir:  backendDirPath,
 			FrontendDir: frontendDirPath,
 		}
-		results := setup.Run(projectDir, selectedBackend, selectedFrontend, "../generated", setupOpts)
+		results := setup.Run(projectDir, selectedBackend, selectedFrontend, defaultOut, setupOpts)
 		if len(results) > 0 {
 			printSetupResults(results)
 		}
