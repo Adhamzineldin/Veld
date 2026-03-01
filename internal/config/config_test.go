@@ -220,3 +220,86 @@ func TestBuildResolvedAliasesMerge(t *testing.T) {
 		t.Errorf("expected aliases[shared] = 'shared', got %q", rc.Aliases["shared"])
 	}
 }
+
+func TestValidationDefaultTrue(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "veld", "veld.config.json")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// No "validation" key → should default to true
+	if err := os.WriteFile(cfgPath, []byte(`{"input":"app.veld"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "veld", "app.veld"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !rc.Validation {
+		t.Error("expected Validation to default to true")
+	}
+}
+
+func TestValidationExplicitFalse(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "veld", "veld.config.json")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfgPath, []byte(`{"input":"app.veld","validation":false}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "veld", "app.veld"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rc.Validation {
+		t.Error("expected Validation to be false when set in config")
+	}
+}
+
+func TestValidationFlagOverridesConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "veld", "veld.config.json")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Config says validation: true, flag says --no-validation
+	if err := os.WriteFile(cfgPath, []byte(`{"input":"app.veld","validation":true}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "veld", "app.veld"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{
+		NoValidation:    true,
+		NoValidationSet: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rc.Validation {
+		t.Error("expected --no-validation flag to override config validation=true")
+	}
+}
