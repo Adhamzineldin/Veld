@@ -1,4 +1,0 @@
-// BAD: empty enum (no values)
-enum Empty {
-}
-

@@ -24,14 +24,14 @@ func (*VueEmitter) IsFrontend() {}
 
 func (e *VueEmitter) Summary(modules []string) []emitter.SummaryLine {
 	lines := []emitter.SummaryLine{
-		{Dir: "client/", Files: "api.ts"},
+		{Dir: "client/", Files: "api.ts, package.json"},
 	}
 	files := make([]string, len(modules))
 	for i, m := range modules {
 		files[i] = "use" + m + ".ts"
 	}
 	lines = append(lines, emitter.SummaryLine{Dir: "composables/", Files: strings.Join(files, ", ")})
-	lines = append(lines, emitter.SummaryLine{Dir: "composables/", Files: "index.ts"})
+	lines = append(lines, emitter.SummaryLine{Dir: "composables/", Files: "index.ts, package.json"})
 	return lines
 }
 
@@ -64,7 +64,21 @@ func (e *VueEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) er
 	for _, exp := range barrelExports {
 		barrel.WriteString(exp + "\n")
 	}
-	return os.WriteFile(filepath.Join(dir, "index.ts"), []byte(barrel.String()), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "index.ts"), []byte(barrel.String()), 0644); err != nil {
+		return err
+	}
+
+	// Write composables/package.json
+	pkgJSON := `{
+  "name": "@veld/composables",
+  "private": true,
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  }
+}
+`
+	return os.WriteFile(filepath.Join(dir, "package.json"), []byte(pkgJSON), 0644)
 }
 
 func (e *VueEmitter) emitComposable(a ast.AST, mod ast.Module, dir string) error {

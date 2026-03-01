@@ -1,6 +1,0 @@
-{
-  "input": "../veld/app.veld",
-  "backend": "python",
-  "frontend": "none",
-  "out": "../generated"
-}

@@ -1,7 +1,0 @@
-// BAD: model and enum share the same name
-enum Role { admin user }
-
-model Role {
-  id: string
-}
-

@@ -1,5 +1,0 @@
-// BAD: missing brace — parser error
-model Broken {
-  id: string
-
-

@@ -24,7 +24,7 @@ func New() *TypeScriptEmitter { return &TypeScriptEmitter{} }
 // Summary returns a human-friendly breakdown of generated files.
 func (e *TypeScriptEmitter) Summary(modules []string) []emitter.SummaryLine {
 	return []emitter.SummaryLine{
-		{Dir: "client/", Files: "api.ts"},
+		{Dir: "client/", Files: "api.ts, package.json"},
 	}
 }
 
@@ -55,5 +55,19 @@ func (e *TypeScriptEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOpti
 	emitHTTPHelpers(&sb, methods)
 	emitApiObject(&sb, a)
 
-	return os.WriteFile(filepath.Join(dir, "api.ts"), []byte(sb.String()), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "api.ts"), []byte(sb.String()), 0644); err != nil {
+		return err
+	}
+
+	// Write client/package.json for standalone usage
+	pkgJSON := `{
+  "name": "@veld/client",
+  "private": true,
+  "types": "./api.ts",
+  "exports": {
+    ".": "./api.ts"
+  }
+}
+`
+	return os.WriteFile(filepath.Join(dir, "package.json"), []byte(pkgJSON), 0644)
 }

@@ -1,6 +1,0 @@
-// BAD: unexpected character in source
-model User {
-  id: string
-  price: $100
-}
-

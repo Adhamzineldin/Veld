@@ -24,7 +24,7 @@ func New() *KotlinEmitter { return &KotlinEmitter{} }
 // Summary returns a human-friendly breakdown of generated files.
 func (e *KotlinEmitter) Summary(modules []string) []emitter.SummaryLine {
 	return []emitter.SummaryLine{
-		{Dir: "client/", Files: "ApiClient.kt"},
+		{Dir: "client/", Files: "ApiClient.kt, build.gradle.kts"},
 	}
 }
 
@@ -66,5 +66,19 @@ func (e *KotlinEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 	emitDataClasses(&sb, a, allTypes)
 	emitApiObject(&sb, a, opts)
 
-	return os.WriteFile(filepath.Join(dir, "ApiClient.kt"), []byte(sb.String()), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "ApiClient.kt"), []byte(sb.String()), 0644); err != nil {
+		return err
+	}
+
+	// Write client/build.gradle.kts
+	gradle := `plugins {
+    kotlin("jvm")
+    kotlin("plugin.serialization")
+}
+
+dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+}
+`
+	return os.WriteFile(filepath.Join(dir, "build.gradle.kts"), []byte(gradle), 0644)
 }

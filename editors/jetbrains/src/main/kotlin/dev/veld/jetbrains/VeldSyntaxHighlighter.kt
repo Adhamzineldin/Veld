@@ -8,7 +8,8 @@ import com.intellij.psi.tree.IElementType
 import com.intellij.openapi.editor.colors.TextAttributesKey.createTextAttributesKey
 
 /**
- * Syntax highlighter for Veld language
+ * Syntax highlighter for Veld language.
+ * Uses distinct color keys per keyword sub-type for better visual differentiation.
  */
 class VeldSyntaxHighlighter : SyntaxHighlighterBase() {
 
@@ -20,12 +21,13 @@ class VeldSyntaxHighlighter : SyntaxHighlighterBase() {
             VeldTokenTypes.STRING -> arrayOf(STRING)
             VeldTokenTypes.NUMBER -> arrayOf(NUMBER)
 
-            VeldTokenTypes.MODEL_KEYWORD,
-            VeldTokenTypes.MODULE_KEYWORD,
-            VeldTokenTypes.ACTION_KEYWORD,
-            VeldTokenTypes.ENUM_KEYWORD,
-            VeldTokenTypes.IMPORT_KEYWORD,
-            VeldTokenTypes.EXTENDS_KEYWORD -> arrayOf(KEYWORD)
+            // Distinct keyword sub-types
+            VeldTokenTypes.MODEL_KEYWORD -> arrayOf(MODEL_KEYWORD)
+            VeldTokenTypes.MODULE_KEYWORD -> arrayOf(MODULE_KEYWORD)
+            VeldTokenTypes.ENUM_KEYWORD -> arrayOf(ENUM_KEYWORD)
+            VeldTokenTypes.ACTION_KEYWORD -> arrayOf(ACTION_KEYWORD)
+            VeldTokenTypes.IMPORT_KEYWORD -> arrayOf(IMPORT_KEYWORD)
+            VeldTokenTypes.EXTENDS_KEYWORD -> arrayOf(EXTENDS_KEYWORD)
 
             VeldTokenTypes.DIRECTIVE_KEYWORD -> arrayOf(DIRECTIVE)
             VeldTokenTypes.TYPE_KEYWORD -> arrayOf(TYPE)
@@ -57,7 +59,18 @@ class VeldSyntaxHighlighter : SyntaxHighlighterBase() {
         val COMMENT = createTextAttributesKey("VELD_COMMENT", DefaultLanguageHighlighterColors.LINE_COMMENT)
         val STRING = createTextAttributesKey("VELD_STRING", DefaultLanguageHighlighterColors.STRING)
         val NUMBER = createTextAttributesKey("VELD_NUMBER", DefaultLanguageHighlighterColors.NUMBER)
+
+        // Keyword sub-types with distinct visual appearance
+        val MODEL_KEYWORD = createTextAttributesKey("VELD_MODEL_KEYWORD", DefaultLanguageHighlighterColors.CLASS_NAME)
+        val MODULE_KEYWORD = createTextAttributesKey("VELD_MODULE_KEYWORD", DefaultLanguageHighlighterColors.CLASS_NAME)
+        val ENUM_KEYWORD = createTextAttributesKey("VELD_ENUM_KEYWORD", DefaultLanguageHighlighterColors.INTERFACE_NAME)
+        val ACTION_KEYWORD = createTextAttributesKey("VELD_ACTION_KEYWORD", DefaultLanguageHighlighterColors.KEYWORD)
+        val IMPORT_KEYWORD = createTextAttributesKey("VELD_IMPORT_KEYWORD", DefaultLanguageHighlighterColors.KEYWORD)
+        val EXTENDS_KEYWORD = createTextAttributesKey("VELD_EXTENDS_KEYWORD", DefaultLanguageHighlighterColors.KEYWORD)
+
+        // Keep backward compat key for generic keyword usage
         val KEYWORD = createTextAttributesKey("VELD_KEYWORD", DefaultLanguageHighlighterColors.KEYWORD)
+
         val DIRECTIVE = createTextAttributesKey("VELD_DIRECTIVE", DefaultLanguageHighlighterColors.INSTANCE_FIELD)
         val TYPE = createTextAttributesKey("VELD_TYPE", DefaultLanguageHighlighterColors.PREDEFINED_SYMBOL)
         val GENERIC = createTextAttributesKey("VELD_GENERIC", DefaultLanguageHighlighterColors.CLASS_NAME)
@@ -71,7 +84,7 @@ class VeldSyntaxHighlighter : SyntaxHighlighterBase() {
         val SLASH = createTextAttributesKey("VELD_SLASH", DefaultLanguageHighlighterColors.OPERATION_SIGN)
         val DOT = createTextAttributesKey("VELD_DOT", DefaultLanguageHighlighterColors.DOT)
         val QUESTION = createTextAttributesKey("VELD_QUESTION", DefaultLanguageHighlighterColors.OPERATION_SIGN)
-        val IMPORT_PATH = createTextAttributesKey("VELD_IMPORT_PATH", DefaultLanguageHighlighterColors.METADATA)
+        val IMPORT_PATH = createTextAttributesKey("VELD_IMPORT_PATH", DefaultLanguageHighlighterColors.STRING)
         val PATH = createTextAttributesKey("VELD_PATH", DefaultLanguageHighlighterColors.MARKUP_ATTRIBUTE)
         val BAD_CHARACTER = createTextAttributesKey("VELD_BAD_CHARACTER", DefaultLanguageHighlighterColors.INVALID_STRING_ESCAPE)
     }

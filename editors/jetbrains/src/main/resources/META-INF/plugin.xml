@@ -1,7 +1,7 @@
 <idea-plugin>
   <id>dev.veld.jetbrains</id>
   <name>Veld</name>
-  <version>0.4.0</version>
+  <version>0.5.0</version>
   <vendor email="support@veld.dev" url="https://veld.dev">Veld</vendor>
 
   <description><![CDATA[
@@ -26,6 +26,17 @@
   ]]></description>
 
   <change-notes><![CDATA[
+    <h3>0.5.0</h3>
+    <ul>
+      <li>Distinct colors for model/module/enum/action/import/extends keywords</li>
+      <li>Full PSI tree: model, enum, module, action, field, import statement nodes</li>
+      <li>Structure view: see models, enums, modules with fields and actions in the Structure tool window</li>
+      <li>Improved go-to-definition using PSI tree (Ctrl+Click on type names)</li>
+      <li>@alias/name recognized in type positions (after colon and extends)</li>
+      <li>New File action: right-click -> New -> Veld File (Model, Module, Enum)</li>
+      <li>Enum declarations use INTERFACE_NAME color (distinct from model CLASS_NAME)</li>
+      <li>Annotations use METADATA color for better distinction</li>
+    </ul>
     <h3>0.4.0</h3>
     <ul>
       <li>Fixed Go-to-Definition: more robust leaf traversal (no longer relies on strict token type matching)</li>
@@ -139,6 +150,11 @@
         language="Veld"
         implementation="dev.veld.jetbrains.VeldReferenceContributor"/>
 
+    <!-- Structure View -->
+    <lang.psiStructureViewFactory
+        language="Veld"
+        implementationClass="dev.veld.jetbrains.VeldStructureViewFactory"/>
+
     <!-- File Templates -->
     <internalFileTemplate name="Veld Model"/>
     <internalFileTemplate name="Veld Module"/>
@@ -181,6 +197,14 @@
       <reference ref="Veld.Validate"/>
       <reference ref="Veld.Generate"/>
     </group>
+
+    <!-- New File Action -->
+    <action id="Veld.NewFile"
+            class="dev.veld.jetbrains.VeldCreateFileAction"
+            text="Veld File"
+            description="Create a new Veld contract file">
+      <add-to-group group-id="NewGroup" anchor="before" relative-to-action="NewFile"/>
+    </action>
   </actions>
 
   <projectListeners>

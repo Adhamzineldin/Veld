@@ -25,14 +25,14 @@ func (*ReactEmitter) IsFrontend() {}
 
 func (e *ReactEmitter) Summary(modules []string) []emitter.SummaryLine {
 	lines := []emitter.SummaryLine{
-		{Dir: "client/", Files: "api.ts"},
+		{Dir: "client/", Files: "api.ts, package.json"},
 	}
 	hookFiles := make([]string, len(modules))
 	for i, m := range modules {
 		hookFiles[i] = "use" + m + ".ts"
 	}
 	lines = append(lines, emitter.SummaryLine{Dir: "hooks/", Files: strings.Join(hookFiles, ", ")})
-	lines = append(lines, emitter.SummaryLine{Dir: "hooks/", Files: "index.ts"})
+	lines = append(lines, emitter.SummaryLine{Dir: "hooks/", Files: "index.ts, package.json"})
 	return lines
 }
 
@@ -67,7 +67,24 @@ func (e *ReactEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) 
 	for _, exp := range barrelExports {
 		barrel.WriteString(exp + "\n")
 	}
-	return os.WriteFile(filepath.Join(hooksDir, "index.ts"), []byte(barrel.String()), 0644)
+	if err := os.WriteFile(filepath.Join(hooksDir, "index.ts"), []byte(barrel.String()), 0644); err != nil {
+		return err
+	}
+
+	// Write hooks/package.json
+	pkgJSON := `{
+  "name": "@veld/hooks",
+  "private": true,
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": ">=5.0.0"
+  }
+}
+`
+	return os.WriteFile(filepath.Join(hooksDir, "package.json"), []byte(pkgJSON), 0644)
 }
 
 func (e *ReactEmitter) emitModuleHooks(a ast.AST, mod ast.Module, dir string) error {

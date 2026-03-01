@@ -29,7 +29,7 @@ func (e *AngularEmitter) Summary(modules []string) []emitter.SummaryLine {
 		svcFiles[i] = strings.ToLower(m) + ".service.ts"
 	}
 	lines = append(lines, emitter.SummaryLine{Dir: "services/", Files: strings.Join(svcFiles, ", ")})
-	lines = append(lines, emitter.SummaryLine{Dir: "services/", Files: "index.ts"})
+	lines = append(lines, emitter.SummaryLine{Dir: "services/", Files: "index.ts, package.json"})
 	return lines
 }
 
@@ -65,7 +65,21 @@ func (e *AngularEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions
 	for _, exp := range barrelExports {
 		barrel.WriteString(exp + "\n")
 	}
-	return os.WriteFile(filepath.Join(svcDir, "index.ts"), []byte(barrel.String()), 0644)
+	if err := os.WriteFile(filepath.Join(svcDir, "index.ts"), []byte(barrel.String()), 0644); err != nil {
+		return err
+	}
+
+	// Write services/package.json
+	pkgJSON := `{
+  "name": "@veld/services",
+  "private": true,
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  }
+}
+`
+	return os.WriteFile(filepath.Join(svcDir, "package.json"), []byte(pkgJSON), 0644)
 }
 
 func (e *AngularEmitter) emitModels(a ast.AST, dir string) error {

@@ -88,8 +88,11 @@ class VeldLexer : LexerBase() {
             }
 
             // @ sign - could be start of import path like @models/auth
+            // Recognized after: import keyword, colon (type position), extends keyword
             char == '@' -> {
-                if (lastSignificantToken == VeldTokenTypes.IMPORT_KEYWORD) {
+                if (lastSignificantToken == VeldTokenTypes.IMPORT_KEYWORD ||
+                    lastSignificantToken == VeldTokenTypes.COLON ||
+                    lastSignificantToken == VeldTokenTypes.EXTENDS_KEYWORD) {
                     // Consume whole import path: @alias/name
                     currentOffset++ // skip @
                     while (currentOffset < endOffset &&
@@ -252,7 +255,8 @@ class VeldLexer : LexerBase() {
             "enum" -> VeldTokenTypes.ENUM_KEYWORD
             "import" -> VeldTokenTypes.IMPORT_KEYWORD
             "extends" -> VeldTokenTypes.EXTENDS_KEYWORD
-            "method", "path", "input", "output", "description", "prefix", "default" ->
+            "method", "path", "input", "output", "description", "prefix", "default",
+            "query", "middleware", "stream" ->
                 VeldTokenTypes.DIRECTIVE_KEYWORD
             "string", "int", "float", "bool", "date", "datetime", "uuid", "bytes", "json", "any" ->
                 VeldTokenTypes.TYPE_KEYWORD

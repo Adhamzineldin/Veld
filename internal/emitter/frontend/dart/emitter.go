@@ -24,7 +24,7 @@ func New() *DartEmitter { return &DartEmitter{} }
 // Summary returns a human-friendly breakdown of generated files.
 func (e *DartEmitter) Summary(modules []string) []emitter.SummaryLine {
 	return []emitter.SummaryLine{
-		{Dir: "client/", Files: "api_client.dart"},
+		{Dir: "client/", Files: "api_client.dart, pubspec.yaml"},
 	}
 }
 
@@ -66,5 +66,16 @@ func (e *DartEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	emitModels(&sb, a, allTypes)
 	emitApiClass(&sb, a, opts)
 
-	return os.WriteFile(filepath.Join(dir, "api_client.dart"), []byte(sb.String()), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "api_client.dart"), []byte(sb.String()), 0644); err != nil {
+		return err
+	}
+
+	// Write client/pubspec.yaml
+	pubspec := `name: veld_client
+description: Generated Veld API client for Dart/Flutter
+version: 0.1.0
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+`
+	return os.WriteFile(filepath.Join(dir, "pubspec.yaml"), []byte(pubspec), 0644)
 }

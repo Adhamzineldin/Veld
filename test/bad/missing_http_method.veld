@@ -1,9 +1,0 @@
-// BAD: missing required method field on action
-model User { id: string }
-
-module Test {
-  action Oops {
-    path:    /test
-    output:  User
-  }
-}

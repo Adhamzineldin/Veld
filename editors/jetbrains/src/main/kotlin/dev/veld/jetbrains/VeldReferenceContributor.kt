@@ -5,14 +5,16 @@ import com.intellij.patterns.PlatformPatterns
 import com.intellij.psi.*
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.util.ProcessingContext
+import dev.veld.jetbrains.psi.VeldEnumDeclaration
+import dev.veld.jetbrains.psi.VeldModelDeclaration
 
 /**
  * Reference contributor for Veld language.
  * Enables go-to-definition (Ctrl+Click / Ctrl+B) and find-references for:
- *   - Import paths: @models/auth  → navigate to the .veld file
- *   - Type names:   User          → navigate to model/enum/module declaration
+ *   - Import paths: @models/auth  -> navigate to the .veld file
+ *   - Type names:   User          -> navigate to model/enum/module declaration
  *
- * Only IDENTIFIER and IMPORT_PATH tokens are processed for performance.
+ * Handles IMPORT_PATH tokens in any position (import, type, extends).
  */
 class VeldReferenceContributor : PsiReferenceContributor() {
 
@@ -30,14 +32,21 @@ class VeldReferenceContributor : PsiReferenceContributor() {
                     val text = element.text ?: return PsiReference.EMPTY_ARRAY
                     val nodeType = element.node?.elementType
 
-                    // Import path token: @models/auth → navigate to the file
+                    // Import path token: @models/auth -> navigate to the file
+                    // Works in any position: after import, after colon (type), after extends
                     if (nodeType == VeldTokenTypes.IMPORT_PATH) {
-                        return arrayOf(
-                            VeldImportReference(element, TextRange(0, text.length), text, service)
-                        )
+                        val refs = mutableListOf<PsiReference>()
+                        // File reference
+                        refs.add(VeldImportReference(element, TextRange(0, text.length), text, service))
+                        // Also try to resolve to a specific type within the file
+                        val typeName = text.substringAfterLast('/').replaceFirstChar { it.uppercase() }
+                        if (service.findDefinition(typeName, file) != null) {
+                            refs.add(VeldTypeReference(element, TextRange(0, text.length), typeName, service))
+                        }
+                        return refs.toTypedArray()
                     }
 
-                    // IDENTIFIER: PascalCase → type reference (model, enum, module)
+                    // IDENTIFIER: PascalCase -> type reference (model, enum, module)
                     if (nodeType == VeldTokenTypes.IDENTIFIER &&
                         text.isNotEmpty() && text[0].isUpperCase() &&
                         !VeldLanguageSpec.isKeyword(text) &&
@@ -45,6 +54,22 @@ class VeldReferenceContributor : PsiReferenceContributor() {
                         !VeldLanguageSpec.isSpecialType(text) &&
                         !VeldLanguageSpec.isHttpMethod(text)
                     ) {
+                        // First try PSI-based resolution within the same file
+                        val psiFile = element.containingFile
+                        if (psiFile != null) {
+                            val modelDecl = PsiTreeUtil.findChildrenOfType(psiFile, VeldModelDeclaration::class.java)
+                                .firstOrNull { it.name == text }
+                            if (modelDecl != null) {
+                                return arrayOf(VeldPsiElementReference(element, TextRange(0, text.length), modelDecl))
+                            }
+                            val enumDecl = PsiTreeUtil.findChildrenOfType(psiFile, VeldEnumDeclaration::class.java)
+                                .firstOrNull { it.name == text }
+                            if (enumDecl != null) {
+                                return arrayOf(VeldPsiElementReference(element, TextRange(0, text.length), enumDecl))
+                            }
+                        }
+
+                        // Fall back to cross-file resolution via VeldProjectService
                         if (service.findDefinition(text, file) != null) {
                             return arrayOf(
                                 VeldTypeReference(element, TextRange(0, text.length), text, service)
@@ -97,6 +122,16 @@ class VeldTypeReference(
         val psiManager = PsiManager.getInstance(element.project)
         val psiFile = psiManager.findFile(defFile) ?: return null
 
+        // Try PSI-based resolution first
+        val modelDecl = PsiTreeUtil.findChildrenOfType(psiFile, VeldModelDeclaration::class.java)
+            .firstOrNull { it.name == typeName }
+        if (modelDecl != null) return modelDecl.nameIdentifier ?: modelDecl
+
+        val enumDecl = PsiTreeUtil.findChildrenOfType(psiFile, VeldEnumDeclaration::class.java)
+            .firstOrNull { it.name == typeName }
+        if (enumDecl != null) return enumDecl.nameIdentifier ?: enumDecl
+
+        // Fallback: line-based navigation
         val document = PsiDocumentManager.getInstance(element.project)
             .getDocument(psiFile) ?: return psiFile
         if (defLine < 0 || defLine >= document.lineCount) return psiFile
@@ -104,9 +139,6 @@ class VeldTypeReference(
         val lineStart = document.getLineStartOffset(defLine)
         val lineEnd = document.getLineEndOffset(defLine)
 
-        // Walk every leaf on the declaration line looking for the type name.
-        // We don't filter by token type here because different PSI implementations
-        // may wrap the identifier differently — matching by text is more robust.
         var leaf: PsiElement? = psiFile.findElementAt(lineStart)
         while (leaf != null && leaf.textOffset <= lineEnd) {
             if (leaf.text == typeName && leaf.textOffset >= lineStart) {
@@ -115,9 +147,22 @@ class VeldTypeReference(
             leaf = PsiTreeUtil.nextLeaf(leaf)
         }
 
-        // Fallback: navigate to the file at the correct line offset
         return psiFile.findElementAt(lineStart) ?: psiFile
     }
+
+    override fun getVariants(): Array<Any> = emptyArray()
+}
+
+/**
+ * Direct PSI element reference for same-file navigation.
+ */
+class VeldPsiElementReference(
+    element: PsiElement,
+    range: TextRange,
+    private val target: PsiElement
+) : PsiReferenceBase<PsiElement>(element, range, true) {
+
+    override fun resolve(): PsiElement = target
 
     override fun getVariants(): Array<Any> = emptyArray()
 }

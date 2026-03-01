@@ -1,6 +1,0 @@
-// BAD: duplicate field name in model
-model User {
-  id: string
-  id: int
-}
-

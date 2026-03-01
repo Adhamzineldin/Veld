@@ -28,7 +28,7 @@ class VeldAnnotator : Annotator {
             "VELD_MODEL_DECLARATION", DefaultLanguageHighlighterColors.CLASS_NAME
         )
         val ENUM_DECLARATION = TextAttributesKey.createTextAttributesKey(
-            "VELD_ENUM_DECLARATION", DefaultLanguageHighlighterColors.CLASS_NAME
+            "VELD_ENUM_DECLARATION", DefaultLanguageHighlighterColors.INTERFACE_NAME
         )
         val MODULE_DECLARATION = TextAttributesKey.createTextAttributesKey(
             "VELD_MODULE_DECLARATION", DefaultLanguageHighlighterColors.CLASS_NAME
@@ -42,10 +42,10 @@ class VeldAnnotator : Annotator {
             "VELD_MODEL_REFERENCE", DefaultLanguageHighlighterColors.CLASS_REFERENCE
         )
         val ENUM_REFERENCE = TextAttributesKey.createTextAttributesKey(
-            "VELD_ENUM_REFERENCE", DefaultLanguageHighlighterColors.CLASS_REFERENCE
+            "VELD_ENUM_REFERENCE", DefaultLanguageHighlighterColors.INTERFACE_NAME
         )
         val MODULE_REFERENCE = TextAttributesKey.createTextAttributesKey(
-            "VELD_MODULE_REFERENCE", DefaultLanguageHighlighterColors.CLASS_NAME
+            "VELD_MODULE_REFERENCE", DefaultLanguageHighlighterColors.CLASS_REFERENCE
         )
 
         // ── Member colors ────────────────────────────────────────────────────
@@ -57,10 +57,8 @@ class VeldAnnotator : Annotator {
         )
 
         // ── Annotation color ─────────────────────────────────────────────────
-        // Use FUNCTION_CALL as fallback so annotations appear visually distinct
-        // from type references (CLASS_REFERENCE) and field names (INSTANCE_FIELD).
         val ANNOTATION = TextAttributesKey.createTextAttributesKey(
-            "VELD_ANNOTATION", DefaultLanguageHighlighterColors.FUNCTION_CALL
+            "VELD_ANNOTATION", DefaultLanguageHighlighterColors.METADATA
         )
 
         // ── Path parameter color ─────────────────────────────────────────────

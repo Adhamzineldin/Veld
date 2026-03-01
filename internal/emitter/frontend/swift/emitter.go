@@ -24,7 +24,7 @@ func New() *SwiftEmitter { return &SwiftEmitter{} }
 // Summary returns a human-friendly breakdown of generated files.
 func (e *SwiftEmitter) Summary(modules []string) []emitter.SummaryLine {
 	return []emitter.SummaryLine{
-		{Dir: "client/", Files: "APIClient.swift"},
+		{Dir: "client/", Files: "APIClient.swift, Package.swift"},
 	}
 }
 
@@ -56,5 +56,24 @@ func (e *SwiftEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) 
 	emitStructs(&sb, a, allTypes)
 	emitApiEnum(&sb, a, opts)
 
-	return os.WriteFile(filepath.Join(dir, "APIClient.swift"), []byte(sb.String()), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "APIClient.swift"), []byte(sb.String()), 0644); err != nil {
+		return err
+	}
+
+	// Write client/Package.swift
+	swiftPkg := `// swift-tools-version:5.9
+import PackageDescription
+
+let package = Package(
+    name: "VeldClient",
+    platforms: [.iOS(.v15), .macOS(.v12)],
+    products: [
+        .library(name: "VeldClient", targets: ["VeldClient"])
+    ],
+    targets: [
+        .target(name: "VeldClient", path: ".")
+    ]
+)
+`
+	return os.WriteFile(filepath.Join(dir, "Package.swift"), []byte(swiftPkg), 0644)
 }

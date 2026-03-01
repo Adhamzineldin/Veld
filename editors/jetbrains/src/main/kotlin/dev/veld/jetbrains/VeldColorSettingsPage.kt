@@ -10,7 +10,7 @@ import javax.swing.Icon
 
 /**
  * Color settings page for Veld language.
- * Accessible via Settings → Editor → Color Scheme → Veld.
+ * Accessible via Settings -> Editor -> Color Scheme -> Veld.
  */
 class VeldColorSettingsPage : ColorSettingsPage {
 
@@ -26,45 +26,45 @@ class VeldColorSettingsPage : ColorSettingsPage {
 
     override fun getDemoText(): String = """
         // Veld contract — color settings preview
-        import <importPath>@models/auth</importPath>
+        <importKw>import</importKw> <importPath>@models/auth</importPath>
 
-        <keyword>model</keyword> <modelDecl>CreateUserRequest</modelDecl> {
+        <modelKw>model</modelKw> <modelDecl>CreateUserRequest</modelDecl> {
             <field>email</field>:    <type>string</type>
             <field>name</field>:     <type>string</type>
             <field>age</field>?:     <type>int</type>
             <field>tags</field>:     <type>string</type>[]
-            <field>role</field>:     <modelRef>Role</modelRef> <annotation>@default(user)</annotation>
+            <field>role</field>:     <enumRef>Role</enumRef> <annotation>@default(user)</annotation>
             <field>metadata</field>: Map<<type>string</type>, <type>string</type>>
         }
 
-        <keyword>model</keyword> <modelDecl>User</modelDecl> <keyword>extends</keyword> <modelRef>CreateUserRequest</modelRef> {
+        <modelKw>model</modelKw> <modelDecl>User</modelDecl> <extendsKw>extends</extendsKw> <modelRef>CreateUserRequest</modelRef> {
             <field>id</field>:        <type>uuid</type>
             <field>createdAt</field>: <type>datetime</type>
         }
 
-        <keyword>enum</keyword> <enumDecl>Role</enumDecl> {
+        <enumKw>enum</enumKw> <enumDecl>Role</enumDecl> {
             <enumValue>admin</enumValue>
             <enumValue>user</enumValue>
             <enumValue>guest</enumValue>
         }
 
-        <keyword>module</keyword> <moduleDecl>Users</moduleDecl> {
+        <moduleKw>module</moduleKw> <moduleDecl>Users</moduleDecl> {
             <directive>description</directive>: "User management API"
             <directive>prefix</directive>: <path>/api/v1/users</path>
 
-            <keyword>action</keyword> <actionName>ListUsers</actionName> {
+            <actionKw>action</actionKw> <actionName>ListUsers</actionName> {
                 <directive>method</directive>: <httpMethod>GET</httpMethod>
                 <directive>path</directive>:   <path>/</path>
                 <directive>output</directive>: List<<modelRef>User</modelRef>>
             }
 
-            <keyword>action</keyword> <actionName>GetUser</actionName> {
+            <actionKw>action</actionKw> <actionName>GetUser</actionName> {
                 <directive>method</directive>: <httpMethod>GET</httpMethod>
                 <directive>path</directive>:   <path>/</path><pathParam>:id</pathParam>
                 <directive>output</directive>: <modelRef>User</modelRef>
             }
 
-            <keyword>action</keyword> <actionName>CreateUser</actionName> {
+            <actionKw>action</actionKw> <actionName>CreateUser</actionName> {
                 <directive>method</directive>:    <httpMethod>POST</httpMethod>
                 <directive>path</directive>:      <path>/</path>
                 <directive>input</directive>:     <modelRef>CreateUserRequest</modelRef>
@@ -72,7 +72,7 @@ class VeldColorSettingsPage : ColorSettingsPage {
                 <directive>middleware</directive>: <modelRef>AuthGuard</modelRef>
             }
 
-            <keyword>action</keyword> <actionName>DeleteUser</actionName> {
+            <actionKw>action</actionKw> <actionName>DeleteUser</actionName> {
                 <directive>method</directive>: <httpMethod>DELETE</httpMethod>
                 <directive>path</directive>:   <path>/</path><pathParam>:id</pathParam>
             }
@@ -80,8 +80,14 @@ class VeldColorSettingsPage : ColorSettingsPage {
     """.trimIndent()
 
     override fun getAdditionalHighlightingTagToDescriptorMap(): Map<String, TextAttributesKey> = mapOf(
+        // Keyword sub-types
+        "modelKw"    to VeldSyntaxHighlighter.MODEL_KEYWORD,
+        "moduleKw"   to VeldSyntaxHighlighter.MODULE_KEYWORD,
+        "enumKw"     to VeldSyntaxHighlighter.ENUM_KEYWORD,
+        "actionKw"   to VeldSyntaxHighlighter.ACTION_KEYWORD,
+        "importKw"   to VeldSyntaxHighlighter.IMPORT_KEYWORD,
+        "extendsKw"  to VeldSyntaxHighlighter.EXTENDS_KEYWORD,
         // Lexer-based
-        "keyword"    to VeldSyntaxHighlighter.KEYWORD,
         "directive"  to VeldSyntaxHighlighter.DIRECTIVE,
         "type"       to VeldSyntaxHighlighter.TYPE,
         "generic"    to VeldSyntaxHighlighter.GENERIC,
@@ -104,32 +110,37 @@ class VeldColorSettingsPage : ColorSettingsPage {
     companion object {
         private val DESCRIPTORS = arrayOf(
             // ── Lexer highlights ─────────────────────────────────────────────
-            AttributesDescriptor("Comment",           VeldSyntaxHighlighter.COMMENT),
-            AttributesDescriptor("String",            VeldSyntaxHighlighter.STRING),
-            AttributesDescriptor("Number",            VeldSyntaxHighlighter.NUMBER),
-            AttributesDescriptor("Keyword",           VeldSyntaxHighlighter.KEYWORD),
-            AttributesDescriptor("Directive",         VeldSyntaxHighlighter.DIRECTIVE),
-            AttributesDescriptor("Built-in type",     VeldSyntaxHighlighter.TYPE),
-            AttributesDescriptor("Generic type",      VeldSyntaxHighlighter.GENERIC),
-            AttributesDescriptor("HTTP method",       VeldSyntaxHighlighter.HTTP_METHOD),
-            AttributesDescriptor("Identifier",        VeldSyntaxHighlighter.IDENTIFIER),
-            AttributesDescriptor("Braces",            VeldSyntaxHighlighter.BRACES),
-            AttributesDescriptor("Brackets",          VeldSyntaxHighlighter.BRACKETS),
-            AttributesDescriptor("Colon",             VeldSyntaxHighlighter.COLON),
-            AttributesDescriptor("Import path",       VeldSyntaxHighlighter.IMPORT_PATH),
-            AttributesDescriptor("URL path",          VeldSyntaxHighlighter.PATH),
+            AttributesDescriptor("Comment",              VeldSyntaxHighlighter.COMMENT),
+            AttributesDescriptor("String",               VeldSyntaxHighlighter.STRING),
+            AttributesDescriptor("Number",               VeldSyntaxHighlighter.NUMBER),
+            AttributesDescriptor("Keyword//model",       VeldSyntaxHighlighter.MODEL_KEYWORD),
+            AttributesDescriptor("Keyword//module",      VeldSyntaxHighlighter.MODULE_KEYWORD),
+            AttributesDescriptor("Keyword//enum",        VeldSyntaxHighlighter.ENUM_KEYWORD),
+            AttributesDescriptor("Keyword//action",      VeldSyntaxHighlighter.ACTION_KEYWORD),
+            AttributesDescriptor("Keyword//import",      VeldSyntaxHighlighter.IMPORT_KEYWORD),
+            AttributesDescriptor("Keyword//extends",     VeldSyntaxHighlighter.EXTENDS_KEYWORD),
+            AttributesDescriptor("Directive",            VeldSyntaxHighlighter.DIRECTIVE),
+            AttributesDescriptor("Built-in type",        VeldSyntaxHighlighter.TYPE),
+            AttributesDescriptor("Generic type",         VeldSyntaxHighlighter.GENERIC),
+            AttributesDescriptor("HTTP method",          VeldSyntaxHighlighter.HTTP_METHOD),
+            AttributesDescriptor("Identifier",           VeldSyntaxHighlighter.IDENTIFIER),
+            AttributesDescriptor("Braces",               VeldSyntaxHighlighter.BRACES),
+            AttributesDescriptor("Brackets",             VeldSyntaxHighlighter.BRACKETS),
+            AttributesDescriptor("Colon",                VeldSyntaxHighlighter.COLON),
+            AttributesDescriptor("Import path",          VeldSyntaxHighlighter.IMPORT_PATH),
+            AttributesDescriptor("URL path",             VeldSyntaxHighlighter.PATH),
             // ── Semantic highlights (annotator) ──────────────────────────────
-            AttributesDescriptor("Model declaration", VeldAnnotator.MODEL_DECLARATION),
-            AttributesDescriptor("Enum declaration",  VeldAnnotator.ENUM_DECLARATION),
-            AttributesDescriptor("Module declaration",VeldAnnotator.MODULE_DECLARATION),
-            AttributesDescriptor("Action name",       VeldAnnotator.ACTION_NAME),
-            AttributesDescriptor("Field name",        VeldAnnotator.FIELD_NAME),
-            AttributesDescriptor("Enum value",        VeldAnnotator.ENUM_VALUE),
-            AttributesDescriptor("Model reference",   VeldAnnotator.MODEL_REFERENCE),
-            AttributesDescriptor("Enum reference",    VeldAnnotator.ENUM_REFERENCE),
-            AttributesDescriptor("Module reference",  VeldAnnotator.MODULE_REFERENCE),
-            AttributesDescriptor("Annotation",        VeldAnnotator.ANNOTATION),
-            AttributesDescriptor("Path parameter",    VeldAnnotator.PATH_PARAM),
+            AttributesDescriptor("Model declaration",    VeldAnnotator.MODEL_DECLARATION),
+            AttributesDescriptor("Enum declaration",     VeldAnnotator.ENUM_DECLARATION),
+            AttributesDescriptor("Module declaration",   VeldAnnotator.MODULE_DECLARATION),
+            AttributesDescriptor("Action name",          VeldAnnotator.ACTION_NAME),
+            AttributesDescriptor("Field name",           VeldAnnotator.FIELD_NAME),
+            AttributesDescriptor("Enum value",           VeldAnnotator.ENUM_VALUE),
+            AttributesDescriptor("Model reference",      VeldAnnotator.MODEL_REFERENCE),
+            AttributesDescriptor("Enum reference",       VeldAnnotator.ENUM_REFERENCE),
+            AttributesDescriptor("Module reference",     VeldAnnotator.MODULE_REFERENCE),
+            AttributesDescriptor("Annotation",           VeldAnnotator.ANNOTATION),
+            AttributesDescriptor("Path parameter",       VeldAnnotator.PATH_PARAM),
         )
     }
 }

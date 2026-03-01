@@ -217,6 +217,55 @@ func printGenerateSummary(rc config.ResolvedConfig, modules []string) {
 	}
 }
 
+// printImportInstructions prints language-specific import hints after generation.
+func printImportInstructions(rc config.ResolvedConfig) {
+	fe := rc.Frontend
+	if fe == "" || fe == "none" || fe == "types-only" {
+		return
+	}
+
+	fmt.Println()
+	fmt.Println(dim("  Import instructions:"))
+
+	switch fe {
+	case "typescript", "react", "vue", "angular", "svelte":
+		fmt.Println(dim("  Add to tsconfig.json:"))
+		fmt.Println(`    "paths": { "@veld/*": ["./generated/*"] }`)
+	}
+
+	switch fe {
+	case "typescript":
+		fmt.Println(dim("  Then:") + ` import { api } from '@veld/client/api';`)
+	case "react":
+		fmt.Println(dim("  Client:") + ` import { api } from '@veld/client/api';`)
+		fmt.Println(dim("  Hooks:") + `  import { useUsersListUsers } from '@veld/hooks';`)
+		fmt.Println(dim("  Requires:") + ` npm install @tanstack/react-query`)
+	case "vue":
+		fmt.Println(dim("  Client:") + ` import { api } from '@veld/client/api';`)
+		fmt.Println(dim("  Composables:") + ` import { useUsers } from '@veld/composables';`)
+	case "angular":
+		fmt.Println(dim("  Services:") + ` import { UsersService } from '@veld/services';`)
+	case "svelte":
+		fmt.Println(dim("  Client:") + ` import { api } from '@veld/client/api';`)
+		fmt.Println(dim("  Stores:") + `  import { createUsersStore } from '@veld/stores';`)
+	case "dart", "flutter":
+		fmt.Println(dim("  Add to pubspec.yaml:"))
+		fmt.Println(`    dependencies:`)
+		fmt.Println(`      veld_client:`)
+		fmt.Println(`        path: ./generated/client`)
+		fmt.Println(dim("  Then:") + ` import 'package:veld_client/api_client.dart';`)
+	case "kotlin":
+		fmt.Println(dim("  Add to settings.gradle.kts:"))
+		fmt.Println(`    include(":veld-client")`)
+		fmt.Println(`    project(":veld-client").projectDir = file("generated/client")`)
+		fmt.Println(dim("  Then:") + ` import veld.generated.client.*`)
+	case "swift":
+		fmt.Println(dim("  In Xcode: File -> Add Package Dependencies -> Add Local"))
+		fmt.Println(`    Select: generated/client/`)
+		fmt.Println(dim("  Then:") + ` import VeldClient`)
+	}
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 func main() {
@@ -383,6 +432,7 @@ func newGenerateCmd() *cobra.Command {
 			}
 
 			printGenerateSummary(rc, regenerated)
+			printImportInstructions(rc)
 			return nil
 		},
 	}
