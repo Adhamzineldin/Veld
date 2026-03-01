@@ -38,7 +38,9 @@
       "Bash(python:*)",
       "Bash(go build:*)",
       "Bash(/g/University/Graduation/Veld/veld.exe generate:*)",
-      "Bash(go:*)"
+      "Bash(go:*)",
+      "mcp__plugin_context-mode_context-mode__execute",
+      "mcp__plugin_context-mode_context-mode__execute_file"
     ]
   }
 }

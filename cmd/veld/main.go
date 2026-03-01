@@ -19,6 +19,7 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/loader"
 	"github.com/Adhamzineldin/Veld/internal/lsp"
 	"github.com/Adhamzineldin/Veld/internal/schema"
+	"github.com/Adhamzineldin/Veld/internal/setup"
 	"github.com/Adhamzineldin/Veld/internal/validator"
 	"github.com/spf13/cobra"
 
@@ -264,6 +265,56 @@ func printImportInstructions(rc config.ResolvedConfig) {
 		fmt.Println(`    Select: generated/client/`)
 		fmt.Println(dim("  Then:") + ` import VeldClient`)
 	}
+
+	fmt.Println()
+	fmt.Println(dim("  Or run: ") + bold("veld setup") + dim(" to auto-configure project files"))
+}
+
+// printSetupResults formats setup.Result entries for the terminal.
+func printSetupResults(results []setup.Result) {
+	if len(results) == 0 {
+		return
+	}
+	fmt.Println()
+	fmt.Println(dim("  Setup:"))
+	for _, r := range results {
+		switch r.Action {
+		case "patched":
+			fmt.Printf("  %s %s — %s\n", green("✓"), r.File, r.Detail)
+		case "skipped":
+			fmt.Printf("  %s %s — %s\n", dim("·"), r.File, r.Detail)
+		case "not-found":
+			fmt.Printf("  %s %s — %s\n", yellow("!"), r.File, r.Detail)
+		case "manual":
+			fmt.Printf("  %s %s — %s\n", dim("→"), r.File, r.Detail)
+		}
+	}
+}
+
+func newSetupCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "setup",
+		Short: "Auto-configure project files for seamless imports",
+		Long: "Patches config files (tsconfig.json, pubspec.yaml, go.mod, etc.) so that\n" +
+			"generated code can be imported without manual edits.\n\n" +
+			"Reads backend/frontend from veld.config.json and applies the appropriate patches.\n" +
+			"All patching is idempotent — running setup multiple times is safe.",
+		Example: "  veld setup",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rc, err := config.BuildResolved(config.FlagOverrides{})
+			if err != nil {
+				return fmt.Errorf("could not load config: %w", err)
+			}
+			projectDir, _ := os.Getwd()
+			results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out)
+			if len(results) == 0 {
+				fmt.Println(dim("  No config files to patch for this stack"))
+				return nil
+			}
+			printSetupResults(results)
+			return nil
+		},
+	}
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
@@ -290,6 +341,7 @@ service interfaces for any framework. Zero runtime dependencies.
   veld diff                    Show changes since last generation
   veld docs                    Generate API documentation
   veld lsp                     Start the LSP server
+  veld setup                   Auto-configure project imports
 
 Backends:  node, python, go, rust, java, csharp, php
            openapi, database, dockerfile, cicd, env, scaffold-tests
@@ -301,6 +353,7 @@ Frontends: typescript, react, vue, angular, svelte, dart, kotlin, swift, types-o
 		newValidateCmd(), newASTCmd(), newGenerateCmd(), newWatchCmd(),
 		newInitCmd(), newCleanCmd(), newOpenAPICmd(), newGraphQLCmd(),
 		newSchemaCmd(), newDiffCmd(), newDocsCmd(), newLSPCmd(),
+		newSetupCmd(),
 	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, red("Error: ")+err.Error())
@@ -366,7 +419,7 @@ func newASTCmd() *cobra.Command {
 
 func newGenerateCmd() *cobra.Command {
 	var backendFlag, frontendFlag, inputFlag, outFlag string
-	var incrementalFlag, dryRunFlag, noValidationFlag bool
+	var incrementalFlag, dryRunFlag, noValidationFlag, setupFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "generate",
@@ -433,6 +486,12 @@ func newGenerateCmd() *cobra.Command {
 
 			printGenerateSummary(rc, regenerated)
 			printImportInstructions(rc)
+
+			if setupFlag {
+				projectDir, _ := os.Getwd()
+				results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out)
+				printSetupResults(results)
+			}
 			return nil
 		},
 	}
@@ -446,6 +505,8 @@ func newGenerateCmd() *cobra.Command {
 		"preview what would be generated without writing files")
 	cmd.Flags().BoolVar(&noValidationFlag, "no-validation", false,
 		"skip generating validation schemas and helpers")
+	cmd.Flags().BoolVar(&setupFlag, "setup", false,
+		"auto-configure project files for seamless imports after generation")
 	return cmd
 }
 
@@ -1852,6 +1913,20 @@ func runInit() error {
 	fmt.Println("  " + bold("Veld project ready."))
 	fmt.Printf("    backend:  %s\n", bold(selectedBackend))
 	fmt.Printf("    frontend: %s\n", bold(selectedFrontend))
+	fmt.Println()
+
+	// ── Setup prompt ──────────────────────────────────────────────────────
+	fmt.Print("  Run setup to configure imports? [Y/n]: ")
+	setupLine, _ := reader.ReadString('\n')
+	setupLine = strings.TrimSpace(strings.ToLower(setupLine))
+	if setupLine == "" || setupLine == "y" || setupLine == "yes" {
+		projectDir, _ := os.Getwd()
+		results := setup.Run(projectDir, selectedBackend, selectedFrontend, "../generated")
+		if len(results) > 0 {
+			printSetupResults(results)
+		}
+	}
+
 	fmt.Println()
 	fmt.Println("  Next steps:")
 	fmt.Println("    1. Edit veld/models/ and veld/modules/ to define your API")
