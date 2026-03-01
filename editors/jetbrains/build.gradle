@@ -60,7 +60,7 @@ signPlugin {
 }
 
 publishPlugin {
-    token = System.getenv("ORG_GRADLE_PROJECT_intellijPublishToken")
+    token = System.getenv("JETBRAINS_PUBLISH_TOKEN")
 }
 
 
