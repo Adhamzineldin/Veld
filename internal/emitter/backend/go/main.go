@@ -57,18 +57,12 @@ func (e *GoEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) err
 		name string
 		fn   func() error
 	}{
-		{"types", func() error { return e.generateTypes(a, outDir, opts.Validation) }},
-		{"validation", func() error {
-			if !opts.Validation {
-				return nil
-			}
-			return e.generateValidation(a, outDir)
-		}},
+		{"types", func() error { return e.generateTypes(a, outDir) }},
 		{"middleware", func() error { return e.generateMiddleware(outDir) }},
 		{"routes setup", func() error { return e.generateRoutesSetup(a, outDir) }},
 		{"server", func() error { return e.generateServer(a, outDir) }},
 		{"main", func() error { return e.generateMain(outDir) }},
-		{"go.mod", func() error { return e.generateGoMod(outDir, opts.Validation) }},
+		{"go.mod", func() error { return e.generateGoMod(outDir) }},
 	}
 
 	for _, step := range steps {

@@ -72,11 +72,6 @@ func (e *JavaEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	if err := e.emitModels(a, outDir); err != nil {
 		return fmt.Errorf("models: %w", err)
 	}
-	if opts.Validation {
-		if err := e.emitValidationHelper(outDir); err != nil {
-			return fmt.Errorf("validation helper: %w", err)
-		}
-	}
 	if err := e.emitErrorHandler(outDir); err != nil {
 		return fmt.Errorf("error handler: %w", err)
 	}

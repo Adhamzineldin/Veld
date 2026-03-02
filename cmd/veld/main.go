@@ -526,7 +526,7 @@ func newASTCmd() *cobra.Command {
 
 func newGenerateCmd() *cobra.Command {
 	var backendFlag, frontendFlag, inputFlag, outFlag string
-	var incrementalFlag, dryRunFlag, noValidationFlag, setupFlag bool
+	var incrementalFlag, dryRunFlag, setupFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "generate",
@@ -548,16 +548,14 @@ func newGenerateCmd() *cobra.Command {
 			"  veld generate --dry-run",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := config.FlagOverrides{
-				Backend:         backendFlag,
-				Frontend:        frontendFlag,
-				Input:           inputFlag,
-				Out:             outFlag,
-				BackendSet:      cmd.Flags().Changed("backend"),
-				FrontendSet:     cmd.Flags().Changed("frontend"),
-				InputSet:        cmd.Flags().Changed("input"),
-				OutSet:          cmd.Flags().Changed("out"),
-				NoValidation:    noValidationFlag,
-				NoValidationSet: cmd.Flags().Changed("no-validation"),
+				Backend:     backendFlag,
+				Frontend:    frontendFlag,
+				Input:       inputFlag,
+				Out:         outFlag,
+				BackendSet:  cmd.Flags().Changed("backend"),
+				FrontendSet: cmd.Flags().Changed("frontend"),
+				InputSet:    cmd.Flags().Changed("input"),
+				OutSet:      cmd.Flags().Changed("out"),
 			}
 			rc, err := config.BuildResolved(flags)
 			if err != nil {
@@ -565,9 +563,8 @@ func newGenerateCmd() *cobra.Command {
 			}
 
 			opts := emitter.EmitOptions{
-				BaseUrl:    rc.BaseUrl,
-				DryRun:     dryRunFlag,
-				Validation: rc.Validation,
+				BaseUrl: rc.BaseUrl,
+				DryRun:  dryRunFlag,
 			}
 
 			regenerated, _, err := runGenerate(rc, incrementalFlag, opts)
@@ -614,8 +611,6 @@ func newGenerateCmd() *cobra.Command {
 		"skip unchanged modules (dev only — not for production builds)")
 	cmd.Flags().BoolVar(&dryRunFlag, "dry-run", false,
 		"preview what would be generated without writing files")
-	cmd.Flags().BoolVar(&noValidationFlag, "no-validation", false,
-		"skip generating validation schemas and helpers")
 	cmd.Flags().BoolVar(&setupFlag, "setup", false,
 		"auto-configure project files for seamless imports after generation")
 	return cmd
@@ -652,8 +647,7 @@ func newWatchCmd() *cobra.Command {
 			fmt.Println()
 
 			opts := emitter.EmitOptions{
-				BaseUrl:    rc.BaseUrl,
-				Validation: rc.Validation,
+				BaseUrl: rc.BaseUrl,
 			}
 
 			regenerated, initFiles, genErr := runGenerate(rc, false, opts)
@@ -1320,7 +1314,7 @@ func newDiffCmd() *cobra.Command {
 				return fmt.Errorf("contract validation failed")
 			}
 
-			opts := emitter.EmitOptions{BaseUrl: rc.BaseUrl, Validation: rc.Validation}
+			opts := emitter.EmitOptions{BaseUrl: rc.BaseUrl}
 			backend, err := emitter.GetBackend(rc.Backend)
 			if err != nil {
 				return err

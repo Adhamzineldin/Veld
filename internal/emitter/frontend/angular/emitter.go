@@ -173,7 +173,7 @@ func (e *AngularEmitter) emitService(a ast.AST, mod ast.Module, dir string, opts
 			sb.WriteString(fmt.Sprintf("  /** %s */\n", act.Description))
 		}
 
-		sb.WriteString(fmt.Sprintf("  %s(%s): Observable<%s> {\n", act.Name, strings.Join(params, ", "), outputType))
+		sb.WriteString(fmt.Sprintf("  %s(%s): Observable<%s> {\n", emitter.ToCamelCase(act.Name), strings.Join(params, ", "), outputType))
 
 		// Query params
 		if act.Query != "" {

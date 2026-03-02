@@ -128,11 +128,12 @@ func (e *SvelteEmitter) emitStore(a ast.AST, mod ast.Module, dir string) error {
 		if act.Description != "" {
 			sb.WriteString(fmt.Sprintf("  /** %s */\n", act.Description))
 		}
-		sb.WriteString(fmt.Sprintf("  async function %s(%s): Promise<%s | undefined> {\n", act.Name, paramsStr, outputType))
+		camelName := emitter.ToCamelCase(act.Name)
+		sb.WriteString(fmt.Sprintf("  async function %s(%s): Promise<%s | undefined> {\n", camelName, paramsStr, outputType))
 		sb.WriteString("    loading.set(true);\n")
 		sb.WriteString("    error.set(null);\n")
 		sb.WriteString("    try {\n")
-		sb.WriteString(fmt.Sprintf("      const result = await api.%s.%s(%s);\n", mod.Name, act.Name, argsStr))
+		sb.WriteString(fmt.Sprintf("      const result = await api.%s.%s(%s);\n", mod.Name, camelName, argsStr))
 		sb.WriteString("      return result;\n")
 		sb.WriteString("    } catch (e) {\n")
 		sb.WriteString("      error.set(e instanceof Error ? e : new Error(String(e)));\n")
@@ -147,7 +148,7 @@ func (e *SvelteEmitter) emitStore(a ast.AST, mod ast.Module, dir string) error {
 	sb.WriteString("    loading: { subscribe: loading.subscribe },\n")
 	sb.WriteString("    error: { subscribe: error.subscribe },\n")
 	for _, act := range mod.Actions {
-		sb.WriteString(fmt.Sprintf("    %s,\n", act.Name))
+		sb.WriteString(fmt.Sprintf("    %s,\n", emitter.ToCamelCase(act.Name)))
 	}
 	sb.WriteString("  };\n")
 	sb.WriteString("}\n")

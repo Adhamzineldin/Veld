@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+// @ts-ignore
 import { api } from '../generated/client/api';
+// @ts-ignore
 import styles from './App.module.css';
 
 /**

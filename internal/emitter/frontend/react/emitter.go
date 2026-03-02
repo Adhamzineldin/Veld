@@ -111,6 +111,7 @@ func (e *ReactEmitter) emitModuleHooks(a ast.AST, mod ast.Module, dir string) er
 		}
 		pathParams := emitter.ExtractPathParams(routePath)
 
+		camelName := emitter.ToCamelCase(act.Name)
 		hookName := "use" + mod.Name + capitalize(act.Name)
 
 		if method == "GET" {
@@ -134,7 +135,7 @@ func (e *ReactEmitter) emitModuleHooks(a ast.AST, mod ast.Module, dir string) er
 			argsStr := strings.Join(argsList, ", ")
 
 			// Build query key
-			keyParts := []string{fmt.Sprintf("'%s'", mod.Name), fmt.Sprintf("'%s'", act.Name)}
+			keyParts := []string{fmt.Sprintf("'%s'", mod.Name), fmt.Sprintf("'%s'", camelName)}
 			for _, p := range pathParams {
 				keyParts = append(keyParts, p)
 			}
@@ -148,9 +149,9 @@ func (e *ReactEmitter) emitModuleHooks(a ast.AST, mod ast.Module, dir string) er
 			sb.WriteString(fmt.Sprintf("  return useQuery({\n"))
 			sb.WriteString(fmt.Sprintf("    queryKey: [%s],\n", strings.Join(keyParts, ", ")))
 			if argsStr != "" {
-				sb.WriteString(fmt.Sprintf("    queryFn: () => api.%s.%s(%s),\n", mod.Name, act.Name, argsStr))
+				sb.WriteString(fmt.Sprintf("    queryFn: () => api.%s.%s(%s),\n", mod.Name, camelName, argsStr))
 			} else {
-				sb.WriteString(fmt.Sprintf("    queryFn: () => api.%s.%s(),\n", mod.Name, act.Name))
+				sb.WriteString(fmt.Sprintf("    queryFn: () => api.%s.%s(),\n", mod.Name, camelName))
 			}
 			sb.WriteString("    ...options,\n")
 			sb.WriteString("  });\n}\n\n")
@@ -186,9 +187,9 @@ func (e *ReactEmitter) emitModuleHooks(a ast.AST, mod ast.Module, dir string) er
 			sb.WriteString("  const queryClient = useQueryClient();\n")
 			sb.WriteString("  return useMutation({\n")
 			if inputType == "void" {
-				sb.WriteString(fmt.Sprintf("    mutationFn: () => api.%s.%s(),\n", mod.Name, act.Name))
+				sb.WriteString(fmt.Sprintf("    mutationFn: () => api.%s.%s(),\n", mod.Name, camelName))
 			} else {
-				sb.WriteString(fmt.Sprintf("    mutationFn: (vars: %s) => api.%s.%s(%s),\n", inputType, mod.Name, act.Name, strings.Join(mutateParams, ", ")))
+				sb.WriteString(fmt.Sprintf("    mutationFn: (vars: %s) => api.%s.%s(%s),\n", inputType, mod.Name, camelName, strings.Join(mutateParams, ", ")))
 			}
 			sb.WriteString("    onSuccess: () => {\n")
 			sb.WriteString(fmt.Sprintf("      queryClient.invalidateQueries({ queryKey: %s });\n", invalidateKey))

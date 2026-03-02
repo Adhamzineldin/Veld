@@ -75,11 +75,6 @@ func (e *PhpEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) er
 	if err := e.emitModels(a, outDir); err != nil {
 		return fmt.Errorf("models: %w", err)
 	}
-	if opts.Validation {
-		if err := e.emitValidationRules(a, outDir); err != nil {
-			return fmt.Errorf("validation rules: %w", err)
-		}
-	}
 	if err := e.emitErrorHandler(outDir); err != nil {
 		return fmt.Errorf("error handler: %w", err)
 	}

@@ -204,6 +204,28 @@ func CollectModuleMiddleware(mod ast.Module) []string {
 	return result
 }
 
+// ToCamelCase converts a PascalCase name to camelCase (lowercase first letter).
+func ToCamelCase(s string) string {
+	if s == "" {
+		return s
+	}
+	// Find the boundary: lowercase everything up to (but not including) the
+	// last uppercase letter in a leading-uppercase run.  E.g. "HTTPClient" → "httpClient".
+	i := 0
+	for i < len(s) && s[i] >= 'A' && s[i] <= 'Z' {
+		i++
+	}
+	switch {
+	case i == 0:
+		return s // already starts lowercase
+	case i == 1:
+		return strings.ToLower(s[:1]) + s[1:]
+	default:
+		// e.g. i==4 for "HTTPClient" → "http" + "Client"
+		return strings.ToLower(s[:i-1]) + s[i-1:]
+	}
+}
+
 // ToSnakeCase converts a camelCase or PascalCase name to snake_case.
 func ToSnakeCase(s string) string {
 	var result strings.Builder

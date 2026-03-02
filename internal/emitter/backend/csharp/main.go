@@ -72,11 +72,6 @@ func (e *CSharpEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 	if err := e.emitModels(a, outDir); err != nil {
 		return fmt.Errorf("models: %w", err)
 	}
-	if opts.Validation {
-		if err := e.emitValidationHelper(outDir); err != nil {
-			return fmt.Errorf("validation helper: %w", err)
-		}
-	}
 	if err := e.emitErrorHandling(outDir); err != nil {
 		return fmt.Errorf("error handling: %w", err)
 	}

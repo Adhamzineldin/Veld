@@ -4,6 +4,5 @@
 //   - types.go      — emitPerModuleTypes()
 //   - interfaces.go — emitInterface()
 //   - routes.go     — emitRoutes()
-//   - schemas.go    — emitZodSchemas() + Zod helpers
 //   - barrel.go     — emitBarrel() (index.ts + package.json)
 package node

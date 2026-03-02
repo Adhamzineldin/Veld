@@ -76,15 +76,16 @@ func writeAction(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	}
 
 	// Build the call expression
+	camelName := emitter.ToCamelCase(act.Name)
 	if method == "GET" {
-		sb.WriteString(fmt.Sprintf("    %s: (%s): Promise<%s> =>\n", act.Name, sig, outputType))
+		sb.WriteString(fmt.Sprintf("    %s: (%s): Promise<%s> =>\n", camelName, sig, outputType))
 		sb.WriteString(fmt.Sprintf("      get(%s%s),\n", urlExpr, queryAppend))
 	} else {
 		bodyArg := "input"
 		if act.Input == "" {
 			bodyArg = "{}"
 		}
-		sb.WriteString(fmt.Sprintf("    %s: (%s): Promise<%s> =>\n", act.Name, sig, outputType))
+		sb.WriteString(fmt.Sprintf("    %s: (%s): Promise<%s> =>\n", camelName, sig, outputType))
 		sb.WriteString(fmt.Sprintf("      %s(%s%s, %s),\n", fnName, urlExpr, queryAppend, bodyArg))
 	}
 }

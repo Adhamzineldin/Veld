@@ -90,14 +90,6 @@ func (e *RustEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		return fmt.Errorf("rust emitter [write main.rs]: %w", err)
 	}
 
-	// src/validation.rs — validation helpers (optional).
-	if opts.Validation {
-		validationData := e.generateValidation(a)
-		if err := os.WriteFile(filepath.Join(outDir, "src", "validation.rs"), validationData, 0644); err != nil {
-			return fmt.Errorf("rust emitter [write validation.rs]: %w", err)
-		}
-	}
-
 	// src/errors.rs — error types with IntoResponse.
 	errorsData := e.generateErrors()
 	if err := os.WriteFile(filepath.Join(outDir, "src", "errors.rs"), errorsData, 0644); err != nil {
@@ -105,13 +97,13 @@ func (e *RustEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	}
 
 	// src/lib.rs — library crate root that declares modules.
-	libData := e.generateLibRs(a, opts.Validation)
+	libData := e.generateLibRs(a, false)
 	if err := os.WriteFile(filepath.Join(outDir, "src", "lib.rs"), libData, 0644); err != nil {
 		return fmt.Errorf("rust emitter [write lib.rs]: %w", err)
 	}
 
 	// Cargo.toml.
-	cargoData := e.generateCargoToml(opts.Validation)
+	cargoData := e.generateCargoToml(false)
 	if err := os.WriteFile(filepath.Join(outDir, "Cargo.toml"), cargoData, 0644); err != nil {
 		return fmt.Errorf("rust emitter [write Cargo.toml]: %w", err)
 	}

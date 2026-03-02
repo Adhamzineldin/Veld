@@ -39,7 +39,6 @@ func TestTypesOnlyEmitCreatesFiles(t *testing.T) {
 
 	expected := []string{
 		filepath.Join(outDir, "types", "index.ts"),
-		filepath.Join(outDir, "schemas", "schemas.ts"),
 	}
 	for _, f := range expected {
 		if _, err := os.Stat(f); os.IsNotExist(err) {
@@ -67,33 +66,6 @@ func TestTypesOnlyTypesContent(t *testing.T) {
 	} {
 		if !strings.Contains(content, needle) {
 			t.Errorf("types/index.ts missing %q", needle)
-		}
-	}
-}
-
-func TestTypesOnlyZodSchemas(t *testing.T) {
-	e := typesonly.New()
-	outDir := t.TempDir()
-
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
-		t.Fatalf("Emit: %v", err)
-	}
-
-	data, _ := os.ReadFile(filepath.Join(outDir, "schemas", "schemas.ts"))
-	content := string(data)
-
-	for _, needle := range []string{
-		"from 'zod'",
-		"RoleSchema",
-		"z.enum",
-		"UserSchema",
-		"z.object",
-		"z.string().uuid()",
-		"z.array(",
-		".optional()",
-	} {
-		if !strings.Contains(content, needle) {
-			t.Errorf("schemas.ts missing %q", needle)
 		}
 	}
 }

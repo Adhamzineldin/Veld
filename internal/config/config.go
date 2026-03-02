@@ -16,7 +16,6 @@ type RawConfig struct {
 	BackendDir  string            `json:"backendDir,omitempty"`  // path to backend project dir (for setup)
 	FrontendDir string            `json:"frontendDir,omitempty"` // path to frontend project dir (for setup)
 	BaseUrl     string            `json:"baseUrl,omitempty"`     // baked into frontend SDK; empty = use env var
-	Validation  *bool             `json:"validation,omitempty"`  // generate validation schemas; default true
 	Aliases     map[string]string `json:"aliases,omitempty"`     // custom @alias → relative dir, e.g. "auth": "services/auth"
 }
 
@@ -30,7 +29,6 @@ type ResolvedConfig struct {
 	BackendDir  string            // absolute path to backend project dir (empty = projectDir)
 	FrontendDir string            // absolute path to frontend project dir (empty = projectDir)
 	BaseUrl     string            // base URL for frontend SDK (empty = process.env.VELD_API_URL)
-	Validation  bool              // generate validation schemas (default true)
 	Aliases     map[string]string // merged: default aliases + config overrides
 }
 
@@ -42,12 +40,10 @@ type FlagOverrides struct {
 	Input    string
 	Out      string
 	// Changed tracks which flags were explicitly passed.
-	BackendSet      bool
-	FrontendSet     bool
-	InputSet        bool
-	OutSet          bool
-	NoValidation    bool // --no-validation flag
-	NoValidationSet bool
+	BackendSet  bool
+	FrontendSet bool
+	InputSet    bool
+	OutSet      bool
 }
 
 // frontendAlias normalises legacy frontend names.
@@ -134,15 +130,6 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		aliases[k] = v
 	}
 
-	// Resolve validation: default true, config can set false, CLI can override.
-	validation := true
-	if cfg.Validation != nil {
-		validation = *cfg.Validation
-	}
-	if flags.NoValidationSet {
-		validation = !flags.NoValidation
-	}
-
 	return ResolvedConfig{
 		Input:       filepath.Clean(filepath.Join(cfgDir, cfg.Input)),
 		Backend:     cfg.Backend,
@@ -152,7 +139,6 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		BackendDir:  resolveOptionalDir(cfgDir, cfg.BackendDir),
 		FrontendDir: resolveOptionalDir(cfgDir, cfg.FrontendDir),
 		BaseUrl:     cfg.BaseUrl,
-		Validation:  validation,
 		Aliases:     aliases,
 	}, nil
 }

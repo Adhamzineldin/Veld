@@ -56,7 +56,7 @@ func (e *NodeEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) er
 		}
 
 		sb.WriteString(fmt.Sprintf("  %s(%s): Promise<%s>;\n",
-			act.Name, strings.Join(params, ", "), tshelpers.FormatOutputType(act)))
+			emitter.ToCamelCase(act.Name), strings.Join(params, ", "), tshelpers.FormatOutputType(act)))
 	}
 	sb.WriteString("}\n")
 

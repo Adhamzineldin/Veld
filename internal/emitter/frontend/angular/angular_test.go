@@ -67,8 +67,8 @@ func TestAngularServiceContent(t *testing.T) {
 		"HttpClient",
 		"Observable",
 		"AuthService",
-		"Login(",
-		"Me(",
+		"login(",
+		"me(",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Errorf("auth.service.ts missing %q", needle)

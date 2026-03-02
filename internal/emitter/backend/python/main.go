@@ -47,7 +47,6 @@ func (e *PythonEmitter) Summary(modules []string) []emitter.SummaryLine {
 		lines = append(lines, emitter.SummaryLine{Dir: "routes/", Files: strings.Join(routeFiles, ", ")})
 	}
 
-	lines = append(lines, emitter.SummaryLine{Dir: "schemas/", Files: "schemas.py"})
 	return lines
 }
 
@@ -75,9 +74,6 @@ func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 			return fmt.Errorf("routes for %s: %w", mod.Name, err)
 		}
 	}
-	if err := e.emitPydanticSchemas(a, outDir); err != nil {
-		return fmt.Errorf("pydantic schemas: %w", err)
-	}
 	return nil
 }
 
@@ -87,10 +83,9 @@ func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 //	veld_gen/             ← __init__.py (outDir)
 //	├── models/           ← per-module type files
 //	├── interfaces/       ← ABC service interfaces
-//	├── routes/           ← Flask route registrations
-//	└── schemas/          ← Pydantic BaseModel schemas
+//	└── routes/           ← Flask route registrations
 func (e *PythonEmitter) createDirs(outDir string) error {
-	for _, sub := range []string{"", "models", "interfaces", "routes", "schemas"} {
+	for _, sub := range []string{"", "models", "interfaces", "routes"} {
 		dir := filepath.Join(outDir, sub)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
