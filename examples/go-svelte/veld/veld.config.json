@@ -2,5 +2,7 @@
   "input": "app.veld",
   "backend": "go",
   "frontend": "svelte",
-  "out": "../generated"
+  "out": "../generated",
+  "backendDirectory": "../backend",
+  "frontendDirectory": "../frontend"
 }

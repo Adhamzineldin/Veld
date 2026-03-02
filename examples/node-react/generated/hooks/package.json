@@ -1,0 +1,11 @@
+{
+  "name": "@veld/hooks",
+  "private": true,
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": ">=5.0.0"
+  }
+}

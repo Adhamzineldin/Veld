@@ -8,23 +8,23 @@ const store: Todo[] = [
 ];
 
 export class TodosService implements ITodosService {
-  async listTodos(): Promise<Todo[]> {
+  async ListTodos(): Promise<Todo[]> {
     return store;
   }
 
-  async getTodo(id: string): Promise<Todo> {
+  async GetTodo(id: string): Promise<Todo> {
     const todo = store.find((t) => t.id === id);
     if (!todo) throw new Error(`Todo ${id} not found`);
     return todo;
   }
 
-  async createTodo(input: CreateTodoInput): Promise<Todo> {
+  async CreateTodo(input: CreateTodoInput): Promise<Todo> {
     const todo: Todo = { id: randomUUID(), completed: false, ...input };
     store.push(todo);
     return todo;
   }
 
-  async updateTodo(id: string, input: UpdateTodoInput): Promise<Todo> {
+  async UpdateTodo(id: string, input: UpdateTodoInput): Promise<Todo> {
     const todo = store.find((t) => t.id === id);
     if (!todo) throw new Error(`Todo ${id} not found`);
     if (input.title     !== undefined) todo.title     = input.title;
@@ -32,7 +32,7 @@ export class TodosService implements ITodosService {
     return todo;
   }
 
-  async deleteTodo(id: string): Promise<void> {
+  async DeleteTodo(id: string): Promise<void> {
     const idx = store.findIndex((t) => t.id === id);
     if (idx === -1) throw new Error(`Todo ${id} not found`);
     store.splice(idx, 1);

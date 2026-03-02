@@ -41,25 +41,25 @@ export class TodoComponent implements OnInit {
   private readonly userId = 'user-1';
 
   async ngOnInit(): Promise<void> {
-    const result = await api.todos.listTodos();
+    const result = await api.Todos.ListTodos();
     this.todos.set(result);
   }
 
   async create(): Promise<void> {
     if (!this.newTitle.trim()) return;
     const input: CreateTodoInput = { title: this.newTitle.trim(), userId: this.userId };
-    const created = await api.todos.createTodo(input);
+    const created = await api.Todos.CreateTodo(input);
     this.todos.update(list => [...list, created]);
     this.newTitle = '';
   }
 
   async toggle(todo: Todo): Promise<void> {
-    const updated = await api.todos.updateTodo(todo.id, { completed: !todo.completed });
+    const updated = await api.Todos.UpdateTodo(todo.id, { completed: !todo.completed });
     this.todos.update(list => list.map(t => (t.id === updated.id ? updated : t)));
   }
 
   async remove(id: string): Promise<void> {
-    await api.todos.deleteTodo(id);
+    await api.Todos.DeleteTodo(id);
     this.todos.update(list => list.filter(t => t.id !== id));
   }
 }

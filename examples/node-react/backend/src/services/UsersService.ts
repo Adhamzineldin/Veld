@@ -1,5 +1,5 @@
 import { IUsersService } from "../../../generated/interfaces/IUsersService";
-import { User, CreateUserInput, UpdateUserInput } from "../../../generated/types/users";
+import { User, CreateUserInput } from "../../../generated/types/users";
 import { randomUUID } from "crypto";
 
 const store: User[] = [
@@ -8,23 +8,23 @@ const store: User[] = [
 ];
 
 export class UsersService implements IUsersService {
-  async listUsers(): Promise<User[]> {
+  async ListUsers(): Promise<User[]> {
     return store;
   }
 
-  async getUser(id: string): Promise<User> {
+  async GetUser(id: string): Promise<User> {
     const user = store.find((u) => u.id === id);
     if (!user) throw new Error(`User ${id} not found`);
     return user;
   }
 
-  async createUser(input: CreateUserInput): Promise<User> {
+  async CreateUser(input: CreateUserInput): Promise<User> {
     const user: User = { id: randomUUID(), ...input };
     store.push(user);
     return user;
   }
 
-  async deleteUser(id: string): Promise<void> {
+  async DeleteUser(id: string): Promise<void> {
     const idx = store.findIndex((u) => u.id === id);
     if (idx === -1) throw new Error(`User ${id} not found`);
     store.splice(idx, 1);

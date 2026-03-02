@@ -2,5 +2,7 @@
   "input": "app.veld",
   "backend": "java",
   "frontend": "angular",
-  "out": "../generated"
+  "out": "../generated",
+  "backendDirectory": "../backend",
+  "frontendDirectory": "../frontend"
 }

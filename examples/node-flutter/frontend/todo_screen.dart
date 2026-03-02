@@ -27,7 +27,7 @@ class _TodoScreenState extends State<TodoScreen> {
 
   Future<void> _loadTodos() async {
     try {
-      final todos = await _client.listTodos();
+      final todos = await _client.ListTodos();
       setState(() { _todos = todos; _loading = false; });
     } on VeldApiError catch (e) {
       setState(() { _error = 'API error ${e.status}'; _loading = false; });
@@ -38,7 +38,7 @@ class _TodoScreenState extends State<TodoScreen> {
     final title = _titleController.text.trim();
     if (title.isEmpty) return;
     try {
-      final todo = await _client.createTodo(
+      final todo = await _client.CreateTodo(
         CreateTodoInput(title: title, userId: '1'),
       );
       setState(() { _todos = [..._todos, todo]; });
@@ -50,7 +50,7 @@ class _TodoScreenState extends State<TodoScreen> {
 
   Future<void> _toggleTodo(Todo todo) async {
     try {
-      final updated = await _client.updateTodo(
+      final updated = await _client.UpdateTodo(
         todo.id,
         UpdateTodoInput(completed: !todo.completed),
       );

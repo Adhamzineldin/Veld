@@ -29,7 +29,7 @@ class TodoViewModel : ViewModel() {
     fun loadTodos() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                _todos.value = VeldApi.Todos.listTodos()
+                _todos.value = VeldApi.Todos.ListTodos()
                 _error.value = null
             } catch (e: VeldApiError) {
                 _error.value = "HTTP ${e.status}: ${e.body}"
@@ -40,7 +40,7 @@ class TodoViewModel : ViewModel() {
     fun addTodo(title: String, userId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val created = VeldApi.Todos.createTodo(CreateTodoInput(title, userId))
+                val created = VeldApi.Todos.CreateTodo(CreateTodoInput(title, userId))
                 _todos.value = _todos.value + created
             } catch (e: VeldApiError) {
                 _error.value = "HTTP ${e.status}: ${e.body}"
@@ -51,7 +51,7 @@ class TodoViewModel : ViewModel() {
     fun deleteTodo(id: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                VeldApi.Todos.deleteTodo(id)
+                VeldApi.Todos.DeleteTodo(id)
                 _todos.value = _todos.value.filter { it.id != id }
             } catch (e: VeldApiError) {
                 _error.value = "HTTP ${e.status}: ${e.body}"

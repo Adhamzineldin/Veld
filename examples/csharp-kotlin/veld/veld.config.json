@@ -2,5 +2,7 @@
   "input": "app.veld",
   "backend": "csharp",
   "frontend": "kotlin",
-  "out": "../generated"
+  "out": "../generated",
+  "backendDirectory": "../backend",
+  "frontendDirectory": "../frontend"
 }

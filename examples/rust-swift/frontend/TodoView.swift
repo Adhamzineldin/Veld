@@ -10,7 +10,7 @@ class TodoViewModel: ObservableObject {
 
     func loadTodos() async {
         do {
-            todos = try await VeldApi.Todos.listTodos()
+            todos = try await VeldApi.Todos.ListTodos()
         } catch let err as VeldApiError {
             errorMessage = "Error \(err.status): \(err.body)"
         } catch {
@@ -21,7 +21,7 @@ class TodoViewModel: ObservableObject {
     func addTodo(title: String, userId: String) async {
         do {
             let input = CreateTodoInput(title: title, userId: userId)
-            let created = try await VeldApi.Todos.createTodo(input: input)
+            let created = try await VeldApi.Todos.CreateTodo(input: input)
             todos.append(created)
         } catch let err as VeldApiError {
             errorMessage = "Error \(err.status): \(err.body)"
@@ -33,7 +33,7 @@ class TodoViewModel: ObservableObject {
     func toggleTodo(_ todo: Todo) async {
         do {
             let input = UpdateTodoInput(completed: !todo.completed)
-            let updated = try await VeldApi.Todos.updateTodo(id: todo.id, input: input)
+            let updated = try await VeldApi.Todos.UpdateTodo(id: todo.id, input: input)
             if let idx = todos.firstIndex(where: { $0.id == updated.id }) {
                 todos[idx] = updated
             }

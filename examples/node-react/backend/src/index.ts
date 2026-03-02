@@ -1,6 +1,6 @@
 import express from "express";
-import { registerUsersRoutes } from "../../generated/routes/users.routes";
-import { registerTodosRoutes } from "../../generated/routes/todos.routes";
+import { usersRouter } from "@veld/routes/users.routes";
+import { todosRouter } from "@veld/routes/todos.routes";
 import { UsersService } from "./services/UsersService";
 import { TodosService } from "./services/TodosService";
 
@@ -17,12 +17,12 @@ app.use((_req, res, next) => {
 
 const router = express.Router();
 
-registerUsersRoutes(router, new UsersService());
-registerTodosRoutes(router, new TodosService());
+usersRouter(router, new UsersService());
+todosRouter(router, new TodosService());
 
 app.use(router);
 
-const PORT = process.env.PORT ?? 3000;
+const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });

@@ -3,8 +3,8 @@ import { ref, onMounted } from "vue";
 import { api } from "../../generated/client/api";
 
 // -- state ------------------------------------------------------------------
-const todos  = ref<Awaited<ReturnType<typeof api.todos.listTodos>>>([]);
-const users  = ref<Awaited<ReturnType<typeof api.users.listUsers>>>([]);
+const todos  = ref<Awaited<ReturnType<typeof api.Todos.ListTodos>>>([]);
+const users  = ref<Awaited<ReturnType<typeof api.Users.ListUsers>>>([]);
 const newTitle  = ref("");
 const newName   = ref("");
 const newEmail  = ref("");
@@ -12,8 +12,8 @@ const newEmail  = ref("");
 // -- data loading -----------------------------------------------------------
 async function loadAll() {
   [todos.value, users.value] = await Promise.all([
-    api.todos.listTodos(),
-    api.users.listUsers(),
+    api.Todos.ListTodos(),
+    api.Users.ListUsers(),
   ]);
 }
 
@@ -22,31 +22,31 @@ onMounted(loadAll);
 // -- mutations --------------------------------------------------------------
 async function addUser() {
   if (!newName.value || !newEmail.value) return;
-  await api.users.createUser({ name: newName.value, email: newEmail.value });
+  await api.Users.CreateUser({ name: newName.value, email: newEmail.value });
   newName.value = "";
   newEmail.value = "";
   await loadAll();
 }
 
 async function removeUser(id: string) {
-  await api.users.deleteUser(id);
+  await api.Users.DeleteUser(id);
   await loadAll();
 }
 
 async function addTodo(userId: string) {
   if (!newTitle.value) return;
-  await api.todos.createTodo({ title: newTitle.value, userId });
+  await api.Todos.CreateTodo({ title: newTitle.value, userId });
   newTitle.value = "";
   await loadAll();
 }
 
 async function toggleTodo(id: string, completed: boolean) {
-  await api.todos.updateTodo(id, { completed: !completed });
+  await api.Todos.UpdateTodo(id, { completed: !completed });
   await loadAll();
 }
 
 async function removeTodo(id: string) {
-  await api.todos.deleteTodo(id);
+  await api.Todos.DeleteTodo(id);
   await loadAll();
 }
 </script>

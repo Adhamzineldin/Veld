@@ -1,0 +1,8 @@
+{
+  "name": "@veld/client",
+  "private": true,
+  "types": "./api.ts",
+  "exports": {
+    ".": "./api.ts"
+  }
+}

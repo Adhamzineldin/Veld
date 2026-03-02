@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../generated/client/api";
 
+
+
 export default function App() {
   const qc = useQueryClient();
   const [newName,  setNewName]  = useState("");
@@ -10,16 +12,16 @@ export default function App() {
 
   const { data: users = [] } = useQuery({
     queryKey: ["users"],
-    queryFn: () => api.users.listUsers(),
+    queryFn: () => api.Users.ListUsers(),
   });
 
   const { data: todos = [] } = useQuery({
     queryKey: ["todos"],
-    queryFn: () => api.todos.listTodos(),
+    queryFn: () => api.Todos.ListTodos(),
   });
 
   const addUser = useMutation({
-    mutationFn: () => api.users.createUser({ name: newName, email: newEmail }),
+    mutationFn: () => api.Users.CreateUser({ name: newName, email: newEmail }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["users"] });
       setNewName(""); setNewEmail("");
@@ -27,13 +29,13 @@ export default function App() {
   });
 
   const deleteUser = useMutation({
-    mutationFn: (id: string) => api.users.deleteUser(id),
+    mutationFn: (id: string) => api.Users.DeleteUser(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
 
   const addTodo = useMutation({
     mutationFn: (userId: string) =>
-      api.todos.createTodo({ title: newTitle, userId }),
+      api.Todos.CreateTodo({ title: newTitle, userId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["todos"] });
       setNewTitle("");
@@ -42,7 +44,7 @@ export default function App() {
 
   const toggleTodo = useMutation({
     mutationFn: ({ id, completed }: { id: string; completed: boolean }) =>
-      api.todos.updateTodo(id, { completed }),
+      api.Todos.UpdateTodo(id, { completed }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["todos"] }),
   });
 

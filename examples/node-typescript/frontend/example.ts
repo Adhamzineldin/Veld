@@ -14,37 +14,37 @@ async function main() {
   // ── Users ───────────────────────────────────────────────────────────
 
   console.log('--- List users ---');
-  const users = await api.users.listUsers();
+  const users = await api.Users.ListUsers();
   console.log(users);
 
   console.log('--- Create user ---');
-  const newUser = await api.users.createUser({ name: 'Carol', email: 'carol@example.com' });
+  const newUser = await api.Users.CreateUser({ name: 'Carol', email: 'carol@example.com' });
   console.log(newUser);
 
   console.log('--- Get user by ID ---');
-  const user = await api.users.getUser(newUser.id);
+  const user = await api.Users.GetUser(newUser.id);
   console.log(user);
 
   // ── Todos ────────────────────────────────────────────────────────────
 
   console.log('--- List todos ---');
-  const todos = await api.todos.listTodos();
+  const todos = await api.Todos.ListTodos();
   console.log(todos);
 
   console.log('--- Create todo ---');
-  const newTodo = await api.todos.createTodo({ title: 'Read the Veld docs', userId: newUser.id });
+  const newTodo = await api.Todos.CreateTodo({ title: 'Read the Veld docs', userId: newUser.id });
   console.log(newTodo);
 
   console.log('--- Update todo ---');
-  const updated = await api.todos.updateTodo(newTodo.id, { completed: true });
+  const updated = await api.Todos.UpdateTodo(newTodo.id, { completed: true });
   console.log(updated);
 
   console.log('--- Delete todo ---');
-  await api.todos.deleteTodo(newTodo.id);
+  await api.Todos.DeleteTodo(newTodo.id);
   console.log('Deleted todo', newTodo.id);
 
   console.log('--- Delete user ---');
-  await api.users.deleteUser(newUser.id);
+  await api.Users.DeleteUser(newUser.id);
   console.log('Deleted user', newUser.id);
 }
 
