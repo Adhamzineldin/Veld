@@ -9,8 +9,8 @@ import type { User, CreateUserInput } from '../types';
  */
 export function useUsersListUsers(options?: Omit<UseQueryOptions<User[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
-    queryKey: ['Users', 'ListUsers'],
-    queryFn: () => api.Users.ListUsers(),
+    queryKey: ['Users', 'listUsers'],
+    queryFn: () => api.Users.listUsers(),
     ...options,
   });
 }
@@ -20,8 +20,8 @@ export function useUsersListUsers(options?: Omit<UseQueryOptions<User[]>, 'query
  */
 export function useUsersGetUser(id: string, options?: Omit<UseQueryOptions<User>, 'queryKey' | 'queryFn'>) {
   return useQuery({
-    queryKey: ['Users', 'GetUser', id],
-    queryFn: () => api.Users.GetUser(id),
+    queryKey: ['Users', 'getUser', id],
+    queryFn: () => api.Users.getUser(id),
     ...options,
   });
 }
@@ -32,7 +32,7 @@ export function useUsersGetUser(id: string, options?: Omit<UseQueryOptions<User>
 export function useUsersCreateUser(options?: Omit<UseMutationOptions<User, Error, { input: CreateUserInput }>, 'mutationFn'>) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { input: CreateUserInput }) => api.Users.CreateUser(vars.input),
+    mutationFn: (vars: { input: CreateUserInput }) => api.Users.createUser(vars.input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['Users'] });
     },
@@ -46,7 +46,7 @@ export function useUsersCreateUser(options?: Omit<UseMutationOptions<User, Error
 export function useUsersDeleteUser(options?: Omit<UseMutationOptions<void, Error, { id: string }>, 'mutationFn'>) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { id: string }) => api.Users.DeleteUser(vars.id),
+    mutationFn: (vars: { id: string }) => api.Users.deleteUser(vars.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['Users'] });
     },

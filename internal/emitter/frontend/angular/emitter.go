@@ -69,17 +69,20 @@ func (e *AngularEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions
 		return err
 	}
 
-	// Write services/package.json
-	pkgJSON := `{
-  "name": "@veld/services",
-  "private": true,
-  "types": "./index.ts",
-  "exports": {
-    ".": "./index.ts"
-  }
-}
-`
-	return os.WriteFile(filepath.Join(svcDir, "package.json"), []byte(pkgJSON), 0644)
+	// Write services/package.json with per-module exports
+	var pkg strings.Builder
+	pkg.WriteString("{\n")
+	pkg.WriteString("  \"name\": \"@veld/services\",\n")
+	pkg.WriteString("  \"private\": true,\n")
+	pkg.WriteString("  \"types\": \"./index.ts\",\n")
+	pkg.WriteString("  \"exports\": {\n")
+	pkg.WriteString("    \".\": \"./index.ts\"")
+	for _, mod := range a.Modules {
+		modLower := strings.ToLower(mod.Name)
+		pkg.WriteString(fmt.Sprintf(",\n    \"./%s.service\": \"./%s.service.ts\"", modLower, modLower))
+	}
+	pkg.WriteString("\n  }\n}\n")
+	return os.WriteFile(filepath.Join(svcDir, "package.json"), []byte(pkg.String()), 0644)
 }
 
 func (e *AngularEmitter) emitModels(a ast.AST, dir string) error {

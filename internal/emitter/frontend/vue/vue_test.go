@@ -62,7 +62,7 @@ func TestVueComposableContent(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(outDir, "composables", "useAuth.ts"))
 	content := string(data)
 
-	for _, needle := range []string{"from 'vue'", "ref(false)", "useAuth", "loading", "error", "api.Auth"} {
+	for _, needle := range []string{"from 'vue'", "ref(false)", "useAuth", "loading", "error", "authApi"} {
 		if !strings.Contains(content, needle) {
 			t.Errorf("useAuth.ts missing %q", needle)
 		}

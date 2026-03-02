@@ -5,13 +5,13 @@ import type { Todo, CreateTodoInput, UpdateTodoInput } from '../types/todos';
 
 export interface ITodosService {
   /** List all todos */
-  ListTodos(): Promise<Todo[]>;
+  listTodos(): Promise<Todo[]>;
   /** Get a todo by ID */
-  GetTodo(id: string): Promise<Todo>;
+  getTodo(id: string): Promise<Todo>;
   /** Create a new todo */
-  CreateTodo(input: CreateTodoInput): Promise<Todo>;
+  createTodo(input: CreateTodoInput): Promise<Todo>;
   /** Update a todo */
-  UpdateTodo(id: string, input: UpdateTodoInput): Promise<Todo>;
+  updateTodo(id: string, input: UpdateTodoInput): Promise<Todo>;
   /** Delete a todo */
-  DeleteTodo(id: string): Promise<void>;
+  deleteTodo(id: string): Promise<void>;
 }

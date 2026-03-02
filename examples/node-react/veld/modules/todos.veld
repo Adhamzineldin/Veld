@@ -2,7 +2,7 @@ import @models/todo
 
 module Todos {
   description: "Todo management"
-  prefix: /todos
+  prefix: /api/todos
 
   action ListTodos {
     description: "List all todos"

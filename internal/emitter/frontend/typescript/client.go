@@ -9,21 +9,7 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/emitter/tshelpers"
 )
 
-// emitApiObject writes the exported api object with per-module namespaces
-// and SDK methods.
-func emitApiObject(sb *strings.Builder, a ast.AST) {
-	sb.WriteString("\nexport const api = {\n")
-	for _, mod := range a.Modules {
-		sb.WriteString(fmt.Sprintf("  %s: {\n", mod.Name))
-		for _, act := range mod.Actions {
-			writeAction(sb, mod, act)
-		}
-		sb.WriteString("  },\n")
-	}
-	sb.WriteString("};\n")
-}
-
-// writeAction writes a single SDK method inside a module namespace.
+// writeAction writes a single SDK method inside a module API object.
 func writeAction(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	outputType := tshelpers.FormatOutputType(act)
 	routePath := act.Path

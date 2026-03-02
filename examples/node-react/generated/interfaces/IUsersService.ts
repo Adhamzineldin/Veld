@@ -5,11 +5,11 @@ import type { User, CreateUserInput } from '../types/users';
 
 export interface IUsersService {
   /** List all users */
-  ListUsers(): Promise<User[]>;
+  listUsers(): Promise<User[]>;
   /** Get a user by ID */
-  GetUser(id: string): Promise<User>;
+  getUser(id: string): Promise<User>;
   /** Create a new user */
-  CreateUser(input: CreateUserInput): Promise<User>;
+  createUser(input: CreateUserInput): Promise<User>;
   /** Delete a user */
-  DeleteUser(id: string): Promise<void>;
+  deleteUser(id: string): Promise<void>;
 }

@@ -4,36 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 )
-
-// emitImports writes the type import line collecting all used types from all modules.
-func emitImports(sb *strings.Builder, a ast.AST) {
-	allTypes := make(map[string]bool)
-	for _, mod := range a.Modules {
-		for _, t := range emitter.CollectUsedTypes(a, mod) {
-			allTypes[t] = true
-		}
-	}
-	if len(allTypes) == 0 {
-		return
-	}
-
-	// Stable order: enums first, then models
-	var typeList []string
-	for _, en := range a.Enums {
-		if allTypes[en.Name] {
-			typeList = append(typeList, en.Name)
-		}
-	}
-	for _, m := range a.Models {
-		if allTypes[m.Name] {
-			typeList = append(typeList, m.Name)
-		}
-	}
-	sb.WriteString(fmt.Sprintf("import type { %s } from '../types';\n", strings.Join(typeList, ", ")))
-}
 
 // emitErrorClass writes the VeldApiError class definition.
 func emitErrorClass(sb *strings.Builder) {
@@ -60,12 +32,11 @@ func emitBaseURL(sb *strings.Builder, opts emitter.EmitOptions) {
 	}
 }
 
-// emitHTTPHelpers writes the HTTP method helper functions (get, post, put, etc.)
-// for each method actually used.
+// emitHTTPHelpers writes the exported HTTP helpers so per-module files can import them.
 func emitHTTPHelpers(sb *strings.Builder, methods map[string]bool) {
 	if methods["GET"] {
 		sb.WriteString(`
-async function get<T>(path: string): Promise<T> {
+export async function get<T>(path: string): Promise<T> {
   const res = await fetch(BASE + path);
   if (!res.ok) throw new VeldApiError(res.status, await res.text());
   return res.json();
@@ -81,7 +52,7 @@ async function get<T>(path: string): Promise<T> {
 				fn = "del"
 			}
 			sb.WriteString(fmt.Sprintf(`
-async function %s<T>(path: string, body?: unknown): Promise<T> {
+export async function %s<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(BASE + path, {
     method: '%s',
     headers: { 'Content-Type': 'application/json' },

@@ -9,8 +9,8 @@ import type { Todo, CreateTodoInput, UpdateTodoInput } from '../types';
  */
 export function useTodosListTodos(options?: Omit<UseQueryOptions<Todo[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
-    queryKey: ['Todos', 'ListTodos'],
-    queryFn: () => api.Todos.ListTodos(),
+    queryKey: ['Todos', 'listTodos'],
+    queryFn: () => api.Todos.listTodos(),
     ...options,
   });
 }
@@ -20,8 +20,8 @@ export function useTodosListTodos(options?: Omit<UseQueryOptions<Todo[]>, 'query
  */
 export function useTodosGetTodo(id: string, options?: Omit<UseQueryOptions<Todo>, 'queryKey' | 'queryFn'>) {
   return useQuery({
-    queryKey: ['Todos', 'GetTodo', id],
-    queryFn: () => api.Todos.GetTodo(id),
+    queryKey: ['Todos', 'getTodo', id],
+    queryFn: () => api.Todos.getTodo(id),
     ...options,
   });
 }
@@ -32,7 +32,7 @@ export function useTodosGetTodo(id: string, options?: Omit<UseQueryOptions<Todo>
 export function useTodosCreateTodo(options?: Omit<UseMutationOptions<Todo, Error, { input: CreateTodoInput }>, 'mutationFn'>) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { input: CreateTodoInput }) => api.Todos.CreateTodo(vars.input),
+    mutationFn: (vars: { input: CreateTodoInput }) => api.Todos.createTodo(vars.input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['Todos'] });
     },
@@ -46,7 +46,7 @@ export function useTodosCreateTodo(options?: Omit<UseMutationOptions<Todo, Error
 export function useTodosUpdateTodo(options?: Omit<UseMutationOptions<Todo, Error, { id: string; input: UpdateTodoInput }>, 'mutationFn'>) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { id: string; input: UpdateTodoInput }) => api.Todos.UpdateTodo(vars.id, vars.input),
+    mutationFn: (vars: { id: string; input: UpdateTodoInput }) => api.Todos.updateTodo(vars.id, vars.input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['Todos'] });
     },
@@ -60,7 +60,7 @@ export function useTodosUpdateTodo(options?: Omit<UseMutationOptions<Todo, Error
 export function useTodosDeleteTodo(options?: Omit<UseMutationOptions<void, Error, { id: string }>, 'mutationFn'>) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { id: string }) => api.Todos.DeleteTodo(vars.id),
+    mutationFn: (vars: { id: string }) => api.Todos.deleteTodo(vars.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['Todos'] });
     },

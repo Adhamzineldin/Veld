@@ -58,7 +58,7 @@ func TestSvelteStoreContent(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(outDir, "stores", "auth.store.ts"))
 	content := string(data)
 
-	for _, needle := range []string{"writable", "svelte/store", "createAuthStore", "loading", "api.Auth"} {
+	for _, needle := range []string{"writable", "svelte/store", "createAuthStore", "loading", "authApi"} {
 		if !strings.Contains(content, needle) {
 			t.Errorf("auth.store.ts missing %q", needle)
 		}

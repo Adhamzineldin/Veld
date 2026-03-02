@@ -103,6 +103,188 @@ func TestPatchTSConfig_ExistingPaths(t *testing.T) {
 	}
 }
 
+// ── Vite config tests ────────────────────────────────────────────────────────
+
+func TestPatchViteConfig_NoFile(t *testing.T) {
+	dir := t.TempDir()
+	r := patchViteConfig(dir, "generated")
+	if r.Action != "skipped" {
+		t.Fatalf("expected skipped when no vite config, got %s: %s", r.Action, r.Detail)
+	}
+}
+
+func TestPatchViteConfig_DefineConfig(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"vite.config.ts": `import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+})
+`,
+	})
+	r := patchViteConfig(dir, "../generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "vite.config.ts"))
+	content := string(data)
+	if !strings.Contains(content, "'@veld'") {
+		t.Fatal("should contain @veld alias")
+	}
+	if !strings.Contains(content, "path.resolve") {
+		t.Fatal("should contain path.resolve")
+	}
+	if !strings.Contains(content, "../generated") {
+		t.Fatal("should contain the outDir path")
+	}
+	if !strings.Contains(content, "import path from 'path'") {
+		t.Fatal("should add path import")
+	}
+}
+
+func TestPatchViteConfig_ExistingAlias(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"vite.config.ts": `import { defineConfig } from 'vite'
+import path from 'path'
+
+export default defineConfig({
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+    },
+  },
+})
+`,
+	})
+	r := patchViteConfig(dir, "../generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "vite.config.ts"))
+	content := string(data)
+	if !strings.Contains(content, "'@veld'") {
+		t.Fatal("should contain @veld alias")
+	}
+	if !strings.Contains(content, "'@'") {
+		t.Fatal("should preserve existing @ alias")
+	}
+}
+
+func TestPatchViteConfig_AlreadyConfigured(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"vite.config.ts": `import { defineConfig } from 'vite'
+import path from 'path'
+
+export default defineConfig({
+  resolve: {
+    alias: {
+      '@veld': path.resolve(__dirname, '../generated'),
+    },
+  },
+})
+`,
+	})
+	r := patchViteConfig(dir, "../generated")
+	if r.Action != "skipped" {
+		t.Fatalf("expected skipped, got %s: %s", r.Action, r.Detail)
+	}
+}
+
+func TestPatchViteConfig_UpdatePath(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"vite.config.ts": `import { defineConfig } from 'vite'
+import path from 'path'
+
+export default defineConfig({
+  resolve: {
+    alias: {
+      '@veld': path.resolve(__dirname, './old-generated'),
+    },
+  },
+})
+`,
+	})
+	r := patchViteConfig(dir, "../new-generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "vite.config.ts"))
+	content := string(data)
+	if !strings.Contains(content, "../new-generated") {
+		t.Fatal("should update to the new outDir path")
+	}
+	if strings.Contains(content, "old-generated") {
+		t.Fatal("should not contain the old path")
+	}
+}
+
+func TestPatchViteConfig_JSFile(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"vite.config.js": `import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: [],
+})
+`,
+	})
+	r := patchViteConfig(dir, "generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "vite.config.js"))
+	content := string(data)
+	if !strings.Contains(content, "'@veld'") {
+		t.Fatal("should contain @veld alias in .js config")
+	}
+}
+
+func TestPatchViteConfig_ExportDefault(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"vite.config.ts": `import react from '@vitejs/plugin-react'
+
+export default {
+  plugins: [react()],
+}
+`,
+	})
+	r := patchViteConfig(dir, "generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "vite.config.ts"))
+	content := string(data)
+	if !strings.Contains(content, "'@veld'") {
+		t.Fatal("should contain @veld alias with plain export default")
+	}
+	if !strings.Contains(content, "resolve") {
+		t.Fatal("should add resolve block")
+	}
+}
+
+func TestPatchViteConfig_SkipsPathImportIfPresent(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"vite.config.ts": `import { defineConfig } from 'vite'
+import * as path from 'path'
+
+export default defineConfig({
+  plugins: [],
+})
+`,
+	})
+	r := patchViteConfig(dir, "generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "vite.config.ts"))
+	content := string(data)
+	// Should NOT add a second path import.
+	count := strings.Count(content, "'path'")
+	if count != 1 {
+		t.Fatalf("should have exactly 1 path import, got %d", count)
+	}
+}
+
 // ── Requirements.txt tests ───────────────────────────────────────────────────
 
 func TestPatchRequirementsTxt_Patched(t *testing.T) {

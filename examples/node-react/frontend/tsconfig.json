@@ -9,11 +9,13 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "moduleResolution": "bundler",
+    "types": ["node"],
+    "baseUrl": ".",
     "paths": {
       "@veld/*": ["../generated/*"]
     }
   },
-  "include": ["src", "index.html"],
+  "include": ["src", "index.html", "vite.config.ts"],
   "exclude": ["node_modules", "dist"]
 }
 

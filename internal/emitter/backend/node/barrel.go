@@ -3,6 +3,7 @@ package node
 // barrel.go — emits the root index.ts barrel export and package.json alias.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +15,7 @@ func (e *NodeEmitter) emitBarrel(a ast.AST, outDir string) error {
 	if err := writeIndexTS(a, outDir); err != nil {
 		return err
 	}
-	return writePackageJSON(outDir)
+	return writePackageJSON(a, outDir)
 }
 
 func writeIndexTS(a ast.AST, outDir string) error {
@@ -24,17 +25,20 @@ func writeIndexTS(a ast.AST, outDir string) error {
 	return os.WriteFile(filepath.Join(outDir, "index.ts"), []byte(sb.String()), 0644)
 }
 
-func writePackageJSON(outDir string) error {
-	const pkg = `{
-  "name": "@veld/generated",
-  "private": true,
-  "types": "./index.ts",
-  "exports": {
-    ".": "./index.ts",
-    "./types": "./types/index.ts",
-    "./client": "./client/api.ts"
-  }
-}
-`
-	return os.WriteFile(filepath.Join(outDir, "package.json"), []byte(pkg), 0644)
+func writePackageJSON(a ast.AST, outDir string) error {
+	var sb strings.Builder
+	sb.WriteString("{\n")
+	sb.WriteString("  \"name\": \"@veld/generated\",\n")
+	sb.WriteString("  \"private\": true,\n")
+	sb.WriteString("  \"types\": \"./index.ts\",\n")
+	sb.WriteString("  \"exports\": {\n")
+	sb.WriteString("    \".\": \"./index.ts\",\n")
+	sb.WriteString("    \"./types\": \"./types/index.ts\",\n")
+	sb.WriteString("    \"./client\": \"./client/api.ts\"")
+	for _, mod := range a.Modules {
+		moduleLower := strings.ToLower(mod.Name)
+		sb.WriteString(fmt.Sprintf(",\n    \"./client/%sApi\": \"./client/%sApi.ts\"", moduleLower, moduleLower))
+	}
+	sb.WriteString("\n  }\n}\n")
+	return os.WriteFile(filepath.Join(outDir, "package.json"), []byte(sb.String()), 0644)
 }

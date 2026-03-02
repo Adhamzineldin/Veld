@@ -66,6 +66,7 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 	switch backend {
 	case "node":
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchTSConfig(backendDir, relOutBackend) }})
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchViteConfig(backendDir, relOutBackend) }})
 	case "python":
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchPythonPath(backendDir, relOutBackend) }})
 	case "go":
@@ -86,6 +87,7 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 	switch frontend {
 	case "typescript", "react", "vue", "angular", "svelte":
 		frontendPatchers = append(frontendPatchers, patcher{func() Result { return patchTSConfig(frontendDir, relOutFrontend) }})
+		frontendPatchers = append(frontendPatchers, patcher{func() Result { return patchViteConfig(frontendDir, relOutFrontend) }})
 	case "dart", "flutter":
 		frontendPatchers = append(frontendPatchers, patcher{func() Result { return patchPubspecYAML(frontendDir, relOutFrontend) }})
 	case "kotlin":
@@ -244,6 +246,132 @@ func patchTSConfig(dir, outDir string) Result {
 		return Result{File: "tsconfig.json", Action: "not-found", Detail: err.Error()}
 	}
 	return Result{File: "tsconfig.json", Action: "patched", Detail: "added @veld/* path alias"}
+}
+
+// patchViteConfig adds a resolve.alias entry for @veld to vite.config.ts/js/mjs.
+// Vite does NOT read tsconfig paths by default, so projects using Vite need
+// resolve.alias in their config for @veld/* imports to work at dev/build time.
+// If no vite.config file is found, the result is silently skipped (the project
+// may not use Vite at all).
+func patchViteConfig(dir, outDir string) Result {
+	// Try all common Vite config file names.
+	var path string
+	for _, name := range []string{"vite.config.ts", "vite.config.js", "vite.config.mjs"} {
+		p := filepath.Join(dir, name)
+		if _, err := os.Stat(p); err == nil {
+			path = p
+			break
+		}
+	}
+	if path == "" {
+		// No Vite config — project likely doesn't use Vite. Not an error.
+		return Result{File: "vite.config.*", Action: "skipped", Detail: "no vite config found (not using Vite)"}
+	}
+
+	filename := filepath.Base(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Result{File: filename, Action: "not-found", Detail: err.Error()}
+	}
+	content := string(data)
+
+	// The alias value we want: path.resolve(__dirname, '<outDir>')
+	newResolve := `path.resolve(__dirname, '` + outDir + `')`
+
+	// ── Already has @veld alias — check if it needs updating ─────────────
+	if strings.Contains(content, `'@veld'`) || strings.Contains(content, `"@veld"`) {
+		if strings.Contains(content, outDir) {
+			return Result{File: filename, Action: "skipped", Detail: "@veld alias already points to " + outDir}
+		}
+		// Update the existing alias value.
+		re := regexp.MustCompile(`(['"]@veld['"]\s*:\s*)(?:path\.resolve\([^)]*\)|['"][^'"]*['"])`)
+		content = re.ReplaceAllString(content, "${1}"+newResolve)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: filename, Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: filename, Action: "patched", Detail: "updated @veld alias to " + outDir}
+	}
+
+	// ── Need to add the alias ────────────────────────────────────────────
+
+	// Ensure `import path from 'path'` (or `import * as path`) is present.
+	needsPathImport := !strings.Contains(content, "'path'") && !strings.Contains(content, `"path"`)
+	if needsPathImport {
+		// Insert path import at the top, after any existing imports or at line 0.
+		// Find the last import line to insert after it.
+		lines := strings.Split(content, "\n")
+		lastImportIdx := -1
+		for i, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "import ") {
+				lastImportIdx = i
+			}
+		}
+		pathImport := "import path from 'path';"
+		if lastImportIdx >= 0 {
+			// Insert after last import.
+			newLines := make([]string, 0, len(lines)+1)
+			newLines = append(newLines, lines[:lastImportIdx+1]...)
+			newLines = append(newLines, pathImport)
+			newLines = append(newLines, lines[lastImportIdx+1:]...)
+			content = strings.Join(newLines, "\n")
+		} else {
+			content = pathImport + "\n" + content
+		}
+	}
+
+	aliasEntry := `      '@veld': ` + newResolve
+
+	// Strategy 1: existing resolve.alias object — insert into it.
+	if strings.Contains(content, "resolve") && strings.Contains(content, "alias") {
+		// Find the alias: { ... } block and insert our entry.
+		re := regexp.MustCompile(`(alias\s*:\s*\{)`)
+		if re.MatchString(content) {
+			content = re.ReplaceAllString(content, "${1}\n"+aliasEntry+",")
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				return Result{File: filename, Action: "not-found", Detail: err.Error()}
+			}
+			return Result{File: filename, Action: "patched", Detail: "added @veld alias"}
+		}
+	}
+
+	// Strategy 2: existing resolve block but no alias — add alias inside resolve.
+	if strings.Contains(content, "resolve") {
+		re := regexp.MustCompile(`(resolve\s*:\s*\{)`)
+		if re.MatchString(content) {
+			aliasBlock := "${1}\n    alias: {\n" + aliasEntry + ",\n    },"
+			content = re.ReplaceAllString(content, aliasBlock)
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				return Result{File: filename, Action: "not-found", Detail: err.Error()}
+			}
+			return Result{File: filename, Action: "patched", Detail: "added resolve.alias with @veld"}
+		}
+	}
+
+	// Strategy 3: no resolve block — add resolve inside defineConfig({...}) or the exported config.
+	// Look for defineConfig({ and insert resolve after the opening.
+	reDefineConfig := regexp.MustCompile(`(defineConfig\(\s*\{)`)
+	if reDefineConfig.MatchString(content) {
+		resolveBlock := "${1}\n  resolve: {\n    alias: {\n" + aliasEntry + ",\n    },\n  },"
+		content = reDefineConfig.ReplaceAllString(content, resolveBlock)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: filename, Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: filename, Action: "patched", Detail: "added resolve.alias with @veld"}
+	}
+
+	// Strategy 4: export default { ... } without defineConfig.
+	reExport := regexp.MustCompile(`(export\s+default\s*\{)`)
+	if reExport.MatchString(content) {
+		resolveBlock := "${1}\n  resolve: {\n    alias: {\n" + aliasEntry + ",\n    },\n  },"
+		content = reExport.ReplaceAllString(content, resolveBlock)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: filename, Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: filename, Action: "patched", Detail: "added resolve.alias with @veld"}
+	}
+
+	return Result{File: filename, Action: "manual", Detail: "add resolve.alias: { '@veld': path.resolve(__dirname, '" + outDir + "') }"}
 }
 
 // patchRequirementsTxt adds pydantic>=2.0 to requirements.txt.

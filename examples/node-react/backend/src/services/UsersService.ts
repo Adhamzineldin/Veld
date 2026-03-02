@@ -8,25 +8,27 @@ const store: User[] = [
 ];
 
 export class UsersService implements IUsersService {
-  async ListUsers(): Promise<User[]> {
+  async listUsers(): Promise<User[]> {
     return store;
   }
 
-  async GetUser(id: string): Promise<User> {
+  async getUser(id: string): Promise<User> {
     const user = store.find((u) => u.id === id);
     if (!user) throw new Error(`User ${id} not found`);
     return user;
   }
 
-  async CreateUser(input: CreateUserInput): Promise<User> {
+  async createUser(input: CreateUserInput): Promise<User> {
     const user: User = { id: randomUUID(), ...input };
     store.push(user);
     return user;
   }
 
-  async DeleteUser(id: string): Promise<void> {
+  async deleteUser(id: string): Promise<void> {
     const idx = store.findIndex((u) => u.id === id);
     if (idx === -1) throw new Error(`User ${id} not found`);
     store.splice(idx, 1);
   }
 }
+
+

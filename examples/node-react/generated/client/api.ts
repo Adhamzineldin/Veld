@@ -52,34 +52,34 @@ async function del<T>(path: string, body?: unknown): Promise<T> {
 
 export const api = {
   Users: {
-    /** GET /users/ — List all users */
-    ListUsers: (): Promise<User[]> =>
-      get('/users/'),
-    /** GET /users/:id — Get a user by ID */
-    GetUser: (id: string): Promise<User> =>
-      get(`/users/${id}`),
-    /** POST /users/ — Create a new user */
-    CreateUser: (input: CreateUserInput): Promise<User> =>
-      post('/users/', input),
-    /** DELETE /users/:id — Delete a user */
-    DeleteUser: (id: string): Promise<void> =>
-      del(`/users/${id}`, {}),
+    /** GET /api/users/ — List all users */
+    listUsers: (): Promise<User[]> =>
+      get('/api/users/'),
+    /** GET /api/users/:id — Get a user by ID */
+    getUser: (id: string): Promise<User> =>
+      get(`/api/users/${id}`),
+    /** POST /api/users/ — Create a new user */
+    createUser: (input: CreateUserInput): Promise<User> =>
+      post('/api/users/', input),
+    /** DELETE /api/users/:id — Delete a user */
+    deleteUser: (id: string): Promise<void> =>
+      del(`/api/users/${id}`, {}),
   },
   Todos: {
-    /** GET /todos/ — List all todos */
-    ListTodos: (): Promise<Todo[]> =>
-      get('/todos/'),
-    /** GET /todos/:id — Get a todo by ID */
-    GetTodo: (id: string): Promise<Todo> =>
-      get(`/todos/${id}`),
-    /** POST /todos/ — Create a new todo */
-    CreateTodo: (input: CreateTodoInput): Promise<Todo> =>
-      post('/todos/', input),
-    /** PUT /todos/:id — Update a todo */
-    UpdateTodo: (id: string, input: UpdateTodoInput): Promise<Todo> =>
-      put(`/todos/${id}`, input),
-    /** DELETE /todos/:id — Delete a todo */
-    DeleteTodo: (id: string): Promise<void> =>
-      del(`/todos/${id}`, {}),
+    /** GET /api/todos/ — List all todos */
+    listTodos: (): Promise<Todo[]> =>
+      get('/api/todos/'),
+    /** GET /api/todos/:id — Get a todo by ID */
+    getTodo: (id: string): Promise<Todo> =>
+      get(`/api/todos/${id}`),
+    /** POST /api/todos/ — Create a new todo */
+    createTodo: (input: CreateTodoInput): Promise<Todo> =>
+      post('/api/todos/', input),
+    /** PUT /api/todos/:id — Update a todo */
+    updateTodo: (id: string, input: UpdateTodoInput): Promise<Todo> =>
+      put(`/api/todos/${id}`, input),
+    /** DELETE /api/todos/:id — Delete a todo */
+    deleteTodo: (id: string): Promise<void> =>
+      del(`/api/todos/${id}`, {}),
   },
 };
