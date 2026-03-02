@@ -82,14 +82,15 @@ func TestReactHooksContent(t *testing.T) {
 	content := string(data)
 
 	checks := []string{
-		"@tanstack/react-query",
-		"useQuery",
-		"useMutation",
+		"useState",
+		"useEffect",
+		"useCallback",
 		"useLogin",
 		"useMe",
-		"queryKey",
-		"mutationFn",
-		"invalidateQueries",
+		"setData",
+		"setLoading",
+		"setError",
+		"refetch",
 		"LoginInput",
 		"User",
 		"authHooks",

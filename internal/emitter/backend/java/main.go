@@ -85,6 +85,9 @@ func (e *JavaEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		if err := e.emitModuleErrors(mod, outDir); err != nil {
 			return fmt.Errorf("errors %s: %w", mod.Name, err)
 		}
+		if err := e.emitModuleMiddleware(mod, outDir); err != nil {
+			return fmt.Errorf("middleware %s: %w", mod.Name, err)
+		}
 	}
 	if err := e.emitPom(outDir); err != nil {
 		return fmt.Errorf("pom.xml: %w", err)

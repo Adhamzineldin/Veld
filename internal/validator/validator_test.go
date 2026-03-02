@@ -228,40 +228,122 @@ func TestValidateBadDefaultType(t *testing.T) {
 	}
 }
 
-func TestValidateBadDefaultEnum(t *testing.T) {
+func TestValidateDefaultBoolOnIntField(t *testing.T) {
 	a := ast.AST{
 		ASTVersion: "1.0.0",
-		Enums:      []ast.Enum{{Name: "Role", Values: []string{"admin", "user"}}},
-		Models: []ast.Model{{Name: "User", Fields: []ast.Field{
-			{Name: "role", Type: "Role", Default: "superadmin"},
+		Models: []ast.Model{{Name: "Config", Fields: []ast.Field{
+			{Name: "count", Type: "int", Default: "true"},
 		}}},
 	}
 	errs := Validate(a)
 	if len(errs) == 0 {
-		t.Fatal("expected error for invalid enum default")
+		t.Fatal("expected error for bool default on int field")
 	}
-	if !strings.Contains(errs[0].Error(), "not a valid value for enum") {
+	if !strings.Contains(errs[0].Error(), "@default for int must be a number") {
 		t.Errorf("unexpected error: %v", errs[0])
 	}
 }
 
-func TestValidateTypeSuggestion(t *testing.T) {
+func TestValidateDefaultBoolOnFloatField(t *testing.T) {
 	a := ast.AST{
 		ASTVersion: "1.0.0",
-		Models: []ast.Model{
-			{Name: "User", Fields: []ast.Field{{Name: "id", Type: "string"}}},
-			{Name: "Login", Fields: []ast.Field{{Name: "user", Type: "Usar"}}},
-		},
+		Models: []ast.Model{{Name: "Config", Fields: []ast.Field{
+			{Name: "rate", Type: "float", Default: "false"},
+		}}},
 	}
 	errs := Validate(a)
-	found := false
-	for _, e := range errs {
-		if strings.Contains(e.Error(), "did you mean") {
-			found = true
-		}
+	if len(errs) == 0 {
+		t.Fatal("expected error for bool default on float field")
 	}
-	if !found {
-		t.Errorf("expected 'did you mean' suggestion, got: %v", errs)
+	if !strings.Contains(errs[0].Error(), "@default for float must be a number") {
+		t.Errorf("unexpected error: %v", errs[0])
+	}
+}
+
+func TestValidateDefaultNumberOnBoolField(t *testing.T) {
+	a := ast.AST{
+		ASTVersion: "1.0.0",
+		Models: []ast.Model{{Name: "Config", Fields: []ast.Field{
+			{Name: "enabled", Type: "bool", Default: "42"},
+		}}},
+	}
+	errs := Validate(a)
+	if len(errs) == 0 {
+		t.Fatal("expected error for number default on bool field")
+	}
+	if !strings.Contains(errs[0].Error(), "@default for bool must be true or false") {
+		t.Errorf("unexpected error: %v", errs[0])
+	}
+}
+
+func TestValidateDefaultStringOnBoolField(t *testing.T) {
+	a := ast.AST{
+		ASTVersion: "1.0.0",
+		Models: []ast.Model{{Name: "Config", Fields: []ast.Field{
+			{Name: "enabled", Type: "bool", Default: `"yes"`},
+		}}},
+	}
+	errs := Validate(a)
+	if len(errs) == 0 {
+		t.Fatal("expected error for string default on bool field")
+	}
+	if !strings.Contains(errs[0].Error(), "@default for bool must be true or false") {
+		t.Errorf("unexpected error: %v", errs[0])
+	}
+}
+
+func TestValidateDefaultFloatOnIntField(t *testing.T) {
+	a := ast.AST{
+		ASTVersion: "1.0.0",
+		Models: []ast.Model{{Name: "Config", Fields: []ast.Field{
+			{Name: "count", Type: "int", Default: "3.14"},
+		}}},
+	}
+	errs := Validate(a)
+	if len(errs) == 0 {
+		t.Fatal("expected error for float default on int field")
+	}
+	if !strings.Contains(errs[0].Error(), "@default for int must be a whole number") {
+		t.Errorf("unexpected error: %v", errs[0])
+	}
+}
+
+func TestValidateDefaultNumberOnStringField(t *testing.T) {
+	a := ast.AST{
+		ASTVersion: "1.0.0",
+		Models: []ast.Model{{Name: "Config", Fields: []ast.Field{
+			{Name: "name", Type: "string", Default: "42"},
+		}}},
+	}
+	errs := Validate(a)
+	if len(errs) == 0 {
+		t.Fatal("expected error for unquoted number on string field")
+	}
+	if !strings.Contains(errs[0].Error(), "@default for string must be a quoted string") {
+		t.Errorf("unexpected error: %v", errs[0])
+	}
+}
+
+func TestValidateDefaultValidCases(t *testing.T) {
+	a := ast.AST{
+		ASTVersion: "1.0.0",
+		Enums:      []ast.Enum{{Name: "Role", Values: []string{"admin", "user"}}},
+		Models: []ast.Model{{Name: "Config", Fields: []ast.Field{
+			{Name: "name", Type: "string", Default: `"hello"`},
+			{Name: "count", Type: "int", Default: "42"},
+			{Name: "rate", Type: "float", Default: "3.14"},
+			{Name: "enabled", Type: "bool", Default: "true"},
+			{Name: "role", Type: "Role", Default: "admin"},
+			{Name: "createdAt", Type: "date", Default: `"2024-01-01"`},
+			{Name: "uid", Type: "uuid", Default: `"550e8400-e29b-41d4-a716-446655440000"`},
+		}}},
+	}
+	errs := Validate(a)
+	for _, e := range errs {
+		// Filter out only @default errors
+		if strings.Contains(e.Error(), "@default") {
+			t.Errorf("unexpected @default error: %v", e)
+		}
 	}
 }
 

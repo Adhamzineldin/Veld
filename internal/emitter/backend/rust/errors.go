@@ -161,3 +161,39 @@ func rustStatusCode(status int) string {
 		return "StatusCode::INTERNAL_SERVER_ERROR"
 	}
 }
+
+// generateModuleMiddleware returns bytes for src/{module}_middleware.rs with
+// a typed trait per module — one method per middleware name.
+func (e *RustEmitter) generateModuleMiddleware(mod ast.Module) []byte {
+	allMiddleware := emitter.CollectModuleMiddleware(mod)
+	if len(allMiddleware) == 0 {
+		return nil
+	}
+
+	w := codegen.NewWriter("    ")
+	w.Writeln(header)
+	w.Writeln("use axum::{")
+	w.Writeln("    extract::Request,")
+	w.Writeln("    middleware::Next,")
+	w.Writeln("    response::Response,")
+	w.Writeln("};")
+	w.Writeln("use std::future::Future;")
+	w.BlankLine()
+
+	traitName := mod.Name + "Middleware"
+	w.Writeln(fmt.Sprintf("/// Middleware trait for the %s module.", mod.Name))
+	w.Writeln("/// Implement this trait and register it with the router.")
+	w.WriteBlock(fmt.Sprintf("pub trait %s: Send + Sync + 'static {", traitName))
+
+	for _, mw := range allMiddleware {
+		snakeMw := emitter.ToSnakeCase(mw)
+		w.Writeln(fmt.Sprintf("/// %s middleware handler.", mw))
+		w.Writeln(fmt.Sprintf("fn %s(&self, request: Request, next: Next) -> impl Future<Output = Response> + Send;", snakeMw))
+		w.BlankLine()
+	}
+
+	w.Dedent()
+	w.Writeln("}")
+
+	return w.Bytes()
+}

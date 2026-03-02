@@ -85,6 +85,9 @@ func (e *CSharpEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 		if err := e.emitModuleErrors(mod, outDir); err != nil {
 			return fmt.Errorf("errors %s: %w", mod.Name, err)
 		}
+		if err := e.emitModuleMiddleware(mod, outDir); err != nil {
+			return fmt.Errorf("middleware %s: %w", mod.Name, err)
+		}
 	}
 	return e.emitCsproj(outDir)
 }

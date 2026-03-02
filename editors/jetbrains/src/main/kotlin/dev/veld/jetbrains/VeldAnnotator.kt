@@ -243,11 +243,23 @@ class VeldAnnotator : Annotator {
             return
         }
 
-        // ── path directive: highlight :param segments ─────────────────────────
+        // ── path directive: highlight :param segments + show resolved path ──
         if (trimmed.startsWith("path:") || trimmed.startsWith("prefix:")) {
             val colonIdx = trimmed.indexOf(':')
             val pathVal  = trimmed.substring(colonIdx + 1).trim()
             highlightPathParams(pathVal, line, lineStart, contentLen, holder)
+
+            // Show the full resolved path as a tooltip
+            // We need to find the module prefix and app prefix from context
+            val pathStart = lineStart + line.indexOf(pathVal)
+            val pathEnd = pathStart + pathVal.length
+            if (pathVal.isNotEmpty() && pathStart >= lineStart && pathEnd <= contentLen && pathStart < pathEnd) {
+                holder.newAnnotation(HighlightSeverity.INFORMATION,
+                    "Resolved: $pathVal (hover an action name to see the full route with all prefixes)")
+                    .range(TextRange(pathStart, pathEnd))
+                    .tooltip("Route path: <b>$pathVal</b><br/>This path will be combined with the app prefix and module prefix at generation time.")
+                    .create()
+            }
             return
         }
 
@@ -281,8 +293,22 @@ class VeldAnnotator : Annotator {
         // ── errors directive — list of error names, not type references ──────
         if (trimmed.startsWith("errors:")) return
 
-        // ── description / prefix directives: no special highlighting ─────────
-        if (trimmed.startsWith("description:")) return
+        // ── description directive: must be a quoted string ────────────────
+        if (trimmed.startsWith("description:")) {
+            val descColonIdx = trimmed.indexOf(':')
+            val descVal = trimmed.substring(descColonIdx + 1).trim()
+            if (descVal.isNotEmpty() && !descVal.startsWith("\"")) {
+                val start = lineStart + line.indexOf(descVal, descColonIdx)
+                val end = start + descVal.length
+                if (start >= lineStart && end <= contentLen && start < end) {
+                    holder.newAnnotation(
+                        HighlightSeverity.ERROR,
+                        "Description must be a quoted string, e.g. description: \"User management\""
+                    ).range(TextRange(start, end)).create()
+                }
+            }
+            return
+        }
 
         // ── field definition inside a model ──────────────────────────────────
         val fieldMatch = Regex("""^([a-z_]\w*)(\??):\s*(.+?)(?:\s*//.*)?$""").find(trimmed)
@@ -344,7 +370,48 @@ class VeldAnnotator : Annotator {
                         "Unknown annotation '@$annName'. Known: ${VeldLanguageSpec.KNOWN_ANNOTATIONS.joinToString(", ") { "@$it" }}"
                     ).range(TextRange(start, end)).create()
                 }
+                // Validate @default value matches field type
+                if (annName == "default" && m.value.contains("(")) {
+                    val defaultVal = m.value.substringAfter("(").substringBefore(")")
+                    // Extract field type from the raw expression (before annotations)
+                    val fieldType = typeExprRaw.replace(Regex("""@\w+(?:\([^)]*\))?"""), "")
+                        .replace("[]", "").replace("?", "").trim()
+                    val error = validateDefaultValue(fieldType, defaultVal)
+                    if (error != null) {
+                        holder.newAnnotation(HighlightSeverity.ERROR, error)
+                            .range(TextRange(start, end)).create()
+                    }
+                }
             }
+        }
+    }
+
+    /** Validate that a @default value matches the field type. Returns error message or null. */
+    private fun validateDefaultValue(fieldType: String, defaultVal: String): String? {
+        val isQuoted = defaultVal.startsWith("\"")
+        val isBool = defaultVal == "true" || defaultVal == "false"
+
+        return when (fieldType) {
+            "string", "date", "datetime", "uuid" -> {
+                if (!isQuoted) "@default for $fieldType must be a quoted string, got $defaultVal"
+                else null
+            }
+            "int" -> when {
+                isQuoted -> "@default for int must be a number, got $defaultVal"
+                isBool -> "@default for int must be a number, got $defaultVal"
+                defaultVal.contains(".") -> "@default for int must be a whole number, got $defaultVal"
+                else -> null
+            }
+            "float" -> when {
+                isQuoted -> "@default for float must be a number, got $defaultVal"
+                isBool -> "@default for float must be a number, got $defaultVal"
+                else -> null
+            }
+            "bool" -> {
+                if (!isBool) "@default for bool must be true or false, got $defaultVal"
+                else null
+            }
+            else -> null // enum or custom type — can't validate without more context
         }
     }
 

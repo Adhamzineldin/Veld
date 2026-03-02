@@ -82,6 +82,9 @@ func (e *GoEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) err
 		if err := e.generateErrors(mod, outDir); err != nil {
 			return fmt.Errorf("go emitter [errors for %s]: %w", mod.Name, err)
 		}
+		if err := e.generateModuleMiddleware(mod, outDir); err != nil {
+			return fmt.Errorf("go emitter [middleware for %s]: %w", mod.Name, err)
+		}
 	}
 
 	return nil

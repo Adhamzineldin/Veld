@@ -88,6 +88,9 @@ func (e *PhpEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) er
 		if err := e.emitModuleErrors(mod, outDir); err != nil {
 			return fmt.Errorf("errors %s: %w", mod.Name, err)
 		}
+		if err := e.emitModuleMiddleware(mod, outDir); err != nil {
+			return fmt.Errorf("middleware %s: %w", mod.Name, err)
+		}
 	}
 	if err := e.emitRoutes(a, outDir); err != nil {
 		return fmt.Errorf("routes: %w", err)

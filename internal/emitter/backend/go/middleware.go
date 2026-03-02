@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/emitter"
 	"github.com/Adhamzineldin/Veld/internal/emitter/codegen"
 	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
@@ -154,4 +155,37 @@ func buildServerSetupArgs(e *GoEmitter, modules []ast.Module) string {
 		parts = append(parts, "svc."+fieldName)
 	}
 	return strings.Join(parts, ", ")
+}
+
+// generateModuleMiddleware writes internal/interfaces/i_{module}_middleware.go
+// with a typed interface per module — one method per middleware name.
+func (e *GoEmitter) generateModuleMiddleware(mod ast.Module, outDir string) error {
+	allMiddleware := emitter.CollectModuleMiddleware(mod)
+	if len(allMiddleware) == 0 {
+		return nil
+	}
+
+	dir := filepath.Join(outDir, "internal", "interfaces")
+	moduleLower := strings.ToLower(mod.Name)
+
+	w := codegen.NewWriter("\t")
+	w.Writeln(header)
+	w.Writeln("package interfaces")
+	w.BlankLine()
+	w.Writeln("import \"net/http\"")
+	w.BlankLine()
+
+	interfaceName := "I" + mod.Name + "Middleware"
+	w.Writeln(fmt.Sprintf("// %s defines the middleware hooks for the %s module.", interfaceName, mod.Name))
+	w.Writeln("// Implement this interface and pass it to the route registrar.")
+	w.WriteBlock(fmt.Sprintf("type %s interface {", interfaceName))
+	for _, mw := range allMiddleware {
+		exportedMw := e.adapter.NamingConvention(mw, lang.NamingContextExported)
+		w.Writeln(fmt.Sprintf("// %s wraps the handler with %s middleware.", exportedMw, mw))
+		w.Writeln(fmt.Sprintf("%s(next http.Handler) http.Handler", exportedMw))
+	}
+	w.Dedent()
+	w.Writeln("}")
+
+	return os.WriteFile(filepath.Join(dir, "i_"+moduleLower+"_middleware.go"), w.Bytes(), 0644)
 }

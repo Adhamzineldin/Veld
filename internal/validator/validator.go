@@ -304,25 +304,30 @@ func validateDefault(modelName string, f ast.Field, enumNames map[string]bool, e
 	var errs []error
 	val := f.Default
 	prefix := loc(sourceFile, f.Line)
+	isQuoted := strings.HasPrefix(val, "\"")
+	isBoolLiteral := val == "true" || val == "false"
 
 	switch f.Type {
 	case "string", "date", "datetime", "uuid":
-		if !strings.HasPrefix(val, "\"") {
-			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for %s must be a string, got %s", prefix, modelName, f.Name, f.Type, val))
+		if !isQuoted {
+			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for %s must be a quoted string, got %s", prefix, modelName, f.Name, f.Type, val))
 		}
 	case "int":
-		if strings.HasPrefix(val, "\"") {
+		if isQuoted {
 			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for int must be a number, got %s", prefix, modelName, f.Name, val))
-		}
-		if strings.Contains(val, ".") {
+		} else if isBoolLiteral {
+			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for int must be a number, got %s", prefix, modelName, f.Name, val))
+		} else if strings.Contains(val, ".") {
 			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for int must be a whole number, got %s", prefix, modelName, f.Name, val))
 		}
 	case "float":
-		if strings.HasPrefix(val, "\"") {
+		if isQuoted {
+			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for float must be a number, got %s", prefix, modelName, f.Name, val))
+		} else if isBoolLiteral {
 			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for float must be a number, got %s", prefix, modelName, f.Name, val))
 		}
 	case "bool":
-		if val != "true" && val != "false" {
+		if !isBoolLiteral {
 			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for bool must be true or false, got %s", prefix, modelName, f.Name, val))
 		}
 	default:

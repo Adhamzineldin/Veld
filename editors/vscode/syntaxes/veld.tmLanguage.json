@@ -73,14 +73,30 @@
 
     "annotation": {
       "comment": "@default(value)  or  @required  etc.",
-      "match": "(@)([A-Za-z_][A-Za-z0-9_]*)(?:(\\()([^)]*)(\\)))?",
-      "captures": {
-        "1": { "name": "punctuation.definition.annotation.veld" },
-        "2": { "name": "entity.other.attribute-name.annotation.veld" },
-        "3": { "name": "punctuation.definition.arguments.veld" },
-        "4": { "name": "constant.other.annotation-value.veld" },
-        "5": { "name": "punctuation.definition.arguments.veld" }
-      }
+      "patterns": [
+        {
+          "comment": "@annotation with parenthesized value",
+          "match": "(@)([A-Za-z_][A-Za-z0-9_]*)(\\()(?:(\"[^\"]*\")|\\b(true|false)\\b|(-?\\d+\\.?\\d*)|([^)]+))(\\))",
+          "captures": {
+            "1": { "name": "punctuation.definition.annotation.veld" },
+            "2": { "name": "entity.other.attribute-name.annotation.veld" },
+            "3": { "name": "punctuation.definition.arguments.veld" },
+            "4": { "name": "string.quoted.double.annotation-value.veld" },
+            "5": { "name": "constant.language.boolean.annotation-value.veld" },
+            "6": { "name": "constant.numeric.annotation-value.veld" },
+            "7": { "name": "constant.other.annotation-value.veld" },
+            "8": { "name": "punctuation.definition.arguments.veld" }
+          }
+        },
+        {
+          "comment": "@annotation without value (e.g. @required, @unique)",
+          "match": "(@)([A-Za-z_][A-Za-z0-9_]*)(?!\\()",
+          "captures": {
+            "1": { "name": "punctuation.definition.annotation.veld" },
+            "2": { "name": "entity.other.attribute-name.annotation.veld" }
+          }
+        }
+      ]
     },
 
     "primitive-type": {

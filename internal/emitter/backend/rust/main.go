@@ -109,6 +109,19 @@ func (e *RustEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		}
 	}
 
+	// Per-module middleware traits.
+	for _, mod := range a.Modules {
+		mwData := e.generateModuleMiddleware(mod)
+		if mwData == nil {
+			continue
+		}
+		modName := e.adapter.NamingConvention(mod.Name, lang.NamingContextPrivate)
+		fileName := modName + "_middleware.rs"
+		if err := os.WriteFile(filepath.Join(outDir, "src", fileName), mwData, 0644); err != nil {
+			return fmt.Errorf("rust emitter [write %s]: %w", fileName, err)
+		}
+	}
+
 	// src/lib.rs — library crate root that declares modules.
 	libData := e.generateLibRs(a, false)
 	if err := os.WriteFile(filepath.Join(outDir, "src", "lib.rs"), libData, 0644); err != nil {
@@ -140,6 +153,9 @@ func (e *RustEmitter) generateLibRs(a ast.AST, withValidation bool) []byte {
 		sb.WriteString(fmt.Sprintf("pub mod %s;\n", modName))
 		if emitter.HasErrors(mod) {
 			sb.WriteString(fmt.Sprintf("pub mod %s_errors;\n", modName))
+		}
+		if len(emitter.CollectModuleMiddleware(mod)) > 0 {
+			sb.WriteString(fmt.Sprintf("pub mod %s_middleware;\n", modName))
 		}
 	}
 	return []byte(sb.String())
