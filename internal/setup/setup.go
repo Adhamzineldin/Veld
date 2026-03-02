@@ -41,7 +41,6 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 	}
 
 	var results []Result
-	done := map[string]bool{} // dedup by patcher name
 
 	// relOutFor returns outDir relative to the given base directory (slash-normalised).
 	relOutFor := func(baseDir string) string {
@@ -58,38 +57,41 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 	relOutFrontend := relOutFor(frontendDir)
 
 	type patcher struct {
-		name string
-		fn   func(string, string) Result
+		fn func() Result
 	}
 
-	var patchers []patcher
+	// ── Backend patchers (run against backendDir) ────────────────────────
+	var backendPatchers []patcher
 
 	switch backend {
 	case "node":
-		patchers = append(patchers, patcher{"tsconfig", func(dir, out string) Result { return patchTSConfig(dir, out) }})
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchTSConfig(backendDir, relOutBackend) }})
 	case "python":
-		patchers = append(patchers, patcher{"requirements", func(dir, _ string) Result { return patchRequirementsTxt(dir) }})
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchPythonPyproject(backendDir, relOutBackend) }})
 	case "go":
-		patchers = append(patchers, patcher{"gomod", func(dir, out string) Result { return patchGoMod(dir, out) }})
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchGoMod(backendDir, relOutBackend) }})
 	case "rust":
-		patchers = append(patchers, patcher{"cargo", func(dir, out string) Result { return patchCargoToml(dir, out) }})
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchCargoToml(backendDir, relOutBackend) }})
 	case "java":
-		patchers = append(patchers, patcher{"pom", func(dir, out string) Result { return patchPomXML(dir, out) }})
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchPomXML(backendDir, relOutBackend) }})
 	case "csharp":
-		patchers = append(patchers, patcher{"csproj", func(dir, out string) Result { return patchCsproj(dir, out) }})
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchCsproj(backendDir, relOutBackend) }})
 	case "php":
-		patchers = append(patchers, patcher{"composer", func(dir, out string) Result { return patchComposerJSON(dir, out) }})
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchComposerJSON(backendDir, relOutBackend) }})
 	}
+
+	// ── Frontend patchers (run against frontendDir) ──────────────────────
+	var frontendPatchers []patcher
 
 	switch frontend {
 	case "typescript", "react", "vue", "angular", "svelte":
-		patchers = append(patchers, patcher{"tsconfig", func(dir, out string) Result { return patchTSConfig(dir, out) }})
+		frontendPatchers = append(frontendPatchers, patcher{func() Result { return patchTSConfig(frontendDir, relOutFrontend) }})
 	case "dart", "flutter":
-		patchers = append(patchers, patcher{"pubspec", func(dir, out string) Result { return patchPubspecYAML(dir, out) }})
+		frontendPatchers = append(frontendPatchers, patcher{func() Result { return patchPubspecYAML(frontendDir, relOutFrontend) }})
 	case "kotlin":
-		patchers = append(patchers, patcher{"gradle", func(dir, out string) Result { return patchGradleKts(dir, out) }})
+		frontendPatchers = append(frontendPatchers, patcher{func() Result { return patchGradleKts(frontendDir, relOutFrontend) }})
 	case "swift":
-		patchers = append(patchers, patcher{"swift", func(_, _ string) Result {
+		frontendPatchers = append(frontendPatchers, patcher{func() Result {
 			return Result{
 				File:   "Xcode",
 				Action: "manual",
@@ -98,27 +100,27 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 		}})
 	}
 
-	for _, p := range patchers {
-		if done[p.name] {
-			continue
-		}
-		done[p.name] = true
-
-		// Backend patchers run against backendDir; frontend patchers against frontendDir.
-		dir := backendDir
-		relOut := relOutBackend
-		switch p.name {
-		case "tsconfig", "pubspec", "gradle", "swift":
-			// These may be used by both backend (node) and frontend.
-			// If a dedicated frontendDir was provided, prefer it; otherwise
-			// fall through to the backend dir (covers node backend tsconfig).
-			if o.FrontendDir != "" {
-				dir = frontendDir
-				relOut = relOutFrontend
+	// If backend and frontend resolve to the same directory AND the same
+	// config file type (e.g. both "node" backend + "react" frontend both
+	// need tsconfig.json), skip the frontend patcher to avoid double-patching.
+	skipFrontend := false
+	if backendDir == frontendDir {
+		switch backend {
+		case "node":
+			switch frontend {
+			case "typescript", "react", "vue", "angular", "svelte":
+				skipFrontend = true // same tsconfig.json — backend patcher already covers it
 			}
 		}
+	}
 
-		results = append(results, p.fn(dir, relOut))
+	for _, p := range backendPatchers {
+		results = append(results, p.fn())
+	}
+	if !skipFrontend {
+		for _, p := range frontendPatchers {
+			results = append(results, p.fn())
+		}
 	}
 
 	return results
@@ -266,6 +268,150 @@ func patchRequirementsTxt(dir string) Result {
 		return Result{File: "requirements.txt", Action: "not-found", Detail: err.Error()}
 	}
 	return Result{File: "requirements.txt", Action: "patched", Detail: "added pydantic>=2.0"}
+}
+
+// patchPythonPyproject creates or updates pyproject.toml so that the generated
+// package (e.g. veld_gen/) is discoverable by IDEs and at runtime via pip install -e .
+// When the generated folder lives outside the project dir we also patch conftest.py
+// for pytest. If the output dir points to a direct child folder (e.g. "veld_gen"),
+// no extra path is needed — Python already finds it. For external paths we add a
+// [tool.setuptools.package-dir] mapping.
+func patchPythonPyproject(dir, outDir string) Result {
+	// outDir might be "veld_gen", "../generated", "../../shared/generated", etc.
+	// If it is a simple child dir (no ".." prefix), the package is already inside
+	// the project — we just need a pyproject.toml so that `pip install -e .`
+	// registers the project and IDEs understand the structure.
+	isExternal := strings.HasPrefix(outDir, "..") || filepath.IsAbs(outDir)
+
+	path := filepath.Join(dir, "pyproject.toml")
+	marker := "# veld:managed"
+
+	// The package name is the basename of the output dir (e.g. "veld_gen").
+	pkgName := filepath.Base(outDir)
+
+	// ── Handle external generated folder (outside project dir) ───────────
+	if isExternal {
+		// For external paths, also patch conftest.py so pytest / direct execution works.
+		_ = patchPythonConftest(dir, outDir)
+	}
+
+	data, err := os.ReadFile(path)
+	if err == nil {
+		content := string(data)
+
+		// Already has our marker — check if the package-dir needs updating.
+		if strings.Contains(content, marker) {
+			if !isExternal {
+				// Local package — packages.find with where=["."] is enough.
+				if strings.Contains(content, "[tool.setuptools.packages.find]") {
+					return Result{File: "pyproject.toml", Action: "skipped", Detail: "already configured for " + pkgName}
+				}
+			} else {
+				// External package — check if the mapping already points to the right path.
+				if strings.Contains(content, pkgName+` = "`+outDir+`"`) {
+					return Result{File: "pyproject.toml", Action: "skipped", Detail: "already configured for " + pkgName}
+				}
+			}
+			// Update the package-dir mapping.
+			re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(pkgName) + `\s*=\s*"[^"]*"`)
+			newMapping := pkgName + ` = "` + outDir + `"`
+			if re.MatchString(content) {
+				content = re.ReplaceAllString(content, newMapping)
+			}
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				return Result{File: "pyproject.toml", Action: "not-found", Detail: err.Error()}
+			}
+			return Result{File: "pyproject.toml", Action: "patched", Detail: "updated package-dir for " + pkgName}
+		}
+
+		// File exists but no marker — append the veld section.
+		packageDirSection := ""
+		if isExternal {
+			packageDirSection = "\n[tool.setuptools.package-dir]  " + marker + "\n" +
+				pkgName + ` = "` + outDir + `"` + "\n"
+		} else {
+			packageDirSection = "\n[tool.setuptools.packages.find]  " + marker + "\nwhere = [\".\"]" + "\n"
+		}
+		content = strings.TrimRight(content, "\n") + "\n" + packageDirSection
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: "pyproject.toml", Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: "pyproject.toml", Action: "patched", Detail: "added package discovery for " + pkgName}
+	}
+
+	// File does not exist — create a minimal pyproject.toml.
+	projectName := filepath.Base(dir)
+	if projectName == "." || projectName == "" {
+		projectName = "my-project"
+	}
+
+	packageDirSection := ""
+	if isExternal {
+		packageDirSection = "[tool.setuptools.package-dir]  " + marker + "\n" +
+			pkgName + ` = "` + outDir + `"` + "\n"
+	} else {
+		packageDirSection = "[tool.setuptools.packages.find]  " + marker + "\nwhere = [\".\"]" + "\n"
+	}
+
+	content := `[project]
+name = "` + projectName + `"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["pydantic>=2.0"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+` + packageDirSection
+
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		return Result{File: "pyproject.toml", Action: "not-found", Detail: err.Error()}
+	}
+	return Result{File: "pyproject.toml", Action: "patched", Detail: "created pyproject.toml — run `pip install -e .` to enable imports"}
+}
+
+// patchPythonConftest creates or updates conftest.py with a sys.path.insert
+// so that the generated package can be imported in tests when the generated
+// folder lives outside the project directory. This is a fallback for pytest;
+// the primary mechanism is pyproject.toml + pip install -e.
+func patchPythonConftest(dir, outDir string) Result {
+	path := filepath.Join(dir, "conftest.py")
+
+	marker := "# veld:generated-path"
+	newLine := `sys.path.insert(0, os.path.join(os.path.dirname(__file__), "` + outDir + `"))  ` + marker
+
+	data, err := os.ReadFile(path)
+	if err == nil {
+		content := string(data)
+
+		// Already has our marker — check if path needs updating.
+		if strings.Contains(content, marker) {
+			if strings.Contains(content, `"`+outDir+`"`) {
+				return Result{File: "conftest.py", Action: "skipped", Detail: "sys.path already points to " + outDir}
+			}
+			re := regexp.MustCompile(`(?m)^.*` + regexp.QuoteMeta(marker) + `.*$`)
+			content = re.ReplaceAllString(content, newLine)
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				return Result{File: "conftest.py", Action: "not-found", Detail: err.Error()}
+			}
+			return Result{File: "conftest.py", Action: "patched", Detail: "updated sys.path to " + outDir}
+		}
+
+		// File exists but no marker — append.
+		content = strings.TrimRight(content, "\n") + "\n\nimport os, sys  # noqa: E401\n" + newLine + "\n"
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: "conftest.py", Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: "conftest.py", Action: "patched", Detail: "added sys.path.insert for " + outDir}
+	}
+
+	// File does not exist — create it.
+	content := "# AUTO-GENERATED BY VELD — safe to extend\nimport os, sys  # noqa: E401\n" + newLine + "\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		return Result{File: "conftest.py", Action: "not-found", Detail: err.Error()}
+	}
+	return Result{File: "conftest.py", Action: "patched", Detail: "created conftest.py with sys.path.insert for " + outDir}
 }
 
 // patchGoMod adds a replace directive for the generated module.

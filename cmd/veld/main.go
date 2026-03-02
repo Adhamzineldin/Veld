@@ -255,11 +255,12 @@ func printImportInstructions(rc config.ResolvedConfig) {
 			fmt.Println(dim("    Routes:   ") + ` import { usersRoutes } from '@veld/routes/users.routes';`)
 			fmt.Println(dim("    Interfaces:") + ` import { IUsersService } from '@veld/interfaces/IUsersService';`)
 		case "python":
-			fmt.Println(dim("    Setup:") + ` set "out" to the package name, e.g. "veld_gen"`)
-			fmt.Println(dim("    Models:    ") + ` from veld_gen.models import User`)
-			fmt.Println(dim("    Routes:    ") + ` from veld_gen.routes.users_routes import register_users_routes`)
-			fmt.Println(dim("    Interfaces:") + ` from veld_gen.interfaces.i_users_service import IUsersService`)
-			fmt.Println(dim("    Schemas:   ") + ` from veld_gen.schemas.schemas import UserSchema`)
+			pkgName := filepath.Base(relOut)
+			fmt.Println(dim("    Setup:") + ` run ` + bold("veld setup") + ` then ` + bold("pip install -e ."))
+			fmt.Println(dim("    Models:    ") + ` from ` + pkgName + `.models import User`)
+			fmt.Println(dim("    Routes:    ") + ` from ` + pkgName + `.routes.users_routes import register_users_routes`)
+			fmt.Println(dim("    Interfaces:") + ` from ` + pkgName + `.interfaces.i_users_service import IUsersService`)
+			fmt.Println(dim("    Schemas:   ") + ` from ` + pkgName + `.schemas.schemas import UserSchema`)
 		case "go":
 			fmt.Println(dim("    Setup:") + ` add to go.mod → replace veld/generated => ./` + relOut)
 			fmt.Println(dim("    Types:    ") + ` import "veld/generated/internal/models"`)
