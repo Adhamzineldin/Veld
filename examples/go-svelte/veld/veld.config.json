@@ -1,0 +1,6 @@
+{
+  "input": "app.veld",
+  "backend": "go",
+  "frontend": "svelte",
+  "out": "../generated"
+}

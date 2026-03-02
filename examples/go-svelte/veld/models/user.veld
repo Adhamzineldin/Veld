@@ -1,0 +1,18 @@
+model User {
+  description: "A registered user"
+  id:    string
+  name:  string
+  email: string
+}
+
+model CreateUserInput {
+  description: "Payload for creating a user"
+  name:  string
+  email: string
+}
+
+model UpdateUserInput {
+  description: "Payload for updating a user"
+  name?:  string
+  email?: string
+}

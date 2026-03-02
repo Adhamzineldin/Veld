@@ -67,7 +67,7 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 	case "node":
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchTSConfig(backendDir, relOutBackend) }})
 	case "python":
-		backendPatchers = append(backendPatchers, patcher{func() Result { return patchPythonPyproject(backendDir, relOutBackend) }})
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchPythonPath(backendDir, relOutBackend) }})
 	case "go":
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchGoMod(backendDir, relOutBackend) }})
 	case "rust":
@@ -270,116 +270,35 @@ func patchRequirementsTxt(dir string) Result {
 	return Result{File: "requirements.txt", Action: "patched", Detail: "added pydantic>=2.0"}
 }
 
-// patchPythonPyproject creates or updates pyproject.toml so that the generated
-// package (e.g. veld_gen/) is discoverable by IDEs and at runtime via pip install -e .
-// When the generated folder lives outside the project dir we also patch conftest.py
-// for pytest. If the output dir points to a direct child folder (e.g. "veld_gen"),
-// no extra path is needed — Python already finds it. For external paths we add a
-// [tool.setuptools.package-dir] mapping.
-func patchPythonPyproject(dir, outDir string) Result {
-	// outDir might be "veld_gen", "../generated", "../../shared/generated", etc.
-	// If it is a simple child dir (no ".." prefix), the package is already inside
-	// the project — we just need a pyproject.toml so that `pip install -e .`
-	// registers the project and IDEs understand the structure.
-	isExternal := strings.HasPrefix(outDir, "..") || filepath.IsAbs(outDir)
+// patchPythonPath creates or updates a veld_path.py file that dynamically adds
+// the generated package's parent directory to sys.path. This works immediately
+// at runtime — no pip install -e . required. The user just imports veld_path at
+// the top of their entry point (e.g. `import veld_path`) and the generated
+// package becomes importable.
+//
+// For internal dirs (e.g. "generated"), the parent is "." (the project root).
+// For external dirs (e.g. "../generated"), the parent is ".." so that
+// `import generated` resolves to `../generated/`.
+//
+// Re-running setup with a different outDir updates the path in place.
+func patchPythonPath(dir, outDir string) Result {
+	path := filepath.Join(dir, "veld_path.py")
 
-	path := filepath.Join(dir, "pyproject.toml")
-	marker := "# veld:managed"
-
-	// The package name is the basename of the output dir (e.g. "veld_gen").
-	pkgName := filepath.Base(outDir)
-
-	// ── Handle external generated folder (outside project dir) ───────────
-	if isExternal {
-		// For external paths, also patch conftest.py so pytest / direct execution works.
-		_ = patchPythonConftest(dir, outDir)
+	// We add the PARENT of outDir to sys.path so `import <pkg>` works.
+	// e.g. "generated" → ".", "../generated" → "..", "../../shared/gen" → "../../shared"
+	parentDir := filepath.ToSlash(filepath.Dir(outDir))
+	if parentDir == "." || parentDir == "" {
+		parentDir = "."
 	}
-
-	data, err := os.ReadFile(path)
-	if err == nil {
-		content := string(data)
-
-		// Already has our marker — check if the package-dir needs updating.
-		if strings.Contains(content, marker) {
-			if !isExternal {
-				// Local package — packages.find with where=["."] is enough.
-				if strings.Contains(content, "[tool.setuptools.packages.find]") {
-					return Result{File: "pyproject.toml", Action: "skipped", Detail: "already configured for " + pkgName}
-				}
-			} else {
-				// External package — check if the mapping already points to the right path.
-				if strings.Contains(content, pkgName+` = "`+outDir+`"`) {
-					return Result{File: "pyproject.toml", Action: "skipped", Detail: "already configured for " + pkgName}
-				}
-			}
-			// Update the package-dir mapping.
-			re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(pkgName) + `\s*=\s*"[^"]*"`)
-			newMapping := pkgName + ` = "` + outDir + `"`
-			if re.MatchString(content) {
-				content = re.ReplaceAllString(content, newMapping)
-			}
-			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-				return Result{File: "pyproject.toml", Action: "not-found", Detail: err.Error()}
-			}
-			return Result{File: "pyproject.toml", Action: "patched", Detail: "updated package-dir for " + pkgName}
-		}
-
-		// File exists but no marker — append the veld section.
-		packageDirSection := ""
-		if isExternal {
-			packageDirSection = "\n[tool.setuptools.package-dir]  " + marker + "\n" +
-				pkgName + ` = "` + outDir + `"` + "\n"
-		} else {
-			packageDirSection = "\n[tool.setuptools.packages.find]  " + marker + "\nwhere = [\".\"]" + "\n"
-		}
-		content = strings.TrimRight(content, "\n") + "\n" + packageDirSection
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			return Result{File: "pyproject.toml", Action: "not-found", Detail: err.Error()}
-		}
-		return Result{File: "pyproject.toml", Action: "patched", Detail: "added package discovery for " + pkgName}
-	}
-
-	// File does not exist — create a minimal pyproject.toml.
-	projectName := filepath.Base(dir)
-	if projectName == "." || projectName == "" {
-		projectName = "my-project"
-	}
-
-	packageDirSection := ""
-	if isExternal {
-		packageDirSection = "[tool.setuptools.package-dir]  " + marker + "\n" +
-			pkgName + ` = "` + outDir + `"` + "\n"
-	} else {
-		packageDirSection = "[tool.setuptools.packages.find]  " + marker + "\nwhere = [\".\"]" + "\n"
-	}
-
-	content := `[project]
-name = "` + projectName + `"
-version = "0.1.0"
-requires-python = ">=3.10"
-dependencies = ["pydantic>=2.0"]
-
-[build-system]
-requires = ["setuptools>=68.0"]
-build-backend = "setuptools.build_meta"
-
-` + packageDirSection
-
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		return Result{File: "pyproject.toml", Action: "not-found", Detail: err.Error()}
-	}
-	return Result{File: "pyproject.toml", Action: "patched", Detail: "created pyproject.toml — run `pip install -e .` to enable imports"}
-}
-
-// patchPythonConftest creates or updates conftest.py with a sys.path.insert
-// so that the generated package can be imported in tests when the generated
-// folder lives outside the project directory. This is a fallback for pytest;
-// the primary mechanism is pyproject.toml + pip install -e.
-func patchPythonConftest(dir, outDir string) Result {
-	path := filepath.Join(dir, "conftest.py")
 
 	marker := "# veld:generated-path"
-	newLine := `sys.path.insert(0, os.path.join(os.path.dirname(__file__), "` + outDir + `"))  ` + marker
+	pathLine := `_veld_root = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "` + parentDir + `")`
+	insertLine := `if _veld_root not in _sys.path:  ` + marker + "\n    _sys.path.insert(0, _veld_root)"
+
+	fullContent := "# AUTO-GENERATED BY VELD — import this file to enable generated package imports\n" +
+		"import os as _os, sys as _sys  # noqa: E401\n" +
+		pathLine + "\n" +
+		insertLine + "\n"
 
 	data, err := os.ReadFile(path)
 	if err == nil {
@@ -387,31 +306,28 @@ func patchPythonConftest(dir, outDir string) Result {
 
 		// Already has our marker — check if path needs updating.
 		if strings.Contains(content, marker) {
-			if strings.Contains(content, `"`+outDir+`"`) {
-				return Result{File: "conftest.py", Action: "skipped", Detail: "sys.path already points to " + outDir}
+			if strings.Contains(content, `"`+parentDir+`"`) {
+				return Result{File: "veld_path.py", Action: "skipped", Detail: "sys.path already configured for " + outDir}
 			}
-			re := regexp.MustCompile(`(?m)^.*` + regexp.QuoteMeta(marker) + `.*$`)
-			content = re.ReplaceAllString(content, newLine)
-			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-				return Result{File: "conftest.py", Action: "not-found", Detail: err.Error()}
+			// Path changed — rewrite the whole file (it's small and fully managed by veld).
+			if err := os.WriteFile(path, []byte(fullContent), 0644); err != nil {
+				return Result{File: "veld_path.py", Action: "not-found", Detail: err.Error()}
 			}
-			return Result{File: "conftest.py", Action: "patched", Detail: "updated sys.path to " + outDir}
+			return Result{File: "veld_path.py", Action: "patched", Detail: "updated path for " + outDir}
 		}
 
-		// File exists but no marker — append.
-		content = strings.TrimRight(content, "\n") + "\n\nimport os, sys  # noqa: E401\n" + newLine + "\n"
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			return Result{File: "conftest.py", Action: "not-found", Detail: err.Error()}
+		// File exists but no marker — rewrite (shouldn't happen, but handle it).
+		if err := os.WriteFile(path, []byte(fullContent), 0644); err != nil {
+			return Result{File: "veld_path.py", Action: "not-found", Detail: err.Error()}
 		}
-		return Result{File: "conftest.py", Action: "patched", Detail: "added sys.path.insert for " + outDir}
+		return Result{File: "veld_path.py", Action: "patched", Detail: "added path setup for " + outDir}
 	}
 
 	// File does not exist — create it.
-	content := "# AUTO-GENERATED BY VELD — safe to extend\nimport os, sys  # noqa: E401\n" + newLine + "\n"
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		return Result{File: "conftest.py", Action: "not-found", Detail: err.Error()}
+	if err := os.WriteFile(path, []byte(fullContent), 0644); err != nil {
+		return Result{File: "veld_path.py", Action: "not-found", Detail: err.Error()}
 	}
-	return Result{File: "conftest.py", Action: "patched", Detail: "created conftest.py with sys.path.insert for " + outDir}
+	return Result{File: "veld_path.py", Action: "patched", Detail: "created veld_path.py — add `import veld_path` to your entry point"}
 }
 
 // patchGoMod adds a replace directive for the generated module.

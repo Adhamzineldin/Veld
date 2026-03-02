@@ -137,125 +137,84 @@ func TestPatchRequirementsTxt_NotFound(t *testing.T) {
 	}
 }
 
-// ── pyproject.toml tests ─────────────────────────────────────────────────────
+// ── veld_path.py tests ───────────────────────────────────────────────────────
 
-func TestPatchPythonPyproject_CreatesNew(t *testing.T) {
+func TestPatchPythonPath_CreatesNew(t *testing.T) {
 	dir := t.TempDir()
-	r := patchPythonPyproject(dir, "veld_gen")
+	r := patchPythonPath(dir, "generated")
 	if r.Action != "patched" {
 		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
 	}
-	data, _ := os.ReadFile(filepath.Join(dir, "pyproject.toml"))
+	data, _ := os.ReadFile(filepath.Join(dir, "veld_path.py"))
 	content := string(data)
-	if !strings.Contains(content, "pydantic>=2.0") {
-		t.Fatal("should include pydantic dependency")
+	// Internal dir "generated" → parent is "." (project root)
+	if !strings.Contains(content, `"."`) {
+		t.Fatalf("should add '.' (project root) to sys.path for internal dir, got:\n%s", content)
 	}
-	if !strings.Contains(content, "[tool.setuptools.packages.find]") {
-		t.Fatal("should include packages.find for local package")
+	if !strings.Contains(content, "veld:generated-path") {
+		t.Fatal("should contain marker comment")
 	}
-	if !strings.Contains(r.Detail, "pip install -e .") {
-		t.Fatalf("result detail should mention pip install -e ., got: %s", r.Detail)
+	if !strings.Contains(r.Detail, "import veld_path") {
+		t.Fatalf("result detail should mention import veld_path, got: %s", r.Detail)
 	}
 }
 
-func TestPatchPythonPyproject_Skipped(t *testing.T) {
+func TestPatchPythonPath_ExternalPath(t *testing.T) {
 	dir := t.TempDir()
-	// First run creates it
-	patchPythonPyproject(dir, "veld_gen")
-	// Second run should skip
-	r := patchPythonPyproject(dir, "veld_gen")
+	r := patchPythonPath(dir, "../generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "veld_path.py"))
+	content := string(data)
+	// "../generated" → parent is ".."
+	if !strings.Contains(content, `".."`) {
+		t.Fatalf("should add '..' to sys.path for external dir, got:\n%s", content)
+	}
+}
+
+func TestPatchPythonPath_DeepExternalPath(t *testing.T) {
+	dir := t.TempDir()
+	r := patchPythonPath(dir, "../../shared/generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "veld_path.py"))
+	content := string(data)
+	// "../../shared/generated" → parent is "../../shared"
+	if !strings.Contains(content, `"../../shared"`) {
+		t.Fatalf("should add '../../shared' to sys.path, got:\n%s", content)
+	}
+}
+
+func TestPatchPythonPath_Skipped(t *testing.T) {
+	dir := t.TempDir()
+	patchPythonPath(dir, "generated")
+	r := patchPythonPath(dir, "generated")
 	if r.Action != "skipped" {
 		t.Fatalf("expected skipped on second run, got %s: %s", r.Action, r.Detail)
 	}
 }
 
-func TestPatchPythonPyproject_ExternalPath(t *testing.T) {
+func TestPatchPythonPath_UpdatesOnPathChange(t *testing.T) {
 	dir := t.TempDir()
-	r := patchPythonPyproject(dir, "../generated")
+	patchPythonPath(dir, "generated")
+	r := patchPythonPath(dir, "../new-output")
 	if r.Action != "patched" {
-		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+		t.Fatalf("expected patched on path change, got %s: %s", r.Action, r.Detail)
 	}
-	data, _ := os.ReadFile(filepath.Join(dir, "pyproject.toml"))
+	data, _ := os.ReadFile(filepath.Join(dir, "veld_path.py"))
 	content := string(data)
-	if !strings.Contains(content, "[tool.setuptools.package-dir]") {
-		t.Fatal("should include package-dir for external path")
+	if !strings.Contains(content, `".."`) {
+		t.Fatalf("should now point to '..', got:\n%s", content)
 	}
-	if !strings.Contains(content, `generated = "../generated"`) {
-		t.Fatal("should map generated package to ../generated")
+	// Old path should be gone
+	if strings.Contains(content, `"."`) && !strings.Contains(content, `".."`) {
+		t.Fatal("should no longer contain old path")
 	}
-	// Should also create conftest.py for external path
-	conftest, _ := os.ReadFile(filepath.Join(dir, "conftest.py"))
-	if !strings.Contains(string(conftest), "../generated") {
-		t.Fatal("conftest.py should contain sys.path for external dir")
-	}
-}
-
-func TestPatchPythonPyproject_UpdatePath(t *testing.T) {
-	dir := t.TempDir()
-	patchPythonPyproject(dir, "veld_gen")
-	r := patchPythonPyproject(dir, "my_output")
-	// The marker and package name differ so it should patch
-	if r.Action != "patched" && r.Action != "skipped" {
-		t.Logf("action=%s detail=%s", r.Action, r.Detail)
-	}
-}
-
-func TestPatchPythonPyproject_ExistingFile(t *testing.T) {
-	dir := tmpProject(t, map[string]string{
-		"pyproject.toml": `[project]
-name = "my-app"
-version = "1.0.0"
-dependencies = ["flask>=3.0"]
-`,
-	})
-	r := patchPythonPyproject(dir, "veld_gen")
-	if r.Action != "patched" {
-		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
-	}
-	data, _ := os.ReadFile(filepath.Join(dir, "pyproject.toml"))
-	content := string(data)
-	if !strings.Contains(content, "[tool.setuptools.packages.find]") {
-		t.Fatal("should add packages.find section")
-	}
-	// Original content should be preserved
-	if !strings.Contains(content, "flask>=3.0") {
-		t.Fatal("should preserve existing dependencies")
-	}
-}
-
-// ── conftest.py tests ────────────────────────────────────────────────────────
-
-func TestPatchPythonConftest_CreatesNew(t *testing.T) {
-	dir := t.TempDir()
-	r := patchPythonConftest(dir, "../generated")
-	if r.Action != "patched" {
-		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
-	}
-	data, _ := os.ReadFile(filepath.Join(dir, "conftest.py"))
-	content := string(data)
-	if !strings.Contains(content, `"../generated"`) {
-		t.Fatal("should contain path to generated dir")
-	}
-	if !strings.Contains(content, "veld:generated-path") {
-		t.Fatal("should contain marker comment")
-	}
-}
-
-func TestPatchPythonConftest_UpdatesPath(t *testing.T) {
-	dir := tmpProject(t, map[string]string{
-		"conftest.py": "# AUTO-GENERATED BY VELD — safe to extend\nimport os, sys  # noqa: E401\nsys.path.insert(0, os.path.join(os.path.dirname(__file__), \"../old-path\"))  # veld:generated-path\n",
-	})
-	r := patchPythonConftest(dir, "../new-path")
-	if r.Action != "patched" {
-		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
-	}
-	data, _ := os.ReadFile(filepath.Join(dir, "conftest.py"))
-	content := string(data)
-	if !strings.Contains(content, `"../new-path"`) {
-		t.Fatal("should now contain ../new-path")
-	}
-	if strings.Contains(content, "old-path") {
-		t.Fatal("should no longer contain old-path")
+	// Only one marker
+	if strings.Count(content, "veld:generated-path") != 1 {
+		t.Fatal("should have exactly one marker")
 	}
 }
 
@@ -485,10 +444,10 @@ func TestRun_PythonDart(t *testing.T) {
 	if len(results) != 2 {
 		t.Fatalf("expected 2 results, got %d: %+v", len(results), results)
 	}
-	pyproj := findResult(results, "pyproject.toml")
+	veldPath := findResult(results, "veld_path.py")
 	pub := findResult(results, "pubspec.yaml")
-	if pyproj == nil || pyproj.Action != "patched" {
-		t.Fatal("expected pyproject.toml patched")
+	if veldPath == nil || veldPath.Action != "patched" {
+		t.Fatal("expected veld_path.py patched")
 	}
 	if pub == nil || pub.Action != "patched" {
 		t.Fatal("expected pubspec.yaml patched")

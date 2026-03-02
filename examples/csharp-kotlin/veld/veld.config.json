@@ -1,0 +1,6 @@
+{
+  "input": "app.veld",
+  "backend": "csharp",
+  "frontend": "kotlin",
+  "out": "../generated"
+}

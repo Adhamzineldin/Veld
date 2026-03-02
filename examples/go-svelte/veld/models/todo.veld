@@ -1,0 +1,19 @@
+model Todo {
+  description: "A todo item"
+  id:        string
+  title:     string
+  completed: bool
+  userId:    string
+}
+
+model CreateTodoInput {
+  description: "Payload for creating a todo"
+  title:  string
+  userId: string
+}
+
+model UpdateTodoInput {
+  description: "Payload for updating a todo"
+  title?:     string
+  completed?: bool
+}
