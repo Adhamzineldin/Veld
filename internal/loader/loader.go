@@ -149,6 +149,10 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 	merged.Models = append(merged.Models, a.Models...)
 	merged.Modules = append(merged.Modules, a.Modules...)
 	merged.Enums = append(merged.Enums, a.Enums...)
+	// Propagate app-level prefix (first non-empty wins).
+	if a.Prefix != "" && merged.Prefix == "" {
+		merged.Prefix = a.Prefix
+	}
 	return merged, nil
 }
 

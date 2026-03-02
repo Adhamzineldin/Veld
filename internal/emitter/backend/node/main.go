@@ -63,6 +63,9 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		if err := e.emitRoutes(a, mod, outDir); err != nil {
 			return fmt.Errorf("routes for %s: %w", mod.Name, err)
 		}
+		if err := e.emitErrors(mod, outDir); err != nil {
+			return fmt.Errorf("errors for %s: %w", mod.Name, err)
+		}
 	}
 	if err := e.emitBarrel(a, outDir); err != nil {
 		return fmt.Errorf("barrel: %w", err)

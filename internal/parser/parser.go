@@ -25,49 +25,17 @@ func (p *Parser) Parse() (ast.AST, error) {
 	for p.peek().Type != lexer.TEOF {
 		switch p.peek().Type {
 		case lexer.TImport:
-			p.consume()
-			if p.peek().Type == lexer.TAt {
-				// @alias/name  or  @alias/*  format
-				p.consume() // consume @
-				aliasTok, err := p.expect(lexer.TIdent)
-				if err != nil {
-					return result, fmt.Errorf("import alias: %w", err)
-				}
-				pathTok, err := p.expect(lexer.TPath)
-				if err != nil {
-					return result, fmt.Errorf("import path: %w", err)
-				}
-				// pathTok.Value starts with "/" — strip the leading slash.
-				// Keep the @ prefix so the loader can distinguish alias-based
-				// imports (resolved from project root) from relative imports.
-				suffix := pathTok.Value[1:]
-				if suffix == "*" {
-					// Wildcard folder import: @alias/* — loader will glob the directory
-					result.Imports = append(result.Imports, "@"+aliasTok.Value+"/*")
-				} else {
-					// Single file: @alias/name — loader resolves from project root
-					result.Imports = append(result.Imports, "@"+aliasTok.Value+"/"+suffix+".veld")
-				}
-			} else if p.peek().Type == lexer.TIdent &&
-				p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TPath {
-				// Root-relative import without @: models/auth → same as @models/auth
-				// Tokens: TIdent("models") + TPath("/auth")
-				aliasTok := p.consume()
-				pathTok := p.consume() // TPath guaranteed by lookahead
-				suffix := pathTok.Value[1:]
-				if suffix == "*" {
-					result.Imports = append(result.Imports, "@"+aliasTok.Value+"/*")
-				} else {
-					result.Imports = append(result.Imports, "@"+aliasTok.Value+"/"+suffix+".veld")
-				}
-			} else {
-				// Legacy quoted string format: import "models/auth.veld"
-				pathTok, err := p.expect(lexer.TString)
-				if err != nil {
-					return result, fmt.Errorf("import path: %w", err)
-				}
-				result.Imports = append(result.Imports, pathTok.Value)
+			imp, err := p.parseImport()
+			if err != nil {
+				return result, err
 			}
+			result.Imports = append(result.Imports, imp)
+		case lexer.TFrom:
+			imp, err := p.parseFromImport()
+			if err != nil {
+				return result, err
+			}
+			result.Imports = append(result.Imports, imp)
 		case lexer.TModel:
 			m, err := p.parseModel()
 			if err != nil {
@@ -86,6 +54,17 @@ func (p *Parser) Parse() (ast.AST, error) {
 				return result, err
 			}
 			result.Enums = append(result.Enums, en)
+		case lexer.TPrefix:
+			// Top-level app prefix: prefix: /api/v1
+			p.consume()
+			if _, err := p.expect(lexer.TColon); err != nil {
+				return result, fmt.Errorf("prefix: %w", err)
+			}
+			pathTok, err := p.expect(lexer.TPath)
+			if err != nil {
+				return result, fmt.Errorf("prefix path: %w", err)
+			}
+			result.Prefix = pathTok.Value
 		default:
 			tok := p.peek()
 			return result, fmt.Errorf("line %d: unexpected token %q", tok.Line, tok.Value)
@@ -116,6 +95,139 @@ func (p *Parser) expect(t lexer.TokenType) (lexer.Token, error) {
 		return tok, fmt.Errorf("line %d: expected %s, got %q", tok.Line, t, tok.Value)
 	}
 	return tok, nil
+}
+
+// --- import parsing ---
+
+// resolveImportPath normalises a raw folder + suffix into the canonical
+// loader format: "@folder/*" (wildcard) or "@folder/name.veld" (single file).
+func resolveImportPath(folder, suffix string) string {
+	if suffix == "*" || suffix == "" {
+		return "@" + folder + "/*"
+	}
+	return "@" + folder + "/" + suffix + ".veld"
+}
+
+// parseBarePath handles a TPath like "/models/*" or "/models/user" and returns
+// the loader-canonical import string.
+func parseBarePath(raw string) string {
+	raw = raw[1:] // strip leading /
+	slashIdx := -1
+	for i, c := range raw {
+		if c == '/' {
+			slashIdx = i
+			break
+		}
+	}
+	if slashIdx < 0 {
+		// Single segment: /models → wildcard
+		return "@" + raw + "/*"
+	}
+	return resolveImportPath(raw[:slashIdx], raw[slashIdx+1:])
+}
+
+// parseImport handles:
+//
+//	import @models/*           →  @models/*
+//	import @models/user        →  @models/user.veld
+//	import models/*            →  @models/*
+//	import models/user         →  @models/user.veld
+//	import /models/*           →  @models/*
+//	import /models/user        →  @models/user.veld
+//	import /models             →  @models/*
+//	import "models/user.veld"  →  models/user.veld  (legacy)
+func (p *Parser) parseImport() (string, error) {
+	p.consume() // consume 'import'
+
+	switch p.peek().Type {
+	case lexer.TAt:
+		// import @alias/...
+		p.consume() // @
+		aliasTok, err := p.expect(lexer.TIdent)
+		if err != nil {
+			return "", fmt.Errorf("import alias: %w", err)
+		}
+		if p.peek().Type == lexer.TPath {
+			pathTok := p.consume()
+			return resolveImportPath(aliasTok.Value, pathTok.Value[1:]), nil
+		}
+		// import @models  (no path) → wildcard
+		return "@" + aliasTok.Value + "/*", nil
+
+	case lexer.TPath:
+		// import /models/* or /models/user or /models
+		pathTok := p.consume()
+		return parseBarePath(pathTok.Value), nil
+
+	case lexer.TIdent:
+		// import models/user or import models (no path after)
+		aliasTok := p.consume()
+		if p.peek().Type == lexer.TPath {
+			pathTok := p.consume()
+			return resolveImportPath(aliasTok.Value, pathTok.Value[1:]), nil
+		}
+		// import models → wildcard
+		return "@" + aliasTok.Value + "/*", nil
+
+	case lexer.TString:
+		// import "models/user.veld" (legacy)
+		pathTok := p.consume()
+		return pathTok.Value, nil
+
+	default:
+		tok := p.peek()
+		return "", fmt.Errorf("line %d: expected import path, got %q", tok.Line, tok.Value)
+	}
+}
+
+// parseFromImport handles:
+//
+//	from @models import *        →  @models/*
+//	from @models import user     →  @models/user.veld
+//	from /models import *        →  @models/*
+//	from /models import user     →  @models/user.veld
+//	from models import *         →  @models/*
+//	from models import user      →  @models/user.veld
+func (p *Parser) parseFromImport() (string, error) {
+	p.consume() // consume 'from'
+
+	var folder string
+	switch p.peek().Type {
+	case lexer.TAt:
+		p.consume() // @
+		aliasTok, err := p.expect(lexer.TIdent)
+		if err != nil {
+			return "", fmt.Errorf("from alias: %w", err)
+		}
+		folder = aliasTok.Value
+	case lexer.TPath:
+		pathTok := p.consume()
+		folder = pathTok.Value[1:] // strip leading /
+	case lexer.TIdent:
+		aliasTok := p.consume()
+		folder = aliasTok.Value
+	default:
+		tok := p.peek()
+		return "", fmt.Errorf("line %d: expected folder path after 'from', got %q", tok.Line, tok.Value)
+	}
+
+	// Expect 'import'
+	if _, err := p.expect(lexer.TImport); err != nil {
+		return "", fmt.Errorf("from import: %w", err)
+	}
+
+	// Expect * or identifier
+	switch p.peek().Type {
+	case lexer.TStar:
+		p.consume()
+		return "@" + folder + "/*", nil
+	case lexer.TIdent:
+		nameTok := p.consume()
+		return "@" + folder + "/" + nameTok.Value + ".veld", nil
+	default:
+		tok := p.peek()
+		return "", fmt.Errorf("line %d: expected '*' or name after 'import', got %q", tok.Line, tok.Value)
+	}
 }
 
 // --- grammar rules ---
@@ -485,6 +597,27 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				return act, err
 			}
 			act.Middleware = append(act.Middleware, tok.Value)
+		case lexer.TErrors:
+			p.consume()
+			if _, err := p.expect(lexer.TColon); err != nil {
+				return act, err
+			}
+			if _, err := p.expect(lexer.TLBracket); err != nil {
+				return act, fmt.Errorf("errors list: %w", err)
+			}
+			for p.peek().Type != lexer.TRBracket && p.peek().Type != lexer.TEOF {
+				nameTok, err := p.expect(lexer.TIdent)
+				if err != nil {
+					return act, fmt.Errorf("error name: %w", err)
+				}
+				act.Errors = append(act.Errors, nameTok.Value)
+				if p.peek().Type == lexer.TComma {
+					p.consume()
+				}
+			}
+			if _, err := p.expect(lexer.TRBracket); err != nil {
+				return act, fmt.Errorf("errors list: %w", err)
+			}
 		default:
 			tok := p.peek()
 			return act, fmt.Errorf("line %d: unexpected token %q in action body", tok.Line, tok.Value)

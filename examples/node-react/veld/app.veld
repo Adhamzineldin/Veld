@@ -1,2 +1,13 @@
-import @modules/users
-import @modules/todos
+// ══════════════════════════════════════════════════════════════
+//  Veld — Node + React Example
+//  This is the application entry point. All models, modules,
+//  and shared configuration are defined here.
+// ══════════════════════════════════════════════════════════════
+
+// ── Global Configuration ─────────────────────────────────────
+prefix: /api
+
+// ── Imports ──────────────────────────────────────────────────
+// Wildcard imports pull in every .veld file in the folder.
+import /models/*
+import /modules/*

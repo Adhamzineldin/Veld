@@ -161,9 +161,14 @@ class VeldAnnotator : Annotator {
                     if (openBraces > closeBraces) blockStack.addLast(BlockKind.ACTION)
                 }
 
-                // ── import ───────────────────────────────────────────────────
-                trimmed.startsWith("import") -> {
+                // ── import / from-import ──────────────────────────────────
+                trimmed.startsWith("import") || trimmed.startsWith("from") -> {
                     validateImport(trimmed, line, lineStart, content.length, virtualFile, service, holder)
+                }
+
+                // ── top-level prefix: /api/v1 ────────────────────────────────
+                trimmed.startsWith("prefix:") && blockStack.isEmpty() -> {
+                    // Valid top-level prefix directive — no special handling needed
                 }
 
                 // ── inside enum body: enum values ────────────────────────────
@@ -261,6 +266,20 @@ class VeldAnnotator : Annotator {
 
         // ── middleware directive — just a label name, not a type reference ───
         if (trimmed.startsWith("middleware:")) return
+
+        // ── stream directive — type reference ────────────────────────────────
+        if (trimmed.startsWith("stream:")) {
+            val colonIdx = trimmed.indexOf(':')
+            if (colonIdx >= 0) {
+                val typeExpr = trimmed.substring(colonIdx + 1).trim()
+                highlightTypeReferences(typeExpr, line, lineStart, contentLen, models, enums, holder)
+                validateTypeExpression(typeExpr, line, lineStart, contentLen, allTypes, holder)
+            }
+            return
+        }
+
+        // ── errors directive — list of error names, not type references ──────
+        if (trimmed.startsWith("errors:")) return
 
         // ── description / prefix directives: no special highlighting ─────────
         if (trimmed.startsWith("description:")) return
@@ -380,27 +399,36 @@ class VeldAnnotator : Annotator {
         service: VeldProjectService,
         holder: AnnotationHolder
     ) {
-        val m = Regex("""import\s+(@\w+/\w+)""").find(trimmed)
-        if (m != null) {
-            val path = m.groupValues[1]
-            val resolved = service.resolveImport(path, virtualFile)
-            if (resolved == null || !resolved.exists()) {
-                val atIdx = line.indexOf('@')
-                val start = lineStart + atIdx
-                val end   = lineStart + line.trimEnd().length
-                if (atIdx >= 0 && start < end && end <= contentLen) {
-                    holder.newAnnotation(HighlightSeverity.ERROR,
-                        "Cannot resolve import '$path'. File not found.")
-                        .range(TextRange(start, end)).create()
+        // Accept all valid import formats:
+        //   import @models/user    import @models/*    import @models
+        //   import /models/user    import /models/*    import /models
+        //   import models/user     import models/*     import models
+        //   from @models import *  from /models import user  from models import *
+        //   import "legacy/path.veld"
+        val validPatterns = listOf(
+            Regex("""import\s+@\w+(/[\w*]+)?"""),           // import @alias[/name|/*]
+            Regex("""import\s+/\w+(/[\w*]+)?"""),           // import /path[/name|/*]
+            Regex("""import\s+\w+(/[\w*]+)?"""),            // import alias[/name|/*]
+            Regex("""import\s+"[^"]+""""),                   // import "legacy"
+            Regex("""from\s+@?\w+\s+import\s+(\*|\w+)"""), // from @?alias import *|name
+            Regex("""from\s+/\w+\s+import\s+(\*|\w+)""")   // from /path import *|name
+        )
+        if (validPatterns.any { it.matches(trimmed) }) {
+            // Valid syntax — optionally validate resolved file exists
+            val singleFile = Regex("""import\s+(@\w+/\w+)""").find(trimmed)
+            if (singleFile != null) {
+                val path = singleFile.groupValues[1]
+                val resolved = service.resolveImport(path, virtualFile)
+                if (resolved == null || !resolved.exists()) {
+                    val atIdx = line.indexOf('@')
+                    val start = lineStart + atIdx
+                    val end   = lineStart + line.trimEnd().length
+                    if (atIdx >= 0 && start < end && end <= contentLen) {
+                        holder.newAnnotation(HighlightSeverity.WARNING,
+                            "Cannot resolve import '$path'. File may not exist yet.")
+                            .range(TextRange(start, end)).create()
+                    }
                 }
-            }
-        } else if (trimmed.matches(Regex("""import\s+.+"""))) {
-            val start = lineStart + line.indexOf("import")
-            val end   = (lineStart + line.trimEnd().length).coerceAtMost(contentLen)
-            if (start >= 0 && start < end) {
-                holder.newAnnotation(HighlightSeverity.ERROR,
-                    "Invalid import syntax. Expected: import @models/name or import @modules/name")
-                    .range(TextRange(start, end)).create()
             }
         }
     }

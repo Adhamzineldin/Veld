@@ -241,3 +241,55 @@ func ToSnakeCase(s string) string {
 	}
 	return result.String()
 }
+
+// ResolveRoutePath computes the full route path by joining the app-level prefix,
+// the module prefix, and the action path. Empty segments are skipped.
+func ResolveRoutePath(appPrefix string, mod ast.Module, act ast.Action) string {
+	return appPrefix + mod.Prefix + act.Path
+}
+
+// ToScreamingSnake converts a camelCase or PascalCase name to SCREAMING_SNAKE_CASE.
+func ToScreamingSnake(s string) string {
+	return strings.ToUpper(ToSnakeCase(s))
+}
+
+// ErrorCode builds a deterministic error code string from an action name and
+// error name. Example: ("ListUsers", "NotFound") → "LIST_USERS_NOT_FOUND".
+func ErrorCode(actionName, errorName string) string {
+	return ToScreamingSnake(actionName) + "_" + ToScreamingSnake(errorName)
+}
+
+// ErrorHTTPStatus maps well-known error names to HTTP status codes.
+// Unknown names default to 500.
+var errorStatusMap = map[string]int{
+	"NotFound":            404,
+	"Unauthorized":        401,
+	"Forbidden":           403,
+	"Conflict":            409,
+	"BadRequest":          400,
+	"ValidationFailed":    422,
+	"Gone":                410,
+	"TooManyRequests":     429,
+	"InternalServerError": 500,
+	"ServiceUnavailable":  503,
+	"NotImplemented":      501,
+}
+
+// ErrorHTTPStatus returns the HTTP status code for a well-known error name.
+// Unknown names return 500.
+func ErrorHTTPStatus(errorName string) int {
+	if status, ok := errorStatusMap[errorName]; ok {
+		return status
+	}
+	return 500
+}
+
+// HasErrors returns true if any action in the module defines error codes.
+func HasErrors(mod ast.Module) bool {
+	for _, act := range mod.Actions {
+		if len(act.Errors) > 0 {
+			return true
+		}
+	}
+	return false
+}

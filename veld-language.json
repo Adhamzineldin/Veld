@@ -5,6 +5,7 @@
     "action",
     "enum",
     "import",
+    "from",
     "extends"
   ],
   "httpMethods": [
@@ -35,6 +36,10 @@
     "path",
     "input",
     "output",
+    "query",
+    "stream",
+    "middleware",
+    "errors",
     "default"
   ],
   "specialTypes": [

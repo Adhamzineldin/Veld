@@ -196,6 +196,7 @@ class VeldLexer : LexerBase() {
             char == ')' -> { currentOffset++; currentToken = VeldTokenTypes.RPAREN; lastSignificantToken = currentToken; expectPathLiteral = false }
             char == '[' -> { currentOffset++; currentToken = VeldTokenTypes.LBRACKET; lastSignificantToken = currentToken; expectPathLiteral = false }
             char == ']' -> { currentOffset++; currentToken = VeldTokenTypes.RBRACKET; lastSignificantToken = currentToken; expectPathLiteral = false }
+            char == '*' -> { currentOffset++; currentToken = VeldTokenTypes.IDENTIFIER; lastSignificantToken = currentToken; expectPathLiteral = false }
 
             // Anything else
             else -> {
@@ -254,9 +255,10 @@ class VeldLexer : LexerBase() {
             "action" -> VeldTokenTypes.ACTION_KEYWORD
             "enum" -> VeldTokenTypes.ENUM_KEYWORD
             "import" -> VeldTokenTypes.IMPORT_KEYWORD
+            "from" -> VeldTokenTypes.IMPORT_KEYWORD
             "extends" -> VeldTokenTypes.EXTENDS_KEYWORD
             "method", "path", "input", "output", "description", "prefix", "default",
-            "query", "middleware", "stream" ->
+            "query", "middleware", "stream", "errors" ->
                 VeldTokenTypes.DIRECTIVE_KEYWORD
             "string", "int", "float", "bool", "date", "datetime", "uuid", "bytes", "json", "any" ->
                 VeldTokenTypes.TYPE_KEYWORD

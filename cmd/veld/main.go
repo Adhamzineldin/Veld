@@ -147,6 +147,13 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 		emitAST.Modules = filtered
 	}
 
+	// ── apply app-level prefix to module prefixes ────────────────────────
+	if emitAST.Prefix != "" {
+		for i := range emitAST.Modules {
+			emitAST.Modules[i].Prefix = emitAST.Prefix + emitAST.Modules[i].Prefix
+		}
+	}
+
 	// ── emit: backend ────────────────────────────────────────────────────
 	backend, err := emitter.GetBackend(rc.Backend)
 	if err != nil {
@@ -163,7 +170,17 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 	}
 	if frontend != nil {
 		// Frontend SDK always gets the full AST (combined output).
-		if err := frontend.Emit(a, rc.Out, opts); err != nil {
+		// App prefix was already applied to emitAST.Modules; apply to `a` too
+		// since frontend uses the unfiltered AST.
+		frontendAST := a
+		if a.Prefix != "" {
+			for i := range frontendAST.Modules {
+				if !strings.HasPrefix(frontendAST.Modules[i].Prefix, a.Prefix) {
+					frontendAST.Modules[i].Prefix = a.Prefix + frontendAST.Modules[i].Prefix
+				}
+			}
+		}
+		if err := frontend.Emit(frontendAST, rc.Out, opts); err != nil {
 			return nil, veldFiles, fmt.Errorf("%s emitter: %w", rc.Frontend, err)
 		}
 	}

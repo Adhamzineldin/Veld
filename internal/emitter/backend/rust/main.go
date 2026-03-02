@@ -96,6 +96,19 @@ func (e *RustEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		return fmt.Errorf("rust emitter [write errors.rs]: %w", err)
 	}
 
+	// Per-module typed error constructors.
+	for _, mod := range a.Modules {
+		modErrors := e.generateModuleErrors(mod)
+		if modErrors == nil {
+			continue
+		}
+		modName := e.adapter.NamingConvention(mod.Name, lang.NamingContextPrivate)
+		fileName := modName + "_errors.rs"
+		if err := os.WriteFile(filepath.Join(outDir, "src", fileName), modErrors, 0644); err != nil {
+			return fmt.Errorf("rust emitter [write %s]: %w", fileName, err)
+		}
+	}
+
 	// src/lib.rs — library crate root that declares modules.
 	libData := e.generateLibRs(a, false)
 	if err := os.WriteFile(filepath.Join(outDir, "src", "lib.rs"), libData, 0644); err != nil {
@@ -125,6 +138,9 @@ func (e *RustEmitter) generateLibRs(a ast.AST, withValidation bool) []byte {
 	for _, mod := range a.Modules {
 		modName := e.adapter.NamingConvention(mod.Name, lang.NamingContextPrivate)
 		sb.WriteString(fmt.Sprintf("pub mod %s;\n", modName))
+		if emitter.HasErrors(mod) {
+			sb.WriteString(fmt.Sprintf("pub mod %s_errors;\n", modName))
+		}
 	}
 	return []byte(sb.String())
 }

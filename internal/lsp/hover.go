@@ -103,6 +103,9 @@ func computeHover(text string, pos Position, a ast.AST) *Hover {
 				if act.Stream != "" {
 					sb.WriteString(fmt.Sprintf("- stream: `%s`\n", act.Stream))
 				}
+				if len(act.Errors) > 0 {
+					sb.WriteString(fmt.Sprintf("- errors: `%s`\n", strings.Join(act.Errors, "`, `")))
+				}
 				return &Hover{
 					Contents: MarkupContent{Kind: "markdown", Value: sb.String()},
 				}

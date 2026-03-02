@@ -1,2 +1,11 @@
-import @modules/users
-import @modules/todos
+// ══════════════════════════════════════════════════════════════
+//  Veld — Rust + Swift Example
+//  Application entry point.
+// ══════════════════════════════════════════════════════════════
+
+// ── Global Configuration ─────────────────────────────────────
+prefix: /api
+
+// ── Imports ──────────────────────────────────────────────────
+import /models/*
+import /modules/*

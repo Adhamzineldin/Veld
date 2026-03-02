@@ -120,6 +120,15 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		cfg.Out = "./generated"
 	}
 
+	// Validate out path — must end with a named directory, not just ".." or "/"
+	outBase := filepath.Base(filepath.Clean(cfg.Out))
+	if outBase == ".." || outBase == "." || outBase == "/" || outBase == string(filepath.Separator) {
+		return ResolvedConfig{}, fmt.Errorf(
+			"invalid out path %q: must end with a folder name (e.g. \"../generated\", not \"..\")",
+			cfg.Out,
+		)
+	}
+
 	if cfg.Input == "" {
 		return ResolvedConfig{}, fmt.Errorf("no input file (use --input or create veld/veld.config.json)")
 	}

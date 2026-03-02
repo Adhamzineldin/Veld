@@ -2,7 +2,7 @@ import @models/todo
 
 module Todos {
   description: "Todo management"
-  prefix: /api/todos
+  prefix: /todos
 
   action ListTodos {
     description: "List all todos"
@@ -16,6 +16,7 @@ module Todos {
     method: GET
     path: /:id
     output: Todo
+    errors: [NotFound]
   }
 
   action CreateTodo {
@@ -24,6 +25,7 @@ module Todos {
     path: /
     input: CreateTodoInput
     output: Todo
+    errors: [BadRequest]
   }
 
   action UpdateTodo {
@@ -32,11 +34,13 @@ module Todos {
     path: /:id
     input: UpdateTodoInput
     output: Todo
+    errors: [NotFound, BadRequest]
   }
 
   action DeleteTodo {
     description: "Delete a todo"
     method: DELETE
     path: /:id
+    errors: [NotFound]
   }
 }

@@ -389,3 +389,127 @@ func TestParseUnexpectedToken(t *testing.T) {
 		t.Fatal("expected error for unexpected token")
 	}
 }
+
+// ── Import syntax tests ──────────────────────────────────────────────────────
+
+func TestParseImportVariants(t *testing.T) {
+	tests := []struct {
+		name   string
+		src    string
+		expect string
+	}{
+		{"import @alias/name", `import @models/user`, "@models/user.veld"},
+		{"import @alias/*", `import @models/*`, "@models/*"},
+		{"import @alias (bare)", `import @models`, "@models/*"},
+		{"import alias/name", `import models/user`, "@models/user.veld"},
+		{"import alias/*", `import models/*`, "@models/*"},
+		{"import /path/*", `import /models/*`, "@models/*"},
+		{"import /path/name", `import /models/user`, "@models/user.veld"},
+		{"import /path (bare)", `import /models`, "@models/*"},
+		{"from @alias import *", `from @models import *`, "@models/*"},
+		{"from @alias import name", `from @models import user`, "@models/user.veld"},
+		{"from /path import *", `from /models import *`, "@models/*"},
+		{"from /path import name", `from /models import user`, "@models/user.veld"},
+		{"from alias import *", `from models import *`, "@models/*"},
+		{"from alias import name", `from models import user`, "@models/user.veld"},
+		{"import quoted (legacy)", `import "models/user.veld"`, "models/user.veld"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens, err := lexer.New(tt.src).Tokenize()
+			if err != nil {
+				t.Fatalf("lex: %v", err)
+			}
+			a, err := New(tokens).Parse()
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if len(a.Imports) != 1 {
+				t.Fatalf("expected 1 import, got %d", len(a.Imports))
+			}
+			if a.Imports[0] != tt.expect {
+				t.Errorf("expected %q, got %q", tt.expect, a.Imports[0])
+			}
+		})
+	}
+}
+
+// ── Errors directive tests ───────────────────────────────────────────────────
+
+func TestParseActionErrors(t *testing.T) {
+	src := `module Users {
+  action GetUser {
+    method: GET
+    path: /:id
+    output: string
+    errors: [NotFound, Unauthorized]
+  }
+}`
+	tokens, err := lexer.New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(a.Modules) != 1 || len(a.Modules[0].Actions) != 1 {
+		t.Fatal("expected 1 module with 1 action")
+	}
+	act := a.Modules[0].Actions[0]
+	if len(act.Errors) != 2 {
+		t.Fatalf("expected 2 errors, got %d", len(act.Errors))
+	}
+	if act.Errors[0] != "NotFound" || act.Errors[1] != "Unauthorized" {
+		t.Errorf("got errors %v", act.Errors)
+	}
+}
+
+func TestParseActionNoErrors(t *testing.T) {
+	src := `model LoginInput { email: string }
+model Token { value: string }
+module Auth {
+  action Login {
+    method: POST
+    path: /login
+    input: LoginInput
+    output: Token
+  }
+}`
+	tokens, err := lexer.New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if len(act.Errors) != 0 {
+		t.Errorf("expected no errors, got %v", act.Errors)
+	}
+}
+
+// ── Top-level prefix test ────────────────────────────────────────────────────
+
+func TestParseTopLevelPrefix(t *testing.T) {
+	src := `prefix: /api/v1
+module Auth {
+  action Login {
+    method: POST
+    path: /login
+    output: string
+  }
+}`
+	tokens, err := lexer.New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if a.Prefix != "/api/v1" {
+		t.Errorf("expected prefix /api/v1, got %q", a.Prefix)
+	}
+}

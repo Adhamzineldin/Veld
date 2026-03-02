@@ -82,6 +82,9 @@ func (e *CSharpEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 		if err := e.emitController(a, mod, outDir); err != nil {
 			return fmt.Errorf("controller %s: %w", mod.Name, err)
 		}
+		if err := e.emitModuleErrors(mod, outDir); err != nil {
+			return fmt.Errorf("errors %s: %w", mod.Name, err)
+		}
 	}
 	return e.emitCsproj(outDir)
 }

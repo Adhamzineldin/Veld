@@ -101,8 +101,9 @@ class VeldCompletionContributor : CompletionContributor() {
     }
 
     private fun detectContext(before: String, fullLine: String, file: PsiFile): CompletionContext {
-        // After "import " -> suggest import paths
-        if (before.startsWith("import ") || before == "import") {
+        // After "import " or "from " -> suggest import paths
+        if (before.startsWith("import ") || before == "import" ||
+            before.startsWith("from ") || before == "from") {
             return CompletionContext.AFTER_IMPORT
         }
 
@@ -192,17 +193,39 @@ class VeldCompletionContributor : CompletionContributor() {
 
     private fun addImportSnippet(result: CompletionResultSet) {
         result.addElement(
-            LookupElementBuilder.create("import @models/")
+            LookupElementBuilder.create("import @models/*")
                 .withIcon(AllIcons.Nodes.Include)
-                .withTypeText("import models")
-                .withInsertHandler { ctx, _ ->
-                    ctx.editor.caretModel.moveToOffset(ctx.tailOffset)
-                }
+                .withTypeText("import all models")
         )
         result.addElement(
-            LookupElementBuilder.create("import @modules/")
+            LookupElementBuilder.create("import @modules/*")
                 .withIcon(AllIcons.Nodes.Include)
-                .withTypeText("import modules")
+                .withTypeText("import all modules")
+        )
+        result.addElement(
+            LookupElementBuilder.create("import /models/*")
+                .withIcon(AllIcons.Nodes.Include)
+                .withTypeText("import all models (path)")
+        )
+        result.addElement(
+            LookupElementBuilder.create("import /modules/*")
+                .withIcon(AllIcons.Nodes.Include)
+                .withTypeText("import all modules (path)")
+        )
+        result.addElement(
+            LookupElementBuilder.create("from @models import *")
+                .withIcon(AllIcons.Nodes.Include)
+                .withTypeText("from...import syntax")
+        )
+        result.addElement(
+            LookupElementBuilder.create("from @modules import *")
+                .withIcon(AllIcons.Nodes.Include)
+                .withTypeText("from...import syntax")
+        )
+        result.addElement(
+            LookupElementBuilder.create("prefix: ")
+                .withIcon(AllIcons.Nodes.Property)
+                .withTypeText("global route prefix")
                 .withInsertHandler { ctx, _ ->
                     ctx.editor.caretModel.moveToOffset(ctx.tailOffset)
                 }
@@ -214,6 +237,21 @@ class VeldCompletionContributor : CompletionContributor() {
         // Scan all standard alias directories
         for (dirName in listOf("models", "modules", "types", "enums", "schemas", "services", "lib", "common")) {
             val dir = root.findChild(dirName) ?: continue
+
+            // Wildcard import for the whole folder
+            result.addElement(
+                LookupElementBuilder.create("@$dirName/*")
+                    .withIcon(AllIcons.Nodes.Folder)
+                    .withTypeText("import all from $dirName/")
+                    .withTailText("  (wildcard)", true)
+            )
+            result.addElement(
+                LookupElementBuilder.create("/$dirName/*")
+                    .withIcon(AllIcons.Nodes.Folder)
+                    .withTypeText("import all from $dirName/")
+                    .withTailText("  (path wildcard)", true)
+            )
+
             for (child in dir.children) {
                 if (child.extension == "veld") {
                     val name = child.nameWithoutExtension
@@ -224,12 +262,12 @@ class VeldCompletionContributor : CompletionContributor() {
                             .withTypeText("$dirName/$name.veld")
                             .withTailText("  (alias)", true)
                     )
-                    // "./path" style (relative)
+                    // /path/name style
                     result.addElement(
-                        LookupElementBuilder.create("\"$dirName/$name.veld\"")
+                        LookupElementBuilder.create("/$dirName/$name")
                             .withIcon(AllIcons.FileTypes.Any_type)
                             .withTypeText("$dirName/$name.veld")
-                            .withTailText("  (relative)", true)
+                            .withTailText("  (path)", true)
                     )
                 }
             }
@@ -247,11 +285,15 @@ class VeldCompletionContributor : CompletionContributor() {
     }
 
     private fun addActionDirectives(result: CompletionResultSet) {
-        for (d in listOf("method", "path", "input", "output", "query", "middleware", "description")) {
+        for (d in listOf("method", "path", "input", "output", "query", "middleware", "stream", "errors", "description")) {
             result.addElement(
-                LookupElementBuilder.create("$d: ")
+                LookupElementBuilder.create(if (d == "errors") "errors: []" else "$d: ")
+                    .withPresentableText("$d:")
                     .withIcon(AllIcons.Nodes.Property)
                     .withTypeText("directive")
+                    .withInsertHandler(if (d == "errors") { ctx, _ ->
+                        ctx.editor.caretModel.moveToOffset(ctx.tailOffset - 1)
+                    } else null)
             )
         }
     }

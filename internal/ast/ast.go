@@ -3,7 +3,8 @@ package ast
 // AST is the root of a parsed .veld contract.
 type AST struct {
 	ASTVersion  string              `json:"astVersion"`
-	Imports     []string            `json:"-"` // resolved by the file loader, not serialised
+	Prefix      string              `json:"prefix,omitempty"` // app-level route prefix (prepended to all modules)
+	Imports     []string            `json:"-"`                // resolved by the file loader, not serialised
 	Models      []Model             `json:"models"`
 	Modules     []Module            `json:"modules"`
 	Enums       []Enum              `json:"enums,omitempty"`
@@ -62,6 +63,7 @@ type Action struct {
 	OutputArray bool     `json:"outputArray,omitempty"` // output User[] → true
 	Query       string   `json:"query,omitempty"`       // query param model
 	Stream      string   `json:"stream,omitempty"`      // WebSocket message type for WS actions
+	Errors      []string `json:"errors,omitempty"`      // typed error codes for this action
 	Middleware  []string `json:"middleware"`
 	Line        int      `json:"-"` // line in source where this action was defined
 }

@@ -36,6 +36,12 @@ const (
 	// WebSocket
 	TStream // keyword "stream"
 
+	// Error linking
+	TErrors // keyword "errors"
+
+	// Import
+	TFrom // keyword "from"
+
 	// Primitive types
 	TTypeString
 	TTypeInt
@@ -58,6 +64,7 @@ const (
 	TLAngle   // <
 	TRAngle   // >
 	TComma    // ,
+	TStar     // *
 
 	// Other
 	TIdent
@@ -112,6 +119,12 @@ func (t TokenType) String() string {
 		return "\"WS\""
 	case TStream:
 		return "\"stream\""
+	case TErrors:
+		return "\"errors\""
+	case TFrom:
+		return "\"from\""
+	case TStar:
+		return "\"*\""
 	case TTypeString:
 		return "\"string\""
 	case TTypeInt:
@@ -249,6 +262,9 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 		} else if ch == ',' {
 			tokens = append(tokens, Token{TComma, ",", l.line})
 			l.pos++
+		} else if ch == '*' {
+			tokens = append(tokens, Token{TStar, "*", l.line})
+			l.pos++
 		} else if ch == '/' {
 			// Path token: reads until whitespace or brace.
 			start := l.pos
@@ -333,6 +349,10 @@ func classifyWord(word string, line int) Token {
 		return Token{TWS, word, line}
 	case "stream":
 		return Token{TStream, word, line}
+	case "errors":
+		return Token{TErrors, word, line}
+	case "from":
+		return Token{TFrom, word, line}
 	case "string":
 		return Token{TTypeString, word, line}
 	case "int":

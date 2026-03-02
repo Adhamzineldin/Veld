@@ -2,7 +2,7 @@ import @models/user
 
 module Users {
   description: "User management"
-  prefix: /api/users
+  prefix: /users
 
   action ListUsers {
     description: "List all users"
@@ -16,6 +16,7 @@ module Users {
     method: GET
     path: /:id
     output: User
+    errors: [NotFound]
   }
 
   action CreateUser {
@@ -24,11 +25,13 @@ module Users {
     path: /
     input: CreateUserInput
     output: User
+    errors: [Conflict, BadRequest]
   }
 
   action DeleteUser {
     description: "Delete a user"
     method: DELETE
     path: /:id
+    errors: [NotFound]
   }
 }

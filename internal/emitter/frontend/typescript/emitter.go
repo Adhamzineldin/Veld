@@ -94,6 +94,26 @@ func emitModuleApi(a ast.AST, mod ast.Module, dir string) error {
 	for _, act := range mod.Actions {
 		writeAction(&sb, mod, act)
 	}
+
+	// Emit typed error code constants if any actions define errors.
+	if emitter.HasErrors(mod) {
+		sb.WriteString("  errors: {\n")
+		for _, act := range mod.Actions {
+			if len(act.Errors) == 0 {
+				continue
+			}
+			camelAction := emitter.ToCamelCase(act.Name)
+			sb.WriteString(fmt.Sprintf("    %s: {\n", camelAction))
+			for _, errName := range act.Errors {
+				code := emitter.ErrorCode(act.Name, errName)
+				camelErr := emitter.ToCamelCase(errName)
+				sb.WriteString(fmt.Sprintf("      %s: '%s',\n", camelErr, code))
+			}
+			sb.WriteString("    },\n")
+		}
+		sb.WriteString("  } as const,\n")
+	}
+
 	sb.WriteString("};\n")
 
 	return os.WriteFile(filepath.Join(dir, moduleLower+"Api.ts"), []byte(sb.String()), 0644)

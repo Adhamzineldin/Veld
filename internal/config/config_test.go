@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -218,5 +219,56 @@ func TestBuildResolvedAliasesMerge(t *testing.T) {
 	}
 	if rc.Aliases["shared"] != "shared" {
 		t.Errorf("expected aliases[shared] = 'shared', got %q", rc.Aliases["shared"])
+	}
+}
+
+func TestOutPathValidation(t *testing.T) {
+	// Test that bare ".." is rejected as an out path
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "veld", "veld.config.json")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfgPath, []byte(`{"input": "app.veld", "out": ".."}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "veld", "app.veld"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	_, err := BuildResolved(FlagOverrides{})
+	if err == nil {
+		t.Fatal("expected error for out path '..'")
+	}
+	if !strings.Contains(err.Error(), "must end with a folder name") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestOutPathWithFolderAllowed(t *testing.T) {
+	// "../generated" should be allowed
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "veld", "veld.config.json")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfgPath, []byte(`{"input": "app.veld", "out": "../generated"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "veld", "app.veld"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	_, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("../generated should be allowed, got: %v", err)
 	}
 }

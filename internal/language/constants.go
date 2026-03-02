@@ -21,6 +21,7 @@ func GetLanguageSpec() *VeldLanguageSpec {
 			"action",
 			"enum",
 			"import",
+			"from",
 			"extends",
 		},
 		HttpMethods: []string{
@@ -51,6 +52,10 @@ func GetLanguageSpec() *VeldLanguageSpec {
 			"path",
 			"input",
 			"output",
+			"query",
+			"stream",
+			"middleware",
+			"errors",
 			"default",
 		},
 		SpecialTypes: []string{

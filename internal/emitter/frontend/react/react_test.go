@@ -46,7 +46,7 @@ func TestReactEmitCreatesFiles(t *testing.T) {
 
 	expected := []string{
 		filepath.Join(outDir, "client", "api.ts"),
-		filepath.Join(outDir, "hooks", "useAuth.ts"),
+		filepath.Join(outDir, "hooks", "authHooks.ts"),
 		filepath.Join(outDir, "hooks", "index.ts"),
 	}
 	for _, f := range expected {
@@ -78,24 +78,25 @@ func TestReactHooksContent(t *testing.T) {
 		t.Fatalf("Emit: %v", err)
 	}
 
-	data, _ := os.ReadFile(filepath.Join(outDir, "hooks", "useAuth.ts"))
+	data, _ := os.ReadFile(filepath.Join(outDir, "hooks", "authHooks.ts"))
 	content := string(data)
 
 	checks := []string{
 		"@tanstack/react-query",
 		"useQuery",
 		"useMutation",
-		"useAuthLogin",
-		"useAuthMe",
+		"useLogin",
+		"useMe",
 		"queryKey",
 		"mutationFn",
 		"invalidateQueries",
 		"LoginInput",
 		"User",
+		"authHooks",
 	}
 	for _, needle := range checks {
 		if !strings.Contains(content, needle) {
-			t.Errorf("useAuth.ts missing %q", needle)
+			t.Errorf("authHooks.ts missing %q", needle)
 		}
 	}
 }
@@ -109,8 +110,8 @@ func TestReactBarrelExport(t *testing.T) {
 	}
 
 	data, _ := os.ReadFile(filepath.Join(outDir, "hooks", "index.ts"))
-	if !strings.Contains(string(data), "export * from './useAuth'") {
-		t.Error("index.ts should barrel-export useAuth")
+	if !strings.Contains(string(data), "authHooks") {
+		t.Error("index.ts should barrel-export authHooks")
 	}
 }
 

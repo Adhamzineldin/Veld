@@ -13,11 +13,23 @@ func emitErrorClass(sb *strings.Builder) {
 export class VeldApiError extends Error {
   status: number;
   body: string;
-  constructor(status: number, body: string) {
+  code: string;
+  constructor(status: number, body: string, code?: string) {
     super(` + "`" + `Veld API error ${status}: ${body}` + "`" + `);
     this.name = 'VeldApiError';
     this.status = status;
     this.body = body;
+    this.code = code ?? '';
+  }
+}
+
+async function parseErrorResponse(res: Response): Promise<VeldApiError> {
+  const text = await res.text();
+  try {
+    const json = JSON.parse(text);
+    return new VeldApiError(res.status, json.error ?? text, json.code ?? '');
+  } catch {
+    return new VeldApiError(res.status, text);
   }
 }
 `)
@@ -38,7 +50,7 @@ func emitHTTPHelpers(sb *strings.Builder, methods map[string]bool) {
 		sb.WriteString(`
 export async function get<T>(path: string): Promise<T> {
   const res = await fetch(BASE + path);
-  if (!res.ok) throw new VeldApiError(res.status, await res.text());
+  if (!res.ok) throw await parseErrorResponse(res);
   return res.json();
 }
 `)
@@ -58,7 +70,7 @@ export async function %s<T>(path: string, body?: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new VeldApiError(res.status, await res.text());
+  if (!res.ok) throw await parseErrorResponse(res);
   return res.json();
 }
 `, fn, m))

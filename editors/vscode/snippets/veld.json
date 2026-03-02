@@ -1,8 +1,26 @@
 {
-  "Import File": {
+  "Import (alias)": {
     "prefix": "import",
-    "body": "import \"${1:./path/to/file.veld}\"",
-    "description": "Import another .veld file"
+    "body": "import @${1:models}/${2:*}",
+    "description": "Import from a folder — use * for all files"
+  },
+
+  "Import (path)": {
+    "prefix": "importp",
+    "body": "import /${1:models}/${2:*}",
+    "description": "Import using path syntax"
+  },
+
+  "From Import": {
+    "prefix": "from",
+    "body": "from @${1:models} import ${2:*}",
+    "description": "Import using from...import syntax"
+  },
+
+  "Global Prefix": {
+    "prefix": "prefix",
+    "body": "prefix: ${1:/api}",
+    "description": "Set app-level route prefix"
   },
 
   "Model Declaration": {
@@ -71,9 +89,16 @@
       "\tpath: ${3:/}",
       "\t${4:input: ${5:ModelName}}",
       "\t${6:output: ${7:ModelName}}",
+      "\t${8:errors: [${9:NotFound}]}",
       "}"
     ],
-    "description": "Define a Veld action"
+    "description": "Define a Veld action with optional errors"
+  },
+
+  "Errors Directive": {
+    "prefix": "errors",
+    "body": "errors: [${1:NotFound}, ${2:BadRequest}]",
+    "description": "Define typed error codes for an action"
   },
 
   "CRUD Actions": {
