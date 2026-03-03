@@ -45,3 +45,4 @@ editors/jetbrains/build/
 # .idea/ is kept — contains Go SDK config needed for GoLand
 
 /Veld Test/
+*/genrated 
