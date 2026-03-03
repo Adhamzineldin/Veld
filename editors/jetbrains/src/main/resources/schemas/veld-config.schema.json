@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Veld Config",
+  "description": "Configuration file for the Veld code generation framework",
+  "type": "object",
+  "properties": {
+    "input": {
+      "type": "string",
+      "description": "Path to the main .veld entry file (e.g. \"app.veld\")"
+    },
+    "backend": {
+      "type": "string",
+      "description": "Backend target language/framework",
+      "enum": ["node", "python", "go", "java", "csharp", "php", "rust"]
+    },
+    "frontend": {
+      "type": "string",
+      "description": "Frontend SDK to generate",
+      "enum": ["react", "vue", "angular", "svelte", "typescript", "dart", "kotlin", "swift", "none"]
+    },
+    "out": {
+      "type": "string",
+      "description": "Output directory for generated code (e.g. \"../generated\")"
+    },
+    "backendDir": {
+      "type": "string",
+      "description": "Path to backend project directory — used by setup to patch tsconfig, go.mod, etc."
+    },
+    "backendDirectory": {
+      "type": "string",
+      "description": "Alias for backendDir"
+    },
+    "frontendDir": {
+      "type": "string",
+      "description": "Path to frontend project directory — used by setup to patch tsconfig, pubspec, etc."
+    },
+    "frontendDirectory": {
+      "type": "string",
+      "description": "Alias for frontendDir"
+    },
+    "baseUrl": {
+      "type": "string",
+      "description": "Base URL baked into the frontend SDK (e.g. \"/api/v1\"). If empty, uses environment variable at runtime."
+    },
+    "aliases": {
+      "type": "object",
+      "description": "Custom @alias → relative folder mappings (e.g. { \"auth\": \"services/auth\" })",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["input"],
+  "additionalProperties": false
+}
+

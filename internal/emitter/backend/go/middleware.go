@@ -165,12 +165,15 @@ func (e *GoEmitter) generateModuleMiddleware(mod ast.Module, outDir string) erro
 		return nil
 	}
 
-	dir := filepath.Join(outDir, "internal", "interfaces")
+	dir := filepath.Join(outDir, "internal", "middleware")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
 	moduleLower := strings.ToLower(mod.Name)
 
 	w := codegen.NewWriter("\t")
 	w.Writeln(header)
-	w.Writeln("package interfaces")
+	w.Writeln("package middleware")
 	w.BlankLine()
 	w.Writeln("import \"net/http\"")
 	w.BlankLine()

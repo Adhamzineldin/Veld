@@ -5,6 +5,8 @@
   "exports": {
     ".": "./index.ts",
     "./types": "./types/index.ts",
-    "./client": "./client/api.ts"
+    "./client": "./client/api.ts",
+    "./client/todosApi": "./client/todosApi.ts",
+    "./client/usersApi": "./client/usersApi.ts"
   }
 }

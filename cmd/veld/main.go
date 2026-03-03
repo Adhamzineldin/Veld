@@ -2009,6 +2009,9 @@ func runInit() error {
   "backend": "%s",
   "frontend": "%s",
   "out": "%s",
+  "backendDir": "",
+  "frontendDir": "",
+  "baseUrl": "",
   "aliases": {
     "models": "models",
     "modules": "modules"

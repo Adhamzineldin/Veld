@@ -1,0 +1,11 @@
+{
+  "input": "app.veld",
+  "backend": "${BACKEND}",
+  "frontend": "${FRONTEND}",
+  "out": "../generated",
+  "backendDir": "../backend",
+  "frontendDir": "../frontend",
+  "baseUrl": "",
+  "aliases": {}
+}
+

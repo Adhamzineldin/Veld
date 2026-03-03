@@ -138,6 +138,8 @@ func veldScalarToCS(t string, _ map[string]bool) string {
 		return "double"
 	case "bool":
 		return "bool"
+	case "any", "json":
+		return "object"
 	default:
 		return t // custom model/enum name
 	}

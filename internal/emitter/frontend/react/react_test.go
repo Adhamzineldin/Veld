@@ -48,6 +48,8 @@ func TestReactEmitCreatesFiles(t *testing.T) {
 		filepath.Join(outDir, "client", "api.ts"),
 		filepath.Join(outDir, "hooks", "authHooks.ts"),
 		filepath.Join(outDir, "hooks", "index.ts"),
+		filepath.Join(outDir, "hooks", "core", "authHooks.ts"),
+		filepath.Join(outDir, "hooks", "core", "index.ts"),
 	}
 	for _, f := range expected {
 		if _, err := os.Stat(f); os.IsNotExist(err) {
@@ -78,10 +80,34 @@ func TestReactHooksContent(t *testing.T) {
 		t.Fatalf("Emit: %v", err)
 	}
 
+	// TanStack Query hooks (primary)
 	data, _ := os.ReadFile(filepath.Join(outDir, "hooks", "authHooks.ts"))
 	content := string(data)
 
-	checks := []string{
+	tanstackChecks := []string{
+		"@tanstack/react-query",
+		"useQuery",
+		"useMutation",
+		"useLogin",
+		"useMe",
+		"queryKey",
+		"mutationFn",
+		"invalidateQueries",
+		"LoginInput",
+		"User",
+		"authHooks",
+	}
+	for _, needle := range tanstackChecks {
+		if !strings.Contains(content, needle) {
+			t.Errorf("hooks/authHooks.ts missing %q", needle)
+		}
+	}
+
+	// Zero-dep core hooks (fallback)
+	coreData, _ := os.ReadFile(filepath.Join(outDir, "hooks", "core", "authHooks.ts"))
+	coreContent := string(coreData)
+
+	coreChecks := []string{
 		"useState",
 		"useEffect",
 		"useCallback",
@@ -89,16 +115,18 @@ func TestReactHooksContent(t *testing.T) {
 		"useMe",
 		"setData",
 		"setLoading",
-		"setError",
 		"refetch",
-		"LoginInput",
-		"User",
 		"authHooks",
 	}
-	for _, needle := range checks {
-		if !strings.Contains(content, needle) {
-			t.Errorf("authHooks.ts missing %q", needle)
+	for _, needle := range coreChecks {
+		if !strings.Contains(coreContent, needle) {
+			t.Errorf("hooks/core/authHooks.ts missing %q", needle)
 		}
+	}
+
+	// Core hooks should NOT import tanstack
+	if strings.Contains(coreContent, "@tanstack") {
+		t.Error("core hooks should not import @tanstack/react-query")
 	}
 }
 

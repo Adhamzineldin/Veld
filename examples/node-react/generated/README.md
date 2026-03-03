@@ -18,8 +18,8 @@
 
 ## Modules
 
-- **Users** — User management (4 actions)
 - **Todos** — Todo management (5 actions)
+- **Users** — User management (4 actions)
 
 ## Import Alias
 

@@ -220,6 +220,10 @@ func (e *RustEmitter) generateServices(a ast.AST) ([]byte, error) {
 			if act.Description != "" {
 				w.Writeln(fmt.Sprintf("    /// %s", act.Description))
 			}
+			for _, errName := range act.Errors {
+				code := emitter.ErrorCode(act.Name, errName)
+				w.Writeln(fmt.Sprintf("    /// # Errors\n    /// Returns `%sError::%s` — %s", act.Name, emitter.ToCamelCase(errName), code))
+			}
 			w.Writeln(sig)
 		}
 
@@ -257,11 +261,29 @@ func buildRustReturnType(e *RustEmitter, act ast.Action) string {
 	if act.Output == "" {
 		return "Result<(), Box<dyn std::error::Error>>"
 	}
-	outputType := e.adapter.NamingConvention(act.Output, lang.NamingContextExported)
+	outputType := mapRustOutputType(e, act.Output)
 	if act.OutputArray {
 		return fmt.Sprintf("Result<Vec<%s>, Box<dyn std::error::Error>>", outputType)
 	}
 	return fmt.Sprintf("Result<%s, Box<dyn std::error::Error>>", outputType)
+}
+
+// mapRustOutputType maps a Veld output type to its Rust equivalent.
+func mapRustOutputType(e *RustEmitter, t string) string {
+	switch t {
+	case "string", "uuid", "date", "datetime":
+		return "String"
+	case "int":
+		return "i64"
+	case "float":
+		return "f64"
+	case "bool":
+		return "bool"
+	case "any", "json":
+		return "serde_json::Value"
+	default:
+		return e.adapter.NamingConvention(t, lang.NamingContextExported)
+	}
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

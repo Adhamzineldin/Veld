@@ -12,7 +12,7 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@veld/*": ["../generated/*"]
+      "@veld/*": ["./../generated/*"]
     }
   },
   "include": ["src", "index.html", "vite.config.ts"],

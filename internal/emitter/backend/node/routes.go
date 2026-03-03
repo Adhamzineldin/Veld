@@ -34,7 +34,7 @@ func (e *NodeEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string) error
 	}
 
 	if len(allMiddleware) > 0 {
-		sb.WriteString(fmt.Sprintf("import type { %s } from '../interfaces/%s';\n", mwInterfaceName, mwInterfaceName))
+		sb.WriteString(fmt.Sprintf("import type { %s } from '../middleware/%s';\n", mwInterfaceName, mwInterfaceName))
 	}
 
 	sb.WriteString("\n")
@@ -136,7 +136,7 @@ func writeRouteHandler(sb *strings.Builder, mod ast.Module, act ast.Action) erro
 // emitMiddlewareInterface writes interfaces/I{Module}Middleware.ts with a typed
 // interface that the user implements — one method per middleware name.
 func (e *NodeEmitter) emitMiddlewareInterface(mod ast.Module, allMiddleware []string, outDir string) error {
-	dir := filepath.Join(outDir, "interfaces")
+	dir := filepath.Join(outDir, "middleware")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}

@@ -68,6 +68,12 @@
         "path": "./snippets/veld.json"
       }
     ],
+    "jsonValidation": [
+      {
+        "fileMatch": ["veld.config.json", "**/veld/veld.config.json"],
+        "url": "./veld-config.schema.json"
+      }
+    ],
     "commands": [
       {
         "command": "veld.validate",

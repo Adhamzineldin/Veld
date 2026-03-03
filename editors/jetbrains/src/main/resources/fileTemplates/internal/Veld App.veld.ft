@@ -1,0 +1,22 @@
+// ═══════════════════════════════════════════════════════════════
+// ${NAME} — Veld Application Entry Point
+// ═══════════════════════════════════════════════════════════════
+//
+// This is the main contract file for your application.
+// Define global settings, then import your models and modules.
+//
+// Usage:
+//   veld generate
+//   veld generate --setup
+//
+
+// ── Global Settings ──────────────────────────────────────────
+prefix: /api/v1
+
+// ── Imports ──────────────────────────────────────────────────
+// import "./models/user.veld"
+// import "./modules/users.veld"
+// import from "./models" import *
+// import from "./modules" import *
+
+

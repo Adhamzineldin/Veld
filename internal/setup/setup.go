@@ -130,7 +130,9 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// findFile looks for filename in dir, then one directory up.
+// findFile looks for filename in dir, then one directory up, then in common
+// subdirectories (src, backend, frontend). This handles monorepo layouts
+// where the user hasn't explicitly set backendDir / frontendDir.
 func findFile(dir, filename string) string {
 	p := filepath.Join(dir, filename)
 	if _, err := os.Stat(p); err == nil {
@@ -143,10 +145,18 @@ func findFile(dir, filename string) string {
 			return p
 		}
 	}
+	// Try common subdirectories
+	for _, sub := range []string{"src", "backend", "frontend", "server", "client", "app"} {
+		p = filepath.Join(dir, sub, filename)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
 	return ""
 }
 
-// findFileGlob looks for files matching a glob pattern in dir, then one up.
+// findFileGlob looks for files matching a glob pattern in dir, then one up,
+// then in common subdirectories.
 func findFileGlob(dir, pattern string) string {
 	matches, _ := filepath.Glob(filepath.Join(dir, pattern))
 	if len(matches) > 0 {
@@ -155,6 +165,12 @@ func findFileGlob(dir, pattern string) string {
 	parent := filepath.Dir(dir)
 	if parent != dir {
 		matches, _ = filepath.Glob(filepath.Join(parent, pattern))
+		if len(matches) > 0 {
+			return matches[0]
+		}
+	}
+	for _, sub := range []string{"src", "backend", "frontend", "server", "client", "app"} {
+		matches, _ = filepath.Glob(filepath.Join(dir, sub, pattern))
 		if len(matches) > 0 {
 			return matches[0]
 		}

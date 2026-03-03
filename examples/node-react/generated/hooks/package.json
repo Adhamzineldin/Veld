@@ -3,9 +3,17 @@
   "private": true,
   "types": "./index.ts",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./todosHooks": "./todosHooks.ts",
+    "./usersHooks": "./usersHooks.ts",
+    "./core": "./core/index.ts",
+    "./core/todosHooks": "./core/todosHooks.ts",
+    "./core/usersHooks": "./core/usersHooks.ts"
   },
   "peerDependencies": {
     "@tanstack/react-query": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@tanstack/react-query": { "optional": true }
   }
 }

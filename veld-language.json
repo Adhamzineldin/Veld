@@ -46,5 +46,27 @@
     "List",
     "Map"
   ],
+  "annotations": [
+    "default",
+    "unique",
+    "required",
+    "optional",
+    "index",
+    "primary",
+    "autoincrement",
+    "readonly"
+  ],
+  "configKeys": [
+    "input",
+    "backend",
+    "frontend",
+    "out",
+    "backendDir",
+    "backendDirectory",
+    "frontendDir",
+    "frontendDirectory",
+    "baseUrl",
+    "aliases"
+  ],
   "version": "1.0.0"
 }

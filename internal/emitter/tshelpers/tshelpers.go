@@ -15,6 +15,8 @@ func VeldScalarToTS(t string) string {
 		return "boolean"
 	case "date", "datetime", "uuid":
 		return "string"
+	case "any", "json":
+		return "any"
 	default:
 		return t // model/enum reference stays as-is
 	}

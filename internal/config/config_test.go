@@ -272,3 +272,103 @@ func TestOutPathWithFolderAllowed(t *testing.T) {
 		t.Fatalf("../generated should be allowed, got: %v", err)
 	}
 }
+
+func TestBackendDirectoryAlias(t *testing.T) {
+	// "backendDirectory" should work as an alias for "backendDir"
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "veld")
+	os.MkdirAll(cfgDir, 0755)
+	os.MkdirAll(filepath.Join(dir, "backend"), 0755)
+	os.MkdirAll(filepath.Join(dir, "frontend"), 0755)
+
+	cfg := `{
+		"input": "app.veld",
+		"backend": "node",
+		"frontend": "react",
+		"out": "../generated",
+		"backendDirectory": "../backend",
+		"frontendDirectory": "../frontend"
+	}`
+	os.WriteFile(filepath.Join(cfgDir, "veld.config.json"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(cfgDir, "app.veld"), []byte(""), 0644)
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// BackendDir should resolve to dir/backend
+	expectedBackend := filepath.Clean(filepath.Join(dir, "backend"))
+	if rc.BackendDir != expectedBackend {
+		t.Errorf("BackendDir = %q, want %q", rc.BackendDir, expectedBackend)
+	}
+
+	// FrontendDir should resolve to dir/frontend
+	expectedFrontend := filepath.Clean(filepath.Join(dir, "frontend"))
+	if rc.FrontendDir != expectedFrontend {
+		t.Errorf("FrontendDir = %q, want %q", rc.FrontendDir, expectedFrontend)
+	}
+}
+
+func TestBackendDirShortForm(t *testing.T) {
+	// "backendDir" (short form) should also work
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "veld")
+	os.MkdirAll(cfgDir, 0755)
+	os.MkdirAll(filepath.Join(dir, "server"), 0755)
+
+	cfg := `{
+		"input": "app.veld",
+		"backendDir": "../server"
+	}`
+	os.WriteFile(filepath.Join(cfgDir, "veld.config.json"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(cfgDir, "app.veld"), []byte(""), 0644)
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := filepath.Clean(filepath.Join(dir, "server"))
+	if rc.BackendDir != expected {
+		t.Errorf("BackendDir = %q, want %q", rc.BackendDir, expected)
+	}
+}
+
+func TestBackendDirPriorityOverDirectory(t *testing.T) {
+	// When both are set, backendDir takes priority over backendDirectory
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "veld")
+	os.MkdirAll(cfgDir, 0755)
+
+	cfg := `{
+		"input": "app.veld",
+		"backendDir": "../server",
+		"backendDirectory": "../backend"
+	}`
+	os.WriteFile(filepath.Join(cfgDir, "veld.config.json"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(cfgDir, "app.veld"), []byte(""), 0644)
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// backendDir should win over backendDirectory
+	expected := filepath.Clean(filepath.Join(dir, "server"))
+	if rc.BackendDir != expected {
+		t.Errorf("BackendDir = %q, want %q (backendDir should take priority)", rc.BackendDir, expected)
+	}
+}

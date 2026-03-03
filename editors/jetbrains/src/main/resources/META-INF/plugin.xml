@@ -80,6 +80,7 @@
 
   <!-- Plugin works in all JetBrains IDEs -->
   <depends>com.intellij.modules.platform</depends>
+  <depends optional="true" config-file="veld-json.xml">com.intellij.modules.json</depends>
 
   <extensions defaultExtensionNs="com.intellij">
     <!-- Project Service -->
@@ -156,6 +157,8 @@
         implementationClass="dev.veld.jetbrains.VeldStructureViewFactory"/>
 
     <!-- File Templates -->
+    <internalFileTemplate name="Veld App"/>
+    <internalFileTemplate name="Veld Config"/>
     <internalFileTemplate name="Veld Model"/>
     <internalFileTemplate name="Veld Module"/>
     <internalFileTemplate name="Veld Enum"/>

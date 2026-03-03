@@ -113,6 +113,8 @@ func veldScalarToPhp(t string, _ map[string]bool) string {
 		return "float"
 	case "bool":
 		return "bool"
+	case "any", "json":
+		return "mixed"
 	default:
 		return t // custom model/enum name
 	}

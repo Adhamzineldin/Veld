@@ -3,6 +3,8 @@
   "private": true,
   "types": "./api.ts",
   "exports": {
-    ".": "./api.ts"
+    ".": "./api.ts",
+    "./todosApi": "./todosApi.ts",
+    "./usersApi": "./usersApi.ts"
   }
 }

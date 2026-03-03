@@ -9,14 +9,32 @@ import (
 
 // RawConfig mirrors veld.config.json on disk.
 type RawConfig struct {
-	Input       string            `json:"input"`
-	Backend     string            `json:"backend"`
-	Frontend    string            `json:"frontend"`
-	Out         string            `json:"out"`
-	BackendDir  string            `json:"backendDir,omitempty"`  // path to backend project dir (for setup)
-	FrontendDir string            `json:"frontendDir,omitempty"` // path to frontend project dir (for setup)
-	BaseUrl     string            `json:"baseUrl,omitempty"`     // baked into frontend SDK; empty = use env var
-	Aliases     map[string]string `json:"aliases,omitempty"`     // custom @alias → relative dir, e.g. "auth": "services/auth"
+	Input             string            `json:"input"`
+	Backend           string            `json:"backend"`
+	Frontend          string            `json:"frontend"`
+	Out               string            `json:"out"`
+	BackendDir        string            `json:"backendDir,omitempty"`        // path to backend project dir (for setup)
+	BackendDirectory  string            `json:"backendDirectory,omitempty"`  // alias for backendDir
+	FrontendDir       string            `json:"frontendDir,omitempty"`       // path to frontend project dir (for setup)
+	FrontendDirectory string            `json:"frontendDirectory,omitempty"` // alias for frontendDir
+	BaseUrl           string            `json:"baseUrl,omitempty"`           // baked into frontend SDK; empty = use env var
+	Aliases           map[string]string `json:"aliases,omitempty"`           // custom @alias → relative dir
+}
+
+// effectiveBackendDir returns the configured backend directory, preferring backendDir over backendDirectory.
+func (c RawConfig) effectiveBackendDir() string {
+	if c.BackendDir != "" {
+		return c.BackendDir
+	}
+	return c.BackendDirectory
+}
+
+// effectiveFrontendDir returns the configured frontend directory, preferring frontendDir over frontendDirectory.
+func (c RawConfig) effectiveFrontendDir() string {
+	if c.FrontendDir != "" {
+		return c.FrontendDir
+	}
+	return c.FrontendDirectory
 }
 
 // ResolvedConfig has all paths resolved to be absolute.
@@ -145,8 +163,8 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		Frontend:    cfg.Frontend,
 		Out:         filepath.Clean(filepath.Join(cfgDir, cfg.Out)),
 		ConfigDir:   cfgDir,
-		BackendDir:  resolveOptionalDir(cfgDir, cfg.BackendDir),
-		FrontendDir: resolveOptionalDir(cfgDir, cfg.FrontendDir),
+		BackendDir:  resolveOptionalDir(cfgDir, cfg.effectiveBackendDir()),
+		FrontendDir: resolveOptionalDir(cfgDir, cfg.effectiveFrontendDir()),
 		BaseUrl:     cfg.BaseUrl,
 		Aliases:     aliases,
 	}, nil

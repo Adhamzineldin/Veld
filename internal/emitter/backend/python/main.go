@@ -91,7 +91,7 @@ func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 //	├── interfaces/       ← ABC service interfaces
 //	└── routes/           ← Flask route registrations
 func (e *PythonEmitter) createDirs(outDir string) error {
-	for _, sub := range []string{"", "models", "interfaces", "routes"} {
+	for _, sub := range []string{"", "models", "interfaces", "middleware", "routes"} {
 		dir := filepath.Join(outDir, sub)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err

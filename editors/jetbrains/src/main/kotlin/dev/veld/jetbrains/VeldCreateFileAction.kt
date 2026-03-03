@@ -20,9 +20,11 @@ class VeldCreateFileAction : CreateFileFromTemplateAction(
         val icon = IconLoader.getIcon("/icons/veld_16.png", VeldCreateFileAction::class.java)
         builder
             .setTitle("New Veld File")
+            .addKind("App Entry Point", icon, "Veld App")
             .addKind("Model", icon, "Veld Model")
             .addKind("Module", icon, "Veld Module")
             .addKind("Enum", icon, "Veld Enum")
+            .addKind("Config (veld.config.json)", icon, "Veld Config")
     }
 
     override fun getActionName(directory: PsiDirectory, newName: String, templateName: String): String =

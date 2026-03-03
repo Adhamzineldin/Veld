@@ -166,6 +166,8 @@ func veldScalarToJava(t string, _ map[string]bool) string {
 		return "Double"
 	case "bool":
 		return "Boolean"
+	case "any", "json":
+		return "Object"
 	default:
 		return t // custom model/enum name
 	}

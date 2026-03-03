@@ -62,8 +62,17 @@ func (e *PhpEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) err
 			params = append(params, "array $query")
 		}
 
-		if act.Description != "" {
-			sb.WriteString(fmt.Sprintf("    /** %s */\n", act.Description))
+		hasDoc := act.Description != "" || len(act.Errors) > 0
+		if hasDoc {
+			sb.WriteString("    /**\n")
+			if act.Description != "" {
+				sb.WriteString(fmt.Sprintf("     * %s\n", act.Description))
+			}
+			for _, errName := range act.Errors {
+				code := emitter.ErrorCode(act.Name, errName)
+				sb.WriteString(fmt.Sprintf("     * @throws %sException %s — %s\n", capitalize(act.Name), code, errName))
+			}
+			sb.WriteString("     */\n")
 		}
 		sb.WriteString(fmt.Sprintf("    public function %s(%s): %s;\n\n",
 			phpCamelName(act.Name), strings.Join(params, ", "), returnType))

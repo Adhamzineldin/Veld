@@ -56,6 +56,7 @@ func (e *PythonEmitter) emitPerModuleTypes(a ast.AST, outDir string) error {
 		needsOptional := false
 		needsLiteral := len(ownedEnums) > 0
 		needsDict := false
+		needsAny := false
 		for _, m := range ownedModels {
 			for _, f := range m.Fields {
 				if f.IsArray {
@@ -67,6 +68,9 @@ func (e *PythonEmitter) emitPerModuleTypes(a ast.AST, outDir string) error {
 				if f.IsMap {
 					needsDict = true
 				}
+				if f.Type == "any" || f.Type == "json" || f.MapValueType == "any" || f.MapValueType == "json" {
+					needsAny = true
+				}
 			}
 		}
 
@@ -76,6 +80,9 @@ func (e *PythonEmitter) emitPerModuleTypes(a ast.AST, outDir string) error {
 
 		if len(ownedModels) > 0 || len(ownedEnums) > 0 {
 			typingImports := []string{"TypedDict"}
+			if needsAny {
+				typingImports = append(typingImports, "Any")
+			}
 			if needsList {
 				typingImports = append(typingImports, "List")
 			}
@@ -154,6 +161,8 @@ func veldScalarToPy(t string) string {
 		return "bool"
 	case "string", "date", "datetime", "uuid":
 		return "str"
+	case "any", "json":
+		return "Any"
 	default:
 		return t
 	}

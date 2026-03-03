@@ -23,6 +23,19 @@ export class VeldApiError extends Error {
   }
 }
 
+/** Type guard — narrows unknown catch value to VeldApiError. */
+export function isApiError(err: unknown): err is VeldApiError {
+  return err instanceof VeldApiError;
+}
+
+/**
+ * Check if an error matches a specific error code.
+ * Usage: if (isErrorCode(err, usersApi.errors.getUser.notFound)) { ... }
+ */
+export function isErrorCode(err: unknown, code: string): err is VeldApiError {
+  return err instanceof VeldApiError && err.code === code;
+}
+
 async function parseErrorResponse(res: Response): Promise<VeldApiError> {
   const text = await res.text();
   try {

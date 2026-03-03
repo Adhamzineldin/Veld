@@ -60,6 +60,10 @@ func (e *CSharpEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) 
 		if act.Description != "" {
 			sb.WriteString(fmt.Sprintf("    /// <summary>%s</summary>\n", act.Description))
 		}
+		for _, errName := range act.Errors {
+			code := emitter.ErrorCode(act.Name, errName)
+			sb.WriteString(fmt.Sprintf("    /// <exception cref=\"%sException\">%s — %s</exception>\n", csPascalName(act.Name), code, errName))
+		}
 		sb.WriteString(fmt.Sprintf("    %s %s(%s);\n\n", taskType, csPascalName(act.Name), strings.Join(params, ", ")))
 	}
 

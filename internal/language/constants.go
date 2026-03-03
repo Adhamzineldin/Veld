@@ -8,6 +8,8 @@ type VeldLanguageSpec struct {
 	BuiltinTypes []string `json:"builtinTypes"`
 	Directives   []string `json:"directives"`
 	SpecialTypes []string `json:"specialTypes"`
+	Annotations  []string `json:"annotations"`
+	ConfigKeys   []string `json:"configKeys"`
 	Version      string   `json:"version"`
 }
 
@@ -61,6 +63,28 @@ func GetLanguageSpec() *VeldLanguageSpec {
 		SpecialTypes: []string{
 			"List",
 			"Map",
+		},
+		Annotations: []string{
+			"default",
+			"unique",
+			"required",
+			"optional",
+			"index",
+			"primary",
+			"autoincrement",
+			"readonly",
+		},
+		ConfigKeys: []string{
+			"input",
+			"backend",
+			"frontend",
+			"out",
+			"backendDir",
+			"backendDirectory",
+			"frontendDir",
+			"frontendDirectory",
+			"baseUrl",
+			"aliases",
 		},
 	}
 }
