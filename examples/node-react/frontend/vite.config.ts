@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@veld': path.resolve(__dirname, '../generated'),
+      '@veld': path.resolve(__dirname, 'src/generated'),
     },
   },
   server: {

@@ -3,8 +3,12 @@
   "backend": "node",
   "frontend": "react",
   "out": "../generated",
-  "backendDirectory": "../backend",
-  "frontendDirectory": "../frontend"
-  
-          
+  "backendOut": "../backend/src/generated",
+  "frontendOut": "../frontend/src/generated",
+  "backendDir": "../backend",
+  "frontendDir": "../frontend",
+  "aliases": {
+    "models": "models",
+    "modules": "modules"
+  }
 }

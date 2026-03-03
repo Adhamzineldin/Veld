@@ -18,8 +18,10 @@ type Result struct {
 
 // Options carries optional directory overrides for setup.
 type Options struct {
-	BackendDir  string // directory containing backend project files (default: projectDir)
-	FrontendDir string // directory containing frontend project files (default: projectDir)
+	BackendDir     string // directory containing backend project files (default: projectDir)
+	FrontendDir    string // directory containing frontend project files (default: projectDir)
+	BackendOutDir  string // output dir for backend code (overrides outDir for backend)
+	FrontendOutDir string // output dir for frontend code (overrides outDir for frontend)
 }
 
 // Run inspects the project directory and patches config files for the given
@@ -42,19 +44,28 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 
 	var results []Result
 
-	// relOutFor returns outDir relative to the given base directory (slash-normalised).
-	relOutFor := func(baseDir string) string {
-		rel := outDir
-		if filepath.IsAbs(outDir) {
-			if r, err := filepath.Rel(baseDir, outDir); err == nil {
+	// relOutFor returns a dir relative to the given base directory (slash-normalised).
+	relOutFor := func(dir, baseDir string) string {
+		rel := dir
+		if filepath.IsAbs(dir) {
+			if r, err := filepath.Rel(baseDir, dir); err == nil {
 				rel = r
 			}
 		}
 		return filepath.ToSlash(rel)
 	}
 
-	relOutBackend := relOutFor(backendDir)
-	relOutFrontend := relOutFor(frontendDir)
+	backendOutDir := outDir
+	if o.BackendOutDir != "" {
+		backendOutDir = o.BackendOutDir
+	}
+	frontendOutDir := outDir
+	if o.FrontendOutDir != "" {
+		frontendOutDir = o.FrontendOutDir
+	}
+
+	relOutBackend := relOutFor(backendOutDir, backendDir)
+	relOutFrontend := relOutFor(frontendOutDir, frontendDir)
 
 	type patcher struct {
 		fn func() Result

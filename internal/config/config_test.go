@@ -372,3 +372,157 @@ func TestBackendDirPriorityOverDirectory(t *testing.T) {
 		t.Errorf("BackendDir = %q, want %q (backendDir should take priority)", rc.BackendDir, expected)
 	}
 }
+
+func TestSplitOutputDirs(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "veld")
+	os.MkdirAll(cfgDir, 0755)
+
+	cfg := `{
+		"input": "app.veld",
+		"backend": "node",
+		"frontend": "react",
+		"out": "../generated",
+		"backendOut": "../backend/src/generated",
+		"frontendOut": "../frontend/src/generated"
+	}`
+	os.WriteFile(filepath.Join(cfgDir, "veld.config.json"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(cfgDir, "app.veld"), []byte(""), 0644)
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Out should still be set (fallback)
+	expectedOut := filepath.Clean(filepath.Join(dir, "generated"))
+	if rc.Out != expectedOut {
+		t.Errorf("Out = %q, want %q", rc.Out, expectedOut)
+	}
+
+	// BackendOut should resolve to backend/src/generated
+	expectedBE := filepath.Clean(filepath.Join(dir, "backend", "src", "generated"))
+	if rc.BackendOut != expectedBE {
+		t.Errorf("BackendOut = %q, want %q", rc.BackendOut, expectedBE)
+	}
+
+	// FrontendOut should resolve to frontend/src/generated
+	expectedFE := filepath.Clean(filepath.Join(dir, "frontend", "src", "generated"))
+	if rc.FrontendOut != expectedFE {
+		t.Errorf("FrontendOut = %q, want %q", rc.FrontendOut, expectedFE)
+	}
+
+	// SplitOutput should be true
+	if !rc.SplitOutput() {
+		t.Error("SplitOutput() should be true when backendOut != frontendOut")
+	}
+
+	// OutputDirs should return 2 dirs
+	dirs := rc.OutputDirs()
+	if len(dirs) != 2 {
+		t.Errorf("OutputDirs() returned %d dirs, want 2", len(dirs))
+	}
+}
+
+func TestSplitOutputFallsBackToOut(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "veld")
+	os.MkdirAll(cfgDir, 0755)
+
+	// No backendOut/frontendOut — should fall back to "out"
+	cfg := `{
+		"input": "app.veld",
+		"out": "../generated"
+	}`
+	os.WriteFile(filepath.Join(cfgDir, "veld.config.json"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(cfgDir, "app.veld"), []byte(""), 0644)
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if rc.BackendOut != rc.Out {
+		t.Errorf("BackendOut = %q, should equal Out %q when not set", rc.BackendOut, rc.Out)
+	}
+	if rc.FrontendOut != rc.Out {
+		t.Errorf("FrontendOut = %q, should equal Out %q when not set", rc.FrontendOut, rc.Out)
+	}
+	if rc.SplitOutput() {
+		t.Error("SplitOutput() should be false when backendOut/frontendOut not set")
+	}
+
+	dirs := rc.OutputDirs()
+	if len(dirs) != 1 {
+		t.Errorf("OutputDirs() returned %d dirs, want 1", len(dirs))
+	}
+}
+
+func TestSplitOutputFlagOverrides(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "veld")
+	os.MkdirAll(cfgDir, 0755)
+
+	cfg := `{
+		"input": "app.veld",
+		"out": "../generated"
+	}`
+	os.WriteFile(filepath.Join(cfgDir, "veld.config.json"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(cfgDir, "app.veld"), []byte(""), 0644)
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{
+		BackendOut:     "../be-out",
+		BackendOutSet:  true,
+		FrontendOut:    "../fe-out",
+		FrontendOutSet: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expectedBE := filepath.Clean(filepath.Join(cfgDir, "../be-out"))
+	if rc.BackendOut != expectedBE {
+		t.Errorf("BackendOut = %q, want %q", rc.BackendOut, expectedBE)
+	}
+	expectedFE := filepath.Clean(filepath.Join(cfgDir, "../fe-out"))
+	if rc.FrontendOut != expectedFE {
+		t.Errorf("FrontendOut = %q, want %q", rc.FrontendOut, expectedFE)
+	}
+}
+
+func TestSplitOutputPathValidation(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "veld")
+	os.MkdirAll(cfgDir, 0755)
+
+	cfg := `{
+		"input": "app.veld",
+		"backendOut": ".."
+	}`
+	os.WriteFile(filepath.Join(cfgDir, "veld.config.json"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(cfgDir, "app.veld"), []byte(""), 0644)
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	_, err := BuildResolved(FlagOverrides{})
+	if err == nil {
+		t.Fatal("expected error for backendOut path '..'")
+	}
+	if !strings.Contains(err.Error(), "backendOut") {
+		t.Errorf("error should mention 'backendOut', got: %v", err)
+	}
+}

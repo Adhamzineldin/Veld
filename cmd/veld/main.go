@@ -159,7 +159,7 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 	if err != nil {
 		return nil, veldFiles, err
 	}
-	if err := backend.Emit(emitAST, rc.Out, opts); err != nil {
+	if err := backend.Emit(emitAST, rc.BackendOut, opts); err != nil {
 		return nil, veldFiles, fmt.Errorf("%s emitter: %w", rc.Backend, err)
 	}
 
@@ -180,14 +180,16 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 				}
 			}
 		}
-		if err := frontend.Emit(frontendAST, rc.Out, opts); err != nil {
+		if err := frontend.Emit(frontendAST, rc.FrontendOut, opts); err != nil {
 			return nil, veldFiles, fmt.Errorf("%s emitter: %w", rc.Frontend, err)
 		}
 	}
 
 	// ── generated/README.md ──────────────────────────────────────────────
 	if !opts.DryRun {
-		writeGeneratedReadme(rc.Out, emitAST)
+		for _, dir := range rc.OutputDirs() {
+			writeGeneratedReadme(dir, emitAST)
+		}
 	}
 
 	// ── update cache ─────────────────────────────────────────────────────
@@ -211,14 +213,23 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 // printGenerateSummary prints a detailed breakdown of generated files
 // by delegating to each emitter's Summary method.
 func printGenerateSummary(rc config.ResolvedConfig, modules []string) {
-	relOut := rc.Out
-	if cwd, err := os.Getwd(); err == nil {
-		if r, err := filepath.Rel(cwd, rc.Out); err == nil {
-			relOut = "./" + filepath.ToSlash(r)
+	relPath := func(absDir string) string {
+		rel := absDir
+		if cwd, err := os.Getwd(); err == nil {
+			if r, err := filepath.Rel(cwd, absDir); err == nil {
+				rel = "./" + filepath.ToSlash(r)
+			}
 		}
+		return rel
 	}
 
-	fmt.Println(green("✓") + " Generated → " + bold(relOut))
+	if rc.SplitOutput() {
+		fmt.Println(green("✓") + " Generated:")
+		fmt.Println("    backend  → " + bold(relPath(rc.BackendOut)))
+		fmt.Println("    frontend → " + bold(relPath(rc.FrontendOut)))
+	} else {
+		fmt.Println(green("✓") + " Generated → " + bold(relPath(rc.Out)))
+	}
 
 	// Backend summary
 	if be, err := emitter.GetBackend(rc.Backend); err == nil {
@@ -249,13 +260,18 @@ func printImportInstructions(rc config.ResolvedConfig) {
 		return
 	}
 
-	// ── Relative output path for display ─────────────────────────────────
-	relOut := rc.Out
-	if cwd, err := os.Getwd(); err == nil {
-		if r, err := filepath.Rel(cwd, rc.Out); err == nil {
-			relOut = filepath.ToSlash(r)
+	// ── Relative output paths for display ────────────────────────────────
+	toRel := func(absDir string) string {
+		rel := absDir
+		if cwd, err := os.Getwd(); err == nil {
+			if r, err := filepath.Rel(cwd, absDir); err == nil {
+				rel = filepath.ToSlash(r)
+			}
 		}
+		return rel
 	}
+	relBackendOut := toRel(rc.BackendOut)
+	relFrontendOut := toRel(rc.FrontendOut)
 
 	fmt.Println()
 	fmt.Println(dim("  Import instructions:"))
@@ -267,39 +283,39 @@ func printImportInstructions(rc config.ResolvedConfig) {
 
 		switch be {
 		case "node":
-			fmt.Println(dim("    Setup:") + ` add to tsconfig.json → "paths": { "@veld/*": ["./` + relOut + `/*"] }`)
+			fmt.Println(dim("    Setup:") + ` add to tsconfig.json → "paths": { "@veld/*": ["./` + relBackendOut + `/*"] }`)
 			fmt.Println(dim("    Types:    ") + ` import { User } from '@veld/types';`)
 			fmt.Println(dim("    Routes:   ") + ` import { usersRoutes } from '@veld/routes/users.routes';`)
 			fmt.Println(dim("    Interfaces:") + ` import { IUsersService } from '@veld/interfaces/IUsersService';`)
 		case "python":
-			pkgName := filepath.Base(relOut)
+			pkgName := filepath.Base(relBackendOut)
 			fmt.Println(dim("    Setup:") + ` run ` + bold("veld setup") + ` then ` + bold("pip install -e ."))
 			fmt.Println(dim("    Models:    ") + ` from ` + pkgName + `.models import User`)
 			fmt.Println(dim("    Routes:    ") + ` from ` + pkgName + `.routes.users_routes import register_users_routes`)
 			fmt.Println(dim("    Interfaces:") + ` from ` + pkgName + `.interfaces.i_users_service import IUsersService`)
 			fmt.Println(dim("    Schemas:   ") + ` from ` + pkgName + `.schemas.schemas import UserSchema`)
 		case "go":
-			fmt.Println(dim("    Setup:") + ` add to go.mod → replace veld/generated => ./` + relOut)
+			fmt.Println(dim("    Setup:") + ` add to go.mod → replace veld/generated => ./` + relBackendOut)
 			fmt.Println(dim("    Types:    ") + ` import "veld/generated/internal/models"`)
 			fmt.Println(dim("    Routes:   ") + ` import "veld/generated/internal/routes"`)
 			fmt.Println(dim("    Interfaces:") + ` import "veld/generated/internal/interfaces"`)
 		case "rust":
-			fmt.Println(dim("    Setup:") + ` add to Cargo.toml [workspace] → members = ["` + relOut + `"]`)
+			fmt.Println(dim("    Setup:") + ` add to Cargo.toml [workspace] → members = ["` + relBackendOut + `"]`)
 			fmt.Println(dim("    Types:    ") + ` use veld_generated::models::User;`)
 			fmt.Println(dim("    Routes:   ") + ` use veld_generated::routes;`)
 			fmt.Println(dim("    Interfaces:") + ` use veld_generated::services::IUsersService;`)
 		case "java":
-			fmt.Println(dim("    Setup:") + ` add to pom.xml → <module>` + relOut + `</module>`)
+			fmt.Println(dim("    Setup:") + ` add to pom.xml → <module>` + relBackendOut + `</module>`)
 			fmt.Println(dim("    Types:    ") + ` import veld.generated.models.User;`)
 			fmt.Println(dim("    Routes:   ") + ` import veld.generated.controllers.UsersController;`)
 			fmt.Println(dim("    Interfaces:") + ` import veld.generated.services.IUsersService;`)
 		case "csharp":
-			fmt.Println(dim("    Setup:") + ` add ProjectReference → ` + relOut + `/` + relOut + `.csproj`)
+			fmt.Println(dim("    Setup:") + ` add ProjectReference → ` + relBackendOut + `/` + relBackendOut + `.csproj`)
 			fmt.Println(dim("    Types:    ") + ` using Veld.Generated.Models;`)
 			fmt.Println(dim("    Routes:   ") + ` using Veld.Generated.Controllers;`)
 			fmt.Println(dim("    Interfaces:") + ` using Veld.Generated.Services;`)
 		case "php":
-			fmt.Println(dim("    Setup:") + ` add to composer.json → "Veld\\Generated\\": "` + relOut + `/"`)
+			fmt.Println(dim("    Setup:") + ` add to composer.json → "Veld\\Generated\\": "` + relBackendOut + `/"`)
 			fmt.Println(dim("    Types:    ") + ` use Veld\Generated\Models\User;`)
 			fmt.Println(dim("    Routes:   ") + ` // routes/api.php is auto-registered`)
 			fmt.Println(dim("    Interfaces:") + ` use Veld\Generated\Services\IUsersService;`)
@@ -313,7 +329,7 @@ func printImportInstructions(rc config.ResolvedConfig) {
 
 		switch fe {
 		case "typescript", "react", "vue", "angular", "svelte":
-			fmt.Println(dim("    Setup:") + ` add to tsconfig.json → "paths": { "@veld/*": ["./` + relOut + `/*"] }`)
+			fmt.Println(dim("    Setup:") + ` add to tsconfig.json → "paths": { "@veld/*": ["./` + relFrontendOut + `/*"] }`)
 		}
 
 		switch fe {
@@ -332,7 +348,7 @@ func printImportInstructions(rc config.ResolvedConfig) {
 			fmt.Println(dim("    Client:") + ` import { api } from '@veld/client/api';`)
 			fmt.Println(dim("    Stores: ") + ` import { createUsersStore } from '@veld/stores';`)
 		case "dart", "flutter":
-			fmt.Println(dim("    Setup:") + ` add to pubspec.yaml → veld_client: { path: ./` + relOut + `/client }`)
+			fmt.Println(dim("    Setup:") + ` add to pubspec.yaml → veld_client: { path: ./` + relFrontendOut + `/client }`)
 			fmt.Println(dim("    Then: ") + ` import 'package:veld_client/api_client.dart';`)
 		case "kotlin":
 			fmt.Println(dim("    Setup:") + ` add to settings.gradle.kts → include(":veld-client")`)
@@ -421,7 +437,12 @@ func newSetupCmd() *cobra.Command {
 				opts.FrontendDir = rc.FrontendDir
 			}
 
-			results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out, opts)
+			results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out, setup.Options{
+				BackendDir:     opts.BackendDir,
+				FrontendDir:    opts.FrontendDir,
+				BackendOutDir:  rc.BackendOut,
+				FrontendOutDir: rc.FrontendOut,
+			})
 			if len(results) == 0 {
 				fmt.Println(dim("  No config files to patch for this stack"))
 				return nil
@@ -598,6 +619,9 @@ func newGenerateCmd() *cobra.Command {
 			if incrementalFlag {
 				if regenerated == nil {
 					fmt.Println(green("✓") + " Nothing changed")
+				} else if rc.SplitOutput() {
+					fmt.Printf(green("✓")+" Regenerated %s → backend: %s, frontend: %s\n",
+						strings.Join(regenerated, ", "), rc.BackendOut, rc.FrontendOut)
 				} else {
 					fmt.Printf(green("✓")+" Regenerated %s → %s\n",
 						strings.Join(regenerated, ", "), rc.Out)
@@ -611,8 +635,10 @@ func newGenerateCmd() *cobra.Command {
 			if setupFlag {
 				projectDir, _ := os.Getwd()
 				setupOpts := setup.Options{
-					BackendDir:  rc.BackendDir,
-					FrontendDir: rc.FrontendDir,
+					BackendDir:     rc.BackendDir,
+					FrontendDir:    rc.FrontendDir,
+					BackendOutDir:  rc.BackendOut,
+					FrontendOutDir: rc.FrontendOut,
 				}
 				results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out, setupOpts)
 				printSetupResults(results)
@@ -670,6 +696,9 @@ func newWatchCmd() *cobra.Command {
 			regenerated, initFiles, genErr := runGenerate(rc, false, opts)
 			if genErr != nil {
 				fmt.Fprintln(os.Stderr, red("error: ")+genErr.Error())
+			} else if rc.SplitOutput() {
+				fmt.Printf(green("✓")+" Ready (%d module(s)) → backend: %s, frontend: %s\n",
+					len(regenerated), rc.BackendOut, rc.FrontendOut)
 			} else {
 				fmt.Printf(green("✓")+" Ready (%d module(s)) → %s\n", len(regenerated), rc.Out)
 			}
@@ -773,17 +802,26 @@ func newCleanCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, statErr := os.Stat(rc.Out); os.IsNotExist(statErr) {
-				fmt.Println(green("✓") + " Nothing to clean — output directory does not exist")
-				return nil
+
+			cleaned := false
+			for _, dir := range rc.OutputDirs() {
+				if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
+					continue
+				}
+				if err := os.RemoveAll(dir); err != nil {
+					return fmt.Errorf("failed to remove %s: %w", dir, err)
+				}
+				fmt.Println(green("✓") + " Cleaned " + bold(dir))
+				cleaned = true
 			}
-			if err := os.RemoveAll(rc.Out); err != nil {
-				return fmt.Errorf("failed to remove %s: %w", rc.Out, err)
-			}
+
 			// Also remove cache.
 			cacheFile := filepath.Join(rc.ConfigDir, ".veld-cache.json")
 			os.Remove(cacheFile)
-			fmt.Println(green("✓") + " Cleaned " + bold(rc.Out))
+
+			if !cleaned {
+				fmt.Println(green("✓") + " Nothing to clean — output directory does not exist")
+			}
 			return nil
 		},
 	}
@@ -1313,12 +1351,21 @@ func newDiffCmd() *cobra.Command {
 				return err
 			}
 
-			// Generate to temp dir
-			tmpDir, err := os.MkdirTemp("", "veld-diff-*")
+			// Generate to temp dir(s)
+			tmpBackendDir, err := os.MkdirTemp("", "veld-diff-be-*")
 			if err != nil {
 				return err
 			}
-			defer os.RemoveAll(tmpDir)
+			defer os.RemoveAll(tmpBackendDir)
+
+			tmpFrontendDir := tmpBackendDir
+			if rc.SplitOutput() {
+				tmpFrontendDir, err = os.MkdirTemp("", "veld-diff-fe-*")
+				if err != nil {
+					return err
+				}
+				defer os.RemoveAll(tmpFrontendDir)
+			}
 
 			a, _, err := loader.Parse(rc.Input, rc.Aliases)
 			if err != nil {
@@ -1336,7 +1383,7 @@ func newDiffCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := backend.Emit(a, tmpDir, opts); err != nil {
+			if err := backend.Emit(a, tmpBackendDir, opts); err != nil {
 				return err
 			}
 			frontend, err := emitter.GetFrontend(rc.Frontend)
@@ -1344,7 +1391,7 @@ func newDiffCmd() *cobra.Command {
 				return err
 			}
 			if frontend != nil {
-				if err := frontend.Emit(a, tmpDir, opts); err != nil {
+				if err := frontend.Emit(a, tmpFrontendDir, opts); err != nil {
 					return err
 				}
 			}
@@ -1353,49 +1400,60 @@ func newDiffCmd() *cobra.Command {
 			added, removed, modified := 0, 0, 0
 			var diffs []string
 
-			// Walk temp dir for new/modified files
-			filepath.Walk(tmpDir, func(path string, info os.FileInfo, err error) error {
-				if err != nil || info.IsDir() {
-					return nil
-				}
-				relPath, _ := filepath.Rel(tmpDir, path)
-				existingPath := filepath.Join(rc.Out, relPath)
-
-				newData, _ := os.ReadFile(path)
-				existData, readErr := os.ReadFile(existingPath)
-
-				if os.IsNotExist(readErr) {
-					added++
-					diffs = append(diffs, green("+ ")+relPath+" (new)")
-				} else if string(newData) != string(existData) {
-					modified++
-					if !statOnly {
-						diffs = append(diffs, yellow("~ ")+relPath+" (modified)")
-						// Show simple unified diff
-						oldLines := strings.Split(string(existData), "\n")
-						newLines := strings.Split(string(newData), "\n")
-						diffs = append(diffs, simpleDiff(oldLines, newLines, relPath)...)
-					} else {
-						diffs = append(diffs, yellow("~ ")+relPath)
-					}
-				}
-				return nil
-			})
-
-			// Walk existing dir for removed files
-			if _, statErr := os.Stat(rc.Out); statErr == nil {
-				filepath.Walk(rc.Out, func(path string, info os.FileInfo, err error) error {
+			// diffDir compares a tmpDir against an existing outDir
+			diffDir := func(tmpDir, outDir string) {
+				// Walk temp dir for new/modified files
+				filepath.Walk(tmpDir, func(path string, info os.FileInfo, err error) error {
 					if err != nil || info.IsDir() {
 						return nil
 					}
-					relPath, _ := filepath.Rel(rc.Out, path)
-					tmpPath := filepath.Join(tmpDir, relPath)
-					if _, statErr := os.Stat(tmpPath); os.IsNotExist(statErr) {
-						removed++
-						diffs = append(diffs, red("- ")+relPath+" (removed)")
+					relPath, _ := filepath.Rel(tmpDir, path)
+					existingPath := filepath.Join(outDir, relPath)
+
+					newData, _ := os.ReadFile(path)
+					existData, readErr := os.ReadFile(existingPath)
+
+					if os.IsNotExist(readErr) {
+						added++
+						diffs = append(diffs, green("+ ")+relPath+" (new)")
+					} else if string(newData) != string(existData) {
+						modified++
+						if !statOnly {
+							diffs = append(diffs, yellow("~ ")+relPath+" (modified)")
+							oldLines := strings.Split(string(existData), "\n")
+							newLines := strings.Split(string(newData), "\n")
+							diffs = append(diffs, simpleDiff(oldLines, newLines, relPath)...)
+						} else {
+							diffs = append(diffs, yellow("~ ")+relPath)
+						}
 					}
 					return nil
 				})
+
+				// Walk existing dir for removed files
+				if _, statErr := os.Stat(outDir); statErr == nil {
+					filepath.Walk(outDir, func(path string, info os.FileInfo, err error) error {
+						if err != nil || info.IsDir() {
+							return nil
+						}
+						relPath, _ := filepath.Rel(outDir, path)
+						tmpPath := filepath.Join(tmpDir, relPath)
+						if _, statErr := os.Stat(tmpPath); os.IsNotExist(statErr) {
+							removed++
+							diffs = append(diffs, red("- ")+relPath+" (removed)")
+						}
+						return nil
+					})
+				}
+			}
+
+			if rc.SplitOutput() {
+				fmt.Println(dim("  Backend output: ") + bold(rc.BackendOut))
+				diffDir(tmpBackendDir, rc.BackendOut)
+				fmt.Println(dim("  Frontend output: ") + bold(rc.FrontendOut))
+				diffDir(tmpFrontendDir, rc.FrontendOut)
+			} else {
+				diffDir(tmpBackendDir, rc.Out)
 			}
 
 			if added == 0 && removed == 0 && modified == 0 {
@@ -2084,6 +2142,8 @@ func runInit() error {
 			cfgDir, _ := filepath.Abs("veld")
 			relBackend := ""
 			relFrontend := ""
+			relBackendOut := ""
+			relFrontendOut := ""
 			if backendDirPath != "" {
 				if r, err := filepath.Rel(cfgDir, backendDirPath); err == nil {
 					relBackend = filepath.ToSlash(r)
@@ -2099,11 +2159,36 @@ func runInit() error {
 				}
 			}
 
+			// When backend and frontend are in different directories, auto-set
+			// backendOut / frontendOut so generated code lands inside each project.
+			if backendDirPath != "" && frontendDirPath != "" && backendDirPath != frontendDirPath {
+				genName := "generated"
+				if selectedBackend == "python" {
+					genName = "veld_gen"
+				}
+				relBackendOut = relBackend + "/src/" + genName
+				relFrontendOut = relFrontend + "/src/" + genName
+
+				fmt.Println()
+				fmt.Println(dim("  Split output detected:"))
+				fmt.Printf("    backend output:  %s\n", bold(relBackendOut))
+				fmt.Printf("    frontend output: %s\n", bold(relFrontendOut))
+			}
+
+			backendOutLine := ""
+			frontendOutLine := ""
+			if relBackendOut != "" {
+				backendOutLine = fmt.Sprintf("\n  \"backendOut\": \"%s\",", relBackendOut)
+			}
+			if relFrontendOut != "" {
+				frontendOutLine = fmt.Sprintf("\n  \"frontendOut\": \"%s\",", relFrontendOut)
+			}
+
 			updatedCfg := fmt.Sprintf(`{
   "input": "app.veld",
   "backend": "%s",
   "frontend": "%s",
-  "out": "%s",
+  "out": "%s",%s%s
   "backendDir": "%s",
   "frontendDir": "%s",
   "aliases": {
@@ -2111,7 +2196,7 @@ func runInit() error {
     "modules": "modules"
   }
 }
-`, selectedBackend, selectedFrontend, defaultOut, relBackend, relFrontend)
+`, selectedBackend, selectedFrontend, defaultOut, backendOutLine, frontendOutLine, relBackend, relFrontend)
 			_ = os.WriteFile("veld/veld.config.json", []byte(updatedCfg), 0644)
 			fmt.Println("  " + green("✓") + " updated veld.config.json with project paths")
 		}
@@ -2121,6 +2206,15 @@ func runInit() error {
 		setupOpts := setup.Options{
 			BackendDir:  backendDirPath,
 			FrontendDir: frontendDirPath,
+		}
+		// If split output was detected, compute absolute paths for setup
+		if backendDirPath != "" && frontendDirPath != "" && backendDirPath != frontendDirPath {
+			genName := "generated"
+			if selectedBackend == "python" {
+				genName = "veld_gen"
+			}
+			setupOpts.BackendOutDir = filepath.Join(backendDirPath, "src", genName)
+			setupOpts.FrontendOutDir = filepath.Join(frontendDirPath, "src", genName)
 		}
 		results := setup.Run(projectDir, selectedBackend, selectedFrontend, defaultOut, setupOpts)
 		if len(results) > 0 {

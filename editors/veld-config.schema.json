@@ -22,6 +22,14 @@
       "type": "string",
       "description": "Output directory for generated code (e.g. \"../generated\")"
     },
+    "backendOut": {
+      "type": "string",
+      "description": "Output directory for backend generated code. Overrides 'out' for backend emitter. Use when backend and frontend are separate projects (e.g. \"../backend/src/generated\")"
+    },
+    "frontendOut": {
+      "type": "string",
+      "description": "Output directory for frontend generated code. Overrides 'out' for frontend emitter. Use when backend and frontend are separate projects (e.g. \"../frontend/src/generated\")"
+    },
     "backendDir": {
       "type": "string",
       "description": "Path to backend project directory — used by setup to patch tsconfig, go.mod, etc."

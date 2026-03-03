@@ -13,6 +13,8 @@ type RawConfig struct {
 	Backend           string            `json:"backend"`
 	Frontend          string            `json:"frontend"`
 	Out               string            `json:"out"`
+	BackendOut        string            `json:"backendOut,omitempty"`        // separate output dir for backend code
+	FrontendOut       string            `json:"frontendOut,omitempty"`       // separate output dir for frontend code
 	BackendDir        string            `json:"backendDir,omitempty"`        // path to backend project dir (for setup)
 	BackendDirectory  string            `json:"backendDirectory,omitempty"`  // alias for backendDir
 	FrontendDir       string            `json:"frontendDir,omitempty"`       // path to frontend project dir (for setup)
@@ -42,7 +44,9 @@ type ResolvedConfig struct {
 	Input       string
 	Backend     string
 	Frontend    string
-	Out         string
+	Out         string            // legacy single output dir (always set for backward compat)
+	BackendOut  string            // output dir for backend code (defaults to Out)
+	FrontendOut string            // output dir for frontend code (defaults to Out)
 	ConfigDir   string            // absolute dir of veld.config.json; used for cache storage
 	BackendDir  string            // absolute path to backend project dir (empty = projectDir)
 	FrontendDir string            // absolute path to frontend project dir (empty = projectDir)
@@ -53,15 +57,19 @@ type ResolvedConfig struct {
 // FlagOverrides carries CLI flag values that override config-file settings.
 // A zero-value string means "not set by the user".
 type FlagOverrides struct {
-	Backend  string
-	Frontend string
-	Input    string
-	Out      string
+	Backend     string
+	Frontend    string
+	Input       string
+	Out         string
+	BackendOut  string
+	FrontendOut string
 	// Changed tracks which flags were explicitly passed.
-	BackendSet  bool
-	FrontendSet bool
-	InputSet    bool
-	OutSet      bool
+	BackendSet     bool
+	FrontendSet    bool
+	InputSet       bool
+	OutSet         bool
+	BackendOutSet  bool
+	FrontendOutSet bool
 }
 
 // frontendAlias normalises legacy frontend names.
@@ -125,6 +133,12 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 	if flags.OutSet {
 		cfg.Out = flags.Out
 	}
+	if flags.BackendOutSet {
+		cfg.BackendOut = flags.BackendOut
+	}
+	if flags.FrontendOutSet {
+		cfg.FrontendOut = flags.FrontendOut
+	}
 
 	if cfg.Backend == "" {
 		cfg.Backend = "node"
@@ -139,12 +153,29 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 	}
 
 	// Validate out path — must end with a named directory, not just ".." or "/"
-	outBase := filepath.Base(filepath.Clean(cfg.Out))
-	if outBase == ".." || outBase == "." || outBase == "/" || outBase == string(filepath.Separator) {
-		return ResolvedConfig{}, fmt.Errorf(
-			"invalid out path %q: must end with a folder name (e.g. \"../generated\", not \"..\")",
-			cfg.Out,
-		)
+	validateOutPath := func(p, label string) error {
+		base := filepath.Base(filepath.Clean(p))
+		if base == ".." || base == "." || base == "/" || base == string(filepath.Separator) {
+			return fmt.Errorf(
+				"invalid %s path %q: must end with a folder name (e.g. \"../generated\", not \"..\")",
+				label, p,
+			)
+		}
+		return nil
+	}
+
+	if err := validateOutPath(cfg.Out, "out"); err != nil {
+		return ResolvedConfig{}, err
+	}
+	if cfg.BackendOut != "" {
+		if err := validateOutPath(cfg.BackendOut, "backendOut"); err != nil {
+			return ResolvedConfig{}, err
+		}
+	}
+	if cfg.FrontendOut != "" {
+		if err := validateOutPath(cfg.FrontendOut, "frontendOut"); err != nil {
+			return ResolvedConfig{}, err
+		}
 	}
 
 	if cfg.Input == "" {
@@ -157,17 +188,44 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		aliases[k] = v
 	}
 
+	resolvedOut := filepath.Clean(filepath.Join(cfgDir, cfg.Out))
+
+	// BackendOut / FrontendOut: if set, resolve relative to cfgDir; otherwise fall back to Out
+	resolvedBackendOut := resolvedOut
+	if cfg.BackendOut != "" {
+		resolvedBackendOut = filepath.Clean(filepath.Join(cfgDir, cfg.BackendOut))
+	}
+	resolvedFrontendOut := resolvedOut
+	if cfg.FrontendOut != "" {
+		resolvedFrontendOut = filepath.Clean(filepath.Join(cfgDir, cfg.FrontendOut))
+	}
+
 	return ResolvedConfig{
 		Input:       filepath.Clean(filepath.Join(cfgDir, cfg.Input)),
 		Backend:     cfg.Backend,
 		Frontend:    cfg.Frontend,
-		Out:         filepath.Clean(filepath.Join(cfgDir, cfg.Out)),
+		Out:         resolvedOut,
+		BackendOut:  resolvedBackendOut,
+		FrontendOut: resolvedFrontendOut,
 		ConfigDir:   cfgDir,
 		BackendDir:  resolveOptionalDir(cfgDir, cfg.effectiveBackendDir()),
 		FrontendDir: resolveOptionalDir(cfgDir, cfg.effectiveFrontendDir()),
 		BaseUrl:     cfg.BaseUrl,
 		Aliases:     aliases,
 	}, nil
+}
+
+// SplitOutput returns true when backend and frontend have different output directories.
+func (rc ResolvedConfig) SplitOutput() bool {
+	return rc.BackendOut != rc.FrontendOut
+}
+
+// OutputDirs returns the unique set of output directories (1 if same, 2 if split).
+func (rc ResolvedConfig) OutputDirs() []string {
+	if rc.SplitOutput() {
+		return []string{rc.BackendOut, rc.FrontendOut}
+	}
+	return []string{rc.Out}
 }
 
 // resolveOptionalDir resolves a dir path relative to base. Returns "" if dir is empty.
