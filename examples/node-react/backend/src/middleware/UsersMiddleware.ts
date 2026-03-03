@@ -1,4 +1,4 @@
-import {IUsersMiddleware} from "@veld/middleware/IUsersMiddleware";
+import {IUsersMiddleware} from "@veld/generated/middleware/IUsersMiddleware";
 
 
 export class UsersMiddleware implements IUsersMiddleware {

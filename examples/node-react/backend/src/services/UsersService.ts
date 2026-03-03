@@ -1,6 +1,6 @@
-import { IUsersService } from "@veld/interfaces/IUsersService";
-import { User, CreateUserInput } from "@veld/types/users";
-import { usersErrors } from "@veld/errors/users.errors";
+import { IUsersService } from "@veld/generated/interfaces/IUsersService";
+import { User, CreateUserInput } from "@veld/generated/types/users";
+import { usersErrors } from "@veld/generated/errors/users.errors";
 import { randomUUID } from "crypto";
 
 const store: User[] = [

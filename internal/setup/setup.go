@@ -76,6 +76,11 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 
 	switch backend {
 	case "node":
+		// Primary: add file: dependency for real package resolution (Prisma-style).
+		backendPatchers = append(backendPatchers, patcher{func() Result {
+			return patchNodePackageJSON(backendDir, relOutBackend, "@veld/generated")
+		}})
+		// Fallback: also patch tsconfig for TypeScript path resolution and IDE support.
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchTSConfig(backendDir, relOutBackend) }})
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchViteConfig(backendDir, relOutBackend) }})
 	case "python":
@@ -95,8 +100,49 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 	// ── Frontend patchers (run against frontendDir) ──────────────────────
 	var frontendPatchers []patcher
 
+	// frontendPkgName returns the correct @veld/* package name for each frontend SDK.
+	frontendPkgName := func() string {
+		switch frontend {
+		case "react":
+			return "@veld/hooks"
+		case "vue":
+			return "@veld/composables"
+		case "svelte":
+			return "@veld/stores"
+		case "angular":
+			return "@veld/services"
+		default:
+			return "@veld/client"
+		}
+	}
+
+	// frontendSubdir returns the client/ sub-package path within the generated output.
+	frontendSubdir := func() string {
+		switch frontend {
+		case "react":
+			return "hooks"
+		case "vue":
+			return "composables"
+		case "svelte":
+			return "stores"
+		case "angular":
+			return "services"
+		default:
+			return "client"
+		}
+	}
+
 	switch frontend {
 	case "typescript", "react", "vue", "angular", "svelte":
+		// Primary: add file: dependencies for both the root generated package and the frontend sub-package.
+		frontendPatchers = append(frontendPatchers, patcher{func() Result {
+			return patchNodePackageJSON(frontendDir, relOutFrontend, "@veld/generated")
+		}})
+		frontendPatchers = append(frontendPatchers, patcher{func() Result {
+			subDir := relOutFrontend + "/" + frontendSubdir()
+			return patchNodePackageJSON(frontendDir, subDir, frontendPkgName())
+		}})
+		// Fallback: also patch tsconfig for TypeScript path resolution and IDE support.
 		frontendPatchers = append(frontendPatchers, patcher{func() Result { return patchTSConfig(frontendDir, relOutFrontend) }})
 		frontendPatchers = append(frontendPatchers, patcher{func() Result { return patchViteConfig(frontendDir, relOutFrontend) }})
 	case "dart", "flutter":
@@ -115,14 +161,15 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 
 	// If backend and frontend resolve to the same directory AND the same
 	// config file type (e.g. both "node" backend + "react" frontend both
-	// need tsconfig.json), skip the frontend patcher to avoid double-patching.
+	// need package.json + tsconfig.json), we still run the frontend sub-package
+	// patcher but skip duplicate root-level patches.
 	skipFrontend := false
-	if backendDir == frontendDir {
+	if backendDir == frontendDir && backendOutDir == frontendOutDir {
 		switch backend {
 		case "node":
 			switch frontend {
 			case "typescript", "react", "vue", "angular", "svelte":
-				skipFrontend = true // same tsconfig.json — backend patcher already covers it
+				skipFrontend = true // same package.json + tsconfig — backend patcher already covers root
 			}
 		}
 	}
@@ -399,6 +446,96 @@ func patchViteConfig(dir, outDir string) Result {
 	}
 
 	return Result{File: filename, Action: "manual", Detail: "add resolve.alias: { '@veld': path.resolve(__dirname, '" + outDir + "') }"}
+}
+
+// patchNodePackageJSON adds a file: dependency to the project's package.json
+// so that @veld/* packages are real installable local packages (like Prisma).
+// This eliminates the need for tsconfig path aliases and works natively with
+// node, ts-node, jest, vite, webpack, and all other Node.js tools.
+//
+// Example: adds `"@veld/generated": "file:./generated"` to dependencies.
+func patchNodePackageJSON(dir, outDir, pkgName string) Result {
+	pkgPath := findFile(dir, "package.json")
+	if pkgPath == "" {
+		return Result{File: "package.json", Action: "not-found", Detail: "create a package.json first (npm init)"}
+	}
+
+	data, err := os.ReadFile(pkgPath)
+	if err != nil {
+		return Result{File: "package.json", Action: "not-found", Detail: err.Error()}
+	}
+	content := string(data)
+
+	fileRef := "file:" + outDir
+
+	// Already has the dependency — check if path needs updating.
+	if strings.Contains(content, `"`+pkgName+`"`) {
+		if strings.Contains(content, fileRef) {
+			return Result{File: "package.json", Action: "skipped", Detail: pkgName + " already points to " + outDir}
+		}
+		// Update the existing file: reference.
+		re := regexp.MustCompile(`("` + regexp.QuoteMeta(pkgName) + `"\s*:\s*)"[^"]*"`)
+		content = re.ReplaceAllString(content, `${1}"`+fileRef+`"`)
+		if err := os.WriteFile(pkgPath, []byte(content), 0644); err != nil {
+			return Result{File: "package.json", Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: "package.json", Action: "patched", Detail: "updated " + pkgName + " → " + fileRef}
+	}
+
+	depEntry := `    "` + pkgName + `": "` + fileRef + `"`
+
+	// Strategy 1: insert into existing "dependencies" block.
+	if strings.Contains(content, `"dependencies"`) {
+		lines := strings.Split(content, "\n")
+		var result []string
+		inserted := false
+		for i, line := range lines {
+			result = append(result, line)
+			if inserted {
+				continue
+			}
+			trimmed := strings.TrimSpace(line)
+			if strings.Contains(trimmed, `"dependencies"`) {
+				// Look for opening brace on this line or next.
+				if strings.Contains(line, "{") {
+					// Check if it's an empty object "dependencies": {}
+					if strings.Contains(line, "}") {
+						// Replace empty object with our entry
+						result[len(result)-1] = strings.Replace(line, "{}", "{\n"+depEntry+"\n  }", 1)
+					} else {
+						result = append(result, depEntry+",")
+					}
+					inserted = true
+				} else if i+1 < len(lines) && strings.Contains(lines[i+1], "{") {
+					result = append(result, lines[i+1])
+					result = append(result, depEntry+",")
+					lines[i+1] = ""
+					inserted = true
+				}
+			}
+		}
+		if inserted {
+			content = strings.Join(result, "\n")
+		}
+	} else {
+		// Strategy 2: no "dependencies" block — add one.
+		content = strings.TrimRight(content, " \t\r\n")
+		if strings.HasSuffix(content, "}") {
+			// Find the last non-whitespace before the closing brace.
+			idx := strings.LastIndex(content, "}")
+			before := strings.TrimRight(content[:idx], " \t\r\n")
+			// Add comma if the last line doesn't end with one or a brace.
+			if !strings.HasSuffix(before, ",") && !strings.HasSuffix(before, "{") {
+				before += ","
+			}
+			content = before + "\n  \"dependencies\": {\n" + depEntry + "\n  }\n}"
+		}
+	}
+
+	if err := os.WriteFile(pkgPath, []byte(content), 0644); err != nil {
+		return Result{File: "package.json", Action: "not-found", Detail: err.Error()}
+	}
+	return Result{File: "package.json", Action: "patched", Detail: "added " + pkgName + " → " + fileRef + " (run npm install)"}
 }
 
 // patchRequirementsTxt adds pydantic>=2.0 to requirements.txt.

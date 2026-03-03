@@ -1,6 +1,6 @@
 import express from "express";
-import { usersRouter } from "@veld/routes/users.routes";
-import { todosRouter } from "@veld/routes/todos.routes";
+import { usersRouter } from "@veld/generated/routes/users.routes";
+import { todosRouter } from "@veld/generated/routes/todos.routes";
 import { UsersService } from "./services/UsersService";
 import { TodosService } from "./services/TodosService";
 import { UsersMiddleware } from "./middleware/UsersMiddleware";

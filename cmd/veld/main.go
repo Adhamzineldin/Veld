@@ -283,10 +283,10 @@ func printImportInstructions(rc config.ResolvedConfig) {
 
 		switch be {
 		case "node":
-			fmt.Println(dim("    Setup:") + ` add to tsconfig.json → "paths": { "@veld/*": ["./` + relBackendOut + `/*"] }`)
-			fmt.Println(dim("    Types:    ") + ` import { User } from '@veld/types';`)
-			fmt.Println(dim("    Routes:   ") + ` import { usersRoutes } from '@veld/routes/users.routes';`)
-			fmt.Println(dim("    Interfaces:") + ` import { IUsersService } from '@veld/interfaces/IUsersService';`)
+			fmt.Println(dim("    Setup:") + ` run ` + bold("veld setup") + ` then ` + bold("npm install"))
+			fmt.Println(dim("    Types:    ") + ` import { User } from '@veld/generated/types';`)
+			fmt.Println(dim("    Routes:   ") + ` import { usersRoutes } from '@veld/generated/routes/users.routes';`)
+			fmt.Println(dim("    Interfaces:") + ` import { IUsersService } from '@veld/generated/interfaces/IUsersService';`)
 		case "python":
 			pkgName := filepath.Base(relBackendOut)
 			fmt.Println(dim("    Setup:") + ` run ` + bold("veld setup") + ` then ` + bold("pip install -e ."))
@@ -329,23 +329,23 @@ func printImportInstructions(rc config.ResolvedConfig) {
 
 		switch fe {
 		case "typescript", "react", "vue", "angular", "svelte":
-			fmt.Println(dim("    Setup:") + ` add to tsconfig.json → "paths": { "@veld/*": ["./` + relFrontendOut + `/*"] }`)
+			fmt.Println(dim("    Setup:") + ` run ` + bold("veld setup") + ` then ` + bold("npm install"))
 		}
 
 		switch fe {
 		case "typescript":
-			fmt.Println(dim("    Client:") + ` import { api } from '@veld/client/api';`)
+			fmt.Println(dim("    Client:") + ` import { api } from '@veld/client';`)
 		case "react":
-			fmt.Println(dim("    Client:") + ` import { api } from '@veld/client/api';`)
+			fmt.Println(dim("    Client:") + ` import { api } from '@veld/client';`)
 			fmt.Println(dim("    Hooks: ") + ` import { useUsersListUsers } from '@veld/hooks';`)
 			fmt.Println(dim("    Requires:") + ` npm install @tanstack/react-query`)
 		case "vue":
-			fmt.Println(dim("    Client:     ") + ` import { api } from '@veld/client/api';`)
+			fmt.Println(dim("    Client:     ") + ` import { api } from '@veld/client';`)
 			fmt.Println(dim("    Composables:") + ` import { useUsers } from '@veld/composables';`)
 		case "angular":
 			fmt.Println(dim("    Services:") + ` import { UsersService } from '@veld/services';`)
 		case "svelte":
-			fmt.Println(dim("    Client:") + ` import { api } from '@veld/client/api';`)
+			fmt.Println(dim("    Client:") + ` import { api } from '@veld/client';`)
 			fmt.Println(dim("    Stores: ") + ` import { createUsersStore } from '@veld/stores';`)
 		case "dart", "flutter":
 			fmt.Println(dim("    Setup:") + ` add to pubspec.yaml → veld_client: { path: ./` + relFrontendOut + `/client }`)

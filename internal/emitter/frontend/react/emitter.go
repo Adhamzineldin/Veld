@@ -112,6 +112,7 @@ func emitHooksPackageJSON(a ast.AST, dir string) error {
 	var sb strings.Builder
 	sb.WriteString("{\n")
 	sb.WriteString("  \"name\": \"@veld/hooks\",\n")
+	sb.WriteString("  \"version\": \"0.0.0\",\n")
 	sb.WriteString("  \"private\": true,\n")
 	sb.WriteString("  \"types\": \"./index.ts\",\n")
 	sb.WriteString("  \"exports\": {\n")

@@ -1,6 +1,6 @@
-import { ITodosService } from "../../../generated/interfaces/ITodosService";
-import { Todo, CreateTodoInput, UpdateTodoInput } from "../../../generated/types/todos";
-import { todosErrors } from "../../../generated/errors/todos.errors";
+import { ITodosService } from "@veld/generated/interfaces/ITodosService";
+import { Todo, CreateTodoInput, UpdateTodoInput } from "@veld/generated/types/todos";
+import { todosErrors } from "@veld/generated/errors/todos.errors";
 import { randomUUID } from "crypto";
 
 const store: Todo[] = [

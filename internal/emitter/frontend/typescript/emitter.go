@@ -152,6 +152,7 @@ func emitClientPackageJSON(a ast.AST, dir string) error {
 	var sb strings.Builder
 	sb.WriteString("{\n")
 	sb.WriteString("  \"name\": \"@veld/client\",\n")
+	sb.WriteString("  \"version\": \"0.0.0\",\n")
 	sb.WriteString("  \"private\": true,\n")
 	sb.WriteString("  \"types\": \"./api.ts\",\n")
 	sb.WriteString("  \"exports\": {\n")

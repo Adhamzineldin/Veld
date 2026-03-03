@@ -76,6 +76,7 @@ func (e *SvelteEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 	var pkg strings.Builder
 	pkg.WriteString("{\n")
 	pkg.WriteString("  \"name\": \"@veld/stores\",\n")
+	pkg.WriteString("  \"version\": \"0.0.0\",\n")
 	pkg.WriteString("  \"private\": true,\n")
 	pkg.WriteString("  \"types\": \"./index.ts\",\n")
 	pkg.WriteString("  \"exports\": {\n")

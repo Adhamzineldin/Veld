@@ -597,6 +597,7 @@ func TestPatchGradleKts_Skipped(t *testing.T) {
 func TestRun_NodeTS_Dedup(t *testing.T) {
 	// Both node backend and typescript frontend need tsconfig — should only patch once
 	dir := tmpProject(t, map[string]string{
+		"package.json": `{ "name": "test", "dependencies": {} }`,
 		"tsconfig.json": `{
   "compilerOptions": {
     "target": "ES2020"
@@ -613,8 +614,9 @@ func TestRun_NodeTS_Dedup(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("expected exactly 1 tsconfig result (dedup), got %d", count)
 	}
-	if results[0].Action != "patched" {
-		t.Fatalf("expected patched, got %s", results[0].Action)
+	tsResult := findResult(results, "tsconfig.json")
+	if tsResult == nil || tsResult.Action != "patched" {
+		t.Fatalf("expected tsconfig.json patched, got %v", tsResult)
 	}
 }
 
@@ -647,6 +649,7 @@ func TestRun_Swift_Manual(t *testing.T) {
 
 func TestRun_IdempotentSecondRun(t *testing.T) {
 	dir := tmpProject(t, map[string]string{
+		"package.json": `{ "name": "test", "dependencies": {} }`,
 		"tsconfig.json": `{
   "compilerOptions": {
     "target": "ES2020"
@@ -654,12 +657,14 @@ func TestRun_IdempotentSecondRun(t *testing.T) {
 }`,
 	})
 	r1 := Run(dir, "node", "typescript", "generated")
-	if r1[0].Action != "patched" {
-		t.Fatalf("first run: expected patched, got %s", r1[0].Action)
+	ts1 := findResult(r1, "tsconfig.json")
+	if ts1 == nil || ts1.Action != "patched" {
+		t.Fatalf("first run: expected tsconfig.json patched, got %v", ts1)
 	}
 	r2 := Run(dir, "node", "typescript", "generated")
-	if r2[0].Action != "skipped" {
-		t.Fatalf("second run: expected skipped, got %s", r2[0].Action)
+	ts2 := findResult(r2, "tsconfig.json")
+	if ts2 == nil || ts2.Action != "skipped" {
+		t.Fatalf("second run: expected tsconfig.json skipped, got %v", ts2)
 	}
 }
 
@@ -745,6 +750,7 @@ func TestPatchGradleKts_UpdatePath(t *testing.T) {
 
 func TestRun_UpdatePath_FullCycle(t *testing.T) {
 	dir := tmpProject(t, map[string]string{
+		"package.json": `{ "name": "test", "dependencies": {} }`,
 		"tsconfig.json": `{
   "compilerOptions": {
     "target": "ES2020"
@@ -753,18 +759,21 @@ func TestRun_UpdatePath_FullCycle(t *testing.T) {
 	})
 	// First run: patch with "generated"
 	r1 := Run(dir, "node", "typescript", "generated")
-	if r1[0].Action != "patched" {
-		t.Fatalf("first run: expected patched, got %s", r1[0].Action)
+	ts1 := findResult(r1, "tsconfig.json")
+	if ts1 == nil || ts1.Action != "patched" {
+		t.Fatalf("first run: expected tsconfig.json patched, got %v", ts1)
 	}
 	// Second run: same path → skipped
 	r2 := Run(dir, "node", "typescript", "generated")
-	if r2[0].Action != "skipped" {
-		t.Fatalf("second run: expected skipped, got %s", r2[0].Action)
+	ts2 := findResult(r2, "tsconfig.json")
+	if ts2 == nil || ts2.Action != "skipped" {
+		t.Fatalf("second run: expected tsconfig.json skipped, got %v", ts2)
 	}
 	// Third run: changed path → should update, not skip
 	r3 := Run(dir, "node", "typescript", "output/v2")
-	if r3[0].Action != "patched" {
-		t.Fatalf("third run (path change): expected patched, got %s: %s", r3[0].Action, r3[0].Detail)
+	ts3 := findResult(r3, "tsconfig.json")
+	if ts3 == nil || ts3.Action != "patched" {
+		t.Fatalf("third run (path change): expected tsconfig.json patched, got %v", ts3)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "tsconfig.json"))
 	if !strings.Contains(string(data), "output/v2") {
@@ -879,5 +888,126 @@ func TestRun_NodeReact_SeparateDirs(t *testing.T) {
 	frontendData, _ := os.ReadFile(filepath.Join(frontendDir, "tsconfig.json"))
 	if !strings.Contains(string(frontendData), "@veld/*") {
 		t.Fatal("frontend tsconfig.json should contain @veld/*")
+	}
+}
+
+// ── patchNodePackageJSON tests ───────────────────────────────────────────────
+
+func TestPatchNodePackageJSON_AddDep(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"package.json": `{
+  "name": "my-app",
+  "dependencies": {
+    "express": "^4.18.0"
+  }
+}`,
+	})
+	r := patchNodePackageJSON(dir, "./generated", "@veld/generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "package.json"))
+	content := string(data)
+	if !strings.Contains(content, `"@veld/generated": "file:./generated"`) {
+		t.Fatal("package.json should contain @veld/generated file: dependency")
+	}
+	if !strings.Contains(content, `"express"`) {
+		t.Fatal("existing dependencies should be preserved")
+	}
+}
+
+func TestPatchNodePackageJSON_NoDepsBlock(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"package.json": `{
+  "name": "my-app",
+  "private": true
+}`,
+	})
+	r := patchNodePackageJSON(dir, "./generated", "@veld/generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "package.json"))
+	content := string(data)
+	if !strings.Contains(content, `"dependencies"`) {
+		t.Fatal("should have created dependencies block")
+	}
+	if !strings.Contains(content, `"@veld/generated": "file:./generated"`) {
+		t.Fatal("package.json should contain @veld/generated file: dependency")
+	}
+}
+
+func TestPatchNodePackageJSON_Idempotent(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"package.json": `{
+  "name": "my-app",
+  "dependencies": {
+    "@veld/generated": "file:./generated"
+  }
+}`,
+	})
+	r := patchNodePackageJSON(dir, "./generated", "@veld/generated")
+	if r.Action != "skipped" {
+		t.Fatalf("expected skipped (already set), got %s: %s", r.Action, r.Detail)
+	}
+}
+
+func TestPatchNodePackageJSON_UpdatePath(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"package.json": `{
+  "name": "my-app",
+  "dependencies": {
+    "@veld/generated": "file:./old-generated"
+  }
+}`,
+	})
+	r := patchNodePackageJSON(dir, "./new-output", "@veld/generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched (update), got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "package.json"))
+	content := string(data)
+	if !strings.Contains(content, "file:./new-output") {
+		t.Fatal("should contain new path")
+	}
+	if strings.Contains(content, "old-generated") {
+		t.Fatal("should not contain old path")
+	}
+}
+
+func TestPatchNodePackageJSON_NotFound(t *testing.T) {
+	dir := t.TempDir() // no package.json
+	r := patchNodePackageJSON(dir, "./generated", "@veld/generated")
+	if r.Action != "not-found" {
+		t.Fatalf("expected not-found, got %s", r.Action)
+	}
+}
+
+func TestPatchNodePackageJSON_MultiplePackages(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"package.json": `{
+  "name": "my-app",
+  "dependencies": {
+    "express": "^4.18.0"
+  }
+}`,
+	})
+	// Add root package
+	r1 := patchNodePackageJSON(dir, "./generated", "@veld/generated")
+	if r1.Action != "patched" {
+		t.Fatalf("expected patched for root, got %s", r1.Action)
+	}
+	// Add client sub-package
+	r2 := patchNodePackageJSON(dir, "./generated/client", "@veld/client")
+	if r2.Action != "patched" {
+		t.Fatalf("expected patched for client, got %s", r2.Action)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "package.json"))
+	content := string(data)
+	if !strings.Contains(content, `"@veld/generated": "file:./generated"`) {
+		t.Fatal("should contain @veld/generated")
+	}
+	if !strings.Contains(content, `"@veld/client": "file:./generated/client"`) {
+		t.Fatal("should contain @veld/client")
 	}
 }
