@@ -21,7 +21,7 @@ export const usersApi = {
     },
     createUser: {
       conflict: 'CREATE_USER_CONFLICT',
-      badRequest: 'CREATE_USER_BAD_REQUEST',
+      userExists: 'CREATE_USER_USER_EXISTS',
     },
     deleteUser: {
       notFound: 'DELETE_USER_NOT_FOUND',

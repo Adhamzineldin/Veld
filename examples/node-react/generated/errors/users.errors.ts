@@ -29,7 +29,7 @@ export const getUserErrors = {
 } as const;
 
 /** Error codes for CreateUser */
-export type CreateUserErrorCode = 'CREATE_USER_CONFLICT' | 'CREATE_USER_BAD_REQUEST';
+export type CreateUserErrorCode = 'CREATE_USER_CONFLICT' | 'CREATE_USER_USER_EXISTS';
 
 /** Typed error for CreateUser — can only carry CreateUser error codes */
 export type CreateUserError = ApiError<CreateUserErrorCode>;
@@ -38,8 +38,8 @@ export type CreateUserError = ApiError<CreateUserErrorCode>;
 export const createUserErrors = {
   conflict: (message?: string): CreateUserError =>
     new ApiError('CREATE_USER_CONFLICT', 409, message ?? 'Conflict'),
-  badRequest: (message?: string): CreateUserError =>
-    new ApiError('CREATE_USER_BAD_REQUEST', 400, message ?? 'BadRequest'),
+  userExists: (message?: string): CreateUserError =>
+    new ApiError('CREATE_USER_USER_EXISTS', 500, message ?? 'UserExists'),
 } as const;
 
 /** Error codes for DeleteUser */

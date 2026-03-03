@@ -25,7 +25,9 @@ module Users {
     path: /
     input: CreateUserInput
     output: User
-    errors: [Conflict, BadRequest]
+    errors: [Conflict, UserExists]
+    middleware: validateCreateUserInput
+    
   }
 
   action DeleteUser {

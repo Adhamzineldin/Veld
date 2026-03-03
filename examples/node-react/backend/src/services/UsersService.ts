@@ -22,7 +22,7 @@ export class UsersService implements IUsersService {
   async createUser(input: CreateUserInput): Promise<User> {
     const exists = store.find((u) => u.email === input.email);
     if (exists) throw usersErrors.createUser.conflict(`Email ${input.email} already exists`);
-    if (!input.name || !input.email) throw usersErrors.createUser.badRequest("Name and email required");
+    if (!input.name || !input.email) throw usersErrors.createUser.userExists("Name and email required");
     const user: User = { id: randomUUID(), ...input };
     store.push(user);
     return user;

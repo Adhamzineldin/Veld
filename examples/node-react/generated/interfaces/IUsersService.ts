@@ -17,7 +17,7 @@ export interface IUsersService {
   /**
    * Create a new user
    * @throws {CreateUserError} CREATE_USER_CONFLICT — Conflict
-   * @throws {CreateUserError} CREATE_USER_BAD_REQUEST — BadRequest
+   * @throws {CreateUserError} CREATE_USER_USER_EXISTS — UserExists
    */
   createUser(input: CreateUserInput): Promise<User>;
   /**

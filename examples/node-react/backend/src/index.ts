@@ -6,6 +6,17 @@ import { todosRouter } from "@veld/routes/todos.routes";
 import { UsersService } from "./services/UsersService";
 import { TodosService } from "./services/TodosService";
 
+import {IUsersMiddleware} from "@veld/middleware/IUsersMiddleware";
+
+
+class UsersMiddleware implements IUsersMiddleware {
+    validateCreateUserInput(req: any, res: any, next: () => void): void {
+        console.log("Validating create user input");
+    }
+}
+
+
+
 const app = express();
 app.use(express.json());
 
@@ -19,7 +30,9 @@ app.use((_req, res, next) => {
 
 const router = express.Router();
 
-usersRouter(router, new UsersService());
+
+
+usersRouter(router, new UsersService(), new UsersMiddleware());
 todosRouter(router, new TodosService());
 
 app.use(router);

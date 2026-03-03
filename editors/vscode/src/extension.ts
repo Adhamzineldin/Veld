@@ -267,15 +267,58 @@ class VeldLanguageServer {
         return doc;
     }
 
+    private static readonly ACTION_KEYS = new Set([
+        'method', 'path', 'input', 'output', 'query', 'stream',
+        'middleware', 'errors', 'description',
+    ]);
+    private static readonly MODULE_KEYS = new Set(['description', 'prefix']);
+
     validateDocument(uri: vscode.Uri, content: string): vscode.Diagnostic[] {
         const doc = this.parseDocument(uri, content);
         const diagnostics: vscode.Diagnostic[] = [];
         const lines = content.split('\n');
 
+        // Track block context for key validation
+        type BlockKind = 'none' | 'model' | 'enum' | 'module' | 'action';
+        const blockStack: BlockKind[] = [];
+
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             const trimmed = line.trim();
+            const openBraces = (trimmed.match(/{/g) || []).length;
+            const closeBraces = (trimmed.match(/}/g) || []).length;
+            const currentBlock: BlockKind = blockStack.length > 0 ? blockStack[blockStack.length - 1] : 'none';
 
+            // Track block entries
+            if (trimmed.startsWith('model ') && openBraces > closeBraces) blockStack.push('model');
+            else if (trimmed.startsWith('enum ') && openBraces > closeBraces) blockStack.push('enum');
+            else if (trimmed.startsWith('module ') && openBraces > closeBraces) blockStack.push('module');
+            else if (trimmed.startsWith('action ') && openBraces > closeBraces) blockStack.push('action');
+
+            // ── Key validation based on block context ────────────────────────
+            if (currentBlock === 'action' || currentBlock === 'module') {
+                const keyMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*:/);
+                if (keyMatch && !trimmed.startsWith('//')) {
+                    const key = keyMatch[1];
+                    if (currentBlock === 'action' && !VeldLanguageServer.ACTION_KEYS.has(key)) {
+                        const keyStart = line.indexOf(key);
+                        diagnostics.push(new vscode.Diagnostic(
+                            new vscode.Range(i, keyStart, i, keyStart + key.length),
+                            `Unknown action directive '${key}'. Valid: ${[...VeldLanguageServer.ACTION_KEYS].sort().join(', ')}`,
+                            vscode.DiagnosticSeverity.Error
+                        ));
+                    } else if (currentBlock === 'module' && !VeldLanguageServer.MODULE_KEYS.has(key)) {
+                        const keyStart = line.indexOf(key);
+                        diagnostics.push(new vscode.Diagnostic(
+                            new vscode.Range(i, keyStart, i, keyStart + key.length),
+                            `Unexpected key '${key}' inside module. Did you mean to put this inside an action?`,
+                            vscode.DiagnosticSeverity.Warning
+                        ));
+                    }
+                }
+            }
+
+            // ── Import validation ────────────────────────────────────────────
             if (trimmed.startsWith('import')) {
                 const importMatch = trimmed.match(/import\s+@(\w+)\/(\w+)/);
                 const quotedImportMatch = trimmed.match(/import\s+"([^"]+)"/);
@@ -353,6 +396,11 @@ class VeldLanguageServer {
                     this.validateTypeExpr(typeExpr, line, i, doc, diagnostics);
                 }
             }
+
+            // Track brace closes
+            for (let c = 0; c < closeBraces; c++) {
+                if (blockStack.length > 0) blockStack.pop();
+            }
         }
 
         let braceDepth = 0;
@@ -382,8 +430,9 @@ class VeldLanguageServer {
     }
 
     private static readonly KNOWN_ANNOTATIONS = new Set([
-        'default', 'required', 'min', 'max', 'minLength', 'maxLength',
-        'regex', 'unique', 'deprecated', 'nullable', 'index', 'primaryKey',
+        'default', 'unique', 'required', 'optional', 'index', 'primary',
+        'autoincrement', 'readonly', 'min', 'max', 'minLength', 'maxLength',
+        'regex', 'deprecated', 'nullable', 'primaryKey',
     ]);
 
     private validateTypeExpr(typeExpr: string, line: string, lineNum: number, doc: VeldDocument, diagnostics: vscode.Diagnostic[]): void {

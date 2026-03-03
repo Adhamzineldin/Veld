@@ -592,11 +592,30 @@ func (p *Parser) parseAction() (ast.Action, error) {
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
 			}
-			tok, err := p.expect(lexer.TIdent)
-			if err != nil {
-				return act, err
+			if p.peek().Type == lexer.TLBracket {
+				// Bracket list: middleware: [Guard1, Guard2]
+				p.consume() // consume '['
+				for p.peek().Type != lexer.TRBracket && p.peek().Type != lexer.TEOF {
+					tok, err := p.expect(lexer.TIdent)
+					if err != nil {
+						return act, fmt.Errorf("middleware name: %w", err)
+					}
+					act.Middleware = append(act.Middleware, tok.Value)
+					if p.peek().Type == lexer.TComma {
+						p.consume()
+					}
+				}
+				if _, err := p.expect(lexer.TRBracket); err != nil {
+					return act, fmt.Errorf("middleware list: %w", err)
+				}
+			} else {
+				// Single value: middleware: Guard
+				tok, err := p.expect(lexer.TIdent)
+				if err != nil {
+					return act, err
+				}
+				act.Middleware = append(act.Middleware, tok.Value)
 			}
-			act.Middleware = append(act.Middleware, tok.Value)
 		case lexer.TErrors:
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {

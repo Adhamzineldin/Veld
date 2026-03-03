@@ -245,6 +245,31 @@ module Auth {
 	}
 }
 
+func TestParseActionWithMiddlewareBracketList(t *testing.T) {
+	src := `model User { id: string }
+module Auth {
+  action Register {
+    method: POST
+    path: /auth/register
+    input: User
+    output: User
+    middleware: [validate, hashPassword, sendEmail]
+  }
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	mw := a.Modules[0].Actions[0].Middleware
+	if len(mw) != 3 {
+		t.Fatalf("expected 3 middleware, got %d", len(mw))
+	}
+	if mw[0] != "validate" || mw[1] != "hashPassword" || mw[2] != "sendEmail" {
+		t.Errorf("expected [validate, hashPassword, sendEmail], got %v", mw)
+	}
+}
+
 func TestParseOutputArray(t *testing.T) {
 	src := `model User { id: string }
 module Users {

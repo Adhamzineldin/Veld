@@ -65,6 +65,13 @@ class VeldAnnotator : Annotator {
         val PATH_PARAM = TextAttributesKey.createTextAttributesKey(
             "VELD_PATH_PARAM", DefaultLanguageHighlighterColors.PARAMETER
         )
+
+        // ── Valid directive keys per block context ───────────────────────────
+        /** Keys valid inside action { ... } */
+        val ACTION_KEYS = setOf("method", "path", "input", "output", "query", "stream",
+            "middleware", "errors", "description")
+        /** Keys valid inside module { ... } (top-level, outside actions) */
+        val MODULE_KEYS = setOf("description", "prefix")
     }
 
     // Simple context tracker so we highlight enum values vs. model fields correctly.
@@ -182,7 +189,7 @@ class VeldAnnotator : Annotator {
                 currentBlock == BlockKind.MODULE -> {
                     handleDirectiveOrField(
                         trimmed, line, lineStart, content.length,
-                        visibleModels, visibleEnums, allTypes, holder
+                        visibleModels, visibleEnums, allTypes, holder, currentBlock
                     )
                 }
 
@@ -220,9 +227,38 @@ class VeldAnnotator : Annotator {
     private fun handleDirectiveOrField(
         trimmed: String, line: String, lineStart: Int, contentLen: Int,
         models: Set<String>, enums: Set<String>, allTypes: Set<String>,
-        holder: AnnotationHolder
+        holder: AnnotationHolder, blockKind: BlockKind
     ) {
         if (trimmed.startsWith("//") || trimmed == "{" || trimmed == "}" || trimmed.isEmpty()) return
+
+        // ── Extract the key name if this is a key: value line ────────────────
+        val keyMatch = Regex("""^([a-zA-Z_]\w*)\s*:""").find(trimmed)
+        if (keyMatch != null && blockKind != BlockKind.MODEL) {
+            val key = keyMatch.groupValues[1]
+            // Validate directive keys based on block context
+            if (blockKind == BlockKind.ACTION && key !in ACTION_KEYS) {
+                val start = lineStart + line.indexOf(key)
+                val end = start + key.length
+                if (start >= lineStart && end <= contentLen && start < end) {
+                    holder.newAnnotation(
+                        HighlightSeverity.ERROR,
+                        "Unknown action directive '$key'. Valid: ${ACTION_KEYS.sorted().joinToString(", ")}"
+                    ).range(TextRange(start, end)).create()
+                }
+                return
+            }
+            if (blockKind == BlockKind.MODULE && key !in MODULE_KEYS) {
+                val start = lineStart + line.indexOf(key)
+                val end = start + key.length
+                if (start >= lineStart && end <= contentLen && start < end) {
+                    holder.newAnnotation(
+                        HighlightSeverity.WARNING,
+                        "Unexpected key '$key' inside module. Did you mean to put this inside an action?"
+                    ).range(TextRange(start, end)).create()
+                }
+                return
+            }
+        }
 
         // ── method directive ──────────────────────────────────────────────────
         if (trimmed.startsWith("method:")) {

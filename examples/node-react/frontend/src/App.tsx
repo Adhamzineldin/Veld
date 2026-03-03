@@ -37,7 +37,7 @@ export default function App() {
       // Type-safe error code comparison using generated constants
       if (error.code === usersApi.errors.createUser.conflict) {
         setMutationError('A user with this email already exists.');
-      } else if (error.code === usersApi.errors.createUser.badRequest) {
+      } else if (error.code === usersApi.errors.createUser.userExists) {
         setMutationError('Invalid user data. Please check your input.');
       } else {
         setMutationError(`Failed to create user: ${error.message}`);
@@ -93,7 +93,7 @@ export default function App() {
 
   // ── Handlers ────────────────────────────────────────────────────
   const handleAddUser = () => {
-    if (!newName.trim() || !newEmail.trim()) return;
+    // if (!newName.trim() || !newEmail.trim()) return;
     setMutationError(null);
     createUserMutation.mutate({ input: { name: newName.trim(), email: newEmail.trim() } });
   };
