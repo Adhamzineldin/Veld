@@ -1,5 +1,5 @@
 ﻿import { useState } from 'react';
-import type { User, Todo } from '@veld/types';
+import type { User, Todo } from '@veld/generated/types';
 
 // @ts-ignore
 import styles from './App.module.css';

@@ -23,7 +23,7 @@ func New() *VueEmitter          { return &VueEmitter{} }
 func (*VueEmitter) IsFrontend() {}
 
 func (e *VueEmitter) Summary(modules []string) []emitter.SummaryLine {
-	clientFiles := []string{"_internal.ts", "api.ts", "package.json"}
+	clientFiles := []string{"_internal.ts", "api.ts", "types.ts", "errors.ts", "package.json"}
 	for _, m := range modules {
 		clientFiles = append(clientFiles, strings.ToLower(m)+"Api.ts")
 	}

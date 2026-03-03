@@ -25,7 +25,7 @@ func New() *ReactEmitter          { return &ReactEmitter{} }
 func (*ReactEmitter) IsFrontend() {}
 
 func (e *ReactEmitter) Summary(modules []string) []emitter.SummaryLine {
-	clientFiles := []string{"_internal.ts", "api.ts", "package.json"}
+	clientFiles := []string{"_internal.ts", "api.ts", "types.ts", "errors.ts", "package.json"}
 	for _, m := range modules {
 		clientFiles = append(clientFiles, strings.ToLower(m)+"Api.ts")
 	}
