@@ -20,7 +20,7 @@ class VeldReferenceContributor : PsiReferenceContributor() {
 
     override fun registerReferenceProviders(registrar: PsiReferenceRegistrar) {
         registrar.registerReferenceProvider(
-            PlatformPatterns.psiElement(),
+            PlatformPatterns.psiElement().withLanguage(VeldLanguage),
             object : PsiReferenceProvider() {
                 override fun getReferencesByElement(
                     element: PsiElement,

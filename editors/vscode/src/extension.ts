@@ -603,9 +603,26 @@ class VeldLanguageServer {
             actionSnippet.detail = 'Define a new action';
             completions.push(actionSnippet);
         } else if (ctx === 'action') {
-            for (const d of ['method', 'path', 'input', 'output', 'query', 'middleware', 'description']) {
-                const item = new vscode.CompletionItem(`${d}: `, vscode.CompletionItemKind.Property);
-                item.detail = 'Action directive';
+            const actionDirectives = [
+                { name: 'method', insert: 'method: ', detail: 'HTTP method (GET, POST, ...)' },
+                { name: 'path', insert: 'path: /', detail: 'Route path' },
+                { name: 'input', insert: 'input: ', detail: 'Request body type' },
+                { name: 'output', insert: 'output: ', detail: 'Response body type' },
+                { name: 'query', insert: 'query: ', detail: 'Query parameters type' },
+                { name: 'middleware', insert: 'middleware: ', detail: 'Single middleware' },
+                { name: 'middleware []', insert: 'middleware: [$1]', detail: 'Middleware list', snippet: true },
+                { name: 'stream', insert: 'stream: ', detail: 'Stream output type' },
+                { name: 'errors', insert: 'errors: [$1]', detail: 'Error codes list', snippet: true },
+                { name: 'description', insert: 'description: "$1"', detail: 'Action description', snippet: true },
+            ];
+            for (const d of actionDirectives) {
+                const item = new vscode.CompletionItem(`${d.name}:`, vscode.CompletionItemKind.Property);
+                item.detail = d.detail;
+                if ((d as any).snippet) {
+                    item.insertText = new vscode.SnippetString(d.insert);
+                } else {
+                    item.insertText = d.insert;
+                }
                 completions.push(item);
             }
         } else if (ctx === 'model') {
@@ -1216,7 +1233,7 @@ export function activate(context: vscode.ExtensionContext): void {
         }
     };
 
-    vscode.workspace.onDidChangeTextDocument(event => validateDoc(event.document), null, context.subscriptions);
+    vscode.workspace.onDidChangeTextDocument((event: vscode.TextDocumentChangeEvent) => validateDoc(event.document), null, context.subscriptions);
     vscode.workspace.onDidOpenTextDocument(validateDoc, null, context.subscriptions);
     vscode.workspace.onDidSaveTextDocument(validateDoc, null, context.subscriptions);
 
@@ -1224,7 +1241,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider('veld', {
-            provideCompletionItems(doc, pos) {
+            provideCompletionItems(doc: vscode.TextDocument, pos: vscode.Position) {
                 return server.getCompletions(doc.uri, pos, doc.getText());
             }
         }, ':', ' ', '@', '/')
@@ -1232,7 +1249,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     context.subscriptions.push(
         vscode.languages.registerHoverProvider('veld', {
-            provideHover(doc, pos) {
+            provideHover(doc: vscode.TextDocument, pos: vscode.Position) {
                 return server.getHoverInfo(doc.uri, pos, doc.getText());
             }
         })
@@ -1240,7 +1257,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     context.subscriptions.push(
         vscode.languages.registerDefinitionProvider('veld', {
-            provideDefinition(doc, pos) {
+            provideDefinition(doc: vscode.TextDocument, pos: vscode.Position) {
                 return server.getDefinition(doc.uri, pos, doc.getText());
             }
         })
@@ -1248,7 +1265,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     context.subscriptions.push(
         vscode.languages.registerReferenceProvider('veld', {
-            provideReferences(doc, pos) {
+            provideReferences(doc: vscode.TextDocument, pos: vscode.Position) {
                 return server.getReferences(doc.uri, pos, doc.getText());
             }
         })
@@ -1265,7 +1282,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     context.subscriptions.push(
         vscode.languages.registerDocumentSymbolProvider('veld', {
-            provideDocumentSymbols(doc) {
+            provideDocumentSymbols(doc: vscode.TextDocument) {
                 const content = doc.getText();
                 const symbols: vscode.DocumentSymbol[] = [];
                 const lines = content.split('\n');

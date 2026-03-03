@@ -146,8 +146,12 @@ class VeldCompletionContributor : CompletionContributor() {
 
     private fun detectNestingContext(file: PsiFile): CompletionContext {
         return try {
-            val text = file.text
-            val lines = text.split("\n")
+            val editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(file.project)
+                .selectedTextEditor
+            val caretOffset = editor?.caretModel?.offset ?: file.textLength
+            val textUpToCaret = file.text.substring(0, caretOffset.coerceAtMost(file.textLength))
+            val lines = textUpToCaret.split("\n")
+
             var depth = 0
             var inModule = false
             var inAction = false
@@ -275,24 +279,45 @@ class VeldCompletionContributor : CompletionContributor() {
     }
 
     private fun addModuleDirectives(result: CompletionResultSet) {
-        for (d in listOf("description", "prefix")) {
-            result.addElement(
-                LookupElementBuilder.create("$d: ")
-                    .withIcon(AllIcons.Nodes.Property)
-                    .withTypeText("directive")
-            )
-        }
+        result.addElement(
+            LookupElementBuilder.create("description: \"\"")
+                .withPresentableText("description:")
+                .withIcon(AllIcons.Nodes.Property)
+                .withTypeText("Module description")
+                .withInsertHandler { ctx, _ ->
+                    ctx.editor.caretModel.moveToOffset(ctx.tailOffset - 1)
+                }
+        )
+        result.addElement(
+            LookupElementBuilder.create("prefix: /")
+                .withPresentableText("prefix:")
+                .withIcon(AllIcons.Nodes.Property)
+                .withTypeText("Route prefix for all actions")
+        )
     }
 
     private fun addActionDirectives(result: CompletionResultSet) {
-        for (d in listOf("method", "path", "input", "output", "query", "middleware", "stream", "errors", "description")) {
+        data class Directive(val name: String, val insert: String, val detail: String, val cursorBack: Int)
+        val directives = listOf(
+            Directive("method", "method: ", "HTTP method (GET, POST, ...)", 0),
+            Directive("path", "path: /", "Route path", 0),
+            Directive("input", "input: ", "Request body type", 0),
+            Directive("output", "output: ", "Response body type", 0),
+            Directive("query", "query: ", "Query parameters type", 0),
+            Directive("middleware", "middleware: ", "Single middleware", 0),
+            Directive("middleware []", "middleware: []", "Middleware list", 1),
+            Directive("stream", "stream: ", "Stream output type", 0),
+            Directive("errors", "errors: []", "Error codes list", 1),
+            Directive("description", "description: \"\"", "Action description", 1),
+        )
+        for (d in directives) {
             result.addElement(
-                LookupElementBuilder.create(if (d == "errors") "errors: []" else "$d: ")
-                    .withPresentableText("$d:")
+                LookupElementBuilder.create(d.insert)
+                    .withPresentableText("${d.name}:")
                     .withIcon(AllIcons.Nodes.Property)
-                    .withTypeText("directive")
-                    .withInsertHandler(if (d == "errors") { ctx, _ ->
-                        ctx.editor.caretModel.moveToOffset(ctx.tailOffset - 1)
+                    .withTypeText(d.detail)
+                    .withInsertHandler(if (d.cursorBack > 0) { ctx, _ ->
+                        ctx.editor.caretModel.moveToOffset(ctx.tailOffset - d.cursorBack)
                     } else null)
             )
         }

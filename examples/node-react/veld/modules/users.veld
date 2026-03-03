@@ -1,5 +1,6 @@
 import @models/user
 
+
 module Users {
   description: "User management"
   prefix: /users
@@ -17,6 +18,7 @@ module Users {
     path: /:id
     output: User
     errors: [NotFound]
+    
   }
 
   action CreateUser {
@@ -26,8 +28,7 @@ module Users {
     input: CreateUserInput
     output: User
     errors: [Conflict, UserExists]
-    middleware: validateCreateUserInput
-    
+    middleware: [validateCreateUserInput]
   }
 
   action DeleteUser {
