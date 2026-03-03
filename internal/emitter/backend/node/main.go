@@ -60,11 +60,16 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		if err := e.emitInterface(a, mod, outDir); err != nil {
 			return fmt.Errorf("interface for %s: %w", mod.Name, err)
 		}
-		if err := e.emitRoutes(a, mod, outDir); err != nil {
+		if err := e.emitRoutes(a, mod, outDir, opts); err != nil {
 			return fmt.Errorf("routes for %s: %w", mod.Name, err)
 		}
 		if err := e.emitErrors(mod, outDir); err != nil {
 			return fmt.Errorf("errors for %s: %w", mod.Name, err)
+		}
+	}
+	if opts.Validate {
+		if err := e.emitValidators(a, outDir); err != nil {
+			return fmt.Errorf("validators: %w", err)
 		}
 	}
 	if err := e.emitBarrel(a, outDir); err != nil {

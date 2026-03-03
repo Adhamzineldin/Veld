@@ -1,8 +1,11 @@
 package python
 
-// routes.go — emits routes/{module}_routes.py with try/except, Pydantic
-// validation, correct HTTP status codes (201 for POST, 204 for DELETE with
-// no output), and optional middleware support.
+// routes.go — emits routes/{module}_routes.py with try/except and
+// correct HTTP status codes (201 for POST, 204 for DELETE with no output).
+//
+// When EmitOptions.Validate is true, route handlers are augmented with:
+//   - parse_x(body)   — validates input shape before passing to service (→ 400)
+//   - assert_x(result) — guards output shape before sending to client   (→ 500)
 
 import (
 	"fmt"
@@ -14,19 +17,23 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 )
 
-func (e *PythonEmitter) emitRoutes(mod ast.Module, outDir string) error {
+func (e *PythonEmitter) emitRoutes(mod ast.Module, outDir string, opts emitter.EmitOptions) error {
 	dir := filepath.Join(outDir, "routes")
 	moduleLower := strings.ToLower(mod.Name)
 
 	allMiddleware := emitter.CollectModuleMiddleware(mod)
 	hasMiddleware := len(allMiddleware) > 0
 
+	// Collect Pydantic schema imports for input validation (only when validate=false).
+	// When validate=true we use the zero-dep validators instead.
 	seen := make(map[string]bool)
 	var schemaImports []string
-	for _, act := range mod.Actions {
-		if act.Input != "" && !seen[act.Input] {
-			seen[act.Input] = true
-			schemaImports = append(schemaImports, act.Input+"Schema")
+	if !opts.Validate {
+		for _, act := range mod.Actions {
+			if act.Input != "" && !seen[act.Input] {
+				seen[act.Input] = true
+				schemaImports = append(schemaImports, act.Input+"Schema")
+			}
 		}
 	}
 
@@ -37,9 +44,18 @@ func (e *PythonEmitter) emitRoutes(mod ast.Module, outDir string) error {
 		sb.WriteString(fmt.Sprintf("from ..middleware.i_%s_middleware import I%sMiddleware\n", moduleLower, mod.Name))
 	}
 	sb.WriteString(fmt.Sprintf("from ..interfaces.i_%s_service import I%sService\n", moduleLower, mod.Name))
+
 	if len(schemaImports) > 0 {
 		sb.WriteString(fmt.Sprintf("from ..schemas.schemas import %s\n", strings.Join(schemaImports, ", ")))
 	}
+
+	// When validation is enabled, import the generated zero-dep validators.
+	if opts.Validate {
+		if imports := buildPyValidatorImports(mod); len(imports) > 0 {
+			sb.WriteString(fmt.Sprintf("from .._validators import %s\n", strings.Join(imports, ", ")))
+		}
+	}
+
 	sb.WriteString("\n")
 
 	if hasMiddleware {
@@ -52,7 +68,7 @@ func (e *PythonEmitter) emitRoutes(mod ast.Module, outDir string) error {
 	}
 
 	for _, act := range mod.Actions {
-		writeFlaskHandler(&sb, mod, moduleLower, act)
+		writeFlaskHandler(&sb, mod, moduleLower, act, opts)
 	}
 	sb.WriteString("\n")
 
@@ -60,7 +76,7 @@ func (e *PythonEmitter) emitRoutes(mod ast.Module, outDir string) error {
 }
 
 // writeFlaskHandler appends the route registration for a single action.
-func writeFlaskHandler(sb *strings.Builder, mod ast.Module, moduleLower string, act ast.Action) {
+func writeFlaskHandler(sb *strings.Builder, mod ast.Module, moduleLower string, act ast.Action, opts emitter.EmitOptions) {
 	fnName := fmt.Sprintf("%s_%s", moduleLower, emitter.ToSnakeCase(act.Name))
 	routePath := act.Path
 	if mod.Prefix != "" {
@@ -86,35 +102,59 @@ func writeFlaskHandler(sb *strings.Builder, mod ast.Module, moduleLower string, 
 
 	sb.WriteString("        try:\n")
 
-	var callArgs []string
+	// ── Build service call arguments ─────────────────────────────────────────
+	callArgs := make([]string, 0, len(pathParams)+2)
 	for _, p := range pathParams {
 		callArgs = append(callArgs, emitter.ToSnakeCase(p))
 	}
+
 	if act.Input != "" {
-		sb.WriteString(fmt.Sprintf("            input = %sSchema(**request.get_json()).model_dump()\n", act.Input+"Schema"))
-		callArgs = append(callArgs, "input")
+		if opts.Validate {
+			// Use generated zero-dep validator: parses and validates, raises 400 on failure.
+			inputFn := "parse_" + emitter.ToSnakeCase(act.Input)
+			sb.WriteString(fmt.Sprintf("            body = %s(request.get_json() or {})\n", inputFn))
+			callArgs = append(callArgs, "body")
+		} else {
+			// Fallback: Pydantic schema validation (requires pydantic installed).
+			sb.WriteString(fmt.Sprintf("            input = %sSchema(**request.get_json()).model_dump()\n", act.Input+"Schema"))
+			callArgs = append(callArgs, "input")
+		}
 	}
+
 	if act.Query != "" {
 		callArgs = append(callArgs, "request.args.to_dict()")
 	}
 
 	serviceCallStr := fmt.Sprintf("service.%s(%s)", emitter.ToSnakeCase(act.Name), strings.Join(callArgs, ", "))
 
+	// ── Service call + optional output assertion + response ──────────────────
 	switch {
 	case act.Method == "DELETE" && act.Output == "":
 		sb.WriteString(fmt.Sprintf("            %s\n", serviceCallStr))
 		sb.WriteString("            return '', 204\n")
+
 	case act.Method == "POST":
 		sb.WriteString(fmt.Sprintf("            result = %s\n", serviceCallStr))
+		if opts.Validate && act.Output != "" {
+			writePyOutputAssertion(sb, act)
+		}
 		sb.WriteString("            return jsonify(result), 201\n")
+
 	default:
 		sb.WriteString(fmt.Sprintf("            result = %s\n", serviceCallStr))
+		if opts.Validate && act.Output != "" {
+			writePyOutputAssertion(sb, act)
+		}
 		sb.WriteString("            return jsonify(result)\n")
 	}
 
+	// Catch block: handles VeldValidationError (400), VeldContractError (500), and service errors.
 	sb.WriteString("        except Exception as e:\n")
 	sb.WriteString("            status = getattr(e, 'status', getattr(e, 'status_code', 500))\n")
-	sb.WriteString("            return jsonify({'error': str(e)}), status\n")
+	sb.WriteString("            body = {'error': str(e)}\n")
+	sb.WriteString("            if hasattr(e, 'code'):\n")
+	sb.WriteString("                body['code'] = e.code\n")
+	sb.WriteString("            return jsonify(body), status\n")
 
 	// Apply middleware decorators in reverse order (innermost first).
 	for i := len(act.Middleware) - 1; i >= 0; i-- {
@@ -127,8 +167,16 @@ func writeFlaskHandler(sb *strings.Builder, mod ast.Module, moduleLower string, 
 		flaskPath, fnName, fnName, methods))
 }
 
-// emitMiddlewareProtocol writes interfaces/i_{module}_middleware.py with a
-// Protocol class that the user implements — one method per middleware name.
+// writePyOutputAssertion emits assert_x(result) or assert_x_list(result).
+func writePyOutputAssertion(sb *strings.Builder, act ast.Action) {
+	if act.OutputArray {
+		sb.WriteString(fmt.Sprintf("            assert_%s_list(result)\n", emitter.ToSnakeCase(act.Output)))
+	} else {
+		sb.WriteString(fmt.Sprintf("            assert_%s(result)\n", emitter.ToSnakeCase(act.Output)))
+	}
+}
+
+// emitMiddlewareProtocol writes interfaces/i_{module}_middleware.py.
 func (e *PythonEmitter) emitMiddlewareProtocol(mod ast.Module, outDir string) error {
 	allMiddleware := emitter.CollectModuleMiddleware(mod)
 	if len(allMiddleware) == 0 {
@@ -139,7 +187,7 @@ func (e *PythonEmitter) emitMiddlewareProtocol(mod ast.Module, outDir string) er
 	moduleLower := strings.ToLower(mod.Name)
 
 	var sb strings.Builder
-	sb.WriteString("# AUTO-GENERATED BY VELD — DO NOT EDIT\n")
+	sb.WriteString("# AUTO-GENERATED BY VELD \u2014 DO NOT EDIT\n")
 	sb.WriteString("from typing import Callable, Protocol\n\n\n")
 	sb.WriteString(fmt.Sprintf("class I%sMiddleware(Protocol):\n", mod.Name))
 	sb.WriteString(fmt.Sprintf("    \"\"\"Middleware protocol for the %s module.\n", mod.Name))

@@ -579,7 +579,7 @@ func newASTCmd() *cobra.Command {
 
 func newGenerateCmd() *cobra.Command {
 	var backendFlag, frontendFlag, inputFlag, outFlag string
-	var incrementalFlag, dryRunFlag, setupFlag bool
+	var incrementalFlag, dryRunFlag, setupFlag, validateFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "generate",
@@ -605,10 +605,12 @@ func newGenerateCmd() *cobra.Command {
 				Frontend:    frontendFlag,
 				Input:       inputFlag,
 				Out:         outFlag,
+				Validate:    validateFlag,
 				BackendSet:  cmd.Flags().Changed("backend"),
 				FrontendSet: cmd.Flags().Changed("frontend"),
 				InputSet:    cmd.Flags().Changed("input"),
 				OutSet:      cmd.Flags().Changed("out"),
+				ValidateSet: cmd.Flags().Changed("validate"),
 			}
 			rc, err := config.BuildResolved(flags)
 			if err != nil {
@@ -616,8 +618,9 @@ func newGenerateCmd() *cobra.Command {
 			}
 
 			opts := emitter.EmitOptions{
-				BaseUrl: rc.BaseUrl,
-				DryRun:  dryRunFlag,
+				BaseUrl:  rc.BaseUrl,
+				DryRun:   dryRunFlag,
+				Validate: rc.Validate,
 			}
 
 			regenerated, _, err := runGenerate(rc, incrementalFlag, opts)
@@ -671,6 +674,8 @@ func newGenerateCmd() *cobra.Command {
 		"preview what would be generated without writing files")
 	cmd.Flags().BoolVar(&setupFlag, "setup", false,
 		"auto-configure project files for seamless imports after generation")
+	cmd.Flags().BoolVar(&validateFlag, "validate", false,
+		"emit zero-dep runtime validators and wire into route handlers (overrides config)")
 	return cmd
 }
 
@@ -705,7 +710,8 @@ func newWatchCmd() *cobra.Command {
 			fmt.Println()
 
 			opts := emitter.EmitOptions{
-				BaseUrl: rc.BaseUrl,
+				BaseUrl:  rc.BaseUrl,
+				Validate: rc.Validate,
 			}
 
 			regenerated, initFiles, genErr := runGenerate(rc, false, opts)
@@ -2069,12 +2075,36 @@ func runInit() error {
 	selectedFrontend := frontends[frontendChoice-1]
 	fmt.Printf("  → %s\n\n", green(selectedFrontend))
 
+	// ── Runtime validation ─────────────────────────────────────────────────
+	// Only relevant for node and python — statically-typed backends (go, rust,
+	// java, csharp) already enforce contract correctness at compile time.
+	enableValidate := false
+	if selectedBackend == "node" || selectedBackend == "python" {
+		fmt.Println("  " + bold("Runtime validation") + " — validate input/output shapes at runtime?")
+		fmt.Printf("    %s1%s  disabled %s\n", colorGreen, colorReset, dim("(default — zero overhead, TypeScript/Python types enforce the contract)"))
+		fmt.Printf("    %s2%s  enabled  %s\n", colorGreen, colorReset, dim("(adds zero-dep validators to routes: 400 on bad input, 500 on contract violation)"))
+		fmt.Print("\n  Choose [1]: ")
+		if readChoice(reader, 2, 1) == 2 {
+			enableValidate = true
+		}
+		if enableValidate {
+			fmt.Printf("  → %s\n\n", green("enabled"))
+		} else {
+			fmt.Printf("  → %s\n\n", dim("disabled"))
+		}
+	}
+
 	// ── Generate config with selections ────────────────────────────────────
 	// For Python, default to "veld_gen" as the output directory name
 	// so the folder itself is a valid Python package importable from cwd.
 	defaultOut := "../generated"
 	if selectedBackend == "python" {
 		defaultOut = "../veld_gen"
+	}
+
+	validateLine := ""
+	if enableValidate {
+		validateLine = "\n  \"validate\": true,"
 	}
 
 	configJSON := fmt.Sprintf(`{
@@ -2084,13 +2114,13 @@ func runInit() error {
   "out": "%s",
   "backendDir": "",
   "frontendDir": "",
-  "baseUrl": "",
+  "baseUrl": "",%s
   "aliases": {
     "models": "models",
     "modules": "modules"
   }
 }
-`, selectedBackend, selectedFrontend, defaultOut)
+`, selectedBackend, selectedFrontend, defaultOut, validateLine)
 
 	type entry struct{ path, content, label string }
 	files := []entry{

@@ -70,7 +70,7 @@ func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 		if err := e.emitInterface(a, mod, outDir); err != nil {
 			return fmt.Errorf("interface for %s: %w", mod.Name, err)
 		}
-		if err := e.emitRoutes(mod, outDir); err != nil {
+		if err := e.emitRoutes(mod, outDir, opts); err != nil {
 			return fmt.Errorf("routes for %s: %w", mod.Name, err)
 		}
 		if err := e.emitMiddlewareProtocol(mod, outDir); err != nil {
@@ -78,6 +78,11 @@ func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 		}
 		if err := e.emitErrors(mod, outDir); err != nil {
 			return fmt.Errorf("errors for %s: %w", mod.Name, err)
+		}
+	}
+	if opts.Validate {
+		if err := e.emitValidators(a, outDir); err != nil {
+			return fmt.Errorf("validators: %w", err)
 		}
 	}
 	return nil

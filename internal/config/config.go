@@ -20,6 +20,7 @@ type RawConfig struct {
 	FrontendDir       string            `json:"frontendDir,omitempty"`       // path to frontend project dir (for setup)
 	FrontendDirectory string            `json:"frontendDirectory,omitempty"` // alias for frontendDir
 	BaseUrl           string            `json:"baseUrl,omitempty"`           // baked into frontend SDK; empty = use env var
+	Validate          bool              `json:"validate,omitempty"`          // emit zero-dep runtime validators (default false)
 	Aliases           map[string]string `json:"aliases,omitempty"`           // custom @alias → relative dir
 }
 
@@ -51,6 +52,7 @@ type ResolvedConfig struct {
 	BackendDir  string            // absolute path to backend project dir (empty = projectDir)
 	FrontendDir string            // absolute path to frontend project dir (empty = projectDir)
 	BaseUrl     string            // base URL for frontend SDK (empty = process.env.VELD_API_URL)
+	Validate    bool              // emit zero-dep runtime validators and wire into routes
 	Aliases     map[string]string // merged: default aliases + config overrides
 }
 
@@ -63,6 +65,7 @@ type FlagOverrides struct {
 	Out         string
 	BackendOut  string
 	FrontendOut string
+	Validate    bool
 	// Changed tracks which flags were explicitly passed.
 	BackendSet     bool
 	FrontendSet    bool
@@ -70,6 +73,7 @@ type FlagOverrides struct {
 	OutSet         bool
 	BackendOutSet  bool
 	FrontendOutSet bool
+	ValidateSet    bool
 }
 
 // frontendAlias normalises legacy frontend names.
@@ -138,6 +142,9 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 	}
 	if flags.FrontendOutSet {
 		cfg.FrontendOut = flags.FrontendOut
+	}
+	if flags.ValidateSet {
+		cfg.Validate = flags.Validate
 	}
 
 	if cfg.Backend == "" {
@@ -211,6 +218,7 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		BackendDir:  resolveOptionalDir(cfgDir, cfg.effectiveBackendDir()),
 		FrontendDir: resolveOptionalDir(cfgDir, cfg.effectiveFrontendDir()),
 		BaseUrl:     cfg.BaseUrl,
+		Validate:    cfg.Validate,
 		Aliases:     aliases,
 	}, nil
 }
