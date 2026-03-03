@@ -39,6 +39,7 @@ type Field struct {
 	IsMap        bool   `json:"isMap,omitempty"`        // Map<string, V>
 	MapValueType string `json:"mapValueType,omitempty"` // the V in Map<string, V>
 	Default      string `json:"default,omitempty"`      // @default(value)
+	Deprecated   string `json:"deprecated,omitempty"`   // @deprecated "message"
 	Line         int    `json:"-"`                      // line in source where this field was defined
 }
 
@@ -65,5 +66,6 @@ type Action struct {
 	Stream      string   `json:"stream,omitempty"`      // WebSocket message type for WS actions
 	Errors      []string `json:"errors,omitempty"`      // typed error codes for this action
 	Middleware  []string `json:"middleware"`
-	Line        int      `json:"-"` // line in source where this action was defined
+	Deprecated  string   `json:"deprecated,omitempty"` // @deprecated "message"
+	Line        int      `json:"-"`                    // line in source where this action was defined
 }

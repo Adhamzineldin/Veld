@@ -648,7 +648,7 @@ func newASTCmd() *cobra.Command {
 
 func newGenerateCmd() *cobra.Command {
 	var backendFlag, frontendFlag, inputFlag, outFlag string
-	var incrementalFlag, dryRunFlag, setupFlag, validateFlag bool
+	var incrementalFlag, dryRunFlag, setupFlag, validateFlag, strictFlag, forceFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "generate",
@@ -692,6 +692,29 @@ func newGenerateCmd() *cobra.Command {
 				Validate: rc.Validate,
 			}
 
+			// ── Pre-emit breaking-change gate ────────────────────────────────────
+			// Runs before any files are written so the developer can decide whether
+			// to proceed. Skipped for dry-run and incremental (dev-mode) builds.
+			if !dryRunFlag && !incrementalFlag {
+				if preChanges := computePreChanges(rc); diff.HasBreaking(preChanges) {
+					printDiffChanges(preChanges)
+					switch {
+					case strictFlag:
+						// CI mode: always fail, no human interaction possible.
+						fmt.Fprintln(os.Stderr, red("✗")+" Breaking changes detected — generation blocked by --strict")
+						return fmt.Errorf("breaking changes blocked by --strict (use --force to override in dev)")
+					case forceFlag:
+						// Developer explicitly opted in — warn but continue.
+						fmt.Fprintln(os.Stderr, yellow("⚠")+"  --force: generating despite breaking changes")
+					default:
+						// Interactive: ask the developer.
+						if !promptContinue("Generate anyway?") {
+							return fmt.Errorf("generation aborted")
+						}
+					}
+				}
+			}
+
 			regenerated, _, changes, err := runGenerate(rc, incrementalFlag, opts)
 			if err != nil {
 				return err
@@ -700,6 +723,7 @@ func newGenerateCmd() *cobra.Command {
 			if dryRunFlag {
 				fmt.Println(green("✓") + " Dry run — no files written")
 				printGenerateSummary(rc, regenerated)
+				printDiffChanges(changes)
 				return nil
 			}
 
@@ -718,7 +742,15 @@ func newGenerateCmd() *cobra.Command {
 			}
 
 			printGenerateSummary(rc, regenerated)
-			printDiffChanges(changes)
+			// Breaking changes were already shown (and accepted) in the pre-emit
+			// gate above. Only surface non-breaking additions here.
+			var additions []diff.Change
+			for _, c := range changes {
+				if c.Kind == diff.Added {
+					additions = append(additions, c)
+				}
+			}
+			printDiffChanges(additions)
 			printImportInstructions(rc)
 
 			if setupFlag {
@@ -747,7 +779,34 @@ func newGenerateCmd() *cobra.Command {
 		"auto-configure project files for seamless imports after generation")
 	cmd.Flags().BoolVar(&validateFlag, "validate", false,
 		"emit zero-dep runtime validators and wire into route handlers (overrides config)")
+	cmd.Flags().BoolVar(&strictFlag, "strict", false,
+		"exit non-zero if any breaking changes are detected (ideal for CI/CD pipelines)")
+	cmd.Flags().BoolVar(&forceFlag, "force", false,
+		"generate despite breaking changes without prompting (overrides interactive gate)")
 	return cmd
+}
+
+// computePreChanges loads the previous lock file and diffs it against the
+// current contract WITHOUT emitting any files. Returns nil if no lock exists.
+func computePreChanges(rc config.ResolvedConfig) []diff.Change {
+	oldAST, hasLock, err := diff.LoadLock(rc.ConfigDir)
+	if err != nil || !hasLock {
+		return nil
+	}
+	a, _, err := loader.Parse(rc.Input, rc.Aliases)
+	if err != nil {
+		return nil
+	}
+	return diff.Diff(oldAST, a)
+}
+
+// promptContinue prints a [y/N] prompt and returns true only if the user
+// types "y" or "Y". Any other input (including Enter) returns false.
+func promptContinue(question string) bool {
+	fmt.Printf("%s  %s [y/N]: ", yellow("⚠"), question)
+	reader := bufio.NewReader(os.Stdin)
+	line, _ := reader.ReadString('\n')
+	return strings.ToLower(strings.TrimSpace(line)) == "y"
 }
 
 // ── watch ─────────────────────────────────────────────────────────────────────

@@ -89,6 +89,9 @@ func (e *NodeEmitter) emitPerModuleTypes(a ast.AST, outDir string) error {
 				sb.WriteString(fmt.Sprintf("export interface %s {\n", m.Name))
 			}
 			for _, f := range m.Fields {
+				if f.Deprecated != "" {
+					sb.WriteString(fmt.Sprintf("  /** @deprecated %s */\n", f.Deprecated))
+				}
 				opt := ""
 				if f.Optional {
 					opt = "?"

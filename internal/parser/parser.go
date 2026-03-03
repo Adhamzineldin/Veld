@@ -404,32 +404,41 @@ func (p *Parser) parseField() (ast.Field, error) {
 		Line:         nameTok.Line,
 	}
 
-	// Check for @default(value)
-	if p.peek().Type == lexer.TAt {
+	// Handle field annotations: @default(value), @deprecated "message"
+	// Multiple annotations are allowed in any order.
+	for p.peek().Type == lexer.TAt {
 		p.consume() // @
 		kwTok := p.consume()
-		if kwTok.Value != "default" {
-			return f, fmt.Errorf("line %d: expected \"default\" after @, got %q", kwTok.Line, kwTok.Value)
-		}
-		if _, err := p.expect(lexer.TLParen); err != nil {
-			return f, err
-		}
-		// The default value can be a string, number, identifier (true/false/enum value)
-		valTok := p.consume()
-		switch valTok.Type {
-		case lexer.TString:
-			f.Default = "\"" + valTok.Value + "\""
-		case lexer.TNumber:
-			f.Default = valTok.Value
-		case lexer.TIdent:
-			f.Default = valTok.Value
-		case lexer.TTypeBool:
-			f.Default = valTok.Value // true/false parsed as keyword
+		switch kwTok.Value {
+		case "default":
+			if _, err := p.expect(lexer.TLParen); err != nil {
+				return f, err
+			}
+			// The default value can be a string, number, identifier (true/false/enum value)
+			valTok := p.consume()
+			switch valTok.Type {
+			case lexer.TString:
+				f.Default = "\"" + valTok.Value + "\""
+			case lexer.TNumber:
+				f.Default = valTok.Value
+			case lexer.TIdent:
+				f.Default = valTok.Value
+			case lexer.TTypeBool:
+				f.Default = valTok.Value // true/false parsed as keyword
+			default:
+				return f, fmt.Errorf("line %d: expected default value, got %q", valTok.Line, valTok.Value)
+			}
+			if _, err := p.expect(lexer.TRParen); err != nil {
+				return f, err
+			}
+		case "deprecated":
+			msgTok, err := p.expect(lexer.TString)
+			if err != nil {
+				return f, fmt.Errorf("line %d: @deprecated expects a quoted message, e.g. @deprecated \"use newField instead\"", kwTok.Line)
+			}
+			f.Deprecated = msgTok.Value
 		default:
-			return f, fmt.Errorf("line %d: expected default value, got %q", valTok.Line, valTok.Value)
-		}
-		if _, err := p.expect(lexer.TRParen); err != nil {
-			return f, err
+			return f, fmt.Errorf("line %d: unknown field annotation @%s", kwTok.Line, kwTok.Value)
 		}
 	}
 
@@ -636,6 +645,19 @@ func (p *Parser) parseAction() (ast.Action, error) {
 			}
 			if _, err := p.expect(lexer.TRBracket); err != nil {
 				return act, fmt.Errorf("errors list: %w", err)
+			}
+		case lexer.TAt:
+			p.consume() // @
+			kwTok := p.consume()
+			switch kwTok.Value {
+			case "deprecated":
+				msgTok, err := p.expect(lexer.TString)
+				if err != nil {
+					return act, fmt.Errorf("line %d: @deprecated expects a quoted message, e.g. @deprecated \"use newAction instead\"", kwTok.Line)
+				}
+				act.Deprecated = msgTok.Value
+			default:
+				return act, fmt.Errorf("line %d: unknown action annotation @%s", kwTok.Line, kwTok.Value)
 			}
 		default:
 			tok := p.peek()

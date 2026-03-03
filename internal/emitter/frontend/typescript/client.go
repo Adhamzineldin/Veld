@@ -17,9 +17,19 @@ func writeAction(sb *strings.Builder, mod ast.Module, act ast.Action) {
 		routePath = mod.Prefix + act.Path
 	}
 
-	// Route doc comment: METHOD /full/path — Description
+	// Route doc comment: METHOD /full/path — Description (+ @deprecated if set)
 	docMethod := strings.ToUpper(act.Method)
-	if act.Description != "" {
+	if act.Deprecated != "" {
+		// Multi-line JSDoc so IDEs render the strikethrough properly.
+		sb.WriteString("    /**\n")
+		if act.Description != "" {
+			sb.WriteString(fmt.Sprintf("     * %s %s — %s\n", docMethod, routePath, act.Description))
+		} else {
+			sb.WriteString(fmt.Sprintf("     * %s %s\n", docMethod, routePath))
+		}
+		sb.WriteString(fmt.Sprintf("     * @deprecated %s\n", act.Deprecated))
+		sb.WriteString("     */\n")
+	} else if act.Description != "" {
 		sb.WriteString(fmt.Sprintf("    /** %s %s — %s */\n", docMethod, routePath, act.Description))
 	} else {
 		sb.WriteString(fmt.Sprintf("    /** %s %s */\n", docMethod, routePath))

@@ -54,6 +54,7 @@ func Lint(a ast.AST) []Issue {
 	issues = append(issues, checkDuplicateActionNames(a)...)
 	issues = append(issues, checkEmptyModels(a)...)
 	issues = append(issues, checkMissingDescriptions(a)...)
+	issues = append(issues, checkDeprecatedActions(a)...)
 
 	sortIssues(issues)
 	return issues
@@ -207,6 +208,38 @@ func checkMissingDescriptions(a ast.AST) []Issue {
 					Rule:     "missing-description",
 					Path:     mod.Name + "." + act.Name,
 					Message:  fmt.Sprintf("action %q has no description", act.Name),
+				})
+			}
+		}
+	}
+	return issues
+}
+
+// checkDeprecatedActions surfaces actions that carry a @deprecated annotation
+// so that `veld lint` gives a clear inventory of the deprecation debt in the
+// contract. This is informational — deprecated actions are still valid.
+func checkDeprecatedActions(a ast.AST) []Issue {
+	var issues []Issue
+	for _, mod := range a.Modules {
+		for _, act := range mod.Actions {
+			if act.Deprecated != "" {
+				issues = append(issues, Issue{
+					Severity: Warning,
+					Rule:     "deprecated-action",
+					Path:     mod.Name + "." + act.Name,
+					Message:  fmt.Sprintf("action %q is deprecated: %s", act.Name, act.Deprecated),
+				})
+			}
+		}
+	}
+	for _, m := range a.Models {
+		for _, f := range m.Fields {
+			if f.Deprecated != "" {
+				issues = append(issues, Issue{
+					Severity: Warning,
+					Rule:     "deprecated-field",
+					Path:     m.Name + "." + f.Name,
+					Message:  fmt.Sprintf("field %q in model %s is deprecated: %s", f.Name, m.Name, f.Deprecated),
 				})
 			}
 		}

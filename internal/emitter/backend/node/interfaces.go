@@ -46,12 +46,15 @@ func (e *NodeEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) er
 	sb.WriteString(fmt.Sprintf("\nexport interface I%sService {\n", mod.Name))
 
 	for _, act := range mod.Actions {
-		// Build JSDoc with description and @throws for each error
-		hasJSDoc := act.Description != "" || len(act.Errors) > 0
+		// Build JSDoc with description, @deprecated, and @throws for each error
+		hasJSDoc := act.Description != "" || act.Deprecated != "" || len(act.Errors) > 0
 		if hasJSDoc {
 			sb.WriteString("  /**\n")
 			if act.Description != "" {
 				sb.WriteString(fmt.Sprintf("   * %s\n", act.Description))
+			}
+			if act.Deprecated != "" {
+				sb.WriteString(fmt.Sprintf("   * @deprecated %s\n", act.Deprecated))
 			}
 			for _, errName := range act.Errors {
 				code := emitter.ErrorCode(act.Name, errName)

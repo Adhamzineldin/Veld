@@ -68,12 +68,15 @@ func (e *PythonEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) 
 		}
 		outputType := formatPyOutputType(act)
 		sb.WriteString(fmt.Sprintf(") -> %s:\n", outputType))
-		// Build docstring with description and Raises section
-		hasDocContent := act.Description != "" || len(act.Errors) > 0
+		// Build docstring with description, deprecation notice, and Raises section
+		hasDocContent := act.Description != "" || act.Deprecated != "" || len(act.Errors) > 0
 		if hasDocContent {
 			sb.WriteString("        \"\"\"\n")
 			if act.Description != "" {
 				sb.WriteString(fmt.Sprintf("        %s\n", act.Description))
+			}
+			if act.Deprecated != "" {
+				sb.WriteString(fmt.Sprintf("\n        .. deprecated::\n            %s\n", act.Deprecated))
 			}
 			if len(act.Errors) > 0 {
 				sb.WriteString("\n        Raises:\n")
