@@ -15,7 +15,9 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/cache"
 	"github.com/Adhamzineldin/Veld/internal/config"
+	"github.com/Adhamzineldin/Veld/internal/diff"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	"github.com/Adhamzineldin/Veld/internal/lint"
 	"github.com/Adhamzineldin/Veld/internal/loader"
 	"github.com/Adhamzineldin/Veld/internal/lsp"
 	"github.com/Adhamzineldin/Veld/internal/schema"
@@ -77,15 +79,23 @@ func bold(s string) string   { return colorBold + s + colorReset }
 // When incremental is false every module is regenerated.
 // When incremental is true only modules whose source files changed are regenerated.
 //
-// Returns (regeneratedModuleNames, veldFileList, error).
-func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOptions) ([]string, []string, error) {
+// Returns (regeneratedModuleNames, veldFileList, breakingChanges, error).
+// breakingChanges is non-nil only when a .veld.lock.json baseline exists;
+// callers are responsible for printing / acting on them.
+func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOptions) ([]string, []string, []diff.Change, error) {
 	a, veldFiles, err := loader.Parse(rc.Input, rc.Aliases)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if errs := validator.Validate(a); len(errs) > 0 {
 		printValidationErrors(errs, veldFiles)
-		return nil, veldFiles, fmt.Errorf("contract validation failed")
+		return nil, veldFiles, nil, fmt.Errorf("contract validation failed")
+	}
+
+	// ── load previous lock for breaking-change detection ─────────────────
+	oldAST, hasLock, lockErr := diff.LoadLock(rc.ConfigDir)
+	if lockErr != nil {
+		fmt.Fprintf(os.Stderr, yellow("warning: ")+"could not read lock file: %v\n", lockErr)
 	}
 
 	// ── incremental: compute which modules need regeneration ──────────────
@@ -97,7 +107,7 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 		changedFiles := c.ChangedFiles(veldFiles)
 
 		if len(changedFiles) == 0 {
-			return nil, veldFiles, nil
+			return nil, veldFiles, nil, nil
 		}
 
 		changedFileSet := make(map[string]bool, len(changedFiles))
@@ -131,7 +141,7 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 				c.Update(f)
 			}
 			_ = c.Save(rc.ConfigDir)
-			return nil, veldFiles, nil
+			return nil, veldFiles, nil, nil
 		}
 	}
 
@@ -157,24 +167,24 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 	// ── emit: backend ────────────────────────────────────────────────────
 	backend, err := emitter.GetBackend(rc.Backend)
 	if err != nil {
-		return nil, veldFiles, err
+		return nil, veldFiles, nil, err
 	}
 	if err := backend.Emit(emitAST, rc.BackendOut, opts); err != nil {
-		return nil, veldFiles, fmt.Errorf("%s emitter: %w", rc.Backend, err)
+		return nil, veldFiles, nil, fmt.Errorf("%s emitter: %w", rc.Backend, err)
 	}
 	// When using split output, also emit backend (types, errors, interfaces,
 	// routes) into the frontend output dir so the frontend SDK is fully
 	// self-contained — no cross-directory imports needed.
 	if rc.SplitOutput() && !opts.DryRun {
 		if err := backend.Emit(emitAST, rc.FrontendOut, opts); err != nil {
-			return nil, veldFiles, fmt.Errorf("%s emitter (frontend copy): %w", rc.Backend, err)
+			return nil, veldFiles, nil, fmt.Errorf("%s emitter (frontend copy): %w", rc.Backend, err)
 		}
 	}
 
 	// ── emit: frontend ───────────────────────────────────────────────────
 	frontend, err := emitter.GetFrontend(rc.Frontend)
 	if err != nil {
-		return nil, veldFiles, err
+		return nil, veldFiles, nil, err
 	}
 	if frontend != nil {
 		// Frontend SDK always gets the full AST (combined output).
@@ -189,7 +199,7 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 			}
 		}
 		if err := frontend.Emit(frontendAST, rc.FrontendOut, opts); err != nil {
-			return nil, veldFiles, fmt.Errorf("%s emitter: %w", rc.Frontend, err)
+			return nil, veldFiles, nil, fmt.Errorf("%s emitter: %w", rc.Frontend, err)
 		}
 	}
 
@@ -211,11 +221,70 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 		fmt.Fprintf(os.Stderr, yellow("warning: ")+"cache save failed: %v\n", err)
 	}
 
+	// ── breaking-change diff ──────────────────────────────────────────────
+	// Compare against the previous lock; then persist the new snapshot.
+	var changes []diff.Change
+	if hasLock && !opts.DryRun {
+		changes = diff.Diff(oldAST, a)
+	}
+	if !opts.DryRun {
+		if err := diff.SaveLock(rc.ConfigDir, a); err != nil {
+			fmt.Fprintf(os.Stderr, yellow("warning: ")+"lock save failed: %v\n", err)
+		}
+	}
+
+	// ── lint hint ─────────────────────────────────────────────────────────
+	// Run a quick lint pass and surface a one-liner so developers know to
+	// investigate. Full details are always available via `veld lint`.
+	if !opts.DryRun {
+		if issues := lint.Lint(a); len(issues) > 0 {
+			errCount := 0
+			for _, iss := range issues {
+				if iss.IsError() {
+					errCount++
+				}
+			}
+			if errCount > 0 {
+				fmt.Fprintf(os.Stderr, yellow("⚠")+"  %d lint issue(s) found (%d error(s)) — run %s for details\n",
+					len(issues), errCount, bold("veld lint"))
+			} else {
+				fmt.Fprintf(os.Stderr, dim("ℹ")+"  %d lint warning(s) — run %s for details\n",
+					len(issues), bold("veld lint"))
+			}
+		}
+	}
+
 	names := make([]string, 0, len(emitAST.Modules))
 	for _, mod := range emitAST.Modules {
 		names = append(names, mod.Name)
 	}
-	return names, veldFiles, nil
+	return names, veldFiles, changes, nil
+}
+
+// printDiffChanges prints breaking changes and additions detected against the
+// previous .veld.lock.json. It is a no-op when changes is empty or nil.
+func printDiffChanges(changes []diff.Change) {
+	if len(changes) == 0 {
+		return
+	}
+
+	hasBreaking := diff.HasBreaking(changes)
+	if hasBreaking {
+		fmt.Println()
+		fmt.Println(red("⚠  Breaking changes detected:"))
+	} else {
+		fmt.Println()
+		fmt.Println(yellow("↑  Contract changes:"))
+	}
+
+	for _, c := range changes {
+		if c.Kind == diff.Breaking {
+			fmt.Printf("   %s  %s — %s\n", red("✗"), bold(c.Path), c.Message)
+		} else {
+			fmt.Printf("   %s  %s — %s\n", green("+"), dim(c.Path), c.Message)
+		}
+	}
+	fmt.Println()
 }
 
 // printGenerateSummary prints a detailed breakdown of generated files
@@ -512,7 +581,7 @@ Frontends: typescript, react, vue, angular, svelte, dart, kotlin, swift, types-o
 	root.AddCommand(
 		newValidateCmd(), newASTCmd(), newGenerateCmd(), newWatchCmd(),
 		newInitCmd(), newCleanCmd(), newOpenAPICmd(), newGraphQLCmd(),
-		newSchemaCmd(), newDiffCmd(), newDocsCmd(), newLSPCmd(),
+		newSchemaCmd(), newDiffCmd(), newLintCmd(), newDocsCmd(), newLSPCmd(),
 		newSetupCmd(),
 	)
 	if err := root.Execute(); err != nil {
@@ -623,7 +692,7 @@ func newGenerateCmd() *cobra.Command {
 				Validate: rc.Validate,
 			}
 
-			regenerated, _, err := runGenerate(rc, incrementalFlag, opts)
+			regenerated, _, changes, err := runGenerate(rc, incrementalFlag, opts)
 			if err != nil {
 				return err
 			}
@@ -644,10 +713,12 @@ func newGenerateCmd() *cobra.Command {
 					fmt.Printf(green("✓")+" Regenerated %s → %s\n",
 						strings.Join(regenerated, ", "), rc.Out)
 				}
+				printDiffChanges(changes)
 				return nil
 			}
 
 			printGenerateSummary(rc, regenerated)
+			printDiffChanges(changes)
 			printImportInstructions(rc)
 
 			if setupFlag {
@@ -714,7 +785,7 @@ func newWatchCmd() *cobra.Command {
 				Validate: rc.Validate,
 			}
 
-			regenerated, initFiles, genErr := runGenerate(rc, false, opts)
+			regenerated, initFiles, changes, genErr := runGenerate(rc, false, opts)
 			if genErr != nil {
 				fmt.Fprintln(os.Stderr, red("error: ")+genErr.Error())
 			} else if rc.SplitOutput() {
@@ -723,6 +794,7 @@ func newWatchCmd() *cobra.Command {
 			} else {
 				fmt.Printf(green("✓")+" Ready (%d module(s)) → %s\n", len(regenerated), rc.Out)
 			}
+			printDiffChanges(changes)
 			fmt.Println()
 
 			mtimes := make(map[string]int64, len(initFiles))
@@ -774,7 +846,7 @@ func newWatchCmd() *cobra.Command {
 					debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
 						ts := dim("[" + time.Now().Format("15:04:05") + "]")
 
-						regen, newFiles, genErr := runGenerate(rc, true, opts)
+						regen, newFiles, changes, genErr := runGenerate(rc, true, opts)
 						if genErr != nil {
 							if !lastError {
 								fmt.Fprintf(os.Stderr, "%s %s %v\n", ts, red("error:"), genErr)
@@ -787,6 +859,7 @@ func newWatchCmd() *cobra.Command {
 							lastError = false
 						} else {
 							fmt.Printf("%s %s %s\n", ts, green("✓"), strings.Join(regen, ", "))
+							printDiffChanges(changes)
 							fmt.Println()
 							lastError = false
 						}
@@ -836,9 +909,12 @@ func newCleanCmd() *cobra.Command {
 				cleaned = true
 			}
 
-			// Also remove cache.
+			// Also remove cache and lock file.
 			cacheFile := filepath.Join(rc.ConfigDir, ".veld-cache.json")
 			os.Remove(cacheFile)
+			if err := diff.DeleteLock(rc.ConfigDir); err != nil {
+				fmt.Fprintf(os.Stderr, yellow("warning: ")+"could not remove lock file: %v\n", err)
+			}
 
 			if !cleaned {
 				fmt.Println(green("✓") + " Nothing to clean — output directory does not exist")
@@ -846,6 +922,77 @@ func newCleanCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// ── lint ──────────────────────────────────────────────────────────────────────
+
+func newLintCmd() *cobra.Command {
+	var exitCodeFlag bool
+
+	cmd := &cobra.Command{
+		Use:   "lint",
+		Short: "Analyse the contract for quality issues",
+		Long: "Runs static analysis on your .veld contract and reports warnings and errors.\n" +
+			"Unlike 'veld validate' (which checks structural correctness), 'veld lint'\n" +
+			"flags patterns that are legal but likely unintentional — unused models,\n" +
+			"empty modules, duplicate routes, missing descriptions, and more.\n\n" +
+			"Exits 0 when no issues are found. Use --exit-code to fail on any finding.",
+		Example: "  veld lint\n  veld lint --exit-code",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rc, err := config.BuildResolved(config.FlagOverrides{})
+			if err != nil {
+				return err
+			}
+
+			a, _, err := loader.Parse(rc.Input, rc.Aliases)
+			if err != nil {
+				return err
+			}
+			if errs := validator.Validate(a); len(errs) > 0 {
+				printValidationErrors(errs, nil)
+				return fmt.Errorf("contract validation failed — fix errors before linting")
+			}
+
+			issues := lint.Lint(a)
+
+			if len(issues) == 0 {
+				fmt.Println(green("✓") + " No issues found")
+				return nil
+			}
+
+			// Print errors first (already sorted by lint.Lint), then warnings.
+			errCount, warnCount := 0, 0
+			for _, iss := range issues {
+				if iss.IsError() {
+					fmt.Printf("  %s  [%s]  %s  %s\n",
+						red("✗"), red(iss.Rule), bold(iss.Path), iss.Message)
+					errCount++
+				} else {
+					fmt.Printf("  %s  [%s]  %s  %s\n",
+						yellow("⚠"), yellow(iss.Rule), dim(iss.Path), iss.Message)
+					warnCount++
+				}
+			}
+
+			fmt.Println()
+			parts := []string{}
+			if errCount > 0 {
+				parts = append(parts, fmt.Sprintf("%s %d error(s)", red("✗"), errCount))
+			}
+			if warnCount > 0 {
+				parts = append(parts, fmt.Sprintf("%s %d warning(s)", yellow("⚠"), warnCount))
+			}
+			fmt.Println(strings.Join(parts, "  "))
+
+			if exitCodeFlag || lint.HasErrors(issues) {
+				return fmt.Errorf("lint found %d issue(s)", len(issues))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&exitCodeFlag, "exit-code", false,
+		"exit with a non-zero status if any issues (including warnings) are found")
+	return cmd
 }
 
 // ── openapi ───────────────────────────────────────────────────────────────────
