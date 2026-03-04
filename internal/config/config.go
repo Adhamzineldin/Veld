@@ -76,6 +76,16 @@ type FlagOverrides struct {
 	ValidateSet    bool
 }
 
+// backendAlias normalises backend shorthand names.
+func backendAlias(name string) string {
+	switch name {
+	case "js":
+		return "javascript"
+	default:
+		return name
+	}
+}
+
 // frontendAlias normalises legacy frontend names.
 func frontendAlias(name string) string {
 	switch name {
@@ -155,6 +165,7 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 	if cfg.Frontend == "" {
 		cfg.Frontend = "typescript"
 	}
+	cfg.Backend = backendAlias(cfg.Backend)
 	cfg.Frontend = frontendAlias(cfg.Frontend)
 
 	if cfg.Out == "" {
