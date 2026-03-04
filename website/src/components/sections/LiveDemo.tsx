@@ -760,6 +760,138 @@ module Shop {
 
 type OutputTab = 'frontend' | 'backend' | 'sdk-usage' | 'backend-impl';
 
+// ── TS usage validator ──
+
+interface GeneratedSymbols {
+  moduleNames: string[];
+  actionsByModule: Record<string, string[]>;
+  typeNames: string[];
+  interfaceNames: string[];
+  enumNames: string[];
+  enumValues: Record<string, string[]>;
+  modelFields: Record<string, string[]>;
+}
+
+function extractSymbols(parsed: ParseResult): GeneratedSymbols {
+  const symbols: GeneratedSymbols = {
+    moduleNames: [],
+    actionsByModule: {},
+    typeNames: [],
+    interfaceNames: [],
+    enumNames: [],
+    enumValues: {},
+    modelFields: {},
+  };
+
+  for (const m of parsed.models) {
+    symbols.typeNames.push(m.name);
+    symbols.modelFields[m.name] = m.fields.map((f) => f.name);
+  }
+  for (const e of parsed.enums) {
+    symbols.enumNames.push(e.name);
+    symbols.enumValues[e.name] = e.values;
+  }
+  for (const mod of parsed.modules) {
+    symbols.moduleNames.push(mod.name);
+    symbols.interfaceNames.push(`I${mod.name}Service`);
+    symbols.actionsByModule[mod.name] = mod.actions.map(
+      (a) => a.name.charAt(0).toLowerCase() + a.name.slice(1)
+    );
+  }
+
+  return symbols;
+}
+
+function validateTSUsage(code: string, symbols: GeneratedSymbols, mode: 'sdk' | 'impl'): string[] {
+  const hints: string[] = [];
+  const lines = code.split('\n');
+
+  // Check for api.Module.action calls in SDK mode
+  if (mode === 'sdk') {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // Check api.ModuleName.actionName
+      const apiCalls = line.matchAll(/api\.(\w+)\.(\w+)/g);
+      for (const m of apiCalls) {
+        const modName = m[1];
+        const actionName = m[2];
+        if (actionName === 'errors') continue; // api.X.errors is valid
+        if (!symbols.moduleNames.includes(modName)) {
+          hints.push(`Line ${i + 1}: api.${modName} — module "${modName}" doesn't exist. Available: ${symbols.moduleNames.join(', ')}`);
+        } else if (!symbols.actionsByModule[modName]?.includes(actionName)) {
+          hints.push(`Line ${i + 1}: api.${modName}.${actionName} — action "${actionName}" doesn't exist on ${modName}. Available: ${symbols.actionsByModule[modName].join(', ')}`);
+        }
+      }
+    }
+  }
+
+  // Check for interface implementations in impl mode
+  if (mode === 'impl') {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // Check implements I*Service
+      const implMatch = line.match(/implements\s+(\w+)/);
+      if (implMatch) {
+        const ifaceName = implMatch[1];
+        if (!symbols.interfaceNames.includes(ifaceName)) {
+          hints.push(`Line ${i + 1}: interface "${ifaceName}" doesn't exist. Available: ${symbols.interfaceNames.join(', ')}`);
+        }
+      }
+      // Check register*Routes
+      const registerMatch = line.match(/register(\w+)Routes/);
+      if (registerMatch) {
+        const modName = registerMatch[1];
+        if (!symbols.moduleNames.includes(modName)) {
+          hints.push(`Line ${i + 1}: register${modName}Routes — module "${modName}" doesn't exist. Available: ${symbols.moduleNames.join(', ')}`);
+        }
+      }
+    }
+  }
+
+  // Common: check type references
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trimStart().startsWith('//')) continue;
+
+    // Check type annotations like : TypeName or <TypeName> or Promise<TypeName>
+    const typeRefs = line.matchAll(/(?::|\<)\s*([A-Z][A-Za-z0-9]*?)(?:\s*[>\[;,=)]|\s*$)/g);
+    for (const m of typeRefs) {
+      const typeName = m[1];
+      const allKnown = [
+        ...symbols.typeNames,
+        ...symbols.enumNames,
+        ...symbols.interfaceNames,
+        'Promise', 'Record', 'Array', 'Map', 'Set', 'VeldApiError', 'Error',
+      ];
+      if (!allKnown.includes(typeName)) {
+        hints.push(`Line ${i + 1}: type "${typeName}" is not defined in your contract`);
+      }
+    }
+
+    // Check field access on known types: variable.fieldName
+    // Look for .fieldName patterns after known method results
+    const fieldAccess = line.matchAll(/(?:result|record|item|created|updated|user|post|comment|product|order)\.(\w+)/gi);
+    for (const m of fieldAccess) {
+      const fieldName = m[1];
+      // Check if this field exists on any model
+      if (fieldName === 'forEach' || fieldName === 'map' || fieldName === 'filter' ||
+          fieldName === 'length' || fieldName === 'then' || fieldName === 'catch' ||
+          fieldName === 'status' || fieldName === 'body' || fieldName === 'json' ||
+          fieldName === 'name' || fieldName === 'message' || fieldName === 'stack') continue;
+      const existsOnAny = Object.values(symbols.modelFields).some((fields) =>
+        fields.includes(fieldName)
+      );
+      if (!existsOnAny && Object.keys(symbols.modelFields).length > 0) {
+        const allFields = [...new Set(Object.values(symbols.modelFields).flat())];
+        hints.push(`Line ${i + 1}: ".${fieldName}" — field not found on any model. Available fields: ${allFields.join(', ')}`);
+      }
+    }
+  }
+
+  // Deduplicate
+  return [...new Set(hints)];
+}
+
 export default function LiveDemo() {
   const [veldSource, setVeldSource] = useState(presets.users.code);
   const [activeTab, setActiveTab] = useState<OutputTab>('frontend');
@@ -769,10 +901,24 @@ export default function LiveDemo() {
     sdkUsage: string;
     backendImpl: string;
   } | null>(null);
+  // Editable code for SDK Usage and Backend Impl
+  const [sdkUsageCode, setSdkUsageCode] = useState('');
+  const [backendImplCode, setBackendImplCode] = useState('');
+  const [sdkUsageErrors, setSdkUsageErrors] = useState<string[]>([]);
+  const [backendImplErrors, setBackendImplErrors] = useState<string[]>([]);
+  const [generatedSymbols, setGeneratedSymbols] = useState<GeneratedSymbols | null>(null);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
+
+  // Refs for contract editor
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLPreElement>(null);
+  // Refs for SDK Usage editor
+  const sdkEditorRef = useRef<HTMLTextAreaElement>(null);
+  const sdkHighlightRef = useRef<HTMLPreElement>(null);
+  // Refs for Backend Impl editor
+  const implEditorRef = useRef<HTMLTextAreaElement>(null);
+  const implHighlightRef = useRef<HTMLPreElement>(null);
 
   const syncScroll = useCallback(() => {
     if (editorRef.current && highlightRef.current) {
@@ -781,6 +927,36 @@ export default function LiveDemo() {
     }
   }, []);
 
+  const syncSdkScroll = useCallback(() => {
+    if (sdkEditorRef.current && sdkHighlightRef.current) {
+      sdkHighlightRef.current.scrollTop = sdkEditorRef.current.scrollTop;
+      sdkHighlightRef.current.scrollLeft = sdkEditorRef.current.scrollLeft;
+    }
+  }, []);
+
+  const syncImplScroll = useCallback(() => {
+    if (implEditorRef.current && implHighlightRef.current) {
+      implHighlightRef.current.scrollTop = implEditorRef.current.scrollTop;
+      implHighlightRef.current.scrollLeft = implEditorRef.current.scrollLeft;
+    }
+  }, []);
+
+  // Validate SDK usage code on change
+  const handleSdkUsageChange = useCallback((value: string) => {
+    setSdkUsageCode(value);
+    if (generatedSymbols) {
+      setSdkUsageErrors(validateTSUsage(value, generatedSymbols, 'sdk'));
+    }
+  }, [generatedSymbols]);
+
+  // Validate Backend impl code on change
+  const handleBackendImplChange = useCallback((value: string) => {
+    setBackendImplCode(value);
+    if (generatedSymbols) {
+      setBackendImplErrors(validateTSUsage(value, generatedSymbols, 'impl'));
+    }
+  }, [generatedSymbols]);
+
   const handleGenerate = useCallback(() => {
     setGenerating(true);
     setTimeout(() => {
@@ -788,23 +964,33 @@ export default function LiveDemo() {
       if (parsed.errors.length > 0) {
         setParseErrors(parsed.errors);
         setGenerated(null);
+        setGeneratedSymbols(null);
       } else if (parsed.models.length === 0 && parsed.modules.length === 0) {
         setParseErrors(['No models or modules found. Write a model or module to see generated output.']);
         setGenerated(null);
+        setGeneratedSymbols(null);
       } else {
-        // Run semantic validation
         const validationErrors = validateParsed(parsed);
         if (validationErrors.length > 0) {
           setParseErrors(validationErrors);
           setGenerated(null);
+          setGeneratedSymbols(null);
         } else {
           setParseErrors([]);
+          const sdkUsage = generateSDKUsage(parsed);
+          const backendImpl = generateBackendImpl(parsed);
+          const symbols = extractSymbols(parsed);
           setGenerated({
             frontend: generateFrontendSDK(parsed),
             backend: generateBackendRoutes(parsed),
-            sdkUsage: generateSDKUsage(parsed),
-            backendImpl: generateBackendImpl(parsed),
+            sdkUsage,
+            backendImpl,
           });
+          setSdkUsageCode(sdkUsage);
+          setBackendImplCode(backendImpl);
+          setGeneratedSymbols(symbols);
+          setSdkUsageErrors([]);
+          setBackendImplErrors([]);
         }
       }
       setGenerating(false);
@@ -815,12 +1001,22 @@ export default function LiveDemo() {
     setVeldSource(presets[key].code);
     setGenerated(null);
     setParseErrors([]);
+    setSdkUsageCode('');
+    setBackendImplCode('');
+    setSdkUsageErrors([]);
+    setBackendImplErrors([]);
+    setGeneratedSymbols(null);
   };
 
   const handleReset = () => {
     setVeldSource('');
     setGenerated(null);
     setParseErrors([]);
+    setSdkUsageCode('');
+    setBackendImplCode('');
+    setSdkUsageErrors([]);
+    setBackendImplErrors([]);
+    setGeneratedSymbols(null);
   };
 
   return (
@@ -955,18 +1151,71 @@ export default function LiveDemo() {
                 </div>
               )}
 
-              {generated && (
+              {/* Read-only tabs: Frontend SDK & Backend Routes */}
+              {generated && (activeTab === 'frontend' || activeTab === 'backend') && (
                 <pre className={styles.outputCode}>
                   {highlightTS(
-                    activeTab === 'frontend'
-                      ? generated.frontend
-                      : activeTab === 'backend'
-                      ? generated.backend
-                      : activeTab === 'sdk-usage'
-                      ? generated.sdkUsage
-                      : generated.backendImpl
+                    activeTab === 'frontend' ? generated.frontend : generated.backend
                   )}
                 </pre>
+              )}
+
+              {/* Editable tab: SDK Usage */}
+              {generated && activeTab === 'sdk-usage' && (
+                <div className={styles.editableOutput}>
+                  <div className={styles.editableEditorWrap}>
+                    <pre ref={sdkHighlightRef} className={styles.editorHighlight} aria-hidden="true">
+                      {highlightTS(sdkUsageCode + '\n')}
+                    </pre>
+                    <textarea
+                      ref={sdkEditorRef}
+                      className={styles.editor}
+                      value={sdkUsageCode}
+                      onChange={(e) => handleSdkUsageChange(e.target.value)}
+                      onScroll={syncSdkScroll}
+                      spellCheck={false}
+                    />
+                  </div>
+                  {sdkUsageErrors.length > 0 && (
+                    <div className={styles.inlineErrors}>
+                      {sdkUsageErrors.map((err, i) => (
+                        <div key={i} className={styles.inlineErrorLine}>⚠ {err}</div>
+                      ))}
+                    </div>
+                  )}
+                  {sdkUsageErrors.length === 0 && sdkUsageCode.trim().length > 0 && (
+                    <div className={styles.inlineSuccess}>✓ No issues found — all references are valid</div>
+                  )}
+                </div>
+              )}
+
+              {/* Editable tab: Backend Implementation */}
+              {generated && activeTab === 'backend-impl' && (
+                <div className={styles.editableOutput}>
+                  <div className={styles.editableEditorWrap}>
+                    <pre ref={implHighlightRef} className={styles.editorHighlight} aria-hidden="true">
+                      {highlightTS(backendImplCode + '\n')}
+                    </pre>
+                    <textarea
+                      ref={implEditorRef}
+                      className={styles.editor}
+                      value={backendImplCode}
+                      onChange={(e) => handleBackendImplChange(e.target.value)}
+                      onScroll={syncImplScroll}
+                      spellCheck={false}
+                    />
+                  </div>
+                  {backendImplErrors.length > 0 && (
+                    <div className={styles.inlineErrors}>
+                      {backendImplErrors.map((err, i) => (
+                        <div key={i} className={styles.inlineErrorLine}>⚠ {err}</div>
+                      ))}
+                    </div>
+                  )}
+                  {backendImplErrors.length === 0 && backendImplCode.trim().length > 0 && (
+                    <div className={styles.inlineSuccess}>✓ No issues found — all references are valid</div>
+                  )}
+                </div>
               )}
             </div>
           </div>
