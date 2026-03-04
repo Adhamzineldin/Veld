@@ -63,6 +63,10 @@ func BuildSQL(a ast.AST) string {
 				constraints = append(constraints, fmt.Sprintf("DEFAULT %s", sqlDefault(f)))
 			}
 
+			if f.Unique {
+				constraints = append(constraints, "UNIQUE")
+			}
+
 			line := fmt.Sprintf("  %s %s", toSnakeCase(f.Name), sqlType)
 			if len(constraints) > 0 {
 				line += " " + strings.Join(constraints, " ")
@@ -74,7 +78,17 @@ func BuildSQL(a ast.AST) string {
 			sb.WriteString(line + "\n")
 		}
 
-		sb.WriteString(");\n\n")
+		sb.WriteString(");\n")
+
+		// Add indexes for @index annotated fields
+		for _, f := range allFields {
+			if f.Index {
+				sb.WriteString(fmt.Sprintf("CREATE INDEX idx_%s_%s ON %s (%s);\n",
+					tableName, toSnakeCase(f.Name), tableName, toSnakeCase(f.Name)))
+			}
+		}
+
+		sb.WriteString("\n")
 	}
 
 	return sb.String()

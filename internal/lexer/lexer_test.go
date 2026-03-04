@@ -263,3 +263,86 @@ func TestTokenizeDefaultAnnotation(t *testing.T) {
 		t.Errorf("expected 'user', got %q", tokens[6].Value)
 	}
 }
+
+func TestTokenizeBlockComment(t *testing.T) {
+	src := `/* this is a block comment */
+model User {}`
+	tokens, err := New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Should skip the block comment and parse model User {}
+	if tokens[0].Type != TModel {
+		t.Errorf("expected TModel after block comment, got %s (%q)", tokens[0].Type, tokens[0].Value)
+	}
+}
+
+func TestTokenizeBlockCommentMultiLine(t *testing.T) {
+	src := `/*
+  This spans
+  multiple lines
+*/
+model User {}`
+	tokens, err := New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tokens[0].Type != TModel {
+		t.Errorf("expected TModel, got %s", tokens[0].Type)
+	}
+	// Line tracking: model should be on line 5
+	if tokens[0].Line != 5 {
+		t.Errorf("expected line 5, got %d", tokens[0].Line)
+	}
+}
+
+func TestTokenizeBlockCommentInline(t *testing.T) {
+	src := `model /* inline */ User {}`
+	tokens, err := New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tokens[0].Type != TModel || tokens[1].Type != TIdent {
+		t.Errorf("block comment should be skipped inline")
+	}
+	if tokens[1].Value != "User" {
+		t.Errorf("expected User, got %q", tokens[1].Value)
+	}
+}
+
+func TestErrorRecovery(t *testing.T) {
+	src := "model User { name: string; age: int }"
+	lex := New(src)
+	tokens, err := lex.Tokenize()
+	// The semicolons are unexpected characters
+	if err == nil {
+		t.Fatal("expected error for unexpected character ';'")
+	}
+	// But tokens should still be returned (recovery)
+	if tokens == nil {
+		t.Fatal("tokens should not be nil even with errors")
+	}
+	// Should have collected errors
+	if len(lex.Errors()) == 0 {
+		t.Error("Errors() should return collected errors")
+	}
+}
+
+func TestTokenizeAnnotationKeywords(t *testing.T) {
+	// @example, @unique, @index, @relation should all lex as @+ident
+	src := `name: string @example("test") @unique @index @relation(User)`
+	tokens, err := New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Count @ tokens
+	atCount := 0
+	for _, tok := range tokens {
+		if tok.Type == TAt {
+			atCount++
+		}
+	}
+	if atCount != 4 {
+		t.Errorf("expected 4 @ tokens, got %d", atCount)
+	}
+}

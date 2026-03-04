@@ -10,9 +10,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@veld/hooks": "file:src/generated/hooks",
-    "@veld/generated": "file:src/generated",
+    "@maayn/veld": "^0.2.4",
     "@tanstack/react-query": "^5.28.0",
+    "@veld/generated": "file:src/generated",
+    "@veld/hooks": "file:src/generated/hooks",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

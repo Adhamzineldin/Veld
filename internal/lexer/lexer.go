@@ -190,6 +190,7 @@ type Lexer struct {
 	source []rune
 	pos    int
 	line   int
+	errors []error // collected errors for recovery mode
 }
 
 // New creates a Lexer from the given source string.
@@ -198,6 +199,8 @@ func New(source string) *Lexer {
 }
 
 // Tokenize scans the entire source and returns all tokens.
+// The lexer recovers from unexpected characters — it collects all errors
+// and continues scanning so the caller gets a complete error list.
 func (l *Lexer) Tokenize() ([]Token, error) {
 	var tokens []Token
 
@@ -209,6 +212,19 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 			l.pos++
 		} else if ch == '\r' || ch == '\t' || ch == ' ' {
 			l.pos++
+		} else if ch == '/' && l.pos+1 < len(l.source) && l.source[l.pos+1] == '*' {
+			// Block comment /* ... */ — skip everything, track newlines.
+			l.pos += 2 // skip /*
+			for l.pos < len(l.source) {
+				if l.source[l.pos] == '*' && l.pos+1 < len(l.source) && l.source[l.pos+1] == '/' {
+					l.pos += 2 // skip */
+					break
+				}
+				if l.source[l.pos] == '\n' {
+					l.line++
+				}
+				l.pos++
+			}
 		} else if ch == '/' && l.pos+1 < len(l.source) && l.source[l.pos+1] == '/' {
 			// Line comment — skip to end of line.
 			for l.pos < len(l.source) && l.source[l.pos] != '\n' {
@@ -293,12 +309,23 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 			}
 			tokens = append(tokens, classifyWord(string(l.source[start:l.pos]), l.line))
 		} else {
-			return nil, fmt.Errorf("line %d: unexpected character %q", l.line, ch)
+			// Error recovery: record the error and skip the bad character.
+			l.errors = append(l.errors, fmt.Errorf("line %d: unexpected character %q", l.line, ch))
+			l.pos++
 		}
 	}
 
 	tokens = append(tokens, Token{TEOF, "", l.line})
+	if len(l.errors) > 0 {
+		return tokens, l.errors[0] // return first error for backward compat, tokens are still usable
+	}
 	return tokens, nil
+}
+
+// Errors returns all lexer errors collected during tokenization.
+// When error recovery is active, this may contain multiple entries.
+func (l *Lexer) Errors() []error {
+	return l.errors
 }
 
 func classifyWord(word string, line int) Token {

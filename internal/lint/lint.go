@@ -257,7 +257,7 @@ func sortIssues(issues []Issue) {
 			a, b := issues[j-1], issues[j]
 			less := false
 			if a.Severity != b.Severity {
-				less = a.Severity > b.Severity // Error(1) > Warning(0) → errors first
+				less = a.Severity < b.Severity // Warning(0) < Error(1) → swap to put errors first
 			} else {
 				less = a.Path > b.Path
 			}

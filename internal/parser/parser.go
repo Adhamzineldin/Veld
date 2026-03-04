@@ -437,6 +437,40 @@ func (p *Parser) parseField() (ast.Field, error) {
 				return f, fmt.Errorf("line %d: @deprecated expects a quoted message, e.g. @deprecated \"use newField instead\"", kwTok.Line)
 			}
 			f.Deprecated = msgTok.Value
+		case "example":
+			if _, err := p.expect(lexer.TLParen); err != nil {
+				return f, err
+			}
+			valTok := p.consume()
+			switch valTok.Type {
+			case lexer.TString:
+				f.Example = valTok.Value
+			case lexer.TNumber:
+				f.Example = valTok.Value
+			case lexer.TIdent, lexer.TTypeBool:
+				f.Example = valTok.Value
+			default:
+				return f, fmt.Errorf("line %d: expected example value, got %q", valTok.Line, valTok.Value)
+			}
+			if _, err := p.expect(lexer.TRParen); err != nil {
+				return f, err
+			}
+		case "unique":
+			f.Unique = true
+		case "index":
+			f.Index = true
+		case "relation":
+			if _, err := p.expect(lexer.TLParen); err != nil {
+				return f, err
+			}
+			relTok, err := p.expect(lexer.TIdent)
+			if err != nil {
+				return f, fmt.Errorf("line %d: @relation expects a model name", kwTok.Line)
+			}
+			f.Relation = relTok.Value
+			if _, err := p.expect(lexer.TRParen); err != nil {
+				return f, err
+			}
 		default:
 			return f, fmt.Errorf("line %d: unknown field annotation @%s", kwTok.Line, kwTok.Value)
 		}

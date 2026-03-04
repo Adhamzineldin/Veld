@@ -67,11 +67,33 @@ func BuildPrisma(a ast.AST) string {
 				attrs = append(attrs, fmt.Sprintf("@default(%s)", prismaDefault(f)))
 			}
 
+			if f.Unique {
+				attrs = append(attrs, "@unique")
+			}
+
+			if f.Relation != "" {
+				attrs = append(attrs, fmt.Sprintf("@relation(fields: [%sId], references: [id])", strings.ToLower(f.Relation)))
+			}
+
 			line := fmt.Sprintf("  %-15s %s", f.Name, prismaType)
 			if len(attrs) > 0 {
 				line += " " + strings.Join(attrs, " ")
 			}
 			sb.WriteString(line + "\n")
+		}
+
+		// Add @@index directives for @index annotated fields
+		var indexedFields []string
+		for _, f := range allFields {
+			if f.Index {
+				indexedFields = append(indexedFields, f.Name)
+			}
+		}
+		for _, name := range indexedFields {
+			sb.WriteString(fmt.Sprintf("\n  @@index([%s])", name))
+		}
+		if len(indexedFields) > 0 {
+			sb.WriteString("\n")
 		}
 
 		sb.WriteString("}\n\n")

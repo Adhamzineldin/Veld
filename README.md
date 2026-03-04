@@ -29,7 +29,7 @@ Veld is a **contract-first code generator** for APIs. You describe your data mod
 - **Route handlers** with input validation, error handling, and correct HTTP status codes
 - **Frontend SDKs** with typed API clients using native `fetch`
 - **Validation schemas** (zero-dependency runtime validators)
-- **OpenAPI 3.0 specs**, database schemas, Dockerfiles, CI/CD configs, and more
+- **OpenAPI 3.0 specs** and API documentation
 
 No runtime dependencies in generated code. No framework lock-in. Works with any compatible library.
 
@@ -193,10 +193,15 @@ module Users {
 - **`extends`** &mdash; model inheritance
 - **`@default(value)`** &mdash; default field values
 - **`@deprecated "reason"`** &mdash; deprecation on fields and actions
+- **`@example("value")`** &mdash; example values for documentation and OpenAPI
+- **`@unique`** &mdash; unique constraint (surfaced in DB schemas and OpenAPI)
+- **`@index`** &mdash; index hint (surfaced in DB schemas)
+- **`@relation(Model)`** &mdash; foreign key relation (surfaced in Prisma schema)
 - **`errors: [NotFound, Forbidden]`** &mdash; typed error codes per action
 - **`middleware: AuthGuard`** &mdash; middleware declarations
 - **`method: WS`** &mdash; WebSocket endpoint support
 - **`stream: MessageType`** &mdash; WebSocket message typing
+- **`/* block comments */`** &mdash; multi-line block comments
 
 ## Supported Stacks
 
@@ -229,16 +234,6 @@ module Users {
 | `types-only` | Types only, no SDK | |
 | `none` | Skip frontend generation | |
 
-### Utility Generators
-
-| Name | Output |
-|------|--------|
-| `openapi` | OpenAPI 3.0 JSON spec |
-| `database` | Prisma schema + SQL DDL |
-| `dockerfile` | Production Dockerfile |
-| `cicd` | GitHub Actions / GitLab CI |
-| `env` | Environment config templates |
-| `scaffold-tests` | Test scaffolding |
 
 ## What It Generates
 
@@ -311,14 +306,17 @@ try {
 | `veld generate --dry-run` | Preview without writing files |
 | `veld watch` | Auto-regenerate on file changes |
 | `veld validate` | Check contract for errors |
-| `veld ast` | Dump AST as JSON |
-| `veld openapi` | Export OpenAPI 3.0 spec |
-| `veld schema` | Generate database schemas |
+| `veld lint` | Analyse contract quality |
+| `veld fmt` | Format `.veld` files canonically |
 | `veld diff` | Detect breaking changes between versions |
+| `veld openapi` | Export OpenAPI 3.0 spec |
 | `veld docs` | Generate API documentation |
+| `veld ast` | Dump AST as JSON |
 | `veld clean` | Remove generated output |
 | `veld setup` | Auto-configure project imports |
+| `veld doctor` | Diagnose project health |
 | `veld lsp` | Start the Language Server Protocol server |
+| `veld completion` | Generate shell completions (bash/zsh/fish/powershell) |
 
 ### Common flags
 
@@ -329,6 +327,9 @@ veld generate --out=./src/generated
 veld generate --validate              # enable runtime validators
 veld generate --base-url=/api/v1      # bake base URL into SDK
 veld openapi -o openapi.json          # write spec to file
+veld fmt --write                      # format .veld files in place
+veld --verbose generate               # verbose output
+veld --quiet generate                 # suppress non-essential output
 ```
 
 ## Configuration

@@ -213,6 +213,32 @@ func Validate(a ast.AST) []error {
 		}
 	}
 
+	// ── Cross-module route conflict detection ───────────────────────────
+	// Build a map of (METHOD, normalizedPath) → first occurrence to detect
+	// overlapping routes across different modules.
+	type routeKey struct{ method, path string }
+	routeOwners := make(map[routeKey]string) // key → "Module.Action"
+	for _, mod := range a.Modules {
+		for _, act := range mod.Actions {
+			fullPath := act.Path
+			if mod.Prefix != "" {
+				fullPath = mod.Prefix + act.Path
+			}
+			// Normalize path params: /users/:id → /users/:param
+			normalized := normalizeRoutePath(fullPath)
+			key := routeKey{method: strings.ToUpper(act.Method), path: normalized}
+			owner := fmt.Sprintf("%s.%s", mod.Name, act.Name)
+			if existing, ok := routeOwners[key]; ok {
+				errs = append(errs, fmt.Errorf(
+					"%sroute conflict: %s %s in %s overlaps with %s",
+					loc(mod.SourceFile, act.Line), act.Method, fullPath, owner, existing,
+				))
+			} else {
+				routeOwners[key] = owner
+			}
+		}
+	}
+
 	// ── Per-file import validation ──────────────────────────────────────
 	// If the loader provided a FileImports map, verify that every type
 	// referenced in a file is either defined in that same file or in a file
@@ -407,4 +433,16 @@ func min3(a, b, c int) int {
 		return b
 	}
 	return c
+}
+
+// normalizeRoutePath replaces path parameters with a placeholder so that
+// /users/:id and /users/:userId are treated as the same route.
+func normalizeRoutePath(path string) string {
+	parts := strings.Split(path, "/")
+	for i, p := range parts {
+		if strings.HasPrefix(p, ":") {
+			parts[i] = ":param"
+		}
+	}
+	return strings.Join(parts, "/")
 }

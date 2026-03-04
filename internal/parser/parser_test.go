@@ -538,3 +538,111 @@ module Auth {
 		t.Errorf("expected prefix /api/v1, got %q", a.Prefix)
 	}
 }
+
+func TestParseExampleAnnotation(t *testing.T) {
+	src := `model User {
+  email: string @example("user@example.com")
+  age: int @example(25)
+}`
+	tokens, err := lexer.New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(a.Models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(a.Models))
+	}
+	if a.Models[0].Fields[0].Example != "user@example.com" {
+		t.Errorf("expected example 'user@example.com', got %q", a.Models[0].Fields[0].Example)
+	}
+	if a.Models[0].Fields[1].Example != "25" {
+		t.Errorf("expected example '25', got %q", a.Models[0].Fields[1].Example)
+	}
+}
+
+func TestParseUniqueAnnotation(t *testing.T) {
+	src := `model User {
+  email: string @unique
+}`
+	tokens, err := lexer.New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !a.Models[0].Fields[0].Unique {
+		t.Error("email should be unique")
+	}
+}
+
+func TestParseIndexAnnotation(t *testing.T) {
+	src := `model User {
+  email: string @index
+}`
+	tokens, err := lexer.New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !a.Models[0].Fields[0].Index {
+		t.Error("email should be indexed")
+	}
+}
+
+func TestParseRelationAnnotation(t *testing.T) {
+	src := `model Post {
+  author: User @relation(User)
+}`
+	tokens, err := lexer.New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if a.Models[0].Fields[0].Relation != "User" {
+		t.Errorf("expected relation 'User', got %q", a.Models[0].Fields[0].Relation)
+	}
+}
+
+func TestParseMultipleAnnotations(t *testing.T) {
+	src := `model User {
+  email: string @unique @index @example("test@test.com")
+}`
+	tokens, err := lexer.New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	f := a.Models[0].Fields[0]
+	if !f.Unique {
+		t.Error("should be unique")
+	}
+	if !f.Index {
+		t.Error("should be indexed")
+	}
+	if f.Example != "test@test.com" {
+		t.Errorf("expected example 'test@test.com', got %q", f.Example)
+	}
+}
+
+func TestParseBlockComment(t *testing.T) {
+	src := `/* Block comment */
+model User {
+  /* field comment */
+  name: string
+}`
+	mustParse(t, src)
+}

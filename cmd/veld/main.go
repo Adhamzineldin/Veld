@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
@@ -17,6 +18,7 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/config"
 	"github.com/Adhamzineldin/Veld/internal/diff"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	vfmt "github.com/Adhamzineldin/Veld/internal/format"
 	"github.com/Adhamzineldin/Veld/internal/lint"
 	"github.com/Adhamzineldin/Veld/internal/loader"
 	"github.com/Adhamzineldin/Veld/internal/lsp"
@@ -56,6 +58,10 @@ import (
 // Version is set at build time via: go build -ldflags "-X main.Version=v1.2.3"
 // Falls back to "dev" for local builds without ldflags.
 var Version = "0.1.0"
+
+// Verbosity controls output level. Set by --verbose / --quiet global flags.
+var verbose bool
+var quiet bool
 
 // ── ANSI color helpers ────────────────────────────────────────────────────────
 
@@ -570,27 +576,30 @@ service interfaces for any framework. Zero runtime dependencies.
   veld generate --dry-run      Preview what would be generated
   veld watch                   Auto-regenerate on file changes
   veld validate                Check contracts for errors
+  veld lint                    Analyse contract quality
   veld clean                   Remove generated output
   veld openapi                 Export OpenAPI 3.0 spec
-  veld graphql                 Export GraphQL SDL schema
-  veld schema                  Generate database schema (Prisma/SQL)
   veld diff                    Show changes since last generation
   veld docs                    Generate API documentation
+  veld fmt                     Format .veld contract files
   veld lsp                     Start the LSP server
   veld setup                   Auto-configure project imports
+  veld doctor                  Diagnose project health
+  veld completion              Generate shell completions
 
 Backends:  node-ts, node-js, python, go, rust, java, csharp, php
-           openapi, database, dockerfile, cicd, env, scaffold-tests
 Frontends: typescript, javascript, react, vue, angular, svelte, dart, kotlin, swift, types-only, none
 Aliases:   node → node-ts, js/javascript → node-js, ts → typescript, react → react-hooks`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
+	root.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress non-essential output")
 	root.AddCommand(
 		newValidateCmd(), newASTCmd(), newGenerateCmd(), newWatchCmd(),
-		newInitCmd(), newCleanCmd(), newOpenAPICmd(), newGraphQLCmd(),
-		newSchemaCmd(), newDiffCmd(), newLintCmd(), newDocsCmd(), newLSPCmd(),
-		newSetupCmd(),
+		newInitCmd(), newCleanCmd(), newOpenAPICmd(),
+		newDiffCmd(), newLintCmd(), newDocsCmd(), newLSPCmd(),
+		newSetupCmd(), newFmtCmd(), newDoctorCmd(), newCompletionCmd(),
 	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, red("Error: ")+err.Error())
@@ -865,6 +874,9 @@ func newWatchCmd() *cobra.Command {
 			printDiffChanges(changes)
 			fmt.Println()
 
+			// Mutex-protected mtimes map to prevent data race between ticker
+			// goroutine and debounce timer goroutine.
+			var mtimesMu sync.Mutex
 			mtimes := make(map[string]int64, len(initFiles))
 			for _, f := range initFiles {
 				if info, statErr := os.Stat(f); statErr == nil {
@@ -889,6 +901,7 @@ func newWatchCmd() *cobra.Command {
 
 				case <-ticker.C:
 					changed := false
+					mtimesMu.Lock()
 					for f, last := range mtimes {
 						info, statErr := os.Stat(f)
 						if statErr != nil || info.ModTime().UnixNano() != last {
@@ -896,15 +909,18 @@ func newWatchCmd() *cobra.Command {
 							break
 						}
 					}
+					if changed {
+						// Update mtimes immediately
+						for f := range mtimes {
+							if info, statErr := os.Stat(f); statErr == nil {
+								mtimes[f] = info.ModTime().UnixNano()
+							}
+						}
+					}
+					mtimesMu.Unlock()
+
 					if !changed {
 						continue
-					}
-
-					// Update mtimes immediately
-					for f := range mtimes {
-						if info, statErr := os.Stat(f); statErr == nil {
-							mtimes[f] = info.ModTime().UnixNano()
-						}
 					}
 
 					// Debounce: reset timer on every change, only fire after 500ms of quiet
@@ -933,12 +949,14 @@ func newWatchCmd() *cobra.Command {
 						}
 
 						if newFiles != nil {
+							mtimesMu.Lock()
 							mtimes = make(map[string]int64, len(newFiles))
 							for _, f := range newFiles {
 								if info, statErr := os.Stat(f); statErr == nil {
 									mtimes[f] = info.ModTime().UnixNano()
 								}
 							}
+							mtimesMu.Unlock()
 						}
 					})
 				}
@@ -1104,6 +1122,16 @@ func newOpenAPICmd() *cobra.Command {
 }
 
 func buildOpenAPISpec(a ast.AST) map[string]interface{} {
+	// Build model and enum lookups for $ref resolution.
+	modelMap := make(map[string]bool, len(a.Models))
+	for _, m := range a.Models {
+		modelMap[m.Name] = true
+	}
+	enumMap := make(map[string]ast.Enum, len(a.Enums))
+	for _, en := range a.Enums {
+		enumMap[en.Name] = en
+	}
+
 	paths := make(map[string]interface{})
 	for _, mod := range a.Modules {
 		tag := mod.Name
@@ -1112,19 +1140,56 @@ func buildOpenAPISpec(a ast.AST) map[string]interface{} {
 			if mod.Prefix != "" {
 				routePath = mod.Prefix + act.Path
 			}
-			// Convert :param to {param} for OpenAPI
 			oaPath := emitter.ToOpenAPIPath(routePath)
 			pathParams := emitter.ExtractPathParams(routePath)
+
+			// Response schema
+			responses := make(map[string]interface{})
+			successCode := "200"
+			if strings.ToUpper(act.Method) == "POST" {
+				successCode = "201"
+			}
+			if strings.ToUpper(act.Method) == "DELETE" && act.Output == "" {
+				successCode = "204"
+			}
+
+			if act.Output != "" {
+				outputSchema := oaSchemaRef(act.Output, act.OutputArray, modelMap)
+				responses[successCode] = map[string]interface{}{
+					"description": "Success",
+					"content": map[string]interface{}{
+						"application/json": map[string]interface{}{
+							"schema": outputSchema,
+						},
+					},
+				}
+			} else {
+				responses[successCode] = map[string]interface{}{"description": "Success"}
+			}
+
+			// Standard error responses
+			if act.Input != "" {
+				responses["400"] = map[string]interface{}{"description": "Validation error"}
+			}
+			if len(act.Middleware) > 0 {
+				responses["401"] = map[string]interface{}{"description": "Unauthorized"}
+				responses["403"] = map[string]interface{}{"description": "Forbidden"}
+			}
+			if len(pathParams) > 0 {
+				responses["404"] = map[string]interface{}{"description": "Not found"}
+			}
+			responses["500"] = map[string]interface{}{"description": "Internal server error"}
 
 			op := map[string]interface{}{
 				"tags":        []string{tag},
 				"operationId": mod.Name + "_" + act.Name,
-				"responses": map[string]interface{}{
-					"200": map[string]interface{}{"description": "Success"},
-				},
+				"responses":   responses,
 			}
 			if act.Description != "" {
 				op["summary"] = act.Description
+			}
+			if act.Deprecated != "" {
+				op["deprecated"] = true
 			}
 			if len(pathParams) > 0 {
 				params := make([]map[string]interface{}, 0, len(pathParams))
@@ -1161,19 +1226,7 @@ func buildOpenAPISpec(a ast.AST) map[string]interface{} {
 		props := make(map[string]interface{})
 		var required []string
 		for _, f := range m.Fields {
-			prop := map[string]interface{}{"type": oaType(f.Type)}
-			if f.IsArray {
-				prop = map[string]interface{}{
-					"type":  "array",
-					"items": map[string]interface{}{"type": oaType(f.Type)},
-				}
-			}
-			if f.IsMap {
-				prop = map[string]interface{}{
-					"type":                 "object",
-					"additionalProperties": map[string]interface{}{"type": oaType(f.MapValueType)},
-				}
-			}
+			prop := oaFieldSchema(f, modelMap, enumMap)
 			props[f.Name] = prop
 			if !f.Optional {
 				required = append(required, f.Name)
@@ -1189,26 +1242,112 @@ func buildOpenAPISpec(a ast.AST) map[string]interface{} {
 		if m.Description != "" {
 			schema["description"] = m.Description
 		}
+		if m.Extends != "" {
+			schema["allOf"] = []interface{}{
+				map[string]interface{}{"$ref": "#/components/schemas/" + m.Extends},
+				map[string]interface{}{"type": "object", "properties": props},
+			}
+			delete(schema, "type")
+			delete(schema, "properties")
+		}
 		schemas[m.Name] = schema
 	}
 	for _, en := range a.Enums {
-		schemas[en.Name] = map[string]interface{}{
+		s := map[string]interface{}{
 			"type": "string",
 			"enum": en.Values,
 		}
+		if en.Description != "" {
+			s["description"] = en.Description
+		}
+		schemas[en.Name] = s
 	}
 
-	return map[string]interface{}{
+	spec := map[string]interface{}{
 		"openapi": "3.0.3",
 		"info": map[string]interface{}{
-			"title":   "Veld API",
-			"version": "1.0.0",
+			"title":       "Veld API",
+			"version":     "1.0.0",
+			"description": "Auto-generated API specification from Veld contracts",
 		},
 		"paths": paths,
 		"components": map[string]interface{}{
 			"schemas": schemas,
 		},
 	}
+
+	return spec
+}
+
+// oaSchemaRef returns a $ref or inline schema for an output type.
+func oaSchemaRef(typeName string, isArray bool, models map[string]bool) map[string]interface{} {
+	var base map[string]interface{}
+	if models[typeName] {
+		base = map[string]interface{}{"$ref": "#/components/schemas/" + typeName}
+	} else {
+		base = map[string]interface{}{"type": oaType(typeName)}
+		if f := oaFormat(typeName); f != "" {
+			base["format"] = f
+		}
+	}
+	if isArray {
+		return map[string]interface{}{"type": "array", "items": base}
+	}
+	return base
+}
+
+// oaFieldSchema produces the OpenAPI schema for a single field, including
+// format, enum inlining, and $ref for model references.
+func oaFieldSchema(f ast.Field, models map[string]bool, enums map[string]ast.Enum) map[string]interface{} {
+	if f.IsMap {
+		valSchema := map[string]interface{}{"type": oaType(f.MapValueType)}
+		if models[f.MapValueType] {
+			valSchema = map[string]interface{}{"$ref": "#/components/schemas/" + f.MapValueType}
+		}
+		prop := map[string]interface{}{
+			"type":                 "object",
+			"additionalProperties": valSchema,
+		}
+		return prop
+	}
+
+	// Check if type is an enum — inline the values
+	if en, ok := enums[f.Type]; ok {
+		prop := map[string]interface{}{"type": "string", "enum": en.Values}
+		if f.IsArray {
+			return map[string]interface{}{"type": "array", "items": prop}
+		}
+		return prop
+	}
+
+	// Check if type is a model — use $ref
+	if models[f.Type] {
+		ref := map[string]interface{}{"$ref": "#/components/schemas/" + f.Type}
+		if f.IsArray {
+			return map[string]interface{}{"type": "array", "items": ref}
+		}
+		return ref
+	}
+
+	// Primitive type
+	prop := map[string]interface{}{"type": oaType(f.Type)}
+	if fmt := oaFormat(f.Type); fmt != "" {
+		prop["format"] = fmt
+	}
+	if f.Default != "" {
+		prop["default"] = f.Default
+	}
+	if f.Example != "" {
+		prop["example"] = f.Example
+	}
+	if f.Deprecated != "" {
+		prop["deprecated"] = true
+	}
+
+	if f.IsArray {
+		return map[string]interface{}{"type": "array", "items": prop}
+	}
+	return prop
 }
 
 func oaType(t string) string {
@@ -1223,6 +1362,24 @@ func oaType(t string) string {
 		return "string"
 	default:
 		return t // model reference
+	}
+}
+
+// oaFormat returns the OpenAPI format string for a Veld type, or "" if none.
+func oaFormat(t string) string {
+	switch t {
+	case "date":
+		return "date"
+	case "datetime":
+		return "date-time"
+	case "uuid":
+		return "uuid"
+	case "int":
+		return "int64"
+	case "float":
+		return "double"
+	default:
+		return ""
 	}
 }
 
@@ -1267,17 +1424,6 @@ func writeGeneratedReadme(outDir string, a ast.AST) {
 	sb.WriteString("# Generated by Veld\n\n")
 	sb.WriteString("> ⚠️ **DO NOT EDIT** — this entire directory is auto-generated by `veld generate`.\n")
 	sb.WriteString("> Any manual changes will be overwritten on the next run.\n\n")
-	sb.WriteString("## Structure\n\n")
-	sb.WriteString("| Path | Description |\n")
-	sb.WriteString("|------|-------------|\n")
-	sb.WriteString("| `types/{module}.ts` | TypeScript interfaces and enums per module |\n")
-	sb.WriteString("| `types/index.ts` | Barrel re-export of all type files |\n")
-	sb.WriteString("| `interfaces/` | Service contracts (one per module) |\n")
-	sb.WriteString("| `routes/` | Route registration functions with validation |\n")
-	sb.WriteString("| `schemas/schemas.ts` | Zod validation schemas |\n")
-	sb.WriteString("| `client/api.ts` | Frontend SDK (fetch-based, zero dependencies) |\n")
-	sb.WriteString("| `index.ts` | Barrel export for clean imports |\n")
-	sb.WriteString("| `package.json` | Package alias (`@veld/generated`) |\n\n")
 
 	sb.WriteString("## Modules\n\n")
 	for _, mod := range a.Modules {
@@ -1288,23 +1434,7 @@ func writeGeneratedReadme(outDir string, a ast.AST) {
 		sb.WriteString(fmt.Sprintf(" (%d actions)\n", len(mod.Actions)))
 	}
 
-	sb.WriteString("\n## Import Alias\n\n")
-	sb.WriteString("Add to your `tsconfig.json`:\n\n")
-	sb.WriteString("```json\n")
-	sb.WriteString("{\n")
-	sb.WriteString("  \"compilerOptions\": {\n")
-	sb.WriteString("    \"paths\": {\n")
-	sb.WriteString("      \"@veld/*\": [\"./generated/*\"]\n")
-	sb.WriteString("    }\n")
-	sb.WriteString("  }\n")
-	sb.WriteString("}\n")
-	sb.WriteString("```\n\n")
-	sb.WriteString("Then import:\n")
-	sb.WriteString("```typescript\n")
-	sb.WriteString("import type { User } from '@veld/types/types';\n")
-	sb.WriteString("import { api } from '@veld/client/api';\n")
-	sb.WriteString("```\n\n")
-	sb.WriteString("## Regenerate\n\n")
+	sb.WriteString("\n## Regenerate\n\n")
 	sb.WriteString("```bash\nveld generate\n```\n")
 
 	os.WriteFile(filepath.Join(outDir, "README.md"), []byte(sb.String()), 0644)
@@ -2227,6 +2357,229 @@ func runLSPServer() error {
 	return server.Run()
 }
 
+// ── fmt ───────────────────────────────────────────────────────────────────────
+
+func newFmtCmd() *cobra.Command {
+	var writeFlag bool
+	cmd := &cobra.Command{
+		Use:     "fmt [files...]",
+		Short:   "Format .veld contract files",
+		Long:    "Reads .veld files and outputs canonically formatted versions.\nUse --write to update files in place.",
+		Example: "  veld fmt\n  veld fmt --write\n  veld fmt veld/models/user.veld",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var files []string
+			if len(args) > 0 {
+				files = args
+			} else {
+				// Find all .veld files from config
+				path, err := config.ResolveInput(nil)
+				if err != nil {
+					return err
+				}
+				_, veldFiles, err := loader.Parse(path)
+				if err != nil {
+					return err
+				}
+				files = veldFiles
+			}
+
+			changed := 0
+			for _, f := range files {
+				formatted, err := vfmt.File(f)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, yellow("warning: ")+"could not format %s: %v\n", f, err)
+					continue
+				}
+				original, _ := os.ReadFile(f)
+				if string(original) == formatted {
+					continue
+				}
+				changed++
+				if writeFlag {
+					if err := os.WriteFile(f, []byte(formatted), 0644); err != nil {
+						return fmt.Errorf("writing %s: %w", f, err)
+					}
+					fmt.Printf("  %s %s\n", green("✓"), f)
+				} else {
+					fmt.Printf("  %s %s (would change)\n", yellow("~"), f)
+				}
+			}
+
+			if changed == 0 {
+				fmt.Println(green("✓") + " All files already formatted")
+			} else if !writeFlag {
+				fmt.Printf("\n%d file(s) would change — run with %s to apply\n", changed, bold("--write"))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVarP(&writeFlag, "write", "w", false, "update files in place")
+	return cmd
+}
+
+// ── doctor ────────────────────────────────────────────────────────────────────
+
+func newDoctorCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "doctor",
+		Short: "Diagnose project health and check for common issues",
+		Long:  "Runs a series of checks on your Veld project to identify\ncommon misconfigurations, missing files, and environment issues.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Println()
+			fmt.Println(bold("  Veld Doctor"))
+			fmt.Println()
+			passed, failed := 0, 0
+
+			check := func(name string, fn func() error) {
+				if err := fn(); err != nil {
+					fmt.Printf("  %s  %s — %s\n", red("✗"), name, err)
+					failed++
+				} else {
+					fmt.Printf("  %s  %s\n", green("✓"), name)
+					passed++
+				}
+			}
+
+			// 1. Config file
+			check("Config file found", func() error {
+				_, _, err := config.FindConfig()
+				if err != nil {
+					return err
+				}
+				return nil
+			})
+
+			// 2. Config valid
+			check("Config valid", func() error {
+				_, err := config.BuildResolved(config.FlagOverrides{})
+				return err
+			})
+
+			// 3. Input file parses
+			check("Contract parses", func() error {
+				rc, err := config.BuildResolved(config.FlagOverrides{})
+				if err != nil {
+					return err
+				}
+				_, _, err = loader.Parse(rc.Input, rc.Aliases)
+				return err
+			})
+
+			// 4. Validation passes
+			check("Contract validates", func() error {
+				rc, err := config.BuildResolved(config.FlagOverrides{})
+				if err != nil {
+					return err
+				}
+				a, _, err := loader.Parse(rc.Input, rc.Aliases)
+				if err != nil {
+					return err
+				}
+				if errs := validator.Validate(a); len(errs) > 0 {
+					return fmt.Errorf("%d validation error(s)", len(errs))
+				}
+				return nil
+			})
+
+			// 5. Backend emitter available
+			check("Backend emitter registered", func() error {
+				rc, err := config.BuildResolved(config.FlagOverrides{})
+				if err != nil {
+					return err
+				}
+				_, err = emitter.GetBackend(rc.Backend)
+				return err
+			})
+
+			// 6. Frontend emitter available
+			check("Frontend emitter registered", func() error {
+				rc, err := config.BuildResolved(config.FlagOverrides{})
+				if err != nil {
+					return err
+				}
+				_, err = emitter.GetFrontend(rc.Frontend)
+				return err
+			})
+
+			// 7. Output directory writable
+			check("Output directory writable", func() error {
+				rc, err := config.BuildResolved(config.FlagOverrides{})
+				if err != nil {
+					return err
+				}
+				for _, dir := range rc.OutputDirs() {
+					if err := os.MkdirAll(dir, 0755); err != nil {
+						return fmt.Errorf("cannot create %s: %w", dir, err)
+					}
+				}
+				return nil
+			})
+
+			// 8. Lint check
+			check("Lint clean (no errors)", func() error {
+				rc, err := config.BuildResolved(config.FlagOverrides{})
+				if err != nil {
+					return err
+				}
+				a, _, err := loader.Parse(rc.Input, rc.Aliases)
+				if err != nil {
+					return err
+				}
+				issues := lint.Lint(a)
+				errCount := 0
+				for _, iss := range issues {
+					if iss.IsError() {
+						errCount++
+					}
+				}
+				if errCount > 0 {
+					return fmt.Errorf("%d lint error(s)", errCount)
+				}
+				return nil
+			})
+
+			fmt.Println()
+			if failed > 0 {
+				fmt.Printf("  %s %d passed, %s %d failed\n", green("✓"), passed, red("✗"), failed)
+				return fmt.Errorf("%d check(s) failed", failed)
+			}
+			fmt.Printf("  %s All %d checks passed\n", green("✓"), passed)
+			return nil
+		},
+	}
+}
+
+// ── completion ────────────────────────────────────────────────────────────────
+
+func newCompletionCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "completion [bash|zsh|fish|powershell]",
+		Short: "Generate shell completion scripts",
+		Long: "Generate shell completion scripts for Veld.\n\n" +
+			"  bash:       source <(veld completion bash)\n" +
+			"  zsh:        veld completion zsh > \"${fpath[1]}/_veld\"\n" +
+			"  fish:       veld completion fish | source\n" +
+			"  powershell: veld completion powershell | Out-String | Invoke-Expression",
+		Args:      cobra.ExactValidArgs(1),
+		ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "bash":
+				return cmd.Root().GenBashCompletion(os.Stdout)
+			case "zsh":
+				return cmd.Root().GenZshCompletion(os.Stdout)
+			case "fish":
+				return cmd.Root().GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				return cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout)
+			default:
+				return fmt.Errorf("unsupported shell: %s", args[0])
+			}
+		},
+	}
+	return cmd
+}
+
 // ── init ──────────────────────────────────────────────────────────────────────
 
 func newInitCmd() *cobra.Command {
@@ -2252,18 +2605,56 @@ func runInit() error {
 	fmt.Println(bold("  Veld") + " — project setup")
 	fmt.Println()
 
+	// ── Auto-detect project type ───────────────────────────────────────────
+	detectedBackend := ""
+	if _, err := os.Stat("package.json"); err == nil {
+		detectedBackend = "node-ts"
+	}
+	if _, err := os.Stat("go.mod"); err == nil {
+		detectedBackend = "go"
+	}
+	if _, err := os.Stat("requirements.txt"); err == nil {
+		detectedBackend = "python"
+	}
+	if _, err := os.Stat("pyproject.toml"); err == nil {
+		detectedBackend = "python"
+	}
+	if _, err := os.Stat("Cargo.toml"); err == nil {
+		detectedBackend = "rust"
+	}
+	if _, err := os.Stat("pom.xml"); err == nil {
+		detectedBackend = "java"
+	}
+	if _, err := os.Stat("build.gradle"); err == nil {
+		detectedBackend = "java"
+	}
+	if _, err := os.Stat("composer.json"); err == nil {
+		detectedBackend = "php"
+	}
+	csprojFiles, _ := filepath.Glob("*.csproj")
+	if len(csprojFiles) > 0 {
+		detectedBackend = "csharp"
+	}
+	if detectedBackend != "" {
+		fmt.Printf("  %s Detected project type: %s\n\n", dim("ℹ"), bold(detectedBackend))
+	}
+
 	// ── Backend selection ──────────────────────────────────────────────────
 	backends := emitter.ListBackends()
 	fmt.Println("  " + bold("Backend") + " — which server runtime?")
+	defaultBackendIdx := 1
 	for i, b := range backends {
 		label := b
-		if b == "node-ts" {
+		if detectedBackend != "" && b == detectedBackend {
+			label += dim(" (detected)")
+			defaultBackendIdx = i + 1
+		} else if detectedBackend == "" && b == "node-ts" {
 			label += dim(" (default)")
 		}
 		fmt.Printf("    %s%2d%s  %s\n", colorGreen, i+1, colorReset, label)
 	}
-	fmt.Print("\n  Choose [1]: ")
-	backendChoice := readChoice(reader, len(backends), 1)
+	fmt.Printf("\n  Choose [%d]: ", defaultBackendIdx)
+	backendChoice := readChoice(reader, len(backends), defaultBackendIdx)
 	selectedBackend := backends[backendChoice-1]
 	fmt.Printf("  → %s\n\n", green(selectedBackend))
 
@@ -2730,7 +3121,12 @@ const initReadmeContent = "# My Veld Project\n\n" +
 	"|---------|-------------|\n" +
 	"| `veld generate` | Generate typed code |\n" +
 	"| `veld validate` | Check contract for errors |\n" +
+	"| `veld lint` | Analyse contract quality |\n" +
+	"| `veld fmt` | Format .veld files |\n" +
 	"| `veld watch` | Auto-regenerate on file save |\n" +
 	"| `veld clean` | Remove generated output |\n" +
 	"| `veld openapi` | Export OpenAPI 3.0 spec |\n" +
+	"| `veld diff` | Show changes since last gen |\n" +
+	"| `veld setup` | Auto-configure project imports |\n" +
+	"| `veld doctor` | Diagnose project health |\n" +
 	"| `veld ast` | Dump AST JSON for debugging |\n"
