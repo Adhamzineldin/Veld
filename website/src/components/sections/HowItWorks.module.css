@@ -1,0 +1,139 @@
+.section {
+  padding: 100px 0;
+  text-align: center;
+}
+
+.container {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.heading {
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-bottom: 12px;
+}
+
+.subtitle {
+  color: var(--fg2);
+  font-size: 1.1rem;
+  margin-bottom: 56px;
+}
+
+.steps {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0;
+  flex-wrap: wrap;
+}
+
+.steps > div {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.arrow {
+  color: var(--fg2);
+  font-size: 1.8rem;
+  margin: 0 8px;
+  padding-top: 8px;
+}
+
+.step {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 32px;
+  min-width: 180px;
+  transition: border-color 0.2s;
+}
+
+.step:hover {
+  border-color: var(--accent);
+}
+
+.num {
+  font-size: 2.2rem;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.label {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.desc {
+  color: var(--fg2);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.pipeline {
+  margin-top: 64px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px 32px;
+  display: inline-block;
+}
+
+.pipelineTitle {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--fg2);
+  margin-bottom: 12px;
+}
+
+.pipelineFlow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pipeArrow {
+  color: var(--accent);
+  margin: 0 6px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.pipeStage {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+  color: var(--fg);
+  background: var(--bg3);
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .arrow {
+    display: none;
+  }
+
+  .steps {
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .steps > div {
+    flex-direction: column;
+  }
+
+  .heading {
+    font-size: 2rem;
+  }
+}
+
