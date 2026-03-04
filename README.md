@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Adhamzineldin/Veld/master/docs/assets/logo.svg" alt="Veld" width="120" />
+  <img src="https://raw.githubusercontent.com/Adhamzineldin/Veld/master/resources/logo.png" alt="Veld" width="120" />
 </p>
 
 <h1 align="center">Veld</h1>
@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#installation">Installation</a> &bull;
   <a href="#what-it-generates">What It Generates</a> &bull;
   <a href="#supported-stacks">Supported Stacks</a> &bull;
   <a href="#contract-syntax">Contract Syntax</a> &bull;
@@ -37,11 +38,20 @@ No runtime dependencies in generated code. No framework lock-in. Works with any 
 ### Install
 
 ```bash
-# From source
-go install github.com/Adhamzineldin/Veld/cmd/veld@latest
+# npm
+npm install @maayn/veld
 
-# Or download the binary from releases
+# pip
+pip install maayn-veld
+
+# Homebrew
+brew install veld-dev/tap/veld
+
+# Go
+go install github.com/Adhamzineldin/Veld/cmd/veld@latest
 ```
+
+> See the full list of supported packages in the [Installation](#installation) section.
 
 ### Initialize a project
 
@@ -385,6 +395,66 @@ Aliases are resolved from the project root via the `aliases` config. Built-in al
 - **VS Code**: Veld extension with syntax highlighting, diagnostics, and completions
 - **JetBrains**: Plugin for IntelliJ, WebStorm, PyCharm, etc.
 - **LSP**: `veld lsp` works with any LSP-compatible editor (Neovim, Helix, Sublime, etc.)
+
+## Installation
+
+Veld is published to multiple package managers via automated CI/CD. Pick whichever fits your workflow:
+
+### npm
+
+```bash
+npm install @maayn/veld
+
+# Or run directly without installing
+npx @maayn/veld generate
+```
+
+### pip
+
+```bash
+pip install maayn-veld
+
+# Then use the CLI
+veld generate
+```
+
+### Homebrew (macOS / Linux)
+
+```bash
+brew install veld-dev/tap/veld
+
+veld generate
+```
+
+### Go
+
+```bash
+go install github.com/Adhamzineldin/Veld/cmd/veld@latest
+
+veld generate
+```
+
+### Composer (PHP)
+
+```bash
+composer require veld-dev/veld
+
+# The binary is available after install
+vendor/bin/veld generate
+```
+
+### GitHub Releases (manual download)
+
+Pre-built binaries for **Linux**, **macOS**, and **Windows** (amd64 & arm64) are attached to every [GitHub Release](https://github.com/Adhamzineldin/Veld/releases). Download the archive for your platform, extract, and add `veld` to your `PATH`.
+
+### Editor Plugins
+
+| Editor | Install |
+|--------|---------|
+| **VS Code** | Search **"Veld"** in the Extensions marketplace, or `code --install-extension adhamzineldin.veld-vscode` |
+| **JetBrains** | IDE → Settings → Plugins → Marketplace → search **"Veld"** |
+
+> All packages and plugins are published automatically when a version tag (e.g. `v0.3.0`) is pushed. Pre-release tags (`v0.3.0-beta.1`) only create a GitHub Release — package/plugin publishing is skipped.
 
 ## Project Structure
 
