@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { highlightVeld, highlightTS } from '../SyntaxHighlighter';
 import styles from './CodeExample.module.css';
 
 const veldCode = `model User {
@@ -107,7 +108,7 @@ export default function CodeExample() {
               <span className={styles.dot} style={{ background: 'var(--accent2)' }} />
               <span>You write — users.veld</span>
             </div>
-            <pre className={styles.pre}>{veldCode}</pre>
+            <pre className={styles.pre}>{highlightVeld(veldCode)}</pre>
           </div>
 
           <div className={styles.codeBlock}>
@@ -117,7 +118,7 @@ export default function CodeExample() {
               <span className={styles.dot} style={{ background: 'var(--accent2)' }} />
               <span>Veld generates — Frontend SDK</span>
             </div>
-            <pre className={styles.pre}>{sdkCode}</pre>
+            <pre className={styles.pre}>{highlightTS(sdkCode)}</pre>
           </div>
         </motion.div>
 
@@ -135,7 +136,7 @@ export default function CodeExample() {
               <span className={styles.dot} style={{ background: 'var(--accent2)' }} />
               <span>Veld generates — Backend Routes (Node.js)</span>
             </div>
-            <pre className={styles.pre}>{backendCode}</pre>
+            <pre className={styles.pre}>{highlightTS(backendCode)}</pre>
           </div>
         </motion.div>
       </div>
