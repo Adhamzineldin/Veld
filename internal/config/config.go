@@ -85,6 +85,8 @@ func frontendAlias(name string) string {
 		return "typescript"
 	case "hooks", "react-hooks":
 		return "react"
+	case "js":
+		return "javascript"
 	default:
 		return name
 	}
