@@ -2310,11 +2310,6 @@ func runInit() error {
 		defaultOut = "../veld_gen"
 	}
 
-	validateLine := ""
-	if enableValidate {
-		validateLine = "\n  \"validate\": true,"
-	}
-
 	configJSON := fmt.Sprintf(`{
   "input": "app.veld",
   "backend": "%s",
@@ -2322,13 +2317,14 @@ func runInit() error {
   "out": "%s",
   "backendDir": "",
   "frontendDir": "",
-  "baseUrl": "",%s
+  "baseUrl": "",
+  "validate": %t,
   "aliases": {
     "models": "models",
     "modules": "modules"
   }
 }
-`, selectedBackend, selectedFrontend, defaultOut, validateLine)
+`, selectedBackend, selectedFrontend, defaultOut, enableValidate)
 
 	type entry struct{ path, content, label string }
 	files := []entry{
