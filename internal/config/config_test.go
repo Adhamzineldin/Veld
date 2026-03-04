@@ -51,8 +51,8 @@ func TestBuildResolvedDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if rc.Backend != "node" {
-		t.Errorf("expected default backend 'node', got %q", rc.Backend)
+	if rc.Backend != "node-ts" {
+		t.Errorf("expected default backend 'node-ts', got %q", rc.Backend)
 	}
 	if rc.Frontend != "typescript" {
 		t.Errorf("expected default frontend 'typescript', got %q", rc.Frontend)

@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veld &mdash; Contract-First API Code Generator</title>
+  <meta name="description" content="Write .veld contracts, get typed backends, frontend SDKs, validation, and docs — instantly. Zero runtime dependencies. Any framework.">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --bg3: #1c2128;
+      --fg: #e6edf3;
+      --fg2: #8b949e;
+      --accent: #58a6ff;
+      --accent2: #3fb950;
+      --accent3: #d2a8ff;
+      --border: #30363d;
+      --code-bg: #0d1117;
+      --max-w: 1100px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(13, 17, 23, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 0;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav .logo { font-size: 1.3rem; font-weight: 700; color: var(--fg); }
+    nav .logo span { color: var(--accent); }
+    nav .links { display: flex; gap: 24px; }
+    nav .links a { color: var(--fg2); font-size: 0.9rem; }
+    nav .links a:hover { color: var(--fg); text-decoration: none; }
+    .github-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+      padding: 6px 14px; font-size: 0.85rem; color: var(--fg);
+    }
+    .github-btn:hover { background: var(--border); text-decoration: none; }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 100px 0 80px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 3.5rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--accent), var(--accent3));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p {
+      font-size: 1.25rem;
+      color: var(--fg2);
+      max-width: 640px;
+      margin: 0 auto 40px;
+    }
+    .hero-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 28px; border-radius: 8px;
+      font-size: 1rem; font-weight: 600;
+      transition: all 0.15s ease;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { opacity: 0.9; text-decoration: none; }
+    .btn-secondary { background: var(--bg3); color: var(--fg); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); text-decoration: none; }
+
+    /* ── Install bar ── */
+    .install-bar {
+      display: inline-flex; align-items: center;
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 20px; margin-top: 32px;
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.95rem;
+    }
+    .install-bar .prompt { color: var(--accent2); margin-right: 10px; }
+    .install-bar code { color: var(--fg); }
+
+    /* ── Code example ── */
+    .code-section { padding: 80px 0; }
+    .code-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 768px) { .code-grid { grid-template-columns: 1fr; } }
+    .code-block {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .code-block .title {
+      padding: 12px 16px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--fg2);
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .code-block pre {
+      padding: 16px;
+      overflow-x: auto;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.82rem;
+      line-height: 1.65;
+      color: var(--fg);
+    }
+    .code-block .kw { color: var(--accent3); }
+    .code-block .ty { color: var(--accent); }
+    .code-block .str { color: var(--accent2); }
+    .code-block .cm { color: var(--fg2); }
+    .code-block .fn { color: #d2a8ff; }
+
+    /* ── Features grid ── */
+    .features { padding: 80px 0; }
+    .features h2 {
+      text-align: center;
+      font-size: 2.2rem;
+      font-weight: 700;
+      margin-bottom: 48px;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    @media (max-width: 768px) { .feature-grid { grid-template-columns: 1fr; } }
+    .feature-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 28px;
+    }
+    .feature-card .icon {
+      width: 40px; height: 40px;
+      background: var(--bg3);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem;
+      margin-bottom: 16px;
+    }
+    .feature-card h3 { font-size: 1.05rem; margin-bottom: 8px; }
+    .feature-card p { color: var(--fg2); font-size: 0.9rem; }
+
+    /* ── Stacks ── */
+    .stacks { padding: 80px 0; }
+    .stacks h2 {
+      text-align: center;
+      font-size: 2.2rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    .stacks .subtitle {
+      text-align: center;
+      color: var(--fg2);
+      margin-bottom: 48px;
+      font-size: 1.05rem;
+    }
+    .stack-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stack-tag {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 8px 18px;
+      font-size: 0.9rem;
+      color: var(--fg);
+      white-space: nowrap;
+    }
+    .stack-label {
+      color: var(--fg2);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+
+    /* ── Flow ── */
+    .flow { padding: 80px 0; text-align: center; }
+    .flow h2 { font-size: 2.2rem; font-weight: 700; margin-bottom: 48px; }
+    .flow-steps {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .flow-step {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px 28px;
+      min-width: 160px;
+    }
+    .flow-step .num {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .flow-step .label { font-size: 0.95rem; color: var(--fg); font-weight: 600; }
+    .flow-step .desc { font-size: 0.82rem; color: var(--fg2); margin-top: 4px; }
+    .flow-arrow { color: var(--fg2); font-size: 1.5rem; }
+    @media (max-width: 768px) { .flow-arrow { display: none; } }
+
+    /* ── CTA ── */
+    .cta {
+      padding: 100px 0;
+      text-align: center;
+      border-top: 1px solid var(--border);
+    }
+    .cta h2 { font-size: 2.4rem; font-weight: 700; margin-bottom: 16px; }
+    .cta p { color: var(--fg2); font-size: 1.1rem; margin-bottom: 32px; }
+
+    /* ── Footer ── */
+    footer {
+      padding: 40px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--fg2);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="container">
+    <div class="logo"><span>&lt;</span>Veld<span>/&gt;</span></div>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#stacks">Stacks</a>
+      <a href="#how-it-works">How It Works</a>
+      <a href="https://github.com/Adhamzineldin/Veld" class="github-btn">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <h1>API contracts that<br>write your code</h1>
+    <p>
+      Define your API once in <code>.veld</code> files. Get typed backends, frontend SDKs,
+      validation, OpenAPI specs, and more &mdash; for any stack, with zero runtime dependencies.
+    </p>
+    <div class="hero-actions">
+      <a href="#how-it-works" class="btn btn-primary">Get Started</a>
+      <a href="https://github.com/Adhamzineldin/Veld" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+    <div class="install-bar">
+      <span class="prompt">$</span>
+      <code>go install github.com/Adhamzineldin/Veld/cmd/veld@latest</code>
+    </div>
+  </div>
+</section>
+
+<!-- Code Example -->
+<section class="code-section">
+  <div class="container">
+    <div class="code-grid">
+      <div class="code-block">
+        <div class="title">You write &mdash; users.veld</div>
+        <pre><span class="kw">model</span> <span class="ty">User</span> {
+  id:    <span class="ty">uuid</span>
+  email: <span class="ty">string</span>
+  name:  <span class="ty">string</span>
+  role:  <span class="ty">Role</span>   <span class="cm">@default(user)</span>
+}
+
+<span class="kw">enum</span> <span class="ty">Role</span> { admin user guest }
+
+<span class="kw">module</span> <span class="ty">Users</span> {
+  prefix: <span class="str">/api/v1</span>
+
+  <span class="kw">action</span> <span class="fn">GetUser</span> {
+    method: <span class="str">GET</span>
+    path:   <span class="str">/users/:id</span>
+    output: <span class="ty">User</span>
+    errors: [<span class="ty">NotFound</span>]
+  }
+
+  <span class="kw">action</span> <span class="fn">CreateUser</span> {
+    method: <span class="str">POST</span>
+    path:   <span class="str">/users</span>
+    input:  <span class="ty">CreateUserInput</span>
+    output: <span class="ty">User</span>
+  }
+}</pre>
+      </div>
+      <div class="code-block">
+        <div class="title">Veld generates &mdash; Frontend SDK</div>
+        <pre><span class="kw">import</span> { api } <span class="kw">from</span> <span class="str">'@veld/client'</span>;
+<span class="kw">import</span> { isErrorCode } <span class="kw">from</span> <span class="str">'@veld/client/errors'</span>;
+
+<span class="cm">// Fully typed &mdash; autocomplete for methods,</span>
+<span class="cm">// params, and return types</span>
+
+<span class="kw">const</span> user = <span class="kw">await</span> api.Users.<span class="fn">getUser</span>(<span class="str">'user-123'</span>);
+<span class="cm">// ^? Promise&lt;User&gt;</span>
+
+<span class="kw">try</span> {
+  <span class="kw">await</span> api.Users.<span class="fn">createUser</span>({
+    email: <span class="str">'alice@co.dev'</span>,
+    name:  <span class="str">'Alice'</span>,
+  });
+} <span class="kw">catch</span> (err) {
+  <span class="kw">if</span> (<span class="fn">isErrorCode</span>(err,
+    api.Users.errors.getUser.notFound)) {
+    <span class="cm">// handle typed error</span>
+  }
+}</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features" id="features">
+  <div class="container">
+    <h2>Everything you need</h2>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="icon">0</div>
+        <h3>Zero Dependencies</h3>
+        <p>Generated code has no runtime dependencies by default. Types, routes, and SDK work out of the box.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&harr;</div>
+        <h3>Framework Agnostic</h3>
+        <p>Works with Express, Fastify, Hono, Flask, Chi, Actix &mdash; any router that has <code>.get()</code> and <code>.post()</code>.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&check;</div>
+        <h3>Runtime Validation</h3>
+        <p>Opt-in zero-dep validators. 400 on bad input, 500 on contract violation. No Zod or Joi required.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&oplus;</div>
+        <h3>Typed Errors</h3>
+        <p>Define error codes per action. Generated factories on the backend, typed matchers on the frontend.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">=</div>
+        <h3>Deterministic Output</h3>
+        <p>Same input always produces identical output. Safe for CI/CD, code review, and version control.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&prod;</div>
+        <h3>Multi-Stack</h3>
+        <p>8 backend languages, 10 frontend targets, plus OpenAPI, database schemas, Docker, and CI/CD.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Stacks -->
+<section class="stacks" id="stacks">
+  <div class="container">
+    <h2>Works with your stack</h2>
+    <p class="subtitle">Mix and match any backend with any frontend.</p>
+
+    <div class="stack-label">Backends</div>
+    <div class="stack-row">
+      <span class="stack-tag">Node.js (TypeScript)</span>
+      <span class="stack-tag">Node.js (JavaScript)</span>
+      <span class="stack-tag">Python</span>
+      <span class="stack-tag">Go</span>
+      <span class="stack-tag">Rust</span>
+      <span class="stack-tag">Java</span>
+      <span class="stack-tag">C#</span>
+      <span class="stack-tag">PHP</span>
+    </div>
+
+    <div class="stack-label">Frontend SDKs</div>
+    <div class="stack-row">
+      <span class="stack-tag">TypeScript</span>
+      <span class="stack-tag">JavaScript</span>
+      <span class="stack-tag">React</span>
+      <span class="stack-tag">Vue</span>
+      <span class="stack-tag">Angular</span>
+      <span class="stack-tag">Svelte</span>
+      <span class="stack-tag">Dart / Flutter</span>
+      <span class="stack-tag">Kotlin</span>
+      <span class="stack-tag">Swift</span>
+    </div>
+
+    <div class="stack-label">Extras</div>
+    <div class="stack-row">
+      <span class="stack-tag">OpenAPI 3.0</span>
+      <span class="stack-tag">Prisma Schema</span>
+      <span class="stack-tag">SQL DDL</span>
+      <span class="stack-tag">Dockerfile</span>
+      <span class="stack-tag">GitHub Actions</span>
+      <span class="stack-tag">GitLab CI</span>
+    </div>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section class="flow" id="how-it-works">
+  <div class="container">
+    <h2>How it works</h2>
+    <div class="flow-steps">
+      <div class="flow-step">
+        <div class="num">1</div>
+        <div class="label">Define</div>
+        <div class="desc">Write models &amp; endpoints in <code>.veld</code></div>
+      </div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step">
+        <div class="num">2</div>
+        <div class="label">Generate</div>
+        <div class="desc">Run <code>veld generate</code></div>
+      </div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step">
+        <div class="num">3</div>
+        <div class="label">Implement</div>
+        <div class="desc">Write business logic against typed interfaces</div>
+      </div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step">
+        <div class="num">4</div>
+        <div class="label">Ship</div>
+        <div class="desc">Frontend SDK is ready to call your API</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <div class="container">
+    <h2>Stop writing boilerplate</h2>
+    <p>Define your API contract once. Let Veld handle the rest.</p>
+    <div class="hero-actions">
+      <a href="https://github.com/Adhamzineldin/Veld" class="btn btn-primary">Get Started</a>
+      <a href="https://github.com/Adhamzineldin/Veld/blob/master/docs/guides/getting-started.md" class="btn btn-secondary">Read the Guide</a>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="container">
+    <p>Veld &mdash; Contract-first API code generator &bull; MIT License</p>
+  </div>
+</footer>
+
+</body>
+</html>

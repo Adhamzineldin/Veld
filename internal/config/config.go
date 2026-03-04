@@ -79,8 +79,12 @@ type FlagOverrides struct {
 // backendAlias normalises backend shorthand names.
 func backendAlias(name string) string {
 	switch name {
-	case "js":
-		return "javascript"
+	case "node":
+		return "node-ts"
+	case "js", "javascript", "node-javascript":
+		return "node-js"
+	case "node-typescript":
+		return "node-ts"
 	default:
 		return name
 	}

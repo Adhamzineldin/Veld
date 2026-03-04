@@ -604,7 +604,7 @@ func TestRun_NodeTS_Dedup(t *testing.T) {
   }
 }`,
 	})
-	results := Run(dir, "node", "typescript", "generated")
+	results := Run(dir, "node-ts", "typescript", "generated")
 	count := 0
 	for _, r := range results {
 		if r.File == "tsconfig.json" {
@@ -640,7 +640,7 @@ func TestRun_PythonDart(t *testing.T) {
 
 func TestRun_Swift_Manual(t *testing.T) {
 	dir := t.TempDir()
-	results := Run(dir, "node", "swift", "generated")
+	results := Run(dir, "node-ts", "swift", "generated")
 	swift := findResult(results, "Xcode")
 	if swift == nil || swift.Action != "manual" {
 		t.Fatal("expected Xcode manual result for swift")
@@ -656,12 +656,12 @@ func TestRun_IdempotentSecondRun(t *testing.T) {
   }
 }`,
 	})
-	r1 := Run(dir, "node", "typescript", "generated")
+	r1 := Run(dir, "node-ts", "typescript", "generated")
 	ts1 := findResult(r1, "tsconfig.json")
 	if ts1 == nil || ts1.Action != "patched" {
 		t.Fatalf("first run: expected tsconfig.json patched, got %v", ts1)
 	}
-	r2 := Run(dir, "node", "typescript", "generated")
+	r2 := Run(dir, "node-ts", "typescript", "generated")
 	ts2 := findResult(r2, "tsconfig.json")
 	if ts2 == nil || ts2.Action != "skipped" {
 		t.Fatalf("second run: expected tsconfig.json skipped, got %v", ts2)
@@ -758,19 +758,19 @@ func TestRun_UpdatePath_FullCycle(t *testing.T) {
 }`,
 	})
 	// First run: patch with "generated"
-	r1 := Run(dir, "node", "typescript", "generated")
+	r1 := Run(dir, "node-ts", "typescript", "generated")
 	ts1 := findResult(r1, "tsconfig.json")
 	if ts1 == nil || ts1.Action != "patched" {
 		t.Fatalf("first run: expected tsconfig.json patched, got %v", ts1)
 	}
 	// Second run: same path → skipped
-	r2 := Run(dir, "node", "typescript", "generated")
+	r2 := Run(dir, "node-ts", "typescript", "generated")
 	ts2 := findResult(r2, "tsconfig.json")
 	if ts2 == nil || ts2.Action != "skipped" {
 		t.Fatalf("second run: expected tsconfig.json skipped, got %v", ts2)
 	}
 	// Third run: changed path → should update, not skip
-	r3 := Run(dir, "node", "typescript", "output/v2")
+	r3 := Run(dir, "node-ts", "typescript", "output/v2")
 	ts3 := findResult(r3, "tsconfig.json")
 	if ts3 == nil || ts3.Action != "patched" {
 		t.Fatalf("third run (path change): expected tsconfig.json patched, got %v", ts3)
@@ -863,7 +863,7 @@ func TestRun_NodeReact_SeparateDirs(t *testing.T) {
 }`,
 	})
 	projectDir := t.TempDir()
-	results := Run(projectDir, "node", "react", "generated", Options{
+	results := Run(projectDir, "node-ts", "react", "generated", Options{
 		BackendDir:  backendDir,
 		FrontendDir: frontendDir,
 	})

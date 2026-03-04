@@ -284,7 +284,7 @@ func TestNodeEmitterSummary(t *testing.T) {
 }
 
 func TestNodeEmitterRegistered(t *testing.T) {
-	if _, err := emitter.GetBackend("node"); err != nil {
-		t.Errorf("node backend not registered: %v", err)
+	if _, err := emitter.GetBackend("node-ts"); err != nil {
+		t.Errorf("node-ts backend not registered: %v", err)
 	}
 }

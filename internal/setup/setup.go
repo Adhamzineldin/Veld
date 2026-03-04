@@ -75,7 +75,7 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 	var backendPatchers []patcher
 
 	switch backend {
-	case "node", "javascript":
+	case "node-ts", "node-js":
 		// Primary: add file: dependency for real package resolution (Prisma-style).
 		backendPatchers = append(backendPatchers, patcher{func() Result {
 			return patchNodePackageJSON(backendDir, relOutBackend, "@veld/generated")
@@ -166,7 +166,7 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 	skipFrontend := false
 	if backendDir == frontendDir && backendOutDir == frontendOutDir {
 		switch backend {
-		case "node", "javascript":
+		case "node-ts", "node-js":
 			switch frontend {
 			case "typescript", "javascript", "react", "vue", "angular", "svelte":
 				skipFrontend = true // same package.json + tsconfig — backend patcher already covers root

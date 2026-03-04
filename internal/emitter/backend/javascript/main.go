@@ -9,7 +9,7 @@ import (
 )
 
 func init() {
-	emitter.RegisterBackend("javascript", New())
+	emitter.RegisterBackend("node-js", New())
 }
 
 // JSEmitter generates a plain JavaScript backend from a Veld AST.

@@ -9,7 +9,7 @@ import (
 )
 
 func init() {
-	emitter.RegisterBackend("node", New())
+	emitter.RegisterBackend("node-ts", New())
 }
 
 // NodeEmitter generates a typed Node.js backend from a Veld AST.

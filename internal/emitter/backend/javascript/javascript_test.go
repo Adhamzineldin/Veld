@@ -261,7 +261,7 @@ func TestJSEmitterSummary(t *testing.T) {
 }
 
 func TestJSEmitterRegistered(t *testing.T) {
-	if _, err := emitter.GetBackend("javascript"); err != nil {
-		t.Errorf("javascript backend not registered: %v", err)
+	if _, err := emitter.GetBackend("node-js"); err != nil {
+		t.Errorf("node-js backend not registered: %v", err)
 	}
 }
