@@ -22,7 +22,7 @@ const methods = [
     id: 'brew',
     label: 'Homebrew',
     icon: <Terminal size={16} />,
-    command: 'brew install veld-dev/tap/veld',
+    command: 'brew install maayn-veld/tap/maayn-veld',
     run: 'veld generate',
   },
   {
@@ -36,7 +36,7 @@ const methods = [
     id: 'composer',
     label: 'Composer',
     icon: <Package size={16} />,
-    command: 'composer require veld-dev/veld',
+    command: 'composer require maayn/veld',
     run: 'vendor/bin/veld generate',
   },
 ];
