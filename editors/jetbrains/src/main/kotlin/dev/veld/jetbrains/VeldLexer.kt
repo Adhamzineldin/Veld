@@ -69,6 +69,24 @@ class VeldLexer : LexerBase() {
                 expectPathLiteral = false
             }
 
+            // Block comment
+            char == '/' && peek(1) == '*' -> {
+                currentOffset += 2
+                while (currentOffset < endOffset - 1) {
+                    if (buffer[currentOffset] == '*' && buffer[currentOffset + 1] == '/') {
+                        currentOffset += 2
+                        break
+                    }
+                    currentOffset++
+                }
+                // Handle unterminated block comment
+                if (currentOffset >= endOffset - 1 && !(currentOffset >= 2 && buffer[currentOffset - 1] == '/' && buffer[currentOffset - 2] == '*')) {
+                    currentOffset = endOffset
+                }
+                currentToken = VeldTokenTypes.COMMENT
+                expectPathLiteral = false
+            }
+
             // String literal
             char == '"' -> {
                 currentOffset++

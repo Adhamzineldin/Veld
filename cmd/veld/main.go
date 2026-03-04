@@ -17,11 +17,14 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/cache"
 	"github.com/Adhamzineldin/Veld/internal/config"
 	"github.com/Adhamzineldin/Veld/internal/diff"
+	"github.com/Adhamzineldin/Veld/internal/docsgen"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 	vfmt "github.com/Adhamzineldin/Veld/internal/format"
+	"github.com/Adhamzineldin/Veld/internal/graphqlgen"
 	"github.com/Adhamzineldin/Veld/internal/lint"
 	"github.com/Adhamzineldin/Veld/internal/loader"
 	"github.com/Adhamzineldin/Veld/internal/lsp"
+	"github.com/Adhamzineldin/Veld/internal/openapigen"
 	"github.com/Adhamzineldin/Veld/internal/schema"
 	"github.com/Adhamzineldin/Veld/internal/setup"
 	"github.com/Adhamzineldin/Veld/internal/validator"
@@ -597,8 +600,8 @@ Aliases:   node → node-ts, js/javascript → node-js, ts → typescript, react
 	root.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress non-essential output")
 	root.AddCommand(
 		newValidateCmd(), newASTCmd(), newGenerateCmd(), newWatchCmd(),
-		newInitCmd(), newCleanCmd(), newOpenAPICmd(),
-		newDiffCmd(), newLintCmd(), newDocsCmd(), newLSPCmd(),
+		newInitCmd(), newCleanCmd(), newOpenAPICmd(), newGraphQLCmd(),
+		newSchemaCmd(), newDiffCmd(), newLintCmd(), newDocsCmd(), newLSPCmd(),
 		newSetupCmd(), newFmtCmd(), newDoctorCmd(), newCompletionCmd(),
 	)
 	if err := root.Execute(); err != nil {
@@ -1104,7 +1107,7 @@ func newOpenAPICmd() *cobra.Command {
 				}
 				return fmt.Errorf("contract validation failed")
 			}
-			spec := buildOpenAPISpec(a)
+			spec := openapigen.BuildSpec(a)
 			data, _ := json.MarshalIndent(spec, "", "  ")
 			if outputFile != "" {
 				if err := os.WriteFile(outputFile, data, 0644); err != nil {
@@ -1119,268 +1122,6 @@ func newOpenAPICmd() *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "write to file instead of stdout")
 	return cmd
-}
-
-func buildOpenAPISpec(a ast.AST) map[string]interface{} {
-	// Build model and enum lookups for $ref resolution.
-	modelMap := make(map[string]bool, len(a.Models))
-	for _, m := range a.Models {
-		modelMap[m.Name] = true
-	}
-	enumMap := make(map[string]ast.Enum, len(a.Enums))
-	for _, en := range a.Enums {
-		enumMap[en.Name] = en
-	}
-
-	paths := make(map[string]interface{})
-	for _, mod := range a.Modules {
-		tag := mod.Name
-		for _, act := range mod.Actions {
-			routePath := act.Path
-			if mod.Prefix != "" {
-				routePath = mod.Prefix + act.Path
-			}
-			oaPath := emitter.ToOpenAPIPath(routePath)
-			pathParams := emitter.ExtractPathParams(routePath)
-
-			// Response schema
-			responses := make(map[string]interface{})
-			successCode := "200"
-			if strings.ToUpper(act.Method) == "POST" {
-				successCode = "201"
-			}
-			if strings.ToUpper(act.Method) == "DELETE" && act.Output == "" {
-				successCode = "204"
-			}
-
-			if act.Output != "" {
-				outputSchema := oaSchemaRef(act.Output, act.OutputArray, modelMap)
-				responses[successCode] = map[string]interface{}{
-					"description": "Success",
-					"content": map[string]interface{}{
-						"application/json": map[string]interface{}{
-							"schema": outputSchema,
-						},
-					},
-				}
-			} else {
-				responses[successCode] = map[string]interface{}{"description": "Success"}
-			}
-
-			// Standard error responses
-			if act.Input != "" {
-				responses["400"] = map[string]interface{}{"description": "Validation error"}
-			}
-			if len(act.Middleware) > 0 {
-				responses["401"] = map[string]interface{}{"description": "Unauthorized"}
-				responses["403"] = map[string]interface{}{"description": "Forbidden"}
-			}
-			if len(pathParams) > 0 {
-				responses["404"] = map[string]interface{}{"description": "Not found"}
-			}
-			responses["500"] = map[string]interface{}{"description": "Internal server error"}
-
-			op := map[string]interface{}{
-				"tags":        []string{tag},
-				"operationId": mod.Name + "_" + act.Name,
-				"responses":   responses,
-			}
-			if act.Description != "" {
-				op["summary"] = act.Description
-			}
-			if act.Deprecated != "" {
-				op["deprecated"] = true
-			}
-			if len(pathParams) > 0 {
-				params := make([]map[string]interface{}, 0, len(pathParams))
-				for _, p := range pathParams {
-					params = append(params, map[string]interface{}{
-						"name":     p,
-						"in":       "path",
-						"required": true,
-						"schema":   map[string]interface{}{"type": "string"},
-					})
-				}
-				op["parameters"] = params
-			}
-			if act.Input != "" {
-				op["requestBody"] = map[string]interface{}{
-					"required": true,
-					"content": map[string]interface{}{
-						"application/json": map[string]interface{}{
-							"schema": map[string]interface{}{"$ref": "#/components/schemas/" + act.Input},
-						},
-					},
-				}
-			}
-			method := strings.ToLower(act.Method)
-			if _, ok := paths[oaPath]; !ok {
-				paths[oaPath] = make(map[string]interface{})
-			}
-			paths[oaPath].(map[string]interface{})[method] = op
-		}
-	}
-
-	schemas := make(map[string]interface{})
-	for _, m := range a.Models {
-		props := make(map[string]interface{})
-		var required []string
-		for _, f := range m.Fields {
-			prop := oaFieldSchema(f, modelMap, enumMap)
-			props[f.Name] = prop
-			if !f.Optional {
-				required = append(required, f.Name)
-			}
-		}
-		schema := map[string]interface{}{
-			"type":       "object",
-			"properties": props,
-		}
-		if len(required) > 0 {
-			schema["required"] = required
-		}
-		if m.Description != "" {
-			schema["description"] = m.Description
-		}
-		if m.Extends != "" {
-			schema["allOf"] = []interface{}{
-				map[string]interface{}{"$ref": "#/components/schemas/" + m.Extends},
-				map[string]interface{}{"type": "object", "properties": props},
-			}
-			delete(schema, "type")
-			delete(schema, "properties")
-		}
-		schemas[m.Name] = schema
-	}
-	for _, en := range a.Enums {
-		s := map[string]interface{}{
-			"type": "string",
-			"enum": en.Values,
-		}
-		if en.Description != "" {
-			s["description"] = en.Description
-		}
-		schemas[en.Name] = s
-	}
-
-	spec := map[string]interface{}{
-		"openapi": "3.0.3",
-		"info": map[string]interface{}{
-			"title":       "Veld API",
-			"version":     "1.0.0",
-			"description": "Auto-generated API specification from Veld contracts",
-		},
-		"paths": paths,
-		"components": map[string]interface{}{
-			"schemas": schemas,
-		},
-	}
-
-	return spec
-}
-
-// oaSchemaRef returns a $ref or inline schema for an output type.
-func oaSchemaRef(typeName string, isArray bool, models map[string]bool) map[string]interface{} {
-	var base map[string]interface{}
-	if models[typeName] {
-		base = map[string]interface{}{"$ref": "#/components/schemas/" + typeName}
-	} else {
-		base = map[string]interface{}{"type": oaType(typeName)}
-		if f := oaFormat(typeName); f != "" {
-			base["format"] = f
-		}
-	}
-	if isArray {
-		return map[string]interface{}{"type": "array", "items": base}
-	}
-	return base
-}
-
-// oaFieldSchema produces the OpenAPI schema for a single field, including
-// format, enum inlining, and $ref for model references.
-func oaFieldSchema(f ast.Field, models map[string]bool, enums map[string]ast.Enum) map[string]interface{} {
-	if f.IsMap {
-		valSchema := map[string]interface{}{"type": oaType(f.MapValueType)}
-		if models[f.MapValueType] {
-			valSchema = map[string]interface{}{"$ref": "#/components/schemas/" + f.MapValueType}
-		}
-		prop := map[string]interface{}{
-			"type":                 "object",
-			"additionalProperties": valSchema,
-		}
-		return prop
-	}
-
-	// Check if type is an enum — inline the values
-	if en, ok := enums[f.Type]; ok {
-		prop := map[string]interface{}{"type": "string", "enum": en.Values}
-		if f.IsArray {
-			return map[string]interface{}{"type": "array", "items": prop}
-		}
-		return prop
-	}
-
-	// Check if type is a model — use $ref
-	if models[f.Type] {
-		ref := map[string]interface{}{"$ref": "#/components/schemas/" + f.Type}
-		if f.IsArray {
-			return map[string]interface{}{"type": "array", "items": ref}
-		}
-		return ref
-	}
-
-	// Primitive type
-	prop := map[string]interface{}{"type": oaType(f.Type)}
-	if fmt := oaFormat(f.Type); fmt != "" {
-		prop["format"] = fmt
-	}
-	if f.Default != "" {
-		prop["default"] = f.Default
-	}
-	if f.Example != "" {
-		prop["example"] = f.Example
-	}
-	if f.Deprecated != "" {
-		prop["deprecated"] = true
-	}
-
-	if f.IsArray {
-		return map[string]interface{}{"type": "array", "items": prop}
-	}
-	return prop
-}
-
-func oaType(t string) string {
-	switch t {
-	case "int":
-		return "integer"
-	case "float":
-		return "number"
-	case "bool":
-		return "boolean"
-	case "date", "datetime", "uuid", "string":
-		return "string"
-	default:
-		return t // model reference
-	}
-}
-
-// oaFormat returns the OpenAPI format string for a Veld type, or "" if none.
-func oaFormat(t string) string {
-	switch t {
-	case "date":
-		return "date"
-	case "datetime":
-		return "date-time"
-	case "uuid":
-		return "uuid"
-	case "int":
-		return "int64"
-	case "float":
-		return "double"
-	default:
-		return ""
-	}
 }
 
 // ── printErrorWithContext ─────────────────────────────────────────────────────
@@ -1463,7 +1204,7 @@ func newGraphQLCmd() *cobra.Command {
 				}
 				return fmt.Errorf("contract validation failed")
 			}
-			sdl := buildGraphQLSchema(a)
+			sdl := graphqlgen.BuildSchema(a)
 			if outputFile != "" {
 				if err := os.WriteFile(outputFile, []byte(sdl), 0644); err != nil {
 					return err
@@ -1477,178 +1218,6 @@ func newGraphQLCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "write to file instead of stdout")
 	return cmd
-}
-
-func buildGraphQLSchema(a ast.AST) string {
-	var sb strings.Builder
-
-	// Enums
-	for _, en := range a.Enums {
-		if en.Description != "" {
-			sb.WriteString(fmt.Sprintf("\"\"\"%s\"\"\"\n", en.Description))
-		}
-		sb.WriteString(fmt.Sprintf("enum %s {\n", en.Name))
-		for _, v := range en.Values {
-			sb.WriteString(fmt.Sprintf("  %s\n", v))
-		}
-		sb.WriteString("}\n\n")
-	}
-
-	// Types (models)
-	modelMap := make(map[string]ast.Model)
-	for _, m := range a.Models {
-		modelMap[m.Name] = m
-	}
-
-	// Track which models are used as input
-	inputModels := make(map[string]bool)
-	for _, mod := range a.Modules {
-		for _, act := range mod.Actions {
-			if act.Input != "" {
-				inputModels[act.Input] = true
-			}
-			if act.Query != "" {
-				inputModels[act.Query] = true
-			}
-		}
-	}
-
-	for _, m := range a.Models {
-		allFields := gqlFlattenFields(m, modelMap)
-		keyword := "type"
-		if inputModels[m.Name] {
-			keyword = "input"
-		}
-		if m.Description != "" {
-			sb.WriteString(fmt.Sprintf("\"\"\"%s\"\"\"\n", m.Description))
-		}
-		sb.WriteString(fmt.Sprintf("%s %s {\n", keyword, m.Name))
-		for _, f := range allFields {
-			gqlType := gqlFieldType(f)
-			sb.WriteString(fmt.Sprintf("  %s: %s\n", f.Name, gqlType))
-		}
-		sb.WriteString("}\n\n")
-	}
-
-	// Query and Mutation
-	var queries []string
-	var mutations []string
-
-	for _, mod := range a.Modules {
-		for _, act := range mod.Actions {
-			method := strings.ToUpper(act.Method)
-			routePath := act.Path
-			if mod.Prefix != "" {
-				routePath = mod.Prefix + act.Path
-			}
-
-			// Build args
-			var args []string
-			for _, p := range emitter.ExtractPathParams(routePath) {
-				args = append(args, fmt.Sprintf("%s: String!", p))
-			}
-			if act.Input != "" {
-				args = append(args, fmt.Sprintf("input: %s!", act.Input))
-			}
-			if act.Query != "" {
-				args = append(args, fmt.Sprintf("query: %s", act.Query))
-			}
-
-			argStr := ""
-			if len(args) > 0 {
-				argStr = "(" + strings.Join(args, ", ") + ")"
-			}
-
-			returnType := gqlReturnType(act)
-			opName := lcfirst(mod.Name) + act.Name
-			line := fmt.Sprintf("  %s%s: %s", opName, argStr, returnType)
-
-			if method == "GET" {
-				queries = append(queries, line)
-			} else {
-				mutations = append(mutations, line)
-			}
-		}
-	}
-
-	if len(queries) > 0 {
-		sb.WriteString("type Query {\n")
-		for _, q := range queries {
-			sb.WriteString(q + "\n")
-		}
-		sb.WriteString("}\n\n")
-	}
-
-	if len(mutations) > 0 {
-		sb.WriteString("type Mutation {\n")
-		for _, m := range mutations {
-			sb.WriteString(m + "\n")
-		}
-		sb.WriteString("}\n\n")
-	}
-
-	return sb.String()
-}
-
-func gqlType(t string) string {
-	switch t {
-	case "int":
-		return "Int"
-	case "float":
-		return "Float"
-	case "bool":
-		return "Boolean"
-	case "string", "date", "datetime", "uuid":
-		return "String"
-	default:
-		return t
-	}
-}
-
-func gqlFieldType(f ast.Field) string {
-	if f.IsMap {
-		return "String" // GraphQL doesn't have native map type
-	}
-	base := gqlType(f.Type)
-	if f.IsArray {
-		if f.Optional {
-			return fmt.Sprintf("[%s]", base)
-		}
-		return fmt.Sprintf("[%s!]!", base)
-	}
-	if f.Optional {
-		return base
-	}
-	return base + "!"
-}
-
-func gqlReturnType(act ast.Action) string {
-	if act.Output == "" {
-		return "Boolean"
-	}
-	base := gqlType(act.Output)
-	if act.OutputArray {
-		return fmt.Sprintf("[%s!]!", base)
-	}
-	return base + "!"
-}
-
-func gqlFlattenFields(m ast.Model, models map[string]ast.Model) []ast.Field {
-	if m.Extends == "" {
-		return m.Fields
-	}
-	parent, ok := models[m.Extends]
-	if !ok {
-		return m.Fields
-	}
-	return append(gqlFlattenFields(parent, models), m.Fields...)
-}
-
-func lcfirst(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToLower(s[:1]) + s[1:]
 }
 
 // ── schema ────────────────────────────────────────────────────────────────────
@@ -1901,9 +1470,9 @@ func newDocsCmd() *cobra.Command {
 			var output string
 			switch format {
 			case "html":
-				output = buildDocsHTML(a)
+				output = docsgen.BuildHTML(a)
 			case "markdown", "md":
-				output = buildDocsMarkdown(a)
+				output = docsgen.BuildMarkdown(a)
 			default:
 				return fmt.Errorf("unknown docs format %q (supported: html, markdown)", format)
 			}
@@ -2077,7 +1646,7 @@ body{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-s
 .method-GET{background:var(--get-bg);color:var(--get)}
 .method-POST{background:var(--post-bg);color:var(--post)}
 .method-PUT{background:var(--put-bg);color:var(--put)}
-.method-DELETE{background:var(--delete-bg);color:var(--delete)}
+.method-DELETE{background:var(--delete-bg);color:var,--delete)}
 .method-PATCH{background:var(--patch-bg);color:var(--patch)}
 .method-WS{background:var(--ws-bg);color:var(--ws)}
 .endpoint-path{font-family:'SF Mono',SFMono-Regular,Consolas,monospace;font-size:13px;font-weight:500;flex:1}
@@ -2644,11 +2213,16 @@ func runInit() error {
 	fmt.Println("  " + bold("Backend") + " — which server runtime?")
 	defaultBackendIdx := 1
 	for i, b := range backends {
+		if b == "node-ts" {
+			defaultBackendIdx = i + 1
+		}
+	}
+	for i, b := range backends {
 		label := b
 		if detectedBackend != "" && b == detectedBackend {
 			label += dim(" (detected)")
-			defaultBackendIdx = i + 1
-		} else if detectedBackend == "" && b == "node-ts" {
+		}
+		if i+1 == defaultBackendIdx {
 			label += dim(" (default)")
 		}
 		fmt.Printf("    %s%2d%s  %s\n", colorGreen, i+1, colorReset, label)

@@ -15,8 +15,17 @@
   "repository": {
 
     "comment": {
-      "name": "comment.line.double-slash.veld",
-      "match": "//.*$"
+      "patterns": [
+        {
+          "name": "comment.block.veld",
+          "begin": "/\\*",
+          "end": "\\*/"
+        },
+        {
+          "name": "comment.line.double-slash.veld",
+          "match": "//.*$"
+        }
+      ]
     },
 
     "string": {

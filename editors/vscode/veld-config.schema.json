@@ -11,12 +11,12 @@
     "backend": {
       "type": "string",
       "description": "Backend target language/framework",
-      "enum": ["node", "python", "go", "java", "csharp", "php", "rust"]
+      "enum": ["node-ts", "node-js", "node", "python", "go", "java", "csharp", "php", "rust", "js", "javascript"]
     },
     "frontend": {
       "type": "string",
       "description": "Frontend SDK to generate",
-      "enum": ["react", "vue", "angular", "svelte", "typescript", "dart", "kotlin", "swift", "none"]
+      "enum": ["typescript", "javascript", "react", "vue", "angular", "svelte", "dart", "kotlin", "swift", "types-only", "none", "ts", "js"]
     },
     "out": {
       "type": "string",
@@ -56,6 +56,11 @@
       "additionalProperties": {
         "type": "string"
       }
+    },
+    "validate": {
+      "type": "boolean",
+      "description": "Generate zero-dependency runtime validators and wire into route handlers",
+      "default": false
     }
   },
   "required": ["input"],

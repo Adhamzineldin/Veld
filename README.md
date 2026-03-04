@@ -318,6 +318,15 @@ try {
 | `veld lsp` | Start the Language Server Protocol server |
 | `veld completion` | Generate shell completions (bash/zsh/fish/powershell) |
 
+### Experimental Commands
+
+These commands are available but under active development:
+
+| Command | Description |
+|---------|-------------|
+| `veld graphql` | Export a GraphQL SDL schema |
+| `veld schema` | Generate database schemas (Prisma/SQL) |
+
 ### Common flags
 
 ```bash

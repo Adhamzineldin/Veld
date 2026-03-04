@@ -160,5 +160,39 @@
     "prefix": "fielddef",
     "body": "${1:fieldName}: ${2:EnumType} @default(${3:value})",
     "description": "Define a field with a default value"
+  },
+
+  "Field with @unique": {
+    "prefix": "fieldunique",
+    "body": "${1:fieldName}: ${2|string,int,uuid|} @unique",
+    "description": "Define a field with unique constraint"
+  },
+
+  "Field with @index": {
+    "prefix": "fieldindex",
+    "body": "${1:fieldName}: ${2|string,int,uuid|} @index",
+    "description": "Define a field with an index hint"
+  },
+
+  "Field with @example": {
+    "prefix": "fieldexample",
+    "body": "${1:fieldName}: ${2:string} @example(\"${3:example value}\")",
+    "description": "Define a field with an example value"
+  },
+
+  "Field with @relation": {
+    "prefix": "fieldrelation",
+    "body": "${1:fieldName}: ${2:ModelName} @relation(${2:ModelName})",
+    "description": "Define a relation field"
+  },
+
+  "Block Comment": {
+    "prefix": "block",
+    "body": [
+      "/*",
+      " * ${1:description}",
+      " */"
+    ],
+    "description": "Insert a block comment"
   }
 }

@@ -48,13 +48,16 @@
   ],
   "annotations": [
     "default",
+    "example",
     "unique",
+    "index",
+    "relation",
     "required",
     "optional",
-    "index",
     "primary",
     "autoincrement",
-    "readonly"
+    "readonly",
+    "deprecated"
   ],
   "configKeys": [
     "input",

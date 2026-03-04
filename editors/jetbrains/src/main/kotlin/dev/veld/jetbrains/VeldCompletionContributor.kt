@@ -384,14 +384,17 @@ class VeldCompletionContributor : CompletionContributor() {
         data class Annotation(val name: String, val snippet: String, val detail: String)
         val annotations = listOf(
             Annotation("@default",    "@default(\$1)",   "Set a default value for this field"),
+            Annotation("@example",    "@example(\$1)",   "Provide an example value (shown in docs/OpenAPI)"),
             Annotation("@required",   "@required",       "Mark this field as required (non-nullable)"),
+            Annotation("@unique",     "@unique",         "Mark this field as unique in the data store"),
+            Annotation("@index",      "@index",          "Add a database index hint for this field"),
+            Annotation("@relation",   "@relation(\$1)",  "Define a foreign key relation to another model"),
+            Annotation("@deprecated", "@deprecated",     "Mark this field as deprecated"),
             Annotation("@min",        "@min(\$1)",       "Minimum value constraint (int/float)"),
             Annotation("@max",        "@max(\$1)",       "Maximum value constraint (int/float)"),
             Annotation("@minLength",  "@minLength(\$1)", "Minimum string length constraint"),
             Annotation("@maxLength",  "@maxLength(\$1)", "Maximum string length constraint"),
-            Annotation("@regex",      "@regex(\$1)",     "Regular expression constraint for strings"),
-            Annotation("@unique",     "@unique",         "Mark this field as unique in the data store"),
-            Annotation("@deprecated", "@deprecated",     "Mark this field as deprecated")
+            Annotation("@regex",      "@regex(\$1)",     "Regular expression constraint for strings")
         )
         for (ann in annotations) {
             val item = LookupElementBuilder.create(ann.name)
