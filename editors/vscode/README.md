@@ -1,23 +1,41 @@
 # Veld VS Code Extension
 
-Syntax highlighting, snippets, and validation for the [Veld contract language](https://github.com/Adhamzineldin/Veld).
+Syntax highlighting, snippets, code completion, and validation for the [Veld contract language](https://github.com/Adhamzineldin/Veld).
 
 ## Features
 
 ### ✅ Syntax Highlighting
-- Keywords: `model`, `module`, `action`, `enum`, `import`, `extends`
+- Keywords: `model`, `module`, `action`, `enum`, `import`, `extends`, `from`
 - Types: `string`, `int`, `float`, `bool`, `date`, `datetime`, `uuid`, `List<T>`, `Map<K,V>`
-- Directives: `@middleware`, `@query`, `@auth`
-- Comments: `// single-line comments`
+- Directives: `method`, `path`, `input`, `output`, `description`, `prefix`, `query`, `middleware`, `errors`, `deprecated`
+- HTTP Methods: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `WS`
+- Annotations: `@default`, `@example`, `@unique`, `@index`, `@relation`, `@required`, `@deprecated`, `@min`, `@max`, `@minLength`, `@maxLength`, `@regex`
+- Comments: `// single-line` and `/* block comments */`
+- Import paths: `@models/user`, `@modules/*`
 
 ### ✅ Code Snippets
-- **`model`** — Create a model structure
-- **`modele`** — Model with inheritance (`extends`)
-- **`enum`** — Define an enum
-- **`module`** — Create a module with actions
-- **`action`** — Define an action with HTTP method
-- **`crud`** — Generate full CRUD action set
-- **`import`** — Import another .veld file
+
+| Prefix | Description |
+|--------|-------------|
+| `model` | Model declaration |
+| `modeld` | Model with description |
+| `modele` | Model with `extends` |
+| `enum` | Enum declaration |
+| `module` | Module with one action |
+| `action` | Action with method, path, input/output |
+| `crud` | Full CRUD action set (List, Get, Create, Update, Delete) |
+| `import` | Import using `@alias` path |
+| `importp` | Import using relative path |
+| `from` | `from @alias import *` syntax |
+| `field?` | Optional field |
+| `field[]` | Array field |
+| `fieldmap` | Map field |
+| `fielddef` | Field with `@default` |
+| `fieldunique` | Field with `@unique` |
+| `fieldindex` | Field with `@index` |
+| `fieldexample` | Field with `@example` |
+| `fieldrelation` | Field with `@relation` |
+| `block` | Block comment `/* */` |
 
 ### ✅ Validation on Save
 Automatically runs `veld validate` when you save a `.veld` file and displays errors inline.
@@ -27,19 +45,25 @@ Automatically runs `veld validate` when you save a `.veld` file and displays err
 - **Veld: Generate Code** — Run code generation
 - **Veld: Generate (Dry Run)** — Preview what would be generated
 
+### ✅ Config Schema
+JSON schema autocompletion and validation for `veld.config.json` files — autocompletes backend/frontend options, aliases, output paths, and all config keys.
+
 ## Requirements
 
 You must have the **Veld CLI** installed and available on your PATH:
 
 ```bash
-# npm (recommended)
-npm install @maayn/veld
+# npm
+npm install -g @maayn/veld
 
 # pip
 pip install maayn-veld
 
 # Go
 go install github.com/Adhamzineldin/Veld/cmd/veld@latest
+
+# Homebrew
+brew install adhamzineldin/tap/veld
 
 # Or download binary from releases
 # https://github.com/Adhamzineldin/Veld/releases
@@ -52,45 +76,36 @@ veld --version
 
 ## Extension Settings
 
-This extension contributes the following settings:
-
-* `veld.executablePath`: Path to the veld CLI executable (default: `veld`)
-* `veld.validateOnSave`: Automatically validate `.veld` files on save (default: `true`)
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `veld.executablePath` | `veld` | Path to the veld CLI executable |
+| `veld.validateOnSave` | `true` | Automatically validate `.veld` files on save |
 
 ## Usage
 
 ### 1. Create a `.veld` file
 
 ```veld
-// models/user.veld
-model User {
-  id: int
-  email: string
-  name: string
-  createdAt: datetime
-}
+import @models/user
+import @models/common
 
-module users {
+module Users {
   description: "User management"
   prefix: /api/users
 
   action ListUsers {
     method: GET
     path: /
-    output: List<User>
-  }
-
-  action GetUser {
-    method: GET
-    path: /:id
-    output: User
+    query: ListQuery
+    output: User[]
   }
 
   action CreateUser {
     method: POST
     path: /
-    input: User
+    input: CreateUserInput
     output: User
+    middleware: RequireAuth
   }
 }
 ```
@@ -106,31 +121,24 @@ Press `Ctrl+Shift+P` → `Veld: Generate Code`
 
 Or run in terminal:
 ```bash
-veld generate --backend=go -o ./backend
+veld generate
 ```
 
-## Supported Backends
+## Supported Backends & Frontends
 
-The Veld CLI supports multiple backend languages:
-- **Node.js** (Express)
-- **Python** (Flask)
-- **Go** (Chi/Gin)
-- **Rust** (Axum/Actix) — Coming soon
-- **Java/Kotlin** (Spring Boot) — Coming soon
-- **C#** (ASP.NET Core) — Coming soon
-- **PHP** (Laravel) — Coming soon
+**Backends:** `node-ts`, `node-js`, `python`, `go`, `rust`, `java`, `csharp`, `php`
 
-## Known Issues
-
-- Multi-line comments are not yet supported (only `//` single-line)
-- Jump-to-definition not implemented yet (planned for v0.2)
-- Auto-completion for model names not implemented yet (planned for v0.2)
-
-## Contributing
-
-Found a bug or want to contribute? Visit our [GitHub repository](https://github.com/Adhamzineldin/Veld).
+**Frontends:** `typescript`, `javascript`, `react`, `vue`, `angular`, `svelte`, `dart`, `kotlin`, `swift`, `types-only`, `none`
 
 ## Release Notes
+
+### 0.2.0
+
+- Block comments `/* */` — syntax highlighting and toggle support
+- New annotation snippets: `@example`, `@unique`, `@index`, `@relation`
+- Updated config schema with all backend/frontend aliases and `validate` field
+- Block comment snippet (`block`)
+- Import path highlighting for `@alias/path` syntax
 
 ### 0.1.0 (Initial Release)
 
@@ -138,9 +146,11 @@ Found a bug or want to contribute? Visit our [GitHub repository](https://github.
 - Code snippets for common patterns
 - Validation on save with inline diagnostics
 - Commands for validation and generation
-- Configuration options for CLI path and auto-validation
+
+## Contributing
+
+Found a bug or want to contribute? Visit our [GitHub repository](https://github.com/Adhamzineldin/Veld).
 
 ---
 
 **Enjoy using Veld!** 🚀
-

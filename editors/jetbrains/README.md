@@ -5,49 +5,74 @@ Official Veld language support for **all JetBrains IDEs** including IntelliJ IDE
 ## Features
 
 ### ✅ Syntax Highlighting
-- Keywords: `model`, `module`, `action`, `enum`, `import`, `extends`
+- Keywords: `model`, `module`, `action`, `enum`, `import`, `extends`, `from`
+- Distinct colors for each keyword type (model vs module vs action vs enum)
 - Types: `string`, `int`, `float`, `bool`, `date`, `datetime`, `uuid`, `List<T>`, `Map<K,V>`
-- Directives: `method`, `path`, `input`, `output`, `description`, `prefix`
-- HTTP Methods: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`
-- Comments: `// single-line comments`
+- Directives: `method`, `path`, `input`, `output`, `description`, `prefix`, `query`, `middleware`, `errors`, `deprecated`
+- HTTP Methods: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `WS`
+- Annotations: `@default`, `@example`, `@unique`, `@index`, `@relation`, `@required`, `@deprecated`, `@min`, `@max`, `@minLength`, `@maxLength`, `@regex`
+- Comments: `// single-line` and `/* block comments */`
+- Import paths: `@models/user`, `@modules/*`
+- Path literals with param highlighting: `/users/:id`
 
-### ✅ Code Completion
-- Auto-complete keywords, types, and directives
-- Suggestions for HTTP methods
-- Built-in type completion
+### ✅ Context-Aware Code Completion
+- **Top level**: `model`, `module`, `enum`, `import`, `from`, `prefix`
+- **Inside models**: all built-in types + custom model/enum names from imports
+- **Inside modules**: `action`, `description`, `prefix`
+- **Inside actions**: `method`, `path`, `input`, `output`, `query`, `middleware`, `errors`, `deprecated`
+- **After `method:`**: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `WS`
+- **After `@`**: all annotations with parameter templates — `@default()`, `@example()`, `@unique`, `@index`, `@relation()`, `@min()`, `@max()`, etc.
+- **After type colon**: built-in types + all model/enum names resolved from imports
+
+### ✅ Cross-File Resolution
+- Resolves `import @models/user` to the actual file
+- Reads models and enums from imported files for completion
+- Supports `@alias/path`, relative `./path`, and wildcard `@models/*` imports
 
 ### ✅ Validation
-- Automatic validation on file save
+- Automatic validation on file save via `veld validate`
 - Error highlighting with inline messages
-- Integrated with `veld validate` CLI
+- Gutter icons for validation status
+
+### ✅ Structure View
+- Navigate models, modules, enums, and actions in the Structure tool window
+- Sorted by declaration order
+
+### ✅ Documentation Provider
+- Hover over models, enums, and fields to see descriptions
+- Shows field types, optionality, default values
 
 ### ✅ Quick Actions
 - **Veld: Validate Contract** (`Ctrl+Alt+V`)
 - **Veld: Generate Code** (`Ctrl+Alt+G`)
 - **Veld: Generate (Dry Run)**
 
-### ✅ Code Style
+### ✅ Code Style & Editing
+- Comment/uncomment line: `Ctrl+/`
+- Block comment toggle: `Ctrl+Shift+/` — wraps selection in `/* */`
+- Brace matching for `{}`, `<>`, `()`, `[]`
 - Configurable indentation (default: 2 spaces)
-- Automatic formatting support
+- Auto-close braces, brackets, and quotes
 
-### ✅ IDE Features
-- Comment/uncomment with `Ctrl+/`
-- Brace matching for `{}` and `<>`
-- File type recognition for `.veld` files
+### ✅ Config Schema
+JSON schema for `veld.config.json` files — autocompletion and validation for all config keys.
 
 ## Requirements
 
 You must have the **Veld CLI** installed and available on your PATH:
 
 ```bash
-# npm (recommended)
-npm install @maayn/veld
+# npm
+npm install -g @maayn/veld
 
 # pip
 pip install maayn-veld
 
 # Go
 go install github.com/Adhamzineldin/Veld/cmd/veld@latest
+
+# Homebrew
+brew install adhamzineldin/tap/veld
 
 # Or download binary from releases
 # https://github.com/Adhamzineldin/Veld/releases
@@ -89,35 +114,26 @@ cd editors/jetbrains
 ### 1. Create a `.veld` file
 
 ```veld
-// models/user.veld
-model User {
-  id: int
-  email: string
-  name: string
-  createdAt: datetime
-}
+import @models/user
+import @models/common
 
-module users {
+module Users {
   description: "User management"
   prefix: /api/users
 
   action ListUsers {
     method: GET
     path: /
-    output: List<User>
-  }
-
-  action GetUser {
-    method: GET
-    path: /:id
-    output: User
+    query: ListQuery
+    output: User[]
   }
 
   action CreateUser {
     method: POST
     path: /
-    input: User
+    input: CreateUserInput
     output: User
+    middleware: RequireAuth
   }
 }
 ```
@@ -136,24 +152,25 @@ module users {
 
 Or run in terminal:
 ```bash
-veld generate --backend=go -o ./backend
+veld generate
 ```
 
 ## Supported IDEs
 
 This plugin works in **all JetBrains IDEs** version 2023.1+:
 
-- ✅ **IntelliJ IDEA** (Community & Ultimate)
-- ✅ **WebStorm**
-- ✅ **PyCharm** (Community & Professional)
-- ✅ **PhpStorm**
-- ✅ **GoLand**
-- ✅ **RubyMine**
-- ✅ **CLion**
-- ✅ **DataGrip**
-- ✅ **Rider**
-- ✅ **Android Studio**
-- ✅ **AppCode** (if still supported)
+| IDE | Status |
+|-----|--------|
+| IntelliJ IDEA (Community & Ultimate) | ✅ |
+| WebStorm | ✅ |
+| PyCharm (Community & Professional) | ✅ |
+| PhpStorm | ✅ |
+| GoLand | ✅ |
+| RubyMine | ✅ |
+| CLion | ✅ |
+| DataGrip | ✅ |
+| Rider | ✅ |
+| Android Studio | ✅ |
 
 ## Keyboard Shortcuts
 
@@ -161,25 +178,14 @@ This plugin works in **all JetBrains IDEs** version 2023.1+:
 |--------|---------------|-------|
 | Validate | `Ctrl+Alt+V` | `Cmd+Alt+V` |
 | Generate | `Ctrl+Alt+G` | `Cmd+Alt+G` |
-| Comment/Uncomment | `Ctrl+/` | `Cmd+/` |
+| Line Comment | `Ctrl+/` | `Cmd+/` |
+| Block Comment | `Ctrl+Shift+/` | `Cmd+Shift+/` |
 
-## Configuration
+## Supported Backends & Frontends
 
-No additional configuration needed! The plugin automatically:
-- Detects `.veld` files
-- Runs validation on save
-- Uses the `veld` CLI from your PATH
+**Backends:** `node-ts`, `node-js`, `python`, `go`, `rust`, `java`, `csharp`, `php`
 
-## Supported Backends
-
-The Veld CLI supports multiple backend languages:
-- **Node.js** (Express)
-- **Python** (Flask)
-- **Go** (Chi/Gin)
-- **Rust** (Axum/Actix) — Coming soon
-- **Java/Kotlin** (Spring Boot) — Coming soon
-- **C#** (ASP.NET Core) — Coming soon
-- **PHP** (Laravel) — Coming soon
+**Frontends:** `typescript`, `javascript`, `react`, `vue`, `angular`, `svelte`, `dart`, `kotlin`, `swift`, `types-only`, `none`
 
 ## Building the Plugin
 
@@ -193,14 +199,12 @@ cd editors/jetbrains
 ./gradlew buildPlugin
 ```
 
-The plugin ZIP will be in `build/distributions/veld-jetbrains-0.1.0.zip`
+The plugin ZIP will be in `build/distributions/`
 
 ### Run in IDE (Development)
 ```bash
 ./gradlew runIde
 ```
-
-This opens a new IDE instance with the plugin installed for testing.
 
 ### Verify
 ```bash
@@ -211,7 +215,6 @@ This opens a new IDE instance with the plugin installed for testing.
 
 See [PUBLISHING.md](PUBLISHING.md) for detailed publishing instructions.
 
-Quick publish:
 ```bash
 export ORG_GRADLE_PROJECT_intellijPublishToken=YOUR_TOKEN_HERE
 ./gradlew publishPlugin
@@ -219,34 +222,25 @@ export ORG_GRADLE_PROJECT_intellijPublishToken=YOUR_TOKEN_HERE
 
 ## Troubleshooting
 
-### Plugin not recognizing .veld files
-- Make sure file extension is exactly `.veld`
-- Try **File** → **Invalidate Caches / Restart**
-
-### Validation not working
-- Verify `veld` is installed: `veld --version`
-- Make sure `veld` is on your PATH
-- Check IDE logs: **Help** → **Show Log in Explorer/Finder**
-
-### Actions not appearing in menu
-- Restart IDE after installation
-- Check **Tools** → **Veld** menu
-
-### Syntax highlighting not working
-- Close and reopen the `.veld` file
-- Try **File** → **Invalidate Caches / Restart**
-
-## Known Issues
-
-- Multi-line comments are not yet supported (only `//` single-line)
-- Jump-to-definition not implemented yet (planned for v0.2)
-- Find usages not implemented yet (planned for v0.2)
-
-## Contributing
-
-Found a bug or want to contribute? Visit our [GitHub repository](https://github.com/Adhamzineldin/Veld).
+| Problem | Solution |
+|---------|----------|
+| Plugin not recognizing `.veld` files | Ensure file extension is `.veld`. Try **File → Invalidate Caches / Restart** |
+| Validation not working | Verify `veld --version` works. Check IDE logs (**Help → Show Log**) |
+| Actions not in Tools menu | Restart IDE after installation |
+| Completions missing model names | Ensure your file has `import @models/...` at the top |
 
 ## Release Notes
+
+### 0.2.0
+
+- Block comments `/* */` — syntax highlighting, lexer support, and `Ctrl+Shift+/` toggle
+- New annotation completions: `@example`, `@index`, `@relation`
+- Context-aware `@` annotation completions with parameter templates
+- Cross-file model/enum resolution from imports
+- Structure view for navigating declarations
+- Documentation provider (hover to see descriptions)
+- Updated config schema with all backend/frontend aliases and `validate` field
+- Path literal highlighting with `:param` coloring
 
 ### 0.1.0 (Initial Release)
 
@@ -255,18 +249,11 @@ Found a bug or want to contribute? Visit our [GitHub repository](https://github.
 - Validation on save with inline diagnostics
 - Quick actions for validate and generate
 - Support for all JetBrains IDEs 2023.1+
-- Keyboard shortcuts
-- Code style configuration
-- Brace matching and commenting
 
----
+## Contributing
 
-## Related Projects
-
-- [Veld CLI](https://github.com/Adhamzineldin/Veld) - The main Veld compiler
-- [Veld VS Code Extension](https://marketplace.visualstudio.com/items?itemName=adhamzineldin.veld-vscode)
+Found a bug or want to contribute? Visit our [GitHub repository](https://github.com/Adhamzineldin/Veld).
 
 ---
 
 **Enjoy using Veld in your favorite JetBrains IDE!** 🚀
-
