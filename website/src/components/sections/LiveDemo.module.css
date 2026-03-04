@@ -348,6 +348,49 @@
   line-height: 1.5;
 }
 
+/* ── Editable output (SDK Usage / Implement) ── */
+
+.editableOutput {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 460px;
+}
+
+.editableEditorWrap {
+  position: relative;
+  flex: 1;
+  min-height: 360px;
+  overflow: hidden;
+}
+
+.inlineErrors {
+  padding: 10px 16px;
+  background: rgba(248, 81, 73, 0.08);
+  border-top: 1px solid rgba(248, 81, 73, 0.2);
+  max-height: 120px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.inlineErrorLine {
+  color: #f85149;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  padding: 3px 0;
+  line-height: 1.4;
+}
+
+.inlineSuccess {
+  padding: 8px 16px;
+  background: rgba(63, 185, 80, 0.08);
+  border-top: 1px solid rgba(63, 185, 80, 0.2);
+  color: var(--accent2);
+  font-size: 0.78rem;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 900px) {
@@ -389,6 +432,14 @@
 
   .outputBody {
     min-height: 300px;
+  }
+
+  .editableOutput {
+    min-height: 300px;
+  }
+
+  .editableEditorWrap {
+    min-height: 250px;
   }
 
   .placeholder {
