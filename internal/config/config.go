@@ -85,6 +85,8 @@ func backendAlias(name string) string {
 		return "node-js"
 	case "node-typescript":
 		return "node-ts"
+	case "nest", "nest.js", "nest-js", "nestjs", "node-nest", "node-nestjs":
+		return "nestjs"
 	default:
 		return name
 	}
