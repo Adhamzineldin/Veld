@@ -1,4 +1,5 @@
 import { ArrowRight, Github, Terminal } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styles from './Hero.module.css';
 
@@ -28,9 +29,9 @@ export default function Hero() {
           </p>
 
           <div className={styles.actions}>
-            <a href="#how-it-works" className={styles.btnPrimary}>
+            <Link to="/docs" className={styles.btnPrimary}>
               Get Started <ArrowRight size={18} />
-            </a>
+            </Link>
             <a
               href="https://github.com/Adhamzineldin/Veld"
               target="_blank"

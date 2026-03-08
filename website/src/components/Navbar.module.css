@@ -56,6 +56,10 @@
   text-decoration: none;
 }
 
+.activeLink {
+  color: var(--accent) !important;
+}
+
 .actions {
   display: flex;
   align-items: center;

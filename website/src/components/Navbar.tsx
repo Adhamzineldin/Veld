@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useLocation, Link } from 'react-router-dom';
 import { Menu, X, Github } from 'lucide-react';
 import styles from './Navbar.module.css';
 
-const navLinks = [
+const homeLinks = [
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
   { label: 'Example', href: '#example' },
@@ -14,6 +15,8 @@ const navLinks = [
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const location = useLocation();
+  const isHome = location.pathname === '/';
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -24,12 +27,12 @@ export default function Navbar() {
   return (
     <nav className={`${styles.nav} ${scrolled ? styles.scrolled : ''}`}>
       <div className={styles.container}>
-        <a href="#" className={styles.logo}>
+        <Link to="/" className={styles.logo}>
           <span className={styles.bracket}>&lt;</span>Veld<span className={styles.bracket}>/&gt;</span>
-        </a>
+        </Link>
 
         <div className={`${styles.links} ${mobileOpen ? styles.open : ''}`}>
-          {navLinks.map((link) => (
+          {isHome && homeLinks.map((link) => (
             <a
               key={link.href}
               href={link.href}
@@ -39,6 +42,18 @@ export default function Navbar() {
               {link.label}
             </a>
           ))}
+          {!isHome && (
+            <Link to="/" className={styles.link} onClick={() => setMobileOpen(false)}>
+              Home
+            </Link>
+          )}
+          <Link
+            to="/docs"
+            className={`${styles.link} ${location.pathname === '/docs' ? styles.activeLink : ''}`}
+            onClick={() => setMobileOpen(false)}
+          >
+            Docs
+          </Link>
         </div>
 
         <div className={styles.actions}>
