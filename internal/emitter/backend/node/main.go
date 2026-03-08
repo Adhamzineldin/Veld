@@ -75,6 +75,10 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	if err := e.emitErrorsBarrel(a, outDir); err != nil {
 		return fmt.Errorf("errors barrel: %w", err)
 	}
+	// Emit a single shared middleware interface for all modules.
+	if err := e.emitMiddlewareInterface(a, outDir); err != nil {
+		return fmt.Errorf("middleware interface: %w", err)
+	}
 	if opts.Validate {
 		if err := e.emitValidators(a, outDir); err != nil {
 			return fmt.Errorf("validators: %w", err)
