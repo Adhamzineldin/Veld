@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { ArrowRight, Github } from 'lucide-react';
 import styles from './CTA.module.css';
 
@@ -22,17 +23,12 @@ export default function CTA() {
             Typed backends, frontend SDKs, validation — in seconds.
           </p>
           <div className={styles.actions}>
-            <a href="#install" className={styles.btnPrimary}>
+            <Link to="/docs" className={styles.btnPrimary}>
               Get Started <ArrowRight size={18} />
-            </a>
-            <a
-              href="https://github.com/Adhamzineldin/Veld/blob/master/docs/guides/getting-started.md"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.btnSecondary}
-            >
+            </Link>
+            <Link to="/docs#quickstart" className={styles.btnSecondary}>
               Read the Guide
-            </a>
+            </Link>
             <a
               href="https://github.com/Adhamzineldin/Veld"
               target="_blank"

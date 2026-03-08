@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import styles from './Footer.module.css';
 import { Github, Heart } from 'lucide-react';
 
@@ -27,10 +28,10 @@ export default function Footer() {
             </div>
             <div className={styles.column}>
               <h4>Resources</h4>
-              <a href="https://github.com/Adhamzineldin/Veld/blob/master/docs/guides/getting-started.md" target="_blank" rel="noopener noreferrer">Documentation</a>
+              <Link to="/docs">Documentation</Link>
+              <Link to="/docs#installation">Installation</Link>
+              <Link to="/docs#cli-overview">CLI Reference</Link>
               <a href="https://github.com/Adhamzineldin/Veld/tree/master/examples" target="_blank" rel="noopener noreferrer">Examples</a>
-              <a href="https://github.com/Adhamzineldin/Veld/blob/master/docs/changelog-v0.1.md" target="_blank" rel="noopener noreferrer">Changelog</a>
-              <a href="https://github.com/Adhamzineldin/Veld/blob/master/docs/roadmap.md" target="_blank" rel="noopener noreferrer">Roadmap</a>
             </div>
             <div className={styles.column}>
               <h4>Community</h4>
