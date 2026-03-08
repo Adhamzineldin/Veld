@@ -22,4 +22,6 @@
 // Run "veld validate" at any time to check your contract for errors.
 // ─────────────────────────────────────────────────────────────────────
 
+prefix: /api
+
 import @modules/*

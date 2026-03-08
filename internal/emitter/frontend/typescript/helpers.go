@@ -32,6 +32,8 @@ export function isApiError(err: unknown): err is VeldApiError {
  * Check if an error matches a specific error code.
  * Usage: if (isErrorCode(err, usersApi.errors.getUser.notFound)) { ... }
  */
+export function isErrorCode<T extends string>(err: unknown, code: T): err is VeldApiError & { code: T };
+export function isErrorCode(err: unknown, code: string): err is VeldApiError;
 export function isErrorCode(err: unknown, code: string): err is VeldApiError {
   return err instanceof VeldApiError && err.code === code;
 }

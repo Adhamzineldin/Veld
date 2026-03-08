@@ -4,7 +4,7 @@
     {
       "name": "Todos",
       "description": "Todo management",
-      "prefix": "/todos",
+      "prefix": "/api/todos",
       "actions": [
         {
           "name": "ListTodos",
@@ -70,7 +70,7 @@
     {
       "name": "Users",
       "description": "User management",
-      "prefix": "/users",
+      "prefix": "/api/users",
       "actions": [
         {
           "name": "ListUsers",
@@ -115,7 +115,7 @@
           "method": "DELETE",
           "path": "/:id",
           "input": "",
-          "output": "",
+          "output": "SuccessResponse",
           "errors": [
             "NotFound"
           ],
@@ -222,6 +222,16 @@
           "name": "email",
           "type": "string",
           "optional": true
+        }
+      ]
+    },
+    {
+      "name": "SuccessResponse",
+      "description": "A successful response",
+      "fields": [
+        {
+          "name": "status",
+          "type": "bool"
         }
       ]
     }
