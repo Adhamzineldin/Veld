@@ -278,6 +278,10 @@ func (p *Parser) parseEnum() (ast.Enum, error) {
 			return en, fmt.Errorf("enum value: %w", err)
 		}
 		en.Values = append(en.Values, valTok.Value)
+		// Allow optional comma separator between enum values.
+		if p.peek().Type == lexer.TComma {
+			p.consume()
+		}
 	}
 
 	if _, err := p.expect(lexer.TRBrace); err != nil {
