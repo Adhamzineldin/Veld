@@ -209,6 +209,11 @@ func collectFieldLine(tokens []lexer.Token, i *int) string {
 			parts = append(parts, " "+collectAnnotation(tokens, i))
 			continue
 		}
+		// Skip standalone commas (optional separators in enums, middleware lists, etc.)
+		if tok.Type == lexer.TComma {
+			*i++
+			continue
+		}
 		parts = append(parts, tok.Value)
 		*i++
 	}
