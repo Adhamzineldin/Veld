@@ -110,9 +110,15 @@ func TestTokenizeKeywords(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	// input, output, middleware, description, query, prefix, method, path
+	// are now contextual keywords — they emit TIdent so they can be used as field names.
 	expectedTypes := []TokenType{
-		TModel, TModule, TAction, TInput, TOutput, TMiddleware,
-		TImport, TEnum, TDescription, TQuery, TPrefix, TMethod, TKeyPath, TEOF,
+		TModel, TModule, TAction, TIdent, TIdent, TIdent,
+		TImport, TEnum, TIdent, TIdent, TIdent, TIdent, TIdent, TEOF,
+	}
+	expectedValues := []string{
+		"model", "module", "action", "input", "output", "middleware",
+		"import", "enum", "description", "query", "prefix", "method", "path", "",
 	}
 	if len(tokens) != len(expectedTypes) {
 		t.Fatalf("expected %d tokens, got %d", len(expectedTypes), len(tokens))
@@ -120,6 +126,9 @@ func TestTokenizeKeywords(t *testing.T) {
 	for i, et := range expectedTypes {
 		if tokens[i].Type != et {
 			t.Errorf("token[%d]: expected %s, got %s (value=%q)", i, et, tokens[i].Type, tokens[i].Value)
+		}
+		if expectedValues[i] != "" && tokens[i].Value != expectedValues[i] {
+			t.Errorf("token[%d]: expected value %q, got %q", i, expectedValues[i], tokens[i].Value)
 		}
 	}
 }

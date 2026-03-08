@@ -54,17 +54,22 @@ func (p *Parser) Parse() (ast.AST, error) {
 				return result, err
 			}
 			result.Enums = append(result.Enums, en)
-		case lexer.TPrefix:
-			// Top-level app prefix: prefix: /api/v1
-			p.consume()
-			if _, err := p.expect(lexer.TColon); err != nil {
-				return result, fmt.Errorf("prefix: %w", err)
+		case lexer.TIdent:
+			// Contextual keyword: top-level "prefix: /api/v1"
+			if p.peekIdent("prefix") {
+				p.consume()
+				if _, err := p.expect(lexer.TColon); err != nil {
+					return result, fmt.Errorf("prefix: %w", err)
+				}
+				pathTok, err := p.expect(lexer.TPath)
+				if err != nil {
+					return result, fmt.Errorf("prefix path: %w", err)
+				}
+				result.Prefix = pathTok.Value
+			} else {
+				tok := p.peek()
+				return result, fmt.Errorf("line %d: unexpected token %q", tok.Line, tok.Value)
 			}
-			pathTok, err := p.expect(lexer.TPath)
-			if err != nil {
-				return result, fmt.Errorf("prefix path: %w", err)
-			}
-			result.Prefix = pathTok.Value
 		default:
 			tok := p.peek()
 			return result, fmt.Errorf("line %d: unexpected token %q", tok.Line, tok.Value)
@@ -83,6 +88,15 @@ func (p *Parser) peek() lexer.Token {
 	return p.tokens[p.pos]
 }
 
+// peekAt returns the token at the given offset from the current position.
+func (p *Parser) peekAt(offset int) lexer.Token {
+	idx := p.pos + offset
+	if idx >= len(p.tokens) {
+		return lexer.Token{Type: lexer.TEOF}
+	}
+	return p.tokens[idx]
+}
+
 func (p *Parser) consume() lexer.Token {
 	tok := p.peek()
 	p.pos++
@@ -95,6 +109,12 @@ func (p *Parser) expect(t lexer.TokenType) (lexer.Token, error) {
 		return tok, fmt.Errorf("line %d: expected %s, got %q", tok.Line, t, tok.Value)
 	}
 	return tok, nil
+}
+
+// peekIdent returns true if the next token is TIdent with the given value.
+// Used for contextual keywords like "description", "prefix", "method", etc.
+func (p *Parser) peekIdent(value string) bool {
+	return p.peek().Type == lexer.TIdent && p.peek().Value == value
 }
 
 // --- import parsing ---
@@ -245,15 +265,10 @@ func (p *Parser) parseEnum() (ast.Enum, error) {
 	en := ast.Enum{Name: nameTok.Value, Line: startTok.Line}
 
 	// optional description: "..."
-	if p.peek().Type == lexer.TDescription {
-		p.consume()
-		if _, err := p.expect(lexer.TColon); err != nil {
-			return en, err
-		}
-		descTok, err := p.expect(lexer.TString)
-		if err != nil {
-			return en, fmt.Errorf("enum description: %w", err)
-		}
+	if p.peekIdent("description") && p.peekAt(1).Type == lexer.TColon && p.peekAt(2).Type == lexer.TString {
+		p.consume()            // description
+		p.consume()            // :
+		descTok := p.consume() // "..."
 		en.Description = descTok.Value
 	}
 
@@ -295,15 +310,11 @@ func (p *Parser) parseModel() (ast.Model, error) {
 	}
 
 	// optional description: "..."
-	if p.peek().Type == lexer.TDescription {
-		p.consume()
-		if _, err := p.expect(lexer.TColon); err != nil {
-			return m, err
-		}
-		descTok, err := p.expect(lexer.TString)
-		if err != nil {
-			return m, fmt.Errorf("model description: %w", err)
-		}
+	// Disambiguate from a field named "description" by checking if token after ':' is a string literal.
+	if p.peekIdent("description") && p.peekAt(1).Type == lexer.TColon && p.peekAt(2).Type == lexer.TString {
+		p.consume()            // description
+		p.consume()            // :
+		descTok := p.consume() // "..."
 		m.Description = descTok.Value
 	}
 
@@ -512,20 +523,15 @@ func (p *Parser) parseModule() (ast.Module, error) {
 	mod := ast.Module{Name: nameTok.Value, Line: startTok.Line}
 
 	// optional description: "..."
-	if p.peek().Type == lexer.TDescription {
-		p.consume()
-		if _, err := p.expect(lexer.TColon); err != nil {
-			return mod, err
-		}
-		descTok, err := p.expect(lexer.TString)
-		if err != nil {
-			return mod, fmt.Errorf("module description: %w", err)
-		}
+	if p.peekIdent("description") && p.peekAt(1).Type == lexer.TColon && p.peekAt(2).Type == lexer.TString {
+		p.consume()            // description
+		p.consume()            // :
+		descTok := p.consume() // "..."
 		mod.Description = descTok.Value
 	}
 
 	// optional prefix: /path
-	if p.peek().Type == lexer.TPrefix {
+	if p.peekIdent("prefix") {
 		p.consume()
 		if _, err := p.expect(lexer.TColon); err != nil {
 			return mod, err
@@ -571,8 +577,8 @@ func (p *Parser) parseAction() (ast.Action, error) {
 	}
 
 	for p.peek().Type != lexer.TRBrace && p.peek().Type != lexer.TEOF {
-		switch p.peek().Type {
-		case lexer.TMethod:
+		switch {
+		case p.peekIdent("method"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
@@ -582,7 +588,7 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				return act, fmt.Errorf("line %d: expected HTTP method (GET, POST, PUT, DELETE, PATCH, WS), got %q", methodTok.Line, methodTok.Value)
 			}
 			act.Method = methodTok.Value
-		case lexer.TKeyPath:
+		case p.peekIdent("path"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
@@ -592,7 +598,7 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				return act, fmt.Errorf("action path: %w", err)
 			}
 			act.Path = pathTok.Value
-		case lexer.TDescription:
+		case p.peekIdent("description"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
@@ -602,7 +608,7 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				return act, err
 			}
 			act.Description = descTok.Value
-		case lexer.TInput:
+		case p.peekIdent("input"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
@@ -612,7 +618,7 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				return act, err
 			}
 			act.Input = tok.Value
-		case lexer.TOutput:
+		case p.peekIdent("output"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
@@ -630,7 +636,7 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				}
 				act.OutputArray = true
 			}
-		case lexer.TQuery:
+		case p.peekIdent("query"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
@@ -640,7 +646,7 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				return act, err
 			}
 			act.Query = tok.Value
-		case lexer.TStream:
+		case p.peekIdent("stream"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
@@ -650,7 +656,7 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				return act, err
 			}
 			act.Stream = tok.Value
-		case lexer.TMiddleware:
+		case p.peekIdent("middleware"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
@@ -679,7 +685,7 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				}
 				act.Middleware = append(act.Middleware, tok.Value)
 			}
-		case lexer.TErrors:
+		case p.peekIdent("errors"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
@@ -700,7 +706,7 @@ func (p *Parser) parseAction() (ast.Action, error) {
 			if _, err := p.expect(lexer.TRBracket); err != nil {
 				return act, fmt.Errorf("errors list: %w", err)
 			}
-		case lexer.TAt:
+		case p.peek().Type == lexer.TAt:
 			p.consume() // @
 			kwTok := p.consume()
 			switch kwTok.Value {
