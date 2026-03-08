@@ -41,7 +41,9 @@ func writePackageJSON(a ast.AST, outDir string) error {
 	sb.WriteString("    \"./errors\": \"./errors/index.ts\",\n")
 	sb.WriteString("    \"./errors/*\": \"./errors/*.ts\",\n")
 	sb.WriteString("    \"./client\": \"./client/api.ts\",\n")
-	sb.WriteString("    \"./client/*\": \"./client/*.ts\"")
+	sb.WriteString("    \"./client/*\": \"./client/*.ts\",\n")
+	sb.WriteString("    \"./middleware\": \"./middleware/IMiddleware.ts\",\n")
+	sb.WriteString("    \"./middleware/*\": \"./middleware/*.ts\"")
 	for _, mod := range a.Modules {
 		moduleLower := strings.ToLower(mod.Name)
 		sb.WriteString(fmt.Sprintf(",\n    \"./routes/%s.routes\": \"./routes/%s.routes.ts\"", moduleLower, moduleLower))

@@ -226,6 +226,24 @@ func CollectModuleMiddleware(mod ast.Module) []string {
 	return result
 }
 
+// CollectAllMiddleware returns all unique middleware names used across ALL modules,
+// in order of first appearance. This is used to emit a single shared middleware interface.
+func CollectAllMiddleware(modules []ast.Module) []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, mod := range modules {
+		for _, act := range mod.Actions {
+			for _, mw := range act.Middleware {
+				if !seen[mw] {
+					seen[mw] = true
+					result = append(result, mw)
+				}
+			}
+		}
+	}
+	return result
+}
+
 // ToCamelCase converts a PascalCase name to camelCase (lowercase first letter).
 func ToCamelCase(s string) string {
 	if s == "" {
