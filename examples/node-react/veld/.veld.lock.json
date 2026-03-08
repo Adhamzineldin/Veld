@@ -4,7 +4,7 @@
     {
       "name": "Todos",
       "description": "Todo management",
-      "prefix": "/api/todos",
+      "prefix": "/todos",
       "actions": [
         {
           "name": "ListTodos",
@@ -70,7 +70,7 @@
     {
       "name": "Users",
       "description": "User management",
-      "prefix": "/api/users",
+      "prefix": "/users",
       "actions": [
         {
           "name": "ListUsers",

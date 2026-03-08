@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://app2501.maayn.com/sitemap.xml

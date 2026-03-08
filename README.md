@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://app2501.maayn.com/docs">Documentation</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#installation">Installation</a> &bull;
   <a href="#what-it-generates">What It Generates</a> &bull;
@@ -28,10 +29,14 @@ Veld is a **contract-first code generator** for APIs. You describe your data mod
 - **Backend service interfaces** with typed method signatures
 - **Route handlers** with input validation, error handling, and correct HTTP status codes
 - **Frontend SDKs** with typed API clients using native `fetch`
-- **Validation schemas** (zero-dependency runtime validators)
-- **OpenAPI 3.0 specs** and API documentation
+- **Validation schemas** (Zod, Pydantic, or zero-dependency runtime validators)
+- **OpenAPI 3.0 specs**, GraphQL schemas, and API documentation
+- **Database schemas** (Prisma and SQL DDL)
+- **Dockerfiles** and CI/CD pipelines (GitHub Actions, GitLab CI)
 
 No runtime dependencies in generated code. No framework lock-in. Works with any compatible library.
+
+> **Full documentation:** [app2501.maayn.com/docs](https://app2501.maayn.com/docs)
 
 ## Quick Start
 
@@ -45,7 +50,7 @@ npm install @maayn/veld
 pip install maayn-veld
 
 # Homebrew
-brew install veld-dev/tap/veld
+brew install maayn-veld/tap/maayn-veld
 
 # Go
 go install github.com/Adhamzineldin/Veld/cmd/veld@latest
@@ -218,13 +223,24 @@ module Users {
 | `csharp` | C# | C# + ASP.NET | |
 | `php` | PHP | PHP + PSR-15 | |
 
+**Extra backend targets:**
+
+| Name | Description |
+|------|-------------|
+| `openapi` | Export OpenAPI 3.0 spec |
+| `database` | Generate Prisma/SQL schemas |
+| `dockerfile` | Generate Dockerfile |
+| `cicd` | Generate CI/CD pipelines (GitHub Actions, GitLab CI) |
+| `env` | Generate environment variable templates |
+| `scaffold-tests` | Scaffold test files for the backend |
+
 ### Frontends
 
 | Name | Language | Aliases |
 |------|----------|---------|
 | `typescript` | TypeScript fetch SDK | `ts` |
 | `javascript` | JavaScript + JSDoc fetch SDK | `js` |
-| `react` | React hooks | `hooks`, `react-hooks` |
+| `react` | React hooks | `react-hooks` |
 | `vue` | Vue composables | |
 | `angular` | Angular services | |
 | `svelte` | Svelte stores | |
@@ -304,28 +320,24 @@ try {
 | `veld init` | Interactive project setup |
 | `veld generate` | Generate all output |
 | `veld generate --dry-run` | Preview without writing files |
+| `veld generate --incremental` | Skip unchanged modules (dev only) |
+| `veld generate --strict` | Exit non-zero on breaking changes (CI/CD) |
+| `veld generate --validate` | Emit zero-dep runtime validators |
+| `veld generate --setup` | Auto-configure project imports after generation |
 | `veld watch` | Auto-regenerate on file changes |
-| `veld validate` | Check contract for errors |
-| `veld lint` | Analyse contract quality |
-| `veld fmt` | Format `.veld` files canonically |
+| `veld validate` | Check contract for structural errors |
+| `veld lint` | Analyse contract quality (unused models, missing descriptions, etc.) |
 | `veld diff` | Detect breaking changes between versions |
 | `veld openapi` | Export OpenAPI 3.0 spec |
+| `veld openapi -o spec.json` | Write OpenAPI spec to file |
+| `veld graphql` | Export GraphQL SDL schema |
+| `veld schema` | Generate database schema (Prisma/SQL) |
 | `veld docs` | Generate API documentation |
 | `veld ast` | Dump AST as JSON |
 | `veld clean` | Remove generated output |
-| `veld setup` | Auto-configure project imports |
-| `veld doctor` | Diagnose project health |
+| `veld setup` | Auto-configure project imports (tsconfig, package.json) |
 | `veld lsp` | Start the Language Server Protocol server |
 | `veld completion` | Generate shell completions (bash/zsh/fish/powershell) |
-
-### Experimental Commands
-
-These commands are available but under active development:
-
-| Command | Description |
-|---------|-------------|
-| `veld graphql` | Export a GraphQL SDL schema |
-| `veld schema` | Generate database schemas (Prisma/SQL) |
 
 ### Common flags
 
@@ -334,11 +346,11 @@ veld generate --backend=node-ts --frontend=react
 veld generate --backend=python --frontend=dart
 veld generate --out=./src/generated
 veld generate --validate              # enable runtime validators
-veld generate --base-url=/api/v1      # bake base URL into SDK
+veld generate --force                 # skip breaking change prompts
 veld openapi -o openapi.json          # write spec to file
-veld fmt --write                      # format .veld files in place
-veld --verbose generate               # verbose output
-veld --quiet generate                 # suppress non-essential output
+veld lint --exit-code                 # fail on any lint issue (CI/CD)
+veld schema --format=prisma           # Prisma schema output
+veld schema --format=sql              # SQL DDL output
 ```
 
 ## Configuration
@@ -366,9 +378,17 @@ veld --quiet generate                 # suppress non-essential output
 | `backend` | `node-ts` | Backend emitter |
 | `frontend` | `typescript` | Frontend emitter |
 | `out` | `./generated` | Output directory |
-| `baseUrl` | `""` | Baked into frontend SDK |
+| `baseUrl` | `""` | Baked into frontend SDK (empty = `process.env.VELD_API_URL`) |
 | `validate` | `false` | Generate zero-dep runtime validators |
 | `aliases` | built-in | Import alias mappings |
+
+### Config auto-detection
+
+`veld generate` (no flags) searches for config in order:
+1. `./veld.config.json`
+2. `./veld/veld.config.json`
+
+CLI flags always override config file values.
 
 ## Import System
 
@@ -402,9 +422,28 @@ Aliases are resolved from the project root via the `aliases` config. Built-in al
 
 ## IDE Support
 
-- **VS Code**: Veld extension with syntax highlighting, diagnostics, and completions
-- **JetBrains**: Plugin for IntelliJ, WebStorm, PyCharm, etc.
-- **LSP**: `veld lsp` works with any LSP-compatible editor (Neovim, Helix, Sublime, etc.)
+| Editor | How to Install | Features |
+|--------|---------------|----------|
+| **VS Code** | Search **"Veld"** in Extensions, or `code --install-extension adhamzineldin.veld-vscode` | Syntax highlighting, diagnostics, completions, hover, go-to-definition |
+| **JetBrains** | Settings → Plugins → Marketplace → **"Veld"** | Syntax highlighting, error highlighting, completions, navigation |
+| **Any LSP editor** | Run `veld lsp` as language server for `.veld` files | Diagnostics, completions, hover, go-to-definition |
+
+### Neovim LSP setup
+
+```lua
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = 'veld',
+  callback = function()
+    vim.lsp.start({
+      name = 'veld',
+      cmd = { 'veld', 'lsp' },
+      root_dir = vim.fs.dirname(
+        vim.fs.find({ 'veld.config.json' }, { upward = true })[1]
+      ),
+    })
+  end,
+})
+```
 
 ## Installation
 
@@ -431,7 +470,7 @@ veld generate
 ### Homebrew (macOS / Linux)
 
 ```bash
-brew install veld-dev/tap/veld
+brew install maayn-veld/tap/maayn-veld
 
 veld generate
 ```
@@ -447,7 +486,7 @@ veld generate
 ### Composer (PHP)
 
 ```bash
-composer require veld-dev/veld
+composer require maayn/veld
 
 # The binary is available after install
 vendor/bin/veld generate
@@ -457,14 +496,7 @@ vendor/bin/veld generate
 
 Pre-built binaries for **Linux**, **macOS**, and **Windows** (amd64 & arm64) are attached to every [GitHub Release](https://github.com/Adhamzineldin/Veld/releases). Download the archive for your platform, extract, and add `veld` to your `PATH`.
 
-### Editor Plugins
-
-| Editor | Install |
-|--------|---------|
-| **VS Code** | Search **"Veld"** in the Extensions marketplace, or `code --install-extension adhamzineldin.veld-vscode` |
-| **JetBrains** | IDE → Settings → Plugins → Marketplace → search **"Veld"** |
-
-> All packages and plugins are published automatically when a version tag (e.g. `v0.3.0`) is pushed. Pre-release tags (`v0.3.0-beta.1`) only create a GitHub Release — package/plugin publishing is skipped.
+> All packages and plugins are published automatically when a version tag (e.g. `v0.3.0`) is pushed.
 
 ## Project Structure
 
@@ -483,7 +515,9 @@ veld/                          ← Go source
 │   │   └── frontend/          ← typescript, javascript, react, vue, angular, svelte, dart, kotlin, swift
 │   ├── lsp/                   ← Language Server Protocol
 │   └── schema/                ← Database schema generators
-└── docs/                      ← Documentation
+├── website/                   ← Website + docs (React + Vite)
+├── editors/                   ← VS Code extension + JetBrains plugin
+└── docs/                      ← Additional documentation
 ```
 
 ## Contributing
