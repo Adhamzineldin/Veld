@@ -35,6 +35,7 @@ module Users {
     description: "Delete a user"
     method: DELETE
     path: /:id
+    output: SuccessResponse
     errors: [NotFound]
   }
 }

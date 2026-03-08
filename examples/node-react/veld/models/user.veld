@@ -16,3 +16,8 @@ model UpdateUserInput {
   name?:  string
   email?: string
 }
+
+model SuccessResponse {
+  description: "A successful response"
+  status: bool
+}

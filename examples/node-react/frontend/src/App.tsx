@@ -14,6 +14,9 @@ import { todosApi } from '@veld/client/todosApi';
 
 // ── Generated Error Type (for typed error handling) ─────────────────
 import type { VeldApiError } from '@veld/client/_internal';
+import {isErrorCode} from '@veld/client/_internal';
+
+
 
 export default function App() {
   const [newName, setNewName] = useState('');
@@ -35,9 +38,10 @@ export default function App() {
     },
     onError: (error: VeldApiError) => {
       // Type-safe error code comparison using generated constants
-      if (error.code === usersApi.errors.createUser.conflict) {
+
+      if (isErrorCode(error, usersApi.errors.createUser.userExists)) {
         setMutationError('A user with this email already exists.');
-      } else if (error.code === usersApi.errors.createUser.userExists) {
+      } else if (isErrorCode(error, usersApi.errors.createUser.conflict)) {
         setMutationError('Invalid user data. Please check your input.');
       } else {
         setMutationError(`Failed to create user: ${error.message}`);
@@ -46,6 +50,9 @@ export default function App() {
   });
 
   const deleteUserMutation = useDeleteUser({
+    onSuccess: () => {
+        setMutationError(null);
+    },
     onError: (error: VeldApiError) => {
       if (error.code === usersApi.errors.deleteUser.notFound) {
         setMutationError('User not found — they may have been deleted already.');
