@@ -1,0 +1,184 @@
+.hero {
+  position: relative;
+  padding: 120px 0 80px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.container {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 0 24px;
+  position: relative;
+  z-index: 1;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 8px 18px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--accent);
+  margin-bottom: 32px;
+}
+
+.title {
+  font-size: 4rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  margin-bottom: 24px;
+  color: var(--fg);
+}
+
+.gradient {
+  background: linear-gradient(135deg, var(--accent), var(--accent3));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.subtitle {
+  font-size: 1.25rem;
+  color: var(--fg2);
+  max-width: 640px;
+  margin: 0 auto 40px;
+  line-height: 1.7;
+}
+
+.subtitle code {
+  color: var(--accent2);
+  background: rgba(63, 185, 80, 0.1);
+}
+
+.actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btnPrimary,
+.btnSecondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 32px;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.btnPrimary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btnPrimary:hover {
+  opacity: 0.9;
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.btnSecondary {
+  background: var(--bg3);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+.btnSecondary:hover {
+  background: var(--border);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.installBar {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 24px;
+  margin-top: 40px;
+}
+
+.prompt {
+  color: var(--accent2);
+  margin-right: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+}
+
+.installCode {
+  color: var(--fg);
+  background: none;
+  padding: 0;
+  font-size: 0.95rem;
+}
+
+.installOptions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.installOptions span {
+  color: var(--fg2);
+  font-size: 0.82rem;
+}
+
+.installOptions code {
+  font-size: 0.78rem;
+  padding: 3px 10px;
+  border-radius: 12px;
+  color: var(--fg2);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+}
+
+.glowTop {
+  position: absolute;
+  top: -200px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 800px;
+  height: 600px;
+  background: radial-gradient(ellipse, rgba(88, 166, 255, 0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.glowBottom {
+  position: absolute;
+  bottom: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 600px;
+  height: 400px;
+  background: radial-gradient(ellipse, rgba(210, 168, 255, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .hero {
+    padding: 80px 0 60px;
+  }
+
+  .title {
+    font-size: 2.5rem;
+  }
+
+  .subtitle {
+    font-size: 1.05rem;
+  }
+}
+

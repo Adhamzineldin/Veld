@@ -1,0 +1,124 @@
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(13, 17, 23, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid transparent;
+  padding: 16px 0;
+  transition: border-color 0.3s ease;
+}
+
+.nav.scrolled {
+  border-bottom-color: var(--border);
+}
+
+.container {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--fg);
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+
+.logo:hover {
+  text-decoration: none;
+}
+
+.bracket {
+  color: var(--accent);
+}
+
+.links {
+  display: flex;
+  gap: 28px;
+}
+
+.link {
+  color: var(--fg2);
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: color 0.2s;
+  text-decoration: none;
+}
+
+.link:hover {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.activeLink {
+  color: var(--accent) !important;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.githubBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  color: var(--fg);
+  font-weight: 500;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+
+.githubBtn:hover {
+  background: var(--border);
+  text-decoration: none;
+}
+
+.menuBtn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--fg);
+  cursor: pointer;
+  padding: 4px;
+}
+
+@media (max-width: 768px) {
+  .links {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-direction: column;
+    padding: 16px 24px;
+    gap: 16px;
+  }
+
+  .links.open {
+    display: flex;
+  }
+
+  .menuBtn {
+    display: block;
+  }
+
+  .githubBtn {
+    display: none;
+  }
+}
+
