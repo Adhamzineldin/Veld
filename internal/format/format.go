@@ -118,7 +118,8 @@ func collectImportLine(tokens []lexer.Token, i *int) string {
 			next := tokens[*i]
 			if next.Type == lexer.TImport || next.Type == lexer.TFrom ||
 				next.Type == lexer.TModel || next.Type == lexer.TModule ||
-				next.Type == lexer.TEnum || next.Type == lexer.TPrefix ||
+				next.Type == lexer.TEnum ||
+				(next.Type == lexer.TIdent && next.Value == "prefix") ||
 				next.Type == lexer.TEOF {
 				break
 			}
@@ -167,13 +168,9 @@ func collectBlock(tokens []lexer.Token, i *int, baseIndent int) string {
 		case lexer.TAction:
 			sb.WriteString("\n" + indent + tok.Value + " ")
 			*i++
-		case lexer.TDescription, lexer.TPrefix, lexer.TMethod, lexer.TKeyPath,
-			lexer.TInput, lexer.TOutput, lexer.TQuery, lexer.TMiddleware,
-			lexer.TStream, lexer.TErrors:
-			line := indent + collectFieldLine(tokens, i)
-			sb.WriteString(line + "\n")
 		case lexer.TIdent:
-			// Could be "extends", a field name, or enum value
+			// Could be "extends", a contextual keyword (description, method, path, etc.),
+			// a field name, or an enum value.
 			if tok.Value == "extends" {
 				sb.WriteString("extends ")
 				*i++

@@ -343,27 +343,27 @@ func classifyWord(word string, line int) Token {
 	case "action":
 		return Token{TAction, word, line}
 	case "input":
-		return Token{TInput, word, line}
+		return Token{TIdent, word, line} // contextual keyword
 	case "output":
-		return Token{TOutput, word, line}
+		return Token{TIdent, word, line} // contextual keyword
 	case "middleware":
-		return Token{TMiddleware, word, line}
+		return Token{TIdent, word, line} // contextual keyword
 	case "import":
 		return Token{TImport, word, line}
 	case "enum":
 		return Token{TEnum, word, line}
 	case "description":
-		return Token{TDescription, word, line}
+		return Token{TIdent, word, line} // contextual keyword — parsed by value in parser
 	case "query":
-		return Token{TQuery, word, line}
+		return Token{TIdent, word, line} // contextual keyword
 	case "default":
-		return Token{TDefault, word, line}
+		return Token{TIdent, word, line} // contextual keyword
 	case "prefix":
-		return Token{TPrefix, word, line}
+		return Token{TIdent, word, line} // contextual keyword
 	case "method":
-		return Token{TMethod, word, line}
+		return Token{TIdent, word, line} // contextual keyword
 	case "path":
-		return Token{TKeyPath, word, line}
+		return Token{TIdent, word, line} // contextual keyword
 	case "extends":
 		return Token{TIdent, word, line} // parsed contextually by parser
 	case "Map":
@@ -381,9 +381,9 @@ func classifyWord(word string, line int) Token {
 	case "WS":
 		return Token{TWS, word, line}
 	case "stream":
-		return Token{TStream, word, line}
+		return Token{TIdent, word, line} // contextual keyword
 	case "errors":
-		return Token{TErrors, word, line}
+		return Token{TIdent, word, line} // contextual keyword
 	case "from":
 		return Token{TFrom, word, line}
 	case "string":
