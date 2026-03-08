@@ -64,6 +64,7 @@ const (
 	TLAngle   // <
 	TRAngle   // >
 	TComma    // ,
+	TPipe     // |
 	TStar     // *
 
 	// Other
@@ -163,6 +164,8 @@ func (t TokenType) String() string {
 		return "\">\""
 	case TComma:
 		return "\",\""
+	case TPipe:
+		return "\"|\""
 	case TIdent:
 		return "identifier"
 	case TPath:
@@ -277,6 +280,9 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 			l.pos++
 		} else if ch == ',' {
 			tokens = append(tokens, Token{TComma, ",", l.line})
+			l.pos++
+		} else if ch == '|' {
+			tokens = append(tokens, Token{TPipe, "|", l.line})
 			l.pos++
 		} else if ch == '*' {
 			tokens = append(tokens, Token{TStar, "*", l.line})

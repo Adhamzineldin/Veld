@@ -99,7 +99,7 @@ func writeRouteHandler(sb *strings.Builder, mod ast.Module, act ast.Action, opts
 
 	mwArgs := ""
 	for _, mw := range act.Middleware {
-		mwArgs += fmt.Sprintf("middleware.%s, ", mw)
+		mwArgs += fmt.Sprintf("middleware.%s, ", emitter.ToCamelCase(mw))
 	}
 
 	sb.WriteString(fmt.Sprintf("\n  router.%s('%s', %sasync (req: any, res: any) => {\n", method, routePath, mwArgs))

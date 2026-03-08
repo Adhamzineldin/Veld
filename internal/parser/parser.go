@@ -394,9 +394,27 @@ func (p *Parser) parseField() (ast.Field, error) {
 		isArray = true
 	}
 
+	// Union type: name: "DRAFT" | "PENDING" | "APPROVED"
+	// or name: string | int
+	var unionTypes []string
+	if p.peek().Type == lexer.TPipe {
+		// The first type is already in typeName; collect all alternatives
+		unionTypes = append(unionTypes, typeName)
+		for p.peek().Type == lexer.TPipe {
+			p.consume() // |
+			nextTok := p.consume()
+			nextValid := isTypeToken(nextTok.Type) || nextTok.Type == lexer.TIdent || nextTok.Type == lexer.TString
+			if !nextValid {
+				return ast.Field{}, fmt.Errorf("line %d: expected type after '|', got %q", nextTok.Line, nextTok.Value)
+			}
+			unionTypes = append(unionTypes, nextTok.Value)
+		}
+	}
+
 	f := ast.Field{
 		Name:         nameTok.Value,
 		Type:         typeName,
+		UnionTypes:   unionTypes,
 		Optional:     optional,
 		IsArray:      isArray,
 		IsMap:        isMap,
@@ -471,6 +489,8 @@ func (p *Parser) parseField() (ast.Field, error) {
 			if _, err := p.expect(lexer.TRParen); err != nil {
 				return f, err
 			}
+		case "serverSet":
+			f.ServerSet = true
 		default:
 			return f, fmt.Errorf("line %d: unknown field annotation @%s", kwTok.Line, kwTok.Value)
 		}

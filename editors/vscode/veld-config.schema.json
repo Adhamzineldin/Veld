@@ -61,6 +61,10 @@
       "type": "boolean",
       "description": "Generate zero-dependency runtime validators and wire into route handlers",
       "default": false
+    },
+    "postGenerate": {
+      "type": "string",
+      "description": "Shell command to run after code generation completes (e.g. \"npm run format\")"
     }
   },
   "required": ["input"],

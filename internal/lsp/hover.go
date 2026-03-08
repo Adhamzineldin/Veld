@@ -39,7 +39,11 @@ func computeHover(text string, pos Position, a ast.AST) *Hover {
 				if f.Optional {
 					opt = "?"
 				}
-				sb.WriteString(fmt.Sprintf("- `%s%s`: %s\n", f.Name, opt, f.Type))
+				typeStr := f.Type
+				if len(f.UnionTypes) > 0 {
+					typeStr = strings.Join(f.UnionTypes, " | ")
+				}
+				sb.WriteString(fmt.Sprintf("- `%s%s`: %s\n", f.Name, opt, typeStr))
 			}
 			return &Hover{
 				Contents: MarkupContent{Kind: "markdown", Value: sb.String()},

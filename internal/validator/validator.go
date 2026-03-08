@@ -131,6 +131,22 @@ func Validate(a ast.AST) []error {
 				continue // Map fields don't need normal type validation
 			}
 
+			// Union types — validate each member
+			if len(f.UnionTypes) > 0 {
+				for _, ut := range f.UnionTypes {
+					if !primitiveTypes[ut] && !modelNames[ut] && !enumNames[ut] {
+						// String literals in union types (e.g. "DRAFT" | "PENDING") are valid
+						// They are stored as-is from the parser, not as quoted strings
+						suggestion := findSuggestion(ut, allTypeNames)
+						if suggestion != "" {
+							errs = append(errs, fmt.Errorf("%smodel %q, field %q: undefined union member type %q (did you mean %q?)", loc(m.SourceFile, f.Line), m.Name, f.Name, ut, suggestion))
+						}
+						// Don't flag string literals in unions as errors — they are valid enum-like values
+					}
+				}
+				continue // Union fields don't need normal type validation
+			}
+
 			baseType := f.Type
 			if !primitiveTypes[baseType] && !modelNames[baseType] && !enumNames[baseType] {
 				suggestion := findSuggestion(baseType, allTypeNames)
@@ -303,6 +319,10 @@ func validateFileImports(a ast.AST) []error {
 		for _, f := range m.Fields {
 			if f.IsMap {
 				checkTypeVisible(f.MapValueType, m.SourceFile, f.Line, fmt.Sprintf("model %q, field %q", m.Name, f.Name))
+			} else if len(f.UnionTypes) > 0 {
+				for _, ut := range f.UnionTypes {
+					checkTypeVisible(ut, m.SourceFile, f.Line, fmt.Sprintf("model %q, field %q", m.Name, f.Name))
+				}
 			} else {
 				checkTypeVisible(f.Type, m.SourceFile, f.Line, fmt.Sprintf("model %q, field %q", m.Name, f.Name))
 			}

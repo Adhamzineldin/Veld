@@ -22,6 +22,7 @@ type RawConfig struct {
 	BaseUrl           string            `json:"baseUrl,omitempty"`           // baked into frontend SDK; empty = use env var
 	Validate          bool              `json:"validate,omitempty"`          // emit zero-dep runtime validators (default false)
 	Aliases           map[string]string `json:"aliases,omitempty"`           // custom @alias → relative dir
+	PostGenerate      string            `json:"postGenerate,omitempty"`      // shell command to run after generation
 }
 
 // effectiveBackendDir returns the configured backend directory, preferring backendDir over backendDirectory.
@@ -42,18 +43,19 @@ func (c RawConfig) effectiveFrontendDir() string {
 
 // ResolvedConfig has all paths resolved to be absolute.
 type ResolvedConfig struct {
-	Input       string
-	Backend     string
-	Frontend    string
-	Out         string            // legacy single output dir (always set for backward compat)
-	BackendOut  string            // output dir for backend code (defaults to Out)
-	FrontendOut string            // output dir for frontend code (defaults to Out)
-	ConfigDir   string            // absolute dir of veld.config.json; used for cache storage
-	BackendDir  string            // absolute path to backend project dir (empty = projectDir)
-	FrontendDir string            // absolute path to frontend project dir (empty = projectDir)
-	BaseUrl     string            // base URL for frontend SDK (empty = process.env.VELD_API_URL)
-	Validate    bool              // emit zero-dep runtime validators and wire into routes
-	Aliases     map[string]string // merged: default aliases + config overrides
+	Input        string
+	Backend      string
+	Frontend     string
+	Out          string            // legacy single output dir (always set for backward compat)
+	BackendOut   string            // output dir for backend code (defaults to Out)
+	FrontendOut  string            // output dir for frontend code (defaults to Out)
+	ConfigDir    string            // absolute dir of veld.config.json; used for cache storage
+	BackendDir   string            // absolute path to backend project dir (empty = projectDir)
+	FrontendDir  string            // absolute path to frontend project dir (empty = projectDir)
+	BaseUrl      string            // base URL for frontend SDK (empty = process.env.VELD_API_URL)
+	Validate     bool              // emit zero-dep runtime validators and wire into routes
+	Aliases      map[string]string // merged: default aliases + config overrides
+	PostGenerate string            // shell command to run after generation (empty = none)
 }
 
 // FlagOverrides carries CLI flag values that override config-file settings.
@@ -225,18 +227,19 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 	}
 
 	return ResolvedConfig{
-		Input:       filepath.Clean(filepath.Join(cfgDir, cfg.Input)),
-		Backend:     cfg.Backend,
-		Frontend:    cfg.Frontend,
-		Out:         resolvedOut,
-		BackendOut:  resolvedBackendOut,
-		FrontendOut: resolvedFrontendOut,
-		ConfigDir:   cfgDir,
-		BackendDir:  resolveOptionalDir(cfgDir, cfg.effectiveBackendDir()),
-		FrontendDir: resolveOptionalDir(cfgDir, cfg.effectiveFrontendDir()),
-		BaseUrl:     cfg.BaseUrl,
-		Validate:    cfg.Validate,
-		Aliases:     aliases,
+		Input:        filepath.Clean(filepath.Join(cfgDir, cfg.Input)),
+		Backend:      cfg.Backend,
+		Frontend:     cfg.Frontend,
+		Out:          resolvedOut,
+		BackendOut:   resolvedBackendOut,
+		FrontendOut:  resolvedFrontendOut,
+		ConfigDir:    cfgDir,
+		BackendDir:   resolveOptionalDir(cfgDir, cfg.effectiveBackendDir()),
+		FrontendDir:  resolveOptionalDir(cfgDir, cfg.effectiveFrontendDir()),
+		BaseUrl:      cfg.BaseUrl,
+		Validate:     cfg.Validate,
+		Aliases:      aliases,
+		PostGenerate: cfg.PostGenerate,
 	}, nil
 }
 

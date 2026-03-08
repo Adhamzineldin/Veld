@@ -56,6 +56,10 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	if err := e.emitPerModuleTypes(a, outDir); err != nil {
 		return fmt.Errorf("types: %w", err)
 	}
+	// Emit the shared ApiError base class before per-module error files.
+	if err := e.emitErrorsBase(a, outDir); err != nil {
+		return fmt.Errorf("errors base: %w", err)
+	}
 	for _, mod := range a.Modules {
 		if err := e.emitInterface(a, mod, outDir); err != nil {
 			return fmt.Errorf("interface for %s: %w", mod.Name, err)
@@ -66,6 +70,10 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		if err := e.emitErrors(mod, outDir); err != nil {
 			return fmt.Errorf("errors for %s: %w", mod.Name, err)
 		}
+	}
+	// Emit errors barrel (errors/index.ts) re-exporting all module error files.
+	if err := e.emitErrorsBarrel(a, outDir); err != nil {
+		return fmt.Errorf("errors barrel: %w", err)
 	}
 	if opts.Validate {
 		if err := e.emitValidators(a, outDir); err != nil {

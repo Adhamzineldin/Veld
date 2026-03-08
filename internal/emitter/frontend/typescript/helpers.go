@@ -53,30 +53,32 @@ func emitBaseURL(sb *strings.Builder, opts emitter.EmitOptions) {
 	if opts.BaseUrl != "" {
 		sb.WriteString(fmt.Sprintf("\nconst BASE = '%s';\n", opts.BaseUrl))
 	} else {
-		sb.WriteString("\nconst BASE = (typeof process !== 'undefined' && process.env?.VELD_API_URL) || '';\n")
+		// Use import.meta.env for Vite/browser, process.env for Node/SSR, empty string as fallback.
+		sb.WriteString("\nconst BASE =\n")
+		sb.WriteString("  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ||\n")
+		sb.WriteString("  (typeof process !== 'undefined' && process.env?.VELD_API_URL) ||\n")
+		sb.WriteString("  '';\n")
 	}
 }
 
 // emitHTTPHelpers writes the exported HTTP helpers so per-module files can import them.
-func emitHTTPHelpers(sb *strings.Builder, methods map[string]bool) {
-	if methods["GET"] {
-		sb.WriteString(`
+// All methods are always emitted so per-module imports never fail.
+func emitHTTPHelpers(sb *strings.Builder) {
+	sb.WriteString(`
 export async function get<T>(path: string): Promise<T> {
   const res = await fetch(BASE + path);
   if (!res.ok) throw await parseErrorResponse(res);
   return res.json();
 }
 `)
-	}
 
 	bodyMethods := []string{"POST", "PUT", "PATCH", "DELETE"}
 	for _, m := range bodyMethods {
-		if methods[m] {
-			fn := strings.ToLower(m)
-			if m == "DELETE" {
-				fn = "del"
-			}
-			sb.WriteString(fmt.Sprintf(`
+		fn := strings.ToLower(m)
+		if m == "DELETE" {
+			fn = "del"
+		}
+		sb.WriteString(fmt.Sprintf(`
 export async function %s<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(BASE + path, {
     method: '%s',
@@ -87,6 +89,5 @@ export async function %s<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 `, fn, m))
-		}
 	}
 }

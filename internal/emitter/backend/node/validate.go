@@ -143,6 +143,11 @@ func writeNodeAssertField(sb *strings.Builder, field ast.Field, byName map[strin
 
 func writeNodeAssertFieldRequired(sb *strings.Builder, field ast.Field, key, pathExpr string, byName map[string]ast.Model, enumNames map[string]bool) {
 	switch {
+	case len(field.UnionTypes) > 0:
+		// Union types are compile-time checked by TypeScript — skip deep runtime check.
+		sb.WriteString(fmt.Sprintf("  if (%s === undefined || %s === null)\n", key, key))
+		sb.WriteString(fmt.Sprintf("    throw new VeldContractError(%s, 'union value', %s);\n", pathExpr, key))
+
 	case field.IsArray:
 		sb.WriteString(fmt.Sprintf("  if (!Array.isArray(%s))\n", key))
 		sb.WriteString(fmt.Sprintf("    throw new VeldContractError(%s, 'array', %s);\n", pathExpr, key))
@@ -172,6 +177,9 @@ func writeNodeAssertFieldOptional(sb *strings.Builder, field ast.Field, key, pat
 	present := fmt.Sprintf("%s !== undefined && %s !== null", key, key)
 
 	switch {
+	case len(field.UnionTypes) > 0:
+		// Union types — compile-time only, no runtime check needed for optional fields.
+
 	case field.IsArray:
 		sb.WriteString(fmt.Sprintf("  if (%s && !Array.isArray(%s))\n", present, key))
 		sb.WriteString(fmt.Sprintf("    throw new VeldContractError(%s, 'array | undefined', %s);\n", pathExpr, key))
@@ -227,8 +235,12 @@ func writeNodeParseFunc(sb *strings.Builder, model ast.Model, byName map[string]
 	sb.WriteString("  const _errors: string[] = [];\n")
 
 	// Include inherited fields so the input model is fully validated.
+	// Skip @serverSet fields — those are set server-side, not by the client.
 	allFields := collectAllFields(model, byName)
 	for _, field := range allFields {
+		if field.ServerSet {
+			continue
+		}
 		writeNodeParseField(sb, field, byName, enumNames)
 	}
 
@@ -243,7 +255,9 @@ func writeNodeParseField(sb *strings.Builder, field ast.Field, byName map[string
 
 	if field.Optional {
 		// Optional: only validate the type when the field is actually present.
-		if field.IsArray {
+		if len(field.UnionTypes) > 0 {
+			// Union types — compile-time checked, no runtime validation needed for optional.
+		} else if field.IsArray {
 			sb.WriteString(fmt.Sprintf("  if (%s !== undefined && %s !== null && !Array.isArray(%s))\n", key, key, key))
 			sb.WriteString(fmt.Sprintf("    _errors.push('%s: expected array');\n", field.Name))
 		} else if field.IsMap {
@@ -259,7 +273,11 @@ func writeNodeParseField(sb *strings.Builder, field ast.Field, byName map[string
 		}
 	} else {
 		// Required: field must be present and have the correct type.
-		if field.IsArray {
+		if len(field.UnionTypes) > 0 {
+			// Union types — just check presence, TS handles the type check.
+			sb.WriteString(fmt.Sprintf("  if (%s === undefined || %s === null)\n", key, key))
+			sb.WriteString(fmt.Sprintf("    _errors.push('%s: required');\n", field.Name))
+		} else if field.IsArray {
 			sb.WriteString(fmt.Sprintf("  if (!Array.isArray(%s))\n", key))
 			sb.WriteString(fmt.Sprintf("    _errors.push('%s: required array');\n", field.Name))
 		} else if field.IsMap {

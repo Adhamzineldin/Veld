@@ -74,6 +74,12 @@ func (e *ReactEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) 
 	for _, exp := range barrelExports {
 		barrel.WriteString(exp + "\n")
 	}
+	// Also re-export all named hook functions so consumers can import them directly:
+	//   import { useListUsers } from '@veld/hooks';
+	for _, mod := range a.Modules {
+		moduleLower := strings.ToLower(mod.Name)
+		barrel.WriteString(fmt.Sprintf("export * from './%sHooks';\n", moduleLower))
+	}
 	barrel.WriteString("\n// Zero-dependency core hooks (no TanStack Query required):\n")
 	barrel.WriteString("// import { usersHooks } from '@veld/hooks/core/usersHooks';\n")
 	if err := os.WriteFile(filepath.Join(hooksDir, "index.ts"), []byte(barrel.String()), 0644); err != nil {
@@ -160,6 +166,7 @@ func (e *ReactEmitter) emitTanStackHooks(a ast.AST, mod ast.Module, dir string) 
 	sb.WriteString("\n")
 
 	var hookNames []string
+	var queryKeyNames []string
 	for _, act := range mod.Actions {
 		method := strings.ToUpper(act.Method)
 		outputType := tshelpers.FormatOutputType(act)
@@ -172,11 +179,28 @@ func (e *ReactEmitter) emitTanStackHooks(a ast.AST, mod ast.Module, dir string) 
 		hookName := "use" + act.Name
 
 		if method == "GET" {
+			// Emit query key constant before the hook
+			keyConstName := camelName + "Key"
+			writeQueryKeyConstant(&sb, keyConstName, mod.Name, camelName, pathParams)
+			queryKeyNames = append(queryKeyNames, keyConstName)
 			writeTanStackQuery(&sb, hookName, apiName, camelName, outputType, mod.Name, pathParams, act)
 		} else {
 			writeTanStackMutation(&sb, hookName, apiName, camelName, outputType, mod.Name, pathParams, act)
 		}
 		hookNames = append(hookNames, hookName)
+	}
+
+	// Export a QUERY_KEYS constant grouping all query keys for this module
+	if len(queryKeyNames) > 0 {
+		sb.WriteString(fmt.Sprintf("export const %sQueryKeys = {\n", moduleLower))
+		for _, act := range mod.Actions {
+			if strings.ToUpper(act.Method) != "GET" {
+				continue
+			}
+			camelName := emitter.ToCamelCase(act.Name)
+			sb.WriteString(fmt.Sprintf("  %s: %sKey,\n", camelName, camelName))
+		}
+		sb.WriteString("} as const;\n\n")
 	}
 
 	sb.WriteString(fmt.Sprintf("export const %s = {\n", hooksName))
@@ -186,6 +210,22 @@ func (e *ReactEmitter) emitTanStackHooks(a ast.AST, mod ast.Module, dir string) 
 	sb.WriteString("};\n")
 
 	return os.WriteFile(filepath.Join(dir, moduleLower+"Hooks.ts"), []byte(sb.String()), 0644)
+}
+
+func writeQueryKeyConstant(sb *strings.Builder, constName, modName, camelName string, pathParams []string) {
+	if len(pathParams) > 0 {
+		// Export a factory function for parameterized queries
+		var paramTypes []string
+		var paramRefs []string
+		for _, p := range pathParams {
+			paramTypes = append(paramTypes, p+": string")
+			paramRefs = append(paramRefs, p)
+		}
+		sb.WriteString(fmt.Sprintf("export const %s = (%s) => ['%s', '%s', %s] as const;\n",
+			constName, strings.Join(paramTypes, ", "), modName, camelName, strings.Join(paramRefs, ", ")))
+	} else {
+		sb.WriteString(fmt.Sprintf("export const %s = ['%s', '%s'] as const;\n", constName, modName, camelName))
+	}
 }
 
 func writeTanStackQuery(sb *strings.Builder, hookName, apiName, camelName, outputType, modName string, pathParams []string, act ast.Action) {

@@ -81,6 +81,12 @@ func CollectTransitiveModels(a ast.AST, mod ast.Module) map[string]bool {
 				if _, isModel := byName[f.Type]; isModel && !used[f.Type] {
 					queue = append(queue, f.Type)
 				}
+				// Union type members that reference models
+				for _, ut := range f.UnionTypes {
+					if _, isModel := byName[ut]; isModel && !used[ut] {
+						queue = append(queue, ut)
+					}
+				}
 				// Map<string, V> value type references
 				if f.IsMap {
 					if _, isModel := byName[f.MapValueType]; isModel && !used[f.MapValueType] {
@@ -113,6 +119,11 @@ func CollectUsedEnums(a ast.AST, mod ast.Module) map[string]bool {
 			}
 			if f.IsMap && enumNames[f.MapValueType] {
 				usedEnums[f.MapValueType] = true
+			}
+			for _, ut := range f.UnionTypes {
+				if enumNames[ut] {
+					usedEnums[ut] = true
+				}
 			}
 		}
 	}
@@ -163,6 +174,17 @@ func CollectUsedTypes(a ast.AST, mod ast.Module) []string {
 			if enumNames[base] && !seen[base] {
 				seen[base] = true
 				result = append(result, base)
+			}
+			// Union type members that reference models or enums
+			for _, ut := range f.UnionTypes {
+				if _, isModel := byName[ut]; isModel && !seen[ut] {
+					seen[ut] = true
+					result = append(result, ut)
+				}
+				if enumNames[ut] && !seen[ut] {
+					seen[ut] = true
+					result = append(result, ut)
+				}
 			}
 		}
 	}

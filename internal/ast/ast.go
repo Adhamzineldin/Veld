@@ -32,19 +32,21 @@ type Model struct {
 
 // Field is a single property of a Model.
 type Field struct {
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	Optional     bool   `json:"optional,omitempty"`
-	IsArray      bool   `json:"isArray,omitempty"`
-	IsMap        bool   `json:"isMap,omitempty"`        // Map<string, V>
-	MapValueType string `json:"mapValueType,omitempty"` // the V in Map<string, V>
-	Default      string `json:"default,omitempty"`      // @default(value)
-	Deprecated   string `json:"deprecated,omitempty"`   // @deprecated "message"
-	Example      string `json:"example,omitempty"`      // @example("value")
-	Unique       bool   `json:"unique,omitempty"`       // @unique
-	Index        bool   `json:"index,omitempty"`        // @index
-	Relation     string `json:"relation,omitempty"`     // @relation(ModelName)
-	Line         int    `json:"-"`                      // line in source where this field was defined
+	Name         string   `json:"name"`
+	Type         string   `json:"type"`
+	UnionTypes   []string `json:"unionTypes,omitempty"` // e.g. ["DRAFT","PENDING","APPROVED"] for union fields
+	Optional     bool     `json:"optional,omitempty"`
+	IsArray      bool     `json:"isArray,omitempty"`
+	IsMap        bool     `json:"isMap,omitempty"`        // Map<string, V>
+	MapValueType string   `json:"mapValueType,omitempty"` // the V in Map<string, V>
+	Default      string   `json:"default,omitempty"`      // @default(value)
+	Deprecated   string   `json:"deprecated,omitempty"`   // @deprecated "message"
+	Example      string   `json:"example,omitempty"`      // @example("value")
+	Unique       bool     `json:"unique,omitempty"`       // @unique
+	Index        bool     `json:"index,omitempty"`        // @index
+	Relation     string   `json:"relation,omitempty"`     // @relation(ModelName)
+	ServerSet    bool     `json:"serverSet,omitempty"`    // @serverSet — omit from input types
+	Line         int      `json:"-"`                      // line in source where this field was defined
 }
 
 // Module groups related Actions.

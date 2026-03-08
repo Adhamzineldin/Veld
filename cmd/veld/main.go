@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -84,6 +85,21 @@ func dim(s string) string    { return colorDim + s + colorReset }
 func bold(s string) string   { return colorBold + s + colorReset }
 
 // ── shared generation logic ───────────────────────────────────────────────────
+
+// runPostGenerate executes the postGenerate hook if configured.
+func runPostGenerate(rc config.ResolvedConfig) {
+	if rc.PostGenerate == "" {
+		return
+	}
+	fmt.Printf(dim("⚙")+"  Running postGenerate: %s\n", rc.PostGenerate)
+	cmd := exec.Command("sh", "-c", rc.PostGenerate)
+	cmd.Dir = rc.ConfigDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, yellow("warning: ")+"postGenerate hook failed: %v\n", err)
+	}
+}
 
 // runGenerate parses, validates, and emits output.
 //
@@ -785,6 +801,11 @@ func newGenerateCmd() *cobra.Command {
 				results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out, setupOpts)
 				printSetupResults(results)
 			}
+
+			// Run postGenerate hook if configured.
+			if !dryRunFlag {
+				runPostGenerate(rc)
+			}
 			return nil
 		},
 	}
@@ -947,6 +968,7 @@ func newWatchCmd() *cobra.Command {
 						} else {
 							fmt.Printf("%s %s %s\n", ts, green("✓"), strings.Join(regen, ", "))
 							printDiffChanges(changes)
+							runPostGenerate(rc)
 							fmt.Println()
 							lastError = false
 						}

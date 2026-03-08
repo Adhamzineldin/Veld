@@ -2,6 +2,7 @@ package tshelpers
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 )
@@ -33,8 +34,15 @@ func VeldTypeToTS(t string, isArray bool) string {
 }
 
 // VeldFieldToTS maps a full Field to its TypeScript type string,
-// handling arrays, maps, and scalar types.
+// handling arrays, maps, union types, and scalar types.
 func VeldFieldToTS(f ast.Field) string {
+	if len(f.UnionTypes) > 0 {
+		parts := make([]string, len(f.UnionTypes))
+		for i, t := range f.UnionTypes {
+			parts[i] = VeldScalarToTS(t)
+		}
+		return strings.Join(parts, " | ")
+	}
 	if f.IsMap {
 		return fmt.Sprintf("Record<string, %s>", VeldScalarToTS(f.MapValueType))
 	}
