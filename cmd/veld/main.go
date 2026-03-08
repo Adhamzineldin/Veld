@@ -839,6 +839,14 @@ func computePreChanges(rc config.ResolvedConfig) []diff.Change {
 	if err != nil {
 		return nil
 	}
+	// Apply app-level prefix to module prefixes so the comparison matches
+	// what was persisted in the lock file (runGenerate mutates module
+	// prefixes before SaveLock).
+	if a.Prefix != "" {
+		for i := range a.Modules {
+			a.Modules[i].Prefix = a.Prefix + a.Modules[i].Prefix
+		}
+	}
 	return diff.Diff(oldAST, a)
 }
 
