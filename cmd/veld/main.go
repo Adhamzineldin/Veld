@@ -859,9 +859,9 @@ func newWatchCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "watch",
 		Short: "Watch .veld files and auto-regenerate on change",
-		Long: "Watches all .veld files for changes and incrementally regenerates only\n" +
-			"the affected modules. Safe to run during development — never touches your\n" +
-			"application code. Use 'veld generate' for deterministic production builds.",
+		Long: "Watches all .veld files and the config for changes, then performs a full\n" +
+			"regeneration of all outputs. This ensures shared artifacts (types, barrels,\n" +
+			"middleware, _internal.ts) are always consistent. Safe to run during development.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := config.FlagOverrides{
 				Backend:     backendFlag,
@@ -886,6 +886,7 @@ func newWatchCmd() *cobra.Command {
 				Validate: rc.Validate,
 			}
 
+			// ── initial full generation (never incremental) ─────────────
 			regenerated, initFiles, changes, genErr := runGenerate(rc, false, opts)
 			if genErr != nil {
 				fmt.Fprintln(os.Stderr, red("error: ")+genErr.Error())
@@ -896,15 +897,26 @@ func newWatchCmd() *cobra.Command {
 				fmt.Printf(green("✓")+" Ready (%d module(s)) → %s\n", len(regenerated), rc.Out)
 			}
 			printDiffChanges(changes)
+			runPostGenerate(rc)
 			fmt.Println()
 
-			// Mutex-protected mtimes map to prevent data race between ticker
-			// goroutine and debounce timer goroutine.
+			// ── build the watched file set ──────────────────────────────
+			// Includes all .veld files + the config file itself.
 			var mtimesMu sync.Mutex
-			mtimes := make(map[string]int64, len(initFiles))
+			mtimes := make(map[string]int64, len(initFiles)+2)
 			for _, f := range initFiles {
 				if info, statErr := os.Stat(f); statErr == nil {
 					mtimes[f] = info.ModTime().UnixNano()
+				}
+			}
+			// Also watch the config file(s).
+			configCandidates := []string{
+				filepath.Join(rc.ConfigDir, "veld.config.json"),
+				filepath.Join(rc.ConfigDir, "veld", "veld.config.json"),
+			}
+			for _, cf := range configCandidates {
+				if info, statErr := os.Stat(cf); statErr == nil {
+					mtimes[cf] = info.ModTime().UnixNano()
 				}
 			}
 
@@ -924,17 +936,49 @@ func newWatchCmd() *cobra.Command {
 					return nil
 
 				case <-ticker.C:
-					changed := false
+					var changedNames []string
+					configChanged := false
+
 					mtimesMu.Lock()
+
+					// Check existing tracked files for modifications.
 					for f, last := range mtimes {
 						info, statErr := os.Stat(f)
-						if statErr != nil || info.ModTime().UnixNano() != last {
-							changed = true
-							break
+						if statErr != nil {
+							// File was deleted — still counts as a change.
+							changedNames = append(changedNames, filepath.Base(f))
+							continue
+						}
+						if info.ModTime().UnixNano() != last {
+							changedNames = append(changedNames, filepath.Base(f))
+							if strings.HasSuffix(f, "veld.config.json") {
+								configChanged = true
+							}
 						}
 					}
-					if changed {
-						// Update mtimes immediately
+
+					// Discover NEW .veld files that didn't exist at startup.
+					// Re-scan the input directory tree for any new .veld files.
+					if rc.Input != "" {
+						inputDir := filepath.Dir(rc.Input)
+						_ = filepath.Walk(inputDir, func(path string, info os.FileInfo, walkErr error) error {
+							if walkErr != nil || info.IsDir() {
+								return nil
+							}
+							if strings.HasSuffix(path, ".veld") {
+								absPath, _ := filepath.Abs(path)
+								if _, tracked := mtimes[absPath]; !tracked {
+									// New file found — treat as a change.
+									mtimes[absPath] = info.ModTime().UnixNano()
+									changedNames = append(changedNames, filepath.Base(absPath))
+								}
+							}
+							return nil
+						})
+					}
+
+					if len(changedNames) > 0 {
+						// Update all mtimes immediately to avoid re-triggering.
 						for f := range mtimes {
 							if info, statErr := os.Stat(f); statErr == nil {
 								mtimes[f] = info.ModTime().UnixNano()
@@ -943,44 +987,87 @@ func newWatchCmd() *cobra.Command {
 					}
 					mtimesMu.Unlock()
 
-					if !changed {
+					if len(changedNames) == 0 {
 						continue
 					}
 
-					// Debounce: reset timer on every change, only fire after 500ms of quiet
+					// Debounce: reset timer on every change, fire after 300ms of quiet.
 					if debounceTimer != nil {
 						debounceTimer.Stop()
 					}
-					debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
+
+					// Capture for the closure.
+					capturedChanged := changedNames
+					capturedConfigChanged := configChanged
+
+					debounceTimer = time.AfterFunc(300*time.Millisecond, func() {
 						ts := dim("[" + time.Now().Format("15:04:05") + "]")
 
-						regen, newFiles, changes, genErr := runGenerate(rc, true, opts)
+						// ── reload config if it changed ─────────────────
+						currentRC := rc
+						if capturedConfigChanged {
+							fmt.Printf("%s %s config changed, reloading...\n", ts, yellow("⟳"))
+							newRC, reloadErr := config.BuildResolved(flags)
+							if reloadErr != nil {
+								fmt.Fprintf(os.Stderr, "%s %s failed to reload config: %v\n", ts, red("✗"), reloadErr)
+								return
+							}
+							rc = newRC
+							currentRC = newRC
+							// Update emit options from new config.
+							opts = emitter.EmitOptions{
+								BaseUrl:  currentRC.BaseUrl,
+								Validate: currentRC.Validate,
+							}
+						}
+
+						// ── always full regeneration ────────────────────
+						// Watch mode NEVER does incremental generation.
+						// Any .veld change can affect shared types, barrels,
+						// middleware interfaces, _internal.ts, error _base.ts,
+						// cross-module type imports, and app-level prefix.
+						// A full regen takes <100ms for typical projects.
+						fmt.Printf("%s %s change in %s — regenerating all...\n",
+							ts, yellow("⟳"), strings.Join(dedup(capturedChanged), ", "))
+
+						start := time.Now()
+						regen, newFiles, changes, genErr := runGenerate(currentRC, false, opts)
+
 						if genErr != nil {
 							if !lastError {
 								fmt.Fprintf(os.Stderr, "%s %s %v\n", ts, red("error:"), genErr)
 								fmt.Println()
 							}
 							lastError = true
-						} else if regen == nil {
-							fmt.Printf("%s %s nothing to regenerate\n", ts, green("✓"))
-							fmt.Println()
-							lastError = false
 						} else {
-							fmt.Printf("%s %s %s\n", ts, green("✓"), strings.Join(regen, ", "))
-							printDiffChanges(changes)
-							runPostGenerate(rc)
+							elapsed := time.Since(start).Round(time.Millisecond)
+							if regen == nil || len(regen) == 0 {
+								fmt.Printf("%s %s nothing to regenerate (%s)\n", ts, green("✓"), elapsed)
+							} else {
+								fmt.Printf("%s %s regenerated %s (%s)\n", ts, green("✓"), strings.Join(regen, ", "), elapsed)
+								printDiffChanges(changes)
+							}
+							runPostGenerate(currentRC)
 							fmt.Println()
 							lastError = false
 						}
 
+						// Refresh tracked file set — picks up new/deleted .veld files.
 						if newFiles != nil {
 							mtimesMu.Lock()
-							mtimes = make(map[string]int64, len(newFiles))
+							// Rebuild mtimes from scratch with new file list + config.
+							fresh := make(map[string]int64, len(newFiles)+2)
 							for _, f := range newFiles {
 								if info, statErr := os.Stat(f); statErr == nil {
-									mtimes[f] = info.ModTime().UnixNano()
+									fresh[f] = info.ModTime().UnixNano()
 								}
 							}
+							for _, cf := range configCandidates {
+								if info, statErr := os.Stat(cf); statErr == nil {
+									fresh[cf] = info.ModTime().UnixNano()
+								}
+							}
+							mtimes = fresh
 							mtimesMu.Unlock()
 						}
 					})
@@ -993,6 +1080,19 @@ func newWatchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&inputFlag, "input", "", "input .veld file")
 	cmd.Flags().StringVar(&outFlag, "out", "", "output directory")
 	return cmd
+}
+
+// dedup returns a slice with duplicate strings removed, preserving order.
+func dedup(ss []string) []string {
+	seen := make(map[string]bool, len(ss))
+	out := make([]string, 0, len(ss))
+	for _, s := range ss {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // ── clean ─────────────────────────────────────────────────────────────────────
