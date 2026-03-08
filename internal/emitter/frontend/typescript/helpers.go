@@ -53,11 +53,16 @@ func emitBaseURL(sb *strings.Builder, opts emitter.EmitOptions) {
 	if opts.BaseUrl != "" {
 		sb.WriteString(fmt.Sprintf("\nconst BASE = '%s';\n", opts.BaseUrl))
 	} else {
-		// Use import.meta.env for Vite/browser, process.env for Node/SSR, empty string as fallback.
-		sb.WriteString("\nconst BASE =\n")
-		sb.WriteString("  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ||\n")
-		sb.WriteString("  (typeof process !== 'undefined' && process.env?.VELD_API_URL) ||\n")
-		sb.WriteString("  '';\n")
+		// Resolve API base URL at runtime.
+		// • Vite: import.meta.env.VITE_API_URL is inlined at build time.
+		//   @ts-ignore lets the raw expression survive for Vite's string replacement
+		//   without requiring vite/client type augmentations.
+		// • Node/SSR: process.env via (globalThis as any) — no @types/node needed.
+		// • Fallback: empty string (relative URLs — same origin).
+		sb.WriteString("\n")
+		sb.WriteString("// @ts-ignore — Vite inlines import.meta.env at build time\n")
+		sb.WriteString("const _VITE_BASE: string = typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL || '';\n")
+		sb.WriteString("const BASE: string = _VITE_BASE || (globalThis as any).process?.env?.VELD_API_URL || '';\n")
 	}
 }
 
