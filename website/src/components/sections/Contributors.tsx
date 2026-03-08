@@ -16,11 +16,11 @@ const contributors = [
   {
     name: 'Eyad Gamal',
     role: 'Core Contributor',
-    avatar: 'https://ui-avatars.com/api/?name=Eyad+Gamal&background=30363d&color=e6edf3&size=200&bold=true',
+    avatar: 'https://github.com/redoxxa21.png',
     bio: 'Contributed to core features, testing, and documentation. Key collaborator on the project architecture and design decisions.',
     badge: 'core',
     links: {
-      github: '#',
+      github: 'https://github.com/redoxxa21',
     },
   },
 ];
