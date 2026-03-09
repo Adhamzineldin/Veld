@@ -68,7 +68,7 @@ func writeAction(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	// Build query string suffix
 	queryAppend := ""
 	if act.Query != "" {
-		queryAppend = " + (query ? '?' + new URLSearchParams(query as Record<string, string>).toString() : '')"
+		queryAppend = " + buildQueryString(query as Record<string, unknown>)"
 	}
 
 	// Build the call expression

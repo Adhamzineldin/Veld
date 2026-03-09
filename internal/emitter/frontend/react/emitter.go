@@ -354,6 +354,7 @@ func writeCoreQueryHook(sb *strings.Builder, hookName, apiName, camelName, outpu
 	if act.Query != "" {
 		paramTypes = append(paramTypes, "query?: "+act.Query)
 		argsList = append(argsList, "query")
+		deps = append(deps, "JSON.stringify(query)")
 	}
 	paramsStr := strings.Join(paramTypes, ", ")
 	argsStr := strings.Join(argsList, ", ")
@@ -371,10 +372,12 @@ func writeCoreQueryHook(sb *strings.Builder, hookName, apiName, camelName, outpu
 	} else {
 		sb.WriteString(fmt.Sprintf("    %s.%s()\n", apiName, camelName))
 	}
-	sb.WriteString("      .then(setData)\n")
-	sb.WriteString("      .catch(setError)\n")
-	sb.WriteString("      .finally(() => setLoading(false));\n")
+	sb.WriteString("      .then((result) => { setData(result); })\n")
+	sb.WriteString("      .catch((err) => { setError(err); })\n")
+	sb.WriteString("      .finally(() => { setLoading(false); });\n")
 	if len(deps) > 0 {
+		// eslint-disable needed because JSON.stringify(query) is a computed dep
+		sb.WriteString(fmt.Sprintf("  // eslint-disable-next-line react-hooks/exhaustive-deps\n"))
 		sb.WriteString(fmt.Sprintf("  }, [%s]);\n\n", strings.Join(deps, ", ")))
 	} else {
 		sb.WriteString("  }, []);\n\n")
@@ -418,7 +421,7 @@ func writeCoreMutationHook(sb *strings.Builder, hookName, apiName, camelName, ou
 	}
 	sb.WriteString("      .then((result) => { setData(result); return result; })\n")
 	sb.WriteString("      .catch((err) => { setError(err); throw err; })\n")
-	sb.WriteString("      .finally(() => setLoading(false));\n")
+	sb.WriteString("      .finally(() => { setLoading(false); });\n")
 	sb.WriteString("  }, []);\n\n")
 	sb.WriteString("  return { mutate, data, loading, error };\n")
 	sb.WriteString("}\n\n")
