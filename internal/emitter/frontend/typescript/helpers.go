@@ -72,6 +72,22 @@ func emitBaseURL(sb *strings.Builder, opts emitter.EmitOptions) {
 // All methods are always emitted so per-module imports never fail.
 func emitHTTPHelpers(sb *strings.Builder) {
 	sb.WriteString(`
+/**
+ * Build a query string from an object, filtering out undefined and null values.
+ * Returns '' if no valid params remain, otherwise returns '?key=value&...'.
+ */
+export function buildQueryString(params?: Record<string, unknown>): string {
+  if (!params) return '';
+  const filtered: Record<string, string> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      filtered[key] = String(value);
+    }
+  }
+  const qs = new URLSearchParams(filtered).toString();
+  return qs ? '?' + qs : '';
+}
+
 export async function get<T>(path: string): Promise<T> {
   const res = await fetch(BASE + path);
   if (!res.ok) throw await parseErrorResponse(res);

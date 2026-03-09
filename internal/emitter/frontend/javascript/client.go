@@ -107,7 +107,7 @@ func writeAction(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	// Build query string suffix.
 	queryAppend := ""
 	if act.Query != "" {
-		queryAppend = " + (query ? '?' + new URLSearchParams(query).toString() : '')"
+		queryAppend = " + buildQueryString(query)"
 	}
 
 	camelName := emitter.ToCamelCase(act.Name)

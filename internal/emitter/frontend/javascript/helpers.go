@@ -74,6 +74,26 @@ func emitBaseURL(sb *strings.Builder, opts emitter.EmitOptions) {
 
 // emitHTTPHelpers writes the HTTP helper functions and module.exports.
 func emitHTTPHelpers(sb *strings.Builder, methods map[string]bool) {
+	sb.WriteString(`
+/**
+ * Build a query string from an object, filtering out undefined and null values.
+ * Returns '' if no valid params remain, otherwise returns '?key=value&...'.
+ * @param {Record<string, *>} [params]
+ * @returns {string}
+ */
+function buildQueryString(params) {
+  if (!params) return '';
+  const filtered = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      filtered[key] = String(value);
+    }
+  }
+  const qs = new URLSearchParams(filtered).toString();
+  return qs ? '?' + qs : '';
+}
+`)
+
 	if methods["GET"] {
 		sb.WriteString(`
 /**
@@ -117,5 +137,5 @@ async function %s(path, body) {
 	}
 
 	// CommonJS exports for all helpers.
-	sb.WriteString("\nmodule.exports = { VeldApiError, isApiError, isErrorCode, get, post, put, patch, del };\n")
+	sb.WriteString("\nmodule.exports = { VeldApiError, isApiError, isErrorCode, buildQueryString, get, post, put, patch, del };\n")
 }
