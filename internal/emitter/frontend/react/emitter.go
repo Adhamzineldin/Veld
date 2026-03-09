@@ -181,7 +181,7 @@ func (e *ReactEmitter) emitTanStackHooks(a ast.AST, mod ast.Module, dir string) 
 		if method == "GET" {
 			// Emit query key constant before the hook
 			keyConstName := camelName + "Key"
-			writeQueryKeyConstant(&sb, keyConstName, mod.Name, camelName, pathParams)
+			writeQueryKeyConstant(&sb, keyConstName, mod.Name, camelName, pathParams, act)
 			queryKeyNames = append(queryKeyNames, keyConstName)
 			writeTanStackQuery(&sb, hookName, apiName, camelName, outputType, mod.Name, pathParams, act)
 		} else {
@@ -212,17 +212,25 @@ func (e *ReactEmitter) emitTanStackHooks(a ast.AST, mod ast.Module, dir string) 
 	return os.WriteFile(filepath.Join(dir, moduleLower+"Hooks.ts"), []byte(sb.String()), 0644)
 }
 
-func writeQueryKeyConstant(sb *strings.Builder, constName, modName, camelName string, pathParams []string) {
-	if len(pathParams) > 0 {
+func writeQueryKeyConstant(sb *strings.Builder, constName, modName, camelName string, pathParams []string, act ast.Action) {
+	hasPathParams := len(pathParams) > 0
+	hasQuery := act.Query != ""
+
+	if hasPathParams || hasQuery {
 		// Export a factory function for parameterized queries
 		var paramTypes []string
-		var paramRefs []string
+		var keyElems []string
+		keyElems = append(keyElems, fmt.Sprintf("'%s'", modName), fmt.Sprintf("'%s'", camelName))
 		for _, p := range pathParams {
 			paramTypes = append(paramTypes, p+": string")
-			paramRefs = append(paramRefs, p)
+			keyElems = append(keyElems, p)
 		}
-		sb.WriteString(fmt.Sprintf("export const %s = (%s) => ['%s', '%s', %s] as const;\n",
-			constName, strings.Join(paramTypes, ", "), modName, camelName, strings.Join(paramRefs, ", ")))
+		if hasQuery {
+			paramTypes = append(paramTypes, "query?: "+act.Query)
+			keyElems = append(keyElems, "query")
+		}
+		sb.WriteString(fmt.Sprintf("export const %s = (%s) => [%s] as const;\n",
+			constName, strings.Join(paramTypes, ", "), strings.Join(keyElems, ", ")))
 	} else {
 		sb.WriteString(fmt.Sprintf("export const %s = ['%s', '%s'] as const;\n", constName, modName, camelName))
 	}
@@ -244,6 +252,9 @@ func writeTanStackQuery(sb *strings.Builder, hookName, apiName, camelName, outpu
 	keyParts := []string{fmt.Sprintf("'%s'", modName), fmt.Sprintf("'%s'", camelName)}
 	for _, p := range pathParams {
 		keyParts = append(keyParts, p)
+	}
+	if act.Query != "" {
+		keyParts = append(keyParts, "query")
 	}
 
 	sb.WriteString(fmt.Sprintf("/** %s */\n", act.Description))
@@ -287,10 +298,11 @@ func writeTanStackMutation(sb *strings.Builder, hookName, apiName, camelName, ou
 	} else {
 		sb.WriteString(fmt.Sprintf("    mutationFn: (vars: %s) => %s.%s(%s),\n", inputType, apiName, camelName, strings.Join(mutateParams, ", ")))
 	}
-	sb.WriteString("    onSuccess: () => {\n")
-	sb.WriteString(fmt.Sprintf("      queryClient.invalidateQueries({ queryKey: ['%s'] });\n", modName))
-	sb.WriteString("    },\n")
 	sb.WriteString("    ...options,\n")
+	sb.WriteString("    onSuccess: (...args) => {\n")
+	sb.WriteString(fmt.Sprintf("      queryClient.invalidateQueries({ queryKey: ['%s'] });\n", modName))
+	sb.WriteString("      options?.onSuccess?.(...args);\n")
+	sb.WriteString("    },\n")
 	sb.WriteString("  });\n}\n\n")
 }
 
