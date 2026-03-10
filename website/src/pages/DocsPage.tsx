@@ -87,6 +87,19 @@ const sidebarSections = [
       { id: 'editor-lsp', label: 'LSP Server' },
     ],
   },
+  {
+    group: 'Cloud Registry',
+    items: [
+      { id: 'registry-overview', label: 'Overview' },
+      { id: 'registry-selfhost', label: 'Self-Hosting' },
+      { id: 'registry-login', label: 'Login & Auth' },
+      { id: 'registry-push', label: 'Publishing (push)' },
+      { id: 'registry-pull', label: 'Installing (pull)' },
+      { id: 'registry-teams', label: 'Teams & Orgs' },
+      { id: 'registry-tokens', label: 'API Tokens' },
+      { id: 'registry-config', label: 'Config Reference' },
+    ],
+  },
 ];
 
 function CodeBlock({ title, children, lang }: { title?: string; children: string; lang?: 'veld' | 'ts' | 'bash' | 'json' }) {
@@ -1694,6 +1707,332 @@ import { Users } from '@veld/generated/client/api';`}
     })
   end,
 })`}
+          </CodeBlock>
+        </section>
+
+        {/* ── Cloud Registry ─────────────────────────────────────────── */}
+
+        <section id="registry-overview" className={styles.section}>
+          <h2 className={styles.sectionTitle}>Cloud Registry</h2>
+          <p className={styles.sectionDesc}>
+            The Veld Registry is a typed contract package registry — think npm, but for <code>.veld</code> files.
+            Teams publish their contracts once; every repo that consumes them pulls exact versions.
+            Generated SDKs are always in sync across services with zero manual copy-paste.
+          </p>
+          <p className={styles.sectionDesc}>
+            The registry is <strong>fully self-hostable</strong> — run it on your own server with a single binary
+            and a PostgreSQL database. Or connect to a hosted instance. Either way the CLI workflow is identical.
+          </p>
+          <h3 className={styles.sectionSubtitle}>How it works</h3>
+          <CodeBlock title="Team workflow">{`# Team A publishes their auth contracts
+cd auth-service/veld
+veld push                          # → @acme/auth@1.2.0 on registry
+
+# Team B consumes them in a completely separate repo
+veld pull @acme/auth@1.2.0        # → veld/packages/@acme/auth/
+veld generate                      # → fully typed SDK from pulled contracts`}
+          </CodeBlock>
+        </section>
+
+        <section id="registry-selfhost" className={styles.section}>
+          <h2 className={styles.sectionTitle}>Self-Hosting</h2>
+          <p className={styles.sectionDesc}>
+            The registry server is a single Go binary (<code>veld-registry</code>) that needs a PostgreSQL
+            database and a directory for tarball storage. The schema is applied automatically on first start.
+          </p>
+          <h3 className={styles.sectionSubtitle}>1. Build the server</h3>
+          <CodeBlock title="Build">{`go build -o veld-registry ./cmd/registry`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>2. Create a config file</h3>
+          <CodeBlock title="registry.config.json" lang="json">{`{
+  "addr":    ":8080",
+  "dsn":     "postgres://veld:secret@localhost:5432/veld?sslmode=disable",
+  "storage": "./packages",
+  "secret":  "run: openssl rand -hex 32"
+}`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>3. Create the database and start</h3>
+          <CodeBlock title="Terminal">{`createdb veld
+./veld-registry --config registry.config.json
+
+# Veld Registry  →  http://localhost:8080
+# Web UI available at http://localhost:8080/`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>Config priority</h3>
+          <p className={styles.sectionDesc}>
+            Settings are merged in this order (highest wins):
+          </p>
+          <CodeBlock>{`CLI flag  >  env var  >  registry.config.json  >  default
+
+# Example: keep secrets out of the file, inject at runtime
+VELD_SECRET=mysecret ./veld-registry   # reads rest from registry.config.json`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>All config fields</h3>
+          <CodeBlock title="registry.config.json" lang="json">{`{
+  "addr":    ":8080",         // listen address  (env: VELD_ADDR)
+  "dsn":     "postgres://…",  // PostgreSQL DSN  (env: VELD_DSN)
+  "storage": "./packages",    // tarball dir     (env: VELD_STORAGE)
+  "secret":  "…"              // JWT secret ≥16c (env: VELD_SECRET)
+}`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>Auto-detection</h3>
+          <p className={styles.sectionDesc}>
+            If <code>--config</code> is omitted, the server looks for <code>registry.config.json</code> then{' '}
+            <code>veld/registry.config.json</code> in the current directory.
+          </p>
+        </section>
+
+        <section id="registry-login" className={styles.section}>
+          <h2 className={styles.sectionTitle}>Login &amp; Auth</h2>
+          <p className={styles.sectionDesc}>
+            Authenticate the CLI against a registry with <code>veld login</code>. Credentials are stored
+            in <code>~/.veld/credentials.json</code> with 0600 permissions. Multiple registries can be
+            configured simultaneously.
+          </p>
+          <h3 className={styles.sectionSubtitle}>Interactive login</h3>
+          <CodeBlock title="Terminal">{`veld login --registry http://localhost:8080
+# Email: you@example.com
+# Password: ••••••••
+# ✓ Logged in to http://localhost:8080 as yourname`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>Token login (CI/CD)</h3>
+          <CodeBlock title="Terminal">{`# Create a token in the web UI, then:
+veld login --registry http://localhost:8080 --token vtk_xxxxxxxxxxxxxxxx
+# ✓ Logged in to http://localhost:8080 as yourname`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>Check current identity</h3>
+          <CodeBlock title="Terminal">{`veld registry info
+# Registry: http://localhost:8080
+# User:     yourname (you@example.com)
+
+veld registry list     # show all configured registries`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>Logout</h3>
+          <CodeBlock title="Terminal">{`veld logout
+veld logout --registry http://other-registry.com`}
+          </CodeBlock>
+        </section>
+
+        <section id="registry-push" className={styles.section}>
+          <h2 className={styles.sectionTitle}>Publishing Contracts</h2>
+          <p className={styles.sectionDesc}>
+            <code>veld push</code> packs your <code>.veld</code> files and <code>veld.config.json</code> into
+            a signed tarball and uploads it to the registry. You must be an <strong>admin</strong> or{' '}
+            <strong>owner</strong> of the organisation to publish.
+          </p>
+          <h3 className={styles.sectionSubtitle}>Configure publishing in veld.config.json</h3>
+          <CodeBlock title="veld/veld.config.json" lang="json">{`{
+  "input":    "app.veld",
+  "backend":  "node",
+  "frontend": "react",
+  "out":      "../generated",
+
+  "registry": {
+    "enabled": true,
+    "url":     "http://localhost:8080",
+    "org":     "acme",
+    "package": "auth-service",
+    "version": "1.2.0"
+  }
+}`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>Push</h3>
+          <CodeBlock title="Terminal">{`# Reads org/package/version/url from veld.config.json
+veld push
+
+# Or override on the CLI
+veld push --org acme --name auth-service --version 1.2.0
+veld push --registry http://localhost:8080 --org acme --name auth --version 2.0.0
+
+# Output:
+# ⬡  Packing contracts from ./veld…
+# ⬡  Publishing @acme/auth-service@1.2.0 (4.2 kB)…
+# ✓  Published @acme/auth-service@1.2.0`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>What gets packed</h3>
+          <ul className={styles.featureList}>
+            <li>All <code>.veld</code> files found recursively in the config directory</li>
+            <li><code>veld.config.json</code></li>
+            <li>Everything is gzip-compressed and SHA-256 signed for integrity verification</li>
+          </ul>
+        </section>
+
+        <section id="registry-pull" className={styles.section}>
+          <h2 className={styles.sectionTitle}>Installing Contracts</h2>
+          <p className={styles.sectionDesc}>
+            <code>veld pull</code> downloads a versioned contract package, verifies its SHA-256 checksum,
+            and extracts it to <code>veld/packages/@org/name/</code>. Pulled contracts are imported
+            exactly like local files.
+          </p>
+          <h3 className={styles.sectionSubtitle}>Pull a package</h3>
+          <CodeBlock title="Terminal">{`veld pull @acme/auth-service          # latest version
+veld pull @acme/auth-service@1.2.0   # exact version
+veld pull @acme/auth-service@1.2.0 --out veld/packages  # custom dir`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>Declare dependencies in veld.config.json</h3>
+          <CodeBlock title="veld/veld.config.json" lang="json">{`{
+  "input": "app.veld",
+  "backend": "node",
+  "frontend": "react",
+  "out": "../generated",
+
+  "registry": {
+    "enabled": true,
+    "url": "http://localhost:8080"
+  },
+
+  "dependencies": {
+    "@acme/auth-service": "1.2.0",
+    "@acme/shared-types": "2.0.0"
+  }
+}`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>Use pulled contracts in imports</h3>
+          <CodeBlock title="veld/app.veld" lang="veld">{`// Pulled packages are available as @org/package imports
+import @acme/auth-service/UserModel
+import @acme/shared-types/PaginationMeta
+
+module Orders {
+  prefix: /api/orders
+
+  action GetOrders {
+    method: GET
+    path:   /
+    output: PaginationMeta   // ← from pulled package
+  }
+}`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>List available versions</h3>
+          <CodeBlock title="Terminal">{`veld registry versions @acme/auth-service
+# @acme/auth-service — 3 version(s):
+#   v1.2.0
+#   v1.1.0
+#   v1.0.0  [deprecated: use 1.2.0]`}
+          </CodeBlock>
+        </section>
+
+        <section id="registry-teams" className={styles.section}>
+          <h2 className={styles.sectionTitle}>Teams &amp; Organisations</h2>
+          <p className={styles.sectionDesc}>
+            Packages are published under <em>organisations</em> (the <code>@scope</code>).
+            Each org has members with roles that control who can publish, manage members, and delete packages.
+          </p>
+          <h3 className={styles.sectionSubtitle}>Create an organisation</h3>
+          <CodeBlock title="Terminal">{`# Via web UI: http://localhost:8080/#/orgs → New Organisation
+
+# Or use the API directly:
+curl -X POST http://localhost:8080/api/v1/orgs \\
+  -H "Authorization: Bearer vtk_…" \\
+  -H "Content-Type: application/json" \\
+  -d '{"name":"acme","display_name":"ACME Corp"}'`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>Role permissions</h3>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Member</th>
+                <th>Admin</th>
+                <th>Owner</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Pull private packages</td><td>✓</td><td>✓</td><td>✓</td></tr>
+              <tr><td>Publish new versions</td><td>✗</td><td>✓</td><td>✓</td></tr>
+              <tr><td>Deprecate versions</td><td>✗</td><td>✓</td><td>✓</td></tr>
+              <tr><td>Manage members</td><td>✗</td><td>✓</td><td>✓</td></tr>
+              <tr><td>Unpublish versions</td><td>✗</td><td>✗</td><td>✓</td></tr>
+            </tbody>
+          </table>
+          <h3 className={styles.sectionSubtitle}>Add a team member</h3>
+          <CodeBlock title="Terminal">{`# Via web UI: http://localhost:8080/#/orgs/acme → Add Member
+
+# REST API:
+curl -X POST http://localhost:8080/api/v1/orgs/acme/members \\
+  -H "Authorization: Bearer vtk_…" \\
+  -d '{"username":"alice","role":"admin"}'`}
+          </CodeBlock>
+        </section>
+
+        <section id="registry-tokens" className={styles.section}>
+          <h2 className={styles.sectionTitle}>API Tokens</h2>
+          <p className={styles.sectionDesc}>
+            API tokens are prefixed with <code>vtk_</code> and stored as SHA-256 hashes — the plain token
+            is shown <strong>only once</strong> at creation time. Use tokens for CI/CD pipelines and
+            non-interactive CLI auth.
+          </p>
+          <h3 className={styles.sectionSubtitle}>Create a token</h3>
+          <CodeBlock title="Terminal">{`# Via web UI: http://localhost:8080/#/tokens → New Token
+
+# Via CLI (after logging in):
+veld registry token create --name ci-deploy --scopes read,write`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>Token scopes</h3>
+          <ul className={styles.featureList}>
+            <li><code>read</code> — download packages and view private org packages</li>
+            <li><code>write</code> — publish new versions (<code>veld push</code>)</li>
+            <li><code>delete</code> — unpublish versions (owner only)</li>
+          </ul>
+          <h3 className={styles.sectionSubtitle}>Use in CI/CD</h3>
+          <CodeBlock title=".github/workflows/publish.yml">{`- name: Publish contracts
+  env:
+    VELD_REGISTRY: https://registry.yourcompany.com
+    VELD_TOKEN:    \${{ secrets.VELD_TOKEN }}
+  run: |
+    veld login --registry $VELD_REGISTRY --token $VELD_TOKEN
+    veld push`}
+          </CodeBlock>
+        </section>
+
+        <section id="registry-config" className={styles.section}>
+          <h2 className={styles.sectionTitle}>Config Reference</h2>
+          <h3 className={styles.sectionSubtitle}>veld.config.json — registry block</h3>
+          <CodeBlock title="veld/veld.config.json" lang="json">{`{
+  "registry": {
+    "enabled": true,      // false = registry features disabled for this project
+    "url":     "http://localhost:8080",   // registry base URL
+    "org":     "acme",                   // organisation name (the @scope)
+    "package": "auth-service",           // package name
+    "version": "1.2.0"                   // version to publish with veld push
+  }
+}`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>registry.config.json — server config</h3>
+          <CodeBlock title="registry.config.json" lang="json">{`{
+  "addr":    ":8080",
+  "dsn":     "postgres://user:pass@localhost:5432/dbname?sslmode=disable",
+  "storage": "./packages",
+  "secret":  "your-jwt-secret-at-least-16-chars"
+}`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>All CLI registry commands</h3>
+          <CodeBlock>{`veld login    --registry <url> [--token vtk_…] [--email …] [--password …]
+veld logout   [--registry <url>]
+veld push     [--org …] [--name …] [--version …] [--registry <url>]
+veld pull     @org/name[@version]  [--out <dir>] [--registry <url>]
+
+veld registry info                   # show current registry + logged-in user
+veld registry list                   # list all configured registries
+veld registry versions @org/name     # list all published versions
+veld registry token create --name …  # create a new API token`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>Credentials storage</h3>
+          <p className={styles.sectionDesc}>
+            Tokens are stored in <code>~/.veld/credentials.json</code> with <code>0600</code> permissions.
+            Multiple registries are supported simultaneously — each registry URL has its own entry.
+          </p>
+          <CodeBlock title="~/.veld/credentials.json" lang="json">{`{
+  "registries": {
+    "http://localhost:8080": {
+      "token":    "vtk_…",
+      "username": "yourname"
+    },
+    "https://registry.yourcompany.com": {
+      "token":    "vtk_…",
+      "username": "yourname"
+    }
+  }
+}`}
           </CodeBlock>
         </section>
 

@@ -472,6 +472,11 @@ async function pagePackageDetail(el, route) {
   const latest = versions.find(v => !v.deprecated) || versions[0];
 
   const installCmd = `veld pull @${orgName}/${pkgName}@${latest?.version || 'latest'}`;
+  const depVersion = latest?.version || '1.0.0';
+  const depLine = `"@${orgName}/${pkgName}": "${depVersion}"`;
+  const depBlock = `"dependencies": {\n  ${depLine}\n}`;
+  const installCmdEsc = installCmd.replace(/'/g, "\\'");
+  const depLineEsc   = depLine.replace(/'/g, "\\'");
   el.innerHTML = `
     <div class="breadcrumb"><a href="#/packages">Packages</a> › <a href="#/orgs/${orgName}">@${orgName}</a> › <span>${pkgName}</span></div>
     <div class="page-header">
@@ -489,14 +494,14 @@ async function pagePackageDetail(el, route) {
       <div>
         <h3 style="margin-bottom:10px">Install</h3>
         <div class="code-block">
-          <pre class="mono">${installCmd}</pre>
-          <button class="copy-btn" onclick="copy('${installCmd}',this)">Copy</button>
+          <pre class="mono">${escHtml(installCmd)}</pre>
+          <button class="copy-btn" onclick="copy('${installCmdEsc}',this)">Copy</button>
         </div>
         <div style="margin-top:12px">
           <h3 style="margin-bottom:8px">In veld.config.json</h3>
           <div class="code-block">
-            <pre class="mono">${escHtml(`"dependencies": {\n  "@${orgName}/${pkgName}": "${latest?.version||'1.0.0'}"\n}`)}</pre>
-            <button class="copy-btn" onclick="copy(${JSON.stringify(`"@${orgName}/${pkgName}": "${latest?.version||'1.0.0'"`)},this)">Copy</button>
+            <pre class="mono">${escHtml(depBlock)}</pre>
+            <button class="copy-btn" onclick="copy('${depLineEsc}',this)">Copy</button>
           </div>
         </div>
       </div>

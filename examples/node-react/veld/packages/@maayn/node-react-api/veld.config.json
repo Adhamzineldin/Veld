@@ -1,0 +1,21 @@
+{
+  "input": "app.veld",
+  "backend": "node",
+  "frontend": "react",
+  "out": "../generated",
+  "backendOut": "../backend/src/generated",
+  "frontendOut": "../frontend/src/generated",
+  "backendDir": "../backend",
+  "frontendDir": "../frontend",
+  "aliases": {
+    "models": "models",
+    "modules": "modules"
+  },
+  "registry": {
+    "enabled": true,
+    "url": "http://localhost:8080",
+    "org": "maayn",
+    "package": "node-react-api",
+    "version": "0.1.0"
+  }
+}

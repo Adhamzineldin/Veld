@@ -68,9 +68,24 @@ func HasScope(r *http.Request, scope string) bool {
 }
 
 func resolveAuth(r *http.Request, database *db.DB, jwtSecret string) (*models.User, *models.Token) {
-	// 1. Bearer token
+	// 1. Bearer header — could be a vtk_ API token or a JWT (CLI login)
 	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 		plain := strings.TrimPrefix(auth, "Bearer ")
+
+		// JWT if it contains two dots (header.payload.sig)
+		if strings.Count(plain, ".") == 2 {
+			claims, err := VerifyJWT(plain, jwtSecret)
+			if err != nil {
+				return nil, nil
+			}
+			user, err := database.GetUserByID(claims.Sub)
+			if err != nil {
+				return nil, nil
+			}
+			return user, nil // no Token record — treated as full-scope session
+		}
+
+		// vtk_ API token
 		hash := HashToken(plain)
 		tok, err := database.GetTokenByHash(hash)
 		if err != nil || tok == nil {
@@ -83,7 +98,7 @@ func resolveAuth(r *http.Request, database *db.DB, jwtSecret string) (*models.Us
 		return user, tok
 	}
 
-	// 2. Session cookie (JWT)
+	// 2. Session cookie (JWT — browser)
 	cookie, err := r.Cookie("veld_session")
 	if err != nil {
 		return nil, nil
