@@ -23,6 +23,16 @@ type RawConfig struct {
 	Validate          bool              `json:"validate,omitempty"`          // emit zero-dep runtime validators (default false)
 	Aliases           map[string]string `json:"aliases,omitempty"`           // custom @alias → relative dir
 	PostGenerate      string            `json:"postGenerate,omitempty"`      // shell command to run after generation
+	Registry          RegistryConfig    `json:"registry,omitempty"`          // cloud registry publishing config
+}
+
+// RegistryConfig holds optional publish metadata baked into veld.config.json.
+type RegistryConfig struct {
+	Enabled bool   `json:"enabled"`           // set to true to activate push/pull
+	URL     string `json:"url,omitempty"`     // registry base URL
+	Org     string `json:"org,omitempty"`     // organisation name (@scope)
+	Package string `json:"package,omitempty"` // package name
+	Version string `json:"version,omitempty"` // current version to publish
 }
 
 // effectiveBackendDir returns the configured backend directory, preferring backendDir over backendDirectory.
@@ -56,6 +66,7 @@ type ResolvedConfig struct {
 	Validate     bool              // emit zero-dep runtime validators and wire into routes
 	Aliases      map[string]string // merged: default aliases + config overrides
 	PostGenerate string            // shell command to run after generation (empty = none)
+	Registry     RegistryConfig    // publish metadata
 }
 
 // FlagOverrides carries CLI flag values that override config-file settings.
@@ -240,6 +251,7 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		Validate:     cfg.Validate,
 		Aliases:      aliases,
 		PostGenerate: cfg.PostGenerate,
+		Registry:     cfg.Registry,
 	}, nil
 }
 

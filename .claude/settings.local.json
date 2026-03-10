@@ -42,7 +42,10 @@
       "mcp__plugin_context-mode_context-mode__execute",
       "mcp__plugin_context-mode_context-mode__execute_file",
       "mcp__plugin_context-mode_context-mode__batch_execute",
-      "Bash(\"../../veld.exe\" clean:*)"
+      "Bash(\"../../veld.exe\" clean:*)",
+      "Bash(wc:*)",
+      "Bash(xargs grep:*)",
+      "Bash(find .:*)"
     ]
   }
 }
