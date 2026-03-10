@@ -10,16 +10,19 @@ import (
 
 	serverauth "github.com/Adhamzineldin/Veld/internal/server/auth"
 	"github.com/Adhamzineldin/Veld/internal/server/db"
+	"github.com/Adhamzineldin/Veld/internal/server/email"
 	"github.com/Adhamzineldin/Veld/internal/server/handlers"
 	"github.com/Adhamzineldin/Veld/internal/server/storage"
 )
 
 // Config holds runtime configuration for the registry server.
 type Config struct {
-	Addr        string // e.g. ":8080"
-	DSN         string // PostgreSQL DSN: postgres://user:pass@host/db?sslmode=disable
-	StoragePath string // path to tarball storage directory
-	JWTSecret   string // HMAC secret for session JWTs (min 16 chars)
+	Addr        string       // e.g. ":8080"
+	DSN         string       // PostgreSQL DSN: postgres://user:pass@host/db?sslmode=disable
+	StoragePath string       // path to tarball storage directory
+	JWTSecret   string       // HMAC secret for session JWTs (min 16 chars)
+	BaseURL     string       // public base URL for email links, e.g. "https://registry.example.com"
+	Email       email.Config // optional SMTP settings
 }
 
 // Server is the assembled registry HTTP server.
@@ -79,7 +82,7 @@ func (s *Server) Close() { s.db.Close() }
 // ── Route registration ─────────────────────────────────────────────────────────
 
 func (s *Server) registerRoutes() {
-	authH := &handlers.AuthHandler{DB: s.db, JWTSecret: s.cfg.JWTSecret}
+	authH := &handlers.AuthHandler{DB: s.db, JWTSecret: s.cfg.JWTSecret, Email: s.cfg.Email, BaseURL: s.cfg.BaseURL}
 	orgH := &handlers.OrgHandler{DB: s.db}
 	pkgH := &handlers.PackageHandler{DB: s.db, Storage: s.store}
 	webH := &handlers.WebHandler{}
@@ -93,6 +96,12 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/v1/auth/login", authH.Login)
 	s.mux.HandleFunc("POST /api/v1/auth/logout", authH.Logout)
 	s.mux.Handle("GET /api/v1/auth/me", requireAuth(http.HandlerFunc(authH.Me)))
+	s.mux.HandleFunc("POST /api/v1/auth/totp-login", authH.TOTPLogin)
+	s.mux.Handle("POST /api/v1/auth/setup-totp", requireAuth(http.HandlerFunc(authH.SetupTOTP)))
+	s.mux.Handle("POST /api/v1/auth/confirm-totp", requireAuth(http.HandlerFunc(authH.ConfirmTOTP)))
+	s.mux.Handle("DELETE /api/v1/auth/totp", requireAuth(http.HandlerFunc(authH.DisableTOTP)))
+	s.mux.HandleFunc("POST /api/v1/auth/verify-email", authH.VerifyEmail)
+	s.mux.Handle("POST /api/v1/auth/resend-verification", requireAuth(http.HandlerFunc(authH.ResendVerification)))
 
 	// ── Tokens ─────────────────────────────────────────────────────────────
 	s.mux.Handle("GET /api/v1/tokens", requireAuth(http.HandlerFunc(authH.ListTokens)))

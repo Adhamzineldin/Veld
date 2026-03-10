@@ -16,15 +16,26 @@ import (
 	"syscall"
 
 	"github.com/Adhamzineldin/Veld/internal/server"
+	"github.com/Adhamzineldin/Veld/internal/server/email"
 	"github.com/spf13/cobra"
 )
 
+type smtpConfig struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	From     string `json:"from"`
+}
+
 // registryConfig mirrors registry.config.json on disk.
 type registryConfig struct {
-	Addr        string `json:"addr"`
-	DSN         string `json:"dsn"`
-	StoragePath string `json:"storage"`
-	JWTSecret   string `json:"secret"`
+	Addr        string     `json:"addr"`
+	DSN         string     `json:"dsn"`
+	StoragePath string     `json:"storage"`
+	JWTSecret   string     `json:"secret"`
+	BaseURL     string     `json:"base_url"`
+	SMTP        smtpConfig `json:"smtp"`
 }
 
 func loadConfigFile(path string) registryConfig {
@@ -97,6 +108,14 @@ func runServer(cmd *cobra.Command, args []string) error {
 		DSN:         resolve(flagDSN, env("VELD_DSN"), fileCfg.DSN, ""),
 		StoragePath: resolve(flagStorage, env("VELD_STORAGE"), fileCfg.StoragePath, "./packages"),
 		JWTSecret:   resolve(flagSecret, env("VELD_SECRET"), fileCfg.JWTSecret, ""),
+		BaseURL:     resolve(env("VELD_BASE_URL"), fileCfg.BaseURL, ""),
+		Email: email.Config{
+			Host:     resolve(env("SMTP_HOST"), fileCfg.SMTP.Host, ""),
+			Port:     fileCfg.SMTP.Port,
+			Username: resolve(env("SMTP_USERNAME"), fileCfg.SMTP.Username, ""),
+			Password: resolve(env("SMTP_PASSWORD"), fileCfg.SMTP.Password, ""),
+			From:     resolve(env("SMTP_FROM"), fileCfg.SMTP.From, ""),
+		},
 	}
 
 	// 4. Validate required fields

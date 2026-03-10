@@ -3,10 +3,12 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	serverauth "github.com/Adhamzineldin/Veld/internal/server/auth"
 	"github.com/Adhamzineldin/Veld/internal/server/db"
+	"github.com/Adhamzineldin/Veld/internal/server/email"
 	"github.com/Adhamzineldin/Veld/internal/server/models"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -15,6 +17,8 @@ import (
 type AuthHandler struct {
 	DB        *db.DB
 	JWTSecret string
+	Email     email.Config
+	BaseURL   string // e.g. "http://localhost:8080" — used for verification links
 }
 
 type registerBody struct {
@@ -62,6 +66,11 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Send verification email asynchronously (non-blocking)
+	if h.Email.Enabled() {
+		go h.sendVerificationEmail(u)
+	}
+
 	jwt, err := serverauth.IssueJWT(u.ID, h.JWTSecret, 7*24*time.Hour)
 	if err != nil {
 		jsonError(w, "server error", http.StatusInternalServerError)
@@ -89,6 +98,53 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If TOTP is enabled, return partial session requiring second factor
+	if u.TOTPEnabled {
+		partial, err := serverauth.IssueJWT(u.ID, h.JWTSecret, 5*time.Minute)
+		if err != nil {
+			jsonError(w, "server error", http.StatusInternalServerError)
+			return
+		}
+		jsonOK(w, map[string]interface{}{
+			"totp_required": true,
+			"partial":       partial,
+		})
+		return
+	}
+
+	jwt, err := serverauth.IssueJWT(u.ID, h.JWTSecret, 7*24*time.Hour)
+	if err != nil {
+		jsonError(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	setSessionCookie(w, jwt)
+	jsonOK(w, map[string]interface{}{"user": u, "token": jwt})
+}
+
+// TOTPLogin handles POST /api/v1/auth/totp-login — step 2 of 2FA
+func (h *AuthHandler) TOTPLogin(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Partial string `json:"partial"` // short-lived JWT from Login step
+		Code    string `json:"code"`    // 6-digit TOTP code
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	claims, err := serverauth.VerifyJWT(body.Partial, h.JWTSecret)
+	if err != nil {
+		jsonError(w, "session expired — please log in again", http.StatusUnauthorized)
+		return
+	}
+	u, err := h.DB.GetUserByID(claims.Sub)
+	if err != nil || u == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !u.TOTPEnabled || !serverauth.VerifyTOTP(u.TOTPSecret, body.Code) {
+		jsonError(w, "invalid authenticator code", http.StatusUnauthorized)
+		return
+	}
 	jwt, err := serverauth.IssueJWT(u.ID, h.JWTSecret, 7*24*time.Hour)
 	if err != nil {
 		jsonError(w, "server error", http.StatusInternalServerError)
@@ -118,6 +174,167 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, u)
+}
+
+// ── TOTP 2FA ──────────────────────────────────────────────────────────────────
+
+// SetupTOTP handles POST /api/v1/auth/setup-totp
+// Generates a pending secret and returns the otpauth URI for QR display.
+func (h *AuthHandler) SetupTOTP(w http.ResponseWriter, r *http.Request) {
+	u := serverauth.GetUser(r)
+	if u == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	secret, err := serverauth.GenerateTOTPSecret()
+	if err != nil {
+		jsonError(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	if err := h.DB.SetPendingTOTPSecret(u.ID, secret); err != nil {
+		jsonError(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	issuer := "Veld Registry"
+	uri := serverauth.OTPAuthURI(secret, u.Username, issuer)
+	jsonOK(w, map[string]string{
+		"secret": secret,
+		"uri":    uri,
+	})
+}
+
+// ConfirmTOTP handles POST /api/v1/auth/confirm-totp
+// Verifies a TOTP code against the pending secret, then enables TOTP.
+func (h *AuthHandler) ConfirmTOTP(w http.ResponseWriter, r *http.Request) {
+	u := serverauth.GetUser(r)
+	if u == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Code == "" {
+		jsonError(w, "code is required", http.StatusBadRequest)
+		return
+	}
+	// Re-fetch to get pending secret (context user may be stale)
+	fresh, err := h.DB.GetUserByID(u.ID)
+	if err != nil || fresh == nil || fresh.PendingTOTPSecret == "" {
+		jsonError(w, "no pending TOTP setup — call /api/v1/auth/setup-totp first", http.StatusBadRequest)
+		return
+	}
+	if !serverauth.VerifyTOTP(fresh.PendingTOTPSecret, body.Code) {
+		jsonError(w, "invalid code", http.StatusUnauthorized)
+		return
+	}
+	if err := h.DB.ConfirmTOTP(u.ID); err != nil {
+		jsonError(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, map[string]string{"message": "two-factor authentication enabled"})
+}
+
+// DisableTOTP handles DELETE /api/v1/auth/totp
+// Requires password confirmation, then disables TOTP.
+func (h *AuthHandler) DisableTOTP(w http.ResponseWriter, r *http.Request) {
+	u := serverauth.GetUser(r)
+	if u == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var body struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Password == "" {
+		jsonError(w, "password is required", http.StatusBadRequest)
+		return
+	}
+	fresh, err := h.DB.GetUserByID(u.ID)
+	if err != nil || fresh == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(fresh.PasswordHash), []byte(body.Password)) != nil {
+		jsonError(w, "incorrect password", http.StatusUnauthorized)
+		return
+	}
+	if err := h.DB.DisableTOTP(u.ID); err != nil {
+		jsonError(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, map[string]string{"message": "two-factor authentication disabled"})
+}
+
+// ── Email verification ─────────────────────────────────────────────────────────
+
+// VerifyEmail handles POST /api/v1/auth/verify-email
+func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Token == "" {
+		jsonError(w, "token is required", http.StatusBadRequest)
+		return
+	}
+	userID, expiresAt, err := h.DB.GetEmailVerificationToken(body.Token)
+	if err != nil || userID == "" {
+		jsonError(w, "invalid or expired verification link", http.StatusBadRequest)
+		return
+	}
+	if time.Now().After(expiresAt) {
+		h.DB.DeleteEmailVerificationToken(body.Token)
+		jsonError(w, "verification link has expired — please request a new one", http.StatusBadRequest)
+		return
+	}
+	if err := h.DB.SetEmailVerified(userID); err != nil {
+		jsonError(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	h.DB.DeleteEmailVerificationToken(body.Token)
+
+	// Send welcome email
+	u, _ := h.DB.GetUserByID(userID)
+	if u != nil && h.Email.Enabled() {
+		go email.Send(h.Email, u.Email, "Welcome to Veld Registry!", email.WelcomeEmail(u.Username))
+	}
+
+	jsonOK(w, map[string]string{"message": "email verified"})
+}
+
+// ResendVerification handles POST /api/v1/auth/resend-verification
+func (h *AuthHandler) ResendVerification(w http.ResponseWriter, r *http.Request) {
+	u := serverauth.GetUser(r)
+	if u == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if u.EmailVerified {
+		jsonError(w, "email already verified", http.StatusBadRequest)
+		return
+	}
+	if !h.Email.Enabled() {
+		jsonError(w, "email not configured on this registry", http.StatusServiceUnavailable)
+		return
+	}
+	go h.sendVerificationEmail(u)
+	jsonOK(w, map[string]string{"message": "verification email sent"})
+}
+
+func (h *AuthHandler) sendVerificationEmail(u *models.User) {
+	tok, _ := serverauth.GenerateID(), ""
+	tok = serverauth.GenerateID() + serverauth.GenerateID() // longer token
+	tok = strings.ReplaceAll(tok, "-", "")
+	expiresAt := time.Now().Add(24 * time.Hour)
+	if err := h.DB.CreateEmailVerificationToken(tok, u.ID, expiresAt); err != nil {
+		return
+	}
+	base := strings.TrimRight(h.BaseURL, "/")
+	if base == "" {
+		base = "http://localhost:8080"
+	}
+	verifyURL := base + "/#/verify-email?token=" + tok
+	email.Send(h.Email, u.Email, "Verify your Veld Registry email", email.VerificationEmail(u.Username, verifyURL))
 }
 
 func setSessionCookie(w http.ResponseWriter, jwt string) {

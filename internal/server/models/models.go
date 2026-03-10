@@ -5,11 +5,15 @@ import "time"
 
 // User represents a registry account.
 type User struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	Username     string    `json:"username"`
-	PasswordHash string    `json:"-"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID                string    `json:"id"`
+	Email             string    `json:"email"`
+	Username          string    `json:"username"`
+	PasswordHash      string    `json:"-"`
+	EmailVerified     bool      `json:"email_verified"`
+	TOTPEnabled       bool      `json:"totp_enabled"`
+	TOTPSecret        string    `json:"-"`
+	PendingTOTPSecret string    `json:"-"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 // Org represents a registry organisation (the @acme scope).

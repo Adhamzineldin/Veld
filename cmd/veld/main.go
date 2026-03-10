@@ -2855,55 +2855,38 @@ const initReadmeContent = "# My Veld Project\n\n" +
 // ── login ─────────────────────────────────────────────────────────────────────
 
 func newLoginCmd() *cobra.Command {
-	var registryURL, token, email, password string
+	var registryURL, token string
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Authenticate with a Veld Registry",
+		Short: "Authenticate with a Veld Registry using an API token",
+		Long: `Authenticate the CLI with a Veld Registry using an API token.
+
+To create a token:
+  1. Open the registry web UI in your browser
+  2. Go to Settings → API Tokens → New Token
+  3. Copy the generated token (it is only shown once)
+  4. Run: veld login --registry <url> --token vtk_...`,
 		Example: "  veld login --registry https://registry.veld.dev --token vtk_...\n" +
-			"  veld login --registry https://registry.mycompany.com",
+			"  veld login --registry http://localhost:8080 --token vtk_...",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if registryURL == "" {
 				return fmt.Errorf("--registry is required (e.g. --registry https://registry.veld.dev)")
 			}
-
-			// Token login (non-interactive)
-			if token != "" {
-				client := registry.NewClient(registryURL, token)
-				me, err := client.Me()
-				if err != nil {
-					return fmt.Errorf("token validation failed: %w", err)
-				}
-				username, _ := me["username"].(string)
-				if err := registry.SetToken(registryURL, token, username); err != nil {
-					return err
-				}
-				fmt.Printf(green("✓")+" Logged in to %s as %s\n", registryURL, username)
+			if token == "" {
+				registryBase := strings.TrimRight(registryURL, "/")
+				fmt.Printf("To log in, create an API token in the web UI:\n")
+				fmt.Printf("  %s/#/tokens\n\n", registryBase)
+				fmt.Printf("Then run:\n")
+				fmt.Printf("  veld login --registry %s --token vtk_...\n", registryURL)
 				return nil
 			}
-
-			// Interactive email/password login
-			if email == "" {
-				fmt.Print("Email: ")
-				fmt.Scanln(&email)
-			}
-			if password == "" {
-				fmt.Print("Password: ")
-				fmt.Scanln(&password)
-			}
-
-			client := registry.NewClient(registryURL, "")
-			jwt, err := client.Login(email, password)
+			client := registry.NewClient(registryURL, token)
+			me, err := client.Me()
 			if err != nil {
-				return fmt.Errorf("login failed: %w", err)
-			}
-			// Exchange JWT for profile info
-			authClient := registry.NewClient(registryURL, jwt)
-			me, err := authClient.Me()
-			if err != nil {
-				return fmt.Errorf("could not fetch profile: %w", err)
+				return fmt.Errorf("token validation failed: %w", err)
 			}
 			username, _ := me["username"].(string)
-			if err := registry.SetToken(registryURL, jwt, username); err != nil {
+			if err := registry.SetToken(registryURL, token, username); err != nil {
 				return err
 			}
 			fmt.Printf(green("✓")+" Logged in to %s as %s\n", registryURL, username)
@@ -2911,9 +2894,7 @@ func newLoginCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&registryURL, "registry", "", "registry URL")
-	cmd.Flags().StringVar(&token, "token", "", "API token (skips email/password prompt)")
-	cmd.Flags().StringVar(&email, "email", "", "email address")
-	cmd.Flags().StringVar(&password, "password", "", "password")
+	cmd.Flags().StringVar(&token, "token", "", "API token (vtk_...)")
 	return cmd
 }
 

@@ -2,5 +2,13 @@
   "addr": ":8080",
   "dsn": "postgres://veld:secret@localhost:5432/veld?sslmode=disable",
   "storage": "./packages",
-  "secret": "replace-this-with-openssl-rand-hex-32"
+  "secret": "replace-this-with-openssl-rand-hex-32",
+  "base_url": "https://registry.yourcompany.com",
+  "smtp": {
+    "host": "smtp.example.com",
+    "port": 587,
+    "username": "noreply@example.com",
+    "password": "smtp-password",
+    "from": "Veld Registry <noreply@example.com>"
+  }
 }

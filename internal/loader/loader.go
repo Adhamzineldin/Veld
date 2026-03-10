@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/lexer"
@@ -11,12 +12,9 @@ import (
 )
 
 // Parse loads a .veld entry point and recursively follows import statements.
-// Returns the merged AST and the absolute paths of every .veld file that was
-// loaded (for watch / incremental purposes).
+// Returns the merged AST and the absolute paths of every .veld file loaded.
 //
 // aliases is an optional map of @alias → relative-dir-from-rootDir.
-// If nil or missing, the alias name is used directly as the folder name
-// (e.g. @models → {rootDir}/models/).
 func Parse(path string, aliases ...map[string]string) (ast.AST, []string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -36,15 +34,13 @@ func Parse(path string, aliases ...map[string]string) (ast.AST, []string, error)
 	return a, files, err
 }
 
-// resolveFile parses a single .veld file and recursively resolves its imports.
-// rootDir is the entry-point directory; aliasMap maps alias names to sub-paths.
 func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[string]bool, files *[]string, fileImports map[string][]string) (ast.AST, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return ast.AST{}, err
 	}
 	if seen[abs] {
-		return ast.AST{ASTVersion: "1.0.0"}, nil // circular import guard
+		return ast.AST{ASTVersion: "1.0.0"}, nil
 	}
 	seen[abs] = true
 	*files = append(*files, abs)
@@ -62,7 +58,6 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 		return ast.AST{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
 
-	// Tag every definition with the file it came from.
 	for i := range a.Models {
 		a.Models[i].SourceFile = abs
 	}
@@ -73,67 +68,40 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 		a.Enums[i].SourceFile = abs
 	}
 
-	// Resolve imports.
-	// @alias/name.veld or @alias/* — resolved from rootDir using alias mapping.
-	// plain/path.veld             — resolved relative to this file's directory.
 	dir := filepath.Dir(abs)
 	merged := ast.AST{ASTVersion: "1.0.0"}
+
 	for _, imp := range a.Imports {
 		if len(imp) > 0 && imp[0] == '@' {
-			// Alias-based: extract alias and the remainder
-			rest := imp[1:] // e.g. "models/auth.veld" or "models/*"
-			slashIdx := -1
-			for i, c := range rest {
-				if c == '/' {
-					slashIdx = i
-					break
+			rest := imp[1:] // e.g. "models/user.veld", "org/pkg/modules/*"
+
+			// ── Try registry package: @org/package[/subpath] ──────────────
+			// Registry pulls land at rootDir/packages/@org/package/
+			if aliasDir, subpath, ok := resolveRegistryImport(rest, rootDir); ok {
+				imported, err := loadFromDir(aliasDir, subpath, imp, rootDir, aliasMap, seen, files, fileImports)
+				if err != nil {
+					return ast.AST{}, err
 				}
+				merged = mergeAST(merged, imported)
+				continue
 			}
-			alias := rest
-			name := ""
+
+			// ── Standard alias: @alias[/name] ─────────────────────────────
+			slashIdx := strings.Index(rest, "/")
+			alias, name := rest, ""
 			if slashIdx >= 0 {
 				alias = rest[:slashIdx]
 				name = rest[slashIdx+1:]
 			}
-
-			// Resolve alias to directory
 			aliasDir := resolveAliasDir(alias, rootDir, aliasMap)
-
-			if name == "*" {
-				// Wildcard: load all .veld files in aliasDir
-				entries, err := os.ReadDir(aliasDir)
-				if err != nil {
-					continue // directory may not exist — skip silently
-				}
-				for _, entry := range entries {
-					if !entry.IsDir() && filepath.Ext(entry.Name()) == ".veld" {
-						importPath := filepath.Join(aliasDir, entry.Name())
-						importAbs, _ := filepath.Abs(importPath)
-						fileImports[abs] = append(fileImports[abs], importAbs)
-						imported, err := resolveFile(importPath, rootDir, aliasMap, seen, files, fileImports)
-						if err != nil {
-							return ast.AST{}, fmt.Errorf("import %q: %w", imp, err)
-						}
-						merged.Models = append(merged.Models, imported.Models...)
-						merged.Modules = append(merged.Modules, imported.Modules...)
-						merged.Enums = append(merged.Enums, imported.Enums...)
-					}
-				}
-			} else {
-				// Single alias-based file
-				importPath := filepath.Join(aliasDir, name)
-				importAbs, _ := filepath.Abs(importPath)
-				fileImports[abs] = append(fileImports[abs], importAbs)
-				imported, err := resolveFile(importPath, rootDir, aliasMap, seen, files, fileImports)
-				if err != nil {
-					return ast.AST{}, fmt.Errorf("import %q: %w", imp, err)
-				}
-				merged.Models = append(merged.Models, imported.Models...)
-				merged.Modules = append(merged.Modules, imported.Modules...)
-				merged.Enums = append(merged.Enums, imported.Enums...)
+			imported, err := loadFromDir(aliasDir, name, imp, rootDir, aliasMap, seen, files, fileImports)
+			if err != nil {
+				return ast.AST{}, err
 			}
+			merged = mergeAST(merged, imported)
+
 		} else {
-			// Legacy relative import: resolve from this file's directory
+			// Legacy relative import
 			importPath := filepath.Join(dir, imp)
 			importAbs, _ := filepath.Abs(importPath)
 			fileImports[abs] = append(fileImports[abs], importAbs)
@@ -141,29 +109,136 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 			if err != nil {
 				return ast.AST{}, fmt.Errorf("import %q: %w", imp, err)
 			}
-			merged.Models = append(merged.Models, imported.Models...)
-			merged.Modules = append(merged.Modules, imported.Modules...)
-			merged.Enums = append(merged.Enums, imported.Enums...)
+			merged = mergeAST(merged, imported)
 		}
 	}
-	merged.Models = append(merged.Models, a.Models...)
-	merged.Modules = append(merged.Modules, a.Modules...)
-	merged.Enums = append(merged.Enums, a.Enums...)
-	// Propagate app-level prefix (first non-empty wins).
+
+	merged = mergeAST(merged, a)
 	if a.Prefix != "" && merged.Prefix == "" {
 		merged.Prefix = a.Prefix
 	}
 	return merged, nil
 }
 
-// resolveAliasDir maps an alias name to its absolute directory.
-// If aliasMap has an entry, that relative path (from rootDir) is used.
-// Otherwise the alias name itself is used as a subdirectory of rootDir.
+// resolveRegistryImport detects @org/package[/subpath] imports and maps them
+// to rootDir/packages/@org/package. Returns (dir, subpath, true) on match.
+func resolveRegistryImport(rest, rootDir string) (dir, subpath string, ok bool) {
+	// Need at least "org/package"
+	parts := strings.SplitN(rest, "/", 3)
+	if len(parts) < 2 {
+		return "", "", false
+	}
+	org, pkg := parts[0], parts[1]
+	sub := ""
+	if len(parts) == 3 {
+		sub = parts[2]
+	}
+
+	candidate := filepath.Join(rootDir, "packages", "@"+org, pkg)
+	if _, err := os.Stat(candidate); err != nil {
+		return "", "", false
+	}
+	return candidate, sub, true
+}
+
+// loadFromDir loads .veld files from aliasDir according to the subpath pattern:
+//
+//	""        → load all .veld files recursively in aliasDir
+//	"*"       → load all .veld files in aliasDir (non-recursive)
+//	"sub/*"   → load all .veld files in aliasDir/sub/
+//	"sub/**"  → load all .veld files in aliasDir/sub/ recursively
+//	"file.veld" → load single file
+func loadFromDir(aliasDir, subpath, origImport, rootDir string, aliasMap map[string]string, seen map[string]bool, files *[]string, fileImports map[string][]string) (ast.AST, error) {
+	merged := ast.AST{ASTVersion: "1.0.0"}
+
+	// Determine target directory and pattern
+	targetDir := aliasDir
+	pattern := subpath
+	recursive := false
+
+	if subpath == "" {
+		// bare @org/package — load everything recursively
+		recursive = true
+		pattern = "**"
+	} else if strings.HasSuffix(subpath, "/**") {
+		targetDir = filepath.Join(aliasDir, strings.TrimSuffix(subpath, "/**"))
+		pattern = "**"
+		recursive = true
+	} else if strings.HasSuffix(subpath, "/*") {
+		targetDir = filepath.Join(aliasDir, strings.TrimSuffix(subpath, "/*"))
+		pattern = "*"
+	} else if subpath == "*" || subpath == "**" {
+		recursive = subpath == "**"
+		pattern = subpath
+	}
+
+	switch pattern {
+	case "*":
+		// Non-recursive glob of targetDir
+		entries, err := os.ReadDir(targetDir)
+		if err != nil {
+			return merged, nil // directory may not exist — skip silently
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() && filepath.Ext(entry.Name()) == ".veld" {
+				p := filepath.Join(targetDir, entry.Name())
+				abs, _ := filepath.Abs(p)
+				fileImports[abs] = append(fileImports[abs], abs)
+				imp, err := resolveFile(p, rootDir, aliasMap, seen, files, fileImports)
+				if err != nil {
+					return ast.AST{}, fmt.Errorf("import %q: %w", origImport, err)
+				}
+				merged = mergeAST(merged, imp)
+			}
+		}
+
+	case "**":
+		// Recursive glob
+		_ = recursive
+		err := filepath.WalkDir(targetDir, func(p string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil || d.IsDir() || filepath.Ext(p) != ".veld" {
+				return walkErr
+			}
+			abs, _ := filepath.Abs(p)
+			fileImports[abs] = append(fileImports[abs], abs)
+			imp, err := resolveFile(p, rootDir, aliasMap, seen, files, fileImports)
+			if err != nil {
+				return fmt.Errorf("import %q: %w", origImport, err)
+			}
+			merged = mergeAST(merged, imp)
+			return nil
+		})
+		if err != nil {
+			return ast.AST{}, err
+		}
+
+	default:
+		// Single file
+		p := filepath.Join(aliasDir, subpath)
+		abs, _ := filepath.Abs(p)
+		fileImports[abs] = append(fileImports[abs], abs)
+		imp, err := resolveFile(p, rootDir, aliasMap, seen, files, fileImports)
+		if err != nil {
+			return ast.AST{}, fmt.Errorf("import %q: %w", origImport, err)
+		}
+		merged = mergeAST(merged, imp)
+	}
+
+	return merged, nil
+}
+
 func resolveAliasDir(alias, rootDir string, aliasMap map[string]string) string {
 	if aliasMap != nil {
 		if mapped, ok := aliasMap[alias]; ok {
 			return filepath.Join(rootDir, mapped)
 		}
 	}
-	return filepath.Join(rootDir, alias) // default: alias == folder name
+	return filepath.Join(rootDir, alias)
+}
+
+func mergeAST(dst, src ast.AST) ast.AST {
+	dst.Models = append(dst.Models, src.Models...)
+	dst.Modules = append(dst.Modules, src.Modules...)
+	dst.Enums = append(dst.Enums, src.Enums...)
+	return dst
 }
