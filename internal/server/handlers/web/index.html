@@ -4,813 +4,1470 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Veld Registry</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0d1117;--surface:#161b22;--card:#1c2128;--border:#30363d;
-  --primary:#6366f1;--primary-dim:#4f46e5;--primary-glow:rgba(99,102,241,.15);
-  --success:#10b981;--warn:#f59e0b;--danger:#ef4444;
-  --text:#e6edf3;--muted:#8b949e;--link:#58a6ff;
-  --radius:8px;--font:'Segoe UI',system-ui,sans-serif;
+  --bg:#0a0e14;--surface:#0d1117;--card:#161b22;--card2:#1c2230;--border:#21262d;--border2:#30363d;
+  --primary:#7c3aed;--primary-2:#6d28d9;--primary-glow:rgba(124,58,237,.12);--primary-text:#a78bfa;
+  --success:#10b981;--success-dim:rgba(16,185,129,.12);
+  --warn:#f59e0b;--warn-dim:rgba(245,158,11,.12);
+  --danger:#ef4444;--danger-dim:rgba(239,68,68,.12);
+  --text:#e6edf3;--muted:#7d8590;--subtle:#3d444d;
+  --radius:10px;--radius-sm:6px;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --mono:'Cascadia Code','Fira Code','JetBrains Mono',monospace;
+  --shadow:0 8px 32px rgba(0,0,0,.4);
+  --trans:.15s ease;
 }
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
-a{color:var(--link);text-decoration:none}a:hover{text-decoration:underline}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:var(--primary-text);text-decoration:none}a:hover{text-decoration:underline}
 button{cursor:pointer;font-family:inherit;font-size:14px}
-input,textarea,select{font-family:inherit;font-size:14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;outline:none;width:100%;transition:.15s border-color}
-input:focus,textarea:focus,select:focus{border-color:var(--primary)}
-label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:500;letter-spacing:.5px;text-transform:uppercase}
-h1{font-size:24px;font-weight:700}h2{font-size:18px;font-weight:600}h3{font-size:15px;font-weight:600}
-.mono{font-family:'Cascadia Code','Fira Code',monospace;font-size:13px}
+input,textarea,select{font-family:inherit;font-size:14px;background:var(--card2);color:var(--text);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:9px 13px;outline:none;width:100%;transition:var(--trans)}
+input:focus,textarea:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-glow)}
+input::placeholder,textarea::placeholder{color:var(--muted)}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:500;letter-spacing:.4px}
+h1{font-size:22px;font-weight:700}h2{font-size:17px;font-weight:600}h3{font-size:14px;font-weight:600}
 
-/* Layout */
+/* ── Layout ── */
 #app{display:flex;height:100vh;overflow:hidden}
-#sidebar{width:220px;min-width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0;overflow-y:auto}
-#main{flex:1;overflow-y:auto;padding:32px}
+#sidebar{width:228px;min-width:228px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+#main{flex:1;overflow-y:auto;padding:0}
+#content{padding:32px;max-width:1100px}
 
-/* Sidebar */
-.sidebar-logo{padding:20px 20px 12px;border-bottom:1px solid var(--border)}
-.sidebar-logo .name{font-size:18px;font-weight:700;color:var(--text)}
-.sidebar-logo .tag{font-size:11px;color:var(--primary);background:var(--primary-glow);padding:2px 6px;border-radius:4px;margin-left:6px}
+/* ── Auth screen ── */
+#auth-screen{display:none;min-height:100vh;align-items:center;justify-content:center;background:var(--bg)}
+#auth-screen.show{display:flex}
+.auth-box{background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:40px;width:100%;max-width:420px;box-shadow:var(--shadow)}
+.auth-logo{display:flex;align-items:center;gap:10px;margin-bottom:28px}
+.auth-logo-hex{font-size:28px;color:var(--primary-text)}
+.auth-logo-text{font-size:20px;font-weight:800;letter-spacing:-.3px}
+.auth-logo-badge{font-size:10px;background:var(--primary-glow);color:var(--primary-text);border:1px solid var(--primary);padding:1px 7px;border-radius:999px;letter-spacing:.5px;text-transform:uppercase}
+.auth-tabs{display:flex;gap:0;margin-bottom:24px;background:var(--card2);border-radius:var(--radius-sm);padding:3px}
+.auth-tab{flex:1;padding:7px;text-align:center;border-radius:4px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:500;transition:var(--trans);border:none;background:transparent}
+.auth-tab.active{background:var(--card);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.auth-divider{text-align:center;color:var(--muted);font-size:12px;margin:16px 0;position:relative}
+.auth-divider::before,.auth-divider::after{content:'';position:absolute;top:50%;width:42%;height:1px;background:var(--border2)}
+.auth-divider::before{left:0}.auth-divider::after{right:0}
+
+/* ── Sidebar ── */
+.sidebar-logo{padding:18px 20px 14px;border-bottom:1px solid var(--border)}
+.sidebar-logo-row{display:flex;align-items:center;gap:8px}
+.logo-hex{font-size:22px;color:var(--primary-text)}
+.logo-name{font-size:16px;font-weight:800;letter-spacing:-.2px}
+.logo-tag{font-size:9px;color:var(--primary-text);background:var(--primary-glow);border:1px solid rgba(124,58,237,.3);padding:1px 6px;border-radius:999px;letter-spacing:.6px;text-transform:uppercase;margin-left:2px}
+.sidebar-search{padding:12px 14px;border-bottom:1px solid var(--border)}
+.sidebar-search input{padding:7px 11px;font-size:13px;background:var(--card2)}
 .sidebar-nav{flex:1;padding:8px 0}
-.nav-section{padding:8px 16px 4px;font-size:11px;color:var(--muted);letter-spacing:.8px;text-transform:uppercase;font-weight:600}
-.nav-item{display:flex;align-items:center;gap:10px;padding:8px 20px;color:var(--muted);transition:.1s color,.1s background;cursor:pointer;border:none;background:none;width:100%;text-align:left;font-size:13px}
-.nav-item:hover{color:var(--text);background:rgba(255,255,255,.04)}
-.nav-item.active{color:var(--primary);background:var(--primary-glow)}
-.nav-item .icon{width:16px;text-align:center;font-size:15px}
-.sidebar-footer{padding:16px;border-top:1px solid var(--border)}
-.user-chip{display:flex;align-items:center;gap:10px;padding:8px;border-radius:var(--radius);background:var(--card);cursor:pointer}
-.avatar{width:30px;height:30px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.nav-group{margin-bottom:4px}
+.nav-label{padding:8px 18px 3px;font-size:10px;color:var(--subtle);letter-spacing:.8px;text-transform:uppercase;font-weight:600}
+.nav-item{display:flex;align-items:center;gap:9px;padding:7px 18px;color:var(--muted);transition:var(--trans);cursor:pointer;border:none;background:none;width:100%;text-align:left;font-size:13px;border-radius:0}
+.nav-item:hover{color:var(--text);background:rgba(255,255,255,.03)}
+.nav-item.active{color:var(--primary-text);background:var(--primary-glow)}
+.nav-icon{width:18px;text-align:center;font-size:15px;flex-shrink:0}
+.nav-badge{margin-left:auto;background:var(--primary);color:#fff;border-radius:999px;padding:1px 7px;font-size:10px;font-weight:700}
+.sidebar-footer{padding:14px;border-top:1px solid var(--border)}
+.user-chip{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);background:var(--card2);border:1px solid var(--border);cursor:pointer;transition:var(--trans)}
+.user-chip:hover{border-color:var(--primary)}
+.avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#a78bfa);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;color:#fff}
+.user-info{min-width:0;flex:1}
+.user-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-role{font-size:11px;color:var(--muted)}
 
-/* Buttons */
-.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius);border:none;font-weight:500;transition:.15s;cursor:pointer}
-.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-dim)}
-.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}.btn-ghost:hover{color:var(--text);border-color:var(--text)}
-.btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}.btn-danger:hover{background:var(--danger);color:#fff}
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 16px;border-radius:var(--radius-sm);border:none;font-weight:500;font-size:13px;transition:var(--trans);cursor:pointer;white-space:nowrap}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover:not(:disabled){background:var(--primary-2)}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border2)}.btn-ghost:hover{color:var(--text);border-color:var(--border2);background:rgba(255,255,255,.04)}
+.btn-danger{background:transparent;color:var(--danger);border:1px solid rgba(239,68,68,.4)}.btn-danger:hover{background:var(--danger-dim)}
+.btn-success{background:var(--success);color:#fff}.btn-success:hover{filter:brightness(1.1)}
 .btn-sm{padding:5px 10px;font-size:12px}
-.btn-success{background:var(--success);color:#fff}
+.btn-xs{padding:3px 8px;font-size:11px}
+.btn-icon{padding:6px;border-radius:var(--radius-sm);background:transparent;border:1px solid var(--border2);color:var(--muted)}.btn-icon:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.btn-block{width:100%}
 
-/* Cards */
+/* ── Cards ── */
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px}
 .card-sm{padding:16px}
+.card-hover{transition:var(--trans) border-color;cursor:pointer}.card-hover:hover{border-color:var(--primary)}
 
-/* Grid */
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
-@media(max-width:768px){.grid-2,.grid-3{grid-template-columns:1fr}}
-
-/* Page header */
-.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
-.page-title{font-size:22px;font-weight:700}
-.breadcrumb{font-size:13px;color:var(--muted);margin-bottom:8px}
+/* ── Page header ── */
+.page-header{padding:24px 32px 0;margin-bottom:24px}
+.page-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.page-title{font-size:20px;font-weight:700;letter-spacing:-.2px}
+.page-sub{font-size:13px;color:var(--muted);margin-top:3px}
+.breadcrumb{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:5px}
 .breadcrumb span{color:var(--text)}
 
-/* Stat card */
-.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
-.stat-value{font-size:32px;font-weight:700;color:var(--primary)}
-.stat-label{font-size:13px;color:var(--muted);margin-top:4px}
+/* ── Stats grid ── */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px}
+.stat-val{font-size:30px;font-weight:800;color:var(--primary-text);line-height:1}
+.stat-lbl{font-size:12px;color:var(--muted);margin-top:5px;font-weight:500}
+.stat-trend{font-size:11px;color:var(--success);margin-top:3px}
 
-/* Package card */
-.pkg-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;cursor:pointer;transition:.15s border-color}
-.pkg-card:hover{border-color:var(--primary)}
+/* ── Grid ── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+@media(max-width:900px){.grid-2,.grid-3,.grid-4,.stats-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.grid-2,.grid-3,.grid-4,.stats-grid{grid-template-columns:1fr}}
+
+/* ── Package cards ── */
+.pkg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+.pkg-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;cursor:pointer;transition:var(--trans)}
+.pkg-card:hover{border-color:var(--primary);box-shadow:0 4px 20px rgba(124,58,237,.08)}
+.pkg-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
 .pkg-name{font-size:15px;font-weight:600;color:var(--text)}
-.pkg-scope{color:var(--muted)}
-.pkg-desc{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pkg-meta{display:flex;gap:12px;margin-top:12px;font-size:12px;color:var(--muted)}
-.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
-.badge-public{background:rgba(16,185,129,.15);color:var(--success)}
-.badge-private{background:rgba(239,68,68,.15);color:var(--danger)}
-.badge-version{background:var(--primary-glow);color:var(--primary)}
-.badge-dep{background:rgba(245,158,11,.15);color:var(--warn)}
+.pkg-scope{color:var(--muted);font-weight:400}
+.pkg-desc{font-size:13px;color:var(--muted);margin-top:7px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pkg-footer{display:flex;align-items:center;gap:10px;margin-top:13px;font-size:11px;color:var(--muted)}
+.pkg-version{font-family:var(--mono);background:var(--card2);padding:2px 7px;border-radius:4px;color:var(--primary-text);font-size:11px}
 
-/* Table */
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;gap:4px}
+.badge-pub{background:var(--success-dim);color:var(--success)}
+.badge-priv{background:var(--warn-dim);color:var(--warn)}
+.badge-dep{background:var(--danger-dim);color:var(--danger)}
+.badge-owner{background:rgba(124,58,237,.15);color:var(--primary-text)}
+.badge-admin{background:rgba(245,158,11,.12);color:var(--warn)}
+.badge-member{background:rgba(125,133,144,.1);color:var(--muted)}
+.badge-scope{background:var(--card2);color:var(--muted);border:1px solid var(--border2)}
+
+/* ── Table ── */
+.table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
 table{width:100%;border-collapse:collapse}
-th{text-align:left;padding:8px 12px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
-td{padding:10px 12px;border-bottom:1px solid rgba(48,54,61,.5);font-size:13px}
+th{text-align:left;padding:10px 16px;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase;background:var(--card2);border-bottom:1px solid var(--border)}
+td{padding:11px 16px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:rgba(255,255,255,.02)}
+tr:hover td{background:rgba(255,255,255,.015)}
 
-/* Search */
-.search-bar{display:flex;gap:8px;margin-bottom:24px}
-.search-bar input{flex:1}
-
-/* Form */
+/* ── Form groups ── */
 .form-group{margin-bottom:16px}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.hint{font-size:12px;color:var(--muted);margin-top:4px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form-hint{font-size:11px;color:var(--muted);margin-top:5px}
 
-/* Toast */
-#toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
-.toast{padding:12px 20px;border-radius:var(--radius);font-size:13px;font-weight:500;animation:slide-in .2s ease;max-width:360px}
-.toast-success{background:#10b981;color:#fff}
-.toast-error{background:#ef4444;color:#fff}
-.toast-info{background:#6366f1;color:#fff}
-@keyframes slide-in{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+/* ── Alert banners ── */
+.alert{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border-radius:var(--radius-sm);border:1px solid;font-size:13px;margin-bottom:16px}
+.alert-warn{background:var(--warn-dim);border-color:rgba(245,158,11,.3);color:var(--warn)}
+.alert-danger{background:var(--danger-dim);border-color:rgba(239,68,68,.3);color:var(--danger)}
+.alert-success{background:var(--success-dim);border-color:rgba(16,185,129,.3);color:var(--success)}
+.alert-info{background:var(--primary-glow);border-color:rgba(124,58,237,.3);color:var(--primary-text)}
+.alert-icon{font-size:16px;flex-shrink:0}
+.alert-body{flex:1}
+.alert-title{font-weight:600;margin-bottom:2px}
 
-/* Code block */
-.code-block{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px;position:relative}
-.code-block pre{overflow-x:auto;color:#79c0ff}
-.copy-btn{position:absolute;top:8px;right:8px;background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:4px 10px;font-size:11px;cursor:pointer}
-.copy-btn:hover{color:var(--text);border-color:var(--text)}
+/* ── Code / mono ── */
+.code{font-family:var(--mono);font-size:12px;background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;overflow-x:auto;line-height:1.7;color:#c9d1d9}
+.inline-code{font-family:var(--mono);font-size:12px;background:var(--card2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--primary-text)}
 
-/* Modal */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px}
-.modal{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto}
-.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
-.modal-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer}
-.modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+/* ── Copy button ── */
+.copy-wrap{position:relative;display:flex;align-items:center}
+.copy-wrap input,.copy-wrap .code-line{flex:1;padding-right:40px}
+.copy-btn{position:absolute;right:8px;background:transparent;border:none;color:var(--muted);cursor:pointer;padding:4px;border-radius:4px;font-size:14px;transition:var(--trans)}
+.copy-btn:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.copied-tip{position:absolute;right:8px;font-size:11px;color:var(--success);pointer-events:none;opacity:0;transition:.3s}
+.copied-tip.show{opacity:1}
 
-/* Tags */
-.tag-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.tag{background:var(--primary-glow);color:var(--primary);padding:4px 10px;border-radius:999px;font-size:11px;cursor:pointer}
-.tag:hover{background:var(--primary);color:#fff}
+/* ── Modal ── */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
+.modal-backdrop.hidden{display:none}
+.modal{background:var(--card);border:1px solid var(--border2);border-radius:14px;padding:28px;width:100%;max-width:500px;box-shadow:var(--shadow);max-height:90vh;overflow-y:auto}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.modal-title{font-size:16px;font-weight:700}
+.modal-close{background:transparent;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:2px;line-height:1}.modal-close:hover{color:var(--text)}
 
-/* Divider */
-.divider{height:1px;background:var(--border);margin:20px 0}
+/* ── Tabs ── */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px}
+.tab{padding:10px 16px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px;transition:var(--trans);background:none;border-left:none;border-right:none;border-top:none}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--primary-text);border-bottom-color:var(--primary)}
 
-/* Auth page */
-.auth-page{display:flex;align-items:center;justify-content:center;height:100vh;background:var(--bg)}
-.auth-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:40px;width:380px}
-.auth-logo{text-align:center;margin-bottom:28px}
-.auth-logo .logo-text{font-size:28px;font-weight:800;color:var(--primary)}
-.auth-logo .logo-sub{font-size:13px;color:var(--muted);margin-top:4px}
-.auth-tabs{display:flex;margin-bottom:24px;border-bottom:1px solid var(--border)}
-.auth-tab{flex:1;padding:10px;text-align:center;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:.15s}
-.auth-tab.active{color:var(--primary);border-bottom-color:var(--primary)}
-
-/* Empty state */
-.empty{text-align:center;padding:60px 20px;color:var(--muted)}
-.empty-icon{font-size:48px;margin-bottom:12px}
+/* ── Empty state ── */
+.empty{text-align:center;padding:64px 20px;color:var(--muted)}
+.empty-icon{font-size:48px;margin-bottom:16px;opacity:.4}
 .empty-title{font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px}
+.empty-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
 
-/* Version list */
-.version-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(48,54,61,.5)}
+/* ── Search bar ── */
+.search-bar{display:flex;gap:10px;margin-bottom:20px;align-items:center}
+.search-bar input{max-width:320px}
+.search-bar select{max-width:150px;width:auto}
+
+/* ── Version row ── */
+.version-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
 .version-row:last-child{border-bottom:none}
-.version-tag{font-family:monospace;font-size:14px;font-weight:600;color:var(--primary)}
+.version-tag{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--primary-text)}
+.version-meta{font-size:12px;color:var(--muted);flex:1}
+.version-actions{display:flex;gap:6px}
 
-/* Scopes */
-.scope-group{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
-.scope-toggle{display:flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;background:none;color:var(--muted)}
-.scope-toggle.active{border-color:var(--primary);color:var(--primary);background:var(--primary-glow)}
+/* ── Section divider ── */
+.section{margin-bottom:28px}
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.section-title{font-size:14px;font-weight:700;color:var(--text)}
+.section-sub{font-size:12px;color:var(--muted);margin-top:2px}
 
-/* Spinner */
-.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
-@keyframes spin{to{transform:rotate(360deg)}}
+/* ── QR code ── */
+#qr-container{display:flex;justify-content:center;padding:20px;background:var(--card2);border-radius:var(--radius-sm);border:1px solid var(--border);margin:14px 0}
+#qr-container canvas{border-radius:6px}
 
-/* Scrollbar */
+/* ── Toasts ── */
+#toast-area{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:9999}
+.toast{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;box-shadow:var(--shadow);animation:slide-in .2s ease;min-width:240px;max-width:380px;border:1px solid}
+.toast-success{background:#0d2e1f;border-color:rgba(16,185,129,.4);color:var(--success)}
+.toast-error{background:#2d1515;border-color:rgba(239,68,68,.4);color:var(--danger)}
+.toast-info{background:#1a1040;border-color:rgba(124,58,237,.4);color:var(--primary-text)}
+@keyframes slide-in{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* ── Token item ── */
+.token-item{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:10px}
+.token-header{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.token-name{font-weight:600;font-size:14px}
+.token-footer{display:flex;align-items:center;gap:12px;font-size:11px;color:var(--muted)}
+
+/* ── Org member ── */
+.member-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.member-row:last-child{border-bottom:none}
+.member-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#a78bfa);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;color:#fff}
+.member-info{flex:1;min-width:0}
+.member-name{font-size:13px;font-weight:600}
+.member-email{font-size:11px;color:var(--muted)}
+
+/* ── Scrollbar ── */
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
+
+/* ── Utilities ── */
+.flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}
+.mt-1{margin-top:4px}.mt-2{margin-top:8px}.mt-3{margin-top:12px}.mt-4{margin-top:16px}
+.mb-1{margin-bottom:4px}.mb-2{margin-bottom:8px}.mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}
+.text-muted{color:var(--muted)}.text-danger{color:var(--danger)}.text-success{color:var(--success)}
+.text-sm{font-size:12px}.text-xs{font-size:11px}.font-mono{font-family:var(--mono)}
+.truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hidden{display:none!important}
+.w-full{width:100%}
+.spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
-<div id="toast-container"></div>
-<div id="root"></div>
-<script>
-// ── State ────────────────────────────────────────────────────────────────────
-const state = {
-  user: null,
-  route: location.hash.slice(1) || '/',
-  modal: null,
-};
 
-// ── API ──────────────────────────────────────────────────────────────────────
-const api = {
-  async req(method, path, body, isMultipart) {
-    const opts = { method, headers: {} };
-    if (body && !isMultipart) {
-      opts.headers['Content-Type'] = 'application/json';
-      opts.body = JSON.stringify(body);
-    } else if (isMultipart) {
-      opts.body = body; // FormData
-    }
-    const r = await fetch('/api/v1' + path, opts);
-    if (r.status === 204) return null;
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || 'Request failed');
-    return data;
-  },
-  get: (p) => api.req('GET', p),
-  post: (p, b) => api.req('POST', p, b),
-  delete: (p) => api.req('DELETE', p),
-  postForm: (p, fd) => api.req('POST', p, fd, true),
-};
-
-// ── Router ───────────────────────────────────────────────────────────────────
-window.addEventListener('hashchange', () => {
-  state.route = location.hash.slice(1) || '/';
-  render();
-});
-function navigate(route) {
-  location.hash = route;
-}
-
-// ── Toast ─────────────────────────────────────────────────────────────────────
-function toast(msg, type='info') {
-  const el = document.createElement('div');
-  el.className = `toast toast-${type}`;
-  el.textContent = msg;
-  document.getElementById('toast-container').appendChild(el);
-  setTimeout(() => el.remove(), 3500);
-}
-
-// ── Copy to clipboard ─────────────────────────────────────────────────────────
-async function copy(text, btn) {
-  await navigator.clipboard.writeText(text).catch(() => {});
-  if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 1500); }
-  else toast('Copied to clipboard', 'success');
-}
-
-// ── Modal ─────────────────────────────────────────────────────────────────────
-function openModal(html) {
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal">${html}</div>`;
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
-  return overlay;
-}
-function closeModal() { document.querySelector('.modal-overlay')?.remove(); }
-
-// ── Auth ──────────────────────────────────────────────────────────────────────
-async function loadUser() {
-  try { state.user = await api.get('/auth/me'); } catch { state.user = null; }
-}
-
-// ── Render ────────────────────────────────────────────────────────────────────
-async function render() {
-  if (!state.user) {
-    document.getElementById('root').innerHTML = renderAuthPage();
-    bindAuth();
-    return;
-  }
-  document.getElementById('root').innerHTML = renderShell();
-  bindNav();
-  await renderPage();
-}
-
-// ── Auth Page ─────────────────────────────────────────────────────────────────
-function renderAuthPage() {
-  return `<div class="auth-page">
-    <div class="auth-card">
-      <div class="auth-logo">
-        <div class="logo-text">⬡ Veld Registry</div>
-        <div class="logo-sub">Contract-first API package registry</div>
-      </div>
-      <div class="auth-tabs">
-        <div class="auth-tab active" data-tab="login">Sign In</div>
-        <div class="auth-tab" data-tab="register">Create Account</div>
-      </div>
-      <div id="auth-form">
-        <div class="form-group"><label>Email</label><input id="auth-email" type="email" placeholder="you@example.com"/></div>
-        <div class="form-group login-only" style="display:none"><label>Username</label><input id="auth-username" placeholder="your-username"/></div>
-        <div class="form-group"><label>Password</label><input id="auth-password" type="password" placeholder="••••••••"/></div>
-        <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" id="auth-submit">Sign In</button>
-        <div id="auth-err" style="color:var(--danger);font-size:13px;margin-top:10px;text-align:center"></div>
-      </div>
+<!-- ── Auth screen ─────────────────────────────────────────────────────────── -->
+<div id="auth-screen" class="show">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <span class="auth-logo-hex">⬡</span>
+      <span class="auth-logo-text">Veld Registry</span>
+      <span class="auth-logo-badge">Beta</span>
     </div>
-  </div>`;
-}
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Sign in</button>
+      <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Create account</button>
+    </div>
 
-function bindAuth() {
-  let mode = 'login';
-  document.querySelectorAll('.auth-tab').forEach(t => {
-    t.addEventListener('click', () => {
-      mode = t.dataset.tab;
-      document.querySelectorAll('.auth-tab').forEach(x => x.classList.toggle('active', x.dataset.tab === mode));
-      document.querySelector('.login-only').style.display = mode === 'register' ? '' : 'none';
-      document.getElementById('auth-submit').textContent = mode === 'login' ? 'Sign In' : 'Create Account';
-    });
-  });
-  document.getElementById('auth-submit').addEventListener('click', async () => {
-    const email = document.getElementById('auth-email').value.trim();
-    const password = document.getElementById('auth-password').value;
-    const username = document.getElementById('auth-username')?.value.trim();
-    const btn = document.getElementById('auth-submit');
-    btn.textContent = 'Loading…'; btn.disabled = true;
-    try {
-      if (mode === 'login') {
-        await api.post('/auth/login', { email, password });
-      } else {
-        await api.post('/auth/register', { email, username, password });
-      }
-      await loadUser();
-      render();
-    } catch (e) {
-      document.getElementById('auth-err').textContent = e.message;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = mode === 'login' ? 'Sign In' : 'Create Account';
-    }
-  });
-  // Enter key submits
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('auth-submit')?.click();
-  }, { once: true });
-}
+    <!-- Login -->
+    <div id="login-form">
+      <div class="form-group">
+        <label>Email address</label>
+        <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email"/>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="doLogin()">Sign in</button>
+    </div>
 
-// ── Shell ─────────────────────────────────────────────────────────────────────
-function renderShell() {
-  const u = state.user;
-  const av = u.username[0].toUpperCase();
-  return `
-  <div id="app">
-    <nav id="sidebar">
-      <div class="sidebar-logo">
-        <span class="name">⬡ Veld</span><span class="tag">Registry</span>
+    <!-- TOTP step -->
+    <div id="totp-step" class="hidden">
+      <div class="alert alert-info" style="margin-bottom:16px">
+        <span class="alert-icon">🔐</span>
+        <div><div class="alert-title">Two-factor authentication</div>Enter the 6-digit code from your authenticator app.</div>
       </div>
-      <div class="sidebar-nav">
-        <div class="nav-section">General</div>
-        <button class="nav-item" data-route="/" ><span class="icon">⊞</span>Dashboard</button>
-        <button class="nav-item" data-route="/packages"><span class="icon">📦</span>Packages</button>
-        <button class="nav-item" data-route="/orgs"><span class="icon">🏢</span>Organisations</button>
-        <div class="nav-section" style="margin-top:8px">Account</div>
-        <button class="nav-item" data-route="/tokens"><span class="icon">🔑</span>API Tokens</button>
-        <button class="nav-item" data-route="/settings"><span class="icon">⚙</span>Settings</button>
+      <div class="form-group">
+        <label>Authenticator code</label>
+        <input type="text" id="totp-code" placeholder="000 000" maxlength="6" autocomplete="one-time-code" style="font-family:var(--mono);font-size:20px;letter-spacing:4px;text-align:center" onkeydown="if(event.key==='Enter')doTOTPLogin()"/>
       </div>
-      <div class="sidebar-footer">
-        <div class="user-chip" id="logout-btn">
-          <div class="avatar">${av}</div>
-          <div>
-            <div style="font-weight:600;font-size:13px">${u.username}</div>
-            <div style="font-size:11px;color:var(--muted)">Sign out</div>
-          </div>
+      <button class="btn btn-primary btn-block" onclick="doTOTPLogin()">Verify</button>
+      <button class="btn btn-ghost btn-block mt-2" onclick="showLoginForm()">← Back</button>
+    </div>
+
+    <!-- Register -->
+    <div id="register-form" class="hidden">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="reg-username" placeholder="johndoe" autocomplete="username"/>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="reg-email" placeholder="you@example.com" autocomplete="email"/>
         </div>
       </div>
-    </nav>
-    <main id="main"><div id="page-content"><div class="spinner"></div></div></main>
-  </div>`;
-}
-
-function bindNav() {
-  document.querySelectorAll('.nav-item[data-route]').forEach(btn => {
-    const r = btn.dataset.route;
-    if (matchRoute(r)) btn.classList.add('active');
-    btn.addEventListener('click', () => navigate(r));
-  });
-  document.getElementById('logout-btn')?.addEventListener('click', async () => {
-    await api.post('/auth/logout');
-    state.user = null;
-    render();
-  });
-}
-
-function matchRoute(r) {
-  if (r === '/') return state.route === '/';
-  return state.route.startsWith(r);
-}
-
-async function renderPage() {
-  const r = state.route;
-  const el = document.getElementById('page-content');
-  el.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><div class="spinner"></div> Loading…</div>';
-  try {
-    if (r === '/') await pageDashboard(el);
-    else if (r === '/packages') await pagePackages(el);
-    else if (r.startsWith('/packages/')) await pagePackageDetail(el, r);
-    else if (r === '/orgs') await pageOrgs(el);
-    else if (r.startsWith('/orgs/')) await pageOrgDetail(el, r);
-    else if (r === '/tokens') await pageTokens(el);
-    else if (r === '/settings') pageSettings(el);
-    else el.innerHTML = `<div class="empty"><div class="empty-icon">🗺</div><div class="empty-title">Page not found</div></div>`;
-  } catch (e) {
-    el.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">${e.message}</div></div>`;
-  }
-}
-
-// ── Dashboard ─────────────────────────────────────────────────────────────────
-async function pageDashboard(el) {
-  const [stats, pkgs, orgs] = await Promise.all([
-    api.get('/stats'),
-    api.get('/packages'),
-    api.get('/orgs'),
-  ]);
-  el.innerHTML = `
-    <div class="page-header"><h1 class="page-title">Dashboard</h1></div>
-    <div class="grid-3" style="margin-bottom:28px">
-      ${statCard(stats.packages,'Packages','📦')}
-      ${statCard(stats.versions,'Published Versions','🚀')}
-      ${statCard(stats.users,'Registry Users','👥')}
-    </div>
-    <div class="grid-2">
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <h2>Recent Packages</h2>
-          <button class="btn btn-ghost btn-sm" onclick="navigate('/packages')">View all</button>
-        </div>
-        ${pkgs.slice(0,5).map(p => pkgCard(p)).join('') || emptyState('📦','No packages yet')}
+      <div class="form-group">
+        <label>Password <span class="text-muted">(min 8 chars)</span></label>
+        <input type="password" id="reg-password" placeholder="••••••••" autocomplete="new-password" onkeydown="if(event.key==='Enter')doRegister()"/>
       </div>
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <h2>Your Organisations</h2>
-          <button class="btn btn-ghost btn-sm" id="new-org-dash">+ New Org</button>
-        </div>
-        ${orgs.length ? orgs.map(o => orgRow(o)).join('') : emptyState('🏢','No organisations yet')}
+      <button class="btn btn-primary btn-block" onclick="doRegister()">Create account</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Main app ────────────────────────────────────────────────────────────── -->
+<div id="app" class="hidden">
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-row">
+        <span class="logo-hex">⬡</span>
+        <span class="logo-name">Veld</span>
+        <span class="logo-tag">Registry</span>
       </div>
-    </div>`;
-  document.getElementById('new-org-dash')?.addEventListener('click', showCreateOrgModal);
-}
-
-function statCard(val, label, icon) {
-  return `<div class="stat-card"><div style="font-size:28px;margin-bottom:8px">${icon}</div><div class="stat-value">${val??0}</div><div class="stat-label">${label}</div></div>`;
-}
-function orgRow(o) {
-  return `<div class="card card-sm" style="margin-bottom:8px;cursor:pointer" onclick="navigate('/orgs/${o.name}')">
-    <div style="font-weight:600">@${o.name}</div>
-    ${o.description ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${o.description}</div>` : ''}
-  </div>`;
-}
-
-// ── Packages Page ──────────────────────────────────────────────────────────────
-async function pagePackages(el) {
-  const pkgs = await api.get('/packages');
-  el.innerHTML = `
-    <div class="page-header">
-      <h1 class="page-title">Packages</h1>
-      <button class="btn btn-primary" id="publish-btn">+ Publish</button>
     </div>
-    <div class="search-bar">
-      <input id="pkg-search" placeholder="Search packages…" value=""/>
+    <div class="sidebar-search">
+      <input type="text" placeholder="🔍  Search packages..." id="sidebar-search" oninput="onSidebarSearch(this.value)"/>
     </div>
-    <div id="pkg-grid">${renderPkgGrid(pkgs)}</div>`;
-
-  let allPkgs = pkgs;
-  document.getElementById('pkg-search').addEventListener('input', async e => {
-    const q = e.target.value.trim();
-    const filtered = q ? allPkgs.filter(p =>
-      p.name.includes(q) || (p.org_name||'').includes(q) || (p.description||'').includes(q)
-    ) : allPkgs;
-    document.getElementById('pkg-grid').innerHTML = renderPkgGrid(filtered);
-  });
-  document.getElementById('publish-btn')?.addEventListener('click', showPublishModal);
-}
-
-function renderPkgGrid(pkgs) {
-  if (!pkgs || !pkgs.length) return emptyState('📦','No packages found','Publish your first contract with <code>veld push</code>');
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">${pkgs.map(p => pkgCard(p)).join('')}</div>`;
-}
-
-function pkgCard(p) {
-  const full = `@${p.org_name}/${p.name}`;
-  return `<div class="pkg-card" onclick="navigate('/packages/${p.org_name}/${p.name}')">
-    <div class="pkg-name"><span class="pkg-scope">@${p.org_name}/</span>${p.name}</div>
-    <div class="pkg-desc">${p.description || 'No description'}</div>
-    <div class="pkg-meta">
-      ${p.latest_version ? `<span class="badge badge-version">v${p.latest_version}</span>` : ''}
-      <span class="badge badge-${p.visibility}">${p.visibility}</span>
-      ${p.version_count ? `<span>${p.version_count} version${p.version_count>1?'s':''}</span>` : ''}
+    <div class="sidebar-nav">
+      <div class="nav-group">
+        <div class="nav-label">Overview</div>
+        <button class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+          <span class="nav-icon">◈</span> Dashboard
+        </button>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Registry</div>
+        <button class="nav-item" data-page="packages" onclick="navigate('packages')">
+          <span class="nav-icon">📦</span> Packages
+        </button>
+        <button class="nav-item" data-page="orgs" onclick="navigate('orgs')">
+          <span class="nav-icon">🏛</span> Organisations
+        </button>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Account</div>
+        <button class="nav-item" data-page="tokens" onclick="navigate('tokens')">
+          <span class="nav-icon">🔑</span> API Tokens
+        </button>
+        <button class="nav-item" data-page="settings" onclick="navigate('settings')">
+          <span class="nav-icon">⚙</span> Settings
+        </button>
+      </div>
     </div>
-  </div>`;
-}
-
-// ── Package Detail ─────────────────────────────────────────────────────────────
-async function pagePackageDetail(el, route) {
-  const parts = route.replace('/packages/','').split('/');
-  const orgName = parts[0], pkgName = parts[1];
-  const data = await api.get(`/packages/${orgName}/${pkgName}`);
-  const pkg = data.package, versions = data.versions || [];
-  const latest = versions.find(v => !v.deprecated) || versions[0];
-
-  const installCmd = `veld pull @${orgName}/${pkgName}@${latest?.version || 'latest'}`;
-  const depVersion = latest?.version || '1.0.0';
-  const depLine = `"@${orgName}/${pkgName}": "${depVersion}"`;
-  const depBlock = `"dependencies": {\n  ${depLine}\n}`;
-  const installCmdEsc = installCmd.replace(/'/g, "\\'");
-  const depLineEsc   = depLine.replace(/'/g, "\\'");
-  el.innerHTML = `
-    <div class="breadcrumb"><a href="#/packages">Packages</a> › <a href="#/orgs/${orgName}">@${orgName}</a> › <span>${pkgName}</span></div>
-    <div class="page-header">
-      <div>
-        <h1 class="page-title"><span style="color:var(--muted)">@${orgName}/</span>${pkgName}</h1>
-        <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
-          ${latest ? `<span class="badge badge-version">v${latest.version}</span>` : ''}
-          <span class="badge badge-${pkg.visibility}">${pkg.visibility}</span>
-          <span style="font-size:12px;color:var(--muted)">${versions.length} version${versions.length!==1?'s':''}</span>
+    <div class="sidebar-footer">
+      <div class="user-chip" onclick="navigate('settings')">
+        <div class="avatar" id="sidebar-avatar">?</div>
+        <div class="user-info">
+          <div class="user-name" id="sidebar-username">Loading…</div>
+          <div class="user-role" id="sidebar-email"></div>
         </div>
       </div>
     </div>
-    ${pkg.description ? `<p style="color:var(--muted);margin-bottom:20px">${pkg.description}</p>` : ''}
-    <div class="grid-2" style="margin-bottom:24px">
-      <div>
-        <h3 style="margin-bottom:10px">Install</h3>
-        <div class="code-block">
-          <pre class="mono">${escHtml(installCmd)}</pre>
-          <button class="copy-btn" onclick="copy('${installCmdEsc}',this)">Copy</button>
-        </div>
-        <div style="margin-top:12px">
-          <h3 style="margin-bottom:8px">In veld.config.json</h3>
-          <div class="code-block">
-            <pre class="mono">${escHtml(depBlock)}</pre>
-            <button class="copy-btn" onclick="copy('${depLineEsc}',this)">Copy</button>
-          </div>
-        </div>
-      </div>
-      <div>
-        <h3 style="margin-bottom:10px">Versions</h3>
-        ${versions.map(v => versionRow(v, orgName, pkgName)).join('') || '<p style="color:var(--muted)">No versions yet</p>'}
-      </div>
-    </div>`;
-}
+  </nav>
 
-function versionRow(v, orgName, pkgName) {
-  const depBadge = v.deprecated ? `<span class="badge badge-dep">deprecated</span>` : '';
-  return `<div class="version-row">
-    <div>
-      <span class="version-tag">v${v.version}</span> ${depBadge}
-      <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDate(v.published_at)}</div>
-      ${v.deprecated ? `<div style="font-size:12px;color:var(--warn);margin-top:2px">${v.deprecated}</div>` : ''}
+  <!-- Main content -->
+  <main id="main">
+    <!-- Verification banner -->
+    <div id="verify-banner" class="hidden" style="background:var(--warn-dim);border-bottom:1px solid rgba(245,158,11,.3);padding:10px 32px">
+      <div style="display:flex;align-items:center;gap:12px;font-size:13px;color:var(--warn)">
+        <span>⚠</span>
+        <span>Your email is not verified. Check your inbox or</span>
+        <button class="btn btn-sm" style="background:var(--warn);color:#000;font-weight:600" onclick="resendVerification()">Resend verification</button>
+      </div>
     </div>
-    <div style="display:flex;gap:6px">
-      <button class="btn btn-ghost btn-sm" onclick="copy('veld pull @${orgName}/${pkgName}@${v.version}',this)">Copy</button>
-    </div>
-  </div>`;
-}
 
-// ── Orgs Page ─────────────────────────────────────────────────────────────────
-async function pageOrgs(el) {
-  const orgs = await api.get('/orgs');
-  el.innerHTML = `
-    <div class="page-header">
-      <h1 class="page-title">Organisations</h1>
-      <button class="btn btn-primary" id="new-org-btn">+ New Organisation</button>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:12px">
-      ${orgs.length ? orgs.map(o => `
-        <div class="card card-sm" style="cursor:pointer" onclick="navigate('/orgs/${o.name}')">
-          <div style="display:flex;align-items:center;justify-content:space-between">
+    <div id="content">
+      <!-- Dashboard -->
+      <div id="page-dashboard" class="page hidden">
+        <div class="page-header" style="padding:0;margin-bottom:24px">
+          <div class="page-title-row">
             <div>
-              <div style="font-weight:600;font-size:15px">@${o.name}</div>
-              ${o.display_name ? `<div style="font-size:12px;color:var(--muted)">${o.display_name}</div>` : ''}
-              ${o.description ? `<div style="font-size:13px;color:var(--muted);margin-top:4px">${o.description}</div>` : ''}
+              <div class="page-title">Dashboard</div>
+              <div class="page-sub">Registry overview and recent activity</div>
             </div>
-            <span style="color:var(--muted);font-size:18px">›</span>
+            <button class="btn btn-primary" onclick="navigate('packages')">Browse packages →</button>
           </div>
-        </div>`).join('') : emptyState('🏢','No organisations','Create an org to publish packages under a shared scope')}
-    </div>`;
-  document.getElementById('new-org-btn')?.addEventListener('click', showCreateOrgModal);
-}
-
-async function pageOrgDetail(el, route) {
-  const orgName = route.replace('/orgs/','');
-  const data = await api.get(`/orgs/${orgName}`);
-  const { org, members, packages } = data;
-  const isAdmin = members.some(m => m.user_id === state.user?.id && (m.role==='owner'||m.role==='admin'));
-
-  el.innerHTML = `
-    <div class="breadcrumb"><a href="#/orgs">Organisations</a> › <span>@${org.name}</span></div>
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">@${org.name}</h1>
-        ${org.display_name ? `<div style="color:var(--muted);margin-top:4px">${org.display_name}</div>` : ''}
-        ${org.description ? `<p style="color:var(--muted);margin-top:6px">${org.description}</p>` : ''}
-      </div>
-    </div>
-    <div class="grid-2">
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <h2>Packages (${packages.length})</h2>
         </div>
-        ${packages.map(p => pkgCard(p)).join('') || emptyState('📦','No packages yet')}
-      </div>
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <h2>Members (${members.length})</h2>
-          ${isAdmin ? `<button class="btn btn-ghost btn-sm" id="add-member-btn">+ Add Member</button>` : ''}
+        <div class="stats-grid" id="stats-grid">
+          <div class="stat-card"><div class="stat-val" id="stat-users">—</div><div class="stat-lbl">Users</div></div>
+          <div class="stat-card"><div class="stat-val" id="stat-orgs">—</div><div class="stat-lbl">Organisations</div></div>
+          <div class="stat-card"><div class="stat-val" id="stat-packages">—</div><div class="stat-lbl">Packages</div></div>
+          <div class="stat-card"><div class="stat-val" id="stat-versions">—</div><div class="stat-lbl">Versions published</div></div>
         </div>
-        <div class="card" style="padding:0">
-          <table>
-            <thead><tr><th>User</th><th>Role</th>${isAdmin?'<th></th>':''}</tr></thead>
-            <tbody>
-              ${members.map(m => `<tr>
-                <td><div style="font-weight:500">${m.username}</div><div style="font-size:11px;color:var(--muted)">${m.email}</div></td>
-                <td><span class="badge" style="background:var(--card);border:1px solid var(--border)">${m.role}</span></td>
-                ${isAdmin ? `<td><button class="btn btn-ghost btn-sm" onclick="removeMember('${org.name}','${m.username}')">Remove</button></td>` : ''}
-              </tr>`).join('')}
-            </tbody>
-          </table>
+
+        <!-- Getting started -->
+        <div class="section">
+          <div class="section-header"><div class="section-title">Getting started</div></div>
+          <div class="grid-2">
+            <div class="card">
+              <h3 style="margin-bottom:10px">🚀 Push your first package</h3>
+              <p class="text-muted" style="font-size:13px;margin-bottom:14px">Add a registry block to your <span class="inline-code">veld.config.json</span> and push.</p>
+              <div class="code" id="gs-push-block">loading...</div>
+            </div>
+            <div class="card">
+              <h3 style="margin-bottom:10px">📥 Pull a dependency</h3>
+              <p class="text-muted" style="font-size:13px;margin-bottom:14px">Run <span class="inline-code">veld pull</span> to install a package into your project.</p>
+              <div class="code">veld pull @org/package@1.0.0</div>
+              <div class="code mt-2">veld generate  # imports from packages/ dir automatically</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CLI quickstart -->
+        <div class="section">
+          <div class="section-header"><div class="section-title">CLI authentication</div></div>
+          <div class="card">
+            <div class="alert alert-info" style="margin-bottom:14px">
+              <span class="alert-icon">ℹ</span>
+              <div><div class="alert-title">Token-only CLI login</div>Create an API token below, then use it with the CLI. Email/password login is only available via this web UI.</div>
+            </div>
+            <div class="code" id="gs-login-block">loading...</div>
+            <div style="margin-top:12px">
+              <button class="btn btn-ghost btn-sm" onclick="navigate('tokens')">→ Manage API tokens</button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>`;
 
-  document.getElementById('add-member-btn')?.addEventListener('click', () => showAddMemberModal(org.name));
-}
-
-// ── Tokens Page ───────────────────────────────────────────────────────────────
-async function pageTokens(el) {
-  const tokens = await api.get('/tokens');
-  el.innerHTML = `
-    <div class="page-header">
-      <h1 class="page-title">API Tokens</h1>
-      <button class="btn btn-primary" id="new-token-btn">+ New Token</button>
-    </div>
-    <div class="card" style="margin-bottom:16px;padding:16px;border-color:var(--primary)">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Use tokens for CI/CD and the Veld CLI</div>
-      <div class="code-block" style="margin-top:8px">
-        <pre class="mono">veld login --registry ${location.origin} --token vtk_your_token_here</pre>
+      <!-- Packages -->
+      <div id="page-packages" class="page hidden">
+        <div class="page-header" style="padding:0;margin-bottom:20px">
+          <div class="page-title-row">
+            <div>
+              <div class="page-title">Packages</div>
+              <div class="page-sub">Browse and manage published contract packages</div>
+            </div>
+          </div>
+        </div>
+        <div class="search-bar">
+          <input type="text" id="pkg-search" placeholder="Search packages…" oninput="filterPackages(this.value)" style="flex:1"/>
+          <select id="pkg-vis-filter" onchange="filterPackages(document.getElementById('pkg-search').value)">
+            <option value="">All visibility</option>
+            <option value="public">Public only</option>
+            <option value="private">Private only</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="loadPackages()">↻ Refresh</button>
+        </div>
+        <div id="pkg-list" class="pkg-grid"></div>
       </div>
+
+      <!-- Package detail -->
+      <div id="page-pkg-detail" class="page hidden">
+        <div class="page-header" style="padding:0;margin-bottom:20px">
+          <div class="breadcrumb">
+            <span onclick="navigate('packages')" style="cursor:pointer;color:var(--primary-text)">Packages</span>
+            <span style="color:var(--subtle)">›</span>
+            <span id="detail-org-name"></span>
+            <span style="color:var(--subtle)">›</span>
+            <span id="detail-pkg-name"></span>
+          </div>
+          <div class="page-title-row">
+            <div>
+              <div class="page-title" id="detail-full-name"></div>
+              <div id="detail-desc" class="page-sub"></div>
+            </div>
+            <div class="flex gap-2" id="detail-actions"></div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="gap:20px">
+          <div>
+            <div class="tabs">
+              <button class="tab active" onclick="detailTab('versions',this)">Versions</button>
+              <button class="tab" onclick="detailTab('install',this)">Install</button>
+            </div>
+            <div id="detail-tab-versions">
+              <div id="version-list"></div>
+            </div>
+            <div id="detail-tab-install" class="hidden">
+              <div class="section">
+                <div class="section-title mb-2">veld.config.json dependency</div>
+                <div class="code" id="install-dep-code"></div>
+              </div>
+              <div class="section">
+                <div class="section-title mb-2">Pull command</div>
+                <div class="code" id="install-pull-code"></div>
+              </div>
+              <div class="section">
+                <div class="section-title mb-2">Import in .veld file</div>
+                <div class="code" id="install-import-code"></div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="card mb-4" id="detail-info-card"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Orgs -->
+      <div id="page-orgs" class="page hidden">
+        <div class="page-header" style="padding:0;margin-bottom:20px">
+          <div class="page-title-row">
+            <div>
+              <div class="page-title">Organisations</div>
+              <div class="page-sub">Manage your orgs and team members</div>
+            </div>
+            <button class="btn btn-primary" onclick="openModal('modal-create-org')">+ New Organisation</button>
+          </div>
+        </div>
+        <div id="orgs-list"></div>
+      </div>
+
+      <!-- Tokens -->
+      <div id="page-tokens" class="page hidden">
+        <div class="page-header" style="padding:0;margin-bottom:20px">
+          <div class="page-title-row">
+            <div>
+              <div class="page-title">API Tokens</div>
+              <div class="page-sub">Tokens authenticate the CLI and CI/CD pipelines</div>
+            </div>
+            <button class="btn btn-primary" onclick="openModal('modal-create-token')">+ New Token</button>
+          </div>
+        </div>
+        <div class="alert alert-info" style="margin-bottom:20px">
+          <span class="alert-icon">🔑</span>
+          <div>
+            <div class="alert-title">How to use tokens with the CLI</div>
+            <div class="code mt-2" id="token-login-hint" style="background:transparent;border:none;padding:0"></div>
+          </div>
+        </div>
+        <div id="tokens-list"></div>
+      </div>
+
+      <!-- Settings -->
+      <div id="page-settings" class="page hidden">
+        <div class="page-header" style="padding:0;margin-bottom:24px">
+          <div class="page-title">Settings</div>
+          <div class="page-sub">Account preferences and security</div>
+        </div>
+        <div class="grid-2" style="align-items:start;gap:20px">
+          <!-- Profile -->
+          <div>
+            <div class="card mb-4">
+              <h2 style="margin-bottom:16px">Profile</h2>
+              <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+                <div class="avatar" id="settings-avatar" style="width:56px;height:56px;font-size:22px"></div>
+                <div>
+                  <div id="settings-username" style="font-size:16px;font-weight:700"></div>
+                  <div id="settings-email" class="text-muted text-sm"></div>
+                  <div id="settings-verified-status" class="text-xs mt-1"></div>
+                </div>
+              </div>
+              <button class="btn btn-ghost btn-sm" onclick="resendVerification()">Resend verification email</button>
+            </div>
+
+            <!-- Change password -->
+            <div class="card">
+              <h2 style="margin-bottom:16px">Change password</h2>
+              <div class="form-group">
+                <label>Current password</label>
+                <input type="password" id="pw-current" placeholder="••••••••"/>
+              </div>
+              <div class="form-group">
+                <label>New password</label>
+                <input type="password" id="pw-new" placeholder="••••••••"/>
+              </div>
+              <div class="form-group">
+                <label>Confirm new password</label>
+                <input type="password" id="pw-confirm" placeholder="••••••••"/>
+              </div>
+              <button class="btn btn-primary" onclick="changePassword()">Update password</button>
+            </div>
+          </div>
+
+          <!-- 2FA -->
+          <div>
+            <div class="card">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <h2>Two-factor authentication</h2>
+                <span id="totp-status-badge"></span>
+              </div>
+              <p class="text-muted text-sm mb-4">Protect your account with an authenticator app (Google Authenticator, Authy, 1Password, etc.)</p>
+              <div id="totp-disabled-ui">
+                <button class="btn btn-primary" onclick="startTOTPSetup()">Enable 2FA</button>
+              </div>
+              <div id="totp-setup-ui" class="hidden">
+                <div class="alert alert-warn">
+                  <span class="alert-icon">📱</span>
+                  <div><div class="alert-title">Scan with your authenticator app</div>Or enter the secret key manually.</div>
+                </div>
+                <div id="qr-container"><div class="spinner"></div></div>
+                <div class="form-group mt-3">
+                  <label>Secret key (manual entry)</label>
+                  <div class="copy-wrap">
+                    <input type="text" id="totp-secret-display" readonly style="font-family:var(--mono);letter-spacing:1px"/>
+                    <button class="copy-btn" onclick="copyText('totp-secret-display')">⎘</button>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>Verify — enter the 6-digit code from your app</label>
+                  <input type="text" id="totp-confirm-code" placeholder="000000" maxlength="6" style="font-family:var(--mono);font-size:18px;letter-spacing:4px;text-align:center" onkeydown="if(event.key==='Enter')confirmTOTP()"/>
+                </div>
+                <div class="flex gap-2">
+                  <button class="btn btn-primary" onclick="confirmTOTP()">Activate 2FA</button>
+                  <button class="btn btn-ghost" onclick="cancelTOTPSetup()">Cancel</button>
+                </div>
+              </div>
+              <div id="totp-enabled-ui" class="hidden">
+                <div class="alert alert-success mb-3">
+                  <span class="alert-icon">✓</span>
+                  <div>Two-factor authentication is active on your account.</div>
+                </div>
+                <button class="btn btn-danger" onclick="openModal('modal-disable-totp')">Disable 2FA</button>
+              </div>
+            </div>
+
+            <!-- Logout -->
+            <div class="card mt-4">
+              <h2 style="margin-bottom:12px">Session</h2>
+              <button class="btn btn-danger" onclick="doLogout()">Sign out of all sessions</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /content -->
+  </main>
+</div><!-- /app -->
+
+<!-- ── Modals ──────────────────────────────────────────────────────────────── -->
+
+<!-- Create token -->
+<div class="modal-backdrop hidden" id="modal-create-token">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">New API Token</div>
+      <button class="modal-close" onclick="closeModal('modal-create-token')">×</button>
     </div>
-    <div class="card" style="padding:0">
-      ${tokens.length ? `<table>
-        <thead><tr><th>Name</th><th>Scopes</th><th>Last used</th><th>Created</th><th></th></tr></thead>
-        <tbody>${tokens.map(t => `<tr>
-          <td><div style="font-weight:500">${t.name}</div>${t.org_id?`<div style="font-size:11px;color:var(--muted)">org-scoped</div>`:''}</td>
-          <td>${t.scopes.map(s=>`<span class="badge" style="background:var(--card);border:1px solid var(--border);margin-right:4px">${s}</span>`).join('')}</td>
-          <td style="color:var(--muted);font-size:12px">${t.last_used?fmtDate(t.last_used):'Never'}</td>
-          <td style="color:var(--muted);font-size:12px">${fmtDate(t.created_at)}</td>
-          <td><button class="btn btn-danger btn-sm" onclick="deleteToken('${t.id}')">Revoke</button></td>
-        </tr>`).join('')}</tbody>
-      </table>` : emptyState('🔑','No tokens yet','Create a token to authenticate the Veld CLI')}
-    </div>`;
-  document.getElementById('new-token-btn')?.addEventListener('click', showCreateTokenModal);
-}
-
-function pageSettings(el) {
-  const u = state.user;
-  el.innerHTML = `
-    <div class="page-header"><h1 class="page-title">Settings</h1></div>
-    <div class="card" style="max-width:480px">
-      <h2 style="margin-bottom:16px">Account</h2>
-      <div class="form-group"><label>Username</label><input value="${u.username}" disabled/></div>
-      <div class="form-group"><label>Email</label><input value="${u.email}" disabled/></div>
-      <div class="divider"></div>
-      <h3 style="margin-bottom:12px">CLI Quick-Start</h3>
-      <div class="code-block"><pre class="mono"># 1. Login\nveld login --registry ${location.origin}\n\n# 2. Push your contracts\nveld push\n\n# 3. Pull in another project\nveld pull @your-org/package-name</pre></div>
-    </div>`;
-}
-
-// ── Modals ─────────────────────────────────────────────────────────────────────
-function showCreateOrgModal() {
-  const o = openModal(`
-    <div class="modal-header"><h2>New Organisation</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="form-group"><label>Organisation Name</label><input id="org-name" placeholder="my-company"/><div class="hint">Lowercase letters, digits, hyphens. This becomes the @scope.</div></div>
-    <div class="form-group"><label>Display Name</label><input id="org-display" placeholder="My Company"/></div>
-    <div class="form-group"><label>Description</label><textarea id="org-desc" rows="2" placeholder="What does this org build?"></textarea></div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" id="create-org-submit">Create Organisation</button>
-    </div>`);
-  document.getElementById('create-org-submit').addEventListener('click', async () => {
-    try {
-      const org = await api.post('/orgs', {
-        name: document.getElementById('org-name').value.trim(),
-        display_name: document.getElementById('org-display').value.trim(),
-        description: document.getElementById('org-desc').value.trim(),
-      });
-      closeModal();
-      toast(`Created @${org.name}`, 'success');
-      navigate(`/orgs/${org.name}`);
-    } catch(e) { toast(e.message, 'error'); }
-  });
-}
-
-function showAddMemberModal(orgName) {
-  openModal(`
-    <div class="modal-header"><h2>Add Member to @${orgName}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="form-group"><label>Username</label><input id="member-username" placeholder="their-username"/></div>
-    <div class="form-group"><label>Role</label>
-      <select id="member-role">
-        <option value="member">Member — can view private packages</option>
-        <option value="admin">Admin — can publish packages</option>
-        <option value="owner">Owner — full control</option>
-      </select>
+    <div class="form-group">
+      <label>Token name</label>
+      <input type="text" id="new-token-name" placeholder="e.g. CI/CD pipeline, Local dev"/>
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" id="add-member-submit">Add Member</button>
-    </div>`);
-  document.getElementById('add-member-submit').addEventListener('click', async () => {
-    try {
-      await api.post(`/orgs/${orgName}/members`, {
-        username: document.getElementById('member-username').value.trim(),
-        role: document.getElementById('member-role').value,
-      });
-      closeModal();
-      toast('Member added', 'success');
-      await renderPage();
-    } catch(e) { toast(e.message, 'error'); }
-  });
-}
-
-async function removeMember(orgName, username) {
-  if (!confirm(`Remove ${username} from @${orgName}?`)) return;
-  try {
-    await api.delete(`/orgs/${orgName}/members/${username}`);
-    toast('Member removed', 'success');
-    await renderPage();
-  } catch(e) { toast(e.message, 'error'); }
-}
-
-function showCreateTokenModal() {
-  const scopes = new Set(['read']);
-  openModal(`
-    <div class="modal-header"><h2>New API Token</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="form-group"><label>Token Name</label><input id="tok-name" placeholder="ci-deploy"/></div>
     <div class="form-group">
       <label>Scopes</label>
-      <div class="scope-group">
-        ${['read','write','delete'].map(s => `<button class="scope-toggle${scopes.has(s)?' active':''}" data-scope="${s}">${s}</button>`).join('')}
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+        <label style="text-transform:none;letter-spacing:0;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text)">
+          <input type="checkbox" id="scope-read" checked style="width:auto"/> read — download packages
+        </label>
+        <label style="text-transform:none;letter-spacing:0;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text)">
+          <input type="checkbox" id="scope-publish" style="width:auto"/> publish — push new versions
+        </label>
+        <label style="text-transform:none;letter-spacing:0;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text)">
+          <input type="checkbox" id="scope-admin" style="width:auto"/> admin — manage org members & settings
+        </label>
       </div>
     </div>
-    <div class="form-group"><label>Expires in days (0 = never)</label><input id="tok-exp" type="number" value="0" min="0"/></div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" id="create-tok-submit">Create Token</button>
-    </div>`);
-  document.querySelectorAll('.scope-toggle').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const s = btn.dataset.scope;
-      if (s === 'read') return; // read is always required
-      btn.classList.toggle('active');
-      if (btn.classList.contains('active')) scopes.add(s); else scopes.delete(s);
-    });
-  });
-  document.getElementById('create-tok-submit').addEventListener('click', async () => {
-    try {
-      const tok = await api.post('/tokens', {
-        name: document.getElementById('tok-name').value.trim(),
-        scopes: [...scopes],
-        expires_days: parseInt(document.getElementById('tok-exp').value) || 0,
-      });
-      closeModal();
-      // Show the plain token once
-      openModal(`
-        <div class="modal-header"><h2>Token Created</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
-        <div style="background:rgba(16,185,129,.1);border:1px solid var(--success);border-radius:8px;padding:16px;margin-bottom:16px">
-          <div style="font-size:12px;color:var(--success);margin-bottom:8px;font-weight:600">⚠ Copy this token — it will not be shown again</div>
-          <div class="mono" style="word-break:break-all;color:var(--text)">${tok.token}</div>
+    <div class="form-group">
+      <label>Expiry <span class="text-muted">(days, 0 = never)</span></label>
+      <input type="number" id="new-token-exp" value="0" min="0"/>
+    </div>
+    <div id="new-token-result" class="hidden">
+      <div class="alert alert-warn mb-3">
+        <span class="alert-icon">⚠</span>
+        <div><div class="alert-title">Copy your token now</div>It will not be shown again.</div>
+      </div>
+      <div class="form-group">
+        <label>Your API token</label>
+        <div class="copy-wrap">
+          <input type="text" id="new-token-value" readonly style="font-family:var(--mono);font-size:12px"/>
+          <button class="copy-btn" onclick="copyText('new-token-value')">⎘</button>
         </div>
-        <button class="btn btn-success" style="width:100%;justify-content:center" onclick="copy('${tok.token}',this)">Copy to Clipboard</button>
-        <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal();renderPage()">Done</button></div>`);
-    } catch(e) { toast(e.message, 'error'); }
-  });
+      </div>
+      <div class="code mt-2" id="new-token-cli-hint"></div>
+    </div>
+    <div class="flex gap-2 mt-3" id="new-token-btn-row">
+      <button class="btn btn-primary" onclick="createToken()">Create token</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-create-token')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create org -->
+<div class="modal-backdrop hidden" id="modal-create-org">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">New Organisation</div>
+      <button class="modal-close" onclick="closeModal('modal-create-org')">×</button>
+    </div>
+    <div class="form-group">
+      <label>Org name <span class="text-muted">(used as @scope in imports)</span></label>
+      <input type="text" id="new-org-name" placeholder="acme-corp" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'')"/>
+      <div class="form-hint">Lowercase letters, numbers and hyphens only. Used as <span class="inline-code">@acme-corp/package</span></div>
+    </div>
+    <div class="form-group">
+      <label>Display name</label>
+      <input type="text" id="new-org-display" placeholder="Acme Corp"/>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <textarea id="new-org-desc" placeholder="What does your org build?" rows="2"></textarea>
+    </div>
+    <div class="flex gap-2 mt-3">
+      <button class="btn btn-primary" onclick="createOrg()">Create organisation</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-create-org')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Org detail / member management -->
+<div class="modal-backdrop hidden" id="modal-org-detail">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="org-detail-title"></div>
+        <div class="text-muted text-sm" id="org-detail-desc"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-org-detail')">×</button>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="orgTab('members',this)">Members</button>
+      <button class="tab" onclick="orgTab('packages',this)">Packages</button>
+    </div>
+    <div id="org-tab-members">
+      <div id="org-members-list"></div>
+      <div class="form-row mt-4" style="align-items:flex-end">
+        <div class="form-group" style="margin:0">
+          <label>Add member (username)</label>
+          <input type="text" id="add-member-username" placeholder="username"/>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Role</label>
+          <select id="add-member-role">
+            <option value="member">member</option>
+            <option value="admin">admin</option>
+            <option value="owner">owner</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="addMember()">Add</button>
+      </div>
+    </div>
+    <div id="org-tab-packages" class="hidden">
+      <div id="org-packages-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Disable TOTP -->
+<div class="modal-backdrop hidden" id="modal-disable-totp">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <div class="modal-title">Disable 2FA</div>
+      <button class="modal-close" onclick="closeModal('modal-disable-totp')">×</button>
+    </div>
+    <div class="alert alert-danger mb-4">
+      <span class="alert-icon">⚠</span>
+      <div>This will remove two-factor authentication from your account.</div>
+    </div>
+    <div class="form-group">
+      <label>Confirm with your password</label>
+      <input type="password" id="disable-totp-pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')disableTOTP()"/>
+    </div>
+    <div class="flex gap-2 mt-3">
+      <button class="btn btn-danger" onclick="disableTOTP()">Disable 2FA</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-disable-totp')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Deprecate version -->
+<div class="modal-backdrop hidden" id="modal-deprecate">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div class="modal-title">Deprecate version</div>
+      <button class="modal-close" onclick="closeModal('modal-deprecate')">×</button>
+    </div>
+    <div class="form-group">
+      <label>Reason (shown to users)</label>
+      <input type="text" id="deprecate-reason" placeholder="Use @org/pkg@2.0.0 instead"/>
+    </div>
+    <div class="flex gap-2 mt-3">
+      <button class="btn btn-danger" onclick="doDeprecate()">Deprecate</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-deprecate')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast area -->
+<div id="toast-area"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+const S = {
+  user: null,
+  pkgs: [],
+  orgs: [],
+  currentPage: 'dashboard',
+  pkgDetail: null,
+  orgDetail: null,
+  partialJWT: null,
+  deprecateTarget: null,
+};
+
+// ── API ────────────────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const r = await fetch('/api/v1' + path, opts);
+  const txt = await r.text();
+  let data;
+  try { data = JSON.parse(txt); } catch { data = { error: txt }; }
+  if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+  return data;
 }
 
-function showPublishModal() {
-  openModal(`
-    <div class="modal-header"><h2>Publish Package</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <p style="color:var(--muted);margin-bottom:16px;font-size:13px">Publishing from the UI is for quick uploads. For CI/CD use the CLI.</p>
-    <div class="code-block" style="margin-bottom:16px">
-      <pre class="mono"># From your project root:\nveld push --registry ${location.origin}</pre>
-      <button class="copy-btn" onclick="copy('veld push --registry ${location.origin}',this)">Copy</button>
-    </div>
-    <div class="divider"></div>
-    <h3 style="margin-bottom:12px">Manual Upload</h3>
-    <div class="form-row">
-      <div class="form-group"><label>Org Name</label><input id="pub-org" placeholder="acme"/></div>
-      <div class="form-group"><label>Package Name</label><input id="pub-name" placeholder="auth-service"/></div>
-    </div>
-    <div class="form-group"><label>Version</label><input id="pub-ver" placeholder="1.0.0"/></div>
-    <div class="form-group"><label>Tarball (.tar.gz)</label><input id="pub-file" type="file" accept=".tar.gz,.tgz"/></div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" id="pub-submit">Upload</button>
-    </div>`);
-  document.getElementById('pub-submit').addEventListener('click', async () => {
-    const btn = document.getElementById('pub-submit');
-    btn.disabled = true; btn.textContent = 'Uploading…';
-    try {
-      const fd = new FormData();
-      fd.append('manifest', JSON.stringify({
-        org: document.getElementById('pub-org').value.trim(),
-        name: document.getElementById('pub-name').value.trim(),
-        version: document.getElementById('pub-ver').value.trim(),
-      }));
-      fd.append('tarball', document.getElementById('pub-file').files[0]);
-      const res = await api.postForm('/packages', fd);
-      closeModal();
-      toast(`Published ${res.package}@${res.version} (${(res.size/1024).toFixed(1)} kB)`, 'success');
-      navigate(`/packages/${document.getElementById('pub-org').value}/${document.getElementById('pub-name').value}`);
-    } catch(e) { toast(e.message, 'error'); } finally { btn.disabled=false; btn.textContent='Upload'; }
-  });
+// ── Auth ───────────────────────────────────────────────────────────────────────
+function switchAuthTab(t) {
+  document.getElementById('tab-login').classList.toggle('active', t === 'login');
+  document.getElementById('tab-register').classList.toggle('active', t === 'register');
+  document.getElementById('login-form').classList.toggle('hidden', t !== 'login');
+  document.getElementById('register-form').classList.toggle('hidden', t !== 'register');
+  document.getElementById('totp-step').classList.add('hidden');
 }
 
-async function deleteToken(id) {
-  if (!confirm('Revoke this token? This cannot be undone.')) return;
+function showLoginForm() {
+  document.getElementById('login-form').classList.remove('hidden');
+  document.getElementById('totp-step').classList.add('hidden');
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
   try {
-    await api.delete(`/tokens/${id}`);
-    toast('Token revoked', 'success');
-    await renderPage();
-  } catch(e) { toast(e.message, 'error'); }
+    const r = await api('POST', '/auth/login', { email, password });
+    if (r.totp_required) {
+      S.partialJWT = r.partial;
+      document.getElementById('login-form').classList.add('hidden');
+      document.getElementById('totp-step').classList.remove('hidden');
+      document.getElementById('totp-code').focus();
+    } else {
+      S.user = r.user;
+      enterApp();
+    }
+  } catch (e) { toast(e.message, 'error'); }
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-function emptyState(icon, title, sub='') {
-  return `<div class="empty"><div class="empty-icon">${icon}</div><div class="empty-title">${title}</div>${sub?`<div style="font-size:13px;margin-top:4px">${sub}</div>`:''}</div>`;
+async function doTOTPLogin() {
+  const code = document.getElementById('totp-code').value.replace(/\s/g, '');
+  try {
+    const r = await api('POST', '/auth/totp-login', { partial: S.partialJWT, code });
+    S.user = r.user;
+    enterApp();
+  } catch (e) { toast(e.message, 'error'); }
 }
-function fmtDate(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
+
+async function doRegister() {
+  const username = document.getElementById('reg-username').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  try {
+    const r = await api('POST', '/auth/register', { username, email, password });
+    S.user = r.user;
+    enterApp();
+  } catch (e) { toast(e.message, 'error'); }
 }
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+async function doLogout() {
+  try { await api('POST', '/auth/logout'); } catch {}
+  S.user = null;
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('auth-screen').classList.add('show');
+  document.getElementById('login-form').classList.remove('hidden');
+  document.getElementById('totp-step').classList.add('hidden');
+  document.getElementById('register-form').classList.add('hidden');
+}
+
+async function resendVerification() {
+  try {
+    await api('POST', '/auth/resend-verification');
+    toast('Verification email sent! Check your inbox.', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Email verify from URL ──────────────────────────────────────────────────────
+async function checkEmailVerifyToken() {
+  const hash = window.location.hash;
+  const m = hash.match(/\/verify-email\?token=([^&]+)/);
+  if (!m) return;
+  try {
+    await api('POST', '/auth/verify-email', { token: m[1] });
+    toast('Email verified successfully! Welcome to Veld Registry.', 'success');
+    window.location.hash = '#/';
+    if (S.user) { S.user.email_verified = true; updateVerifyBanner(); }
+  } catch (e) { toast('Verification failed: ' + e.message, 'error'); }
+}
+
+// ── App init ───────────────────────────────────────────────────────────────────
+async function init() {
+  await checkEmailVerifyToken();
+  try {
+    S.user = await api('GET', '/auth/me');
+    enterApp();
+  } catch {
+    document.getElementById('auth-screen').classList.add('show');
+  }
+}
+
+function enterApp() {
+  document.getElementById('auth-screen').classList.remove('show');
+  document.getElementById('app').classList.remove('hidden');
+  updateSidebar();
+  updateVerifyBanner();
+  loadStats();
+  loadGettingStarted();
+  navigate('dashboard');
+}
+
+function updateSidebar() {
+  if (!S.user) return;
+  const initial = S.user.username[0].toUpperCase();
+  document.getElementById('sidebar-avatar').textContent = initial;
+  document.getElementById('sidebar-username').textContent = S.user.username;
+  document.getElementById('sidebar-email').textContent = S.user.email;
+  document.getElementById('settings-avatar').textContent = initial;
+  document.getElementById('settings-username').textContent = S.user.username;
+  document.getElementById('settings-email').textContent = S.user.email;
+  const vEl = document.getElementById('settings-verified-status');
+  vEl.textContent = S.user.email_verified ? '✓ Email verified' : '⚠ Email not verified';
+  vEl.style.color = S.user.email_verified ? 'var(--success)' : 'var(--warn)';
+  updateTOTPUI();
+}
+
+function updateVerifyBanner() {
+  const el = document.getElementById('verify-banner');
+  if (S.user && !S.user.email_verified) el.classList.remove('hidden');
+  else el.classList.add('hidden');
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────────
+function navigate(page) {
+  S.currentPage = page;
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const el = document.getElementById('page-' + page);
+  if (el) el.classList.remove('hidden');
+  const btn = document.querySelector(`.nav-item[data-page="${page}"]`);
+  if (btn) btn.classList.add('active');
+
+  if (page === 'packages') loadPackages();
+  else if (page === 'orgs') loadOrgs();
+  else if (page === 'tokens') loadTokens();
+  else if (page === 'settings') refreshSettingsUser();
+}
+
+function onSidebarSearch(q) {
+  if (q.trim().length > 0) {
+    navigate('packages');
+    document.getElementById('pkg-search').value = q;
+    filterPackages(q);
+  }
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const s = await api('GET', '/stats');
+    document.getElementById('stat-users').textContent = s.users ?? 0;
+    document.getElementById('stat-orgs').textContent = s.orgs ?? 0;
+    document.getElementById('stat-packages').textContent = s.packages ?? 0;
+    document.getElementById('stat-versions').textContent = s.versions ?? 0;
+  } catch {}
+}
+
+function loadGettingStarted() {
+  const reg = window.location.origin;
+  document.getElementById('gs-push-block').textContent =
+`# veld.config.json
+{
+  "registry": {
+    "enabled": true,
+    "url": "${reg}",
+    "org": "your-org",
+    "package": "your-package",
+    "version": "1.0.0"
+  }
+}
+
+# Push
+veld push`;
+  document.getElementById('gs-login-block').textContent =
+`# 1. Create a token at: ${reg}/#/tokens
+# 2. Authenticate the CLI
+veld login --registry ${reg} --token vtk_...`;
+  document.getElementById('token-login-hint').textContent =
+`veld login --registry ${reg} --token vtk_...`;
+}
+
+// ── Packages ───────────────────────────────────────────────────────────────────
+let allPkgs = [];
+
+async function loadPackages() {
+  const el = document.getElementById('pkg-list');
+  el.innerHTML = '<div class="empty"><div class="spinner" style="margin:0 auto"></div></div>';
+  try {
+    const vis = document.getElementById('pkg-vis-filter').value;
+    allPkgs = await api('GET', '/packages' + (vis ? '?visibility=' + vis : ''));
+    renderPackages(allPkgs);
+  } catch (e) { el.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; }
+}
+
+function filterPackages(q) {
+  const vis = document.getElementById('pkg-vis-filter').value;
+  let list = allPkgs;
+  if (vis) list = list.filter(p => p.visibility === vis);
+  if (q.trim()) {
+    const lq = q.toLowerCase();
+    list = list.filter(p =>
+      p.name.toLowerCase().includes(lq) ||
+      (p.org_name||'').toLowerCase().includes(lq) ||
+      (p.description||'').toLowerCase().includes(lq)
+    );
+  }
+  renderPackages(list);
+}
+
+function renderPackages(pkgs) {
+  const el = document.getElementById('pkg-list');
+  if (!pkgs || !pkgs.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📦</div><div class="empty-title">No packages found</div><div class="empty-sub">Packages pushed via <span class="inline-code">veld push</span> will appear here.</div></div>`;
+    return;
+  }
+  el.innerHTML = pkgs.map(p => `
+    <div class="pkg-card" onclick="openPackage('${esc(p.org_name)}','${esc(p.name)}')">
+      <div class="pkg-card-header">
+        <div class="pkg-name"><span class="pkg-scope">@${esc(p.org_name)}/</span>${esc(p.name)}</div>
+        <span class="badge ${p.visibility === 'private' ? 'badge-priv' : 'badge-pub'}">${p.visibility}</span>
+      </div>
+      <div class="pkg-desc">${esc(p.description||'No description provided.')}</div>
+      <div class="pkg-footer">
+        ${p.latest_version ? `<span class="pkg-version">v${esc(p.latest_version)}</span>` : ''}
+        <span>${p.version_count||0} version${p.version_count!==1?'s':''}</span>
+        <span>${timeAgo(p.created_at)}</span>
+      </div>
+    </div>`).join('');
+}
+
+async function openPackage(org, name) {
+  navigate('pkg-detail');
+  document.getElementById('detail-org-name').textContent = '@' + org;
+  document.getElementById('detail-pkg-name').textContent = name;
+  document.getElementById('detail-full-name').textContent = `@${org}/${name}`;
+  document.getElementById('detail-desc').textContent = 'Loading…';
+  document.getElementById('version-list').innerHTML = '<div class="spinner" style="margin:16px auto"></div>';
+  document.getElementById('detail-info-card').innerHTML = '';
+  document.getElementById('detail-actions').innerHTML = '';
+
+  try {
+    const [pkg, versions] = await Promise.all([
+      api('GET', `/packages/${org}/${name}`),
+      api('GET', `/packages/${org}/${name}/versions`),
+    ]);
+    S.pkgDetail = { pkg, org, name };
+    document.getElementById('detail-desc').textContent = pkg.description || '';
+
+    // Actions
+    document.getElementById('detail-actions').innerHTML = `
+      <button class="btn btn-ghost btn-sm" onclick="navigate('packages')">← Back</button>`;
+
+    // Info card
+    const latest = versions && versions[0];
+    document.getElementById('detail-info-card').innerHTML = `
+      <div class="section-title mb-3">Package info</div>
+      <table style="width:100%;border:none">
+        <tr><td class="text-muted text-sm" style="padding:5px 0;border:none">Scope</td><td style="padding:5px 0;border:none;font-family:var(--mono);font-size:12px">@${esc(org)}</td></tr>
+        <tr><td class="text-muted text-sm" style="padding:5px 0;border:none">Visibility</td><td style="padding:5px 0;border:none"><span class="badge ${pkg.visibility==='private'?'badge-priv':'badge-pub'}">${pkg.visibility}</span></td></tr>
+        <tr><td class="text-muted text-sm" style="padding:5px 0;border:none">Latest</td><td style="padding:5px 0;border:none;font-family:var(--mono);font-size:12px">${latest ? 'v'+esc(latest.version) : '—'}</td></tr>
+        <tr><td class="text-muted text-sm" style="padding:5px 0;border:none">Versions</td><td style="padding:5px 0;border:none">${versions ? versions.length : 0}</td></tr>
+        <tr><td class="text-muted text-sm" style="padding:5px 0;border:none">Published</td><td style="padding:5px 0;border:none">${timeAgo(pkg.created_at)}</td></tr>
+      </table>`;
+
+    // Versions
+    if (!versions || !versions.length) {
+      document.getElementById('version-list').innerHTML = '<div class="empty"><div class="empty-icon">📦</div><div class="empty-title">No versions yet</div></div>';
+    } else {
+      document.getElementById('version-list').innerHTML = versions.map(v => `
+        <div class="version-row">
+          <span class="version-tag">v${esc(v.version)}</span>
+          <div class="version-meta">
+            ${v.deprecated ? `<span class="badge badge-dep">deprecated</span> ${esc(v.deprecated)} · ` : ''}
+            ${formatBytes(v.tarball_size)} · ${timeAgo(v.published_at)}
+          </div>
+          <div class="version-actions">
+            <button class="btn btn-ghost btn-xs" onclick="copyText2('veld pull @${org}/${name}@${v.version}')">Copy pull</button>
+            ${!v.deprecated ? `<button class="btn btn-ghost btn-xs" onclick="openDeprecate('${esc(org)}','${esc(name)}','${esc(v.version)}')">Deprecate</button>` : ''}
+          </div>
+        </div>`).join('');
+    }
+
+    // Install tab
+    const latest_version = latest ? latest.version : '1.0.0';
+    document.getElementById('install-dep-code').textContent =
+      `"dependencies": {\n  "@${org}/${name}": "${latest_version}"\n}`;
+    document.getElementById('install-pull-code').textContent =
+      `veld pull @${org}/${name}@${latest_version}`;
+    document.getElementById('install-import-code').textContent =
+      `import @${org}/${name}\n// or specific files:\nimport @${org}/${name}/models/*`;
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function detailTab(tab, btn) {
+  document.querySelectorAll('#page-pkg-detail .tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('detail-tab-versions').classList.toggle('hidden', tab !== 'versions');
+  document.getElementById('detail-tab-install').classList.toggle('hidden', tab !== 'install');
+}
+
+function openDeprecate(org, name, version) {
+  S.deprecateTarget = { org, name, version };
+  openModal('modal-deprecate');
+}
+
+async function doDeprecate() {
+  const { org, name, version } = S.deprecateTarget;
+  const reason = document.getElementById('deprecate-reason').value.trim();
+  try {
+    await api('POST', `/packages/${org}/${name}/${version}/deprecate`, { message: reason });
+    closeModal('modal-deprecate');
+    toast(`v${version} deprecated`, 'success');
+    openPackage(org, name);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Orgs ───────────────────────────────────────────────────────────────────────
+async function loadOrgs() {
+  const el = document.getElementById('orgs-list');
+  el.innerHTML = '<div class="spinner" style="margin:32px auto"></div>';
+  try {
+    S.orgs = await api('GET', '/orgs');
+    renderOrgs(S.orgs);
+  } catch (e) { el.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; }
+}
+
+function renderOrgs(orgs) {
+  const el = document.getElementById('orgs-list');
+  if (!orgs || !orgs.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🏛</div><div class="empty-title">No organisations yet</div><div class="empty-sub">Create one to start publishing packages under a scope like <span class="inline-code">@myorg/package</span></div><button class="btn btn-primary" onclick="openModal('modal-create-org')">Create organisation</button></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="grid-2">${orgs.map(o => `
+    <div class="card card-hover" onclick="openOrgDetail('${esc(o.id)}','${esc(o.name)}','${esc(o.description||'')}')">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <div style="width:42px;height:42px;border-radius:10px;background:var(--primary-glow);border:1px solid rgba(124,58,237,.3);display:flex;align-items:center;justify-content:center;font-size:20px">🏛</div>
+        <div>
+          <div style="font-size:15px;font-weight:700">@${esc(o.name)}</div>
+          ${o.display_name ? `<div class="text-muted text-sm">${esc(o.display_name)}</div>` : ''}
+        </div>
+      </div>
+      ${o.description ? `<p class="text-muted text-sm">${esc(o.description)}</p>` : ''}
+      <div class="text-xs text-muted mt-3">Created ${timeAgo(o.created_at)}</div>
+    </div>`).join('')}</div>`;
+}
+
+async function createOrg() {
+  const name = document.getElementById('new-org-name').value.trim();
+  const display = document.getElementById('new-org-display').value.trim();
+  const desc = document.getElementById('new-org-desc').value.trim();
+  if (!name) return toast('Org name is required', 'error');
+  try {
+    await api('POST', '/orgs', { name, display_name: display, description: desc });
+    closeModal('modal-create-org');
+    toast(`Organisation @${name} created!`, 'success');
+    loadOrgs();
+    document.getElementById('new-org-name').value = '';
+    document.getElementById('new-org-display').value = '';
+    document.getElementById('new-org-desc').value = '';
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function openOrgDetail(id, name, desc) {
+  S.orgDetail = { id, name };
+  document.getElementById('org-detail-title').textContent = '@' + name;
+  document.getElementById('org-detail-desc').textContent = desc;
+  document.getElementById('org-members-list').innerHTML = '<div class="spinner" style="margin:20px auto"></div>';
+  openModal('modal-org-detail');
+  orgTab('members', document.querySelector('#modal-org-detail .tab'));
+  try {
+    const members = await api('GET', `/orgs/${name}/members`);
+    renderOrgMembers(members, name);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function renderOrgMembers(members, orgName) {
+  const el = document.getElementById('org-members-list');
+  if (!members || !members.length) {
+    el.innerHTML = '<div class="empty" style="padding:24px"><div class="empty-sub">No members yet</div></div>';
+    return;
+  }
+  el.innerHTML = members.map(m => `
+    <div class="member-row">
+      <div class="member-avatar">${(m.username||'?')[0].toUpperCase()}</div>
+      <div class="member-info">
+        <div class="member-name">${esc(m.username)}</div>
+        <div class="member-email">${esc(m.email||'')}</div>
+      </div>
+      <span class="badge badge-${m.role==='owner'?'owner':m.role==='admin'?'admin':'member'}">${m.role}</span>
+      <button class="btn btn-icon btn-xs" onclick="removeMember('${esc(m.username)}')">✕</button>
+    </div>`).join('');
+}
+
+function orgTab(tab, btn) {
+  document.querySelectorAll('#modal-org-detail .tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  document.getElementById('org-tab-members').classList.toggle('hidden', tab !== 'members');
+  document.getElementById('org-tab-packages').classList.toggle('hidden', tab !== 'packages');
+  if (tab === 'packages' && S.orgDetail) loadOrgPackages();
+}
+
+async function loadOrgPackages() {
+  const el = document.getElementById('org-packages-list');
+  el.innerHTML = '<div class="spinner" style="margin:20px auto"></div>';
+  try {
+    const pkgs = await api('GET', `/packages?org=${S.orgDetail.name}`);
+    if (!pkgs || !pkgs.length) {
+      el.innerHTML = '<div class="empty" style="padding:24px"><div class="empty-sub">No packages in this org yet</div></div>';
+    } else {
+      el.innerHTML = pkgs.map(p => `
+        <div class="version-row">
+          <span style="font-weight:600">@${esc(p.org_name)}/${esc(p.name)}</span>
+          ${p.latest_version ? `<span class="pkg-version">v${esc(p.latest_version)}</span>` : ''}
+          <span class="text-muted text-xs">${p.version_count} versions</span>
+        </div>`).join('');
+    }
+  } catch {}
+}
+
+async function addMember() {
+  const username = document.getElementById('add-member-username').value.trim();
+  const role = document.getElementById('add-member-role').value;
+  if (!username || !S.orgDetail) return;
+  try {
+    await api('POST', `/orgs/${S.orgDetail.name}/members`, { username, role });
+    toast(`${username} added as ${role}`, 'success');
+    document.getElementById('add-member-username').value = '';
+    const members = await api('GET', `/orgs/${S.orgDetail.name}/members`);
+    renderOrgMembers(members, S.orgDetail.name);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function removeMember(username) {
+  if (!S.orgDetail || !confirm(`Remove ${username} from @${S.orgDetail.name}?`)) return;
+  try {
+    await api('DELETE', `/orgs/${S.orgDetail.name}/members/${username}`);
+    toast(`${username} removed`, 'success');
+    const members = await api('GET', `/orgs/${S.orgDetail.name}/members`);
+    renderOrgMembers(members, S.orgDetail.name);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Tokens ─────────────────────────────────────────────────────────────────────
+async function loadTokens() {
+  const el = document.getElementById('tokens-list');
+  el.innerHTML = '<div class="spinner" style="margin:32px auto"></div>';
+  try {
+    const tokens = await api('GET', '/tokens');
+    renderTokens(tokens);
+  } catch (e) { el.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; }
+}
+
+function renderTokens(tokens) {
+  const el = document.getElementById('tokens-list');
+  if (!tokens || !tokens.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🔑</div><div class="empty-title">No API tokens yet</div><div class="empty-sub">Create a token to authenticate the CLI or CI/CD pipelines.</div><button class="btn btn-primary" onclick="openModal('modal-create-token')">Create token</button></div>`;
+    return;
+  }
+  el.innerHTML = tokens.map(t => {
+    const scopes = (t.scopes||[]).map(s => `<span class="badge badge-scope">${esc(s)}</span>`).join(' ');
+    const exp = t.expires_at ? `Expires ${timeAgo(t.expires_at)}` : 'Never expires';
+    const last = t.last_used ? `Last used ${timeAgo(t.last_used)}` : 'Never used';
+    return `<div class="token-item">
+      <div class="token-header">
+        <div class="token-name">${esc(t.name)}</div>
+        <div class="flex gap-2 items-center">${scopes}</div>
+        <button class="btn btn-danger btn-xs" style="margin-left:auto" onclick="deleteToken('${esc(t.id)}','${esc(t.name)}')">Revoke</button>
+      </div>
+      <div class="token-footer">
+        <span>${exp}</span>
+        <span>·</span>
+        <span>${last}</span>
+        <span>·</span>
+        <span class="font-mono">Created ${timeAgo(t.created_at)}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function createToken() {
+  const name = document.getElementById('new-token-name').value.trim();
+  if (!name) return toast('Token name is required', 'error');
+  const scopes = [];
+  if (document.getElementById('scope-read').checked) scopes.push('read');
+  if (document.getElementById('scope-publish').checked) scopes.push('publish');
+  if (document.getElementById('scope-admin').checked) scopes.push('admin');
+  if (!scopes.length) return toast('Select at least one scope', 'error');
+  const expDays = parseInt(document.getElementById('new-token-exp').value) || 0;
+  try {
+    const tok = await api('POST', '/tokens', { name, scopes, expires_days: expDays });
+    document.getElementById('new-token-value').value = tok.token;
+    const reg = window.location.origin;
+    document.getElementById('new-token-cli-hint').textContent =
+      `veld login --registry ${reg} --token ${tok.token}`;
+    document.getElementById('new-token-result').classList.remove('hidden');
+    document.getElementById('new-token-btn-row').classList.add('hidden');
+    loadTokens();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteToken(id, name) {
+  if (!confirm(`Revoke token "${name}"? This cannot be undone.`)) return;
+  try {
+    await api('DELETE', '/tokens/' + id);
+    toast('Token revoked', 'success');
+    loadTokens();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── TOTP Setup ─────────────────────────────────────────────────────────────────
+function updateTOTPUI() {
+  const enabled = S.user && S.user.totp_enabled;
+  const badge = document.getElementById('totp-status-badge');
+  badge.innerHTML = enabled
+    ? '<span class="badge badge-pub">✓ Enabled</span>'
+    : '<span class="badge badge-member">Disabled</span>';
+  document.getElementById('totp-disabled-ui').classList.toggle('hidden', !!enabled);
+  document.getElementById('totp-enabled-ui').classList.toggle('hidden', !enabled);
+  document.getElementById('totp-setup-ui').classList.add('hidden');
+}
+
+async function startTOTPSetup() {
+  document.getElementById('totp-disabled-ui').classList.add('hidden');
+  document.getElementById('totp-setup-ui').classList.remove('hidden');
+  const qrEl = document.getElementById('qr-container');
+  qrEl.innerHTML = '<div class="spinner" style="margin:0 auto"></div>';
+  try {
+    const r = await api('POST', '/auth/setup-totp');
+    document.getElementById('totp-secret-display').value = r.secret;
+    qrEl.innerHTML = '';
+    const canvas = document.createElement('canvas');
+    qrEl.appendChild(canvas);
+    if (typeof QRCode !== 'undefined') {
+      QRCode.toCanvas(canvas, r.uri, { width: 200, color: { dark: '#000', light: '#fff' } });
+    } else {
+      qrEl.innerHTML = `<div class="text-muted text-sm" style="text-align:center;padding:10px">QR library unavailable.<br/>Enter the secret manually.</div>`;
+    }
+  } catch (e) {
+    toast(e.message, 'error');
+    cancelTOTPSetup();
+  }
+}
+
+function cancelTOTPSetup() {
+  document.getElementById('totp-setup-ui').classList.add('hidden');
+  document.getElementById('totp-disabled-ui').classList.remove('hidden');
+  document.getElementById('totp-confirm-code').value = '';
+}
+
+async function confirmTOTP() {
+  const code = document.getElementById('totp-confirm-code').value.replace(/\s/g, '');
+  if (code.length !== 6) return toast('Enter the 6-digit code from your app', 'error');
+  try {
+    await api('POST', '/auth/confirm-totp', { code });
+    toast('Two-factor authentication enabled!', 'success');
+    S.user.totp_enabled = true;
+    document.getElementById('totp-setup-ui').classList.add('hidden');
+    document.getElementById('totp-confirm-code').value = '';
+    updateTOTPUI();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function disableTOTP() {
+  const pw = document.getElementById('disable-totp-pw').value;
+  if (!pw) return toast('Password is required', 'error');
+  try {
+    await api('DELETE', '/auth/totp', { password: pw });
+    closeModal('modal-disable-totp');
+    toast('Two-factor authentication disabled', 'success');
+    document.getElementById('disable-totp-pw').value = '';
+    S.user.totp_enabled = false;
+    updateTOTPUI();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Settings ───────────────────────────────────────────────────────────────────
+async function refreshSettingsUser() {
+  try {
+    S.user = await api('GET', '/auth/me');
+    updateSidebar();
+    updateVerifyBanner();
+  } catch {}
+}
+
+async function changePassword() {
+  const current = document.getElementById('pw-current').value;
+  const nw = document.getElementById('pw-new').value;
+  const confirm = document.getElementById('pw-confirm').value;
+  if (!current || !nw) return toast('All fields are required', 'error');
+  if (nw !== confirm) return toast('Passwords do not match', 'error');
+  if (nw.length < 8) return toast('Password must be at least 8 characters', 'error');
+  toast('Password change is not yet implemented in this version.', 'info');
+}
+
+// ── Modal helpers ──────────────────────────────────────────────────────────────
+function openModal(id) {
+  document.getElementById(id).classList.remove('hidden');
+  if (id === 'modal-create-token') {
+    document.getElementById('new-token-result').classList.add('hidden');
+    document.getElementById('new-token-btn-row').classList.remove('hidden');
+    document.getElementById('new-token-name').value = '';
+  }
+}
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+document.querySelectorAll('.modal-backdrop').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.add('hidden'); });
+});
+
+// ── Clipboard ──────────────────────────────────────────────────────────────────
+function copyText(inputId) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  navigator.clipboard.writeText(el.value || el.textContent).then(() => toast('Copied!', 'success'));
+}
+function copyText2(text) {
+  navigator.clipboard.writeText(text).then(() => toast('Copied!', 'success'));
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  const icons = { success: '✓', error: '✕', info: 'ℹ' };
+  el.innerHTML = `<span>${icons[type]||'•'}</span><span>${esc(msg)}</span>`;
+  document.getElementById('toast-area').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const diff = (Date.now() - new Date(ts)) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  if (diff < 2592000) return Math.floor(diff/86400) + 'd ago';
+  return new Date(ts).toLocaleDateString();
+}
+
+function formatBytes(b) {
+  if (!b) return '0 B';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
-(async () => {
-  await loadUser();
-  await render();
-})();
+init();
 </script>
 </body>
 </html>

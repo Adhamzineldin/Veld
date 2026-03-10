@@ -47,11 +47,15 @@ func (d *DB) migrate() error {
 
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
-  id            TEXT PRIMARY KEY,
-  email         TEXT UNIQUE NOT NULL,
-  username      TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                   TEXT PRIMARY KEY,
+  email                TEXT UNIQUE NOT NULL,
+  username             TEXT UNIQUE NOT NULL,
+  password_hash        TEXT NOT NULL,
+  email_verified       BOOLEAN NOT NULL DEFAULT false,
+  totp_enabled         BOOLEAN NOT NULL DEFAULT false,
+  totp_secret          TEXT NOT NULL DEFAULT '',
+  pending_totp_secret  TEXT NOT NULL DEFAULT '',
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS orgs (
@@ -109,9 +113,23 @@ CREATE TABLE IF NOT EXISTS tokens (
 CREATE INDEX IF NOT EXISTS idx_packages_org  ON packages(org_id);
 CREATE INDEX IF NOT EXISTS idx_versions_pkg  ON package_versions(package_id);
 CREATE INDEX IF NOT EXISTS idx_tokens_user   ON tokens(user_id);
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  token      TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
+-- Migrations for existing tables (safe to re-run)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified      BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled        BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret         TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_totp_secret TEXT NOT NULL DEFAULT '';
 `
 
 // ── Users ─────────────────────────────────────────────────────────────────────
+
+const userSelectCols = `SELECT id,email,username,password_hash,email_verified,totp_enabled,totp_secret,pending_totp_secret,created_at FROM users`
 
 func (d *DB) CreateUser(u *models.User) error {
 	_, err := d.conn.Exec(
@@ -122,32 +140,84 @@ func (d *DB) CreateUser(u *models.User) error {
 }
 
 func (d *DB) GetUserByEmail(email string) (*models.User, error) {
-	return d.scanUser(d.conn.QueryRow(
-		`SELECT id,email,username,password_hash,created_at FROM users WHERE email=$1`, email,
-	))
+	return d.scanUser(d.conn.QueryRow(userSelectCols+` WHERE email=$1`, email))
 }
 
 func (d *DB) GetUserByUsername(username string) (*models.User, error) {
-	return d.scanUser(d.conn.QueryRow(
-		`SELECT id,email,username,password_hash,created_at FROM users WHERE username=$1`, username,
-	))
+	return d.scanUser(d.conn.QueryRow(userSelectCols+` WHERE username=$1`, username))
 }
 
 func (d *DB) GetUserByID(id string) (*models.User, error) {
-	return d.scanUser(d.conn.QueryRow(
-		`SELECT id,email,username,password_hash,created_at FROM users WHERE id=$1`, id,
-	))
+	return d.scanUser(d.conn.QueryRow(userSelectCols+` WHERE id=$1`, id))
 }
 
 func (d *DB) scanUser(row *sql.Row) (*models.User, error) {
 	u := &models.User{}
-	if err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.CreatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash,
+		&u.EmailVerified, &u.TOTPEnabled, &u.TOTPSecret, &u.PendingTOTPSecret, &u.CreatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
 	return u, nil
+}
+
+// SetEmailVerified marks a user's email as verified.
+func (d *DB) SetEmailVerified(userID string) error {
+	_, err := d.conn.Exec(`UPDATE users SET email_verified=true WHERE id=$1`, userID)
+	return err
+}
+
+// SetPendingTOTPSecret stores a provisional TOTP secret pending user confirmation.
+func (d *DB) SetPendingTOTPSecret(userID, secret string) error {
+	_, err := d.conn.Exec(`UPDATE users SET pending_totp_secret=$1 WHERE id=$2`, secret, userID)
+	return err
+}
+
+// ConfirmTOTP promotes pending_totp_secret → totp_secret and enables TOTP.
+func (d *DB) ConfirmTOTP(userID string) error {
+	_, err := d.conn.Exec(`
+		UPDATE users SET totp_secret=pending_totp_secret, pending_totp_secret='', totp_enabled=true
+		WHERE id=$1`, userID)
+	return err
+}
+
+// DisableTOTP clears the TOTP secret and disables TOTP for a user.
+func (d *DB) DisableTOTP(userID string) error {
+	_, err := d.conn.Exec(
+		`UPDATE users SET totp_enabled=false, totp_secret='', pending_totp_secret='' WHERE id=$1`, userID,
+	)
+	return err
+}
+
+// CreateEmailVerificationToken stores a one-time email verification token.
+func (d *DB) CreateEmailVerificationToken(token, userID string, expiresAt time.Time) error {
+	_, err := d.conn.Exec(
+		`INSERT INTO email_verification_tokens(token,user_id,expires_at) VALUES($1,$2,$3)
+		 ON CONFLICT(token) DO UPDATE SET user_id=EXCLUDED.user_id, expires_at=EXCLUDED.expires_at`,
+		token, userID, expiresAt,
+	)
+	return err
+}
+
+// GetEmailVerificationToken returns (userID, expiresAt) for the given token.
+func (d *DB) GetEmailVerificationToken(token string) (string, time.Time, error) {
+	var userID string
+	var exp time.Time
+	err := d.conn.QueryRow(
+		`SELECT user_id, expires_at FROM email_verification_tokens WHERE token=$1`, token,
+	).Scan(&userID, &exp)
+	if err == sql.ErrNoRows {
+		return "", time.Time{}, nil
+	}
+	return userID, exp, err
+}
+
+// DeleteEmailVerificationToken removes a used/expired token.
+func (d *DB) DeleteEmailVerificationToken(token string) error {
+	_, err := d.conn.Exec(`DELETE FROM email_verification_tokens WHERE token=$1`, token)
+	return err
 }
 
 func (d *DB) CountUsers() (int, error) {
