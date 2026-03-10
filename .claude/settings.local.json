@@ -45,7 +45,10 @@
       "Bash(\"../../veld.exe\" clean:*)",
       "Bash(wc:*)",
       "Bash(xargs grep:*)",
-      "Bash(find .:*)"
+      "Bash(find .:*)",
+      "Bash(node_modules/.bin/tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(npm:*)"
     ]
   }
 }

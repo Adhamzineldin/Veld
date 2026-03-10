@@ -17,8 +17,5 @@
     "org": "maayn",
     "package": "node-react-api",
     "version": "0.1.0"
-  },
-  "dependencies": {
-    "@maayn/node-react-api": "0.1.0"
   }
 }

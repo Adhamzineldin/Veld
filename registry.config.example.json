@@ -1,0 +1,6 @@
+{
+  "addr": ":8080",
+  "dsn": "postgres://veld:secret@localhost:5432/veld?sslmode=disable",
+  "storage": "./packages",
+  "secret": "replace-this-with-openssl-rand-hex-32"
+}

@@ -1,0 +1,27 @@
+// ── Veld Entry Point ─────────────────────────────────────────────────
+//
+// This file is the root of your Veld contract. It imports all modules.
+// Each module file imports the model files it needs.
+//
+// How it works:
+//   1. Define data types in veld/models/ (models, enums)
+//   2. Define API endpoints in veld/modules/ (modules with actions)
+//   3. Run "veld generate" to produce typed code in generated/
+//
+// Import syntax:
+//   import @models/user       → loads veld/models/user.veld
+//   import @modules/auth      → loads veld/modules/auth.veld
+//   import @models/*          → loads all .veld files in veld/models/
+//
+// Every file must explicitly import the files that define the types it
+// uses. Veld will error if a type is referenced but not imported.
+//
+// Middleware names (like RequireAuth) are just labels — you provide the
+// actual middleware functions when you register routes in your app.
+//
+// Run "veld validate" at any time to check your contract for errors.
+// ─────────────────────────────────────────────────────────────────────
+
+prefix: /api
+
+import @modules/*
