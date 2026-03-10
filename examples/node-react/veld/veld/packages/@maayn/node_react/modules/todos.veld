@@ -1,0 +1,46 @@
+import @models/todo
+
+module Todos {
+  description: "Todo management"
+  prefix: /todos
+
+  action ListTodos {
+    description: "List all todos"
+    method: GET
+    path: /
+    output: Todo[]
+  }
+
+  action GetTodo {
+    description: "Get a todo by ID"
+    method: GET
+    path: /:id
+    output: Todo
+    errors: [NotFound]
+  }
+
+  action CreateTodo {
+    description: "Create a new todo"
+    method: POST
+    path: /
+    input: CreateTodoInput
+    output: Todo
+    errors: [BadRequest]
+  }
+
+  action UpdateTodo {
+    description: "Update a todo"
+    method: PUT
+    path: /:id
+    input: UpdateTodoInput
+    output: Todo
+    errors: [NotFound, BadRequest]
+  }
+
+  action DeleteTodo {
+    description: "Delete a todo"
+    method: DELETE
+    path: /:id
+    errors: [NotFound]
+  }
+}

@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/lexer"
@@ -122,8 +123,15 @@ func (p *Parser) peekIdent(value string) bool {
 // resolveImportPath normalises a raw folder + suffix into the canonical
 // loader format: "@folder/*" (wildcard) or "@folder/name.veld" (single file).
 func resolveImportPath(folder, suffix string) string {
-	if suffix == "*" || suffix == "" {
-		return "@" + folder + "/*"
+	if suffix == "*" || suffix == "**" || suffix == "" {
+		if suffix == "" {
+			suffix = "*"
+		}
+		return "@" + folder + "/" + suffix
+	}
+	// Multi-segment paths ending with /* or /** stay as-is (glob patterns).
+	if strings.HasSuffix(suffix, "/*") || strings.HasSuffix(suffix, "/**") {
+		return "@" + folder + "/" + suffix
 	}
 	return "@" + folder + "/" + suffix + ".veld"
 }

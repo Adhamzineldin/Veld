@@ -15,10 +15,7 @@
     "enabled": true,
     "url": "http://localhost:8080",
     "org": "maayn",
-    "package": "node_react",
+    "package": "node-react-api",
     "version": "0.1.0"
-  },
-  "dependencies": {
-    "@maayn/node-react-api": "0.1.0"
   }
 }

@@ -1,0 +1,41 @@
+import @models/user
+
+
+module Users {
+  description: "User management"
+  prefix: /users
+
+  action ListUsers {
+    description: "List all users"
+    method: GET
+    path: /
+    output: User[]
+  }
+
+  action GetUser {
+    description: "Get a user by ID"
+    method: GET
+    path: /:id
+    output: User
+    errors: [NotFound]
+    
+  }
+
+  action CreateUser {
+    description: "Create a new user"
+    method: POST
+    path: /
+    input: CreateUserInput
+    output: User
+    errors: [Conflict, UserExists]
+    middleware: [validateCreateUserInput]
+  }
+
+  action DeleteUser {
+    description: "Delete a user"
+    method: DELETE
+    path: /:id
+    output: SuccessResponse
+    errors: [NotFound]
+  }
+}
