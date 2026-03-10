@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -68,7 +69,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Send verification email asynchronously (non-blocking)
 	if h.Email.Enabled() {
+		log.Printf("[email] register: dispatching verification email for new user %s (%s)", u.Username, u.Email)
 		go h.sendVerificationEmail(u)
+	} else {
+		log.Printf("[email] register: SMTP not configured — skipping verification email for %s", u.Email)
 	}
 
 	jwt, err := serverauth.IssueJWT(u.ID, h.JWTSecret, 7*24*time.Hour)
@@ -296,7 +300,12 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	// Send welcome email
 	u, _ := h.DB.GetUserByID(userID)
 	if u != nil && h.Email.Enabled() {
-		go email.Send(h.Email, u.Email, "Welcome to Veld Registry!", email.WelcomeEmail(u.Username))
+		log.Printf("[email] verify-email: sending welcome email to %s (%s)", u.Username, u.Email)
+		go func() {
+			if err := email.Send(h.Email, u.Email, "Welcome to Veld Registry!", email.WelcomeEmail(u.Username)); err != nil {
+				log.Printf("[email] ERROR sending welcome email to %s: %v", u.Email, err)
+			}
+		}()
 	}
 
 	jsonOK(w, map[string]string{"message": "email verified"})
@@ -306,35 +315,58 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 	u := serverauth.GetUser(r)
 	if u == nil {
+		log.Printf("[email] resend-verification: no authenticated user")
 		jsonError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	log.Printf("[email] resend-verification: user=%s email=%s emailVerified=%v", u.Username, u.Email, u.EmailVerified)
 	if u.EmailVerified {
+		log.Printf("[email] resend-verification: email already verified for %s — rejecting", u.Email)
 		jsonError(w, "email already verified", http.StatusBadRequest)
 		return
 	}
 	if !h.Email.Enabled() {
+		log.Printf("[email] resend-verification: SMTP not configured (host=%q from=%q) — returning 503", h.Email.Host, h.Email.From)
 		jsonError(w, "email not configured on this registry", http.StatusServiceUnavailable)
 		return
 	}
+	log.Printf("[email] resend-verification: dispatching verification email for %s", u.Email)
 	go h.sendVerificationEmail(u)
 	jsonOK(w, map[string]string{"message": "verification email sent"})
 }
 
 func (h *AuthHandler) sendVerificationEmail(u *models.User) {
+	log.Printf("[email] sendVerificationEmail called for user=%s email=%s", u.Username, u.Email)
+
+	if !h.Email.Enabled() {
+		log.Printf("[email] SMTP not configured — skipping verification email for %s", u.Email)
+		return
+	}
+	log.Printf("[email] SMTP config: host=%s port=%d from=%s username=%s",
+		h.Email.Host, h.Email.Port, h.Email.From, h.Email.Username)
+
 	tok, _ := serverauth.GenerateID(), ""
 	tok = serverauth.GenerateID() + serverauth.GenerateID() // longer token
 	tok = strings.ReplaceAll(tok, "-", "")
 	expiresAt := time.Now().Add(24 * time.Hour)
 	if err := h.DB.CreateEmailVerificationToken(tok, u.ID, expiresAt); err != nil {
+		log.Printf("[email] ERROR creating verification token for %s: %v", u.Email, err)
 		return
 	}
+	log.Printf("[email] verification token created for %s (expires %s)", u.Email, expiresAt.Format(time.RFC3339))
+
 	base := strings.TrimRight(h.BaseURL, "/")
 	if base == "" {
 		base = "http://localhost:8080"
 	}
 	verifyURL := base + "/#/verify-email?token=" + tok
-	email.Send(h.Email, u.Email, "Verify your Veld Registry email", email.VerificationEmail(u.Username, verifyURL))
+	log.Printf("[email] sending verification email to %s (verify URL: %s)", u.Email, verifyURL)
+
+	if err := email.Send(h.Email, u.Email, "Verify your Veld Registry email", email.VerificationEmail(u.Username, verifyURL)); err != nil {
+		log.Printf("[email] ERROR sending to %s: %v", u.Email, err)
+	} else {
+		log.Printf("[email] verification email sent successfully to %s", u.Email)
+	}
 }
 
 func setSessionCookie(w http.ResponseWriter, jwt string) {

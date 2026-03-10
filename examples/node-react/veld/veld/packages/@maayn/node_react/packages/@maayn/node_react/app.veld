@@ -24,6 +24,4 @@
 
 prefix: /api
 
-import @maayn/node_react/app
-
-
+import @modules/*

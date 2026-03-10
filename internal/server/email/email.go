@@ -2,7 +2,10 @@
 package email
 
 import (
+	"crypto/tls"
 	"fmt"
+	"log"
+	"net"
 	"net/smtp"
 	"strings"
 )
@@ -19,21 +22,44 @@ type Config struct {
 // Enabled returns true when SMTP is configured.
 func (c Config) Enabled() bool { return c.Host != "" && c.From != "" }
 
+// loginAuth implements the LOGIN auth mechanism required by Office 365 / Exchange Online.
+// Go's standard smtp.PlainAuth only supports PLAIN, which Office 365 rejects with
+// "504 5.7.4 Unrecognized authentication type".
+type loginAuth struct {
+	username, password string
+}
+
+func (a *loginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	return "LOGIN", []byte(a.username), nil
+}
+
+func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
+	if more {
+		prompt := strings.TrimSpace(string(fromServer))
+		switch strings.ToLower(prompt) {
+		case "username:":
+			return []byte(a.username), nil
+		case "password:":
+			return []byte(a.password), nil
+		default:
+			return nil, fmt.Errorf("unexpected LOGIN prompt: %q", prompt)
+		}
+	}
+	return nil, nil
+}
+
 // Send delivers an HTML email. Returns nil if SMTP is not configured (silent skip).
 func Send(cfg Config, to, subject, htmlBody string) error {
 	if !cfg.Enabled() {
-		return nil // email disabled — skip silently
+		log.Printf("[smtp] Send skipped — SMTP not configured (host=%q from=%q)", cfg.Host, cfg.From)
+		return nil
 	}
 	port := cfg.Port
 	if port == 0 {
 		port = 587
 	}
 	addr := fmt.Sprintf("%s:%d", cfg.Host, port)
-
-	var auth smtp.Auth
-	if cfg.Username != "" {
-		auth = smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
-	}
+	log.Printf("[smtp] connecting to %s (from=%s, to=%s, subject=%q)", addr, cfg.From, to, subject)
 
 	msg := strings.Join([]string{
 		"From: " + cfg.From,
@@ -50,7 +76,97 @@ func Send(cfg Config, to, subject, htmlBody string) error {
 		fromAddr = strings.Trim(fromAddr[i:], "<> ")
 	}
 
-	return smtp.SendMail(addr, auth, fromAddr, []string{to}, []byte(msg))
+	// Connect to the SMTP server
+	conn, err := net.DialTimeout("tcp", addr, 30_000_000_000) // 30s
+	if err != nil {
+		log.Printf("[smtp] ERROR dial %s: %v", addr, err)
+		return fmt.Errorf("smtp dial: %w", err)
+	}
+
+	client, err := smtp.NewClient(conn, cfg.Host)
+	if err != nil {
+		conn.Close()
+		log.Printf("[smtp] ERROR creating SMTP client: %v", err)
+		return fmt.Errorf("smtp client: %w", err)
+	}
+	defer client.Close()
+
+	// STARTTLS — required by Office 365 on port 587
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		log.Printf("[smtp] STARTTLS supported — upgrading connection")
+		tlsCfg := &tls.Config{ServerName: cfg.Host}
+		if err := client.StartTLS(tlsCfg); err != nil {
+			log.Printf("[smtp] ERROR STARTTLS: %v", err)
+			return fmt.Errorf("smtp starttls: %w", err)
+		}
+	} else {
+		log.Printf("[smtp] STARTTLS not advertised — continuing without TLS")
+	}
+
+	// Authenticate — try LOGIN first (Office 365), fall back to PLAIN
+	if cfg.Username != "" {
+		var authErr error
+
+		// Check which mechanisms the server advertises
+		authMechs := ""
+		if ok, mechs := client.Extension("AUTH"); ok {
+			authMechs = mechs
+		}
+		log.Printf("[smtp] server AUTH mechanisms: %q", authMechs)
+
+		if strings.Contains(strings.ToUpper(authMechs), "LOGIN") {
+			log.Printf("[smtp] using LOGIN auth with username=%s", cfg.Username)
+			authErr = client.Auth(&loginAuth{cfg.Username, cfg.Password})
+		} else if strings.Contains(strings.ToUpper(authMechs), "PLAIN") {
+			log.Printf("[smtp] using PLAIN auth with username=%s", cfg.Username)
+			authErr = client.Auth(smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host))
+		} else {
+			// Server didn't advertise known mechanisms — try LOGIN anyway
+			log.Printf("[smtp] no recognized AUTH mechanism in %q — trying LOGIN", authMechs)
+			authErr = client.Auth(&loginAuth{cfg.Username, cfg.Password})
+		}
+
+		if authErr != nil {
+			log.Printf("[smtp] ERROR auth: %v", authErr)
+			return fmt.Errorf("smtp auth: %w", authErr)
+		}
+		log.Printf("[smtp] authenticated successfully")
+	} else {
+		log.Printf("[smtp] no auth credentials configured — skipping auth")
+	}
+
+	// Set sender and recipient
+	if err := client.Mail(fromAddr); err != nil {
+		log.Printf("[smtp] ERROR MAIL FROM: %v", err)
+		return fmt.Errorf("smtp mail from: %w", err)
+	}
+	if err := client.Rcpt(to); err != nil {
+		log.Printf("[smtp] ERROR RCPT TO: %v", err)
+		return fmt.Errorf("smtp rcpt to: %w", err)
+	}
+
+	// Write the message body
+	w, err := client.Data()
+	if err != nil {
+		log.Printf("[smtp] ERROR DATA: %v", err)
+		return fmt.Errorf("smtp data: %w", err)
+	}
+	if _, err := w.Write([]byte(msg)); err != nil {
+		log.Printf("[smtp] ERROR writing body: %v", err)
+		return fmt.Errorf("smtp write: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		log.Printf("[smtp] ERROR closing body: %v", err)
+		return fmt.Errorf("smtp close: %w", err)
+	}
+
+	if err := client.Quit(); err != nil {
+		// Quit error is non-fatal — message was already accepted
+		log.Printf("[smtp] QUIT warning: %v", err)
+	}
+
+	log.Printf("[smtp] mail delivered successfully to %s", to)
+	return nil
 }
 
 // ── Email templates ────────────────────────────────────────────────────────────

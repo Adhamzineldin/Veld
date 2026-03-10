@@ -71,9 +71,20 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 	dir := filepath.Dir(abs)
 	merged := ast.AST{ASTVersion: "1.0.0"}
 
+	// If this file lives inside a registry package (rootDir/packages/@org/pkg/...),
+	// resolve aliases relative to the package root so that internal imports like
+	// "import @models/todo" point at the package's own models/ directory.
+	effectiveRoot := rootDir
+	if pkgRoot := packageRootFor(abs, rootDir); pkgRoot != "" {
+		effectiveRoot = pkgRoot
+	}
+
 	for _, imp := range a.Imports {
 		if len(imp) > 0 && imp[0] == '@' {
 			rest := imp[1:] // e.g. "models/user.veld", "org/pkg/modules/*"
+
+			// Snapshot files count so we can record new files as imports of this file.
+			prevLen := len(*files)
 
 			// ── Try registry package: @org/package[/subpath] ──────────────
 			// Registry pulls land at rootDir/packages/@org/package/
@@ -81,6 +92,10 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 				imported, err := loadFromDir(aliasDir, subpath, imp, rootDir, aliasMap, seen, files, fileImports)
 				if err != nil {
 					return ast.AST{}, err
+				}
+				// Record all newly loaded files as direct imports of this file.
+				for _, f := range (*files)[prevLen:] {
+					fileImports[abs] = append(fileImports[abs], f)
 				}
 				merged = mergeAST(merged, imported)
 				continue
@@ -93,10 +108,14 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 				alias = rest[:slashIdx]
 				name = rest[slashIdx+1:]
 			}
-			aliasDir := resolveAliasDir(alias, rootDir, aliasMap)
+			aliasDir := resolveAliasDir(alias, effectiveRoot, aliasMap)
 			imported, err := loadFromDir(aliasDir, name, imp, rootDir, aliasMap, seen, files, fileImports)
 			if err != nil {
 				return ast.AST{}, err
+			}
+			// Record all newly loaded files as direct imports of this file.
+			for _, f := range (*files)[prevLen:] {
+				fileImports[abs] = append(fileImports[abs], f)
 			}
 			merged = mergeAST(merged, imported)
 
@@ -234,6 +253,27 @@ func resolveAliasDir(alias, rootDir string, aliasMap map[string]string) string {
 		}
 	}
 	return filepath.Join(rootDir, alias)
+}
+
+// packageRootFor returns the registry package root directory if absPath lives
+// inside rootDir/packages/@org/pkg/..., e.g.:
+//
+//	rootDir/packages/@maayn/node_react/modules/todos.veld
+//	→ rootDir/packages/@maayn/node_react
+//
+// Returns "" if the file is not inside a registry package.
+func packageRootFor(absPath, rootDir string) string {
+	pkgBase := filepath.Join(rootDir, "packages")
+	rel, err := filepath.Rel(pkgBase, absPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return ""
+	}
+	// rel looks like "@org/pkg/modules/todos.veld"  (or "@org\pkg\..." on Windows)
+	parts := strings.SplitN(filepath.ToSlash(rel), "/", 4) // ["@org", "pkg", "modules", "todos.veld"]
+	if len(parts) < 2 || !strings.HasPrefix(parts[0], "@") {
+		return ""
+	}
+	return filepath.Join(pkgBase, parts[0], parts[1])
 }
 
 func mergeAST(dst, src ast.AST) ast.AST {
