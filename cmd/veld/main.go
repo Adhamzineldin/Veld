@@ -26,6 +26,7 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/loader"
 	"github.com/Adhamzineldin/Veld/internal/lsp"
 	"github.com/Adhamzineldin/Veld/internal/openapigen"
+	"github.com/Adhamzineldin/Veld/internal/registry"
 	"github.com/Adhamzineldin/Veld/internal/schema"
 	"github.com/Adhamzineldin/Veld/internal/setup"
 	"github.com/Adhamzineldin/Veld/internal/validator"
@@ -619,6 +620,8 @@ Aliases:   node → node-ts, js/javascript → node-js, ts → typescript, react
 		newInitCmd(), newCleanCmd(), newOpenAPICmd(), newGraphQLCmd(),
 		newSchemaCmd(), newDiffCmd(), newLintCmd(), newDocsCmd(), newLSPCmd(),
 		newSetupCmd(), newFmtCmd(), newDoctorCmd(), newCompletionCmd(),
+		// Registry commands
+		newLoginCmd(), newLogoutCmd(), newPushCmd(), newPullCmd(), newRegistryCmd(),
 	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, red("Error: ")+err.Error())
@@ -2424,6 +2427,13 @@ func runInit() error {
   "aliases": {
     "models": "models",
     "modules": "modules"
+  },
+  "registry": {
+    "enabled": false,
+    "url": "",
+    "org": "",
+    "package": "",
+    "version": "0.1.0"
   }
 }
 `, selectedBackend, selectedFrontend, defaultOut, enableValidate)
@@ -2545,6 +2555,13 @@ func runInit() error {
   "aliases": {
     "models": "models",
     "modules": "modules"
+  },
+  "registry": {
+    "enabled": false,
+    "url": "",
+    "org": "",
+    "package": "",
+    "version": "0.1.0"
   }
 }
 `, selectedBackend, selectedFrontend, defaultOut, backendOutLine, frontendOutLine, relBackend, relFrontend)
@@ -2834,3 +2851,403 @@ const initReadmeContent = "# My Veld Project\n\n" +
 	"| `veld setup` | Auto-configure project imports |\n" +
 	"| `veld doctor` | Diagnose project health |\n" +
 	"| `veld ast` | Dump AST JSON for debugging |\n"
+
+// ── login ─────────────────────────────────────────────────────────────────────
+
+func newLoginCmd() *cobra.Command {
+	var registryURL, token, email, password string
+	cmd := &cobra.Command{
+		Use:   "login",
+		Short: "Authenticate with a Veld Registry",
+		Example: "  veld login --registry https://registry.veld.dev --token vtk_...\n" +
+			"  veld login --registry https://registry.mycompany.com",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if registryURL == "" {
+				return fmt.Errorf("--registry is required (e.g. --registry https://registry.veld.dev)")
+			}
+
+			// Token login (non-interactive)
+			if token != "" {
+				client := registry.NewClient(registryURL, token)
+				me, err := client.Me()
+				if err != nil {
+					return fmt.Errorf("token validation failed: %w", err)
+				}
+				username, _ := me["username"].(string)
+				if err := registry.SetToken(registryURL, token, username); err != nil {
+					return err
+				}
+				fmt.Printf(green("✓")+" Logged in to %s as %s\n", registryURL, username)
+				return nil
+			}
+
+			// Interactive email/password login
+			if email == "" {
+				fmt.Print("Email: ")
+				fmt.Scanln(&email)
+			}
+			if password == "" {
+				fmt.Print("Password: ")
+				fmt.Scanln(&password)
+			}
+
+			client := registry.NewClient(registryURL, "")
+			jwt, err := client.Login(email, password)
+			if err != nil {
+				return fmt.Errorf("login failed: %w", err)
+			}
+			// Exchange JWT for profile info
+			authClient := registry.NewClient(registryURL, jwt)
+			me, err := authClient.Me()
+			if err != nil {
+				return fmt.Errorf("could not fetch profile: %w", err)
+			}
+			username, _ := me["username"].(string)
+			if err := registry.SetToken(registryURL, jwt, username); err != nil {
+				return err
+			}
+			fmt.Printf(green("✓")+" Logged in to %s as %s\n", registryURL, username)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&registryURL, "registry", "", "registry URL")
+	cmd.Flags().StringVar(&token, "token", "", "API token (skips email/password prompt)")
+	cmd.Flags().StringVar(&email, "email", "", "email address")
+	cmd.Flags().StringVar(&password, "password", "", "password")
+	return cmd
+}
+
+// ── logout ────────────────────────────────────────────────────────────────────
+
+func newLogoutCmd() *cobra.Command {
+	var registryURL string
+	cmd := &cobra.Command{
+		Use:   "logout",
+		Short: "Remove stored credentials for a registry",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if registryURL == "" {
+				registryURL = registry.DefaultRegistry()
+			}
+			if registryURL == "" {
+				return fmt.Errorf("no registry configured")
+			}
+			if err := registry.ClearToken(registryURL); err != nil {
+				return err
+			}
+			fmt.Printf(green("✓")+" Logged out from %s\n", registryURL)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&registryURL, "registry", "", "registry URL (defaults to current)")
+	return cmd
+}
+
+// ── push ──────────────────────────────────────────────────────────────────────
+
+func newPushCmd() *cobra.Command {
+	var registryURL, orgName, pkgName, version string
+	cmd := &cobra.Command{
+		Use:   "push",
+		Short: "Publish .veld contracts to the registry",
+		Example: "  veld push\n" +
+			"  veld push --registry https://registry.veld.dev\n" +
+			"  veld push --org acme --name auth --version 1.2.0",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Resolve config for org/name/version defaults
+			rc, err := config.BuildResolved(config.FlagOverrides{})
+			if err != nil {
+				return fmt.Errorf("could not load veld.config.json: %w", err)
+			}
+
+			// Defaults from config
+			if orgName == "" {
+				orgName = rc.Registry.Org
+			}
+			if pkgName == "" {
+				pkgName = rc.Registry.Package
+			}
+			if version == "" {
+				version = rc.Registry.Version
+			}
+			if registryURL == "" {
+				registryURL = rc.Registry.URL
+			}
+			if orgName == "" || pkgName == "" || version == "" {
+				return fmt.Errorf("--org, --name, and --version are required (or set registry.org/package/version in veld.config.json)")
+			}
+
+			client, err := registry.NewClientFromCreds(registryURL)
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf(dim("⬡")+"  Packing contracts from %s…\n", rc.ConfigDir)
+			tarPath, sha, err := registry.Pack(rc.ConfigDir)
+			if err != nil {
+				return fmt.Errorf("pack failed: %w", err)
+			}
+			defer func() {
+				if err := os.Remove(tarPath); err == nil && verbose {
+					fmt.Println(dim("  removed temp tarball"))
+				}
+			}()
+
+			f, err := os.Open(tarPath)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+
+			fi, _ := f.Stat()
+			fmt.Printf(dim("⬡")+"  Publishing @%s/%s@%s (%s)…\n",
+				orgName, pkgName, version, fmtBytes(fi.Size()))
+
+			manifestJSON := fmt.Sprintf(`{"org":%q,"name":%q,"version":%q}`, orgName, pkgName, version)
+			result, err := client.Publish(manifestJSON, pkgName+"-"+version+".tar.gz", f)
+			if err != nil {
+				return err
+			}
+			_ = sha
+			fmt.Printf(green("✓")+" Published @%s/%s@%s\n%s\n",
+				orgName, pkgName, version, dim(string(result)))
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&registryURL, "registry", "", "registry URL (default: from credentials)")
+	cmd.Flags().StringVar(&orgName, "org", "", "organisation name")
+	cmd.Flags().StringVar(&pkgName, "name", "", "package name")
+	cmd.Flags().StringVar(&version, "version", "", "semver version to publish")
+	return cmd
+}
+
+// ── pull ──────────────────────────────────────────────────────────────────────
+
+func newPullCmd() *cobra.Command {
+	var registryURL, outDir string
+	cmd := &cobra.Command{
+		Use:   "pull <@org/name[@version]>",
+		Short: "Download a contract package from the registry",
+		Example: "  veld pull @acme/auth\n" +
+			"  veld pull @acme/auth@1.2.0\n" +
+			"  veld pull @acme/auth --out veld/packages",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			orgName, pkgName, version, err := parsePackageRef(args[0])
+			if err != nil {
+				return err
+			}
+
+			client, err := registry.NewClientFromCreds(registryURL)
+			if err != nil {
+				// Allow unauthenticated for public packages
+				if registryURL == "" {
+					registryURL = registry.DefaultRegistry()
+				}
+				if registryURL == "" {
+					return err
+				}
+				client = registry.NewClient(registryURL, "")
+			}
+
+			// Resolve "latest" version
+			if version == "" || version == "latest" {
+				versions, err := client.ListPackageVersions(orgName, pkgName)
+				if err != nil {
+					return fmt.Errorf("could not fetch versions: %w", err)
+				}
+				if len(versions) == 0 {
+					return fmt.Errorf("no versions published for @%s/%s", orgName, pkgName)
+				}
+				version, _ = versions[0]["version"].(string)
+			}
+
+			if outDir == "" {
+				outDir = filepath.Join("veld", "packages", "@"+orgName, pkgName)
+			}
+			if err := os.MkdirAll(outDir, 0755); err != nil {
+				return err
+			}
+
+			fmt.Printf(dim("⬡")+"  Pulling @%s/%s@%s → %s\n", orgName, pkgName, version, outDir)
+
+			// Stream tarball to temp file, verify SHA, extract
+			tmp, err := os.CreateTemp("", "veld-pull-*.tar.gz")
+			if err != nil {
+				return err
+			}
+			defer os.Remove(tmp.Name())
+
+			remoteSHA, err := client.Download(orgName, pkgName, version, tmp)
+			tmp.Close()
+			if err != nil {
+				return fmt.Errorf("download failed: %w", err)
+			}
+			if remoteSHA != "" {
+				if err := registry.VerifySHA(tmp.Name(), remoteSHA); err != nil {
+					return fmt.Errorf("integrity check failed: %w", err)
+				}
+			}
+
+			if err := registry.Unpack(tmp.Name(), outDir); err != nil {
+				return fmt.Errorf("extract failed: %w", err)
+			}
+
+			fmt.Printf(green("✓")+" Pulled @%s/%s@%s\n", orgName, pkgName, version)
+			fmt.Printf(dim("   Import with: import @%s/%s/ModelName\n"), orgName, pkgName)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&registryURL, "registry", "", "registry URL")
+	cmd.Flags().StringVar(&outDir, "out", "", "output directory (default: veld/packages/@org/name)")
+	return cmd
+}
+
+// ── registry (subcommand group) ───────────────────────────────────────────────
+
+func newRegistryCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "registry",
+		Short: "Manage registry connections and packages",
+	}
+
+	// veld registry info
+	cmd.AddCommand(&cobra.Command{
+		Use:   "info",
+		Short: "Show current registry and logged-in user",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			url := registry.DefaultRegistry()
+			if url == "" {
+				fmt.Println("No registry configured. Run: veld login --registry <url>")
+				return nil
+			}
+			token := registry.GetToken(url)
+			client := registry.NewClient(url, token)
+			me, err := client.Me()
+			if err != nil {
+				fmt.Printf("Registry: %s\nStatus:   %s\n", url, red("not authenticated"))
+				return nil
+			}
+			fmt.Printf("Registry: %s\nUser:     %s (%s)\n", url, me["username"], me["email"])
+			return nil
+		},
+	})
+
+	// veld registry list
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List all configured registries",
+		Run: func(cmd *cobra.Command, args []string) {
+			registry.ListRegistries()
+		},
+	})
+
+	// veld registry versions <@org/name>
+	versionsCmd := &cobra.Command{
+		Use:   "versions <@org/name>",
+		Short: "List all published versions of a package",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			orgName, pkgName, _, err := parsePackageRef(args[0])
+			if err != nil {
+				return err
+			}
+			client, err := registry.NewClientFromCreds("")
+			if err != nil {
+				return err
+			}
+			versions, err := client.ListPackageVersions(orgName, pkgName)
+			if err != nil {
+				return err
+			}
+			if len(versions) == 0 {
+				fmt.Printf("No versions published for @%s/%s\n", orgName, pkgName)
+				return nil
+			}
+			fmt.Printf("@%s/%s — %d version(s):\n", orgName, pkgName, len(versions))
+			for _, v := range versions {
+				ver, _ := v["version"].(string)
+				dep, _ := v["deprecated"].(string)
+				line := "  " + bold("v"+ver)
+				if dep != "" {
+					line += " " + yellow("[deprecated: "+dep+"]")
+				}
+				fmt.Println(line)
+			}
+			return nil
+		},
+	}
+	cmd.AddCommand(versionsCmd)
+
+	// veld registry token create
+	tokenCmd := &cobra.Command{
+		Use:   "token",
+		Short: "Manage API tokens",
+	}
+	var tokenName string
+	var tokenScopes []string
+	tokenCreateCmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a new API token",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if tokenName == "" {
+				return fmt.Errorf("--name is required")
+			}
+			client, err := registry.NewClientFromCreds("")
+			if err != nil {
+				return err
+			}
+			body := map[string]interface{}{
+				"name":   tokenName,
+				"scopes": tokenScopes,
+			}
+			data, err := client.PostJSON("/tokens", body)
+			if err != nil {
+				return err
+			}
+			fmt.Printf(green("✓")+" Token created. Copy it now — it will not be shown again:\n\n  %s\n\n", data)
+			return nil
+		},
+	}
+	tokenCreateCmd.Flags().StringVar(&tokenName, "name", "", "token name")
+	tokenCreateCmd.Flags().StringSliceVar(&tokenScopes, "scopes", []string{"read"}, "comma-separated scopes: read,write,delete")
+	tokenCmd.AddCommand(tokenCreateCmd)
+	cmd.AddCommand(tokenCmd)
+
+	return cmd
+}
+
+// ── registry helpers ──────────────────────────────────────────────────────────
+
+// parsePackageRef parses "@org/name@version" → (org, name, version, err).
+func parsePackageRef(ref string) (org, name, version string, err error) {
+	// strip leading @
+	s := strings.TrimPrefix(ref, "@")
+	// split version
+	parts := strings.SplitN(s, "@", 2)
+	if len(parts) == 2 {
+		version = parts[1]
+	}
+	// split org/name
+	slash := strings.Index(parts[0], "/")
+	if slash < 0 {
+		err = fmt.Errorf("invalid package reference %q — expected @org/name[@version]", ref)
+		return
+	}
+	org = parts[0][:slash]
+	name = parts[0][slash+1:]
+	if org == "" || name == "" {
+		err = fmt.Errorf("invalid package reference %q — org and name must not be empty", ref)
+	}
+	return
+}
+
+func fmtBytes(n int64) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f kB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
+}

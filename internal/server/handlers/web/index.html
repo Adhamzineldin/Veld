@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Veld Registry</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--surface:#161b22;--card:#1c2128;--border:#30363d;
+  --primary:#6366f1;--primary-dim:#4f46e5;--primary-glow:rgba(99,102,241,.15);
+  --success:#10b981;--warn:#f59e0b;--danger:#ef4444;
+  --text:#e6edf3;--muted:#8b949e;--link:#58a6ff;
+  --radius:8px;--font:'Segoe UI',system-ui,sans-serif;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+a{color:var(--link);text-decoration:none}a:hover{text-decoration:underline}
+button{cursor:pointer;font-family:inherit;font-size:14px}
+input,textarea,select{font-family:inherit;font-size:14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;outline:none;width:100%;transition:.15s border-color}
+input:focus,textarea:focus,select:focus{border-color:var(--primary)}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:500;letter-spacing:.5px;text-transform:uppercase}
+h1{font-size:24px;font-weight:700}h2{font-size:18px;font-weight:600}h3{font-size:15px;font-weight:600}
+.mono{font-family:'Cascadia Code','Fira Code',monospace;font-size:13px}
+
+/* Layout */
+#app{display:flex;height:100vh;overflow:hidden}
+#sidebar{width:220px;min-width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0;overflow-y:auto}
+#main{flex:1;overflow-y:auto;padding:32px}
+
+/* Sidebar */
+.sidebar-logo{padding:20px 20px 12px;border-bottom:1px solid var(--border)}
+.sidebar-logo .name{font-size:18px;font-weight:700;color:var(--text)}
+.sidebar-logo .tag{font-size:11px;color:var(--primary);background:var(--primary-glow);padding:2px 6px;border-radius:4px;margin-left:6px}
+.sidebar-nav{flex:1;padding:8px 0}
+.nav-section{padding:8px 16px 4px;font-size:11px;color:var(--muted);letter-spacing:.8px;text-transform:uppercase;font-weight:600}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 20px;color:var(--muted);transition:.1s color,.1s background;cursor:pointer;border:none;background:none;width:100%;text-align:left;font-size:13px}
+.nav-item:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.nav-item.active{color:var(--primary);background:var(--primary-glow)}
+.nav-item .icon{width:16px;text-align:center;font-size:15px}
+.sidebar-footer{padding:16px;border-top:1px solid var(--border)}
+.user-chip{display:flex;align-items:center;gap:10px;padding:8px;border-radius:var(--radius);background:var(--card);cursor:pointer}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius);border:none;font-weight:500;transition:.15s;cursor:pointer}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-dim)}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}.btn-ghost:hover{color:var(--text);border-color:var(--text)}
+.btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}.btn-danger:hover{background:var(--danger);color:#fff}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-success{background:var(--success);color:#fff}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px}
+.card-sm{padding:16px}
+
+/* Grid */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:768px){.grid-2,.grid-3{grid-template-columns:1fr}}
+
+/* Page header */
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.page-title{font-size:22px;font-weight:700}
+.breadcrumb{font-size:13px;color:var(--muted);margin-bottom:8px}
+.breadcrumb span{color:var(--text)}
+
+/* Stat card */
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.stat-value{font-size:32px;font-weight:700;color:var(--primary)}
+.stat-label{font-size:13px;color:var(--muted);margin-top:4px}
+
+/* Package card */
+.pkg-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;cursor:pointer;transition:.15s border-color}
+.pkg-card:hover{border-color:var(--primary)}
+.pkg-name{font-size:15px;font-weight:600;color:var(--text)}
+.pkg-scope{color:var(--muted)}
+.pkg-desc{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pkg-meta{display:flex;gap:12px;margin-top:12px;font-size:12px;color:var(--muted)}
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.badge-public{background:rgba(16,185,129,.15);color:var(--success)}
+.badge-private{background:rgba(239,68,68,.15);color:var(--danger)}
+.badge-version{background:var(--primary-glow);color:var(--primary)}
+.badge-dep{background:rgba(245,158,11,.15);color:var(--warn)}
+
+/* Table */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:8px 12px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+td{padding:10px 12px;border-bottom:1px solid rgba(48,54,61,.5);font-size:13px}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+
+/* Search */
+.search-bar{display:flex;gap:8px;margin-bottom:24px}
+.search-bar input{flex:1}
+
+/* Form */
+.form-group{margin-bottom:16px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.hint{font-size:12px;color:var(--muted);margin-top:4px}
+
+/* Toast */
+#toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 20px;border-radius:var(--radius);font-size:13px;font-weight:500;animation:slide-in .2s ease;max-width:360px}
+.toast-success{background:#10b981;color:#fff}
+.toast-error{background:#ef4444;color:#fff}
+.toast-info{background:#6366f1;color:#fff}
+@keyframes slide-in{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* Code block */
+.code-block{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px;position:relative}
+.code-block pre{overflow-x:auto;color:#79c0ff}
+.copy-btn{position:absolute;top:8px;right:8px;background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:4px 10px;font-size:11px;cursor:pointer}
+.copy-btn:hover{color:var(--text);border-color:var(--text)}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.modal-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer}
+.modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+
+/* Tags */
+.tag-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tag{background:var(--primary-glow);color:var(--primary);padding:4px 10px;border-radius:999px;font-size:11px;cursor:pointer}
+.tag:hover{background:var(--primary);color:#fff}
+
+/* Divider */
+.divider{height:1px;background:var(--border);margin:20px 0}
+
+/* Auth page */
+.auth-page{display:flex;align-items:center;justify-content:center;height:100vh;background:var(--bg)}
+.auth-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:40px;width:380px}
+.auth-logo{text-align:center;margin-bottom:28px}
+.auth-logo .logo-text{font-size:28px;font-weight:800;color:var(--primary)}
+.auth-logo .logo-sub{font-size:13px;color:var(--muted);margin-top:4px}
+.auth-tabs{display:flex;margin-bottom:24px;border-bottom:1px solid var(--border)}
+.auth-tab{flex:1;padding:10px;text-align:center;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:.15s}
+.auth-tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+
+/* Empty state */
+.empty{text-align:center;padding:60px 20px;color:var(--muted)}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.empty-title{font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px}
+
+/* Version list */
+.version-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(48,54,61,.5)}
+.version-row:last-child{border-bottom:none}
+.version-tag{font-family:monospace;font-size:14px;font-weight:600;color:var(--primary)}
+
+/* Scopes */
+.scope-group{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.scope-toggle{display:flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;background:none;color:var(--muted)}
+.scope-toggle.active{border-color:var(--primary);color:var(--primary);background:var(--primary-glow)}
+
+/* Spinner */
+.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+</style>
+</head>
+<body>
+<div id="toast-container"></div>
+<div id="root"></div>
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const state = {
+  user: null,
+  route: location.hash.slice(1) || '/',
+  modal: null,
+};
+
+// ── API ──────────────────────────────────────────────────────────────────────
+const api = {
+  async req(method, path, body, isMultipart) {
+    const opts = { method, headers: {} };
+    if (body && !isMultipart) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    } else if (isMultipart) {
+      opts.body = body; // FormData
+    }
+    const r = await fetch('/api/v1' + path, opts);
+    if (r.status === 204) return null;
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  },
+  get: (p) => api.req('GET', p),
+  post: (p, b) => api.req('POST', p, b),
+  delete: (p) => api.req('DELETE', p),
+  postForm: (p, fd) => api.req('POST', p, fd, true),
+};
+
+// ── Router ───────────────────────────────────────────────────────────────────
+window.addEventListener('hashchange', () => {
+  state.route = location.hash.slice(1) || '/';
+  render();
+});
+function navigate(route) {
+  location.hash = route;
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg, type='info') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ── Copy to clipboard ─────────────────────────────────────────────────────────
+async function copy(text, btn) {
+  await navigator.clipboard.writeText(text).catch(() => {});
+  if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 1500); }
+  else toast('Copied to clipboard', 'success');
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function openModal(html) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal">${html}</div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  return overlay;
+}
+function closeModal() { document.querySelector('.modal-overlay')?.remove(); }
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+async function loadUser() {
+  try { state.user = await api.get('/auth/me'); } catch { state.user = null; }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+async function render() {
+  if (!state.user) {
+    document.getElementById('root').innerHTML = renderAuthPage();
+    bindAuth();
+    return;
+  }
+  document.getElementById('root').innerHTML = renderShell();
+  bindNav();
+  await renderPage();
+}
+
+// ── Auth Page ─────────────────────────────────────────────────────────────────
+function renderAuthPage() {
+  return `<div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="logo-text">⬡ Veld Registry</div>
+        <div class="logo-sub">Contract-first API package registry</div>
+      </div>
+      <div class="auth-tabs">
+        <div class="auth-tab active" data-tab="login">Sign In</div>
+        <div class="auth-tab" data-tab="register">Create Account</div>
+      </div>
+      <div id="auth-form">
+        <div class="form-group"><label>Email</label><input id="auth-email" type="email" placeholder="you@example.com"/></div>
+        <div class="form-group login-only" style="display:none"><label>Username</label><input id="auth-username" placeholder="your-username"/></div>
+        <div class="form-group"><label>Password</label><input id="auth-password" type="password" placeholder="••••••••"/></div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" id="auth-submit">Sign In</button>
+        <div id="auth-err" style="color:var(--danger);font-size:13px;margin-top:10px;text-align:center"></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function bindAuth() {
+  let mode = 'login';
+  document.querySelectorAll('.auth-tab').forEach(t => {
+    t.addEventListener('click', () => {
+      mode = t.dataset.tab;
+      document.querySelectorAll('.auth-tab').forEach(x => x.classList.toggle('active', x.dataset.tab === mode));
+      document.querySelector('.login-only').style.display = mode === 'register' ? '' : 'none';
+      document.getElementById('auth-submit').textContent = mode === 'login' ? 'Sign In' : 'Create Account';
+    });
+  });
+  document.getElementById('auth-submit').addEventListener('click', async () => {
+    const email = document.getElementById('auth-email').value.trim();
+    const password = document.getElementById('auth-password').value;
+    const username = document.getElementById('auth-username')?.value.trim();
+    const btn = document.getElementById('auth-submit');
+    btn.textContent = 'Loading…'; btn.disabled = true;
+    try {
+      if (mode === 'login') {
+        await api.post('/auth/login', { email, password });
+      } else {
+        await api.post('/auth/register', { email, username, password });
+      }
+      await loadUser();
+      render();
+    } catch (e) {
+      document.getElementById('auth-err').textContent = e.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = mode === 'login' ? 'Sign In' : 'Create Account';
+    }
+  });
+  // Enter key submits
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('auth-submit')?.click();
+  }, { once: true });
+}
+
+// ── Shell ─────────────────────────────────────────────────────────────────────
+function renderShell() {
+  const u = state.user;
+  const av = u.username[0].toUpperCase();
+  return `
+  <div id="app">
+    <nav id="sidebar">
+      <div class="sidebar-logo">
+        <span class="name">⬡ Veld</span><span class="tag">Registry</span>
+      </div>
+      <div class="sidebar-nav">
+        <div class="nav-section">General</div>
+        <button class="nav-item" data-route="/" ><span class="icon">⊞</span>Dashboard</button>
+        <button class="nav-item" data-route="/packages"><span class="icon">📦</span>Packages</button>
+        <button class="nav-item" data-route="/orgs"><span class="icon">🏢</span>Organisations</button>
+        <div class="nav-section" style="margin-top:8px">Account</div>
+        <button class="nav-item" data-route="/tokens"><span class="icon">🔑</span>API Tokens</button>
+        <button class="nav-item" data-route="/settings"><span class="icon">⚙</span>Settings</button>
+      </div>
+      <div class="sidebar-footer">
+        <div class="user-chip" id="logout-btn">
+          <div class="avatar">${av}</div>
+          <div>
+            <div style="font-weight:600;font-size:13px">${u.username}</div>
+            <div style="font-size:11px;color:var(--muted)">Sign out</div>
+          </div>
+        </div>
+      </div>
+    </nav>
+    <main id="main"><div id="page-content"><div class="spinner"></div></div></main>
+  </div>`;
+}
+
+function bindNav() {
+  document.querySelectorAll('.nav-item[data-route]').forEach(btn => {
+    const r = btn.dataset.route;
+    if (matchRoute(r)) btn.classList.add('active');
+    btn.addEventListener('click', () => navigate(r));
+  });
+  document.getElementById('logout-btn')?.addEventListener('click', async () => {
+    await api.post('/auth/logout');
+    state.user = null;
+    render();
+  });
+}
+
+function matchRoute(r) {
+  if (r === '/') return state.route === '/';
+  return state.route.startsWith(r);
+}
+
+async function renderPage() {
+  const r = state.route;
+  const el = document.getElementById('page-content');
+  el.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><div class="spinner"></div> Loading…</div>';
+  try {
+    if (r === '/') await pageDashboard(el);
+    else if (r === '/packages') await pagePackages(el);
+    else if (r.startsWith('/packages/')) await pagePackageDetail(el, r);
+    else if (r === '/orgs') await pageOrgs(el);
+    else if (r.startsWith('/orgs/')) await pageOrgDetail(el, r);
+    else if (r === '/tokens') await pageTokens(el);
+    else if (r === '/settings') pageSettings(el);
+    else el.innerHTML = `<div class="empty"><div class="empty-icon">🗺</div><div class="empty-title">Page not found</div></div>`;
+  } catch (e) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">${e.message}</div></div>`;
+  }
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+async function pageDashboard(el) {
+  const [stats, pkgs, orgs] = await Promise.all([
+    api.get('/stats'),
+    api.get('/packages'),
+    api.get('/orgs'),
+  ]);
+  el.innerHTML = `
+    <div class="page-header"><h1 class="page-title">Dashboard</h1></div>
+    <div class="grid-3" style="margin-bottom:28px">
+      ${statCard(stats.packages,'Packages','📦')}
+      ${statCard(stats.versions,'Published Versions','🚀')}
+      ${statCard(stats.users,'Registry Users','👥')}
+    </div>
+    <div class="grid-2">
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <h2>Recent Packages</h2>
+          <button class="btn btn-ghost btn-sm" onclick="navigate('/packages')">View all</button>
+        </div>
+        ${pkgs.slice(0,5).map(p => pkgCard(p)).join('') || emptyState('📦','No packages yet')}
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <h2>Your Organisations</h2>
+          <button class="btn btn-ghost btn-sm" id="new-org-dash">+ New Org</button>
+        </div>
+        ${orgs.length ? orgs.map(o => orgRow(o)).join('') : emptyState('🏢','No organisations yet')}
+      </div>
+    </div>`;
+  document.getElementById('new-org-dash')?.addEventListener('click', showCreateOrgModal);
+}
+
+function statCard(val, label, icon) {
+  return `<div class="stat-card"><div style="font-size:28px;margin-bottom:8px">${icon}</div><div class="stat-value">${val??0}</div><div class="stat-label">${label}</div></div>`;
+}
+function orgRow(o) {
+  return `<div class="card card-sm" style="margin-bottom:8px;cursor:pointer" onclick="navigate('/orgs/${o.name}')">
+    <div style="font-weight:600">@${o.name}</div>
+    ${o.description ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${o.description}</div>` : ''}
+  </div>`;
+}
+
+// ── Packages Page ──────────────────────────────────────────────────────────────
+async function pagePackages(el) {
+  const pkgs = await api.get('/packages');
+  el.innerHTML = `
+    <div class="page-header">
+      <h1 class="page-title">Packages</h1>
+      <button class="btn btn-primary" id="publish-btn">+ Publish</button>
+    </div>
+    <div class="search-bar">
+      <input id="pkg-search" placeholder="Search packages…" value=""/>
+    </div>
+    <div id="pkg-grid">${renderPkgGrid(pkgs)}</div>`;
+
+  let allPkgs = pkgs;
+  document.getElementById('pkg-search').addEventListener('input', async e => {
+    const q = e.target.value.trim();
+    const filtered = q ? allPkgs.filter(p =>
+      p.name.includes(q) || (p.org_name||'').includes(q) || (p.description||'').includes(q)
+    ) : allPkgs;
+    document.getElementById('pkg-grid').innerHTML = renderPkgGrid(filtered);
+  });
+  document.getElementById('publish-btn')?.addEventListener('click', showPublishModal);
+}
+
+function renderPkgGrid(pkgs) {
+  if (!pkgs || !pkgs.length) return emptyState('📦','No packages found','Publish your first contract with <code>veld push</code>');
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">${pkgs.map(p => pkgCard(p)).join('')}</div>`;
+}
+
+function pkgCard(p) {
+  const full = `@${p.org_name}/${p.name}`;
+  return `<div class="pkg-card" onclick="navigate('/packages/${p.org_name}/${p.name}')">
+    <div class="pkg-name"><span class="pkg-scope">@${p.org_name}/</span>${p.name}</div>
+    <div class="pkg-desc">${p.description || 'No description'}</div>
+    <div class="pkg-meta">
+      ${p.latest_version ? `<span class="badge badge-version">v${p.latest_version}</span>` : ''}
+      <span class="badge badge-${p.visibility}">${p.visibility}</span>
+      ${p.version_count ? `<span>${p.version_count} version${p.version_count>1?'s':''}</span>` : ''}
+    </div>
+  </div>`;
+}
+
+// ── Package Detail ─────────────────────────────────────────────────────────────
+async function pagePackageDetail(el, route) {
+  const parts = route.replace('/packages/','').split('/');
+  const orgName = parts[0], pkgName = parts[1];
+  const data = await api.get(`/packages/${orgName}/${pkgName}`);
+  const pkg = data.package, versions = data.versions || [];
+  const latest = versions.find(v => !v.deprecated) || versions[0];
+
+  const installCmd = `veld pull @${orgName}/${pkgName}@${latest?.version || 'latest'}`;
+  el.innerHTML = `
+    <div class="breadcrumb"><a href="#/packages">Packages</a> › <a href="#/orgs/${orgName}">@${orgName}</a> › <span>${pkgName}</span></div>
+    <div class="page-header">
+      <div>
+        <h1 class="page-title"><span style="color:var(--muted)">@${orgName}/</span>${pkgName}</h1>
+        <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+          ${latest ? `<span class="badge badge-version">v${latest.version}</span>` : ''}
+          <span class="badge badge-${pkg.visibility}">${pkg.visibility}</span>
+          <span style="font-size:12px;color:var(--muted)">${versions.length} version${versions.length!==1?'s':''}</span>
+        </div>
+      </div>
+    </div>
+    ${pkg.description ? `<p style="color:var(--muted);margin-bottom:20px">${pkg.description}</p>` : ''}
+    <div class="grid-2" style="margin-bottom:24px">
+      <div>
+        <h3 style="margin-bottom:10px">Install</h3>
+        <div class="code-block">
+          <pre class="mono">${installCmd}</pre>
+          <button class="copy-btn" onclick="copy('${installCmd}',this)">Copy</button>
+        </div>
+        <div style="margin-top:12px">
+          <h3 style="margin-bottom:8px">In veld.config.json</h3>
+          <div class="code-block">
+            <pre class="mono">${escHtml(`"dependencies": {\n  "@${orgName}/${pkgName}": "${latest?.version||'1.0.0'}"\n}`)}</pre>
+            <button class="copy-btn" onclick="copy(${JSON.stringify(`"@${orgName}/${pkgName}": "${latest?.version||'1.0.0'"`)},this)">Copy</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h3 style="margin-bottom:10px">Versions</h3>
+        ${versions.map(v => versionRow(v, orgName, pkgName)).join('') || '<p style="color:var(--muted)">No versions yet</p>'}
+      </div>
+    </div>`;
+}
+
+function versionRow(v, orgName, pkgName) {
+  const depBadge = v.deprecated ? `<span class="badge badge-dep">deprecated</span>` : '';
+  return `<div class="version-row">
+    <div>
+      <span class="version-tag">v${v.version}</span> ${depBadge}
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDate(v.published_at)}</div>
+      ${v.deprecated ? `<div style="font-size:12px;color:var(--warn);margin-top:2px">${v.deprecated}</div>` : ''}
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-ghost btn-sm" onclick="copy('veld pull @${orgName}/${pkgName}@${v.version}',this)">Copy</button>
+    </div>
+  </div>`;
+}
+
+// ── Orgs Page ─────────────────────────────────────────────────────────────────
+async function pageOrgs(el) {
+  const orgs = await api.get('/orgs');
+  el.innerHTML = `
+    <div class="page-header">
+      <h1 class="page-title">Organisations</h1>
+      <button class="btn btn-primary" id="new-org-btn">+ New Organisation</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      ${orgs.length ? orgs.map(o => `
+        <div class="card card-sm" style="cursor:pointer" onclick="navigate('/orgs/${o.name}')">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <div style="font-weight:600;font-size:15px">@${o.name}</div>
+              ${o.display_name ? `<div style="font-size:12px;color:var(--muted)">${o.display_name}</div>` : ''}
+              ${o.description ? `<div style="font-size:13px;color:var(--muted);margin-top:4px">${o.description}</div>` : ''}
+            </div>
+            <span style="color:var(--muted);font-size:18px">›</span>
+          </div>
+        </div>`).join('') : emptyState('🏢','No organisations','Create an org to publish packages under a shared scope')}
+    </div>`;
+  document.getElementById('new-org-btn')?.addEventListener('click', showCreateOrgModal);
+}
+
+async function pageOrgDetail(el, route) {
+  const orgName = route.replace('/orgs/','');
+  const data = await api.get(`/orgs/${orgName}`);
+  const { org, members, packages } = data;
+  const isAdmin = members.some(m => m.user_id === state.user?.id && (m.role==='owner'||m.role==='admin'));
+
+  el.innerHTML = `
+    <div class="breadcrumb"><a href="#/orgs">Organisations</a> › <span>@${org.name}</span></div>
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">@${org.name}</h1>
+        ${org.display_name ? `<div style="color:var(--muted);margin-top:4px">${org.display_name}</div>` : ''}
+        ${org.description ? `<p style="color:var(--muted);margin-top:6px">${org.description}</p>` : ''}
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <h2>Packages (${packages.length})</h2>
+        </div>
+        ${packages.map(p => pkgCard(p)).join('') || emptyState('📦','No packages yet')}
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <h2>Members (${members.length})</h2>
+          ${isAdmin ? `<button class="btn btn-ghost btn-sm" id="add-member-btn">+ Add Member</button>` : ''}
+        </div>
+        <div class="card" style="padding:0">
+          <table>
+            <thead><tr><th>User</th><th>Role</th>${isAdmin?'<th></th>':''}</tr></thead>
+            <tbody>
+              ${members.map(m => `<tr>
+                <td><div style="font-weight:500">${m.username}</div><div style="font-size:11px;color:var(--muted)">${m.email}</div></td>
+                <td><span class="badge" style="background:var(--card);border:1px solid var(--border)">${m.role}</span></td>
+                ${isAdmin ? `<td><button class="btn btn-ghost btn-sm" onclick="removeMember('${org.name}','${m.username}')">Remove</button></td>` : ''}
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('add-member-btn')?.addEventListener('click', () => showAddMemberModal(org.name));
+}
+
+// ── Tokens Page ───────────────────────────────────────────────────────────────
+async function pageTokens(el) {
+  const tokens = await api.get('/tokens');
+  el.innerHTML = `
+    <div class="page-header">
+      <h1 class="page-title">API Tokens</h1>
+      <button class="btn btn-primary" id="new-token-btn">+ New Token</button>
+    </div>
+    <div class="card" style="margin-bottom:16px;padding:16px;border-color:var(--primary)">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Use tokens for CI/CD and the Veld CLI</div>
+      <div class="code-block" style="margin-top:8px">
+        <pre class="mono">veld login --registry ${location.origin} --token vtk_your_token_here</pre>
+      </div>
+    </div>
+    <div class="card" style="padding:0">
+      ${tokens.length ? `<table>
+        <thead><tr><th>Name</th><th>Scopes</th><th>Last used</th><th>Created</th><th></th></tr></thead>
+        <tbody>${tokens.map(t => `<tr>
+          <td><div style="font-weight:500">${t.name}</div>${t.org_id?`<div style="font-size:11px;color:var(--muted)">org-scoped</div>`:''}</td>
+          <td>${t.scopes.map(s=>`<span class="badge" style="background:var(--card);border:1px solid var(--border);margin-right:4px">${s}</span>`).join('')}</td>
+          <td style="color:var(--muted);font-size:12px">${t.last_used?fmtDate(t.last_used):'Never'}</td>
+          <td style="color:var(--muted);font-size:12px">${fmtDate(t.created_at)}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteToken('${t.id}')">Revoke</button></td>
+        </tr>`).join('')}</tbody>
+      </table>` : emptyState('🔑','No tokens yet','Create a token to authenticate the Veld CLI')}
+    </div>`;
+  document.getElementById('new-token-btn')?.addEventListener('click', showCreateTokenModal);
+}
+
+function pageSettings(el) {
+  const u = state.user;
+  el.innerHTML = `
+    <div class="page-header"><h1 class="page-title">Settings</h1></div>
+    <div class="card" style="max-width:480px">
+      <h2 style="margin-bottom:16px">Account</h2>
+      <div class="form-group"><label>Username</label><input value="${u.username}" disabled/></div>
+      <div class="form-group"><label>Email</label><input value="${u.email}" disabled/></div>
+      <div class="divider"></div>
+      <h3 style="margin-bottom:12px">CLI Quick-Start</h3>
+      <div class="code-block"><pre class="mono"># 1. Login\nveld login --registry ${location.origin}\n\n# 2. Push your contracts\nveld push\n\n# 3. Pull in another project\nveld pull @your-org/package-name</pre></div>
+    </div>`;
+}
+
+// ── Modals ─────────────────────────────────────────────────────────────────────
+function showCreateOrgModal() {
+  const o = openModal(`
+    <div class="modal-header"><h2>New Organisation</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-group"><label>Organisation Name</label><input id="org-name" placeholder="my-company"/><div class="hint">Lowercase letters, digits, hyphens. This becomes the @scope.</div></div>
+    <div class="form-group"><label>Display Name</label><input id="org-display" placeholder="My Company"/></div>
+    <div class="form-group"><label>Description</label><textarea id="org-desc" rows="2" placeholder="What does this org build?"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="create-org-submit">Create Organisation</button>
+    </div>`);
+  document.getElementById('create-org-submit').addEventListener('click', async () => {
+    try {
+      const org = await api.post('/orgs', {
+        name: document.getElementById('org-name').value.trim(),
+        display_name: document.getElementById('org-display').value.trim(),
+        description: document.getElementById('org-desc').value.trim(),
+      });
+      closeModal();
+      toast(`Created @${org.name}`, 'success');
+      navigate(`/orgs/${org.name}`);
+    } catch(e) { toast(e.message, 'error'); }
+  });
+}
+
+function showAddMemberModal(orgName) {
+  openModal(`
+    <div class="modal-header"><h2>Add Member to @${orgName}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-group"><label>Username</label><input id="member-username" placeholder="their-username"/></div>
+    <div class="form-group"><label>Role</label>
+      <select id="member-role">
+        <option value="member">Member — can view private packages</option>
+        <option value="admin">Admin — can publish packages</option>
+        <option value="owner">Owner — full control</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="add-member-submit">Add Member</button>
+    </div>`);
+  document.getElementById('add-member-submit').addEventListener('click', async () => {
+    try {
+      await api.post(`/orgs/${orgName}/members`, {
+        username: document.getElementById('member-username').value.trim(),
+        role: document.getElementById('member-role').value,
+      });
+      closeModal();
+      toast('Member added', 'success');
+      await renderPage();
+    } catch(e) { toast(e.message, 'error'); }
+  });
+}
+
+async function removeMember(orgName, username) {
+  if (!confirm(`Remove ${username} from @${orgName}?`)) return;
+  try {
+    await api.delete(`/orgs/${orgName}/members/${username}`);
+    toast('Member removed', 'success');
+    await renderPage();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function showCreateTokenModal() {
+  const scopes = new Set(['read']);
+  openModal(`
+    <div class="modal-header"><h2>New API Token</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-group"><label>Token Name</label><input id="tok-name" placeholder="ci-deploy"/></div>
+    <div class="form-group">
+      <label>Scopes</label>
+      <div class="scope-group">
+        ${['read','write','delete'].map(s => `<button class="scope-toggle${scopes.has(s)?' active':''}" data-scope="${s}">${s}</button>`).join('')}
+      </div>
+    </div>
+    <div class="form-group"><label>Expires in days (0 = never)</label><input id="tok-exp" type="number" value="0" min="0"/></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="create-tok-submit">Create Token</button>
+    </div>`);
+  document.querySelectorAll('.scope-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const s = btn.dataset.scope;
+      if (s === 'read') return; // read is always required
+      btn.classList.toggle('active');
+      if (btn.classList.contains('active')) scopes.add(s); else scopes.delete(s);
+    });
+  });
+  document.getElementById('create-tok-submit').addEventListener('click', async () => {
+    try {
+      const tok = await api.post('/tokens', {
+        name: document.getElementById('tok-name').value.trim(),
+        scopes: [...scopes],
+        expires_days: parseInt(document.getElementById('tok-exp').value) || 0,
+      });
+      closeModal();
+      // Show the plain token once
+      openModal(`
+        <div class="modal-header"><h2>Token Created</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+        <div style="background:rgba(16,185,129,.1);border:1px solid var(--success);border-radius:8px;padding:16px;margin-bottom:16px">
+          <div style="font-size:12px;color:var(--success);margin-bottom:8px;font-weight:600">⚠ Copy this token — it will not be shown again</div>
+          <div class="mono" style="word-break:break-all;color:var(--text)">${tok.token}</div>
+        </div>
+        <button class="btn btn-success" style="width:100%;justify-content:center" onclick="copy('${tok.token}',this)">Copy to Clipboard</button>
+        <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal();renderPage()">Done</button></div>`);
+    } catch(e) { toast(e.message, 'error'); }
+  });
+}
+
+function showPublishModal() {
+  openModal(`
+    <div class="modal-header"><h2>Publish Package</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <p style="color:var(--muted);margin-bottom:16px;font-size:13px">Publishing from the UI is for quick uploads. For CI/CD use the CLI.</p>
+    <div class="code-block" style="margin-bottom:16px">
+      <pre class="mono"># From your project root:\nveld push --registry ${location.origin}</pre>
+      <button class="copy-btn" onclick="copy('veld push --registry ${location.origin}',this)">Copy</button>
+    </div>
+    <div class="divider"></div>
+    <h3 style="margin-bottom:12px">Manual Upload</h3>
+    <div class="form-row">
+      <div class="form-group"><label>Org Name</label><input id="pub-org" placeholder="acme"/></div>
+      <div class="form-group"><label>Package Name</label><input id="pub-name" placeholder="auth-service"/></div>
+    </div>
+    <div class="form-group"><label>Version</label><input id="pub-ver" placeholder="1.0.0"/></div>
+    <div class="form-group"><label>Tarball (.tar.gz)</label><input id="pub-file" type="file" accept=".tar.gz,.tgz"/></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="pub-submit">Upload</button>
+    </div>`);
+  document.getElementById('pub-submit').addEventListener('click', async () => {
+    const btn = document.getElementById('pub-submit');
+    btn.disabled = true; btn.textContent = 'Uploading…';
+    try {
+      const fd = new FormData();
+      fd.append('manifest', JSON.stringify({
+        org: document.getElementById('pub-org').value.trim(),
+        name: document.getElementById('pub-name').value.trim(),
+        version: document.getElementById('pub-ver').value.trim(),
+      }));
+      fd.append('tarball', document.getElementById('pub-file').files[0]);
+      const res = await api.postForm('/packages', fd);
+      closeModal();
+      toast(`Published ${res.package}@${res.version} (${(res.size/1024).toFixed(1)} kB)`, 'success');
+      navigate(`/packages/${document.getElementById('pub-org').value}/${document.getElementById('pub-name').value}`);
+    } catch(e) { toast(e.message, 'error'); } finally { btn.disabled=false; btn.textContent='Upload'; }
+  });
+}
+
+async function deleteToken(id) {
+  if (!confirm('Revoke this token? This cannot be undone.')) return;
+  try {
+    await api.delete(`/tokens/${id}`);
+    toast('Token revoked', 'success');
+    await renderPage();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function emptyState(icon, title, sub='') {
+  return `<div class="empty"><div class="empty-icon">${icon}</div><div class="empty-title">${title}</div>${sub?`<div style="font-size:13px;margin-top:4px">${sub}</div>`:''}</div>`;
+}
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
+}
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────────
+(async () => {
+  await loadUser();
+  await render();
+})();
+</script>
+</body>
+</html>
