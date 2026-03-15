@@ -31,6 +31,39 @@
   margin-bottom: 24px;
 }
 
+.sidebarTab {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--fg2);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.sidebarTab:hover {
+  color: var(--fg);
+}
+
+.sidebarTabActive {
+  color: var(--accent);
+  border-color: rgba(88, 166, 255, 0.35);
+  background: rgba(88, 166, 255, 0.08);
+}
+
+.sidebarDropdown {
+  margin-top: 8px;
+  padding-top: 4px;
+}
+
 .sidebarGroupTitle {
   font-size: 0.72rem;
   font-weight: 700;
@@ -50,6 +83,64 @@
   border-left: 2px solid transparent;
   transition: all 0.15s;
   line-height: 1.5;
+}
+
+.docsPagerWrap {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.nextSectionBtn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(63, 185, 80, 0.4);
+  background: rgba(63, 185, 80, 0.1);
+  color: #9be9a8;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+
+.nextSectionBtn:hover {
+  background: rgba(63, 185, 80, 0.14);
+}
+
+.docsPager {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.docsPagerButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--fg);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.docsPagerButton:hover:not(:disabled) {
+  border-color: rgba(88, 166, 255, 0.35);
+  background: rgba(88, 166, 255, 0.08);
+}
+
+.docsPagerButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .sidebarLink:hover {
@@ -393,6 +484,10 @@
   .content {
     padding-left: 0;
     padding-right: 0;
+  }
+
+  .docsPager {
+    grid-template-columns: 1fr;
   }
 
   .pageTitle {

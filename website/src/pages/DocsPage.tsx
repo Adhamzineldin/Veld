@@ -1,113 +1,59 @@
-import { useState, useEffect } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
-import { highlightVeld, highlightTS } from '../components/SyntaxHighlighter';
+import DocsSidebar from '../components/docs/DocsSidebar';
+import DocsPager from '../components/docs/DocsPager';
+import { docsSidebarSections } from '../components/docs/docsNavigation';
 import styles from './DocsPage.module.css';
 
-const sidebarSections = [
-  {
-    group: 'Getting Started',
-    items: [
-      { id: 'overview', label: 'Overview' },
-      { id: 'installation', label: 'Installation' },
-      { id: 'quickstart', label: 'Quick Start' },
-      { id: 'project-structure', label: 'Project Structure' },
-    ],
-  },
-  {
-    group: 'Contract Syntax',
-    items: [
-      { id: 'models', label: 'Models' },
-      { id: 'enums', label: 'Enums' },
-      { id: 'modules', label: 'Modules & Actions' },
-      { id: 'types', label: 'Field Types' },
-      { id: 'inheritance', label: 'Inheritance (extends)' },
-      { id: 'maps', label: 'Maps' },
-      { id: 'imports', label: 'Import System' },
-      { id: 'websockets', label: 'WebSockets' },
-    ],
-  },
-  {
-    group: 'CLI Reference',
-    items: [
-      { id: 'cli-overview', label: 'CLI Overview' },
-      { id: 'cli-init', label: 'veld init' },
-      { id: 'cli-generate', label: 'veld generate' },
-      { id: 'cli-validate', label: 'veld validate' },
-      { id: 'cli-watch', label: 'veld watch' },
-      { id: 'cli-openapi', label: 'veld openapi' },
-      { id: 'cli-schema', label: 'veld schema' },
-      { id: 'cli-docs', label: 'veld docs' },
-      { id: 'cli-diff', label: 'veld diff' },
-      { id: 'cli-ast', label: 'veld ast' },
-      { id: 'cli-clean', label: 'veld clean' },
-    ],
-  },
-  {
-    group: 'Configuration',
-    items: [
-      { id: 'config-file', label: 'Config File' },
-      { id: 'config-fields', label: 'Config Fields' },
-      { id: 'config-aliases', label: 'Import Aliases' },
-      { id: 'config-detection', label: 'Auto-Detection' },
-    ],
-  },
-  {
-    group: 'Generated Output',
-    items: [
-      { id: 'output-overview', label: 'Output Overview' },
-      { id: 'output-node', label: 'Node.js Backend' },
-      { id: 'output-python', label: 'Python Backend' },
-      { id: 'output-frontend', label: 'Frontend SDK' },
-      { id: 'output-schemas', label: 'Validation Schemas' },
-      { id: 'output-routes', label: 'Route Handlers' },
-    ],
-  },
-  {
-    group: 'Using Generated Code',
-    items: [
-      { id: 'usage-backend', label: 'Backend Integration' },
-      { id: 'usage-frontend', label: 'Frontend SDK Usage' },
-      { id: 'usage-path-alias', label: 'Path Aliases' },
-    ],
-  },
-  {
-    group: 'Supported Stacks',
-    items: [
-      { id: 'stacks-backends', label: 'Backend Emitters' },
-      { id: 'stacks-frontends', label: 'Frontend Emitters' },
-      { id: 'stacks-extras', label: 'Extras' },
-    ],
-  },
-  {
-    group: 'Editor Support',
-    items: [
-      { id: 'editor-vscode', label: 'VS Code Extension' },
-      { id: 'editor-jetbrains', label: 'JetBrains Plugin' },
-      { id: 'editor-lsp', label: 'LSP Server' },
-    ],
-  },
-  {
-    group: 'Cloud Registry',
-    items: [
-      { id: 'registry-overview', label: 'Overview' },
-      { id: 'registry-selfhost', label: 'Self-Hosting' },
-      { id: 'registry-login', label: 'Login & Auth' },
-      { id: 'registry-push', label: 'Publishing (push)' },
-      { id: 'registry-pull', label: 'Installing (pull)' },
-      { id: 'registry-teams', label: 'Teams & Orgs' },
-      { id: 'registry-tokens', label: 'API Tokens' },
-      { id: 'registry-config', label: 'Config Reference' },
-    ],
-  },
-];
+const CodeBlock = memo(function CodeBlock({ title, children, lang }: { title?: string; children: string; lang?: 'veld' | 'ts' | 'bash' | 'json' }) {
+  const [rendered, setRendered] = useState<ReactNode>(children);
+  const [isVisible, setIsVisible] = useState(lang !== 'veld' && lang !== 'ts');
+  const contentRef = useRef<HTMLPreElement | null>(null);
 
-function CodeBlock({ title, children, lang }: { title?: string; children: string; lang?: 'veld' | 'ts' | 'bash' | 'json' }) {
-  const rendered = lang === 'veld'
-    ? highlightVeld(children)
-    : lang === 'ts'
-    ? highlightTS(children)
-    : null;
+  useEffect(() => {
+    if (isVisible || !contentRef.current) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '220px 0px' }
+    );
+
+    observer.observe(contentRef.current);
+    return () => observer.disconnect();
+  }, [isVisible]);
+
+  useEffect(() => {
+    if (!isVisible) {
+      return;
+    }
+
+    let cancelled = false;
+    const run = async () => {
+      if (lang === 'veld' || lang === 'ts') {
+        const { highlightTS, highlightVeld } = await import('../components/SyntaxHighlighter');
+        if (cancelled) {
+          return;
+        }
+        setRendered(lang === 'veld' ? highlightVeld(children) : highlightTS(children));
+        return;
+      }
+
+      setRendered(children);
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [children, isVisible, lang]);
 
   return (
     <div className={styles.codeBlock}>
@@ -119,30 +65,110 @@ function CodeBlock({ title, children, lang }: { title?: string; children: string
           <span className={styles.codeHeaderTitle}>{title}</span>
         </div>
       )}
-      <pre className={styles.codeContent}>
+      <pre ref={contentRef} className={styles.codeContent}>
         {rendered ?? children}
       </pre>
     </div>
   );
-}
+});
 
 export default function DocsPage() {
+  const defaultGroup = docsSidebarSections[0]?.group ?? 'Getting Started';
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeGroup, setActiveGroup] = useState(defaultGroup);
   const [activeId, setActiveId] = useState('overview');
   const [installTab, setInstallTab] = useState('npm');
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    for (const section of docsSidebarSections) {
+      initial[section.group] = section.group === defaultGroup;
+    }
+    return initial;
+  });
   const location = useLocation();
+
+  const activeGroupIndex = useMemo(
+    () => docsSidebarSections.findIndex((section) => section.group === activeGroup),
+    [activeGroup]
+  );
+
+  const activeGroupData = docsSidebarSections[activeGroupIndex] ?? docsSidebarSections[0];
+  const activeSectionIds = useMemo(
+    () => activeGroupData?.items.map((item) => item.id) ?? [],
+    [activeGroupData]
+  );
+
+  const allSectionIds = useMemo(
+    () => docsSidebarSections.flatMap((section) => section.items.map((item) => item.id)),
+    []
+  );
+
+  const currentSectionIndex = activeSectionIds.indexOf(activeId);
+  const nextSectionId = currentSectionIndex >= 0 ? activeSectionIds[currentSectionIndex + 1] : null;
+  const nextSectionLabel = nextSectionId
+    ? activeGroupData.items.find((item) => item.id === nextSectionId)?.label ?? null
+    : null;
+
+  const previousGroup = activeGroupIndex > 0 ? docsSidebarSections[activeGroupIndex - 1] : null;
+  const nextGroup =
+    activeGroupIndex >= 0 && activeGroupIndex < docsSidebarSections.length - 1
+      ? docsSidebarSections[activeGroupIndex + 1]
+      : null;
+
+  const scrollToSection = (sectionId: string, smooth = true) => {
+    const ownerGroup = docsSidebarSections.find((section) =>
+      section.items.some((item) => item.id === sectionId)
+    );
+
+    if (ownerGroup && ownerGroup.group !== activeGroup) {
+      setActiveGroup(ownerGroup.group);
+      setExpandedGroups((prev) => ({ ...prev, [ownerGroup.group]: true }));
+    }
+
+    setActiveId(sectionId);
+
+    requestAnimationFrame(() => {
+      const section = document.getElementById(sectionId);
+      if (section) {
+        section.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+        window.history.replaceState(null, '', `#${sectionId}`);
+      }
+    });
+  };
 
   // Scroll to hash on load
   useEffect(() => {
     if (location.hash) {
-      const el = document.getElementById(location.hash.slice(1));
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
+      scrollToSection(location.hash.slice(1), false);
+    } else if (activeSectionIds.length > 0) {
+      scrollToSection(activeSectionIds[0], false);
     }
   }, [location.hash]);
 
+  // Show only sections from the active tab group.
+  useEffect(() => {
+    const visible = new Set(activeSectionIds);
+    for (const id of allSectionIds) {
+      const section = document.getElementById(id);
+      if (!section) {
+        continue;
+      }
+      const isVisible = visible.has(id);
+      section.style.display = isVisible ? '' : 'none';
+      section.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
+    }
+
+    if (!visible.has(activeId) && activeSectionIds.length > 0) {
+      setActiveId(activeSectionIds[0]);
+    }
+  }, [activeSectionIds, allSectionIds, activeId]);
+
   // Track active section on scroll
   useEffect(() => {
-    const ids = sidebarSections.flatMap((s) => s.items.map((i) => i.id));
+    if (activeSectionIds.length === 0) {
+      return;
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -154,12 +180,52 @@ export default function DocsPage() {
       },
       { rootMargin: '-80px 0px -60% 0px', threshold: 0 }
     );
-    for (const id of ids) {
+
+    for (const id of activeSectionIds) {
       const el = document.getElementById(id);
       if (el) observer.observe(el);
     }
+
     return () => observer.disconnect();
-  }, []);
+  }, [activeSectionIds]);
+
+  const toggleGroup = (group: string) => {
+    setExpandedGroups((prev) => {
+      const isActive = group === activeGroup;
+      const isCurrentlyExpanded = prev[group] ?? isActive;
+      return {
+        ...prev,
+        [group]: isActive ? !isCurrentlyExpanded : true,
+      };
+    });
+
+    if (group !== activeGroup) {
+      setActiveGroup(group);
+      const firstSection = docsSidebarSections.find((section) => section.group === group)?.items[0];
+      if (firstSection) {
+        scrollToSection(firstSection.id);
+      }
+    }
+  };
+
+  const goToGroup = (index: number) => {
+    if (index < 0 || index >= docsSidebarSections.length) {
+      return;
+    }
+
+    const group = docsSidebarSections[index];
+    setActiveGroup(group.group);
+    setExpandedGroups((prev) => ({ ...prev, [group.group]: true }));
+    if (group.items[0]) {
+      scrollToSection(group.items[0].id);
+    }
+  };
+
+  const goToNextSection = () => {
+    if (nextSectionId) {
+      scrollToSection(nextSectionId);
+    }
+  };
 
   const installCommands: Record<string, { install: string; run: string }> = {
     npm: { install: 'npm install -g @maayn/veld', run: 'npx @maayn/veld generate' },
@@ -181,23 +247,16 @@ export default function DocsPage() {
       />
 
       {/* Sidebar */}
-      <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}>
-        {sidebarSections.map((section) => (
-          <div key={section.group} className={styles.sidebarGroup}>
-            <div className={styles.sidebarGroupTitle}>{section.group}</div>
-            {section.items.map((item) => (
-              <a
-                key={item.id}
-                href={`#${item.id}`}
-                className={`${styles.sidebarLink} ${activeId === item.id ? styles.sidebarLinkActive : ''}`}
-                onClick={() => setSidebarOpen(false)}
-              >
-                {item.label}
-              </a>
-            ))}
-          </div>
-        ))}
-      </aside>
+      <DocsSidebar
+        className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}
+        groups={docsSidebarSections}
+        activeGroup={activeGroup}
+        activeId={activeId}
+        expandedGroups={expandedGroups}
+        onToggleGroup={toggleGroup}
+        onSelectSection={scrollToSection}
+        closeMobile={() => setSidebarOpen(false)}
+      />
 
       {/* Mobile sidebar toggle */}
       <button
@@ -2035,6 +2094,16 @@ veld registry token create --name …  # create a new API token`}
 }`}
           </CodeBlock>
         </section>
+
+        <DocsPager
+          activeGroupLabel={activeGroupData.group}
+          previousGroupLabel={previousGroup?.group ?? null}
+          nextGroupLabel={nextGroup?.group ?? null}
+          nextSectionLabel={activeGroupData.group === 'Getting Started' ? nextSectionLabel : null}
+          onPreviousGroup={() => goToGroup(activeGroupIndex - 1)}
+          onNextGroup={() => goToGroup(activeGroupIndex + 1)}
+          onNextSection={goToNextSection}
+        />
 
       </div>
     </div>
