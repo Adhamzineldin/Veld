@@ -13,12 +13,12 @@
   },
   "registry": {
     "enabled": true,
-    "url": "http://localhost:8080",
+    "url": "https://app8080.maayn.com",
     "org": "maayn",
     "package": "node_react",
-    "version": "0.1.0"
+    "version": "0.1.1"
   },
   "dependencies": {
-    "@maayn/node-react-api": "0.1.0"
+    "@maayn/node-react-api": "0.1.1"
   }
 }

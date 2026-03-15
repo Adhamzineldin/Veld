@@ -28,6 +28,8 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/openapigen"
 	"github.com/Adhamzineldin/Veld/internal/registry"
 	"github.com/Adhamzineldin/Veld/internal/schema"
+	"github.com/Adhamzineldin/Veld/internal/server"
+	"github.com/Adhamzineldin/Veld/internal/server/email"
 	"github.com/Adhamzineldin/Veld/internal/setup"
 	"github.com/Adhamzineldin/Veld/internal/validator"
 	"github.com/spf13/cobra"
@@ -622,6 +624,9 @@ Aliases:   node → node-ts, js/javascript → node-js, ts → typescript, react
 		newSetupCmd(), newFmtCmd(), newDoctorCmd(), newCompletionCmd(),
 		// Registry commands
 		newLoginCmd(), newLogoutCmd(), newPushCmd(), newPullCmd(), newRegistryCmd(),
+		newServeCmd(),
+		// CI helper
+		newCICmd(),
 	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, red("Error: ")+err.Error())
@@ -3159,6 +3164,9 @@ func newRegistryCmd() *cobra.Command {
 	}
 	cmd.AddCommand(versionsCmd)
 
+	// veld registry init
+	cmd.AddCommand(newRegistryInitCmd())
+
 	// veld registry token create
 	tokenCmd := &cobra.Command{
 		Use:   "token",
@@ -3194,6 +3202,404 @@ func newRegistryCmd() *cobra.Command {
 	tokenCmd.AddCommand(tokenCreateCmd)
 	cmd.AddCommand(tokenCmd)
 
+	return cmd
+}
+
+// ── ci ────────────────────────────────────────────────────────────────────────
+
+// newCICmd returns the `veld ci` command — a single non-interactive command
+// that runs generate + setup and exits with the correct status code.
+//
+// Replace this in any Dockerfile, pipeline, or script:
+//
+//	npx veld generate && npx veld setup
+//
+// With:
+//
+//	npx veld ci
+func newCICmd() *cobra.Command {
+	var backendFlag, frontendFlag, inputFlag, outFlag string
+	var strictFlag bool
+
+	cmd := &cobra.Command{
+		Use:   "ci",
+		Short: "Generate code and configure project paths in one step (non-interactive)",
+		Long: `Run veld generate then veld setup in a single non-interactive command.
+
+Reads backend and frontend from veld.config.json automatically.
+Never prompts — safe to run in any pipeline, Dockerfile, or script.
+Exits 0 on success, 1 on any failure.
+
+Replace this:
+  npx veld generate
+  npx veld setup
+
+With:
+  npx veld ci`,
+		Example: "  npx veld ci\n  veld ci\n  veld ci --strict",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			flags := config.FlagOverrides{
+				Backend:     backendFlag,
+				Frontend:    frontendFlag,
+				Input:       inputFlag,
+				Out:         outFlag,
+				BackendSet:  cmd.Flags().Changed("backend"),
+				FrontendSet: cmd.Flags().Changed("frontend"),
+				InputSet:    cmd.Flags().Changed("input"),
+				OutSet:      cmd.Flags().Changed("out"),
+			}
+			rc, err := config.BuildResolved(flags)
+			if err != nil {
+				return fmt.Errorf("could not load veld.config.json: %w", err)
+			}
+
+			// ── step 1: generate ─────────────────────────────────────────────
+			fmt.Printf(dim("⬡")+"  Generating (backend=%s frontend=%s)…\n", rc.Backend, rc.Frontend)
+
+			// Check for breaking changes before emitting.
+			if preChanges := computePreChanges(rc); diff.HasBreaking(preChanges) {
+				printDiffChanges(preChanges)
+				if strictFlag {
+					fmt.Fprintln(os.Stderr, red("✗")+" Breaking changes detected — aborting (--strict)")
+					return fmt.Errorf("breaking changes blocked by --strict")
+				}
+				// Non-strict: warn but continue — no interactive prompt in CI.
+				fmt.Fprintln(os.Stderr, yellow("⚠")+"  Breaking changes detected — continuing (pass --strict to block)")
+			}
+
+			opts := emitter.EmitOptions{
+				BaseUrl: rc.BaseUrl,
+			}
+			generatedFiles, _, _, err := runGenerate(rc, false, opts)
+			if err != nil {
+				return fmt.Errorf("generate failed: %w", err)
+			}
+
+			if len(generatedFiles) > 0 {
+				fmt.Printf(green("✓")+" Generated %d file(s) → %s\n", len(generatedFiles), rc.Out)
+			} else {
+				fmt.Printf(green("✓")+" Generated → %s\n", rc.Out)
+			}
+
+			runPostGenerate(rc)
+
+			// ── step 2: setup ────────────────────────────────────────────────
+			fmt.Printf(dim("⬡") + "  Configuring project paths…\n")
+
+			projectDir, _ := os.Getwd()
+			results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out, setup.Options{
+				BackendDir:     rc.BackendDir,
+				FrontendDir:    rc.FrontendDir,
+				BackendOutDir:  rc.BackendOut,
+				FrontendOutDir: rc.FrontendOut,
+			})
+
+			patched, alreadyOK := 0, 0
+			for _, r := range results {
+				switch r.Action {
+				case "patched":
+					patched++
+					fmt.Printf("  %s %s — %s\n", green("✓"), r.File, r.Detail)
+				case "skipped":
+					alreadyOK++
+					fmt.Printf("  %s %s — %s\n", dim("·"), r.File, dim(r.Detail))
+				case "not-found":
+					fmt.Printf("  %s %s — %s\n", yellow("!"), r.File, r.Detail)
+				case "manual":
+					fmt.Printf("  %s %s — %s\n", dim("→"), r.File, r.Detail)
+				}
+			}
+
+			switch {
+			case patched > 0:
+				fmt.Printf(green("✓")+" Setup patched %d file(s)\n", patched)
+			case alreadyOK > 0:
+				fmt.Printf(green("✓") + " Setup already configured\n")
+			default:
+				fmt.Printf(dim("·") + "  No config files to patch for this stack\n")
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&backendFlag, "backend", "", "backend override")
+	cmd.Flags().StringVar(&frontendFlag, "frontend", "", "frontend override")
+	cmd.Flags().StringVar(&inputFlag, "input", "", "input .veld file override")
+	cmd.Flags().StringVar(&outFlag, "out", "", "output directory override")
+	cmd.Flags().BoolVar(&strictFlag, "strict", false, "exit 1 on breaking changes")
+	return cmd
+}
+
+// ── registry init ─────────────────────────────────────────────────────────────
+
+func newRegistryInitCmd() *cobra.Command {
+	var flagAddr, flagDSN, flagSecret, flagStorage, flagBaseURL, flagOut string
+
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Scaffold a registry.config.json for self-hosting",
+		Long: `Create a registry.config.json file with your server configuration.
+
+Missing required values (DSN, secret) will be prompted interactively.
+Pass --yes to skip prompts and write defaults (useful in scripts).`,
+		Example: `  veld registry init
+  veld registry init --dsn "postgres://localhost/veld?sslmode=disable" --secret $(openssl rand -hex 32)
+  veld registry init --out /etc/veld/registry.config.json`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			outPath := flagOut
+			if outPath == "" {
+				outPath = "registry.config.json"
+			}
+
+			// Don't overwrite
+			if _, err := os.Stat(outPath); err == nil {
+				return fmt.Errorf("%s already exists — delete it first or use --out to choose a different path", outPath)
+			}
+
+			reader := bufio.NewReader(os.Stdin)
+
+			prompt := func(label, def string) string {
+				if def != "" {
+					fmt.Printf("  %s [%s]: ", label, dim(def))
+				} else {
+					fmt.Printf("  %s: ", label)
+				}
+				line, _ := reader.ReadString('\n')
+				line = strings.TrimSpace(line)
+				if line == "" {
+					return def
+				}
+				return line
+			}
+
+			fmt.Println(bold("Veld Registry — configuration setup"))
+			fmt.Println()
+
+			addr := flagAddr
+			if addr == "" {
+				addr = prompt("Listen address", ":8080")
+			}
+
+			dsn := flagDSN
+			if dsn == "" {
+				dsn = prompt("PostgreSQL DSN", "postgres://localhost/veld?sslmode=disable")
+			}
+			if dsn == "" {
+				return fmt.Errorf("DSN is required")
+			}
+
+			secret := flagSecret
+			if secret == "" {
+				fmt.Println()
+				fmt.Println(dim("  Tip: generate a secret with: openssl rand -hex 32"))
+				secret = prompt("JWT secret (min 16 chars)", "")
+			}
+			if secret == "" {
+				return fmt.Errorf("JWT secret is required")
+			}
+			if len(secret) < 16 {
+				return fmt.Errorf("JWT secret must be at least 16 characters")
+			}
+
+			storage := flagStorage
+			if storage == "" {
+				storage = prompt("Tarball storage path", "./packages")
+			}
+
+			baseURL := flagBaseURL
+			if baseURL == "" {
+				baseURL = prompt("Public base URL (optional)", "")
+			}
+
+			cfg := map[string]interface{}{
+				"addr":    addr,
+				"dsn":     dsn,
+				"secret":  secret,
+				"storage": storage,
+			}
+			if baseURL != "" {
+				cfg["base_url"] = baseURL
+			}
+			cfg["smtp"] = map[string]interface{}{
+				"host":     "",
+				"port":     587,
+				"username": "",
+				"password": "",
+				"from":     "",
+			}
+
+			data, err := json.MarshalIndent(cfg, "", "  ")
+			if err != nil {
+				return err
+			}
+
+			if err := os.WriteFile(outPath, data, 0600); err != nil {
+				return err
+			}
+
+			fmt.Println()
+			fmt.Printf(green("✓")+" Created %s\n", bold(outPath))
+			fmt.Println()
+			fmt.Println("Next steps:")
+			fmt.Printf("  1. %s\n", dim("Start the registry:"))
+			fmt.Printf("     veld serve --config %s\n", outPath)
+			fmt.Printf("  2. %s\n", dim("Open the web UI and create your account:"))
+			fmt.Printf("     http://localhost%s\n", addr)
+			fmt.Printf("  3. %s\n", dim("Log in from the CLI:"))
+			fmt.Printf("     veld login --registry http://localhost%s --token vtk_...\n", addr)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&flagAddr, "addr", "", "listen address (default :8080)")
+	cmd.Flags().StringVar(&flagDSN, "dsn", "", "PostgreSQL DSN")
+	cmd.Flags().StringVar(&flagSecret, "secret", "", "JWT signing secret (min 16 chars)")
+	cmd.Flags().StringVar(&flagStorage, "storage", "", "tarball storage path (default ./packages)")
+	cmd.Flags().StringVar(&flagBaseURL, "base-url", "", "public base URL (e.g. https://registry.example.com)")
+	cmd.Flags().StringVar(&flagOut, "out", "", "output path (default ./registry.config.json)")
+	return cmd
+}
+
+// ── serve (registry server) ───────────────────────────────────────────────────
+
+// serveRegistryConfig mirrors registry.config.json on disk.
+type serveRegistryConfig struct {
+	Addr        string          `json:"addr"`
+	DSN         string          `json:"dsn"`
+	StoragePath string          `json:"storage"`
+	JWTSecret   string          `json:"secret"`
+	BaseURL     string          `json:"base_url"`
+	SMTP        serveSmtpConfig `json:"smtp"`
+}
+
+type serveSmtpConfig struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	From     string `json:"from"`
+}
+
+func loadServeConfigFile(path string) serveRegistryConfig {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return serveRegistryConfig{}
+	}
+	var c serveRegistryConfig
+	if err := json.Unmarshal(data, &c); err != nil {
+		fmt.Fprintf(os.Stderr, yellow("warning: ")+"could not parse %s: %v\n", path, err)
+	}
+	return c
+}
+
+func resolveServeVal(candidates ...string) string {
+	for _, c := range candidates {
+		if c != "" {
+			return c
+		}
+	}
+	return ""
+}
+
+func newServeCmd() *cobra.Command {
+	var configFile, flagAddr, flagDSN, flagStorage, flagSecret string
+
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Start the Veld Registry server",
+		Long: `Start a self-hosted Veld Registry server.
+
+Config is loaded from registry.config.json (current dir or --config flag).
+CLI flags and environment variables override config file values.
+
+Priority (highest → lowest): CLI flags > env vars > registry.config.json > defaults`,
+		Example: `  # Use a config file (recommended)
+  veld serve --config registry.config.json
+
+  # All inline
+  veld serve --addr :9000 --dsn "postgres://localhost/veld?sslmode=disable" --secret mysecret
+
+  # Via environment variables
+  VELD_DSN=postgres://localhost/veld VELD_SECRET=mysecret veld serve`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// 1. Find config file
+			cfgPath := configFile
+			if cfgPath == "" {
+				for _, candidate := range []string{"registry.config.json", "veld/registry.config.json"} {
+					if _, err := os.Stat(candidate); err == nil {
+						cfgPath = candidate
+						break
+					}
+				}
+			}
+
+			// 2. Load config file
+			fileCfg := loadServeConfigFile(cfgPath)
+			if cfgPath != "" {
+				if _, err := os.Stat(cfgPath); err == nil {
+					fmt.Printf(dim("⬡")+"  Config: %s\n", cfgPath)
+				}
+			}
+
+			// 3. Merge: file → env → flag (highest wins)
+			cfg := server.Config{
+				Addr:        resolveServeVal(flagAddr, os.Getenv("VELD_ADDR"), fileCfg.Addr, ":8080"),
+				DSN:         resolveServeVal(flagDSN, os.Getenv("VELD_DSN"), fileCfg.DSN, ""),
+				StoragePath: resolveServeVal(flagStorage, os.Getenv("VELD_STORAGE"), fileCfg.StoragePath, "./packages"),
+				JWTSecret:   resolveServeVal(flagSecret, os.Getenv("VELD_SECRET"), fileCfg.JWTSecret, ""),
+				BaseURL:     resolveServeVal(os.Getenv("VELD_BASE_URL"), fileCfg.BaseURL, ""),
+				Email: email.Config{
+					Host:     resolveServeVal(os.Getenv("SMTP_HOST"), fileCfg.SMTP.Host, ""),
+					Port:     fileCfg.SMTP.Port,
+					Username: resolveServeVal(os.Getenv("SMTP_USERNAME"), fileCfg.SMTP.Username, ""),
+					Password: resolveServeVal(os.Getenv("SMTP_PASSWORD"), fileCfg.SMTP.Password, ""),
+					From:     resolveServeVal(os.Getenv("SMTP_FROM"), fileCfg.SMTP.From, ""),
+				},
+			}
+
+			// 4. Validate required fields
+			if cfg.DSN == "" {
+				return fmt.Errorf(
+					"database DSN is required.\n\n" +
+						"Set it in registry.config.json:\n" +
+						"  { \"dsn\": \"postgres://localhost/veld?sslmode=disable\" }\n\n" +
+						"Or via flag:  --dsn \"postgres://localhost/veld?sslmode=disable\"\n" +
+						"Or via env:   VELD_DSN=postgres://localhost/veld?sslmode=disable",
+				)
+			}
+			if cfg.JWTSecret == "" {
+				return fmt.Errorf(
+					"JWT secret is required.\n\n" +
+						"Set it in registry.config.json:\n" +
+						"  { \"secret\": \"your-secret-here\" }\n\n" +
+						"Or via flag:  --secret \"your-secret\"\n" +
+						"Or generate: openssl rand -hex 32",
+				)
+			}
+
+			// 5. Start server
+			srv, err := server.New(cfg)
+			if err != nil {
+				return fmt.Errorf("init: %w", err)
+			}
+			defer srv.Close()
+
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+			defer stop()
+
+			fmt.Printf(green("✓")+" Veld Registry  →  http://localhost%s\n", cfg.Addr)
+			fmt.Printf(dim("   Storage: %s\n"), cfg.StoragePath)
+
+			return srv.Start(ctx)
+		},
+	}
+
+	cmd.Flags().StringVarP(&configFile, "config", "c", "", "path to registry.config.json (auto-detected if omitted)")
+	cmd.Flags().StringVar(&flagAddr, "addr", "", "listen address (default :8080)")
+	cmd.Flags().StringVar(&flagDSN, "dsn", "", "PostgreSQL DSN")
+	cmd.Flags().StringVar(&flagStorage, "storage", "", "tarball storage directory (default ./packages)")
+	cmd.Flags().StringVar(&flagSecret, "secret", "", "JWT signing secret (min 16 chars)")
 	return cmd
 }
 
