@@ -13,12 +13,9 @@
   },
   "registry": {
     "enabled": true,
-    "url": "https://app8080.maayn.com",
+    "url": "http://localhost:8080",
     "org": "maayn",
-    "package": "node_react",
-    "version": "0.1.1"
-  },
-  "dependencies": {
-    "@maayn/node-react-api": "0.1.0"
+    "package": "node-react-api",
+    "version": "0.1.0"
   }
 }
