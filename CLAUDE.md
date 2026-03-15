@@ -18,6 +18,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Veld** is a contract-first, multi-stack API code generator written in Go. A developer writes `.veld` contract files; Veld generates a typed frontend SDK (TypeScript) and backend service interfaces + route wiring with full input validation. Veld never touches developer business logic files.
 
+**Module path:** `github.com/Adhamzineldin/Veld`
+
 ## Build & Test Commands
 
 ```bash
@@ -41,6 +43,19 @@ veld watch                         # Auto-regenerate on file changes (500ms debo
 veld clean                         # Remove generated output directory
 veld openapi                       # Export OpenAPI 3.0 JSON to stdout
 veld openapi -o openapi.json       # Export OpenAPI 3.0 JSON to file
+veld lint                          # Analyse contract for quality issues
+veld fmt                           # Format .veld files
+veld docs                          # Generate API documentation
+veld graphql                       # Export GraphQL SDL schema
+veld schema                        # Generate database schema
+veld diff                          # Show diff vs last generated output
+veld doctor                        # Diagnose project health
+veld setup                         # Auto-configure tsconfig/paths
+veld login --registry <url> --token vtk_...   # Authenticate with registry
+veld logout                        # Remove stored credentials
+veld push                          # Publish contracts to registry
+veld pull @org/name[@version]      # Download contract package
+veld serve                         # Start self-hosted registry server
 ```
 
 ## Architecture
@@ -62,17 +77,50 @@ The pipeline is strictly linear — **only AST JSON passes between stages**:
 | Emitter registry | `internal/emitter/emitter.go` | `BackendEmitter` / `FrontendEmitter` interfaces + `init()`-based registry |
 | Emitter helpers | `internal/emitter/helpers.go` | Shared: `CollectTransitiveModels`, `ExtractPathParams`, `ToFlaskPath`, `ToOpenAPIPath`, etc. |
 | TS helpers | `internal/emitter/tshelpers/` | Shared TypeScript type-mapping (`VeldFieldToTS`, `FormatOutputType`) |
-| Node emitter | `internal/emitter/backend/node/` | Single types file, interfaces, routes (try/catch + Zod validation + status codes), Zod schemas, barrel + package.json |
-| Python emitter | `internal/emitter/backend/python/` | Single types file, ABC interfaces, Flask routes (try/except + Pydantic + status codes), Pydantic schemas |
-| TypeScript emitter | `internal/emitter/frontend/typescript/` | Frontend: fetch-based SDK with `VeldApiError`, path params, all HTTP methods |
+| Node emitter | `internal/emitter/backend/node/` | Types, interfaces, routes (Zod + try/catch), schemas, barrel + package.json |
+| Python emitter | `internal/emitter/backend/python/` | Types, ABC interfaces, Flask routes (Pydantic + try/except), schemas |
+| Go emitter | `internal/emitter/backend/go/` | Chi router, typed interfaces, go.mod, server.go, main.go |
+| Rust emitter | `internal/emitter/backend/rust/` | Axum handlers, Serde structs, services trait |
+| Java emitter | `internal/emitter/backend/java/` | Spring Boot controllers + service interfaces |
+| C# emitter | `internal/emitter/backend/csharp/` | ASP.NET Core controllers + service interfaces |
+| PHP emitter | `internal/emitter/backend/php/` | Laravel routes + service contracts |
+| JS backend emitter | `internal/emitter/backend/javascript/` | Plain Node.js (no TypeScript) |
+| TypeScript emitter | `internal/emitter/frontend/typescript/` | Fetch-based SDK with `VeldApiError`, path params, all HTTP methods |
+| React emitter | `internal/emitter/frontend/react/` | React Query hooks wrapping the TS SDK |
+| Vue emitter | `internal/emitter/frontend/vue/` | Vue Composables wrapping the TS SDK |
+| Angular emitter | `internal/emitter/frontend/angular/` | Angular services wrapping the TS SDK |
+| Svelte emitter | `internal/emitter/frontend/svelte/` | Svelte stores/functions wrapping the TS SDK |
+| Dart emitter | `internal/emitter/frontend/dart/` | Dart http client SDK |
+| Kotlin emitter | `internal/emitter/frontend/kotlin/` | Kotlin client SDK |
+| Swift emitter | `internal/emitter/frontend/swift/` | Swift URLSession SDK |
+| JS frontend emitter | `internal/emitter/frontend/javascript/` | Plain JS fetch SDK (no TypeScript) |
+| Types-only emitter | `internal/emitter/frontend/typesonly/` | Types with no SDK logic |
+| CI/CD emitter | `internal/emitter/cicd/` | GitHub Actions workflow (auto-detects language) |
+| Dockerfile emitter | `internal/emitter/dockerfile/` | Multi-stage Dockerfile + .dockerignore (auto-detects language) |
+| Database emitter | `internal/emitter/database/` | SQL schema generation |
+| Envconfig emitter | `internal/emitter/envconfig/` | .env template generation |
+| OpenAPI emitter | `internal/emitter/openapi/` | OpenAPI 3.0 spec |
+| Scaffold emitter | `internal/emitter/scaffold/` | Project scaffold helpers |
+| Diff | `internal/diff/` | Breaking change detection + `.veld.lock.json` |
+| Lint | `internal/lint/lint.go` | Contract quality rules |
+| Format | `internal/format/` | .veld file formatter |
+| LSP | `internal/lsp/` | Language Server Protocol (stdin/stdout) |
+| Docs gen | `internal/docsgen/` | API documentation generator |
+| GraphQL gen | `internal/graphqlgen/` | GraphQL SDL export |
+| OpenAPI gen | `internal/openapigen/` | OpenAPI 3.0 export |
+| Schema gen | `internal/schema/` | Database schema export |
+| Setup | `internal/setup/` | tsconfig/paths auto-configuration |
+| Registry client | `internal/registry/` | credentials.go, client.go, tarball.go (pack/unpack/verify) |
+| Registry server | `internal/server/` | PostgreSQL-backed registry: auth, packages, orgs, SMTP, SPA web UI |
 | Cache | `internal/cache/cache.go` | File mtime tracking for incremental builds |
-| CLI | `cmd/veld/main.go` | Cobra commands: generate, watch, validate, ast, init, clean, openapi |
+| CLI | `cmd/veld/main.go` | Single binary — all 26 commands including `veld serve` |
 
 **Key isolation rules:**
 - Parser and emitters are completely independent. No emitter may import lexer/parser packages.
 - Emitters self-register via `init()`. Adding a new emitter = new package + one blank import in `main.go`.
 - Config resolution is decoupled from Cobra (uses `FlagOverrides` struct, not `*cobra.Command`).
 - Emitters receive `EmitOptions` (BaseUrl, DryRun) — no direct config dependency.
+- There is **one binary**: `cmd/veld/`. No separate registry binary exists anymore.
 
 ## Project Structure (veld init output)
 
@@ -115,8 +163,8 @@ scaffolded — project layout is left to the developer.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `input` | *required* | Entry .veld file |
-| `backend` | `"node"` | Backend emitter (`node`, `python`) |
-| `frontend` | `"typescript"` | Frontend emitter (`typescript`, `none`; `react` aliases to `typescript`) |
+| `backend` | `"node"` | Backend emitter (`node`, `python`, `go`, `rust`, `java`, `csharp`, `php`, `javascript`) |
+| `frontend` | `"typescript"` | Frontend emitter (`typescript`, `react`, `vue`, `angular`, `svelte`, `dart`, `kotlin`, `swift`, `javascript`, `types-only`, `none`) |
 | `out` | `"./generated"` | Output directory |
 | `baseUrl` | `""` | Baked into frontend SDK (empty = `process.env.VELD_API_URL`) |
 | `aliases` | built-in defaults | Custom `@alias` → relative dir mappings (merged with defaults: models, modules, types, enums, schemas, services, lib, common, shared) |
@@ -142,6 +190,7 @@ model ModelName {
   tags:       string[]     // array type
   metadata:   Map<string, string>  // map/record type
   role:       Role @default(user)  // default value
+  old:        string @deprecated "use newField instead"
 }
 
 model ChildModel extends ParentModel {
@@ -162,11 +211,52 @@ module ModuleName {
     output: ModelName
     query: QueryModel
     middleware: AuthGuard
+    @deprecated "use NewAction instead"
   }
 }
 ```
 
 HTTP methods: `GET POST PUT DELETE PATCH`
+
+## Registry Server (`veld serve`)
+
+The registry server is built into the main `veld` binary. Run with:
+
+```bash
+veld serve                                          # auto-detect registry.config.json
+veld serve --config registry.config.json
+veld serve --addr :9000 --dsn "postgres://..." --secret mysecret
+```
+
+Config file (`registry.config.json`):
+```json
+{
+  "addr": ":8080",
+  "dsn": "postgres://user:pass@localhost/veld?sslmode=disable",
+  "storage": "./packages",
+  "secret": "<32+ char jwt secret>",
+  "base_url": "https://registry.example.com",
+  "smtp": { "host": "smtp.example.com", "port": 587, "username": "...", "password": "...", "from": "..." }
+}
+```
+
+Environment variables: `VELD_ADDR`, `VELD_DSN`, `VELD_SECRET`, `VELD_STORAGE`, `VELD_BASE_URL`, `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`
+
+Priority (highest → lowest): CLI flags > env vars > registry.config.json > defaults
+
+Server packages in `internal/server/`:
+- `server.go` — Go 1.22 ServeMux routing, CORS, logger, graceful shutdown
+- `auth/token.go` — HMAC-SHA256 JWT (no external lib), `vtk_` token generation
+- `auth/middleware.go` — Bearer + session-cookie auth
+- `auth/totp.go` — TOTP 2FA
+- `db/db.go` — PostgreSQL connection, auto-migration, CRUD queries
+- `models/models.go` — User, Org, OrgMember, Package, PackageVersion, Token
+- `handlers/auth.go` — Register, Login, Logout, TOTP, email verification
+- `handlers/packages.go` — Publish (multipart), Download, Deprecate, Delete
+- `handlers/orgs.go` — Org CRUD + member management
+- `handlers/web.go` — Embedded SPA (`//go:embed web`)
+- `storage/storage.go` — Storage interface + local filesystem impl
+- `email/email.go` — SMTP email sending
 
 ## Generated Output Structure (Node backend)
 
@@ -246,6 +336,33 @@ Generated `package.json` enables `@veld/generated` path alias. Add to `tsconfig.
 - `extends` generates TS `interface X extends Y` / Zod `.extend()` / Python class inheritance
 - `Map<string, V>` generates TS `Record<string, V>` / Python `Dict[str, V]`
 
-## Module: `github.com/veld-dev/veld`
+## Contract Safety Features
 
-Only external Go dependency: `cobra`. Lexer and parser written from scratch — no parser-generator libraries.
+### Breaking Change Detection (`internal/diff/`)
+- `diff.go` — `Diff(old, new AST) []Change`, `HasBreaking()`
+- `lock.go` — `LoadLock`, `SaveLock`, `DeleteLock` → `.veld.lock.json`
+- `veld generate` pre-emit gate: interactive prompt by default, `--strict` exits 1 (CI), `--force` skips prompt
+- `veld clean` removes lock file
+
+### Lint (`internal/lint/lint.go`)
+- `veld lint [--exit-code]`
+- Rules: unused-model, empty-module, empty-model, duplicate-route (error), duplicate-action (error), missing-description, deprecated-action, deprecated-field
+
+### @deprecated annotation
+- Syntax: `fieldName: type @deprecated "msg"` and `@deprecated "msg"` inside action body
+- AST: `Field.Deprecated string`, `Action.Deprecated string`
+- Emits: JSDoc `@deprecated` in Node interfaces + TS SDK; Python `.. deprecated::` docstring
+
+## Go Modules & External Dependencies
+
+```
+module github.com/Adhamzineldin/Veld
+
+require (
+    github.com/spf13/cobra          // CLI framework
+    golang.org/x/crypto             // bcrypt for password hashing
+    modernc.org/sqlite              // pure-Go SQLite (fallback/testing)
+)
+```
+
+PostgreSQL is the registry server's database backend (DSN required for `veld serve`).
