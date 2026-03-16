@@ -618,15 +618,13 @@ Aliases:   node → node-ts, js/javascript → node-js, ts → typescript, react
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	root.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress non-essential output")
 	root.AddCommand(
-		newValidateCmd(), newASTCmd(), newGenerateCmd(), newWatchCmd(),
-		newInitCmd(), newCleanCmd(), newOpenAPICmd(), newGraphQLCmd(),
-		newSchemaCmd(), newDiffCmd(), newLintCmd(), newDocsCmd(), newLSPCmd(),
-		newSetupCmd(), newFmtCmd(), newDoctorCmd(), newCompletionCmd(),
-		// Registry commands
-		newLoginCmd(), newLogoutCmd(), newPushCmd(), newPullCmd(), newRegistryCmd(),
-		newServeCmd(),
-		// CI helper
-		newCICmd(),
+		// Core workflow
+		newInitCmd(), newGenerateCmd(), newWatchCmd(), newCleanCmd(),
+		newValidateCmd(), newSetupCmd(), newCICmd(),
+		// Grouped
+		newExportCmd(), newDevCmd(), newRegistryCmd(),
+		// Editor / shell integration (invoked directly by external tools)
+		newLSPCmd(), newCompletionCmd(),
 	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, red("Error: ")+err.Error())
@@ -2870,9 +2868,9 @@ To create a token:
   1. Open the registry web UI in your browser
   2. Go to Settings → API Tokens → New Token
   3. Copy the generated token (it is only shown once)
-  4. Run: veld login --registry <url> --token vtk_...`,
-		Example: "  veld login --registry https://registry.veld.dev --token vtk_...\n" +
-			"  veld login --registry http://localhost:8080 --token vtk_...",
+  4. Run: veld registry login --registry <url> --token vtk_...`,
+		Example: "  veld registry login --registry https://registry.veld.dev --token vtk_...\n" +
+			"  veld registry login --registry http://localhost:8080 --token vtk_...",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if registryURL == "" {
 				return fmt.Errorf("--registry is required (e.g. --registry https://registry.veld.dev)")
@@ -2882,7 +2880,7 @@ To create a token:
 				fmt.Printf("To log in, create an API token in the web UI:\n")
 				fmt.Printf("  %s/#/tokens\n\n", registryBase)
 				fmt.Printf("Then run:\n")
-				fmt.Printf("  veld login --registry %s --token vtk_...\n", registryURL)
+				fmt.Printf("  veld registry login --registry %s --token vtk_...\n", registryURL)
 				return nil
 			}
 			client := registry.NewClient(registryURL, token)
@@ -2935,9 +2933,9 @@ func newPushCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "push",
 		Short: "Publish .veld contracts to the registry",
-		Example: "  veld push\n" +
-			"  veld push --registry https://registry.veld.dev\n" +
-			"  veld push --org acme --name auth --version 1.2.0",
+		Example: "  veld registry push\n" +
+			"  veld registry push --registry https://registry.veld.dev\n" +
+			"  veld registry push --org acme --name auth --version 1.2.0",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Resolve config for org/name/version defaults
 			rc, err := config.BuildResolved(config.FlagOverrides{})
@@ -3013,9 +3011,9 @@ func newPullCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pull <@org/name[@version]>",
 		Short: "Download a contract package from the registry",
-		Example: "  veld pull @acme/auth\n" +
-			"  veld pull @acme/auth@1.2.0\n" +
-			"  veld pull @acme/auth --out veld/packages",
+		Example: "  veld registry pull @acme/auth\n" +
+			"  veld registry pull @acme/auth@1.2.0\n" +
+			"  veld registry pull @acme/auth --out veld/packages",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			orgName, pkgName, version, err := parsePackageRef(args[0])
@@ -3088,6 +3086,28 @@ func newPullCmd() *cobra.Command {
 	return cmd
 }
 
+// ── export (subcommand group) ─────────────────────────────────────────────────
+
+func newExportCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "export",
+		Short: "Export contract to other formats (OpenAPI, GraphQL, SQL, docs)",
+	}
+	cmd.AddCommand(newOpenAPICmd(), newGraphQLCmd(), newSchemaCmd(), newDocsCmd())
+	return cmd
+}
+
+// ── dev (subcommand group) ────────────────────────────────────────────────────
+
+func newDevCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "dev",
+		Short: "Developer tools (AST, format, lint, diff, doctor)",
+	}
+	cmd.AddCommand(newASTCmd(), newFmtCmd(), newLintCmd(), newDiffCmd(), newDoctorCmd())
+	return cmd
+}
+
 // ── registry (subcommand group) ───────────────────────────────────────────────
 
 func newRegistryCmd() *cobra.Command {
@@ -3103,7 +3123,7 @@ func newRegistryCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			url := registry.DefaultRegistry()
 			if url == "" {
-				fmt.Println("No registry configured. Run: veld login --registry <url>")
+				fmt.Println("No registry configured. Run: veld registry login --registry <url>")
 				return nil
 			}
 			token := registry.GetToken(url)
@@ -3163,6 +3183,9 @@ func newRegistryCmd() *cobra.Command {
 		},
 	}
 	cmd.AddCommand(versionsCmd)
+
+	// veld registry login / logout / push / pull / serve
+	cmd.AddCommand(newLoginCmd(), newLogoutCmd(), newPushCmd(), newPullCmd(), newServeCmd())
 
 	// veld registry init
 	cmd.AddCommand(newRegistryInitCmd())
@@ -3443,11 +3466,11 @@ Pass --yes to skip prompts and write defaults (useful in scripts).`,
 			fmt.Println()
 			fmt.Println("Next steps:")
 			fmt.Printf("  1. %s\n", dim("Start the registry:"))
-			fmt.Printf("     veld serve --config %s\n", outPath)
+			fmt.Printf("     veld registry serve --config %s\n", outPath)
 			fmt.Printf("  2. %s\n", dim("Open the web UI and create your account:"))
 			fmt.Printf("     http://localhost%s\n", addr)
 			fmt.Printf("  3. %s\n", dim("Log in from the CLI:"))
-			fmt.Printf("     veld login --registry http://localhost%s --token vtk_...\n", addr)
+			fmt.Printf("     veld registry login --registry http://localhost%s --token vtk_...\n", addr)
 			return nil
 		},
 	}
@@ -3515,13 +3538,13 @@ CLI flags and environment variables override config file values.
 
 Priority (highest → lowest): CLI flags > env vars > registry.config.json > defaults`,
 		Example: `  # Use a config file (recommended)
-  veld serve --config registry.config.json
+  veld registry serve --config registry.config.json
 
   # All inline
-  veld serve --addr :9000 --dsn "postgres://localhost/veld?sslmode=disable" --secret mysecret
+  veld registry serve --addr :9000 --dsn "postgres://localhost/veld?sslmode=disable" --secret mysecret
 
   # Via environment variables
-  VELD_DSN=postgres://localhost/veld VELD_SECRET=mysecret veld serve`,
+  VELD_DSN=postgres://localhost/veld VELD_SECRET=mysecret veld registry serve`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// 1. Find config file
 			cfgPath := configFile
