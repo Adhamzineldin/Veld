@@ -333,3 +333,21 @@ func HasErrors(mod ast.Module) bool {
 	}
 	return false
 }
+
+// CollectErrorExports returns the list of exported symbol names that a
+// module's generated error file will contain (excluding the re-exported ApiError).
+// This is used by barrel generators to detect and avoid duplicate export collisions.
+func CollectErrorExports(mod ast.Module) []string {
+	moduleLower := strings.ToLower(mod.Name)
+	var names []string
+	for _, act := range mod.Actions {
+		if len(act.Errors) == 0 {
+			continue
+		}
+		pascal := act.Name
+		camelAction := ToCamelCase(act.Name)
+		names = append(names, pascal+"ErrorCode", pascal+"Error", camelAction+"Errors")
+	}
+	names = append(names, moduleLower+"Errors")
+	return names
+}

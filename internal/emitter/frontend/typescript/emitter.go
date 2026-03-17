@@ -218,12 +218,38 @@ func emitClientErrorsBarrel(a ast.AST, dir string) error {
 	}
 	if hasErrors {
 		sb.WriteString("\n// Backend error types and factories:\n")
+
+		exported := make(map[string]bool)
+		// Mark client-side exports as already exported to avoid collisions.
+		exported["VeldApiError"] = true
+		exported["isApiError"] = true
+		exported["isErrorCode"] = true
+
 		for _, mod := range a.Modules {
 			if !emitter.HasErrors(mod) {
 				continue
 			}
 			moduleLower := strings.ToLower(mod.Name)
-			sb.WriteString(fmt.Sprintf("export * from '../errors/%s.errors';\n", moduleLower))
+			allNames := emitter.CollectErrorExports(mod)
+
+			// Filter out names already exported by a previous module.
+			var unique []string
+			for _, name := range allNames {
+				if !exported[name] {
+					exported[name] = true
+					unique = append(unique, name)
+				}
+			}
+
+			if len(unique) == len(allNames) {
+				// No conflicts — safe to use export *.
+				sb.WriteString(fmt.Sprintf("export * from '../errors/%s.errors';\n", moduleLower))
+			} else if len(unique) > 0 {
+				// Conflicts detected — use explicit named exports for unique names only.
+				sb.WriteString(fmt.Sprintf("export { %s } from '../errors/%s.errors';\n",
+					strings.Join(unique, ", "), moduleLower))
+			}
+			// If len(unique) == 0, skip entirely.
 		}
 	}
 
