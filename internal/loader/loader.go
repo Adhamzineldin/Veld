@@ -83,18 +83,16 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 		if len(imp) > 0 && imp[0] == '@' {
 			rest := imp[1:] // e.g. "models/user.veld", "org/pkg/modules/*"
 
-			// Snapshot files count so we can record new files as imports of this file.
-			prevLen := len(*files)
-
 			// ── Try registry package: @org/package[/subpath] ──────────────
 			// Registry pulls land at rootDir/packages/@org/package/
 			if aliasDir, subpath, ok := resolveRegistryImport(rest, rootDir); ok {
-				imported, err := loadFromDir(aliasDir, subpath, imp, rootDir, aliasMap, seen, files, fileImports)
+				imported, resolved, err := loadFromDir(aliasDir, subpath, imp, rootDir, aliasMap, seen, files, fileImports)
 				if err != nil {
 					return ast.AST{}, err
 				}
-				// Record all newly loaded files as direct imports of this file.
-				for _, f := range (*files)[prevLen:] {
+				// Record all resolved files as direct imports of this file,
+				// even if they were already loaded by a previous import.
+				for _, f := range resolved {
 					fileImports[abs] = append(fileImports[abs], f)
 				}
 				merged = mergeAST(merged, imported)
@@ -109,12 +107,13 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 				name = rest[slashIdx+1:]
 			}
 			aliasDir := resolveAliasDir(alias, effectiveRoot, aliasMap)
-			imported, err := loadFromDir(aliasDir, name, imp, rootDir, aliasMap, seen, files, fileImports)
+			imported, resolved, err := loadFromDir(aliasDir, name, imp, rootDir, aliasMap, seen, files, fileImports)
 			if err != nil {
 				return ast.AST{}, err
 			}
-			// Record all newly loaded files as direct imports of this file.
-			for _, f := range (*files)[prevLen:] {
+			// Record all resolved files as direct imports of this file,
+			// even if they were already loaded by a previous import.
+			for _, f := range resolved {
 				fileImports[abs] = append(fileImports[abs], f)
 			}
 			merged = mergeAST(merged, imported)
@@ -167,8 +166,13 @@ func resolveRegistryImport(rest, rootDir string) (dir, subpath string, ok bool) 
 //	"sub/*"   → load all .veld files in aliasDir/sub/
 //	"sub/**"  → load all .veld files in aliasDir/sub/ recursively
 //	"file.veld" → load single file
-func loadFromDir(aliasDir, subpath, origImport, rootDir string, aliasMap map[string]string, seen map[string]bool, files *[]string, fileImports map[string][]string) (ast.AST, error) {
+//
+// loadFromDir loads .veld files from aliasDir and returns the merged AST plus
+// the absolute paths of all resolved files (including already-seen ones) so
+// callers can record import edges even for previously loaded files.
+func loadFromDir(aliasDir, subpath, origImport, rootDir string, aliasMap map[string]string, seen map[string]bool, files *[]string, fileImports map[string][]string) (ast.AST, []string, error) {
 	merged := ast.AST{ASTVersion: "1.0.0"}
+	var resolved []string
 
 	// Determine target directory and pattern
 	targetDir := aliasDir
@@ -196,16 +200,17 @@ func loadFromDir(aliasDir, subpath, origImport, rootDir string, aliasMap map[str
 		// Non-recursive glob of targetDir
 		entries, err := os.ReadDir(targetDir)
 		if err != nil {
-			return merged, nil // directory may not exist — skip silently
+			return merged, nil, nil // directory may not exist — skip silently
 		}
 		for _, entry := range entries {
 			if !entry.IsDir() && filepath.Ext(entry.Name()) == ".veld" {
 				p := filepath.Join(targetDir, entry.Name())
-				abs, _ := filepath.Abs(p)
-				fileImports[abs] = append(fileImports[abs], abs)
+				a, _ := filepath.Abs(p)
+				resolved = append(resolved, a)
+				fileImports[a] = append(fileImports[a], a)
 				imp, err := resolveFile(p, rootDir, aliasMap, seen, files, fileImports)
 				if err != nil {
-					return ast.AST{}, fmt.Errorf("import %q: %w", origImport, err)
+					return ast.AST{}, nil, fmt.Errorf("import %q: %w", origImport, err)
 				}
 				merged = mergeAST(merged, imp)
 			}
@@ -218,8 +223,9 @@ func loadFromDir(aliasDir, subpath, origImport, rootDir string, aliasMap map[str
 			if walkErr != nil || d.IsDir() || filepath.Ext(p) != ".veld" {
 				return walkErr
 			}
-			abs, _ := filepath.Abs(p)
-			fileImports[abs] = append(fileImports[abs], abs)
+			a, _ := filepath.Abs(p)
+			resolved = append(resolved, a)
+			fileImports[a] = append(fileImports[a], a)
 			imp, err := resolveFile(p, rootDir, aliasMap, seen, files, fileImports)
 			if err != nil {
 				return fmt.Errorf("import %q: %w", origImport, err)
@@ -228,22 +234,23 @@ func loadFromDir(aliasDir, subpath, origImport, rootDir string, aliasMap map[str
 			return nil
 		})
 		if err != nil {
-			return ast.AST{}, err
+			return ast.AST{}, nil, err
 		}
 
 	default:
 		// Single file
 		p := filepath.Join(aliasDir, subpath)
-		abs, _ := filepath.Abs(p)
-		fileImports[abs] = append(fileImports[abs], abs)
+		a, _ := filepath.Abs(p)
+		resolved = append(resolved, a)
+		fileImports[a] = append(fileImports[a], a)
 		imp, err := resolveFile(p, rootDir, aliasMap, seen, files, fileImports)
 		if err != nil {
-			return ast.AST{}, fmt.Errorf("import %q: %w", origImport, err)
+			return ast.AST{}, nil, fmt.Errorf("import %q: %w", origImport, err)
 		}
 		merged = mergeAST(merged, imp)
 	}
 
-	return merged, nil
+	return merged, resolved, nil
 }
 
 func resolveAliasDir(alias, rootDir string, aliasMap map[string]string) string {
