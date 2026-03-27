@@ -6,6 +6,7 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	nodestrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/node/strategy"
 )
 
 func init() {
@@ -53,6 +54,7 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	if opts.DryRun {
 		return nil
 	}
+	strat := nodestrategy.New(opts.BackendFramework)
 	if err := e.emitPerModuleTypes(a, outDir); err != nil {
 		return fmt.Errorf("types: %w", err)
 	}
@@ -64,7 +66,7 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		if err := e.emitInterface(a, mod, outDir); err != nil {
 			return fmt.Errorf("interface for %s: %w", mod.Name, err)
 		}
-		if err := e.emitRoutes(a, mod, outDir, opts); err != nil {
+		if err := e.emitRoutes(a, mod, outDir, opts, strat); err != nil {
 			return fmt.Errorf("routes for %s: %w", mod.Name, err)
 		}
 		if err := e.emitErrors(mod, outDir); err != nil {
@@ -76,7 +78,7 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		return fmt.Errorf("errors barrel: %w", err)
 	}
 	// Emit a single shared middleware interface for all modules.
-	if err := e.emitMiddlewareInterface(a, outDir); err != nil {
+	if err := e.emitMiddlewareInterface(a, outDir, strat); err != nil {
 		return fmt.Errorf("middleware interface: %w", err)
 	}
 	if opts.Validate {

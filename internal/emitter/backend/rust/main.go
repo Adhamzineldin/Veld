@@ -1,5 +1,9 @@
 // Package rustbackend provides a Rust backend code generator for Veld.
-// Generated code uses Axum (async HTTP) and Serde (JSON serialisation).
+// Generated code uses Axum (async HTTP) and Serde (JSON serialisation) by default.
+// The HTTP framework is controlled by EmitOptions.BackendFramework:
+//
+//	""/"plain" → PlainStrategy: trait definitions only, no HTTP framework
+//	"axum"     → AxumStrategy: Axum 0.7 router + handlers
 //
 // Registration happens via init() — blank-import this package in cmd/veld/main.go:
 //
@@ -14,6 +18,7 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	ruststrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/rust/strategy"
 	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
@@ -31,11 +36,18 @@ func New() *RustEmitter {
 	return &RustEmitter{adapter: &lang.RustAdapter{}}
 }
 
+// strat resolves the framework strategy from opts.
+func (e *RustEmitter) strat(opts emitter.EmitOptions) ruststrategy.RustFrameworkStrategy {
+	return ruststrategy.New(opts.BackendFramework)
+}
+
 // IsBackend satisfies the BackendEmitter marker interface.
 func (e *RustEmitter) IsBackend() {}
 
 // Emit generates all Rust backend files into outDir.
 func (e *RustEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) error {
+	strat := e.strat(opts)
+
 	if opts.DryRun {
 		for _, line := range e.Summary(moduleNames(a.Modules)) {
 			fmt.Printf("  [dry-run] %s%s\n", line.Dir, line.Files)
@@ -66,14 +78,14 @@ func (e *RustEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	}
 
 	// src/router.rs — top-level router combining all modules.
-	routerData := e.generateRouter(a)
+	routerData := e.generateRouter(a, strat)
 	if err := os.WriteFile(filepath.Join(outDir, "src", "router.rs"), routerData, 0644); err != nil {
 		return fmt.Errorf("rust emitter [write router.rs]: %w", err)
 	}
 
 	// Per-module: src/{module}/mod.rs.
 	for _, mod := range a.Modules {
-		modData, err := e.generateModuleRoutes(a, mod)
+		modData, err := e.generateModuleRoutes(a, mod, strat)
 		if err != nil {
 			return fmt.Errorf("rust emitter [routes for %s]: %w", mod.Name, err)
 		}
@@ -85,7 +97,7 @@ func (e *RustEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	}
 
 	// src/main.rs — server entry point.
-	mainData := e.generateMainRs(a)
+	mainData := e.generateMainRs(a, strat)
 	if err := os.WriteFile(filepath.Join(outDir, "src", "main.rs"), mainData, 0644); err != nil {
 		return fmt.Errorf("rust emitter [write main.rs]: %w", err)
 	}
@@ -129,7 +141,7 @@ func (e *RustEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	}
 
 	// Cargo.toml.
-	cargoData := e.generateCargoToml(false)
+	cargoData := e.generateCargoToml(strat)
 	if err := os.WriteFile(filepath.Join(outDir, "Cargo.toml"), cargoData, 0644); err != nil {
 		return fmt.Errorf("rust emitter [write Cargo.toml]: %w", err)
 	}
@@ -161,35 +173,35 @@ func (e *RustEmitter) generateLibRs(a ast.AST, withValidation bool) []byte {
 	return []byte(sb.String())
 }
 
-// generateMainRs writes a minimal Tokio main function.
-func (e *RustEmitter) generateMainRs(a ast.AST) []byte {
+// generateMainRs writes the server entry point using the strategy's content.
+func (e *RustEmitter) generateMainRs(a ast.AST, strat ruststrategy.RustFrameworkStrategy) []byte {
+	content := strat.MainRsContent()
+	if content != "" {
+		// Strategy provides full main.rs content.
+		return []byte(header + "\n" + content)
+	}
+	// Plain strategy: emit minimal mod declarations only.
 	var sb strings.Builder
 	sb.WriteString(header + "\n")
-	sb.WriteString("use std::net::SocketAddr;\n\n")
-	sb.WriteString("mod models;\n")
-	sb.WriteString("mod services;\n")
-	sb.WriteString("mod router;\n")
 	for _, mod := range a.Modules {
 		modName := e.adapter.NamingConvention(mod.Name, lang.NamingContextPrivate)
 		sb.WriteString(fmt.Sprintf("mod %s;\n", modName))
 	}
-	sb.WriteString("\n")
-	sb.WriteString("#[tokio::main]\n")
-	sb.WriteString("async fn main() {\n")
-	sb.WriteString("    // TODO: initialise your service implementations and pass them to build_router().\n")
-	sb.WriteString("    let app = router::build_router();\n\n")
-	sb.WriteString("    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));\n")
-	sb.WriteString("    println!(\"Listening on {}\", addr);\n\n")
-	sb.WriteString("    axum::Server::bind(&addr)\n")
-	sb.WriteString("        .serve(app.into_make_service())\n")
-	sb.WriteString("        .await\n")
-	sb.WriteString("        .unwrap();\n")
-	sb.WriteString("}\n")
+	sb.WriteString("\nfn main() {}\n")
 	return []byte(sb.String())
 }
 
-// generateCargoToml writes a Cargo.toml with required dependencies.
-func (e *RustEmitter) generateCargoToml(withValidation bool) []byte {
+// generateCargoToml writes a Cargo.toml with dependencies from the strategy.
+func (e *RustEmitter) generateCargoToml(strat ruststrategy.RustFrameworkStrategy) []byte {
+	deps := strat.CargoTomlDependencies()
+	var depsStr strings.Builder
+	for _, d := range deps {
+		depsStr.WriteString(d + "\n")
+	}
+	// Always include async-trait for service traits.
+	if !strings.Contains(depsStr.String(), "async-trait") {
+		depsStr.WriteString(`async-trait = "0.1"` + "\n")
+	}
 	cargo := `[package]
 name = "veld-generated"
 version = "0.1.0"
@@ -200,16 +212,7 @@ name = "server"
 path = "src/main.rs"
 
 [dependencies]
-axum = "0.7"
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-async-trait = "0.1"
-`
-	if withValidation {
-		cargo += `validator = { version = "0.16", features = ["derive"] }
-`
-	}
+` + depsStr.String()
 	return []byte(cargo)
 }
 

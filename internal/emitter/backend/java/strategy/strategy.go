@@ -1,9 +1,9 @@
-package java
+package strategy
 
 import "github.com/Adhamzineldin/Veld/internal/ast"
 
 // FrameworkStrategy provides framework-specific code generation rules for a Java HTTP
-// backend. Swap implementations to target Spring Boot, Micronaut, Quarkus, or plain Servlet.
+// backend. Swap implementations to target Spring Boot, Micronaut, Quarkus, or plain Java.
 type FrameworkStrategy interface {
 	// ControllerAnnotations returns class-level annotations for a module controller.
 	ControllerAnnotations(mod ast.Module) []string
@@ -38,4 +38,16 @@ type FrameworkStrategy interface {
 	GlobalExceptionHandlerSource(ctrlPkg, modelsPkg string) string
 	// BuildFile returns the build descriptor filename and its full contents.
 	BuildFile() (name, content string)
+}
+
+// New returns the FrameworkStrategy for the given name.
+// Empty string or "plain" → PlainStrategy (no framework dependency).
+// "spring" or "spring-boot" → SpringStrategy (Spring Boot 3.x).
+func New(framework string) FrameworkStrategy {
+	switch framework {
+	case "spring", "spring-boot":
+		return &SpringStrategy{}
+	default: // "", "plain"
+		return &PlainStrategy{}
+	}
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	gostrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/go/strategy"
 	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
@@ -53,16 +54,18 @@ func (e *GoEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) err
 		return err
 	}
 
+	strat := gostrategy.New(opts.BackendFramework)
+
 	steps := []struct {
 		name string
 		fn   func() error
 	}{
 		{"types", func() error { return e.generateTypes(a, outDir) }},
 		{"middleware", func() error { return e.generateMiddleware(outDir) }},
-		{"routes setup", func() error { return e.generateRoutesSetup(a, outDir) }},
-		{"server", func() error { return e.generateServer(a, outDir) }},
+		{"routes setup", func() error { return e.generateRoutesSetup(a, outDir, strat) }},
+		{"server", func() error { return e.generateServer(a, outDir, strat) }},
 		{"main", func() error { return e.generateMain(outDir) }},
-		{"go.mod", func() error { return e.generateGoMod(outDir) }},
+		{"go.mod", func() error { return e.generateGoMod(outDir, strat) }},
 	}
 
 	for _, step := range steps {
@@ -76,7 +79,7 @@ func (e *GoEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) err
 		if err := e.generateInterface(a, mod, outDir); err != nil {
 			return fmt.Errorf("go emitter [interface for %s]: %w", mod.Name, err)
 		}
-		if err := e.generateModuleRoutes(a, mod, outDir); err != nil {
+		if err := e.generateModuleRoutes(a, mod, outDir, strat); err != nil {
 			return fmt.Errorf("go emitter [routes for %s]: %w", mod.Name, err)
 		}
 		if err := e.generateErrors(mod, outDir); err != nil {

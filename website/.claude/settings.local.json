@@ -3,7 +3,9 @@
     "allow": [
       "Read(//g/University/Graduation/Veld/**)",
       "Bash(export PATH=\"/c/Program Files/Go/bin:$PATH\")",
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "mcp__plugin_context-mode_context-mode__execute_file",
+      "Bash(go vet:*)"
     ]
   }
 }

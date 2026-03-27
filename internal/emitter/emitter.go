@@ -9,9 +9,11 @@ import (
 
 // EmitOptions carries config-driven options to emitters.
 type EmitOptions struct {
-	BaseUrl  string // base URL for the frontend SDK (empty = env var fallback)
-	DryRun   bool   // if true, emit nothing — just validate
-	Validate bool   // if true, emit zero-dep runtime validators and wire them into route handlers
+	BaseUrl           string // base URL for the frontend SDK (empty = env var fallback)
+	DryRun            bool   // if true, emit nothing — just validate
+	Validate          bool   // if true, emit zero-dep runtime validators and wire them into route handlers
+	BackendFramework  string // e.g. "express", "flask", "chi", "spring" — "" means "plain" (no framework)
+	FrontendFramework string // e.g. "react", "vue", "angular", "svelte" — "" means "none"
 }
 
 // Emitter writes generated output files for a given AST.
