@@ -1,8 +1,8 @@
 package java
 
-// routes.go — emits controllers/{Module}Controller.java with Spring Boot
-// @RestController handler methods. Status codes: 201 for POST, 204 for
-// DELETE with no output, 200 for everything else. Errors return 500 JSON.
+// routes.go — emits controllers/{Module}Controller.java.
+// All framework-specific annotations and response building are delegated
+// to the FrameworkStrategy; this file only owns Java structure.
 
 import (
 	"fmt"
@@ -24,9 +24,6 @@ func (e *JavaEmitter) emitController(a ast.AST, mod ast.Module, outDir string) e
 		enumNames[en.Name] = true
 	}
 
-	// Determine prefix for @RequestMapping.
-	prefix := mod.Prefix
-
 	modClass := capitalize(mod.Name)
 
 	var sb strings.Builder
@@ -34,17 +31,16 @@ func (e *JavaEmitter) emitController(a ast.AST, mod ast.Module, outDir string) e
 	sb.WriteString(fmt.Sprintf("package %s;\n\n", javaPackageControllers))
 	sb.WriteString(fmt.Sprintf("import %s.*;\n", javaPackageModels))
 	sb.WriteString(fmt.Sprintf("import %s.I%sService;\n", javaPackageServices, modClass))
-	sb.WriteString("import org.springframework.http.HttpStatus;\n")
-	sb.WriteString("import org.springframework.http.ResponseEntity;\n")
-	sb.WriteString("import org.springframework.web.bind.annotation.*;\n")
-	sb.WriteString("import java.util.Map;\n\n")
+	for _, imp := range e.strategy.ControllerImports() {
+		sb.WriteString(fmt.Sprintf("import %s;\n", imp))
+	}
+	sb.WriteString("\n")
 
 	if mod.Description != "" {
 		sb.WriteString(fmt.Sprintf("/** %s */\n", mod.Description))
 	}
-	sb.WriteString("@RestController\n")
-	if prefix != "" {
-		sb.WriteString(fmt.Sprintf("@RequestMapping(\"%s\")\n", prefix))
+	for _, ann := range e.strategy.ControllerAnnotations(mod) {
+		sb.WriteString(ann + "\n")
 	}
 	sb.WriteString(fmt.Sprintf("public class %sController {\n\n", modClass))
 	sb.WriteString(fmt.Sprintf("    private final I%sService service;\n\n", modClass))
@@ -53,52 +49,39 @@ func (e *JavaEmitter) emitController(a ast.AST, mod ast.Module, outDir string) e
 	sb.WriteString("    }\n")
 
 	for _, act := range mod.Actions {
-		writeJavaHandler(&sb, mod, act, enumNames, prefix)
+		e.writeHandler(&sb, act, enumNames)
 	}
 
 	sb.WriteString("}\n")
 	return os.WriteFile(filepath.Join(dir, modClass+"Controller.java"), []byte(sb.String()), 0644)
 }
 
-// writeJavaHandler appends a single Spring handler method to sb.
-func writeJavaHandler(sb *strings.Builder, mod ast.Module, act ast.Action, enumNames map[string]bool, prefix string) {
-	routePath := act.Path
-	if prefix != "" {
-		// With @RequestMapping prefix, the method mapping is just the path segment.
-		routePath = act.Path
-	} else if mod.Prefix != "" {
-		routePath = mod.Prefix + act.Path
-	}
-
-	pathParams := emitter.ExtractPathParams(routePath)
+// writeHandler appends a single handler method to sb.
+func (e *JavaEmitter) writeHandler(sb *strings.Builder, act ast.Action, enumNames map[string]bool) {
+	pathParams := emitter.ExtractPathParams(act.Path)
 	returnType := javaReturnType(act, enumNames)
-
-	// Spring mapping annotation.
-	mappingAnnotation := springMappingAnnotation(act.Method, routePath)
 
 	sb.WriteString("\n")
 	if act.Description != "" {
 		sb.WriteString(fmt.Sprintf("    /** %s */\n", act.Description))
 	}
-	sb.WriteString(fmt.Sprintf("    %s\n", mappingAnnotation))
+	sb.WriteString(fmt.Sprintf("    %s\n", e.strategy.RouteAnnotation(act.Method, act.Path)))
 
-	// Method signature.
 	methodName := javaCamelField(act.Name)
 	var params []string
 	for _, p := range pathParams {
-		params = append(params, fmt.Sprintf("@PathVariable(\"%s\") String %s", p, javaCamelField(p)))
+		params = append(params, fmt.Sprintf("%s String %s", e.strategy.PathParamAnnotation(p), javaCamelField(p)))
 	}
 	if act.Input != "" {
-		params = append(params, fmt.Sprintf("@RequestBody %s body", act.Input))
+		params = append(params, fmt.Sprintf("%s %s body", e.strategy.InputParamAnnotation(), act.Input))
 	}
 	if act.Query != "" {
-		params = append(params, "@RequestParam java.util.Map<String, String> query")
+		params = append(params, fmt.Sprintf("%s %s query", e.strategy.QueryParamAnnotation(), e.strategy.QueryParamType()))
 	}
 
-	sb.WriteString(fmt.Sprintf("    public ResponseEntity<?> %s(%s) {\n", methodName, strings.Join(params, ", ")))
+	sb.WriteString(fmt.Sprintf("    public %s %s(%s) {\n", e.strategy.ResponseWrapper(), methodName, strings.Join(params, ", ")))
 	sb.WriteString("        try {\n")
 
-	// Service call arguments.
 	var callArgs []string
 	for _, p := range pathParams {
 		callArgs = append(callArgs, javaCamelField(p))
@@ -115,36 +98,17 @@ func writeJavaHandler(sb *strings.Builder, mod ast.Module, act ast.Action, enumN
 	switch {
 	case act.Method == "DELETE" && returnType == "void":
 		sb.WriteString(fmt.Sprintf("            %s;\n", serviceCall))
-		sb.WriteString("            return ResponseEntity.noContent().build();\n")
+		sb.WriteString(fmt.Sprintf("            %s\n", e.strategy.NoContentResponse()))
 	case act.Method == "POST":
 		sb.WriteString(fmt.Sprintf("            %s result = %s;\n", returnType, serviceCall))
-		sb.WriteString("            return ResponseEntity.status(HttpStatus.CREATED).body(result);\n")
+		sb.WriteString(fmt.Sprintf("            %s\n", e.strategy.CreatedResponse("result")))
 	default:
 		sb.WriteString(fmt.Sprintf("            %s result = %s;\n", returnType, serviceCall))
-		sb.WriteString("            return ResponseEntity.ok(result);\n")
+		sb.WriteString(fmt.Sprintf("            %s\n", e.strategy.OkResponse("result")))
 	}
 
 	sb.WriteString("        } catch (Exception e) {\n")
-	sb.WriteString("            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)\n")
-	sb.WriteString("                    .body(Map.of(\"error\", e.getMessage()));\n")
+	sb.WriteString(fmt.Sprintf("            %s\n", e.strategy.ErrorResponse("e")))
 	sb.WriteString("        }\n")
 	sb.WriteString("    }\n")
-}
-
-// springMappingAnnotation returns the Spring MVC mapping annotation for an HTTP method + path.
-func springMappingAnnotation(method, path string) string {
-	switch strings.ToUpper(method) {
-	case "GET":
-		return fmt.Sprintf("@GetMapping(\"%s\")", path)
-	case "POST":
-		return fmt.Sprintf("@PostMapping(\"%s\")", path)
-	case "PUT":
-		return fmt.Sprintf("@PutMapping(\"%s\")", path)
-	case "DELETE":
-		return fmt.Sprintf("@DeleteMapping(\"%s\")", path)
-	case "PATCH":
-		return fmt.Sprintf("@PatchMapping(\"%s\")", path)
-	default:
-		return fmt.Sprintf("@RequestMapping(method = RequestMethod.%s, value = \"%s\")", strings.ToUpper(method), path)
-	}
 }
