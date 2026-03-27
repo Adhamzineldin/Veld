@@ -11,9 +11,13 @@ import (
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
 const javaPackageModels = "com.example.generated.models"
+
+// javaLang is the shared language adapter for pure Java type and naming conventions.
+var javaLang = &lang.JavaAdapter{}
 
 func (e *JavaEmitter) emitModels(a ast.AST, outDir string) error {
 	dir := filepath.Join(outDir, "models")
@@ -39,7 +43,6 @@ func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir string) erro
 		enumNames[en.Name] = true
 	}
 
-	// Collect imports needed by fields.
 	needsList := false
 	needsMap := false
 	for _, f := range m.Fields {
@@ -69,12 +72,10 @@ func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir string) erro
 		sb.WriteString(fmt.Sprintf("/** %s */\n", m.Description))
 	}
 
-	// Use extends for class-based inheritance (records don't support extends,
-	// so when a model extends another we fall back to a class).
 	if m.Extends != "" {
 		sb.WriteString(fmt.Sprintf("public class %s extends %s {\n", m.Name, m.Extends))
 		for _, f := range m.Fields {
-			javaType := javaFieldType(f, enumNames)
+			javaType := javaFieldType(f)
 			fieldName := javaCamelField(f.Name)
 			opt := ""
 			if f.Optional {
@@ -84,10 +85,9 @@ func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir string) erro
 		}
 		sb.WriteString("}\n")
 	} else {
-		// Record syntax (Java 17+): compact, immutable.
 		sb.WriteString(fmt.Sprintf("public record %s(\n", m.Name))
 		for i, f := range m.Fields {
-			javaType := javaFieldType(f, enumNames)
+			javaType := javaFieldType(f)
 			fieldName := javaCamelField(f.Name)
 			comma := ","
 			if i == len(m.Fields)-1 {
@@ -143,69 +143,20 @@ func (e *JavaEmitter) emitEnum(en ast.Enum, dir string) error {
 	return os.WriteFile(filepath.Join(dir, en.Name+".java"), []byte(sb.String()), 0644)
 }
 
-// javaFieldType maps an AST field to its Java type string.
-func javaFieldType(f ast.Field, enumNames map[string]bool) string {
+// javaFieldType maps an AST field to its Java type string via the language adapter.
+func javaFieldType(f ast.Field) string {
 	if f.IsMap {
-		return "Map<String, " + veldScalarToJava(f.MapValueType, enumNames) + ">"
+		valType, _, _ := javaLang.MapType(f.MapValueType)
+		return "Map<String, " + valType + ">"
 	}
-	base := veldScalarToJava(f.Type, enumNames)
+	base, _, _ := javaLang.MapType(f.Type)
 	if f.IsArray {
 		return "List<" + base + ">"
 	}
 	return base
 }
 
-// veldScalarToJava maps a Veld scalar type name to a Java type.
-func veldScalarToJava(t string, _ map[string]bool) string {
-	switch t {
-	case "string", "date", "datetime", "uuid":
-		return "String"
-	case "int":
-		return "Long"
-	case "float":
-		return "Double"
-	case "bool":
-		return "Boolean"
-	case "any", "json":
-		return "Object"
-	default:
-		return t // custom model/enum name
-	}
-}
-
-// javaCamelField converts a field name to Java camelCase.
+// javaCamelField converts a field or parameter name to Java camelCase via the language adapter.
 func javaCamelField(name string) string {
-	parts := strings.FieldsFunc(toSnakeCaseJava(name), func(r rune) bool { return r == '_' })
-	if len(parts) == 0 {
-		return name
-	}
-	var sb strings.Builder
-	sb.WriteString(parts[0])
-	for _, p := range parts[1:] {
-		if len(p) > 0 {
-			sb.WriteString(strings.ToUpper(p[:1]) + p[1:])
-		}
-	}
-	return sb.String()
-}
-
-func toSnakeCaseJava(s string) string {
-	var result strings.Builder
-	var prev rune
-	for i, r := range s {
-		isUpper := r >= 'A' && r <= 'Z'
-		if isUpper && i > 0 && prev != '_' {
-			prevUpper := prev >= 'A' && prev <= 'Z'
-			if !prevUpper {
-				result.WriteRune('_')
-			}
-		}
-		result.WriteRune(r | 32) // toLower
-		prev = r
-	}
-	out := result.String()
-	for strings.Contains(out, "__") {
-		out = strings.ReplaceAll(out, "__", "_")
-	}
-	return strings.Trim(out, "_")
+	return javaLang.NamingConvention(name, lang.NamingContextPrivate)
 }

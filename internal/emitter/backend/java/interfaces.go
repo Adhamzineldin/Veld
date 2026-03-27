@@ -27,7 +27,6 @@ func (e *JavaEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) er
 	sb.WriteString(fmt.Sprintf("package %s;\n\n", javaPackageServices))
 	sb.WriteString(fmt.Sprintf("import %s.*;\n", javaPackageModels))
 	sb.WriteString("import java.util.List;\n")
-	// Import per-action exception types
 	for _, act := range mod.Actions {
 		if len(act.Errors) > 0 {
 			sb.WriteString(fmt.Sprintf("import %s.%sException;\n", javaPackageModels, capitalize(act.Name)))
@@ -70,7 +69,7 @@ func (e *JavaEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) er
 			}
 			for _, errName := range act.Errors {
 				code := emitter.ErrorCode(act.Name, errName)
-				sb.WriteString(fmt.Sprintf("     * @throws ApiException %s — %s\n", code, errName))
+				sb.WriteString(fmt.Sprintf("     * @throws ApiException %s \u2014 %s\n", code, errName))
 			}
 			sb.WriteString("     */\n")
 		}
@@ -86,11 +85,11 @@ func (e *JavaEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) er
 }
 
 // javaReturnType returns the Java return type for a service method.
-func javaReturnType(act ast.Action, enumNames map[string]bool) string {
+func javaReturnType(act ast.Action, _ map[string]bool) string {
 	if act.Output == "" {
 		return "void"
 	}
-	base := veldScalarToJava(act.Output, enumNames)
+	base, _, _ := javaLang.MapType(act.Output)
 	if act.OutputArray {
 		return "List<" + base + ">"
 	}
