@@ -10,6 +10,7 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 	"github.com/Adhamzineldin/Veld/internal/emitter/codegen"
+	gostrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/go/strategy"
 	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
@@ -53,7 +54,7 @@ func (e *GoEmitter) generateMiddleware(outDir string) error {
 }
 
 // generateServer writes server.go (server constructor + Services struct).
-func (e *GoEmitter) generateServer(a ast.AST, outDir string) error {
+func (e *GoEmitter) generateServer(a ast.AST, outDir string, strat gostrategy.GoFrameworkStrategy) error {
 	w := codegen.NewWriter("\t")
 	w.Writeln(header)
 	w.Writeln("package main")
@@ -62,7 +63,11 @@ func (e *GoEmitter) generateServer(a ast.AST, outDir string) error {
 	im := codegen.NewImportManager()
 	im.Add("net/http", codegen.GroupStdlib)
 	im.Add("time", codegen.GroupStdlib)
-	im.Add("github.com/go-chi/chi/v5", codegen.GroupThirdParty)
+	for _, imp := range strat.GoImports() {
+		if imp != "net/http" {
+			im.Add(imp, codegen.GroupThirdParty)
+		}
+	}
 	im.Add(goModuleName+"/internal/interfaces", codegen.GroupLocal)
 	im.Add(goModuleName+"/internal/middleware", codegen.GroupLocal)
 	im.Add(goModuleName+"/internal/routes", codegen.GroupLocal)
@@ -85,15 +90,27 @@ func (e *GoEmitter) generateServer(a ast.AST, outDir string) error {
 	// NewServer function.
 	w.Writeln("// NewServer creates and configures the HTTP server.")
 	w.WriteBlock("func NewServer(svc *Services) *http.Server {")
-	w.Writeln("r := chi.NewRouter()")
+	w.Writeln(fmt.Sprintf("r := %s", strat.RouterConstructor()))
 	w.BlankLine()
-	w.Writeln("r.Use(middleware.RecoverPanic)")
-	w.BlankLine()
-	w.Writeln(fmt.Sprintf("routes.SetupRoutes(r, %s)", buildServerSetupArgs(e, a.Modules)))
-	w.BlankLine()
-	w.WriteBlock("return &http.Server{")
-	w.Writeln("Addr:         \":8080\",")
-	w.Writeln("Handler:      r,")
+
+	// Chi supports middleware via r.Use(); for plain net/http we wrap the mux instead.
+	_, isChiLike := strat.(*gostrategy.ChiStrategy)
+	if isChiLike {
+		w.Writeln("r.Use(middleware.RecoverPanic)")
+		w.BlankLine()
+		w.Writeln(fmt.Sprintf("routes.SetupRoutes(r, %s)", buildServerSetupArgs(e, a.Modules)))
+		w.BlankLine()
+		w.WriteBlock("return &http.Server{")
+		w.Writeln("Addr:         \":8080\",")
+		w.Writeln("Handler:      r,")
+	} else {
+		w.Writeln(fmt.Sprintf("routes.SetupRoutes(r, %s)", buildServerSetupArgs(e, a.Modules)))
+		w.BlankLine()
+		w.WriteBlock("return &http.Server{")
+		w.Writeln("Addr:         \":8080\",")
+		w.Writeln("Handler:      middleware.RecoverPanic(r),")
+	}
+
 	w.Writeln("ReadTimeout:  15 * time.Second,")
 	w.Writeln("WriteTimeout: 15 * time.Second,")
 	w.Writeln("IdleTimeout:  60 * time.Second,")
@@ -133,15 +150,21 @@ func (e *GoEmitter) generateMain(outDir string) error {
 }
 
 // generateGoMod writes a minimal go.mod for the generated module.
-func (e *GoEmitter) generateGoMod(outDir string) error {
+func (e *GoEmitter) generateGoMod(outDir string, strat gostrategy.GoFrameworkStrategy) error {
 	w := codegen.NewWriter("")
 	w.Writeln(fmt.Sprintf("module %s", goModuleName))
 	w.BlankLine()
-	w.Writeln("go 1.21")
+	w.Writeln("go 1.22")
 	w.BlankLine()
-	w.Writeln("require (")
-	w.Writeln("\tgithub.com/go-chi/chi/v5 v5.0.12")
-	w.Writeln(")")
+
+	requires := strat.GoModRequire()
+	if len(requires) > 0 {
+		w.Writeln("require (")
+		for _, req := range requires {
+			w.Writeln("\t" + req)
+		}
+		w.Writeln(")")
+	}
 
 	return os.WriteFile(filepath.Join(outDir, "go.mod"), w.Bytes(), 0644)
 }

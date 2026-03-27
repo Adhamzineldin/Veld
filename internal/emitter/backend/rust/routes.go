@@ -1,4 +1,4 @@
-// routes.go - Axum route handler generation for Rust backend
+// routes.go - Route handler generation for Rust backend
 package rustbackend
 
 import (
@@ -8,37 +8,62 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 	"github.com/Adhamzineldin/Veld/internal/emitter/codegen"
+	ruststrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/rust/strategy"
 	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
-// generateRouter writes src/router.rs with the Axum router setup.
-func (e *RustEmitter) generateRouter(a ast.AST) []byte {
+// generateRouter writes src/router.rs with the framework router setup.
+func (e *RustEmitter) generateRouter(a ast.AST, strat ruststrategy.RustFrameworkStrategy) []byte {
 	w := codegen.NewWriter("    ")
 	w.Writeln(header)
 
-	w.Writeln("use axum::Router;")
-	w.BlankLine()
+	// Emit router imports from the strategy.
+	for _, imp := range strat.RouterImports() {
+		w.Writeln(fmt.Sprintf("use %s;", imp))
+	}
+	if len(strat.RouterImports()) > 0 {
+		w.BlankLine()
+	}
+
 	for _, mod := range a.Modules {
 		modName := e.adapter.NamingConvention(mod.Name, lang.NamingContextPrivate)
 		w.Writeln(fmt.Sprintf("use crate::%s::router as %s_router;", modName, modName))
 	}
 	w.BlankLine()
 
-	w.Writeln("/// Build the complete Axum router with all module routes.")
-	w.Writeln("pub fn build_router() -> Router {")
+	w.Writeln("/// Build the complete router with all module routes.")
+	w.Writeln("pub fn build_router() -> impl std::any::Any {")
 	w.Indent()
 
-	if len(a.Modules) == 0 {
-		w.Writeln("Router::new()")
-	} else {
-		parts := make([]string, len(a.Modules))
-		for i, mod := range a.Modules {
-			modName := e.adapter.NamingConvention(mod.Name, lang.NamingContextPrivate)
-			parts[i] = fmt.Sprintf("%s_router()", modName)
+	// Collect route entries for strategy.
+	var routes []ruststrategy.RouteEntry
+	for _, mod := range a.Modules {
+		for _, act := range mod.Actions {
+			routes = append(routes, ruststrategy.RouteEntry{
+				Method:  act.Method,
+				Path:    fullAxumPath(mod, act),
+				Handler: e.adapter.NamingConvention(act.Name, lang.NamingContextPrivate),
+			})
 		}
-		w.Writeln(parts[0])
-		for _, p := range parts[1:] {
-			w.Writeln(fmt.Sprintf("    .merge(%s)", p))
+	}
+
+	routerCode := strat.BuildRouter(routes)
+	if routerCode != "" {
+		w.Writeln(routerCode)
+	} else {
+		// Plain strategy: merge module sub-routers if available.
+		if len(a.Modules) == 0 {
+			w.Writeln("()")
+		} else {
+			parts := make([]string, len(a.Modules))
+			for i, mod := range a.Modules {
+				modName := e.adapter.NamingConvention(mod.Name, lang.NamingContextPrivate)
+				parts[i] = fmt.Sprintf("%s_router()", modName)
+			}
+			w.Writeln(parts[0])
+			for _, p := range parts[1:] {
+				w.Writeln(fmt.Sprintf("    .merge(%s)", p))
+			}
 		}
 	}
 
@@ -47,53 +72,60 @@ func (e *RustEmitter) generateRouter(a ast.AST) []byte {
 	return w.Bytes()
 }
 
-// generateModuleRoutes writes src/{module}/mod.rs with Axum handlers for one module.
-func (e *RustEmitter) generateModuleRoutes(a ast.AST, mod ast.Module) ([]byte, error) {
+// generateModuleRoutes writes src/{module}/mod.rs with handlers for one module.
+func (e *RustEmitter) generateModuleRoutes(a ast.AST, mod ast.Module, strat ruststrategy.RustFrameworkStrategy) ([]byte, error) {
 	w := codegen.NewWriter("    ")
 	w.Writeln(header)
 
-	// Standard Axum imports.
-	w.Writeln("use axum::{")
-	w.Indent()
-	w.Writeln("extract::{Json, Path, State},")
-	w.Writeln("http::StatusCode,")
-	w.Writeln("response::IntoResponse,")
-	w.Writeln("routing::{delete, get, patch, post, put},")
-	w.Writeln("Router,")
-	w.Dedent()
-	w.Writeln("};")
-	w.Writeln("use std::sync::Arc;")
+	// Framework-specific handler imports.
+	handlerImports := strat.HandlerImports()
+	if len(handlerImports) > 0 {
+		// First entry may be a multi-line block opener (e.g. "use axum::{")
+		w.Writeln("use " + handlerImports[0])
+		for _, imp := range handlerImports[1:] {
+			w.Writeln(imp)
+		}
+	}
 	w.BlankLine()
 	w.Writeln("use crate::models::*;")
 	w.Writeln(fmt.Sprintf("use crate::services::%sService;", e.adapter.NamingConvention(mod.Name, lang.NamingContextExported)))
 	w.BlankLine()
 
 	// router() function.
-	w.Writeln(fmt.Sprintf("/// Build the Axum sub-router for the %s module.", mod.Name))
-	w.Writeln("pub fn router<S>() -> Router<S>")
+	w.Writeln(fmt.Sprintf("/// Build the sub-router for the %s module.", mod.Name))
+	w.Writeln("pub fn router<S>() -> impl std::any::Any")
 	w.Writeln("where")
 	w.Indent()
 	w.Writeln(fmt.Sprintf("S: %sService + Clone + Send + Sync + 'static,", e.adapter.NamingConvention(mod.Name, lang.NamingContextExported)))
 	w.Dedent()
 	w.WriteBlock("{")
-	w.Writeln("Router::new()")
-	w.Indent()
 
+	// Build route entries from this module.
+	var routes []ruststrategy.RouteEntry
 	for _, act := range mod.Actions {
 		routePath := fullAxumPath(mod, act)
-		axumFn := axumMethod(act.Method)
 		handlerName := e.adapter.NamingConvention(act.Name, lang.NamingContextPrivate)
-		w.Writeln(fmt.Sprintf(".route(%q, %s(%s))", routePath, axumFn, handlerName))
+		routes = append(routes, ruststrategy.RouteEntry{
+			Method:  act.Method,
+			Path:    routePath,
+			Handler: handlerName,
+		})
 	}
 
-	w.Dedent()
+	routerCode := strat.BuildRouter(routes)
+	if routerCode != "" {
+		w.Writeln(routerCode)
+	} else {
+		w.Writeln("()")
+	}
+
 	w.Dedent()
 	w.Writeln("}")
 	w.BlankLine()
 
 	// Handler functions.
 	for _, act := range mod.Actions {
-		if err := e.writeHandler(w, mod, act); err != nil {
+		if err := e.writeHandler(w, mod, act, strat); err != nil {
 			return nil, err
 		}
 		w.BlankLine()
@@ -102,8 +134,8 @@ func (e *RustEmitter) generateModuleRoutes(a ast.AST, mod ast.Module) ([]byte, e
 	return w.Bytes(), nil
 }
 
-// writeHandler generates a single async Axum handler function.
-func (e *RustEmitter) writeHandler(w *codegen.Writer, mod ast.Module, act ast.Action) error {
+// writeHandler generates a single async handler function.
+func (e *RustEmitter) writeHandler(w *codegen.Writer, mod ast.Module, act ast.Action, strat ruststrategy.RustFrameworkStrategy) error {
 	handlerName := e.adapter.NamingConvention(act.Name, lang.NamingContextPrivate)
 	methodName := e.adapter.NamingConvention(act.Name, lang.NamingContextPrivate)
 	serviceName := e.adapter.NamingConvention(mod.Name, lang.NamingContextExported) + "Service"
@@ -118,12 +150,10 @@ func (e *RustEmitter) writeHandler(w *codegen.Writer, mod ast.Module, act ast.Ac
 	sigParams = append(sigParams, fmt.Sprintf("State(svc): State<Arc<dyn %s>>", serviceName))
 
 	if len(pathParams) > 0 {
-		// Axum Path extractor for path parameters.
 		if len(pathParams) == 1 {
 			paramType := "String"
 			sigParams = append(sigParams, fmt.Sprintf("Path(%s): Path<%s>", rustParamName(e, pathParams[0]), paramType))
 		} else {
-			// Multiple path params use a tuple.
 			types := make([]string, len(pathParams))
 			names := make([]string, len(pathParams))
 			for i, p := range pathParams {
@@ -168,26 +198,21 @@ func (e *RustEmitter) writeHandler(w *codegen.Writer, mod ast.Module, act ast.Ac
 		callArgs = append(callArgs, "payload")
 	}
 
-	serviceCallStr := fmt.Sprintf("svc.%s(%s).await", methodName, strings.Join(callArgs, ", "))
+	serviceCallExpr := fmt.Sprintf("svc.%s(%s).await", methodName, strings.Join(callArgs, ", "))
+	wrapped := strat.WrapHandler(act.Method, returnType, serviceCallExpr)
 
-	// Error helper closure.
-	w.Writeln("let err_response = |e: String| {")
-	w.Indent()
-	w.Writeln("(StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({\"error\": e})))")
-	w.Dedent()
-	w.Writeln("};")
-	w.BlankLine()
+	// Error helper closure (only needed when the strategy generates response code).
+	if wrapped != serviceCallExpr {
+		w.Writeln("let err_response = |e: String| {")
+		w.Indent()
+		w.Writeln("(StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({\"error\": e})))")
+		w.Dedent()
+		w.Writeln("};")
+		w.BlankLine()
+	}
 
-	if hasOutput {
-		w.Writeln(fmt.Sprintf("let result = %s.map_err(|e| err_response(e.to_string()))?;", serviceCallStr))
-		statusCode := successStatusCode(act)
-		w.Writeln(fmt.Sprintf("Ok((%s, Json(result)))", statusCode))
-	} else if strings.ToUpper(act.Method) == "DELETE" {
-		w.Writeln(fmt.Sprintf("%s.map_err(|e| err_response(e.to_string()))?;", serviceCallStr))
-		w.Writeln("Ok(StatusCode::NO_CONTENT)")
-	} else {
-		w.Writeln(fmt.Sprintf("%s.map_err(|e| err_response(e.to_string()))?;", serviceCallStr))
-		w.Writeln("Ok(StatusCode::OK)")
+	for _, line := range strings.Split(wrapped, "\n") {
+		w.Writeln(line)
 	}
 
 	w.Dedent()

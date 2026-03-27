@@ -12,11 +12,12 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	jstrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/java/strategy"
 )
 
 const javaPackageControllers = "com.example.generated.controllers"
 
-func (e *JavaEmitter) emitController(a ast.AST, mod ast.Module, outDir string) error {
+func (e *JavaEmitter) emitController(strat jstrategy.FrameworkStrategy, a ast.AST, mod ast.Module, outDir string) error {
 	dir := filepath.Join(outDir, "controllers")
 
 	enumNames := make(map[string]bool, len(a.Enums))
@@ -31,7 +32,7 @@ func (e *JavaEmitter) emitController(a ast.AST, mod ast.Module, outDir string) e
 	sb.WriteString(fmt.Sprintf("package %s;\n\n", javaPackageControllers))
 	sb.WriteString(fmt.Sprintf("import %s.*;\n", javaPackageModels))
 	sb.WriteString(fmt.Sprintf("import %s.I%sService;\n", javaPackageServices, modClass))
-	for _, imp := range e.strategy.ControllerImports() {
+	for _, imp := range strat.ControllerImports() {
 		sb.WriteString(fmt.Sprintf("import %s;\n", imp))
 	}
 	sb.WriteString("\n")
@@ -39,7 +40,7 @@ func (e *JavaEmitter) emitController(a ast.AST, mod ast.Module, outDir string) e
 	if mod.Description != "" {
 		sb.WriteString(fmt.Sprintf("/** %s */\n", mod.Description))
 	}
-	for _, ann := range e.strategy.ControllerAnnotations(mod) {
+	for _, ann := range strat.ControllerAnnotations(mod) {
 		sb.WriteString(ann + "\n")
 	}
 	sb.WriteString(fmt.Sprintf("public class %sController {\n\n", modClass))
@@ -49,7 +50,7 @@ func (e *JavaEmitter) emitController(a ast.AST, mod ast.Module, outDir string) e
 	sb.WriteString("    }\n")
 
 	for _, act := range mod.Actions {
-		e.writeHandler(&sb, act, enumNames)
+		e.writeHandler(strat, &sb, act, enumNames)
 	}
 
 	sb.WriteString("}\n")
@@ -57,7 +58,7 @@ func (e *JavaEmitter) emitController(a ast.AST, mod ast.Module, outDir string) e
 }
 
 // writeHandler appends a single handler method to sb.
-func (e *JavaEmitter) writeHandler(sb *strings.Builder, act ast.Action, enumNames map[string]bool) {
+func (e *JavaEmitter) writeHandler(strat jstrategy.FrameworkStrategy, sb *strings.Builder, act ast.Action, enumNames map[string]bool) {
 	pathParams := emitter.ExtractPathParams(act.Path)
 	returnType := javaReturnType(act, enumNames)
 
@@ -65,21 +66,36 @@ func (e *JavaEmitter) writeHandler(sb *strings.Builder, act ast.Action, enumName
 	if act.Description != "" {
 		sb.WriteString(fmt.Sprintf("    /** %s */\n", act.Description))
 	}
-	sb.WriteString(fmt.Sprintf("    %s\n", e.strategy.RouteAnnotation(act.Method, act.Path)))
+	sb.WriteString(fmt.Sprintf("    %s\n", strat.RouteAnnotation(act.Method, act.Path)))
 
 	methodName := javaCamelField(act.Name)
 	var params []string
 	for _, p := range pathParams {
-		params = append(params, fmt.Sprintf("%s String %s", e.strategy.PathParamAnnotation(p), javaCamelField(p)))
+		ann := strat.PathParamAnnotation(p)
+		if ann != "" {
+			params = append(params, fmt.Sprintf("%s String %s", ann, javaCamelField(p)))
+		} else {
+			params = append(params, fmt.Sprintf("String %s", javaCamelField(p)))
+		}
 	}
 	if act.Input != "" {
-		params = append(params, fmt.Sprintf("%s %s body", e.strategy.InputParamAnnotation(), act.Input))
+		ann := strat.InputParamAnnotation()
+		if ann != "" {
+			params = append(params, fmt.Sprintf("%s %s body", ann, act.Input))
+		} else {
+			params = append(params, fmt.Sprintf("%s body", act.Input))
+		}
 	}
 	if act.Query != "" {
-		params = append(params, fmt.Sprintf("%s %s query", e.strategy.QueryParamAnnotation(), e.strategy.QueryParamType()))
+		ann := strat.QueryParamAnnotation()
+		if ann != "" {
+			params = append(params, fmt.Sprintf("%s %s query", ann, strat.QueryParamType()))
+		} else {
+			params = append(params, fmt.Sprintf("%s query", strat.QueryParamType()))
+		}
 	}
 
-	sb.WriteString(fmt.Sprintf("    public %s %s(%s) {\n", e.strategy.ResponseWrapper(), methodName, strings.Join(params, ", ")))
+	sb.WriteString(fmt.Sprintf("    public %s %s(%s) {\n", strat.ResponseWrapper(), methodName, strings.Join(params, ", ")))
 	sb.WriteString("        try {\n")
 
 	var callArgs []string
@@ -98,17 +114,17 @@ func (e *JavaEmitter) writeHandler(sb *strings.Builder, act ast.Action, enumName
 	switch {
 	case act.Method == "DELETE" && returnType == "void":
 		sb.WriteString(fmt.Sprintf("            %s;\n", serviceCall))
-		sb.WriteString(fmt.Sprintf("            %s\n", e.strategy.NoContentResponse()))
+		sb.WriteString(fmt.Sprintf("            %s\n", strat.NoContentResponse()))
 	case act.Method == "POST":
 		sb.WriteString(fmt.Sprintf("            %s result = %s;\n", returnType, serviceCall))
-		sb.WriteString(fmt.Sprintf("            %s\n", e.strategy.CreatedResponse("result")))
+		sb.WriteString(fmt.Sprintf("            %s\n", strat.CreatedResponse("result")))
 	default:
 		sb.WriteString(fmt.Sprintf("            %s result = %s;\n", returnType, serviceCall))
-		sb.WriteString(fmt.Sprintf("            %s\n", e.strategy.OkResponse("result")))
+		sb.WriteString(fmt.Sprintf("            %s\n", strat.OkResponse("result")))
 	}
 
 	sb.WriteString("        } catch (Exception e) {\n")
-	sb.WriteString(fmt.Sprintf("            %s\n", e.strategy.ErrorResponse("e")))
+	sb.WriteString(fmt.Sprintf("            %s\n", strat.ErrorResponse("e")))
 	sb.WriteString("        }\n")
 	sb.WriteString("    }\n")
 }

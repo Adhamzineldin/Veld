@@ -15,9 +15,10 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	nodestrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/node/strategy"
 )
 
-func (e *NodeEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts emitter.EmitOptions) error {
+func (e *NodeEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts emitter.EmitOptions, strat nodestrategy.NodeFrameworkStrategy) error {
 	dir := filepath.Join(outDir, "routes")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -49,13 +50,13 @@ func (e *NodeEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts 
 
 	sb.WriteString("\n")
 	if len(allMiddleware) > 0 {
-		sb.WriteString(fmt.Sprintf("export function %s(router: any, service: I%sService, middleware: IMiddleware): void {\n", funcName, mod.Name))
+		sb.WriteString(fmt.Sprintf("export function %s(router: %s, service: I%sService, middleware: IMiddleware): void {\n", funcName, strat.RouterType(), mod.Name))
 	} else {
-		sb.WriteString(fmt.Sprintf("export function %s(router: any, service: I%sService): void {\n", funcName, mod.Name))
+		sb.WriteString(fmt.Sprintf("export function %s(router: %s, service: I%sService): void {\n", funcName, strat.RouterType(), mod.Name))
 	}
 
 	for _, act := range mod.Actions {
-		if err := writeRouteHandler(&sb, mod, act, opts); err != nil {
+		if err := writeRouteHandler(&sb, mod, act, opts, strat); err != nil {
 			return err
 		}
 	}
@@ -70,7 +71,7 @@ func (e *NodeEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts 
 }
 
 // writeRouteHandler appends a single route registration + async handler to sb.
-func writeRouteHandler(sb *strings.Builder, mod ast.Module, act ast.Action, opts emitter.EmitOptions) error {
+func writeRouteHandler(sb *strings.Builder, mod ast.Module, act ast.Action, opts emitter.EmitOptions, strat nodestrategy.NodeFrameworkStrategy) error {
 	method := strings.ToLower(act.Method)
 	routePath := act.Path
 	if mod.Prefix != "" {
@@ -99,7 +100,7 @@ func writeRouteHandler(sb *strings.Builder, mod ast.Module, act ast.Action, opts
 		mwArgs += fmt.Sprintf("middleware.%s, ", emitter.ToCamelCase(mw))
 	}
 
-	sb.WriteString(fmt.Sprintf("\n  router.%s('%s', %sasync (req: any, res: any) => {\n", method, routePath, mwArgs))
+	sb.WriteString(fmt.Sprintf("\n  router.%s('%s', %sasync (req: %s, res: %s) => {\n", method, routePath, mwArgs, strat.RequestType(), strat.ResponseType()))
 	sb.WriteString("    try {\n")
 
 	// ── Build service call arguments ─────────────────────────────────────────
@@ -170,7 +171,7 @@ func writeNodeOutputAssertion(sb *strings.Builder, act ast.Action) {
 // emitMiddlewareInterface writes middleware/IMiddleware.ts — a single shared
 // interface containing all unique middleware methods used across ALL modules.
 // This way developers implement one middleware object and pass it to every module's router.
-func (e *NodeEmitter) emitMiddlewareInterface(a ast.AST, outDir string) error {
+func (e *NodeEmitter) emitMiddlewareInterface(a ast.AST, outDir string, strat nodestrategy.NodeFrameworkStrategy) error {
 	allMiddleware := emitter.CollectAllMiddleware(a.Modules)
 	if len(allMiddleware) == 0 {
 		return nil
@@ -189,7 +190,7 @@ func (e *NodeEmitter) emitMiddlewareInterface(a ast.AST, outDir string) error {
 	for _, mw := range allMiddleware {
 		camelMw := emitter.ToCamelCase(mw)
 		sb.WriteString(fmt.Sprintf("  /** %s middleware handler. */\n", mw))
-		sb.WriteString(fmt.Sprintf("  %s(req: any, res: any, next: () => void): void;\n", camelMw))
+		sb.WriteString(fmt.Sprintf("  %s(req: %s, res: %s, next: () => void): void;\n", camelMw, strat.RequestType(), strat.ResponseType()))
 	}
 	sb.WriteString("}\n")
 

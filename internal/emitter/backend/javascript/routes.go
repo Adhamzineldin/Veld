@@ -12,9 +12,10 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	jsstrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/javascript/strategy"
 )
 
-func (e *JSEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts emitter.EmitOptions) error {
+func (e *JSEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts emitter.EmitOptions, strat jsstrategy.JSFrameworkStrategy) error {
 	dir := filepath.Join(outDir, "routes")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -43,7 +44,7 @@ func (e *JSEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts em
 	// JSDoc for the function signature.
 	sb.WriteString("/**\n")
 	sb.WriteString(fmt.Sprintf(" * Registers %s module routes.\n", mod.Name))
-	sb.WriteString(" * @param {*} router\n")
+	sb.WriteString(fmt.Sprintf(" * @param {%s} router\n", strat.RouterType()))
 	sb.WriteString(fmt.Sprintf(" * @param {import('../interfaces/I%sService').I%sService} service\n", mod.Name, mod.Name))
 	if len(allMiddleware) > 0 {
 		sb.WriteString(" * @param {Object} middleware\n")
@@ -57,7 +58,7 @@ func (e *JSEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts em
 	}
 
 	for _, act := range mod.Actions {
-		writeJSRouteHandler(&sb, mod, act, opts)
+		writeJSRouteHandler(&sb, mod, act, opts, strat)
 	}
 
 	sb.WriteString("}\n\n")
@@ -68,13 +69,13 @@ func (e *JSEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts em
 	}
 
 	if len(allMiddleware) > 0 {
-		return e.emitMiddlewareInterface(mod, allMiddleware, outDir)
+		return e.emitMiddlewareInterface(mod, allMiddleware, outDir, strat)
 	}
 	return nil
 }
 
 // writeJSRouteHandler appends a single route registration + async handler to sb.
-func writeJSRouteHandler(sb *strings.Builder, mod ast.Module, act ast.Action, opts emitter.EmitOptions) {
+func writeJSRouteHandler(sb *strings.Builder, mod ast.Module, act ast.Action, opts emitter.EmitOptions, strat jsstrategy.JSFrameworkStrategy) {
 	method := strings.ToLower(act.Method)
 	routePath := act.Path
 	if mod.Prefix != "" {
@@ -167,7 +168,7 @@ func writeJSOutputAssertion(sb *strings.Builder, act ast.Action) {
 }
 
 // emitMiddlewareInterface writes interfaces/I{Module}Middleware.js.
-func (e *JSEmitter) emitMiddlewareInterface(mod ast.Module, allMiddleware []string, outDir string) error {
+func (e *JSEmitter) emitMiddlewareInterface(mod ast.Module, allMiddleware []string, outDir string, strat jsstrategy.JSFrameworkStrategy) error {
 	dir := filepath.Join(outDir, "middleware")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -182,7 +183,7 @@ func (e *JSEmitter) emitMiddlewareInterface(mod ast.Module, allMiddleware []stri
 	sb.WriteString(fmt.Sprintf(" * @typedef {Object} %s\n", interfaceName))
 	for _, mw := range allMiddleware {
 		camelMw := emitter.ToCamelCase(mw)
-		sb.WriteString(fmt.Sprintf(" * @property {function(*, *, function): void} %s - %s middleware handler\n", camelMw, mw))
+		sb.WriteString(fmt.Sprintf(" * @property {function(%s, %s, function): void} %s - %s middleware handler\n", strat.RouterType(), strat.RouterType(), camelMw, mw))
 	}
 	sb.WriteString(" */\n\n")
 	sb.WriteString(fmt.Sprintf("module.exports = {};\n"))

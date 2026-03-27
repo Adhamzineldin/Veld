@@ -6,6 +6,7 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	jsstrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/javascript/strategy"
 )
 
 func init() {
@@ -53,6 +54,7 @@ func (e *JSEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) err
 	if opts.DryRun {
 		return nil
 	}
+	strat := jsstrategy.New(opts.BackendFramework)
 	if err := e.emitPerModuleTypes(a, outDir); err != nil {
 		return fmt.Errorf("types: %w", err)
 	}
@@ -60,7 +62,7 @@ func (e *JSEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) err
 		if err := e.emitInterface(a, mod, outDir); err != nil {
 			return fmt.Errorf("interface for %s: %w", mod.Name, err)
 		}
-		if err := e.emitRoutes(a, mod, outDir, opts); err != nil {
+		if err := e.emitRoutes(a, mod, outDir, opts, strat); err != nil {
 			return fmt.Errorf("routes for %s: %w", mod.Name, err)
 		}
 		if err := e.emitErrors(mod, outDir); err != nil {

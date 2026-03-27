@@ -1,0 +1,28 @@
+package strategy
+
+import "fmt"
+
+// PlainStrategy generates PHP interfaces only — no Laravel/Symfony dependency.
+// Users implement the generated interfaces and wire them into any PHP HTTP layer.
+type PlainStrategy struct{}
+
+func (s *PlainStrategy) ControllerAnnotations() []string { return nil }
+func (s *PlainStrategy) ControllerBaseClass() string     { return "" }
+func (s *PlainStrategy) ControllerUses() []string        { return nil }
+func (s *PlainStrategy) RequestType() string              { return "array" }
+
+func (s *PlainStrategy) ReturnOk(expr string) string {
+	return fmt.Sprintf("return %s;", expr)
+}
+
+func (s *PlainStrategy) ReturnCreated(expr string) string {
+	return fmt.Sprintf("return %s; // 201", expr)
+}
+
+func (s *PlainStrategy) ReturnNoContent() string { return "// 204 No Content" }
+
+func (s *PlainStrategy) ReturnError(statusCode int, msgExpr string) string {
+	return fmt.Sprintf("throw new \\RuntimeException(%s);", msgExpr)
+}
+
+func (s *PlainStrategy) ComposerRequire() map[string]string { return nil }

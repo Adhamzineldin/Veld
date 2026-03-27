@@ -12,11 +12,12 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	jstrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/java/strategy"
 )
 
 // emitErrorHandler writes ApiErrorResponse.java, ApiException.java (pure Java),
 // and GlobalExceptionHandler.java (framework-specific via strategy).
-func (e *JavaEmitter) emitErrorHandler(outDir string) error {
+func (e *JavaEmitter) emitErrorHandler(strat jstrategy.FrameworkStrategy, outDir string) error {
 	modelsDir := filepath.Join(outDir, "models")
 
 	// ApiErrorResponse — pure Java record, no framework dependency.
@@ -53,7 +54,7 @@ func (e *JavaEmitter) emitErrorHandler(outDir string) error {
 	}
 
 	// GlobalExceptionHandler — entirely framework-specific, owned by the strategy.
-	src := e.strategy.GlobalExceptionHandlerSource(javaPackageControllers, javaPackageModels)
+	src := strat.GlobalExceptionHandlerSource(javaPackageControllers, javaPackageModels)
 	if src == "" {
 		return nil
 	}

@@ -10,13 +10,14 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 	"github.com/Adhamzineldin/Veld/internal/emitter/codegen"
+	gostrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/go/strategy"
 	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
 // generateRoutesSetup writes internal/routes/routes.go with:
-//   - SetupRoutes(r chi.Router, ...) dispatcher
+//   - SetupRoutes(r <RouterType>, ...) dispatcher
 //   - Package-level writeJSON and readJSON helpers
-func (e *GoEmitter) generateRoutesSetup(a ast.AST, outDir string) error {
+func (e *GoEmitter) generateRoutesSetup(a ast.AST, outDir string, strat gostrategy.GoFrameworkStrategy) error {
 	w := codegen.NewWriter("\t")
 	w.Writeln(header)
 	w.Writeln("package routes")
@@ -25,7 +26,11 @@ func (e *GoEmitter) generateRoutesSetup(a ast.AST, outDir string) error {
 	im := codegen.NewImportManager()
 	im.Add("encoding/json", codegen.GroupStdlib)
 	im.Add("net/http", codegen.GroupStdlib)
-	im.Add("github.com/go-chi/chi/v5", codegen.GroupThirdParty)
+	for _, imp := range strat.GoImports() {
+		if imp != "net/http" {
+			im.Add(imp, codegen.GroupThirdParty)
+		}
+	}
 
 	for _, mod := range a.Modules {
 		im.Add(goModuleName+"/internal/interfaces", codegen.GroupLocal)
@@ -36,8 +41,9 @@ func (e *GoEmitter) generateRoutesSetup(a ast.AST, outDir string) error {
 	w.BlankLine()
 
 	// SetupRoutes — one parameter per module service.
-	w.Writeln("// SetupRoutes registers all module routes with the given Chi router.")
-	w.WriteBlock(fmt.Sprintf("func SetupRoutes(r chi.Router, %s) {", buildServiceParams(e, a.Modules)))
+	routerParamType := strat.RouterParamType()
+	w.Writeln(fmt.Sprintf("// SetupRoutes registers all module routes with the given %s.", routerParamType))
+	w.WriteBlock(fmt.Sprintf("func SetupRoutes(r %s, %s) {", routerParamType, buildServiceParams(e, a.Modules)))
 	for _, mod := range a.Modules {
 		setupName := e.adapter.NamingConvention("setup"+mod.Name+"Routes", lang.NamingContextPrivate)
 		svcArg := e.adapter.NamingConvention(mod.Name+"Svc", lang.NamingContextPrivate)
@@ -86,26 +92,26 @@ func buildServiceParams(e *GoEmitter, modules []ast.Module) string {
 // generateModuleRoutes writes internal/routes/{module}.go with:
 //   - setup{Module}Routes registration function
 //   - One handler closure per action
-func (e *GoEmitter) generateModuleRoutes(a ast.AST, mod ast.Module, outDir string) error {
+func (e *GoEmitter) generateModuleRoutes(a ast.AST, mod ast.Module, outDir string, strat gostrategy.GoFrameworkStrategy) error {
 	w := codegen.NewWriter("\t")
 	w.Writeln(header)
 	w.Writeln("package routes")
 	w.BlankLine()
 
 	// Determine which imports are needed.
-	hasPathParams := moduleHasPathParams(mod)
 	hasInput := moduleHasInput(mod)
 
 	im := codegen.NewImportManager()
-	im.Add("net/http", codegen.GroupStdlib)
-	im.Add("github.com/go-chi/chi/v5", codegen.GroupThirdParty)
+	for _, imp := range strat.GoImports() {
+		if imp == "net/http" {
+			im.Add(imp, codegen.GroupStdlib)
+		} else {
+			im.Add(imp, codegen.GroupThirdParty)
+		}
+	}
 	im.Add(goModuleName+"/internal/interfaces", codegen.GroupLocal)
 	if hasInput {
 		im.Add(goModuleName+"/internal/models", codegen.GroupLocal)
-	}
-	if hasPathParams {
-		// chi.URLParam is in the chi package, already imported.
-		_ = hasPathParams
 	}
 
 	w.Write(im.Format("go"))
@@ -115,17 +121,17 @@ func (e *GoEmitter) generateModuleRoutes(a ast.AST, mod ast.Module, outDir strin
 	setupFuncName := e.adapter.NamingConvention("setup"+mod.Name+"Routes", lang.NamingContextPrivate)
 	svcType := "interfaces." + e.adapter.NamingConvention(mod.Name, lang.NamingContextExported) + "Service"
 	svcArg := e.adapter.NamingConvention(mod.Name+"Svc", lang.NamingContextPrivate)
+	routerParamType := strat.RouterParamType()
 
 	w.Writeln(fmt.Sprintf("// %s registers the %s module routes.", setupFuncName, mod.Name))
-	w.WriteBlock(fmt.Sprintf("func %s(r chi.Router, %s %s) {", setupFuncName, svcArg, svcType))
+	w.WriteBlock(fmt.Sprintf("func %s(r %s, %s %s) {", setupFuncName, routerParamType, svcArg, svcType))
 
 	for _, act := range mod.Actions {
 		routePath := fullPath(mod, act)
 		chiPath := emitter.ToChiPath(routePath)
 		handlerName := e.adapter.NamingConvention(act.Name+"Handler", lang.NamingContextPrivate)
-		httpMethod := registerMethod(act.Method)
 
-		w.Writeln(fmt.Sprintf("r.%s(%q, %s(%s))", httpMethod, chiPath, handlerName, svcArg))
+		w.Writeln(strat.RegisterRoute(act.Method, chiPath, handlerName+"("+svcArg+")"))
 	}
 
 	w.Dedent()
@@ -134,7 +140,7 @@ func (e *GoEmitter) generateModuleRoutes(a ast.AST, mod ast.Module, outDir strin
 	// Handler function per action.
 	for _, act := range mod.Actions {
 		w.BlankLine()
-		if err := e.writeHandler(w, mod, act, svcType); err != nil {
+		if err := e.writeHandler(w, mod, act, svcType, strat); err != nil {
 			return err
 		}
 	}
@@ -145,7 +151,7 @@ func (e *GoEmitter) generateModuleRoutes(a ast.AST, mod ast.Module, outDir strin
 }
 
 // writeHandler generates a single http.HandlerFunc closure for an action.
-func (e *GoEmitter) writeHandler(w *codegen.Writer, mod ast.Module, act ast.Action, svcType string) error {
+func (e *GoEmitter) writeHandler(w *codegen.Writer, mod ast.Module, act ast.Action, svcType string, strat gostrategy.GoFrameworkStrategy) error {
 	handlerName := e.adapter.NamingConvention(act.Name+"Handler", lang.NamingContextPrivate)
 	methodName := e.adapter.NamingConvention(act.Name, lang.NamingContextExported)
 	routePath := fullPath(mod, act)
@@ -164,10 +170,10 @@ func (e *GoEmitter) writeHandler(w *codegen.Writer, mod ast.Module, act ast.Acti
 	w.WriteBlock(fmt.Sprintf("func %s(svc %s) http.HandlerFunc {", handlerName, svcType))
 	w.WriteBlock("return func(w http.ResponseWriter, r *http.Request) {")
 
-	// 1. Extract path parameters from Chi's URL context.
+	// 1. Extract path parameters using the strategy (Chi vs plain net/http differ here).
 	for _, p := range pathParams {
 		varName := e.adapter.NamingConvention(p, lang.NamingContextPrivate)
-		w.Writeln(fmt.Sprintf("%s := chi.URLParam(r, %q)", varName, p))
+		w.Writeln(strat.ExtractPathParam(varName, p))
 	}
 	if len(pathParams) > 0 {
 		w.BlankLine()
@@ -230,23 +236,6 @@ func fullPath(mod ast.Module, act ast.Action) string {
 	return act.Path
 }
 
-// registerMethod maps a Veld HTTP method to its Chi registration method name.
-func registerMethod(method string) string {
-	switch strings.ToUpper(method) {
-	case "GET":
-		return "Get"
-	case "POST":
-		return "Post"
-	case "PUT":
-		return "Put"
-	case "DELETE":
-		return "Delete"
-	case "PATCH":
-		return "Patch"
-	default:
-		return "MethodFunc" // fallback; Chi's router.Method(method, path, handler)
-	}
-}
 
 // successStatus returns the HTTP status constant for a successful response.
 func successStatus(act ast.Action) string {

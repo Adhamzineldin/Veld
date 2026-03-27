@@ -212,7 +212,13 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 	}
 
 	// ── emit: frontend ───────────────────────────────────────────────────
-	frontend, err := emitter.GetFrontend(rc.Frontend)
+	// New syntax: --frontend=typescript --frontend-framework=react
+	// Routes "typescript" + frontendFramework="react" to the existing "react" emitter.
+	frontendName := rc.Frontend
+	if opts.FrontendFramework != "" && (frontendName == "typescript" || frontendName == "javascript") {
+		frontendName = opts.FrontendFramework
+	}
+	frontend, err := emitter.GetFrontend(frontendName)
 	if err != nil {
 		return nil, veldFiles, nil, err
 	}
@@ -690,6 +696,7 @@ func newASTCmd() *cobra.Command {
 
 func newGenerateCmd() *cobra.Command {
 	var backendFlag, frontendFlag, inputFlag, outFlag string
+	var backendFrameworkFlag, frontendFrameworkFlag string
 	var incrementalFlag, dryRunFlag, setupFlag, validateFlag, strictFlag, forceFlag bool
 
 	cmd := &cobra.Command{
@@ -713,16 +720,20 @@ func newGenerateCmd() *cobra.Command {
 			"  veld generate --dry-run",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := config.FlagOverrides{
-				Backend:     backendFlag,
-				Frontend:    frontendFlag,
-				Input:       inputFlag,
-				Out:         outFlag,
-				Validate:    validateFlag,
-				BackendSet:  cmd.Flags().Changed("backend"),
-				FrontendSet: cmd.Flags().Changed("frontend"),
-				InputSet:    cmd.Flags().Changed("input"),
-				OutSet:      cmd.Flags().Changed("out"),
-				ValidateSet: cmd.Flags().Changed("validate"),
+				Backend:              backendFlag,
+				Frontend:             frontendFlag,
+				Input:                inputFlag,
+				Out:                  outFlag,
+				Validate:             validateFlag,
+				BackendFramework:     backendFrameworkFlag,
+				FrontendFramework:    frontendFrameworkFlag,
+				BackendSet:           cmd.Flags().Changed("backend"),
+				FrontendSet:          cmd.Flags().Changed("frontend"),
+				InputSet:             cmd.Flags().Changed("input"),
+				OutSet:               cmd.Flags().Changed("out"),
+				ValidateSet:          cmd.Flags().Changed("validate"),
+				BackendFrameworkSet:  cmd.Flags().Changed("backend-framework"),
+				FrontendFrameworkSet: cmd.Flags().Changed("frontend-framework"),
 			}
 			rc, err := config.BuildResolved(flags)
 			if err != nil {
@@ -730,9 +741,11 @@ func newGenerateCmd() *cobra.Command {
 			}
 
 			opts := emitter.EmitOptions{
-				BaseUrl:  rc.BaseUrl,
-				DryRun:   dryRunFlag,
-				Validate: rc.Validate,
+				BaseUrl:           rc.BaseUrl,
+				DryRun:            dryRunFlag,
+				Validate:          rc.Validate,
+				BackendFramework:  rc.BackendFramework,
+				FrontendFramework: rc.FrontendFramework,
 			}
 
 			// ── Pre-emit breaking-change gate ────────────────────────────────────
@@ -831,6 +844,10 @@ func newGenerateCmd() *cobra.Command {
 		"exit non-zero if any breaking changes are detected (ideal for CI/CD pipelines)")
 	cmd.Flags().BoolVar(&forceFlag, "force", false,
 		"generate despite breaking changes without prompting (overrides interactive gate)")
+	cmd.Flags().StringVar(&backendFrameworkFlag, "backend-framework", "",
+		"framework for the backend emitter (express, flask, chi, spring, axum, aspnet, laravel — default: plain/none)")
+	cmd.Flags().StringVar(&frontendFrameworkFlag, "frontend-framework", "",
+		"framework wrapper for the frontend SDK (react, vue, angular, svelte — default: none)")
 	return cmd
 }
 

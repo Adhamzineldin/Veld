@@ -8,6 +8,7 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	pystrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/python/strategy"
 )
 
 func init() {
@@ -63,6 +64,9 @@ func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 	if err := e.createDirs(outDir); err != nil {
 		return err
 	}
+
+	strat := pystrategy.New(opts.BackendFramework)
+
 	if err := e.emitPerModuleTypes(a, outDir); err != nil {
 		return fmt.Errorf("types: %w", err)
 	}
@@ -70,7 +74,7 @@ func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 		if err := e.emitInterface(a, mod, outDir); err != nil {
 			return fmt.Errorf("interface for %s: %w", mod.Name, err)
 		}
-		if err := e.emitRoutes(mod, outDir, opts); err != nil {
+		if err := e.emitRoutes(mod, outDir, opts, strat); err != nil {
 			return fmt.Errorf("routes for %s: %w", mod.Name, err)
 		}
 		if err := e.emitMiddlewareProtocol(mod, outDir); err != nil {
