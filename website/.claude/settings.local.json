@@ -5,7 +5,11 @@
       "Bash(export PATH=\"/c/Program Files/Go/bin:$PATH\")",
       "Bash(go build:*)",
       "mcp__plugin_context-mode_context-mode__execute_file",
-      "Bash(go vet:*)"
+      "Bash(go vet:*)",
+      "Bash(for d:*)",
+      "Bash(do echo:*)",
+      "Read(//g/University/Graduation/Veld/internal/emitter/backend/$d/**)",
+      "Bash(done)"
     ]
   }
 }

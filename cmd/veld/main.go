@@ -2361,19 +2361,87 @@ func runInit() error {
 		fmt.Printf("  %s Detected project type: %s\n\n", dim("ℹ"), bold(detectedBackend))
 	}
 
-	// ── Backend selection ──────────────────────────────────────────────────
+	// ── Framework option tables ────────────────────────────────────────────
+	type initFWOpt struct{ name, desc string }
+	backendFrameworkOpts := map[string][]initFWOpt{
+		"node-ts": {
+			{"plain", "router: any — wire your own Express / Fastify / Hono / NestJS"},
+			{"express", "Express 4.x with typed Request/Response"},
+		},
+		"node-js": {
+			{"plain", "router: any — wire your own framework"},
+			{"express", "Express 4.x with JSDoc types"},
+		},
+		"python": {
+			{"plain", "pure typed functions — no HTTP framework"},
+			{"flask", "Flask blueprints + jsonify"},
+			{"fastapi", "FastAPI router + Pydantic"},
+		},
+		"go": {
+			{"plain", "net/http (Go 1.22+) — zero external dependencies"},
+			{"chi", "Chi v5 router"},
+			{"gin", "Gin framework"},
+		},
+		"java": {
+			{"plain", "interfaces only — no HTTP framework"},
+			{"spring", "Spring Boot 3.x controllers + pom.xml"},
+		},
+		"rust": {
+			{"plain", "trait definitions only — no HTTP framework"},
+			{"axum", "Axum async handlers + Tokio"},
+		},
+		"csharp": {
+			{"plain", "interfaces only — no HTTP framework"},
+			{"aspnet", "ASP.NET Core controllers"},
+		},
+		"php": {
+			{"plain", "interfaces only — no HTTP framework"},
+			{"laravel", "Laravel routes + controllers"},
+		},
+	}
+	frontendFrameworkOpts := map[string][]initFWOpt{
+		"typescript": {
+			{"", "pure fetch SDK — no framework wrapper"},
+			{"react", "React Query hooks"},
+			{"vue", "Vue 3 composables"},
+			{"angular", "Angular services"},
+			{"svelte", "Svelte stores"},
+		},
+		"javascript": {
+			{"", "pure fetch SDK — no framework wrapper"},
+			{"react", "React hooks (plain JavaScript)"},
+		},
+	}
+	backendDisplayLabel := map[string]string{
+		"node-ts": "node         TypeScript Node.js",
+		"node-js": "node (JS)    Plain JavaScript Node.js",
+		"python":  "python       Python 3",
+		"go":      "go           Go",
+		"rust":    "rust         Rust",
+		"java":    "java         Java 17+",
+		"csharp":  "csharp       C# / .NET 8",
+		"php":     "php          PHP 8",
+	}
+
+	// ── Backend language selection ─────────────────────────────────────────
 	backends := emitter.ListBackends()
-	fmt.Println("  " + bold("Backend") + " — which server runtime?")
+	fmt.Println("  " + bold("Backend language") + " — which server language?")
 	defaultBackendIdx := 1
 	for i, b := range backends {
 		if b == "node-ts" {
 			defaultBackendIdx = i + 1
 		}
+		if detectedBackend != "" && b == detectedBackend {
+			defaultBackendIdx = i + 1
+		}
 	}
 	for i, b := range backends {
-		label := b
+		label := backendDisplayLabel[b]
+		if label == "" {
+			label = b
+		}
 		if detectedBackend != "" && b == detectedBackend {
-			label += dim(" (detected)")
+			label += dim(" ← detected")
 		}
 		if i+1 == defaultBackendIdx {
 			label += dim(" (default)")
@@ -2385,17 +2453,40 @@ func runInit() error {
 	selectedBackend := backends[backendChoice-1]
 	fmt.Printf("  → %s\n\n", green(selectedBackend))
 
-	// ── Frontend selection ─────────────────────────────────────────────────
-	frontends := append(emitter.ListFrontends(), "none")
-	fmt.Println("  " + bold("Frontend SDK") + " — which client language?")
-	for i, f := range frontends {
-		label := f
-		if f == "typescript" {
-			label += dim(" (default)")
+	// ── Backend framework selection ────────────────────────────────────────
+	selectedBackendFramework := ""
+	if fwOpts := backendFrameworkOpts[selectedBackend]; len(fwOpts) > 0 {
+		fmt.Println("  " + bold("Backend framework") + " — which HTTP framework? (plain = no framework)")
+		for i, fw := range fwOpts {
+			lbl := fw.name
+			if lbl == "plain" || lbl == "" {
+				lbl = "plain"
+			}
+			fmt.Printf("    %s%2d%s  %-12s %s\n", colorGreen, i+1, colorReset, lbl, dim(fw.desc))
 		}
-		fmt.Printf("    %s%2d%s  %s\n", colorGreen, i+1, colorReset, label)
+		fmt.Print("\n  Choose [1]: ")
+		fwIdx := readChoice(reader, len(fwOpts), 1)
+		selectedBackendFramework = fwOpts[fwIdx-1].name
+		if selectedBackendFramework == "plain" {
+			selectedBackendFramework = ""
+		}
+		display := fwOpts[fwIdx-1].name
+		if display == "" || display == "plain" {
+			display = "plain (no framework)"
+		}
+		fmt.Printf("  → %s\n\n", green(display))
 	}
-	// Default: find "typescript" index
+
+	// ── Frontend language selection ────────────────────────────────────────
+	// Show language choices only; framework-specific emitters are sub-options below.
+	fwSpecificFrontends := map[string]bool{"react": true, "vue": true, "angular": true, "svelte": true}
+	var frontends []string
+	for _, f := range append(emitter.ListFrontends(), "none") {
+		if !fwSpecificFrontends[f] {
+			frontends = append(frontends, f)
+		}
+	}
+	fmt.Println("  " + bold("Frontend language") + " — which client language / SDK?")
 	defaultFrontend := 1
 	for i, f := range frontends {
 		if f == "typescript" {
@@ -2403,10 +2494,38 @@ func runInit() error {
 			break
 		}
 	}
+	for i, f := range frontends {
+		label := f
+		if i+1 == defaultFrontend {
+			label += dim(" (default)")
+		}
+		fmt.Printf("    %s%2d%s  %s\n", colorGreen, i+1, colorReset, label)
+	}
 	fmt.Printf("\n  Choose [%d]: ", defaultFrontend)
 	frontendChoice := readChoice(reader, len(frontends), defaultFrontend)
 	selectedFrontend := frontends[frontendChoice-1]
 	fmt.Printf("  → %s\n\n", green(selectedFrontend))
+
+	// ── Frontend framework selection ───────────────────────────────────────
+	selectedFrontendFramework := ""
+	if fwOpts := frontendFrameworkOpts[selectedFrontend]; len(fwOpts) > 0 {
+		fmt.Println("  " + bold("Frontend framework") + " — wrap the SDK with a UI framework?")
+		for i, fw := range fwOpts {
+			lbl := fw.name
+			if lbl == "" {
+				lbl = "none"
+			}
+			fmt.Printf("    %s%2d%s  %-12s %s\n", colorGreen, i+1, colorReset, lbl, dim(fw.desc))
+		}
+		fmt.Print("\n  Choose [1]: ")
+		fwIdx := readChoice(reader, len(fwOpts), 1)
+		selectedFrontendFramework = fwOpts[fwIdx-1].name
+		display := fwOpts[fwIdx-1].name
+		if display == "" {
+			display = "none (pure SDK)"
+		}
+		fmt.Printf("  → %s\n\n", green(display))
+	}
 
 	// ── Runtime validation ─────────────────────────────────────────────────
 	// Only relevant for node and python — statically-typed backends (go, rust,
@@ -2438,7 +2557,9 @@ func runInit() error {
 	configJSON := fmt.Sprintf(`{
   "input": "app.veld",
   "backend": "%s",
+  "backendFramework": "%s",
   "frontend": "%s",
+  "frontendFramework": "%s",
   "out": "%s",
   "backendDir": "",
   "frontendDir": "",
@@ -2456,7 +2577,7 @@ func runInit() error {
     "version": "0.1.0"
   }
 }
-`, selectedBackend, selectedFrontend, defaultOut, enableValidate)
+`, selectedBackend, selectedBackendFramework, selectedFrontend, selectedFrontendFramework, defaultOut, enableValidate)
 
 	type entry struct{ path, content, label string }
 	files := []entry{
