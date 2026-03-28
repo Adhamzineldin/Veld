@@ -50,7 +50,19 @@ func (e *JavaEmitter) emitController(strat jstrategy.FrameworkStrategy, a ast.AS
 	sb.WriteString("    }\n")
 
 	for _, act := range mod.Actions {
-		e.writeHandler(strat, &sb, act, enumNames)
+		if act.Method == "WS" {
+			routePath := act.Path
+			if mod.Prefix != "" {
+				routePath = mod.Prefix + act.Path
+			}
+			emitType := act.Emit
+			if emitType == "" {
+				emitType = "String"
+			}
+			sb.WriteString(strat.WSControllerMethod(capitalize(act.Name), routePath, emitType, act.Stream))
+		} else {
+			e.writeHandler(strat, &sb, act, enumNames)
+		}
 	}
 
 	sb.WriteString("}\n")

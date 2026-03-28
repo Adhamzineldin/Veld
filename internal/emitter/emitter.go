@@ -9,11 +9,25 @@ import (
 
 // EmitOptions carries config-driven options to emitters.
 type EmitOptions struct {
-	BaseUrl           string // base URL for the frontend SDK (empty = env var fallback)
-	DryRun            bool   // if true, emit nothing — just validate
-	Validate          bool   // if true, emit zero-dep runtime validators and wire them into route handlers
-	BackendFramework  string // e.g. "express", "flask", "chi", "spring" — "" means "plain" (no framework)
-	FrontendFramework string // e.g. "react", "vue", "angular", "svelte" — "" means "none"
+	BaseUrl           string            // default base URL for frontend SDK (empty = env var fallback)
+	DryRun            bool              // if true, emit nothing — just validate
+	Validate          bool              // if true, emit zero-dep runtime validators and wire them into route handlers
+	BackendFramework  string            // e.g. "express", "flask", "chi", "spring" — "" means "plain" (no framework)
+	FrontendFramework string            // e.g. "react", "vue", "angular", "svelte" — "" means "none"
+	Services          map[string]string // module name → base URL override; nil = all modules use BaseUrl
+	ServerSdk         bool              // also emit a server-to-server typed client (generated/server-client/)
+	Description       string            // project description surfaced in AGENTS.md and generated READMEs
+}
+
+// BaseUrlForModule returns the effective base URL for the given module name.
+// Per-module Services entry takes priority over the global BaseUrl.
+func (o EmitOptions) BaseUrlForModule(moduleName string) string {
+	if o.Services != nil {
+		if u, ok := o.Services[moduleName]; ok && u != "" {
+			return u
+		}
+	}
+	return o.BaseUrl
 }
 
 // Emitter writes generated output files for a given AST.

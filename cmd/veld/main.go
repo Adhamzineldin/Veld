@@ -627,8 +627,10 @@ Aliases:   node → node-ts, js/javascript → node-js, ts → typescript, react
 		// Core workflow
 		newInitCmd(), newGenerateCmd(), newWatchCmd(), newCleanCmd(),
 		newValidateCmd(), newSetupCmd(), newCICmd(),
+		// Quality
+		newLintCmd(), newDiffCmd(),
 		// Grouped
-		newExportCmd(), newDevCmd(), newRegistryCmd(),
+		newExportCmd(), newRegistryCmd(),
 		// Editor / shell integration (invoked directly by external tools)
 		newLSPCmd(), newCompletionCmd(),
 	)
@@ -676,6 +678,7 @@ func newASTCmd() *cobra.Command {
 		Short:   "Dump the AST JSON for a .veld contract file",
 		Example: "  veld ast\n  veld ast veld/app.veld",
 		Args:    cobra.MaximumNArgs(1),
+		Hidden:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path, err := config.ResolveInput(args)
 			if err != nil {
@@ -697,7 +700,7 @@ func newASTCmd() *cobra.Command {
 func newGenerateCmd() *cobra.Command {
 	var backendFlag, frontendFlag, inputFlag, outFlag string
 	var backendFrameworkFlag, frontendFrameworkFlag string
-	var incrementalFlag, dryRunFlag, setupFlag, validateFlag, strictFlag, forceFlag bool
+	var incrementalFlag, dryRunFlag, setupFlag, validateFlag, strictFlag, forceFlag, serverSdkFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "generate",
@@ -740,12 +743,72 @@ func newGenerateCmd() *cobra.Command {
 				return err
 			}
 
+			if serverSdkFlag {
+				rc.ServerSdk = true
+			}
+
 			opts := emitter.EmitOptions{
 				BaseUrl:           rc.BaseUrl,
 				DryRun:            dryRunFlag,
 				Validate:          rc.Validate,
 				BackendFramework:  rc.BackendFramework,
 				FrontendFramework: rc.FrontendFramework,
+				Services:          rc.Services,
+				ServerSdk:         rc.ServerSdk,
+				Description:       rc.Description,
+			}
+
+			// ── Workspace multi-service mode ─────────────────────────────────────
+			if len(rc.Workspace) > 0 {
+				fmt.Printf("\n%s workspace: %d services\n\n", bold("◆"), len(rc.Workspace))
+				for _, entry := range rc.Workspace {
+					fmt.Printf("  %s %s\n", bold("→"), entry.Name)
+					entryFlags := flags
+					entryFlags.InputSet = true
+					entryFlags.Input = filepath.Join(rc.ConfigDir, entry.Input)
+					if entry.Backend != "" {
+						entryFlags.BackendSet = true
+						entryFlags.Backend = entry.Backend
+					}
+					if entry.Frontend != "" {
+						entryFlags.FrontendSet = true
+						entryFlags.Frontend = entry.Frontend
+					}
+					outDir := entry.Out
+					if outDir == "" {
+						outDir = filepath.Join("generated", entry.Name)
+					}
+					entryFlags.OutSet = true
+					entryFlags.Out = outDir
+
+					entryRC, err := config.BuildResolved(entryFlags)
+					if err != nil {
+						return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
+					}
+					if entry.BaseUrl != "" {
+						entryRC.BaseUrl = entry.BaseUrl
+					}
+					entryRC.ServerSdk = entry.ServerSdk || rc.ServerSdk
+					entryRC.Description = rc.Description
+					entryRC.Services = rc.Services
+
+					entryOpts := emitter.EmitOptions{
+						BaseUrl:           entryRC.BaseUrl,
+						DryRun:            dryRunFlag,
+						Validate:          entryRC.Validate,
+						BackendFramework:  entryRC.BackendFramework,
+						FrontendFramework: entryRC.FrontendFramework,
+						Services:          entryRC.Services,
+						ServerSdk:         entryRC.ServerSdk,
+						Description:       entryRC.Description,
+					}
+					if _, _, _, err := runGenerate(entryRC, false, entryOpts); err != nil {
+						return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
+					}
+					fmt.Printf("  %s %s → %s\n", green("✓"), entry.Name, outDir)
+				}
+				fmt.Printf("\n%s All services generated\n", green("✓"))
+				return nil
 			}
 
 			// ── Pre-emit breaking-change gate ────────────────────────────────────
@@ -848,6 +911,8 @@ func newGenerateCmd() *cobra.Command {
 		"framework for the backend emitter (express, flask, chi, spring, axum, aspnet, laravel — default: plain/none)")
 	cmd.Flags().StringVar(&frontendFrameworkFlag, "frontend-framework", "",
 		"framework wrapper for the frontend SDK (react, vue, angular, svelte — default: none)")
+	cmd.Flags().BoolVar(&serverSdkFlag, "server-sdk", false,
+		"also emit a server-to-server typed client in generated/server-client/")
 	return cmd
 }
 
@@ -2088,6 +2153,7 @@ func newFmtCmd() *cobra.Command {
 		Short:   "Format .veld contract files",
 		Long:    "Reads .veld files and outputs canonically formatted versions.\nUse --write to update files in place.",
 		Example: "  veld fmt\n  veld fmt --write\n  veld fmt veld/models/user.veld",
+		Hidden:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var files []string
 			if len(args) > 0 {
@@ -2143,9 +2209,10 @@ func newFmtCmd() *cobra.Command {
 
 func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "doctor",
-		Short: "Diagnose project health and check for common issues",
-		Long:  "Runs a series of checks on your Veld project to identify\ncommon misconfigurations, missing files, and environment issues.",
+		Use:    "doctor",
+		Short:  "Diagnose project health and check for common issues",
+		Long:   "Runs a series of checks on your Veld project to identify\ncommon misconfigurations, missing files, and environment issues.",
+		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Println()
 			fmt.Println(bold("  Veld Doctor"))
@@ -2583,9 +2650,9 @@ func runInit() error {
 	files := []entry{
 		{"veld/veld.config.json", configJSON, "veld/veld.config.json"},
 		{"veld/app.veld", appVeldContent, "veld/app.veld"},
-		{"veld/models/user.veld", modelsUserVeldContent, "veld/models/user.veld"},
-		{"veld/models/auth.veld", modelsAuthModelContent, "veld/models/auth.veld"},
-		{"veld/models/common.veld", modelsCommonVeldContent, "veld/models/common.veld"},
+		{"veld/models/user.model.veld", modelsUserVeldContent, "veld/models/user.model.veld"},
+		{"veld/models/auth.model.veld", modelsAuthModelContent, "veld/models/auth.model.veld"},
+		{"veld/models/common.model.veld", modelsCommonVeldContent, "veld/models/common.model.veld"},
 		{"veld/modules/users.veld", modulesUsersVeldContent, "veld/modules/users.veld"},
 		{"veld/modules/auth.veld", modulesAuthVeldContent, "veld/modules/auth.veld"},
 		{"README.md", initReadmeContent, "README.md"},
@@ -2818,7 +2885,7 @@ model UpdateUserInput {
 
 const modelsAuthModelContent = `// Authentication request and response models.
 
-import @models/user
+import @models/user.model
 
 model LoginInput {
   description: "Credentials for user login"
@@ -2858,8 +2925,8 @@ model ListQuery {
 
 const modulesUsersVeldContent = `// Users module — CRUD endpoints for user management.
 
-import @models/user
-import @models/common
+import @models/user.model
+import @models/common.model
 
 module Users {
   description: "User management"
@@ -2908,9 +2975,9 @@ module Users {
 const modulesAuthVeldContent = `// Auth module — authentication and session management.
 // Middleware names are labels — you provide the actual functions at runtime.
 
-import @models/user
-import @models/auth
-import @models/common
+import @models/user.model
+import @models/auth.model
+import @models/common.model
 
 module Auth {
   description: "Authentication and session management"
@@ -2969,8 +3036,8 @@ const initReadmeContent = "# My Veld Project\n\n" +
 	"```\n\n" +
 	"```veld\n" +
 	"// veld/modules/users.veld — imports its own models\n" +
-	"import @models/user\n" +
-	"import @models/common\n\n" +
+	"import @models/user.model\n" +
+	"import @models/common.model\n\n" +
 	"module Users { ... }\n" +
 	"```\n\n" +
 	"Import paths don't include `.veld` — the parser adds it automatically.\n\n" +
@@ -3231,18 +3298,39 @@ func newExportCmd() *cobra.Command {
 		Use:   "export",
 		Short: "Export contract to other formats (OpenAPI, GraphQL, SQL, docs)",
 	}
-	cmd.AddCommand(newOpenAPICmd(), newGraphQLCmd(), newSchemaCmd(), newDocsCmd())
+	cmd.AddCommand(newOpenAPICmd(), newGraphQLCmd(), newSchemaCmd(), newDocsCmd(), newAgentsCmd())
 	return cmd
 }
 
-// ── dev (subcommand group) ────────────────────────────────────────────────────
-
-func newDevCmd() *cobra.Command {
+func newAgentsCmd() *cobra.Command {
+	var outputFlag string
 	cmd := &cobra.Command{
-		Use:   "dev",
-		Short: "Developer tools (AST, format, lint, diff, doctor)",
+		Use:     "agents",
+		Short:   "Generate AGENTS.md for AI discoverability",
+		Long:    "Generates a compact Markdown file describing the full API contract,\noptimised for AI assistants (Claude, Copilot, Cursor) to ingest in one read.",
+		Example: "  veld export agents\n  veld export agents -o AGENTS.md",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rc, err := config.BuildResolved(config.FlagOverrides{})
+			if err != nil {
+				return err
+			}
+			a, _, err := loader.Parse(rc.Input, rc.Aliases)
+			if err != nil {
+				return err
+			}
+			content := docsgen.BuildAgentsMd(a, rc)
+			if outputFlag == "" {
+				fmt.Print(content)
+				return nil
+			}
+			if err := os.WriteFile(outputFlag, []byte(content), 0644); err != nil {
+				return fmt.Errorf("writing %s: %w", outputFlag, err)
+			}
+			fmt.Printf("  %s %s\n", green("✓"), outputFlag)
+			return nil
+		},
 	}
-	cmd.AddCommand(newASTCmd(), newFmtCmd(), newLintCmd(), newDiffCmd(), newDoctorCmd())
+	cmd.Flags().StringVarP(&outputFlag, "output", "o", "", "write to file instead of stdout")
 	return cmd
 }
 

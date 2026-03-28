@@ -13,6 +13,10 @@ type NodeFrameworkStrategy interface {
 	ExtraImports() []string
 	// PackageDependencies returns npm package name → semver version entries.
 	PackageDependencies() map[string]string
+	// WSImports returns extra imports needed for WS handler files (e.g. import { WebSocketServer } from 'ws')
+	WSImports() string
+	// WSRouterParam returns the extra function parameter for WS mount functions (e.g. "wss: WebSocketServer")
+	WSRouterParam() string
 }
 
 // New returns the strategy for the given framework name.

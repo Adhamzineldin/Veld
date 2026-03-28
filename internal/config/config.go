@@ -7,6 +7,17 @@ import (
 	"path/filepath"
 )
 
+// WorkspaceEntry defines one service in a multi-service monorepo workspace.
+type WorkspaceEntry struct {
+	Name      string `json:"name"`               // logical service name
+	Input     string `json:"input"`              // path to .veld entry file
+	Backend   string `json:"backend,omitempty"`  // overrides top-level backend
+	Frontend  string `json:"frontend,omitempty"` // overrides top-level frontend
+	Out       string `json:"out,omitempty"`      // output dir; defaults to generated/<name>
+	BaseUrl   string `json:"baseUrl,omitempty"`  // this service's base URL
+	ServerSdk bool   `json:"serverSdk,omitempty"`
+}
+
 // RawConfig mirrors veld.config.json on disk.
 type RawConfig struct {
 	Input             string            `json:"input"`
@@ -19,13 +30,17 @@ type RawConfig struct {
 	BackendDirectory  string            `json:"backendDirectory,omitempty"`  // alias for backendDir
 	FrontendDir       string            `json:"frontendDir,omitempty"`       // path to frontend project dir (for setup)
 	FrontendDirectory string            `json:"frontendDirectory,omitempty"` // alias for frontendDir
-	BaseUrl           string            `json:"baseUrl,omitempty"`           // baked into frontend SDK; empty = use env var
+	BaseUrl           string            `json:"baseUrl,omitempty"`           // default base URL for all services; empty = env var
 	Validate          bool              `json:"validate,omitempty"`          // emit zero-dep runtime validators (default false)
 	BackendFramework  string            `json:"backendFramework,omitempty"`  // e.g. "express", "flask" — "" means plain
 	FrontendFramework string            `json:"frontendFramework,omitempty"` // e.g. "react", "vue" — "" means none
 	Aliases           map[string]string `json:"aliases,omitempty"`           // custom @alias → relative dir
 	PostGenerate      string            `json:"postGenerate,omitempty"`      // shell command to run after generation
 	Registry          RegistryConfig    `json:"registry,omitempty"`          // cloud registry publishing config
+	Description       string            `json:"description,omitempty"`       // human/AI-readable project description
+	Services          map[string]string `json:"services,omitempty"`          // module name → base URL override (optional)
+	ServerSdk         bool              `json:"serverSdk,omitempty"`         // also emit a server-to-server typed client
+	Workspace         []WorkspaceEntry  `json:"workspace,omitempty"`         // multi-service monorepo entries
 }
 
 // RegistryConfig holds optional publish metadata baked into veld.config.json.
@@ -64,13 +79,17 @@ type ResolvedConfig struct {
 	ConfigDir         string            // absolute dir of veld.config.json; used for cache storage
 	BackendDir        string            // absolute path to backend project dir (empty = projectDir)
 	FrontendDir       string            // absolute path to frontend project dir (empty = projectDir)
-	BaseUrl           string            // base URL for frontend SDK (empty = process.env.VELD_API_URL)
+	BaseUrl           string            // default base URL; empty = process.env.VELD_API_URL
 	Validate          bool              // emit zero-dep runtime validators and wire into routes
 	BackendFramework  string            // e.g. "express", "flask" — "" means plain
 	FrontendFramework string            // e.g. "react", "vue" — "" means none
 	Aliases           map[string]string // merged: default aliases + config overrides
 	PostGenerate      string            // shell command to run after generation (empty = none)
 	Registry          RegistryConfig    // publish metadata
+	Description       string            // human/AI-readable project description
+	Services          map[string]string // module name → base URL override (nil = use global BaseUrl)
+	ServerSdk         bool              // also emit a server-to-server typed client
+	Workspace         []WorkspaceEntry  // resolved workspace entries (empty = single-service mode)
 }
 
 // FlagOverrides carries CLI flag values that override config-file settings.
@@ -268,6 +287,10 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		Aliases:           aliases,
 		PostGenerate:      cfg.PostGenerate,
 		Registry:          cfg.Registry,
+		Description:       cfg.Description,
+		Services:          cfg.Services,
+		ServerSdk:         cfg.ServerSdk,
+		Workspace:         cfg.Workspace,
 	}, nil
 }
 

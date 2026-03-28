@@ -58,3 +58,36 @@ func (s *FastAPIStrategy) RequirementsEntries() []string {
 		"uvicorn[standard]>=0.24.0",
 	}
 }
+
+func (s *FastAPIStrategy) WSHandlerCode(actionName, routePath, streamType, emitType string, pathParams []string) string {
+	// FastAPI native WebSocket endpoint.
+	var sb strings.Builder
+	// Build function parameter list: websocket first, then path params.
+	sigParts := []string{"websocket: WebSocket"}
+	for _, p := range pathParams {
+		sigParts = append(sigParts, p+": str")
+	}
+	sigStr := strings.Join(sigParts, ", ")
+
+	sb.WriteString(fmt.Sprintf("\n    @router.websocket('%s')\n", routePath))
+	sb.WriteString(fmt.Sprintf("    async def %s_ws(%s):\n", actionName, sigStr))
+	sb.WriteString("        await websocket.accept()\n")
+	if len(pathParams) > 0 {
+		sb.WriteString(fmt.Sprintf("        # implement: await service.on_%s_connect(websocket, %s)\n", actionName, strings.Join(pathParams, ", ")))
+	} else {
+		sb.WriteString(fmt.Sprintf("        # implement: await service.on_%s_connect(websocket)\n", actionName))
+	}
+	sb.WriteString("        try:\n")
+	sb.WriteString("            while True:\n")
+	if emitType != "" {
+		sb.WriteString("                data = await websocket.receive_json()\n")
+		sb.WriteString(fmt.Sprintf("                # data is expected to conform to %s\n", emitType))
+		sb.WriteString(fmt.Sprintf("                # implement: await service.on_%s_message(websocket, data)\n", actionName))
+	} else {
+		sb.WriteString("                await websocket.receive_text()  # keep connection alive\n")
+	}
+	sb.WriteString("        except WebSocketDisconnect:\n")
+	sb.WriteString(fmt.Sprintf("            # implement: await service.on_%s_close(websocket)\n", actionName))
+	sb.WriteString("            pass\n")
+	return sb.String()
+}

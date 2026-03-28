@@ -35,6 +35,7 @@ const (
 
 	// WebSocket
 	TStream // keyword "stream"
+	TEmit   // keyword "emit"
 
 	// Error linking
 	TErrors // keyword "errors"

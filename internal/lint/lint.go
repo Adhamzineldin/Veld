@@ -9,6 +9,7 @@ package lint
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
@@ -55,6 +56,7 @@ func Lint(a ast.AST) []Issue {
 	issues = append(issues, checkEmptyModels(a)...)
 	issues = append(issues, checkMissingDescriptions(a)...)
 	issues = append(issues, checkDeprecatedActions(a)...)
+	issues = append(issues, checkFileNameConventions(a)...)
 
 	sortIssues(issues)
 	return issues
@@ -240,6 +242,76 @@ func checkDeprecatedActions(a ast.AST) []Issue {
 					Rule:     "deprecated-field",
 					Path:     m.Name + "." + f.Name,
 					Message:  fmt.Sprintf("field %q in model %s is deprecated: %s", f.Name, m.Name, f.Deprecated),
+				})
+			}
+		}
+	}
+	return issues
+}
+
+// checkFileNameConventions warns when a file's naming suffix does not match its
+// contents (.model.veld should only have models, .module.veld only modules, etc.).
+func checkFileNameConventions(a ast.AST) []Issue {
+	fileHasModels := make(map[string]bool)
+	fileHasModules := make(map[string]bool)
+	fileHasEnums := make(map[string]bool)
+
+	for _, m := range a.Models {
+		if m.SourceFile != "" {
+			fileHasModels[m.SourceFile] = true
+		}
+	}
+	for _, mod := range a.Modules {
+		if mod.SourceFile != "" {
+			fileHasModules[mod.SourceFile] = true
+		}
+	}
+	for _, e := range a.Enums {
+		if e.SourceFile != "" {
+			fileHasEnums[e.SourceFile] = true
+		}
+	}
+
+	allFiles := make(map[string]bool)
+	for f := range fileHasModels {
+		allFiles[f] = true
+	}
+	for f := range fileHasModules {
+		allFiles[f] = true
+	}
+	for f := range fileHasEnums {
+		allFiles[f] = true
+	}
+
+	var issues []Issue
+	for file := range allFiles {
+		base := filepath.Base(file)
+		switch {
+		case strings.HasSuffix(base, ".model.veld"):
+			if fileHasModules[file] {
+				issues = append(issues, Issue{
+					Severity: Warning,
+					Rule:     "file-naming-convention",
+					Path:     file,
+					Message:  fmt.Sprintf("%q uses .model.veld convention but contains module definitions", base),
+				})
+			}
+		case strings.HasSuffix(base, ".module.veld") || strings.HasSuffix(base, ".service.veld"):
+			if fileHasModels[file] {
+				issues = append(issues, Issue{
+					Severity: Warning,
+					Rule:     "file-naming-convention",
+					Path:     file,
+					Message:  fmt.Sprintf("%q uses .module.veld convention but contains model definitions", base),
+				})
+			}
+		case strings.HasSuffix(base, ".enum.veld"):
+			if fileHasModels[file] || fileHasModules[file] {
+				issues = append(issues, Issue{
+					Severity: Warning,
+					Rule:     "file-naming-convention",
+					Path:     file,
+					Message:  fmt.Sprintf("%q uses .enum.veld convention but contains non-enum definitions", base),
 				})
 			}
 		}

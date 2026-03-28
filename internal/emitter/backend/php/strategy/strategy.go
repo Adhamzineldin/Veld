@@ -20,6 +20,10 @@ type PHPFrameworkStrategy interface {
 	ReturnError(statusCode int, msgExpr string) string
 	// ComposerRequire returns composer.json require entries (package → version).
 	ComposerRequire() map[string]string
+	// WSActionMethod returns PHP code for a WebSocket action in the controller.
+	// actionName: camelCase, routePath: full path, emitType: PHP type hint (may be ""),
+	// streamType: server→client type (may be "").
+	WSActionMethod(actionName, routePath, emitType, streamType string) string
 }
 
 // New returns the PHPFrameworkStrategy for the given framework name.

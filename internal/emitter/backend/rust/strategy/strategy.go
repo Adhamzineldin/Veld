@@ -16,6 +16,10 @@ type RustFrameworkStrategy interface {
 	CargoTomlDependencies() []string
 	// MainRsContent returns the content of main.rs (server startup).
 	MainRsContent() string
+	// WSHandlerCode returns Rust code for a WebSocket handler function.
+	// handlerName: snake_case fn name, routePath: full path, serviceName: trait name,
+	// streamType/emitType: Rust types (may be ""), pathParams: extracted param names.
+	WSHandlerCode(handlerName, routePath, serviceName, streamType, emitType string, pathParams []string) string
 }
 
 // RouteEntry describes one HTTP route for router construction.

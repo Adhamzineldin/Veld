@@ -216,8 +216,22 @@ func Validate(a ast.AST) []error {
 						errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined stream type %q", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Stream))
 					}
 				}
-			} else if act.Stream != "" {
-				errs = append(errs, fmt.Errorf("%smodule %q, action %q: stream field is only valid for WS actions", loc(mod.SourceFile, act.Line), mod.Name, act.Name))
+				// Validate emit type (client→server messages) — optional but must be a known type if set
+				if act.Emit != "" && !modelNames[act.Emit] && !enumNames[act.Emit] && !primitiveTypes[act.Emit] {
+					suggestion := findSuggestion(act.Emit, allTypeNames)
+					if suggestion != "" {
+						errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined emit type %q (did you mean %q?)", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Emit, suggestion))
+					} else {
+						errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined emit type %q", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Emit))
+					}
+				}
+			} else {
+				if act.Stream != "" {
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: stream field is only valid for WS actions", loc(mod.SourceFile, act.Line), mod.Name, act.Name))
+				}
+				if act.Emit != "" {
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: emit field is only valid for WS actions", loc(mod.SourceFile, act.Line), mod.Name, act.Name))
+				}
 			}
 
 			// Validate middleware names (warn about common typos)

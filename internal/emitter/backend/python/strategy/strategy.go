@@ -23,6 +23,11 @@ type PythonFrameworkStrategy interface {
 	RegisterRoute(moduleName, fnName, flaskPath, methods string) string
 	// RequirementsEntries returns pip package lines for requirements.txt.
 	RequirementsEntries() []string
+	// WSHandlerCode returns the Python code block for a WebSocket action.
+	// actionName: snake_case action name, routePath: full route path,
+	// streamType: server→client type (may be ""), emitType: client→server type (may be ""),
+	// pathParams: extracted path parameter names.
+	WSHandlerCode(actionName, routePath, streamType, emitType string, pathParams []string) string
 }
 
 // New returns the PythonFrameworkStrategy for the given framework name.

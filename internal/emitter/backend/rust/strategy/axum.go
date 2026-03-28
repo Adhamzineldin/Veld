@@ -91,6 +91,54 @@ async fn main() {
 `
 }
 
+func (s *AxumStrategy) WSHandlerCode(handlerName, routePath, serviceName, streamType, emitType string, pathParams []string) string {
+	if emitType == "" {
+		emitType = "serde_json::Value"
+	}
+	var sb strings.Builder
+
+	// Build Path extractor params.
+	var pathExtract string
+	if len(pathParams) == 1 {
+		pathExtract = fmt.Sprintf("\n    Path(%s): Path<String>,", pathParams[0])
+	} else if len(pathParams) > 1 {
+		names := strings.Join(pathParams, ", ")
+		types := strings.Repeat("String, ", len(pathParams))
+		types = strings.TrimRight(types, ", ")
+		pathExtract = fmt.Sprintf("\n    Path((%s)): Path<(%s)>,", names, types)
+	}
+
+	// Build service call args.
+	var connectArgs []string
+	connectArgs = append(connectArgs, "socket")
+	for _, p := range pathParams {
+		connectArgs = append(connectArgs, p)
+	}
+
+	sb.WriteString(fmt.Sprintf("/// WebSocket handler for %s\n", routePath))
+	sb.WriteString(fmt.Sprintf("pub async fn %s(\n", handlerName))
+	sb.WriteString(fmt.Sprintf("    ws: axum::extract::ws::WebSocketUpgrade,%s\n", pathExtract))
+	sb.WriteString(fmt.Sprintf("    State(service): State<Arc<dyn %s>>,\n", serviceName))
+	sb.WriteString(") -> impl axum::response::IntoResponse {\n")
+	if len(pathParams) > 0 {
+		sb.WriteString(fmt.Sprintf("    let svc = service.clone();\n"))
+		sb.WriteString(fmt.Sprintf("    ws.on_upgrade(move |socket| async move {\n"))
+		sb.WriteString(fmt.Sprintf("        // TODO: implement service.on_%s_connect(%s).await\n", handlerName, strings.Join(connectArgs, ", ")))
+	} else {
+		sb.WriteString("    ws.on_upgrade(move |socket| async move {\n")
+		sb.WriteString(fmt.Sprintf("        // TODO: implement service.on_%s_connect(socket).await\n", handlerName))
+	}
+	if emitType != "serde_json::Value" || streamType != "" {
+		sb.WriteString(fmt.Sprintf("        // on message: service.on_%s_message(&mut socket, msg: %s).await\n", handlerName, emitType))
+	}
+	if streamType != "" {
+		sb.WriteString(fmt.Sprintf("        // broadcast: sends %s to client via socket.send()\n", streamType))
+	}
+	sb.WriteString("    })\n")
+	sb.WriteString("}\n")
+	return sb.String()
+}
+
 // axumMethodFn maps an HTTP method string to the Axum routing function name.
 func axumMethodFn(method string) string {
 	switch strings.ToUpper(method) {

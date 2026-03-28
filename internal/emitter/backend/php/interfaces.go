@@ -43,13 +43,42 @@ func (e *PhpEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) err
 	sb.WriteString(fmt.Sprintf("interface I%sService\n{\n", modClass))
 
 	for _, act := range mod.Actions {
-		returnType := phpReturnType(act, enumNames)
-
 		routePath := act.Path
 		if mod.Prefix != "" {
 			routePath = mod.Prefix + act.Path
 		}
 		pathParams := emitter.ExtractPathParams(routePath)
+
+		if act.Method == "WS" {
+			actionName := phpCamelName(act.Name)
+			capName := capitalize(actionName)
+
+			// onConnect
+			var connectParams []string
+			connectParams = append(connectParams, "mixed $connection")
+			for _, p := range pathParams {
+				connectParams = append(connectParams, "string $"+phpSnakeName(p))
+			}
+			if act.Description != "" {
+				sb.WriteString(fmt.Sprintf("    /** Called when a client connects. %s */\n", act.Description))
+			} else {
+				sb.WriteString(fmt.Sprintf("    /** Called when a client opens WS %s. */\n", routePath))
+			}
+			sb.WriteString(fmt.Sprintf("    public function on%sConnect(%s): void;\n\n", capName, strings.Join(connectParams, ", ")))
+
+			// onMessage — only when emit type is set
+			if act.Emit != "" {
+				sb.WriteString(fmt.Sprintf("    /** Called when a client sends a %s message. */\n", act.Emit))
+				sb.WriteString(fmt.Sprintf("    public function on%sMessage(mixed $connection, array $data): void;\n\n", capName))
+			}
+
+			// onClose — always included
+			sb.WriteString(fmt.Sprintf("    /** Called when the WS %s connection is closed. */\n", routePath))
+			sb.WriteString(fmt.Sprintf("    public function on%sClose(mixed $connection): void;\n\n", capName))
+			continue
+		}
+
+		returnType := phpReturnType(act, enumNames)
 
 		var params []string
 		for _, p := range pathParams {

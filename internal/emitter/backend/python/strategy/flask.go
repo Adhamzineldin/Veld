@@ -1,6 +1,9 @@
 package strategy
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // FlaskStrategy generates Flask blueprint route handlers.
 // It produces the same output that the Python emitter previously generated directly.
@@ -48,4 +51,32 @@ func (s *FlaskStrategy) RegisterRoute(moduleName, fnName, flaskPath, methods str
 
 func (s *FlaskStrategy) RequirementsEntries() []string {
 	return []string{"flask>=3.0.0"}
+}
+
+func (s *FlaskStrategy) WSHandlerCode(actionName, routePath, streamType, emitType string, pathParams []string) string {
+	// Flask-SocketIO namespace is the route path.
+	namespace := routePath
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n    @socketio.on('connect', namespace='%s')\n", namespace))
+	sb.WriteString(fmt.Sprintf("    def on_%s_connect():\n", actionName))
+	if len(pathParams) > 0 {
+		sb.WriteString(fmt.Sprintf("        # implement: service.on_%s_connect(request.sid, %s)\n", actionName, strings.Join(pathParams, ", ")))
+	} else {
+		sb.WriteString(fmt.Sprintf("        # implement: service.on_%s_connect(request.sid)\n", actionName))
+	}
+	sb.WriteString("        pass\n")
+	if emitType != "" {
+		sb.WriteString(fmt.Sprintf("\n    @socketio.on('message', namespace='%s')\n", namespace))
+		sb.WriteString(fmt.Sprintf("    def on_%s_message(data):\n", actionName))
+		sb.WriteString(fmt.Sprintf("        # data is expected to be a %s payload\n", emitType))
+		sb.WriteString(fmt.Sprintf("        # implement: service.on_%s_message(request.sid, data)\n", actionName))
+		sb.WriteString("        pass\n")
+	}
+	if streamType != "" {
+		sb.WriteString(fmt.Sprintf("\n    @socketio.on('disconnect', namespace='%s')\n", namespace))
+		sb.WriteString(fmt.Sprintf("    def on_%s_disconnect():\n", actionName))
+		sb.WriteString(fmt.Sprintf("        # implement: service.on_%s_close(request.sid)\n", actionName))
+		sb.WriteString("        pass\n")
+	}
+	return sb.String()
 }

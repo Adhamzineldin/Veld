@@ -55,6 +55,37 @@ func (e *PythonEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) 
 		}
 		pathParams := emitter.ExtractPathParams(routePath)
 
+		if act.Method == "WS" {
+			// WS actions: emit lifecycle method signatures instead of a single service method.
+			snakeName := emitter.ToSnakeCase(act.Name)
+
+			// on_connect — required (abstractmethod)
+			sb.WriteString("    @abstractmethod\n")
+			sb.WriteString(fmt.Sprintf("    def on_%s_connect(self, client_id: str", snakeName))
+			for _, p := range pathParams {
+				sb.WriteString(fmt.Sprintf(", %s: str", emitter.ToSnakeCase(p)))
+			}
+			sb.WriteString(") -> None:\n")
+			if act.Description != "" {
+				sb.WriteString(fmt.Sprintf("        \"\"\"Called when a client connects. %s\"\"\"\n", act.Description))
+			}
+			sb.WriteString("        ...\n\n")
+
+			// on_message — required only when emit type is set
+			if act.Emit != "" {
+				sb.WriteString("    @abstractmethod\n")
+				sb.WriteString(fmt.Sprintf("    def on_%s_message(self, client_id: str, msg: %s) -> None:\n", snakeName, act.Emit))
+				sb.WriteString(fmt.Sprintf("        \"\"\"Called when a client sends a %s message.\"\"\"\n", act.Emit))
+				sb.WriteString("        ...\n\n")
+			}
+
+			// on_close — optional with default no-op
+			sb.WriteString(fmt.Sprintf("    def on_%s_close(self, client_id: str) -> None:\n", snakeName))
+			sb.WriteString("        \"\"\"Called when a client disconnects. Override to add cleanup logic.\"\"\"\n")
+			sb.WriteString("        pass\n\n")
+			continue
+		}
+
 		sb.WriteString("    @abstractmethod\n")
 		sb.WriteString(fmt.Sprintf("    def %s(self", emitter.ToSnakeCase(act.Name)))
 		for _, p := range pathParams {

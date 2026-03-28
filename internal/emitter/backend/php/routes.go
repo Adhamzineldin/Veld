@@ -65,7 +65,15 @@ func (e *PhpEmitter) emitController(a ast.AST, mod ast.Module, outDir string, st
 	sb.WriteString("    ) {}\n")
 
 	for _, act := range mod.Actions {
-		writePhpAction(&sb, mod, act, enumNames, strat)
+		if act.Method == "WS" {
+			routePath := act.Path
+			if mod.Prefix != "" {
+				routePath = mod.Prefix + act.Path
+			}
+			sb.WriteString(strat.WSActionMethod(phpCamelName(act.Name), routePath, act.Emit, act.Stream))
+		} else {
+			writePhpAction(&sb, mod, act, enumNames, strat)
+		}
 	}
 
 	sb.WriteString("}\n")
@@ -161,6 +169,15 @@ func (e *PhpEmitter) emitRoutes(a ast.AST, outDir string) error {
 			sb.WriteString(fmt.Sprintf("// %s\n", mod.Description))
 		}
 		for _, act := range mod.Actions {
+			if act.Method == "WS" {
+				routePath := act.Path
+				if mod.Prefix != "" {
+					routePath = mod.Prefix + act.Path
+				}
+				// WebSocket routes are registered via Laravel WebSockets / Reverb — comment stub only.
+				sb.WriteString(fmt.Sprintf("// WebSocket: WS %s — register via Laravel WebSockets or Reverb, not Route::\n", routePath))
+				continue
+			}
 			routePath := act.Path
 			if mod.Prefix != "" {
 				routePath = mod.Prefix + act.Path

@@ -555,6 +555,14 @@ func (p *Parser) parseModule() (ast.Module, error) {
 		mod.Prefix = prefixTok.Value
 	}
 
+	// optional baseUrl: https://...
+	if p.peekIdent("baseUrl") && p.peekAt(1).Type == lexer.TColon {
+		p.consume() // baseUrl
+		p.consume() // :
+		urlTok := p.consume()
+		mod.BaseUrl = urlTok.Value
+	}
+
 	for p.peek().Type != lexer.TRBrace && p.peek().Type != lexer.TEOF {
 		act, err := p.parseAction()
 		if err != nil {
@@ -668,6 +676,16 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				return act, err
 			}
 			act.Stream = tok.Value
+		case p.peekIdent("emit"):
+			p.consume()
+			if _, err := p.expect(lexer.TColon); err != nil {
+				return act, err
+			}
+			tok, err := p.expect(lexer.TIdent)
+			if err != nil {
+				return act, err
+			}
+			act.Emit = tok.Value
 		case p.peekIdent("middleware"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
