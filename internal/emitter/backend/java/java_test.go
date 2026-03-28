@@ -68,7 +68,7 @@ func TestJavaEmitterEmit(t *testing.T) {
 	e := java.New()
 	outDir := t.TempDir()
 
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "spring"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -104,7 +104,7 @@ func TestJavaEmitterDryRun(t *testing.T) {
 func TestJavaEmitterModelContent(t *testing.T) {
 	e := java.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "spring"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -133,7 +133,7 @@ func TestJavaEmitterModelContent(t *testing.T) {
 func TestJavaEmitterEnumContent(t *testing.T) {
 	e := java.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "spring"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -164,7 +164,7 @@ func TestJavaEmitterEnumContent(t *testing.T) {
 func TestJavaEmitterInterfaceContent(t *testing.T) {
 	e := java.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "spring"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -193,7 +193,7 @@ func TestJavaEmitterInterfaceContent(t *testing.T) {
 func TestJavaEmitterControllerContent(t *testing.T) {
 	e := java.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "spring"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -243,7 +243,7 @@ func TestJavaEmitterPathParams(t *testing.T) {
 		},
 	}
 
-	if err := e.Emit(a, outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(a, outDir, emitter.EmitOptions{BackendFramework: "spring"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 

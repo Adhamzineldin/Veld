@@ -629,6 +629,10 @@ Aliases:   node → node-ts, js/javascript → node-js, ts → typescript, react
 		newValidateCmd(), newSetupCmd(), newCICmd(),
 		// Quality
 		newLintCmd(), newDiffCmd(),
+		// Dev tools
+		newASTCmd(), newFmtCmd(),
+		// Export / interop (also available as top-level aliases)
+		newOpenAPICmd(), newGraphQLCmd(), newSchemaCmd(), newDocsCmd(),
 		// Grouped
 		newExportCmd(), newRegistryCmd(),
 		// Editor / shell integration (invoked directly by external tools)

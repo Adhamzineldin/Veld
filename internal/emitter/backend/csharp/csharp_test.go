@@ -68,7 +68,7 @@ func TestCSharpEmitterEmit(t *testing.T) {
 	e := csharp.New()
 	outDir := t.TempDir()
 
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "aspnet"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -104,7 +104,7 @@ func TestCSharpEmitterDryRun(t *testing.T) {
 func TestCSharpEmitterModelContent(t *testing.T) {
 	e := csharp.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "aspnet"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -133,7 +133,7 @@ func TestCSharpEmitterModelContent(t *testing.T) {
 func TestCSharpEmitterEnumContent(t *testing.T) {
 	e := csharp.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "aspnet"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -160,7 +160,7 @@ func TestCSharpEmitterEnumContent(t *testing.T) {
 func TestCSharpEmitterInterfaceContent(t *testing.T) {
 	e := csharp.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "aspnet"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -188,7 +188,7 @@ func TestCSharpEmitterInterfaceContent(t *testing.T) {
 func TestCSharpEmitterControllerContent(t *testing.T) {
 	e := csharp.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "aspnet"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -237,7 +237,7 @@ func TestCSharpEmitterPathParams(t *testing.T) {
 		},
 	}
 
-	if err := e.Emit(a, outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(a, outDir, emitter.EmitOptions{BackendFramework: "aspnet"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 

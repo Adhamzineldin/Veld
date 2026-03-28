@@ -17,7 +17,7 @@ func (a *JavaAdapter) Metadata() LanguageMetadata {
 		Name:              "java",
 		Version:           "17+",
 		Runtime:           "JVM",
-		Framework:         "",
+		Framework:         "spring-boot",
 		Features:          []string{"records", "generics", "spring-mvc"},
 		ExportPath:        "src/main/java/com/example/generated",
 		ImportPaths:       []string{"org.springframework", "java.util"},

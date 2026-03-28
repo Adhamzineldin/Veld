@@ -68,7 +68,7 @@ func TestPhpEmitterEmit(t *testing.T) {
 	e := php.New()
 	outDir := t.TempDir()
 
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "laravel"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -105,7 +105,7 @@ func TestPhpEmitterDryRun(t *testing.T) {
 func TestPhpEmitterModelContent(t *testing.T) {
 	e := php.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "laravel"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -136,7 +136,7 @@ func TestPhpEmitterModelContent(t *testing.T) {
 func TestPhpEmitterEnumContent(t *testing.T) {
 	e := php.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "laravel"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -163,7 +163,7 @@ func TestPhpEmitterEnumContent(t *testing.T) {
 func TestPhpEmitterInterfaceContent(t *testing.T) {
 	e := php.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "laravel"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -191,7 +191,7 @@ func TestPhpEmitterInterfaceContent(t *testing.T) {
 func TestPhpEmitterControllerContent(t *testing.T) {
 	e := php.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "laravel"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -223,7 +223,7 @@ func TestPhpEmitterControllerContent(t *testing.T) {
 func TestPhpEmitterRoutesContent(t *testing.T) {
 	e := php.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "laravel"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -266,7 +266,7 @@ func TestPhpEmitterPathParams(t *testing.T) {
 		},
 	}
 
-	if err := e.Emit(a, outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(a, outDir, emitter.EmitOptions{BackendFramework: "laravel"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 

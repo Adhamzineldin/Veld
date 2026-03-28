@@ -10,7 +10,9 @@
       "Bash(do echo:*)",
       "Read(//g/University/Graduation/Veld/internal/emitter/backend/$d/**)",
       "Bash(done)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(go test:*)",
+      "Bash(npm run:*)"
     ]
   }
 }
