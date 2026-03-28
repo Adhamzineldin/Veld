@@ -70,7 +70,7 @@ func TestGoEmitterEmit(t *testing.T) {
 	outDir := t.TempDir()
 
 	a := minimalAST()
-	opts := emitter.EmitOptions{}
+	opts := emitter.EmitOptions{BackendFramework: "chi"}
 
 	if err := e.Emit(a, outDir, opts); err != nil {
 		t.Fatalf("Emit() error: %v", err)
@@ -117,7 +117,7 @@ func TestGoEmitterTypesContent(t *testing.T) {
 	outDir := t.TempDir()
 
 	a := minimalAST()
-	if err := e.Emit(a, outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(a, outDir, emitter.EmitOptions{BackendFramework: "chi"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -158,7 +158,7 @@ func TestGoEmitterInterfaceContent(t *testing.T) {
 	outDir := t.TempDir()
 
 	a := minimalAST()
-	if err := e.Emit(a, outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(a, outDir, emitter.EmitOptions{BackendFramework: "chi"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -192,7 +192,7 @@ func TestGoEmitterRoutesContent(t *testing.T) {
 	outDir := t.TempDir()
 
 	a := minimalAST()
-	if err := e.Emit(a, outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(a, outDir, emitter.EmitOptions{BackendFramework: "chi"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -248,7 +248,7 @@ func TestGoEmitterPathParams(t *testing.T) {
 		},
 	}
 
-	if err := e.Emit(a, outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(a, outDir, emitter.EmitOptions{BackendFramework: "chi"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -286,7 +286,7 @@ func TestGoEmitterModulePrefix(t *testing.T) {
 		},
 	}
 
-	if err := e.Emit(a, outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(a, outDir, emitter.EmitOptions{BackendFramework: "chi"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 

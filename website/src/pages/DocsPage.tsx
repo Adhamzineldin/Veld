@@ -23,7 +23,9 @@ const sidebarSections = [
       { id: 'types', label: 'Field Types' },
       { id: 'inheritance', label: 'Inheritance (extends)' },
       { id: 'maps', label: 'Maps' },
+      { id: 'decorators', label: 'Decorators' },
       { id: 'imports', label: 'Import System' },
+      { id: 'file-naming', label: 'File Naming' },
       { id: 'websockets', label: 'WebSockets' },
     ],
   },
@@ -35,32 +37,33 @@ const sidebarSections = [
       { id: 'cli-generate', label: 'veld generate' },
       { id: 'cli-validate', label: 'veld validate' },
       { id: 'cli-watch', label: 'veld watch' },
-      { id: 'cli-openapi', label: 'veld openapi' },
-      { id: 'cli-schema', label: 'veld schema' },
-      { id: 'cli-docs', label: 'veld docs' },
+      { id: 'cli-lint', label: 'veld lint' },
       { id: 'cli-diff', label: 'veld diff' },
-      { id: 'cli-ast', label: 'veld ast' },
+      { id: 'cli-export', label: 'veld export' },
+      { id: 'cli-setup', label: 'veld setup & ci' },
       { id: 'cli-clean', label: 'veld clean' },
+      { id: 'cli-ast', label: 'veld ast' },
     ],
   },
   {
     group: 'Configuration',
     items: [
       { id: 'config-file', label: 'Config File' },
-      { id: 'config-fields', label: 'Config Fields' },
+      { id: 'config-fields', label: 'All Config Fields' },
       { id: 'config-aliases', label: 'Import Aliases' },
       { id: 'config-detection', label: 'Auto-Detection' },
+      { id: 'config-microservices', label: 'Microservices' },
     ],
   },
   {
     group: 'Generated Output',
     items: [
-      { id: 'output-overview', label: 'Output Overview' },
       { id: 'output-node', label: 'Node.js Backend' },
       { id: 'output-python', label: 'Python Backend' },
       { id: 'output-frontend', label: 'Frontend SDK' },
       { id: 'output-schemas', label: 'Validation Schemas' },
       { id: 'output-routes', label: 'Route Handlers' },
+      { id: 'output-server-sdk', label: 'Server SDK' },
     ],
   },
   {
@@ -68,6 +71,7 @@ const sidebarSections = [
     items: [
       { id: 'usage-backend', label: 'Backend Integration' },
       { id: 'usage-frontend', label: 'Frontend SDK Usage' },
+      { id: 'usage-websockets', label: 'WebSocket Client' },
       { id: 'usage-path-alias', label: 'Path Aliases' },
     ],
   },
@@ -76,12 +80,13 @@ const sidebarSections = [
     items: [
       { id: 'stacks-backends', label: 'Backend Emitters' },
       { id: 'stacks-frontends', label: 'Frontend Emitters' },
-      { id: 'stacks-extras', label: 'Extras' },
+      { id: 'stacks-frameworks', label: 'Framework Strategies' },
     ],
   },
   {
-    group: 'Editor Support',
+    group: 'AI & Tooling',
     items: [
+      { id: 'ai-export', label: 'AI Discoverability' },
       { id: 'editor-vscode', label: 'VS Code Extension' },
       { id: 'editor-jetbrains', label: 'JetBrains Plugin' },
       { id: 'editor-lsp', label: 'LSP Server' },
@@ -132,7 +137,6 @@ export default function DocsPage() {
   const [installTab, setInstallTab] = useState('npm');
   const location = useLocation();
 
-  // Scroll to hash on load
   useEffect(() => {
     if (location.hash) {
       const el = document.getElementById(location.hash.slice(1));
@@ -140,7 +144,6 @@ export default function DocsPage() {
     }
   }, [location.hash]);
 
-  // Track active section on scroll
   useEffect(() => {
     const ids = sidebarSections.flatMap((s) => s.items.map((i) => i.id));
     const observer = new IntersectionObserver(
@@ -168,19 +171,16 @@ export default function DocsPage() {
     pip: { install: 'pip install maayn-veld', run: 'veld generate' },
     brew: { install: 'brew install maayn-veld/tap/maayn-veld', run: 'veld generate' },
     go: { install: 'go install github.com/Adhamzineldin/Veld/cmd/veld@latest', run: 'veld generate' },
-    composer: { install: 'composer global require maayn/veld', run: 'veld generate' },
     binary: { install: '# Download from GitHub Releases:\n# https://github.com/Adhamzineldin/Veld/releases\n# Extract and add to your PATH', run: 'veld generate' },
   };
 
   return (
     <div className={styles.docsLayout}>
-      {/* Mobile overlay */}
       <div
         className={`${styles.mobileOverlay} ${sidebarOpen ? styles.mobileOverlayOpen : ''}`}
         onClick={() => setSidebarOpen(false)}
       />
 
-      {/* Sidebar */}
       <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}>
         {sidebarSections.map((section) => (
           <div key={section.group} className={styles.sidebarGroup}>
@@ -199,7 +199,6 @@ export default function DocsPage() {
         ))}
       </aside>
 
-      {/* Mobile sidebar toggle */}
       <button
         className={styles.mobileSidebarToggle}
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -208,39 +207,40 @@ export default function DocsPage() {
         {sidebarOpen ? <X size={22} /> : <Menu size={22} />}
       </button>
 
-      {/* Main content */}
       <div className={styles.content}>
         <h1 className={styles.pageTitle}>
           Veld <span className={styles.pageTitleGradient}>Documentation</span>
         </h1>
         <p className={styles.pageSubtitle}>
-          Everything you need to know about writing <code>.veld</code> contracts and generating
-          typed backends, frontend SDKs, validation, and more.
+          Everything you need to write <code>.veld</code> contracts and generate typed backends,
+          frontend SDKs, validation, WebSocket handlers, and more.
         </p>
 
         {/* ─── OVERVIEW ─── */}
         <section id="overview" className={styles.section}>
           <h2 className={styles.sectionTitle}>Overview</h2>
           <p className={styles.sectionDesc}>
-            <strong>Veld</strong> is a contract-first, multi-stack API code generator. You write
-            <code> .veld</code> contract files describing your models, enums, and API endpoints.
-            Veld then generates fully typed backend service interfaces, route wiring with input
-            validation, frontend SDKs, OpenAPI specs, database schemas, and more &mdash; for any
+            <strong>Veld</strong> is a contract-first, multi-stack API code generator. Write
+            <code> .veld</code> contract files describing your models, enums, and endpoints. Veld
+            generates fully typed backend service interfaces, route handlers with input validation,
+            frontend SDKs, OpenAPI specs, database schemas, WebSocket handlers, and more — for any
             stack you choose.
           </p>
           <div className={styles.infoCard}>
-            <strong>Zero runtime dependencies</strong> &mdash; generated code works out of the box
-            with no <code>npm install</code> needed (for type-only usage). Validation schemas
-            (Zod/Pydantic) are opt-in.
+            <strong>Zero runtime dependencies</strong> — generated files work out of the box with
+            no <code>npm install</code> for type-only usage. Zod (Node.js) and Pydantic (Python)
+            validation schemas are generated automatically but require those libraries only when
+            you actually use them.
           </div>
           <ul className={styles.featureList}>
-            <li>Write your API contract once, generate code for 7+ backend languages and 4+ frontend targets</li>
-            <li>Framework agnostic &mdash; works with Express, Fastify, Hono, Flask, and any router with <code>.get()</code>/<code>.post()</code></li>
-            <li>Deterministic output &mdash; same input always produces identical output, safe for CI/CD</li>
-            <li>Built-in validation with Zod (Node.js) and Pydantic (Python)</li>
-            <li>OpenAPI 3.0 spec generation from the same contract</li>
-            <li>Watch mode for instant re-generation on file save</li>
-            <li>IDE support with VS Code extension, JetBrains plugin, and built-in LSP server</li>
+            <li>Write your API contract once — generate code for 8+ backend languages and 10+ frontend targets</li>
+            <li>Framework agnostic — route handlers accept <code>router: any</code>, works with Express, Fastify, Hono, Flask, or any compatible router</li>
+            <li>WebSocket support with typed send/receive messages and auto-reconnect</li>
+            <li>Microservices ready — per-module base URLs, workspace polyglot monorepo support</li>
+            <li>Deterministic output — same input always produces identical output, safe for CI/CD</li>
+            <li>Breaking change detection with interactive prompts and <code>--strict</code> CI mode</li>
+            <li>Contract lint, diff, OpenAPI export, GraphQL export, database schema generation</li>
+            <li>AI discoverability export (<code>veld export agents</code>) for Claude, Copilot, and Cursor</li>
           </ul>
         </section>
 
@@ -248,7 +248,7 @@ export default function DocsPage() {
         <section id="installation" className={styles.section}>
           <h2 className={styles.sectionTitle}>Installation</h2>
           <p className={styles.sectionDesc}>
-            Veld is available on all major package managers. Pick whichever works best for your setup.
+            Veld is a standalone Go binary available on all major package managers.
           </p>
 
           <div className={styles.installTabs}>
@@ -269,37 +269,33 @@ export default function DocsPage() {
 
           <h3 className={styles.sectionSubtitle}>System Requirements</h3>
           <ul className={styles.featureList}>
-            <li><strong>OS:</strong> Windows, macOS, or Linux (amd64 & arm64)</li>
-            <li><strong>Runtime:</strong> None required &mdash; Veld is a standalone binary compiled from Go</li>
-            <li><strong>Node.js:</strong> Required only if using <code>npx</code> to run Veld or for Node.js backend output</li>
+            <li><strong>OS:</strong> Windows, macOS, or Linux (amd64 &amp; arm64)</li>
+            <li><strong>Runtime:</strong> None — Veld is a self-contained binary compiled from Go</li>
+            <li><strong>Node.js:</strong> Required only when using <code>npx</code> or for Node.js backend output</li>
             <li><strong>Python:</strong> Required only for Python backend output</li>
           </ul>
-
-          <h3 className={styles.sectionSubtitle}>Verify Installation</h3>
-          <CodeBlock title="Terminal">
-            {`$ veld --version\nveld v0.1.0\n\n$ veld --help\nVeld — Contract-first API code generator\n\nUsage:\n  veld [command]\n\nAvailable Commands:\n  init        Initialize a new Veld project\n  generate    Generate backend and frontend code\n  validate    Validate contract files\n  watch       Watch for changes and auto-regenerate\n  openapi     Export OpenAPI 3.0 spec\n  schema      Generate database schemas\n  docs        Generate API documentation\n  diff        Show contract differences\n  ast         Dump AST as JSON\n  clean       Remove generated output\n  lsp         Start LSP server\n  help        Help about any command`}
-          </CodeBlock>
         </section>
 
         {/* ─── QUICK START ─── */}
         <section id="quickstart" className={styles.section}>
           <h2 className={styles.sectionTitle}>Quick Start</h2>
-          <p className={styles.sectionDesc}>
-            Get up and running with Veld in under 2 minutes.
-          </p>
+          <p className={styles.sectionDesc}>Get a typed API running in under five minutes.</p>
 
-          <h3 className={styles.sectionSubtitle}>Step 1: Initialize a new project</h3>
+          <h3 className={styles.sectionSubtitle}>1. Initialize a project</h3>
           <CodeBlock title="Terminal">
-            {`$ mkdir my-api && cd my-api\n$ veld init\n\n✓ Created veld/veld.config.json\n✓ Created veld/app.veld\n✓ Created veld/models/\n✓ Created veld/modules/\n\nDone! Edit veld/app.veld to define your API contract.`}
+            {`$ mkdir my-api && cd my-api\n$ veld init\n\n✓ Created veld/veld.config.json\n✓ Created veld/app.veld\n✓ Created veld/models/\n✓ Created veld/modules/`}
           </CodeBlock>
 
-          <h3 className={styles.sectionSubtitle}>Step 2: Write your contract</h3>
+          <h3 className={styles.sectionSubtitle}>2. Write your contract</h3>
           <CodeBlock title="veld/app.veld" lang="veld">
             {`model User {
-  id:    uuid
-  email: string
-  name:  string
-  role:  Role   @default(user)
+  description: "A registered user"
+  id:        uuid
+  email:     string
+  name:      string
+  role:      Role   @default(user)
+  tags:      string[]
+  createdAt: datetime
 }
 
 model CreateUserInput {
@@ -310,6 +306,7 @@ model CreateUserInput {
 enum Role { admin user guest }
 
 module Users {
+  description: "User management"
   prefix: /api/v1
 
   action ListUsers {
@@ -338,12 +335,12 @@ module Users {
 }`}
           </CodeBlock>
 
-          <h3 className={styles.sectionSubtitle}>Step 3: Generate code</h3>
+          <h3 className={styles.sectionSubtitle}>3. Generate code</h3>
           <CodeBlock title="Terminal">
-            {`$ veld generate\n\n✓ Generated types/users.ts\n✓ Generated interfaces/IUsersService.ts\n✓ Generated routes/users.routes.ts\n✓ Generated schemas/schemas.ts\n✓ Generated client/api.ts\n✓ Generated index.ts\n✓ Generated package.json\n\nDone! 7 files generated in generated/`}
+            {`$ veld generate\n\n✓ Generated types/users.ts\n✓ Generated interfaces/IUsersService.ts\n✓ Generated routes/users.routes.ts\n✓ Generated schemas/schemas.ts\n✓ Generated client/api.ts\n✓ Generated index.ts\n✓ Generated package.json\n\nDone! 7 files in generated/`}
           </CodeBlock>
 
-          <h3 className={styles.sectionSubtitle}>Step 4: Implement your service</h3>
+          <h3 className={styles.sectionSubtitle}>4. Implement the service interface</h3>
           <CodeBlock title="src/services/UsersService.ts" lang="ts">
             {`import { IUsersService } from '@veld/generated/interfaces/IUsersService';
 import { User, CreateUserInput } from '@veld/generated/types';
@@ -354,7 +351,7 @@ export class UsersService implements IUsersService {
   }
 
   async getUser(id: string): Promise<User> {
-    return db.users.findUnique({ where: { id } });
+    return db.users.findUniqueOrThrow({ where: { id } });
   }
 
   async createUser(input: CreateUserInput): Promise<User> {
@@ -367,7 +364,7 @@ export class UsersService implements IUsersService {
 }`}
           </CodeBlock>
 
-          <h3 className={styles.sectionSubtitle}>Step 5: Wire it up</h3>
+          <h3 className={styles.sectionSubtitle}>5. Wire routes to your server</h3>
           <CodeBlock title="src/index.ts" lang="ts">
             {`import express from 'express';
 import { registerUsersRoutes } from '@veld/generated/routes/users.routes';
@@ -375,31 +372,19 @@ import { UsersService } from './services/UsersService';
 
 const app = express();
 app.use(express.json());
-
-const usersService = new UsersService();
-registerUsersRoutes(app, usersService);
-
-app.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
-});`}
+registerUsersRoutes(app, new UsersService());
+app.listen(3000);`}
           </CodeBlock>
 
-          <h3 className={styles.sectionSubtitle}>Step 6: Use the frontend SDK</h3>
-          <CodeBlock title="frontend/src/api.ts" lang="ts">
-            {`import { Users } from '@veld/generated/client/api';
+          <h3 className={styles.sectionSubtitle}>6. Call it from the frontend</h3>
+          <CodeBlock title="src/api.ts" lang="ts">
+            {`import { VeldApiClient } from '@veld/generated/client/api';
 
-// Fully typed — autocomplete for methods, params, and return types
-const users = await Users.listUsers();
-// ^? Promise<User[]>
+const api = new VeldApiClient('https://api.example.com');
 
-const user = await Users.getUser('user-123');
-// ^? Promise<User>
-
-await Users.createUser({
-  email: 'alice@example.com',
-  name: 'Alice',
-});
-// ^? Promise<User>`}
+const users = await api.users.listUsers();   // User[]
+const user  = await api.users.getUser('abc-123'); // User
+await api.users.createUser({ email: 'alice@example.com', name: 'Alice' });`}
           </CodeBlock>
         </section>
 
@@ -407,28 +392,31 @@ await Users.createUser({
         <section id="project-structure" className={styles.section}>
           <h2 className={styles.sectionTitle}>Project Structure</h2>
           <p className={styles.sectionDesc}>
-            After running <code>veld init</code>, your project has this structure:
+            After <code>veld init</code>, your project follows this layout. Veld never creates an
+            <code> app/</code> directory — the rest of the project is left to you.
           </p>
           <div className={styles.tree}>
 {`my-project/
-├── veld/                        <- all veld source files
-│   ├── veld.config.json         <- configuration
-│   ├── app.veld                 <- entry point contract
-│   ├── models/                  <- model definitions
-│   └── modules/                 <- module/action definitions
-└── generated/                   <- auto-generated on first \`veld generate\`
-    ├── index.ts                 <- barrel export
-    ├── package.json             <- @veld/generated alias
-    ├── types/                   <- TypeScript interfaces
-    ├── interfaces/              <- service contracts
-    ├── routes/                  <- route handlers
-    ├── schemas/                 <- validation schemas
-    └── client/                  <- frontend SDK`}
+├── veld/                        ← all .veld source (like prisma/)
+│   ├── veld.config.json         ← configuration
+│   ├── app.veld                 ← entry point (imports other files)
+│   ├── models/                  ← model definitions
+│   └── modules/                 ← module/action definitions
+└── generated/                   ← auto-created on first veld generate
+    ├── index.ts
+    ├── package.json             ← @veld/generated path alias
+    ├── types/                   ← per-module TypeScript interfaces
+    ├── interfaces/              ← I{Module}Service.ts contracts
+    ├── routes/                  ← route handlers with validation
+    ├── schemas/                 ← Zod / Pydantic schemas
+    └── client/
+        ├── api.ts               ← VeldApiClient with per-module clients
+        └── _internal.ts         ← VeldClientConfig, VeldApiError, VeldWebSocket`}
           </div>
           <div className={styles.infoCard}>
-            <strong>Note:</strong> Veld never writes outside the <code>--out</code> directory
-            (defaults to <code>generated/</code>). Your source code is never touched. The generated
-            directory is safe to delete and regenerate at any time.
+            <strong>Safe by design:</strong> Veld never writes outside the <code>--out</code>{' '}
+            directory. Your source code is never touched. The <code>generated/</code> directory
+            can be deleted and recreated at any time.
           </div>
         </section>
 
@@ -436,31 +424,29 @@ await Users.createUser({
         <section id="models" className={styles.section}>
           <h2 className={styles.sectionTitle}>Models</h2>
           <p className={styles.sectionDesc}>
-            Models define data structures in your API. Each model becomes a TypeScript interface,
-            a Zod schema, and corresponding types in your chosen backend language.
+            Models define the data structures in your API. Each model becomes a TypeScript
+            interface, Zod schema, and the corresponding type in your backend language.
           </p>
-          <CodeBlock title="models/user.veld" lang="veld">
+          <CodeBlock title="models/user.model.veld" lang="veld">
             {`model User {
   description: "A registered user in the system"
-  id:        uuid
-  email:     string
-  name:      string
-  age?:      int              // optional field
-  tags:      string[]         // array type
-  metadata:  Map<string, string>  // map/record type
-  role:      Role  @default(user) // default value
-  createdAt: datetime
+  id:          uuid
+  email:       string
+  name:        string
+  age?:        int                    // optional field
+  tags:        string[]               // array type
+  metadata:    Map<string, string>    // key-value map
+  role:        Role  @default(user)   // default value
+  createdAt:   datetime @serverSet    // set by the server
+  displayName: string
+  old:         string @deprecated "use displayName"
 }`}
           </CodeBlock>
 
           <h3 className={styles.sectionSubtitle}>Model Syntax</h3>
           <table className={styles.table}>
             <thead>
-              <tr>
-                <th>Syntax</th>
-                <th>Meaning</th>
-                <th>Example</th>
-              </tr>
+              <tr><th>Syntax</th><th>Meaning</th><th>Example</th></tr>
             </thead>
             <tbody>
               <tr>
@@ -475,22 +461,32 @@ await Users.createUser({
               </tr>
               <tr>
                 <td><code>field: type[]</code></td>
-                <td>Array of values</td>
+                <td>Array of type</td>
                 <td><code>tags: string[]</code></td>
               </tr>
               <tr>
                 <td><code>{'field: Map<K, V>'}</code></td>
                 <td>Key-value map</td>
-                <td><code>{'metadata: Map<string, string>'}</code></td>
+                <td><code>{'meta: Map<string, string>'}</code></td>
               </tr>
               <tr>
                 <td><code>@default(value)</code></td>
-                <td>Default value decorator</td>
+                <td>Default value</td>
                 <td><code>role: Role @default(user)</code></td>
               </tr>
               <tr>
+                <td><code>@serverSet</code></td>
+                <td>Set by server, excluded from inputs</td>
+                <td><code>createdAt: datetime @serverSet</code></td>
+              </tr>
+              <tr>
+                <td><code>@deprecated "msg"</code></td>
+                <td>Marks field as deprecated</td>
+                <td><code>old: string @deprecated "use newField"</code></td>
+              </tr>
+              <tr>
                 <td><code>description: "..."</code></td>
-                <td>Model description (for docs/OpenAPI)</td>
+                <td>Model description (OpenAPI/docs)</td>
                 <td><code>description: "A user account"</code></td>
               </tr>
             </tbody>
@@ -501,7 +497,7 @@ await Users.createUser({
         <section id="enums" className={styles.section}>
           <h2 className={styles.sectionTitle}>Enums</h2>
           <p className={styles.sectionDesc}>
-            Enums define a set of named constants. They generate TypeScript union types,
+            Enums define a fixed set of named constants. They generate TypeScript union types,
             Zod enums, and Python string enums.
           </p>
           <CodeBlock title="Example" lang="veld">
@@ -521,13 +517,10 @@ enum OrderStatus {
           <h3 className={styles.sectionSubtitle}>Generated Output</h3>
           <CodeBlock title="TypeScript" lang="ts">
             {`export type Role = 'admin' | 'user' | 'guest';
-
 export type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';`}
           </CodeBlock>
-
           <CodeBlock title="Zod Schema" lang="ts">
             {`export const RoleSchema = z.enum(['admin', 'user', 'guest']);
-
 export const OrderStatusSchema = z.enum(['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']);`}
           </CodeBlock>
         </section>
@@ -536,16 +529,17 @@ export const OrderStatusSchema = z.enum(['pending', 'confirmed', 'shipped', 'del
         <section id="modules" className={styles.section}>
           <h2 className={styles.sectionTitle}>Modules & Actions</h2>
           <p className={styles.sectionDesc}>
-            Modules group related API endpoints. Each module has a prefix and contains actions
-            that define individual HTTP endpoints.
+            Modules group related API endpoints. Each module produces a service interface, route
+            handler file, and SDK client. Actions map to individual HTTP endpoints or WebSocket
+            connections.
           </p>
-          <CodeBlock title="modules/users.veld" lang="veld">
+          <CodeBlock title="modules/users.service.veld" lang="veld">
             {`module Users {
   description: "User management endpoints"
   prefix: /api/v1
 
   action ListUsers {
-    description: "List all users with pagination"
+    description: "List all users"
     method: GET
     path:   /users
     query:  ListUsersQuery
@@ -553,14 +547,12 @@ export const OrderStatusSchema = z.enum(['pending', 'confirmed', 'shipped', 'del
   }
 
   action GetUser {
-    description: "Get a user by ID"
     method: GET
     path:   /users/:id
     output: User
   }
 
   action CreateUser {
-    description: "Create a new user"
     method: POST
     path:   /users
     input:  CreateUserInput
@@ -579,78 +571,77 @@ export const OrderStatusSchema = z.enum(['pending', 'confirmed', 'shipped', 'del
     method: DELETE
     path:   /users/:id
   }
+
+  action Subscribe {
+    description: "Real-time user events"
+    method: WS
+    path:   /users/events/:room
+    stream: UserEvent      // server → client
+    emit:   ClientCommand  // client → server (optional)
+  }
+
+  action GetProfile {
+    method: GET
+    path:   /users/:id/profile
+    output: User
+    @deprecated "use GetUser instead"
+  }
 }`}
           </CodeBlock>
 
           <h3 className={styles.sectionSubtitle}>Action Fields</h3>
           <table className={styles.table}>
             <thead>
-              <tr>
-                <th>Field</th>
-                <th>Required</th>
-                <th>Description</th>
-              </tr>
+              <tr><th>Field</th><th>Required</th><th>Description</th></tr>
             </thead>
             <tbody>
               <tr>
-                <td><code>method</code></td>
-                <td>Yes</td>
-                <td>HTTP method: <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>DELETE</code>, <code>PATCH</code>, or <code>WS</code></td>
+                <td><code>method</code></td><td>Yes</td>
+                <td><code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>DELETE</code>, <code>PATCH</code>, or <code>WS</code></td>
               </tr>
               <tr>
-                <td><code>path</code></td>
-                <td>Yes</td>
-                <td>URL path, supports params like <code>/users/:id</code></td>
+                <td><code>path</code></td><td>Yes</td>
+                <td>URL path, supports path params like <code>/users/:id</code></td>
               </tr>
               <tr>
-                <td><code>input</code></td>
-                <td>No</td>
-                <td>Request body model name. Generates Zod validation.</td>
+                <td><code>input</code></td><td>No</td>
+                <td>Request body model. Generates Zod/Pydantic validation.</td>
               </tr>
               <tr>
-                <td><code>output</code></td>
-                <td>No</td>
-                <td>Response body model/type. <code>User[]</code> for arrays.</td>
+                <td><code>output</code></td><td>No</td>
+                <td>Response model. Use <code>User[]</code> for arrays.</td>
               </tr>
               <tr>
-                <td><code>query</code></td>
-                <td>No</td>
-                <td>Query parameters model name</td>
+                <td><code>query</code></td><td>No</td>
+                <td>Query string parameters model</td>
               </tr>
               <tr>
-                <td><code>errors</code></td>
-                <td>No</td>
-                <td>Error codes: <code>[NotFound, Forbidden]</code></td>
+                <td><code>stream</code></td><td>WS only</td>
+                <td>Server→client WebSocket message type (required for <code>WS</code>)</td>
               </tr>
               <tr>
-                <td><code>middleware</code></td>
-                <td>No</td>
-                <td>Middleware name (e.g. <code>AuthGuard</code>)</td>
+                <td><code>emit</code></td><td>No</td>
+                <td>Client→server WebSocket message type (optional)</td>
               </tr>
               <tr>
-                <td><code>description</code></td>
-                <td>No</td>
-                <td>Action description (used in OpenAPI/docs)</td>
+                <td><code>middleware</code></td><td>No</td>
+                <td>Middleware name passed as a comment in generated routes</td>
               </tr>
               <tr>
-                <td><code>stream</code></td>
-                <td>No</td>
-                <td>WebSocket message type (requires <code>method: WS</code>)</td>
+                <td><code>description</code></td><td>No</td>
+                <td>Used in OpenAPI docs and generated JSDoc</td>
+              </tr>
+              <tr>
+                <td><code>@deprecated "msg"</code></td><td>No</td>
+                <td>Marks action as deprecated; emits JSDoc <code>@deprecated</code></td>
               </tr>
             </tbody>
           </table>
 
           <h3 className={styles.sectionSubtitle}>HTTP Status Codes</h3>
-          <p className={styles.sectionDesc}>
-            Veld automatically generates the correct HTTP status codes:
-          </p>
           <table className={styles.table}>
             <thead>
-              <tr>
-                <th>Method</th>
-                <th>With Output</th>
-                <th>Without Output</th>
-              </tr>
+              <tr><th>Method</th><th>With Output</th><th>Without Output</th></tr>
             </thead>
             <tbody>
               <tr><td><code>GET</code></td><td>200 OK</td><td>200 OK</td></tr>
@@ -666,61 +657,34 @@ export const OrderStatusSchema = z.enum(['pending', 'confirmed', 'shipped', 'del
         <section id="types" className={styles.section}>
           <h2 className={styles.sectionTitle}>Field Types</h2>
           <p className={styles.sectionDesc}>
-            Veld supports a set of built-in primitive types that map to the appropriate types
-            in each target language and validation library.
+            Built-in primitives map to the appropriate type in every target language.
           </p>
           <table className={styles.table}>
             <thead>
-              <tr>
-                <th>Veld</th>
-                <th>TypeScript</th>
-                <th>Python</th>
-                <th>Zod</th>
-                <th>Pydantic</th>
-              </tr>
+              <tr><th>Veld</th><th>TypeScript</th><th>Python</th><th>Zod</th><th>Pydantic</th></tr>
             </thead>
             <tbody>
+              <tr><td><code>string</code></td><td><code>string</code></td><td><code>str</code></td><td><code>z.string()</code></td><td><code>str</code></td></tr>
+              <tr><td><code>int</code></td><td><code>number</code></td><td><code>int</code></td><td><code>z.number().int()</code></td><td><code>int</code></td></tr>
+              <tr><td><code>float</code></td><td><code>number</code></td><td><code>float</code></td><td><code>z.number()</code></td><td><code>float</code></td></tr>
+              <tr><td><code>bool</code></td><td><code>boolean</code></td><td><code>bool</code></td><td><code>z.boolean()</code></td><td><code>bool</code></td></tr>
+              <tr><td><code>date</code></td><td><code>string</code></td><td><code>str</code></td><td><code>z.string().date()</code></td><td><code>str</code></td></tr>
+              <tr><td><code>datetime</code></td><td><code>string</code></td><td><code>str</code></td><td><code>z.string().datetime()</code></td><td><code>str</code></td></tr>
+              <tr><td><code>uuid</code></td><td><code>string</code></td><td><code>str</code></td><td><code>z.string().uuid()</code></td><td><code>str</code></td></tr>
+              <tr><td><code>T[]</code></td><td><code>T[]</code></td><td><code>List[T]</code></td><td><code>z.array(TSchema)</code></td><td><code>List[T]</code></td></tr>
               <tr>
-                <td><code>string</code></td><td><code>string</code></td><td><code>str</code></td>
-                <td><code>z.string()</code></td><td><code>str</code></td>
-              </tr>
-              <tr>
-                <td><code>int</code></td><td><code>number</code></td><td><code>int</code></td>
-                <td><code>z.number().int()</code></td><td><code>int</code></td>
-              </tr>
-              <tr>
-                <td><code>float</code></td><td><code>number</code></td><td><code>float</code></td>
-                <td><code>z.number()</code></td><td><code>float</code></td>
-              </tr>
-              <tr>
-                <td><code>bool</code></td><td><code>boolean</code></td><td><code>bool</code></td>
-                <td><code>z.boolean()</code></td><td><code>bool</code></td>
-              </tr>
-              <tr>
-                <td><code>date</code></td><td><code>string</code></td><td><code>str</code></td>
-                <td><code>z.string().date()</code></td><td><code>str</code></td>
-              </tr>
-              <tr>
-                <td><code>datetime</code></td><td><code>string</code></td><td><code>str</code></td>
-                <td><code>z.string().datetime()</code></td><td><code>str</code></td>
-              </tr>
-              <tr>
-                <td><code>uuid</code></td><td><code>string</code></td><td><code>str</code></td>
-                <td><code>z.string().uuid()</code></td><td><code>str</code></td>
-              </tr>
-              <tr>
-                <td><code>T[]</code></td><td><code>T[]</code></td><td><code>List[T]</code></td>
-                <td><code>z.array(TSchema)</code></td><td><code>List[T]</code></td>
-              </tr>
-              <tr>
-                <td><code>{'Map<string, V>'}</code></td><td><code>{'Record<string, V>'}</code></td><td><code>{'Dict[str, V]'}</code></td>
-                <td><code>z.record(z.string(), V)</code></td><td><code>{'Dict[str, V]'}</code></td>
+                <td><code>{'Map<string,V>'}</code></td>
+                <td><code>{'Record<string,V>'}</code></td>
+                <td><code>{'Dict[str,V]'}</code></td>
+                <td><code>z.record(z.string(),V)</code></td>
+                <td><code>{'Dict[str,V]'}</code></td>
               </tr>
             </tbody>
           </table>
           <div className={styles.infoCard}>
-            <strong>Custom types:</strong> Any <code>PascalCase</code> name not in the built-in
-            types is treated as a reference to a model or enum defined elsewhere in your contract.
+            <strong>Custom types:</strong> Any <code>PascalCase</code> identifier not in the
+            built-in list is treated as a reference to a model or enum defined elsewhere in
+            the contract.
           </div>
         </section>
 
@@ -728,9 +692,9 @@ export const OrderStatusSchema = z.enum(['pending', 'confirmed', 'shipped', 'del
         <section id="inheritance" className={styles.section}>
           <h2 className={styles.sectionTitle}>Inheritance (extends)</h2>
           <p className={styles.sectionDesc}>
-            Models can extend other models to inherit all their fields. This generates
-            TypeScript <code>interface X extends Y</code>, Zod <code>.extend()</code>,
-            and Python class inheritance.
+            Models can extend other models to inherit all fields. Generates TypeScript{' '}
+            <code>interface X extends Y</code>, Zod <code>.extend()</code>, and Python class
+            inheritance.
           </p>
           <CodeBlock title="Example" lang="veld">
             {`model BaseEntity {
@@ -745,13 +709,11 @@ model User extends BaseEntity {
   role:  Role
 }
 
-model Admin extends User {
+model AdminUser extends User {
   permissions: string[]
 }`}
           </CodeBlock>
-
-          <h3 className={styles.sectionSubtitle}>Generated TypeScript</h3>
-          <CodeBlock title="types/users.ts" lang="ts">
+          <CodeBlock title="Generated: types/users.ts" lang="ts">
             {`export interface BaseEntity {
   id: string;
   createdAt: string;
@@ -764,14 +726,14 @@ export interface User extends BaseEntity {
   role: Role;
 }
 
-export interface Admin extends User {
+export interface AdminUser extends User {
   permissions: string[];
 }`}
           </CodeBlock>
           <div className={styles.warningCard}>
-            <strong>Circular inheritance</strong> is detected and rejected by the validator.
-            For example, <code>A extends B</code> and <code>B extends A</code> will produce
-            a clear error with file and line numbers.
+            <strong>Circular inheritance</strong> is detected and rejected at validation time.
+            A <code>A extends B</code> / <code>B extends A</code> cycle produces a clear error
+            with file and line numbers.
           </div>
         </section>
 
@@ -779,52 +741,147 @@ export interface Admin extends User {
         <section id="maps" className={styles.section}>
           <h2 className={styles.sectionTitle}>Maps</h2>
           <p className={styles.sectionDesc}>
-            Use <code>{'Map<K, V>'}</code> syntax to define key-value pair fields. Maps generate
-            <code> {'Record<string, V>'}</code> in TypeScript and <code>{'Dict[str, V]'}</code> in Python.
+            Use <code>{'Map<K, V>'}</code> to define key-value pair fields. Map keys are always
+            <code> string</code>; values can be any built-in type or a model/enum reference.
           </p>
           <CodeBlock title="Example" lang="veld">
             {`model Config {
   settings:   Map<string, string>
-  features:   Map<string, bool>
-  metadata:   Map<string, int>
+  featureFlags: Map<string, bool>
+  counters:   Map<string, int>
+  taggedUsers: Map<string, User>
 }`}
           </CodeBlock>
-          <div className={styles.infoCard}>
-            <strong>Note:</strong> Map keys are always <code>string</code>. The value type can be
-            any built-in type or a reference to a model/enum.
-          </div>
+          <CodeBlock title="Generated: TypeScript" lang="ts">
+            {`export interface Config {
+  settings:    Record<string, string>;
+  featureFlags: Record<string, boolean>;
+  counters:    Record<string, number>;
+  taggedUsers: Record<string, User>;
+}`}
+          </CodeBlock>
+        </section>
+
+        {/* ─── DECORATORS ─── */}
+        <section id="decorators" className={styles.section}>
+          <h2 className={styles.sectionTitle}>Decorators</h2>
+          <p className={styles.sectionDesc}>
+            Decorators annotate fields and actions with metadata that affects generated code.
+          </p>
+          <table className={styles.table}>
+            <thead>
+              <tr><th>Decorator</th><th>Target</th><th>Effect</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>@default(value)</code></td>
+                <td>Field</td>
+                <td>Sets default value in Zod schema and TypeScript interface</td>
+              </tr>
+              <tr>
+                <td><code>@serverSet</code></td>
+                <td>Field</td>
+                <td>Marks as server-managed; excluded from input types and client SDK payloads</td>
+              </tr>
+              <tr>
+                <td><code>@deprecated "msg"</code></td>
+                <td>Field or Action</td>
+                <td>Emits JSDoc <code>@deprecated</code> (TS) or <code>.. deprecated::</code> docstring (Python)</td>
+              </tr>
+            </tbody>
+          </table>
+          <CodeBlock title="Usage" lang="veld">
+            {`model User {
+  role:      Role     @default(user)
+  createdAt: datetime @serverSet
+  oldField:  string   @deprecated "use displayName instead"
+  displayName: string
+}
+
+module Auth {
+  action OldLogin {
+    method: POST
+    path: /login-v1
+    input: LoginInput
+    output: TokenResponse
+    @deprecated "use POST /auth/login instead"
+  }
+}`}
+          </CodeBlock>
         </section>
 
         {/* ─── IMPORTS ─── */}
         <section id="imports" className={styles.section}>
           <h2 className={styles.sectionTitle}>Import System</h2>
           <p className={styles.sectionDesc}>
-            Veld supports two import styles for organizing contracts across multiple files.
+            Split contracts across multiple files using imports. Veld supports two styles.
           </p>
 
           <h3 className={styles.sectionSubtitle}>Alias-based imports (recommended)</h3>
-          <CodeBlock title="app.veld" lang="veld">
+          <CodeBlock title="veld/app.veld" lang="veld">
             {`import @models/user
 import @models/product
 import @modules/users
 import @modules/shop`}
           </CodeBlock>
           <p className={styles.sectionDesc}>
-            Aliases are resolved from the project root using the <code>aliases</code> config.
-            Default aliases include: <code>@models</code>, <code>@modules</code>, <code>@types</code>,
-            <code> @enums</code>, <code>@schemas</code>, <code>@services</code>, <code>@lib</code>,
-            <code> @common</code>, <code>@shared</code>.
+            Resolved from the project root via the <code>aliases</code> config. The parser
+            automatically appends <code>.veld</code> — write <code>import @models/user</code>,
+            not <code>import @models/user.veld</code>. Default aliases:{' '}
+            <code>@models</code>, <code>@modules</code>, <code>@types</code>, <code>@enums</code>,
+            <code> @schemas</code>, <code>@services</code>, <code>@lib</code>, <code>@common</code>,
+            <code> @shared</code>.
           </p>
 
           <h3 className={styles.sectionSubtitle}>Relative imports (legacy)</h3>
-          <CodeBlock title="app.veld" lang="veld">
+          <CodeBlock title="veld/app.veld" lang="veld">
             {`import "./models/user.veld"
 import "./modules/users.veld"`}
           </CodeBlock>
+          <p className={styles.sectionDesc}>
+            Resolved relative to the current file. Both styles are supported everywhere: CLI,
+            VS Code extension, and JetBrains plugin.
+          </p>
+        </section>
 
+        {/* ─── FILE NAMING ─── */}
+        <section id="file-naming" className={styles.section}>
+          <h2 className={styles.sectionTitle}>File Naming Conventions</h2>
+          <p className={styles.sectionDesc}>
+            Veld supports conventional filename suffixes to make the contents of each file
+            immediately clear. The parser appends <code>.veld</code> automatically so imports
+            omit it.
+          </p>
+          <table className={styles.table}>
+            <thead>
+              <tr><th>Filename</th><th>Contents</th><th>Import as</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>user.model.veld</code></td>
+                <td>Model/type definitions only</td>
+                <td><code>import @models/user.model</code></td>
+              </tr>
+              <tr>
+                <td><code>auth.service.veld</code></td>
+                <td>Module/action definitions only</td>
+                <td><code>import @modules/auth.service</code></td>
+              </tr>
+              <tr>
+                <td><code>roles.enum.veld</code></td>
+                <td>Enum definitions only</td>
+                <td><code>import @enums/roles.enum</code></td>
+              </tr>
+              <tr>
+                <td><code>app.veld</code></td>
+                <td>Mixed content (entry point)</td>
+                <td>n/a (entry point)</td>
+              </tr>
+            </tbody>
+          </table>
           <div className={styles.infoCard}>
-            <strong>Both styles</strong> are fully supported in the CLI, VS Code extension, and
-            JetBrains plugin. Alias imports are preferred for cleaner, more portable contracts.
+            <code>veld lint</code> warns when a file's suffix doesn't match its actual contents —
+            for example, a <code>.model.veld</code> file that contains a module definition.
           </div>
         </section>
 
@@ -832,35 +889,98 @@ import "./modules/users.veld"`}
         <section id="websockets" className={styles.section}>
           <h2 className={styles.sectionTitle}>WebSockets</h2>
           <p className={styles.sectionDesc}>
-            Veld supports WebSocket actions with the <code>WS</code> method and
-            <code> stream</code> field for typed message payloads.
+            Veld treats WebSocket connections as first-class actions. Use <code>method: WS</code>{' '}
+            with a <code>stream</code> type (server→client) and an optional <code>emit</code> type
+            (client→server).
           </p>
-          <CodeBlock title="Example" lang="veld">
-            {`model ChatMessage {
-  userId:  uuid
-  content: string
+
+          <h3 className={styles.sectionSubtitle}>Contract</h3>
+          <CodeBlock title="veld/app.veld" lang="veld">
+            {`model EventMessage {
+  type:    string
+  payload: string
   sentAt:  datetime
 }
 
-module Chat {
+model ClientCommand {
+  action: string
+  data:   string
+}
+
+module Events {
   prefix: /ws
 
-  action ChatStream {
+  action Subscribe {
+    description: "Subscribe to real-time events in a room"
     method: WS
-    path:   /chat/:roomId
-    stream: ChatMessage
+    path:   /events/:room
+    stream: EventMessage    // server → client (required)
+    emit:   ClientCommand   // client → server (optional)
   }
 }`}
           </CodeBlock>
-          <p className={styles.sectionDesc}>
-            WebSocket actions generate typed connect methods in the frontend SDK and comment stubs
-            in the backend route handlers. The <code>stream</code> field specifies the message type
-            that flows through the WebSocket connection.
-          </p>
+
+          <h3 className={styles.sectionSubtitle}>WS vs REST — key differences</h3>
+          <table className={styles.table}>
+            <thead>
+              <tr><th></th><th>REST action</th><th>WS action</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Method</td><td><code>GET</code> / <code>POST</code> / …</td><td><code>WS</code></td></tr>
+              <tr><td>Request body</td><td><code>input:</code></td><td>not allowed</td></tr>
+              <tr><td>Response body</td><td><code>output:</code></td><td>not allowed</td></tr>
+              <tr><td>Server push</td><td>not supported</td><td><code>stream:</code> (required)</td></tr>
+              <tr><td>Client messages</td><td>not supported</td><td><code>emit:</code> (optional)</td></tr>
+              <tr><td>Frontend return</td><td><code>Promise&lt;T&gt;</code></td><td><code>VeldWebSocket&lt;TReceive, TSend&gt;</code></td></tr>
+            </tbody>
+          </table>
+
+          <h3 className={styles.sectionSubtitle}>Generated backend interface</h3>
+          <CodeBlock title="interfaces/IEventsService.ts (generated)" lang="ts">
+            {`export interface IEventsService {
+  onSubscribeConnect(room: string): void | Promise<void>;
+  onSubscribeMessage?(msg: ClientCommand, room: string): void | Promise<void>;
+  onSubscribeClose?(room: string): void | Promise<void>;
+  onSubscribeError?(err: Error, room: string): void | Promise<void>;
+}`}
+          </CodeBlock>
+
+          <h3 className={styles.sectionSubtitle}>Generated frontend SDK</h3>
+          <CodeBlock title="client/api.ts (generated)" lang="ts">
+            {`// connectToSubscribe returns a typed VeldWebSocket
+connectToSubscribe(room: string): VeldWebSocket<EventMessage, ClientCommand>`}
+          </CodeBlock>
+
+          <h3 className={styles.sectionSubtitle}>Frontend usage</h3>
+          <CodeBlock title="Usage" lang="ts">
+            {`import { VeldApiClient } from '@veld/generated/client/api';
+
+const api = new VeldApiClient('https://api.example.com');
+
+const ws = api.events.connectToSubscribe('general');
+
+ws.onMessage((msg: EventMessage) => {
+  console.log(msg.type, msg.payload);
+});
+
+ws.send({ action: 'join', data: 'general' } satisfies ClientCommand);
+
+// Close when done
+ws.close();`}
+          </CodeBlock>
+
+          <h3 className={styles.sectionSubtitle}>VeldWebSocket features</h3>
+          <ul className={styles.featureList}>
+            <li><strong>Auto-reconnect</strong> with exponential backoff: starts at 1s, caps at 30s</li>
+            <li><strong>Typed messages</strong> — <code>onMessage</code> receives the exact <code>stream</code> type</li>
+            <li><strong>Typed send</strong> — <code>send()</code> only accepts the <code>emit</code> type</li>
+            <li><strong>Chainable</strong> <code>.onMessage()</code> handler</li>
+            <li><strong>Path params</strong> auto-become typed parameters on <code>connectToX()</code></li>
+          </ul>
           <div className={styles.warningCard}>
-            <strong>Validation:</strong> The <code>stream</code> field is only valid on
-            <code> method: WS</code> actions. WS actions require a <code>stream</code> type.
-            Using <code>input</code>/<code>output</code> on WS actions is not allowed.
+            <strong>Validation rules:</strong> <code>stream</code> is required when <code>method: WS</code>.
+            {' '}<code>input</code> and <code>output</code> are not allowed on WS actions — use{' '}
+            <code>stream</code> and <code>emit</code> instead.
           </div>
         </section>
 
@@ -868,31 +988,43 @@ module Chat {
         <section id="cli-overview" className={styles.section}>
           <h2 className={styles.sectionTitle}>CLI Overview</h2>
           <p className={styles.sectionDesc}>
-            The Veld CLI is a single binary with subcommands for every stage of the workflow.
+            All commands are available through the single <code>veld</code> binary.
           </p>
           <CodeBlock title="Terminal">
             {`$ veld --help
 
-Usage:
-  veld [command]
-
-Available Commands:
-  init        Initialize a new Veld project
+Core workflow:
+  init        Scaffold a new Veld project (language → framework wizard)
   generate    Generate backend and frontend code
-  validate    Validate contract files
-  watch       Watch for changes and auto-regenerate
-  openapi     Export OpenAPI 3.0 spec
-  schema      Generate database schemas (Prisma/SQL)
-  docs        Generate API documentation
-  diff        Show contract differences
-  ast         Dump AST as JSON
+  watch       Watch .veld files and auto-regenerate (500ms debounce)
   clean       Remove generated output directory
-  lsp         Start LSP server
-  help        Help about any command
 
-Flags:
-  -h, --help      help for veld
-  -v, --version   version for veld`}
+Quality:
+  validate    Parse and validate contract (reports file:line errors)
+  lint        Analyse contract for quality issues
+  diff        Breaking change detection vs .veld.lock.json
+
+Integration:
+  setup       Configure tsconfig paths automatically
+  ci          Non-interactive generate + setup (for CI pipelines)
+
+Export:
+  export openapi    Export OpenAPI 3.0 spec
+  export graphql    Export GraphQL SDL schema
+  export schema     Generate database schema (Prisma/SQL)
+  export docs       Generate API documentation
+  export agents     Export AGENTS.md for AI assistants
+
+Registry:
+  login / logout    Authenticate with a registry
+  push              Publish contracts to registry
+  pull              Download a contract package
+  serve             Start self-hosted registry server
+
+Debug:
+  ast         Dump parsed AST as JSON
+  fmt         Format .veld files
+  doctor      Diagnose project health`}
           </CodeBlock>
         </section>
 
@@ -900,11 +1032,16 @@ Flags:
         <section id="cli-init" className={styles.section}>
           <h2 className={styles.sectionTitle}>veld init</h2>
           <p className={styles.sectionDesc}>
-            Scaffolds a new Veld project in the current directory. Creates the <code>veld/</code> folder
-            with a config file, entry point, and subdirectories for models and modules.
+            Scaffolds a new Veld project with an interactive language and framework selection
+            wizard. Creates the <code>veld/</code> directory with a config file, entry point,
+            and subdirectories.
           </p>
           <CodeBlock title="Terminal">
             {`$ veld init
+
+? Backend language: node
+? Backend framework: express
+? Frontend target: typescript
 
 ✓ Created veld/veld.config.json
 ✓ Created veld/app.veld
@@ -912,8 +1049,8 @@ Flags:
 ✓ Created veld/modules/`}
           </CodeBlock>
           <div className={styles.warningCard}>
-            <strong>Safety:</strong> <code>veld init</code> exits with code 1 if the <code>veld/</code>
-            directory already exists &mdash; it will never overwrite existing files.
+            <strong>Safety:</strong> <code>veld init</code> exits with code 1 if the{' '}
+            <code>veld/</code> directory already exists. It never overwrites existing files.
           </div>
         </section>
 
@@ -921,38 +1058,53 @@ Flags:
         <section id="cli-generate" className={styles.section}>
           <h2 className={styles.sectionTitle}>veld generate</h2>
           <p className={styles.sectionDesc}>
-            The main command. Reads your contract, validates it, and generates all output files.
+            The main command. Reads your contract, validates it, checks for breaking changes,
+            and generates all output files.
           </p>
           <CodeBlock title="Terminal">
             {`# Use config auto-detection (reads veld.config.json):
 $ veld generate
 
-# Specify all options explicitly:
+# Specify options explicitly:
 $ veld generate \\
   --backend=node \\
+  --backend-framework=express \\
   --frontend=typescript \\
   --input=veld/app.veld \\
   --out=./generated
 
 # Preview without writing files:
-$ veld generate --dry-run`}
+$ veld generate --dry-run
+
+# Generate all workspace services at once:
+$ veld generate --all
+
+# Also emit server-to-server client:
+$ veld generate --server-sdk
+
+# CI mode: exit 1 on breaking changes (no prompt):
+$ veld generate --strict
+
+# Skip breaking-change check:
+$ veld generate --force`}
           </CodeBlock>
 
           <h3 className={styles.sectionSubtitle}>Flags</h3>
           <table className={styles.table}>
             <thead>
-              <tr>
-                <th>Flag</th>
-                <th>Default</th>
-                <th>Description</th>
-              </tr>
+              <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
             </thead>
             <tbody>
-              <tr><td><code>--backend</code></td><td>from config</td><td>Backend emitter: <code>node</code>, <code>python</code>, <code>go</code>, <code>java</code>, <code>csharp</code>, <code>php</code>, <code>rust</code></td></tr>
-              <tr><td><code>--frontend</code></td><td>from config</td><td>Frontend emitter: <code>typescript</code>, <code>dart</code>, <code>kotlin</code>, <code>swift</code>, <code>none</code></td></tr>
-              <tr><td><code>--input</code></td><td>from config</td><td>Entry <code>.veld</code> file path</td></tr>
+              <tr><td><code>--backend</code></td><td>from config</td><td><code>node</code>, <code>python</code>, <code>go</code>, <code>java</code>, <code>csharp</code>, <code>php</code>, <code>rust</code>, <code>javascript</code></td></tr>
+              <tr><td><code>--backend-framework</code></td><td>from config</td><td>e.g. <code>express</code>, <code>flask</code>, <code>chi</code>, <code>spring</code></td></tr>
+              <tr><td><code>--frontend</code></td><td>from config</td><td><code>typescript</code>, <code>react</code>, <code>vue</code>, <code>angular</code>, <code>svelte</code>, <code>dart</code>, <code>kotlin</code>, <code>swift</code>, <code>javascript</code>, <code>types-only</code>, <code>none</code></td></tr>
+              <tr><td><code>--input</code></td><td>from config</td><td>Entry <code>.veld</code> file</td></tr>
               <tr><td><code>--out</code></td><td>from config</td><td>Output directory</td></tr>
-              <tr><td><code>--dry-run</code></td><td><code>false</code></td><td>Preview generated files without writing</td></tr>
+              <tr><td><code>--dry-run</code></td><td><code>false</code></td><td>Preview files without writing</td></tr>
+              <tr><td><code>--all</code></td><td><code>false</code></td><td>Generate all workspace services</td></tr>
+              <tr><td><code>--server-sdk</code></td><td><code>false</code></td><td>Also emit <code>generated/server-client/api.ts</code></td></tr>
+              <tr><td><code>--strict</code></td><td><code>false</code></td><td>Exit 1 on breaking changes (CI mode)</td></tr>
+              <tr><td><code>--force</code></td><td><code>false</code></td><td>Skip breaking-change prompt</td></tr>
             </tbody>
           </table>
         </section>
@@ -961,15 +1113,15 @@ $ veld generate --dry-run`}
         <section id="cli-validate" className={styles.section}>
           <h2 className={styles.sectionTitle}>veld validate</h2>
           <p className={styles.sectionDesc}>
-            Validates your contract without generating any output. Reports errors with
-            file names, line numbers, and source code snippets.
+            Parses and validates your contract without generating output. Reports errors with
+            file name, line number, and a source snippet.
           </p>
           <CodeBlock title="Terminal">
             {`$ veld validate
 
 ✓ Contract is valid (3 models, 1 enum, 2 modules, 5 actions)
 
-# Example error output:
+# Example error:
 $ veld validate
 
 ✗ Validation failed:
@@ -990,8 +1142,7 @@ $ veld validate
         <section id="cli-watch" className={styles.section}>
           <h2 className={styles.sectionTitle}>veld watch</h2>
           <p className={styles.sectionDesc}>
-            Watches your <code>.veld</code> files for changes and auto-regenerates with a
-            500ms debounce. Perfect for development.
+            Watches <code>.veld</code> files and auto-regenerates with a 500ms debounce.
           </p>
           <CodeBlock title="Terminal">
             {`$ veld watch
@@ -1004,86 +1155,125 @@ Watching for changes in veld/ ...
           </CodeBlock>
         </section>
 
-        {/* ─── CLI: veld openapi ─── */}
-        <section id="cli-openapi" className={styles.section}>
-          <h2 className={styles.sectionTitle}>veld openapi</h2>
+        {/* ─── CLI: veld lint ─── */}
+        <section id="cli-lint" className={styles.section}>
+          <h2 className={styles.sectionTitle}>veld lint</h2>
           <p className={styles.sectionDesc}>
-            Exports an OpenAPI 3.0 specification from your contract. Output to stdout or a file.
+            Analyses your contract for quality issues beyond syntax correctness.
           </p>
           <CodeBlock title="Terminal">
-            {`# Print to stdout:
-$ veld openapi
+            {`$ veld lint
 
-# Write to file:
-$ veld openapi -o openapi.json
-
-# Pipe to another tool:
-$ veld openapi | jq '.paths'`}
+# With non-zero exit code on issues (useful for CI):
+$ veld lint --exit-code`}
           </CodeBlock>
-        </section>
-
-        {/* ─── CLI: veld schema ─── */}
-        <section id="cli-schema" className={styles.section}>
-          <h2 className={styles.sectionTitle}>veld schema</h2>
-          <p className={styles.sectionDesc}>
-            Generates database schemas from your models. Supports Prisma schema format and raw SQL DDL.
-          </p>
-          <CodeBlock title="Terminal">
-            {`# Generate Prisma schema:
-$ veld schema --format=prisma -o schema.prisma
-
-# Generate SQL DDL:
-$ veld schema --format=sql -o schema.sql`}
-          </CodeBlock>
-        </section>
-
-        {/* ─── CLI: veld docs ─── */}
-        <section id="cli-docs" className={styles.section}>
-          <h2 className={styles.sectionTitle}>veld docs</h2>
-          <p className={styles.sectionDesc}>
-            Generates human-readable API documentation from your contract. Useful for teams
-            and stakeholders who don't read code.
-          </p>
-          <CodeBlock title="Terminal">
-            {`$ veld docs -o api-docs.md`}
-          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>Lint Rules</h3>
+          <table className={styles.table}>
+            <thead>
+              <tr><th>Rule</th><th>Severity</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>unused-model</code></td><td>Warning</td><td>Model is defined but never referenced by any action</td></tr>
+              <tr><td><code>empty-module</code></td><td>Warning</td><td>Module has no actions</td></tr>
+              <tr><td><code>empty-model</code></td><td>Warning</td><td>Model has no fields</td></tr>
+              <tr><td><code>duplicate-route</code></td><td>Error</td><td>Two actions share the same method + path</td></tr>
+              <tr><td><code>duplicate-action</code></td><td>Error</td><td>Two actions in the same module share a name</td></tr>
+              <tr><td><code>missing-description</code></td><td>Warning</td><td>Model or action has no description</td></tr>
+              <tr><td><code>deprecated-action</code></td><td>Warning</td><td>Action is marked @deprecated</td></tr>
+              <tr><td><code>deprecated-field</code></td><td>Warning</td><td>Field is marked @deprecated</td></tr>
+              <tr><td><code>file-naming</code></td><td>Warning</td><td>File suffix doesn't match its contents</td></tr>
+            </tbody>
+          </table>
         </section>
 
         {/* ─── CLI: veld diff ─── */}
         <section id="cli-diff" className={styles.section}>
           <h2 className={styles.sectionTitle}>veld diff</h2>
           <p className={styles.sectionDesc}>
-            Shows the differences between contract versions. Detects added/removed/changed
-            models, fields, actions, and types.
+            Detects breaking changes by comparing the current contract against{' '}
+            <code>.veld.lock.json</code> (written by <code>veld generate</code>).
+            Supports interactive prompt, <code>--strict</code> (CI), and <code>--force</code> (skip).
           </p>
           <CodeBlock title="Terminal">
-            {`$ veld diff --old=v1/app.veld --new=v2/app.veld
+            {`$ veld diff
+
+~ Changed model: User
+  + Added field: avatarUrl (string?)
+  - Removed field: profilePic          ← breaking
+
+~ Changed action: CreateUser
+  ~ input type changed: CreateUserInput → CreateUserInputV2  ← breaking
 
 + Added model: PaymentMethod
-~ Changed model: User
-  + Added field: avatarUrl (string)
-  - Removed field: profilePic
-~ Changed action: CreateUser
-  ~ input changed: CreateUserInput -> CreateUserInputV2`}
++ Added action: Users.ListSessions
+
+? Contract has 2 breaking change(s). Continue? [y/N]`}
+          </CodeBlock>
+          <CodeBlock title="CI usage">
+            {`# Exit 1 if any breaking changes exist:
+$ veld generate --strict`}
           </CodeBlock>
         </section>
 
-        {/* ─── CLI: veld ast ─── */}
-        <section id="cli-ast" className={styles.section}>
-          <h2 className={styles.sectionTitle}>veld ast</h2>
+        {/* ─── CLI: veld export ─── */}
+        <section id="cli-export" className={styles.section}>
+          <h2 className={styles.sectionTitle}>veld export</h2>
           <p className={styles.sectionDesc}>
-            Dumps the parsed AST as JSON. Useful for debugging, tooling, or building custom
-            code generators on top of Veld's parser.
+            Export your contract in various formats for integration with other tools.
           </p>
           <CodeBlock title="Terminal">
-            {`$ veld ast | jq '.models[0]'
-{
-  "name": "User",
-  "fields": [
-    { "name": "id", "type": "uuid", "optional": false },
-    { "name": "email", "type": "string", "optional": false }
-  ]
-}`}
+            {`# OpenAPI 3.0 JSON
+$ veld export openapi
+$ veld export openapi -o openapi.json
+$ veld export openapi | jq '.paths'
+
+# GraphQL SDL
+$ veld export graphql
+$ veld export graphql -o schema.graphql
+
+# Database schema
+$ veld export schema --format=prisma -o schema.prisma
+$ veld export schema --format=sql    -o schema.sql
+
+# API documentation (Markdown)
+$ veld export docs -o api-docs.md
+
+# AI assistant export (AGENTS.md)
+$ veld export agents
+$ veld export agents -o AGENTS.md`}
+          </CodeBlock>
+          <p className={styles.sectionDesc}>
+            The legacy short-form commands (<code>veld openapi</code>, <code>veld schema</code>,
+            <code> veld docs</code>, <code>veld graphql</code>) are still supported as aliases.
+          </p>
+        </section>
+
+        {/* ─── CLI: veld setup & ci ─── */}
+        <section id="cli-setup" className={styles.section}>
+          <h2 className={styles.sectionTitle}>veld setup &amp; veld ci</h2>
+
+          <h3 className={styles.sectionSubtitle}>veld setup</h3>
+          <p className={styles.sectionDesc}>
+            Automatically configures <code>tsconfig.json</code> with the{' '}
+            <code>@veld/generated</code> path alias so you can import generated types without
+            manual config edits.
+          </p>
+          <CodeBlock title="Terminal">
+            {`$ veld setup
+
+✓ Added "@veld/*": ["./generated/*"] to tsconfig.json`}
+          </CodeBlock>
+
+          <h3 className={styles.sectionSubtitle}>veld ci</h3>
+          <p className={styles.sectionDesc}>
+            Non-interactive <code>generate + setup</code> in one step. Designed for CI/CD
+            pipelines where you want to regenerate and configure paths without any prompts.
+          </p>
+          <CodeBlock title="Terminal">
+            {`$ veld ci
+
+✓ Generated 7 files
+✓ Configured tsconfig.json`}
           </CodeBlock>
         </section>
 
@@ -1091,10 +1281,29 @@ $ veld schema --format=sql -o schema.sql`}
         <section id="cli-clean" className={styles.section}>
           <h2 className={styles.sectionTitle}>veld clean</h2>
           <p className={styles.sectionDesc}>
-            Removes the generated output directory. A clean slate for regeneration.
+            Removes the generated output directory and the <code>.veld.lock.json</code> file.
           </p>
           <CodeBlock title="Terminal">
-            {`$ veld clean\n\n✓ Removed generated/`}
+            {`$ veld clean\n\n✓ Removed generated/\n✓ Removed .veld.lock.json`}
+          </CodeBlock>
+        </section>
+
+        {/* ─── CLI: veld ast ─── */}
+        <section id="cli-ast" className={styles.section}>
+          <h2 className={styles.sectionTitle}>veld ast</h2>
+          <p className={styles.sectionDesc}>
+            Dumps the parsed AST as JSON. Useful for debugging or building custom tooling on
+            top of Veld's parser.
+          </p>
+          <CodeBlock title="Terminal">
+            {`$ veld ast | jq '.models[0]'
+{
+  "name": "User",
+  "fields": [
+    { "name": "id",    "type": "uuid",   "optional": false },
+    { "name": "email", "type": "string", "optional": false }
+  ]
+}`}
           </CodeBlock>
         </section>
 
@@ -1102,20 +1311,37 @@ $ veld schema --format=sql -o schema.sql`}
         <section id="config-file" className={styles.section}>
           <h2 className={styles.sectionTitle}>Configuration File</h2>
           <p className={styles.sectionDesc}>
-            Veld uses a JSON configuration file to set defaults for all CLI commands.
-            This file is created automatically by <code>veld init</code>.
+            Created automatically by <code>veld init</code>. Contains defaults for all CLI
+            commands — any flag passed to the CLI overrides the corresponding config field.
           </p>
           <CodeBlock title="veld/veld.config.json" lang="json">
             {`{
-  "input": "app.veld",
-  "backend": "node",
-  "frontend": "typescript",
-  "out": "../generated",
-  "baseUrl": "/api/v1",
+  "input":             "app.veld",
+  "backend":           "node",
+  "backendFramework":  "express",
+  "frontend":          "typescript",
+  "frontendFramework": "react",
+  "out":               "../generated",
+  "baseUrl":           "https://api.example.com",
+  "description":       "My project API",
+  "validate":          true,
+  "serverSdk":         false,
+  "services": {
+    "Auth":   "https://auth.api.example.com",
+    "Users":  "https://users.api.example.com"
+  },
+  "workspace": [],
   "aliases": {
-    "models": "models",
-    "modules": "modules",
-    "auth": "services/auth"
+    "models":  "models",
+    "modules": "modules"
+  },
+  "postGenerate": "npm run format",
+  "registry": {
+    "enabled": false,
+    "url":     "",
+    "org":     "",
+    "package": "",
+    "version": "0.1.0"
   }
 }`}
           </CodeBlock>
@@ -1123,15 +1349,10 @@ $ veld schema --format=sql -o schema.sql`}
 
         {/* ─── CONFIG FIELDS ─── */}
         <section id="config-fields" className={styles.section}>
-          <h2 className={styles.sectionTitle}>Config Fields</h2>
+          <h2 className={styles.sectionTitle}>All Config Fields</h2>
           <table className={styles.table}>
             <thead>
-              <tr>
-                <th>Field</th>
-                <th>Type</th>
-                <th>Default</th>
-                <th>Description</th>
-              </tr>
+              <tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
             </thead>
             <tbody>
               <tr>
@@ -1140,11 +1361,19 @@ $ veld schema --format=sql -o schema.sql`}
               </tr>
               <tr>
                 <td><code>backend</code></td><td>string</td><td><code>"node"</code></td>
-                <td>Backend emitter: <code>node</code>, <code>python</code>, <code>go</code>, <code>java</code>, <code>csharp</code>, <code>php</code>, <code>rust</code></td>
+                <td><code>node</code>, <code>python</code>, <code>go</code>, <code>java</code>, <code>csharp</code>, <code>php</code>, <code>rust</code>, <code>javascript</code></td>
+              </tr>
+              <tr>
+                <td><code>backendFramework</code></td><td>string</td><td><code>""</code></td>
+                <td>e.g. <code>express</code>, <code>flask</code>, <code>fastapi</code>, <code>chi</code>, <code>gin</code>, <code>spring</code>, <code>laravel</code></td>
               </tr>
               <tr>
                 <td><code>frontend</code></td><td>string</td><td><code>"typescript"</code></td>
-                <td>Frontend emitter: <code>typescript</code>, <code>react</code> (alias), <code>dart</code>, <code>flutter</code> (alias), <code>kotlin</code>, <code>swift</code>, <code>none</code></td>
+                <td><code>typescript</code>, <code>react</code>, <code>vue</code>, <code>angular</code>, <code>svelte</code>, <code>dart</code>, <code>kotlin</code>, <code>swift</code>, <code>javascript</code>, <code>types-only</code>, <code>none</code></td>
+              </tr>
+              <tr>
+                <td><code>frontendFramework</code></td><td>string</td><td><code>""</code></td>
+                <td>Additional hint for frontend emitter (e.g. <code>react</code>)</td>
               </tr>
               <tr>
                 <td><code>out</code></td><td>string</td><td><code>"./generated"</code></td>
@@ -1152,11 +1381,39 @@ $ veld schema --format=sql -o schema.sql`}
               </tr>
               <tr>
                 <td><code>baseUrl</code></td><td>string</td><td><code>""</code></td>
-                <td>Baked into frontend SDK. If empty, uses <code>process.env.VELD_API_URL</code></td>
+                <td>Baked into frontend SDK. Empty = reads <code>VELD_API_URL</code> at runtime</td>
               </tr>
               <tr>
-                <td><code>aliases</code></td><td>object</td><td>built-in defaults</td>
-                <td>Custom <code>@alias</code> to relative directory mappings</td>
+                <td><code>description</code></td><td>string</td><td><code>""</code></td>
+                <td>Human-readable description used in OpenAPI and AGENTS.md export</td>
+              </tr>
+              <tr>
+                <td><code>validate</code></td><td>bool</td><td><code>true</code></td>
+                <td>Run validation before generation</td>
+              </tr>
+              <tr>
+                <td><code>serverSdk</code></td><td>bool</td><td><code>false</code></td>
+                <td>Also emit <code>generated/server-client/api.ts</code> (server-to-server client)</td>
+              </tr>
+              <tr>
+                <td><code>services</code></td><td>object</td><td><code>{'{}'}</code></td>
+                <td>Per-module base URL overrides for microservices (module name → URL)</td>
+              </tr>
+              <tr>
+                <td><code>workspace</code></td><td>array</td><td><code>[]</code></td>
+                <td>Polyglot monorepo entries — each is an independent service config</td>
+              </tr>
+              <tr>
+                <td><code>aliases</code></td><td>object</td><td>built-in</td>
+                <td>Custom <code>@alias</code> → relative directory mappings</td>
+              </tr>
+              <tr>
+                <td><code>postGenerate</code></td><td>string</td><td><code>""</code></td>
+                <td>Shell command to run after successful generation (e.g. <code>npm run format</code>)</td>
+              </tr>
+              <tr>
+                <td><code>registry</code></td><td>object</td><td>—</td>
+                <td>Registry publishing config (see Cloud Registry section)</td>
               </tr>
             </tbody>
           </table>
@@ -1166,31 +1423,31 @@ $ veld schema --format=sql -o schema.sql`}
         <section id="config-aliases" className={styles.section}>
           <h2 className={styles.sectionTitle}>Import Aliases</h2>
           <p className={styles.sectionDesc}>
-            Aliases map short <code>@name</code> prefixes to directories, relative to the config file.
+            Aliases map short <code>@name</code> prefixes to directories relative to the
+            config file. Built-in defaults cover the most common layouts.
           </p>
           <CodeBlock title="veld.config.json" lang="json">
             {`{
   "aliases": {
-    "models": "models",
-    "modules": "modules",
-    "types": "types",
-    "enums": "enums",
-    "schemas": "schemas",
+    "models":   "models",
+    "modules":  "modules",
+    "types":    "types",
+    "enums":    "enums",
+    "schemas":  "schemas",
     "services": "services",
-    "lib": "lib",
-    "common": "common",
-    "shared": "shared"
+    "lib":      "lib",
+    "common":   "common",
+    "shared":   "shared"
   }
 }`}
           </CodeBlock>
           <p className={styles.sectionDesc}>
-            With this config, <code>import @models/user</code> resolves to <code>veld/models/user.veld</code>.
-            You can add custom aliases for any directory structure:
+            Add custom aliases for non-standard layouts. They are merged with the built-in defaults:
           </p>
-          <CodeBlock title="Custom alias example" lang="json">
+          <CodeBlock title="Custom aliases" lang="json">
             {`{
   "aliases": {
-    "auth": "services/auth",
+    "auth":     "services/auth",
     "payments": "features/payments/contracts"
   }
 }`}
@@ -1201,33 +1458,132 @@ $ veld schema --format=sql -o schema.sql`}
         <section id="config-detection" className={styles.section}>
           <h2 className={styles.sectionTitle}>Config Auto-Detection</h2>
           <p className={styles.sectionDesc}>
-            When you run <code>veld generate</code> (no flags), Veld searches for the config file
-            in this order:
+            When <code>veld generate</code> is run with no flags, it looks for the config
+            file in this order:
           </p>
           <ol className={styles.featureList}>
-            <li><code>./veld.config.json</code> in the current directory</li>
-            <li><code>./veld/veld.config.json</code> in the <code>veld/</code> subdirectory</li>
+            <li><code>./veld.config.json</code></li>
+            <li><code>./veld/veld.config.json</code></li>
           </ol>
           <p className={styles.sectionDesc}>
-            CLI flags always override config file values. For example:
+            CLI flags always win over config values:
           </p>
           <CodeBlock title="Terminal">
-            {`# Config says backend=node, but override with python:
+            {`# Config says backend=node — override with python for this run:
 $ veld generate --backend=python`}
           </CodeBlock>
         </section>
 
-        {/* ─── OUTPUT OVERVIEW ─── */}
-        <section id="output-overview" className={styles.section}>
-          <h2 className={styles.sectionTitle}>Generated Output Overview</h2>
+        {/* ─── CONFIG: MICROSERVICES ─── */}
+        <section id="config-microservices" className={styles.section}>
+          <h2 className={styles.sectionTitle}>Microservices & Workspaces</h2>
           <p className={styles.sectionDesc}>
-            Veld generates a complete set of files organized by purpose. All generated files
-            begin with <code>// AUTO-GENERATED BY VELD — DO NOT EDIT</code>.
+            Veld has first-class support for microservices: per-module base URLs in the contract,
+            a <code>services</code> map in config, and a <code>workspace</code> array for polyglot
+            monorepos.
           </p>
-          <div className={styles.infoCard}>
-            <strong>Key principles:</strong> Output is deterministic (same input = same output),
-            Veld never writes outside <code>--out</code>, and generated code has zero runtime
-            dependencies for type-only usage.
+
+          <h3 className={styles.sectionSubtitle}>Per-module base URL (in contract)</h3>
+          <CodeBlock title="veld/app.veld" lang="veld">
+            {`module Auth {
+  description: "Authentication service"
+  baseUrl: https://auth.svc.example.com
+  prefix: /api/auth
+
+  action Login {
+    method: POST
+    path:   /login
+    input:  LoginInput
+    output: TokenResponse
+  }
+}
+
+module Orders {
+  description: "Orders service"
+  baseUrl: https://orders.svc.example.com
+  prefix: /api/orders
+
+  action ListOrders {
+    method: GET
+    path:   /
+    output: Order[]
+  }
+}`}
+          </CodeBlock>
+
+          <h3 className={styles.sectionSubtitle}>services map (in config)</h3>
+          <p className={styles.sectionDesc}>
+            Alternatively, set per-module base URLs in config — useful when URLs change between
+            environments:
+          </p>
+          <CodeBlock title="veld.config.json" lang="json">
+            {`{
+  "description": "E-commerce platform",
+  "backend":  "node",
+  "frontend": "typescript",
+  "baseUrl":  "https://api.example.com",
+  "services": {
+    "Auth":   "https://auth.svc.example.com",
+    "Orders": "https://orders.svc.example.com"
+  }
+}`}
+          </CodeBlock>
+          <p className={styles.sectionDesc}>
+            <code>baseUrl</code> is the global fallback. The <code>services</code> map overrides it
+            per-module. The generated SDK routes each module's calls to its own base URL automatically.
+          </p>
+
+          <h3 className={styles.sectionSubtitle}>Workspace — polyglot monorepo</h3>
+          <p className={styles.sectionDesc}>
+            Use <code>workspace</code> to define multiple independent services in one repo, each
+            with its own backend language and output directory:
+          </p>
+          <CodeBlock title="veld.config.json" lang="json">
+            {`{
+  "workspace": [
+    {
+      "name":    "auth",
+      "input":   "veld/auth.veld",
+      "backend": "node",
+      "out":     "services/auth/generated"
+    },
+    {
+      "name":    "orders",
+      "input":   "veld/orders.veld",
+      "backend": "go",
+      "out":     "services/orders/generated"
+    },
+    {
+      "name":    "notifications",
+      "input":   "veld/notifications.veld",
+      "backend": "python",
+      "out":     "services/notifications/generated"
+    }
+  ]
+}`}
+          </CodeBlock>
+          <CodeBlock title="Terminal">
+            {`# Generate all services in one command:
+$ veld generate --all
+
+✓ [auth]          7 files → services/auth/generated/
+✓ [orders]        5 files → services/orders/generated/
+✓ [notifications] 6 files → services/notifications/generated/`}
+          </CodeBlock>
+
+          <h3 className={styles.sectionSubtitle}>Server SDK</h3>
+          <p className={styles.sectionDesc}>
+            When <code>serverSdk: true</code> (or <code>--server-sdk</code>), Veld also generates
+            a typed server-to-server client. Unlike the frontend SDK, it requires an explicit
+            <code> baseUrl</code> and never reads from environment variables.
+          </p>
+          <CodeBlock title="Terminal">
+            {`$ veld generate --server-sdk`}
+          </CodeBlock>
+          <div className={styles.tree}>
+{`generated/
+└── server-client/
+    └── api.ts    ← requires explicit baseUrl, no VELD_API_URL fallback`}
           </div>
         </section>
 
@@ -1236,25 +1592,28 @@ $ veld generate --backend=python`}
           <h2 className={styles.sectionTitle}>Node.js Backend Output</h2>
           <div className={styles.tree}>
 {`generated/
-├── index.ts              # Barrel export for clean imports
-├── package.json          # @veld/generated package alias
+├── index.ts                       # Barrel export
+├── package.json                   # @veld/generated alias
 ├── types/
-│   ├── users.ts          # Types owned by Users module
-│   ├── auth.ts           # Types owned by Auth module + re-exports shared
-│   └── index.ts          # Barrel re-export of all module type files
+│   ├── users.ts                   # Types owned by Users module
+│   ├── auth.ts                    # Types owned by Auth module + re-exports shared
+│   └── index.ts                   # Barrel re-export of all type files
 ├── interfaces/
-│   └── IUsersService.ts  # Service contract interface (typed path params)
+│   ├── IUsersService.ts           # REST service contract
+│   └── IEventsService.ts          # WS lifecycle: onConnect, onMessage?, onClose?, onError?
 ├── routes/
-│   └── users.routes.ts   # Route handlers: try/catch, Zod validation, HTTP status codes
+│   ├── users.routes.ts            # HTTP: try/catch, Zod validation, status codes
+│   └── events.routes.ts           # WS: mountEventsWS(server, service)
 ├── schemas/
-│   └── schemas.ts        # Zod validation schemas (supports extends)
+│   └── schemas.ts                 # Zod schemas (extends → .extend())
 └── client/
-    └── api.ts            # Frontend SDK with VeldApiError, path params`}
+    ├── api.ts                     # VeldApiClient with per-module clients + connectToX()
+    └── _internal.ts               # VeldClientConfig, VeldApiError, VeldWebSocket`}
           </div>
           <p className={styles.sectionDesc}>
-            Types are emitted into per-module files. Each type is <strong>defined</strong> in exactly
-            one file (the first module to use it). Other modules re-export shared types. A
-            barrel <code>types/index.ts</code> re-exports everything.
+            Each type is defined in exactly one file (the first module to reference it). Other
+            modules re-export shared types. All generated files begin with{' '}
+            <code>// AUTO-GENERATED BY VELD — DO NOT EDIT</code>.
           </p>
         </section>
 
@@ -1275,65 +1634,76 @@ $ veld generate --backend=python`}
 └── schemas/
     └── schemas.py           # Pydantic BaseModel schemas`}
           </div>
+          <p className={styles.sectionDesc}>
+            All generated Python files begin with{' '}
+            <code># AUTO-GENERATED BY VELD — DO NOT EDIT</code>.
+          </p>
         </section>
 
         {/* ─── OUTPUT: FRONTEND ─── */}
         <section id="output-frontend" className={styles.section}>
           <h2 className={styles.sectionTitle}>Frontend SDK</h2>
           <p className={styles.sectionDesc}>
-            The generated frontend SDK uses native <code>fetch</code> (no axios dependency)
-            with full type safety.
+            The generated frontend SDK uses native <code>fetch</code> — no axios, no runtime
+            dependencies. The new <code>VeldApiClient</code> class provides per-module clients
+            and WebSocket connect methods.
           </p>
-          <h3 className={styles.sectionSubtitle}>Features</h3>
-          <ul className={styles.featureList}>
-            <li><strong>VeldApiError</strong> class with <code>status</code> and <code>body</code> fields for type-safe error handling</li>
-            <li><strong>Path parameter interpolation:</strong> <code>/users/:id</code> becomes <code>{'/users/${id}'}</code> with typed <code>id: string</code> param</li>
-            <li><strong>All HTTP methods:</strong> <code>get()</code>, <code>post()</code>, <code>put()</code>, <code>patch()</code>, <code>del()</code></li>
-            <li><strong>Base URL:</strong> configurable via config or <code>process.env.VELD_API_URL</code></li>
-            <li><strong>Zero dependencies:</strong> uses only native <code>fetch</code></li>
-          </ul>
-          <CodeBlock title="client/api.ts (generated)" lang="ts">
-            {`// AUTO-GENERATED BY VELD — DO NOT EDIT
 
-export class VeldApiError extends Error {
-  constructor(public status: number, public body: unknown) {
-    super(\`API error \${status}\`);
-  }
-}
+          <h3 className={styles.sectionSubtitle}>VeldApiClient initialization</h3>
+          <CodeBlock title="Usage" lang="ts">
+            {`import { VeldApiClient } from '@veld/generated/client/api';
 
-const BASE_URL = process.env.VELD_API_URL || '';
+// String shorthand — baseUrl only:
+const api = new VeldApiClient('https://api.example.com');
 
-export const Users = {
-  async listUsers(): Promise<User[]> {
-    const res = await fetch(\`\${BASE_URL}/api/v1/users\`);
-    if (!res.ok) throw new VeldApiError(res.status, await res.json());
-    return res.json();
-  },
+// Full config — headers, auth, etc.:
+const api = new VeldApiClient({
+  baseUrl: 'https://api.example.com',
+  headers: { Authorization: 'Bearer ' + token },
+});
 
-  async getUser(id: string): Promise<User> {
-    const res = await fetch(\`\${BASE_URL}/api/v1/users/\${id}\`);
-    if (!res.ok) throw new VeldApiError(res.status, await res.json());
-    return res.json();
-  },
-
-  async createUser(data: CreateUserInput): Promise<User> {
-    const res = await fetch(\`\${BASE_URL}/api/v1/users\`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new VeldApiError(res.status, await res.json());
-    return res.json();
-  },
-};`}
+// No args — reads VELD_API_URL from environment:
+const api = new VeldApiClient();`}
           </CodeBlock>
+
+          <h3 className={styles.sectionSubtitle}>Calling REST endpoints</h3>
+          <CodeBlock title="Usage" lang="ts">
+            {`// Per-module sub-clients (when services map is configured):
+const users  = await api.users.listUsers();   // User[]
+const user   = await api.users.getUser('abc-123');  // User
+await api.users.createUser({ email: 'a@b.com', name: 'Alice' });
+await api.users.deleteUser('abc-123');
+
+// Error handling:
+import { VeldApiError } from '@veld/generated/client/_internal';
+
+try {
+  await api.users.getUser('nonexistent');
+} catch (err) {
+  if (err instanceof VeldApiError) {
+    console.error(err.status); // e.g. 404
+    console.error(err.body);   // parsed response body
+  }
+}`}
+          </CodeBlock>
+
+          <h3 className={styles.sectionSubtitle}>SDK features</h3>
+          <ul className={styles.featureList}>
+            <li><strong>VeldApiError</strong> with typed <code>status: number</code> and <code>body: unknown</code></li>
+            <li><strong>Path param interpolation:</strong> <code>/users/:id</code> → typed <code>id: string</code> parameter</li>
+            <li><strong>All HTTP methods:</strong> <code>get()</code>, <code>post()</code>, <code>put()</code>, <code>patch()</code>, <code>del()</code></li>
+            <li><strong>Per-module sub-clients</strong> when <code>services</code> map is configured</li>
+            <li><strong>WS connect methods</strong> for every <code>method: WS</code> action</li>
+            <li><strong>Zero dependencies</strong> — only native <code>fetch</code> and <code>WebSocket</code></li>
+          </ul>
         </section>
 
         {/* ─── OUTPUT: SCHEMAS ─── */}
         <section id="output-schemas" className={styles.section}>
           <h2 className={styles.sectionTitle}>Validation Schemas</h2>
           <p className={styles.sectionDesc}>
-            Veld generates validation schemas that are used automatically in route handlers.
+            Schemas are generated automatically and used inside route handlers. You can also
+            import and use them directly.
           </p>
           <h3 className={styles.sectionSubtitle}>Node.js (Zod)</h3>
           <CodeBlock title="schemas/schemas.ts" lang="ts">
@@ -1342,32 +1712,42 @@ export const Users = {
 export const RoleSchema = z.enum(['admin', 'user', 'guest']);
 
 export const UserSchema = z.object({
-  id: z.string().uuid(),
-  email: z.string(),
-  name: z.string(),
-  role: RoleSchema.default('user'),
+  id:        z.string().uuid(),
+  email:     z.string(),
+  name:      z.string(),
+  role:      RoleSchema.default('user'),
+  createdAt: z.string().datetime(),
+});
+
+// Extends generate .extend():
+export const AdminUserSchema = UserSchema.extend({
+  permissions: z.array(z.string()),
 });
 
 export const CreateUserInputSchema = z.object({
   email: z.string(),
-  name: z.string(),
+  name:  z.string(),
 });`}
           </CodeBlock>
 
           <h3 className={styles.sectionSubtitle}>Python (Pydantic)</h3>
           <CodeBlock title="schemas/schemas.py">
             {`from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 class UserSchema(BaseModel):
-    id: str
-    email: str
-    name: str
-    role: str = 'user'
+    id:         str
+    email:      str
+    name:       str
+    role:       str = 'user'
+    created_at: str
+
+class AdminUserSchema(UserSchema):
+    permissions: List[str]
 
 class CreateUserInputSchema(BaseModel):
     email: str
-    name: str`}
+    name:  str`}
           </CodeBlock>
         </section>
 
@@ -1375,16 +1755,19 @@ class CreateUserInputSchema(BaseModel):
         <section id="output-routes" className={styles.section}>
           <h2 className={styles.sectionTitle}>Route Handlers</h2>
           <p className={styles.sectionDesc}>
-            Generated route handlers include try/catch wrapping, input validation, correct HTTP
-            status codes, and path parameter extraction.
+            Generated route handlers include try/catch wrapping, Zod input validation, correct
+            HTTP status codes, and path parameter extraction. The <code>router</code> parameter
+            accepts <code>any</code> — wire in Express, Fastify, Hono, or any router with{' '}
+            <code>.get()</code>/<code>.post()</code>.
           </p>
-          <CodeBlock title="routes/users.routes.ts" lang="ts">
-            {`import { IUsersService } from '../interfaces/IUsersService';
+          <CodeBlock title="routes/users.routes.ts (generated)" lang="ts">
+            {`// AUTO-GENERATED BY VELD — DO NOT EDIT
+import { IUsersService } from '../interfaces/IUsersService';
 import { CreateUserInputSchema } from '../schemas/schemas';
 
 export function registerUsersRoutes(router: any, service: IUsersService) {
 
-  router.get('/api/v1/users', async (req, res) => {
+  router.get('/api/v1/users', async (req: any, res: any) => {
     try {
       const result = await service.listUsers();
       res.status(200).json(result);
@@ -1393,20 +1776,29 @@ export function registerUsersRoutes(router: any, service: IUsersService) {
     }
   });
 
-  router.post('/api/v1/users', async (req, res) => {
+  router.get('/api/v1/users/:id', async (req: any, res: any) => {
+    try {
+      const result = await service.getUser(req.params.id);
+      res.status(200).json(result);
+    } catch (err) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  router.post('/api/v1/users', async (req: any, res: any) => {
     try {
       const input = CreateUserInputSchema.parse(req.body);
       const result = await service.createUser(input);
       res.status(201).json(result);
-    } catch (err) {
-      if (err.name === 'ZodError') {
+    } catch (err: any) {
+      if (err?.name === 'ZodError') {
         return res.status(400).json({ errors: err.issues });
       }
       res.status(500).json({ error: 'Internal server error' });
     }
   });
 
-  router.delete('/api/v1/users/:id', async (req, res) => {
+  router.delete('/api/v1/users/:id', async (req: any, res: any) => {
     try {
       await service.deleteUser(req.params.id);
       res.status(204).end();
@@ -1416,10 +1808,33 @@ export function registerUsersRoutes(router: any, service: IUsersService) {
   });
 }`}
           </CodeBlock>
+        </section>
+
+        {/* ─── OUTPUT: SERVER SDK ─── */}
+        <section id="output-server-sdk" className={styles.section}>
+          <h2 className={styles.sectionTitle}>Server SDK</h2>
+          <p className={styles.sectionDesc}>
+            Enabled with <code>serverSdk: true</code> in config or <code>--server-sdk</code> on
+            the CLI. Generates a typed server-to-server HTTP client. Unlike the frontend SDK,
+            it requires an explicit <code>baseUrl</code> and never reads from{' '}
+            <code>VELD_API_URL</code>.
+          </p>
+          <div className={styles.tree}>
+{`generated/
+└── server-client/
+    └── api.ts    ← server-to-server typed client`}
+          </div>
+          <CodeBlock title="Usage" lang="ts">
+            {`import { VeldServerClient } from '@veld/generated/server-client/api';
+
+// baseUrl is required — no env fallback
+const internal = new VeldServerClient('https://users.svc.internal');
+
+const user = await internal.users.getUser('abc-123');`}
+          </CodeBlock>
           <div className={styles.infoCard}>
-            <strong>Framework agnostic:</strong> The <code>router</code> parameter accepts
-            <code> any</code> &mdash; wire in Express, Fastify, Hono, or any router with
-            <code> .get()</code>/<code>.post()</code> methods.
+            Use the server SDK when one microservice needs to call another. The frontend SDK
+            is intended for browser/mobile clients; the server SDK is for server-to-server calls.
           </div>
         </section>
 
@@ -1427,24 +1842,23 @@ export function registerUsersRoutes(router: any, service: IUsersService) {
         <section id="usage-backend" className={styles.section}>
           <h2 className={styles.sectionTitle}>Backend Integration</h2>
           <p className={styles.sectionDesc}>
-            Implement the generated service interface, then wire it to your router.
-            Veld never touches your business logic files.
+            Implement the generated service interface, then pass it to the generated route
+            registration function. Veld never touches your business logic files.
           </p>
 
-          <h3 className={styles.sectionSubtitle}>1. Implement the interface</h3>
+          <h3 className={styles.sectionSubtitle}>1. Implement the service</h3>
           <CodeBlock title="src/services/UsersService.ts" lang="ts">
             {`import { IUsersService } from '@veld/generated/interfaces/IUsersService';
 import { User, CreateUserInput } from '@veld/generated/types';
 
 export class UsersService implements IUsersService {
   async listUsers(): Promise<User[]> {
-    // Your business logic here
     return await db.users.findMany();
   }
 
   async getUser(id: string): Promise<User> {
     const user = await db.users.findUnique({ where: { id } });
-    if (!user) throw new Error('User not found');
+    if (!user) throw new Error('Not found');
     return user;
   }
 
@@ -1458,22 +1872,18 @@ export class UsersService implements IUsersService {
 }`}
           </CodeBlock>
 
-          <h3 className={styles.sectionSubtitle}>2. Wire routes to your server</h3>
-          <CodeBlock title="src/index.ts" lang="ts">
+          <h3 className={styles.sectionSubtitle}>2. Wire to your router</h3>
+          <CodeBlock title="Express" lang="ts">
             {`import express from 'express';
 import { registerUsersRoutes } from '@veld/generated/routes/users.routes';
 import { UsersService } from './services/UsersService';
 
 const app = express();
 app.use(express.json());
-
 registerUsersRoutes(app, new UsersService());
-
 app.listen(3000);`}
           </CodeBlock>
-
-          <h3 className={styles.sectionSubtitle}>Works with any router</h3>
-          <CodeBlock title="With Fastify" lang="ts">
+          <CodeBlock title="Fastify" lang="ts">
             {`import Fastify from 'fastify';
 import { registerUsersRoutes } from '@veld/generated/routes/users.routes';
 import { UsersService } from './services/UsersService';
@@ -1482,55 +1892,92 @@ const app = Fastify();
 registerUsersRoutes(app, new UsersService());
 app.listen({ port: 3000 });`}
           </CodeBlock>
+          <CodeBlock title="Hono" lang="ts">
+            {`import { Hono } from 'hono';
+import { registerUsersRoutes } from '@veld/generated/routes/users.routes';
+import { UsersService } from './services/UsersService';
+
+const app = new Hono();
+registerUsersRoutes(app, new UsersService());
+export default app;`}
+          </CodeBlock>
         </section>
 
         {/* ─── USAGE: FRONTEND ─── */}
         <section id="usage-frontend" className={styles.section}>
           <h2 className={styles.sectionTitle}>Frontend SDK Usage</h2>
-          <p className={styles.sectionDesc}>
-            The generated frontend SDK provides fully typed methods for every action in your contract.
-          </p>
-          <CodeBlock title="Using the SDK" lang="ts">
-            {`import { Users } from '@veld/generated/client/api';
-import { VeldApiError } from '@veld/generated/client/api';
+          <CodeBlock title="src/api.ts" lang="ts">
+            {`import { VeldApiClient } from '@veld/generated/client/api';
+import { VeldApiError } from '@veld/generated/client/_internal';
 
-// List all users
-const users = await Users.listUsers();
-// ^? User[]
-
-// Get a single user (path param is typed)
-const user = await Users.getUser('user-123');
-// ^? User
-
-// Create a user (input is typed)
-const newUser = await Users.createUser({
-  email: 'alice@example.com',
-  name: 'Alice',
+const api = new VeldApiClient({
+  baseUrl: import.meta.env.VITE_API_URL,
+  headers: { 'X-App-Version': '2.0' },
 });
-// ^? User
 
-// Error handling
+// All methods are fully typed
+const users = await api.users.listUsers();          // User[]
+const user  = await api.users.getUser('abc-123');   // User
+const newUser = await api.users.createUser({
+  email: 'alice@example.com',
+  name:  'Alice',
+});
+
+// Type-safe error handling
 try {
-  await Users.getUser('nonexistent');
+  await api.users.getUser('bad-id');
 } catch (err) {
   if (err instanceof VeldApiError) {
-    console.error(err.status); // 404
-    console.error(err.body);   // { error: '...' }
+    if (err.status === 404) {
+      console.log('User not found');
+    }
   }
 }`}
           </CodeBlock>
+        </section>
 
-          <h3 className={styles.sectionSubtitle}>Setting the Base URL</h3>
-          <CodeBlock title="Environment variable" lang="ts">
-            {`// Option 1: Environment variable
-// Set VELD_API_URL=https://api.example.com in your .env
+        {/* ─── USAGE: WEBSOCKET CLIENT ─── */}
+        <section id="usage-websockets" className={styles.section}>
+          <h2 className={styles.sectionTitle}>WebSocket Client</h2>
+          <p className={styles.sectionDesc}>
+            WebSocket actions generate typed <code>connectToX()</code> methods on the
+            module client. The return type is <code>{'VeldWebSocket<TReceive, TSend>'}</code>.
+          </p>
+          <CodeBlock title="Usage" lang="ts">
+            {`import { VeldApiClient } from '@veld/generated/client/api';
+import type { EventMessage, ClientCommand } from '@veld/generated/types';
 
-// Option 2: Config file — set baseUrl in veld.config.json
-// { "baseUrl": "https://api.example.com" }
+const api = new VeldApiClient('https://api.example.com');
 
-// The SDK reads from:
-// 1. baseUrl from config (baked into generated code)
-// 2. process.env.VELD_API_URL (runtime fallback)`}
+// Path params become typed arguments:
+// connectToSubscribe(room: string): VeldWebSocket<EventMessage, ClientCommand>
+const ws = api.events.connectToSubscribe('general');
+
+// Typed message handler:
+ws.onMessage((msg: EventMessage) => {
+  console.log(msg.type, msg.payload);
+});
+
+// Typed send — only accepts ClientCommand:
+ws.send({ action: 'ping', data: '' } satisfies ClientCommand);
+
+// Close the connection:
+ws.close();`}
+          </CodeBlock>
+
+          <h3 className={styles.sectionSubtitle}>Auto-reconnect</h3>
+          <CodeBlock title="VeldWebSocket reconnect behaviour" lang="ts">
+            {`// VeldWebSocket reconnects automatically on disconnect.
+// Backoff schedule: 1s → 2s → 4s → 8s → 16s → 30s (capped)
+//
+// To disable reconnect:
+const ws = api.events.connectToSubscribe('general', { reconnect: false });
+
+// To handle reconnect events:
+ws.onReconnect(() => {
+  console.log('Reconnected');
+  ws.send({ action: 'rejoin', data: 'general' });
+});`}
           </CodeBlock>
         </section>
 
@@ -1538,8 +1985,9 @@ try {
         <section id="usage-path-alias" className={styles.section}>
           <h2 className={styles.sectionTitle}>Path Aliases</h2>
           <p className={styles.sectionDesc}>
-            The generated <code>package.json</code> enables the <code>@veld/generated</code> import alias.
-            Add this to your <code>tsconfig.json</code> to use it:
+            The generated <code>package.json</code> sets up the <code>@veld/generated</code>{' '}
+            alias. Run <code>veld setup</code> to automatically patch your{' '}
+            <code>tsconfig.json</code>, or add it manually:
           </p>
           <CodeBlock title="tsconfig.json" lang="json">
             {`{
@@ -1550,14 +1998,11 @@ try {
   }
 }`}
           </CodeBlock>
-          <p className={styles.sectionDesc}>
-            Then import generated code anywhere:
-          </p>
           <CodeBlock title="Usage" lang="ts">
-            {`import { User } from '@veld/generated/types';
-import { IUsersService } from '@veld/generated/interfaces/IUsersService';
+            {`import type { User }           from '@veld/generated/types';
+import { IUsersService }      from '@veld/generated/interfaces/IUsersService';
 import { registerUsersRoutes } from '@veld/generated/routes/users.routes';
-import { Users } from '@veld/generated/client/api';`}
+import { VeldApiClient }       from '@veld/generated/client/api';`}
           </CodeBlock>
         </section>
 
@@ -1565,26 +2010,22 @@ import { Users } from '@veld/generated/client/api';`}
         <section id="stacks-backends" className={styles.section}>
           <h2 className={styles.sectionTitle}>Backend Emitters</h2>
           <p className={styles.sectionDesc}>
-            Veld supports 7 backend target languages. Each emitter generates types, service interfaces,
-            route handlers, and validation schemas in the target language.
+            Eight backend targets. Each generates types, service interfaces, route handlers,
+            and validation schemas in the target language.
           </p>
           <table className={styles.table}>
             <thead>
-              <tr>
-                <th>Flag Value</th>
-                <th>Language</th>
-                <th>Validation</th>
-                <th>Route Style</th>
-              </tr>
+              <tr><th>Flag</th><th>Language</th><th>Validation</th><th>Default style</th></tr>
             </thead>
             <tbody>
-              <tr><td><code>node</code></td><td>TypeScript (Node.js)</td><td>Zod</td><td>Express/Fastify/Hono</td></tr>
-              <tr><td><code>python</code></td><td>Python</td><td>Pydantic</td><td>Flask</td></tr>
-              <tr><td><code>go</code></td><td>Go</td><td>Built-in</td><td>Chi/Mux</td></tr>
-              <tr><td><code>java</code></td><td>Java</td><td>Jakarta</td><td>Spring Boot</td></tr>
-              <tr><td><code>csharp</code></td><td>C#</td><td>DataAnnotations</td><td>ASP.NET</td></tr>
-              <tr><td><code>php</code></td><td>PHP</td><td>Built-in</td><td>Laravel</td></tr>
-              <tr><td><code>rust</code></td><td>Rust</td><td>serde</td><td>Actix/Axum</td></tr>
+              <tr><td><code>node</code></td><td>TypeScript (Node.js)</td><td>Zod</td><td>Router-agnostic TS (<code>router: any</code>)</td></tr>
+              <tr><td><code>javascript</code></td><td>JavaScript (Node.js)</td><td>Zod</td><td>Same, no TypeScript</td></tr>
+              <tr><td><code>python</code></td><td>Python</td><td>Pydantic</td><td>Typed ABC interfaces</td></tr>
+              <tr><td><code>go</code></td><td>Go</td><td>Built-in</td><td>net/http 1.22 handlers</td></tr>
+              <tr><td><code>rust</code></td><td>Rust</td><td>Serde</td><td>Typed service traits</td></tr>
+              <tr><td><code>java</code></td><td>Java</td><td>Jakarta</td><td>Service interfaces + build.gradle</td></tr>
+              <tr><td><code>csharp</code></td><td>C#</td><td>DataAnnotations</td><td>ASP.NET Core service interfaces</td></tr>
+              <tr><td><code>php</code></td><td>PHP</td><td>Built-in</td><td>Service contracts</td></tr>
             </tbody>
           </table>
         </section>
@@ -1594,43 +2035,96 @@ import { Users } from '@veld/generated/client/api';`}
           <h2 className={styles.sectionTitle}>Frontend Emitters</h2>
           <table className={styles.table}>
             <thead>
-              <tr>
-                <th>Flag Value</th>
-                <th>Language</th>
-                <th>Output File</th>
-                <th>Aliases</th>
-              </tr>
+              <tr><th>Flag</th><th>Output</th><th>Aliases</th></tr>
             </thead>
             <tbody>
-              <tr><td><code>typescript</code></td><td>TypeScript</td><td><code>client/api.ts</code></td><td><code>react</code></td></tr>
-              <tr><td><code>dart</code></td><td>Dart</td><td><code>client/api_client.dart</code></td><td><code>flutter</code></td></tr>
-              <tr><td><code>kotlin</code></td><td>Kotlin</td><td><code>client/ApiClient.kt</code></td><td>&mdash;</td></tr>
-              <tr><td><code>swift</code></td><td>Swift</td><td><code>client/APIClient.swift</code></td><td>&mdash;</td></tr>
-              <tr><td><code>none</code></td><td>&mdash;</td><td>No frontend SDK generated</td><td>&mdash;</td></tr>
+              <tr><td><code>typescript</code></td><td>Fetch-based SDK with <code>VeldApiClient</code></td><td><code>react</code></td></tr>
+              <tr><td><code>vue</code></td><td>Vue Composables wrapping TS SDK</td><td>—</td></tr>
+              <tr><td><code>angular</code></td><td>Angular services wrapping TS SDK</td><td>—</td></tr>
+              <tr><td><code>svelte</code></td><td>Svelte stores/functions wrapping TS SDK</td><td>—</td></tr>
+              <tr><td><code>dart</code></td><td>Dart http client SDK</td><td><code>flutter</code></td></tr>
+              <tr><td><code>kotlin</code></td><td>Kotlin client SDK</td><td>—</td></tr>
+              <tr><td><code>swift</code></td><td>Swift URLSession SDK</td><td>—</td></tr>
+              <tr><td><code>javascript</code></td><td>Plain JS fetch SDK (no TypeScript)</td><td>—</td></tr>
+              <tr><td><code>types-only</code></td><td>Types with no SDK logic</td><td>—</td></tr>
+              <tr><td><code>none</code></td><td>No frontend SDK generated</td><td>—</td></tr>
             </tbody>
           </table>
         </section>
 
-        {/* ─── STACKS: EXTRAS ─── */}
-        <section id="stacks-extras" className={styles.section}>
-          <h2 className={styles.sectionTitle}>Extras</h2>
+        {/* ─── STACKS: FRAMEWORKS ─── */}
+        <section id="stacks-frameworks" className={styles.section}>
+          <h2 className={styles.sectionTitle}>Framework Strategies</h2>
           <p className={styles.sectionDesc}>
-            Beyond code generation, Veld can produce additional output formats:
+            For backends that support multiple frameworks, set <code>backendFramework</code> in
+            config or pass <code>--backend-framework</code> to the CLI.
+          </p>
+          <table className={styles.table}>
+            <thead>
+              <tr><th>Backend</th><th>Framework values</th><th>Default (no framework)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>node</code></td><td><code>express</code></td><td>Router-agnostic TS (<code>router: any</code>)</td></tr>
+              <tr><td><code>javascript</code></td><td><code>express</code></td><td>Router-agnostic JS</td></tr>
+              <tr><td><code>python</code></td><td><code>flask</code>, <code>fastapi</code></td><td>Pure typed ABC interfaces</td></tr>
+              <tr><td><code>go</code></td><td><code>chi</code>, <code>gin</code></td><td>net/http 1.22 handlers</td></tr>
+              <tr><td><code>rust</code></td><td><code>axum</code></td><td>Typed service traits</td></tr>
+              <tr><td><code>java</code></td><td><code>spring</code></td><td>Service interfaces + build.gradle</td></tr>
+              <tr><td><code>csharp</code></td><td><code>aspnet</code></td><td>Service interfaces</td></tr>
+              <tr><td><code>php</code></td><td><code>laravel</code></td><td>Service contracts</td></tr>
+            </tbody>
+          </table>
+          <CodeBlock title="Config" lang="json">
+            {`{
+  "backend":          "node",
+  "backendFramework": "express"
+}`}
+          </CodeBlock>
+          <CodeBlock title="CLI">
+            {`$ veld generate --backend=node --backend-framework=express
+$ veld generate --backend=python --backend-framework=fastapi
+$ veld generate --backend=go --backend-framework=chi`}
+          </CodeBlock>
+        </section>
+
+        {/* ─── AI DISCOVERABILITY ─── */}
+        <section id="ai-export" className={styles.section}>
+          <h2 className={styles.sectionTitle}>AI Discoverability</h2>
+          <p className={styles.sectionDesc}>
+            <code>veld export agents</code> generates a compact Markdown file with your full API
+            contract, types, and SDK usage examples — optimised for AI assistants (Claude, Copilot,
+            Cursor) to ingest in a single read.
+          </p>
+          <CodeBlock title="Terminal">
+            {`# Print to stdout:
+$ veld export agents
+
+# Write to file:
+$ veld export agents -o AGENTS.md`}
+          </CodeBlock>
+          <p className={styles.sectionDesc}>
+            The generated <code>AGENTS.md</code> includes:
           </p>
           <ul className={styles.featureList}>
-            <li><strong>OpenAPI 3.0</strong> &mdash; <code>veld openapi -o openapi.json</code></li>
-            <li><strong>Prisma Schema</strong> &mdash; <code>veld schema --format=prisma</code></li>
-            <li><strong>SQL DDL</strong> &mdash; <code>veld schema --format=sql</code></li>
-            <li><strong>API Documentation</strong> &mdash; <code>veld docs</code></li>
-            <li><strong>Contract Diff</strong> &mdash; <code>veld diff</code></li>
+            <li>All models and their fields with types</li>
+            <li>All enums</li>
+            <li>All modules with actions (method, path, input, output)</li>
+            <li>Ready-to-use SDK code examples for each action</li>
+            <li>WebSocket connect/send/receive examples for WS actions</li>
+            <li>The <code>description</code> from <code>veld.config.json</code> as a header</li>
           </ul>
+          <div className={styles.infoCard}>
+            Commit <code>AGENTS.md</code> to your repo root so AI assistants automatically
+            discover your API surface without reading generated TypeScript or contract files.
+          </div>
         </section>
 
         {/* ─── EDITOR: VS CODE ─── */}
         <section id="editor-vscode" className={styles.section}>
           <h2 className={styles.sectionTitle}>VS Code Extension</h2>
           <p className={styles.sectionDesc}>
-            The Veld VS Code extension provides a first-class editing experience for <code>.veld</code> files.
+            First-class editing for <code>.veld</code> files with real-time diagnostics,
+            completions, and navigation.
           </p>
           <h3 className={styles.sectionSubtitle}>Installation</h3>
           <ol className={styles.featureList}>
@@ -1642,11 +2136,11 @@ import { Users } from '@veld/generated/client/api';`}
           <h3 className={styles.sectionSubtitle}>Features</h3>
           <ul className={styles.featureList}>
             <li>Syntax highlighting for <code>.veld</code> files</li>
-            <li>Real-time diagnostics (errors and warnings)</li>
+            <li>Real-time error and warning diagnostics</li>
             <li>Autocomplete for keywords, types, and model/enum references</li>
-            <li>Hover information for types and actions</li>
+            <li>Hover information showing field types and descriptions</li>
             <li>Go-to-definition for model and enum references</li>
-            <li>Code snippets for models, modules, and actions</li>
+            <li>Code snippets: <code>model</code>, <code>module</code>, <code>action</code>, <code>enum</code></li>
           </ul>
         </section>
 
@@ -1661,13 +2155,13 @@ import { Users } from '@veld/generated/client/api';`}
             <li>Open Settings / Preferences</li>
             <li>Go to Plugins &rarr; Marketplace</li>
             <li>Search for <strong>"Veld"</strong></li>
-            <li>Click Install and restart the IDE</li>
+            <li>Click Install and restart</li>
           </ol>
           <h3 className={styles.sectionSubtitle}>Features</h3>
           <ul className={styles.featureList}>
             <li>Syntax highlighting and code folding</li>
-            <li>Error highlighting and quick-fixes</li>
-            <li>Autocomplete for all Veld keywords and types</li>
+            <li>Error highlighting with quick-fix actions</li>
+            <li>Autocomplete for Veld keywords, types, and references</li>
             <li>Navigate to definition</li>
           </ul>
         </section>
@@ -1676,31 +2170,31 @@ import { Users } from '@veld/generated/client/api';`}
         <section id="editor-lsp" className={styles.section}>
           <h2 className={styles.sectionTitle}>LSP Server</h2>
           <p className={styles.sectionDesc}>
-            Veld includes a built-in Language Server Protocol (LSP) server that any editor
-            can use for diagnostics, completions, and hover information.
+            Veld ships a built-in Language Server Protocol server — any editor can connect to
+            it for diagnostics, completions, hover, and go-to-definition.
           </p>
           <CodeBlock title="Start the LSP server">
             {`$ veld lsp
 
-# The LSP server communicates via JSON-RPC 2.0 over stdin/stdout.
-# Configure your editor to launch "veld lsp" as the language server
+# Communicates via JSON-RPC 2.0 over stdin/stdout.
+# Configure your editor to run "veld lsp" as the language server
 # for .veld files.`}
           </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>Supported LSP Features</h3>
+          <h3 className={styles.sectionSubtitle}>Supported capabilities</h3>
           <ul className={styles.featureList}>
-            <li><strong>textDocument/publishDiagnostics</strong> &mdash; real-time error reporting</li>
-            <li><strong>textDocument/completion</strong> &mdash; keyword, type, and reference completions</li>
-            <li><strong>textDocument/hover</strong> &mdash; type information on hover</li>
-            <li><strong>textDocument/definition</strong> &mdash; go-to-definition for model/enum references</li>
+            <li><code>textDocument/publishDiagnostics</code> — real-time error reporting</li>
+            <li><code>textDocument/completion</code> — keyword, type, and reference completions</li>
+            <li><code>textDocument/hover</code> — type info and descriptions on hover</li>
+            <li><code>textDocument/definition</code> — go-to-definition for model/enum references</li>
           </ul>
-          <h3 className={styles.sectionSubtitle}>Neovim Setup</h3>
+          <h3 className={styles.sectionSubtitle}>Neovim setup</h3>
           <CodeBlock title="init.lua">
             {`vim.api.nvim_create_autocmd('FileType', {
   pattern = 'veld',
   callback = function()
     vim.lsp.start({
       name = 'veld',
-      cmd = { 'veld', 'lsp' },
+      cmd  = { 'veld', 'lsp' },
       root_dir = vim.fs.dirname(
         vim.fs.find({ 'veld.config.json' }, { upward = true })[1]
       ),
@@ -1710,123 +2204,125 @@ import { Users } from '@veld/generated/client/api';`}
           </CodeBlock>
         </section>
 
-        {/* ── Cloud Registry ─────────────────────────────────────────── */}
-
+        {/* ─── REGISTRY: OVERVIEW ─── */}
         <section id="registry-overview" className={styles.section}>
           <h2 className={styles.sectionTitle}>Cloud Registry</h2>
           <p className={styles.sectionDesc}>
-            The Veld Registry is a typed contract package registry — think npm, but for <code>.veld</code> files.
-            Teams publish their contracts once; every repo that consumes them pulls exact versions.
-            Generated SDKs are always in sync across services with zero manual copy-paste.
+            The Veld Registry is a typed contract package registry — like npm, but for{' '}
+            <code>.veld</code> files. Teams publish contracts once; every consuming repo pulls
+            exact versions. Generated SDKs stay in sync across services with no manual
+            copy-paste.
           </p>
           <p className={styles.sectionDesc}>
-            The registry is <strong>fully self-hostable</strong> — run it on your own server with a single binary
-            and a PostgreSQL database. Or connect to a hosted instance. Either way the CLI workflow is identical.
+            The registry is <strong>fully self-hostable</strong> — a single Go binary and a
+            PostgreSQL database. The CLI workflow is identical whether you use a self-hosted
+            instance or a hosted registry.
           </p>
-          <h3 className={styles.sectionSubtitle}>How it works</h3>
-          <CodeBlock title="Team workflow">{`# Team A publishes their auth contracts
+          <h3 className={styles.sectionSubtitle}>Team workflow</h3>
+          <CodeBlock title="Terminal">
+            {`# Team A publishes their auth contracts:
 cd auth-service/veld
-veld push                          # → @acme/auth@1.2.0 on registry
+veld push                           # → @acme/auth@1.2.0
 
-# Team B consumes them in a completely separate repo
-veld pull @acme/auth@1.2.0        # → veld/packages/@acme/auth/
-veld generate                      # → fully typed SDK from pulled contracts`}
+# Team B consumes them in a separate repo:
+veld pull @acme/auth@1.2.0          # → veld/packages/@acme/auth/
+veld generate                        # → fully typed SDK from pulled contracts`}
           </CodeBlock>
         </section>
 
+        {/* ─── REGISTRY: SELF-HOST ─── */}
         <section id="registry-selfhost" className={styles.section}>
           <h2 className={styles.sectionTitle}>Self-Hosting</h2>
           <p className={styles.sectionDesc}>
-            The registry server is a single Go binary (<code>veld-registry</code>) that needs a PostgreSQL
-            database and a directory for tarball storage. The schema is applied automatically on first start.
+            The registry server is built into the main <code>veld</code> binary. Start it with
+            <code> veld serve</code>.
           </p>
-          <h3 className={styles.sectionSubtitle}>1. Build the server</h3>
-          <CodeBlock title="Build">{`go build -o veld-registry ./cmd/registry`}
-          </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>2. Create a config file</h3>
-          <CodeBlock title="registry.config.json" lang="json">{`{
+          <h3 className={styles.sectionSubtitle}>1. Create a config file</h3>
+          <CodeBlock title="registry.config.json" lang="json">
+            {`{
   "addr":    ":8080",
   "dsn":     "postgres://veld:secret@localhost:5432/veld?sslmode=disable",
   "storage": "./packages",
-  "secret":  "run: openssl rand -hex 32"
+  "secret":  "run: openssl rand -hex 32",
+  "base_url": "https://registry.example.com"
 }`}
           </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>3. Create the database and start</h3>
-          <CodeBlock title="Terminal">{`createdb veld
-./veld-registry --config registry.config.json
+          <h3 className={styles.sectionSubtitle}>2. Create the database and start</h3>
+          <CodeBlock title="Terminal">
+            {`createdb veld
+veld serve --config registry.config.json
 
-# Veld Registry  →  http://localhost:8080
+# Registry running on http://localhost:8080
 # Web UI available at http://localhost:8080/`}
           </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>Config priority</h3>
           <p className={styles.sectionDesc}>
-            Settings are merged in this order (highest wins):
+            The schema is applied automatically on first start. Config priority (highest wins):
           </p>
-          <CodeBlock>{`CLI flag  >  env var  >  registry.config.json  >  default
+          <CodeBlock>
+            {`CLI flag  >  env var  >  registry.config.json  >  default
 
-# Example: keep secrets out of the file, inject at runtime
-VELD_SECRET=mysecret ./veld-registry   # reads rest from registry.config.json`}
+# Keep secrets out of the file:
+VELD_SECRET=mysecret veld serve   # reads rest from registry.config.json`}
           </CodeBlock>
           <h3 className={styles.sectionSubtitle}>All config fields</h3>
-          <CodeBlock title="registry.config.json" lang="json">{`{
-  "addr":    ":8080",         // listen address  (env: VELD_ADDR)
-  "dsn":     "postgres://…",  // PostgreSQL DSN  (env: VELD_DSN)
-  "storage": "./packages",    // tarball dir     (env: VELD_STORAGE)
-  "secret":  "…"              // JWT secret ≥16c (env: VELD_SECRET)
-}`}
-          </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>Auto-detection</h3>
-          <p className={styles.sectionDesc}>
-            If <code>--config</code> is omitted, the server looks for <code>registry.config.json</code> then{' '}
-            <code>veld/registry.config.json</code> in the current directory.
-          </p>
+          <table className={styles.table}>
+            <thead>
+              <tr><th>Field</th><th>Env var</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>addr</code></td><td><code>VELD_ADDR</code></td><td>Listen address (default <code>:8080</code>)</td></tr>
+              <tr><td><code>dsn</code></td><td><code>VELD_DSN</code></td><td>PostgreSQL connection string</td></tr>
+              <tr><td><code>storage</code></td><td><code>VELD_STORAGE</code></td><td>Local directory for tarball storage</td></tr>
+              <tr><td><code>secret</code></td><td><code>VELD_SECRET</code></td><td>JWT signing secret (min 16 chars)</td></tr>
+              <tr><td><code>base_url</code></td><td><code>VELD_BASE_URL</code></td><td>Public URL shown in web UI</td></tr>
+              <tr><td><code>smtp.host</code></td><td><code>SMTP_HOST</code></td><td>SMTP host for email verification</td></tr>
+              <tr><td><code>smtp.port</code></td><td>—</td><td>SMTP port (default 587)</td></tr>
+              <tr><td><code>smtp.username</code></td><td><code>SMTP_USERNAME</code></td><td>SMTP username</td></tr>
+              <tr><td><code>smtp.password</code></td><td><code>SMTP_PASSWORD</code></td><td>SMTP password</td></tr>
+              <tr><td><code>smtp.from</code></td><td><code>SMTP_FROM</code></td><td>From address for outgoing email</td></tr>
+            </tbody>
+          </table>
         </section>
 
+        {/* ─── REGISTRY: LOGIN ─── */}
         <section id="registry-login" className={styles.section}>
           <h2 className={styles.sectionTitle}>Login &amp; Auth</h2>
           <p className={styles.sectionDesc}>
-            Authenticate the CLI against a registry with <code>veld login</code>. Credentials are stored
-            in <code>~/.veld/credentials.json</code> with 0600 permissions. Multiple registries can be
-            configured simultaneously.
+            Credentials are stored in <code>~/.veld/credentials.json</code> with{' '}
+            <code>0600</code> permissions. Multiple registries can be configured simultaneously.
           </p>
           <h3 className={styles.sectionSubtitle}>Interactive login</h3>
-          <CodeBlock title="Terminal">{`veld login --registry http://localhost:8080
+          <CodeBlock title="Terminal">
+            {`veld login --registry http://localhost:8080
 # Email: you@example.com
 # Password: ••••••••
 # ✓ Logged in to http://localhost:8080 as yourname`}
           </CodeBlock>
           <h3 className={styles.sectionSubtitle}>Token login (CI/CD)</h3>
-          <CodeBlock title="Terminal">{`# Create a token in the web UI, then:
-veld login --registry http://localhost:8080 --token vtk_xxxxxxxxxxxxxxxx
+          <CodeBlock title="Terminal">
+            {`veld login --registry http://localhost:8080 --token vtk_xxxxxxxxxxxxxxxx
 # ✓ Logged in to http://localhost:8080 as yourname`}
           </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>Check current identity</h3>
-          <CodeBlock title="Terminal">{`veld registry info
-# Registry: http://localhost:8080
-# User:     yourname (you@example.com)
-
-veld registry list     # show all configured registries`}
-          </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>Logout</h3>
-          <CodeBlock title="Terminal">{`veld logout
+          <h3 className={styles.sectionSubtitle}>Check identity &amp; logout</h3>
+          <CodeBlock title="Terminal">
+            {`veld registry info          # show current registry + logged-in user
+veld registry list          # show all configured registries
+veld logout
 veld logout --registry http://other-registry.com`}
           </CodeBlock>
         </section>
 
+        {/* ─── REGISTRY: PUSH ─── */}
         <section id="registry-push" className={styles.section}>
           <h2 className={styles.sectionTitle}>Publishing Contracts</h2>
           <p className={styles.sectionDesc}>
-            <code>veld push</code> packs your <code>.veld</code> files and <code>veld.config.json</code> into
-            a signed tarball and uploads it to the registry. You must be an <strong>admin</strong> or{' '}
-            <strong>owner</strong> of the organisation to publish.
+            <code>veld push</code> packs <code>.veld</code> files and <code>veld.config.json</code>{' '}
+            into a gzip-compressed, SHA-256 signed tarball and uploads it to the registry.
+            You must be an <strong>admin</strong> or <strong>owner</strong> of the organisation.
           </p>
-          <h3 className={styles.sectionSubtitle}>Configure publishing in veld.config.json</h3>
-          <CodeBlock title="veld/veld.config.json" lang="json">{`{
-  "input":    "app.veld",
-  "backend":  "node",
-  "frontend": "react",
-  "out":      "../generated",
-
+          <h3 className={styles.sectionSubtitle}>Configure in veld.config.json</h3>
+          <CodeBlock title="veld/veld.config.json" lang="json">
+            {`{
   "registry": {
     "enabled": true,
     "url":     "http://localhost:8080",
@@ -1837,73 +2333,65 @@ veld logout --registry http://other-registry.com`}
 }`}
           </CodeBlock>
           <h3 className={styles.sectionSubtitle}>Push</h3>
-          <CodeBlock title="Terminal">{`# Reads org/package/version/url from veld.config.json
+          <CodeBlock title="Terminal">
+            {`# Reads org/package/version/url from veld.config.json:
 veld push
 
-# Or override on the CLI
+# Override on the CLI:
 veld push --org acme --name auth-service --version 1.2.0
 veld push --registry http://localhost:8080 --org acme --name auth --version 2.0.0
 
 # Output:
-# ⬡  Packing contracts from ./veld…
-# ⬡  Publishing @acme/auth-service@1.2.0 (4.2 kB)…
+# ⬡  Packing contracts from ./veld...
+# ⬡  Publishing @acme/auth-service@1.2.0 (4.2 kB)...
 # ✓  Published @acme/auth-service@1.2.0`}
           </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>What gets packed</h3>
-          <ul className={styles.featureList}>
-            <li>All <code>.veld</code> files found recursively in the config directory</li>
-            <li><code>veld.config.json</code></li>
-            <li>Everything is gzip-compressed and SHA-256 signed for integrity verification</li>
-          </ul>
         </section>
 
+        {/* ─── REGISTRY: PULL ─── */}
         <section id="registry-pull" className={styles.section}>
           <h2 className={styles.sectionTitle}>Installing Contracts</h2>
           <p className={styles.sectionDesc}>
-            <code>veld pull</code> downloads a versioned contract package, verifies its SHA-256 checksum,
+            <code>veld pull</code> downloads a versioned package, verifies its SHA-256 checksum,
             and extracts it to <code>veld/packages/@org/name/</code>. Pulled contracts are imported
             exactly like local files.
           </p>
-          <h3 className={styles.sectionSubtitle}>Pull a package</h3>
-          <CodeBlock title="Terminal">{`veld pull @acme/auth-service          # latest version
-veld pull @acme/auth-service@1.2.0   # exact version
-veld pull @acme/auth-service@1.2.0 --out veld/packages  # custom dir`}
+          <CodeBlock title="Terminal">
+            {`veld pull @acme/auth-service             # latest version
+veld pull @acme/auth-service@1.2.0      # exact version
+veld pull @acme/auth-service@1.2.0 --out veld/packages   # custom dir`}
           </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>Declare dependencies in veld.config.json</h3>
-          <CodeBlock title="veld/veld.config.json" lang="json">{`{
-  "input": "app.veld",
-  "backend": "node",
-  "frontend": "react",
-  "out": "../generated",
-
+          <h3 className={styles.sectionSubtitle}>Declare dependencies in config</h3>
+          <CodeBlock title="veld/veld.config.json" lang="json">
+            {`{
   "registry": {
     "enabled": true,
     "url": "http://localhost:8080"
   },
-
   "dependencies": {
     "@acme/auth-service": "1.2.0",
     "@acme/shared-types": "2.0.0"
   }
 }`}
           </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>Use pulled contracts in imports</h3>
-          <CodeBlock title="veld/app.veld" lang="veld">{`// Pulled packages are available as @org/package imports
-import @acme/auth-service/UserModel
+          <h3 className={styles.sectionSubtitle}>Import pulled contracts</h3>
+          <CodeBlock title="veld/app.veld" lang="veld">
+            {`import @acme/auth-service/UserModel
 import @acme/shared-types/PaginationMeta
 
 module Orders {
   prefix: /api/orders
 
-  action GetOrders {
+  action ListOrders {
     method: GET
     path:   /
-    output: PaginationMeta   // ← from pulled package
+    output: PaginationMeta   // from pulled package
   }
 }`}
           </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>List available versions</h3>
-          <CodeBlock title="Terminal">{`veld registry versions @acme/auth-service
+          <h3 className={styles.sectionSubtitle}>List versions</h3>
+          <CodeBlock title="Terminal">
+            {`veld registry versions @acme/auth-service
 # @acme/auth-service — 3 version(s):
 #   v1.2.0
 #   v1.1.0
@@ -1911,16 +2399,18 @@ module Orders {
           </CodeBlock>
         </section>
 
+        {/* ─── REGISTRY: TEAMS ─── */}
         <section id="registry-teams" className={styles.section}>
           <h2 className={styles.sectionTitle}>Teams &amp; Organisations</h2>
           <p className={styles.sectionDesc}>
-            Packages are published under <em>organisations</em> (the <code>@scope</code>).
-            Each org has members with roles that control who can publish, manage members, and delete packages.
+            Packages are scoped under organisations (the <code>@scope</code>). Each org has
+            members with roles that control who can publish, manage members, and delete packages.
           </p>
           <h3 className={styles.sectionSubtitle}>Create an organisation</h3>
-          <CodeBlock title="Terminal">{`# Via web UI: http://localhost:8080/#/orgs → New Organisation
+          <CodeBlock title="Terminal">
+            {`# Via web UI: http://localhost:8080/#/orgs → New Organisation
 
-# Or use the API directly:
+# REST API:
 curl -X POST http://localhost:8080/api/v1/orgs \\
   -H "Authorization: Bearer vtk_…" \\
   -H "Content-Type: application/json" \\
@@ -1929,12 +2419,7 @@ curl -X POST http://localhost:8080/api/v1/orgs \\
           <h3 className={styles.sectionSubtitle}>Role permissions</h3>
           <table className={styles.table}>
             <thead>
-              <tr>
-                <th>Action</th>
-                <th>Member</th>
-                <th>Admin</th>
-                <th>Owner</th>
-              </tr>
+              <tr><th>Action</th><th>Member</th><th>Admin</th><th>Owner</th></tr>
             </thead>
             <tbody>
               <tr><td>Pull private packages</td><td>✓</td><td>✓</td><td>✓</td></tr>
@@ -1944,37 +2429,37 @@ curl -X POST http://localhost:8080/api/v1/orgs \\
               <tr><td>Unpublish versions</td><td>✗</td><td>✗</td><td>✓</td></tr>
             </tbody>
           </table>
-          <h3 className={styles.sectionSubtitle}>Add a team member</h3>
-          <CodeBlock title="Terminal">{`# Via web UI: http://localhost:8080/#/orgs/acme → Add Member
-
-# REST API:
-curl -X POST http://localhost:8080/api/v1/orgs/acme/members \\
+          <h3 className={styles.sectionSubtitle}>Add a member</h3>
+          <CodeBlock title="Terminal">
+            {`curl -X POST http://localhost:8080/api/v1/orgs/acme/members \\
   -H "Authorization: Bearer vtk_…" \\
   -d '{"username":"alice","role":"admin"}'`}
           </CodeBlock>
         </section>
 
+        {/* ─── REGISTRY: TOKENS ─── */}
         <section id="registry-tokens" className={styles.section}>
           <h2 className={styles.sectionTitle}>API Tokens</h2>
           <p className={styles.sectionDesc}>
-            API tokens are prefixed with <code>vtk_</code> and stored as SHA-256 hashes — the plain token
-            is shown <strong>only once</strong> at creation time. Use tokens for CI/CD pipelines and
-            non-interactive CLI auth.
+            Tokens are prefixed with <code>vtk_</code> and stored as SHA-256 hashes — the plain
+            text is shown <strong>only once</strong> at creation. Use tokens for CI/CD pipelines.
           </p>
           <h3 className={styles.sectionSubtitle}>Create a token</h3>
-          <CodeBlock title="Terminal">{`# Via web UI: http://localhost:8080/#/tokens → New Token
+          <CodeBlock title="Terminal">
+            {`# Via web UI: http://localhost:8080/#/tokens → New Token
 
-# Via CLI (after logging in):
+# Via CLI:
 veld registry token create --name ci-deploy --scopes read,write`}
           </CodeBlock>
           <h3 className={styles.sectionSubtitle}>Token scopes</h3>
           <ul className={styles.featureList}>
-            <li><code>read</code> — download packages and view private org packages</li>
+            <li><code>read</code> — download packages, view private org packages</li>
             <li><code>write</code> — publish new versions (<code>veld push</code>)</li>
             <li><code>delete</code> — unpublish versions (owner only)</li>
           </ul>
-          <h3 className={styles.sectionSubtitle}>Use in CI/CD</h3>
-          <CodeBlock title=".github/workflows/publish.yml">{`- name: Publish contracts
+          <h3 className={styles.sectionSubtitle}>CI/CD usage</h3>
+          <CodeBlock title=".github/workflows/publish.yml">
+            {`- name: Publish contracts
   env:
     VELD_REGISTRY: https://registry.yourcompany.com
     VELD_TOKEN:    \${{ secrets.VELD_TOKEN }}
@@ -1984,44 +2469,24 @@ veld registry token create --name ci-deploy --scopes read,write`}
           </CodeBlock>
         </section>
 
+        {/* ─── REGISTRY: CONFIG REFERENCE ─── */}
         <section id="registry-config" className={styles.section}>
-          <h2 className={styles.sectionTitle}>Config Reference</h2>
+          <h2 className={styles.sectionTitle}>Registry Config Reference</h2>
           <h3 className={styles.sectionSubtitle}>veld.config.json — registry block</h3>
-          <CodeBlock title="veld/veld.config.json" lang="json">{`{
+          <CodeBlock title="veld/veld.config.json" lang="json">
+            {`{
   "registry": {
-    "enabled": true,      // false = registry features disabled for this project
-    "url":     "http://localhost:8080",   // registry base URL
-    "org":     "acme",                   // organisation name (the @scope)
-    "package": "auth-service",           // package name
-    "version": "1.2.0"                   // version to publish with veld push
+    "enabled": true,
+    "url":     "http://localhost:8080",
+    "org":     "acme",
+    "package": "auth-service",
+    "version": "1.2.0"
   }
 }`}
           </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>registry.config.json — server config</h3>
-          <CodeBlock title="registry.config.json" lang="json">{`{
-  "addr":    ":8080",
-  "dsn":     "postgres://user:pass@localhost:5432/dbname?sslmode=disable",
-  "storage": "./packages",
-  "secret":  "your-jwt-secret-at-least-16-chars"
-}`}
-          </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>All CLI registry commands</h3>
-          <CodeBlock>{`veld login    --registry <url> [--token vtk_…] [--email …] [--password …]
-veld logout   [--registry <url>]
-veld push     [--org …] [--name …] [--version …] [--registry <url>]
-veld pull     @org/name[@version]  [--out <dir>] [--registry <url>]
-
-veld registry info                   # show current registry + logged-in user
-veld registry list                   # list all configured registries
-veld registry versions @org/name     # list all published versions
-veld registry token create --name …  # create a new API token`}
-          </CodeBlock>
-          <h3 className={styles.sectionSubtitle}>Credentials storage</h3>
-          <p className={styles.sectionDesc}>
-            Tokens are stored in <code>~/.veld/credentials.json</code> with <code>0600</code> permissions.
-            Multiple registries are supported simultaneously — each registry URL has its own entry.
-          </p>
-          <CodeBlock title="~/.veld/credentials.json" lang="json">{`{
+          <h3 className={styles.sectionSubtitle}>Credentials file</h3>
+          <CodeBlock title="~/.veld/credentials.json" lang="json">
+            {`{
   "registries": {
     "http://localhost:8080": {
       "token":    "vtk_…",
@@ -2033,6 +2498,19 @@ veld registry token create --name …  # create a new API token`}
     }
   }
 }`}
+          </CodeBlock>
+          <h3 className={styles.sectionSubtitle}>All registry CLI commands</h3>
+          <CodeBlock>
+            {`veld login    --registry <url> [--token vtk_…]
+veld logout   [--registry <url>]
+veld push     [--org …] [--name …] [--version …] [--registry <url>]
+veld pull     @org/name[@version]  [--out <dir>] [--registry <url>]
+veld serve    [--config registry.config.json] [--addr :8080] [--dsn "postgres://…"]
+
+veld registry info
+veld registry list
+veld registry versions @org/name
+veld registry token create --name … --scopes read,write`}
           </CodeBlock>
         </section>
 

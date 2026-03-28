@@ -69,7 +69,7 @@ func TestPythonEmitterEmit(t *testing.T) {
 	e := python.New()
 	outDir := t.TempDir()
 
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "flask"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestPythonEmitterDryRun(t *testing.T) {
 func TestPythonEmitterTypesContent(t *testing.T) {
 	e := python.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "flask"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -136,7 +136,7 @@ func TestPythonEmitterTypesContent(t *testing.T) {
 func TestPythonEmitterInterfaceContent(t *testing.T) {
 	e := python.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "flask"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -169,7 +169,7 @@ func TestPythonEmitterInterfaceContent(t *testing.T) {
 func TestPythonEmitterRoutesContent(t *testing.T) {
 	e := python.New()
 	outDir := t.TempDir()
-	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(minimalAST(), outDir, emitter.EmitOptions{BackendFramework: "flask"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -220,7 +220,7 @@ func TestPythonEmitterPathParams(t *testing.T) {
 		},
 	}
 
-	if err := e.Emit(a, outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(a, outDir, emitter.EmitOptions{BackendFramework: "flask"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
@@ -256,7 +256,7 @@ func TestPythonEmitterModulePrefix(t *testing.T) {
 		},
 	}
 
-	if err := e.Emit(a, outDir, emitter.EmitOptions{}); err != nil {
+	if err := e.Emit(a, outDir, emitter.EmitOptions{BackendFramework: "flask"}); err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
