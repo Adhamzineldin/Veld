@@ -26,6 +26,9 @@ type CSharpFrameworkStrategy interface {
 	ControllerUsings() []string
 	// ProjectFileContent returns the .csproj file content.
 	ProjectFileContent() string
+	// WSActionMethod returns C# code (comment block or real stub) for a WebSocket action.
+	// actionName: PascalCase, routePath: full path, emitType/streamType: C# types (may be "").
+	WSActionMethod(actionName, routePath, emitType, streamType string) string
 }
 
 // New returns the CSharpFrameworkStrategy for the given framework name.

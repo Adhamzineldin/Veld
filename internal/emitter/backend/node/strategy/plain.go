@@ -9,3 +9,5 @@ func (s *PlainStrategy) RequestType() string                    { return "any" }
 func (s *PlainStrategy) ResponseType() string                   { return "any" }
 func (s *PlainStrategy) ExtraImports() []string                 { return nil }
 func (s *PlainStrategy) PackageDependencies() map[string]string { return nil }
+func (PlainStrategy) WSImports() string                         { return "" }
+func (PlainStrategy) WSRouterParam() string                     { return "wss: any" }

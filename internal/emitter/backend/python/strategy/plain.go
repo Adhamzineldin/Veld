@@ -40,3 +40,21 @@ func (s *PlainStrategy) RegisterRoute(moduleName, fnName, flaskPath, methods str
 }
 
 func (s *PlainStrategy) RequirementsEntries() []string { return nil }
+
+func (s *PlainStrategy) WSHandlerCode(actionName, routePath, streamType, emitType string, pathParams []string) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n    # WebSocket: WS %s\n", routePath))
+	if len(pathParams) > 0 {
+		sb.WriteString(fmt.Sprintf("    # Implement: service.on_%s_connect(client_id, %s)\n", actionName, strings.Join(pathParams, ", ")))
+	} else {
+		sb.WriteString(fmt.Sprintf("    # Implement: service.on_%s_connect(client_id)\n", actionName))
+	}
+	if emitType != "" {
+		sb.WriteString(fmt.Sprintf("    # Implement: service.on_%s_message(client_id, data: %s)\n", actionName, emitType))
+	}
+	if streamType != "" {
+		sb.WriteString(fmt.Sprintf("    # Broadcast: service.on_%s_stream(client_id) -> %s\n", actionName, streamType))
+	}
+	sb.WriteString(fmt.Sprintf("    # Implement: service.on_%s_close(client_id)\n", actionName))
+	return sb.String()
+}

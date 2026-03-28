@@ -37,6 +37,41 @@ func (e *GoEmitter) generateInterface(a ast.AST, mod ast.Module, outDir string) 
 	w.WriteBlock(fmt.Sprintf("type %sService interface {", moduleName))
 
 	for _, act := range mod.Actions {
+		if act.Method == "WS" {
+			// WS actions get lifecycle method signatures instead of a single service call.
+			actionName := e.adapter.NamingConvention(act.Name, lang.NamingContextExported)
+			routePath := act.Path
+			if mod.Prefix != "" {
+				routePath = mod.Prefix + act.Path
+			}
+			pathParams := emitter.ExtractPathParams(routePath)
+
+			// On{Action}Connect
+			var connectParams []string
+			connectParams = append(connectParams, "conn interface{}")
+			for _, p := range pathParams {
+				connectParams = append(connectParams, e.adapter.NamingConvention(p, lang.NamingContextPrivate)+" string")
+			}
+			if act.Description != "" {
+				w.Writeln(fmt.Sprintf("// On%sConnect — called when a client opens the WS connection. %s", actionName, act.Description))
+			} else {
+				w.Writeln(fmt.Sprintf("// On%sConnect — called when a client opens the WS %s connection.", actionName, routePath))
+			}
+			w.Writeln(fmt.Sprintf("On%sConnect(%s) error", actionName, strings.Join(connectParams, ", ")))
+
+			// On{Action}Message — only when emit type is set
+			if act.Emit != "" {
+				emitType := mapGoOutputType(act.Emit)
+				w.Writeln(fmt.Sprintf("// On%sMessage — called when a client sends a %s message.", actionName, act.Emit))
+				w.Writeln(fmt.Sprintf("On%sMessage(conn interface{}, msg %s) error", actionName, emitType))
+			}
+
+			// On{Action}Close — always included
+			w.Writeln(fmt.Sprintf("// On%sClose — called when the WS connection is closed.", actionName))
+			w.Writeln(fmt.Sprintf("On%sClose(conn interface{}) error", actionName))
+			continue
+		}
+
 		sig := e.buildServiceMethodSignature(a, mod, act)
 		if act.Description != "" || len(act.Errors) > 0 {
 			if act.Description != "" {

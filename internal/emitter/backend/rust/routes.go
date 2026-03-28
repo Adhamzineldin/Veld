@@ -7,8 +7,8 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
-	"github.com/Adhamzineldin/Veld/internal/emitter/codegen"
 	ruststrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/rust/strategy"
+	"github.com/Adhamzineldin/Veld/internal/emitter/codegen"
 	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
@@ -35,12 +35,16 @@ func (e *RustEmitter) generateRouter(a ast.AST, strat ruststrategy.RustFramework
 	w.Writeln("pub fn build_router() -> impl std::any::Any {")
 	w.Indent()
 
-	// Collect route entries for strategy.
+	// Collect route entries for strategy (WS actions use "GET" for the upgrade request).
 	var routes []ruststrategy.RouteEntry
 	for _, mod := range a.Modules {
 		for _, act := range mod.Actions {
+			method := act.Method
+			if method == "WS" {
+				method = "GET" // WebSocket upgrade is always a GET request
+			}
 			routes = append(routes, ruststrategy.RouteEntry{
-				Method:  act.Method,
+				Method:  method,
 				Path:    fullAxumPath(mod, act),
 				Handler: e.adapter.NamingConvention(act.Name, lang.NamingContextPrivate),
 			})
@@ -100,9 +104,12 @@ func (e *RustEmitter) generateModuleRoutes(a ast.AST, mod ast.Module, strat rust
 	w.Dedent()
 	w.WriteBlock("{")
 
-	// Build route entries from this module.
+	// Build route entries from this module (skip WS — handled separately).
 	var routes []ruststrategy.RouteEntry
 	for _, act := range mod.Actions {
+		if act.Method == "WS" {
+			continue
+		}
 		routePath := fullAxumPath(mod, act)
 		handlerName := e.adapter.NamingConvention(act.Name, lang.NamingContextPrivate)
 		routes = append(routes, ruststrategy.RouteEntry{
@@ -123,12 +130,23 @@ func (e *RustEmitter) generateModuleRoutes(a ast.AST, mod ast.Module, strat rust
 	w.Writeln("}")
 	w.BlankLine()
 
-	// Handler functions.
+	// Handler functions (HTTP) and WS handler stubs.
 	for _, act := range mod.Actions {
-		if err := e.writeHandler(w, mod, act, strat); err != nil {
-			return nil, err
-		}
 		w.BlankLine()
+		if act.Method == "WS" {
+			routePath := fullAxumPath(mod, act)
+			handlerName := e.adapter.NamingConvention(act.Name, lang.NamingContextPrivate)
+			serviceName := e.adapter.NamingConvention(mod.Name, lang.NamingContextExported) + "Service"
+			pathParams := emitter.ExtractPathParams(routePath)
+			wsCode := strat.WSHandlerCode(handlerName, routePath, serviceName, act.Stream, act.Emit, pathParams)
+			for _, line := range strings.Split(strings.TrimRight(wsCode, "\n"), "\n") {
+				w.Writeln(line)
+			}
+		} else {
+			if err := e.writeHandler(w, mod, act, strat); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	return w.Bytes(), nil
@@ -238,6 +256,10 @@ func (e *RustEmitter) generateServices(a ast.AST) ([]byte, error) {
 		w.WriteBlock(fmt.Sprintf("pub trait %s: Send + Sync {", serviceName))
 
 		for _, act := range mod.Actions {
+			if act.Method == "WS" {
+				e.writeWSTraitMethods(w, mod, act)
+				continue
+			}
 			sig, err := e.buildTraitMethod(mod, act)
 			if err != nil {
 				return nil, err
@@ -258,6 +280,38 @@ func (e *RustEmitter) generateServices(a ast.AST) ([]byte, error) {
 	}
 
 	return w.Bytes(), nil
+}
+
+// writeWSTraitMethods appends WS lifecycle trait methods for a WS action to w.
+func (e *RustEmitter) writeWSTraitMethods(w *codegen.Writer, mod ast.Module, act ast.Action) {
+	methodName := e.adapter.NamingConvention(act.Name, lang.NamingContextPrivate)
+	routePath := fullAxumPath(mod, act)
+	pathParams := emitter.ExtractPathParams(routePath)
+
+	// on_{action}_connect
+	var connectParams []string
+	connectParams = append(connectParams, "&self")
+	connectParams = append(connectParams, "socket: axum::extract::ws::WebSocket")
+	for _, p := range pathParams {
+		connectParams = append(connectParams, fmt.Sprintf("%s: String", rustParamName(e, p)))
+	}
+	if act.Description != "" {
+		w.Writeln(fmt.Sprintf("    /// %s — called on WebSocket connect.", act.Description))
+	} else {
+		w.Writeln(fmt.Sprintf("    /// Called when a client opens the WS %s connection.", routePath))
+	}
+	w.Writeln(fmt.Sprintf("    async fn on_%s_connect(%s) -> Result<(), Box<dyn std::error::Error>>;", methodName, strings.Join(connectParams, ", ")))
+
+	// on_{action}_message — only when emit type is set
+	if act.Emit != "" {
+		emitType := mapRustOutputType(e, act.Emit)
+		w.Writeln(fmt.Sprintf("    /// Called when a client sends a %s message.", act.Emit))
+		w.Writeln(fmt.Sprintf("    async fn on_%s_message(&self, socket: &mut axum::extract::ws::WebSocket, msg: %s) -> Result<(), Box<dyn std::error::Error>>;", methodName, emitType))
+	}
+
+	// on_{action}_close — always included
+	w.Writeln(fmt.Sprintf("    /// Called when the WS %s connection is closed.", routePath))
+	w.Writeln(fmt.Sprintf("    async fn on_%s_close(&self, socket: axum::extract::ws::WebSocket) -> Result<(), Box<dyn std::error::Error>>;", methodName))
 }
 
 // buildTraitMethod builds the async trait method signature for an action.

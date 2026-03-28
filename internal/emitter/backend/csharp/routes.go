@@ -56,7 +56,19 @@ func (e *CSharpEmitter) emitController(a ast.AST, mod ast.Module, outDir string,
 	sb.WriteString("        _service = service;\n    }\n")
 
 	for _, act := range mod.Actions {
-		writeCSharpAction(&sb, mod, act, enumNames, strat)
+		if act.Method == "WS" {
+			routePath := act.Path
+			if mod.Prefix != "" {
+				routePath = mod.Prefix + act.Path
+			}
+			emitType := act.Emit
+			if emitType != "" {
+				emitType = veldScalarToCS(emitType, enumNames)
+			}
+			sb.WriteString(strat.WSActionMethod(csPascalName(act.Name), routePath, emitType, act.Stream))
+		} else {
+			writeCSharpAction(&sb, mod, act, enumNames, strat)
+		}
 	}
 
 	sb.WriteString("}\n")

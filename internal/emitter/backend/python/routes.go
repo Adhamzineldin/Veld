@@ -74,7 +74,20 @@ func (e *PythonEmitter) emitRoutes(mod ast.Module, outDir string, opts emitter.E
 	}
 
 	for _, act := range mod.Actions {
-		writeRouteHandler(&sb, mod, moduleLower, act, opts, strat)
+		if act.Method == "WS" {
+			routePath := act.Path
+			if mod.Prefix != "" {
+				routePath = mod.Prefix + act.Path
+			}
+			pathParams := emitter.ExtractPathParams(routePath)
+			actionName := emitter.ToSnakeCase(act.Name)
+			if act.Description != "" {
+				sb.WriteString(fmt.Sprintf("\n    # %s\n", act.Description))
+			}
+			sb.WriteString(strat.WSHandlerCode(actionName, routePath, act.Stream, act.Emit, pathParams))
+		} else {
+			writeRouteHandler(&sb, mod, moduleLower, act, opts, strat)
+		}
 	}
 	sb.WriteString("\n")
 

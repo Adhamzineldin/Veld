@@ -53,7 +53,8 @@ type Field struct {
 type Module struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
-	Prefix      string   `json:"prefix,omitempty"` // route path prefix
+	Prefix      string   `json:"prefix,omitempty"`  // route path prefix
+	BaseUrl     string   `json:"baseUrl,omitempty"` // optional per-module base URL (overrides global)
 	Actions     []Action `json:"actions"`
 	SourceFile  string   `json:"-"` // absolute path; set by file loader, not serialised
 	Line        int      `json:"-"` // line in source where this module was defined
@@ -69,7 +70,8 @@ type Action struct {
 	Output      string   `json:"output"`
 	OutputArray bool     `json:"outputArray,omitempty"` // output User[] → true
 	Query       string   `json:"query,omitempty"`       // query param model
-	Stream      string   `json:"stream,omitempty"`      // WebSocket message type for WS actions
+	Stream      string   `json:"stream,omitempty"`      // server→client push type for WS actions
+	Emit        string   `json:"emit,omitempty"`        // client→server message type for WS actions
 	Errors      []string `json:"errors,omitempty"`      // typed error codes for this action
 	Middleware  []string `json:"middleware"`
 	Deprecated  string   `json:"deprecated,omitempty"` // @deprecated "message"

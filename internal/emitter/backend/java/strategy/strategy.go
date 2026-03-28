@@ -38,6 +38,10 @@ type FrameworkStrategy interface {
 	GlobalExceptionHandlerSource(ctrlPkg, modelsPkg string) string
 	// BuildFile returns the build descriptor filename and its full contents.
 	BuildFile() (name, content string)
+	// WSControllerMethod returns the Java controller method stub(s) for a WebSocket action.
+	// actionName: PascalCase action name, routePath: full route path,
+	// emitType: client→server Java type (may be "String"), streamType: server→client type (may be "").
+	WSControllerMethod(actionName, routePath, emitType, streamType string) string
 }
 
 // New returns the FrameworkStrategy for the given name.

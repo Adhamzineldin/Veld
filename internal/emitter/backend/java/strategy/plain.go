@@ -46,6 +46,21 @@ func (s *PlainStrategy) ValidationImports() []string { return nil }
 
 func (s *PlainStrategy) GlobalExceptionHandlerSource(_, _ string) string { return "" }
 
+func (s *PlainStrategy) WSControllerMethod(actionName, routePath, emitType, streamType string) string {
+	if emitType == "" {
+		emitType = "String"
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n    // WebSocket: WS %s\n", routePath))
+	sb.WriteString(fmt.Sprintf("    // Implement: service.on%sConnect(session, params)\n", actionName))
+	sb.WriteString(fmt.Sprintf("    // Implement: service.on%sMessage(session, msg /* %s */)\n", actionName, emitType))
+	if streamType != "" {
+		sb.WriteString(fmt.Sprintf("    // Broadcast: service.on%sStream(session) -> %s\n", actionName, streamType))
+	}
+	sb.WriteString(fmt.Sprintf("    // Implement: service.on%sClose(session)\n", actionName))
+	return sb.String()
+}
+
 func (s *PlainStrategy) BuildFile() (string, string) {
 	return "build.gradle", plainBuildGradle
 }

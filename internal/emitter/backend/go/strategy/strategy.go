@@ -18,6 +18,10 @@ type GoFrameworkStrategy interface {
 	GoModRequire() []string
 	// ServerListenAndServe returns the expression to start the HTTP server.
 	ServerListenAndServe(addrExpr, handlerExpr string) string
+	// WSHandlerCode returns Go code (as lines) to register a WebSocket route and its handler stub.
+	// actionName: exported CamelCase name, routePath: full path, streamType/emitType: Veld types (may be ""),
+	// pathParams: extracted path param names, svcArg: the local service variable name, svcType: interface type.
+	WSHandlerCode(actionName, routePath, streamType, emitType string, pathParams []string, svcArg, svcType string) string
 }
 
 // New returns the GoFrameworkStrategy for the given framework name.

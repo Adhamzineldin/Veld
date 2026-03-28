@@ -13,3 +13,7 @@ func (s *ExpressStrategy) PackageDependencies() map[string]string {
 		"@types/express": "^4.17.0",
 	}
 }
+func (ExpressStrategy) WSImports() string {
+	return "import { WebSocketServer, WebSocket } from 'ws';\n"
+}
+func (ExpressStrategy) WSRouterParam() string { return "wss: WebSocketServer" }

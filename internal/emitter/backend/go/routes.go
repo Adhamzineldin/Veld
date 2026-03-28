@@ -9,8 +9,8 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
-	"github.com/Adhamzineldin/Veld/internal/emitter/codegen"
 	gostrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/go/strategy"
+	"github.com/Adhamzineldin/Veld/internal/emitter/codegen"
 	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
@@ -128,17 +128,29 @@ func (e *GoEmitter) generateModuleRoutes(a ast.AST, mod ast.Module, outDir strin
 
 	for _, act := range mod.Actions {
 		routePath := fullPath(mod, act)
-		chiPath := emitter.ToChiPath(routePath)
-		handlerName := e.adapter.NamingConvention(act.Name+"Handler", lang.NamingContextPrivate)
-
-		w.Writeln(strat.RegisterRoute(act.Method, chiPath, handlerName+"("+svcArg+")"))
+		if act.Method == "WS" {
+			actionName := e.adapter.NamingConvention(act.Name, lang.NamingContextExported)
+			pathParams := emitter.ExtractPathParams(routePath)
+			wsCode := strat.WSHandlerCode(actionName, routePath, act.Stream, act.Emit, pathParams, svcArg, svcType)
+			for _, line := range strings.Split(strings.TrimRight(wsCode, "\n"), "\n") {
+				// Strip leading tab since WriteBlock already indented once.
+				w.Writeln(strings.TrimPrefix(line, "\t"))
+			}
+		} else {
+			chiPath := emitter.ToChiPath(routePath)
+			handlerName := e.adapter.NamingConvention(act.Name+"Handler", lang.NamingContextPrivate)
+			w.Writeln(strat.RegisterRoute(act.Method, chiPath, handlerName+"("+svcArg+")"))
+		}
 	}
 
 	w.Dedent()
 	w.Writeln("}")
 
-	// Handler function per action.
+	// Handler function per action (skip WS actions — they are inline stubs).
 	for _, act := range mod.Actions {
+		if act.Method == "WS" {
+			continue
+		}
 		w.BlankLine()
 		if err := e.writeHandler(w, mod, act, svcType, strat); err != nil {
 			return err
@@ -235,7 +247,6 @@ func fullPath(mod ast.Module, act ast.Action) string {
 	}
 	return act.Path
 }
-
 
 // successStatus returns the HTTP status constant for a successful response.
 func successStatus(act ast.Action) string {

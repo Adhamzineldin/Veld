@@ -1,6 +1,9 @@
 package strategy
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // LaravelStrategy generates Laravel 10.x controller code.
 // It produces classes extending Controller, uses Illuminate\Http\Request,
@@ -38,7 +41,35 @@ func (s *LaravelStrategy) ReturnError(statusCode int, msgExpr string) string {
 
 func (s *LaravelStrategy) ComposerRequire() map[string]string {
 	return map[string]string{
-		"php":                "^8.1",
+		"php":               "^8.1",
 		"laravel/framework": "^10.0",
 	}
+}
+
+func (s *LaravelStrategy) WSActionMethod(actionName, routePath, emitType, streamType string) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n    /** WebSocket handler for %s — use Laravel WebSockets or Reverb */\n", routePath))
+	sb.WriteString(fmt.Sprintf("    public function %sConnect($connection, array $params): void\n    {\n", actionName))
+	sb.WriteString(fmt.Sprintf("        // implement: $this->service->on%sConnect($connection, $params);\n", capitalize(actionName)))
+	sb.WriteString("    }\n")
+	if emitType != "" {
+		sb.WriteString(fmt.Sprintf("\n    public function %sMessage($connection, array $data): void\n    {\n", actionName))
+		sb.WriteString(fmt.Sprintf("        // data is expected to conform to %s\n", emitType))
+		sb.WriteString(fmt.Sprintf("        // implement: $this->service->on%sMessage($connection, $data);\n", capitalize(actionName)))
+		sb.WriteString("    }\n")
+	}
+	if streamType != "" {
+		sb.WriteString(fmt.Sprintf("\n    public function %sClose($connection): void\n    {\n", actionName))
+		sb.WriteString(fmt.Sprintf("        // implement: $this->service->on%sClose($connection);\n", capitalize(actionName)))
+		sb.WriteString("    }\n")
+	}
+	return sb.String()
+}
+
+// capitalize returns s with its first letter upper-cased.
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }

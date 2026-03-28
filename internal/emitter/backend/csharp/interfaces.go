@@ -34,17 +34,46 @@ func (e *CSharpEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) 
 	sb.WriteString(fmt.Sprintf("public interface I%sService\n{\n", modClass))
 
 	for _, act := range mod.Actions {
-		returnType := csReturnType(act, enumNames)
-		taskType := "Task"
-		if returnType != "" {
-			taskType = "Task<" + returnType + ">"
-		}
-
 		routePath := act.Path
 		if mod.Prefix != "" {
 			routePath = mod.Prefix + act.Path
 		}
 		pathParams := emitter.ExtractPathParams(routePath)
+
+		if act.Method == "WS" {
+			actionName := csPascalName(act.Name)
+
+			// OnConnect
+			var connectParams []string
+			connectParams = append(connectParams, "System.Net.WebSockets.WebSocket socket")
+			for _, p := range pathParams {
+				connectParams = append(connectParams, "string "+csPascalName(p))
+			}
+			if act.Description != "" {
+				sb.WriteString(fmt.Sprintf("    /// <summary>Called when a client opens the WS connection. %s</summary>\n", act.Description))
+			} else {
+				sb.WriteString(fmt.Sprintf("    /// <summary>Called when a client opens WS %s.</summary>\n", routePath))
+			}
+			sb.WriteString(fmt.Sprintf("    Task On%sConnect(%s);\n\n", actionName, strings.Join(connectParams, ", ")))
+
+			// OnMessage — only when emit type is set
+			if act.Emit != "" {
+				csEmitType := veldScalarToCS(act.Emit, enumNames)
+				sb.WriteString(fmt.Sprintf("    /// <summary>Called when a client sends a %s message.</summary>\n", act.Emit))
+				sb.WriteString(fmt.Sprintf("    Task On%sMessage(System.Net.WebSockets.WebSocket socket, %s msg);\n\n", actionName, csEmitType))
+			}
+
+			// OnClose — always included
+			sb.WriteString(fmt.Sprintf("    /// <summary>Called when the WS %s connection is closed.</summary>\n", routePath))
+			sb.WriteString(fmt.Sprintf("    Task On%sClose(System.Net.WebSockets.WebSocket socket);\n\n", actionName))
+			continue
+		}
+
+		returnType := csReturnType(act, enumNames)
+		taskType := "Task"
+		if returnType != "" {
+			taskType = "Task<" + returnType + ">"
+		}
 
 		var params []string
 		for _, p := range pathParams {

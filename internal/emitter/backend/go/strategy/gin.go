@@ -38,6 +38,33 @@ func (s *GinStrategy) ServerListenAndServe(addrExpr, handlerExpr string) string 
 	return fmt.Sprintf("r.Run(%s)", addrExpr)
 }
 
+func (s *GinStrategy) WSHandlerCode(actionName, routePath, streamType, emitType string, pathParams []string, svcArg, svcType string) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\t// WebSocket: WS %s\n", routePath))
+	sb.WriteString(fmt.Sprintf("\tr.GET(%q, func(c *gin.Context) {\n", routePath))
+	sb.WriteString("\t\t// Upgrade to WebSocket using gorilla/websocket or nhooyr.io/websocket.\n")
+	for _, p := range pathParams {
+		sb.WriteString(fmt.Sprintf("\t\t%s := c.Param(%q)\n", p, p))
+	}
+	if len(pathParams) > 0 {
+		paramList := ""
+		for _, p := range pathParams {
+			paramList += ", " + p
+		}
+		sb.WriteString(fmt.Sprintf("\t\t// TODO: implement %s.On%sConnect(conn%s)\n", svcArg, actionName, paramList))
+	} else {
+		sb.WriteString(fmt.Sprintf("\t\t// TODO: implement %s.On%sConnect(conn)\n", svcArg, actionName))
+	}
+	if emitType != "" {
+		sb.WriteString(fmt.Sprintf("\t\t// TODO: on message: %s.On%sMessage(conn, msg %s)\n", svcArg, actionName, emitType))
+	}
+	if streamType != "" {
+		sb.WriteString(fmt.Sprintf("\t\t// TODO: broadcast helper sends %s to client\n", streamType))
+	}
+	sb.WriteString("\t})\n")
+	return sb.String()
+}
+
 // convertChiPathToGin converts Chi-style {param} path segments to Gin :param style.
 // Chi uses {id}, Gin uses :id. Veld uses :id natively, so this is a no-op for now.
 func convertChiPathToGin(path string) string {

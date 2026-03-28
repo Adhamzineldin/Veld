@@ -43,13 +43,40 @@ func (e *JavaEmitter) emitInterface(_ jstrategy.FrameworkStrategy, a ast.AST, mo
 	sb.WriteString(fmt.Sprintf("public interface I%sService {\n", modClass))
 
 	for _, act := range mod.Actions {
-		returnType := javaReturnType(act, enumNames)
-
 		routePath := act.Path
 		if mod.Prefix != "" {
 			routePath = mod.Prefix + act.Path
 		}
 		pathParams := emitter.ExtractPathParams(routePath)
+
+		if act.Method == "WS" {
+			actionName := capitalize(act.Name)
+			// onConnect
+			var connectParams []string
+			connectParams = append(connectParams, "javax.websocket.Session session")
+			for _, p := range pathParams {
+				connectParams = append(connectParams, "String "+javaCamelField(p))
+			}
+			if act.Description != "" {
+				sb.WriteString(fmt.Sprintf("    /** Called when a client opens the WS connection. %s */\n", act.Description))
+			} else {
+				sb.WriteString(fmt.Sprintf("    /** Called when a client opens WS %s. */\n", routePath))
+			}
+			sb.WriteString(fmt.Sprintf("    void on%sConnect(%s);\n\n", actionName, strings.Join(connectParams, ", ")))
+
+			// onMessage — only when emit type is set
+			if act.Emit != "" {
+				sb.WriteString(fmt.Sprintf("    /** Called when a client sends a %s message. */\n", act.Emit))
+				sb.WriteString(fmt.Sprintf("    void on%sMessage(javax.websocket.Session session, %s msg);\n\n", actionName, act.Emit))
+			}
+
+			// onClose — always included
+			sb.WriteString(fmt.Sprintf("    /** Called when the WS %s connection is closed. */\n", routePath))
+			sb.WriteString(fmt.Sprintf("    void on%sClose(javax.websocket.Session session);\n\n", actionName))
+			continue
+		}
+
+		returnType := javaReturnType(act, enumNames)
 
 		var params []string
 		for _, p := range pathParams {
