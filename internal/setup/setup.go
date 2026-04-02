@@ -85,12 +85,18 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchViteConfig(backendDir, relOutBackend) }})
 	case "python":
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchPythonPath(backendDir, relOutBackend) }})
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchRequirementsTxt(backendDir) }})
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchPyprojectToml(backendDir) }})
 	case "go":
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchGoMod(backendDir, relOutBackend) }})
 	case "rust":
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchCargoToml(backendDir, relOutBackend) }})
 	case "java":
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchPomXML(backendDir, relOutBackend) }})
+		backendPatchers = append(backendPatchers, patcher{func() Result {
+			return patchGradleSettings(backendDir, relOutBackend, "veld-generated")
+		}})
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchGradleBuildDep(backendDir, "veld-generated") }})
 	case "csharp":
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchCsproj(backendDir, relOutBackend) }})
 	case "php":
@@ -148,7 +154,10 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 	case "dart", "flutter":
 		frontendPatchers = append(frontendPatchers, patcher{func() Result { return patchPubspecYAML(frontendDir, relOutFrontend) }})
 	case "kotlin":
-		frontendPatchers = append(frontendPatchers, patcher{func() Result { return patchGradleKts(frontendDir, relOutFrontend) }})
+		frontendPatchers = append(frontendPatchers, patcher{func() Result {
+			return patchGradleSettings(frontendDir, relOutFrontend+"/client", "veld-client")
+		}})
+		frontendPatchers = append(frontendPatchers, patcher{func() Result { return patchGradleBuildDep(frontendDir, "veld-client") }})
 	case "swift":
 		frontendPatchers = append(frontendPatchers, patcher{func() Result {
 			return Result{
@@ -884,42 +893,129 @@ func patchPubspecYAML(dir, outDir string) Result {
 	return Result{File: "pubspec.yaml", Action: "patched", Detail: "added veld_client path dependency"}
 }
 
-// patchGradleKts adds include(":veld-client") + projectDir to settings.gradle.kts.
+// patchGradleSettings adds include(":moduleName") + projectDir to settings.gradle.kts
+// (or settings.gradle if the .kts variant is not found).
+// projectPath is the filesystem path passed to file(...), e.g. "generated" or "generated/client".
 // If the entry already exists with a different path, it is updated.
-func patchGradleKts(dir, outDir string) Result {
-	path := findFile(dir, "settings.gradle.kts")
+func patchGradleSettings(dir, projectPath, moduleName string) Result {
+	var path string
+	for _, name := range []string{"settings.gradle.kts", "settings.gradle"} {
+		if p := findFile(dir, name); p != "" {
+			path = p
+			break
+		}
+	}
 	if path == "" {
 		return Result{File: "settings.gradle.kts", Action: "not-found", Detail: "no settings.gradle.kts found"}
 	}
 
+	filename := filepath.Base(path)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Result{File: "settings.gradle.kts", Action: "not-found", Detail: err.Error()}
+		return Result{File: filename, Action: "not-found", Detail: err.Error()}
 	}
 	content := string(data)
 
-	newProjectDir := `file("` + outDir + `/client")`
-	if strings.Contains(content, "veld-client") {
+	newProjectDir := `file("` + projectPath + `")`
+	if strings.Contains(content, moduleName) {
 		if strings.Contains(content, newProjectDir) {
-			return Result{File: "settings.gradle.kts", Action: "skipped", Detail: "veld-client already points to " + outDir}
+			return Result{File: filename, Action: "skipped", Detail: moduleName + " already points to " + projectPath}
 		}
-		// Update the existing projectDir path if the line exists.
-		re := regexp.MustCompile(`(project\(":veld-client"\)\.projectDir\s*=\s*)file\("[^"]*"\)`)
+		re := regexp.MustCompile(`(project\("` + regexp.QuoteMeta(":"+moduleName) + `"\)\.projectDir\s*=\s*)file\("[^"]*"\)`)
 		if re.MatchString(content) {
 			content = re.ReplaceAllString(content, "${1}"+newProjectDir)
 			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-				return Result{File: "settings.gradle.kts", Action: "not-found", Detail: err.Error()}
+				return Result{File: filename, Action: "not-found", Detail: err.Error()}
 			}
-			return Result{File: "settings.gradle.kts", Action: "patched", Detail: "updated :veld-client project path to " + outDir}
+			return Result{File: filename, Action: "patched", Detail: "updated :" + moduleName + " project path to " + projectPath}
 		}
-		// Include exists but no projectDir line — already configured.
-		return Result{File: "settings.gradle.kts", Action: "skipped", Detail: "veld-client already configured"}
+		return Result{File: filename, Action: "skipped", Detail: moduleName + " already configured"}
 	}
 
-	entry := "\ninclude(\":veld-client\")\nproject(\":veld-client\").projectDir = " + newProjectDir + "\n"
+	entry := "\ninclude(\":" + moduleName + "\")\nproject(\":" + moduleName + "\").projectDir = " + newProjectDir + "\n"
 	content = strings.TrimRight(content, "\n") + "\n" + entry
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		return Result{File: "settings.gradle.kts", Action: "not-found", Detail: err.Error()}
+		return Result{File: filename, Action: "not-found", Detail: err.Error()}
 	}
-	return Result{File: "settings.gradle.kts", Action: "patched", Detail: "added :veld-client project include"}
+	return Result{File: filename, Action: "patched", Detail: "added :" + moduleName + " project include"}
+}
+
+// patchGradleBuildDep adds implementation(project(":moduleName")) to build.gradle.kts
+// (or build.gradle). If the dependency already exists, it is skipped.
+func patchGradleBuildDep(dir, moduleName string) Result {
+	var path string
+	for _, name := range []string{"build.gradle.kts", "build.gradle", "app/build.gradle.kts", "app/build.gradle"} {
+		p := filepath.Join(dir, name)
+		if _, err := os.Stat(p); err == nil {
+			path = p
+			break
+		}
+	}
+	if path == "" {
+		return Result{File: "build.gradle.kts", Action: "not-found", Detail: "no build.gradle.kts found"}
+	}
+
+	filename := filepath.Base(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Result{File: filename, Action: "not-found", Detail: err.Error()}
+	}
+	content := string(data)
+
+	dep := `implementation(project(":` + moduleName + `"))`
+	if strings.Contains(content, dep) {
+		return Result{File: filename, Action: "skipped", Detail: moduleName + " dependency already present"}
+	}
+
+	if strings.Contains(content, "dependencies {") {
+		content = strings.Replace(content, "dependencies {", "dependencies {\n    "+dep, 1)
+	} else {
+		content = strings.TrimRight(content, "\n") + "\n\ndependencies {\n    " + dep + "\n}\n"
+	}
+
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		return Result{File: filename, Action: "not-found", Detail: err.Error()}
+	}
+	return Result{File: filename, Action: "patched", Detail: `added implementation(project(":` + moduleName + `"))`}
+}
+
+// patchPyprojectToml adds pydantic>=2.0 to pyproject.toml.
+// Handles both Poetry ([tool.poetry.dependencies]) and PEP 621 ([project] dependencies) styles.
+func patchPyprojectToml(dir string) Result {
+	path := findFile(dir, "pyproject.toml")
+	if path == "" {
+		return Result{File: "pyproject.toml", Action: "not-found", Detail: "no pyproject.toml found"}
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Result{File: "pyproject.toml", Action: "not-found", Detail: err.Error()}
+	}
+	content := string(data)
+
+	if strings.Contains(strings.ToLower(content), "pydantic") {
+		return Result{File: "pyproject.toml", Action: "skipped", Detail: "pydantic already listed"}
+	}
+
+	// Poetry style
+	if strings.Contains(content, "[tool.poetry.dependencies]") {
+		content = strings.Replace(content, "[tool.poetry.dependencies]",
+			"[tool.poetry.dependencies]\npydantic = \">=2.0\"", 1)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: "pyproject.toml", Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: "pyproject.toml", Action: "patched", Detail: "added pydantic>=2.0 (poetry)"}
+	}
+
+	// PEP 621 style: dependencies = [...]
+	re := regexp.MustCompile(`(dependencies\s*=\s*\[)`)
+	if re.MatchString(content) {
+		content = re.ReplaceAllString(content, "${1}\n    \"pydantic>=2.0\",")
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: "pyproject.toml", Action: "not-found", Detail: err.Error()}
+		}
+		return Result{File: "pyproject.toml", Action: "patched", Detail: "added pydantic>=2.0 (PEP 621)"}
+	}
+
+	return Result{File: "pyproject.toml", Action: "manual", Detail: `add pydantic>=2.0 to your [project] dependencies or [tool.poetry.dependencies]`}
 }

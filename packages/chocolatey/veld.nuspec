@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>veld</id>
+    <version>0.1.0</version>
+    <title>Veld</title>
+    <authors>Adhamzineldin</authors>
+    <projectUrl>https://github.com/Adhamzineldin/Veld</projectUrl>
+    <licenseUrl>https://github.com/Adhamzineldin/Veld/blob/master/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Contract-first, multi-stack API code generator.
+
+Write .veld contract files and generate:
+  - Typed TypeScript frontend SDKs (React, Vue, Angular, Svelte, Svelte)
+  - Backend service interfaces + route wiring for Node, Python, Go, Rust, Java, C#, and PHP
+
+Veld never touches your business logic — only the generated/ folder.</description>
+    <summary>Contract-first, multi-stack API code generator</summary>
+    <tags>veld api codegen typescript node python go rust java csharp php cli developer-tools</tags>
+    <projectSourceUrl>https://github.com/Adhamzineldin/Veld</projectSourceUrl>
+    <bugTrackerUrl>https://github.com/Adhamzineldin/Veld/issues</bugTrackerUrl>
+    <docsUrl>https://github.com/Adhamzineldin/Veld#readme</docsUrl>
+    <releaseNotes>https://github.com/Adhamzineldin/Veld/releases</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

@@ -12,7 +12,10 @@
       "Bash(done)",
       "Bash(grep:*)",
       "Bash(go test:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(find /g/University/Graduation/Veld/internal/setup -name *.go)",
+      "Bash(python3 -c \"import yaml; yaml.safe_load\\(open\\(''/g/University/Graduation/Veld/.github/workflows/release.yml''\\)\\)\")",
+      "Bash(node:*)"
     ]
   }
 }

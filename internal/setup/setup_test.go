@@ -568,7 +568,7 @@ func TestPatchGradleKts_Patched(t *testing.T) {
 	dir := tmpProject(t, map[string]string{
 		"settings.gradle.kts": "rootProject.name = \"myapp\"\n",
 	})
-	r := patchGradleKts(dir, "generated")
+	r := patchGradleSettings(dir, "generated/client", "veld-client")
 	if r.Action != "patched" {
 		t.Fatalf("expected patched, got %s", r.Action)
 	}
@@ -586,7 +586,7 @@ func TestPatchGradleKts_Skipped(t *testing.T) {
 	dir := tmpProject(t, map[string]string{
 		"settings.gradle.kts": "rootProject.name = \"myapp\"\ninclude(\":veld-client\")\n",
 	})
-	r := patchGradleKts(dir, "generated")
+	r := patchGradleSettings(dir, "generated/client", "veld-client")
 	if r.Action != "skipped" {
 		t.Fatalf("expected skipped, got %s", r.Action)
 	}
@@ -625,8 +625,9 @@ func TestRun_PythonDart(t *testing.T) {
 		"pubspec.yaml": "name: myapp\n\ndependencies:\n  flutter:\n    sdk: flutter\n",
 	})
 	results := Run(dir, "python", "dart", "generated")
-	if len(results) != 2 {
-		t.Fatalf("expected 2 results, got %d: %+v", len(results), results)
+	// python backend now runs 3 patchers (veld_path.py, requirements.txt, pyproject.toml) + 1 frontend (pubspec.yaml)
+	if len(results) != 4 {
+		t.Fatalf("expected 4 results, got %d: %+v", len(results), results)
 	}
 	veldPath := findResult(results, "veld_path.py")
 	pub := findResult(results, "pubspec.yaml")
@@ -734,7 +735,7 @@ func TestPatchGradleKts_UpdatePath(t *testing.T) {
 	dir := tmpProject(t, map[string]string{
 		"settings.gradle.kts": "rootProject.name = \"myapp\"\ninclude(\":veld-client\")\nproject(\":veld-client\").projectDir = file(\"old-path/client\")\n",
 	})
-	r := patchGradleKts(dir, "new-output")
+	r := patchGradleSettings(dir, "new-output/client", "veld-client")
 	if r.Action != "patched" {
 		t.Fatalf("expected patched (update), got %s: %s", r.Action, r.Detail)
 	}

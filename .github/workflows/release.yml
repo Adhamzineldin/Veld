@@ -11,11 +11,14 @@ name: Release
 #      → Pick exactly which targets to publish via checkboxes.
 #
 # Auto-detection rules (tag push):
-#   cmd/ or internal/ or go.mod changed  →  binary + npm + pip + homebrew
+#   cmd/ or internal/ or go.mod changed  →  binary + npm + pip + homebrew + choco + apt
 #   packages/npm/ changed                →  npm
 #   packages/pip/ changed                →  pip
 #   packages/homebrew/ changed           →  homebrew
 #   packages/composer/ changed           →  composer
+#   packages/chocolatey/ changed         →  choco
+#   packages/apt/ changed                →  apt
+#   packages/nuget/ changed              →  nuget
 #   editors/vscode/ changed              →  vscode
 #   editors/jetbrains/ changed           →  jetbrains
 #
@@ -28,6 +31,9 @@ name: Release
 #   PYPI_TOKEN             — from pypi.org (for pip publish)
 #   VSCE_PAT               — Azure DevOps token (for VS Code Marketplace)
 #   JETBRAINS_PUBLISH_TOKEN — JetBrains Marketplace token
+#   CHOCO_API_KEY          — from chocolatey.org (for choco push)
+#   PACKAGECLOUD_TOKEN     — from packagecloud.io (for apt repo)
+#   NUGET_API_KEY          — from nuget.org (for dotnet nuget push)
 #
 # Pre-release tags (e.g. v0.2.0-beta.1) create a GitHub Release but skip
 # all package/plugin publishing (unless manually overridden via dispatch).
@@ -79,6 +85,21 @@ on:
         required: false
         type: boolean
         default: false
+      choco:
+        description: "Publish Chocolatey package"
+        required: false
+        type: boolean
+        default: false
+      apt:
+        description: "Publish apt package (Packagecloud)"
+        required: false
+        type: boolean
+        default: false
+      nuget:
+        description: "Publish NuGet package (nuget.org)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -101,6 +122,9 @@ jobs:
       publish_composer: ${{ steps.targets.outputs.composer }}
       publish_vscode: ${{ steps.targets.outputs.vscode }}
       publish_jetbrains: ${{ steps.targets.outputs.jetbrains }}
+      publish_choco: ${{ steps.targets.outputs.choco }}
+      publish_apt: ${{ steps.targets.outputs.apt }}
+      publish_nuget: ${{ steps.targets.outputs.nuget }}
 
     steps:
       - uses: actions/checkout@v4
@@ -156,6 +180,9 @@ jobs:
           echo "pip=$(has '^packages/pip/')" >> "$GITHUB_OUTPUT"
           echo "homebrew=$(has '^packages/homebrew/')" >> "$GITHUB_OUTPUT"
           echo "composer=$(has '^packages/composer/')" >> "$GITHUB_OUTPUT"
+          echo "choco=$(has '^packages/chocolatey/')" >> "$GITHUB_OUTPUT"
+          echo "apt=$(has '^packages/apt/')" >> "$GITHUB_OUTPUT"
+          echo "nuget=$(has '^packages/nuget/')" >> "$GITHUB_OUTPUT"
           echo "vscode=$(has '^editors/vscode/')" >> "$GITHUB_OUTPUT"
           echo "jetbrains=$(has '^editors/jetbrains/')" >> "$GITHUB_OUTPUT"
 
@@ -183,8 +210,8 @@ jobs:
               if [ "$IS_PRERELEASE" = "true" ] && [ "$name" != "binary" ]; then
                 echo "false"
               else
-                # Binary changes cascade to npm/pip/homebrew
-                if [ "$name" = "npm" ] || [ "$name" = "pip" ] || [ "$name" = "homebrew" ]; then
+                # Binary changes cascade to npm/pip/homebrew/choco/apt
+                if [ "$name" = "npm" ] || [ "$name" = "pip" ] || [ "$name" = "homebrew" ] || [ "$name" = "choco" ] || [ "$name" = "apt" ] || [ "$name" = "nuget" ]; then
                   if [ "${{ steps.changes.outputs.binary }}" = "true" ] || [ "$auto" = "true" ]; then
                     echo "true"
                   else
@@ -202,6 +229,9 @@ jobs:
           echo "pip=$(resolve pip ${{ steps.changes.outputs.pip }} ${{ inputs.pip }})" >> "$GITHUB_OUTPUT"
           echo "homebrew=$(resolve homebrew ${{ steps.changes.outputs.homebrew }} ${{ inputs.homebrew }})" >> "$GITHUB_OUTPUT"
           echo "composer=$(resolve composer ${{ steps.changes.outputs.composer }} false)" >> "$GITHUB_OUTPUT"
+          echo "choco=$(resolve choco ${{ steps.changes.outputs.choco }} ${{ inputs.choco }})" >> "$GITHUB_OUTPUT"
+          echo "apt=$(resolve apt ${{ steps.changes.outputs.apt }} ${{ inputs.apt }})" >> "$GITHUB_OUTPUT"
+          echo "nuget=$(resolve nuget ${{ steps.changes.outputs.nuget }} ${{ inputs.nuget }})" >> "$GITHUB_OUTPUT"
           echo "vscode=$(resolve vscode ${{ steps.changes.outputs.vscode }} ${{ inputs.vscode }})" >> "$GITHUB_OUTPUT"
           echo "jetbrains=$(resolve jetbrains ${{ steps.changes.outputs.jetbrains }} ${{ inputs.jetbrains }})" >> "$GITHUB_OUTPUT"
 
@@ -216,6 +246,9 @@ jobs:
           echo "| pip | \`${{ steps.targets.outputs.pip }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Homebrew | \`${{ steps.targets.outputs.homebrew }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Composer | \`${{ steps.targets.outputs.composer }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Chocolatey | \`${{ steps.targets.outputs.choco }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| apt (Packagecloud) | \`${{ steps.targets.outputs.apt }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| NuGet | \`${{ steps.targets.outputs.nuget }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| VS Code | \`${{ steps.targets.outputs.vscode }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| JetBrains | \`${{ steps.targets.outputs.jetbrains }}\` |" >> "$GITHUB_STEP_SUMMARY"
 
@@ -331,9 +364,12 @@ jobs:
           echo "" >> changelog.md
           echo "## Installation" >> changelog.md
           echo '```bash' >> changelog.md
-          echo "npm install veld        # npm" >> changelog.md
-          echo "pip install veld        # pip" >> changelog.md
-          echo "brew install veld-dev/tap/veld  # Homebrew" >> changelog.md
+          echo "npm install -g @maayn/veld          # npm" >> changelog.md
+          echo "pip install maayn-veld              # pip" >> changelog.md
+          echo "brew install veld-dev/tap/veld      # Homebrew (macOS/Linux)" >> changelog.md
+          echo "choco install veld                  # Chocolatey (Windows)" >> changelog.md
+          echo "sudo apt install veld               # apt (after adding repo)" >> changelog.md
+          echo "dotnet tool install -g Maayn.Veld   # .NET / NuGet" >> changelog.md
           echo '```' >> changelog.md
           echo "" >> changelog.md
           echo "## Checksums (SHA256)" >> changelog.md
@@ -529,3 +565,125 @@ jobs:
           ./gradlew buildPlugin --no-daemon
           ./gradlew verifyPlugin --no-daemon
           ./gradlew publishPlugin --no-daemon
+
+  # ─── Publish Chocolatey ────────────────────────────────────────────────────
+  publish-choco:
+    name: Publish Chocolatey
+    needs: [release, resolve]
+    if: needs.resolve.outputs.publish_choco == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download binary and compute checksum
+        id: checksum
+        shell: pwsh
+        run: |
+          $VERSION = "${{ needs.resolve.outputs.version }}"
+          $url = "https://github.com/Adhamzineldin/Veld/releases/download/${VERSION}/veld-windows-amd64.zip"
+          Invoke-WebRequest -Uri $url -OutFile veld-windows-amd64.zip
+          $hash = (Get-FileHash veld-windows-amd64.zip -Algorithm SHA256).Hash.ToLower()
+          echo "WINDOWS_AMD64=${hash}" >> $env:GITHUB_OUTPUT
+
+      - name: Update nuspec and install script
+        shell: pwsh
+        run: |
+          $VERSION = "${{ needs.resolve.outputs.version }}".TrimStart('v')
+          $HASH    = "${{ steps.checksum.outputs.WINDOWS_AMD64 }}"
+
+          # nuspec version
+          (Get-Content packages\chocolatey\veld.nuspec) `
+            -replace '<version>.*</version>', "<version>${VERSION}</version>" |
+            Set-Content packages\chocolatey\veld.nuspec
+
+          # install script version + checksum
+          (Get-Content packages\chocolatey\tools\chocolateyInstall.ps1) `
+            -replace "\`$version\s*=\s*'.*'", "`$version  = '${VERSION}'" `
+            -replace 'PLACEHOLDER_SHA256_WINDOWS_AMD64', $HASH |
+            Set-Content packages\chocolatey\tools\chocolateyInstall.ps1
+
+      - name: Pack and push
+        shell: pwsh
+        working-directory: packages/chocolatey
+        run: |
+          choco pack veld.nuspec
+          choco push veld.$("${{ needs.resolve.outputs.version }}".TrimStart('v')).nupkg `
+            --source https://push.chocolatey.org `
+            --api-key ${{ secrets.CHOCO_API_KEY }}
+
+  # ─── Publish apt (Packagecloud) ────────────────────────────────────────────
+  publish-apt:
+    name: Publish apt
+    needs: [release, resolve]
+    if: needs.resolve.outputs.publish_apt == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nfpm
+        run: |
+          curl -sL "https://github.com/goreleaser/nfpm/releases/download/v2.38.0/nfpm_2.38.0_Linux_x86_64.tar.gz" \
+            | tar -xz nfpm
+          sudo mv nfpm /usr/local/bin/nfpm
+
+      - name: Build .deb packages
+        run: |
+          VERSION="${{ needs.resolve.outputs.version }}"
+          VERSION="${VERSION#v}"
+          BASE="https://github.com/Adhamzineldin/Veld/releases/download/${{ needs.resolve.outputs.version }}"
+          mkdir -p /tmp/debs
+
+          for ARCH in amd64 arm64; do
+            curl -sL "${BASE}/veld-linux-${ARCH}.tar.gz" | tar -xz veld
+            chmod +x veld
+            ARCH=${ARCH} VERSION=${VERSION} nfpm pkg \
+              --config packages/apt/nfpm.yaml \
+              --packager deb \
+              --target "/tmp/debs/veld_${VERSION}_${ARCH}.deb"
+            rm -f veld
+          done
+
+      - name: Push to Packagecloud
+        run: |
+          VERSION="${{ needs.resolve.outputs.version }}"
+          VERSION="${VERSION#v}"
+          gem install package_cloud --no-document
+
+          for ARCH in amd64 arm64; do
+            DEB="/tmp/debs/veld_${VERSION}_${ARCH}.deb"
+            # Push to Ubuntu LTS releases + Debian stable
+            for DISTRO in ubuntu/focal ubuntu/jammy ubuntu/noble debian/bookworm; do
+              package_cloud push veld-dev/veld/${DISTRO} "$DEB" \
+                --url https://packagecloud.io
+            done
+          done
+        env:
+          PACKAGECLOUD_TOKEN: ${{ secrets.PACKAGECLOUD_TOKEN }}
+
+  # ─── Publish NuGet ─────────────────────────────────────────────────────────
+  publish-nuget:
+    name: Publish NuGet
+    needs: [release, resolve]
+    if: needs.resolve.outputs.publish_nuget == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0"
+
+      - name: Update version
+        run: |
+          VERSION="${{ needs.resolve.outputs.version }}"
+          VERSION="${VERSION#v}"
+          sed -i "s|<Version>.*</Version>|<Version>${VERSION}</Version>|" packages/nuget/VeldCli.csproj
+          sed -i "s|const string Version = \".*\";|const string Version = \"${VERSION}\";|" packages/nuget/Program.cs
+
+      - name: Pack and push
+        working-directory: packages/nuget
+        run: |
+          dotnet pack -c Release
+          dotnet nuget push bin/Release/Maayn.Veld.*.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
