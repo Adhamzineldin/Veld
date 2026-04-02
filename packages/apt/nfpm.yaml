@@ -1,0 +1,20 @@
+# nfpm config — used by CI to build .deb packages for apt.
+# Build with: ARCH=amd64 VERSION=0.1.0 nfpm pkg --config packages/apt/nfpm.yaml --packager deb
+# https://nfpm.goreleaser.com/configuration/
+name: veld
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+maintainer: "Adhamzineldin <adham@veld.dev>"
+description: |
+  Contract-first, multi-stack API code generator.
+  Write .veld contract files and generate typed TypeScript SDKs and
+  backend service interfaces for Node, Python, Go, Rust, Java, C#, and PHP.
+homepage: https://github.com/Adhamzineldin/Veld
+license: MIT
+
+contents:
+  - src: veld
+    dst: /usr/local/bin/veld
+    file_info:
+      mode: 0755

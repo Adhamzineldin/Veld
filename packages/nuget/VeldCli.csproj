@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- dotnet tool packaging -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>veld</ToolCommandName>
+    <PackageId>Maayn.Veld</PackageId>
+    <Version>0.1.0</Version>
+
+    <!-- metadata -->
+    <Authors>Adhamzineldin</Authors>
+    <Description>Contract-first, multi-stack API code generator. Write .veld contracts and generate typed TypeScript SDKs and backend service interfaces for Node, Python, Go, Rust, Java, C#, and PHP.</Description>
+    <PackageProjectUrl>https://github.com/Adhamzineldin/Veld</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Adhamzineldin/Veld</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>veld;api;codegen;typescript;node;python;go;cli;developer-tools</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>https://github.com/Adhamzineldin/Veld/releases</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>
