@@ -72,7 +72,7 @@ plugins {
     id 'java'
 }
 
-group = 'com.example'
+group = 'maayn.veld'
 version = '0.1.0'
 
 java {
