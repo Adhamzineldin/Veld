@@ -44,13 +44,17 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 
 	var results []Result
 
-	// relOutFor returns a dir relative to the given base directory (slash-normalised).
+	// relOutFor returns outDir as a path relative to baseDir (slash-normalised).
+	// Relative outDir values are first resolved against projectDir so the result
+	// is always correct from the perspective of files inside baseDir (e.g. pom.xml).
 	relOutFor := func(dir, baseDir string) string {
-		rel := dir
-		if filepath.IsAbs(dir) {
-			if r, err := filepath.Rel(baseDir, dir); err == nil {
-				rel = r
-			}
+		abs := dir
+		if !filepath.IsAbs(dir) {
+			abs = filepath.Join(projectDir, dir)
+		}
+		rel, err := filepath.Rel(baseDir, abs)
+		if err != nil {
+			return filepath.ToSlash(dir) // fallback: return as-is
 		}
 		return filepath.ToSlash(rel)
 	}

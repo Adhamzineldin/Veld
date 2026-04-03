@@ -14,7 +14,7 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 )
 
-const javaPackageModels = "com.example.generated.models"
+const javaPackageModels = "maayn.veld.generated.models"
 
 // javaLang is the shared language adapter for pure Java type and naming conventions.
 var javaLang = &lang.JavaAdapter{}

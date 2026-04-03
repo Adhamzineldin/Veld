@@ -13,7 +13,7 @@ import (
 	jstrategy "github.com/Adhamzineldin/Veld/internal/emitter/backend/java/strategy"
 )
 
-const javaPackageServices = "com.example.generated.services"
+const javaPackageServices = "maayn.veld.generated.services"
 
 func (e *JavaEmitter) emitInterface(_ jstrategy.FrameworkStrategy, a ast.AST, mod ast.Module, outDir string) error {
 	dir := filepath.Join(outDir, "services")
