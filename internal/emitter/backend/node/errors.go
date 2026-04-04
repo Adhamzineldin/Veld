@@ -100,9 +100,25 @@ func (e *NodeEmitter) emitErrorsBarrel(a ast.AST, outDir string) error {
 			// No conflicts — safe to use export *.
 			sb.WriteString(fmt.Sprintf("export * from './%s.errors';\n", moduleLower))
 		} else if len(unique) > 0 {
-			// Conflicts detected — use explicit named exports for unique names only.
-			sb.WriteString(fmt.Sprintf("export { %s } from './%s.errors';\n",
-				strings.Join(unique, ", "), moduleLower))
+			// Conflicts detected — split into type-only and value exports to
+			// satisfy isolatedModules (TS1205).
+			var typeNames, valueNames []string
+			for _, name := range unique {
+				if strings.HasSuffix(name, "ErrorCode") ||
+					(strings.HasSuffix(name, "Error") && !strings.HasSuffix(name, "Errors")) {
+					typeNames = append(typeNames, name)
+				} else {
+					valueNames = append(valueNames, name)
+				}
+			}
+			if len(typeNames) > 0 {
+				sb.WriteString(fmt.Sprintf("export type { %s } from './%s.errors';\n",
+					strings.Join(typeNames, ", "), moduleLower))
+			}
+			if len(valueNames) > 0 {
+				sb.WriteString(fmt.Sprintf("export { %s } from './%s.errors';\n",
+					strings.Join(valueNames, ", "), moduleLower))
+			}
 		}
 		// If len(unique) == 0, skip entirely — all names already exported.
 	}
