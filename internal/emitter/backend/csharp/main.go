@@ -19,6 +19,7 @@ func init() {
 // Output layout:
 //
 //	outDir/
+//	├── SETUP.md            — how to wire this project into a host app (not README.md — reserved for veld generate index)
 //	├── VeldGenerated.csproj
 //	├── Models/      — one .cs per model + one per enum
 //	├── Services/    — I{Module}Service.cs per module
@@ -50,7 +51,7 @@ func (e *CSharpEmitter) Summary(modules []string) []emitter.SummaryLine {
 		lines = append(lines, emitter.SummaryLine{Dir: "Controllers/", Files: strings.Join(ctrlFiles, ", ")})
 	}
 
-	lines = append(lines, emitter.SummaryLine{Dir: "./", Files: "VeldGenerated.csproj"})
+	lines = append(lines, emitter.SummaryLine{Dir: "./", Files: "SETUP.md, VeldGenerated.csproj"})
 	return lines
 }
 
@@ -92,7 +93,10 @@ func (e *CSharpEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 			return fmt.Errorf("middleware %s: %w", mod.Name, err)
 		}
 	}
-	return e.emitCsproj(outDir, strat)
+	if err := e.emitCsproj(outDir, strat); err != nil {
+		return err
+	}
+	return e.emitReadme(outDir)
 }
 
 func (e *CSharpEmitter) createDirs(outDir string) error {
