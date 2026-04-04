@@ -19,7 +19,7 @@ func init() {
 // The framework strategy is resolved at emit time from EmitOptions.BackendFramework:
 //
 //	""/"plain"   → PlainStrategy: service interfaces + types, no HTTP framework dependency
-//	"spring"     → SpringStrategy: Spring Boot 3.x controllers (no pom.xml — use build-helper-maven-plugin)
+//	"spring"     → SpringStrategy: Spring Boot 3.x / 4.x controllers (no pom.xml — use build-helper-maven-plugin)
 //
 // Output follows standard Maven/Gradle source layout so files are picked up without
 // any extra configuration:
