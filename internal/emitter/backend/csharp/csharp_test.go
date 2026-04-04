@@ -205,9 +205,9 @@ func TestCSharpEmitterControllerContent(t *testing.T) {
 		{"route attribute", "[Route(\"api\")]"},
 		{"class", "public class AuthController : ControllerBase"},
 		{"constructor", "public AuthController(IAuthService service)"},
-		{"post attribute", `[HttpPost("/auth/login")]`},
-		{"get attribute", `[HttpGet("/auth/me")]`},
-		{"delete attribute", `[HttpDelete("/auth/logout")]`},
+		{"post attribute", `[HttpPost("auth/login")]`},
+		{"get attribute", `[HttpGet("auth/me")]`},
+		{"delete attribute", `[HttpDelete("auth/logout")]`},
 		{"from body", "[FromBody]"},
 		{"post 201", "return StatusCode(201, result);"},
 		{"delete no content", "return NoContent();"},
@@ -249,8 +249,8 @@ func TestCSharpEmitterPathParams(t *testing.T) {
 	if strings.Contains(content, `"/items/:id"`) {
 		t.Error("controller should use {id} not :id")
 	}
-	if !strings.Contains(content, `"/items/{id}"`) {
-		t.Errorf("controller should use {id} ASP.NET Core syntax:\n%s", content)
+	if !strings.Contains(content, `[HttpGet("items/{id}")`) {
+		t.Errorf("controller should use relative route items/{id}:\n%s", content)
 	}
 	if !strings.Contains(content, "[FromRoute] string Id") {
 		t.Errorf("controller should have [FromRoute] string Id param:\n%s", content)
