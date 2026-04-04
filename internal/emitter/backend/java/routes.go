@@ -114,9 +114,9 @@ func (e *JavaEmitter) writeHandler(strat jstrategy.FrameworkStrategy, sb *string
 	if act.Query != "" {
 		ann := strat.QueryParamAnnotation()
 		if ann != "" {
-			params = append(params, fmt.Sprintf("%s %s query", ann, strat.QueryParamType()))
+			params = append(params, fmt.Sprintf("%s %s query", ann, act.Query))
 		} else {
-			params = append(params, fmt.Sprintf("%s query", strat.QueryParamType()))
+			params = append(params, fmt.Sprintf("%s query", act.Query))
 		}
 	}
 
