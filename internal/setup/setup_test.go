@@ -486,15 +486,68 @@ func TestPatchPomXML_Skipped(t *testing.T) {
 
 func TestPatchCsproj_Patched(t *testing.T) {
 	dir := tmpProject(t, map[string]string{
-		"MyApp.csproj": "<Project>\n</Project>\n",
+		"MyApp.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n</Project>\n",
 	})
 	r := patchCsproj(dir, "generated")
 	if r.Action != "patched" {
 		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "MyApp.csproj"))
-	if !strings.Contains(string(data), "ProjectReference") {
-		t.Fatal("should contain ProjectReference")
+	content := string(data)
+	// Must reference VeldGenerated.csproj — not a doubled path.
+	if !strings.Contains(content, "VeldGenerated.csproj") {
+		t.Fatal("should contain VeldGenerated.csproj")
+	}
+	if !strings.Contains(content, "generated/VeldGenerated.csproj") {
+		t.Fatalf("expected generated/VeldGenerated.csproj in ref, got:\n%s", content)
+	}
+	if !strings.Contains(content, "<ProjectReference") {
+		t.Fatal("should contain <ProjectReference>")
+	}
+}
+
+func TestPatchCsproj_Skipped(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"MyApp.csproj": "<Project>\n  <ItemGroup>\n    <ProjectReference Include=\"generated/VeldGenerated.csproj\" />\n  </ItemGroup>\n</Project>\n",
+	})
+	r := patchCsproj(dir, "generated")
+	if r.Action != "skipped" {
+		t.Fatalf("expected skipped, got %s: %s", r.Action, r.Detail)
+	}
+}
+
+func TestPatchCsproj_UpdatesExistingRef(t *testing.T) {
+	dir := tmpProject(t, map[string]string{
+		"MyApp.csproj": "<Project>\n  <ItemGroup>\n    <ProjectReference Include=\"old/VeldGenerated.csproj\" />\n  </ItemGroup>\n</Project>\n",
+	})
+	r := patchCsproj(dir, "generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "MyApp.csproj"))
+	content := string(data)
+	if strings.Contains(content, "old/VeldGenerated.csproj") {
+		t.Fatal("old path should have been replaced")
+	}
+	if !strings.Contains(content, "generated/VeldGenerated.csproj") {
+		t.Fatalf("expected updated path, got:\n%s", content)
+	}
+}
+
+func TestPatchCsproj_RelativeToProjectFile(t *testing.T) {
+	// .csproj lives in src/, generated output is at the project root.
+	// The Include path must be relative to src/, i.e. "../generated/VeldGenerated.csproj".
+	dir := tmpProject(t, map[string]string{
+		"src/MyApp.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n</Project>\n",
+	})
+	r := patchCsproj(dir, "generated")
+	if r.Action != "patched" {
+		t.Fatalf("expected patched, got %s: %s", r.Action, r.Detail)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "src", "MyApp.csproj"))
+	content := string(data)
+	if !strings.Contains(content, "../generated/VeldGenerated.csproj") {
+		t.Fatalf("expected ../generated/VeldGenerated.csproj (relative to src/), got:\n%s", content)
 	}
 }
 

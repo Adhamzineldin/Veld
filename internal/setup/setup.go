@@ -850,10 +850,23 @@ func patchGradleSourceSet(dir, outDir string) Result {
 	return Result{File: filename, Action: "patched", Detail: "added " + sourceDir + " to sourceSets"}
 }
 
-// patchCsproj adds a ProjectReference to the first .csproj found.
-// If an existing veld reference points to a different path, it is updated.
+// patchCsproj adds a <ProjectReference> to VeldGenerated.csproj in the first
+// .csproj found in dir (or nearby subdirs). The Include path is computed
+// relative to the .csproj file's own directory so the reference resolves
+// correctly regardless of where the user's project lives relative to the
+// veld config dir. If an existing VeldGenerated reference points to a
+// different path, it is updated in place (idempotent).
 func patchCsproj(dir, outDir string) Result {
 	path := findFileGlob(dir, "*.csproj")
+	if path == "" {
+		// Also search common C# project subdirs.
+		for _, sub := range []string{"src", "backend", "server", "app"} {
+			if p := findFileGlob(filepath.Join(dir, sub), "*.csproj"); p != "" {
+				path = p
+				break
+			}
+		}
+	}
 	if path == "" {
 		return Result{File: "*.csproj", Action: "not-found", Detail: "no .csproj file found"}
 	}
@@ -865,33 +878,47 @@ func patchCsproj(dir, outDir string) Result {
 	}
 	content := string(data)
 
-	ref := outDir + "/" + outDir + ".csproj"
+	// Compute the path to VeldGenerated.csproj relative to the .csproj file's
+	// own directory (mirrors how patchPomXML handles Maven's ${project.basedir}).
+	csprojDir := filepath.Dir(path)
+	absOut := outDir
+	if !filepath.IsAbs(outDir) {
+		absOut = filepath.Join(dir, outDir)
+	}
+	relToProj, err2 := filepath.Rel(csprojDir, absOut)
+	if err2 != nil {
+		relToProj = outDir // fallback
+	}
+	ref := filepath.ToSlash(relToProj) + "/VeldGenerated.csproj"
+
+	// Already correct — nothing to do.
 	if strings.Contains(content, ref) {
-		return Result{File: filename, Action: "skipped", Detail: "project reference already points to " + outDir}
+		return Result{File: filename, Action: "skipped", Detail: "ProjectReference already points to " + ref}
 	}
 
-	// Check for an existing veld project reference with a different path.
-	re := regexp.MustCompile(`<ProjectReference\s+Include="[^"]*generated[^"]*\.csproj"\s*/>`)
-	if re.MatchString(content) || strings.Contains(content, "veld") {
-		if re.MatchString(content) {
-			content = re.ReplaceAllString(content, `<ProjectReference Include="`+ref+`" />`)
-			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-				return Result{File: filename, Action: "not-found", Detail: err.Error()}
-			}
-			return Result{File: filename, Action: "patched", Detail: "updated ProjectReference to " + outDir}
+	// Existing VeldGenerated reference with a different path — update it.
+	re := regexp.MustCompile(`(<ProjectReference\s+Include=")[^"]*VeldGenerated\.csproj("\s*/?>)`)
+	if re.MatchString(content) {
+		content = re.ReplaceAllString(content, "${1}"+ref+"${2}")
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return Result{File: filename, Action: "not-found", Detail: err.Error()}
 		}
-		return Result{File: filename, Action: "skipped", Detail: "project reference already configured"}
+		return Result{File: filename, Action: "patched", Detail: "updated ProjectReference to " + ref}
 	}
 
-	projectRef := "  <ItemGroup>\n    <ProjectReference Include=\"" + ref + "\" />\n  </ItemGroup>"
+	// No existing reference — insert a new <ItemGroup> before </Project>.
+	projectRef := "  <ItemGroup>\n    <ProjectReference Include=\"" + ref + "\" />\n  </ItemGroup>\n"
 	if strings.Contains(content, "</Project>") {
-		content = strings.Replace(content, "</Project>", projectRef+"\n</Project>", 1)
+		content = strings.Replace(content, "</Project>", projectRef+"</Project>", 1)
+	} else {
+		// Malformed .csproj — append anyway.
+		content = strings.TrimRight(content, "\n") + "\n" + projectRef
 	}
 
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return Result{File: filename, Action: "not-found", Detail: err.Error()}
 	}
-	return Result{File: filename, Action: "patched", Detail: "added ProjectReference to " + outDir}
+	return Result{File: filename, Action: "patched", Detail: "added ProjectReference to " + ref}
 }
 
 // patchComposerJSON adds PSR-4 autoload entry for the generated namespace.
