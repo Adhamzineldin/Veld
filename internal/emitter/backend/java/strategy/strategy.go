@@ -46,7 +46,7 @@ type FrameworkStrategy interface {
 
 // New returns the FrameworkStrategy for the given name.
 // Empty string or "plain" → PlainStrategy (no framework dependency).
-// "spring" or "spring-boot" → SpringStrategy (Spring Boot 3.x).
+// "spring" or "spring-boot" → SpringStrategy (Spring Boot 3.x / 4.x).
 func New(framework string) FrameworkStrategy {
 	switch framework {
 	case "spring", "spring-boot":

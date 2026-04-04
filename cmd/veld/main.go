@@ -423,10 +423,10 @@ func printImportInstructions(rc config.ResolvedConfig) {
 			fmt.Println(dim("    Routes:   ") + ` use veld_generated::routes;`)
 			fmt.Println(dim("    Interfaces:") + ` use veld_generated::services::IUsersService;`)
 		case "java":
-			fmt.Println(dim("    Setup:") + ` add to pom.xml → <module>` + relBackendOut + `</module>`)
-			fmt.Println(dim("    Types:    ") + ` import veld.generated.models.User;`)
-			fmt.Println(dim("    Routes:   ") + ` import veld.generated.controllers.UsersController;`)
-			fmt.Println(dim("    Interfaces:") + ` import veld.generated.services.IUsersService;`)
+			fmt.Println(dim("    Setup:") + ` run ` + bold("veld setup") + ` (adds build-helper-maven-plugin to pom.xml)`)
+			fmt.Println(dim("    Types:    ") + ` import maayn.veld.generated.models.User;`)
+			fmt.Println(dim("    Routes:   ") + ` import maayn.veld.generated.controllers.UsersController;`)
+			fmt.Println(dim("    Interfaces:") + ` import maayn.veld.generated.services.IUsersService;`)
 		case "csharp":
 			fmt.Println(dim("    Setup:") + ` add ProjectReference → ` + relBackendOut + `/` + relBackendOut + `.csproj`)
 			fmt.Println(dim("    Types:    ") + ` using Veld.Generated.Models;`)
@@ -2434,15 +2434,13 @@ func runInit() error {
 
 	// ── Framework option tables ────────────────────────────────────────────
 	type initFWOpt struct{ name, desc string }
+	nodeFrameworkOpts := []initFWOpt{
+		{"plain", "router: any — wire your own Express / Fastify / Hono / NestJS"},
+		{"express", "Express 4.x"},
+	}
 	backendFrameworkOpts := map[string][]initFWOpt{
-		"node-ts": {
-			{"plain", "router: any — wire your own Express / Fastify / Hono / NestJS"},
-			{"express", "Express 4.x with typed Request/Response"},
-		},
-		"node-js": {
-			{"plain", "router: any — wire your own framework"},
-			{"express", "Express 4.x with JSDoc types"},
-		},
+		"node-ts": nodeFrameworkOpts,
+		"node-js": nodeFrameworkOpts,
 		"python": {
 			{"plain", "pure typed functions — no HTTP framework"},
 			{"flask", "Flask blueprints + jsonify"},
@@ -2455,7 +2453,7 @@ func runInit() error {
 		},
 		"java": {
 			{"plain", "interfaces only — no HTTP framework"},
-			{"spring", "Spring Boot 3.x controllers + pom.xml"},
+			{"spring", "Spring Boot 3.x / 4.x controllers + service interfaces"},
 		},
 		"rust": {
 			{"plain", "trait definitions only — no HTTP framework"},
@@ -2484,8 +2482,7 @@ func runInit() error {
 		},
 	}
 	backendDisplayLabel := map[string]string{
-		"node-ts": "node         TypeScript Node.js",
-		"node-js": "node (JS)    Plain JavaScript Node.js",
+		"node-ts": "node         Node.js",
 		"python":  "python       Python 3",
 		"go":      "go           Go",
 		"rust":    "rust         Rust",
@@ -2495,7 +2492,14 @@ func runInit() error {
 	}
 
 	// ── Backend language selection ─────────────────────────────────────────
-	backends := emitter.ListBackends()
+	// node-ts and node-js are merged under "node"; language is a sub-prompt.
+	allBackends := emitter.ListBackends()
+	var backends []string
+	for _, b := range allBackends {
+		if b != "node-js" {
+			backends = append(backends, b)
+		}
+	}
 	fmt.Println("  " + bold("Backend language") + " — which server language?")
 	defaultBackendIdx := 1
 	for i, b := range backends {
@@ -2523,6 +2527,21 @@ func runInit() error {
 	backendChoice := readChoice(reader, len(backends), defaultBackendIdx)
 	selectedBackend := backends[backendChoice-1]
 	fmt.Printf("  → %s\n\n", green(selectedBackend))
+
+	// ── Node language sub-prompt (TypeScript / JavaScript) ────────────────
+	if selectedBackend == "node-ts" {
+		fmt.Println("  " + bold("Node language") + " — TypeScript or JavaScript?")
+		fmt.Printf("    %s 1%s  TypeScript  %s\n", colorGreen, colorReset, dim("(default)"))
+		fmt.Printf("    %s 2%s  JavaScript  %s\n", colorGreen, colorReset, dim("plain JS, JSDoc types"))
+		fmt.Print("\n  Choose [1]: ")
+		langIdx := readChoice(reader, 2, 1)
+		if langIdx == 2 {
+			selectedBackend = "node-js"
+			fmt.Printf("  → %s\n\n", green("JavaScript"))
+		} else {
+			fmt.Printf("  → %s\n\n", green("TypeScript"))
+		}
+	}
 
 	// ── Backend framework selection ────────────────────────────────────────
 	selectedBackendFramework := ""

@@ -734,6 +734,19 @@ func patchPomXML(dir, outDir string) Result {
 	}
 	content := string(data)
 
+	// outDir is relative to dir (the veld project dir), but pom.xml may live in
+	// a parent directory. ${project.basedir} in Maven equals the pom.xml's own
+	// directory, so we must compute sourceDir relative to that — not relative to
+	// the veld config dir.
+	pomDir := filepath.Dir(path)
+	absOut := outDir
+	if !filepath.IsAbs(outDir) {
+		absOut = filepath.Join(dir, outDir)
+	}
+	if rel, err2 := filepath.Rel(pomDir, absOut); err2 == nil {
+		outDir = filepath.ToSlash(rel)
+	}
+
 	sourceDir := outDir + "/src/main/java"
 
 	// Already configured — check if the source path needs updating.

@@ -15,7 +15,7 @@ func toSpringPath(path string) string {
 	return rePathParam.ReplaceAllString(path, "{$1}")
 }
 
-// SpringStrategy implements FrameworkStrategy for Spring Boot 3.x (Java 17+, Jakarta EE 10).
+// SpringStrategy implements FrameworkStrategy for Spring Boot 3.x / 4.x (Java 17+, Jakarta EE 10+).
 type SpringStrategy struct{}
 
 func (s *SpringStrategy) ControllerAnnotations(mod ast.Module) []string {
