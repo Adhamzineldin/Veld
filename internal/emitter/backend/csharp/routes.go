@@ -81,7 +81,7 @@ func writeCSharpAction(sb *strings.Builder, mod ast.Module, act ast.Action, enum
 	pathParams := emitter.ExtractPathParams(routePath)
 	returnType := csReturnType(act, enumNames)
 
-	routeAttr := strat.RouteAnnotation(act.Method, routePath)
+	routeAttr := strat.RouteAnnotation(act.Method, routePath, mod.Prefix)
 	responseWrapper := strat.ResponseWrapper()
 
 	sb.WriteString("\n")

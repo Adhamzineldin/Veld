@@ -7,7 +7,8 @@ type CSharpFrameworkStrategy interface {
 	// ControllerAnnotations returns class-level attributes (e.g. ["[ApiController]"]).
 	ControllerAnnotations() []string
 	// RouteAnnotation returns the method-level route attribute.
-	RouteAnnotation(method, path string) string
+	// actionPath is the action's path from the contract; modulePrefix is the module's prefix (may be empty).
+	RouteAnnotation(method, actionPath, modulePrefix string) string
 	// InputParamAnnotation returns the attribute for a request body parameter.
 	InputParamAnnotation() string
 	// PathParamAnnotation returns the attribute for a route parameter.

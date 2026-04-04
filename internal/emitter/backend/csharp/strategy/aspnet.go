@@ -16,10 +16,14 @@ func (s *AspNetStrategy) ControllerAnnotations() []string {
 	return []string{"[ApiController]"}
 }
 
-func (s *AspNetStrategy) RouteAnnotation(method, path string) string {
-	aspPath := toAspNetPath(path) // :id → {id}
-	route := fmt.Sprintf("(\"%s\")", aspPath)
-	switch strings.ToUpper(method) {
+func (s *AspNetStrategy) RouteAnnotation(method, actionPath, modulePrefix string) string {
+	m := strings.ToUpper(method)
+	rel := actionRelativeRouteTemplate(modulePrefix, actionPath)
+	if rel == "" {
+		return httpMethodAttributeNoRouteTemplate(m)
+	}
+	route := fmt.Sprintf("(\"%s\")", rel)
+	switch m {
 	case "GET":
 		return "[HttpGet" + route + "]"
 	case "POST":
@@ -31,8 +35,45 @@ func (s *AspNetStrategy) RouteAnnotation(method, path string) string {
 	case "PATCH":
 		return "[HttpPatch" + route + "]"
 	default:
-		return fmt.Sprintf("[HttpGet(\"%s\")] // TODO: unsupported method %s", aspPath, method)
+		return fmt.Sprintf("[HttpGet(\"%s\")] // TODO: unsupported method %s", rel, method)
 	}
+}
+
+// httpMethodAttributeNoRouteTemplate uses [HttpGet] with no template so the action matches
+// the controller [Route] only (relative to that prefix).
+func httpMethodAttributeNoRouteTemplate(method string) string {
+	switch method {
+	case "GET":
+		return "[HttpGet]"
+	case "POST":
+		return "[HttpPost]"
+	case "PUT":
+		return "[HttpPut]"
+	case "DELETE":
+		return "[HttpDelete]"
+	case "PATCH":
+		return "[HttpPatch]"
+	default:
+		return fmt.Sprintf("[HttpGet] // TODO: unsupported method %s", method)
+	}
+}
+
+// actionRelativeRouteTemplate returns an ASP.NET Core route template that combines with the
+// controller's [Route] attribute: no leading slash, and not rooted at the site root.
+// If the action path accidentally repeats the module prefix, that duplicate segment is removed.
+func actionRelativeRouteTemplate(modulePrefix, actionPath string) string {
+	asp := toAspNetPath(actionPath)
+	rel := strings.TrimPrefix(asp, "/")
+	routePrefix := strings.TrimPrefix(modulePrefix, "/")
+	if routePrefix != "" {
+		if rel == routePrefix {
+			return ""
+		}
+		if strings.HasPrefix(rel, routePrefix+"/") {
+			rel = strings.TrimPrefix(rel, routePrefix+"/")
+		}
+	}
+	return rel
 }
 
 func (s *AspNetStrategy) InputParamAnnotation() string        { return "[FromBody] " }

@@ -9,8 +9,12 @@ type PlainStrategy struct{}
 func (s *PlainStrategy) ControllerBaseClass() string     { return "" }
 func (s *PlainStrategy) ControllerAnnotations() []string { return nil }
 
-func (s *PlainStrategy) RouteAnnotation(method, path string) string {
-	return fmt.Sprintf("// %s %s", method, path)
+func (s *PlainStrategy) RouteAnnotation(method, actionPath, modulePrefix string) string {
+	full := actionPath
+	if modulePrefix != "" {
+		full = modulePrefix + actionPath
+	}
+	return fmt.Sprintf("// %s %s", method, full)
 }
 
 func (s *PlainStrategy) InputParamAnnotation() string        { return "" }
