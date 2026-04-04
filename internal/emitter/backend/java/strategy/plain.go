@@ -45,6 +45,11 @@ func (s *PlainStrategy) MiddlewareImports() []string { return nil }
 func (s *PlainStrategy) ValidationImports() []string { return nil }
 
 func (s *PlainStrategy) GlobalExceptionHandlerSource(_, _ string) string { return "" }
+func (s *PlainStrategy) InterceptorSource(_, _ string) string            { return "" }
+func (s *PlainStrategy) WebMvcConfigurerSource(_ map[string][]string, _, _ string) string {
+	return ""
+}
+func (s *PlainStrategy) AutoConfigSource(_ string) string { return "" }
 
 func (s *PlainStrategy) WSControllerMethod(actionName, routePath, emitType, streamType string) string {
 	if emitType == "" {
