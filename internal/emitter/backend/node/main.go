@@ -58,9 +58,9 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	if err := e.emitPerModuleTypes(a, outDir); err != nil {
 		return fmt.Errorf("types: %w", err)
 	}
-	// Emit the shared ApiError base class before per-module error files.
-	if err := e.emitErrorsBase(a, outDir); err != nil {
-		return fmt.Errorf("errors base: %w", err)
+	// Emit errors/_base.ts + per-module .errors.ts + errors/index.ts in one shot.
+	if err := e.emitAllErrors(a, outDir); err != nil {
+		return fmt.Errorf("errors: %w", err)
 	}
 	for _, mod := range a.Modules {
 		if err := e.emitInterface(a, mod, outDir); err != nil {
@@ -69,13 +69,6 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		if err := e.emitRoutes(a, mod, outDir, opts, strat); err != nil {
 			return fmt.Errorf("routes for %s: %w", mod.Name, err)
 		}
-		if err := e.emitErrors(mod, outDir); err != nil {
-			return fmt.Errorf("errors for %s: %w", mod.Name, err)
-		}
-	}
-	// Emit errors barrel (errors/index.ts) re-exporting all module error files.
-	if err := e.emitErrorsBarrel(a, outDir); err != nil {
-		return fmt.Errorf("errors barrel: %w", err)
 	}
 	// Emit a single shared middleware interface for all modules.
 	if err := e.emitMiddlewareInterface(a, outDir, strat); err != nil {

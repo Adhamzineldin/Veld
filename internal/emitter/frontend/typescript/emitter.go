@@ -8,6 +8,7 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	"github.com/Adhamzineldin/Veld/internal/emitter/tsshared"
 )
 
 func init() {
@@ -36,6 +37,16 @@ func (e *TypeScriptEmitter) Summary(modules []string) []emitter.SummaryLine {
 func (e *TypeScriptEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) error {
 	if opts.DryRun {
 		return nil
+	}
+
+	// Always generate types/ and errors/ from the AST so the client SDK
+	// compiles regardless of which backend is chosen. When backend=node these
+	// writes are idempotent (same content already produced by the backend).
+	if err := tsshared.EmitTSTypes(a, outDir); err != nil {
+		return fmt.Errorf("ts types: %w", err)
+	}
+	if err := tsshared.EmitTSErrors(a, outDir); err != nil {
+		return fmt.Errorf("ts errors: %w", err)
 	}
 
 	dir := filepath.Join(outDir, "client")
