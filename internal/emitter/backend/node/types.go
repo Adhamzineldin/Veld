@@ -249,7 +249,8 @@ func (e *NodeEmitter) emitPerModuleTypes(a ast.AST, outDir string) error {
 			barrel.WriteString(fmt.Sprintf("export * from './%s';\n", moduleLower))
 		} else if len(unique) > 0 {
 			// Conflicts detected — use explicit named exports for unique names only.
-			barrel.WriteString(fmt.Sprintf("export { %s } from './%s';\n",
+			// Must use `export type` to satisfy isolatedModules.
+			barrel.WriteString(fmt.Sprintf("export type { %s } from './%s';\n",
 				strings.Join(unique, ", "), moduleLower))
 		}
 		// If len(unique) == 0, skip entirely.
