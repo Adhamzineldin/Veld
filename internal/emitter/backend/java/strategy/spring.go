@@ -29,18 +29,32 @@ func (s *SpringStrategy) ControllerAnnotations(mod ast.Module) []string {
 
 func (s *SpringStrategy) RouteAnnotation(method, path string) string {
 	springPath := toSpringPath(path) // convert :id → {id}
+	// Spring Boot 3+ disabled trailing-slash matching. A path of "/" on a method
+	// whose controller already has @RequestMapping("/prefix") would resolve to
+	// "/prefix/" — which no longer matches "/prefix". Emit with no path argument
+	// so the method maps to the prefix itself.
+	bare := springPath == "" || springPath == "/"
+	ann := func(name, p string) string {
+		if bare {
+			return "@" + name
+		}
+		return fmt.Sprintf("@%s(%q)", name, p)
+	}
 	switch strings.ToUpper(method) {
 	case "GET":
-		return fmt.Sprintf("@GetMapping(%q)", springPath)
+		return ann("GetMapping", springPath)
 	case "POST":
-		return fmt.Sprintf("@PostMapping(%q)", springPath)
+		return ann("PostMapping", springPath)
 	case "PUT":
-		return fmt.Sprintf("@PutMapping(%q)", springPath)
+		return ann("PutMapping", springPath)
 	case "DELETE":
-		return fmt.Sprintf("@DeleteMapping(%q)", springPath)
+		return ann("DeleteMapping", springPath)
 	case "PATCH":
-		return fmt.Sprintf("@PatchMapping(%q)", springPath)
+		return ann("PatchMapping", springPath)
 	default:
+		if bare {
+			return fmt.Sprintf("@RequestMapping(method = RequestMethod.%s)", strings.ToUpper(method))
+		}
 		return fmt.Sprintf("@RequestMapping(method = RequestMethod.%s, value = %q)", strings.ToUpper(method), springPath)
 	}
 }
@@ -66,9 +80,16 @@ func (s *SpringStrategy) NoContentResponse() string {
 	return "return ResponseEntity.noContent().build();"
 }
 
+func (s *SpringStrategy) ApiExceptionCatch(errVar string) string {
+	return fmt.Sprintf(
+		"return ResponseEntity.status(%s.getStatus()).body(new ApiErrorResponse(%s.getMessage(), %s.getCode()));",
+		errVar, errVar, errVar,
+	)
+}
+
 func (s *SpringStrategy) ErrorResponse(errVar string) string {
 	return fmt.Sprintf(
-		`return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", %s.getMessage()));`,
+		"return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiErrorResponse(%s.getMessage(), \"INTERNAL_ERROR\"));",
 		errVar,
 	)
 }
@@ -121,7 +142,7 @@ func (s *SpringStrategy) GlobalExceptionHandlerSource(ctrlPkg, modelsPkg string)
 	sb.WriteString("    @ExceptionHandler(Exception.class)\n")
 	sb.WriteString("    public ResponseEntity<ApiErrorResponse> handleAll(Exception ex) {\n")
 	sb.WriteString("        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)\n")
-	sb.WriteString("            .body(new ApiErrorResponse(\"Internal server error\", \"\"));\n")
+	sb.WriteString("            .body(new ApiErrorResponse(ex.getMessage(), \"INTERNAL_ERROR\"));\n")
 	sb.WriteString("    }\n")
 	sb.WriteString("}\n")
 	return sb.String()
