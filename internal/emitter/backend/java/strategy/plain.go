@@ -36,6 +36,10 @@ func (s *PlainStrategy) NoContentResponse() string {
 	return "// 204 No Content"
 }
 
+func (s *PlainStrategy) ApiExceptionCatch(errVar string) string {
+	return fmt.Sprintf("throw %s;", errVar)
+}
+
 func (s *PlainStrategy) ErrorResponse(errVar string) string {
 	return fmt.Sprintf("throw new RuntimeException(%s.getMessage());", errVar)
 }

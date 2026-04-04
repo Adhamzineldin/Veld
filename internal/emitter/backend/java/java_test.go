@@ -225,7 +225,8 @@ func TestJavaEmitterControllerContent(t *testing.T) {
 		{"request body", "@RequestBody"},
 		{"post 201", "HttpStatus.CREATED"},
 		{"delete no content", "ResponseEntity.noContent()"},
-		{"try/catch", "} catch (Exception e) {"},
+		{"api exception catch", "} catch (ApiException e) {"},
+		{"generic catch", "} catch (Exception e) {"},
 	}
 	for _, c := range checks {
 		if !strings.Contains(content, c.needle) {

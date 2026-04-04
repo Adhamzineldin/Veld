@@ -155,6 +155,8 @@ func (e *JavaEmitter) writeHandler(strat jstrategy.FrameworkStrategy, sb *string
 		sb.WriteString(fmt.Sprintf("            %s\n", strat.OkResponse("result")))
 	}
 
+	sb.WriteString("        } catch (ApiException e) {\n")
+	sb.WriteString(fmt.Sprintf("            %s\n", strat.ApiExceptionCatch("e")))
 	sb.WriteString("        } catch (Exception e) {\n")
 	sb.WriteString(fmt.Sprintf("            %s\n", strat.ErrorResponse("e")))
 	sb.WriteString("        }\n")

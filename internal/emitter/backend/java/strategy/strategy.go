@@ -25,7 +25,10 @@ type FrameworkStrategy interface {
 	CreatedResponse(expr string) string
 	// NoContentResponse returns a return statement for a 204 No Content response.
 	NoContentResponse() string
-	// ErrorResponse returns a return statement for a 500 error response using errVar.
+	// ApiExceptionCatch returns a catch block body for ApiException — preserves the
+	// typed HTTP status and machine-readable code set by the service layer.
+	ApiExceptionCatch(errVar string) string
+	// ErrorResponse returns a return statement for an unexpected 500 error using errVar.
 	ErrorResponse(errVar string) string
 	// ControllerImports returns framework imports required in controller files.
 	ControllerImports() []string
