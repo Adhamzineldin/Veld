@@ -126,8 +126,11 @@ func (s *SpringStrategy) GlobalExceptionHandlerSource(ctrlPkg, modelsPkg string)
 	return sb.String()
 }
 
+// BuildFile returns ("", "") — Spring projects own their pom.xml/build.gradle.
+// Use `veld setup` to add build-helper-maven-plugin or a Gradle sourceSet pointing
+// at generated/src/main/java instead.
 func (s *SpringStrategy) BuildFile() (string, string) {
-	return "pom.xml", springPomXML
+	return "", ""
 }
 
 func (s *SpringStrategy) WSControllerMethod(actionName, routePath, emitType, streamType string) string {

@@ -18,7 +18,7 @@ import (
 // emitErrorHandler writes ApiErrorResponse.java, ApiException.java (pure Java),
 // and GlobalExceptionHandler.java (framework-specific via strategy).
 func (e *JavaEmitter) emitErrorHandler(strat jstrategy.FrameworkStrategy, outDir string) error {
-	modelsDir := filepath.Join(outDir, "models")
+	modelsDir := pkgToDir(outDir, javaPackageModels)
 
 	// ApiErrorResponse — pure Java record, no framework dependency.
 	var sb strings.Builder
@@ -58,7 +58,7 @@ func (e *JavaEmitter) emitErrorHandler(strat jstrategy.FrameworkStrategy, outDir
 	if src == "" {
 		return nil
 	}
-	ctrlDir := filepath.Join(outDir, "controllers")
+	ctrlDir := pkgToDir(outDir, javaPackageControllers)
 	return os.WriteFile(filepath.Join(ctrlDir, "GlobalExceptionHandler.java"), []byte(src), 0644)
 }
 
@@ -68,7 +68,7 @@ func (e *JavaEmitter) emitModuleErrors(mod ast.Module, outDir string) error {
 		return nil
 	}
 
-	dir := filepath.Join(outDir, "errors")
+	dir := pkgToDir(outDir, javaPackageModels+".errors")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}

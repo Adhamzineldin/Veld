@@ -463,14 +463,18 @@ func TestPatchPomXML_Patched(t *testing.T) {
 		t.Fatalf("expected patched, got %s", r.Action)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "pom.xml"))
-	if !strings.Contains(string(data), "<module>generated</module>") {
-		t.Fatal("should contain <module>generated</module>")
+	content := string(data)
+	if !strings.Contains(content, "build-helper-maven-plugin") {
+		t.Fatal("should contain build-helper-maven-plugin")
+	}
+	if !strings.Contains(content, "generated/src/main/java") {
+		t.Fatal("should contain generated/src/main/java source path")
 	}
 }
 
 func TestPatchPomXML_Skipped(t *testing.T) {
 	dir := tmpProject(t, map[string]string{
-		"pom.xml": "<project>\n    <modules>\n        <module>generated</module>\n    </modules>\n</project>\n",
+		"pom.xml": "<project>\n  <build><plugins>\n    <plugin>\n      <artifactId>build-helper-maven-plugin</artifactId>\n      <configuration><sources><source>${project.basedir}/generated/src/main/java</source></sources></configuration>\n    </plugin>\n  </plugins></build>\n</project>\n",
 	})
 	r := patchPomXML(dir, "generated")
 	if r.Action != "skipped" {

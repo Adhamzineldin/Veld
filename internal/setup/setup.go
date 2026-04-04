@@ -96,11 +96,10 @@ func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result
 	case "rust":
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchCargoToml(backendDir, relOutBackend) }})
 	case "java":
+		// Maven: add build-helper-maven-plugin to include generated/src/main/java as a source root
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchPomXML(backendDir, relOutBackend) }})
-		backendPatchers = append(backendPatchers, patcher{func() Result {
-			return patchGradleSettings(backendDir, relOutBackend, "veld-generated")
-		}})
-		backendPatchers = append(backendPatchers, patcher{func() Result { return patchGradleBuildDep(backendDir, "veld-generated") }})
+		// Gradle: add srcDir to sourceSets instead of a separate module
+		backendPatchers = append(backendPatchers, patcher{func() Result { return patchGradleSourceSet(backendDir, relOutBackend) }})
 	case "csharp":
 		backendPatchers = append(backendPatchers, patcher{func() Result { return patchCsproj(backendDir, relOutBackend) }})
 	case "php":
@@ -719,8 +718,10 @@ func patchCargoToml(dir, outDir string) Result {
 	return Result{File: "Cargo.toml", Action: "patched", Detail: "added " + outDir + " to workspace members"}
 }
 
-// patchPomXML adds <module>generated</module> to pom.xml.
-// If a veld module entry already exists with a different path, it is updated.
+// patchPomXML adds build-helper-maven-plugin to pom.xml so that
+// generated/src/main/java is compiled as part of the project without needing
+// a separate Maven submodule. This is idempotent: re-running with a different
+// outDir updates the existing <source> entry in place.
 func patchPomXML(dir, outDir string) Result {
 	path := findFile(dir, "pom.xml")
 	if path == "" {
@@ -733,32 +734,107 @@ func patchPomXML(dir, outDir string) Result {
 	}
 	content := string(data)
 
-	moduleTag := "<module>" + outDir + "</module>"
-	if strings.Contains(content, moduleTag) {
-		return Result{File: "pom.xml", Action: "skipped", Detail: "module already listed with correct path"}
-	}
+	sourceDir := outDir + "/src/main/java"
 
-	// Check for an existing veld-generated module entry with a different path.
-	re := regexp.MustCompile(`<module>[^<]*generated[^<]*</module>`)
-	if re.MatchString(content) {
-		content = re.ReplaceAllString(content, moduleTag)
+	// Already configured — check if the source path needs updating.
+	if strings.Contains(content, "build-helper-maven-plugin") {
+		if strings.Contains(content, sourceDir) {
+			return Result{File: "pom.xml", Action: "skipped", Detail: "build-helper-maven-plugin already points to " + sourceDir}
+		}
+		re := regexp.MustCompile(`(<source>\$\{project\.basedir\}/)([^<]*)(</source>)`)
+		content = re.ReplaceAllString(content, "${1}"+sourceDir+"${3}")
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			return Result{File: "pom.xml", Action: "not-found", Detail: err.Error()}
 		}
-		return Result{File: "pom.xml", Action: "patched", Detail: "updated module path to " + outDir}
+		return Result{File: "pom.xml", Action: "patched", Detail: "updated build-helper source to " + sourceDir}
 	}
 
-	if strings.Contains(content, "<modules>") {
-		content = strings.Replace(content, "<modules>", "<modules>\n        "+moduleTag, 1)
+	plugin := `
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <phase>generate-sources</phase>
+            <goals><goal>add-source</goal></goals>
+            <configuration>
+              <sources>
+                <source>${project.basedir}/` + sourceDir + `</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>`
+
+	if strings.Contains(content, "<plugins>") {
+		content = strings.Replace(content, "<plugins>", "<plugins>"+plugin, 1)
+	} else if strings.Contains(content, "<build>") {
+		content = strings.Replace(content, "<build>",
+			"<build>\n    <plugins>"+plugin+"\n    </plugins>", 1)
 	} else if strings.Contains(content, "</project>") {
 		content = strings.Replace(content, "</project>",
-			"    <modules>\n        "+moduleTag+"\n    </modules>\n</project>", 1)
+			"  <build>\n    <plugins>"+plugin+"\n    </plugins>\n  </build>\n</project>", 1)
 	}
 
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return Result{File: "pom.xml", Action: "not-found", Detail: err.Error()}
 	}
-	return Result{File: "pom.xml", Action: "patched", Detail: "added <module>" + outDir + "</module>"}
+	return Result{File: "pom.xml", Action: "patched", Detail: "added build-helper-maven-plugin for " + sourceDir}
+}
+
+// patchGradleSourceSet adds the generated source directory to the main sourceSet
+// in build.gradle.kts (or build.gradle), so Gradle compiles generated Java files
+// without a separate subproject.
+func patchGradleSourceSet(dir, outDir string) Result {
+	var path string
+	for _, name := range []string{"build.gradle.kts", "build.gradle"} {
+		if p := findFile(dir, name); p != "" {
+			path = p
+			break
+		}
+	}
+	if path == "" {
+		return Result{File: "build.gradle.kts", Action: "not-found", Detail: "no build.gradle.kts found"}
+	}
+
+	filename := filepath.Base(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Result{File: filename, Action: "not-found", Detail: err.Error()}
+	}
+	content := string(data)
+
+	sourceDir := outDir + "/src/main/java"
+	if strings.Contains(content, sourceDir) {
+		return Result{File: filename, Action: "skipped", Detail: "source directory already configured"}
+	}
+
+	isKts := strings.HasSuffix(path, ".kts")
+	var entry string
+	if isKts {
+		entry = "\nsourceSets {\n    main {\n        java {\n            srcDir(\"" + sourceDir + "\")\n        }\n    }\n}\n"
+	} else {
+		entry = "\nsourceSets {\n    main {\n        java {\n            srcDirs += ['" + sourceDir + "']\n        }\n    }\n}\n"
+	}
+
+	// If a sourceSets block already exists, insert inside it instead of appending a new one.
+	if strings.Contains(content, "sourceSets") {
+		reSS := regexp.MustCompile(`(sourceSets\s*\{)`)
+		if isKts {
+			content = reSS.ReplaceAllString(content,
+				"${1}\n    main {\n        java {\n            srcDir(\""+sourceDir+"\")\n        }\n    }")
+		} else {
+			content = reSS.ReplaceAllString(content,
+				"${1}\n    main {\n        java {\n            srcDirs += ['"+sourceDir+"']\n        }\n    }")
+		}
+	} else {
+		content = strings.TrimRight(content, "\n") + "\n" + entry
+	}
+
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		return Result{File: filename, Action: "not-found", Detail: err.Error()}
+	}
+	return Result{File: filename, Action: "patched", Detail: "added " + sourceDir + " to sourceSets"}
 }
 
 // patchCsproj adds a ProjectReference to the first .csproj found.

@@ -16,7 +16,7 @@ import (
 const javaPackageServices = "maayn.veld.generated.services"
 
 func (e *JavaEmitter) emitInterface(_ jstrategy.FrameworkStrategy, a ast.AST, mod ast.Module, outDir string) error {
-	dir := filepath.Join(outDir, "services")
+	dir := pkgToDir(outDir, javaPackageServices)
 
 	enumNames := make(map[string]bool, len(a.Enums))
 	for _, en := range a.Enums {

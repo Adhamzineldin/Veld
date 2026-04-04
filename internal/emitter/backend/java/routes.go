@@ -18,7 +18,7 @@ import (
 const javaPackageControllers = "maayn.veld.generated.controllers"
 
 func (e *JavaEmitter) emitController(strat jstrategy.FrameworkStrategy, a ast.AST, mod ast.Module, outDir string) error {
-	dir := filepath.Join(outDir, "controllers")
+	dir := pkgToDir(outDir, javaPackageControllers)
 
 	enumNames := make(map[string]bool, len(a.Enums))
 	for _, en := range a.Enums {
