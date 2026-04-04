@@ -19,15 +19,18 @@ func init() {
 // The framework strategy is resolved at emit time from EmitOptions.BackendFramework:
 //
 //	""/"plain"   → PlainStrategy: service interfaces + types, no HTTP framework dependency
-//	"spring"     → SpringStrategy: Spring Boot 3.x controllers + pom.xml
+//	"spring"     → SpringStrategy: Spring Boot 3.x controllers (no pom.xml — use build-helper-maven-plugin)
 //
-// Output layout:
+// Output follows standard Maven/Gradle source layout so files are picked up without
+// any extra configuration:
 //
 //	outDir/
-//	├── build.gradle  (plain) or pom.xml (spring)
-//	├── models/       — one .java file per model + one per enum
-//	├── services/     — I{Module}Service.java per module
-//	└── controllers/  — {Module}Controller.java per module
+//	├── build.gradle          (plain only)
+//	└── src/main/java/
+//	    └── maayn/veld/generated/
+//	        ├── models/       — <Model>.java, <Enum>.java, ApiException.java
+//	        ├── services/     — I<Module>Service.java
+//	        └── controllers/  — <Module>Controller.java, GlobalExceptionHandler.java
 type JavaEmitter struct{}
 
 func (*JavaEmitter) IsBackend() {}
@@ -35,16 +38,17 @@ func New() *JavaEmitter         { return &JavaEmitter{} }
 
 // Summary returns a human-readable list of files that will be generated.
 func (e *JavaEmitter) Summary(modules []string) []emitter.SummaryLine {
+	const srcRoot = "src/main/java/maayn/veld/generated/"
 	var lines []emitter.SummaryLine
 
-	lines = append(lines, emitter.SummaryLine{Dir: "models/", Files: "<Model>.java, <Enum>.java"})
+	lines = append(lines, emitter.SummaryLine{Dir: srcRoot + "models/", Files: "<Model>.java, <Enum>.java"})
 
 	ifaceFiles := make([]string, 0, len(modules))
 	for _, m := range modules {
 		ifaceFiles = append(ifaceFiles, "I"+capitalize(m)+"Service.java")
 	}
 	if len(ifaceFiles) > 0 {
-		lines = append(lines, emitter.SummaryLine{Dir: "services/", Files: strings.Join(ifaceFiles, ", ")})
+		lines = append(lines, emitter.SummaryLine{Dir: srcRoot + "services/", Files: strings.Join(ifaceFiles, ", ")})
 	}
 
 	ctrlFiles := make([]string, 0, len(modules))
@@ -52,11 +56,18 @@ func (e *JavaEmitter) Summary(modules []string) []emitter.SummaryLine {
 		ctrlFiles = append(ctrlFiles, capitalize(m)+"Controller.java")
 	}
 	if len(ctrlFiles) > 0 {
-		lines = append(lines, emitter.SummaryLine{Dir: "controllers/", Files: strings.Join(ctrlFiles, ", ")})
+		lines = append(lines, emitter.SummaryLine{Dir: srcRoot + "controllers/", Files: strings.Join(ctrlFiles, ", ")})
 	}
 
-	lines = append(lines, emitter.SummaryLine{Dir: "./", Files: "build.gradle / pom.xml"})
+	lines = append(lines, emitter.SummaryLine{Dir: "./", Files: "build.gradle (plain strategy only)"})
 	return lines
+}
+
+// pkgToDir returns the filesystem directory for a Java package inside outDir,
+// following Maven/Gradle standard layout: src/main/java/<pkg/path>/
+func pkgToDir(outDir, pkg string) string {
+	return filepath.Join(outDir, "src", "main", "java",
+		filepath.FromSlash(strings.ReplaceAll(pkg, ".", "/")))
 }
 
 // capitalize returns s with its first character uppercased.
@@ -104,8 +115,8 @@ func (e *JavaEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 }
 
 func (e *JavaEmitter) createDirs(outDir string) error {
-	for _, sub := range []string{"models", "services", "controllers"} {
-		if err := os.MkdirAll(filepath.Join(outDir, sub), 0755); err != nil {
+	for _, pkg := range []string{javaPackageModels, javaPackageServices, javaPackageControllers} {
+		if err := os.MkdirAll(pkgToDir(outDir, pkg), 0755); err != nil {
 			return err
 		}
 	}
@@ -114,5 +125,8 @@ func (e *JavaEmitter) createDirs(outDir string) error {
 
 func (e *JavaEmitter) emitBuildFile(strat jstrategy.FrameworkStrategy, outDir string) error {
 	name, content := strat.BuildFile()
+	if name == "" {
+		return nil // strategy opted out (e.g. Spring — user project owns the pom.xml)
+	}
 	return os.WriteFile(filepath.Join(outDir, name), []byte(content), 0644)
 }

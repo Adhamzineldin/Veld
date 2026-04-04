@@ -64,6 +64,12 @@ func minimalAST() ast.AST {
 	}
 }
 
+// javaPath returns the expected filesystem path for a generated Java file,
+// matching Maven standard layout: src/main/java/maayn/veld/generated/<sub>/<file>
+func javaPath(outDir, sub, file string) string {
+	return filepath.Join(outDir, "src", "main", "java", "maayn", "veld", "generated", sub, file)
+}
+
 func TestJavaEmitterEmit(t *testing.T) {
 	e := java.New()
 	outDir := t.TempDir()
@@ -73,17 +79,20 @@ func TestJavaEmitterEmit(t *testing.T) {
 	}
 
 	expectedFiles := []string{
-		filepath.Join(outDir, "pom.xml"),
-		filepath.Join(outDir, "models", "LoginInput.java"),
-		filepath.Join(outDir, "models", "User.java"),
-		filepath.Join(outDir, "models", "Role.java"),
-		filepath.Join(outDir, "services", "IAuthService.java"),
-		filepath.Join(outDir, "controllers", "AuthController.java"),
+		javaPath(outDir, "models", "LoginInput.java"),
+		javaPath(outDir, "models", "User.java"),
+		javaPath(outDir, "models", "Role.java"),
+		javaPath(outDir, "services", "IAuthService.java"),
+		javaPath(outDir, "controllers", "AuthController.java"),
 	}
 	for _, f := range expectedFiles {
 		if _, err := os.Stat(f); os.IsNotExist(err) {
 			t.Errorf("expected file %s to exist", f)
 		}
+	}
+	// Spring no longer emits pom.xml — the user project owns it.
+	if _, err := os.Stat(filepath.Join(outDir, "pom.xml")); !os.IsNotExist(err) {
+		t.Error("Spring emitter must not generate pom.xml in outDir")
 	}
 }
 
@@ -108,7 +117,7 @@ func TestJavaEmitterModelContent(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(outDir, "models", "User.java"))
+	data, err := os.ReadFile(javaPath(outDir, "models", "User.java"))
 	if err != nil {
 		t.Fatalf("ReadFile User.java: %v", err)
 	}
@@ -137,7 +146,7 @@ func TestJavaEmitterEnumContent(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(outDir, "models", "Role.java"))
+	data, err := os.ReadFile(javaPath(outDir, "models", "Role.java"))
 	if err != nil {
 		t.Fatalf("ReadFile Role.java: %v", err)
 	}
@@ -168,7 +177,7 @@ func TestJavaEmitterInterfaceContent(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(outDir, "services", "IAuthService.java"))
+	data, err := os.ReadFile(javaPath(outDir, "services", "IAuthService.java"))
 	if err != nil {
 		t.Fatalf("ReadFile IAuthService.java: %v", err)
 	}
@@ -197,7 +206,7 @@ func TestJavaEmitterControllerContent(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(outDir, "controllers", "AuthController.java"))
+	data, err := os.ReadFile(javaPath(outDir, "controllers", "AuthController.java"))
 	if err != nil {
 		t.Fatalf("ReadFile AuthController.java: %v", err)
 	}
@@ -247,7 +256,7 @@ func TestJavaEmitterPathParams(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, _ := os.ReadFile(filepath.Join(outDir, "controllers", "ItemsController.java"))
+	data, _ := os.ReadFile(javaPath(outDir, "controllers", "ItemsController.java"))
 	content := string(data)
 
 	if !strings.Contains(content, `@PathVariable("id") String id`) {
@@ -266,7 +275,8 @@ func TestJavaEmitterSummary(t *testing.T) {
 	for _, l := range lines {
 		dirs[l.Dir] = true
 	}
-	for _, want := range []string{"models/", "services/", "controllers/", "./"} {
+	const srcRoot = "src/main/java/maayn/veld/generated/"
+	for _, want := range []string{srcRoot + "models/", srcRoot + "services/", srcRoot + "controllers/", "./"} {
 		if !dirs[want] {
 			t.Errorf("Summary() missing dir %q", want)
 		}

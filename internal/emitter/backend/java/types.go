@@ -20,7 +20,7 @@ const javaPackageModels = "maayn.veld.generated.models"
 var javaLang = &lang.JavaAdapter{}
 
 func (e *JavaEmitter) emitModels(a ast.AST, outDir string) error {
-	dir := filepath.Join(outDir, "models")
+	dir := pkgToDir(outDir, javaPackageModels)
 
 	for _, en := range a.Enums {
 		if err := e.emitEnum(en, dir); err != nil {
