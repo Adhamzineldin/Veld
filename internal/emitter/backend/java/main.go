@@ -104,9 +104,11 @@ func (e *JavaEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		if err := e.emitModuleErrors(mod, outDir); err != nil {
 			return fmt.Errorf("errors %s: %w", mod.Name, err)
 		}
-		if err := e.emitModuleMiddleware(strat, mod, outDir); err != nil {
-			return fmt.Errorf("middleware %s: %w", mod.Name, err)
-		}
+	}
+	// Middleware is emitted once for the whole AST — interceptors and the configurer
+	// need the full picture of all labels and path patterns across all modules.
+	if err := e.emitMiddleware(strat, a, outDir); err != nil {
+		return fmt.Errorf("middleware: %w", err)
 	}
 	if err := e.emitBuildFile(strat, outDir); err != nil {
 		return fmt.Errorf("build file: %w", err)

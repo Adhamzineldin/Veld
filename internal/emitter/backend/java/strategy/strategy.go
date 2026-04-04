@@ -42,6 +42,19 @@ type FrameworkStrategy interface {
 	// actionName: PascalCase action name, routePath: full route path,
 	// emitType: client→server Java type (may be "String"), streamType: server→client type (may be "").
 	WSControllerMethod(actionName, routePath, emitType, streamType string) string
+	// InterceptorSource returns the complete source for {Label}Interceptor.java.
+	// label is the PascalCase middleware label (e.g. "AuthGuard").
+	// Returns "" if the framework does not use interceptors.
+	InterceptorSource(label, middlewarePkg string) string
+	// WebMvcConfigurerSource returns VeldWebMvcConfigurer.java that registers every
+	// interceptor against the exact path patterns derived from the AST.
+	// pathMap: label → slice of full paths (prefix + action path), already de-duped.
+	// Returns "" if the framework does not use interceptors.
+	WebMvcConfigurerSource(pathMap map[string][]string, controllerPkg, middlewarePkg string) string
+	// AutoConfigSource returns VeldAutoConfiguration.java so generated controllers and
+	// interceptors are registered without the user touching their @SpringBootApplication.
+	// Returns "" if not needed for this framework.
+	AutoConfigSource(basePkg string) string
 }
 
 // New returns the FrameworkStrategy for the given name.
