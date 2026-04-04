@@ -45,8 +45,8 @@ func (s *SpringStrategy) RouteAnnotation(method, path string) string {
 }
 
 func (s *SpringStrategy) InputParamAnnotation() string { return "@RequestBody" }
-func (s *SpringStrategy) QueryParamAnnotation() string { return "@RequestParam" }
-func (s *SpringStrategy) QueryParamType() string       { return "java.util.Map<String, String>" }
+func (s *SpringStrategy) QueryParamAnnotation() string { return "@ModelAttribute" }
+func (s *SpringStrategy) QueryParamType() string       { return "" } // unused: type comes from act.Query
 func (s *SpringStrategy) ResponseWrapper() string      { return "ResponseEntity<?>" }
 
 func (s *SpringStrategy) PathParamAnnotation(name string) string {
