@@ -73,6 +73,7 @@ func TestCSharpEmitterEmit(t *testing.T) {
 	}
 
 	expectedFiles := []string{
+		filepath.Join(outDir, "SETUP.md"),
 		filepath.Join(outDir, "VeldGenerated.csproj"),
 		filepath.Join(outDir, "Models", "LoginInput.cs"),
 		filepath.Join(outDir, "Models", "User.cs"),
