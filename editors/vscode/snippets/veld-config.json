@@ -1,0 +1,109 @@
+{
+  "Veld Config (nested)": {
+    "prefix": "veld-config",
+    "body": [
+      "{",
+      "\t\"$$schema\": \"https://veld.dev/schemas/veld.config.schema.json\",",
+      "\t\"input\": \"${1:app.veld}\",",
+      "\t\"description\": \"${2:My API}\",",
+      "",
+      "\t\"backendConfig\": {",
+      "\t\t\"target\": \"${3|node-ts,python,go,java,csharp,php,rust|}\",",
+      "\t\t\"framework\": \"${4:express}\",",
+      "\t\t\"out\": \"${5:../backend/src/generated}\",",
+      "\t\t\"dir\": \"${6:../backend}\"",
+      "\t},",
+      "",
+      "\t\"frontendConfig\": {",
+      "\t\t\"target\": \"${7|react,vue,angular,svelte,typescript,dart,kotlin,swift,types-only,none|}\",",
+      "\t\t\"out\": \"${8:../frontend/src/generated}\"",
+      "\t},",
+      "",
+      "\t\"baseUrl\": \"${9:/api}\",",
+      "",
+      "\t\"hooks\": {",
+      "\t\t\"postGenerate\": \"${10:npm run format}\"",
+      "\t}",
+      "}"
+    ],
+    "description": "Veld config file with nested backend/frontend configuration (recommended)"
+  },
+
+  "Veld Workspace Config": {
+    "prefix": "veld-workspace",
+    "body": [
+      "{",
+      "\t\"$$schema\": \"https://veld.dev/schemas/veld.config.schema.json\",",
+      "\t\"description\": \"${1:My microservices platform}\",",
+      "",
+      "\t\"workspace\": [",
+      "\t\t{",
+      "\t\t\t\"name\": \"${2:iam}\",",
+      "\t\t\t\"input\": \"services/${2:iam}/modules/${2:iam}.veld\",",
+      "\t\t\t\"backendConfig\": {",
+      "\t\t\t\t\"target\": \"${3|node-ts,python,go,java,csharp,php,rust|}\"",
+      "\t\t\t},",
+      "\t\t\t\"out\": \"../backend/${2:iam}-service/generated\",",
+      "\t\t\t\"baseUrl\": \"http://${2:iam}-service:${4:3001}\"",
+      "\t\t},",
+      "\t\t{",
+      "\t\t\t\"name\": \"frontend\",",
+      "\t\t\t\"frontendConfig\": {",
+      "\t\t\t\t\"target\": \"${5|react,vue,angular,svelte,typescript|}\"",
+      "\t\t\t},",
+      "\t\t\t\"out\": \"../frontend/src/generated\",",
+      "\t\t\t\"baseUrl\": \"http://localhost:3000\"",
+      "\t\t}",
+      "\t]",
+      "}"
+    ],
+    "description": "Veld workspace config for microservices with frontend"
+  },
+
+  "Veld Workspace Entry (backend)": {
+    "prefix": "veld-service",
+    "body": [
+      "{",
+      "\t\"name\": \"${1:service-name}\",",
+      "\t\"input\": \"services/${1:service-name}/modules/${1:service-name}.veld\",",
+      "\t\"backendConfig\": {",
+      "\t\t\"target\": \"${2|node-ts,python,go,java,csharp,php,rust|}\"",
+      "\t},",
+      "\t\"out\": \"../backend/${1:service-name}/generated\",",
+      "\t\"baseUrl\": \"http://${1:service-name}:${3:3001}\",",
+      "\t\"consumes\": [${4}]",
+      "}"
+    ],
+    "description": "Add a backend service to the workspace array"
+  },
+
+  "Veld Workspace Entry (frontend)": {
+    "prefix": "veld-frontend",
+    "body": [
+      "{",
+      "\t\"name\": \"frontend\",",
+      "\t\"frontendConfig\": {",
+      "\t\t\"target\": \"${1|react,vue,angular,svelte,typescript|}\"",
+      "\t},",
+      "\t\"out\": \"${2:../frontend/src/generated}\",",
+      "\t\"baseUrl\": \"${3:http://localhost:3000}\"",
+      "}"
+    ],
+    "description": "Add a frontend entry to the workspace array"
+  },
+
+  "Veld Tools Config": {
+    "prefix": "veld-tools",
+    "body": [
+      "\"tools\": {",
+      "\t\"openapi\": ${1|true,false|},",
+      "\t\"dockerfile\": ${2|true,false|},",
+      "\t\"cicd\": ${3|true,false|},",
+      "\t\"database\": ${4|true,false|},",
+      "\t\"envconfig\": ${5|true,false|}",
+      "}"
+    ],
+    "description": "Enable/disable Veld auxiliary generators"
+  }
+}
+

@@ -1,56 +1,297 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://veld.dev/schemas/veld.config.schema.json",
   "title": "Veld Config",
-  "description": "Configuration file for the Veld code generation framework",
+  "description": "Configuration file for the Veld contract-first code generation framework. Supports both flat (legacy) and nested (recommended) formats.",
   "type": "object",
+
+  "$defs": {
+    "backendTarget": {
+      "type": "string",
+      "description": "Backend emitter target language/framework.",
+      "enum": [
+        "node-ts", "node-js", "node", "python", "go", "java",
+        "csharp", "php", "rust", "js", "javascript",
+        "cicd", "dockerfile", "database", "env", "openapi", "scaffold-tests"
+      ],
+      "examples": ["node-ts", "python", "go"]
+    },
+    "frontendTarget": {
+      "type": "string",
+      "description": "Frontend SDK emitter.",
+      "enum": [
+        "typescript", "javascript", "react", "vue", "angular",
+        "svelte", "dart", "kotlin", "swift", "types-only", "none",
+        "ts", "js"
+      ],
+      "examples": ["react", "vue", "typescript"]
+    },
+    "backendConfig": {
+      "type": "object",
+      "description": "Nested backend code generation configuration.",
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/backendTarget",
+          "description": "Backend emitter to use (e.g. \"node-ts\", \"python\", \"go\")."
+        },
+        "framework": {
+          "type": "string",
+          "description": "Backend framework variant (e.g. \"express\", \"flask\", \"chi\", \"spring\").",
+          "examples": ["express", "flask", "chi", "spring", "laravel"]
+        },
+        "out": {
+          "type": "string",
+          "description": "Output directory for generated backend code.",
+          "examples": ["../backend/src/generated"]
+        },
+        "dir": {
+          "type": "string",
+          "description": "Backend project directory — used by `veld setup` to patch tsconfig, go.mod, etc.",
+          "examples": ["../backend"]
+        },
+        "validate": {
+          "type": "boolean",
+          "description": "Generate zero-dependency runtime validators and wire into route handlers.",
+          "default": false
+        }
+      },
+      "required": ["target"],
+      "additionalProperties": false
+    },
+    "frontendConfig": {
+      "type": "object",
+      "description": "Nested frontend SDK generation configuration.",
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/frontendTarget",
+          "description": "Frontend SDK emitter to use (e.g. \"react\", \"vue\", \"angular\")."
+        },
+        "out": {
+          "type": "string",
+          "description": "Output directory for generated frontend SDK.",
+          "examples": ["../frontend/src/generated"]
+        },
+        "dir": {
+          "type": "string",
+          "description": "Frontend project directory — used by `veld setup` to patch tsconfig, pubspec, etc.",
+          "examples": ["../frontend"]
+        }
+      },
+      "required": ["target"],
+      "additionalProperties": false
+    },
+    "workspaceEntry": {
+      "type": "object",
+      "description": "A service in a multi-service monorepo workspace.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Logical service name (e.g. \"iam\", \"transactions\", \"frontend\")."
+        },
+        "input": {
+          "type": "string",
+          "description": "Path to .veld entry file for this service. Optional for frontend-only entries that are fully driven by consumed services."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of this service."
+        },
+        "backend": {
+          "$ref": "#/$defs/backendTarget",
+          "description": "Backend target (flat shorthand). Prefer backendConfig for full control."
+        },
+        "frontend": {
+          "$ref": "#/$defs/frontendTarget",
+          "description": "Frontend target (flat shorthand). Prefer frontendConfig for full control."
+        },
+        "backendConfig": {
+          "$ref": "#/$defs/backendConfig",
+          "description": "Nested backend configuration for this service."
+        },
+        "frontendConfig": {
+          "$ref": "#/$defs/frontendConfig",
+          "description": "Nested frontend configuration for this service."
+        },
+        "out": {
+          "type": "string",
+          "description": "Output directory for this service (flat shorthand)."
+        },
+        "baseUrl": {
+          "type": "string",
+          "description": "Base URL for this service — baked into generated SDK clients.",
+          "examples": ["http://iam-service:3001", "http://localhost:3000"]
+        },
+        "consumes": {
+          "type": "array",
+          "description": "Names of other workspace services this service depends on. Generates typed SDK clients for inter-service communication.",
+          "items": { "type": "string" },
+          "examples": [["iam", "accounts"]]
+        },
+        "validate": {
+          "type": "boolean",
+          "description": "Override the top-level validate setting for this service."
+        },
+        "serverSdk": {
+          "type": "boolean",
+          "description": "Also emit server-to-server typed client for this service."
+        }
+      },
+      "required": ["name"],
+      "additionalProperties": false
+    }
+  },
+
   "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for IDE autocompletion. Use \"https://veld.dev/schemas/veld.config.schema.json\"."
+    },
     "input": {
       "type": "string",
-      "description": "Path to the main .veld entry file (e.g. \"app.veld\")"
+      "description": "Path to the main .veld entry file.",
+      "examples": ["app.veld", "contracts/api.veld"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Human/AI-readable project description — appears in generated docs and README."
+    },
+    "backendConfig": {
+      "$ref": "#/$defs/backendConfig",
+      "description": "Nested backend configuration (recommended)."
+    },
+    "frontendConfig": {
+      "$ref": "#/$defs/frontendConfig",
+      "description": "Nested frontend configuration (recommended)."
     },
     "backend": {
-      "type": "string",
-      "description": "Backend target language/framework",
-      "enum": ["node", "python", "go", "java", "csharp", "php", "rust"]
+      "$ref": "#/$defs/backendTarget",
+      "description": "Backend target (flat shorthand). Prefer backendConfig for full control.",
+      "deprecated": true
     },
     "frontend": {
-      "type": "string",
-      "description": "Frontend SDK to generate",
-      "enum": ["react", "vue", "angular", "svelte", "typescript", "dart", "kotlin", "swift", "none"]
+      "$ref": "#/$defs/frontendTarget",
+      "description": "Frontend SDK (flat shorthand). Prefer frontendConfig for full control.",
+      "deprecated": true
     },
     "out": {
       "type": "string",
-      "description": "Output directory for generated code (e.g. \"../generated\")"
+      "description": "Output directory for generated code. Use backendConfig.out / frontendConfig.out for split output.",
+      "examples": ["../generated"]
+    },
+    "backendOut": {
+      "type": "string",
+      "description": "Deprecated — use backendConfig.out instead.",
+      "deprecated": true
+    },
+    "frontendOut": {
+      "type": "string",
+      "description": "Deprecated — use frontendConfig.out instead.",
+      "deprecated": true
     },
     "backendDir": {
       "type": "string",
-      "description": "Path to backend project directory — used by setup to patch tsconfig, go.mod, etc."
+      "description": "Deprecated — use backendConfig.dir instead.",
+      "deprecated": true
     },
     "backendDirectory": {
       "type": "string",
-      "description": "Alias for backendDir"
+      "description": "Deprecated — use backendConfig.dir instead.",
+      "deprecated": true
     },
     "frontendDir": {
       "type": "string",
-      "description": "Path to frontend project directory — used by setup to patch tsconfig, pubspec, etc."
+      "description": "Deprecated — use frontendConfig.dir instead.",
+      "deprecated": true
     },
     "frontendDirectory": {
       "type": "string",
-      "description": "Alias for frontendDir"
+      "description": "Deprecated — use frontendConfig.dir instead.",
+      "deprecated": true
+    },
+    "backendFramework": {
+      "type": "string",
+      "description": "Deprecated — use backendConfig.framework instead.",
+      "deprecated": true
+    },
+    "frontendFramework": {
+      "type": "string",
+      "description": "Deprecated — use frontendConfig.framework instead.",
+      "deprecated": true
+    },
+    "validate": {
+      "type": "boolean",
+      "description": "Generate zero-dependency runtime validators. Prefer backendConfig.validate.",
+      "default": false
     },
     "baseUrl": {
       "type": "string",
-      "description": "Base URL baked into the frontend SDK (e.g. \"/api/v1\"). If empty, uses environment variable at runtime."
+      "description": "Base URL baked into generated SDK clients. If empty, uses VELD_API_URL env var at runtime.",
+      "examples": ["/api/v1", "http://localhost:3000/api"]
     },
     "aliases": {
       "type": "object",
-      "description": "Custom @alias → relative folder mappings (e.g. { \"auth\": \"services/auth\" })",
-      "additionalProperties": {
-        "type": "string"
-      }
+      "description": "Custom @alias → relative folder mappings for imports.",
+      "additionalProperties": { "type": "string" },
+      "examples": [{ "models": "shared/models", "auth": "services/auth" }]
+    },
+    "services": {
+      "type": "object",
+      "description": "Module name → base URL override for multi-module APIs.",
+      "additionalProperties": { "type": "string" }
+    },
+    "serverSdk": {
+      "type": "boolean",
+      "description": "Emit server-to-server typed SDK client.",
+      "default": false
+    },
+    "tools": {
+      "type": "object",
+      "description": "Enable/disable auxiliary generators.",
+      "properties": {
+        "openapi":    { "type": "boolean", "description": "Generate OpenAPI 3.0 specification.", "default": false },
+        "dockerfile": { "type": "boolean", "description": "Generate Dockerfile + .dockerignore.", "default": false },
+        "cicd":       { "type": "boolean", "description": "Generate CI/CD pipeline (GitHub Actions).", "default": false },
+        "database":   { "type": "boolean", "description": "Generate database schema files.", "default": false },
+        "scaffold":   { "type": "boolean", "description": "Generate test scaffolding.", "default": false },
+        "envconfig":  { "type": "boolean", "description": "Generate .env.example file.", "default": false }
+      },
+      "additionalProperties": false
+    },
+    "hooks": {
+      "type": "object",
+      "description": "Lifecycle hook commands.",
+      "properties": {
+        "postGenerate": {
+          "type": "string",
+          "description": "Shell command to run after code generation completes.",
+          "examples": ["npm run format", "go fmt ./..."]
+        }
+      },
+      "additionalProperties": false
+    },
+    "postGenerate": {
+      "type": "string",
+      "description": "Deprecated — use hooks.postGenerate instead.",
+      "deprecated": true
+    },
+    "registry": {
+      "type": "object",
+      "description": "Cloud registry publishing configuration.",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Enable push/pull to a Veld registry.", "default": false },
+        "url":     { "type": "string", "description": "Registry base URL.", "examples": ["https://registry.veld.dev"] },
+        "org":     { "type": "string", "description": "Organisation name (@scope).", "examples": ["@myorg"] },
+        "package": { "type": "string", "description": "Package name.", "examples": ["my-api"] },
+        "version": { "type": "string", "description": "Version to publish.", "examples": ["1.0.0"] }
+      },
+      "additionalProperties": false
+    },
+    "workspace": {
+      "type": "array",
+      "description": "Multi-service monorepo workspace. Each entry is a separate service with its own backend, frontend, and output.",
+      "items": { "$ref": "#/$defs/workspaceEntry" }
     }
   },
-  "required": ["input"],
+
   "additionalProperties": false
 }
-

@@ -19,16 +19,30 @@ object VeldLanguageSpec {
 
     /** All valid keys for veld.config.json */
     val CONFIG_KEYS = mapOf(
-        "input"              to "Path to the main .veld entry file (e.g. \"app.veld\")",
-        "backend"            to "Backend target: node, python, go, java, csharp, php, rust",
-        "frontend"           to "Frontend SDK: react, vue, angular, svelte, typescript, dart, kotlin, swift, none",
-        "out"                to "Output directory for generated code (e.g. \"../generated\")",
-        "backendDir"         to "Path to backend project directory (for setup patching)",
-        "backendDirectory"   to "Alias for backendDir",
-        "frontendDir"        to "Path to frontend project directory (for setup patching)",
-        "frontendDirectory"  to "Alias for frontendDir",
-        "baseUrl"            to "Base URL baked into the frontend SDK (e.g. \"/api/v1\")",
-        "aliases"            to "Custom @alias → folder mappings (e.g. { \"auth\": \"services/auth\" })"
+        "\$schema"           to "JSON Schema reference for IDE autocompletion",
+        "input"              to "Path to the main .veld entry file",
+        "description"        to "Human/AI-readable project description",
+        "backendConfig"      to "Nested backend configuration: { target, framework, out, dir, validate }",
+        "frontendConfig"     to "Nested frontend configuration: { target, out, dir }",
+        "backend"            to "Backend target (flat, deprecated): node, python, go, java, csharp, php, rust",
+        "frontend"           to "Frontend SDK (flat, deprecated): react, vue, angular, svelte, typescript, dart, kotlin, swift, none",
+        "out"                to "Output directory for generated code",
+        "backendOut"         to "Deprecated — use backendConfig.out",
+        "frontendOut"        to "Deprecated — use frontendConfig.out",
+        "backendDir"         to "Deprecated — use backendConfig.dir",
+        "frontendDir"        to "Deprecated — use frontendConfig.dir",
+        "backendFramework"   to "Deprecated — use backendConfig.framework",
+        "frontendFramework"  to "Deprecated — use frontendConfig.framework",
+        "validate"           to "Generate runtime validators (prefer backendConfig.validate)",
+        "baseUrl"            to "Base URL baked into generated SDK clients",
+        "aliases"            to "Custom @alias → folder mappings",
+        "services"           to "Module name → base URL override for multi-module APIs",
+        "serverSdk"          to "Emit server-to-server typed SDK client",
+        "tools"              to "Auxiliary generators: { openapi, dockerfile, cicd, database, scaffold, envconfig }",
+        "hooks"              to "Lifecycle hooks: { postGenerate }",
+        "postGenerate"       to "Deprecated — use hooks.postGenerate",
+        "registry"           to "Cloud registry: { enabled, url, org, package, version }",
+        "workspace"          to "Multi-service monorepo workspace entries"
     )
     
     fun isKeyword(word: String) = KEYWORDS.contains(word)

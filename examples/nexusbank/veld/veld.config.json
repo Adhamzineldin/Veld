@@ -1,66 +1,68 @@
 {
+  "$schema": "https://veld.dev/schemas/veld.config.schema.json",
+  "description": "NexusBank — contract-first banking platform with 6 polyglot microservices",
+
   "workspace": [
     {
       "name": "iam",
+      "description": "Identity & access management",
       "input": "services/iam/modules/iam.veld",
-      "backend": "node",
-      "frontend": "none",
+      "backendConfig": { "target": "node-ts" },
       "out": "../backend/iam-service/generated",
       "baseUrl": "http://iam-service:3001"
     },
     {
       "name": "accounts",
+      "description": "Bank account management",
       "input": "services/accounts/modules/accounts.veld",
-      "backend": "node",
-      "frontend": "none",
+      "backendConfig": { "target": "node-ts" },
       "out": "../backend/account-service/generated",
       "baseUrl": "http://account-service:3002",
       "consumes": ["iam"]
     },
     {
       "name": "transactions",
+      "description": "Transaction processing (Python/Flask)",
       "input": "services/transactions/modules/transactions.veld",
-      "backend": "python",
-      "frontend": "none",
+      "backendConfig": { "target": "python", "framework": "flask" },
       "out": "../backend/transaction-service/generated",
       "baseUrl": "http://transaction-service:3003",
       "consumes": ["iam", "accounts"]
     },
     {
       "name": "cards",
+      "description": "Card management (Go/Chi)",
       "input": "services/cards/modules/cards.veld",
-      "backend": "go",
-      "frontend": "none",
+      "backendConfig": { "target": "go" },
       "out": "../backend/card-service/generated",
       "baseUrl": "http://card-service:3004",
       "consumes": ["iam", "accounts"]
     },
     {
       "name": "lending",
+      "description": "Loan products & applications",
       "input": "services/lending/modules/lending.veld",
-      "backend": "node",
-      "frontend": "none",
+      "backendConfig": { "target": "node-ts" },
       "out": "../backend/lending-service/generated",
       "baseUrl": "http://lending-service:3005",
       "consumes": ["iam", "accounts"]
     },
     {
       "name": "notifications",
+      "description": "Notification delivery",
       "input": "services/notifications/modules/notifications.veld",
-      "backend": "node",
-      "frontend": "none",
+      "backendConfig": { "target": "node-ts" },
       "out": "../backend/notification-service/generated",
       "baseUrl": "http://notification-service:3006"
     },
     {
       "name": "frontend",
+      "description": "React dashboard — auto-consumes all backend services",
       "input": "",
-      "backend": "node",
-      "frontend": "react",
+      "frontendConfig": { "target": "react" },
       "out": "../frontend/src/generated",
       "baseUrl": "http://localhost:3000",
       "consumes": ["iam", "accounts", "transactions", "cards", "lending", "notifications"]
     }
-  ],
-  "description": "NexusBank — contract-first banking platform with 6 polyglot microservices"
+  ]
 }
