@@ -1,0 +1,60 @@
+import "../models/account.veld"
+
+module Accounts {
+  description: "Bank account management — open, view, freeze, and close accounts"
+  prefix: /api/accounts
+
+  action ListAccounts {
+    description: "List all accounts for the authenticated user"
+    method: GET
+    path: /
+    output: Account[]
+    middleware: [AuthGuard]
+    errors: [Unauthorized]
+  }
+
+  action GetAccount {
+    description: "Fetch a single account by ID"
+    method: GET
+    path: /:id
+    output: Account
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound]
+  }
+
+  action CreateAccount {
+    description: "Open a new checking, savings, or investment account"
+    method: POST
+    path: /
+    input: CreateAccountInput
+    output: Account
+    middleware: [AuthGuard]
+    errors: [Unauthorized, BadRequest]
+  }
+
+  action GetSummary {
+    description: "Portfolio summary — total balance and primary account"
+    method: GET
+    path: /summary
+    output: AccountSummary
+    middleware: [AuthGuard]
+    errors: [Unauthorized]
+  }
+
+  action FreezeAccount {
+    description: "Freeze an account to block all future transactions"
+    method: POST
+    path: /:id/freeze
+    output: Account
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound]
+  }
+
+  action CloseAccount {
+    description: "Permanently close an account"
+    method: DELETE
+    path: /:id
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound]
+  }
+}

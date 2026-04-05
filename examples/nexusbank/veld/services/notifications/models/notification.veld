@@ -1,0 +1,27 @@
+enum NotificationType { transaction security marketing system }
+
+model Notification {
+  description: "A user-facing notification event"
+  id:        string
+  userId:    string
+  type:      NotificationType
+  title:     string
+  body:      string
+  read:      bool
+  createdAt: string
+}
+
+model NotificationPreferences {
+  description: "Per-category notification opt-in settings"
+  userId:      string
+  transaction: bool
+  security:    bool
+  marketing:   bool
+}
+
+model UpdatePreferencesInput {
+  description: "Partial update for notification preferences"
+  transaction?: bool
+  security?:    bool
+  marketing?:   bool
+}

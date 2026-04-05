@@ -1,0 +1,34 @@
+import "../models/transaction.veld"
+
+module Transactions {
+  description: "Transaction history and funds transfers"
+  prefix: /api/transactions
+
+  action GetHistory {
+    description: "Paginated transaction history for a specific account"
+    method: GET
+    path: /account/:accountId
+    output: TransactionListResult
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound]
+  }
+
+  action GetTransaction {
+    description: "Retrieve a single transaction record by ID"
+    method: GET
+    path: /:id
+    output: Transaction
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound]
+  }
+
+  action Transfer {
+    description: "Initiate a funds transfer to another IBAN"
+    method: POST
+    path: /transfer
+    input: TransferInput
+    output: Transaction
+    middleware: [AuthGuard]
+    errors: [Unauthorized, BadRequest, UnprocessableEntity]
+  }
+}

@@ -101,6 +101,11 @@ The pipeline is strictly linear — **only AST JSON passes between stages**:
 | Envconfig emitter | `internal/emitter/envconfig/` | .env template generation |
 | OpenAPI emitter | `internal/emitter/openapi/` | OpenAPI 3.0 spec |
 | Scaffold emitter | `internal/emitter/scaffold/` | Project scaffold helpers |
+| Service SDK (Node) | `internal/emitter/servicesdk/node/` | TypeScript fetch-based inter-service client |
+| Service SDK (Python) | `internal/emitter/servicesdk/python/` | Python urllib-based inter-service client |
+| Service SDK (Go) | `internal/emitter/servicesdk/go/` | Go net/http inter-service client |
+| SDK helpers | `internal/emitter/sdkhelpers/` | Shared: `EnvVarName`, `ServiceClassName`, `ServiceFileName` |
+| Workspace validator | `internal/validator/workspace.go` | Validates `consumes` declarations (circular, unknown, self) |
 | Diff | `internal/diff/` | Breaking change detection + `.veld.lock.json` |
 | Lint | `internal/lint/lint.go` | Contract quality rules |
 | Format | `internal/format/` | .veld file formatter |
@@ -179,6 +184,67 @@ import "./models/user.veld"  // Relative path (legacy) — resolved relative to 
 ```
 
 Both styles are fully supported in the CLI, VS Code extension, and JetBrains plugin.
+
+## Service SDK Generation (Inter-Service Communication)
+
+Veld generates **typed, language-native HTTP client SDKs** for inter-service communication in microservice workspaces. When Service A (Python) declares it `consumes` Service B (Node.js), Veld generates a Python client SDK for B's API inside A's output directory.
+
+### Config: `consumes` field
+
+Add `consumes` to workspace entries in `veld.config.json`:
+
+```json
+{
+  "workspace": [
+    { "name": "iam", "backend": "node", "baseUrl": "http://iam:3001", ... },
+    { "name": "transactions", "backend": "python", "consumes": ["iam"], ... }
+  ]
+}
+```
+
+### CLI flags
+
+```bash
+veld generate                    # generates SDKs for entries with consumes
+veld generate --service-sdk      # generate SDKs for ALL workspace siblings
+veld deps                        # print service dependency graph
+veld deps --validate             # check for circular/unknown dependencies
+```
+
+### Generated output
+
+Each consumed service gets `sdk/<service>/` in the consumer's output directory:
+
+**TypeScript** (`--backend=node`): `sdk/iam/client.ts`, `types.ts`, `index.ts` — fetch-based  
+**Python** (`--backend=python`): `sdk/iam/client.py`, `types.py`, `__init__.py` — urllib-based  
+**Go** (`--backend=go`): `sdk/iam/client.go`, `types.go`, `doc.go` — net/http-based  
+
+### Base URL resolution (per-language priority)
+
+1. Constructor argument: `IAMClient(baseUrl="...")`
+2. Environment variable: `VELD_IAM_URL` (convention: `VELD_<UPPER_SNAKE_NAME>_URL`)
+3. Baked-in default from consumed service's `baseUrl` config
+4. Error if none provided
+
+### Architecture
+
+| Package | Path | Role |
+|---------|------|------|
+| `ServiceSdkEmitter` interface | `internal/emitter/emitter.go` | Third emitter category alongside Backend/Frontend |
+| `ConsumedServiceInfo` | `internal/emitter/emitter.go` | Carries consumed service AST + baseUrl to emitters |
+| SDK helpers | `internal/emitter/sdkhelpers/` | `EnvVarName`, `ServiceClassName`, `ServiceFileName` |
+| Node SDK emitter | `internal/emitter/servicesdk/node/` | TypeScript fetch client (self-registers as `node-ts`) |
+| Python SDK emitter | `internal/emitter/servicesdk/python/` | Python urllib client (self-registers as `python`) |
+| Go SDK emitter | `internal/emitter/servicesdk/golang/` | Go net/http client (self-registers as `go`) |
+| Workspace validation | `internal/validator/workspace.go` | Circular, unknown, self-consumption checks |
+
+### Hard rules
+
+- SDK clients use **zero runtime dependencies** (native fetch/urllib/net/http)
+- Dependencies are **config-only** (`consumes` in workspace entries) — no parser/lexer changes
+- Each SDK is **self-contained** (own types, no cross-SDK imports)
+- Model inheritance is **flattened** in Go SDKs (Go has no struct inheritance)
+- WebSocket actions are **skipped** in service SDKs (HTTP-only)
 
 ## .veld Contract Syntax
 

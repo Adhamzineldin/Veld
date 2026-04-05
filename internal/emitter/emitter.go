@@ -9,14 +9,23 @@ import (
 
 // EmitOptions carries config-driven options to emitters.
 type EmitOptions struct {
-	BaseUrl           string            // default base URL for frontend SDK (empty = env var fallback)
-	DryRun            bool              // if true, emit nothing — just validate
-	Validate          bool              // if true, emit zero-dep runtime validators and wire them into route handlers
-	BackendFramework  string            // e.g. "express", "flask", "chi", "spring" — "" means "plain" (no framework)
-	FrontendFramework string            // e.g. "react", "vue", "angular", "svelte" — "" means "none"
-	Services          map[string]string // module name → base URL override; nil = all modules use BaseUrl
-	ServerSdk         bool              // also emit a server-to-server typed client (generated/server-client/)
-	Description       string            // project description surfaced in AGENTS.md and generated READMEs
+	BaseUrl           string                // default base URL for frontend SDK (empty = env var fallback)
+	DryRun            bool                  // if true, emit nothing — just validate
+	Validate          bool                  // if true, emit zero-dep runtime validators and wire them into route handlers
+	BackendFramework  string                // e.g. "express", "flask", "chi", "spring" — "" means "plain" (no framework)
+	FrontendFramework string                // e.g. "react", "vue", "angular", "svelte" — "" means "none"
+	Services          map[string]string     // module name → base URL override; nil = all modules use BaseUrl
+	ServerSdk         bool                  // also emit a server-to-server typed client (generated/server-client/)
+	Description       string                // project description surfaced in AGENTS.md and generated READMEs
+	ConsumedServices  []ConsumedServiceInfo // services this entry depends on (for service SDK generation)
+}
+
+// ConsumedServiceInfo is the resolved representation of a consumed service,
+// ready for SDK generation. Passed to emitters via EmitOptions.
+type ConsumedServiceInfo struct {
+	Name    string  // workspace entry name (e.g., "iam")
+	AST     ast.AST // fully parsed AST of the consumed service
+	BaseUrl string  // default base URL (may be empty)
 }
 
 // BaseUrlForModule returns the effective base URL for the given module name.
@@ -61,12 +70,23 @@ type FrontendEmitter interface {
 	IsFrontend() // marker — implement as a no-op
 }
 
+// ServiceSdkEmitter generates typed HTTP client SDKs for consumed services
+// (inter-service communication). Each implementation targets a specific
+// backend language so that Service A (Python) can call Service B (Node)
+// via a generated, typed Python client.
+type ServiceSdkEmitter interface {
+	Emitter
+	Summarizer
+	IsServiceSdk() // marker — implement as a no-op
+}
+
 // ── registry ──────────────────────────────────────────────────────────────────
 
 var (
-	mu        sync.RWMutex
-	backends  = map[string]BackendEmitter{}
-	frontends = map[string]FrontendEmitter{}
+	mu          sync.RWMutex
+	backends    = map[string]BackendEmitter{}
+	frontends   = map[string]FrontendEmitter{}
+	serviceSdks = map[string]ServiceSdkEmitter{}
 )
 
 // RegisterBackend registers a backend emitter under the given name.
@@ -82,6 +102,14 @@ func RegisterFrontend(name string, e FrontendEmitter) {
 	mu.Lock()
 	defer mu.Unlock()
 	frontends[name] = e
+}
+
+// RegisterServiceSdk registers a service SDK emitter under the given backend language name.
+// Typically called from a servicesdk package's init() function.
+func RegisterServiceSdk(name string, e ServiceSdkEmitter) {
+	mu.Lock()
+	defer mu.Unlock()
+	serviceSdks[name] = e
 }
 
 // GetBackend returns the backend emitter registered under the given name.
@@ -108,6 +136,26 @@ func GetFrontend(name string) (FrontendEmitter, error) {
 		return nil, fmt.Errorf("unknown frontend %q (supported: none, %s)", name, listKeys(frontends))
 	}
 	return e, nil
+}
+
+// GetServiceSdk returns the service SDK emitter registered under the given
+// backend language name. Returns nil, nil if no SDK emitter is registered
+// for the language (not all backends have SDK emitters yet).
+func GetServiceSdk(name string) (ServiceSdkEmitter, error) {
+	mu.RLock()
+	defer mu.RUnlock()
+	e, ok := serviceSdks[name]
+	if !ok {
+		return nil, nil // not an error — SDK emitter is optional
+	}
+	return e, nil
+}
+
+// ListServiceSdks returns all registered service SDK language names.
+func ListServiceSdks() []string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return sortedKeys(serviceSdks)
 }
 
 // ListBackends returns all registered backend names.

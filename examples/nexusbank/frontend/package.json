@@ -1,0 +1,27 @@
+{
+  "name": "nexusbank-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "cd ../veld && veld generate --workspace frontend",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.28.0",
+    "@veld/generated": "file:src/generated",
+    "@veld/hooks": "file:src/generated/hooks",
+    "@veld/client": "file:src/generated/client",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "@vitejs/plugin-react": "^4.2.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8"
+  }
+}

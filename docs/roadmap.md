@@ -1,20 +1,39 @@
 # Veld Future Implementation Roadmap
 
 **Status:** Active Development  
-**Last Updated:** February 28, 2026  
+**Last Updated:** April 5, 2026  
 **Version:** 1.0
 
 ---
 
 ## 📋 Executive Summary
 
-This roadmap outlines the implementation of the **Veld Future** features as outlined in `plan.md`. The initiative focuses on expanding Veld to support additional backend languages (Go, Rust, Java, C#, PHP), creating editor plugins (VS Code, IntelliJ), and establishing package manager wrappers (npm, pip, Homebrew).
+This roadmap outlines the implementation of the **Veld Future** features as outlined in `plan.md`. The initiative focuses on expanding Veld to support additional backend languages (Go, Rust, Java, C#, PHP), creating editor plugins (VS Code, IntelliJ), establishing package manager wrappers (npm, pip, Homebrew), and **service SDK generation for inter-service communication**.
 
 **Guiding Principles:**
 - ✅ SOLID principles: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion
 - ✅ Clean code architecture: Modular, testable, extensible
 - ✅ Zero breaking changes to existing emitters (TypeScript/Python)
 - ✅ Backward compatible with current CLI and generated output
+
+### ✅ Service SDK Generation (April 2026)
+
+Generate typed, language-native HTTP client SDKs for inter-service communication.
+Any backend service can call any other backend service with full type safety.
+
+- ✅ `consumes` field in workspace entries
+- ✅ `ServiceSdkEmitter` interface + registry
+- ✅ TypeScript SDK emitter (fetch-based)
+- ✅ Python SDK emitter (urllib-based)
+- ✅ Go SDK emitter (net/http-based)
+- ✅ `veld deps` command — print/validate dependency graph
+- ✅ `--service-sdk` flag — generate SDKs for all siblings
+- ✅ Workspace validation (circular, unknown, self-consumption)
+- ✅ NexusBank example updated with `consumes`
+- 🔲 Rust SDK emitter
+- 🔲 Java SDK emitter
+- 🔲 C# SDK emitter
+- 🔲 PHP SDK emitter
 
 ---
 

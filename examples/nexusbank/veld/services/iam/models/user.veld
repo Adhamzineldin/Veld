@@ -1,0 +1,43 @@
+model User {
+  description: "A registered NexusBank user"
+  id:        string
+  email:     string
+  firstName: string
+  lastName:  string
+  phone?:    string
+  createdAt: string
+}
+
+model RegisterInput {
+  description: "New user registration payload"
+  email:     string
+  password:  string
+  firstName: string
+  lastName:  string
+  phone?:    string
+}
+
+model LoginInput {
+  description: "Credentials for email/password authentication"
+  email:    string
+  password: string
+}
+
+model TokenPair {
+  description: "JWT access + refresh token pair"
+  accessToken:  string
+  refreshToken: string
+  expiresIn:    int
+}
+
+model RefreshInput {
+  description: "Payload to exchange a refresh token for a new access token"
+  refreshToken: string
+}
+
+model UpdateProfileInput {
+  description: "Fields the user may update on their own profile"
+  firstName?: string
+  lastName?:  string
+  phone?:     string
+}

@@ -1,0 +1,30 @@
+enum LoanStatus { pending approved active paid_off rejected }
+
+model Loan {
+  description: "An active or historical loan record"
+  id:                 string
+  userId:             string
+  accountId:          string
+  principalAmount:    float
+  outstandingBalance: float
+  interestRate:       float
+  termMonths:         int
+  status:             LoanStatus
+  nextPaymentDate:    string
+  createdAt:          string
+}
+
+model LoanApplicationInput {
+  description: "Apply for a personal or business loan"
+  accountId:  string
+  amount:     float
+  termMonths: int
+  purpose?:   string
+}
+
+model LoanPaymentInput {
+  description: "Submit a scheduled or early repayment"
+  loanId:    string
+  accountId: string
+  amount:    float
+}

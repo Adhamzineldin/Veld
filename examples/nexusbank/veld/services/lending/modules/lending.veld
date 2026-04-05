@@ -1,0 +1,44 @@
+import "../models/loan.veld"
+
+module Lending {
+  description: "Loan management — apply, track, and repay loans"
+  prefix: /api/lending
+
+  action ListLoans {
+    description: "List all active and historical loans for the authenticated user"
+    method: GET
+    path: /
+    output: Loan[]
+    middleware: [AuthGuard]
+    errors: [Unauthorized]
+  }
+
+  action GetLoan {
+    description: "Retrieve details of a specific loan by ID"
+    method: GET
+    path: /:id
+    output: Loan
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound]
+  }
+
+  action ApplyForLoan {
+    description: "Submit a loan application for underwriting review"
+    method: POST
+    path: /apply
+    input: LoanApplicationInput
+    output: Loan
+    middleware: [AuthGuard]
+    errors: [Unauthorized, BadRequest, UnprocessableEntity]
+  }
+
+  action MakePayment {
+    description: "Submit a scheduled or early repayment against an active loan"
+    method: POST
+    path: /repay
+    input: LoanPaymentInput
+    output: Loan
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound, BadRequest]
+  }
+}

@@ -9,13 +9,14 @@ import (
 
 // WorkspaceEntry defines one service in a multi-service monorepo workspace.
 type WorkspaceEntry struct {
-	Name      string `json:"name"`               // logical service name
-	Input     string `json:"input"`              // path to .veld entry file
-	Backend   string `json:"backend,omitempty"`  // overrides top-level backend
-	Frontend  string `json:"frontend,omitempty"` // overrides top-level frontend
-	Out       string `json:"out,omitempty"`      // output dir; defaults to generated/<name>
-	BaseUrl   string `json:"baseUrl,omitempty"`  // this service's base URL
-	ServerSdk bool   `json:"serverSdk,omitempty"`
+	Name      string   `json:"name"`               // logical service name
+	Input     string   `json:"input"`              // path to .veld entry file
+	Backend   string   `json:"backend,omitempty"`  // overrides top-level backend
+	Frontend  string   `json:"frontend,omitempty"` // overrides top-level frontend
+	Out       string   `json:"out,omitempty"`      // output dir; defaults to generated/<name>
+	BaseUrl   string   `json:"baseUrl,omitempty"`  // this service's base URL
+	ServerSdk bool     `json:"serverSdk,omitempty"`
+	Consumes  []string `json:"consumes,omitempty"` // workspace entry names this service depends on (service SDK generation)
 }
 
 // RawConfig mirrors veld.config.json on disk.
@@ -248,7 +249,7 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		}
 	}
 
-	if cfg.Input == "" {
+	if cfg.Input == "" && len(cfg.Workspace) == 0 {
 		return ResolvedConfig{}, fmt.Errorf("no input file (use --input or create veld/veld.config.json)")
 	}
 
@@ -270,8 +271,13 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		resolvedFrontendOut = filepath.Clean(filepath.Join(cfgDir, cfg.FrontendOut))
 	}
 
+	resolvedInput := cfg.Input
+	if !filepath.IsAbs(resolvedInput) {
+		resolvedInput = filepath.Join(cfgDir, resolvedInput)
+	}
+
 	return ResolvedConfig{
-		Input:             filepath.Clean(filepath.Join(cfgDir, cfg.Input)),
+		Input:             filepath.Clean(resolvedInput),
 		Backend:           cfg.Backend,
 		Frontend:          cfg.Frontend,
 		Out:               resolvedOut,

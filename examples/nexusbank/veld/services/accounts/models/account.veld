@@ -1,0 +1,29 @@
+enum AccountType   { checking savings investment }
+enum AccountStatus { active frozen closed }
+
+model Account {
+  description: "A NexusBank financial account"
+  id:        string
+  userId:    string
+  type:      AccountType
+  status:    AccountStatus
+  name:      string
+  currency:  string
+  balance:   float
+  iban:      string
+  createdAt: string
+}
+
+model CreateAccountInput {
+  description: "Payload to open a new bank account"
+  type:     AccountType
+  name:     string
+  currency: string
+}
+
+model AccountSummary {
+  description: "Portfolio overview across all user accounts"
+  totalBalance:   float
+  accountCount:   int
+  primaryAccount: Account
+}

@@ -1,0 +1,43 @@
+import "../models/notification.veld"
+
+module Notifications {
+  description: "User notifications and per-category preference management"
+  prefix: /api/notifications
+
+  action ListNotifications {
+    description: "List all notifications for the authenticated user"
+    method: GET
+    path: /
+    output: Notification[]
+    middleware: [AuthGuard]
+    errors: [Unauthorized]
+  }
+
+  action MarkAsRead {
+    description: "Mark a specific notification as read"
+    method: PATCH
+    path: /:id/read
+    output: Notification
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound]
+  }
+
+  action GetPreferences {
+    description: "Return the user's notification channel preferences"
+    method: GET
+    path: /preferences
+    output: NotificationPreferences
+    middleware: [AuthGuard]
+    errors: [Unauthorized]
+  }
+
+  action UpdatePreferences {
+    description: "Update one or more notification category preferences"
+    method: PATCH
+    path: /preferences
+    input: UpdatePreferencesInput
+    output: NotificationPreferences
+    middleware: [AuthGuard]
+    errors: [Unauthorized, BadRequest]
+  }
+}

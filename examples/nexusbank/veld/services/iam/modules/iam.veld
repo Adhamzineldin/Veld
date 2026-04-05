@@ -1,0 +1,60 @@
+import "../models/user.veld"
+
+module IAM {
+  description: "Identity and Access Management — authentication and user profiles"
+  prefix: /api/iam
+
+  action Register {
+    description: "Create a new NexusBank user account"
+    method: POST
+    path: /register
+    input: RegisterInput
+    output: User
+    errors: [Conflict]
+  }
+
+  action Login {
+    description: "Authenticate and receive a JWT token pair"
+    method: POST
+    path: /login
+    input: LoginInput
+    output: TokenPair
+    errors: [Unauthorized]
+  }
+
+  action RefreshToken {
+    description: "Exchange a refresh token for a new access token"
+    method: POST
+    path: /refresh
+    input: RefreshInput
+    output: TokenPair
+    errors: [Unauthorized]
+  }
+
+  action GetProfile {
+    description: "Return the currently authenticated user"
+    method: GET
+    path: /me
+    output: User
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound]
+  }
+
+  action UpdateProfile {
+    description: "Update name or phone on the authenticated user"
+    method: PATCH
+    path: /me
+    input: UpdateProfileInput
+    output: User
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound]
+  }
+
+  action Logout {
+    description: "Invalidate the current session token"
+    method: POST
+    path: /logout
+    middleware: [AuthGuard]
+    errors: [Unauthorized]
+  }
+}
