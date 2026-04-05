@@ -5,6 +5,24 @@ from generated.types.transactions import (
     Transaction, TransferInput, TransactionListResult,
 )
 
+# ── Veld SDKs: typed clients for consumed services ────────────────────────
+# Auto-generated from iam.veld and accounts.veld — inter-service communication.
+from generated.sdk.iam.client import IamClient
+from generated.sdk.accounts.client import AccountsClient
+
+
+def _iam_for(headers: dict = None) -> IamClient:
+    """Create a per-request IAM client with forwarded auth headers."""
+    h = {"Authorization": headers.get("Authorization", "")} if headers else {}
+    return IamClient(headers=h)
+
+
+def _accounts_for(headers: dict = None) -> AccountsClient:
+    """Create a per-request Accounts client with forwarded auth headers."""
+    h = {"Authorization": headers.get("Authorization", "")} if headers else {}
+    return AccountsClient(headers=h)
+
+
 # In-memory store — swap for Postgres in production.
 _store: list[dict] = [
     {
@@ -41,6 +59,14 @@ class TransactionsService(ITransactionsService):
         return Transaction(**row)
 
     def transfer(self, input: TransferInput) -> Transaction:
+        # ── SDK call: verify the source account exists via Accounts service ──
+        try:
+            account = _accounts_for().get_account(input.fromAccountId)
+        except Exception:
+            raise ValueError(
+                f"Account {input.fromAccountId} not found — cannot process transfer"
+            )
+
         row = {
             "id": str(uuid.uuid4()),
             "accountId": input.fromAccountId,

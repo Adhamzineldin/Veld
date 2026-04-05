@@ -3,6 +3,16 @@ import { Account, CreateAccountInput, AccountSummary } from '@veld/generated/typ
 import { accountsErrors } from '@veld/generated/errors/accounts.errors';
 import { randomUUID } from 'crypto';
 
+// ── Veld SDK: typed client for the IAM service ────────────────────────────
+// Auto-generated from iam.veld — used to verify user identity before writes.
+import { IamClient } from '@veld/generated/sdk/iam';
+
+/** Create a per-request IAM client that forwards the caller's auth token. */
+function iamFor(req: any): IamClient {
+  const token = req.headers?.authorization ?? '';
+  return new IamClient(undefined, { Authorization: token });
+}
+
 const store: Account[] = [
   {
     id: 'acc-001', userId: 'user-001', type: 'checking', status: 'active',
@@ -30,6 +40,15 @@ export class AccountsService implements IAccountsService {
   async createAccount(req: any, input: CreateAccountInput): Promise<Account> {
     if (!['checking', 'savings', 'investment'].includes(input.type))
       throw accountsErrors.createAccount.badRequest('Invalid account type');
+
+    // ── SDK call: verify the user exists in the IAM service ───────────
+    // Passes the auth token so IAM can identify the caller.
+    try {
+      await iamFor(req).getProfile();
+    } catch {
+      throw accountsErrors.createAccount.badRequest('Could not verify user identity via IAM service');
+    }
+
     const account: Account = {
       id: randomUUID(), userId: req.userId, ...input,
       status: 'active', balance: 0,

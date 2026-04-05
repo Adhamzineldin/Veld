@@ -3,6 +3,19 @@ import { Loan, LoanApplicationInput, LoanPaymentInput } from '@veld/generated/ty
 import { lendingErrors } from '@veld/generated/errors/lending.errors';
 import { randomUUID } from 'crypto';
 
+// ── Veld SDKs: typed clients for consumed services ────────────────────────
+// Auto-generated from iam.veld and accounts.veld — inter-service communication.
+import { IamClient } from '@veld/generated/sdk/iam';
+import { AccountsClient } from '@veld/generated/sdk/accounts';
+
+/** Create per-request SDK clients that forward the caller's auth token. */
+function iamFor(req: any): IamClient {
+  return new IamClient(undefined, { Authorization: req.headers?.authorization ?? '' });
+}
+function accountsFor(req: any): AccountsClient {
+  return new AccountsClient(undefined, { Authorization: req.headers?.authorization ?? '' });
+}
+
 const store: Loan[] = [
   {
     id: 'loan-001', userId: 'user-001', accountId: 'acc-001',
@@ -26,6 +39,24 @@ export class LendingService implements ILendingService {
   async applyForLoan(req: any, input: LoanApplicationInput): Promise<Loan> {
     if (input.amount <= 0 || input.termMonths <= 0)
       throw lendingErrors.applyForLoan.badRequest('Amount and term must be positive');
+
+    // ── SDK call: verify the target account exists via Accounts service ──
+    try {
+      await accountsFor(req).getAccount(input.accountId);
+    } catch {
+      throw lendingErrors.applyForLoan.badRequest(
+        `Account ${input.accountId} not found — cannot disburse loan`
+      );
+    }
+
+    // ── SDK call: verify user identity via IAM service ───────────────────
+    let user;
+    try {
+      user = await iamFor(req).getProfile();
+    } catch {
+      throw lendingErrors.applyForLoan.badRequest('Could not verify user identity via IAM service');
+    }
+
     const loan: Loan = {
       id: randomUUID(), userId: req.userId, accountId: input.accountId,
       principalAmount: input.amount, outstandingBalance: input.amount,
