@@ -391,16 +391,25 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		aliases[k] = v
 	}
 
-	resolvedOut := filepath.Clean(filepath.Join(cfgDir, cfg.Out))
+	// Resolve out paths: if already absolute (e.g. on Windows "G:\..."), don't prepend cfgDir.
+	// filepath.Join on Windows will produce "CWD\G:\..." which is invalid.
+	resolveDir := func(p string) string {
+		if filepath.IsAbs(p) {
+			return filepath.Clean(p)
+		}
+		return filepath.Clean(filepath.Join(cfgDir, p))
+	}
+
+	resolvedOut := resolveDir(cfg.Out)
 
 	// BackendOut / FrontendOut: if set, resolve relative to cfgDir; otherwise fall back to Out
 	resolvedBackendOut := resolvedOut
 	if cfg.BackendOut != "" {
-		resolvedBackendOut = filepath.Clean(filepath.Join(cfgDir, cfg.BackendOut))
+		resolvedBackendOut = resolveDir(cfg.BackendOut)
 	}
 	resolvedFrontendOut := resolvedOut
 	if cfg.FrontendOut != "" {
-		resolvedFrontendOut = filepath.Clean(filepath.Join(cfgDir, cfg.FrontendOut))
+		resolvedFrontendOut = resolveDir(cfg.FrontendOut)
 	}
 
 	resolvedInput := cfg.Input

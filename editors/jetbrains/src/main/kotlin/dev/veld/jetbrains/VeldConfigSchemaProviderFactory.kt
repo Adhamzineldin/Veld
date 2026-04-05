@@ -2,6 +2,7 @@ package dev.veld.jetbrains
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VfsUtil
 import com.jetbrains.jsonSchema.extension.JsonSchemaFileProvider
 import com.jetbrains.jsonSchema.extension.JsonSchemaProviderFactory
 import com.jetbrains.jsonSchema.extension.SchemaType
@@ -24,12 +25,10 @@ private class VeldConfigSchemaProvider : JsonSchemaFileProvider {
     override fun getName(): String = "Veld Config"
 
     override fun getSchemaFile(): VirtualFile? {
-        return JsonSchemaProviderFactory.getResourceFile(
-            VeldConfigSchemaProvider::class.java,
-            "/schemas/veld-config.schema.json"
-        )
+        val url = VeldConfigSchemaProvider::class.java.classLoader
+            .getResource("schemas/veld-config.schema.json") ?: return null
+        return VfsUtil.findFileByURL(url)
     }
 
     override fun getSchemaType(): SchemaType = SchemaType.embeddedSchema
 }
-
