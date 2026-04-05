@@ -10,9 +10,9 @@ user's platform from GitHub Releases.
 |------------|--------------------------|-------------------------------------------------------|
 | **npm**    | `veld`                   | `npm install veld` / `npx veld generate`              |
 | **pip**    | `veld`                   | `pip install veld`                                    |
-| **Homebrew** | `veld-dev/tap/veld`    | `brew install veld-dev/tap/veld`                      |
+| **Homebrew** | `maayn-veld/tap/maayn-veld` | `brew install maayn-veld/tap/maayn-veld`              |
 | **Go**     | `github.com/Adhamzineldin/Veld` | `go install github.com/Adhamzineldin/Veld/cmd/veld@latest` |
-| **Composer** | `veld-dev/veld`        | `composer require veld-dev/veld`                      |
+| **Composer** | `maayn/veld`           | `composer require maayn/veld`                         |
 
 ## How they work
 
@@ -83,7 +83,7 @@ packages/
 │   ├── veld/__main__.py
 │   └── README.md
 ├── homebrew/         # Homebrew formula (macOS/Linux)
-│   ├── Formula/veld.rb
+│   ├── Formula/maayn-veld.rb
 │   └── README.md
 ├── composer/         # Composer wrapper (PHP)
 │   ├── composer.json

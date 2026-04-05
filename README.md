@@ -36,7 +36,7 @@ Veld is a **contract-first code generator** for APIs. You describe your data mod
 
 No runtime dependencies in generated code. No framework lock-in. Works with any compatible library.
 
-> **Full documentation:** [app2501.maayn.com/docs](https://app2501.maayn.com/docs)
+[//]: # (> **Full documentation:** [app2501.maayn.com/docs]&#40;https://app2501.maayn.com/docs&#41;)
 
 ## Quick Start
 

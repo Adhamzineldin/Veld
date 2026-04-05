@@ -1567,6 +1567,10 @@ func newCleanCmd() *cobra.Command {
 				return err
 			}
 
+			if len(rc.Workspace) > 0 {
+				fmt.Printf("\n%s workspace: %d services\n\n", bold("◆"), len(rc.Workspace))
+			}
+
 			cleaned := false
 			for _, dir := range rc.OutputDirs() {
 				if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {

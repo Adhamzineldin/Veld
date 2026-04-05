@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-composer require veld-dev/veld
+composer require maayn/veld
 ```
 
 ## Usage

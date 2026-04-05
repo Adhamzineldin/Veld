@@ -1,13 +1,13 @@
 # Veld Homebrew Formula
 #
-# Install: brew install veld-dev/tap/veld
-# Or add the tap: brew tap veld-dev/tap && brew install veld
+# Install: brew install maayn-veld/tap/maayn-veld
+# Or add the tap: brew tap maayn-veld/tap && brew install maayn-veld
 #
 # To update this formula after a release:
 #   1. Update the version, url, and sha256 values
 #   2. Submit to the homebrew-tap repository
 
-class Veld < Formula
+class MaaynVeld < Formula
   desc "Contract-first, multi-stack API code generator"
   homepage "https://github.com/Adhamzineldin/Veld"
   version "0.1.0"

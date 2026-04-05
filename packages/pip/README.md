@@ -45,10 +45,10 @@ npm install @maayn/veld
 go install github.com/Adhamzineldin/Veld/cmd/veld@latest
 
 # Homebrew
-brew install veld
+brew install maayn-veld/tap/maayn-veld
 
 # Composer (PHP)
-composer require veld-dev/veld
+composer require maayn/veld
 ```
 
 ## License

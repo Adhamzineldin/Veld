@@ -1,5 +1,5 @@
 {
-  "name": "veld-dev/veld",
+  "name": "maayn/veld",
   "description": "Contract-first, multi-stack API code generator. Write .veld contracts once, generate typed frontend SDKs and backend service interfaces.",
   "type": "library",
   "license": "MIT",
