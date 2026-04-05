@@ -74,17 +74,18 @@ The pipeline is strictly linear — **only AST JSON passes between stages**:
 | Validator | `internal/validator/validator.go` | Semantic checks: circular inheritance, Map value types, `file:line` error context |
 | Config | `internal/config/config.go` | Config file loading, flag merging, path resolution |
 | Loader | `internal/loader/loader.go` | Loads .veld files, resolves imports recursively |
-| Emitter registry | `internal/emitter/emitter.go` | `BackendEmitter` / `FrontendEmitter` interfaces + `init()`-based registry |
+| Emitter registry | `internal/emitter/emitter.go` | `BackendEmitter` / `FrontendEmitter` / `ToolEmitter` interfaces + `init()`-based registry |
 | Emitter helpers | `internal/emitter/helpers.go` | Shared: `CollectTransitiveModels`, `ExtractPathParams`, `ToFlaskPath`, `ToOpenAPIPath`, etc. |
 | TS helpers | `internal/emitter/tshelpers/` | Shared TypeScript type-mapping (`VeldFieldToTS`, `FormatOutputType`) |
-| Node emitter | `internal/emitter/backend/node/` | Types, interfaces, routes (Zod + try/catch), schemas, barrel + package.json |
-| Python emitter | `internal/emitter/backend/python/` | Types, ABC interfaces, Flask routes (Pydantic + try/except), schemas |
-| Go emitter | `internal/emitter/backend/go/` | Chi router, typed interfaces, go.mod, server.go, main.go |
-| Rust emitter | `internal/emitter/backend/rust/` | Axum handlers, Serde structs, services trait |
-| Java emitter | `internal/emitter/backend/java/` | Spring Boot controllers + service interfaces |
-| C# emitter | `internal/emitter/backend/csharp/` | ASP.NET Core controllers + service interfaces |
-| PHP emitter | `internal/emitter/backend/php/` | Laravel routes + service contracts |
-| JS backend emitter | `internal/emitter/backend/javascript/` | Plain Node.js (no TypeScript) |
+| SDK helpers | `internal/emitter/sdkhelpers/` | Shared: `EnvVarName`, `ServiceClassName`, `ServiceFileName` |
+| Node emitter | `internal/emitter/backend/node/` | Types, interfaces, routes (Zod + try/catch), schemas, barrel + **sdk.go** |
+| Python emitter | `internal/emitter/backend/python/` | Types, ABC interfaces, Flask routes (Pydantic + try/except) + **sdk.go** |
+| Go emitter | `internal/emitter/backend/go/` | Chi router, typed interfaces, go.mod, server.go + **sdk.go** |
+| Rust emitter | `internal/emitter/backend/rust/` | Axum handlers, Serde structs, services trait + **sdk.go** |
+| Java emitter | `internal/emitter/backend/java/` | Spring Boot controllers + service interfaces + **sdk.go** |
+| C# emitter | `internal/emitter/backend/csharp/` | ASP.NET Core controllers + service interfaces + **sdk.go** |
+| PHP emitter | `internal/emitter/backend/php/` | Laravel routes + service contracts + **sdk.go** |
+| JS backend emitter | `internal/emitter/backend/javascript/` | Plain Node.js (no TypeScript) + **sdk.go** |
 | TypeScript emitter | `internal/emitter/frontend/typescript/` | Fetch-based SDK with `VeldApiError`, path params, all HTTP methods |
 | React emitter | `internal/emitter/frontend/react/` | React Query hooks wrapping the TS SDK |
 | Vue emitter | `internal/emitter/frontend/vue/` | Vue Composables wrapping the TS SDK |
@@ -95,16 +96,12 @@ The pipeline is strictly linear — **only AST JSON passes between stages**:
 | Swift emitter | `internal/emitter/frontend/swift/` | Swift URLSession SDK |
 | JS frontend emitter | `internal/emitter/frontend/javascript/` | Plain JS fetch SDK (no TypeScript) |
 | Types-only emitter | `internal/emitter/frontend/typesonly/` | Types with no SDK logic |
-| CI/CD emitter | `internal/emitter/cicd/` | GitHub Actions workflow (auto-detects language) |
-| Dockerfile emitter | `internal/emitter/dockerfile/` | Multi-stage Dockerfile + .dockerignore (auto-detects language) |
-| Database emitter | `internal/emitter/database/` | SQL schema generation |
-| Envconfig emitter | `internal/emitter/envconfig/` | .env template generation |
-| OpenAPI emitter | `internal/emitter/openapi/` | OpenAPI 3.0 spec |
-| Scaffold emitter | `internal/emitter/scaffold/` | Project scaffold helpers |
-| Service SDK (Node) | `internal/emitter/servicesdk/node/` | TypeScript fetch-based inter-service client |
-| Service SDK (Python) | `internal/emitter/servicesdk/python/` | Python urllib-based inter-service client |
-| Service SDK (Go) | `internal/emitter/servicesdk/go/` | Go net/http inter-service client |
-| SDK helpers | `internal/emitter/sdkhelpers/` | Shared: `EnvVarName`, `ServiceClassName`, `ServiceFileName` |
+| CI/CD generator | `internal/generators/cicd/` | GitHub Actions workflow (auto-detects language) |
+| Dockerfile generator | `internal/generators/dockerfile/` | Multi-stage Dockerfile + .dockerignore (auto-detects language) |
+| Database generator | `internal/generators/database/` | SQL schema generation |
+| Envconfig generator | `internal/generators/envconfig/` | .env template generation |
+| OpenAPI generator | `internal/generators/openapi/` | OpenAPI 3.0 spec |
+| Scaffold generator | `internal/generators/scaffold/` | Project scaffold helpers |
 | Workspace validator | `internal/validator/workspace.go` | Validates `consumes` declarations (circular, unknown, self) |
 | Diff | `internal/diff/` | Breaking change detection + `.veld.lock.json` |
 | Lint | `internal/lint/lint.go` | Contract quality rules |
@@ -230,21 +227,29 @@ Each consumed service gets `sdk/<service>/` in the consumer's output directory:
 
 | Package | Path | Role |
 |---------|------|------|
-| `ServiceSdkEmitter` interface | `internal/emitter/emitter.go` | Third emitter category alongside Backend/Frontend |
+| `BackendEmitter.EmitServiceSdk()` | `internal/emitter/emitter.go` | Required method on BackendEmitter — every backend MUST implement SDK generation |
+| `ToolEmitter` interface | `internal/emitter/emitter.go` | Separate interface for non-backend generators (CI/CD, Dockerfile, etc.) |
 | `ConsumedServiceInfo` | `internal/emitter/emitter.go` | Carries consumed service AST + baseUrl to emitters |
 | SDK helpers | `internal/emitter/sdkhelpers/` | `EnvVarName`, `ServiceClassName`, `ServiceFileName` |
-| Node SDK emitter | `internal/emitter/servicesdk/node/` | TypeScript fetch client (self-registers as `node-ts`) |
-| Python SDK emitter | `internal/emitter/servicesdk/python/` | Python urllib client (self-registers as `python`) |
-| Go SDK emitter | `internal/emitter/servicesdk/golang/` | Go net/http client (self-registers as `go`) |
+| Node SDK | `internal/emitter/backend/node/sdk.go` | TypeScript fetch client |
+| Python SDK | `internal/emitter/backend/python/sdk.go` | Python urllib client |
+| Go SDK | `internal/emitter/backend/go/sdk.go` | Go net/http client |
+| Rust SDK | `internal/emitter/backend/rust/sdk.go` | Rust reqwest client |
+| Java SDK | `internal/emitter/backend/java/sdk.go` | Java HttpClient client |
+| C# SDK | `internal/emitter/backend/csharp/sdk.go` | C# HttpClient client |
+| PHP SDK | `internal/emitter/backend/php/sdk.go` | PHP cURL client |
+| JS SDK | `internal/emitter/backend/javascript/sdk.go` | Plain JS fetch client |
 | Workspace validation | `internal/validator/workspace.go` | Circular, unknown, self-consumption checks |
 
 ### Hard rules
 
-- SDK clients use **zero runtime dependencies** (native fetch/urllib/net/http)
+- SDK clients use **zero runtime dependencies** (native fetch/urllib/net/http/curl)
+- `EmitServiceSdk` is **required** on all `BackendEmitter` implementations — compiler enforced
 - Dependencies are **config-only** (`consumes` in workspace entries) — no parser/lexer changes
 - Each SDK is **self-contained** (own types, no cross-SDK imports)
 - Model inheritance is **flattened** in Go SDKs (Go has no struct inheritance)
 - WebSocket actions are **skipped** in service SDKs (HTTP-only)
+- Tool emitters (cicd, database, dockerfile, etc.) live in `internal/generators/`, NOT in `internal/emitter/`
 
 ## .veld Contract Syntax
 

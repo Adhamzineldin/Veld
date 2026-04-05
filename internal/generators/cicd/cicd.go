@@ -11,13 +11,13 @@ import (
 )
 
 func init() {
-	emitter.RegisterBackend("cicd", New())
+	emitter.RegisterTool("cicd", New())
 }
 
 type CICDEmitter struct{}
 
-func New() *CICDEmitter         { return &CICDEmitter{} }
-func (*CICDEmitter) IsBackend() {}
+func New() *CICDEmitter      { return &CICDEmitter{} }
+func (*CICDEmitter) IsTool() {}
 
 func (e *CICDEmitter) Summary(_ []string) []emitter.SummaryLine {
 	return []emitter.SummaryLine{

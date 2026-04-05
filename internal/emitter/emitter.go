@@ -57,10 +57,17 @@ type SummaryLine struct {
 }
 
 // BackendEmitter marks an emitter as a backend code generator.
+// Every backend MUST implement EmitServiceSdk — this is what generates typed
+// inter-service HTTP clients when a workspace entry declares "consumes".
 type BackendEmitter interface {
 	Emitter
 	Summarizer
 	IsBackend() // marker — implement as a no-op
+
+	// EmitServiceSdk generates typed HTTP client SDKs for each consumed service
+	// in the backend's target language. Called during workspace generation when
+	// a service declares "consumes" in its config.
+	EmitServiceSdk(consumed []ConsumedServiceInfo, outDir string, opts EmitOptions) error
 }
 
 // FrontendEmitter marks an emitter as a frontend SDK generator.
@@ -70,23 +77,21 @@ type FrontendEmitter interface {
 	IsFrontend() // marker — implement as a no-op
 }
 
-// ServiceSdkEmitter generates typed HTTP client SDKs for consumed services
-// (inter-service communication). Each implementation targets a specific
-// backend language so that Service A (Python) can call Service B (Node)
-// via a generated, typed Python client.
-type ServiceSdkEmitter interface {
+// ToolEmitter marks an emitter as a tooling generator (CI/CD, Dockerfile, etc.).
+// Tools are NOT backends — they generate auxiliary project files, not service code.
+type ToolEmitter interface {
 	Emitter
 	Summarizer
-	IsServiceSdk() // marker — implement as a no-op
+	IsTool() // marker — implement as a no-op
 }
 
 // ── registry ──────────────────────────────────────────────────────────────────
 
 var (
-	mu          sync.RWMutex
-	backends    = map[string]BackendEmitter{}
-	frontends   = map[string]FrontendEmitter{}
-	serviceSdks = map[string]ServiceSdkEmitter{}
+	mu        sync.RWMutex
+	backends  = map[string]BackendEmitter{}
+	frontends = map[string]FrontendEmitter{}
+	tools     = map[string]ToolEmitter{}
 )
 
 // RegisterBackend registers a backend emitter under the given name.
@@ -104,12 +109,12 @@ func RegisterFrontend(name string, e FrontendEmitter) {
 	frontends[name] = e
 }
 
-// RegisterServiceSdk registers a service SDK emitter under the given backend language name.
-// Typically called from a servicesdk package's init() function.
-func RegisterServiceSdk(name string, e ServiceSdkEmitter) {
+// RegisterTool registers a tool emitter under the given name.
+// Tools are auxiliary generators (CI/CD, Dockerfile, etc.) — NOT backends.
+func RegisterTool(name string, e ToolEmitter) {
 	mu.Lock()
 	defer mu.Unlock()
-	serviceSdks[name] = e
+	tools[name] = e
 }
 
 // GetBackend returns the backend emitter registered under the given name.
@@ -138,27 +143,33 @@ func GetFrontend(name string) (FrontendEmitter, error) {
 	return e, nil
 }
 
-// GetServiceSdk returns the service SDK emitter registered under the given
-// backend language name. Returns nil, nil if no SDK emitter is registered
-// for the language (not all backends have SDK emitters yet).
-func GetServiceSdk(name string) (ServiceSdkEmitter, error) {
+// GetTool returns the tool emitter registered under the given name.
+func GetTool(name string) (ToolEmitter, error) {
 	mu.RLock()
 	defer mu.RUnlock()
-	e, ok := serviceSdks[name]
+	e, ok := tools[name]
 	if !ok {
-		return nil, nil // not an error — SDK emitter is optional
+		return nil, fmt.Errorf("unknown tool %q (supported: %s)", name, listKeys(tools))
 	}
 	return e, nil
 }
 
-// ListServiceSdks returns all registered service SDK language names.
-func ListServiceSdks() []string {
+// GetBackendOrTool tries backend first, then tool. Used by `veld generate`
+// to support both real backends and tool emitters via --backend flag.
+func GetBackendOrTool(name string) (Emitter, bool, error) {
 	mu.RLock()
 	defer mu.RUnlock()
-	return sortedKeys(serviceSdks)
+	if e, ok := backends[name]; ok {
+		return e, true, nil // true = is a real backend
+	}
+	if e, ok := tools[name]; ok {
+		return e, false, nil // false = is a tool
+	}
+	all := listKeys(backends) + ", " + listKeys(tools)
+	return nil, false, fmt.Errorf("unknown backend/tool %q (supported: %s)", name, all)
 }
 
-// ListBackends returns all registered backend names.
+// ListBackends returns all registered backend names (real backends only).
 func ListBackends() []string {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -170,6 +181,22 @@ func ListFrontends() []string {
 	mu.RLock()
 	defer mu.RUnlock()
 	return sortedKeys(frontends)
+}
+
+// ListTools returns all registered tool emitter names.
+func ListTools() []string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return sortedKeys(tools)
+}
+
+// ListAllTargets returns all registered backend + tool names (used in CLI help).
+func ListAllTargets() []string {
+	mu.RLock()
+	defer mu.RUnlock()
+	result := sortedKeys(backends)
+	result = append(result, sortedKeys(tools)...)
+	return result
 }
 
 func listKeys[V any](m map[string]V) string {

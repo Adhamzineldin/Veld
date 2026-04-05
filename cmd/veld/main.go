@@ -43,10 +43,6 @@ import (
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/php"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/python"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/rust"
-	_ "github.com/Adhamzineldin/Veld/internal/emitter/cicd"
-	_ "github.com/Adhamzineldin/Veld/internal/emitter/database"
-	_ "github.com/Adhamzineldin/Veld/internal/emitter/dockerfile"
-	_ "github.com/Adhamzineldin/Veld/internal/emitter/envconfig"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/angular"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/dart"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/javascript"
@@ -57,13 +53,14 @@ import (
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/typescript"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/typesonly"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/vue"
-	_ "github.com/Adhamzineldin/Veld/internal/emitter/openapi"
-	_ "github.com/Adhamzineldin/Veld/internal/emitter/scaffold"
 
-	// Register service SDK emitters (inter-service communication clients).
-	_ "github.com/Adhamzineldin/Veld/internal/emitter/servicesdk/golang"
-	_ "github.com/Adhamzineldin/Veld/internal/emitter/servicesdk/node"
-	_ "github.com/Adhamzineldin/Veld/internal/emitter/servicesdk/python"
+	// Register tool emitters (auxiliary generators — NOT backends).
+	_ "github.com/Adhamzineldin/Veld/internal/generators/cicd"
+	_ "github.com/Adhamzineldin/Veld/internal/generators/database"
+	_ "github.com/Adhamzineldin/Veld/internal/generators/dockerfile"
+	_ "github.com/Adhamzineldin/Veld/internal/generators/envconfig"
+	_ "github.com/Adhamzineldin/Veld/internal/generators/openapi"
+	_ "github.com/Adhamzineldin/Veld/internal/generators/scaffold"
 )
 
 // Version is the current Veld CLI version.
@@ -200,18 +197,18 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 	}
 
 	// ── emit: backend ────────────────────────────────────────────────────
-	backend, err := emitter.GetBackend(rc.Backend)
+	backendOrTool, isRealBackend, err := emitter.GetBackendOrTool(rc.Backend)
 	if err != nil {
 		return nil, veldFiles, nil, err
 	}
-	if err := backend.Emit(emitAST, rc.BackendOut, opts); err != nil {
+	if err := backendOrTool.Emit(emitAST, rc.BackendOut, opts); err != nil {
 		return nil, veldFiles, nil, fmt.Errorf("%s emitter: %w", rc.Backend, err)
 	}
 	// When using split output, also emit backend (types, errors, interfaces,
 	// routes) into the frontend output dir so the frontend SDK is fully
 	// self-contained — no cross-directory imports needed.
-	if rc.SplitOutput() && !opts.DryRun {
-		if err := backend.Emit(emitAST, rc.FrontendOut, opts); err != nil {
+	if isRealBackend && rc.SplitOutput() && !opts.DryRun {
+		if err := backendOrTool.Emit(emitAST, rc.FrontendOut, opts); err != nil {
 			return nil, veldFiles, nil, fmt.Errorf("%s emitter (frontend copy): %w", rc.Backend, err)
 		}
 	}
@@ -350,9 +347,11 @@ func printGenerateSummary(rc config.ResolvedConfig, modules []string) {
 	}
 
 	// Backend summary
-	if be, err := emitter.GetBackend(rc.Backend); err == nil {
-		for _, line := range be.Summary(modules) {
-			fmt.Printf("  %s  %s\n", dim(line.Dir), line.Files)
+	if be, _, err := emitter.GetBackendOrTool(rc.Backend); err == nil {
+		if s, ok := be.(emitter.Summarizer); ok {
+			for _, line := range s.Summary(modules) {
+				fmt.Printf("  %s  %s\n", dim(line.Dir), line.Files)
+			}
 		}
 	}
 
@@ -883,22 +882,20 @@ func newGenerateCmd() *cobra.Command {
 						return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
 					}
 
-					// Emit service SDK clients for consumed services.
+					// Emit service SDK clients for consumed services via the backend emitter.
 					if len(entryOpts.ConsumedServices) > 0 {
-						sdkEmitter, _ := emitter.GetServiceSdk(pe.rc.Backend)
-						if sdkEmitter != nil {
-							if err := sdkEmitter.Emit(pe.ast, pe.rc.BackendOut, entryOpts); err != nil {
-								return fmt.Errorf("workspace entry %q service sdk: %w", entry.Name, err)
-							}
-							consumedNames := make([]string, len(entryOpts.ConsumedServices))
-							for i, c := range entryOpts.ConsumedServices {
-								consumedNames[i] = c.Name
-							}
-							fmt.Printf("  %s %s → sdk/ (%s)\n", green("✓"), entry.Name, strings.Join(consumedNames, ", "))
-						} else {
-							fmt.Printf("  %s %s → %s (no SDK emitter for %s yet)\n",
-								green("✓"), entry.Name, pe.outDir, pe.rc.Backend)
+						backend, err := emitter.GetBackend(pe.rc.Backend)
+						if err != nil {
+							return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
 						}
+						if err := backend.EmitServiceSdk(entryOpts.ConsumedServices, pe.rc.BackendOut, entryOpts); err != nil {
+							return fmt.Errorf("workspace entry %q service sdk: %w", entry.Name, err)
+						}
+						consumedNames := make([]string, len(entryOpts.ConsumedServices))
+						for i, c := range entryOpts.ConsumedServices {
+							consumedNames[i] = c.Name
+						}
+						fmt.Printf("  %s %s → sdk/ (%s)\n", green("✓"), entry.Name, strings.Join(consumedNames, ", "))
 					} else {
 						fmt.Printf("  %s %s → %s\n", green("✓"), entry.Name, pe.outDir)
 					}
@@ -987,7 +984,7 @@ func newGenerateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&backendFlag, "backend", "", "backend target ("+strings.Join(emitter.ListBackends(), ", ")+")")
+	cmd.Flags().StringVar(&backendFlag, "backend", "", "backend target ("+strings.Join(emitter.ListAllTargets(), ", ")+")")
 	cmd.Flags().StringVar(&frontendFlag, "frontend", "", "frontend SDK ("+strings.Join(emitter.ListFrontends(), ", ")+", none)")
 	cmd.Flags().StringVar(&inputFlag, "input", "", "input .veld file")
 	cmd.Flags().StringVar(&outFlag, "out", "", "output directory")
@@ -1685,11 +1682,11 @@ func newDiffCmd() *cobra.Command {
 			}
 
 			opts := emitter.EmitOptions{BaseUrl: rc.BaseUrl}
-			backend, err := emitter.GetBackend(rc.Backend)
+			backendOrTool, _, err := emitter.GetBackendOrTool(rc.Backend)
 			if err != nil {
 				return err
 			}
-			if err := backend.Emit(a, tmpBackendDir, opts); err != nil {
+			if err := backendOrTool.Emit(a, tmpBackendDir, opts); err != nil {
 				return err
 			}
 			frontend, err := emitter.GetFrontend(rc.Frontend)
@@ -2429,7 +2426,7 @@ func newDoctorCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				_, err = emitter.GetBackend(rc.Backend)
+				_, _, err = emitter.GetBackendOrTool(rc.Backend)
 				return err
 			})
 
