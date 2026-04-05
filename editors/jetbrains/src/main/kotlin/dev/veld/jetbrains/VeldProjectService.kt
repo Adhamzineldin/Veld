@@ -56,18 +56,60 @@ class VeldProjectService(private val project: Project) {
 
     /**
      * Find the veld project root (directory containing veld.config.json or app.veld).
+     * Also checks for veld/ subfolder — returns it as the root if found.
      */
     fun findProjectRoot(file: VirtualFile): VirtualFile? {
         var dir = file.parent
         for (i in 0 until 15) {
             if (dir == null) break
             if (dir.findChild("veld.config.json") != null) return dir
+            // Check veld/ subfolder — return it as root (that's where .veld files live)
+            val veldSubDir = dir.findChild("veld")
+            if (veldSubDir != null && veldSubDir.isDirectory && veldSubDir.findChild("veld.config.json") != null) {
+                return veldSubDir
+            }
             if (dir.findChild("app.veld") != null) return dir
             dir = dir.parent
         }
         // Fallback: project base path
         val basePath = project.basePath ?: return null
         return VfsUtil.findFileByIoFile(File(basePath), true)
+    }
+
+    /** Default alias → folder mappings (matches Go config.DefaultAliases). */
+    private val defaultAliases = mapOf(
+        "models" to "models", "modules" to "modules", "types" to "types",
+        "enums" to "enums", "schemas" to "schemas", "services" to "services",
+        "lib" to "lib", "common" to "common", "shared" to "shared"
+    )
+
+    /** Read aliases from veld.config.json — falls back to alias=folder convention. */
+    private fun readAliases(root: VirtualFile): Map<String, String> {
+        val configFile = root.findChild("veld.config.json")
+            ?: root.findChild("veld")?.findChild("veld.config.json")
+            ?: return defaultAliases
+        return try {
+            val content = String(configFile.contentsToByteArray(), Charsets.UTF_8)
+            val aliases = defaultAliases.toMutableMap()
+            // Simple regex-based extraction of "aliases": { "key": "value", ... }
+            val aliasBlock = Regex(""""aliases"\s*:\s*\{([^}]*)\}""").find(content)
+            if (aliasBlock != null) {
+                val pairs = Regex(""""(\w+)"\s*:\s*"([^"]+)"""").findAll(aliasBlock.groupValues[1])
+                for (pair in pairs) {
+                    aliases[pair.groupValues[1]] = pair.groupValues[2]
+                }
+            }
+            aliases
+        } catch (_: Exception) {
+            defaultAliases
+        }
+    }
+
+    /** Resolve an alias name to its folder VirtualFile using config aliases. */
+    fun resolveAliasDir(alias: String, root: VirtualFile): VirtualFile? {
+        val aliases = readAliases(root)
+        val folder = aliases[alias] ?: alias
+        return root.findFileByRelativePath(folder)
     }
 
     /**
@@ -81,7 +123,8 @@ class VeldProjectService(private val project: Project) {
             val alias = aliasMatch.groupValues[1]
             val name = aliasMatch.groupValues[2]
             val root = findProjectRoot(fromFile) ?: return null
-            return root.findFileByRelativePath("$alias/$name.veld")
+            val dir = resolveAliasDir(alias, root) ?: return null
+            return dir.findChild("$name.veld")
         }
         // Quoted relative path (already resolved to a file name at parse time)
         if (importPath.endsWith(".veld") || !importPath.startsWith("@")) {
@@ -211,10 +254,11 @@ class VeldProjectService(private val project: Project) {
             if (trimmed.startsWith("import") || trimmed.startsWith("from")) {
                 val singleMatch = Regex("""import\s+[@/](\w+)/(\w+)""").find(trimmed)
                 val wildcardMatch = Regex("""import\s+[@/](\w+)/\*""").find(trimmed)
-                val fromMatch = Regex("""from\s+[@/](\w+)\s+import\s+\*""").find(trimmed)
+                val fromWildcard = Regex("""from\s+[@/](\w+)\s+import\s+\*""").find(trimmed)
+                val fromNamed = Regex("""from\s+[@/](\w+)\s+import\s+(.+)""").find(trimmed)
                 val quotedMatch = Regex("""import\s+"([^"]+)"""").find(trimmed)
 
-                if (singleMatch != null) {
+                if (singleMatch != null && wildcardMatch == null) {
                     val alias = singleMatch.groupValues[1]
                     val name = singleMatch.groupValues[2]
                     imports.add(ImportDef("@$alias/$name", alias, name, i))
@@ -222,7 +266,7 @@ class VeldProjectService(private val project: Project) {
                     // Wildcard: resolve all .veld files in the alias dir
                     val alias = wildcardMatch.groupValues[1]
                     val root = findProjectRoot(file)
-                    val dir = root?.findFileByRelativePath(alias)
+                    val dir = if (root != null) resolveAliasDir(alias, root) else null
                     if (dir != null && dir.isDirectory) {
                         for (child in dir.children) {
                             if (child.extension == "veld") {
@@ -231,11 +275,11 @@ class VeldProjectService(private val project: Project) {
                             }
                         }
                     }
-                } else if (fromMatch != null) {
+                } else if (fromWildcard != null) {
                     // from @models import * — same as wildcard
-                    val alias = fromMatch.groupValues[1]
+                    val alias = fromWildcard.groupValues[1]
                     val root = findProjectRoot(file)
-                    val dir = root?.findFileByRelativePath(alias)
+                    val dir = if (root != null) resolveAliasDir(alias, root) else null
                     if (dir != null && dir.isDirectory) {
                         for (child in dir.children) {
                             if (child.extension == "veld") {
@@ -243,6 +287,14 @@ class VeldProjectService(private val project: Project) {
                                 imports.add(ImportDef("@$alias/$name", alias, name, i))
                             }
                         }
+                    }
+                } else if (fromNamed != null && fromWildcard == null) {
+                    // from @models import User, Role — named imports
+                    val alias = fromNamed.groupValues[1]
+                    val nameList = fromNamed.groupValues[2]
+                    val names = nameList.split(",").map { it.trim() }.filter { it.isNotEmpty() && it != "*" }
+                    for (name in names) {
+                        imports.add(ImportDef("@$alias/$name", alias, name, i))
                     }
                 } else if (quotedMatch != null) {
                     // Quoted path: import "./models/user.veld"
