@@ -28,18 +28,103 @@ type Options struct {
 // backend/frontend combination. outDir is the generated output directory
 // (relative or absolute). All patching is idempotent — if the output path
 // changed, existing entries are updated in place.
+// autoDetectServiceDir walks up from outDir looking for the canonical project-root
+// file for the given backend (e.g. pom.xml for java, package.json for node-ts).
+// This is used when BackendDir / FrontendDir is not explicitly configured so that
+// setup finds the correct service root even when outDir is nested several levels
+// inside the service (e.g. src/main/generated vs generated vs src/generated).
+// Falls back to filepath.Dir(outDir) if no indicator is found within 8 levels.
+func autoDetectServiceDir(outDir, backend string) string {
+	if outDir == "" {
+		return ""
+	}
+	indicators := backendRootIndicators(backend)
+	dir := outDir
+	for i := 0; i < 8; i++ {
+		for _, f := range indicators {
+			if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
+				return dir
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return filepath.Dir(outDir)
+}
+
+// backendRootIndicators returns the files whose presence marks the root of a
+// backend project for the given emitter target.
+func backendRootIndicators(backend string) []string {
+	switch backend {
+	case "java":
+		return []string{"pom.xml", "build.gradle.kts", "build.gradle"}
+	case "node-ts", "node-js":
+		return []string{"package.json"}
+	case "go":
+		return []string{"go.mod"}
+	case "python":
+		return []string{"requirements.txt", "pyproject.toml", "setup.py"}
+	case "rust":
+		return []string{"Cargo.toml"}
+	case "php":
+		return []string{"composer.json"}
+	case "csharp":
+		return []string{"Directory.Build.props", "*.csproj"}
+	default:
+		return []string{"package.json", "pom.xml", "go.mod", "requirements.txt", "Cargo.toml"}
+	}
+}
+
 func Run(projectDir, backend, frontend, outDir string, opts ...Options) []Result {
 	var o Options
 	if len(opts) > 0 {
 		o = opts[0]
 	}
+
+	// absPath resolves p to an absolute path using projectDir as base.
+	absPath := func(p string) string {
+		if p == "" {
+			return ""
+		}
+		if filepath.IsAbs(p) {
+			return filepath.Clean(p)
+		}
+		return filepath.Clean(filepath.Join(projectDir, p))
+	}
+
+	// Determine backend dir: explicit opt > auto-detect from abs outDir > project root.
 	backendDir := projectDir
 	if o.BackendDir != "" {
 		backendDir = o.BackendDir
+	} else {
+		absOut := absPath(o.BackendOutDir)
+		if absOut == "" {
+			absOut = absPath(outDir)
+		}
+		if absOut != "" {
+			if detected := autoDetectServiceDir(absOut, backend); detected != "" && detected != projectDir {
+				backendDir = detected
+			}
+		}
 	}
+
+	// Determine frontend dir: explicit opt > auto-detect from abs frontend outDir > project root.
 	frontendDir := projectDir
 	if o.FrontendDir != "" {
 		frontendDir = o.FrontendDir
+	} else {
+		absOut := absPath(o.FrontendOutDir)
+		if absOut == "" {
+			absOut = absPath(outDir)
+		}
+		if absOut != "" {
+			if detected := autoDetectServiceDir(absOut, frontend); detected != "" && detected != projectDir {
+				frontendDir = detected
+			}
+		}
 	}
 
 	var results []Result

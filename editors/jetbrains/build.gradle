@@ -1,7 +1,7 @@
 plugins {
     id 'java'
     id 'org.jetbrains.kotlin.jvm' version '2.1.10'
-    id 'org.jetbrains.intellij.platform' version '2.3.0'
+    id 'org.jetbrains.intellij.platform' version '2.13.1'
 }
 
 group = 'dev.veld'
@@ -16,15 +16,17 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // Target IntelliJ 2025.1 (build 251) — supports compiling against modern APIs.
-        // The plugin runs on any IDE from build 241 through 263.* per since/until-build.
+        // Build against 2025.1 (build 251). Plugin runs on 251+ per since-build.
         intellijIdeaCommunity('2025.1')
 
-        // JSON plugin provides com.jetbrains.jsonSchema.* (used in VeldConfigSchemaProviderFactory).
+        // JSON plugin provides com.jetbrains.jsonSchema.* for VeldConfigSchemaProviderFactory.
         bundledPlugin('com.intellij.modules.json')
 
-        // Required for bytecode instrumentation (JetBrains annotations, nullability, etc.)
+        // Required for bytecode instrumentation.
         instrumentationTools()
+
+        // Verify against the same platform we build against.
+        pluginVerifier()
     }
     implementation "org.jetbrains.kotlin:kotlin-stdlib"
 }
@@ -32,8 +34,16 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = '241'
+            // 251 = IntelliJ 2025.1 (earliest version that requires Java 21 SDK).
+            // Plugin is tested up to 263.* (2026.3).
+            sinceBuild = '251'
             untilBuild = '263.*'
+        }
+    }
+
+    pluginVerification {
+        ides {
+            recommended()
         }
     }
 
@@ -48,13 +58,14 @@ intellijPlatform {
     }
 }
 
+// IntelliJ Platform 2025.1+ requires Java 21.
 tasks.withType(JavaCompile).configureEach {
-    sourceCompatibility = '17'
-    targetCompatibility = '17'
+    sourceCompatibility = '21'
+    targetCompatibility = '21'
 }
 
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
     kotlinOptions {
-        jvmTarget = '17'
+        jvmTarget = '21'
     }
 }
