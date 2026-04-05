@@ -66,6 +66,10 @@
       {
         "language": "veld",
         "path": "./snippets/veld.json"
+      },
+      {
+        "language": "json",
+        "path": "./snippets/veld-config.json"
       }
     ],
     "jsonValidation": [

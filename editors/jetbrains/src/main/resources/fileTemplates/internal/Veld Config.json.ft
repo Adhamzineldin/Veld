@@ -1,11 +1,20 @@
 {
+  "$schema": "https://veld.dev/schemas/veld.config.schema.json",
   "input": "app.veld",
-  "backend": "${BACKEND}",
-  "frontend": "${FRONTEND}",
-  "out": "../generated",
-  "backendDir": "../backend",
-  "frontendDir": "../frontend",
+  "description": "${DESCRIPTION}",
+
+  "backendConfig": {
+    "target": "${BACKEND}",
+    "out": "../backend/src/generated",
+    "dir": "../backend"
+  },
+
+  "frontendConfig": {
+    "target": "${FRONTEND}",
+    "out": "../frontend/src/generated",
+    "dir": "../frontend"
+  },
+
   "baseUrl": "",
   "aliases": {}
 }
-

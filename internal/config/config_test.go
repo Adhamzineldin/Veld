@@ -526,3 +526,235 @@ func TestSplitOutputPathValidation(t *testing.T) {
 		t.Errorf("error should mention 'backendOut', got: %v", err)
 	}
 }
+
+func TestNormalizeNestedBackend(t *testing.T) {
+	cfg := RawConfig{
+		Input: "app.veld",
+		BackendCfg: &BackendConfig{
+			Target:    "python",
+			Framework: "flask",
+			Out:       "../backend/generated",
+		},
+		FrontendCfg: &FrontendConfig{
+			Target: "react",
+			Out:    "../frontend/generated",
+		},
+		Hooks: &HooksConfig{
+			PostGenerate: "npm run format",
+		},
+	}
+	cfg.normalize()
+
+	if cfg.Backend != "python" {
+		t.Errorf("Backend = %q, want %q", cfg.Backend, "python")
+	}
+	if cfg.BackendFramework != "flask" {
+		t.Errorf("BackendFramework = %q, want %q", cfg.BackendFramework, "flask")
+	}
+	if cfg.BackendOut != "../backend/generated" {
+		t.Errorf("BackendOut = %q, want %q", cfg.BackendOut, "../backend/generated")
+	}
+	if cfg.Frontend != "react" {
+		t.Errorf("Frontend = %q, want %q", cfg.Frontend, "react")
+	}
+	if cfg.FrontendOut != "../frontend/generated" {
+		t.Errorf("FrontendOut = %q, want %q", cfg.FrontendOut, "../frontend/generated")
+	}
+	if cfg.PostGenerate != "npm run format" {
+		t.Errorf("PostGenerate = %q, want %q", cfg.PostGenerate, "npm run format")
+	}
+}
+
+func TestNormalizeFlatStillWorks(t *testing.T) {
+	cfg := RawConfig{
+		Input:            "app.veld",
+		Backend:          "node",
+		Frontend:         "typescript",
+		BackendFramework: "express",
+		PostGenerate:     "echo done",
+	}
+	cfg.normalize()
+
+	if cfg.Backend != "node" {
+		t.Errorf("Backend = %q, want %q", cfg.Backend, "node")
+	}
+	if cfg.BackendFramework != "express" {
+		t.Errorf("BackendFramework = %q, want %q", cfg.BackendFramework, "express")
+	}
+	if cfg.PostGenerate != "echo done" {
+		t.Errorf("PostGenerate = %q, want %q", cfg.PostGenerate, "echo done")
+	}
+}
+
+func TestNormalizeNestedDoesNotOverrideFlat(t *testing.T) {
+	// If both flat and nested are set, flat wins (user explicitly set it).
+	cfg := RawConfig{
+		Input:   "app.veld",
+		Backend: "go",
+		BackendCfg: &BackendConfig{
+			Target: "python",
+		},
+	}
+	cfg.normalize()
+
+	// Flat "go" was already set, nested "python" should NOT override.
+	if cfg.Backend != "go" {
+		t.Errorf("Backend = %q, want %q (flat should not be overridden)", cfg.Backend, "go")
+	}
+}
+
+func TestNormalizeWorkspaceEntry(t *testing.T) {
+	cfg := RawConfig{
+		Workspace: []WorkspaceEntry{
+			{
+				Name: "iam",
+				BackendCfg: &BackendConfig{
+					Target: "node",
+					Out:    "../backend/iam/generated",
+				},
+			},
+			{
+				Name: "frontend",
+				FrontendCfg: &FrontendConfig{
+					Target: "react",
+					Out:    "../frontend/generated",
+				},
+			},
+		},
+	}
+	cfg.normalize()
+
+	if cfg.Workspace[0].Backend != "node" {
+		t.Errorf("ws[0].Backend = %q, want %q", cfg.Workspace[0].Backend, "node")
+	}
+	if cfg.Workspace[0].Out != "../backend/iam/generated" {
+		t.Errorf("ws[0].Out = %q, want %q", cfg.Workspace[0].Out, "../backend/iam/generated")
+	}
+	if cfg.Workspace[1].Frontend != "react" {
+		t.Errorf("ws[1].Frontend = %q, want %q", cfg.Workspace[1].Frontend, "react")
+	}
+}
+
+func TestNormalizeValidateFromNested(t *testing.T) {
+	v := true
+	cfg := RawConfig{
+		Input: "app.veld",
+		BackendCfg: &BackendConfig{
+			Target:   "node",
+			Validate: &v,
+		},
+	}
+	cfg.normalize()
+
+	if !cfg.Validate {
+		t.Error("Validate should be true from nested config")
+	}
+}
+
+func TestEffectiveBackendDirNested(t *testing.T) {
+	cfg := RawConfig{
+		BackendCfg: &BackendConfig{Dir: "../backend"},
+		BackendDir: "../old-backend",
+	}
+	if got := cfg.effectiveBackendDir(); got != "../backend" {
+		t.Errorf("effectiveBackendDir() = %q, want %q (nested should win)", got, "../backend")
+	}
+}
+
+func TestEffectiveFrontendDirNested(t *testing.T) {
+	cfg := RawConfig{
+		FrontendCfg: &FrontendConfig{Dir: "../frontend"},
+		FrontendDir: "../old-frontend",
+	}
+	if got := cfg.effectiveFrontendDir(); got != "../frontend" {
+		t.Errorf("effectiveFrontendDir() = %q, want %q (nested should win)", got, "../frontend")
+	}
+}
+
+func TestEffectivePostGenerateHooks(t *testing.T) {
+	cfg := RawConfig{
+		Hooks:        &HooksConfig{PostGenerate: "new-cmd"},
+		PostGenerate: "old-cmd",
+	}
+	if got := cfg.effectivePostGenerate(); got != "new-cmd" {
+		t.Errorf("effectivePostGenerate() = %q, want %q (hooks should win)", got, "new-cmd")
+	}
+}
+
+func TestSchemaFieldIgnored(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "veld")
+	os.MkdirAll(cfgDir, 0755)
+
+	cfg := `{
+		"$schema": "https://veld.dev/schemas/veld.config.schema.json",
+		"input": "app.veld",
+		"backend": "node"
+	}`
+	os.WriteFile(filepath.Join(cfgDir, "veld.config.json"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(cfgDir, "app.veld"), []byte(""), 0644)
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rc.Backend != "node-ts" {
+		t.Errorf("Backend = %q, want %q", rc.Backend, "node-ts")
+	}
+}
+
+func TestNestedConfigEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "veld")
+	os.MkdirAll(cfgDir, 0755)
+
+	cfg := `{
+		"$schema": "https://veld.dev/schemas/veld.config.schema.json",
+		"input": "app.veld",
+		"description": "My API",
+		"backendConfig": {
+			"target": "python",
+			"framework": "flask",
+			"out": "../backend/generated",
+			"dir": "../backend"
+		},
+		"frontendConfig": {
+			"target": "vue",
+			"out": "../frontend/generated"
+		},
+		"hooks": {
+			"postGenerate": "echo done"
+		},
+		"baseUrl": "/api"
+	}`
+	os.WriteFile(filepath.Join(cfgDir, "veld.config.json"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(cfgDir, "app.veld"), []byte(""), 0644)
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rc.Backend != "python" {
+		t.Errorf("Backend = %q, want %q", rc.Backend, "python")
+	}
+	if rc.BackendFramework != "flask" {
+		t.Errorf("BackendFramework = %q, want %q", rc.BackendFramework, "flask")
+	}
+	if rc.Frontend != "vue" {
+		t.Errorf("Frontend = %q, want %q", rc.Frontend, "vue")
+	}
+	if rc.PostGenerate != "echo done" {
+		t.Errorf("PostGenerate = %q, want %q", rc.PostGenerate, "echo done")
+	}
+	if rc.BaseUrl != "/api" {
+		t.Errorf("BaseUrl = %q, want %q", rc.BaseUrl, "/api")
+	}
+}

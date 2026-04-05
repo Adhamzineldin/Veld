@@ -9,39 +9,87 @@ import (
 
 // WorkspaceEntry defines one service in a multi-service monorepo workspace.
 type WorkspaceEntry struct {
-	Name      string   `json:"name"`               // logical service name
-	Input     string   `json:"input"`              // path to .veld entry file
-	Backend   string   `json:"backend,omitempty"`  // overrides top-level backend
-	Frontend  string   `json:"frontend,omitempty"` // overrides top-level frontend
-	Out       string   `json:"out,omitempty"`      // output dir; defaults to generated/<name>
-	BaseUrl   string   `json:"baseUrl,omitempty"`  // this service's base URL
-	ServerSdk bool     `json:"serverSdk,omitempty"`
-	Consumes  []string `json:"consumes,omitempty"` // workspace entry names this service depends on (service SDK generation)
+	Name        string   `json:"name"`               // logical service name
+	Input       string   `json:"input"`              // path to .veld entry file (optional for frontend-only entries)
+	Backend     string   `json:"backend,omitempty"`  // legacy flat: overrides top-level backend (string)
+	Frontend    string   `json:"frontend,omitempty"` // legacy flat: overrides top-level frontend (string)
+	Out         string   `json:"out,omitempty"`      // legacy flat: output dir
+	BaseUrl     string   `json:"baseUrl,omitempty"`  // this service's base URL
+	ServerSdk   bool     `json:"serverSdk,omitempty"`
+	Consumes    []string `json:"consumes,omitempty"`    // workspace entry names this service depends on
+	Description string   `json:"description,omitempty"` // per-service description
+	Validate    *bool    `json:"validate,omitempty"`    // per-service validate override
+
+	// New nested format (takes precedence over flat fields).
+	BackendCfg  *BackendConfig  `json:"backendConfig,omitempty"`
+	FrontendCfg *FrontendConfig `json:"frontendConfig,omitempty"`
+}
+
+// BackendConfig is the nested config for backend code generation.
+type BackendConfig struct {
+	Target    string `json:"target"`              // emitter name: "node-ts", "python", "go", etc.
+	Framework string `json:"framework,omitempty"` // "express", "flask", "chi", "spring", etc.
+	Out       string `json:"out,omitempty"`       // output directory
+	Dir       string `json:"dir,omitempty"`       // project directory (for setup)
+	Validate  *bool  `json:"validate,omitempty"`  // emit validators
+}
+
+// FrontendConfig is the nested config for frontend SDK generation.
+type FrontendConfig struct {
+	Target string `json:"target"`        // emitter name: "react", "vue", "angular", etc.
+	Out    string `json:"out,omitempty"` // output directory
+	Dir    string `json:"dir,omitempty"` // project directory (for setup)
+}
+
+// ToolsConfig controls auxiliary generators (cicd, dockerfile, etc.).
+type ToolsConfig struct {
+	OpenAPI    *bool `json:"openapi,omitempty"`
+	Dockerfile *bool `json:"dockerfile,omitempty"`
+	CICD       *bool `json:"cicd,omitempty"`
+	Database   *bool `json:"database,omitempty"`
+	Scaffold   *bool `json:"scaffold,omitempty"`
+	EnvConfig  *bool `json:"envconfig,omitempty"`
+}
+
+// HooksConfig contains lifecycle hook commands.
+type HooksConfig struct {
+	PostGenerate string `json:"postGenerate,omitempty"` // shell command after generation
 }
 
 // RawConfig mirrors veld.config.json on disk.
+// Supports BOTH the legacy flat format and the new nested format.
 type RawConfig struct {
-	Input             string            `json:"input"`
-	Backend           string            `json:"backend"`
-	Frontend          string            `json:"frontend"`
-	Out               string            `json:"out"`
-	BackendOut        string            `json:"backendOut,omitempty"`        // separate output dir for backend code
-	FrontendOut       string            `json:"frontendOut,omitempty"`       // separate output dir for frontend code
-	BackendDir        string            `json:"backendDir,omitempty"`        // path to backend project dir (for setup)
-	BackendDirectory  string            `json:"backendDirectory,omitempty"`  // alias for backendDir
-	FrontendDir       string            `json:"frontendDir,omitempty"`       // path to frontend project dir (for setup)
-	FrontendDirectory string            `json:"frontendDirectory,omitempty"` // alias for frontendDir
-	BaseUrl           string            `json:"baseUrl,omitempty"`           // default base URL for all services; empty = env var
-	Validate          bool              `json:"validate,omitempty"`          // emit zero-dep runtime validators (default false)
-	BackendFramework  string            `json:"backendFramework,omitempty"`  // e.g. "express", "flask" — "" means plain
-	FrontendFramework string            `json:"frontendFramework,omitempty"` // e.g. "react", "vue" — "" means none
-	Aliases           map[string]string `json:"aliases,omitempty"`           // custom @alias → relative dir
-	PostGenerate      string            `json:"postGenerate,omitempty"`      // shell command to run after generation
-	Registry          RegistryConfig    `json:"registry,omitempty"`          // cloud registry publishing config
-	Description       string            `json:"description,omitempty"`       // human/AI-readable project description
-	Services          map[string]string `json:"services,omitempty"`          // module name → base URL override (optional)
-	ServerSdk         bool              `json:"serverSdk,omitempty"`         // also emit a server-to-server typed client
-	Workspace         []WorkspaceEntry  `json:"workspace,omitempty"`         // multi-service monorepo entries
+	Schema string `json:"$schema,omitempty"` // JSON Schema reference (ignored by parser)
+
+	Input       string            `json:"input"`
+	Description string            `json:"description,omitempty"` // human/AI-readable project description
+	BaseUrl     string            `json:"baseUrl,omitempty"`     // default base URL for all services
+	Aliases     map[string]string `json:"aliases,omitempty"`     // custom @alias → relative dir
+	Services    map[string]string `json:"services,omitempty"`    // module name → base URL override
+	ServerSdk   bool              `json:"serverSdk,omitempty"`   // emit server-to-server typed client
+	Workspace   []WorkspaceEntry  `json:"workspace,omitempty"`   // multi-service monorepo entries
+	Registry    RegistryConfig    `json:"registry,omitempty"`    // cloud registry publishing config
+
+	// ── New nested format ────────────────────────────────────────────────
+	BackendCfg  *BackendConfig  `json:"backendConfig,omitempty"`
+	FrontendCfg *FrontendConfig `json:"frontendConfig,omitempty"`
+	Tools       *ToolsConfig    `json:"tools,omitempty"`
+	Hooks       *HooksConfig    `json:"hooks,omitempty"`
+
+	// ── Legacy flat format (still supported, normalized internally) ──────
+	Backend           string `json:"backend"`
+	Frontend          string `json:"frontend"`
+	Out               string `json:"out"`
+	BackendOut        string `json:"backendOut,omitempty"`
+	FrontendOut       string `json:"frontendOut,omitempty"`
+	BackendDir        string `json:"backendDir,omitempty"`
+	BackendDirectory  string `json:"backendDirectory,omitempty"` // deprecated alias
+	FrontendDir       string `json:"frontendDir,omitempty"`
+	FrontendDirectory string `json:"frontendDirectory,omitempty"` // deprecated alias
+	Validate          bool   `json:"validate,omitempty"`
+	BackendFramework  string `json:"backendFramework,omitempty"`
+	FrontendFramework string `json:"frontendFramework,omitempty"`
+	PostGenerate      string `json:"postGenerate,omitempty"` // deprecated: use hooks.postGenerate
 }
 
 // RegistryConfig holds optional publish metadata baked into veld.config.json.
@@ -53,20 +101,86 @@ type RegistryConfig struct {
 	Version string `json:"version,omitempty"` // current version to publish
 }
 
-// effectiveBackendDir returns the configured backend directory, preferring backendDir over backendDirectory.
+// effectiveBackendDir returns the configured backend directory.
 func (c RawConfig) effectiveBackendDir() string {
+	// New nested format takes precedence.
+	if c.BackendCfg != nil && c.BackendCfg.Dir != "" {
+		return c.BackendCfg.Dir
+	}
 	if c.BackendDir != "" {
 		return c.BackendDir
 	}
 	return c.BackendDirectory
 }
 
-// effectiveFrontendDir returns the configured frontend directory, preferring frontendDir over frontendDirectory.
+// effectiveFrontendDir returns the configured frontend directory.
 func (c RawConfig) effectiveFrontendDir() string {
+	if c.FrontendCfg != nil && c.FrontendCfg.Dir != "" {
+		return c.FrontendCfg.Dir
+	}
 	if c.FrontendDir != "" {
 		return c.FrontendDir
 	}
 	return c.FrontendDirectory
+}
+
+// effectivePostGenerate returns the lifecycle hook command.
+func (c RawConfig) effectivePostGenerate() string {
+	if c.Hooks != nil && c.Hooks.PostGenerate != "" {
+		return c.Hooks.PostGenerate
+	}
+	return c.PostGenerate
+}
+
+// normalize promotes nested BackendCfg/FrontendCfg into the flat fields
+// so BuildResolved doesn't need two code paths. Nested config takes precedence.
+func (c *RawConfig) normalize() {
+	if c.BackendCfg != nil {
+		if c.BackendCfg.Target != "" && c.Backend == "" {
+			c.Backend = c.BackendCfg.Target
+		}
+		if c.BackendCfg.Framework != "" && c.BackendFramework == "" {
+			c.BackendFramework = c.BackendCfg.Framework
+		}
+		if c.BackendCfg.Out != "" && c.BackendOut == "" {
+			c.BackendOut = c.BackendCfg.Out
+		}
+		if c.BackendCfg.Validate != nil && !c.Validate {
+			c.Validate = *c.BackendCfg.Validate
+		}
+	}
+	if c.FrontendCfg != nil {
+		if c.FrontendCfg.Target != "" && c.Frontend == "" {
+			c.Frontend = c.FrontendCfg.Target
+		}
+		if c.FrontendCfg.Out != "" && c.FrontendOut == "" {
+			c.FrontendOut = c.FrontendCfg.Out
+		}
+	}
+	if c.Hooks != nil && c.Hooks.PostGenerate != "" && c.PostGenerate == "" {
+		c.PostGenerate = c.Hooks.PostGenerate
+	}
+
+	// Normalize workspace entries too.
+	for i := range c.Workspace {
+		e := &c.Workspace[i]
+		if e.BackendCfg != nil {
+			if e.BackendCfg.Target != "" && e.Backend == "" {
+				e.Backend = e.BackendCfg.Target
+			}
+			if e.BackendCfg.Out != "" && e.Out == "" {
+				e.Out = e.BackendCfg.Out
+			}
+		}
+		if e.FrontendCfg != nil {
+			if e.FrontendCfg.Target != "" && e.Frontend == "" {
+				e.Frontend = e.FrontendCfg.Target
+			}
+			if e.FrontendCfg.Out != "" && e.Out == "" {
+				e.Out = e.FrontendCfg.Out
+			}
+		}
+	}
 }
 
 // ResolvedConfig has all paths resolved to be absolute.
@@ -163,6 +277,7 @@ func FindConfig() (RawConfig, string, error) {
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return RawConfig{}, "", fmt.Errorf("parsing %s: %w", p, err)
 		}
+		cfg.normalize()
 		abs, err := filepath.Abs(filepath.Dir(p))
 		if err != nil {
 			return RawConfig{}, "", err

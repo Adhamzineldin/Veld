@@ -129,7 +129,7 @@ The pipeline is strictly linear — **only AST JSON passes between stages**:
 ```
 my-project/
 ├── veld/                    ← all veld source (like prisma/)
-│   ├── veld.config.json     ← { input, backend, frontend, out, baseUrl? }
+│   ├── veld.config.json     ← config file (nested or flat format)
 │   ├── app.veld             ← entry point, imports other files
 │   ├── models/              ← model definitions
 │   └── modules/             ← module/action definitions
@@ -145,7 +145,43 @@ scaffolded — project layout is left to the developer.
 1. `./veld.config.json`
 2. `./veld/veld.config.json`
 
-### Config fields
+### Config format (recommended — nested)
+
+```json
+{
+  "$schema": "https://veld.dev/schemas/veld.config.schema.json",
+  "input": "app.veld",
+  "description": "My API",
+
+  "backendConfig": {
+    "target": "node-ts",
+    "framework": "express",
+    "out": "../backend/src/generated",
+    "dir": "../backend",
+    "validate": true
+  },
+
+  "frontendConfig": {
+    "target": "react",
+    "out": "../frontend/src/generated",
+    "dir": "../frontend"
+  },
+
+  "baseUrl": "/api/v1",
+  "aliases": { "auth": "services/auth" },
+
+  "tools": {
+    "openapi": true,
+    "dockerfile": true
+  },
+
+  "hooks": {
+    "postGenerate": "npm run format"
+  }
+}
+```
+
+### Config format (legacy flat — still works)
 
 ```json
 {
@@ -153,23 +189,36 @@ scaffolded — project layout is left to the developer.
   "backend": "node",
   "frontend": "typescript",
   "out": "../generated",
+  "backendFramework": "express",
+  "backendDir": "../backend",
   "baseUrl": "/api/v1",
-  "aliases": {
-    "models": "models",
-    "modules": "modules",
-    "auth": "services/auth"
-  }
+  "postGenerate": "npm run format"
 }
 ```
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `input` | *required* | Entry .veld file |
-| `backend` | `"node"` | Backend emitter (`node`, `python`, `go`, `rust`, `java`, `csharp`, `php`, `javascript`) |
-| `frontend` | `"typescript"` | Frontend emitter (`typescript`, `react`, `vue`, `angular`, `svelte`, `dart`, `kotlin`, `swift`, `javascript`, `types-only`, `none`) |
-| `out` | `"./generated"` | Output directory |
-| `baseUrl` | `""` | Baked into frontend SDK (empty = `process.env.VELD_API_URL`) |
-| `aliases` | built-in defaults | Custom `@alias` → relative dir mappings (merged with defaults: models, modules, types, enums, schemas, services, lib, common, shared) |
+Both formats are **fully supported**. The parser normalizes internally. Nested takes precedence if both are present.
+
+| Field (nested) | Field (flat, deprecated) | Default | Description |
+|----------------|--------------------------|---------|-------------|
+| `backendConfig.target` | `backend` | `"node"` | Backend emitter |
+| `backendConfig.framework` | `backendFramework` | `""` | Framework variant |
+| `backendConfig.out` | `backendOut` | `out` value | Backend output dir |
+| `backendConfig.dir` | `backendDir` | `""` | Backend project dir |
+| `backendConfig.validate` | `validate` | `false` | Emit validators |
+| `frontendConfig.target` | `frontend` | `"typescript"` | Frontend emitter |
+| `frontendConfig.out` | `frontendOut` | `out` value | Frontend output dir |
+| `frontendConfig.dir` | `frontendDir` | `""` | Frontend project dir |
+| `hooks.postGenerate` | `postGenerate` | `""` | Post-generate command |
+| `tools` | — | `{}` | Auxiliary generators |
+| `baseUrl` | `baseUrl` | `""` | Baked into SDK (empty = env var) |
+| `aliases` | `aliases` | built-in defaults | `@alias` → dir mappings |
+| `workspace` | `workspace` | `[]` | Multi-service entries |
+
+### JSON Schema
+
+Canonical source: `editors/veld-config.schema.json`  
+Sync to plugins: `bash scripts/sync-schema.sh`  
+Both VS Code and JetBrains plugins bundle the schema for auto-completion.
 
 ### Import System
 
@@ -193,8 +242,27 @@ Add `consumes` to workspace entries in `veld.config.json`:
 ```json
 {
   "workspace": [
-    { "name": "iam", "backend": "node", "baseUrl": "http://iam:3001", ... },
-    { "name": "transactions", "backend": "python", "consumes": ["iam"], ... }
+    {
+      "name": "iam",
+      "backendConfig": { "target": "node-ts" },
+      "baseUrl": "http://iam:3001",
+      "input": "services/iam/modules/iam.veld",
+      "out": "../backend/iam-service/generated"
+    },
+    {
+      "name": "transactions",
+      "backendConfig": { "target": "python", "framework": "flask" },
+      "baseUrl": "http://transactions:3003",
+      "input": "services/transactions/modules/transactions.veld",
+      "out": "../backend/transaction-service/generated",
+      "consumes": ["iam"]
+    },
+    {
+      "name": "frontend",
+      "frontendConfig": { "target": "react" },
+      "out": "../frontend/src/generated",
+      "consumes": ["iam", "transactions"]
+    }
   ]
 }
 ```
