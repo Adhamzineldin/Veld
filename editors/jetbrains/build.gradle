@@ -1,7 +1,7 @@
 plugins {
     id 'java'
     id 'org.jetbrains.kotlin.jvm' version '2.1.10'
-    id 'org.jetbrains.intellij' version '1.17.4'
+    id 'org.jetbrains.intellij.platform' version '2.3.0'
 }
 
 group = 'dev.veld'
@@ -9,22 +9,43 @@ version = '0.6.0'
 
 repositories {
     mavenCentral()
-    maven {
-        url = "https://www.jetbrains.com/intellij-repository/releases"
+    intellijPlatform {
+        defaultRepositories()
     }
-    maven {
-        url = "https://www.jetbrains.com/intellij-repository/snapshots"
-    }
-}
-
-intellij {
-    version = '2025.1'
-    type = 'IC'
-    plugins = []
 }
 
 dependencies {
+    intellijPlatform {
+        // Target IntelliJ 2025.1 (build 251) — supports compiling against modern APIs.
+        // The plugin runs on any IDE from build 241 through 263.* per since/until-build.
+        intellijIdeaCommunity('2025.1')
+
+        // JSON plugin provides com.jetbrains.jsonSchema.* (used in VeldConfigSchemaProviderFactory).
+        bundledPlugin('com.intellij.modules.json')
+
+        // Required for bytecode instrumentation (JetBrains annotations, nullability, etc.)
+        instrumentationTools()
+    }
     implementation "org.jetbrains.kotlin:kotlin-stdlib"
+}
+
+intellijPlatform {
+    pluginConfiguration {
+        ideaVersion {
+            sinceBuild = '241'
+            untilBuild = '263.*'
+        }
+    }
+
+    signing {
+        certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
+        privateKey = providers.environmentVariable("PRIVATE_KEY")
+        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+    }
+
+    publishing {
+        token = providers.environmentVariable("JETBRAINS_PUBLISH_TOKEN")
+    }
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -37,30 +58,3 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
         jvmTarget = '17'
     }
 }
-
-patchPluginXml {
-    sinceBuild = '241'
-    untilBuild = '263.*'
-    changeNotes = """
-        <h3>0.1.0 - Initial Release</h3>
-        <ul>
-          <li>Syntax highlighting for .veld files</li>
-          <li>Code completion for keywords, types, models</li>
-          <li>Real-time validation</li>
-          <li>Import resolution with @alias/name</li>
-          <li>Works in ALL JetBrains IDEs</li>
-        </ul>
-    """
-}
-
-signPlugin {
-    certificateChain = System.getenv("CERTIFICATE_CHAIN")
-    privateKey = System.getenv("PRIVATE_KEY")
-    password = System.getenv("PRIVATE_KEY_PASSWORD")
-}
-
-publishPlugin {
-    token = System.getenv("JETBRAINS_PUBLISH_TOKEN")
-}
-
-

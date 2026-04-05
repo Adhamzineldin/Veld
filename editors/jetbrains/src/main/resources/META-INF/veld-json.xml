@@ -1,8 +1,7 @@
 <idea-plugin>
   <extensions defaultExtensionNs="JavaScript">
-    <!-- Provide JSON schema for veld.config.json -->
+    <!-- Provide JSON schema for veld.config.json files -->
     <JsonSchemaProviderFactory
         implementation="dev.veld.jetbrains.VeldConfigSchemaProviderFactory"/>
   </extensions>
 </idea-plugin>
-

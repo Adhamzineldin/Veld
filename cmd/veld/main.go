@@ -641,18 +641,27 @@ func newSetupCmd() *cobra.Command {
 					} else if !filepath.IsAbs(outDir) {
 						outDir = filepath.Clean(filepath.Join(rc.ConfigDir, outDir))
 					}
+					// Resolve backend dir: explicit backendConfig.dir → parent of out → project root.
 					beDir := ""
 					if wEntry.BackendCfg != nil && wEntry.BackendCfg.Dir != "" {
 						beDir = filepath.Clean(filepath.Join(rc.ConfigDir, wEntry.BackendCfg.Dir))
+					} else if outDir != "" {
+						// Derive service root from out path: "…/account-service/generated" → "…/account-service"
+						beDir = filepath.Dir(outDir)
 					}
-					feDir := ""
-					if wEntry.FrontendCfg != nil && wEntry.FrontendCfg.Dir != "" {
-						feDir = filepath.Clean(filepath.Join(rc.ConfigDir, wEntry.FrontendCfg.Dir))
-					}
+
+					// Resolve frontend dir similarly.
 					feOutDir := outDir
 					if wEntry.FrontendCfg != nil && wEntry.FrontendCfg.Out != "" {
 						feOutDir = filepath.Clean(filepath.Join(rc.ConfigDir, wEntry.FrontendCfg.Out))
 					}
+					feDir := ""
+					if wEntry.FrontendCfg != nil && wEntry.FrontendCfg.Dir != "" {
+						feDir = filepath.Clean(filepath.Join(rc.ConfigDir, wEntry.FrontendCfg.Dir))
+					} else if feOutDir != "" {
+						feDir = filepath.Dir(feOutDir)
+					}
+
 					entryResults := setup.Run(projectDir, beTarget, feTarget, outDir, setup.Options{
 						BackendDir:     beDir,
 						FrontendDir:    feDir,
@@ -3086,6 +3095,17 @@ func runInit() error {
 		numServices := readChoice(reader, 20, 2)
 		fmt.Printf("  → %s\n\n", green(fmt.Sprintf("%d services", numServices)))
 
+		// Ask whether all services share the same backend/framework.
+		fmt.Print("  " + bold("◆ Are all services the same backend?") + " [Y/n]: ")
+		sameLine, _ := reader.ReadString('\n')
+		sameLine = strings.TrimSpace(strings.ToLower(sameLine))
+		allSameBackend := sameLine == "" || sameLine == "y" || sameLine == "yes"
+		if allSameBackend {
+			fmt.Printf("  → %s\n\n", green(fmt.Sprintf("yes — all use %s", selectedBackend)))
+		} else {
+			fmt.Printf("  → %s\n\n", dim("per-service selection"))
+		}
+
 		type svcDef struct {
 			name, backend, framework, baseUrl string
 			consumes                          []string
@@ -3104,11 +3124,53 @@ func runInit() error {
 			}
 			allSvcNames = append(allSvcNames, svcName)
 
-			fmt.Printf("    Backend [%s]: ", selectedBackend)
-			beLine, _ := reader.ReadString('\n')
-			svcBackend := strings.TrimSpace(beLine)
-			if svcBackend == "" {
-				svcBackend = selectedBackend
+			svcBackend := selectedBackend
+			svcFramework := selectedBackendFramework
+
+			if !allSameBackend {
+				// Show the same backend menu as the top-level prompt.
+				fmt.Printf("    Backend — choose language:\n")
+				for i, b := range backends {
+					fmt.Printf("      %s%2d%s  %s\n", colorGreen, i+1, colorReset, b)
+				}
+				defaultIdx := 1
+				for i, b := range backends {
+					if b == selectedBackend {
+						defaultIdx = i + 1
+						break
+					}
+				}
+				fmt.Printf("    Choose [%d]: ", defaultIdx)
+				bIdx := readChoice(reader, len(backends), defaultIdx)
+				svcBackend = backends[bIdx-1]
+
+				// Node TS/JS sub-choice
+				if svcBackend == "node-ts" {
+					fmt.Printf("      TypeScript [1] or JavaScript [2]? ")
+					if readChoice(reader, 2, 1) == 2 {
+						svcBackend = "node-js"
+					}
+				}
+
+				// Framework for this backend
+				svcFramework = ""
+				if fwOpts := backendFrameworkOpts[svcBackend]; len(fwOpts) > 0 {
+					fmt.Printf("    Framework:\n")
+					for i, fw := range fwOpts {
+						lbl := fw.name
+						if lbl == "" || lbl == "plain" {
+							lbl = "plain (no framework)"
+						}
+						fmt.Printf("      %s%2d%s  %-14s %s\n", colorGreen, i+1, colorReset, lbl, dim(fw.desc))
+					}
+					fmt.Printf("    Choose [1]: ")
+					fwIdx := readChoice(reader, len(fwOpts), 1)
+					svcFramework = fwOpts[fwIdx-1].name
+					if svcFramework == "plain" {
+						svcFramework = ""
+					}
+				}
+				fmt.Printf("    → %s\n", green(svcBackend))
 			}
 
 			defaultPort := 3001 + s
@@ -3134,11 +3196,6 @@ func runInit() error {
 				}
 			}
 
-			// Use the global framework selection if this service uses the default backend.
-			svcFramework := ""
-			if svcBackend == selectedBackend {
-				svcFramework = selectedBackendFramework
-			}
 			services = append(services, svcDef{
 				name: svcName, backend: svcBackend, framework: svcFramework, baseUrl: svcUrl, consumes: svcConsumes,
 			})
@@ -3171,9 +3228,11 @@ func runInit() error {
 			if len(svc.consumes) > 0 {
 				consumesLine = fmt.Sprintf(",\n      \"consumes\": %s", consumesJSON)
 			}
-			backendCfgJSON := fmt.Sprintf(`{ "target": %q }`, svc.backend)
+			// dir is always the parent of out so veld setup can find pom.xml / package.json / etc.
+			svcDir := fmt.Sprintf("../backend/%s-service", svc.name)
+			backendCfgJSON := fmt.Sprintf(`{ "target": %q, "dir": %q }`, svc.backend, svcDir)
 			if svc.framework != "" {
-				backendCfgJSON = fmt.Sprintf(`{ "target": %q, "framework": %q }`, svc.backend, svc.framework)
+				backendCfgJSON = fmt.Sprintf(`{ "target": %q, "framework": %q, "dir": %q }`, svc.backend, svc.framework, svcDir)
 			}
 			wsEntries = append(wsEntries, fmt.Sprintf(`    {
       "name": %q,
@@ -3501,8 +3560,9 @@ module %s {
 	fmt.Println("  Next steps:")
 	if isMicroservices {
 		fmt.Println("    1. Edit veld/services/<name>/models/ and modules/ to define each service's API")
-		fmt.Println("    2. Run: " + bold("veld generate"))
-		fmt.Println("    3. Run: " + bold("veld deps") + " to view the service dependency graph")
+		fmt.Println("    2. Run: " + bold("veld setup") + "  — patch tsconfig / package.json / pom.xml in each service")
+		fmt.Println("    3. Run: " + bold("veld generate"))
+		fmt.Println("    4. Run: " + bold("veld deps") + " to view the service dependency graph")
 	} else {
 		fmt.Println("    1. Edit veld/models/ and veld/modules/ to define your API")
 		fmt.Println("    2. Run: " + bold("veld generate"))
