@@ -11,14 +11,14 @@ import (
 )
 
 func init() {
-	emitter.RegisterBackend("dockerfile", New())
+	emitter.RegisterTool("dockerfile", New())
 }
 
 // DockerfileEmitter generates a Dockerfile tailored to the detected backend.
 type DockerfileEmitter struct{}
 
-func New() *DockerfileEmitter         { return &DockerfileEmitter{} }
-func (*DockerfileEmitter) IsBackend() {}
+func New() *DockerfileEmitter      { return &DockerfileEmitter{} }
+func (*DockerfileEmitter) IsTool() {}
 
 func (e *DockerfileEmitter) Summary(_ []string) []emitter.SummaryLine {
 	return []emitter.SummaryLine{

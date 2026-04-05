@@ -8,7 +8,7 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
-	"github.com/Adhamzineldin/Veld/internal/emitter/cicd"
+	"github.com/Adhamzineldin/Veld/internal/generators/cicd"
 )
 
 func minimalAST() ast.AST {

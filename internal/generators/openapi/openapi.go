@@ -17,14 +17,14 @@ import (
 )
 
 func init() {
-	emitter.RegisterBackend("openapi", New())
+	emitter.RegisterTool("openapi", New())
 }
 
 // OpenAPIEmitter generates an OpenAPI 3.0 spec from a Veld AST.
 type OpenAPIEmitter struct{}
 
-func New() *OpenAPIEmitter         { return &OpenAPIEmitter{} }
-func (*OpenAPIEmitter) IsBackend() {}
+func New() *OpenAPIEmitter      { return &OpenAPIEmitter{} }
+func (*OpenAPIEmitter) IsTool() {}
 
 // Summary returns a human-readable list of generated files.
 func (e *OpenAPIEmitter) Summary(_ []string) []emitter.SummaryLine {

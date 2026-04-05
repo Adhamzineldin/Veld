@@ -8,7 +8,7 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
-	"github.com/Adhamzineldin/Veld/internal/emitter/dockerfile"
+	"github.com/Adhamzineldin/Veld/internal/generators/dockerfile"
 )
 
 func minimalAST() ast.AST {

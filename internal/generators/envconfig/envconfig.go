@@ -11,13 +11,13 @@ import (
 )
 
 func init() {
-	emitter.RegisterBackend("env", New())
+	emitter.RegisterTool("env", New())
 }
 
 type EnvEmitter struct{}
 
-func New() *EnvEmitter         { return &EnvEmitter{} }
-func (*EnvEmitter) IsBackend() {}
+func New() *EnvEmitter      { return &EnvEmitter{} }
+func (*EnvEmitter) IsTool() {}
 
 func (e *EnvEmitter) Summary(_ []string) []emitter.SummaryLine {
 	return []emitter.SummaryLine{

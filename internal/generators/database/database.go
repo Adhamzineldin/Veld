@@ -14,13 +14,13 @@ import (
 )
 
 func init() {
-	emitter.RegisterBackend("database", New())
+	emitter.RegisterTool("database", New())
 }
 
 type DatabaseEmitter struct{}
 
-func New() *DatabaseEmitter         { return &DatabaseEmitter{} }
-func (*DatabaseEmitter) IsBackend() {}
+func New() *DatabaseEmitter      { return &DatabaseEmitter{} }
+func (*DatabaseEmitter) IsTool() {}
 
 func (e *DatabaseEmitter) Summary(_ []string) []emitter.SummaryLine {
 	return []emitter.SummaryLine{

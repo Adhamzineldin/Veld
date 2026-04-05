@@ -12,13 +12,13 @@ import (
 )
 
 func init() {
-	emitter.RegisterBackend("scaffold-tests", New())
+	emitter.RegisterTool("scaffold-tests", New())
 }
 
 type TestScaffoldEmitter struct{}
 
-func New() *TestScaffoldEmitter         { return &TestScaffoldEmitter{} }
-func (*TestScaffoldEmitter) IsBackend() {}
+func New() *TestScaffoldEmitter      { return &TestScaffoldEmitter{} }
+func (*TestScaffoldEmitter) IsTool() {}
 
 func (e *TestScaffoldEmitter) Summary(modules []string) []emitter.SummaryLine {
 	files := make([]string, len(modules))
