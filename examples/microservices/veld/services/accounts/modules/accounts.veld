@@ -57,4 +57,9 @@ module Accounts {
     middleware: [AuthGuard]
     errors: [Unauthorized, NotFound]
   }
+  action banaccount{
+	  method: POST
+	  path: /ban
+	  errors: [Unauthorized, NotFound]
+  }
 }
