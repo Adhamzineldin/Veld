@@ -2687,6 +2687,19 @@ func runInit() error {
 		fmt.Printf("  %s Detected project type: %s\n\n", dim("ℹ"), bold(detectedBackend))
 	}
 
+	// ── Project type selection ─────────────────────────────────────────────
+	fmt.Println("  " + bold("◆ Project type"))
+	fmt.Printf("    %s1%s  Single service %s\n", colorGreen, colorReset, dim("(monolith — one backend, one frontend)"))
+	fmt.Printf("    %s2%s  Microservices workspace %s\n", colorGreen, colorReset, dim("(multiple services with inter-service SDK)"))
+	fmt.Print("\n  Choose [1]: ")
+	projectTypeIdx := readChoice(reader, 2, 1)
+	isMicroservices := projectTypeIdx == 2
+	if isMicroservices {
+		fmt.Printf("  → %s\n\n", green("microservices workspace"))
+	} else {
+		fmt.Printf("  → %s\n\n", green("single service"))
+	}
+
 	// ── Framework option tables ────────────────────────────────────────────
 	type initFWOpt struct{ name, desc string }
 	nodeFrameworkOpts := []initFWOpt{
@@ -2899,41 +2912,262 @@ func runInit() error {
 		defaultOut = "../veld_gen"
 	}
 
-	configJSON := fmt.Sprintf(`{
-  "input": "app.veld",
-  "backend": "%s",
-  "backendFramework": "%s",
-  "frontend": "%s",
-  "frontendFramework": "%s",
-  "out": "%s",
-  "backendDir": "",
-  "frontendDir": "",
-  "baseUrl": "",
-  "validate": %t,
-  "aliases": {
-    "models": "models",
-    "modules": "modules"
-  },
-  "registry": {
-    "enabled": false,
-    "url": "",
-    "org": "",
-    "package": "",
-    "version": "0.1.0"
-  }
-}
-`, selectedBackend, selectedBackendFramework, selectedFrontend, selectedFrontendFramework, defaultOut, enableValidate)
+	// ── Description prompt ──────────────────────────────────────────────────
+	fmt.Print("  " + bold("◆ Description") + dim(" (optional)") + ": ")
+	descLine, _ := reader.ReadString('\n')
+	description := strings.TrimSpace(descLine)
+	if description != "" {
+		fmt.Printf("  → %s\n\n", dim(description))
+	} else {
+		fmt.Println()
+	}
 
 	type entry struct{ path, content, label string }
-	files := []entry{
-		{"veld/veld.config.json", configJSON, "veld/veld.config.json"},
-		{"veld/app.veld", appVeldContent, "veld/app.veld"},
-		{"veld/models/user.model.veld", modelsUserVeldContent, "veld/models/user.model.veld"},
-		{"veld/models/auth.model.veld", modelsAuthModelContent, "veld/models/auth.model.veld"},
-		{"veld/models/common.model.veld", modelsCommonVeldContent, "veld/models/common.model.veld"},
-		{"veld/modules/users.veld", modulesUsersVeldContent, "veld/modules/users.veld"},
-		{"veld/modules/auth.veld", modulesAuthVeldContent, "veld/modules/auth.veld"},
-		{"README.md", initReadmeContent, "README.md"},
+	var files []entry
+
+	if isMicroservices {
+		// ── Microservices workspace flow ──────────────────────────────────
+		fmt.Print("  " + bold("◆ How many backend services?") + " [2]: ")
+		numServices := readChoice(reader, 20, 2)
+		fmt.Printf("  → %s\n\n", green(fmt.Sprintf("%d services", numServices)))
+
+		type svcDef struct {
+			name, backend, framework, baseUrl string
+			consumes                          []string
+		}
+		var services []svcDef
+		allSvcNames := []string{}
+
+		for s := 0; s < numServices; s++ {
+			fmt.Printf("  " + bold(fmt.Sprintf("◆ Service %d", s+1)) + "\n")
+
+			fmt.Printf("    Name: ")
+			nameLine, _ := reader.ReadString('\n')
+			svcName := strings.TrimSpace(nameLine)
+			if svcName == "" {
+				svcName = fmt.Sprintf("service%d", s+1)
+			}
+			allSvcNames = append(allSvcNames, svcName)
+
+			fmt.Printf("    Backend [%s]: ", selectedBackend)
+			beLine, _ := reader.ReadString('\n')
+			svcBackend := strings.TrimSpace(beLine)
+			if svcBackend == "" {
+				svcBackend = selectedBackend
+			}
+
+			defaultPort := 3001 + s
+			fmt.Printf("    Base URL [http://%s-service:%d]: ", svcName, defaultPort)
+			urlLine, _ := reader.ReadString('\n')
+			svcUrl := strings.TrimSpace(urlLine)
+			if svcUrl == "" {
+				svcUrl = fmt.Sprintf("http://%s-service:%d", svcName, defaultPort)
+			}
+
+			var svcConsumes []string
+			if len(allSvcNames) > 1 {
+				fmt.Printf("    Consumes %s: ", dim("(comma-separated, empty for none)"))
+				consumesLine, _ := reader.ReadString('\n')
+				consumesStr := strings.TrimSpace(consumesLine)
+				if consumesStr != "" {
+					for _, c := range strings.Split(consumesStr, ",") {
+						c = strings.TrimSpace(c)
+						if c != "" {
+							svcConsumes = append(svcConsumes, c)
+						}
+					}
+				}
+			}
+
+			services = append(services, svcDef{
+				name: svcName, backend: svcBackend, baseUrl: svcUrl, consumes: svcConsumes,
+			})
+			fmt.Println()
+		}
+
+		// ── Frontend entry prompt ────────────────────────────────────────
+		fmt.Print("  " + bold("◆ Include frontend entry?") + " [Y/n]: ")
+		feLine, _ := reader.ReadString('\n')
+		feLine = strings.TrimSpace(strings.ToLower(feLine))
+		includeFrontend := feLine == "" || feLine == "y" || feLine == "yes"
+		if includeFrontend {
+			fmt.Printf("  → %s\n\n", green("yes — "+selectedFrontend))
+		} else {
+			fmt.Printf("  → %s\n\n", dim("no frontend"))
+		}
+
+		// ── Build workspace config JSON ──────────────────────────────────
+		var wsEntries []string
+		for _, svc := range services {
+			consumesJSON := "[]"
+			if len(svc.consumes) > 0 {
+				parts := make([]string, len(svc.consumes))
+				for i, c := range svc.consumes {
+					parts[i] = fmt.Sprintf("%q", c)
+				}
+				consumesJSON = "[" + strings.Join(parts, ", ") + "]"
+			}
+			consumesLine := ""
+			if len(svc.consumes) > 0 {
+				consumesLine = fmt.Sprintf(",\n      \"consumes\": %s", consumesJSON)
+			}
+			wsEntries = append(wsEntries, fmt.Sprintf(`    {
+      "name": %q,
+      "description": "",
+      "input": "services/%s/modules/%s.veld",
+      "backendConfig": { "target": %q },
+      "out": "../backend/%s-service/generated",
+      "baseUrl": %q%s
+    }`, svc.name, svc.name, svc.name, svc.backend, svc.name, svc.baseUrl, consumesLine))
+		}
+
+		if includeFrontend {
+			// Frontend auto-consumes all backend services
+			parts := make([]string, len(allSvcNames))
+			for i, n := range allSvcNames {
+				parts[i] = fmt.Sprintf("%q", n)
+			}
+			consumesAll := "[" + strings.Join(parts, ", ") + "]"
+			feTarget := selectedFrontend
+			if selectedFrontendFramework != "" {
+				feTarget = selectedFrontendFramework
+			}
+			wsEntries = append(wsEntries, fmt.Sprintf(`    {
+      "name": "frontend",
+      "description": "Frontend SDK — auto-consumes all backend services",
+      "frontendConfig": { "target": %q },
+      "out": "../frontend/src/generated",
+      "baseUrl": "http://localhost:3000",
+      "consumes": %s
+    }`, feTarget, consumesAll))
+		}
+
+		descLine := ""
+		if description != "" {
+			descLine = fmt.Sprintf("\n  \"description\": %q,", description)
+		}
+		configJSON := fmt.Sprintf(`{
+  "$schema": "https://veld.dev/schemas/veld.config.schema.json",%s
+
+  "workspace": [
+%s
+  ]
+}
+`, descLine, strings.Join(wsEntries, ",\n"))
+
+		files = append(files, entry{"veld/veld.config.json", configJSON, "veld/veld.config.json"})
+
+		// ── Create service .veld stubs ────────────────────────────────────
+		for _, svc := range services {
+			moduleName := strings.ToUpper(svc.name[:1]) + svc.name[1:]
+			modelContent := fmt.Sprintf(`// %s domain models
+
+model %sItem {
+  description: "A %s entity"
+  id:        uuid
+  name:      string
+  createdAt: datetime
+}
+
+model Create%sInput {
+  name: string
+}
+`, moduleName, moduleName, svc.name, moduleName)
+
+			moduleContent := fmt.Sprintf(`// %s service module
+
+import @models/*
+
+module %s {
+  description: "%s service"
+  prefix: /%s
+
+  action List%s {
+    method: GET
+    path: /
+    output: %sItem
+  }
+
+  action Get%s {
+    method: GET
+    path: /:id
+    output: %sItem
+  }
+
+  action Create%s {
+    method: POST
+    path: /
+    input: Create%sInput
+    output: %sItem
+  }
+}
+`, moduleName, moduleName, moduleName, svc.name, moduleName, moduleName, moduleName, moduleName, moduleName, moduleName, moduleName)
+
+			modelsDir := fmt.Sprintf("veld/services/%s/models", svc.name)
+			modulesDir := fmt.Sprintf("veld/services/%s/modules", svc.name)
+			files = append(files,
+				entry{modelsDir + "/" + svc.name + ".model.veld", modelContent, modelsDir + "/" + svc.name + ".model.veld"},
+				entry{modulesDir + "/" + svc.name + ".veld", moduleContent, modulesDir + "/" + svc.name + ".veld"},
+			)
+		}
+		files = append(files, entry{"README.md", initReadmeContent, "README.md"})
+
+	} else {
+		// ── Single service flow ──────────────────────────────────────────
+
+		// Build backend config block
+		backendFrameworkLine := ""
+		if selectedBackendFramework != "" {
+			backendFrameworkLine = fmt.Sprintf(",\n    \"framework\": %q", selectedBackendFramework)
+		}
+		validateLine := ""
+		if enableValidate {
+			validateLine = ",\n    \"validate\": true"
+		}
+
+		// Build frontend config block
+		feTarget := selectedFrontend
+		if selectedFrontendFramework != "" {
+			feTarget = selectedFrontendFramework
+		}
+		frontendBlock := fmt.Sprintf(`"frontendConfig": {
+    "target": %q
+  }`, feTarget)
+		if selectedFrontend == "none" {
+			frontendBlock = `"frontendConfig": { "target": "none" }`
+		}
+
+		descLine := ""
+		if description != "" {
+			descLine = fmt.Sprintf("\n  \"description\": %q,", description)
+		}
+
+		configJSON := fmt.Sprintf(`{
+  "$schema": "https://veld.dev/schemas/veld.config.schema.json",%s
+  "input": "app.veld",
+
+  "backendConfig": {
+    "target": %q%s,
+    "out": %q%s
+  },
+
+  %s,
+
+  "baseUrl": "",
+  "aliases": {}
+}
+`, descLine, selectedBackend, backendFrameworkLine, defaultOut, validateLine, frontendBlock)
+
+		files = []entry{
+			{"veld/veld.config.json", configJSON, "veld/veld.config.json"},
+			{"veld/app.veld", appVeldContent, "veld/app.veld"},
+			{"veld/models/user.model.veld", modelsUserVeldContent, "veld/models/user.model.veld"},
+			{"veld/models/auth.model.veld", modelsAuthModelContent, "veld/models/auth.model.veld"},
+			{"veld/models/common.model.veld", modelsCommonVeldContent, "veld/models/common.model.veld"},
+			{"veld/modules/users.veld", modulesUsersVeldContent, "veld/modules/users.veld"},
+			{"veld/modules/auth.veld", modulesAuthVeldContent, "veld/modules/auth.veld"},
+			{"README.md", initReadmeContent, "README.md"},
+		}
 	}
 
 	for _, f := range files {
@@ -2948,138 +3182,167 @@ func runInit() error {
 
 	fmt.Println()
 	fmt.Println("  " + bold("Veld project ready."))
-	fmt.Printf("    backend:  %s\n", bold(selectedBackend))
-	fmt.Printf("    frontend: %s\n", bold(selectedFrontend))
+	if isMicroservices {
+		fmt.Printf("    mode:     %s\n", bold("microservices workspace"))
+	} else {
+		fmt.Printf("    backend:  %s\n", bold(selectedBackend))
+		fmt.Printf("    frontend: %s\n", bold(selectedFrontend))
+	}
+	if description != "" {
+		fmt.Printf("    desc:     %s\n", dim(description))
+	}
 	fmt.Println()
 
-	// ── Setup prompt ──────────────────────────────────────────────────────
-	fmt.Print("  Run setup to configure imports? [Y/n]: ")
-	setupLine, _ := reader.ReadString('\n')
-	setupLine = strings.TrimSpace(strings.ToLower(setupLine))
-	if setupLine == "" || setupLine == "y" || setupLine == "yes" {
-		var backendDirPath, frontendDirPath string
+	// ── Setup prompt (single-service only) ────────────────────────────────
+	// Microservices workspaces configure paths per-service in the config.
+	if !isMicroservices {
+		fmt.Print("  Run setup to configure imports? [Y/n]: ")
+		setupLine, _ := reader.ReadString('\n')
+		setupLine = strings.TrimSpace(strings.ToLower(setupLine))
+		if setupLine == "" || setupLine == "y" || setupLine == "yes" {
+			var backendDirPath, frontendDirPath string
 
-		// ── Ask for backend project directory ──────────────────────────
-		fmt.Println()
-		fmt.Print("  " + bold("Backend project directory") + dim(" (leave empty for current dir)") + ": ")
-		bLine, _ := reader.ReadString('\n')
-		bLine = strings.TrimSpace(bLine)
-		if bLine != "" {
-			abs, err := filepath.Abs(bLine)
-			if err == nil {
-				backendDirPath = abs
-			}
-		}
-
-		// ── Ask for frontend project directory ─────────────────────────
-		if selectedFrontend != "none" {
-			fmt.Print("  " + bold("Frontend project directory") + dim(" (leave empty for current dir)") + ": ")
-			fLine, _ := reader.ReadString('\n')
-			fLine = strings.TrimSpace(fLine)
-			if fLine != "" {
-				abs, err := filepath.Abs(fLine)
+			// ── Ask for backend project directory ──────────────────────────
+			fmt.Println()
+			fmt.Print("  " + bold("Backend project directory") + dim(" (leave empty for current dir)") + ": ")
+			bLine, _ := reader.ReadString('\n')
+			bLine = strings.TrimSpace(bLine)
+			if bLine != "" {
+				abs, err := filepath.Abs(bLine)
 				if err == nil {
-					frontendDirPath = abs
-				}
-			}
-		}
-
-		// ── Update config file with backendDir / frontendDir ───────────
-		if backendDirPath != "" || frontendDirPath != "" {
-			cfgDir, _ := filepath.Abs("veld")
-			relBackend := ""
-			relFrontend := ""
-			relBackendOut := ""
-			relFrontendOut := ""
-			if backendDirPath != "" {
-				if r, err := filepath.Rel(cfgDir, backendDirPath); err == nil {
-					relBackend = filepath.ToSlash(r)
-				} else {
-					relBackend = filepath.ToSlash(backendDirPath)
-				}
-			}
-			if frontendDirPath != "" {
-				if r, err := filepath.Rel(cfgDir, frontendDirPath); err == nil {
-					relFrontend = filepath.ToSlash(r)
-				} else {
-					relFrontend = filepath.ToSlash(frontendDirPath)
+					backendDirPath = abs
 				}
 			}
 
-			// When backend and frontend are in different directories, auto-set
-			// backendOut / frontendOut so generated code lands inside each project.
+			// ── Ask for frontend project directory ─────────────────────────
+			if selectedFrontend != "none" {
+				fmt.Print("  " + bold("Frontend project directory") + dim(" (leave empty for current dir)") + ": ")
+				fLine, _ := reader.ReadString('\n')
+				fLine = strings.TrimSpace(fLine)
+				if fLine != "" {
+					abs, err := filepath.Abs(fLine)
+					if err == nil {
+						frontendDirPath = abs
+					}
+				}
+			}
+
+			// ── Update config file with backendDir / frontendDir ───────────
+			if backendDirPath != "" || frontendDirPath != "" {
+				cfgDir, _ := filepath.Abs("veld")
+				relBackend := ""
+				relFrontend := ""
+				relBackendOut := ""
+				relFrontendOut := ""
+				if backendDirPath != "" {
+					if r, err := filepath.Rel(cfgDir, backendDirPath); err == nil {
+						relBackend = filepath.ToSlash(r)
+					} else {
+						relBackend = filepath.ToSlash(backendDirPath)
+					}
+				}
+				if frontendDirPath != "" {
+					if r, err := filepath.Rel(cfgDir, frontendDirPath); err == nil {
+						relFrontend = filepath.ToSlash(r)
+					} else {
+						relFrontend = filepath.ToSlash(frontendDirPath)
+					}
+				}
+
+				// When backend and frontend are in different directories, auto-set
+				// backendOut / frontendOut so generated code lands inside each project.
+				if backendDirPath != "" && frontendDirPath != "" && backendDirPath != frontendDirPath {
+					genName := "generated"
+					if selectedBackend == "python" {
+						genName = "veld_gen"
+					}
+					relBackendOut = relBackend + "/src/" + genName
+					relFrontendOut = relFrontend + "/src/" + genName
+
+					fmt.Println()
+					fmt.Println(dim("  Split output detected:"))
+					fmt.Printf("    backend output:  %s\n", bold(relBackendOut))
+					fmt.Printf("    frontend output: %s\n", bold(relFrontendOut))
+				}
+
+				backendOutLine := ""
+				frontendOutLine := ""
+				if relBackendOut != "" {
+					backendOutLine = fmt.Sprintf(",\n    \"out\": %q", relBackendOut)
+				}
+				if relFrontendOut != "" {
+					frontendOutLine = fmt.Sprintf(",\n    \"out\": %q", relFrontendOut)
+				}
+
+				backendFWLine := ""
+				if selectedBackendFramework != "" {
+					backendFWLine = fmt.Sprintf(",\n    \"framework\": %q", selectedBackendFramework)
+				}
+
+				feTarget := selectedFrontend
+				if selectedFrontendFramework != "" {
+					feTarget = selectedFrontendFramework
+				}
+
+				descLine := ""
+				if description != "" {
+					descLine = fmt.Sprintf("\n  \"description\": %q,", description)
+				}
+
+				updatedCfg := fmt.Sprintf(`{
+  "$schema": "https://veld.dev/schemas/veld.config.schema.json",%s
+  "input": "app.veld",
+
+  "backendConfig": {
+    "target": %q%s,
+    "dir": %q%s
+  },
+
+  "frontendConfig": {
+    "target": %q,
+    "dir": %q%s
+  },
+
+  "baseUrl": "",
+  "aliases": {}
+}
+`, descLine, selectedBackend, backendFWLine, relBackend, backendOutLine, feTarget, relFrontend, frontendOutLine)
+				_ = os.WriteFile("veld/veld.config.json", []byte(updatedCfg), 0644)
+				fmt.Println("  " + green("✓") + " updated veld.config.json with project paths")
+			}
+
+			// ── Run setup ──────────────────────────────────────────────────
+			projectDir, _ := os.Getwd()
+			setupOpts := setup.Options{
+				BackendDir:  backendDirPath,
+				FrontendDir: frontendDirPath,
+			}
+			// If split output was detected, compute absolute paths for setup
 			if backendDirPath != "" && frontendDirPath != "" && backendDirPath != frontendDirPath {
 				genName := "generated"
 				if selectedBackend == "python" {
 					genName = "veld_gen"
 				}
-				relBackendOut = relBackend + "/src/" + genName
-				relFrontendOut = relFrontend + "/src/" + genName
-
-				fmt.Println()
-				fmt.Println(dim("  Split output detected:"))
-				fmt.Printf("    backend output:  %s\n", bold(relBackendOut))
-				fmt.Printf("    frontend output: %s\n", bold(relFrontendOut))
+				setupOpts.BackendOutDir = filepath.Join(backendDirPath, "src", genName)
+				setupOpts.FrontendOutDir = filepath.Join(frontendDirPath, "src", genName)
 			}
-
-			backendOutLine := ""
-			frontendOutLine := ""
-			if relBackendOut != "" {
-				backendOutLine = fmt.Sprintf("\n  \"backendOut\": \"%s\",", relBackendOut)
+			results := setup.Run(projectDir, selectedBackend, selectedFrontend, defaultOut, setupOpts)
+			if len(results) > 0 {
+				printSetupResults(results)
 			}
-			if relFrontendOut != "" {
-				frontendOutLine = fmt.Sprintf("\n  \"frontendOut\": \"%s\",", relFrontendOut)
-			}
-
-			updatedCfg := fmt.Sprintf(`{
-  "input": "app.veld",
-  "backend": "%s",
-  "frontend": "%s",
-  "out": "%s",%s%s
-  "backendDir": "%s",
-  "frontendDir": "%s",
-  "aliases": {
-    "models": "models",
-    "modules": "modules"
-  },
-  "registry": {
-    "enabled": false,
-    "url": "",
-    "org": "",
-    "package": "",
-    "version": "0.1.0"
-  }
-}
-`, selectedBackend, selectedFrontend, defaultOut, backendOutLine, frontendOutLine, relBackend, relFrontend)
-			_ = os.WriteFile("veld/veld.config.json", []byte(updatedCfg), 0644)
-			fmt.Println("  " + green("✓") + " updated veld.config.json with project paths")
 		}
-
-		// ── Run setup ──────────────────────────────────────────────────
-		projectDir, _ := os.Getwd()
-		setupOpts := setup.Options{
-			BackendDir:  backendDirPath,
-			FrontendDir: frontendDirPath,
-		}
-		// If split output was detected, compute absolute paths for setup
-		if backendDirPath != "" && frontendDirPath != "" && backendDirPath != frontendDirPath {
-			genName := "generated"
-			if selectedBackend == "python" {
-				genName = "veld_gen"
-			}
-			setupOpts.BackendOutDir = filepath.Join(backendDirPath, "src", genName)
-			setupOpts.FrontendOutDir = filepath.Join(frontendDirPath, "src", genName)
-		}
-		results := setup.Run(projectDir, selectedBackend, selectedFrontend, defaultOut, setupOpts)
-		if len(results) > 0 {
-			printSetupResults(results)
-		}
-	}
+	} // end if !isMicroservices
 
 	fmt.Println()
 	fmt.Println("  Next steps:")
-	fmt.Println("    1. Edit veld/models/ and veld/modules/ to define your API")
-	fmt.Println("    2. Run: " + bold("veld generate"))
+	if isMicroservices {
+		fmt.Println("    1. Edit veld/services/<name>/models/ and modules/ to define each service's API")
+		fmt.Println("    2. Run: " + bold("veld generate"))
+		fmt.Println("    3. Run: " + bold("veld deps") + " to view the service dependency graph")
+	} else {
+		fmt.Println("    1. Edit veld/models/ and veld/modules/ to define your API")
+		fmt.Println("    2. Run: " + bold("veld generate"))
+	}
 	return nil
 }
 

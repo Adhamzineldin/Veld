@@ -74,13 +74,46 @@ class VeldLanguageServer {
     private findProjectRoot(filePath: string): string | null {
         let dir = path.dirname(filePath);
         for (let i = 0; i < 15; i++) {
+            // Direct config at this level
             if (fs.existsSync(path.join(dir, 'veld.config.json'))) return dir;
+            // Config inside veld/ subfolder — return the veld/ dir as root
+            // (that's where .veld files and alias folders live)
+            if (fs.existsSync(path.join(dir, 'veld', 'veld.config.json'))) return path.join(dir, 'veld');
             if (fs.existsSync(path.join(dir, 'app.veld'))) return dir;
             const parent = path.dirname(dir);
             if (parent === dir) break;
             dir = parent;
         }
         return null;
+    }
+
+    /** Read aliases from veld.config.json — falls back to alias=folder convention. */
+    private readAliases(projectRoot: string): Record<string, string> {
+        const defaults: Record<string, string> = {
+            models: 'models', modules: 'modules', types: 'types', enums: 'enums',
+            schemas: 'schemas', services: 'services', lib: 'lib', common: 'common', shared: 'shared',
+        };
+        for (const candidate of [
+            path.join(projectRoot, 'veld.config.json'),
+            path.join(projectRoot, 'veld', 'veld.config.json'),
+        ]) {
+            try {
+                if (fs.existsSync(candidate)) {
+                    const raw = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+                    if (raw.aliases && typeof raw.aliases === 'object') {
+                        return { ...defaults, ...raw.aliases };
+                    }
+                }
+            } catch { /* ignore parse errors */ }
+        }
+        return defaults;
+    }
+
+    /** Resolve an alias name to a folder path relative to project root. */
+    private resolveAliasFolder(projectRoot: string, alias: string): string {
+        const aliases = this.readAliases(projectRoot);
+        const folder = aliases[alias] ?? alias;
+        return path.resolve(projectRoot, folder);
     }
 
     private parseFile(filePath: string, content: string): VeldDocument {
@@ -99,23 +132,41 @@ class VeldLanguageServer {
         for (let i = 0; i < lines.length; i++) {
             const trimmed = lines[i].trim();
 
-            if (trimmed.startsWith('import')) {
-                // Style 1: import @alias/name
-                const aliasMatch = trimmed.match(/import\s+@(\w+)\/(\w+)/);
+            if (trimmed.startsWith('import') || trimmed.startsWith('from')) {
+                const projectRoot = this.findProjectRoot(filePath);
+
+                // Style 1: import @alias/name  OR  import @alias/*
+                const aliasMatch = trimmed.match(/import\s+@(\w+)\/([\w.*]+)/);
                 if (aliasMatch) {
                     const alias = aliasMatch[1];
                     const name = aliasMatch[2];
-                    const raw = `@${alias}/${name}`;
-                    const projectRoot = this.findProjectRoot(filePath);
-                    let resolvedPath: string | undefined;
-                    if (projectRoot) {
-                        const candidate = path.resolve(projectRoot, alias, `${name}.veld`);
-                        if (fs.existsSync(candidate)) {
-                            resolvedPath = candidate;
+                    if (name === '*' && projectRoot) {
+                        // Wildcard: resolve all .veld files in the alias folder
+                        const folder = this.resolveAliasFolder(projectRoot, alias);
+                        try {
+                            const files = fs.readdirSync(folder).filter(f => f.endsWith('.veld'));
+                            for (const f of files) {
+                                const baseName = path.basename(f, '.veld');
+                                doc.imports.push({ raw: `@${alias}/*`, alias, name: baseName, line: i, resolvedPath: path.join(folder, f) });
+                            }
+                        } catch { /* folder doesn't exist — will be caught by validation */ }
+                        if (!doc.imports.some(im => im.line === i)) {
+                            doc.imports.push({ raw: `@${alias}/*`, alias, name: '*', line: i });
                         }
+                    } else {
+                        const raw = `@${alias}/${name}`;
+                        let resolvedPath: string | undefined;
+                        if (projectRoot) {
+                            const folder = this.resolveAliasFolder(projectRoot, alias);
+                            const candidate = path.join(folder, `${name}.veld`);
+                            if (fs.existsSync(candidate)) {
+                                resolvedPath = candidate;
+                            }
+                        }
+                        doc.imports.push({ raw, alias, name, line: i, resolvedPath });
                     }
-                    doc.imports.push({ raw, alias, name, line: i, resolvedPath });
                 }
+
                 // Style 2: import "./path/to/file.veld" or import "path/to/file.veld"
                 const quotedMatch = trimmed.match(/import\s+"([^"]+)"/);
                 if (quotedMatch && !aliasMatch) {
@@ -123,7 +174,6 @@ class VeldLanguageServer {
                     const name = path.basename(importStr, '.veld');
                     const alias = path.dirname(importStr).replace(/^\.\//, '');
                     const raw = importStr;
-                    const projectRoot = this.findProjectRoot(filePath);
                     let resolvedPath: string | undefined;
                     if (projectRoot) {
                         // Try relative to current file first
@@ -139,6 +189,62 @@ class VeldLanguageServer {
                         }
                     }
                     doc.imports.push({ raw, alias, name, line: i, resolvedPath });
+                }
+
+                // Style 3: from @alias import *  OR  from @alias import Name1, Name2
+                const fromMatch = trimmed.match(/from\s+@(\w+)\s+import\s+(.+)/);
+                if (fromMatch && !aliasMatch && !quotedMatch) {
+                    const alias = fromMatch[1];
+                    const importList = fromMatch[2].trim();
+                    if (importList === '*' && projectRoot) {
+                        // Wildcard: import all .veld files from alias folder
+                        const folder = this.resolveAliasFolder(projectRoot, alias);
+                        try {
+                            const files = fs.readdirSync(folder).filter(f => f.endsWith('.veld'));
+                            for (const f of files) {
+                                const baseName = path.basename(f, '.veld');
+                                doc.imports.push({ raw: `from @${alias} import *`, alias, name: baseName, line: i, resolvedPath: path.join(folder, f) });
+                            }
+                        } catch { /* folder doesn't exist */ }
+                        if (!doc.imports.some(im => im.line === i)) {
+                            doc.imports.push({ raw: `from @${alias} import *`, alias, name: '*', line: i });
+                        }
+                    } else {
+                        // Named imports: from @models import User, Role
+                        const names = importList.split(',').map(n => n.trim()).filter(n => n.length > 0);
+                        for (const name of names) {
+                            let resolvedPath: string | undefined;
+                            if (projectRoot) {
+                                const folder = this.resolveAliasFolder(projectRoot, alias);
+                                // Try exact name as file
+                                const candidate = path.join(folder, `${name}.veld`);
+                                if (fs.existsSync(candidate)) {
+                                    resolvedPath = candidate;
+                                } else {
+                                    // Try lowercase version
+                                    const lowerCandidate = path.join(folder, `${name.toLowerCase()}.veld`);
+                                    if (fs.existsSync(lowerCandidate)) {
+                                        resolvedPath = lowerCandidate;
+                                    } else {
+                                        // Named imports may reference types inside files — mark as resolved
+                                        // if any .veld file in the folder defines this type
+                                        const folder2 = this.resolveAliasFolder(projectRoot, alias);
+                                        try {
+                                            const files = fs.readdirSync(folder2).filter(f => f.endsWith('.veld'));
+                                            for (const f of files) {
+                                                const content = fs.readFileSync(path.join(folder2, f), 'utf8');
+                                                if (content.match(new RegExp(`(model|enum)\\s+${name}\\s*[{(]|\\bextends\\b`))) {
+                                                    resolvedPath = path.join(folder2, f);
+                                                    break;
+                                                }
+                                            }
+                                        } catch { /* ignore */ }
+                                    }
+                                }
+                            }
+                            doc.imports.push({ raw: `from @${alias} import ${importList}`, alias, name, line: i, resolvedPath });
+                        }
+                    }
                 }
             }
 
@@ -319,33 +425,74 @@ class VeldLanguageServer {
             }
 
             // ── Import validation ────────────────────────────────────────────
-            if (trimmed.startsWith('import')) {
-                const importMatch = trimmed.match(/import\s+@(\w+)\/(\w+)/);
-                const quotedImportMatch = trimmed.match(/import\s+"([^"]+)"/);
-                if (importMatch) {
-                    const imp = doc.imports.find(im => im.line === i);
-                    if (imp && !imp.resolvedPath) {
-                        const atIdx = line.indexOf('@');
-                        diagnostics.push(new vscode.Diagnostic(
-                            new vscode.Range(i, atIdx >= 0 ? atIdx : 0, i, line.length),
-                            `Cannot resolve import '@${importMatch[1]}/${importMatch[2]}'. File not found.`,
-                            vscode.DiagnosticSeverity.Error
-                        ));
+            if (trimmed.startsWith('import') || trimmed.startsWith('from')) {
+                const aliasImport = trimmed.match(/import\s+@(\w+)\/([\w.*]+)/);
+                const quotedImport = trimmed.match(/import\s+"([^"]+)"/);
+                const fromImport = trimmed.match(/from\s+@(\w+)\s+import\s+(.+)/);
+
+                if (aliasImport) {
+                    const name = aliasImport[2];
+                    if (name !== '*') {
+                        const imp = doc.imports.find(im => im.line === i);
+                        if (imp && !imp.resolvedPath) {
+                            const atIdx = line.indexOf('@');
+                            diagnostics.push(new vscode.Diagnostic(
+                                new vscode.Range(i, atIdx >= 0 ? atIdx : 0, i, line.length),
+                                `Cannot resolve import '@${aliasImport[1]}/${name}'. File not found.`,
+                                vscode.DiagnosticSeverity.Error
+                            ));
+                        }
+                    } else {
+                        // Wildcard: check if any files were resolved
+                        const hasResolved = doc.imports.some(im => im.line === i && im.resolvedPath);
+                        if (!hasResolved) {
+                            const atIdx = line.indexOf('@');
+                            diagnostics.push(new vscode.Diagnostic(
+                                new vscode.Range(i, atIdx >= 0 ? atIdx : 0, i, line.length),
+                                `No .veld files found in '@${aliasImport[1]}/'. Check that the folder exists.`,
+                                vscode.DiagnosticSeverity.Warning
+                            ));
+                        }
                     }
-                } else if (quotedImportMatch) {
+                } else if (quotedImport) {
                     const imp = doc.imports.find(im => im.line === i);
                     if (imp && !imp.resolvedPath) {
                         const quoteIdx = line.indexOf('"');
                         diagnostics.push(new vscode.Diagnostic(
                             new vscode.Range(i, quoteIdx >= 0 ? quoteIdx : 0, i, line.length),
-                            `Cannot resolve import "${quotedImportMatch[1]}". File not found.`,
+                            `Cannot resolve import "${quotedImport[1]}". File not found.`,
                             vscode.DiagnosticSeverity.Error
                         ));
                     }
-                } else if (trimmed.match(/import\s+/)) {
+                } else if (fromImport) {
+                    // from @alias import * | from @alias import Name1, Name2
+                    const importList = fromImport[2].trim();
+                    if (importList === '*') {
+                        const hasResolved = doc.imports.some(im => im.line === i && im.resolvedPath);
+                        if (!hasResolved) {
+                            const atIdx = line.indexOf('@');
+                            diagnostics.push(new vscode.Diagnostic(
+                                new vscode.Range(i, atIdx >= 0 ? atIdx : 0, i, line.length),
+                                `No .veld files found in '@${fromImport[1]}/'. Check that the folder exists.`,
+                                vscode.DiagnosticSeverity.Warning
+                            ));
+                        }
+                    } else {
+                        // Named imports — check each one
+                        const unresolvedImps = doc.imports.filter(im => im.line === i && !im.resolvedPath);
+                        for (const imp of unresolvedImps) {
+                            const nameIdx = line.indexOf(imp.name);
+                            diagnostics.push(new vscode.Diagnostic(
+                                new vscode.Range(i, nameIdx >= 0 ? nameIdx : 0, i, nameIdx >= 0 ? nameIdx + imp.name.length : line.length),
+                                `Cannot resolve '${imp.name}' from '@${fromImport[1]}'. Type or file not found.`,
+                                vscode.DiagnosticSeverity.Error
+                            ));
+                        }
+                    }
+                } else if (trimmed.startsWith('import') && trimmed.match(/import\s+/)) {
                     diagnostics.push(new vscode.Diagnostic(
                         new vscode.Range(i, 0, i, line.length),
-                        `Invalid import syntax. Use: import @models/name or import "./path/file.veld"`,
+                        `Invalid import syntax. Use: import @alias/name, import @alias/*, from @alias import *, or import "./path"`,
                         vscode.DiagnosticSeverity.Error
                     ));
                 }
@@ -495,8 +642,9 @@ class VeldLanguageServer {
             // Detect if the user is typing a quoted relative path
             const hasQuote = trimmedBefore.includes('"');
             if (projectRoot) {
-                for (const dirName of ['models', 'modules', 'types', 'enums', 'schemas', 'services', 'lib', 'common']) {
-                    const dirPath = path.join(projectRoot, dirName);
+                const aliases = this.readAliases(projectRoot);
+                for (const [aliasName, folder] of Object.entries(aliases)) {
+                    const dirPath = path.resolve(projectRoot, folder);
                     if (fs.existsSync(dirPath)) {
                         try {
                             const files = fs.readdirSync(dirPath);
@@ -504,25 +652,25 @@ class VeldLanguageServer {
                                 if (file.endsWith('.veld')) {
                                     const name = file.replace('.veld', '');
                                     // @alias/name style
-                                    const aliasLabel = `@${dirName}/${name}`;
+                                    const aliasLabel = `@${aliasName}/${name}`;
                                     const aliasItem = new vscode.CompletionItem(aliasLabel, vscode.CompletionItemKind.Module);
-                                    aliasItem.detail = `${dirName}/${file}`;
-                                    aliasItem.documentation = new vscode.MarkdownString(`Import from \`${dirName}/${file}\` (alias style)`);
+                                    aliasItem.detail = `${folder}/${file}`;
+                                    aliasItem.documentation = new vscode.MarkdownString(`Import from \`${folder}/${file}\` via @${aliasName}`);
                                     aliasItem.filterText = aliasLabel;
                                     if (alreadyHasAt) {
-                                        aliasItem.insertText = `${dirName}/${name}`;
+                                        aliasItem.insertText = `${aliasName}/${name}`;
                                     }
                                     completions.push(aliasItem);
 
                                     // ./relative style
                                     if (!alreadyHasAt) {
-                                        const relLabel = `"${dirName}/${file}"`;
+                                        const relLabel = `"${folder}/${file}"`;
                                         const relItem = new vscode.CompletionItem(relLabel, vscode.CompletionItemKind.File);
-                                        relItem.detail = `${dirName}/${file} (relative)`;
-                                        relItem.documentation = new vscode.MarkdownString(`Import from \`${dirName}/${file}\` (relative path style)`);
+                                        relItem.detail = `${folder}/${file} (relative)`;
+                                        relItem.documentation = new vscode.MarkdownString(`Import from \`${folder}/${file}\` (relative path style)`);
                                         relItem.filterText = relLabel;
                                         if (hasQuote) {
-                                            relItem.insertText = `${dirName}/${file}"`;
+                                            relItem.insertText = `${folder}/${file}"`;
                                         }
                                         completions.push(relItem);
                                     }
