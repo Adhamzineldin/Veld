@@ -1,0 +1,32 @@
+enum TransactionType   { credit debit transfer }
+enum TransactionStatus { pending completed failed reversed }
+
+model Transaction {
+  description: "A single financial transaction record"
+  id:          string
+  accountId:   string
+  type:        TransactionType
+  status:      TransactionStatus
+  amount:      float
+  currency:    string
+  description: string
+  reference:   string
+  createdAt:   string
+}
+
+model TransferInput {
+  description: "Initiate a funds transfer to another IBAN"
+  fromAccountId: string
+  toIban:        string
+  amount:        float
+  currency:      string
+  description?:  string
+}
+
+model TransactionListResult {
+  description: "Paginated list of transactions"
+  items:    Transaction[]
+  total:    int
+  page:     int
+  pageSize: int
+}

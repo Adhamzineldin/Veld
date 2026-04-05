@@ -1,0 +1,51 @@
+import "../models/card.veld"
+
+module Cards {
+  description: "Payment card management — request, view, freeze, and cancel"
+  prefix: /api/cards
+
+  action ListCards {
+    description: "List all cards for the authenticated user"
+    method: GET
+    path: /
+    output: Card[]
+    middleware: [AuthGuard]
+    errors: [Unauthorized]
+  }
+
+  action GetCard {
+    description: "Retrieve a single card by ID"
+    method: GET
+    path: /:id
+    output: Card
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound]
+  }
+
+  action RequestCard {
+    description: "Request a new debit or credit card linked to an account"
+    method: POST
+    path: /
+    input: RequestCardInput
+    output: Card
+    middleware: [AuthGuard]
+    errors: [Unauthorized, BadRequest]
+  }
+
+  action FreezeCard {
+    description: "Temporarily freeze a card to block all usage"
+    method: POST
+    path: /:id/freeze
+    output: Card
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound]
+  }
+
+  action CancelCard {
+    description: "Permanently cancel a card"
+    method: DELETE
+    path: /:id
+    middleware: [AuthGuard]
+    errors: [Unauthorized, NotFound]
+  }
+}

@@ -1,0 +1,6 @@
+// Frontend entry point — imports every service contract.
+// @services is a built-in alias resolving to veld/services/.
+// The ** glob loads all .veld files recursively, giving the
+// React SDK full type coverage across all 6 microservices.
+
+import @services/**

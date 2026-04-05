@@ -65,9 +65,70 @@
     "postGenerate": {
       "type": "string",
       "description": "Shell command to run after code generation completes (e.g. \"npm run format\")"
+    },
+    "serverSdk": {
+      "type": "boolean",
+      "description": "Also emit a server-to-server typed client in generated/server-client/",
+      "default": false
+    },
+    "services": {
+      "type": "object",
+      "description": "Module name → base URL override for multi-service mode",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "description": {
+      "type": "string",
+      "description": "Human/AI-readable project description for generated docs"
+    },
+    "workspace": {
+      "type": "array",
+      "description": "Multi-service monorepo workspace entries. Each entry is a separate service with its own backend, frontend, and output.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Logical service name (e.g. \"iam\", \"transactions\")"
+          },
+          "input": {
+            "type": "string",
+            "description": "Path to .veld entry file for this service"
+          },
+          "backend": {
+            "type": "string",
+            "description": "Backend language for this service (overrides top-level)"
+          },
+          "frontend": {
+            "type": "string",
+            "description": "Frontend SDK for this service (overrides top-level, often \"none\")"
+          },
+          "out": {
+            "type": "string",
+            "description": "Output directory for this service"
+          },
+          "baseUrl": {
+            "type": "string",
+            "description": "Base URL for this service (used in generated SDK clients)"
+          },
+          "serverSdk": {
+            "type": "boolean",
+            "description": "Also emit server-to-server client for this service"
+          },
+          "consumes": {
+            "type": "array",
+            "description": "Names of other workspace services this service depends on. Generates typed SDK clients for inter-service communication.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["name", "input"]
+      }
     }
   },
-  "required": ["input"],
+  "required": [],
   "additionalProperties": false
 }
 

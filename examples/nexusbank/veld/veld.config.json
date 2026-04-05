@@ -1,0 +1,65 @@
+{
+  "workspace": [
+    {
+      "name": "iam",
+      "input": "services/iam/modules/iam.veld",
+      "backend": "node",
+      "frontend": "none",
+      "out": "../backend/iam-service/generated",
+      "baseUrl": "http://iam-service:3001"
+    },
+    {
+      "name": "accounts",
+      "input": "services/accounts/modules/accounts.veld",
+      "backend": "node",
+      "frontend": "none",
+      "out": "../backend/account-service/generated",
+      "baseUrl": "http://account-service:3002",
+      "consumes": ["iam"]
+    },
+    {
+      "name": "transactions",
+      "input": "services/transactions/modules/transactions.veld",
+      "backend": "python",
+      "frontend": "none",
+      "out": "../backend/transaction-service/generated",
+      "baseUrl": "http://transaction-service:3003",
+      "consumes": ["iam", "accounts"]
+    },
+    {
+      "name": "cards",
+      "input": "services/cards/modules/cards.veld",
+      "backend": "go",
+      "frontend": "none",
+      "out": "../backend/card-service/generated",
+      "baseUrl": "http://card-service:3004",
+      "consumes": ["iam", "accounts"]
+    },
+    {
+      "name": "lending",
+      "input": "services/lending/modules/lending.veld",
+      "backend": "node",
+      "frontend": "none",
+      "out": "../backend/lending-service/generated",
+      "baseUrl": "http://lending-service:3005",
+      "consumes": ["iam", "accounts"]
+    },
+    {
+      "name": "notifications",
+      "input": "services/notifications/modules/notifications.veld",
+      "backend": "node",
+      "frontend": "none",
+      "out": "../backend/notification-service/generated",
+      "baseUrl": "http://notification-service:3006"
+    },
+    {
+      "name": "frontend",
+      "input": "app.veld",
+      "backend": "node",
+      "frontend": "react",
+      "out": "../frontend/src/generated",
+      "baseUrl": "http://localhost:3000"
+    }
+  ],
+  "description": "NexusBank — contract-first banking platform with 6 polyglot microservices"
+}

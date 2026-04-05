@@ -59,6 +59,11 @@ import (
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/vue"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/openapi"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/scaffold"
+
+	// Register service SDK emitters (inter-service communication clients).
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/servicesdk/golang"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/servicesdk/node"
+	_ "github.com/Adhamzineldin/Veld/internal/emitter/servicesdk/python"
 )
 
 // Version is the current Veld CLI version.
@@ -628,7 +633,7 @@ Aliases:   node → node-ts, js/javascript → node-js, ts → typescript, react
 		newInitCmd(), newGenerateCmd(), newWatchCmd(), newCleanCmd(),
 		newValidateCmd(), newSetupCmd(), newCICmd(),
 		// Quality
-		newLintCmd(), newDiffCmd(),
+		newLintCmd(), newDiffCmd(), newDepsCmd(),
 		// Dev tools
 		newASTCmd(), newFmtCmd(),
 		// Export / interop (also available as top-level aliases)
@@ -704,7 +709,7 @@ func newASTCmd() *cobra.Command {
 func newGenerateCmd() *cobra.Command {
 	var backendFlag, frontendFlag, inputFlag, outFlag string
 	var backendFrameworkFlag, frontendFrameworkFlag string
-	var incrementalFlag, dryRunFlag, setupFlag, validateFlag, strictFlag, forceFlag, serverSdkFlag bool
+	var incrementalFlag, dryRunFlag, setupFlag, validateFlag, strictFlag, forceFlag, serverSdkFlag, serviceSdkFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "generate",
@@ -765,8 +770,30 @@ func newGenerateCmd() *cobra.Command {
 			// ── Workspace multi-service mode ─────────────────────────────────────
 			if len(rc.Workspace) > 0 {
 				fmt.Printf("\n%s workspace: %d services\n\n", bold("◆"), len(rc.Workspace))
+
+				// ── Validate consumes declarations ───────────────────────────────
+				if errs, warns := validator.ValidateWorkspaceConsumes(rc.Workspace); len(errs) > 0 || len(warns) > 0 {
+					for _, w := range warns {
+						fmt.Fprintf(os.Stderr, yellow("⚠")+"  %s\n", w)
+					}
+					for _, e := range errs {
+						fmt.Fprintf(os.Stderr, red("✗")+"  %s\n", e)
+					}
+					if len(errs) > 0 {
+						return fmt.Errorf("workspace validation failed")
+					}
+				}
+
+				// ── Pass 1: parse all workspace entries and cache ASTs ───────────
+				type parsedEntry struct {
+					rc     config.ResolvedConfig
+					ast    ast.AST
+					flags  config.FlagOverrides
+					outDir string
+				}
+				parsed := make(map[string]*parsedEntry, len(rc.Workspace))
+
 				for _, entry := range rc.Workspace {
-					fmt.Printf("  %s %s\n", bold("→"), entry.Name)
 					entryFlags := flags
 					entryFlags.InputSet = true
 					entryFlags.Input = filepath.Join(rc.ConfigDir, entry.Input)
@@ -796,20 +823,85 @@ func newGenerateCmd() *cobra.Command {
 					entryRC.Description = rc.Description
 					entryRC.Services = rc.Services
 
-					entryOpts := emitter.EmitOptions{
-						BaseUrl:           entryRC.BaseUrl,
-						DryRun:            dryRunFlag,
-						Validate:          entryRC.Validate,
-						BackendFramework:  entryRC.BackendFramework,
-						FrontendFramework: entryRC.FrontendFramework,
-						Services:          entryRC.Services,
-						ServerSdk:         entryRC.ServerSdk,
-						Description:       entryRC.Description,
-					}
-					if _, _, _, err := runGenerate(entryRC, false, entryOpts); err != nil {
+					// Parse the AST for this entry (needed for consumes resolution).
+					a, _, err := loader.Parse(entryRC.Input, entryRC.Aliases)
+					if err != nil {
 						return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
 					}
-					fmt.Printf("  %s %s → %s\n", green("✓"), entry.Name, outDir)
+
+					parsed[entry.Name] = &parsedEntry{
+						rc:     entryRC,
+						ast:    a,
+						flags:  entryFlags,
+						outDir: outDir,
+					}
+				}
+
+				// ── Pass 2: generate each entry with consumed service resolution ─
+				for _, entry := range rc.Workspace {
+					fmt.Printf("  %s %s\n", bold("→"), entry.Name)
+					pe := parsed[entry.Name]
+
+					entryOpts := emitter.EmitOptions{
+						BaseUrl:           pe.rc.BaseUrl,
+						DryRun:            dryRunFlag,
+						Validate:          pe.rc.Validate,
+						BackendFramework:  pe.rc.BackendFramework,
+						FrontendFramework: pe.rc.FrontendFramework,
+						Services:          pe.rc.Services,
+						ServerSdk:         pe.rc.ServerSdk,
+						Description:       pe.rc.Description,
+					}
+
+					// Resolve consumed services from the parsed AST cache.
+					consumesList := entry.Consumes
+					// --service-sdk flag: consume ALL other workspace siblings.
+					if serviceSdkFlag && len(consumesList) == 0 {
+						for _, other := range rc.Workspace {
+							if other.Name != entry.Name && other.Frontend == "none" {
+								consumesList = append(consumesList, other.Name)
+							}
+						}
+					}
+					if len(consumesList) > 0 {
+						var consumed []emitter.ConsumedServiceInfo
+						for _, depName := range consumesList {
+							dep := parsed[depName]
+							if dep == nil {
+								continue // validated above
+							}
+							consumed = append(consumed, emitter.ConsumedServiceInfo{
+								Name:    depName,
+								AST:     dep.ast,
+								BaseUrl: dep.rc.BaseUrl,
+							})
+						}
+						entryOpts.ConsumedServices = consumed
+					}
+
+					if _, _, _, err := runGenerate(pe.rc, false, entryOpts); err != nil {
+						return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
+					}
+
+					// Emit service SDK clients for consumed services.
+					if len(entryOpts.ConsumedServices) > 0 {
+						sdkEmitter, _ := emitter.GetServiceSdk(pe.rc.Backend)
+						if sdkEmitter != nil {
+							if err := sdkEmitter.Emit(pe.ast, pe.rc.BackendOut, entryOpts); err != nil {
+								return fmt.Errorf("workspace entry %q service sdk: %w", entry.Name, err)
+							}
+							consumedNames := make([]string, len(entryOpts.ConsumedServices))
+							for i, c := range entryOpts.ConsumedServices {
+								consumedNames[i] = c.Name
+							}
+							fmt.Printf("  %s %s → sdk/ (%s)\n", green("✓"), entry.Name, strings.Join(consumedNames, ", "))
+						} else {
+							fmt.Printf("  %s %s → %s (no SDK emitter for %s yet)\n",
+								green("✓"), entry.Name, pe.outDir, pe.rc.Backend)
+						}
+					} else {
+						fmt.Printf("  %s %s → %s\n", green("✓"), entry.Name, pe.outDir)
+					}
 				}
 				fmt.Printf("\n%s All services generated\n", green("✓"))
 				return nil
@@ -917,6 +1009,8 @@ func newGenerateCmd() *cobra.Command {
 		"framework wrapper for the frontend SDK (react, vue, angular, svelte — default: none)")
 	cmd.Flags().BoolVar(&serverSdkFlag, "server-sdk", false,
 		"also emit a server-to-server typed client in generated/server-client/")
+	cmd.Flags().BoolVar(&serviceSdkFlag, "service-sdk", false,
+		"generate typed service SDKs for all workspace siblings (inter-service communication)")
 	return cmd
 }
 
@@ -1489,6 +1583,61 @@ func newSchemaCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&format, "format", "prisma", "output format (prisma, sql)")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "write to file instead of stdout")
+	return cmd
+}
+
+// ── deps ──────────────────────────────────────────────────────────────────────
+
+func newDepsCmd() *cobra.Command {
+	var validateOnly bool
+
+	cmd := &cobra.Command{
+		Use:     "deps",
+		Short:   "Show service dependency graph from workspace consumes declarations",
+		Long:    "Reads the workspace config and prints which services consume which.\nUseful for understanding inter-service dependencies at a glance.",
+		Example: "  veld deps\n  veld deps --validate",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			flags := config.FlagOverrides{}
+			rc, err := config.BuildResolved(flags)
+			if err != nil {
+				return err
+			}
+
+			if len(rc.Workspace) == 0 {
+				return fmt.Errorf("no workspace defined — deps requires a workspace config with multiple services")
+			}
+
+			// Validate consumes declarations.
+			errs, warns := validator.ValidateWorkspaceConsumes(rc.Workspace)
+			for _, w := range warns {
+				fmt.Fprintf(os.Stderr, yellow("⚠")+"  %s\n", w)
+			}
+			for _, e := range errs {
+				fmt.Fprintf(os.Stderr, red("✗")+"  %s\n", e)
+			}
+			if len(errs) > 0 {
+				return fmt.Errorf("workspace validation failed")
+			}
+			if validateOnly {
+				fmt.Println(green("✓") + " Workspace dependencies valid")
+				return nil
+			}
+
+			// Print dependency graph.
+			fmt.Printf("\n%s Service Dependencies\n\n", bold("◆"))
+			for _, entry := range rc.Workspace {
+				if len(entry.Consumes) > 0 {
+					fmt.Printf("  %s → %s\n", bold(entry.Name), strings.Join(entry.Consumes, ", "))
+				} else {
+					fmt.Printf("  %s → %s\n", bold(entry.Name), dim("(none)"))
+				}
+			}
+			fmt.Println()
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&validateOnly, "validate", false,
+		"only validate dependency declarations without printing the graph")
 	return cmd
 }
 

@@ -1,0 +1,23 @@
+enum CardType    { debit credit }
+enum CardStatus  { active frozen cancelled }
+enum CardNetwork { visa mastercard }
+
+model Card {
+  description: "A payment card linked to a NexusBank account"
+  id:        string
+  accountId: string
+  userId:    string
+  type:      CardType
+  status:    CardStatus
+  network:   CardNetwork
+  last4:     string
+  expiresAt: string
+  createdAt: string
+}
+
+model RequestCardInput {
+  description: "Request a new payment card for an account"
+  accountId: string
+  type:      CardType
+  network:   CardNetwork
+}
