@@ -299,6 +299,57 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 	return names, veldFiles, changes, nil
 }
 
+// runGenerateWithAST is like runGenerate but takes a pre-built AST instead of
+// calling loader.Parse. Used by frontend workspace entries whose AST has been
+// merged from all consumed backend services.
+func runGenerateWithAST(rc config.ResolvedConfig, a ast.AST, opts emitter.EmitOptions) error {
+	if opts.DryRun {
+		return nil
+	}
+
+	emitAST := a
+	if emitAST.Prefix != "" {
+		for i := range emitAST.Modules {
+			emitAST.Modules[i].Prefix = emitAST.Prefix + emitAST.Modules[i].Prefix
+		}
+	}
+
+	// Emit backend (types, routes, etc.).
+	backendOrTool, isRealBackend, err := emitter.GetBackendOrTool(rc.Backend)
+	if err != nil {
+		return err
+	}
+	if err := backendOrTool.Emit(emitAST, rc.BackendOut, opts); err != nil {
+		return fmt.Errorf("%s emitter: %w", rc.Backend, err)
+	}
+	if isRealBackend && rc.SplitOutput() {
+		if err := backendOrTool.Emit(emitAST, rc.FrontendOut, opts); err != nil {
+			return fmt.Errorf("%s emitter (frontend copy): %w", rc.Backend, err)
+		}
+	}
+
+	// Emit frontend SDK.
+	frontendName := rc.Frontend
+	if opts.FrontendFramework != "" && (frontendName == "typescript" || frontendName == "javascript") {
+		frontendName = opts.FrontendFramework
+	}
+	frontend, err := emitter.GetFrontend(frontendName)
+	if err != nil {
+		return err
+	}
+	if frontend != nil {
+		if err := frontend.Emit(emitAST, rc.FrontendOut, opts); err != nil {
+			return fmt.Errorf("%s emitter: %w", rc.Frontend, err)
+		}
+	}
+
+	// Generated README.
+	for _, dir := range rc.OutputDirs() {
+		writeGeneratedReadme(dir, emitAST)
+	}
+	return nil
+}
+
 // printDiffChanges prints breaking changes and additions detected against the
 // previous .veld.lock.json. It is a no-op when changes is empty or nil.
 func printDiffChanges(changes []diff.Change) {
@@ -823,8 +874,15 @@ func newGenerateCmd() *cobra.Command {
 					entryRC.Services = rc.Services
 
 					// Parse the AST for this entry (needed for consumes resolution).
+					// For frontend-only entries, the input file may not exist — the
+					// frontend AST will be built entirely from consumed services.
+					isFrontend := entry.Frontend != "" && entry.Frontend != "none"
 					a, _, err := loader.Parse(entryRC.Input, entryRC.Aliases)
-					if err != nil {
+					if err != nil && isFrontend {
+						// Frontend entry with missing input file — use empty AST.
+						// It will be populated via MergeASTs from consumed services.
+						a = ast.AST{ASTVersion: "1.0.0"}
+					} else if err != nil {
 						return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
 					}
 
@@ -854,14 +912,23 @@ func newGenerateCmd() *cobra.Command {
 
 					// Resolve consumed services from the parsed AST cache.
 					consumesList := entry.Consumes
-					// --service-sdk flag: consume ALL other workspace siblings.
-					if serviceSdkFlag && len(consumesList) == 0 {
-						for _, other := range rc.Workspace {
-							if other.Name != entry.Name && other.Frontend == "none" {
-								consumesList = append(consumesList, other.Name)
+
+					// Auto-consume logic:
+					// 1. --service-sdk flag: backend entries consume ALL other siblings.
+					// 2. Frontend entries (frontend != "none") ALWAYS consume all
+					//    backend siblings so the frontend SDK covers every service.
+					isFrontendEntry := entry.Frontend != "" && entry.Frontend != "none"
+					if isFrontendEntry || (serviceSdkFlag && len(consumesList) == 0) {
+						if isFrontendEntry || len(consumesList) == 0 {
+							consumesList = nil // rebuild fresh
+							for _, other := range rc.Workspace {
+								if other.Name != entry.Name && (other.Frontend == "" || other.Frontend == "none") {
+									consumesList = append(consumesList, other.Name)
+								}
 							}
 						}
 					}
+
 					if len(consumesList) > 0 {
 						var consumed []emitter.ConsumedServiceInfo
 						for _, depName := range consumesList {
@@ -878,12 +945,48 @@ func newGenerateCmd() *cobra.Command {
 						entryOpts.ConsumedServices = consumed
 					}
 
-					if _, _, _, err := runGenerate(pe.rc, false, entryOpts); err != nil {
-						return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
+					// For frontend entries: merge all consumed service ASTs into
+					// the frontend's own AST so the frontend SDK (React/Vue/Angular/etc.)
+					// gets typed clients for EVERY service in one unified import.
+					// Also build a per-module Services map so each module's SDK
+					// client points to the correct service URL.
+					if isFrontendEntry && len(entryOpts.ConsumedServices) > 0 {
+						mergedAST := emitter.MergeASTs(pe.ast, entryOpts.ConsumedServices)
+						pe.ast = mergedAST
+
+						// Re-parse into the loader isn't needed — we override the
+						// resolved config's input AST by calling runGenerateWithAST.
+
+						// Build per-module base URL map so the frontend SDK knows
+						// which URL goes to which service module.
+						if entryOpts.Services == nil {
+							entryOpts.Services = make(map[string]string)
+						}
+						for _, consumed := range entryOpts.ConsumedServices {
+							for _, mod := range consumed.AST.Modules {
+								if consumed.BaseUrl != "" {
+									entryOpts.Services[mod.Name] = consumed.BaseUrl
+								}
+							}
+						}
+					}
+
+					if isFrontendEntry {
+						// Frontend entries: skip loader.Parse (the input file may not
+						// exist if the frontend is fully driven by consumed services).
+						// Emit directly with the (possibly merged) AST.
+						if err := runGenerateWithAST(pe.rc, pe.ast, entryOpts); err != nil {
+							return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
+						}
+					} else {
+						if _, _, _, err := runGenerate(pe.rc, false, entryOpts); err != nil {
+							return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
+						}
 					}
 
 					// Emit service SDK clients for consumed services via the backend emitter.
-					if len(entryOpts.ConsumedServices) > 0 {
+					// (Only for backend entries — the frontend already got everything via AST merge.)
+					if !isFrontendEntry && len(entryOpts.ConsumedServices) > 0 {
 						backend, err := emitter.GetBackend(pe.rc.Backend)
 						if err != nil {
 							return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
@@ -896,6 +999,12 @@ func newGenerateCmd() *cobra.Command {
 							consumedNames[i] = c.Name
 						}
 						fmt.Printf("  %s %s → sdk/ (%s)\n", green("✓"), entry.Name, strings.Join(consumedNames, ", "))
+					} else if isFrontendEntry && len(entryOpts.ConsumedServices) > 0 {
+						consumedNames := make([]string, len(entryOpts.ConsumedServices))
+						for i, c := range entryOpts.ConsumedServices {
+							consumedNames[i] = c.Name
+						}
+						fmt.Printf("  %s %s → unified frontend SDK (%s)\n", green("✓"), entry.Name, strings.Join(consumedNames, ", "))
 					} else {
 						fmt.Printf("  %s %s → %s\n", green("✓"), entry.Name, pe.outDir)
 					}

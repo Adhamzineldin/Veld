@@ -190,3 +190,71 @@ func TestRegistryNoneFrontend(t *testing.T) {
 		t.Error("expected nil for 'none' frontend")
 	}
 }
+
+func TestMergeASTs(t *testing.T) {
+	base := ast.AST{
+		ASTVersion: "1.0.0",
+		Models:     []ast.Model{{Name: "SharedModel"}},
+		Enums:      []ast.Enum{{Name: "SharedEnum", Values: []string{"a", "b"}}},
+		Modules:    []ast.Module{{Name: "SharedModule"}},
+	}
+
+	consumed := []ConsumedServiceInfo{
+		{
+			Name: "iam",
+			AST: ast.AST{
+				Models:  []ast.Model{{Name: "User"}, {Name: "SharedModel"}}, // SharedModel is a dupe
+				Enums:   []ast.Enum{{Name: "Role", Values: []string{"admin", "user"}}},
+				Modules: []ast.Module{{Name: "IAM", Prefix: "/api/iam"}},
+			},
+			BaseUrl: "http://iam:3001",
+		},
+		{
+			Name: "accounts",
+			AST: ast.AST{
+				Models:  []ast.Model{{Name: "Account"}, {Name: "User"}}, // User is a dupe from iam
+				Modules: []ast.Module{{Name: "Accounts", Prefix: "/api/accounts"}},
+			},
+			BaseUrl: "http://accounts:3002",
+		},
+	}
+
+	merged := MergeASTs(base, consumed)
+
+	// Check models are deduplicated.
+	if len(merged.Models) != 3 {
+		t.Errorf("expected 3 models (SharedModel, User, Account), got %d", len(merged.Models))
+	}
+	modelNames := make(map[string]bool)
+	for _, m := range merged.Models {
+		modelNames[m.Name] = true
+	}
+	for _, expected := range []string{"SharedModel", "User", "Account"} {
+		if !modelNames[expected] {
+			t.Errorf("missing model %s", expected)
+		}
+	}
+
+	// Check enums are deduplicated.
+	if len(merged.Enums) != 2 {
+		t.Errorf("expected 2 enums (SharedEnum, Role), got %d", len(merged.Enums))
+	}
+
+	// Check modules are deduplicated.
+	if len(merged.Modules) != 3 {
+		t.Errorf("expected 3 modules (SharedModule, IAM, Accounts), got %d", len(merged.Modules))
+	}
+
+	// Check order: base first, then consumed in order.
+	if merged.Models[0].Name != "SharedModel" {
+		t.Errorf("expected first model to be SharedModel (from base), got %s", merged.Models[0].Name)
+	}
+}
+
+func TestMergeASTsEmpty(t *testing.T) {
+	base := ast.AST{ASTVersion: "1.0.0"}
+	merged := MergeASTs(base, nil)
+	if len(merged.Models) != 0 || len(merged.Modules) != 0 {
+		t.Error("expected empty merged AST when no consumed services")
+	}
+}
