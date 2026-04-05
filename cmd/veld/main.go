@@ -641,16 +641,13 @@ func newSetupCmd() *cobra.Command {
 					} else if !filepath.IsAbs(outDir) {
 						outDir = filepath.Clean(filepath.Join(rc.ConfigDir, outDir))
 					}
-					// Resolve backend dir: explicit backendConfig.dir → parent of out → project root.
+					// Explicit backendConfig.dir / frontendConfig.dir take priority.
+					// When absent, setup.Run auto-detects the service root by walking
+					// up from outDir looking for pom.xml / package.json / go.mod / etc.
 					beDir := ""
 					if wEntry.BackendCfg != nil && wEntry.BackendCfg.Dir != "" {
 						beDir = filepath.Clean(filepath.Join(rc.ConfigDir, wEntry.BackendCfg.Dir))
-					} else if outDir != "" {
-						// Derive service root from out path: "…/account-service/generated" → "…/account-service"
-						beDir = filepath.Dir(outDir)
 					}
-
-					// Resolve frontend dir similarly.
 					feOutDir := outDir
 					if wEntry.FrontendCfg != nil && wEntry.FrontendCfg.Out != "" {
 						feOutDir = filepath.Clean(filepath.Join(rc.ConfigDir, wEntry.FrontendCfg.Out))
@@ -658,8 +655,6 @@ func newSetupCmd() *cobra.Command {
 					feDir := ""
 					if wEntry.FrontendCfg != nil && wEntry.FrontendCfg.Dir != "" {
 						feDir = filepath.Clean(filepath.Join(rc.ConfigDir, wEntry.FrontendCfg.Dir))
-					} else if feOutDir != "" {
-						feDir = filepath.Dir(feOutDir)
 					}
 
 					entryResults := setup.Run(projectDir, beTarget, feTarget, outDir, setup.Options{
