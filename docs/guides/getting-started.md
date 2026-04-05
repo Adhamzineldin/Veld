@@ -11,16 +11,19 @@ Pick any method:
 
 ```bash
 # Go
-go install github.com/veld-dev/veld/cmd/veld@latest
+go install github.com/Adhamzineldin/Veld/cmd/veld@latest
 
 # npm
-npm install veld
+npm install @maayn/veld
 
 # pip
-pip install veld
+pip install maayn-veld
 
 # Homebrew
-brew install veld-dev/tap/veld
+brew install maayn-veld/tap/maayn-veld
+
+# Composer
+composer require maayn/veld
 ```
 
 Verify:

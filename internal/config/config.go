@@ -447,11 +447,55 @@ func (rc ResolvedConfig) SplitOutput() bool {
 }
 
 // OutputDirs returns the unique set of output directories (1 if same, 2 if split).
+// For single-service configs this is 1–2 directories; for workspace configs it
+// includes every workspace entry's resolved output directory.
 func (rc ResolvedConfig) OutputDirs() []string {
+	if len(rc.Workspace) > 0 {
+		return rc.workspaceOutputDirs()
+	}
 	if rc.SplitOutput() {
 		return []string{rc.BackendOut, rc.FrontendOut}
 	}
 	return []string{rc.Out}
+}
+
+// workspaceOutputDirs resolves and deduplicates output directories for every
+// workspace entry. The resolution logic mirrors the generate command:
+//  1. entry.Out (flat) → entry.BackendCfg.Out (nested) → <configDir>/generated/<name>
+//  2. entry.FrontendCfg.Out if present (split frontend output)
+func (rc ResolvedConfig) workspaceOutputDirs() []string {
+	seen := make(map[string]bool)
+	var dirs []string
+	add := func(d string) {
+		if d == "" || seen[d] {
+			return
+		}
+		seen[d] = true
+		dirs = append(dirs, d)
+	}
+
+	for _, entry := range rc.Workspace {
+		outDir := entry.Out
+		if outDir == "" && entry.BackendCfg != nil && entry.BackendCfg.Out != "" {
+			outDir = entry.BackendCfg.Out
+		}
+		if outDir == "" {
+			outDir = filepath.Join(rc.ConfigDir, "generated", entry.Name)
+		} else if !filepath.IsAbs(outDir) {
+			outDir = filepath.Clean(filepath.Join(rc.ConfigDir, outDir))
+		}
+		add(outDir)
+
+		// Split frontend output directory.
+		if entry.FrontendCfg != nil && entry.FrontendCfg.Out != "" {
+			feOut := entry.FrontendCfg.Out
+			if !filepath.IsAbs(feOut) {
+				feOut = filepath.Clean(filepath.Join(rc.ConfigDir, feOut))
+			}
+			add(feOut)
+		}
+	}
+	return dirs
 }
 
 // resolveOptionalDir resolves a dir path relative to base. Returns "" if dir is empty.

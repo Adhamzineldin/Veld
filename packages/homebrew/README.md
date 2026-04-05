@@ -6,15 +6,15 @@
 
 ```bash
 # Add the tap (one-time)
-brew tap veld-dev/tap
+brew tap maayn-veld/tap
 
 # Install
-brew install veld
+brew install maayn-veld
 ```
 
 Or in one command:
 ```bash
-brew install veld-dev/tap/veld
+brew install maayn-veld/tap/maayn-veld
 ```
 
 ## Usage

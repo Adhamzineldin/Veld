@@ -50,7 +50,7 @@ brew install veld
 pip install maayn-veld
 
 # Composer (PHP)
-composer require veld-dev/veld
+composer require maayn/veld
 ```
 
 ## Links
