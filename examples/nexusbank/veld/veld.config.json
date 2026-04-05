@@ -62,7 +62,7 @@
       "frontendConfig": { "target": "react" },
       "out": "../frontend/src/generated",
       "baseUrl": "http://localhost:3000",
-      "consumes": ["iam", "accounts", "transactions", "cards", "lending", "notifications"]
+      "consumes": ["*"]
     }
   ]
 }
