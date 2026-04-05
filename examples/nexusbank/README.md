@@ -81,15 +81,37 @@ own `backend`, `out`, and `baseUrl`:
 ```json
 {
   "workspace": [
-    { "name": "iam",          "input": "services/iam/modules/iam.veld",
-      "backend": "node",   "frontend": "none", "out": "../backend/iam-service/generated" },
-    { "name": "transactions", "input": "services/transactions/modules/transactions.veld",
-      "backend": "python", "frontend": "none", "out": "../backend/transaction-service/generated" },
-    { "name": "cards",        "input": "services/cards/modules/cards.veld",
-      "backend": "go",     "frontend": "none", "out": "../backend/card-service/generated" },
-    { "name": "frontend",     "input": "app.veld",
-      "backend": "node",   "frontend": "react", "frontendOut": "../frontend/src/generated",
-      "baseUrl": "http://localhost:3000" }
+    {
+      "name": "iam",
+      "input": "services/iam/modules/iam.veld",
+      "backendConfig": { "target": "node-ts", "framework": "express" },
+      "out": "../backend/iam-service/generated",
+      "baseUrl": "http://iam-service:3001"
+    },
+    {
+      "name": "transactions",
+      "input": "services/transactions/modules/transactions.veld",
+      "backendConfig": { "target": "python", "framework": "flask" },
+      "out": "../backend/transaction-service/generated",
+      "baseUrl": "http://transaction-service:3003",
+      "consumes": ["iam", "accounts"]
+    },
+    {
+      "name": "cards",
+      "input": "services/cards/modules/cards.veld",
+      "backendConfig": { "target": "go" },
+      "out": "../backend/card-service/generated",
+      "baseUrl": "http://card-service:3004",
+      "consumes": ["iam", "accounts"]
+    },
+    {
+      "name": "frontend",
+      "input": "app.veld",
+      "frontendConfig": { "target": "react" },
+      "out": "../frontend/src/generated",
+      "baseUrl": "http://localhost:3000",
+      "consumes": ["*"]
+    }
   ]
 }
 ```
@@ -149,7 +171,57 @@ throw iamErrors.login.unauthorized('Invalid credentials');
 //    └─ sets res.status(401) in the generated route handler
 ```
 
-### 6 — API Gateway = single frontend baseUrl
+### 6 — Inter-Service SDK (consumes)
+
+When a service declares `"consumes": ["iam", "accounts"]` in the config, Veld
+generates typed HTTP client SDKs in that service's language. No manual REST
+calls, no guessing the API shape — it's all derived from the consumed service's
+`.veld` contract.
+
+**TypeScript** (accounts → iam):
+```ts
+import { IamClient } from '@veld/generated/sdk/iam';
+
+// Forward the caller's auth token for service-to-service auth
+const iam = new IamClient(undefined, { Authorization: req.headers.authorization });
+const user = await iam.getProfile();       // fully typed return: User
+```
+
+**Python** (transactions → accounts):
+```python
+from generated.sdk.accounts.client import AccountsClient
+
+accounts = AccountsClient()                # defaults to VELD_ACCOUNTS_URL
+account = accounts.get_account(account_id) # typed: Account
+```
+
+**Go** (cards → iam, accounts):
+```go
+import iamsdk "example.com/veld-generated/sdk/iam"
+
+client := iamsdk.NewClient("")  // defaults to VELD_IAM_URL env var
+user, err := client.GetProfile(ctx)  // typed: *iam.User
+```
+
+**Base URL resolution** (all languages, in priority order):
+1. Constructor argument: `IamClient("http://custom:3001")`
+2. Environment variable: `VELD_IAM_URL` (convention: `VELD_<UPPER_NAME>_URL`)
+3. Baked-in default from the consumed service's `baseUrl` in config
+
+**Dependency graph:**
+```
+veld deps
+
+  iam → (none)
+  accounts → iam
+  transactions → iam, accounts
+  cards → iam, accounts
+  lending → iam, accounts
+  notifications → (none)
+  frontend → iam, accounts, transactions, cards, lending, notifications
+```
+
+### 7 — API Gateway = single frontend baseUrl
 
 All services run on different ports (3001–3006). nginx maps each module's
 prefix to the right container. The frontend SDK uses one `baseUrl: http://localhost:3000`:
@@ -167,7 +239,7 @@ nginx :3000
 Because each module's `prefix` matches the nginx location, the generated hooks
 hit the right service without any extra configuration in the frontend.
 
-### 7 — Why each language was chosen
+### 8 — Why each language was chosen
 
 | Service             | Language | Why                                                                 |
 |---------------------|----------|---------------------------------------------------------------------|

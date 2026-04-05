@@ -8,6 +8,17 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	// ── Veld SDKs: typed clients for consumed services ────────────────
+	// Auto-generated from iam.veld and accounts.veld — inter-service calls.
+	accountssdk "example.com/veld-generated/sdk/accounts"
+	iamsdk "example.com/veld-generated/sdk/iam"
+)
+
+// SDK clients — in production, forward auth headers per-request.
+var (
+	iamClient      = iamsdk.NewClient("")      // defaults to VELD_IAM_URL
+	accountsClient = accountssdk.NewClient("") // defaults to VELD_ACCOUNTS_URL
 )
 
 // CardsService satisfies the Veld-generated interfaces.CardsService interface.
@@ -51,6 +62,19 @@ func (s *CardsService) GetCard(ctx context.Context, id string) (*models.Card, er
 func (s *CardsService) RequestCard(ctx context.Context, input *models.RequestCardInput) (*models.Card, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// ── SDK call: verify the target account exists via Accounts service ──
+	_, err := accountsClient.GetAccount(ctx, input.AccountId)
+	if err != nil {
+		return nil, fmt.Errorf("cannot issue card: account %s not found (%w)", input.AccountId, err)
+	}
+
+	// ── SDK call: verify user identity via IAM service ───────────────────
+	_, err = iamClient.GetProfile(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("cannot issue card: failed to verify user identity (%w)", err)
+	}
+
 	card := models.Card{
 		Id:        uuid.NewString(),
 		AccountId: input.AccountId,
