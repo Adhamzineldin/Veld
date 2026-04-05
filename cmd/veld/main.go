@@ -617,6 +617,60 @@ func newSetupCmd() *cobra.Command {
 				opts.FrontendDir = rc.FrontendDir
 			}
 
+			// Workspace mode: run setup for each entry that has a backend or frontend.
+			if len(rc.Workspace) > 0 {
+				anyPatched := false
+				for _, wEntry := range rc.Workspace {
+					beTarget := wEntry.Backend
+					if beTarget == "" && wEntry.BackendCfg != nil {
+						beTarget = wEntry.BackendCfg.Target
+					}
+					feTarget := wEntry.Frontend
+					if feTarget == "" && wEntry.FrontendCfg != nil {
+						feTarget = wEntry.FrontendCfg.Target
+					}
+					if beTarget == "" && feTarget == "" {
+						continue
+					}
+					outDir := wEntry.Out
+					if outDir == "" && wEntry.BackendCfg != nil && wEntry.BackendCfg.Out != "" {
+						outDir = wEntry.BackendCfg.Out
+					}
+					if outDir == "" {
+						outDir = filepath.Join(rc.ConfigDir, "generated", wEntry.Name)
+					} else if !filepath.IsAbs(outDir) {
+						outDir = filepath.Clean(filepath.Join(rc.ConfigDir, outDir))
+					}
+					beDir := ""
+					if wEntry.BackendCfg != nil && wEntry.BackendCfg.Dir != "" {
+						beDir = filepath.Clean(filepath.Join(rc.ConfigDir, wEntry.BackendCfg.Dir))
+					}
+					feDir := ""
+					if wEntry.FrontendCfg != nil && wEntry.FrontendCfg.Dir != "" {
+						feDir = filepath.Clean(filepath.Join(rc.ConfigDir, wEntry.FrontendCfg.Dir))
+					}
+					feOutDir := outDir
+					if wEntry.FrontendCfg != nil && wEntry.FrontendCfg.Out != "" {
+						feOutDir = filepath.Clean(filepath.Join(rc.ConfigDir, wEntry.FrontendCfg.Out))
+					}
+					entryResults := setup.Run(projectDir, beTarget, feTarget, outDir, setup.Options{
+						BackendDir:     beDir,
+						FrontendDir:    feDir,
+						BackendOutDir:  outDir,
+						FrontendOutDir: feOutDir,
+					})
+					if len(entryResults) > 0 {
+						fmt.Printf("  %s %s\n", bold("→"), wEntry.Name)
+						printSetupResults(entryResults)
+						anyPatched = true
+					}
+				}
+				if !anyPatched {
+					fmt.Println(dim("  No config files to patch for this workspace"))
+				}
+				return nil
+			}
+
 			results := setup.Run(projectDir, rc.Backend, rc.Frontend, rc.Out, setup.Options{
 				BackendDir:     opts.BackendDir,
 				FrontendDir:    opts.FrontendDir,
@@ -847,20 +901,56 @@ func newGenerateCmd() *cobra.Command {
 					entryFlags := flags
 					entryFlags.InputSet = true
 					entryFlags.Input = filepath.Join(rc.ConfigDir, entry.Input)
-					if entry.Backend != "" {
+
+					// Support both flat (entry.Backend) and nested (entry.BackendCfg.Target) format.
+					backendTarget := entry.Backend
+					if backendTarget == "" && entry.BackendCfg != nil && entry.BackendCfg.Target != "" {
+						backendTarget = entry.BackendCfg.Target
+					}
+					if backendTarget != "" {
 						entryFlags.BackendSet = true
-						entryFlags.Backend = entry.Backend
+						entryFlags.Backend = backendTarget
 					}
-					if entry.Frontend != "" {
+
+					frontendTarget := entry.Frontend
+					if frontendTarget == "" && entry.FrontendCfg != nil && entry.FrontendCfg.Target != "" {
+						frontendTarget = entry.FrontendCfg.Target
+					}
+					if frontendTarget != "" {
 						entryFlags.FrontendSet = true
-						entryFlags.Frontend = entry.Frontend
+						entryFlags.Frontend = frontendTarget
 					}
+
+					// Apply per-entry framework from nested config.
+					if entry.BackendCfg != nil && entry.BackendCfg.Framework != "" {
+						entryFlags.BackendFrameworkSet = true
+						entryFlags.BackendFramework = entry.BackendCfg.Framework
+					}
+
+					// Resolve out directory: check flat Out, then BackendCfg.Out.
+					// Always make absolute relative to rc.ConfigDir BEFORE passing as a flag,
+					// because BuildResolved resets cfgDir to CWD when InputSet=true.
 					outDir := entry.Out
+					if outDir == "" && entry.BackendCfg != nil && entry.BackendCfg.Out != "" {
+						outDir = entry.BackendCfg.Out
+					}
 					if outDir == "" {
-						outDir = filepath.Join("generated", entry.Name)
+						outDir = filepath.Join(rc.ConfigDir, "generated", entry.Name)
+					} else if !filepath.IsAbs(outDir) {
+						outDir = filepath.Clean(filepath.Join(rc.ConfigDir, outDir))
 					}
 					entryFlags.OutSet = true
 					entryFlags.Out = outDir
+
+					// Resolve split frontend out if specified.
+					if entry.FrontendCfg != nil && entry.FrontendCfg.Out != "" {
+						feOut := entry.FrontendCfg.Out
+						if !filepath.IsAbs(feOut) {
+							feOut = filepath.Clean(filepath.Join(rc.ConfigDir, feOut))
+						}
+						entryFlags.FrontendOutSet = true
+						entryFlags.FrontendOut = feOut
+					}
 
 					entryRC, err := config.BuildResolved(entryFlags)
 					if err != nil {
@@ -873,11 +963,33 @@ func newGenerateCmd() *cobra.Command {
 					entryRC.Description = rc.Description
 					entryRC.Services = rc.Services
 
+					// Build a merged alias map that includes cross-service aliases.
+					// This enables `import @iam/models/*` in any sibling service.
+					// @<service-name> → absolute path to that service's source directory
+					// (two directories up from its input file, e.g. services/iam/ for
+					// services/iam/modules/iam.veld).
+					crossAliases := make(map[string]string, len(entryRC.Aliases)+len(rc.Workspace))
+					for k, v := range entryRC.Aliases {
+						crossAliases[k] = v
+					}
+					for _, sibling := range rc.Workspace {
+						if sibling.Name == entry.Name || sibling.Input == "" {
+							continue
+						}
+						siblingInput := sibling.Input
+						if !filepath.IsAbs(siblingInput) {
+							siblingInput = filepath.Join(rc.ConfigDir, siblingInput)
+						}
+						// Service root is two levels up: services/iam/modules/iam.veld → services/iam/
+						serviceRoot := filepath.Dir(filepath.Dir(siblingInput))
+						crossAliases[sibling.Name] = serviceRoot
+					}
+
 					// Parse the AST for this entry (needed for consumes resolution).
 					// For frontend-only entries, the input file may not exist — the
 					// frontend AST will be built entirely from consumed services.
-					isFrontend := entry.Frontend != "" && entry.Frontend != "none"
-					a, _, err := loader.Parse(entryRC.Input, entryRC.Aliases)
+					isFrontend := frontendTarget != "" && frontendTarget != "none"
+					a, _, err := loader.Parse(entryRC.Input, crossAliases)
 					if err != nil && isFrontend {
 						// Frontend entry with missing input file — use empty AST.
 						// It will be populated via MergeASTs from consumed services.
@@ -1202,6 +1314,33 @@ func newWatchCmd() *cobra.Command {
 
 			// ── build the watched file set ──────────────────────────────
 			// Includes all .veld files + the config file itself.
+			// In workspace mode, runGenerate returns no files; collect them here.
+			if len(rc.Workspace) > 0 && len(initFiles) == 0 {
+				for _, wEntry := range rc.Workspace {
+					if wEntry.Input == "" {
+						continue
+					}
+					entryInput := wEntry.Input
+					if !filepath.IsAbs(entryInput) {
+						entryInput = filepath.Join(rc.ConfigDir, entryInput)
+					}
+					_ = filepath.Walk(filepath.Dir(entryInput), func(p string, info os.FileInfo, _ error) error {
+						if info != nil && !info.IsDir() && strings.HasSuffix(p, ".veld") {
+							absP, _ := filepath.Abs(p)
+							initFiles = append(initFiles, absP)
+						}
+						return nil
+					})
+				}
+				// Also include shared files in the config root.
+				_ = filepath.Walk(rc.ConfigDir, func(p string, info os.FileInfo, _ error) error {
+					if info != nil && !info.IsDir() && strings.HasSuffix(p, ".veld") {
+						absP, _ := filepath.Abs(p)
+						initFiles = append(initFiles, absP)
+					}
+					return nil
+				})
+			}
 			var mtimesMu sync.Mutex
 			mtimes := make(map[string]int64, len(initFiles)+2)
 			for _, f := range initFiles {
@@ -1258,10 +1397,26 @@ func newWatchCmd() *cobra.Command {
 					}
 
 					// Discover NEW .veld files that didn't exist at startup.
-					// Re-scan the input directory tree for any new .veld files.
-					if rc.Input != "" {
-						inputDir := filepath.Dir(rc.Input)
-						_ = filepath.Walk(inputDir, func(path string, info os.FileInfo, walkErr error) error {
+					// Re-scan input directories for any new .veld files.
+					// In workspace mode scan each service's input directory.
+					var scanDirs []string
+					if len(rc.Workspace) > 0 {
+						for _, wEntry := range rc.Workspace {
+							if wEntry.Input != "" {
+								entryInput := wEntry.Input
+								if !filepath.IsAbs(entryInput) {
+									entryInput = filepath.Join(rc.ConfigDir, entryInput)
+								}
+								scanDirs = append(scanDirs, filepath.Dir(entryInput))
+							}
+						}
+						// Also scan the veld source root for shared models/enums.
+						scanDirs = append(scanDirs, rc.ConfigDir)
+					} else if rc.Input != "" {
+						scanDirs = append(scanDirs, filepath.Dir(rc.Input))
+					}
+					for _, scanDir := range scanDirs {
+						_ = filepath.Walk(scanDir, func(path string, info os.FileInfo, walkErr error) error {
 							if walkErr != nil || info.IsDir() {
 								return nil
 							}
@@ -2979,8 +3134,13 @@ func runInit() error {
 				}
 			}
 
+			// Use the global framework selection if this service uses the default backend.
+			svcFramework := ""
+			if svcBackend == selectedBackend {
+				svcFramework = selectedBackendFramework
+			}
 			services = append(services, svcDef{
-				name: svcName, backend: svcBackend, baseUrl: svcUrl, consumes: svcConsumes,
+				name: svcName, backend: svcBackend, framework: svcFramework, baseUrl: svcUrl, consumes: svcConsumes,
 			})
 			fmt.Println()
 		}
@@ -3011,14 +3171,18 @@ func runInit() error {
 			if len(svc.consumes) > 0 {
 				consumesLine = fmt.Sprintf(",\n      \"consumes\": %s", consumesJSON)
 			}
+			backendCfgJSON := fmt.Sprintf(`{ "target": %q }`, svc.backend)
+			if svc.framework != "" {
+				backendCfgJSON = fmt.Sprintf(`{ "target": %q, "framework": %q }`, svc.backend, svc.framework)
+			}
 			wsEntries = append(wsEntries, fmt.Sprintf(`    {
       "name": %q,
       "description": "",
       "input": "services/%s/modules/%s.veld",
-      "backendConfig": { "target": %q },
+      "backendConfig": %s,
       "out": "../backend/%s-service/generated",
       "baseUrl": %q%s
-    }`, svc.name, svc.name, svc.name, svc.backend, svc.name, svc.baseUrl, consumesLine))
+    }`, svc.name, svc.name, svc.name, backendCfgJSON, svc.name, svc.baseUrl, consumesLine))
 		}
 
 		if includeFrontend {
