@@ -123,9 +123,9 @@
         },
         "consumes": {
           "type": "array",
-          "description": "Names of other workspace services this service depends on. Generates typed SDK clients for inter-service communication.",
+          "description": "Names of other workspace services this service depends on. Use [\"*\"] to consume all other services. Generates typed SDK clients for inter-service communication.",
           "items": { "type": "string" },
-          "examples": [["iam", "accounts"]]
+          "examples": [["iam", "accounts"], ["*"]]
         },
         "validate": {
           "type": "boolean",

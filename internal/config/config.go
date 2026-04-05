@@ -181,6 +181,23 @@ func (c *RawConfig) normalize() {
 			}
 		}
 	}
+
+	// Expand wildcard consumes: ["*"] → all other workspace entry names.
+	for i := range c.Workspace {
+		e := &c.Workspace[i]
+		for _, consumed := range e.Consumes {
+			if consumed == "*" {
+				expanded := make([]string, 0, len(c.Workspace)-1)
+				for _, other := range c.Workspace {
+					if other.Name != e.Name {
+						expanded = append(expanded, other.Name)
+					}
+				}
+				e.Consumes = expanded
+				break
+			}
+		}
+	}
 }
 
 // ResolvedConfig has all paths resolved to be absolute.

@@ -758,3 +758,47 @@ func TestNestedConfigEndToEnd(t *testing.T) {
 		t.Errorf("BaseUrl = %q, want %q", rc.BaseUrl, "/api")
 	}
 }
+
+func TestNormalizeWildcardConsumes(t *testing.T) {
+	cfg := RawConfig{
+		Workspace: []WorkspaceEntry{
+			{Name: "iam"},
+			{Name: "accounts"},
+			{Name: "transactions"},
+			{Name: "frontend", Consumes: []string{"*"}},
+		},
+	}
+	cfg.normalize()
+
+	// "*" should be expanded to all other service names
+	if len(cfg.Workspace[3].Consumes) != 3 {
+		t.Fatalf("expected 3 consumed services, got %d: %v", len(cfg.Workspace[3].Consumes), cfg.Workspace[3].Consumes)
+	}
+	expected := map[string]bool{"iam": true, "accounts": true, "transactions": true}
+	for _, c := range cfg.Workspace[3].Consumes {
+		if !expected[c] {
+			t.Errorf("unexpected consumed service %q", c)
+		}
+	}
+	// "frontend" should NOT be in its own consumes list
+	for _, c := range cfg.Workspace[3].Consumes {
+		if c == "frontend" {
+			t.Error("frontend should not consume itself")
+		}
+	}
+}
+
+func TestNormalizeWildcardConsumesNotExpanded(t *testing.T) {
+	// Normal consumes without "*" should not be changed
+	cfg := RawConfig{
+		Workspace: []WorkspaceEntry{
+			{Name: "iam"},
+			{Name: "accounts", Consumes: []string{"iam"}},
+		},
+	}
+	cfg.normalize()
+
+	if len(cfg.Workspace[1].Consumes) != 1 || cfg.Workspace[1].Consumes[0] != "iam" {
+		t.Errorf("expected [iam], got %v", cfg.Workspace[1].Consumes)
+	}
+}
