@@ -351,3 +351,54 @@ func CollectErrorExports(mod ast.Module) []string {
 	names = append(names, moduleLower+"Errors")
 	return names
 }
+
+// MergeASTs combines multiple service ASTs into one unified AST.
+// Used when the frontend workspace entry consumes multiple backend services
+// so the frontend SDK gets typed clients for every service in one import.
+// Models and enums are deduplicated by name (first occurrence wins).
+func MergeASTs(base ast.AST, consumed []ConsumedServiceInfo) ast.AST {
+	if len(consumed) == 0 {
+		return base
+	}
+
+	// Start with a copy of the base AST.
+	merged := ast.AST{
+		ASTVersion: base.ASTVersion,
+		Prefix:     base.Prefix,
+	}
+
+	seenModels := make(map[string]bool)
+	seenEnums := make(map[string]bool)
+	seenModules := make(map[string]bool)
+
+	addAST := func(a ast.AST) {
+		for _, m := range a.Models {
+			if !seenModels[m.Name] {
+				seenModels[m.Name] = true
+				merged.Models = append(merged.Models, m)
+			}
+		}
+		for _, e := range a.Enums {
+			if !seenEnums[e.Name] {
+				seenEnums[e.Name] = true
+				merged.Enums = append(merged.Enums, e)
+			}
+		}
+		for _, mod := range a.Modules {
+			if !seenModules[mod.Name] {
+				seenModules[mod.Name] = true
+				merged.Modules = append(merged.Modules, mod)
+			}
+		}
+	}
+
+	// Add the base AST first (the frontend's own .veld file, if any).
+	addAST(base)
+
+	// Then layer in each consumed service.
+	for _, c := range consumed {
+		addAST(c.AST)
+	}
+
+	return merged
+}

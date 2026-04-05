@@ -54,11 +54,12 @@
     },
     {
       "name": "frontend",
-      "input": "app.veld",
+      "input": "",
       "backend": "node",
       "frontend": "react",
       "out": "../frontend/src/generated",
-      "baseUrl": "http://localhost:3000"
+      "baseUrl": "http://localhost:3000",
+      "consumes": ["iam", "accounts", "transactions", "cards", "lending", "notifications"]
     }
   ],
   "description": "NexusBank — contract-first banking platform with 6 polyglot microservices"
