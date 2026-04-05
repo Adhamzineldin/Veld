@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_context-mode_context-mode__batch_execute",
+      "Bash(find:*)",
+      "mcp__plugin_context-mode_context-mode__execute_file",
+      "Bash(export PATH=\"/c/Program Files/Go/bin:$PATH\")",
+      "Bash(go build:*)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(go test:*)"
+    ]
+  }
+}

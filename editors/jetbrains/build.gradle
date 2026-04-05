@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'dev.veld'
-version = '0.5.0'
+version = '0.6.0'
 
 repositories {
     mavenCentral()
@@ -18,7 +18,7 @@ repositories {
 }
 
 intellij {
-    version = '2024.1.7'
+    version = '2025.1'
     type = 'IC'
     plugins = []
 }
@@ -40,7 +40,7 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
 
 patchPluginXml {
     sinceBuild = '241'
-    untilBuild = '253.*'
+    untilBuild = '263.*'
     changeNotes = """
         <h3>0.1.0 - Initial Release</h3>
         <ul>

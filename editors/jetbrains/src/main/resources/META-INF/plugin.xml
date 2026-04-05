@@ -1,7 +1,7 @@
 <idea-plugin>
   <id>dev.veld.jetbrains</id>
   <name>Veld</name>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
   <vendor email="support@veld.dev" url="https://veld.dev">Veld</vendor>
 
   <description><![CDATA[
@@ -26,6 +26,11 @@
   ]]></description>
 
   <change-notes><![CDATA[
+    <h3>0.6.0</h3>
+    <ul>
+      <li>Compatibility update: now supports IntelliJ IDEA / GoLand / CLion 2026.1 (build 261)</li>
+      <li>Raised minimum supported version to IntelliJ 2024.1 (build 241)</li>
+    </ul>
     <h3>0.5.0</h3>
     <ul>
       <li>Distinct colors for model/module/enum/action/import/extends keywords</li>
@@ -75,8 +80,8 @@
     </ul>
   ]]></change-notes>
 
-  <!-- Compatible with all JetBrains products -->
-  <idea-version since-build="231.0"/>
+  <!-- Compatible with IntelliJ 2024.1+ (build 241) through 2026.3 (build 263) -->
+  <idea-version since-build="241" until-build="263.*"/>
 
   <!-- Plugin works in all JetBrains IDEs -->
   <depends>com.intellij.modules.platform</depends>

@@ -109,8 +109,81 @@ class VeldLanguageServer {
         return defaults;
     }
 
-    /** Resolve an alias name to a folder path relative to project root. */
-    private resolveAliasFolder(projectRoot: string, alias: string): string {
+    /**
+     * For workspace (microservices) configs, find the service root that owns the given file.
+     * e.g. veld/services/iam/modules/iam.veld → veld/services/iam/
+     * Returns null if the file is not inside a workspace service directory.
+     */
+    private findServiceRoot(filePath: string, projectRoot: string): string | null {
+        for (const configCandidate of [
+            path.join(projectRoot, 'veld.config.json'),
+            path.join(projectRoot, 'veld', 'veld.config.json'),
+        ]) {
+            try {
+                if (!fs.existsSync(configCandidate)) continue;
+                const raw = JSON.parse(fs.readFileSync(configCandidate, 'utf8'));
+                const cfgDir = path.dirname(configCandidate);
+                const workspace: Array<{ input?: string }> = raw.workspace ?? [];
+                for (const entry of workspace) {
+                    if (!entry.input) continue;
+                    // The service root is the directory two levels up from the input file
+                    // e.g. "services/iam/modules/iam.veld" → "services/iam"
+                    const inputAbs = path.resolve(cfgDir, entry.input);
+                    const serviceDir = path.dirname(path.dirname(inputAbs));
+                    const normalized = filePath.replace(/\\/g, '/');
+                    const normalizedSvc = serviceDir.replace(/\\/g, '/');
+                    if (normalized.startsWith(normalizedSvc + '/')) {
+                        return serviceDir;
+                    }
+                }
+            } catch { /* ignore */ }
+        }
+        return null;
+    }
+
+    /** Build a map of service-name → absolute service source directory from workspace config. */
+    private readWorkspaceServicePaths(projectRoot: string): Record<string, string> {
+        const result: Record<string, string> = {};
+        for (const candidate of [
+            path.join(projectRoot, 'veld.config.json'),
+            path.join(projectRoot, 'veld', 'veld.config.json'),
+        ]) {
+            try {
+                if (!fs.existsSync(candidate)) continue;
+                const raw = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+                const cfgDir = path.dirname(candidate);
+                const workspace: Array<{ name?: string; input?: string }> = raw.workspace ?? [];
+                for (const entry of workspace) {
+                    if (!entry.name || !entry.input) continue;
+                    const inputAbs = path.resolve(cfgDir, entry.input);
+                    // service root = two dirs up from input (services/iam/modules/iam.veld → services/iam)
+                    result[entry.name] = path.dirname(path.dirname(inputAbs));
+                }
+                if (Object.keys(result).length > 0) return result;
+            } catch { /* ignore */ }
+        }
+        return result;
+    }
+
+    /** Resolve an alias name to a folder path.
+     *  In workspace mode, checks service-local folders and cross-service aliases first. */
+    private resolveAliasFolder(projectRoot: string, alias: string, filePath?: string): string {
+        // Check cross-service alias: @iam → another service's source directory.
+        const servicePaths = this.readWorkspaceServicePaths(projectRoot);
+        if (servicePaths[alias]) {
+            return servicePaths[alias];
+        }
+
+        // In workspace mode, prefer service-local alias resolution.
+        if (filePath) {
+            const serviceRoot = this.findServiceRoot(filePath, projectRoot);
+            if (serviceRoot) {
+                const localFolder = path.join(serviceRoot, alias);
+                if (fs.existsSync(localFolder)) {
+                    return localFolder;
+                }
+            }
+        }
         const aliases = this.readAliases(projectRoot);
         const folder = aliases[alias] ?? alias;
         return path.resolve(projectRoot, folder);
@@ -142,7 +215,7 @@ class VeldLanguageServer {
                     const name = aliasMatch[2];
                     if (name === '*' && projectRoot) {
                         // Wildcard: resolve all .veld files in the alias folder
-                        const folder = this.resolveAliasFolder(projectRoot, alias);
+                        const folder = this.resolveAliasFolder(projectRoot, alias, filePath);
                         try {
                             const files = fs.readdirSync(folder).filter(f => f.endsWith('.veld'));
                             for (const f of files) {
@@ -157,7 +230,7 @@ class VeldLanguageServer {
                         const raw = `@${alias}/${name}`;
                         let resolvedPath: string | undefined;
                         if (projectRoot) {
-                            const folder = this.resolveAliasFolder(projectRoot, alias);
+                            const folder = this.resolveAliasFolder(projectRoot, alias, filePath);
                             const candidate = path.join(folder, `${name}.veld`);
                             if (fs.existsSync(candidate)) {
                                 resolvedPath = candidate;
@@ -198,7 +271,7 @@ class VeldLanguageServer {
                     const importList = fromMatch[2].trim();
                     if (importList === '*' && projectRoot) {
                         // Wildcard: import all .veld files from alias folder
-                        const folder = this.resolveAliasFolder(projectRoot, alias);
+                        const folder = this.resolveAliasFolder(projectRoot, alias, filePath);
                         try {
                             const files = fs.readdirSync(folder).filter(f => f.endsWith('.veld'));
                             for (const f of files) {
@@ -215,7 +288,7 @@ class VeldLanguageServer {
                         for (const name of names) {
                             let resolvedPath: string | undefined;
                             if (projectRoot) {
-                                const folder = this.resolveAliasFolder(projectRoot, alias);
+                                const folder = this.resolveAliasFolder(projectRoot, alias, filePath);
                                 // Try exact name as file
                                 const candidate = path.join(folder, `${name}.veld`);
                                 if (fs.existsSync(candidate)) {
@@ -228,7 +301,7 @@ class VeldLanguageServer {
                                     } else {
                                         // Named imports may reference types inside files — mark as resolved
                                         // if any .veld file in the folder defines this type
-                                        const folder2 = this.resolveAliasFolder(projectRoot, alias);
+                                        const folder2 = this.resolveAliasFolder(projectRoot, alias, filePath); // service-local aware
                                         try {
                                             const files = fs.readdirSync(folder2).filter(f => f.endsWith('.veld'));
                                             for (const f of files) {
