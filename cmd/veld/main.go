@@ -3236,11 +3236,11 @@ func runInit() error {
 			wsEntries = append(wsEntries, fmt.Sprintf(`    {
       "name": %q,
       "description": "",
-      "input": "services/%s/modules/%s.veld",
+      "input": "services/%s/main.veld",
       "backendConfig": %s,
       "out": "../backend/%s-service/generated",
       "baseUrl": %q%s
-    }`, svc.name, svc.name, svc.name, backendCfgJSON, svc.name, svc.baseUrl, consumesLine))
+    }`, svc.name, svc.name, backendCfgJSON, svc.name, svc.baseUrl, consumesLine))
 		}
 
 		if includeFrontend {
@@ -3257,6 +3257,7 @@ func runInit() error {
 			wsEntries = append(wsEntries, fmt.Sprintf(`    {
       "name": "frontend",
       "description": "Frontend SDK — auto-consumes all backend services",
+      "input": "app.veld",
       "frontendConfig": { "target": %q },
       "out": "../frontend/src/generated",
       "baseUrl": "http://localhost:3000",
@@ -3282,6 +3283,17 @@ func runInit() error {
 		// ── Create service .veld stubs ────────────────────────────────────
 		for _, svc := range services {
 			moduleName := strings.ToUpper(svc.name[:1]) + svc.name[1:]
+
+			// main.veld — the entry point that imports models + modules
+			mainContent := fmt.Sprintf(`// %s service entry point
+// This file is the "input" for the %s workspace entry.
+// It imports all models and modules for this service.
+
+import "./models/%s.model.veld"
+import "./modules/%s.veld"
+`, moduleName, svc.name, svc.name, svc.name)
+
+			// models/<name>.model.veld — domain models
 			modelContent := fmt.Sprintf(`// %s domain models
 
 model %sItem {
@@ -3296,24 +3308,26 @@ model Create%sInput {
 }
 `, moduleName, moduleName, svc.name, moduleName)
 
+			// modules/<name>.veld — module with actions (uses relative import for models)
 			moduleContent := fmt.Sprintf(`// %s service module
 
-import @models/*
+import "../models/%s.model.veld"
 
 module %s {
   description: "%s service"
-  prefix: /%s
+  prefix: /api/%s
 
   action List%s {
     method: GET
     path: /
-    output: %sItem
+    output: %sItem[]
   }
 
   action Get%s {
     method: GET
     path: /:id
     output: %sItem
+    errors: [NotFound]
   }
 
   action Create%s {
@@ -3323,15 +3337,35 @@ module %s {
     output: %sItem
   }
 }
-`, moduleName, moduleName, moduleName, svc.name, moduleName, moduleName, moduleName, moduleName, moduleName, moduleName, moduleName)
+`, moduleName, svc.name, moduleName, moduleName, svc.name,
+				moduleName, moduleName,
+				moduleName, moduleName,
+				moduleName, moduleName, moduleName)
 
-			modelsDir := fmt.Sprintf("veld/services/%s/models", svc.name)
-			modulesDir := fmt.Sprintf("veld/services/%s/modules", svc.name)
+			svcDir := fmt.Sprintf("veld/services/%s", svc.name)
+			modelsDir := svcDir + "/models"
+			modulesDir := svcDir + "/modules"
 			files = append(files,
+				entry{svcDir + "/main.veld", mainContent, svcDir + "/main.veld"},
 				entry{modelsDir + "/" + svc.name + ".model.veld", modelContent, modelsDir + "/" + svc.name + ".model.veld"},
 				entry{modulesDir + "/" + svc.name + ".veld", moduleContent, modulesDir + "/" + svc.name + ".veld"},
 			)
 		}
+
+		// ── Create top-level app.veld for frontend entry ──────────────────
+		// This file imports all service contracts so the frontend SDK covers
+		// every service in the workspace.
+		var appImports []string
+		for _, svc := range services {
+			appImports = append(appImports,
+				fmt.Sprintf("import \"./services/%s/main.veld\"", svc.name))
+		}
+		appVeld := "// Frontend entry point — imports all service contracts.\n" +
+			"// Used by the frontend workspace entry to generate a unified SDK\n" +
+			"// that covers every microservice.\n\n" +
+			strings.Join(appImports, "\n") + "\n"
+		files = append(files, entry{"veld/app.veld", appVeld, "veld/app.veld"})
+
 		files = append(files, entry{"README.md", initReadmeContent, "README.md"})
 
 	} else {
@@ -3558,7 +3592,7 @@ module %s {
 	fmt.Println()
 	fmt.Println("  Next steps:")
 	if isMicroservices {
-		fmt.Println("    1. Edit veld/services/<name>/models/ and modules/ to define each service's API")
+		fmt.Println("    1. Edit veld/services/<name>/main.veld, models/, and modules/ to define each service's API")
 		fmt.Println("    2. Run: " + bold("veld setup") + "  — patch tsconfig / package.json / pom.xml in each service")
 		fmt.Println("    3. Run: " + bold("veld generate"))
 		fmt.Println("    4. Run: " + bold("veld deps") + " to view the service dependency graph")
