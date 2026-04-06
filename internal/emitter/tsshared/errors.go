@@ -94,14 +94,19 @@ func emitModuleErrors(mod ast.Module, dir string) error {
 		sb.WriteString(fmt.Sprintf("export type %sError = ApiError<%sErrorCode>;\n\n", pascal, pascal))
 
 		camelAction := emitter.ToCamelCase(act.Name)
-		sb.WriteString(fmt.Sprintf("/** Error factories for %s */\n", pascal))
+		sb.WriteString(fmt.Sprintf("/** Error factories for %s — each factory also exposes .code and .status for frontend type guards. */\n", pascal))
 		sb.WriteString(fmt.Sprintf("export const %sErrors = {\n", camelAction))
 		for _, errName := range act.Errors {
 			code := emitter.ErrorCode(act.Name, errName)
 			status := emitter.ErrorHTTPStatus(errName)
 			camelErr := emitter.ToCamelCase(errName)
-			sb.WriteString(fmt.Sprintf("  %s: (message?: string): %sError =>\n", camelErr, pascal))
-			sb.WriteString(fmt.Sprintf("    new ApiError('%s', %d, message ?? '%s'),\n", code, status, errName))
+			// Object.assign attaches .code/.status metadata to the factory function so
+			// frontend can write: isErrorCode(err, usersErrors.getUser.notFound.code)
+			// without magic strings, while the backend still calls: throw usersErrors.getUser.notFound('msg')
+			sb.WriteString(fmt.Sprintf("  %s: Object.assign(\n", camelErr))
+			sb.WriteString(fmt.Sprintf("    (message?: string): %sError => new ApiError('%s', %d, message ?? '%s'),\n", pascal, code, status, errName))
+			sb.WriteString(fmt.Sprintf("    { code: '%s' as const, status: %d as const },\n", code, status))
+			sb.WriteString("  ),\n")
 		}
 		sb.WriteString("} as const;\n\n")
 	}

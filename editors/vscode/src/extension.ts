@@ -231,9 +231,20 @@ class VeldLanguageServer {
                         let resolvedPath: string | undefined;
                         if (projectRoot) {
                             const folder = this.resolveAliasFolder(projectRoot, alias, filePath);
-                            const candidate = path.join(folder, `${name}.veld`);
-                            if (fs.existsSync(candidate)) {
-                                resolvedPath = candidate;
+                            // Try exact match first, then compound extensions
+                            const candidates = [
+                                path.join(folder, `${name}.veld`),
+                                path.join(folder, `${name}.model.veld`),
+                                path.join(folder, `${name}.module.veld`),
+                                path.join(folder, `${name}.enum.veld`),
+                                path.join(folder, `${name}.types.veld`),
+                                path.join(folder, `${name}.schema.veld`),
+                            ];
+                            for (const candidate of candidates) {
+                                if (fs.existsSync(candidate)) {
+                                    resolvedPath = candidate;
+                                    break;
+                                }
                             }
                         }
                         doc.imports.push({ raw, alias, name, line: i, resolvedPath });

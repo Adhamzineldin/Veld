@@ -43,7 +43,7 @@ func (a *JavaAdapter) MapType(veldType string) (string, []string, error) {
 		"bool":     {"Boolean", nil},
 		"date":     {"String", nil},
 		"datetime": {"String", nil},
-		"uuid":     {"String", nil},
+		"uuid":     {"UUID", []string{"java.util.UUID"}},
 		"bytes":    {"byte[]", nil},
 		"any":      {"Object", nil},
 		"json":     {"Object", nil},
