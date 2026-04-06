@@ -31,6 +31,25 @@ func (e *JavaEmitter) emitAllErrors(strat jstrategy.FrameworkStrategy, a ast.AST
 		return err
 	}
 
+	// ── Clean up stale error files from models/ (old code put them there) ──
+	modelsDir := pkgToDir(outDir, javaPackageModels)
+	staleFiles := []string{
+		"ApiException.java",
+		"ApiErrorResponse.java",
+		"NotFoundException.java",
+		"BadRequestException.java",
+		"UnauthorizedException.java",
+		"ForbiddenException.java",
+		"ConflictException.java",
+		"ValidationException.java",
+		"InternalException.java",
+	}
+	for _, f := range staleFiles {
+		_ = os.Remove(filepath.Join(modelsDir, f))
+	}
+	// Also clean old models/errors/ sub-package if it existed
+	_ = os.RemoveAll(filepath.Join(modelsDir, "errors"))
+
 	// ApiErrorResponse.java
 	if err := emitJavaApiErrorResponse(errorsDir); err != nil {
 		return err
