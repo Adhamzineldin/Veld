@@ -346,7 +346,19 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		cfg.Backend = "node"
 	}
 	if cfg.Frontend == "" {
-		cfg.Frontend = "typescript"
+		// Only default to "typescript" for JS/TS backends where mixing TS
+		// frontend files in the same output directory makes sense.  For all
+		// other backends (java, python, go, rust, csharp, php …) default to
+		// "none" so no TypeScript client/ folder is generated alongside the
+		// backend's native language files.  Users who want a frontend SDK
+		// with a non-JS backend should explicitly set "frontend" + a
+		// separate "frontendOut".
+		switch backendAlias(cfg.Backend) {
+		case "node-ts", "node-js":
+			cfg.Frontend = "typescript"
+		default:
+			cfg.Frontend = "none"
+		}
 	}
 	cfg.Backend = backendAlias(cfg.Backend)
 	cfg.Frontend = frontendAlias(cfg.Frontend)

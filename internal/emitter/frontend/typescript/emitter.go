@@ -32,8 +32,9 @@ func (e *TypeScriptEmitter) Summary(modules []string) []emitter.SummaryLine {
 	}
 }
 
-// Emit writes generated/client/ into outDir. Expects types/ and errors/ to
-// already exist as siblings (emitted by the backend emitter into the same dir).
+// Emit writes generated/client/ into outDir. Also generates types/ and errors/
+// as siblings so the frontend SDK is fully self-contained regardless of which
+// backend language is chosen.
 func (e *TypeScriptEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) error {
 	if opts.DryRun {
 		return nil
