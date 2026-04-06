@@ -43,7 +43,10 @@ intellijPlatform {
 
     pluginVerification {
         ides {
-            recommended()
+            // Verify against the IDE we already build against (2025.1).
+            // Do NOT use recommended() — it may try to resolve unreleased
+            // IDE versions (e.g. ideaIC:2026.1) and fail the build.
+            localPlatformArtifacts()
         }
     }
 
