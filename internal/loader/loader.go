@@ -16,7 +16,13 @@ import (
 //
 // aliases is an optional map of @alias → relative-dir-from-rootDir.
 func Parse(path string, aliases ...map[string]string) (ast.AST, []string, error) {
-	abs, err := filepath.Abs(path)
+	// If the path is a directory, look for a well-known entry file inside it.
+	resolved, err := resolveInputPath(path)
+	if err != nil {
+		return ast.AST{}, nil, err
+	}
+
+	abs, err := filepath.Abs(resolved)
 	if err != nil {
 		return ast.AST{}, nil, err
 	}
@@ -29,9 +35,39 @@ func Parse(path string, aliases ...map[string]string) (ast.AST, []string, error)
 
 	var files []string
 	fileImports := make(map[string][]string)
-	a, err := resolveFile(path, rootDir, aliasMap, make(map[string]bool), &files, fileImports)
+	a, err := resolveFile(resolved, rootDir, aliasMap, make(map[string]bool), &files, fileImports)
 	a.FileImports = fileImports
 	return a, files, err
+}
+
+// resolveInputPath checks whether path is a directory. If so, it looks for
+// well-known entry files (app.veld, main.veld, index.veld) inside it.
+// If path is already a regular file (or doesn't exist yet), it is returned as-is.
+func resolveInputPath(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		// File doesn't exist — return as-is and let ReadFile produce the real error.
+		return path, nil
+	}
+	if !info.IsDir() {
+		return path, nil
+	}
+
+	// Path is a directory — look for well-known entry files.
+	candidates := []string{"app.veld", "main.veld", "index.veld"}
+	for _, c := range candidates {
+		candidate := filepath.Join(path, c)
+		if fi, statErr := os.Stat(candidate); statErr == nil && !fi.IsDir() {
+			return candidate, nil
+		}
+	}
+
+	// No well-known entry file found — give a helpful error.
+	return "", fmt.Errorf(
+		"%s is a directory, not a .veld file\n"+
+			"  hint: create %s or set \"input\" in veld.config.json to a .veld file",
+		path, filepath.Join(path, "app.veld"),
+	)
 }
 
 func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[string]bool, files *[]string, fileImports map[string][]string) (ast.AST, error) {
@@ -43,6 +79,12 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 		return ast.AST{ASTVersion: "1.0.0"}, nil
 	}
 	seen[abs] = true
+
+	// Guard: never try to read a directory as a file.
+	if info, statErr := os.Stat(abs); statErr == nil && info.IsDir() {
+		return ast.AST{}, fmt.Errorf("%s is a directory, not a .veld file", path)
+	}
+
 	*files = append(*files, abs)
 
 	content, err := os.ReadFile(path)

@@ -39,6 +39,7 @@ func GetLanguageSpec() *VeldLanguageSpec {
 			"string",
 			"int",
 			"float",
+			"decimal",
 			"bool",
 			"date",
 			"datetime",

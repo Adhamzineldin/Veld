@@ -350,7 +350,7 @@ func buildRustReturnType(e *RustEmitter, act ast.Action) string {
 // mapRustOutputType maps a Veld output type to its Rust equivalent.
 func mapRustOutputType(e *RustEmitter, t string) string {
 	switch t {
-	case "string", "uuid", "date", "datetime":
+	case "string", "uuid", "date", "datetime", "decimal":
 		return "String"
 	case "int":
 		return "i64"

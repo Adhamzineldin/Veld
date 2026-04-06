@@ -32,6 +32,7 @@ func (a *RustAdapter) MapType(veldType string) (string, []string, error) {
 		"string":   "String",
 		"int":      "i64",
 		"float":    "f64",
+		"decimal":  "String",
 		"bool":     "bool",
 		"date":     "String", // ISO date string; use chrono crate for full date support
 		"datetime": "String", // ISO datetime string

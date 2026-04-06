@@ -33,6 +33,7 @@ func (a *PhpAdapter) MapType(veldType string) (string, []string, error) {
 		"string":   "string",
 		"int":      "int",
 		"float":    "float",
+		"decimal":  "string",
 		"bool":     "bool",
 		"date":     "string",
 		"datetime": "string",

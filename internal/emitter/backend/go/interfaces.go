@@ -158,7 +158,7 @@ func buildReturnType(act ast.Action) string {
 // mapGoOutputType maps a Veld output type to a Go type.
 func mapGoOutputType(t string) string {
 	switch t {
-	case "string", "uuid", "date", "datetime":
+	case "string", "uuid", "date", "datetime", "decimal":
 		return "string"
 	case "int":
 		return "int"
@@ -178,7 +178,7 @@ func mapGoOutputType(t string) string {
 // isPrimitiveOrAny returns true if the type is a Veld built-in scalar or any.
 func isPrimitiveOrAny(t string) bool {
 	switch t {
-	case "string", "int", "float", "bool", "date", "datetime", "uuid", "any", "json":
+	case "string", "int", "float", "decimal", "bool", "date", "datetime", "uuid", "any", "json":
 		return true
 	default:
 		return false

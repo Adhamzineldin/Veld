@@ -353,7 +353,7 @@ func collectAllFields(model ast.Model, byName map[string]ast.Model) []ast.Field 
 
 func jsScalarExpected(veldType string) string {
 	switch veldType {
-	case "string", "date", "datetime", "uuid":
+	case "string", "date", "datetime", "uuid", "decimal":
 		return "string"
 	case "int", "float":
 		return "number"

@@ -102,6 +102,7 @@ func NewVeldLanguage() *VeldLanguage {
 			"string":   true,
 			"int":      true,
 			"float":    true,
+			"decimal":  true,
 			"bool":     true,
 			"date":     true,
 			"datetime": true,

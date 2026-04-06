@@ -39,6 +39,7 @@ func (a *JavaAdapter) MapType(veldType string) (string, []string, error) {
 		"string":   {"String", nil},
 		"int":      {"Long", nil},
 		"float":    {"Double", nil},
+		"decimal":  {"java.math.BigDecimal", []string{"java.math.BigDecimal"}},
 		"bool":     {"Boolean", nil},
 		"date":     {"String", nil},
 		"datetime": {"String", nil},

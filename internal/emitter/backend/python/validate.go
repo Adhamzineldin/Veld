@@ -342,6 +342,8 @@ func pyScalarCheck(veldType, varExpr string) (expected, check string) {
 		return "int", fmt.Sprintf("isinstance(%s, int) and not isinstance(%s, bool)", varExpr, varExpr)
 	case "float":
 		return "float", fmt.Sprintf("isinstance(%s, (int, float)) and not isinstance(%s, bool)", varExpr, varExpr)
+	case "decimal":
+		return "Decimal or str", fmt.Sprintf("isinstance(%s, (str, Decimal))", varExpr)
 	case "bool":
 		return "bool", fmt.Sprintf("isinstance(%s, bool)", varExpr)
 	default:

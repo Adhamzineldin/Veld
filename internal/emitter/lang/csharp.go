@@ -33,6 +33,7 @@ func (a *CSharpAdapter) MapType(veldType string) (string, []string, error) {
 		"string":   "string",
 		"int":      "long",
 		"float":    "double",
+		"decimal":  "decimal",
 		"bool":     "bool",
 		"date":     "string",
 		"datetime": "string",

@@ -324,7 +324,7 @@ Each consumed service gets `sdk/<service>/` in the consumer's output directory:
 ```
 model ModelName {
   description: "..."
-  fieldName:  type         // types: string, int, float, bool, date, datetime, uuid
+  fieldName:  type         // types: string, int, float, decimal, bool, date, datetime, uuid
   optional?:  type         // optional field
   tags:       string[]     // array type
   metadata:   Map<string, string>  // map/record type
@@ -456,12 +456,19 @@ Generated `package.json` enables `@veld/generated` path alias. Add to `tsconfig.
 | `string` | `string` | `str` | `z.string()` | `str` |
 | `int` | `number` | `int` | `z.number().int()` | `int` |
 | `float` | `number` | `float` | `z.number()` | `float` |
+| `decimal` | `string` | `Decimal` | `z.string()` | `Decimal` |
 | `bool` | `boolean` | `bool` | `z.boolean()` | `bool` |
 | `date` | `string` | `str` | `z.string().date()` | `str` |
 | `datetime` | `string` | `str` | `z.string().datetime()` | `str` |
 | `uuid` | `string` | `str` | `z.string().uuid()` | `str` |
 | `T[]` | `T[]` | `List[T]` | `z.array(TSchema)` | `List[T]` |
 | `Map<string,V>` | `Record<string,V>` | `Dict[str,V]` | `z.record(z.string(),V)` | `Dict[str,V]` |
+
+### Extended Type Mapping (all backends)
+
+| Veld | Go | Rust | Java | C# | PHP | Dart | Kotlin | Swift | SQL | OpenAPI | GraphQL |
+|------|-----|------|------|----|-----|------|--------|-------|-----|---------|---------|
+| `decimal` | `string` | `String` | `BigDecimal` | `decimal` | `string` | `String` | `BigDecimal` | `Decimal` | `DECIMAL(19,4)` | `string` format:`decimal` | `String` |
 
 ## Hard Rules
 

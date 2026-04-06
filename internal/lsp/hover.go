@@ -263,7 +263,7 @@ func hoverDefaultAnnotation(text string, pos Position) *Hover {
 
 	var expected string
 	switch fieldType {
-	case "string", "date", "datetime", "uuid":
+	case "string", "date", "datetime", "uuid", "decimal":
 		expected = "quoted string (e.g. `\"value\"`)"
 	case "int":
 		expected = "whole number (e.g. `42`)"

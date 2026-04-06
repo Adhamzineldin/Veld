@@ -48,6 +48,7 @@ const (
 	TTypeInt
 	TTypeFloat
 	TTypeBool
+	TTypeDecimal
 	TTypeDate
 	TTypeDatetime
 	TTypeUUID
@@ -133,6 +134,8 @@ func (t TokenType) String() string {
 		return "\"int\""
 	case TTypeFloat:
 		return "\"float\""
+	case TTypeDecimal:
+		return "\"decimal\""
 	case TTypeBool:
 		return "\"bool\""
 	case TTypeDate:
@@ -393,6 +396,8 @@ func classifyWord(word string, line int) Token {
 		return Token{TTypeInt, word, line}
 	case "float":
 		return Token{TTypeFloat, word, line}
+	case "decimal":
+		return Token{TTypeDecimal, word, line}
 	case "bool":
 		return Token{TTypeBool, word, line}
 	case "date":

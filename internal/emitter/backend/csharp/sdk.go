@@ -201,6 +201,8 @@ func csSdkScalar(t string) string {
 		return "long"
 	case "float":
 		return "double"
+	case "decimal":
+		return "decimal"
 	case "bool":
 		return "bool"
 	case "date", "datetime":

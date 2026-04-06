@@ -428,7 +428,7 @@ class VeldAnnotator : Annotator {
         val isBool = defaultVal == "true" || defaultVal == "false"
 
         return when (fieldType) {
-            "string", "date", "datetime", "uuid" -> {
+            "string", "date", "datetime", "uuid", "decimal" -> {
                 if (!isQuoted) "@default for $fieldType must be a quoted string, got $defaultVal"
                 else null
             }

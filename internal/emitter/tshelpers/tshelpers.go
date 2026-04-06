@@ -14,7 +14,7 @@ func VeldScalarToTS(t string) string {
 		return "number"
 	case "bool":
 		return "boolean"
-	case "date", "datetime", "uuid":
+	case "date", "datetime", "uuid", "decimal":
 		return "string"
 	case "any", "json":
 		return "any"

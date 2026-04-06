@@ -113,7 +113,7 @@ func gqlType(t string) string {
 		return "Float"
 	case "bool":
 		return "Boolean"
-	case "string", "date", "datetime", "uuid":
+	case "string", "date", "datetime", "uuid", "decimal":
 		return "String"
 	default:
 		return t

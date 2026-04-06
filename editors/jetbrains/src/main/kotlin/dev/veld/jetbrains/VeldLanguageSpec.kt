@@ -12,7 +12,7 @@ object VeldLanguageSpec {
     
     val KEYWORDS = setOf("model", "module", "action", "enum", "import", "from", "extends")
     val HTTP_METHODS = setOf("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS")
-    val BUILTIN_TYPES = setOf("string", "int", "float", "bool", "date", "datetime", "uuid", "bytes", "json", "any")
+    val BUILTIN_TYPES = setOf("string", "int", "float", "decimal", "bool", "date", "datetime", "uuid", "bytes", "json", "any")
     val DIRECTIVES = setOf("description", "prefix", "method", "path", "input", "output", "query", "stream", "middleware", "errors", "default")
     val SPECIAL_TYPES = setOf("List", "Map")
     val KNOWN_ANNOTATIONS = setOf("default", "unique", "required", "optional", "index", "primary", "autoincrement", "readonly")

@@ -228,7 +228,7 @@ func rustSdkFieldType(f ast.Field) string {
 
 func rustSdkScalar(t string) string {
 	switch t {
-	case "string", "uuid", "date", "datetime":
+	case "string", "uuid", "date", "datetime", "decimal":
 		return "String"
 	case "int":
 		return "i64"

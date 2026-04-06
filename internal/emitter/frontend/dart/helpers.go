@@ -18,7 +18,7 @@ func veldTypeToDart(t string) string {
 		return "double"
 	case "bool":
 		return "bool"
-	case "string", "date", "datetime", "uuid":
+	case "string", "date", "datetime", "uuid", "decimal":
 		return "String"
 	default:
 		return t

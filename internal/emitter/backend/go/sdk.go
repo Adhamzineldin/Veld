@@ -236,7 +236,7 @@ func goSdkFieldType(f ast.Field) string {
 
 func goSdkScalar(t string) string {
 	switch t {
-	case "string", "uuid":
+	case "string", "uuid", "decimal":
 		return "string"
 	case "int":
 		return "int64"

@@ -193,7 +193,7 @@ func phpSdkType(f ast.Field) string {
 
 func phpSdkScalar(t string) string {
 	switch t {
-	case "string", "uuid", "date", "datetime":
+	case "string", "uuid", "date", "datetime", "decimal":
 		return "string"
 	case "int":
 		return "int"

@@ -65,14 +65,14 @@ func TestTokenizeModel(t *testing.T) {
 }
 
 func TestTokenizeAllTypes(t *testing.T) {
-	src := "string int float bool date datetime uuid"
+	src := "string int float decimal bool date datetime uuid"
 	tokens, err := New(src).Tokenize()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	expectedTypes := []TokenType{
-		TTypeString, TTypeInt, TTypeFloat, TTypeBool,
+		TTypeString, TTypeInt, TTypeFloat, TTypeDecimal, TTypeBool,
 		TTypeDate, TTypeDatetime, TTypeUUID, TEOF,
 	}
 	if len(tokens) != len(expectedTypes) {

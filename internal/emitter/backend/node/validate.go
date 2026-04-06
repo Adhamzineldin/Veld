@@ -387,7 +387,7 @@ func collectAllFields(model ast.Model, byName map[string]ast.Model) []ast.Field 
 // tsScalarExpected maps a Veld scalar type to the TypeScript typeof string.
 func tsScalarExpected(veldType string) string {
 	switch veldType {
-	case "string", "date", "datetime", "uuid":
+	case "string", "date", "datetime", "uuid", "decimal":
 		return "string"
 	case "int", "float":
 		return "number"
