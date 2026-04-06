@@ -290,13 +290,15 @@ func emitJavaModuleErrorFactories(mod ast.Module, dir string) error {
 			continue
 		}
 		camelAction := emitter.ToCamelCase(act.Name)
-		innerClass := capitalize(act.Name) + "Actions"
+		innerClass := capitalize(act.Name) + "Errors"
 		exceptionClass := capitalize(act.Name) + "Exception"
 
 		sb.WriteString(fmt.Sprintf("    /** Error factory for the %s action. */\n", act.Name))
 		sb.WriteString(fmt.Sprintf("    public static final %s %s = new %s();\n\n", innerClass, camelAction, innerClass))
 
-		sb.WriteString(fmt.Sprintf("    /** Per-error factories and code constants for %s. */\n", act.Name))
+		sb.WriteString(fmt.Sprintf("    /** Per-error factories and code constants for %s.\n", act.Name))
+		sb.WriteString(fmt.Sprintf("     * All members are static — access via singleton (%s.%s.method())\n", className, camelAction))
+		sb.WriteString(fmt.Sprintf("     * or directly via class (%s.method()). */\n", innerClass))
 		sb.WriteString(fmt.Sprintf("    public static final class %s {\n", innerClass))
 		sb.WriteString(fmt.Sprintf("        private %s() {}\n\n", innerClass))
 
@@ -307,18 +309,18 @@ func emitJavaModuleErrorFactories(mod ast.Module, dir string) error {
 			constName := screamingSnake(errName) + "_CODE"
 			constStatus := screamingSnake(errName) + "_STATUS"
 
-			// Code constants mirror TS's factory.code / factory.status properties.
-			sb.WriteString(fmt.Sprintf("        /** Error code constant — mirrors TS %sErrors.%s.%s.code */\n",
+			// Static constants mirror TS's factory.code / factory.status properties.
+			sb.WriteString(fmt.Sprintf("        /** Error code — mirrors TS %sErrors.%s.%s.code */\n",
 				strings.ToLower(mod.Name), camelAction, methodName))
-			sb.WriteString(fmt.Sprintf("        public final String %s = \"%s\";\n", constName, code))
-			sb.WriteString(fmt.Sprintf("        public final int %s = %d;\n\n", constStatus, status))
+			sb.WriteString(fmt.Sprintf("        public static final String %s = \"%s\";\n", constName, code))
+			sb.WriteString(fmt.Sprintf("        public static final int %s = %d;\n\n", constStatus, status))
 
 			sb.WriteString(fmt.Sprintf("        /** Create a %s error (%d). */\n", errName, status))
-			sb.WriteString(fmt.Sprintf("        public %s %s(String message) {\n", exceptionClass, methodName))
+			sb.WriteString(fmt.Sprintf("        public static %s %s(String message) {\n", exceptionClass, methodName))
 			sb.WriteString(fmt.Sprintf("            return new %s(\"%s\", %d, message != null ? message : \"%s\");\n",
 				exceptionClass, code, status, errName))
 			sb.WriteString("        }\n\n")
-			sb.WriteString(fmt.Sprintf("        public %s %s() { return %s(null); }\n\n", exceptionClass, methodName, methodName))
+			sb.WriteString(fmt.Sprintf("        public static %s %s() { return %s(null); }\n\n", exceptionClass, methodName, methodName))
 		}
 
 		sb.WriteString("    }\n\n")
