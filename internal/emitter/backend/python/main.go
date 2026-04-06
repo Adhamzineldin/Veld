@@ -70,6 +70,10 @@ func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 	if err := e.emitPerModuleTypes(a, outDir); err != nil {
 		return fmt.Errorf("types: %w", err)
 	}
+	// Emit errors/_base.py + per-module _errors.py + errors/__init__.py in one shot.
+	if err := e.emitAllErrors(a, outDir); err != nil {
+		return fmt.Errorf("errors: %w", err)
+	}
 	for _, mod := range a.Modules {
 		if err := e.emitInterface(a, mod, outDir); err != nil {
 			return fmt.Errorf("interface for %s: %w", mod.Name, err)
@@ -79,9 +83,6 @@ func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 		}
 		if err := e.emitMiddlewareProtocol(mod, outDir); err != nil {
 			return fmt.Errorf("middleware for %s: %w", mod.Name, err)
-		}
-		if err := e.emitErrors(mod, outDir); err != nil {
-			return fmt.Errorf("errors for %s: %w", mod.Name, err)
 		}
 	}
 	if opts.Validate {

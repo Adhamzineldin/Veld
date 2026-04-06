@@ -74,6 +74,11 @@ func (e *GoEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) err
 		}
 	}
 
+	// Emit errors/api_error.go + per-module error files in one shot.
+	if err := e.generateAllErrors(a, outDir); err != nil {
+		return fmt.Errorf("go emitter [errors]: %w", err)
+	}
+
 	// Per-module generation.
 	for _, mod := range a.Modules {
 		if err := e.generateInterface(a, mod, outDir); err != nil {
@@ -81,9 +86,6 @@ func (e *GoEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) err
 		}
 		if err := e.generateModuleRoutes(a, mod, outDir, strat); err != nil {
 			return fmt.Errorf("go emitter [routes for %s]: %w", mod.Name, err)
-		}
-		if err := e.generateErrors(mod, outDir); err != nil {
-			return fmt.Errorf("go emitter [errors for %s]: %w", mod.Name, err)
 		}
 		if err := e.generateModuleMiddleware(mod, outDir); err != nil {
 			return fmt.Errorf("go emitter [middleware for %s]: %w", mod.Name, err)

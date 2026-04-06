@@ -1,0 +1,215 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "name": "IAM",
+      "description": "Identity and Access Management — authentication and user profiles",
+      "prefix": "/api/iam",
+      "actions": [
+        {
+          "name": "Register",
+          "description": "Create a new NexusBank user account",
+          "method": "POST",
+          "path": "/register",
+          "input": "RegisterInput",
+          "output": "User",
+          "errors": [
+            "Conflict"
+          ],
+          "middleware": []
+        },
+        {
+          "name": "Login",
+          "description": "Authenticate and receive a JWT token pair",
+          "method": "POST",
+          "path": "/login",
+          "input": "LoginInput",
+          "output": "TokenPair",
+          "errors": [
+            "Unauthorized"
+          ],
+          "middleware": []
+        },
+        {
+          "name": "RefreshToken",
+          "description": "Exchange a refresh token for a new access token",
+          "method": "POST",
+          "path": "/refresh",
+          "input": "RefreshInput",
+          "output": "TokenPair",
+          "errors": [
+            "Unauthorized"
+          ],
+          "middleware": []
+        },
+        {
+          "name": "GetProfile",
+          "description": "Return the currently authenticated user",
+          "method": "GET",
+          "path": "/me",
+          "input": "",
+          "output": "User",
+          "errors": [
+            "Unauthorized",
+            "NotFound"
+          ],
+          "middleware": [
+            "AuthGuard"
+          ]
+        },
+        {
+          "name": "UpdateProfile",
+          "description": "Update name or phone on the authenticated user",
+          "method": "PATCH",
+          "path": "/me",
+          "input": "UpdateProfileInput",
+          "output": "User",
+          "errors": [
+            "Unauthorized",
+            "NotFound"
+          ],
+          "middleware": [
+            "AuthGuard"
+          ]
+        },
+        {
+          "name": "Logout",
+          "description": "Invalidate the current session token",
+          "method": "POST",
+          "path": "/logout",
+          "input": "",
+          "output": "",
+          "errors": [
+            "Unauthorized"
+          ],
+          "middleware": [
+            "AuthGuard"
+          ]
+        }
+      ]
+    }
+  ],
+  "models": [
+    {
+      "name": "User",
+      "description": "A registered NexusBank user",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "name": "firstName",
+          "type": "string"
+        },
+        {
+          "name": "lastName",
+          "type": "string"
+        },
+        {
+          "name": "phone",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "createdAt",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "RegisterInput",
+      "description": "New user registration payload",
+      "fields": [
+        {
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "name": "password",
+          "type": "string"
+        },
+        {
+          "name": "firstName",
+          "type": "string"
+        },
+        {
+          "name": "lastName",
+          "type": "string"
+        },
+        {
+          "name": "phone",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "name": "LoginInput",
+      "description": "Credentials for email/password authentication",
+      "fields": [
+        {
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "name": "password",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "TokenPair",
+      "description": "JWT access + refresh token pair",
+      "fields": [
+        {
+          "name": "accessToken",
+          "type": "string"
+        },
+        {
+          "name": "refreshToken",
+          "type": "string"
+        },
+        {
+          "name": "expiresIn",
+          "type": "int"
+        }
+      ]
+    },
+    {
+      "name": "RefreshInput",
+      "description": "Payload to exchange a refresh token for a new access token",
+      "fields": [
+        {
+          "name": "refreshToken",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "UpdateProfileInput",
+      "description": "Fields the user may update on their own profile",
+      "fields": [
+        {
+          "name": "firstName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "lastName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "phone",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    }
+  ]
+}
