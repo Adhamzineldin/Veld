@@ -1,3 +1,5 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+
 plugins {
     id 'java'
     id 'org.jetbrains.kotlin.jvm' version '2.1.10'
@@ -43,10 +45,13 @@ intellijPlatform {
 
     pluginVerification {
         ides {
-            // Verify against the IDE we already build against (2025.1).
-            // Do NOT use recommended() — it may try to resolve unreleased
-            // IDE versions (e.g. ideaIC:2026.1) and fail the build.
-            localPlatformArtifacts()
+            // Verify against the IDE we build against.
+            // IntelliJ Platform Gradle Plugin < 2.7 uses ide(...) helper.
+            ide(IntelliJPlatformType.IntellijIdeaCommunity, '2025.1')
+
+            // 2026 compatibility verification target.
+            // With plugin 2.5.0, use the legacy IntelliJ IDEA Ultimate enum constant.
+            ide(IntelliJPlatformType.IntellijIdeaUltimate, '2026.1')
         }
     }
 

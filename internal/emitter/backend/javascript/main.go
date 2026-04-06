@@ -58,15 +58,16 @@ func (e *JSEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) err
 	if err := e.emitPerModuleTypes(a, outDir); err != nil {
 		return fmt.Errorf("types: %w", err)
 	}
+	// Emit errors/_base.js + per-module .errors.js + errors/index.js in one shot.
+	if err := e.emitAllErrors(a, outDir); err != nil {
+		return fmt.Errorf("errors: %w", err)
+	}
 	for _, mod := range a.Modules {
 		if err := e.emitInterface(a, mod, outDir); err != nil {
 			return fmt.Errorf("interface for %s: %w", mod.Name, err)
 		}
 		if err := e.emitRoutes(a, mod, outDir, opts, strat); err != nil {
 			return fmt.Errorf("routes for %s: %w", mod.Name, err)
-		}
-		if err := e.emitErrors(mod, outDir); err != nil {
-			return fmt.Errorf("errors for %s: %w", mod.Name, err)
 		}
 	}
 	if opts.Validate {

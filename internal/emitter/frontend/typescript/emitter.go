@@ -241,13 +241,44 @@ func emitClientErrorsBarrel(a ast.AST, dir string) error {
 		}
 	}
 	if hasErrors {
-		sb.WriteString("\n// Backend error types and factories:\n")
+		sb.WriteString("\n// Backend error class, type guards, convenience errors, and handler:\n")
+		sb.WriteString("export {\n")
+		sb.WriteString("  ApiError,\n")
+		sb.WriteString("  isApiError as isBackendApiError,\n")
+		sb.WriteString("  isErrorCode as isBackendErrorCode,\n")
+		sb.WriteString("  isHttpStatus,\n")
+		sb.WriteString("  toErrorResponse,\n")
+		sb.WriteString("  errorHandler,\n")
+		sb.WriteString("  NotFoundError,\n")
+		sb.WriteString("  BadRequestError,\n")
+		sb.WriteString("  UnauthorizedError,\n")
+		sb.WriteString("  ForbiddenError,\n")
+		sb.WriteString("  ConflictError,\n")
+		sb.WriteString("  ValidationError,\n")
+		sb.WriteString("  InternalError,\n")
+		sb.WriteString("} from '../errors';\n")
+		sb.WriteString("export type { ErrorResponse } from '../errors';\n")
+
+		sb.WriteString("\n// Per-module error types and factories:\n")
 
 		exported := make(map[string]bool)
 		// Mark client-side exports as already exported to avoid collisions.
 		exported["VeldApiError"] = true
 		exported["isApiError"] = true
 		exported["isErrorCode"] = true
+		// Also mark the symbols we just re-exported from errors barrel.
+		exported["ApiError"] = true
+		exported["isHttpStatus"] = true
+		exported["toErrorResponse"] = true
+		exported["errorHandler"] = true
+		exported["ErrorResponse"] = true
+		exported["NotFoundError"] = true
+		exported["BadRequestError"] = true
+		exported["UnauthorizedError"] = true
+		exported["ForbiddenError"] = true
+		exported["ConflictError"] = true
+		exported["ValidationError"] = true
+		exported["InternalError"] = true
 
 		for _, mod := range a.Modules {
 			if !emitter.HasErrors(mod) {
