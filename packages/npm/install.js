@@ -173,7 +173,7 @@ async function main() {
 
   const version = await getLatestVersion();
   const url = getDownloadUrl(platformKey, version);
-  const destDir = path.join(__dirname, "bin-platform");
+  const destDir = path.join(__dirname, "binaries", platformKey);
   const binaryName = getBinaryName();
   const binaryPath = path.join(destDir, binaryName);
 

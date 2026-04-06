@@ -23,12 +23,16 @@
   "bin": {
     "veld": "./bin/veld.js"
   },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
   "engines": {
     "node": ">=16"
   },
   "files": [
     "bin/",
     "binaries/",
+    "install.js",
     "README.md",
     "LICENSE"
   ]

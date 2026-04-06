@@ -504,7 +504,7 @@ jobs:
         run: |
           VERSION="${{ needs.resolve.outputs.version }}"
           VERSION="${VERSION#v}"
-          FORMULA="packages/homebrew/Formula/veld.rb"
+          FORMULA="packages/homebrew/Formula/maayn-veld.rb"
           sed -i "s/version \".*\"/version \"${VERSION}\"/" "$FORMULA"
           sed -i "s/PLACEHOLDER_SHA256_DARWIN_ARM64/${{ steps.hashes.outputs.DARWIN_ARM64 }}/" "$FORMULA"
           sed -i "s/PLACEHOLDER_SHA256_DARWIN_AMD64/${{ steps.hashes.outputs.DARWIN_AMD64 }}/" "$FORMULA"
