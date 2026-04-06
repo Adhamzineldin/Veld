@@ -197,20 +197,12 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 	}
 
 	// ── emit: backend ────────────────────────────────────────────────────
-	backendOrTool, isRealBackend, err := emitter.GetBackendOrTool(rc.Backend)
+	backendOrTool, _, err := emitter.GetBackendOrTool(rc.Backend)
 	if err != nil {
 		return nil, veldFiles, nil, err
 	}
 	if err := backendOrTool.Emit(emitAST, rc.BackendOut, opts); err != nil {
 		return nil, veldFiles, nil, fmt.Errorf("%s emitter: %w", rc.Backend, err)
-	}
-	// When using split output, also emit backend (types, errors, interfaces,
-	// routes) into the frontend output dir so the frontend SDK is fully
-	// self-contained — no cross-directory imports needed.
-	if isRealBackend && rc.SplitOutput() && !opts.DryRun {
-		if err := backendOrTool.Emit(emitAST, rc.FrontendOut, opts); err != nil {
-			return nil, veldFiles, nil, fmt.Errorf("%s emitter (frontend copy): %w", rc.Backend, err)
-		}
 	}
 
 	// ── emit: frontend ───────────────────────────────────────────────────
@@ -315,17 +307,12 @@ func runGenerateWithAST(rc config.ResolvedConfig, a ast.AST, opts emitter.EmitOp
 	}
 
 	// Emit backend (types, routes, etc.).
-	backendOrTool, isRealBackend, err := emitter.GetBackendOrTool(rc.Backend)
+	backendOrTool, _, err := emitter.GetBackendOrTool(rc.Backend)
 	if err != nil {
 		return err
 	}
 	if err := backendOrTool.Emit(emitAST, rc.BackendOut, opts); err != nil {
 		return fmt.Errorf("%s emitter: %w", rc.Backend, err)
-	}
-	if isRealBackend && rc.SplitOutput() {
-		if err := backendOrTool.Emit(emitAST, rc.FrontendOut, opts); err != nil {
-			return fmt.Errorf("%s emitter (frontend copy): %w", rc.Backend, err)
-		}
 	}
 
 	// Emit frontend SDK.
