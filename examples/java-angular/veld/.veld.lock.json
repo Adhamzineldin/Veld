@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "name": "Todos",
+      "description": "Todo management",
+      "prefix": "/api/todos",
+      "actions": [
+        {
+          "name": "ListTodos",
+          "description": "List all todos",
+          "method": "GET",
+          "path": "/",
+          "input": "",
+          "output": "Todo",
+          "outputArray": true,
+          "middleware": []
+        },
+        {
+          "name": "GetTodo",
+          "description": "Get a todo by ID",
+          "method": "GET",
+          "path": "/:id",
+          "input": "",
+          "output": "Todo",
+          "middleware": []
+        },
+        {
+          "name": "CreateTodo",
+          "description": "Create a new todo",
+          "method": "POST",
+          "path": "/",
+          "input": "CreateTodoInput",
+          "output": "Todo",
+          "middleware": []
+        },
+        {
+          "name": "UpdateTodo",
+          "description": "Update a todo",
+          "method": "PUT",
+          "path": "/:id",
+          "input": "UpdateTodoInput",
+          "output": "Todo",
+          "middleware": []
+        },
+        {
+          "name": "DeleteTodo",
+          "description": "Delete a todo",
+          "method": "DELETE",
+          "path": "/:id",
+          "input": "",
+          "output": "",
+          "middleware": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "description": "User management",
+      "prefix": "/api/users",
+      "actions": [
+        {
+          "name": "ListUsers",
+          "description": "List all users",
+          "method": "GET",
+          "path": "/",
+          "input": "",
+          "output": "User",
+          "outputArray": true,
+          "middleware": []
+        },
+        {
+          "name": "GetUser",
+          "description": "Get a user by ID",
+          "method": "GET",
+          "path": "/:id",
+          "input": "",
+          "output": "User",
+          "middleware": []
+        },
+        {
+          "name": "CreateUser",
+          "description": "Create a new user",
+          "method": "POST",
+          "path": "/",
+          "input": "CreateUserInput",
+          "output": "User",
+          "middleware": []
+        },
+        {
+          "name": "DeleteUser",
+          "description": "Delete a user",
+          "method": "DELETE",
+          "path": "/:id",
+          "input": "",
+          "output": "",
+          "middleware": []
+        }
+      ]
+    }
+  ],
+  "models": [
+    {
+      "name": "Todo",
+      "description": "A todo item",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "completed",
+          "type": "bool"
+        },
+        {
+          "name": "userId",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "CreateTodoInput",
+      "description": "Payload for creating a todo",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "userId",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "UpdateTodoInput",
+      "description": "Payload for updating a todo",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "completed",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "name": "User",
+      "description": "A registered user",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "email",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "CreateUserInput",
+      "description": "Payload for creating a user",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "email",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "UpdateUserInput",
+      "description": "Payload for updating a user",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    }
+  ]
+}

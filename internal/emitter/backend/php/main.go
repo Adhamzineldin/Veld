@@ -78,8 +78,8 @@ func (e *PhpEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) er
 	if err := e.emitModels(a, outDir); err != nil {
 		return fmt.Errorf("models: %w", err)
 	}
-	if err := e.emitErrorHandler(outDir); err != nil {
-		return fmt.Errorf("error handler: %w", err)
+	if err := e.emitAllErrors(a, outDir); err != nil {
+		return fmt.Errorf("errors: %w", err)
 	}
 	for _, mod := range a.Modules {
 		if err := e.emitInterface(a, mod, outDir); err != nil {
@@ -87,9 +87,6 @@ func (e *PhpEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) er
 		}
 		if err := e.emitController(a, mod, outDir, strat); err != nil {
 			return fmt.Errorf("controller %s: %w", mod.Name, err)
-		}
-		if err := e.emitModuleErrors(mod, outDir); err != nil {
-			return fmt.Errorf("errors %s: %w", mod.Name, err)
 		}
 		if err := e.emitModuleMiddleware(mod, outDir); err != nil {
 			return fmt.Errorf("middleware %s: %w", mod.Name, err)

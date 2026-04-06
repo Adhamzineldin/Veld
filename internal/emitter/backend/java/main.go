@@ -91,8 +91,9 @@ func (e *JavaEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	if err := e.emitModels(a, outDir); err != nil {
 		return fmt.Errorf("models: %w", err)
 	}
-	if err := e.emitErrorHandler(strat, outDir); err != nil {
-		return fmt.Errorf("error handler: %w", err)
+	// Emit errors/ directory in one shot: base + convenience + per-action + per-module.
+	if err := e.emitAllErrors(strat, a, outDir); err != nil {
+		return fmt.Errorf("errors: %w", err)
 	}
 	for _, mod := range a.Modules {
 		if err := e.emitInterface(strat, a, mod, outDir); err != nil {
@@ -100,9 +101,6 @@ func (e *JavaEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		}
 		if err := e.emitController(strat, a, mod, outDir); err != nil {
 			return fmt.Errorf("controller %s: %w", mod.Name, err)
-		}
-		if err := e.emitModuleErrors(mod, outDir); err != nil {
-			return fmt.Errorf("errors %s: %w", mod.Name, err)
 		}
 	}
 	// Middleware is emitted once for the whole AST — interceptors and the configurer

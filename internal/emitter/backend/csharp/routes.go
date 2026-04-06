@@ -32,6 +32,7 @@ func (e *CSharpEmitter) emitController(a ast.AST, mod ast.Module, outDir string,
 		sb.WriteString(u + "\n")
 	}
 	sb.WriteString(fmt.Sprintf("using %s.Models;\n", csNamespace))
+	sb.WriteString(fmt.Sprintf("using %s.Errors;\n", csNamespace))
 	sb.WriteString(fmt.Sprintf("using %s.Services;\n", csNamespace))
 	sb.WriteString(fmt.Sprintf("\nnamespace %s.Controllers;\n\n", csNamespace))
 

@@ -30,7 +30,7 @@ func (e *JavaEmitter) emitInterface(_ jstrategy.FrameworkStrategy, a ast.AST, mo
 	sb.WriteString("import java.util.List;\n")
 	for _, act := range mod.Actions {
 		if len(act.Errors) > 0 {
-			sb.WriteString(fmt.Sprintf("import %s.%sException;\n", javaPackageModels, capitalize(act.Name)))
+			sb.WriteString(fmt.Sprintf("import %s.%sException;\n", javaPackageErrors, capitalize(act.Name)))
 		}
 	}
 	sb.WriteString("\n")

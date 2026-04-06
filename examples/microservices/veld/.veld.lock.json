@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "name": "Notifications",
+      "description": "User notifications and per-category preference management",
+      "prefix": "/api/notifications",
+      "actions": [
+        {
+          "name": "ListNotifications",
+          "description": "List all notifications for the authenticated user",
+          "method": "GET",
+          "path": "/",
+          "input": "",
+          "output": "Notification",
+          "outputArray": true,
+          "errors": [
+            "Unauthorized"
+          ],
+          "middleware": [
+            "AuthGuard"
+          ]
+        },
+        {
+          "name": "MarkAsRead",
+          "description": "Mark a specific notification as read",
+          "method": "PATCH",
+          "path": "/:id/read",
+          "input": "",
+          "output": "Notification",
+          "errors": [
+            "Unauthorized",
+            "NotFound"
+          ],
+          "middleware": [
+            "AuthGuard"
+          ]
+        },
+        {
+          "name": "GetPreferences",
+          "description": "Return the user's notification channel preferences",
+          "method": "GET",
+          "path": "/preferences",
+          "input": "",
+          "output": "NotificationPreferences",
+          "errors": [
+            "Unauthorized"
+          ],
+          "middleware": [
+            "AuthGuard"
+          ]
+        },
+        {
+          "name": "UpdatePreferences",
+          "description": "Update one or more notification category preferences",
+          "method": "PATCH",
+          "path": "/preferences",
+          "input": "UpdatePreferencesInput",
+          "output": "NotificationPreferences",
+          "errors": [
+            "Unauthorized",
+            "BadRequest"
+          ],
+          "middleware": [
+            "AuthGuard"
+          ]
+        }
+      ]
+    }
+  ],
+  "models": [
+    {
+      "name": "Notification",
+      "description": "A user-facing notification event",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "userId",
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "type": "NotificationType"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "body",
+          "type": "string"
+        },
+        {
+          "name": "read",
+          "type": "bool"
+        },
+        {
+          "name": "createdAt",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "NotificationPreferences",
+      "description": "Per-category notification opt-in settings",
+      "fields": [
+        {
+          "name": "userId",
+          "type": "string"
+        },
+        {
+          "name": "transaction",
+          "type": "bool"
+        },
+        {
+          "name": "security",
+          "type": "bool"
+        },
+        {
+          "name": "marketing",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "UpdatePreferencesInput",
+      "description": "Partial update for notification preferences",
+      "fields": [
+        {
+          "name": "transaction",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "security",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "marketing",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    }
+  ]
+}
