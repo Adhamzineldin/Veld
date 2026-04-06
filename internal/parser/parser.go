@@ -786,6 +786,6 @@ func isHTTPMethod(t lexer.TokenType) bool {
 
 func isTypeToken(t lexer.TokenType) bool {
 	return t == lexer.TTypeString || t == lexer.TTypeInt || t == lexer.TTypeFloat ||
-		t == lexer.TTypeBool || t == lexer.TTypeDate || t == lexer.TTypeDatetime ||
-		t == lexer.TTypeUUID
+		t == lexer.TTypeDecimal || t == lexer.TTypeBool || t == lexer.TTypeDate ||
+		t == lexer.TTypeDatetime || t == lexer.TTypeUUID
 }

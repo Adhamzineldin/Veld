@@ -16,6 +16,8 @@ func veldTypeToKotlin(t string) string {
 		return "Int"
 	case "float":
 		return "Double"
+	case "decimal":
+		return "java.math.BigDecimal"
 	case "bool":
 		return "Boolean"
 	case "string", "date", "datetime", "uuid":

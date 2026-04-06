@@ -9,7 +9,7 @@ export const VELD_SPEC = {
   version: "1.0.0",
   keywords: ["model", "module", "action", "enum", "import", "from", "extends"],
   httpMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
-  builtinTypes: ["string", "int", "float", "bool", "date", "datetime", "uuid", "bytes", "json", "any"],
+  builtinTypes: ["string", "int", "float", "decimal", "bool", "date", "datetime", "uuid", "bytes", "json", "any"],
   directives: ["description", "prefix", "method", "path", "input", "output", "query", "stream", "middleware", "errors", "default"],
   specialTypes: ["List", "Map"],
   annotations: ["default", "unique", "required", "optional", "index", "primary", "autoincrement", "readonly"],

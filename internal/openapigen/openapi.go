@@ -215,7 +215,7 @@ func mapType(t string) string {
 		return "number"
 	case "bool":
 		return "boolean"
-	case "date", "datetime", "uuid", "string":
+	case "date", "datetime", "uuid", "string", "decimal":
 		return "string"
 	default:
 		return t
@@ -234,6 +234,8 @@ func mapFormat(t string) string {
 		return "int64"
 	case "float":
 		return "double"
+	case "decimal":
+		return "decimal"
 	default:
 		return ""
 	}

@@ -57,6 +57,7 @@ func (e *PythonEmitter) emitPerModuleTypes(a ast.AST, outDir string) error {
 		needsLiteral := len(ownedEnums) > 0
 		needsDict := false
 		needsAny := false
+		needsDecimal := false
 		for _, m := range ownedModels {
 			for _, f := range m.Fields {
 				if f.IsArray {
@@ -70,6 +71,9 @@ func (e *PythonEmitter) emitPerModuleTypes(a ast.AST, outDir string) error {
 				}
 				if f.Type == "any" || f.Type == "json" || f.MapValueType == "any" || f.MapValueType == "json" {
 					needsAny = true
+				}
+				if f.Type == "decimal" || f.MapValueType == "decimal" {
+					needsDecimal = true
 				}
 			}
 		}
@@ -96,6 +100,9 @@ func (e *PythonEmitter) emitPerModuleTypes(a ast.AST, outDir string) error {
 				typingImports = append(typingImports, "Dict")
 			}
 			sb.WriteString(fmt.Sprintf("from typing import %s\n", strings.Join(typingImports, ", ")))
+		}
+		if needsDecimal {
+			sb.WriteString("from decimal import Decimal\n")
 		}
 
 		for source, names := range reExports {
@@ -157,6 +164,8 @@ func veldScalarToPy(t string) string {
 		return "int"
 	case "float":
 		return "float"
+	case "decimal":
+		return "Decimal"
 	case "bool":
 		return "bool"
 	case "string", "date", "datetime", "uuid":

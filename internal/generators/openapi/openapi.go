@@ -288,6 +288,8 @@ func oaTypeSchema(t string) map[string]interface{} {
 		return map[string]interface{}{"type": "integer", "format": "int64"}
 	case "float":
 		return map[string]interface{}{"type": "number", "format": "double"}
+	case "decimal":
+		return map[string]interface{}{"type": "string", "format": "decimal"}
 	case "bool":
 		return map[string]interface{}{"type": "boolean"}
 	case "date":

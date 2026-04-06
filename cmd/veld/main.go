@@ -291,6 +291,214 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 	return names, veldFiles, changes, nil
 }
 
+// runWorkspaceGenerate handles code generation for workspace/microservice mode.
+// It iterates over all workspace entries, parses each one, resolves consumes,
+// and emits code per-entry. Returns (regeneratedNames, allVeldFiles, changes, error).
+func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, opts emitter.EmitOptions) ([]string, []string, []diff.Change, error) {
+	// Validate consumes declarations.
+	if errs, warns := validator.ValidateWorkspaceConsumes(rc.Workspace); len(errs) > 0 || len(warns) > 0 {
+		for _, w := range warns {
+			fmt.Fprintf(os.Stderr, yellow("⚠")+"  %s\n", w)
+		}
+		for _, e := range errs {
+			fmt.Fprintf(os.Stderr, red("✗")+"  %s\n", e)
+		}
+		if len(errs) > 0 {
+			return nil, nil, nil, fmt.Errorf("workspace validation failed")
+		}
+	}
+
+	// Pass 1: parse all workspace entries and cache ASTs.
+	type parsedEntry struct {
+		rc     config.ResolvedConfig
+		ast    ast.AST
+		flags  config.FlagOverrides
+		outDir string
+	}
+	parsed := make(map[string]*parsedEntry, len(rc.Workspace))
+	var allVeldFiles []string
+
+	for _, entry := range rc.Workspace {
+		entryFlags := flags
+		entryFlags.InputSet = true
+		entryFlags.Input = filepath.Join(rc.ConfigDir, entry.Input)
+
+		backendTarget := entry.Backend
+		if backendTarget == "" && entry.BackendCfg != nil && entry.BackendCfg.Target != "" {
+			backendTarget = entry.BackendCfg.Target
+		}
+		if backendTarget != "" {
+			entryFlags.BackendSet = true
+			entryFlags.Backend = backendTarget
+		}
+
+		frontendTarget := entry.Frontend
+		if frontendTarget == "" && entry.FrontendCfg != nil && entry.FrontendCfg.Target != "" {
+			frontendTarget = entry.FrontendCfg.Target
+		}
+		if frontendTarget != "" {
+			entryFlags.FrontendSet = true
+			entryFlags.Frontend = frontendTarget
+		}
+
+		if entry.BackendCfg != nil && entry.BackendCfg.Framework != "" {
+			entryFlags.BackendFrameworkSet = true
+			entryFlags.BackendFramework = entry.BackendCfg.Framework
+		}
+
+		outDir := entry.Out
+		if outDir == "" && entry.BackendCfg != nil && entry.BackendCfg.Out != "" {
+			outDir = entry.BackendCfg.Out
+		}
+		if outDir == "" {
+			outDir = filepath.Join(rc.ConfigDir, "generated", entry.Name)
+		} else if !filepath.IsAbs(outDir) {
+			outDir = filepath.Clean(filepath.Join(rc.ConfigDir, outDir))
+		}
+		entryFlags.OutSet = true
+		entryFlags.Out = outDir
+
+		if entry.FrontendCfg != nil && entry.FrontendCfg.Out != "" {
+			feOut := entry.FrontendCfg.Out
+			if !filepath.IsAbs(feOut) {
+				feOut = filepath.Clean(filepath.Join(rc.ConfigDir, feOut))
+			}
+			entryFlags.FrontendOutSet = true
+			entryFlags.FrontendOut = feOut
+		}
+
+		entryRC, err := config.BuildResolved(entryFlags)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("workspace entry %q: %w", entry.Name, err)
+		}
+		if entry.BaseUrl != "" {
+			entryRC.BaseUrl = entry.BaseUrl
+		}
+		entryRC.ServerSdk = entry.ServerSdk || rc.ServerSdk
+		entryRC.Description = rc.Description
+		entryRC.Services = rc.Services
+
+		crossAliases := make(map[string]string, len(entryRC.Aliases)+len(rc.Workspace))
+		for k, v := range entryRC.Aliases {
+			crossAliases[k] = v
+		}
+		for _, sibling := range rc.Workspace {
+			if sibling.Name == entry.Name || sibling.Input == "" {
+				continue
+			}
+			siblingInput := sibling.Input
+			if !filepath.IsAbs(siblingInput) {
+				siblingInput = filepath.Join(rc.ConfigDir, siblingInput)
+			}
+			serviceRoot := filepath.Dir(filepath.Dir(siblingInput))
+			crossAliases[sibling.Name] = serviceRoot
+		}
+
+		isFrontend := frontendTarget != "" && frontendTarget != "none"
+		a, veldFiles, err := loader.Parse(entryRC.Input, crossAliases)
+		if err != nil && isFrontend {
+			a = ast.AST{ASTVersion: "1.0.0"}
+		} else if err != nil {
+			return nil, nil, nil, fmt.Errorf("workspace entry %q: %w", entry.Name, err)
+		}
+		allVeldFiles = append(allVeldFiles, veldFiles...)
+
+		parsed[entry.Name] = &parsedEntry{
+			rc:     entryRC,
+			ast:    a,
+			flags:  entryFlags,
+			outDir: outDir,
+		}
+	}
+
+	// Pass 2: generate each entry with consumed service resolution.
+	var allRegenerated []string
+	for _, entry := range rc.Workspace {
+		pe := parsed[entry.Name]
+
+		entryOpts := emitter.EmitOptions{
+			BaseUrl:           pe.rc.BaseUrl,
+			DryRun:            opts.DryRun,
+			Validate:          pe.rc.Validate,
+			BackendFramework:  pe.rc.BackendFramework,
+			FrontendFramework: pe.rc.FrontendFramework,
+			Services:          pe.rc.Services,
+			ServerSdk:         pe.rc.ServerSdk,
+			Description:       pe.rc.Description,
+		}
+
+		consumesList := entry.Consumes
+		isFrontendEntry := entry.Frontend != "" && entry.Frontend != "none"
+		if isFrontendEntry || len(consumesList) == 0 {
+			if isFrontendEntry {
+				consumesList = nil
+				for _, other := range rc.Workspace {
+					if other.Name != entry.Name && (other.Frontend == "" || other.Frontend == "none") {
+						consumesList = append(consumesList, other.Name)
+					}
+				}
+			}
+		}
+
+		if len(consumesList) > 0 {
+			var consumed []emitter.ConsumedServiceInfo
+			for _, depName := range consumesList {
+				dep := parsed[depName]
+				if dep == nil {
+					continue
+				}
+				consumed = append(consumed, emitter.ConsumedServiceInfo{
+					Name:    depName,
+					AST:     dep.ast,
+					BaseUrl: dep.rc.BaseUrl,
+				})
+			}
+			entryOpts.ConsumedServices = consumed
+		}
+
+		if isFrontendEntry && len(entryOpts.ConsumedServices) > 0 {
+			mergedAST := emitter.MergeASTs(pe.ast, entryOpts.ConsumedServices)
+			pe.ast = mergedAST
+
+			if entryOpts.Services == nil {
+				entryOpts.Services = make(map[string]string)
+			}
+			for _, consumed := range entryOpts.ConsumedServices {
+				for _, mod := range consumed.AST.Modules {
+					if consumed.BaseUrl != "" {
+						entryOpts.Services[mod.Name] = consumed.BaseUrl
+					}
+				}
+			}
+		}
+
+		if isFrontendEntry {
+			if err := runGenerateWithAST(pe.rc, pe.ast, entryOpts); err != nil {
+				return nil, allVeldFiles, nil, fmt.Errorf("workspace entry %q: %w", entry.Name, err)
+			}
+		} else {
+			if _, _, _, err := runGenerate(pe.rc, false, entryOpts); err != nil {
+				return nil, allVeldFiles, nil, fmt.Errorf("workspace entry %q: %w", entry.Name, err)
+			}
+		}
+
+		// Emit service SDK clients for consumed services.
+		if !isFrontendEntry && len(entryOpts.ConsumedServices) > 0 {
+			backend, err := emitter.GetBackend(pe.rc.Backend)
+			if err != nil {
+				return nil, allVeldFiles, nil, fmt.Errorf("workspace entry %q: %w", entry.Name, err)
+			}
+			if err := backend.EmitServiceSdk(entryOpts.ConsumedServices, pe.rc.BackendOut, entryOpts); err != nil {
+				return nil, allVeldFiles, nil, fmt.Errorf("workspace entry %q service sdk: %w", entry.Name, err)
+			}
+		}
+
+		allRegenerated = append(allRegenerated, entry.Name)
+	}
+
+	return allRegenerated, allVeldFiles, nil, nil
+}
+
 // runGenerateWithAST is like runGenerate but takes a pre-built AST instead of
 // calling loader.Parse. Used by frontend workspace entries whose AST has been
 // merged from all consumed backend services.
@@ -1290,9 +1498,19 @@ func newWatchCmd() *cobra.Command {
 			}
 
 			// ── initial full generation (never incremental) ─────────────
-			regenerated, initFiles, changes, genErr := runGenerate(rc, false, opts)
+			var regenerated []string
+			var initFiles []string
+			var changes []diff.Change
+			var genErr error
+			if len(rc.Workspace) > 0 {
+				regenerated, initFiles, changes, genErr = runWorkspaceGenerate(rc, flags, opts)
+			} else {
+				regenerated, initFiles, changes, genErr = runGenerate(rc, false, opts)
+			}
 			if genErr != nil {
 				fmt.Fprintln(os.Stderr, red("error: ")+genErr.Error())
+			} else if len(rc.Workspace) > 0 {
+				fmt.Printf(green("✓")+" Ready (%d service(s))\n", len(regenerated))
 			} else if rc.SplitOutput() {
 				fmt.Printf(green("✓")+" Ready (%d module(s)) → backend: %s, frontend: %s\n",
 					len(regenerated), rc.BackendOut, rc.FrontendOut)
@@ -1477,7 +1695,15 @@ func newWatchCmd() *cobra.Command {
 							ts, yellow("⟳"), strings.Join(dedup(capturedChanged), ", "))
 
 						start := time.Now()
-						regen, newFiles, changes, genErr := runGenerate(currentRC, false, opts)
+						var regen []string
+						var newFiles []string
+						var changes []diff.Change
+						var genErr error
+						if len(currentRC.Workspace) > 0 {
+							regen, newFiles, changes, genErr = runWorkspaceGenerate(currentRC, flags, opts)
+						} else {
+							regen, newFiles, changes, genErr = runGenerate(currentRC, false, opts)
+						}
 
 						if genErr != nil {
 							if !lastError {

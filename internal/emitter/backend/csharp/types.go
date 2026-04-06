@@ -136,6 +136,8 @@ func veldScalarToCS(t string, _ map[string]bool) string {
 		return "long"
 	case "float":
 		return "double"
+	case "decimal":
+		return "decimal"
 	case "bool":
 		return "bool"
 	case "any", "json":

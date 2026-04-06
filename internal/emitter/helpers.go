@@ -204,7 +204,7 @@ func CollectUsedTypes(a ast.AST, mod ast.Module) []string {
 // IsPrimitive returns true for built-in Veld scalar types.
 func IsPrimitive(t string) bool {
 	switch t {
-	case "string", "int", "float", "bool", "date", "datetime", "uuid":
+	case "string", "int", "float", "decimal", "bool", "date", "datetime", "uuid":
 		return true
 	}
 	return false

@@ -105,7 +105,7 @@ func phpFieldType(f ast.Field, enumNames map[string]bool) string {
 // veldScalarToPhp maps a Veld scalar to a PHP type hint.
 func veldScalarToPhp(t string, _ map[string]bool) string {
 	switch t {
-	case "string", "date", "datetime", "uuid":
+	case "string", "date", "datetime", "uuid", "decimal":
 		return "string"
 	case "int":
 		return "int"

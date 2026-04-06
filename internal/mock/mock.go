@@ -194,6 +194,8 @@ func examplePrimitive(typeName string, fieldName string) interface{} {
 		return 42
 	case "float":
 		return 9.99
+	case "decimal":
+		return "12345.6789"
 	case "bool":
 		return true
 	case "date":

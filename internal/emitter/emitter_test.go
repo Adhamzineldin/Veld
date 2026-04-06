@@ -7,7 +7,7 @@ import (
 )
 
 func TestIsPrimitive(t *testing.T) {
-	primitives := []string{"string", "int", "float", "bool", "date", "datetime", "uuid"}
+	primitives := []string{"string", "int", "float", "decimal", "bool", "date", "datetime", "uuid"}
 	for _, p := range primitives {
 		if !IsPrimitive(p) {
 			t.Errorf("expected %q to be primitive", p)

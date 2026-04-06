@@ -32,6 +32,7 @@ func (a *GoAdapter) MapType(veldType string) (string, []string, error) {
 		"string":   "string",
 		"int":      "int64",
 		"float":    "float64",
+		"decimal":  "string",
 		"bool":     "bool",
 		"date":     "time.Time",
 		"datetime": "time.Time",

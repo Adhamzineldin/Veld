@@ -220,6 +220,8 @@ func javaSdkScalar(t string) string {
 		return "Long"
 	case "float":
 		return "Double"
+	case "decimal":
+		return "java.math.BigDecimal"
 	case "bool":
 		return "Boolean"
 	case "any", "json":

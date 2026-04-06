@@ -16,6 +16,8 @@ func veldToPrisma(t string) string {
 		return "Int"
 	case "float":
 		return "Float"
+	case "decimal":
+		return "Decimal"
 	case "bool":
 		return "Boolean"
 	case "datetime":

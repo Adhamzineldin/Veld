@@ -110,6 +110,8 @@ func phpValidationRules(f ast.Field, enumNames map[string]bool) []string {
 		rules = append(rules, "integer")
 	case "float":
 		rules = append(rules, "numeric")
+	case "decimal":
+		rules = append(rules, "numeric")
 	case "bool":
 		rules = append(rules, "boolean")
 	case "date":

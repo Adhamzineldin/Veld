@@ -13,6 +13,7 @@ var primitiveTypes = map[string]bool{
 	"string":   true,
 	"int":      true,
 	"float":    true,
+	"decimal":  true,
 	"bool":     true,
 	"date":     true,
 	"datetime": true,
@@ -368,7 +369,7 @@ func validateDefault(modelName string, f ast.Field, enumNames map[string]bool, e
 	isBoolLiteral := val == "true" || val == "false"
 
 	switch f.Type {
-	case "string", "date", "datetime", "uuid":
+	case "string", "date", "datetime", "uuid", "decimal":
 		if !isQuoted {
 			errs = append(errs, fmt.Errorf("%smodel %q, field %q: @default for %s must be a quoted string, got %s", prefix, modelName, f.Name, f.Type, val))
 		}

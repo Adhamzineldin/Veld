@@ -16,6 +16,8 @@ func veldToSQL(t string) string {
 		return "INTEGER"
 	case "float":
 		return "REAL"
+	case "decimal":
+		return "DECIMAL(19,4)"
 	case "bool":
 		return "BOOLEAN"
 	case "datetime":
