@@ -1574,7 +1574,6 @@ func newWatchCmd() *cobra.Command {
 			ticker := time.NewTicker(200 * time.Millisecond)
 			defer ticker.Stop()
 
-			lastError := false
 			var debounceTimer *time.Timer
 
 			for {
@@ -1706,11 +1705,12 @@ func newWatchCmd() *cobra.Command {
 						}
 
 						if genErr != nil {
-							if !lastError {
-								fmt.Fprintf(os.Stderr, "%s %s %v\n", ts, red("error:"), genErr)
-								fmt.Println()
-							}
-							lastError = true
+							// Always show the error summary — the user may have
+							// changed the file and hit a different error.
+							// Validation details are already printed by runGenerate.
+							fmt.Fprintf(os.Stderr, "\n%s\n", red("  ── error "+strings.Repeat("─", 44)))
+							fmt.Fprintf(os.Stderr, "%s %s %v\n", ts, red("✗"), genErr)
+							fmt.Fprintf(os.Stderr, "%s\n\n", red("  ── save to retry "+strings.Repeat("─", 38)))
 						} else {
 							elapsed := time.Since(start).Round(time.Millisecond)
 							if regen == nil || len(regen) == 0 {
@@ -1721,7 +1721,6 @@ func newWatchCmd() *cobra.Command {
 							}
 							runPostGenerate(currentRC)
 							fmt.Println()
-							lastError = false
 						}
 
 						// Refresh tracked file set — picks up new/deleted .veld files.

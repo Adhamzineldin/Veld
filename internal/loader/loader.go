@@ -280,8 +280,28 @@ func loadFromDir(aliasDir, subpath, origImport, rootDir string, aliasMap map[str
 		}
 
 	default:
-		// Single file
+		// Single file — try exact path first, then compound extensions.
 		p := filepath.Join(aliasDir, subpath)
+		if _, statErr := os.Stat(p); statErr != nil {
+			// Try compound extensions: user.veld → user.model.veld, user.module.veld, etc.
+			base := strings.TrimSuffix(subpath, ".veld")
+			if base != subpath { // had .veld suffix
+				compounds := []string{
+					base + ".model.veld",
+					base + ".module.veld",
+					base + ".enum.veld",
+					base + ".types.veld",
+					base + ".schema.veld",
+				}
+				for _, c := range compounds {
+					candidate := filepath.Join(aliasDir, c)
+					if _, cErr := os.Stat(candidate); cErr == nil {
+						p = candidate
+						break
+					}
+				}
+			}
+		}
 		a, _ := filepath.Abs(p)
 		resolved = append(resolved, a)
 		fileImports[a] = append(fileImports[a], a)

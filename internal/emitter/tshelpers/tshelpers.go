@@ -14,13 +14,54 @@ func VeldScalarToTS(t string) string {
 		return "number"
 	case "bool":
 		return "boolean"
-	case "date", "datetime", "uuid", "decimal":
+	case "date", "datetime":
 		return "string"
+	case "uuid":
+		return "UUID"
+	case "decimal":
+		return "Decimal"
 	case "any", "json":
 		return "any"
 	default:
 		return t // model/enum reference stays as-is
 	}
+}
+
+// NeedsVeldScalarAliases checks whether any model in the AST uses uuid or
+// decimal types, returning which branded type aliases should be emitted.
+func NeedsVeldScalarAliases(models []ast.Model) (needsUUID, needsDecimal bool) {
+	for _, m := range models {
+		for _, f := range m.Fields {
+			if f.Type == "uuid" || f.MapValueType == "uuid" {
+				needsUUID = true
+			}
+			if f.Type == "decimal" || f.MapValueType == "decimal" {
+				needsDecimal = true
+			}
+		}
+	}
+	return
+}
+
+// ScalarAliasBlock returns the TypeScript type-alias declarations for branded
+// scalar types (UUID, Decimal) that are used in the AST.
+func ScalarAliasBlock(models []ast.Model) string {
+	needsUUID, needsDecimal := NeedsVeldScalarAliases(models)
+	if !needsUUID && !needsDecimal {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("// ── Branded scalar types ─────────────────────────────────────────────\n")
+	if needsUUID {
+		sb.WriteString("/** A UUID string (e.g. \"550e8400-e29b-41d4-a716-446655440000\"). */\n")
+		sb.WriteString("export type UUID = string & { readonly __brand: 'UUID' };\n")
+	}
+	if needsDecimal {
+		sb.WriteString("/** A decimal value represented as a string for precision (e.g. \"12345.6789\"). */\n")
+		sb.WriteString("export type Decimal = string & { readonly __brand: 'Decimal' };\n")
+	}
+	sb.WriteString("\n")
+	return sb.String()
 }
 
 // VeldTypeToTS maps a Veld type name to its TypeScript equivalent,

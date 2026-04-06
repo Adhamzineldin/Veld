@@ -97,7 +97,9 @@ func (e *JavaEmitter) emitInterface(_ jstrategy.FrameworkStrategy, a ast.AST, mo
 			}
 			for _, errName := range act.Errors {
 				code := emitter.ErrorCode(act.Name, errName)
-				sb.WriteString(fmt.Sprintf("     * @throws ApiException %s \u2014 %s\n", code, errName))
+				methodName := emitter.ToCamelCase(act.Name) + errName
+				sb.WriteString(fmt.Sprintf("     * @throws %sException %s — throw %sErrors.%s(\"message\")\n",
+					capitalize(act.Name), code, mod.Name, methodName))
 			}
 			sb.WriteString("     */\n")
 		}

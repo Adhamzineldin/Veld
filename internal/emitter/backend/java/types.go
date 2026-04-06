@@ -45,12 +45,16 @@ func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir string) erro
 
 	needsList := false
 	needsMap := false
+	needsUUID := false
 	for _, f := range m.Fields {
 		if f.IsArray {
 			needsList = true
 		}
 		if f.IsMap {
 			needsMap = true
+		}
+		if f.Type == "uuid" || (f.IsMap && f.MapValueType == "uuid") {
+			needsUUID = true
 		}
 	}
 
@@ -64,7 +68,10 @@ func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir string) erro
 	if needsMap {
 		sb.WriteString("import java.util.Map;\n")
 	}
-	if needsList || needsMap {
+	if needsUUID {
+		sb.WriteString("import java.util.UUID;\n")
+	}
+	if needsList || needsMap || needsUUID {
 		sb.WriteString("\n")
 	}
 

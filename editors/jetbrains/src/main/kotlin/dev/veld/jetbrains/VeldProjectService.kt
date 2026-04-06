@@ -124,7 +124,20 @@ class VeldProjectService(private val project: Project) {
             val name = aliasMatch.groupValues[2]
             val root = findProjectRoot(fromFile) ?: return null
             val dir = resolveAliasDir(alias, root) ?: return null
-            return dir.findChild("$name.veld")
+            // Try exact match first, then compound extensions
+            val candidates = listOf(
+                "$name.veld",
+                "$name.model.veld",
+                "$name.module.veld",
+                "$name.enum.veld",
+                "$name.types.veld",
+                "$name.schema.veld"
+            )
+            for (candidate in candidates) {
+                val found = dir.findChild(candidate)
+                if (found != null) return found
+            }
+            return null
         }
         // Quoted relative path (already resolved to a file name at parse time)
         if (importPath.endsWith(".veld") || !importPath.startsWith("@")) {
