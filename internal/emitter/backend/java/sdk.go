@@ -297,6 +297,11 @@ func emitJavaSdkModuleErrors(consumed emitter.ConsumedServiceInfo, errorsDir, pk
 
 // ── HTTP Client ───────────────────────────────────────────────────────────────
 
+// emitJavaSdkClient writes the typed HTTP client with one public inner class per module,
+// so callers navigate module-first exactly like the TypeScript SDK:
+//
+//	TS:   await iamClient.auth.login(req)
+//	Java: iamClient.auth.login(req)
 func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string) error {
 	var sb strings.Builder
 	a := consumed.AST
@@ -304,7 +309,7 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 	className := sdkhelpers.ServiceClassName(consumed.Name)
 	errorsPkg := fmt.Sprintf("maayn.veld.generated.sdk.%s.errors", pkg)
 
-	// Collect all module subpackages used by any action's input/output types
+	// Collect all module subpackages that have types used in actions
 	usedModulePkgs := make(map[string]bool)
 	modelOwner := make(map[string]string)
 	for _, mod := range a.Modules {
@@ -337,7 +342,6 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 	sb.WriteString("import java.util.HashMap;\n")
 	sb.WriteString("import com.fasterxml.jackson.databind.ObjectMapper;\n")
 	sb.WriteString(fmt.Sprintf("import %s.SdkApiError;\n", errorsPkg))
-	// Import each used module's model subpackage
 	for modPkg := range usedModulePkgs {
 		sb.WriteString(fmt.Sprintf("import maayn.veld.generated.sdk.%s.models.%s.*;\n", pkg, modPkg))
 	}
@@ -345,9 +349,18 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 
 	sb.WriteString(fmt.Sprintf("public class %s {\n", className))
 	sb.WriteString("    private final String base;\n")
-	sb.WriteString("    private final HttpClient client;\n")
+	sb.WriteString("    private final HttpClient http;\n")
 	sb.WriteString("    private final Map<String, String> headers;\n")
 	sb.WriteString("    private final ObjectMapper mapper = new ObjectMapper();\n\n")
+
+	// Public module namespace fields — iamClient.auth.login(req)
+	for _, mod := range a.Modules {
+		modLower := emitter.ToCamelCase(mod.Name)
+		innerClass := capitalize(mod.Name) + "Actions"
+		sb.WriteString(fmt.Sprintf("    /** Actions for the %s module. Usage: client.%s.actionName(...) */\n", mod.Name, modLower))
+		sb.WriteString(fmt.Sprintf("    public final %s %s = new %s();\n", innerClass, modLower, innerClass))
+	}
+	sb.WriteString("\n")
 
 	sb.WriteString(fmt.Sprintf("    public %s() { this(null, null); }\n\n", className))
 	sb.WriteString(fmt.Sprintf("    public %s(String baseUrl, Map<String, String> headers) {\n", className))
@@ -360,18 +373,18 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 			consumed.Name, envVar))
 		sb.WriteString("        this.base = resolved;\n")
 	}
-	sb.WriteString("        this.client = HttpClient.newHttpClient();\n")
+	sb.WriteString("        this.http = HttpClient.newHttpClient();\n")
 	sb.WriteString("        this.headers = headers != null ? headers : new HashMap<>();\n")
 	sb.WriteString("    }\n\n")
 
 	// Internal raw HTTP helper — throws SdkApiError with parsed code+message
-	sb.WriteString("    private String request(String method, String path, String body) throws Exception {\n")
+	sb.WriteString("    String request(String method, String path, String body) throws Exception {\n")
 	sb.WriteString("        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(this.base + path))\n")
 	sb.WriteString("            .header(\"Content-Type\", \"application/json\");\n")
 	sb.WriteString("        this.headers.forEach(builder::header);\n")
 	sb.WriteString("        if (body != null) { builder.method(method, HttpRequest.BodyPublishers.ofString(body)); }\n")
 	sb.WriteString("        else { builder.method(method, HttpRequest.BodyPublishers.noBody()); }\n")
-	sb.WriteString("        HttpResponse<String> res = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());\n")
+	sb.WriteString("        HttpResponse<String> res = http.send(builder.build(), HttpResponse.BodyHandlers.ofString());\n")
 	sb.WriteString("        if (res.statusCode() >= 400) {\n")
 	sb.WriteString("            String errBody = res.body();\n")
 	sb.WriteString("            String code = extractJsonString(errBody, \"code\");\n")
@@ -383,9 +396,10 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 	sb.WriteString("        return res.body();\n")
 	sb.WriteString("    }\n\n")
 
-	// Zero-dependency JSON string field extractor (only used for error responses)
-	sb.WriteString("    /** Extracts a string value from a flat JSON object without external dependencies. */\n")
-	sb.WriteString("    private static String extractJsonString(String json, String key) {\n")
+	sb.WriteString("    ObjectMapper mapper() { return mapper; }\n\n")
+
+	// Zero-dependency JSON string extractor (only used for error responses)
+	sb.WriteString("    static String extractJsonString(String json, String key) {\n")
 	sb.WriteString("        if (json == null) return null;\n")
 	sb.WriteString("        String search = \"\\\"\" + key + \"\\\"\";\n")
 	sb.WriteString("        int idx = json.indexOf(search);\n")
@@ -397,23 +411,30 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 	sb.WriteString("        int end = json.indexOf('\"', start + 1);\n")
 	sb.WriteString("        if (end < 0) return null;\n")
 	sb.WriteString("        return json.substring(start + 1, end);\n")
-	sb.WriteString("    }\n")
+	sb.WriteString("    }\n\n")
 
+	// One inner class per module
 	for _, mod := range a.Modules {
+		innerClass := capitalize(mod.Name) + "Actions"
+		sb.WriteString(fmt.Sprintf("    /** Actions for the %s module. */\n", mod.Name))
+		sb.WriteString(fmt.Sprintf("    public final class %s {\n", innerClass))
+		sb.WriteString(fmt.Sprintf("        private %s() {}\n", innerClass))
+
 		for _, act := range mod.Actions {
 			if strings.ToUpper(act.Method) == "WS" {
 				continue
 			}
 			sb.WriteString("\n")
-			writeJavaSdkMethod(&sb, mod, act)
+			writeJavaSdkMethod(&sb, mod, act, "        ")
 		}
+		sb.WriteString("    }\n\n")
 	}
-	sb.WriteString("}\n")
 
+	sb.WriteString("}\n")
 	return os.WriteFile(filepath.Join(sdkDir, className+".java"), []byte(sb.String()), 0644)
 }
 
-func writeJavaSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
+func writeJavaSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action, indent string) {
 	routePath := mod.Prefix + act.Path
 	method := strings.ToUpper(act.Method)
 	methodName := emitter.ToCamelCase(act.Name)
@@ -432,13 +453,13 @@ func writeJavaSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 		params = append(params, act.Input+" input")
 	}
 
-	sb.WriteString(fmt.Sprintf("    /** %s %s */\n", method, routePath))
-	sb.WriteString(fmt.Sprintf("    public %s %s(%s) throws Exception {\n", retType, methodName, strings.Join(params, ", ")))
+	sb.WriteString(fmt.Sprintf("%s/** %s %s */\n", indent, method, routePath))
+	sb.WriteString(fmt.Sprintf("%spublic %s %s(%s) throws Exception {\n", indent, retType, methodName, strings.Join(params, ", ")))
 
 	urlExpr := javaSdkBuildUrl(routePath, pathParams)
 
 	if act.Input != "" {
-		sb.WriteString("        String body = mapper.writeValueAsString(input);\n")
+		sb.WriteString(fmt.Sprintf("%s    String body = mapper().writeValueAsString(input);\n", indent))
 	}
 
 	bodyArg := "null"
@@ -447,12 +468,12 @@ func writeJavaSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	}
 
 	if act.Output != "" {
-		sb.WriteString(fmt.Sprintf("        String raw = request(%q, %s, %s);\n", method, urlExpr, bodyArg))
-		sb.WriteString(fmt.Sprintf("        return mapper.readValue(raw, %s.class);\n", act.Output))
+		sb.WriteString(fmt.Sprintf("%s    String raw = request(%q, %s, %s);\n", indent, method, urlExpr, bodyArg))
+		sb.WriteString(fmt.Sprintf("%s    return mapper().readValue(raw, %s.class);\n", indent, act.Output))
 	} else {
-		sb.WriteString(fmt.Sprintf("        request(%q, %s, %s);\n", method, urlExpr, bodyArg))
+		sb.WriteString(fmt.Sprintf("%s    request(%q, %s, %s);\n", indent, method, urlExpr, bodyArg))
 	}
-	sb.WriteString("    }\n")
+	sb.WriteString(fmt.Sprintf("%s}\n", indent))
 }
 
 func javaSdkBuildUrl(routePath string, pathParams []string) string {
