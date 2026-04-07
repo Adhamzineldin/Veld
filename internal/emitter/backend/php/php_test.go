@@ -121,10 +121,14 @@ func TestPhpEmitterModelContent(t *testing.T) {
 		{"strict types", "declare(strict_types=1);"},
 		{"namespace", "namespace App\\Models;"},
 		{"class declaration", "class User"},
-		{"readonly constructor", "public function __construct("},
-		{"string field", "public readonly string $email"},
-		{"array field", "public readonly array $tags"},
-		{"optional nullable", "public readonly ?string $bio = null"},
+		{"constructor", "public function __construct("},
+		{"string field", "public string $email"},
+		{"array field", "public array $tags"},
+		{"optional nullable", "public ?string $bio = null"},
+		{"getter", "public function getEmail(): string"},
+		{"setter", "public function setEmail(string $value): void"},
+		{"fromArray", "public static function fromArray(array $data): self"},
+		{"toArray", "public function toArray(): array"},
 	}
 	for _, c := range checks {
 		if !strings.Contains(content, c.needle) {

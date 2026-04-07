@@ -34,7 +34,7 @@ func (e *CSharpEmitter) emitModels(a ast.AST, outDir string) error {
 	return nil
 }
 
-// emitRecord writes a C# record (primary-constructor style, C# 9+).
+// emitRecord writes a C# class with properties, constructors, and nullable support.
 func (e *CSharpEmitter) emitRecord(m ast.Model, enumNames map[string]bool, dir string) error {
 	needsList := false
 	needsDict := false
@@ -52,44 +52,61 @@ func (e *CSharpEmitter) emitRecord(m ast.Model, enumNames map[string]bool, dir s
 	if needsList || needsDict {
 		sb.WriteString("using System.Collections.Generic;\n")
 	}
+	sb.WriteString("using System.Text.Json.Serialization;\n")
 	sb.WriteString(fmt.Sprintf("\nnamespace %s.Models;\n\n", csNamespace))
 
 	if m.Description != "" {
 		sb.WriteString(fmt.Sprintf("/// <summary>%s</summary>\n", m.Description))
 	}
 
+	extendsClause := ""
 	if m.Extends != "" {
-		// C# records can't inherit from other records with primary constructors;
-		// fall back to a regular class with properties.
-		sb.WriteString(fmt.Sprintf("public class %s : %s\n{\n", m.Name, m.Extends))
-		for _, f := range m.Fields {
-			csType := csFieldType(f, enumNames)
-			propName := csPascalName(f.Name)
-			if f.Optional {
-				csType = csType + "?"
-			}
-			sb.WriteString(fmt.Sprintf("    public %s %s { get; init; }\n", csType, propName))
+		extendsClause = " : " + m.Extends
+	}
+	sb.WriteString(fmt.Sprintf("public class %s%s\n{\n", m.Name, extendsClause))
+
+	// Properties with { get; set; }
+	for _, f := range m.Fields {
+		csType := csFieldType(f, enumNames)
+		propName := csPascalName(f.Name)
+		if f.Optional {
+			csType = csType + "?"
 		}
-		sb.WriteString("}\n")
-	} else {
-		// Primary-constructor record (C# 9+).
-		sb.WriteString(fmt.Sprintf("public record %s(\n", m.Name))
-		for i, f := range m.Fields {
-			csType := csFieldType(f, enumNames)
-			propName := csPascalName(f.Name)
-			if f.Optional {
-				csType = csType + "?"
-			}
-			comma := ","
-			if i == len(m.Fields)-1 {
-				comma = ""
-			}
-			sb.WriteString(fmt.Sprintf("    %s %s%s\n", csType, propName, comma))
-		}
-		sb.WriteString(");\n")
+		sb.WriteString(fmt.Sprintf("    [JsonPropertyName(%q)]\n", f.Name))
+		sb.WriteString(fmt.Sprintf("    public %s %s { get; set; }\n\n", csType, propName))
 	}
 
+	// Default constructor
+	sb.WriteString(fmt.Sprintf("    public %s() { }\n\n", m.Name))
+
+	// Parameterized constructor
+	if len(m.Fields) > 0 {
+		var ctorParams []string
+		for _, f := range m.Fields {
+			csType := csFieldType(f, enumNames)
+			if f.Optional {
+				csType = csType + "?"
+			}
+			paramName := csCamelCase(f.Name)
+			ctorParams = append(ctorParams, fmt.Sprintf("%s %s", csType, paramName))
+		}
+		sb.WriteString(fmt.Sprintf("    public %s(%s)\n    {\n", m.Name, strings.Join(ctorParams, ", ")))
+		for _, f := range m.Fields {
+			sb.WriteString(fmt.Sprintf("        %s = %s;\n", csPascalName(f.Name), csCamelCase(f.Name)))
+		}
+		sb.WriteString("    }\n")
+	}
+
+	sb.WriteString("}\n")
+
 	return os.WriteFile(filepath.Join(dir, m.Name+".cs"), []byte(sb.String()), 0644)
+}
+
+func csCamelCase(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToLower(s[:1]) + s[1:]
 }
 
 // emitEnum writes a C# enum with [JsonConverter(typeof(JsonStringEnumConverter))].
