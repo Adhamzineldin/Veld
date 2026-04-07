@@ -385,6 +385,81 @@ func TestParseActionWithInlineQueryMultipleFields(t *testing.T) {
 	}
 }
 
+func TestParseActionWithInlineOutput(t *testing.T) {
+	src := `module Equipment {
+  action GetDailyRate {
+    method: GET
+    path: /rate
+    output: { price: float, currency: string }
+  }
+}`
+	tokens, err := lexer.New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.Output != "GetDailyRateOutput" {
+		t.Errorf("expected synthetic output name 'GetDailyRateOutput', got %q", act.Output)
+	}
+	if act.OutputArray {
+		t.Error("expected OutputArray to be false")
+	}
+	if len(act.OutputFields) != 2 {
+		t.Fatalf("expected 2 OutputFields, got %d", len(act.OutputFields))
+	}
+	if act.OutputFields[0].Name != "price" || act.OutputFields[0].Type != "float" {
+		t.Errorf("unexpected field 0: %+v", act.OutputFields[0])
+	}
+	if act.OutputFields[1].Name != "currency" || act.OutputFields[1].Type != "string" {
+		t.Errorf("unexpected field 1: %+v", act.OutputFields[1])
+	}
+	// Synthetic model should exist in AST.Models
+	found := false
+	for _, m := range a.Models {
+		if m.Name == "GetDailyRateOutput" {
+			found = true
+			if len(m.Fields) != 2 {
+				t.Errorf("synthetic model fields count mismatch: %d", len(m.Fields))
+			}
+		}
+	}
+	if !found {
+		t.Error("synthetic model 'GetDailyRateOutput' not found in AST.Models")
+	}
+}
+
+func TestParseActionWithInlineOutputArray(t *testing.T) {
+	src := `module Equipment {
+  action ListRates {
+    method: GET
+    path: /rates
+    output: { price: float, name: string }[]
+  }
+}`
+	tokens, err := lexer.New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.Output != "ListRatesOutput" {
+		t.Errorf("expected 'ListRatesOutput', got %q", act.Output)
+	}
+	if !act.OutputArray {
+		t.Error("expected OutputArray to be true for inline output with []")
+	}
+	if len(act.OutputFields) != 2 {
+		t.Fatalf("expected 2 OutputFields, got %d", len(act.OutputFields))
+	}
+}
+
 func TestParseImport(t *testing.T) {
 	src := `import "models/auth.veld"
 import "modules/auth.veld"`
