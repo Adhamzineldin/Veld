@@ -648,18 +648,52 @@ func (p *Parser) parseAction() (ast.Action, error) {
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
 			}
-			tok, err := p.expectTypeOrIdent()
-			if err != nil {
-				return act, err
-			}
-			act.Output = tok.Value
-			// Check for array suffix: output: User[]
-			if p.peek().Type == lexer.TLBracket {
-				p.consume()
-				if _, err := p.expect(lexer.TRBracket); err != nil {
+			if p.peek().Type == lexer.TLBrace {
+				// Inline output type: output: { price: float, currency: string }
+				p.consume() // consume '{'
+				var fields []ast.Field
+				for p.peek().Type != lexer.TRBrace && p.peek().Type != lexer.TEOF {
+					f, err := p.parseField()
+					if err != nil {
+						return act, fmt.Errorf("inline output field: %w", err)
+					}
+					fields = append(fields, f)
+					if p.peek().Type == lexer.TComma {
+						p.consume()
+					}
+				}
+				if _, err := p.expect(lexer.TRBrace); err != nil {
+					return act, fmt.Errorf("inline output: %w", err)
+				}
+				synName := act.Name + "Output"
+				act.Output = synName
+				act.OutputFields = fields
+				p.syntheticModels = append(p.syntheticModels, ast.Model{
+					Name:   synName,
+					Fields: fields,
+				})
+				// Check for array suffix: output: { ... }[]
+				if p.peek().Type == lexer.TLBracket {
+					p.consume()
+					if _, err := p.expect(lexer.TRBracket); err != nil {
+						return act, err
+					}
+					act.OutputArray = true
+				}
+			} else {
+				tok, err := p.expectTypeOrIdent()
+				if err != nil {
 					return act, err
 				}
-				act.OutputArray = true
+				act.Output = tok.Value
+				// Check for array suffix: output: User[]
+				if p.peek().Type == lexer.TLBracket {
+					p.consume()
+					if _, err := p.expect(lexer.TRBracket); err != nil {
+						return act, err
+					}
+					act.OutputArray = true
+				}
 			}
 		case p.peekIdent("query"):
 			p.consume()
