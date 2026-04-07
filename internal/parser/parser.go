@@ -11,8 +11,9 @@ import (
 
 // Parser builds an AST from a token slice produced by the Lexer.
 type Parser struct {
-	tokens []lexer.Token
-	pos    int
+	tokens          []lexer.Token
+	pos             int
+	syntheticModels []ast.Model // models generated from inline query types
 }
 
 // New creates a Parser over the given token slice.
@@ -77,6 +78,9 @@ func (p *Parser) Parse() (ast.AST, error) {
 			return result, fmt.Errorf("line %d: unexpected token %q", tok.Line, tok.Value)
 		}
 	}
+
+	// Append synthetic models created from inline query/input types.
+	result.Models = append(result.Models, p.syntheticModels...)
 
 	return result, nil
 }
@@ -662,11 +666,37 @@ func (p *Parser) parseAction() (ast.Action, error) {
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
 			}
-			tok, err := p.expect(lexer.TIdent)
-			if err != nil {
-				return act, err
+			if p.peek().Type == lexer.TLBrace {
+				// Inline query type: query: { areaCode: string, active: boolean }
+				p.consume() // consume '{'
+				var fields []ast.Field
+				for p.peek().Type != lexer.TRBrace && p.peek().Type != lexer.TEOF {
+					f, err := p.parseField()
+					if err != nil {
+						return act, fmt.Errorf("inline query field: %w", err)
+					}
+					fields = append(fields, f)
+					if p.peek().Type == lexer.TComma {
+						p.consume()
+					}
+				}
+				if _, err := p.expect(lexer.TRBrace); err != nil {
+					return act, fmt.Errorf("inline query: %w", err)
+				}
+				synName := act.Name + "Query"
+				act.Query = synName
+				act.QueryFields = fields
+				p.syntheticModels = append(p.syntheticModels, ast.Model{
+					Name:   synName,
+					Fields: fields,
+				})
+			} else {
+				tok, err := p.expect(lexer.TIdent)
+				if err != nil {
+					return act, err
+				}
+				act.Query = tok.Value
 			}
-			act.Query = tok.Value
 		case p.peekIdent("stream"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
