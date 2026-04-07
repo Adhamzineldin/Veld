@@ -2,6 +2,7 @@ package emitter
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
@@ -374,6 +375,116 @@ func CollectErrorExports(mod ast.Module) []string {
 	}
 	names = append(names, moduleLower+"Errors")
 	return names
+}
+
+// AssignModelsToModules maps each model and enum to the module whose actions
+// reference it (transitively). Models/enums not referenced by any action are
+// assigned to the "shared" group. Returns per-group slices (in AST order) plus
+// ownership maps for looking up which group a type belongs to.
+func AssignModelsToModules(a ast.AST) (modelGroups map[string][]ast.Model, enumGroups map[string][]ast.Enum, modelOwner map[string]string, enumOwner map[string]string) {
+	modelGroups = make(map[string][]ast.Model)
+	enumGroups = make(map[string][]ast.Enum)
+	modelOwner = make(map[string]string)
+	enumOwner = make(map[string]string)
+
+	for _, mod := range a.Modules {
+		modLower := strings.ToLower(mod.Name)
+		for name := range CollectTransitiveModels(a, mod) {
+			if _, already := modelOwner[name]; !already {
+				modelOwner[name] = modLower
+			}
+		}
+		for name := range CollectUsedEnums(a, mod) {
+			if _, already := enumOwner[name]; !already {
+				enumOwner[name] = modLower
+			}
+		}
+	}
+
+	for _, m := range a.Models {
+		owner := modelOwner[m.Name]
+		if owner == "" {
+			owner = "shared"
+			modelOwner[m.Name] = owner
+		}
+		modelGroups[owner] = append(modelGroups[owner], m)
+	}
+	for _, en := range a.Enums {
+		owner := enumOwner[en.Name]
+		if owner == "" {
+			owner = "shared"
+			enumOwner[en.Name] = owner
+		}
+		enumGroups[owner] = append(enumGroups[owner], en)
+	}
+
+	return
+}
+
+// SortedGroupKeys returns the unique keys across model and enum groups in
+// alphabetical order, with "shared" always last (if present).
+func SortedGroupKeys(modelGroups map[string][]ast.Model, enumGroups map[string][]ast.Enum) []string {
+	seen := make(map[string]bool)
+	var keys []string
+	for k := range modelGroups {
+		if !seen[k] && k != "shared" {
+			seen[k] = true
+			keys = append(keys, k)
+		}
+	}
+	for k := range enumGroups {
+		if !seen[k] && k != "shared" {
+			seen[k] = true
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	if modelGroups["shared"] != nil || enumGroups["shared"] != nil {
+		keys = append(keys, "shared")
+	}
+	return keys
+}
+
+// CrossGroupTypeNames returns, for a given group's models, the set of type
+// names that must be imported from other groups (due to extends chains and
+// field references). Result maps source group name → list of type names.
+func CrossGroupTypeNames(group string, models []ast.Model, modelOwner, enumOwner map[string]string) map[string][]string {
+	result := make(map[string][]string)
+	seen := make(map[string]bool)
+
+	add := func(typeName string) {
+		if seen[typeName] || typeName == "" || IsPrimitive(typeName) {
+			return
+		}
+		owner := modelOwner[typeName]
+		if owner == "" {
+			owner = enumOwner[typeName]
+		}
+		if owner != "" && owner != group {
+			seen[typeName] = true
+			result[owner] = append(result[owner], typeName)
+		}
+	}
+
+	for _, m := range models {
+		if m.Extends != "" {
+			add(m.Extends)
+		}
+		for _, f := range m.Fields {
+			add(f.Type)
+			if f.IsMap {
+				add(f.MapValueType)
+			}
+			for _, ut := range f.UnionTypes {
+				add(ut)
+			}
+		}
+	}
+
+	for k := range result {
+		sort.Strings(result[k])
+	}
+	return result
 }
 
 // MergeASTs combines multiple service ASTs into one unified AST.

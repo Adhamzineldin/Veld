@@ -56,16 +56,19 @@ func TestEmitServiceSdk(t *testing.T) {
 		t.Error("missing Login method")
 	}
 
-	typesPath := filepath.Join(tmp, "Sdk", "Iam", "Types.cs")
+	typesPath := filepath.Join(tmp, "Sdk", "Iam", "Models", "IamModels.cs")
 	data, err = os.ReadFile(typesPath)
 	if err != nil {
-		t.Fatalf("types file not found: %v", err)
+		t.Fatalf("models file not found: %v", err)
 	}
 	types := string(data)
 	if !strings.Contains(types, "class User") {
-		t.Error("missing User class in types")
+		t.Error("missing User class in models")
 	}
 	if !strings.Contains(types, "JsonPropertyName") {
 		t.Error("missing JsonPropertyName attributes")
+	}
+	if !strings.Contains(types, "public User()") {
+		t.Error("missing default constructor")
 	}
 }

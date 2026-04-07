@@ -397,7 +397,10 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		return ResolvedConfig{}, fmt.Errorf("no input file (use --input or create veld/veld.config.json)")
 	}
 
-	// Merge default aliases with user-defined overrides
+	// Merge default aliases with user-defined overrides.
+	// Values stay relative — the loader resolves them against the entry
+	// file's directory (rootDir), which is correct for both single-service
+	// and workspace layouts where each service has its own models/ folder.
 	aliases := DefaultAliases()
 	for k, v := range cfg.Aliases {
 		aliases[k] = v
