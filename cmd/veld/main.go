@@ -196,6 +196,23 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 		}
 	}
 
+	// ── clean output dirs before emitting ───────────────────────────────
+	// Wipe and recreate every output directory so deleted models/actions/files
+	// are removed from generated output rather than left as stale artifacts.
+	if !opts.DryRun {
+		for _, dir := range rc.OutputDirs() {
+			if dir == "" {
+				continue
+			}
+			if err := os.RemoveAll(dir); err != nil {
+				return nil, veldFiles, nil, fmt.Errorf("clean output dir %s: %w", dir, err)
+			}
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				return nil, veldFiles, nil, fmt.Errorf("recreate output dir %s: %w", dir, err)
+			}
+		}
+	}
+
 	// ── emit: backend ────────────────────────────────────────────────────
 	backendOrTool, _, err := emitter.GetBackendOrTool(rc.Backend)
 	if err != nil {
