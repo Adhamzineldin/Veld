@@ -188,9 +188,9 @@ func TestJavaEmitterInterfaceContent(t *testing.T) {
 		{"package", "package maayn.veld.generated.services;"},
 		{"models import", "import maayn.veld.generated.models.*;"},
 		{"interface", "public interface IAuthService {"},
-		{"login method", "User login(LoginInput input);"},
-		{"me method", "User me();"},
-		{"logout void", "void logout();"},
+		{"login method", "User login(LoginInput input) throws Exception;"},
+		{"me method", "User me() throws Exception;"},
+		{"logout void", "void logout() throws Exception;"},
 	}
 	for _, c := range checks {
 		if !strings.Contains(content, c.needle) {

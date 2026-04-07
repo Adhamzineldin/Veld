@@ -59,9 +59,10 @@ func TestEmitServiceSdk(t *testing.T) {
 		t.Error("missing getProfile method")
 	}
 
-	// Check types file
-	typesPath := filepath.Join(tmp, "src", "main", "java", "maayn", "veld", "generated", "sdk", "iam", "User.java")
+	// Models are now organised per-module: models/{moduleLower}/{Model}.java
+	// The IAM module owns User and LoginInput, so they land in models/iam/
+	typesPath := filepath.Join(tmp, "src", "main", "java", "maayn", "veld", "generated", "sdk", "iam", "models", "iam", "User.java")
 	if _, err := os.Stat(typesPath); os.IsNotExist(err) {
-		t.Error("User.java not generated")
+		t.Error("User.java not generated in models/iam/")
 	}
 }
