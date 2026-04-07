@@ -117,6 +117,13 @@ class VeldProjectService(private val project: Project) {
      * Supports: @alias/name, /path/name, and quoted relative paths.
      */
     fun resolveImport(importPath: String, fromFile: VirtualFile): VirtualFile? {
+        // Relative quoted imports (e.g. "../models/foo.model.veld") must be resolved directly.
+        // The alias regex below would incorrectly match "/models/foo" inside the path,
+        // routing them through alias resolution instead of relative resolution.
+        if (importPath.startsWith(".")) {
+            return fromFile.parent?.findFileByRelativePath(importPath)
+        }
+
         // @alias/name or /alias/name
         val aliasMatch = Regex("""[@/](\w+)/(\w+)""").find(importPath)
         if (aliasMatch != null) {
