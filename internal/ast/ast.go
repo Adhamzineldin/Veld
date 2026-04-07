@@ -69,7 +69,8 @@ type Action struct {
 	Input         string         `json:"input"`
 	Output        string         `json:"output"`
 	OutputArray   bool           `json:"outputArray,omitempty"`   // output User[] → true
-	Query         string         `json:"query,omitempty"`         // query param model
+	Query         string         `json:"query,omitempty"`         // query param model (name or synthetic)
+	QueryFields   []Field        `json:"queryFields,omitempty"`   // inline query fields (non-empty ⇒ query was declared inline)
 	Stream        string         `json:"stream,omitempty"`        // server→client push type for WS actions
 	Emit          string         `json:"emit,omitempty"`          // client→server message type for WS actions
 	Errors        []string       `json:"errors,omitempty"`        // typed error codes for this action

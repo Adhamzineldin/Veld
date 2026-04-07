@@ -312,6 +312,77 @@ module Users {
 	if a.Modules[0].Actions[0].Query != "Filters" {
 		t.Errorf("expected query 'Filters', got %q", a.Modules[0].Actions[0].Query)
 	}
+	if len(a.Modules[0].Actions[0].QueryFields) != 0 {
+		t.Errorf("expected no QueryFields for named query, got %d", len(a.Modules[0].Actions[0].QueryFields))
+	}
+}
+
+func TestParseActionWithInlineQuery(t *testing.T) {
+	src := `module Equipment {
+  action GetContractors {
+    method: GET
+    path: /contractors
+    query: { areaCode: string }
+    output: string[]
+  }
+}`
+	tokens, err := lexer.New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.Query != "GetContractorsQuery" {
+		t.Errorf("expected synthetic query name 'GetContractorsQuery', got %q", act.Query)
+	}
+	if len(act.QueryFields) != 1 {
+		t.Fatalf("expected 1 QueryField, got %d", len(act.QueryFields))
+	}
+	if act.QueryFields[0].Name != "areaCode" || act.QueryFields[0].Type != "string" {
+		t.Errorf("unexpected field: %+v", act.QueryFields[0])
+	}
+	// Synthetic model should be added to AST.Models
+	found := false
+	for _, m := range a.Models {
+		if m.Name == "GetContractorsQuery" {
+			found = true
+			if len(m.Fields) != 1 || m.Fields[0].Name != "areaCode" {
+				t.Errorf("synthetic model fields mismatch: %+v", m.Fields)
+			}
+		}
+	}
+	if !found {
+		t.Error("synthetic model 'GetContractorsQuery' not found in AST.Models")
+	}
+}
+
+func TestParseActionWithInlineQueryMultipleFields(t *testing.T) {
+	src := `module Equipment {
+  action GetRate {
+    method: GET
+    path: /rate
+    query: { equipmentId: string, contractor: string, area: string }
+    output: string
+  }
+}`
+	tokens, err := lexer.New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.Query != "GetRateQuery" {
+		t.Errorf("expected 'GetRateQuery', got %q", act.Query)
+	}
+	if len(act.QueryFields) != 3 {
+		t.Fatalf("expected 3 QueryFields, got %d", len(act.QueryFields))
+	}
 }
 
 func TestParseImport(t *testing.T) {
