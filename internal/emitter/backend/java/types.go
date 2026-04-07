@@ -35,8 +35,7 @@ func (e *JavaEmitter) emitModels(a ast.AST, outDir string) error {
 	return nil
 }
 
-// emitRecord writes a Java record for a Veld model.
-// Records are immutable data carriers (Java 16+) — ideal for DTOs.
+// emitRecord writes a Java class for a Veld model with constructor + getters/setters.
 func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir string) error {
 	enumNames := make(map[string]bool, len(enums))
 	for _, en := range enums {
@@ -71,43 +70,58 @@ func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir string) erro
 	if needsUUID {
 		sb.WriteString("import java.util.UUID;\n")
 	}
-	if needsList || needsMap || needsUUID {
-		sb.WriteString("\n")
-	}
+	sb.WriteString("import com.fasterxml.jackson.annotation.JsonIgnoreProperties;\n")
+	sb.WriteString("\n")
 
 	if m.Description != "" {
 		sb.WriteString(fmt.Sprintf("/** %s */\n", m.Description))
 	}
 
+	sb.WriteString("@JsonIgnoreProperties(ignoreUnknown = true)\n")
+	extendsClause := ""
 	if m.Extends != "" {
-		sb.WriteString(fmt.Sprintf("public class %s extends %s {\n", m.Name, m.Extends))
+		extendsClause = " extends " + m.Extends
+	}
+	sb.WriteString(fmt.Sprintf("public class %s%s {\n", m.Name, extendsClause))
+
+	// Private fields
+	for _, f := range m.Fields {
+		javaType := javaFieldType(f)
+		fieldName := javaCamelField(f.Name)
+		sb.WriteString(fmt.Sprintf("    private %s %s;\n", javaType, fieldName))
+	}
+	sb.WriteString("\n")
+
+	// No-arg constructor
+	sb.WriteString(fmt.Sprintf("    public %s() {}\n\n", m.Name))
+
+	// All-args constructor
+	if len(m.Fields) > 0 {
+		var ctorParams []string
 		for _, f := range m.Fields {
 			javaType := javaFieldType(f)
 			fieldName := javaCamelField(f.Name)
-			opt := ""
-			if f.Optional {
-				opt = " // optional, may be null"
-			}
-			sb.WriteString(fmt.Sprintf("    public %s %s;%s\n", javaType, fieldName, opt))
+			ctorParams = append(ctorParams, fmt.Sprintf("%s %s", javaType, fieldName))
 		}
-		sb.WriteString("}\n")
-	} else {
-		sb.WriteString(fmt.Sprintf("public record %s(\n", m.Name))
-		for i, f := range m.Fields {
-			javaType := javaFieldType(f)
+		sb.WriteString(fmt.Sprintf("    public %s(%s) {\n", m.Name, strings.Join(ctorParams, ", ")))
+		for _, f := range m.Fields {
 			fieldName := javaCamelField(f.Name)
-			comma := ","
-			if i == len(m.Fields)-1 {
-				comma = ""
-			}
-			opt := ""
-			if f.Optional {
-				opt = " // optional, may be null"
-			}
-			sb.WriteString(fmt.Sprintf("    %s %s%s%s\n", javaType, fieldName, comma, opt))
+			sb.WriteString(fmt.Sprintf("        this.%s = %s;\n", fieldName, fieldName))
 		}
-		sb.WriteString(") {}\n")
+		sb.WriteString("    }\n\n")
 	}
+
+	// Getters and setters
+	for _, f := range m.Fields {
+		javaType := javaFieldType(f)
+		fieldName := javaCamelField(f.Name)
+		getter := "get" + capitalize(f.Name)
+		setter := "set" + capitalize(f.Name)
+		sb.WriteString(fmt.Sprintf("    public %s %s() { return this.%s; }\n", javaType, getter, fieldName))
+		sb.WriteString(fmt.Sprintf("    public void %s(%s %s) { this.%s = %s; }\n", setter, javaType, fieldName, fieldName, fieldName))
+	}
+
+	sb.WriteString("}\n")
 
 	return os.WriteFile(filepath.Join(dir, m.Name+".java"), []byte(sb.String()), 0644)
 }

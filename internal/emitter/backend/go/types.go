@@ -65,12 +65,11 @@ func (e *GoEmitter) writeEnum(w *codegen.Writer, enum ast.Enum) {
 	w.BlankLine()
 }
 
-// writeModel generates a Go struct for a Veld model.
+// writeModel generates a Go struct for a Veld model with constructor + getters/setters.
 func (e *GoEmitter) writeModel(w *codegen.Writer, model ast.Model) error {
 	w.Writeln(fmt.Sprintf("// %s is a generated data model.", model.Name))
 
 	if model.Extends != "" {
-		// Go doesn't have true struct inheritance — embed the parent.
 		w.WriteBlock(fmt.Sprintf("type %s struct {", model.Name))
 		w.Writeln(model.Extends) // embedded struct
 	} else {
@@ -95,6 +94,37 @@ func (e *GoEmitter) writeModel(w *codegen.Writer, model ast.Model) error {
 
 	w.Dedent()
 	w.Writeln("}")
+	w.BlankLine()
+
+	// Constructor: NewModelName(...)
+	recv := strings.ToLower(model.Name[:1])
+	var ctorParams []string
+	var ctorAssigns []string
+	for _, field := range model.Fields {
+		goType, _ := e.mapFieldType(field)
+		paramName := strings.ToLower(field.Name[:1]) + field.Name[1:]
+		fieldName := e.adapter.NamingConvention(field.Name, lang.NamingContextExported)
+		ctorParams = append(ctorParams, fmt.Sprintf("%s %s", paramName, goType))
+		ctorAssigns = append(ctorAssigns, fmt.Sprintf("\t\t%s: %s,", fieldName, paramName))
+	}
+	w.Writeln(fmt.Sprintf("func New%s(%s) *%s {", model.Name, strings.Join(ctorParams, ", "), model.Name))
+	w.Writeln(fmt.Sprintf("\treturn &%s{", model.Name))
+	for _, a := range ctorAssigns {
+		w.Writeln(a)
+	}
+	w.Writeln("\t}")
+	w.Writeln("}")
+	w.BlankLine()
+
+	// Getters and setters
+	for _, field := range model.Fields {
+		goType, _ := e.mapFieldType(field)
+		fieldName := e.adapter.NamingConvention(field.Name, lang.NamingContextExported)
+		w.Writeln(fmt.Sprintf("func (%s *%s) Get%s() %s { return %s.%s }", recv, model.Name, fieldName, goType, recv, fieldName))
+		w.Writeln(fmt.Sprintf("func (%s *%s) Set%s(v %s) { %s.%s = v }", recv, model.Name, fieldName, goType, recv, fieldName))
+		w.BlankLine()
+	}
+
 	return nil
 }
 

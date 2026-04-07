@@ -58,7 +58,7 @@ func (e *RustEmitter) writeEnum(w *codegen.Writer, enum ast.Enum) {
 	w.BlankLine()
 }
 
-// writeStruct generates a Rust struct with Serde derives.
+// writeStruct generates a Rust struct with Serde derives, constructor, and getters/setters.
 func (e *RustEmitter) writeStruct(w *codegen.Writer, model ast.Model) error {
 	w.Writeln(fmt.Sprintf("/// %s is a generated data model.", model.Name))
 	w.Writeln("#[derive(Debug, Clone, Serialize, Deserialize)]")
@@ -72,7 +72,6 @@ func (e *RustEmitter) writeStruct(w *codegen.Writer, model ast.Model) error {
 		}
 
 		fieldName := safeRustIdent(e.adapter.NamingConvention(field.Name, lang.NamingContextPrivate))
-		// Add serde rename if the Rust field name (snake_case or raw ident) differs from the JSON key.
 		if strings.TrimPrefix(fieldName, "r#") != field.Name {
 			w.Writeln(fmt.Sprintf(`#[serde(rename = "%s")]`, field.Name))
 		}
@@ -84,6 +83,42 @@ func (e *RustEmitter) writeStruct(w *codegen.Writer, model ast.Model) error {
 
 	w.Dedent()
 	w.Writeln("}")
+	w.BlankLine()
+
+	// impl block with new() + getters/setters
+	structName := e.adapter.NamingConvention(model.Name, lang.NamingContextExported)
+	w.WriteBlock(fmt.Sprintf("impl %s {", structName))
+
+	// Constructor
+	var ctorParams []string
+	var ctorFields []string
+	for _, field := range model.Fields {
+		rustType, _ := e.mapFieldType(field)
+		fieldName := safeRustIdent(e.adapter.NamingConvention(field.Name, lang.NamingContextPrivate))
+		ctorParams = append(ctorParams, fmt.Sprintf("%s: %s", fieldName, rustType))
+		ctorFields = append(ctorFields, fmt.Sprintf("    %s,", fieldName))
+	}
+	w.Writeln(fmt.Sprintf("pub fn new(%s) -> Self {", strings.Join(ctorParams, ", ")))
+	w.Writeln("    Self {")
+	for _, cf := range ctorFields {
+		w.Writeln("    " + cf)
+	}
+	w.Writeln("    }")
+	w.Writeln("}")
+
+	// Getters and setters
+	for _, field := range model.Fields {
+		rustType, _ := e.mapFieldType(field)
+		fieldName := safeRustIdent(e.adapter.NamingConvention(field.Name, lang.NamingContextPrivate))
+		bareField := strings.TrimPrefix(fieldName, "r#")
+		w.BlankLine()
+		w.Writeln(fmt.Sprintf("pub fn %s(&self) -> &%s { &self.%s }", bareField, rustType, fieldName))
+		w.Writeln(fmt.Sprintf("pub fn set_%s(&mut self, v: %s) { self.%s = v; }", bareField, rustType, fieldName))
+	}
+
+	w.Dedent()
+	w.Writeln("}")
+
 	return nil
 }
 

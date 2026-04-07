@@ -55,7 +55,6 @@ func (e *PhpEmitter) emitClass(m ast.Model, enumNames map[string]bool, dir strin
 		phpType := phpFieldType(f, enumNames)
 		propName := "$" + phpSnakeName(f.Name)
 
-		// Optional fields get a default of null.
 		defaultVal := ""
 		if f.Optional {
 			phpType = "?" + phpType
@@ -66,10 +65,35 @@ func (e *PhpEmitter) emitClass(m ast.Model, enumNames map[string]bool, dir strin
 		if i == len(m.Fields)-1 {
 			comma = ","
 		}
-		sb.WriteString(fmt.Sprintf("        public readonly %s %s%s%s\n", phpType, propName, defaultVal, comma))
+		sb.WriteString(fmt.Sprintf("        public %s %s%s%s\n", phpType, propName, defaultVal, comma))
 	}
 
-	sb.WriteString("    ) {}\n}\n")
+	sb.WriteString("    ) {}\n\n")
+
+	// Getters and setters
+	for _, f := range m.Fields {
+		phpType := phpFieldType(f, enumNames)
+		propName := phpSnakeName(f.Name)
+		pascal := phpPascalName(f.Name)
+		if f.Optional {
+			phpType = "?" + phpType
+		}
+		sb.WriteString(fmt.Sprintf("    public function get%s(): %s { return $this->%s; }\n", pascal, phpType, propName))
+		sb.WriteString(fmt.Sprintf("    public function set%s(%s $value): void { $this->%s = $value; }\n\n", pascal, phpType, propName))
+	}
+
+	// fromArray + toArray
+	sb.WriteString("    public static function fromArray(array $data): self\n    {\n        return new self(\n")
+	for i, f := range m.Fields {
+		propName := phpSnakeName(f.Name)
+		comma := ","
+		if i == len(m.Fields)-1 {
+			comma = ""
+		}
+		sb.WriteString(fmt.Sprintf("            $data['%s'] ?? null%s\n", propName, comma))
+	}
+	sb.WriteString("        );\n    }\n\n")
+	sb.WriteString("    public function toArray(): array\n    {\n        return get_object_vars($this);\n    }\n}\n")
 	return os.WriteFile(filepath.Join(dir, m.Name+".php"), []byte(sb.String()), 0644)
 }
 

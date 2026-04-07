@@ -142,20 +142,42 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 				sb.WriteString(fmt.Sprintf("/** %s */\n", m.Description))
 			}
 			if m.Extends != "" {
-				sb.WriteString(fmt.Sprintf("export interface %s extends %s {\n", m.Name, m.Extends))
+				sb.WriteString(fmt.Sprintf("export class %s extends %s {\n", m.Name, m.Extends))
 			} else {
-				sb.WriteString(fmt.Sprintf("export interface %s {\n", m.Name))
+				sb.WriteString(fmt.Sprintf("export class %s {\n", m.Name))
 			}
 			for _, f := range m.Fields {
 				if f.Deprecated != "" {
 					sb.WriteString(fmt.Sprintf("  /** @deprecated %s */\n", f.Deprecated))
 				}
-				opt := ""
+				tsType := tshelpers.VeldFieldToTS(f)
 				if f.Optional {
-					opt = "?"
+					sb.WriteString(fmt.Sprintf("  %s?: %s;\n", f.Name, tsType))
+				} else {
+					sb.WriteString(fmt.Sprintf("  %s!: %s;\n", f.Name, tsType))
 				}
-				sb.WriteString(fmt.Sprintf("  %s%s: %s;\n", f.Name, opt, tshelpers.VeldFieldToTS(f)))
 			}
+			sb.WriteString("\n")
+			// Constructor
+			if m.Extends != "" {
+				sb.WriteString(fmt.Sprintf("  constructor(data?: Partial<%s>) {\n    super(data);\n    if (data) Object.assign(this, data);\n  }\n", m.Name))
+			} else {
+				sb.WriteString(fmt.Sprintf("  constructor(data?: Partial<%s>) {\n    if (data) Object.assign(this, data);\n  }\n", m.Name))
+			}
+			// Getters and setters
+			for _, f := range m.Fields {
+				tsType := tshelpers.VeldFieldToTS(f)
+				pascal := strings.ToUpper(f.Name[:1]) + f.Name[1:]
+				if f.Optional {
+					sb.WriteString(fmt.Sprintf("\n  get%s(): %s | undefined { return this.%s; }\n", pascal, tsType, f.Name))
+					sb.WriteString(fmt.Sprintf("  set%s(value: %s | undefined): void { this.%s = value; }\n", pascal, tsType, f.Name))
+				} else {
+					sb.WriteString(fmt.Sprintf("\n  get%s(): %s { return this.%s; }\n", pascal, tsType, f.Name))
+					sb.WriteString(fmt.Sprintf("  set%s(value: %s): void { this.%s = value; }\n", pascal, tsType, f.Name))
+				}
+			}
+			sb.WriteString(fmt.Sprintf("\n  toJSON(): Record<string, unknown> { return { ...this }; }\n"))
+			sb.WriteString(fmt.Sprintf("  static fromJSON(data: Record<string, unknown>): %s { return new %s(data as any); }\n", m.Name, m.Name))
 			sb.WriteString("}\n\n")
 		}
 
@@ -196,20 +218,40 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 				csb.WriteString(fmt.Sprintf("/** %s */\n", m.Description))
 			}
 			if m.Extends != "" {
-				csb.WriteString(fmt.Sprintf("export interface %s extends %s {\n", m.Name, m.Extends))
+				csb.WriteString(fmt.Sprintf("export class %s extends %s {\n", m.Name, m.Extends))
 			} else {
-				csb.WriteString(fmt.Sprintf("export interface %s {\n", m.Name))
+				csb.WriteString(fmt.Sprintf("export class %s {\n", m.Name))
 			}
 			for _, f := range m.Fields {
 				if f.Deprecated != "" {
 					csb.WriteString(fmt.Sprintf("  /** @deprecated %s */\n", f.Deprecated))
 				}
-				opt := ""
+				tsType := tshelpers.VeldFieldToTS(f)
 				if f.Optional {
-					opt = "?"
+					csb.WriteString(fmt.Sprintf("  %s?: %s;\n", f.Name, tsType))
+				} else {
+					csb.WriteString(fmt.Sprintf("  %s!: %s;\n", f.Name, tsType))
 				}
-				csb.WriteString(fmt.Sprintf("  %s%s: %s;\n", f.Name, opt, tshelpers.VeldFieldToTS(f)))
 			}
+			csb.WriteString("\n")
+			if m.Extends != "" {
+				csb.WriteString(fmt.Sprintf("  constructor(data?: Partial<%s>) {\n    super(data);\n    if (data) Object.assign(this, data);\n  }\n", m.Name))
+			} else {
+				csb.WriteString(fmt.Sprintf("  constructor(data?: Partial<%s>) {\n    if (data) Object.assign(this, data);\n  }\n", m.Name))
+			}
+			for _, f := range m.Fields {
+				tsType := tshelpers.VeldFieldToTS(f)
+				pascal := strings.ToUpper(f.Name[:1]) + f.Name[1:]
+				if f.Optional {
+					csb.WriteString(fmt.Sprintf("\n  get%s(): %s | undefined { return this.%s; }\n", pascal, tsType, f.Name))
+					csb.WriteString(fmt.Sprintf("  set%s(value: %s | undefined): void { this.%s = value; }\n", pascal, tsType, f.Name))
+				} else {
+					csb.WriteString(fmt.Sprintf("\n  get%s(): %s { return this.%s; }\n", pascal, tsType, f.Name))
+					csb.WriteString(fmt.Sprintf("  set%s(value: %s): void { this.%s = value; }\n", pascal, tsType, f.Name))
+				}
+			}
+			csb.WriteString(fmt.Sprintf("\n  toJSON(): Record<string, unknown> { return { ...this }; }\n"))
+			csb.WriteString(fmt.Sprintf("  static fromJSON(data: Record<string, unknown>): %s { return new %s(data as any); }\n", m.Name, m.Name))
 			csb.WriteString("}\n\n")
 		}
 		if err := os.WriteFile(filepath.Join(dir, "common.ts"), []byte(csb.String()), 0644); err != nil {
