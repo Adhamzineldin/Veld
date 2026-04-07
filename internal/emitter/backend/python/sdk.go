@@ -51,27 +51,9 @@ func emitPySdkTypes(consumed emitter.ConsumedServiceInfo, dir string) error {
 	sb.WriteString(fmt.Sprintf("# Service SDK types for: %s\n", consumed.Name))
 	sb.WriteString("from __future__ import annotations\n")
 
-	usedModels := make(map[string]bool)
-	usedEnums := make(map[string]bool)
-	for _, mod := range a.Modules {
-		for k, v := range emitter.CollectTransitiveModels(a, mod) {
-			if v {
-				usedModels[k] = true
-			}
-		}
-		for k, v := range emitter.CollectUsedEnums(a, mod) {
-			if v {
-				usedEnums[k] = true
-			}
-		}
-	}
-
 	needsList, needsOptional, needsDict, needsAny := false, false, false, false
-	needsLiteral := len(usedEnums) > 0
+	needsLiteral := len(a.Enums) > 0
 	for _, m := range a.Models {
-		if !usedModels[m.Name] {
-			continue
-		}
 		for _, f := range m.Fields {
 			if f.IsArray {
 				needsList = true
@@ -107,9 +89,6 @@ func emitPySdkTypes(consumed emitter.ConsumedServiceInfo, dir string) error {
 	sb.WriteString(fmt.Sprintf("from typing import %s\n\n", strings.Join(typingImports, ", ")))
 
 	for _, en := range a.Enums {
-		if !usedEnums[en.Name] {
-			continue
-		}
 		quoted := make([]string, len(en.Values))
 		for i, v := range en.Values {
 			quoted[i] = fmt.Sprintf("%q", v)
@@ -118,9 +97,6 @@ func emitPySdkTypes(consumed emitter.ConsumedServiceInfo, dir string) error {
 	}
 
 	for _, m := range a.Models {
-		if !usedModels[m.Name] {
-			continue
-		}
 		if m.Description != "" {
 			sb.WriteString(fmt.Sprintf("# %s\n", m.Description))
 		}
