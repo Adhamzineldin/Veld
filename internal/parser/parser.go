@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
@@ -729,6 +730,20 @@ func (p *Parser) parseAction() (ast.Action, error) {
 					return act, fmt.Errorf("error name: %w", err)
 				}
 				act.Errors = append(act.Errors, nameTok.Value)
+				// Optional explicit status: errName:404
+				if p.peek().Type == lexer.TColon {
+					p.consume() // consume ':'
+					numTok, numErr := p.expect(lexer.TNumber)
+					if numErr != nil {
+						return act, fmt.Errorf("error status after ':': expected HTTP status code, e.g. %s:404", nameTok.Value)
+					}
+					if status, convErr := strconv.Atoi(numTok.Value); convErr == nil {
+						if act.ErrorStatuses == nil {
+							act.ErrorStatuses = make(map[string]int)
+						}
+						act.ErrorStatuses[nameTok.Value] = status
+					}
+				}
 				if p.peek().Type == lexer.TComma {
 					p.consume()
 				}

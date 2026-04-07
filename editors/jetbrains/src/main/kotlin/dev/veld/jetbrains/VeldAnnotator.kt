@@ -98,6 +98,7 @@ class VeldAnnotator : Annotator {
         // ── Line-by-line pass ────────────────────────────────────────────────
         var offset     = 0
         var braceDepth = 0
+        var bracketDepth = 0  // tracks depth inside [...] lists (e.g. errors: [name:status])
         var blockStack = ArrayDeque<BlockKind>()  // tracks nested block kinds
 
         for (i in lines.indices) {
@@ -106,8 +107,10 @@ class VeldAnnotator : Annotator {
             val lineStart   = offset
             val indentLen   = line.length - line.trimStart().length
 
-            val openBraces  = trimmed.count { it == '{' }
-            val closeBraces = trimmed.count { it == '}' }
+            val openBraces   = trimmed.count { it == '{' }
+            val closeBraces  = trimmed.count { it == '}' }
+            val openBrackets = trimmed.count { it == '[' }
+            val closeBrackets = trimmed.count { it == ']' }
 
             // Current block context (before brace adjustments this line)
             val currentBlock = blockStack.lastOrNull() ?: BlockKind.NONE
@@ -185,20 +188,24 @@ class VeldAnnotator : Annotator {
                 }
 
                 // ── inside model/action body: directives and fields ───────────
+                // Skip directive validation inside [...] lists (e.g. errors: [name:status, ...])
                 currentBlock == BlockKind.MODEL || currentBlock == BlockKind.ACTION ||
                 currentBlock == BlockKind.MODULE -> {
-                    handleDirectiveOrField(
-                        trimmed, line, lineStart, content.length,
-                        visibleModels, visibleEnums, allTypes, holder, currentBlock
-                    )
+                    if (bracketDepth == 0) {
+                        handleDirectiveOrField(
+                            trimmed, line, lineStart, content.length,
+                            visibleModels, visibleEnums, allTypes, holder, currentBlock
+                        )
+                    }
                 }
 
                 // ── closing braces ────────────────────────────────────────────
                 trimmed == "}" -> { /* handled below */ }
             }
 
-            // ── Brace depth tracking ─────────────────────────────────────────
+            // ── Brace and bracket depth tracking ────────────────────────────
             braceDepth += openBraces - closeBraces
+            bracketDepth = maxOf(0, bracketDepth + openBrackets - closeBrackets)
             repeat(closeBraces) {
                 if (blockStack.isNotEmpty()) blockStack.removeLast()
             }

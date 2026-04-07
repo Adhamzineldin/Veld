@@ -103,9 +103,11 @@ func (e *JavaEmitter) emitInterface(_ jstrategy.FrameworkStrategy, a ast.AST, mo
 			}
 			sb.WriteString("     */\n")
 		}
-		throwsClause := ""
+		// Always declare throws Exception so implementations can throw any checked
+		// exception (DB calls, HTTP I/O, etc.) without a mismatch compile error.
+		throwsClause := " throws Exception"
 		if len(act.Errors) > 0 {
-			throwsClause = " throws " + capitalize(act.Name) + "Exception"
+			throwsClause = " throws " + capitalize(act.Name) + "Exception, Exception"
 		}
 		sb.WriteString(fmt.Sprintf("    %s %s(%s)%s;\n\n", returnType, javaCamelField(act.Name), strings.Join(params, ", "), throwsClause))
 	}

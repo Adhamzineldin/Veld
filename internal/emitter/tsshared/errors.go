@@ -98,7 +98,7 @@ func emitModuleErrors(mod ast.Module, dir string) error {
 		sb.WriteString(fmt.Sprintf("export const %sErrors = {\n", camelAction))
 		for _, errName := range act.Errors {
 			code := emitter.ErrorCode(act.Name, errName)
-			status := emitter.ErrorHTTPStatus(errName)
+			status := emitter.ActionErrorStatus(act, errName)
 			camelErr := emitter.ToCamelCase(errName)
 			// Object.assign attaches .code/.status metadata to the factory function so
 			// frontend can write: isErrorCode(err, usersErrors.getUser.notFound.code)
