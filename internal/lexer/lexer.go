@@ -192,6 +192,18 @@ type Token struct {
 	Line  int
 }
 
+// IsKeyword reports whether t is a reserved keyword token (not a punctuation,
+// type primitive, or identifier). Used by the parser to allow keywords as field names.
+func IsKeyword(t TokenType) bool {
+	switch t {
+	case TModel, TModule, TAction, TInput, TOutput, TMiddleware, TImport, TEnum,
+		TDescription, TQuery, TDefault, TPrefix, TMethod, TKeyPath,
+		TGET, TPOST, TPUT, TDELETE, TPATCH, TWS, TStream, TEmit, TErrors, TFrom:
+		return true
+	}
+	return false
+}
+
 // Lexer converts raw .veld source text into a flat token slice.
 type Lexer struct {
 	source []rune
