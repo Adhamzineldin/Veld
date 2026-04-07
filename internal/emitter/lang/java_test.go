@@ -16,7 +16,7 @@ func TestJavaAdapterMapType_Builtins(t *testing.T) {
 		{"bool", "Boolean"},
 		{"date", "String"},
 		{"datetime", "String"},
-		{"uuid", "String"},
+		{"uuid", "UUID"}, // java.util.UUID — imported automatically by the emitter
 	}
 	for _, c := range cases {
 		got, _, err := a.MapType(c.veld)
