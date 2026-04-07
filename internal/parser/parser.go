@@ -117,6 +117,17 @@ func (p *Parser) expect(t lexer.TokenType) (lexer.Token, error) {
 	return tok, nil
 }
 
+// expectFieldName accepts TIdent or any keyword token as a field name.
+// Keywords like "action", "input", "output" etc. are valid field names in model context.
+func (p *Parser) expectFieldName() (lexer.Token, error) {
+	tok := p.consume()
+	if tok.Type == lexer.TIdent || lexer.IsKeyword(tok.Type) {
+		tok.Type = lexer.TIdent // normalize to TIdent
+		return tok, nil
+	}
+	return tok, fmt.Errorf("line %d: expected identifier, got %q", tok.Line, tok.Value)
+}
+
 // peekIdent returns true if the next token is TIdent with the given value.
 // Used for contextual keywords like "description", "prefix", "method", etc.
 func (p *Parser) peekIdent(value string) bool {
@@ -350,7 +361,7 @@ func (p *Parser) parseModel() (ast.Model, error) {
 }
 
 func (p *Parser) parseField() (ast.Field, error) {
-	nameTok, err := p.expect(lexer.TIdent)
+	nameTok, err := p.expectFieldName()
 	if err != nil {
 		return ast.Field{}, fmt.Errorf("field name: %w", err)
 	}
