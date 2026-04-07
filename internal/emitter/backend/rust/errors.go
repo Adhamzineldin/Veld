@@ -196,7 +196,8 @@ func (e *RustEmitter) generateErrors() []byte {
 	return w.Bytes()
 }
 
-// generateModuleErrors returns bytes for src/{module}_errors.rs with typed error factories.
+// generateModuleErrors returns bytes for src/{module}_errors.rs with nested
+// module-per-action pattern — mirrors TS: users_errors::get_user::not_found("msg").
 func (e *RustEmitter) generateModuleErrors(mod ast.Module) []byte {
 	if !emitter.HasErrors(mod) {
 		return nil
@@ -204,30 +205,38 @@ func (e *RustEmitter) generateModuleErrors(mod ast.Module) []byte {
 
 	w := codegen.NewWriter("    ")
 	w.Writeln(header)
-	w.Writeln("use axum::http::StatusCode;")
-	w.Writeln("use crate::errors::AppError;")
 	w.BlankLine()
-
-	moduleLower := strings.ToLower(mod.Name)
-	_ = moduleLower // used only for file naming
 
 	for _, act := range mod.Actions {
 		if len(act.Errors) == 0 {
 			continue
 		}
+		snakeAction := emitter.ToSnakeCase(act.Name)
+		w.Writeln(fmt.Sprintf("/// Error factories and constants for %s — mirrors TS `%sErrors.%s.error(\"msg\")`.",
+			act.Name, strings.ToLower(mod.Name), emitter.ToCamelCase(act.Name)))
+		w.WriteBlock(fmt.Sprintf("pub mod %s {", snakeAction))
+		w.Writeln("use axum::http::StatusCode;")
+		w.Writeln("use crate::errors::AppError;")
+		w.BlankLine()
 		for _, errName := range act.Errors {
 			code := emitter.ErrorCode(act.Name, errName)
-			status := emitter.ErrorHTTPStatus(errName)
-			fnName := emitter.ToSnakeCase(act.Name) + "_" + emitter.ToSnakeCase(errName)
+			status := emitter.ActionErrorStatus(act, errName)
+			snakeErr := emitter.ToSnakeCase(errName)
+			constCode := emitter.ToScreamingSnake(errName) + "_CODE"
+			constStatus := emitter.ToScreamingSnake(errName) + "_STATUS"
 			rustStatus := rustStatusCode(status)
-
-			w.Writeln(fmt.Sprintf("/// Create a %s error for the %s action.", errName, act.Name))
-			w.WriteBlock(fmt.Sprintf("pub fn %s(message: impl Into<String>) -> AppError {", fnName))
-			w.Writeln(fmt.Sprintf(`AppError::new(%s, message, "%s")`, rustStatus, code))
-			w.Dedent()
+			w.Writeln(fmt.Sprintf("/// mirrors TS .%s.code", snakeErr))
+			w.Writeln(fmt.Sprintf("pub const %s: &str = \"%s\";", constCode, code))
+			w.Writeln(fmt.Sprintf("pub const %s: u16 = %d;", constStatus, status))
+			w.BlankLine()
+			w.Writeln(fmt.Sprintf("pub fn %s(message: impl Into<String>) -> AppError {", snakeErr))
+			w.Writeln(fmt.Sprintf("    AppError::new(%s, message, %s)", rustStatus, constCode))
 			w.Writeln("}")
 			w.BlankLine()
 		}
+		w.Dedent()
+		w.Writeln("}")
+		w.BlankLine()
 	}
 
 	return w.Bytes()

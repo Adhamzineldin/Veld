@@ -213,15 +213,17 @@ func emitJSModuleErrors(mod ast.Module, dir string) error {
 		}
 
 		camelAction := emitter.ToCamelCase(act.Name)
-		sb.WriteString(fmt.Sprintf("/** Error factories for %s */\n", act.Name))
+		sb.WriteString(fmt.Sprintf("/** Error factories for %s — each entry also exposes .code/.status for checks. */\n", act.Name))
 		sb.WriteString(fmt.Sprintf("const %sErrors = {\n", camelAction))
 		for _, errName := range act.Errors {
 			code := emitter.ErrorCode(act.Name, errName)
-			status := emitter.ErrorHTTPStatus(errName)
+			status := emitter.ActionErrorStatus(act, errName)
 			camelErr := emitter.ToCamelCase(errName)
-			sb.WriteString(fmt.Sprintf("  /** @param {string} [message] @returns {ApiError} */\n"))
-			sb.WriteString(fmt.Sprintf("  %s: (message) =>\n", camelErr))
-			sb.WriteString(fmt.Sprintf("    new ApiError('%s', %d, message ?? '%s'),\n", code, status, errName))
+			sb.WriteString(fmt.Sprintf("  %s: Object.assign(\n", camelErr))
+			sb.WriteString(fmt.Sprintf("    /** @param {string} [message] @returns {ApiError} */\n"))
+			sb.WriteString(fmt.Sprintf("    (message) => new ApiError('%s', %d, message ?? '%s'),\n", code, status, errName))
+			sb.WriteString(fmt.Sprintf("    { code: '%s', status: %d },\n", code, status))
+			sb.WriteString("  ),\n")
 		}
 		sb.WriteString("};\n\n")
 	}

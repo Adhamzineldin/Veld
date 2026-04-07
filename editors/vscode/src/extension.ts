@@ -471,12 +471,17 @@ class VeldLanguageServer {
         // Track block context for key validation
         type BlockKind = 'none' | 'model' | 'enum' | 'module' | 'action';
         const blockStack: BlockKind[] = [];
+        // bracketDepth tracks multi-line [...] lists (e.g. errors: [name:status, ...])
+        // Key validation is suppressed inside these lists.
+        let bracketDepth = 0;
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             const trimmed = line.trim();
             const openBraces = (trimmed.match(/{/g) || []).length;
             const closeBraces = (trimmed.match(/}/g) || []).length;
+            const openBrackets = (trimmed.match(/\[/g) || []).length;
+            const closeBrackets = (trimmed.match(/\]/g) || []).length;
             const currentBlock: BlockKind = blockStack.length > 0 ? blockStack[blockStack.length - 1] : 'none';
 
             // Track block entries
@@ -486,7 +491,8 @@ class VeldLanguageServer {
             else if (trimmed.startsWith('action ') && openBraces > closeBraces) blockStack.push('action');
 
             // ── Key validation based on block context ────────────────────────
-            if (currentBlock === 'action' || currentBlock === 'module') {
+            // Suppressed inside [...] lists (e.g. multi-line errors: [name:status] items)
+            if ((currentBlock === 'action' || currentBlock === 'module') && bracketDepth === 0) {
                 const keyMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*:/);
                 if (keyMatch && !trimmed.startsWith('//')) {
                     const key = keyMatch[1];
@@ -507,6 +513,7 @@ class VeldLanguageServer {
                     }
                 }
             }
+            bracketDepth = Math.max(0, bracketDepth + openBrackets - closeBrackets);
 
             // ── Import validation ────────────────────────────────────────────
             if (trimmed.startsWith('import') || trimmed.startsWith('from')) {

@@ -62,18 +62,19 @@ type Module struct {
 
 // Action is a single API endpoint inside a Module.
 type Action struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description,omitempty"`
-	Method      string   `json:"method"`
-	Path        string   `json:"path"`
-	Input       string   `json:"input"`
-	Output      string   `json:"output"`
-	OutputArray bool     `json:"outputArray,omitempty"` // output User[] → true
-	Query       string   `json:"query,omitempty"`       // query param model
-	Stream      string   `json:"stream,omitempty"`      // server→client push type for WS actions
-	Emit        string   `json:"emit,omitempty"`        // client→server message type for WS actions
-	Errors      []string `json:"errors,omitempty"`      // typed error codes for this action
-	Middleware  []string `json:"middleware"`
-	Deprecated  string   `json:"deprecated,omitempty"` // @deprecated "message"
-	Line        int      `json:"-"`                    // line in source where this action was defined
+	Name          string         `json:"name"`
+	Description   string         `json:"description,omitempty"`
+	Method        string         `json:"method"`
+	Path          string         `json:"path"`
+	Input         string         `json:"input"`
+	Output        string         `json:"output"`
+	OutputArray   bool           `json:"outputArray,omitempty"`   // output User[] → true
+	Query         string         `json:"query,omitempty"`         // query param model
+	Stream        string         `json:"stream,omitempty"`        // server→client push type for WS actions
+	Emit          string         `json:"emit,omitempty"`          // client→server message type for WS actions
+	Errors        []string       `json:"errors,omitempty"`        // typed error codes for this action
+	ErrorStatuses map[string]int `json:"errorStatuses,omitempty"` // explicit HTTP status per error name (e.g. insufficientFunds:400)
+	Middleware    []string       `json:"middleware"`
+	Deprecated    string         `json:"deprecated,omitempty"` // @deprecated "message"
+	Line          int            `json:"-"`                    // line in source where this action was defined
 }

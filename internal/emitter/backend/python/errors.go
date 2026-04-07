@@ -190,50 +190,66 @@ func emitPythonModuleErrors(mod ast.Module, dir string) error {
 	sb.WriteString("from typing import Literal, Optional\n\n")
 	sb.WriteString("from ._base import ApiError\n\n\n")
 
+	// Per-action typed error subclasses + ErrorCode Literals
 	for _, act := range mod.Actions {
 		if len(act.Errors) == 0 {
 			continue
 		}
-
 		var codes []string
 		for _, errName := range act.Errors {
-			code := emitter.ErrorCode(act.Name, errName)
-			codes = append(codes, fmt.Sprintf("\"%s\"", code))
+			codes = append(codes, fmt.Sprintf("\"%s\"", emitter.ErrorCode(act.Name, errName)))
 		}
-
-		sb.WriteString(fmt.Sprintf("# Error codes for %s\n", act.Name))
 		sb.WriteString(fmt.Sprintf("%sErrorCode = Literal[%s]\n\n\n", act.Name, strings.Join(codes, ", ")))
-
 		sb.WriteString(fmt.Sprintf("class %sError(ApiError):\n", act.Name))
-		sb.WriteString(fmt.Sprintf("    \"\"\"Typed error for %s — only allows %s error codes.\"\"\"\n", act.Name, act.Name))
+		sb.WriteString(fmt.Sprintf("    \"\"\"Typed error for %s.\"\"\"\n", act.Name))
 		sb.WriteString(fmt.Sprintf("    code: %sErrorCode  # type: ignore[assignment]\n\n\n", act.Name))
-
-		snakeAction := emitter.ToSnakeCase(act.Name)
-		for _, errName := range act.Errors {
-			code := emitter.ErrorCode(act.Name, errName)
-			status := emitter.ErrorHTTPStatus(errName)
-			snakeErr := emitter.ToSnakeCase(errName)
-			funcName := snakeAction + "_" + snakeErr
-			sb.WriteString(fmt.Sprintf("def %s(message: Optional[str] = None) -> %sError:\n", funcName, act.Name))
-			sb.WriteString(fmt.Sprintf("    \"\"\"Create a %s error for the %s action.\"\"\"\n", errName, act.Name))
-			sb.WriteString(fmt.Sprintf("    return %sError(\"%s\", %d, message or \"%s\")\n\n\n", act.Name, code, status, errName))
-		}
 	}
 
-	sb.WriteString(fmt.Sprintf("class %sErrors:\n", moduleLower))
-	sb.WriteString(fmt.Sprintf("    \"\"\"Namespace for all %s module error factories.\"\"\"\n\n", mod.Name))
+	// Module-level nested class — mirrors TS: users_errors.get_user.not_found("msg")
+	sb.WriteString(fmt.Sprintf("class %sErrors:\n", mod.Name))
+	sb.WriteString(fmt.Sprintf("    \"\"\"Error factories for %s — mirrors TypeScript %sErrors pattern.\n\n", mod.Name, strings.ToLower(mod.Name)))
+	sb.WriteString(fmt.Sprintf("    Usage: raise %sErrors.%s.%s(\"message\")\n    \"\"\"\n\n",
+		mod.Name,
+		emitter.ToSnakeCase(func() string {
+			for _, act := range mod.Actions {
+				if len(act.Errors) > 0 {
+					return act.Name
+				}
+			}
+			return "action"
+		}()),
+		func() string {
+			for _, act := range mod.Actions {
+				if len(act.Errors) > 0 {
+					return emitter.ToSnakeCase(act.Errors[0])
+				}
+			}
+			return "error"
+		}()))
+
 	for _, act := range mod.Actions {
 		if len(act.Errors) == 0 {
 			continue
 		}
 		snakeAction := emitter.ToSnakeCase(act.Name)
+		sb.WriteString(fmt.Sprintf("    class %s:\n", snakeAction))
+		sb.WriteString(fmt.Sprintf("        \"\"\"Error factories and code constants for %s.\"\"\"\n\n", act.Name))
 		for _, errName := range act.Errors {
+			code := emitter.ErrorCode(act.Name, errName)
+			status := emitter.ActionErrorStatus(act, errName)
 			snakeErr := emitter.ToSnakeCase(errName)
-			funcName := snakeAction + "_" + snakeErr
-			sb.WriteString(fmt.Sprintf("    %s = staticmethod(%s)\n", funcName, funcName))
+			constName := emitter.ToScreamingSnake(errName) + "_CODE"
+			constStatus := emitter.ToScreamingSnake(errName) + "_STATUS"
+			sb.WriteString(fmt.Sprintf("        %s = \"%s\"  # mirrors TS .%s.code\n", constName, code, snakeErr))
+			sb.WriteString(fmt.Sprintf("        %s = %d\n\n", constStatus, status))
+			sb.WriteString(fmt.Sprintf("        @staticmethod\n"))
+			sb.WriteString(fmt.Sprintf("        def %s(message: Optional[str] = None) -> %sError:\n", snakeErr, act.Name))
+			sb.WriteString(fmt.Sprintf("            return %sError(\"%s\", %d, message or \"%s\")\n\n", act.Name, code, status, errName))
 		}
 	}
-	sb.WriteString("\n")
+
+	// Lowercase alias for import convenience
+	sb.WriteString(fmt.Sprintf("%s_errors = %sErrors\n", moduleLower, mod.Name))
 
 	return os.WriteFile(filepath.Join(dir, moduleLower+"_errors.py"), []byte(sb.String()), 0644)
 }

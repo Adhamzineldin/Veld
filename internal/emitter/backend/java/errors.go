@@ -232,7 +232,7 @@ func emitJavaActionExceptions(mod ast.Module, dir string) error {
 		// Static factory methods per error
 		for _, errName := range act.Errors {
 			code := emitter.ErrorCode(act.Name, errName)
-			status := emitter.ErrorHTTPStatus(errName)
+			status := emitter.ActionErrorStatus(act, errName)
 			factoryName := emitter.ToCamelCase(errName)
 			sb.WriteString(fmt.Sprintf("\n    /** Create a %s error (%d). */\n", errName, status))
 			sb.WriteString(fmt.Sprintf("    public static %s %s(String message) {\n", className, factoryName))
@@ -304,7 +304,7 @@ func emitJavaModuleErrorFactories(mod ast.Module, dir string) error {
 
 		for _, errName := range act.Errors {
 			code := emitter.ErrorCode(act.Name, errName)
-			status := emitter.ErrorHTTPStatus(errName)
+			status := emitter.ActionErrorStatus(act, errName)
 			methodName := emitter.ToCamelCase(errName)
 			constName := screamingSnake(errName) + "_CODE"
 			constStatus := screamingSnake(errName) + "_STATUS"

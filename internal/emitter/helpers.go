@@ -244,6 +244,18 @@ func CollectAllMiddleware(modules []ast.Module) []string {
 	return result
 }
 
+// ToPascalCase ensures the first letter is uppercase (PascalCase / UpperCamelCase).
+func ToPascalCase(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	if r[0] >= 'a' && r[0] <= 'z' {
+		r[0] -= 32
+	}
+	return string(r)
+}
+
 // ToCamelCase converts a PascalCase name to camelCase (lowercase first letter).
 func ToCamelCase(s string) string {
 	if s == "" {
@@ -322,6 +334,18 @@ func ErrorHTTPStatus(errorName string) int {
 		return status
 	}
 	return 500
+}
+
+// ActionErrorStatus returns the HTTP status for an error on a specific action.
+// It uses the explicit status from the contract (errors: [name:status]) when
+// present, falling back to the well-known name map, then 500.
+func ActionErrorStatus(act ast.Action, errName string) int {
+	if act.ErrorStatuses != nil {
+		if s, ok := act.ErrorStatuses[errName]; ok {
+			return s
+		}
+	}
+	return ErrorHTTPStatus(errName)
 }
 
 // HasErrors returns true if any action in the module defines error codes.
