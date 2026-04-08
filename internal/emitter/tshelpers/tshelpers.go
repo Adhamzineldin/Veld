@@ -14,8 +14,10 @@ func VeldScalarToTS(t string) string {
 		return "number"
 	case "bool":
 		return "boolean"
-	case "date", "datetime":
-		return "string"
+	case "date":
+		return "ISODate"
+	case "datetime":
+		return "ISODateTime"
 	case "uuid":
 		return "UUID"
 	case "decimal":
@@ -27,9 +29,9 @@ func VeldScalarToTS(t string) string {
 	}
 }
 
-// NeedsVeldScalarAliases checks whether any model in the AST uses uuid or
-// decimal types, returning which branded type aliases should be emitted.
-func NeedsVeldScalarAliases(models []ast.Model) (needsUUID, needsDecimal bool) {
+// NeedsVeldScalarAliases checks whether any model in the AST uses uuid,
+// decimal, date, or datetime types, returning which branded type aliases should be emitted.
+func NeedsVeldScalarAliases(models []ast.Model) (needsUUID, needsDecimal, needsDate, needsDateTime bool) {
 	for _, m := range models {
 		for _, f := range m.Fields {
 			if f.Type == "uuid" || f.MapValueType == "uuid" {
@@ -38,16 +40,22 @@ func NeedsVeldScalarAliases(models []ast.Model) (needsUUID, needsDecimal bool) {
 			if f.Type == "decimal" || f.MapValueType == "decimal" {
 				needsDecimal = true
 			}
+			if f.Type == "date" || f.MapValueType == "date" {
+				needsDate = true
+			}
+			if f.Type == "datetime" || f.MapValueType == "datetime" {
+				needsDateTime = true
+			}
 		}
 	}
 	return
 }
 
 // ScalarAliasBlock returns the TypeScript type-alias declarations for branded
-// scalar types (UUID, Decimal) that are used in the AST.
+// scalar types (UUID, Decimal, ISODate, ISODateTime) that are used in the AST.
 func ScalarAliasBlock(models []ast.Model) string {
-	needsUUID, needsDecimal := NeedsVeldScalarAliases(models)
-	if !needsUUID && !needsDecimal {
+	needsUUID, needsDecimal, needsDate, needsDateTime := NeedsVeldScalarAliases(models)
+	if !needsUUID && !needsDecimal && !needsDate && !needsDateTime {
 		return ""
 	}
 	var sb strings.Builder
@@ -59,6 +67,14 @@ func ScalarAliasBlock(models []ast.Model) string {
 	if needsDecimal {
 		sb.WriteString("/** A decimal value represented as a string for precision (e.g. \"12345.6789\"). */\n")
 		sb.WriteString("export type Decimal = string & { readonly __brand: 'Decimal' };\n")
+	}
+	if needsDate {
+		sb.WriteString("/** An ISO 8601 date string (e.g. \"2024-01-15\"). */\n")
+		sb.WriteString("export type ISODate = string & { readonly __brand: 'ISODate' };\n")
+	}
+	if needsDateTime {
+		sb.WriteString("/** An ISO 8601 datetime string (e.g. \"2024-01-15T09:30:00Z\"). */\n")
+		sb.WriteString("export type ISODateTime = string & { readonly __brand: 'ISODateTime' };\n")
 	}
 	sb.WriteString("\n")
 	return sb.String()

@@ -44,7 +44,7 @@ func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir string) erro
 
 	needsList := false
 	needsMap := false
-	needsUUID := false
+	importSet := make(map[string]bool)
 	for _, f := range m.Fields {
 		if f.IsArray {
 			needsList = true
@@ -52,8 +52,16 @@ func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir string) erro
 		if f.IsMap {
 			needsMap = true
 		}
-		if f.Type == "uuid" || (f.IsMap && f.MapValueType == "uuid") {
-			needsUUID = true
+		// Collect imports from the adapter for each field type.
+		_, imports, _ := javaLang.MapType(f.Type)
+		for _, imp := range imports {
+			importSet[imp] = true
+		}
+		if f.IsMap {
+			_, valImports, _ := javaLang.MapType(f.MapValueType)
+			for _, imp := range valImports {
+				importSet[imp] = true
+			}
 		}
 	}
 
@@ -67,8 +75,8 @@ func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir string) erro
 	if needsMap {
 		sb.WriteString("import java.util.Map;\n")
 	}
-	if needsUUID {
-		sb.WriteString("import java.util.UUID;\n")
+	for imp := range importSet {
+		sb.WriteString(fmt.Sprintf("import %s;\n", imp))
 	}
 	sb.WriteString("import com.fasterxml.jackson.annotation.JsonIgnoreProperties;\n")
 	sb.WriteString("\n")

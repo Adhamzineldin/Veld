@@ -14,8 +14,8 @@ func TestJavaAdapterMapType_Builtins(t *testing.T) {
 		{"int", "Long"},
 		{"float", "Double"},
 		{"bool", "Boolean"},
-		{"date", "String"},
-		{"datetime", "String"},
+		{"date", "LocalDate"},
+		{"datetime", "LocalDateTime"},
 		{"uuid", "UUID"}, // java.util.UUID — imported automatically by the emitter
 	}
 	for _, c := range cases {

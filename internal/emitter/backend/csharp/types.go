@@ -147,8 +147,12 @@ func csFieldType(f ast.Field, enumNames map[string]bool) string {
 // veldScalarToCS maps a Veld scalar to a C# type.
 func veldScalarToCS(t string, _ map[string]bool) string {
 	switch t {
-	case "string", "date", "datetime", "uuid":
+	case "string":
 		return "string"
+	case "uuid":
+		return "Guid"
+	case "date", "datetime":
+		return "DateTime"
 	case "int":
 		return "long"
 	case "float":

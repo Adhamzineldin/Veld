@@ -11,6 +11,7 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	"github.com/Adhamzineldin/Veld/internal/emitter/lang"
 	"github.com/Adhamzineldin/Veld/internal/emitter/sdkhelpers"
 )
 
@@ -86,7 +87,7 @@ func emitGoSdkTypes(consumed emitter.ConsumedServiceInfo, dir, pkgName string) e
 			sb.WriteString(fmt.Sprintf("type %s struct {\n", m.Name))
 			allFields := goSdkFlattenFields(m, modelMap)
 			for _, f := range allFields {
-				goType := goSdkFieldType(f)
+				goType := goFieldType(f)
 				if f.Optional {
 					goType = "*" + goType
 				}
@@ -102,7 +103,7 @@ func emitGoSdkTypes(consumed emitter.ConsumedServiceInfo, dir, pkgName string) e
 			var ctorParams []string
 			var ctorAssigns []string
 			for _, f := range allFields {
-				goType := goSdkFieldType(f)
+				goType := goFieldType(f)
 				paramName := f.Name
 				fieldName := goCapitalize(f.Name)
 				if f.Optional {
@@ -120,7 +121,7 @@ func emitGoSdkTypes(consumed emitter.ConsumedServiceInfo, dir, pkgName string) e
 			// Getters and setters
 			recv := strings.ToLower(m.Name[:1])
 			for _, f := range allFields {
-				goType := goSdkFieldType(f)
+				goType := goFieldType(f)
 				fieldName := goCapitalize(f.Name)
 				if f.Optional {
 					goType = "*" + goType
@@ -240,34 +241,22 @@ func writeGoSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func goSdkFieldType(f ast.Field) string {
+// goSharedAdapter is the single source of truth for Go type mapping.
+// Used by both normal backend (via GoEmitter.adapter) and SDK generation.
+var goSharedAdapter = &lang.GoAdapter{}
+
+// goFieldType maps a Veld AST field to its Go type string.
+// Shared between normal backend and SDK — no duplication.
+func goFieldType(f ast.Field) string {
 	if f.IsMap {
-		return fmt.Sprintf("map[string]%s", goSdkScalar(f.MapValueType))
+		valType, _, _ := goSharedAdapter.MapType(f.MapValueType)
+		return "map[string]" + valType
 	}
-	base := goSdkScalar(f.Type)
+	base, _, _ := goSharedAdapter.MapType(f.Type)
 	if f.IsArray {
 		return "[]" + base
 	}
 	return base
-}
-
-func goSdkScalar(t string) string {
-	switch t {
-	case "string", "uuid", "decimal":
-		return "string"
-	case "int":
-		return "int64"
-	case "float":
-		return "float64"
-	case "bool":
-		return "bool"
-	case "date", "datetime":
-		return "time.Time"
-	case "any", "json":
-		return "interface{}"
-	default:
-		return t
-	}
 }
 
 func goCapitalize(s string) string {
