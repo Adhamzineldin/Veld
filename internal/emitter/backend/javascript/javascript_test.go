@@ -270,3 +270,74 @@ func TestJSEmitterRegistered(t *testing.T) {
 		t.Errorf("node-js backend not registered: %v", err)
 	}
 }
+
+// TestJSEmitterModelsWithNoModules verifies that ALL models/enums are generated
+// even when the AST has zero modules (no actions at all).
+func TestJSEmitterModelsWithNoModules(t *testing.T) {
+	e := javascript.New()
+	outDir := t.TempDir()
+
+	modelsOnlyAST := ast.AST{
+		Models: []ast.Model{
+			{
+				Name: "User",
+				Fields: []ast.Field{
+					{Name: "id", Type: "uuid"},
+					{Name: "email", Type: "string"},
+					{Name: "tags", Type: "string", IsArray: true},
+					{Name: "bio", Type: "string", Optional: true},
+				},
+			},
+			{
+				Name: "Product",
+				Fields: []ast.Field{
+					{Name: "name", Type: "string"},
+					{Name: "price", Type: "float"},
+				},
+			},
+		},
+		Enums: []ast.Enum{
+			{Name: "Role", Values: []string{"admin", "user"}},
+		},
+		Modules: []ast.Module{}, // ZERO modules
+	}
+
+	if err := e.Emit(modelsOnlyAST, outDir, emitter.EmitOptions{}); err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+
+	// types/common.js must exist with all models
+	commonPath := filepath.Join(outDir, "types", "common.js")
+	data, err := os.ReadFile(commonPath)
+	if err != nil {
+		t.Fatalf("types/common.js must exist when there are models but no modules: %v", err)
+	}
+	content := string(data)
+
+	checks := []struct{ desc, needle string }{
+		{"User class", "class User {"},
+		{"Product class", "class Product {"},
+		{"User constructor", "this.email = data.email"},
+		{"Product constructor", "this.price = data.price"},
+		{"Role enum", "@typedef"},
+		{"getter", "getEmail()"},
+		{"setter", "setEmail(value)"},
+		{"toJSON", "toJSON()"},
+		{"fromJSON", "static fromJSON(data)"},
+		{"module.exports", "module.exports"},
+	}
+	for _, c := range checks {
+		if !strings.Contains(content, c.needle) {
+			t.Errorf("types/common.js missing %s: want %q\ngot:\n%s", c.desc, c.needle, content)
+		}
+	}
+
+	// barrel must reference common
+	barrelData, err := os.ReadFile(filepath.Join(outDir, "types", "index.js"))
+	if err != nil {
+		t.Fatalf("types/index.js must exist: %v", err)
+	}
+	if !strings.Contains(string(barrelData), "common") {
+		t.Errorf("types/index.js must reference common.js:\n%s", string(barrelData))
+	}
+}

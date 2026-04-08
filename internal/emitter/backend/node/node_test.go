@@ -292,3 +292,69 @@ func TestNodeEmitterRegistered(t *testing.T) {
 		t.Errorf("node-ts backend not registered: %v", err)
 	}
 }
+
+// TestNodeEmitterModelsWithNoModules verifies ALL models/enums are generated
+// even when the AST has zero modules (no actions at all).
+func TestNodeEmitterModelsWithNoModules(t *testing.T) {
+	e := node.New()
+	outDir := t.TempDir()
+
+	modelsOnlyAST := ast.AST{
+		Models: []ast.Model{
+			{
+				Name: "User",
+				Fields: []ast.Field{
+					{Name: "id", Type: "string"},
+					{Name: "email", Type: "string"},
+					{Name: "bio", Type: "string", Optional: true},
+				},
+			},
+			{
+				Name: "Product",
+				Fields: []ast.Field{
+					{Name: "name", Type: "string"},
+					{Name: "price", Type: "float"},
+				},
+			},
+		},
+		Enums: []ast.Enum{
+			{Name: "Role", Values: []string{"admin", "user"}},
+		},
+		Modules: []ast.Module{}, // ZERO modules
+	}
+
+	if err := e.Emit(modelsOnlyAST, outDir, emitter.EmitOptions{}); err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+
+	commonPath := filepath.Join(outDir, "types", "common.ts")
+	data, err := os.ReadFile(commonPath)
+	if err != nil {
+		t.Fatalf("types/common.ts must exist when there are models but no modules: %v", err)
+	}
+	content := string(data)
+
+	checks := []struct{ desc, needle string }{
+		{"User class", "export class User {"},
+		{"Product class", "export class Product {"},
+		{"constructor", "constructor(data?: Partial<User>)"},
+		{"getter", "getEmail():"},
+		{"setter", "setEmail(value:"},
+		{"toJSON", "toJSON(): Record<string, unknown>"},
+		{"fromJSON", "static fromJSON(data:"},
+		{"Role enum", "export type Role"},
+	}
+	for _, c := range checks {
+		if !strings.Contains(content, c.needle) {
+			t.Errorf("types/common.ts missing %s: want %q\ngot:\n%s", c.desc, c.needle, content)
+		}
+	}
+
+	barrelData, err := os.ReadFile(filepath.Join(outDir, "types", "index.ts"))
+	if err != nil {
+		t.Fatalf("types/index.ts must exist: %v", err)
+	}
+	if !strings.Contains(string(barrelData), "common") {
+		t.Errorf("types/index.ts must reference common.ts:\n%s", string(barrelData))
+	}
+}

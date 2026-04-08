@@ -294,3 +294,69 @@ func TestPythonEmitterRegistered(t *testing.T) {
 		t.Errorf("python backend not registered: %v", err)
 	}
 }
+
+// TestPythonEmitterModelsWithNoModules verifies ALL models/enums are generated
+// even when the AST has zero modules (no actions at all).
+func TestPythonEmitterModelsWithNoModules(t *testing.T) {
+	e := python.New()
+	outDir := t.TempDir()
+
+	modelsOnlyAST := ast.AST{
+		Models: []ast.Model{
+			{
+				Name: "User",
+				Fields: []ast.Field{
+					{Name: "id", Type: "uuid"},
+					{Name: "email", Type: "string"},
+					{Name: "bio", Type: "string", Optional: true},
+				},
+			},
+			{
+				Name: "Product",
+				Fields: []ast.Field{
+					{Name: "name", Type: "string"},
+					{Name: "price", Type: "float"},
+				},
+			},
+		},
+		Enums: []ast.Enum{
+			{Name: "Role", Values: []string{"admin", "user"}},
+		},
+		Modules: []ast.Module{}, // ZERO modules
+	}
+
+	if err := e.Emit(modelsOnlyAST, outDir, emitter.EmitOptions{BackendFramework: "flask"}); err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+
+	commonPath := filepath.Join(outDir, "models", "common.py")
+	data, err := os.ReadFile(commonPath)
+	if err != nil {
+		t.Fatalf("models/common.py must exist when there are models but no modules: %v", err)
+	}
+	content := string(data)
+
+	checks := []struct{ desc, needle string }{
+		{"User class", "class User:"},
+		{"Product class", "class Product:"},
+		{"User init", "def __init__(self"},
+		{"getter", "def get_email(self)"},
+		{"setter", "def set_email(self, value"},
+		{"to_dict", "def to_dict(self)"},
+		{"from_dict", "def from_dict(cls, data"},
+		{"Role enum", "Role = Literal"},
+	}
+	for _, c := range checks {
+		if !strings.Contains(content, c.needle) {
+			t.Errorf("models/common.py missing %s: want %q\ngot:\n%s", c.desc, c.needle, content)
+		}
+	}
+
+	barrelData, err := os.ReadFile(filepath.Join(outDir, "models", "__init__.py"))
+	if err != nil {
+		t.Fatalf("models/__init__.py must exist: %v", err)
+	}
+	if !strings.Contains(string(barrelData), "common") {
+		t.Errorf("models/__init__.py must reference common:\n%s", string(barrelData))
+	}
+}

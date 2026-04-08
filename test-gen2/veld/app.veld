@@ -1,0 +1,18 @@
+model User {
+  id: uuid
+  email: string
+  name: string
+  role: Role
+  bio?: string
+  tags: string[]
+}
+
+model Product {
+  id: uuid
+  name: string
+  price: float
+  description?: string
+}
+
+enum Role { admin user guest }
+

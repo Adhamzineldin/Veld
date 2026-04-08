@@ -196,19 +196,16 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 		}
 	}
 
-	// ── clean output dirs before emitting ───────────────────────────────
-	// Wipe and recreate every output directory so deleted models/actions/files
-	// are removed from generated output rather than left as stale artifacts.
+	// ── ensure output dirs exist ─────────────────────────────────────────
+	// Emitters overwrite their own files (os.WriteFile). No directory wipe —
+	// user files are never touched. Use `veld clean` for explicit cleanup.
 	if !opts.DryRun {
 		for _, dir := range rc.OutputDirs() {
 			if dir == "" {
 				continue
 			}
-			if err := os.RemoveAll(dir); err != nil {
-				return nil, veldFiles, nil, fmt.Errorf("clean output dir %s: %w", dir, err)
-			}
 			if err := os.MkdirAll(dir, 0755); err != nil {
-				return nil, veldFiles, nil, fmt.Errorf("recreate output dir %s: %w", dir, err)
+				return nil, veldFiles, nil, fmt.Errorf("create output dir %s: %w", dir, err)
 			}
 		}
 	}
@@ -522,6 +519,16 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 func runGenerateWithAST(rc config.ResolvedConfig, a ast.AST, opts emitter.EmitOptions) error {
 	if opts.DryRun {
 		return nil
+	}
+
+	// Ensure output dirs exist (no wipe — emitters overwrite their own files).
+	for _, dir := range rc.OutputDirs() {
+		if dir == "" {
+			continue
+		}
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("create output dir %s: %w", dir, err)
+		}
 	}
 
 	emitAST := a
@@ -2317,18 +2324,66 @@ func simpleDiff(oldLines, newLines []string, filename string) []string {
 func newDocsCmd() *cobra.Command {
 	var format, outputFile string
 	cmd := &cobra.Command{
-		Use:     "docs",
-		Short:   "Generate API documentation from the contract",
+		Use:   "docs",
+		Short: "Generate API documentation from the contract",
+		Long: "Generates API documentation from your .veld contract.\n\n" +
+			"In workspace/microservices mode, all service contracts are merged into\n" +
+			"a single unified document covering every service, module, and model.",
 		Example: "  veld docs\n  veld docs -o api-docs.html\n  veld docs --format=markdown",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := config.ResolveInput(args)
+			rc, err := config.BuildResolved(config.FlagOverrides{})
 			if err != nil {
 				return err
 			}
-			a, _, err := loader.Parse(path)
-			if err != nil {
-				return err
+
+			var a ast.AST
+
+			if len(rc.Workspace) > 0 {
+				// ── Workspace mode: parse + merge all service ASTs ────────────
+				fmt.Printf("%s workspace: %d services\n", bold("◆"), len(rc.Workspace))
+
+				var allConsumed []emitter.ConsumedServiceInfo
+				for _, entry := range rc.Workspace {
+					inputPath := entry.Input
+					if inputPath == "" {
+						continue
+					}
+					if !filepath.IsAbs(inputPath) {
+						inputPath = filepath.Join(rc.ConfigDir, inputPath)
+					}
+					entryAST, _, err := loader.Parse(inputPath, rc.Aliases)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, yellow("⚠")+"  skipping %s: %v\n", entry.Name, err)
+						continue
+					}
+					// Apply prefix from the entry's veld file.
+					if entryAST.Prefix != "" {
+						for i := range entryAST.Modules {
+							if !strings.HasPrefix(entryAST.Modules[i].Prefix, entryAST.Prefix) {
+								entryAST.Modules[i].Prefix = entryAST.Prefix + entryAST.Modules[i].Prefix
+							}
+						}
+					}
+					allConsumed = append(allConsumed, emitter.ConsumedServiceInfo{
+						Name:    entry.Name,
+						AST:     entryAST,
+						BaseUrl: entry.BaseUrl,
+					})
+				}
+				a = emitter.MergeASTs(ast.AST{ASTVersion: "1.0.0"}, allConsumed)
+			} else {
+				// ── Single service mode ───────────────────────────────────────
+				path := rc.Input
+				if len(args) == 1 {
+					path = args[0]
+				}
+				parsed, _, err := loader.Parse(path, rc.Aliases)
+				if err != nil {
+					return err
+				}
+				a = parsed
 			}
+
 			if errs := validator.Validate(a); len(errs) > 0 {
 				for _, e := range errs {
 					fmt.Fprintln(os.Stderr, red("error: ")+e.Error())

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "modules": null,
+  "models": [
+    {
+      "name": "User",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "role",
+          "type": "Role"
+        },
+        {
+          "name": "bio",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "tags",
+          "type": "string",
+          "isArray": true
+        }
+      ]
+    },
+    {
+      "name": "Product",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "price",
+          "type": "float"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    }
+  ]
+}
