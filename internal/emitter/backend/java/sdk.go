@@ -338,6 +338,14 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 					}
 				}
 			}
+			// Error models referenced in the errors list
+			for _, errName := range act.Errors {
+				if errName != "" {
+					if owner, ok := modelOwner[errName]; ok {
+						usedModulePkgs[owner] = true
+					}
+				}
+			}
 		}
 	}
 

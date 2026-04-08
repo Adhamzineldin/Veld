@@ -64,6 +64,10 @@ func CollectTransitiveModels(a ast.AST, mod ast.Module) map[string]bool {
 		if act.Stream != "" {
 			queue = append(queue, act.Stream)
 		}
+		// Error models referenced in the errors list (e.g. errors: [AccountNotFoundError])
+		for _, errName := range act.Errors {
+			queue = append(queue, errName)
+		}
 	}
 	for len(queue) > 0 {
 		name := queue[0]
@@ -148,6 +152,13 @@ func CollectUsedTypes(a ast.AST, mod ast.Module) []string {
 			if name != "" && !seen[name] && !IsPrimitive(name) {
 				seen[name] = true
 				result = append(result, name)
+			}
+		}
+		// Error models referenced in the errors list
+		for _, errName := range act.Errors {
+			if errName != "" && !seen[errName] && !IsPrimitive(errName) {
+				seen[errName] = true
+				result = append(result, errName)
 			}
 		}
 	}
