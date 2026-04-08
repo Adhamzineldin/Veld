@@ -1,0 +1,19 @@
+import @models/user
+
+module Auth {
+  prefix: /api/auth
+
+  action Login {
+    method: POST
+    path: /login
+    input: User
+    output: User
+  }
+
+  action Me {
+    method: GET
+    path: /me
+    output: User
+  }
+}
+

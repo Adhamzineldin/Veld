@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "name": "Auth",
+      "prefix": "/api/auth",
+      "actions": [
+        {
+          "name": "Login",
+          "method": "POST",
+          "path": "/login",
+          "input": "User",
+          "output": "User",
+          "middleware": []
+        },
+        {
+          "name": "Me",
+          "method": "GET",
+          "path": "/me",
+          "input": "",
+          "output": "User",
+          "middleware": []
+        }
+      ]
+    }
+  ],
+  "models": [
+    {
+      "name": "User",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "role",
+          "type": "Role"
+        },
+        {
+          "name": "bio",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "tags",
+          "type": "string",
+          "isArray": true
+        }
+      ]
+    },
+    {
+      "name": "Product",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "price",
+          "type": "float"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    }
+  ]
+}

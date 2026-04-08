@@ -1,0 +1,12 @@
+{
+  "input": "app.veld",
+  "backendConfig": {
+    "target": "java",
+    "framework": "spring",
+    "out": "../generated"
+  },
+  "frontendConfig": {
+    "target": "none"
+  }
+}
+
