@@ -59,7 +59,7 @@ func emitCSharpSdkTypes(consumed emitter.ConsumedServiceInfo, modelsDir string) 
 		for _, m := range modelGroups[group] {
 			sb.WriteString(fmt.Sprintf("public class %s\n{\n", m.Name))
 			for _, f := range m.Fields {
-				csType := csSdkType(f)
+				csType := csFieldType(f, nil)
 				if f.Optional {
 					csType += "?"
 				}
@@ -69,7 +69,7 @@ func emitCSharpSdkTypes(consumed emitter.ConsumedServiceInfo, modelsDir string) 
 			if len(m.Fields) > 0 {
 				var ctorParams []string
 				for _, f := range m.Fields {
-					csType := csSdkType(f)
+					csType := csFieldType(f, nil)
 					if f.Optional {
 						csType += "?"
 					}
@@ -186,36 +186,4 @@ func csSdkBuildUrl(routePath string, pathParams []string) string {
 		expr = strings.Replace(expr, ":"+p, "{"+p+"}", 1)
 	}
 	return "$\"" + expr + "\""
-}
-
-func csSdkType(f ast.Field) string {
-	base := csSdkScalar(f.Type)
-	if f.IsArray {
-		return "List<" + base + ">"
-	}
-	if f.IsMap {
-		return "Dictionary<string, " + csSdkScalar(f.MapValueType) + ">"
-	}
-	return base
-}
-
-func csSdkScalar(t string) string {
-	switch t {
-	case "string", "uuid":
-		return "string"
-	case "int":
-		return "long"
-	case "float":
-		return "double"
-	case "decimal":
-		return "decimal"
-	case "bool":
-		return "bool"
-	case "date", "datetime":
-		return "DateTime"
-	case "any", "json":
-		return "object"
-	default:
-		return t
-	}
 }

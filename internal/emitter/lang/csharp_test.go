@@ -14,9 +14,9 @@ func TestCSharpAdapterMapType_Builtins(t *testing.T) {
 		{"int", "long"},
 		{"float", "double"},
 		{"bool", "bool"},
-		{"date", "string"},
-		{"datetime", "string"},
-		{"uuid", "string"},
+		{"date", "DateTime"},
+		{"datetime", "DateTime"},
+		{"uuid", "Guid"},
 	}
 	for _, c := range cases {
 		got, _, err := a.MapType(c.veld)
