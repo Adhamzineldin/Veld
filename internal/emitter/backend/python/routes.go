@@ -145,6 +145,13 @@ func writeRouteHandler(sb *strings.Builder, mod ast.Module, moduleLower string, 
 		callArgs = append(callArgs, "request.args.to_dict()")
 	}
 
+	if act.Headers != "" {
+		sb.WriteString("            headers = {\n")
+		sb.WriteString(fmt.Sprintf("                # Extracted from request headers for %s\n", act.Headers))
+		sb.WriteString("            }\n")
+		callArgs = append(callArgs, "headers")
+	}
+
 	serviceCallStr := fmt.Sprintf("service.%s(%s)", emitter.ToSnakeCase(act.Name), strings.Join(callArgs, ", "))
 
 	// ── Service call + optional output assertion + response ──────────────────

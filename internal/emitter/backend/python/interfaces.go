@@ -97,6 +97,9 @@ func (e *PythonEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) 
 		if act.Query != "" {
 			sb.WriteString(fmt.Sprintf(", query: %s", act.Query))
 		}
+		if act.Headers != "" {
+			sb.WriteString(fmt.Sprintf(", headers: %s", act.Headers))
+		}
 		outputType := formatPyOutputType(act)
 		sb.WriteString(fmt.Sprintf(") -> %s:\n", outputType))
 		// Build docstring with description, deprecation notice, and Raises section

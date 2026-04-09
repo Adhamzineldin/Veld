@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "name": "Transactions",
+      "prefix": "/api/transactions",
+      "actions": [
+        {
+          "name": "transfer",
+          "method": "POST",
+          "path": "/transfer",
+          "input": "TransferRequest",
+          "output": "TransactionResponse",
+          "headers": "TransferHeaders",
+          "headerFields": [
+            {
+              "name": "Idempotency-Key",
+              "type": "string"
+            }
+          ],
+          "middleware": []
+        },
+        {
+          "name": "getTransaction",
+          "method": "GET",
+          "path": "/transfer/:id",
+          "input": "",
+          "output": "TransactionResponse",
+          "headers": "CommonHeaders",
+          "middleware": []
+        }
+      ]
+    }
+  ],
+  "models": [
+    {
+      "name": "TransferRequest",
+      "fields": [
+        {
+          "name": "fromAccount",
+          "type": "string"
+        },
+        {
+          "name": "toAccount",
+          "type": "string"
+        },
+        {
+          "name": "amount",
+          "type": "float"
+        }
+      ]
+    },
+    {
+      "name": "TransactionResponse",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "CommonHeaders",
+      "fields": [
+        {
+          "name": "Authorization",
+          "type": "string"
+        },
+        {
+          "name": "RequestId",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "TransferHeaders",
+      "fields": [
+        {
+          "name": "Idempotency-Key",
+          "type": "string"
+        }
+      ]
+    }
+  ]
+}

@@ -132,6 +132,10 @@ func (e *SvelteEmitter) emitStore(a ast.AST, mod ast.Module, dir string) error {
 			params = append(params, "query?: "+act.Query)
 			args = append(args, "query")
 		}
+		if act.Headers != "" {
+			params = append(params, "headers: "+act.Headers)
+			args = append(args, "headers")
+		}
 
 		paramsStr := strings.Join(params, ", ")
 		argsStr := strings.Join(args, ", ")

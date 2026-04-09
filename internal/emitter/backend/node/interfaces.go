@@ -122,6 +122,9 @@ func (e *NodeEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) er
 		if act.Query != "" {
 			params = append(params, "query: "+act.Query)
 		}
+		if act.Headers != "" {
+			params = append(params, "headers: "+act.Headers)
+		}
 
 		outputType := tshelpers.FormatOutputType(act)
 

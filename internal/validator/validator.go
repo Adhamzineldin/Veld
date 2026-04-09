@@ -232,6 +232,14 @@ func Validate(a ast.AST) []error {
 					errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined query type %q", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Query))
 				}
 			}
+			if act.Headers != "" && !modelNames[act.Headers] {
+				suggestion := findSuggestion(act.Headers, allTypeNames)
+				if suggestion != "" {
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined headers type %q (did you mean %q?)", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Headers, suggestion))
+				} else {
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: undefined headers type %q", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.Headers))
+				}
+			}
 
 			// Validate WebSocket actions
 			if act.Method == "WS" {
@@ -381,6 +389,7 @@ func validateFileImports(a ast.AST) []error {
 			checkTypeVisible(act.Input, mod.SourceFile, act.Line, fmt.Sprintf("module %q, action %q", mod.Name, act.Name))
 			checkTypeVisible(act.Output, mod.SourceFile, act.Line, fmt.Sprintf("module %q, action %q", mod.Name, act.Name))
 			checkTypeVisible(act.Query, mod.SourceFile, act.Line, fmt.Sprintf("module %q, action %q", mod.Name, act.Name))
+			checkTypeVisible(act.Headers, mod.SourceFile, act.Line, fmt.Sprintf("module %q, action %q", mod.Name, act.Name))
 			checkTypeVisible(act.Stream, mod.SourceFile, act.Line, fmt.Sprintf("module %q, action %q", mod.Name, act.Name))
 		}
 	}

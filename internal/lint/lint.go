@@ -85,6 +85,7 @@ func checkUnusedModels(a ast.AST) []Issue {
 			used[act.Input] = true
 			used[act.Output] = true
 			used[act.Query] = true
+			used[act.Headers] = true
 		}
 	}
 	for _, m := range a.Models {

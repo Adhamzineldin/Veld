@@ -129,6 +129,9 @@ func writePhpAction(sb *strings.Builder, mod ast.Module, act ast.Action, enumNam
 	if act.Query != "" {
 		callArgs = append(callArgs, "$request->query()")
 	}
+	if act.Headers != "" {
+		callArgs = append(callArgs, "$request->headers->all()")
+	}
 
 	serviceCall := fmt.Sprintf("$this->service->%s(%s)", methodName, strings.Join(callArgs, ", "))
 

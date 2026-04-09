@@ -127,6 +127,10 @@ func writeJSRouteHandler(sb *strings.Builder, mod ast.Module, act ast.Action, op
 		callArgs = append(callArgs, "req.query")
 	}
 
+	if act.Headers != "" {
+		callArgs = append(callArgs, "req.headers")
+	}
+
 	serviceCall := fmt.Sprintf("service.%s(%s)", camelName, strings.Join(callArgs, ", "))
 
 	switch {

@@ -842,6 +842,42 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				}
 				act.Query = tok.Value
 			}
+		case p.peekIdent("headers"):
+			p.consume()
+			if _, err := p.expect(lexer.TColon); err != nil {
+				return act, err
+			}
+			if p.peek().Type == lexer.TLBrace {
+				// Inline headers: headers: { "Idempotency-Key": string }
+				p.consume() // consume '{'
+				var fields []ast.Field
+				for p.peek().Type != lexer.TRBrace && p.peek().Type != lexer.TEOF {
+					f, err := p.parseHeaderField()
+					if err != nil {
+						return act, fmt.Errorf("inline header field: %w", err)
+					}
+					fields = append(fields, f)
+					if p.peek().Type == lexer.TComma {
+						p.consume()
+					}
+				}
+				if _, err := p.expect(lexer.TRBrace); err != nil {
+					return act, fmt.Errorf("inline headers: %w", err)
+				}
+				synName := strings.ToUpper(act.Name[:1]) + act.Name[1:] + "Headers"
+				act.Headers = synName
+				act.HeaderFields = fields
+				p.syntheticModels = append(p.syntheticModels, ast.Model{
+					Name:   synName,
+					Fields: fields,
+				})
+			} else {
+				tok, err := p.expect(lexer.TIdent)
+				if err != nil {
+					return act, err
+				}
+				act.Headers = tok.Value
+			}
 		case p.peekIdent("stream"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
@@ -967,6 +1003,49 @@ func (p *Parser) expectTypeOrIdent() (lexer.Token, error) {
 		return tok, nil
 	}
 	return tok, fmt.Errorf("line %d: expected type or identifier, got %q", tok.Line, tok.Value)
+}
+
+// parseHeaderField parses a single header field declaration.
+// Header names can be quoted strings (e.g. "Idempotency-Key": string) or
+// regular identifiers (e.g. Authorization: string). Supports optional marker (?).
+func (p *Parser) parseHeaderField() (ast.Field, error) {
+	var nameTok lexer.Token
+	var err error
+
+	// Accept either a quoted string or identifier as the header name.
+	if p.peek().Type == lexer.TString {
+		nameTok = p.consume()
+		nameTok.Type = lexer.TIdent // normalize for AST
+	} else {
+		nameTok, err = p.expectFieldName()
+		if err != nil {
+			return ast.Field{}, fmt.Errorf("header field name: %w", err)
+		}
+	}
+
+	// Check for optional marker: name? : type
+	optional := false
+	if p.peek().Type == lexer.TQuestion {
+		p.consume()
+		optional = true
+	}
+
+	if _, err := p.expect(lexer.TColon); err != nil {
+		return ast.Field{}, err
+	}
+
+	typeTok := p.consume()
+	isValidType := isTypeToken(typeTok.Type) || typeTok.Type == lexer.TIdent
+	if !isValidType {
+		return ast.Field{}, fmt.Errorf("line %d: expected type for header %q, got %q", typeTok.Line, nameTok.Value, typeTok.Value)
+	}
+
+	return ast.Field{
+		Name:     nameTok.Value,
+		Type:     typeTok.Value,
+		Optional: optional,
+		Line:     nameTok.Line,
+	}, nil
 }
 
 func isHTTPMethod(t lexer.TokenType) bool {

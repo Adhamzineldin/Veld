@@ -120,6 +120,9 @@ func (e *JavaEmitter) writeHandler(strat jstrategy.FrameworkStrategy, sb *string
 			params = append(params, fmt.Sprintf("%s query", act.Query))
 		}
 	}
+	if act.Headers != "" {
+		params = append(params, fmt.Sprintf("%s headers", act.Headers))
+	}
 
 	sb.WriteString(fmt.Sprintf("    public %s %s(%s) {\n", strat.ResponseWrapper(), methodName, strings.Join(params, ", ")))
 	sb.WriteString("        try {\n")
@@ -133,6 +136,9 @@ func (e *JavaEmitter) writeHandler(strat jstrategy.FrameworkStrategy, sb *string
 	}
 	if act.Query != "" {
 		callArgs = append(callArgs, "query")
+	}
+	if act.Headers != "" {
+		callArgs = append(callArgs, "headers")
 	}
 
 	serviceCall := fmt.Sprintf("service.%s(%s)", methodName, strings.Join(callArgs, ", "))

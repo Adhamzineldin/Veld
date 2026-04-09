@@ -90,6 +90,9 @@ func (e *PhpEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) err
 		if act.Query != "" {
 			params = append(params, "array $query")
 		}
+		if act.Headers != "" {
+			params = append(params, "array $headers")
+		}
 
 		hasDoc := act.Description != "" || len(act.Errors) > 0
 		if hasDoc {

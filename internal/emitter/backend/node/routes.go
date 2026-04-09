@@ -81,7 +81,7 @@ func (e *NodeEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts 
 			writeWSRouteComment(&sb, mod, act)
 			writeWSMountFunction(&wsMounts, mod, act, strat)
 		} else {
-			if err := writeRouteHandler(&sb, mod, act, opts, strat); err != nil {
+			if err := writeRouteHandler(&sb, a, mod, act, opts, strat); err != nil {
 				return err
 			}
 		}
@@ -103,7 +103,7 @@ func (e *NodeEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts 
 }
 
 // writeRouteHandler appends a single route registration + async handler to sb.
-func writeRouteHandler(sb *strings.Builder, mod ast.Module, act ast.Action, opts emitter.EmitOptions, strat nodestrategy.NodeFrameworkStrategy) error {
+func writeRouteHandler(sb *strings.Builder, a ast.AST, mod ast.Module, act ast.Action, opts emitter.EmitOptions, strat nodestrategy.NodeFrameworkStrategy) error {
 	method := strings.ToLower(act.Method)
 	routePath := act.Path
 	if mod.Prefix != "" {
@@ -142,6 +142,21 @@ func writeRouteHandler(sb *strings.Builder, mod ast.Module, act ast.Action, opts
 
 	if act.Query != "" {
 		callArgs = append(callArgs, "req.query")
+	}
+
+	if act.Headers != "" {
+		// Extract declared headers from the request and build a typed object.
+		// Header names are lowercased per HTTP spec when accessed via req.headers.
+		sb.WriteString(fmt.Sprintf("      const headers = {\n"))
+		headerModel := findModel(a, act.Headers)
+		if headerModel != nil {
+			for _, hf := range headerModel.Fields {
+				lowerName := strings.ToLower(hf.Name)
+				sb.WriteString(fmt.Sprintf("        '%s': req.headers['%s'] as string,\n", hf.Name, lowerName))
+			}
+		}
+		sb.WriteString(fmt.Sprintf("      };\n"))
+		callArgs = append(callArgs, "headers")
 	}
 
 	serviceCall := fmt.Sprintf("service.%s(%s)", camelName, strings.Join(callArgs, ", "))
@@ -289,4 +304,14 @@ func (e *NodeEmitter) emitMiddlewareInterface(a ast.AST, outDir string, strat no
 	sb.WriteString("}\n")
 
 	return os.WriteFile(filepath.Join(dir, "IMiddleware.ts"), []byte(sb.String()), 0644)
+}
+
+// findModel returns the model with the given name, or nil if not found.
+func findModel(a ast.AST, name string) *ast.Model {
+	for i := range a.Models {
+		if a.Models[i].Name == name {
+			return &a.Models[i]
+		}
+	}
+	return nil
 }

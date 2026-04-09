@@ -383,6 +383,8 @@ func classifyWord(word string, line int) Token {
 		return Token{TIdent, word, line} // contextual keyword — parsed by value in parser
 	case "query":
 		return Token{TIdent, word, line} // contextual keyword
+	case "headers":
+		return Token{TIdent, word, line} // contextual keyword
 	case "default":
 		return Token{TIdent, word, line} // contextual keyword
 	case "prefix":

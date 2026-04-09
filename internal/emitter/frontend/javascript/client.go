@@ -80,6 +80,9 @@ func writeAction(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	if act.Query != "" {
 		sb.WriteString(fmt.Sprintf("     * @param {%s} [query]\n", act.Query))
 	}
+	if act.Headers != "" {
+		sb.WriteString(fmt.Sprintf("     * @param {Object} headers\n"))
+	}
 	sb.WriteString(fmt.Sprintf("     * @returns {Promise<%s>}\n", outputType))
 	sb.WriteString("     */\n")
 
@@ -93,6 +96,9 @@ func writeAction(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	}
 	if act.Query != "" {
 		sigParams = append(sigParams, "query")
+	}
+	if act.Headers != "" {
+		sigParams = append(sigParams, "headers")
 	}
 	sig := strings.Join(sigParams, ", ")
 

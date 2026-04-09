@@ -175,6 +175,9 @@ func (e *AngularEmitter) emitService(a ast.AST, mod ast.Module, dir string, opts
 		if act.Query != "" {
 			params = append(params, "query?: "+act.Query)
 		}
+		if act.Headers != "" {
+			params = append(params, "headers: "+act.Headers)
+		}
 
 		// Build URL
 		urlExpr := "`${this.baseUrl}" + emitter.ToTemplateLiteral(routePath) + "`"

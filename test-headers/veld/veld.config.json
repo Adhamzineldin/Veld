@@ -1,0 +1,7 @@
+{
+  "input": "app.veld",
+  "backend": "node",
+  "frontend": "typescript",
+  "out": "../generated"
+}
+

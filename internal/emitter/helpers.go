@@ -61,6 +61,9 @@ func CollectTransitiveModels(a ast.AST, mod ast.Module) map[string]bool {
 		if act.Query != "" {
 			queue = append(queue, act.Query)
 		}
+		if act.Headers != "" {
+			queue = append(queue, act.Headers)
+		}
 		if act.Stream != "" {
 			queue = append(queue, act.Stream)
 		}
@@ -148,7 +151,7 @@ func CollectUsedTypes(a ast.AST, mod ast.Module) []string {
 
 	// Direct action references.
 	for _, act := range mod.Actions {
-		for _, name := range []string{act.Input, act.Output, act.Query, act.Stream} {
+		for _, name := range []string{act.Input, act.Output, act.Query, act.Headers, act.Stream} {
 			if name != "" && !seen[name] && !IsPrimitive(name) {
 				seen[name] = true
 				result = append(result, name)

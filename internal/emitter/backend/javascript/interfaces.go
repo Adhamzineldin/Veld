@@ -47,6 +47,9 @@ func (e *JSEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) erro
 		if act.Query != "" {
 			params = append(params, "query: "+act.Query)
 		}
+		if act.Headers != "" {
+			params = append(params, "headers: "+act.Headers)
+		}
 
 		outputType := formatOutputTypeJSDoc(act)
 		camelName := emitter.ToCamelCase(act.Name)

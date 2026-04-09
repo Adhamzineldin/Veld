@@ -130,6 +130,10 @@ func (e *VueEmitter) emitComposable(a ast.AST, mod ast.Module, dir string) error
 			paramTypes = append(paramTypes, "query?: "+act.Query)
 			argsList = append(argsList, "query")
 		}
+		if act.Headers != "" {
+			paramTypes = append(paramTypes, "headers: "+act.Headers)
+			argsList = append(argsList, "headers")
+		}
 
 		paramsStr := strings.Join(paramTypes, ", ")
 		argsStr := strings.Join(argsList, ", ")

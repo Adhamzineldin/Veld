@@ -135,6 +135,15 @@ func (e *GoEmitter) buildServiceMethodSignature(_ ast.AST, mod ast.Module, act a
 		}
 	}
 
+	// Headers — pointer to model.
+	if act.Headers != "" {
+		if isPrimitiveOrAny(act.Headers) {
+			params = append(params, "headers "+mapGoOutputType(act.Headers))
+		} else {
+			params = append(params, "headers *models."+act.Headers)
+		}
+	}
+
 	returnType := buildReturnType(act)
 	return fmt.Sprintf("%s(%s) %s", methodName, strings.Join(params, ", "), returnType)
 }
@@ -195,6 +204,9 @@ func hasNamedTypes(mod ast.Module) bool {
 			return true
 		}
 		if act.Query != "" && !isPrimitiveOrAny(act.Query) {
+			return true
+		}
+		if act.Headers != "" && !isPrimitiveOrAny(act.Headers) {
 			return true
 		}
 	}

@@ -86,6 +86,29 @@ func BuildSpec(a ast.AST) map[string]interface{} {
 				}
 				op["parameters"] = params
 			}
+			// Add header parameters when headers model is set.
+			if act.Headers != "" {
+				var headerFields []ast.Field
+				for _, m := range a.Models {
+					if m.Name == act.Headers {
+						headerFields = m.Fields
+						break
+					}
+				}
+				if len(headerFields) > 0 {
+					params, _ := op["parameters"].([]map[string]interface{})
+					if params == nil {
+						params = make([]map[string]interface{}, 0, len(headerFields))
+					}
+					for _, hf := range headerFields {
+						params = append(params, map[string]interface{}{
+							"name": hf.Name, "in": "header", "required": !hf.Optional,
+							"schema": map[string]interface{}{"type": mapType(hf.Type)},
+						})
+					}
+					op["parameters"] = params
+				}
+			}
 			if act.Input != "" {
 				op["requestBody"] = map[string]interface{}{
 					"required": true,
