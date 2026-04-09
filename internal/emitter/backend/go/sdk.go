@@ -200,14 +200,16 @@ func writeGoSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 		params = append(params, fmt.Sprintf("%s string", p))
 	}
 	if act.Input != "" {
-		params = append(params, fmt.Sprintf("input %s", act.Input))
+		inputType, _, _ := goSharedAdapter.MapType(act.Input)
+		params = append(params, fmt.Sprintf("input %s", inputType))
 	}
 
 	hasOutput := act.Output != ""
 	if hasOutput {
-		retType := "*" + act.Output
+		mapped, _, _ := goSharedAdapter.MapType(act.Output)
+		retType := "*" + mapped
 		if act.OutputArray {
-			retType = "[]" + act.Output
+			retType = "[]" + mapped
 		}
 		sb.WriteString(fmt.Sprintf("func (c *Client) %s(%s) (%s, error) {\n", funcName, strings.Join(params, ", "), retType))
 	} else {
@@ -221,11 +223,12 @@ func writeGoSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	}
 
 	if hasOutput {
+		mapped, _, _ := goSharedAdapter.MapType(act.Output)
 		sb.WriteString(fmt.Sprintf("\tdata, _, err := c.do(ctx, %q, %s, %s)\n\tif err != nil { return nil, err }\n", method, urlExpr, bodyArg))
 		if act.OutputArray {
-			sb.WriteString(fmt.Sprintf("\tvar out []%s\n", act.Output))
+			sb.WriteString(fmt.Sprintf("\tvar out []%s\n", mapped))
 		} else {
-			sb.WriteString(fmt.Sprintf("\tvar out %s\n", act.Output))
+			sb.WriteString(fmt.Sprintf("\tvar out %s\n", mapped))
 		}
 		sb.WriteString("\tif err := json.Unmarshal(data, &out); err != nil { return nil, err }\n")
 		if act.OutputArray {

@@ -203,16 +203,18 @@ func writeRustSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 		params = append(params, fmt.Sprintf("%s: &str", emitter.ToSnakeCase(p)))
 	}
 	if act.Input != "" {
-		params = append(params, fmt.Sprintf("input: &%s", act.Input))
+		inputType, _, _ := rustSharedAdapter.MapType(act.Input)
+		params = append(params, fmt.Sprintf("input: &%s", inputType))
 	}
 
 	hasOutput := act.Output != ""
 	retType := "()"
 	if hasOutput {
+		mapped, _, _ := rustSharedAdapter.MapType(act.Output)
 		if act.OutputArray {
-			retType = fmt.Sprintf("Vec<%s>", act.Output)
+			retType = fmt.Sprintf("Vec<%s>", mapped)
 		} else {
-			retType = act.Output
+			retType = mapped
 		}
 	}
 
