@@ -409,8 +409,31 @@ func pySdkCollectTypes(a ast.AST) []string {
 	return result
 }
 
-// pyDefault returns the Python zero-value literal for a field type.
+// pyDefault returns the Python default-value literal for a field.
+// If the field has an explicit default (via = value or @default), it is used;
+// otherwise a type-based zero value is returned.
 func pyDefault(f ast.Field) string {
+	if f.Default != "" {
+		val := f.Default
+		// Quoted string → Python single-quote string: "hello" → 'hello'
+		if strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"") {
+			inner := val[1 : len(val)-1]
+			return "'" + inner + "'"
+		}
+		// Booleans → Python capitalised form
+		if val == "true" {
+			return "True"
+		}
+		if val == "false" {
+			return "False"
+		}
+		// Numeric — pass through
+		if f.Type == "int" || f.Type == "float" || f.Type == "decimal" {
+			return val
+		}
+		// Identifier (enum value) → emit as string
+		return "'" + val + "'"
+	}
 	if f.IsArray {
 		return "[]"
 	}

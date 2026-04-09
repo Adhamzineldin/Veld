@@ -96,7 +96,11 @@ func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir string) erro
 	for _, f := range m.Fields {
 		javaType := javaFieldType(f)
 		fieldName := javaCamelField(f.Name)
-		sb.WriteString(fmt.Sprintf("    private %s %s;\n", javaType, fieldName))
+		if f.Default != "" {
+			sb.WriteString(fmt.Sprintf("    private %s %s = %s;\n", javaType, fieldName, javaDefaultLiteral(f.Default, f.Type)))
+		} else {
+			sb.WriteString(fmt.Sprintf("    private %s %s;\n", javaType, fieldName))
+		}
 	}
 	sb.WriteString("\n")
 
@@ -188,4 +192,28 @@ func javaFieldType(f ast.Field) string {
 // javaCamelField converts a field or parameter name to Java camelCase via the language adapter.
 func javaCamelField(name string) string {
 	return javaLang.NamingConvention(name, lang.NamingContextPrivate)
+}
+
+// javaDefaultLiteral converts a Veld default value to a Java literal.
+func javaDefaultLiteral(val, veldType string) string {
+	// Already a quoted string → Java string literal
+	if strings.HasPrefix(val, "\"") {
+		return val
+	}
+	// Booleans
+	if val == "true" || val == "false" {
+		return val
+	}
+	// Numeric — check for long suffix on int types
+	if veldType == "int" {
+		return val + "L" // Java long
+	}
+	if veldType == "float" {
+		return val
+	}
+	if veldType == "decimal" {
+		return fmt.Sprintf("new java.math.BigDecimal(\"%s\")", val)
+	}
+	// Enum value or identifier — emit as string
+	return "\"" + val + "\""
 }

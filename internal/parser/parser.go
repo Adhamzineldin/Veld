@@ -562,6 +562,26 @@ func (p *Parser) parseField() (ast.Field, error) {
 		}
 	}
 
+	// Default value: name: type = value
+	// This is an alternative to @default(value) — both set f.Default.
+	var defaultVal string
+	if p.peek().Type == lexer.TEquals {
+		p.consume() // =
+		valTok := p.consume()
+		switch valTok.Type {
+		case lexer.TString:
+			defaultVal = "\"" + valTok.Value + "\""
+		case lexer.TNumber:
+			defaultVal = valTok.Value
+		case lexer.TIdent:
+			defaultVal = valTok.Value
+		case lexer.TTypeBool:
+			defaultVal = valTok.Value
+		default:
+			return ast.Field{}, fmt.Errorf("line %d: expected default value after '=', got %q", valTok.Line, valTok.Value)
+		}
+	}
+
 	f := ast.Field{
 		Name:         nameTok.Value,
 		Type:         typeName,
@@ -570,6 +590,7 @@ func (p *Parser) parseField() (ast.Field, error) {
 		IsArray:      isArray,
 		IsMap:        isMap,
 		MapValueType: mapValueType,
+		Default:      defaultVal,
 		Line:         nameTok.Line,
 	}
 
@@ -580,6 +601,9 @@ func (p *Parser) parseField() (ast.Field, error) {
 		kwTok := p.consume()
 		switch kwTok.Value {
 		case "default":
+			if f.Default != "" {
+				return f, fmt.Errorf("line %d: field %q already has a default value via '= %s'; cannot also use @default()", kwTok.Line, f.Name, f.Default)
+			}
 			if _, err := p.expect(lexer.TLParen); err != nil {
 				return f, err
 			}
@@ -761,11 +785,37 @@ func (p *Parser) parseAction() (ast.Action, error) {
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
 			}
-			tok, err := p.expect(lexer.TIdent)
-			if err != nil {
-				return act, err
+			if p.peek().Type == lexer.TLBrace {
+				// Inline input type: input: { userId: uuid, page: int32 = 0 }
+				p.consume() // consume '{'
+				var fields []ast.Field
+				for p.peek().Type != lexer.TRBrace && p.peek().Type != lexer.TEOF {
+					f, err := p.parseField()
+					if err != nil {
+						return act, fmt.Errorf("inline input field: %w", err)
+					}
+					fields = append(fields, f)
+					if p.peek().Type == lexer.TComma {
+						p.consume()
+					}
+				}
+				if _, err := p.expect(lexer.TRBrace); err != nil {
+					return act, fmt.Errorf("inline input: %w", err)
+				}
+				synName := act.Name + "Input"
+				act.Input = synName
+				act.InputFields = fields
+				p.syntheticModels = append(p.syntheticModels, ast.Model{
+					Name:   synName,
+					Fields: fields,
+				})
+			} else {
+				tok, err := p.expect(lexer.TIdent)
+				if err != nil {
+					return act, err
+				}
+				act.Input = tok.Value
 			}
-			act.Input = tok.Value
 		case p.peekIdent("output"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {

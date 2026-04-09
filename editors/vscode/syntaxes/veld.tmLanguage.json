@@ -81,6 +81,44 @@
       ]
     },
 
+    "default-value": {
+      "comment": "= value  default value syntax (e.g. page: int = 0)",
+      "patterns": [
+        {
+          "comment": "= \"string\"",
+          "match": "(=)\\s*(\"[^\"]*\")",
+          "captures": {
+            "1": { "name": "keyword.operator.assignment.veld" },
+            "2": { "name": "string.quoted.double.default-value.veld" }
+          }
+        },
+        {
+          "comment": "= true/false",
+          "match": "(=)\\s*\\b(true|false)\\b",
+          "captures": {
+            "1": { "name": "keyword.operator.assignment.veld" },
+            "2": { "name": "constant.language.boolean.default-value.veld" }
+          }
+        },
+        {
+          "comment": "= number",
+          "match": "(=)\\s*(-?\\d+\\.?\\d*)",
+          "captures": {
+            "1": { "name": "keyword.operator.assignment.veld" },
+            "2": { "name": "constant.numeric.default-value.veld" }
+          }
+        },
+        {
+          "comment": "= identifier (enum value)",
+          "match": "(=)\\s*([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.assignment.veld" },
+            "2": { "name": "constant.other.default-value.veld" }
+          }
+        }
+      ]
+    },
+
     "annotation": {
       "comment": "@default(value)  or  @required  etc.",
       "patterns": [
@@ -230,7 +268,7 @@
     },
 
     "field-definition": {
-      "comment": "fieldName: Type  or  fieldName?: Type  or  fieldName: Type @default(val)",
+      "comment": "fieldName: Type  or  fieldName?: Type  or  fieldName: Type = value  or  fieldName: Type @default(val)",
       "match": "^\\s*([a-z_][A-Za-z0-9_]*)(\\??)\\s*(:)\\s*(.+?)\\s*(?://.*)?$",
       "captures": {
         "1": { "name": "variable.other.field.veld" },
@@ -238,6 +276,7 @@
         "3": { "name": "punctuation.separator.key-value.veld" },
         "4": {
           "patterns": [
+            { "include": "#default-value" },
             { "include": "#annotation" },
             { "include": "#generic-type" },
             { "include": "#map-type" },

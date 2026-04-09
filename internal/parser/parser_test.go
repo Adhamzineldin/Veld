@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Adhamzineldin/Veld/internal/lexer"
@@ -781,6 +782,116 @@ func TestParseMultipleAnnotations(t *testing.T) {
 	}
 	if f.Example != "test@test.com" {
 		t.Errorf("expected example 'test@test.com', got %q", f.Example)
+	}
+}
+
+// ── Default value (= syntax) tests ───────────────────────────────────────────
+
+func TestParseDefaultEqualsInt(t *testing.T) {
+	src := `model Pagination {
+  page: int = 0
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	f := a.Models[0].Fields[0]
+	if f.Default != "0" {
+		t.Errorf("expected default '0', got %q", f.Default)
+	}
+}
+
+func TestParseDefaultEqualsString(t *testing.T) {
+	src := `model Config {
+  name: string = "hello"
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	f := a.Models[0].Fields[0]
+	if f.Default != `"hello"` {
+		t.Errorf("expected default '\"hello\"', got %q", f.Default)
+	}
+}
+
+func TestParseDefaultEqualsBool(t *testing.T) {
+	src := `model Settings {
+  verified: bool = false
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	f := a.Models[0].Fields[0]
+	if f.Default != "false" {
+		t.Errorf("expected default 'false', got %q", f.Default)
+	}
+}
+
+func TestParseDefaultEqualsIdent(t *testing.T) {
+	src := `enum Role { admin user guest }
+model User {
+  role: Role = user
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	f := a.Models[0].Fields[0]
+	if f.Default != "user" {
+		t.Errorf("expected default 'user', got %q", f.Default)
+	}
+}
+
+func TestParseDefaultEqualsNegativeNumber(t *testing.T) {
+	src := `model Account {
+  balance: float = -1.5
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	f := a.Models[0].Fields[0]
+	if f.Default != "-1.5" {
+		t.Errorf("expected default '-1.5', got %q", f.Default)
+	}
+}
+
+func TestParseDefaultEqualsWithDeprecated(t *testing.T) {
+	src := `model User {
+  name: string = "hello" @deprecated "use fullName"
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	f := a.Models[0].Fields[0]
+	if f.Default != `"hello"` {
+		t.Errorf("expected default '\"hello\"', got %q", f.Default)
+	}
+	if f.Deprecated != "use fullName" {
+		t.Errorf("expected deprecated 'use fullName', got %q", f.Deprecated)
+	}
+}
+
+func TestParseDefaultEqualsConflictWithAnnotation(t *testing.T) {
+	src := `model Config {
+  name: string = "hello" @default("world")
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	_, err := New(tokens).Parse()
+	if err == nil {
+		t.Fatal("expected error for combining = value with @default()")
+	}
+	if !strings.Contains(err.Error(), "already has a default value") {
+		t.Errorf("expected 'already has a default value' error, got: %v", err)
 	}
 }
 

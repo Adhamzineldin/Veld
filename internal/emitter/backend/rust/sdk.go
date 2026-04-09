@@ -82,12 +82,25 @@ func emitRustSdkTypes(consumed emitter.ConsumedServiceInfo, dir string) error {
 				if f.Optional {
 					rsType = fmt.Sprintf("Option<%s>", rsType)
 					sb.WriteString(fmt.Sprintf("    #[serde(rename = %q, skip_serializing_if = \"Option::is_none\")]\n", jsonName))
+				} else if f.Default != "" {
+					sb.WriteString(fmt.Sprintf("    #[serde(rename = %q, default = \"%s_default_%s\")]\n", jsonName, strings.ToLower(m.Name), fieldName))
 				} else {
 					sb.WriteString(fmt.Sprintf("    #[serde(rename = %q)]\n", jsonName))
 				}
 				sb.WriteString(fmt.Sprintf("    pub %s: %s,\n", fieldName, rsType))
 			}
 			sb.WriteString("}\n\n")
+
+			// Default value helper functions for serde
+			for _, f := range m.Fields {
+				if f.Default == "" {
+					continue
+				}
+				rsType := rustFieldType(f)
+				fieldName := emitter.ToSnakeCase(f.Name)
+				fnName := fmt.Sprintf("%s_default_%s", strings.ToLower(m.Name), fieldName)
+				sb.WriteString(fmt.Sprintf("fn %s() -> %s { %s }\n\n", fnName, rsType, rustDefaultLiteral(f.Default, f.Type)))
+			}
 
 			// impl with new() + getters/setters
 			sb.WriteString(fmt.Sprintf("impl %s {\n", m.Name))

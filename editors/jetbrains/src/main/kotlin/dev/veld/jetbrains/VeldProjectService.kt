@@ -344,9 +344,13 @@ class VeldProjectService(private val project: Project) {
                         val fieldLine = lines[i].trim()
                         val fieldMatch = Regex("""^([a-z_]\w*)\??:\s*(.+?)(?:\s*//.*)?$""").find(fieldLine)
                         if (fieldMatch != null) {
-                            // Strip @annotations (e.g. @default(user)) so type is clean for display
+                            // Strip @annotations (e.g. @default(user)) and = value so type is clean for display
                             val rawType = fieldMatch.groupValues[2].trim()
-                            val cleanType = rawType.replace(Regex("""@\w+(?:\([^)]*\))?"""), "").trim()
+                            val cleanType = rawType
+                                .replace(Regex("""\s*=\s*(?:"[^"]*"|\S+)"""), "")
+                                .replace(Regex("""@\w+(?:\([^)]*\))?"""), "")
+                                .replace(Regex("""@\w+\s+"[^"]*""""), "")
+                                .trim()
                             fields.add(FieldDef(fieldMatch.groupValues[1], cleanType, i))
                         }
                         i++

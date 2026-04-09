@@ -223,8 +223,13 @@ func propName(f ast.Field) string {
 	return f.Name
 }
 
-// jsDefaultVal returns the JavaScript zero-value for a field type.
+// jsDefaultVal returns the JavaScript default value for a field.
+// If the field has an explicit default (via = value or @default), it is used;
+// otherwise a type-based zero value is returned.
 func jsDefaultVal(f ast.Field) string {
+	if f.Default != "" {
+		return jsConvertDefault(f.Default, f.Type)
+	}
 	if f.IsArray {
 		return "[]"
 	}
@@ -241,4 +246,23 @@ func jsDefaultVal(f ast.Field) string {
 	default:
 		return "undefined"
 	}
+}
+
+// jsConvertDefault converts a Veld default value to a JavaScript literal.
+func jsConvertDefault(val, veldType string) string {
+	// Already a quoted string → JS single-quote string
+	if strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"") {
+		inner := val[1 : len(val)-1]
+		return "'" + inner + "'"
+	}
+	// Booleans
+	if val == "true" || val == "false" {
+		return val
+	}
+	// Numeric — pass through
+	if veldType == "int" || veldType == "float" || veldType == "decimal" {
+		return val
+	}
+	// Enum value or identifier — emit as string
+	return "'" + val + "'"
 }

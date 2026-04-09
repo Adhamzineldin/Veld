@@ -59,6 +59,8 @@ func (e *PhpEmitter) emitClass(m ast.Model, enumNames map[string]bool, dir strin
 		if f.Optional {
 			phpType = "?" + phpType
 			defaultVal = " = null"
+		} else if f.Default != "" {
+			defaultVal = " = " + phpDefaultLiteral(f.Default, f.Type)
 		}
 
 		comma := ","
@@ -176,4 +178,23 @@ func phpPascalName(name string) string {
 		}
 	}
 	return sb.String()
+}
+
+// phpDefaultLiteral converts a Veld default value to a PHP literal.
+func phpDefaultLiteral(val, veldType string) string {
+	// Already a quoted string → PHP single-quote string
+	if strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"") {
+		inner := val[1 : len(val)-1]
+		return "'" + inner + "'"
+	}
+	// Booleans
+	if val == "true" || val == "false" {
+		return val
+	}
+	// Numeric — pass through
+	if veldType == "int" || veldType == "float" || veldType == "decimal" {
+		return val
+	}
+	// Enum value or identifier — emit as string
+	return "'" + val + "'"
 }

@@ -78,12 +78,28 @@ func (e *RustEmitter) writeStruct(w *codegen.Writer, model ast.Model) error {
 		if field.Optional {
 			w.Writeln(`#[serde(skip_serializing_if = "Option::is_none")]`)
 		}
+		if field.Default != "" {
+			w.Writeln(fmt.Sprintf(`#[serde(default = "%s_default_%s")]`, strings.ToLower(model.Name), strings.TrimPrefix(fieldName, "r#")))
+		}
 		w.Writeln(fmt.Sprintf("pub %s: %s,", fieldName, rustType))
 	}
 
 	w.Dedent()
 	w.Writeln("}")
 	w.BlankLine()
+
+	// Default value helper functions for serde
+	for _, field := range model.Fields {
+		if field.Default == "" {
+			continue
+		}
+		rustType, _ := e.mapFieldType(field)
+		fieldName := safeRustIdent(e.adapter.NamingConvention(field.Name, lang.NamingContextPrivate))
+		bareName := strings.TrimPrefix(fieldName, "r#")
+		fnName := fmt.Sprintf("%s_default_%s", strings.ToLower(model.Name), bareName)
+		w.Writeln(fmt.Sprintf("fn %s() -> %s { %s }", fnName, rustType, rustDefaultLiteral(field.Default, field.Type)))
+		w.BlankLine()
+	}
 
 	// impl block with new() + getters/setters
 	structName := e.adapter.NamingConvention(model.Name, lang.NamingContextExported)
@@ -190,4 +206,33 @@ func (e *RustEmitter) astNeedsHashMap(a ast.AST) bool {
 		}
 	}
 	return false
+}
+
+// rustDefaultLiteral converts a Veld default value to a Rust literal expression.
+func rustDefaultLiteral(val, veldType string) string {
+	// Already a quoted string → Rust String::from(...)
+	if strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"") {
+		return fmt.Sprintf("String::from(%s)", val)
+	}
+	// Booleans
+	if val == "true" || val == "false" {
+		return val
+	}
+	// Numeric
+	if veldType == "int" {
+		return val
+	}
+	if veldType == "float" {
+		if !strings.Contains(val, ".") {
+			return val + ".0"
+		}
+		return val
+	}
+	// String types (date, datetime, uuid, decimal) → String::from(...)
+	if veldType == "string" || veldType == "date" || veldType == "datetime" ||
+		veldType == "uuid" || veldType == "decimal" {
+		return fmt.Sprintf("String::from(\"%s\")", val)
+	}
+	// Enum value or identifier → String::from(...)
+	return fmt.Sprintf("String::from(\"%s\")", val)
 }

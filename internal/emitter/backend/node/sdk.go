@@ -100,7 +100,14 @@ func emitNodeSdkModels(consumed emitter.ConsumedServiceInfo, modelsDir string) e
 			// Fields
 			for _, f := range m.Fields {
 				tsType := tshelpers.VeldFieldToTS(f)
-				if f.Optional {
+				if f.Default != "" {
+					defLit := tshelpers.TSDefaultLiteral(f.Default, f.Type)
+					if f.Optional {
+						sb.WriteString(fmt.Sprintf("  %s?: %s = %s;\n", f.Name, tsType, defLit))
+					} else {
+						sb.WriteString(fmt.Sprintf("  %s!: %s = %s;\n", f.Name, tsType, defLit))
+					}
+				} else if f.Optional {
 					sb.WriteString(fmt.Sprintf("  %s?: %s;\n", f.Name, tsType))
 				} else {
 					sb.WriteString(fmt.Sprintf("  %s!: %s;\n", f.Name, tsType))

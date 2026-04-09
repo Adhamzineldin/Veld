@@ -154,6 +154,9 @@ func jsDocType(f ast.Field) string {
 }
 
 func jsDefault(f ast.Field) string {
+	if f.Default != "" {
+		return jsConvertDefault(f.Default, f.Type)
+	}
 	if f.IsArray {
 		return "[]"
 	}

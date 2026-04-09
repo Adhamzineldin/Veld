@@ -73,7 +73,11 @@ func (e *CSharpEmitter) emitRecord(m ast.Model, enumNames map[string]bool, dir s
 			csType = csType + "?"
 		}
 		sb.WriteString(fmt.Sprintf("    [JsonPropertyName(%q)]\n", f.Name))
-		sb.WriteString(fmt.Sprintf("    public %s %s { get; set; }\n\n", csType, propName))
+		if f.Default != "" {
+			sb.WriteString(fmt.Sprintf("    public %s %s { get; set; } = %s;\n\n", csType, propName, csDefaultLiteral(f.Default, f.Type)))
+		} else {
+			sb.WriteString(fmt.Sprintf("    public %s %s { get; set; }\n\n", csType, propName))
+		}
 	}
 
 	// Default constructor
@@ -199,4 +203,28 @@ func toSnakeCaseCS(s string) string {
 		out = strings.ReplaceAll(out, "__", "_")
 	}
 	return strings.Trim(out, "_")
+}
+
+// csDefaultLiteral converts a Veld default value to a C# literal.
+func csDefaultLiteral(val, veldType string) string {
+	// Already a quoted string
+	if strings.HasPrefix(val, "\"") {
+		return val
+	}
+	// Booleans
+	if val == "true" || val == "false" {
+		return val
+	}
+	// Numeric types
+	if veldType == "decimal" {
+		return val + "m" // C# decimal suffix
+	}
+	if veldType == "float" {
+		return val + "d" // C# double suffix
+	}
+	if veldType == "int" {
+		return val
+	}
+	// Enum value or identifier — emit as string
+	return "\"" + val + "\""
 }

@@ -68,6 +68,7 @@ type Action struct {
 	Method        string         `json:"method"`
 	Path          string         `json:"path"`
 	Input         string         `json:"input"`
+	InputFields   []Field        `json:"inputFields,omitempty"` // inline input fields (non-empty ⇒ input was declared inline)
 	Output        string         `json:"output"`
 	OutputArray   bool           `json:"outputArray,omitempty"`   // output User[] → true
 	OutputFields  []Field        `json:"outputFields,omitempty"`  // inline output fields (non-empty ⇒ output was declared inline)

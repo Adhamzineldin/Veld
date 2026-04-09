@@ -66,7 +66,11 @@ func emitCSharpSdkTypes(consumed emitter.ConsumedServiceInfo, modelsDir string) 
 				if f.Optional {
 					csType += "?"
 				}
-				sb.WriteString(fmt.Sprintf("    [JsonPropertyName(%q)]\n    public %s %s { get; set; }\n\n", f.Name, csType, capitalize(f.Name)))
+				if f.Default != "" {
+					sb.WriteString(fmt.Sprintf("    [JsonPropertyName(%q)]\n    public %s %s { get; set; } = %s;\n\n", f.Name, csType, capitalize(f.Name), csDefaultLiteral(f.Default, f.Type)))
+				} else {
+					sb.WriteString(fmt.Sprintf("    [JsonPropertyName(%q)]\n    public %s %s { get; set; }\n\n", f.Name, csType, capitalize(f.Name)))
+				}
 			}
 			sb.WriteString(fmt.Sprintf("    public %s() { }\n\n", m.Name))
 			if len(m.Fields) > 0 {
