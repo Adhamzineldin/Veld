@@ -100,8 +100,8 @@ func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir string) erro
 	}
 	sb.WriteString("\n")
 
-	// No-arg constructor
-	sb.WriteString(fmt.Sprintf("    public %s() {}\n\n", m.Name))
+	// No-arg constructor (protected so Jackson can still deserialize, but IDE only shows the all-args ctor)
+	sb.WriteString(fmt.Sprintf("    protected %s() {}\n\n", m.Name))
 
 	// All-args constructor
 	if len(m.Fields) > 0 {

@@ -150,7 +150,7 @@ func emitJavaSdkModels(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 				jType := javaFieldType(f)
 				sb.WriteString(fmt.Sprintf("    private %s %s;\n", jType, f.Name))
 			}
-			sb.WriteString("\n    public " + m.Name + "() {}\n\n")
+			sb.WriteString("\n    protected " + m.Name + "() {}\n\n")
 			// All-args constructor
 			if len(m.Fields) > 0 {
 				var ctorParams []string
