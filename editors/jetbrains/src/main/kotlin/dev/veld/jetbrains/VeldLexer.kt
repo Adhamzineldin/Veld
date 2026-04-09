@@ -273,7 +273,7 @@ class VeldLexer : LexerBase() {
             "module" -> VeldTokenTypes.MODULE_KEYWORD
             "action" -> VeldTokenTypes.ACTION_KEYWORD
             "enum" -> VeldTokenTypes.ENUM_KEYWORD
-            "constants" -> VeldTokenTypes.CONSTANTS_KEYWORD
+            "constants", "constant" -> VeldTokenTypes.CONSTANTS_KEYWORD
             "import" -> VeldTokenTypes.IMPORT_KEYWORD
             "from" -> VeldTokenTypes.IMPORT_KEYWORD
             "extends" -> VeldTokenTypes.EXTENDS_KEYWORD

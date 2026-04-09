@@ -163,8 +163,8 @@ class VeldAnnotator : Annotator {
                 }
 
                 // ── constants declaration ─────────────────────────────────────
-                trimmed.startsWith("constants ") -> {
-                    val m = Regex("""^constants\s+([A-Za-z_]\w*)""").find(trimmed)
+                trimmed.startsWith("constants ") || trimmed.startsWith("constant ") -> {
+                    val m = Regex("""^constants?\s+([A-Za-z_]\w*)""").find(trimmed)
                     if (m != null) {
                         highlightWord(m.groupValues[1], line, lineStart, content.length, holder, ENUM_DECLARATION)
                     }

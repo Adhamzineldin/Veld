@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "name": "Users",
+      "prefix": "/users",
+      "actions": [
+        {
+          "name": "GetUser",
+          "method": "GET",
+          "path": "/:id",
+          "input": "",
+          "output": "User",
+          "middleware": []
+        }
+      ]
+    }
+  ],
+  "models": [
+    {
+      "name": "User",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ]
+    }
+  ]
+}

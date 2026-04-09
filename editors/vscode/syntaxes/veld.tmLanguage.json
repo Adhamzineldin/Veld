@@ -275,8 +275,8 @@
     },
 
     "constants-block": {
-      "comment": "constants GroupName { NAME: type = value ... }",
-      "begin": "^\\s*(constants)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(\\{)",
+      "comment": "constants GroupName { NAME: type = value ... } or constant GroupName { ... }",
+      "begin": "^\\s*(constants?)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(\\{)",
       "end": "^\\s*\\}",
       "beginCaptures": {
         "1": { "name": "storage.type.constants.veld" },
