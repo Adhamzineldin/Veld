@@ -458,8 +458,15 @@ func writeJavaSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action, ind
 	pathParams := emitter.ExtractPathParams(routePath)
 
 	retType := "void"
+	deserClass := "" // Java class literal for Jackson readValue
 	if act.Output != "" {
-		retType = act.Output
+		mapped, _, _ := javaLang.MapType(act.Output)
+		if act.OutputArray {
+			retType = "List<" + mapped + ">"
+		} else {
+			retType = mapped
+		}
+		deserClass = mapped
 	}
 
 	var params []string
@@ -467,7 +474,8 @@ func writeJavaSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action, ind
 		params = append(params, "String "+p)
 	}
 	if act.Input != "" {
-		params = append(params, act.Input+" input")
+		inputType, _, _ := javaLang.MapType(act.Input)
+		params = append(params, inputType+" input")
 	}
 
 	sb.WriteString(fmt.Sprintf("%s/** %s %s */\n", indent, method, routePath))
@@ -486,7 +494,11 @@ func writeJavaSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action, ind
 
 	if act.Output != "" {
 		sb.WriteString(fmt.Sprintf("%s    String raw = request(%q, %s, %s);\n", indent, method, urlExpr, bodyArg))
-		sb.WriteString(fmt.Sprintf("%s    return mapper().readValue(raw, %s.class);\n", indent, act.Output))
+		if act.OutputArray {
+			sb.WriteString(fmt.Sprintf("%s    return mapper().readValue(raw, mapper().getTypeFactory().constructCollectionType(java.util.List.class, %s.class));\n", indent, deserClass))
+		} else {
+			sb.WriteString(fmt.Sprintf("%s    return mapper().readValue(raw, %s.class);\n", indent, deserClass))
+		}
 	} else {
 		sb.WriteString(fmt.Sprintf("%s    request(%q, %s, %s);\n", indent, method, urlExpr, bodyArg))
 	}

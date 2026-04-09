@@ -250,10 +250,11 @@ func writePySdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	pathParams := emitter.ExtractPathParams(routePath)
 	returnType := "None"
 	if act.Output != "" {
+		mapped := veldScalarToPy(act.Output)
 		if act.OutputArray {
-			returnType = fmt.Sprintf("list[%s]", act.Output)
+			returnType = fmt.Sprintf("list[%s]", mapped)
 		} else {
-			returnType = act.Output
+			returnType = mapped
 		}
 	}
 
@@ -263,7 +264,8 @@ func writePySdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 		sigParts = append(sigParts, fmt.Sprintf("%s: str", emitter.ToSnakeCase(p)))
 	}
 	if act.Input != "" {
-		sigParts = append(sigParts, fmt.Sprintf("input_data: %s", act.Input))
+		inputType := veldScalarToPy(act.Input)
+		sigParts = append(sigParts, fmt.Sprintf("input_data: %s", inputType))
 	}
 	if act.Query != "" {
 		sigParts = append(sigParts, fmt.Sprintf("query: Optional[%s] = None", act.Query))
