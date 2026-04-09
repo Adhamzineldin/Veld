@@ -214,6 +214,7 @@ class VeldLexer : LexerBase() {
             char == ')' -> { currentOffset++; currentToken = VeldTokenTypes.RPAREN; lastSignificantToken = currentToken; expectPathLiteral = false }
             char == '[' -> { currentOffset++; currentToken = VeldTokenTypes.LBRACKET; lastSignificantToken = currentToken; expectPathLiteral = false }
             char == ']' -> { currentOffset++; currentToken = VeldTokenTypes.RBRACKET; lastSignificantToken = currentToken; expectPathLiteral = false }
+            char == '=' -> { currentOffset++; currentToken = VeldTokenTypes.EQUALS; lastSignificantToken = currentToken; expectPathLiteral = false }
             char == '*' -> { currentOffset++; currentToken = VeldTokenTypes.IDENTIFIER; lastSignificantToken = currentToken; expectPathLiteral = false }
 
             // Anything else
@@ -272,6 +273,7 @@ class VeldLexer : LexerBase() {
             "module" -> VeldTokenTypes.MODULE_KEYWORD
             "action" -> VeldTokenTypes.ACTION_KEYWORD
             "enum" -> VeldTokenTypes.ENUM_KEYWORD
+            "constants" -> VeldTokenTypes.CONSTANTS_KEYWORD
             "import" -> VeldTokenTypes.IMPORT_KEYWORD
             "from" -> VeldTokenTypes.IMPORT_KEYWORD
             "extends" -> VeldTokenTypes.EXTENDS_KEYWORD

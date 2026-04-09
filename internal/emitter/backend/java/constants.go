@@ -64,8 +64,14 @@ func (e *JavaEmitter) emitConstants(a ast.AST, outDir string) error {
 
 func javaConstType(veldType string) string {
 	switch veldType {
-	case "string", "uuid", "date", "datetime":
+	case "string":
 		return "String"
+	case "uuid":
+		return "UUID"
+	case "date":
+		return "LocalDate"
+	case "datetime":
+		return "LocalDateTime"
 	case "int":
 		return "long"
 	case "float":
@@ -83,6 +89,12 @@ func javaConstImports(veldType string) []string {
 	switch veldType {
 	case "decimal":
 		return []string{"java.math.BigDecimal"}
+	case "uuid":
+		return []string{"java.util.UUID"}
+	case "date":
+		return []string{"java.time.LocalDate"}
+	case "datetime":
+		return []string{"java.time.LocalDateTime"}
 	default:
 		return nil
 	}
@@ -90,10 +102,14 @@ func javaConstImports(veldType string) []string {
 
 func javaConstValue(f ast.ConstantField) string {
 	switch f.Type {
-	case "string", "date", "datetime":
+	case "string":
 		return fmt.Sprintf("%q", f.Value)
 	case "uuid":
-		return fmt.Sprintf("%q", f.Value)
+		return fmt.Sprintf("UUID.fromString(%q)", f.Value)
+	case "date":
+		return fmt.Sprintf("LocalDate.parse(%q)", f.Value)
+	case "datetime":
+		return fmt.Sprintf("LocalDateTime.parse(%q)", f.Value)
 	case "int":
 		return f.Value + "L"
 	case "float":

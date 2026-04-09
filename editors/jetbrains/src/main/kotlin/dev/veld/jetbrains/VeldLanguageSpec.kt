@@ -10,7 +10,7 @@ package dev.veld.jetbrains
 object VeldLanguageSpec {
     const val VERSION = "1.0.0"
     
-    val KEYWORDS = setOf("model", "module", "action", "enum", "import", "from", "extends")
+    val KEYWORDS = setOf("model", "module", "action", "enum", "constants", "import", "from", "extends")
     val HTTP_METHODS = setOf("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS")
     val BUILTIN_TYPES = setOf("string", "int", "float", "decimal", "bool", "date", "datetime", "uuid", "bytes", "json", "any")
     val DIRECTIVES = setOf("description", "prefix", "method", "path", "input", "output", "query", "stream", "middleware", "errors", "default")

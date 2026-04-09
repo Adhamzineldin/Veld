@@ -75,7 +75,7 @@ class VeldAnnotator : Annotator {
     }
 
     // Simple context tracker so we highlight enum values vs. model fields correctly.
-    private enum class BlockKind { NONE, MODEL, ENUM, MODULE, ACTION }
+    private enum class BlockKind { NONE, MODEL, ENUM, CONSTANTS, MODULE, ACTION }
 
     override fun annotate(element: PsiElement, holder: AnnotationHolder) {
         if (element !is PsiFile) return
@@ -162,6 +162,15 @@ class VeldAnnotator : Annotator {
                     if (openBraces > closeBraces) blockStack.addLast(BlockKind.MODULE)
                 }
 
+                // ── constants declaration ─────────────────────────────────────
+                trimmed.startsWith("constants ") -> {
+                    val m = Regex("""^constants\s+([A-Za-z_]\w*)""").find(trimmed)
+                    if (m != null) {
+                        highlightWord(m.groupValues[1], line, lineStart, content.length, holder, ENUM_DECLARATION)
+                    }
+                    if (openBraces > closeBraces) blockStack.addLast(BlockKind.CONSTANTS)
+                }
+
                 // ── action declaration ────────────────────────────────────────
                 trimmed.startsWith("action ") -> {
                     val m = Regex("""^action\s+([A-Za-z_]\w*)""").find(trimmed)
@@ -185,6 +194,16 @@ class VeldAnnotator : Annotator {
                 currentBlock == BlockKind.ENUM && trimmed != "{" && trimmed != "}" &&
                         trimmed.isNotEmpty() && !trimmed.startsWith("//") -> {
                     highlightEnumValues(trimmed, line, lineStart, content.length, indentLen, holder)
+                }
+
+                // ── inside constants body: NAME: type = value ────────────────
+                currentBlock == BlockKind.CONSTANTS && trimmed != "{" && trimmed != "}" &&
+                        trimmed.isNotEmpty() && !trimmed.startsWith("//") -> {
+                    // Highlight constant field name as FIELD_NAME
+                    val constField = Regex("""^([A-Z_][A-Za-z0-9_]*)\s*:""").find(trimmed)
+                    if (constField != null) {
+                        highlightWord(constField.groupValues[1], line, lineStart, content.length, holder, FIELD_NAME)
+                    }
                 }
 
                 // ── inside model/action body: directives and fields ───────────

@@ -70,6 +70,10 @@ private class VeldFileElement(private val file: VeldPsiFile) : StructureViewTree
         PsiTreeUtil.getChildrenOfType(file, VeldEnumDeclaration::class.java)?.forEach {
             children.add(VeldEnumElement(it))
         }
+        // Constants
+        PsiTreeUtil.getChildrenOfType(file, VeldConstantsDeclaration::class.java)?.forEach {
+            children.add(VeldConstantsElement(it))
+        }
         // Modules
         PsiTreeUtil.getChildrenOfType(file, VeldModuleDeclaration::class.java)?.forEach {
             children.add(VeldModuleElement(it))
@@ -190,3 +194,23 @@ private class VeldActionElement(private val element: VeldActionDeclaration) : St
 
     override fun getChildren(): Array<TreeElement> = TreeElement.EMPTY_ARRAY
 }
+
+private class VeldConstantsElement(private val element: VeldConstantsDeclaration) : StructureViewTreeElement {
+    override fun getValue(): Any = element
+    override fun navigate(requestFocus: Boolean) = element.navigate(requestFocus)
+    override fun canNavigate(): Boolean = element.canNavigate()
+    override fun canNavigateToSource(): Boolean = element.canNavigateToSource()
+
+    override fun getPresentation(): ItemPresentation = object : ItemPresentation {
+        override fun getPresentableText(): String {
+            val name = element.name ?: "?"
+            val fields = element.getFieldNames()
+            return if (fields.isNotEmpty()) "constants $name { ${fields.joinToString(", ")} }" else "constants $name"
+        }
+        override fun getLocationString(): String? = null
+        override fun getIcon(unused: Boolean): Icon? = null
+    }
+
+    override fun getChildren(): Array<TreeElement> = TreeElement.EMPTY_ARRAY
+}
+

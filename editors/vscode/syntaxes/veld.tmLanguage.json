@@ -10,6 +10,7 @@
     { "include": "#import-statement" },
     { "include": "#model-block" },
     { "include": "#enum-block" },
+    { "include": "#constants-block" },
     { "include": "#module-block" }
   ],
   "repository": {
@@ -271,6 +272,43 @@
           }
         }
       ]
+    },
+
+    "constants-block": {
+      "comment": "constants GroupName { NAME: type = value ... }",
+      "begin": "^\\s*(constants)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(\\{)",
+      "end": "^\\s*\\}",
+      "beginCaptures": {
+        "1": { "name": "storage.type.constants.veld" },
+        "2": { "name": "entity.name.type.constants.veld" },
+        "3": { "name": "punctuation.definition.block.begin.veld" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.block.end.veld" }
+      },
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#description-directive" },
+        { "include": "#constant-field-definition" }
+      ]
+    },
+
+    "constant-field-definition": {
+      "comment": "CONSTANT_NAME: type = value",
+      "match": "^\\s*([A-Z_][A-Za-z0-9_]*)\\s*(:)\\s*(string|int|float|decimal|bool|date|datetime|uuid)\\s*(=)\\s*(\"[^\"]*\"|\\-?\\d+\\.?\\d*|true|false)",
+      "captures": {
+        "1": { "name": "variable.other.constant.veld" },
+        "2": { "name": "punctuation.separator.key-value.veld" },
+        "3": { "name": "support.type.primitive.veld" },
+        "4": { "name": "keyword.operator.assignment.veld" },
+        "5": {
+          "patterns": [
+            { "include": "#string" },
+            { "include": "#number" },
+            { "include": "#boolean" }
+          ]
+        }
+      }
     },
 
     "module-block": {

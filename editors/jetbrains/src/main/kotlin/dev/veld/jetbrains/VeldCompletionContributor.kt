@@ -76,6 +76,9 @@ class VeldCompletionContributor : CompletionContributor() {
                             addBuiltinTypes(result)
                             addCustomTypes(result, service, virtualFile)
                         }
+                        CompletionContext.INSIDE_CONSTANTS -> {
+                            addBuiltinTypes(result)
+                        }
                         CompletionContext.GENERIC -> {
                             addKeywords(result)
                             addTypes(result, service, virtualFile)
@@ -93,6 +96,7 @@ class VeldCompletionContributor : CompletionContributor() {
         AFTER_IMPORT,
         INSIDE_MODULE,
         INSIDE_ACTION,
+        INSIDE_CONSTANTS,
         AFTER_METHOD_COLON,
         AFTER_TYPE_COLON,
         AFTER_ANNOTATION_AT,
@@ -156,18 +160,20 @@ class VeldCompletionContributor : CompletionContributor() {
             var inModule = false
             var inAction = false
             var inModel = false
+            var inConstants = false
 
             for (line in lines) {
                 val trimmed = line.trim()
                 if (trimmed.startsWith("module ") && trimmed.contains("{")) inModule = true
                 if (trimmed.startsWith("model ") && trimmed.contains("{")) inModel = true
+                if (trimmed.startsWith("constants ") && trimmed.contains("{")) inConstants = true
                 if (trimmed.startsWith("action ") && trimmed.contains("{")) inAction = true
 
                 for (ch in trimmed) {
                     if (ch == '{') depth++
                     if (ch == '}') {
                         depth--
-                        if (depth <= 0) { inModule = false; inModel = false; inAction = false; depth = 0 }
+                        if (depth <= 0) { inModule = false; inModel = false; inConstants = false; inAction = false; depth = 0 }
                         if (depth <= 1) inAction = false
                     }
                 }
@@ -177,6 +183,7 @@ class VeldCompletionContributor : CompletionContributor() {
                 inAction -> CompletionContext.INSIDE_ACTION
                 inModule -> CompletionContext.INSIDE_MODULE
                 inModel -> CompletionContext.INSIDE_MODEL
+                inConstants -> CompletionContext.INSIDE_CONSTANTS
                 else -> CompletionContext.TOP_LEVEL
             }
         } catch (e: Exception) {
