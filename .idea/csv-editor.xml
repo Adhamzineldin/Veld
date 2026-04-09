@@ -10,6 +10,27 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\editors\jetbrains\build\idea-sandbox\system\log\open-telemetry-metrics.2026-03-03-04-33-51.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\editors\jetbrains\build\idea-sandbox\system\log\open-telemetry-metrics.2026-03-03-05-20-45.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\editors\jetbrains\build\idea-sandbox\system\log\open-telemetry-metrics.2026-03-03-05-35-49.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
       </map>
     </option>
   </component>

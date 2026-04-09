@@ -18,7 +18,7 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // Build against 2025.1 (build 251). Plugin runs on 251+ per since-build.
+        // Build against 2025.1 (latest primary target). Plugin runs on 2023+ via sinceBuild.
         intellijIdeaCommunity('2025.1')
 
         // JSON plugin provides com.jetbrains.jsonSchema.* for VeldConfigSchemaProviderFactory.
@@ -36,22 +36,22 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            // 251 = IntelliJ 2025.1 (earliest version that requires Java 21 SDK).
-            // Plugin is tested up to 263.* (2026.3).
-            sinceBuild = '251'
-            untilBuild = '263.*'
+            // Support JetBrains IDEs from 2023.1+
+            sinceBuild = '223'
+            untilBuild = '263.*' // tested up to 2026.3
         }
     }
 
     pluginVerification {
         ides {
-            // Verify against the IDE we build against.
-            // IntelliJ Platform Gradle Plugin < 2.7 uses ide(...) helper.
-            ide(IntelliJPlatformType.IntellijIdeaCommunity, '2025.1')
+            // Verify against Community and Ultimate editions
+            ide(IntelliJPlatformType.IntellijIdeaCommunity, '2023.2')
+            ide(IntelliJPlatformType.IntellijIdeaUltimate, '2023.2')
 
-            // 2026 compatibility verification target.
-            // With plugin 2.5.0, use the legacy IntelliJ IDEA Ultimate enum constant.
-            ide(IntelliJPlatformType.IntellijIdeaUltimate, '2026.1')
+            // Optional: add other JetBrains IDEs if needed
+            // ide(IntelliJPlatformType.PyCharmProfessional, '2023.2')
+            // ide(IntelliJPlatformType.Rider, '2023.2')
+            // ide(IntelliJPlatformType.CLion, '2023.2')
         }
     }
 
@@ -66,14 +66,15 @@ intellijPlatform {
     }
 }
 
-// IntelliJ Platform 2025.1+ requires Java 21.
+// Java 17 required for JetBrains 2023 compatibility
 tasks.withType(JavaCompile).configureEach {
-    sourceCompatibility = '21'
-    targetCompatibility = '21'
+    sourceCompatibility = '17'
+    targetCompatibility = '17'
 }
 
+// Kotlin target JVM 17
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
     kotlinOptions {
-        jvmTarget = '21'
+        jvmTarget = '17'
     }
 }
