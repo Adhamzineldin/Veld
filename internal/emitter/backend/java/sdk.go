@@ -28,15 +28,16 @@ func (e *JavaEmitter) EmitServiceSdk(consumed []emitter.ConsumedServiceInfo, out
 	if opts.DryRun || len(consumed) == 0 {
 		return nil
 	}
+	framework := opts.BackendFramework
 	for _, c := range consumed {
-		if err := emitJavaSdk(c, outDir); err != nil {
+		if err := emitJavaSdk(c, outDir, framework); err != nil {
 			return fmt.Errorf("service sdk %s: %w", c.Name, err)
 		}
 	}
 	return nil
 }
 
-func emitJavaSdk(consumed emitter.ConsumedServiceInfo, outDir string) error {
+func emitJavaSdk(consumed emitter.ConsumedServiceInfo, outDir, framework string) error {
 	name := sdkhelpers.ServiceFileName(consumed.Name)
 	sdkDir := filepath.Join(outDir, "src", "main", "java", "maayn", "veld", "generated", "sdk", name)
 	errorsDir := filepath.Join(sdkDir, "errors")
@@ -53,7 +54,7 @@ func emitJavaSdk(consumed emitter.ConsumedServiceInfo, outDir string) error {
 	if err := emitJavaSdkModuleErrors(consumed, errorsDir, name); err != nil {
 		return err
 	}
-	return emitJavaSdkClient(consumed, sdkDir, name)
+	return emitJavaSdkClient(consumed, sdkDir, name, framework)
 }
 
 // ── Models — one subfolder per module ────────────────────────────────────────
@@ -319,12 +320,13 @@ func emitJavaSdkModuleErrors(consumed emitter.ConsumedServiceInfo, errorsDir, pk
 //
 //	TS:   await iamClient.auth.login(req)
 //	Java: iamClient.auth.login(req)
-func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string) error {
+func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg, framework string) error {
 	var sb strings.Builder
 	a := consumed.AST
 	envVar := sdkhelpers.EnvVarName(consumed.Name)
 	className := sdkhelpers.ServiceClassName(consumed.Name)
 	errorsPkg := fmt.Sprintf("maayn.veld.generated.sdk.%s.errors", pkg)
+	isSpring := strings.EqualFold(framework, "spring")
 
 	// Collect all module subpackages that have types used in actions,
 	// and detect whether any action needs List or extra type imports.
@@ -378,12 +380,20 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 		sb.WriteString(fmt.Sprintf("import %s;\n", imp))
 	}
 	sb.WriteString("import com.fasterxml.jackson.databind.ObjectMapper;\n")
+	if isSpring {
+		sb.WriteString("import org.springframework.beans.factory.annotation.Value;\n")
+		sb.WriteString("import org.springframework.stereotype.Component;\n")
+	}
 	sb.WriteString(fmt.Sprintf("import %s.SdkApiError;\n", errorsPkg))
 	for modPkg := range usedModulePkgs {
 		sb.WriteString(fmt.Sprintf("import maayn.veld.generated.sdk.%s.models.%s.*;\n", pkg, modPkg))
 	}
 	sb.WriteString("\n")
 
+	// Spring @Component so the client can be @Autowired
+	if isSpring {
+		sb.WriteString("@Component\n")
+	}
 	sb.WriteString(fmt.Sprintf("public class %s {\n", className))
 	sb.WriteString("    private final String base;\n")
 	sb.WriteString("    private final HttpClient http;\n")
@@ -399,20 +409,58 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 	}
 	sb.WriteString("\n")
 
-	sb.WriteString(fmt.Sprintf("    public %s() { this(null, null); }\n\n", className))
-	sb.WriteString(fmt.Sprintf("    public %s(String baseUrl, Map<String, String> headers) {\n", className))
-	if consumed.BaseUrl != "" {
-		sb.WriteString(fmt.Sprintf("        this.base = baseUrl != null ? baseUrl : System.getenv(\"%s\") != null ? System.getenv(\"%s\") : \"%s\";\n",
-			envVar, envVar, consumed.BaseUrl))
+	// Spring property key: veld.sdk.<service>.base-url (e.g. veld.sdk.account.base-url)
+	springPropKey := fmt.Sprintf("veld.sdk.%s.base-url", sdkhelpers.ServiceFileName(consumed.Name))
+
+	if isSpring {
+		// Primary Spring constructor — injected via @Value from application.properties,
+		// falls back to env var, then to baked-in default.
+		sb.WriteString(fmt.Sprintf("    /**\n     * Spring-managed constructor.\n"))
+		sb.WriteString(fmt.Sprintf("     * Configure via {@code %s} in application.properties,\n", springPropKey))
+		sb.WriteString(fmt.Sprintf("     * or set the {@code %s} environment variable.\n     */\n", envVar))
+		if consumed.BaseUrl != "" {
+			sb.WriteString(fmt.Sprintf("    public %s(@Value(\"${%s:#{systemEnvironment['%s'] ?: '%s'}}\") String baseUrl) {\n",
+				className, springPropKey, envVar, consumed.BaseUrl))
+		} else {
+			sb.WriteString(fmt.Sprintf("    public %s(@Value(\"${%s:#{systemEnvironment['%s']}}\") String baseUrl) {\n",
+				className, springPropKey, envVar))
+		}
+		sb.WriteString("        this.base = baseUrl;\n")
+		sb.WriteString("        this.http = HttpClient.newHttpClient();\n")
+		sb.WriteString("        this.headers = new HashMap<>();\n")
+		sb.WriteString("    }\n\n")
+		// Overload for manual construction (testing, non-Spring usage)
+		sb.WriteString(fmt.Sprintf("    /** Manual constructor for non-Spring usage or testing. */\n"))
+		sb.WriteString(fmt.Sprintf("    public %s(String baseUrl, Map<String, String> headers) {\n", className))
+		if consumed.BaseUrl != "" {
+			sb.WriteString(fmt.Sprintf("        this.base = baseUrl != null ? baseUrl : System.getenv(\"%s\") != null ? System.getenv(\"%s\") : \"%s\";\n",
+				envVar, envVar, consumed.BaseUrl))
+		} else {
+			sb.WriteString(fmt.Sprintf("        String resolved = baseUrl != null ? baseUrl : System.getenv(\"%s\");\n", envVar))
+			sb.WriteString(fmt.Sprintf("        if (resolved == null) throw new IllegalArgumentException(\"No base URL for %s — pass baseUrl or set %s\");\n",
+				consumed.Name, envVar))
+			sb.WriteString("        this.base = resolved;\n")
+		}
+		sb.WriteString("        this.http = HttpClient.newHttpClient();\n")
+		sb.WriteString("        this.headers = headers != null ? headers : new HashMap<>();\n")
+		sb.WriteString("    }\n\n")
 	} else {
-		sb.WriteString(fmt.Sprintf("        String resolved = baseUrl != null ? baseUrl : System.getenv(\"%s\");\n", envVar))
-		sb.WriteString(fmt.Sprintf("        if (resolved == null) throw new IllegalArgumentException(\"No base URL for %s — pass baseUrl or set %s\");\n",
-			consumed.Name, envVar))
-		sb.WriteString("        this.base = resolved;\n")
+		// Plain Java — no Spring annotations
+		sb.WriteString(fmt.Sprintf("    public %s() { this(null, null); }\n\n", className))
+		sb.WriteString(fmt.Sprintf("    public %s(String baseUrl, Map<String, String> headers) {\n", className))
+		if consumed.BaseUrl != "" {
+			sb.WriteString(fmt.Sprintf("        this.base = baseUrl != null ? baseUrl : System.getenv(\"%s\") != null ? System.getenv(\"%s\") : \"%s\";\n",
+				envVar, envVar, consumed.BaseUrl))
+		} else {
+			sb.WriteString(fmt.Sprintf("        String resolved = baseUrl != null ? baseUrl : System.getenv(\"%s\");\n", envVar))
+			sb.WriteString(fmt.Sprintf("        if (resolved == null) throw new IllegalArgumentException(\"No base URL for %s — pass baseUrl or set %s\");\n",
+				consumed.Name, envVar))
+			sb.WriteString("        this.base = resolved;\n")
+		}
+		sb.WriteString("        this.http = HttpClient.newHttpClient();\n")
+		sb.WriteString("        this.headers = headers != null ? headers : new HashMap<>();\n")
+		sb.WriteString("    }\n\n")
 	}
-	sb.WriteString("        this.http = HttpClient.newHttpClient();\n")
-	sb.WriteString("        this.headers = headers != null ? headers : new HashMap<>();\n")
-	sb.WriteString("    }\n\n")
 
 	// Internal raw HTTP helper — throws SdkApiError with parsed code+message
 	sb.WriteString("    String request(String method, String path, String body) throws Exception {\n")
