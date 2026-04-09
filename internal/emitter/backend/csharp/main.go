@@ -93,6 +93,9 @@ func (e *CSharpEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 	if err := e.emitCsproj(outDir, strat); err != nil {
 		return err
 	}
+	if err := e.emitConstants(a, outDir); err != nil {
+		return fmt.Errorf("constants: %w", err)
+	}
 	return e.emitReadme(outDir)
 }
 

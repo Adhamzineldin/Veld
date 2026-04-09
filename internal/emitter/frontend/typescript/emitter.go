@@ -100,6 +100,11 @@ func (e *TypeScriptEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOpti
 		}
 	}
 
+	// 8. Constants
+	if err := tsshared.EmitTSConstants(a, outDir); err != nil {
+		return fmt.Errorf("constants: %w", err)
+	}
+
 	return nil
 }
 

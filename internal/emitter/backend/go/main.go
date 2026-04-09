@@ -92,6 +92,10 @@ func (e *GoEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) err
 		}
 	}
 
+	if err := e.emitConstants(a, outDir); err != nil {
+		return fmt.Errorf("go emitter [constants]: %w", err)
+	}
+
 	return nil
 }
 

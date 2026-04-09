@@ -54,6 +54,7 @@ func Lint(a ast.AST) []Issue {
 	issues = append(issues, checkDuplicateRoutes(a)...)
 	issues = append(issues, checkDuplicateActionNames(a)...)
 	issues = append(issues, checkEmptyModels(a)...)
+	issues = append(issues, checkEmptyConstants(a)...)
 	issues = append(issues, checkMissingDescriptions(a)...)
 	issues = append(issues, checkDeprecatedActions(a)...)
 	issues = append(issues, checkFileNameConventions(a)...)
@@ -133,6 +134,22 @@ func checkEmptyModels(a ast.AST) []Issue {
 				Rule:     "empty-model",
 				Path:     m.Name,
 				Message:  fmt.Sprintf("model %q has no fields", m.Name),
+			})
+		}
+	}
+	return issues
+}
+
+// checkEmptyConstants reports constants groups with no fields.
+func checkEmptyConstants(a ast.AST) []Issue {
+	var issues []Issue
+	for _, cg := range a.Constants {
+		if len(cg.Fields) == 0 {
+			issues = append(issues, Issue{
+				Severity: Warning,
+				Rule:     "empty-constants",
+				Path:     cg.Name,
+				Message:  fmt.Sprintf("constants group %q has no fields", cg.Name),
 			})
 		}
 	}

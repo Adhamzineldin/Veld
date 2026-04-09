@@ -67,7 +67,7 @@ func formatTokens(tokens []lexer.Token) string {
 		}
 
 		switch tok.Type {
-		case lexer.TModel, lexer.TModule, lexer.TEnum:
+		case lexer.TModel, lexer.TModule, lexer.TEnum, lexer.TConstants:
 			if prevType != lexer.TEOF && prevType != lexer.TRBrace {
 				sb.WriteString("\n")
 			}
@@ -118,7 +118,7 @@ func collectImportLine(tokens []lexer.Token, i *int) string {
 			next := tokens[*i]
 			if next.Type == lexer.TImport || next.Type == lexer.TFrom ||
 				next.Type == lexer.TModel || next.Type == lexer.TModule ||
-				next.Type == lexer.TEnum ||
+				next.Type == lexer.TEnum || next.Type == lexer.TConstants ||
 				(next.Type == lexer.TIdent && next.Value == "prefix") ||
 				next.Type == lexer.TEOF {
 				break
@@ -162,7 +162,7 @@ func collectBlock(tokens []lexer.Token, i *int, baseIndent int) string {
 
 		// Handle different line types
 		switch tok.Type {
-		case lexer.TModel, lexer.TModule, lexer.TEnum:
+		case lexer.TModel, lexer.TModule, lexer.TEnum, lexer.TConstants:
 			sb.WriteString(indent + tok.Value + " ")
 			*i++
 		case lexer.TAction:
@@ -261,11 +261,20 @@ func formatFieldParts(parts []string) string {
 	var result strings.Builder
 	for i, p := range parts {
 		if i > 0 && p != ":" && p != "?" && p != "[" && p != "]" &&
-			p != "<" && p != ">" && p != "," && parts[i-1] != ":" &&
+			p != "<" && p != ">" && p != "," && p != "=" &&
+			parts[i-1] != ":" && parts[i-1] != "=" &&
 			parts[i-1] != "<" && parts[i-1] != "[" {
 			result.WriteString(" ")
 		}
+		// Always add space before = for readability
+		if p == "=" && i > 0 {
+			result.WriteString(" ")
+		}
 		result.WriteString(p)
+		// Always add space after =
+		if p == "=" {
+			result.WriteString(" ")
+		}
 	}
 	return result.String()
 }

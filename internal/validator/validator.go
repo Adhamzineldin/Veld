@@ -63,6 +63,31 @@ func Validate(a ast.AST) []error {
 		}
 	}
 
+	// Validate constants groups.
+	constNames := make(map[string]bool)
+	for _, cg := range a.Constants {
+		if constNames[cg.Name] {
+			errs = append(errs, fmt.Errorf("%sduplicate constants group name: %q", loc(cg.SourceFile, cg.Line), cg.Name))
+		}
+		if enumNames[cg.Name] {
+			errs = append(errs, fmt.Errorf("%sname collision: %q is defined as both constants and enum", loc(cg.SourceFile, cg.Line), cg.Name))
+		}
+		constNames[cg.Name] = true
+		if len(cg.Fields) == 0 {
+			errs = append(errs, fmt.Errorf("%sconstants group %q has no fields", loc(cg.SourceFile, cg.Line), cg.Name))
+		}
+		fieldSet := make(map[string]bool)
+		for _, f := range cg.Fields {
+			if fieldSet[f.Name] {
+				errs = append(errs, fmt.Errorf("%sconstants %q: duplicate field %q", loc(cg.SourceFile, f.Line), cg.Name, f.Name))
+			}
+			fieldSet[f.Name] = true
+			if err := validateConstantValue(f); err != nil {
+				errs = append(errs, fmt.Errorf("%sconstants %q.%s: %w", loc(cg.SourceFile, f.Line), cg.Name, f.Name, err))
+			}
+		}
+	}
+
 	// Collect model names and check for duplicates.
 	modelNames := make(map[string]bool)
 	for _, m := range a.Models {
@@ -71,6 +96,9 @@ func Validate(a ast.AST) []error {
 		}
 		if enumNames[m.Name] {
 			errs = append(errs, fmt.Errorf("%sname collision: %q is defined as both model and enum", loc(m.SourceFile, m.Line), m.Name))
+		}
+		if constNames[m.Name] {
+			errs = append(errs, fmt.Errorf("%sname collision: %q is defined as both model and constants", loc(m.SourceFile, m.Line), m.Name))
 		}
 		modelNames[m.Name] = true
 	}
@@ -480,4 +508,46 @@ func normalizeRoutePath(path string) string {
 		}
 	}
 	return strings.Join(parts, "/")
+}
+
+// validateConstantValue checks that the value is compatible with the declared type.
+func validateConstantValue(f ast.ConstantField) error {
+	switch f.Type {
+	case "string", "uuid", "date", "datetime", "decimal":
+		// These are always stored as string literals — parser ensures they're quoted.
+		return nil
+	case "int":
+		for i, ch := range f.Value {
+			if ch == '-' && i == 0 {
+				continue
+			}
+			if ch < '0' || ch > '9' {
+				return fmt.Errorf("expected integer value, got %q", f.Value)
+			}
+		}
+	case "float":
+		hasDot := false
+		for i, ch := range f.Value {
+			if ch == '-' && i == 0 {
+				continue
+			}
+			if ch == '.' {
+				if hasDot {
+					return fmt.Errorf("expected float value, got %q", f.Value)
+				}
+				hasDot = true
+				continue
+			}
+			if ch < '0' || ch > '9' {
+				return fmt.Errorf("expected float value, got %q", f.Value)
+			}
+		}
+	case "bool":
+		if f.Value != "true" && f.Value != "false" {
+			return fmt.Errorf("expected true or false, got %q", f.Value)
+		}
+	default:
+		return fmt.Errorf("unsupported constant type %q", f.Type)
+	}
+	return nil
 }

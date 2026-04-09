@@ -10,6 +10,7 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 	"github.com/Adhamzineldin/Veld/internal/emitter/tshelpers"
+	"github.com/Adhamzineldin/Veld/internal/emitter/tsshared"
 )
 
 func init() {
@@ -40,7 +41,7 @@ func (e *TypesOnlyEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptio
 	if err := e.emitTypes(a, typesDir); err != nil {
 		return fmt.Errorf("types: %w", err)
 	}
-	return nil
+	return tsshared.EmitTSConstants(a, outDir)
 }
 
 func (e *TypesOnlyEmitter) emitTypes(a ast.AST, dir string) error {

@@ -78,5 +78,8 @@ func (e *JSEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) err
 	if err := e.emitBarrel(a, outDir); err != nil {
 		return fmt.Errorf("barrel: %w", err)
 	}
+	if err := e.emitConstants(a, outDir); err != nil {
+		return fmt.Errorf("constants: %w", err)
+	}
 	return nil
 }
