@@ -167,6 +167,7 @@ class VeldCompletionContributor : CompletionContributor() {
                 if (trimmed.startsWith("module ") && trimmed.contains("{")) inModule = true
                 if (trimmed.startsWith("model ") && trimmed.contains("{")) inModel = true
                 if (trimmed.startsWith("constants ") && trimmed.contains("{")) inConstants = true
+                if (trimmed.startsWith("constant ") && trimmed.contains("{")) inConstants = true
                 if (trimmed.startsWith("action ") && trimmed.contains("{")) inAction = true
 
                 for (ch in trimmed) {

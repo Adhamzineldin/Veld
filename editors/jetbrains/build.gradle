@@ -1,4 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     id 'java'
@@ -11,6 +12,7 @@ version = '0.6.0'
 
 repositories {
     mavenCentral()
+
     intellijPlatform {
         defaultRepositories()
     }
@@ -18,40 +20,46 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // Build against 2025.1 (latest primary target). Plugin runs on 2023+ via sinceBuild.
+        // Build against latest stable primary target
         intellijIdeaCommunity('2025.1')
 
-        // JSON plugin provides com.jetbrains.jsonSchema.* for VeldConfigSchemaProviderFactory.
+        // JSON schema support
         bundledPlugin('com.intellij.modules.json')
 
-        // Required for bytecode instrumentation.
+        // Required for bytecode instrumentation
         instrumentationTools()
 
-        // Verify against the same platform we build against.
+        // Plugin verifier
         pluginVerifier()
     }
+
     implementation "org.jetbrains.kotlin:kotlin-stdlib"
 }
 
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            // Support JetBrains IDEs from 2023.1+
-            sinceBuild = '223'
-            untilBuild = '263.*' // tested up to 2026.3
+            // Support IntelliJ IDEA 2024.1+
+            sinceBuild = '241'
+
+            // Verified up to 2026.3
+            untilBuild = '263.*'
         }
     }
 
     pluginVerification {
         ides {
-            // Verify against Community and Ultimate editions
-            ide(IntelliJPlatformType.IntellijIdeaCommunity, '2023.2')
-            ide(IntelliJPlatformType.IntellijIdeaUltimate, '2023.2')
+            // Minimum supported version
+            ide(IntelliJPlatformType.IntellijIdeaCommunity, '2024.1')
+            ide(IntelliJPlatformType.IntellijIdeaUltimate, '2024.1')
 
-            // Optional: add other JetBrains IDEs if needed
-            // ide(IntelliJPlatformType.PyCharmProfessional, '2023.2')
-            // ide(IntelliJPlatformType.Rider, '2023.2')
-            // ide(IntelliJPlatformType.CLion, '2023.2')
+            // Primary build target
+            ide(IntelliJPlatformType.IntellijIdeaCommunity, '2025.1')
+            ide(IntelliJPlatformType.IntellijIdeaUltimate, '2025.1')
+
+            // Forward compatibility checks
+            ide(IntelliJPlatformType.IntellijIdeaCommunity, '2026.1')
+            ide(IntelliJPlatformType.IntellijIdeaUltimate, '2026.1')
         }
     }
 
@@ -66,15 +74,14 @@ intellijPlatform {
     }
 }
 
-// Java 17 required for JetBrains 2023 compatibility
+// IntelliJ 2024.1+ runs on Java 21
 tasks.withType(JavaCompile).configureEach {
-    sourceCompatibility = '17'
-    targetCompatibility = '17'
+    sourceCompatibility = '21'
+    targetCompatibility = '21'
 }
 
-// Kotlin target JVM 17
-tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+tasks.withType(KotlinCompile).configureEach {
     kotlinOptions {
-        jvmTarget = '17'
+        jvmTarget = '21'
     }
 }

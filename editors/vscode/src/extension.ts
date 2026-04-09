@@ -386,8 +386,8 @@ class VeldLanguageServer {
                 }
             }
 
-            if (trimmed.startsWith('constants ')) {
-                const match = trimmed.match(/constants\s+([A-Za-z_]\w*)/);
+            if (trimmed.startsWith('constants ') || trimmed.startsWith('constant ')) {
+                const match = trimmed.match(/constants?\s+([A-Za-z_]\w*)/);
                 if (match) {
                     const groupName = match[1];
                     const fields: ConstantFieldDef[] = [];
@@ -1000,7 +1000,7 @@ class VeldLanguageServer {
             if (trimmed.startsWith('module ') && trimmed.includes('{')) { inModule = true; }
             if (trimmed.startsWith('model ') && trimmed.includes('{')) { inModel = true; }
             if (trimmed.startsWith('enum ') && trimmed.includes('{')) { inEnum = true; }
-            if (trimmed.startsWith('constants ') && trimmed.includes('{')) { inConstants = true; }
+            if ((trimmed.startsWith('constants ') || trimmed.startsWith('constant ')) && trimmed.includes('{')) { inConstants = true; }
             if (trimmed.startsWith('action ') && trimmed.includes('{')) { inAction = true; }
 
             for (const ch of trimmed) {

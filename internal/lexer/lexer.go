@@ -377,7 +377,7 @@ func classifyWord(word string, line int) Token {
 		return Token{TImport, word, line}
 	case "enum":
 		return Token{TEnum, word, line}
-	case "constants":
+	case "constants", "constant":
 		return Token{TConstants, word, line}
 	case "description":
 		return Token{TIdent, word, line} // contextual keyword — parsed by value in parser
