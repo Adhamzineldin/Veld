@@ -152,7 +152,11 @@ func emitJavaSdkModels(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 			sb.WriteString(fmt.Sprintf("public class %s%s {\n", m.Name, extendsClause))
 			for _, f := range m.Fields {
 				jType := javaFieldType(f)
-				sb.WriteString(fmt.Sprintf("    private %s %s;\n", jType, f.Name))
+				if f.Default != "" {
+					sb.WriteString(fmt.Sprintf("    private %s %s = %s;\n", jType, f.Name, javaDefaultLiteral(f.Default, f.Type)))
+				} else {
+					sb.WriteString(fmt.Sprintf("    private %s %s;\n", jType, f.Name))
+				}
 			}
 			sb.WriteString("\n    protected " + m.Name + "() {}\n\n")
 			// All-args constructor

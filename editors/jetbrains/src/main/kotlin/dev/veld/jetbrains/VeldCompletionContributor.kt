@@ -72,6 +72,10 @@ class VeldCompletionContributor : CompletionContributor() {
                         CompletionContext.AFTER_ANNOTATION_AT -> {
                             addAnnotationCompletions(result)
                         }
+                        CompletionContext.AFTER_FIELD_EQUALS -> {
+                            // After "fieldName: Type = " — suggest common default values, not types
+                            addDefaultValueCompletions(result, trimmedBefore)
+                        }
                         CompletionContext.INSIDE_MODEL -> {
                             addBuiltinTypes(result)
                             addCustomTypes(result, service, virtualFile)
@@ -100,6 +104,7 @@ class VeldCompletionContributor : CompletionContributor() {
         AFTER_METHOD_COLON,
         AFTER_TYPE_COLON,
         AFTER_ANNOTATION_AT,
+        AFTER_FIELD_EQUALS,
         INSIDE_MODEL,
         GENERIC
     }
@@ -122,6 +127,11 @@ class VeldCompletionContributor : CompletionContributor() {
         }
 
         // middleware: values are label names, not types — no special context
+
+        // After "fieldname: Type = " -> suggest default values, not types
+        if (before.matches(Regex("""[a-z_]\w*\??\s*:\s*\w+.*=\s*\w*$""")) && !before.contains("@")) {
+            return CompletionContext.AFTER_FIELD_EQUALS
+        }
 
         // Annotation completion: "fieldname: Type @" or "fieldname?: Type @something"
         // Triggered when the user types "@" after the type in a field definition
@@ -410,6 +420,37 @@ class VeldCompletionContributor : CompletionContributor() {
                     }
                 }
             result.addElement(item)
+        }
+    }
+
+    private fun addDefaultValueCompletions(result: CompletionResultSet, beforeCursor: String) {
+        // Determine the field type from the text before cursor (e.g. "name: bool = ")
+        val typeMatch = Regex(""":\s*(\w+)""").find(beforeCursor)
+        val fieldType = typeMatch?.groupValues?.get(1) ?: ""
+
+        when (fieldType) {
+            "bool" -> {
+                result.addElement(LookupElementBuilder.create("true")
+                    .bold().withIcon(AllIcons.Nodes.Constant).withTypeText("boolean"))
+                result.addElement(LookupElementBuilder.create("false")
+                    .bold().withIcon(AllIcons.Nodes.Constant).withTypeText("boolean"))
+            }
+            "string", "date", "datetime", "uuid", "decimal" -> {
+                result.addElement(LookupElementBuilder.create("\"\"")
+                    .withPresentableText("\"...\"")
+                    .withIcon(AllIcons.Nodes.Constant).withTypeText("string value")
+                    .withInsertHandler { ctx, _ ->
+                        ctx.editor.caretModel.moveToOffset(ctx.tailOffset - 1)
+                    })
+            }
+            "int" -> {
+                result.addElement(LookupElementBuilder.create("0")
+                    .withIcon(AllIcons.Nodes.Constant).withTypeText("integer"))
+            }
+            "float" -> {
+                result.addElement(LookupElementBuilder.create("0.0")
+                    .withIcon(AllIcons.Nodes.Constant).withTypeText("float"))
+            }
         }
     }
 }

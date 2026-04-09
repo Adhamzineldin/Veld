@@ -359,8 +359,10 @@ class VeldLanguageServer {
                         const fieldLine = lines[j].trim();
                         const fieldMatch = fieldLine.match(/^([a-z_]\w*)\??:\s*(.+?)(?:\s*\/\/.*)?$/);
                         if (fieldMatch) {
-                            // Strip @annotation(...) so hover shows clean type e.g. "Role" not "Role @default(user)"
-                            const cleanType = fieldMatch[2].trim().replace(/@\w+(?:\([^)]*\))?/g, '').trim();
+                            // Strip @annotation(...) and = value so hover shows clean type e.g. "Role" not "Role @default(user)"
+                            const cleanType = fieldMatch[2].trim()
+                                .replace(/\s*=\s*(?:"[^"]*"|\S+)/, '')
+                                .replace(/@\w+(?:\([^)]*\))?/g, '').trim();
                             fields.push({ name: fieldMatch[1], type: cleanType, line: j });
                         }
                         j++;
@@ -733,8 +735,10 @@ class VeldLanguageServer {
             }
         }
 
-        // Strip @annotation(...) clauses (e.g. @default(user)) before type validation
-        const clean = typeExpr.replace(/@\w+(?:\([^)]*\))?/g, '').trim();
+        // Strip @annotation(...) clauses and = value (e.g. @default(user), = 0) before type validation
+        const clean = typeExpr
+            .replace(/\s*=\s*(?:"[^"]*"|\S+)/, '')
+            .replace(/@\w+(?:\([^)]*\))?/g, '').trim();
         const typeNames = clean.matchAll(/[A-Za-z_]\w*/g);
         for (const match of typeNames) {
             const typeName = match[0];

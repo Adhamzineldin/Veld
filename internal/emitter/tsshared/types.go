@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
@@ -183,7 +184,11 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 					sb.WriteString(fmt.Sprintf("  /** @deprecated %s */\n", f.Deprecated))
 				}
 				tsType := tshelpers.VeldFieldToTS(f)
-				sb.WriteString(fmt.Sprintf("  %s: %s;\n", tsFieldName(f.Name, f.Optional), tsType))
+				if f.Default != "" {
+					sb.WriteString(fmt.Sprintf("  %s: %s = %s;\n", tsFieldName(f.Name, f.Optional), tsType, tsDefaultLiteral(f.Default, f.Type)))
+				} else {
+					sb.WriteString(fmt.Sprintf("  %s: %s;\n", tsFieldName(f.Name, f.Optional), tsType))
+				}
 			}
 			sb.WriteString("\n")
 			// Constructor
@@ -258,7 +263,11 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 					csb.WriteString(fmt.Sprintf("  /** @deprecated %s */\n", f.Deprecated))
 				}
 				tsType := tshelpers.VeldFieldToTS(f)
-				csb.WriteString(fmt.Sprintf("  %s: %s;\n", tsFieldName(f.Name, f.Optional), tsType))
+				if f.Default != "" {
+					csb.WriteString(fmt.Sprintf("  %s: %s = %s;\n", tsFieldName(f.Name, f.Optional), tsType, tsDefaultLiteral(f.Default, f.Type)))
+				} else {
+					csb.WriteString(fmt.Sprintf("  %s: %s;\n", tsFieldName(f.Name, f.Optional), tsType))
+				}
 			}
 			csb.WriteString("\n")
 			if m.Extends != "" {
@@ -374,4 +383,23 @@ func appendUnique(slice []string, s string) []string {
 		}
 	}
 	return append(slice, s)
+}
+
+// tsDefaultLiteral converts a Veld default value to a TypeScript literal.
+// Examples: "0" → "0", "\"hello\"" → "\"hello\"", "true" → "true", "user" → "\"user\""
+func tsDefaultLiteral(val, veldType string) string {
+	// Already a quoted string
+	if strings.HasPrefix(val, "\"") {
+		return val
+	}
+	// Booleans
+	if val == "true" || val == "false" {
+		return val
+	}
+	// Numeric — check if it parses as a number
+	if _, err := strconv.ParseFloat(val, 64); err == nil {
+		return val
+	}
+	// Enum value or identifier — emit as a string literal
+	return "\"" + val + "\""
 }

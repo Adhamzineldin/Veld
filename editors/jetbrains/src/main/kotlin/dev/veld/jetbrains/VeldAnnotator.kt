@@ -381,8 +381,12 @@ class VeldAnnotator : Annotator {
             // Highlight field name
             highlightWord(fieldName, line, lineStart, contentLen, holder, FIELD_NAME)
 
-            // Strip @annotations (e.g. @default(user)) before type processing
-            val typeExpr = rawTypeExpr.replace(Regex("""@\w+\([^)]*\)"""), "").trim()
+            // Strip @annotations (e.g. @default(user)) and = value before type processing
+            val typeExpr = rawTypeExpr
+                .replace(Regex("""\s*=\s*(?:"[^"]*"|\S+)"""), "")
+                .replace(Regex("""@\w+(?:\([^)]*\))?"""), "")
+                .replace(Regex("""@\w+\s+"[^"]*""""), "")
+                .trim()
 
             // Highlight type references
             highlightTypeReferences(typeExpr, line, lineStart, contentLen, models, enums, holder)
@@ -392,6 +396,9 @@ class VeldAnnotator : Annotator {
 
             // Highlight @annotation(...) clauses on this field line
             highlightAnnotations(rawTypeExpr, line, lineStart, contentLen, holder)
+
+            // Highlight = value default syntax
+            highlightDefaultEquals(rawTypeExpr, line, lineStart, contentLen, holder)
         }
     }
 
@@ -406,6 +413,62 @@ class VeldAnnotator : Annotator {
             val end   = start + m.value.length
             if (start >= lineStart && end <= contentLen && start < end) {
                 highlightRange(holder, TextRange(start, end), ENUM_VALUE)
+            }
+        }
+    }
+
+    // ── = value default highlighting and validation ────────────────────────
+
+    private fun highlightDefaultEquals(
+        typeExprRaw: String, line: String, lineStart: Int, contentLen: Int,
+        holder: AnnotationHolder
+    ) {
+        val eqMatch = Regex("""=\s*("[^"]*"|-?\d+\.?\d*|true|false|[A-Za-z_]\w*)""").find(typeExprRaw) ?: return
+        val colonIdx = line.indexOf(':')
+        val searchFrom = if (colonIdx >= 0) colonIdx else 0
+
+        // Highlight the = operator
+        val eqIdx = line.indexOf('=', searchFrom)
+        if (eqIdx >= 0) {
+            val eqStart = lineStart + eqIdx
+            val eqEnd = eqStart + 1
+            if (eqStart >= lineStart && eqEnd <= contentLen && eqStart < eqEnd) {
+                highlightRange(holder, TextRange(eqStart, eqEnd),
+                    TextAttributesKey.createTextAttributesKey("VELD_OPERATOR",
+                        DefaultLanguageHighlighterColors.OPERATION_SIGN))
+            }
+        }
+
+        // Highlight the value
+        val valStr = eqMatch.groupValues[1]
+        val valStart = lineStart + line.indexOf(valStr, if (eqIdx >= 0) eqIdx else searchFrom)
+        val valEnd = valStart + valStr.length
+        if (valStart >= lineStart && valEnd <= contentLen && valStart < valEnd) {
+            val valKey = when {
+                valStr.startsWith("\"") -> TextAttributesKey.createTextAttributesKey("VELD_STRING_DEFAULT",
+                    DefaultLanguageHighlighterColors.STRING)
+                valStr == "true" || valStr == "false" -> TextAttributesKey.createTextAttributesKey("VELD_BOOL_DEFAULT",
+                    DefaultLanguageHighlighterColors.KEYWORD)
+                valStr.matches(Regex("""-?\d+\.?\d*""")) -> TextAttributesKey.createTextAttributesKey("VELD_NUMBER_DEFAULT",
+                    DefaultLanguageHighlighterColors.NUMBER)
+                else -> TextAttributesKey.createTextAttributesKey("VELD_IDENT_DEFAULT",
+                    DefaultLanguageHighlighterColors.CONSTANT)
+            }
+            highlightRange(holder, TextRange(valStart, valEnd), valKey)
+        }
+
+        // Validate = value against field type (reuse validateDefaultValue)
+        val fieldType = typeExprRaw
+            .replace(Regex("""\s*=\s*(?:"[^"]*"|\S+)"""), "")
+            .replace(Regex("""@\w+(?:\([^)]*\))?"""), "")
+            .replace(Regex("""@\w+\s+"[^"]*""""), "")
+            .replace("[]", "").replace("?", "").trim()
+        val defaultVal = valStr
+        val error = validateDefaultValue(fieldType, defaultVal)
+        if (error != null) {
+            if (valStart >= lineStart && valEnd <= contentLen && valStart < valEnd) {
+                holder.newAnnotation(HighlightSeverity.ERROR, error.replace("@default for", "Default value for"))
+                    .range(TextRange(valStart, valEnd)).create()
             }
         }
     }
@@ -435,8 +498,10 @@ class VeldAnnotator : Annotator {
                 // Validate @default value matches field type
                 if (annName == "default" && m.value.contains("(")) {
                     val defaultVal = m.value.substringAfter("(").substringBefore(")")
-                    // Extract field type from the raw expression (before annotations)
-                    val fieldType = typeExprRaw.replace(Regex("""@\w+(?:\([^)]*\))?"""), "")
+                    // Extract field type from the raw expression (before annotations and = value)
+                    val fieldType = typeExprRaw
+                        .replace(Regex("""\s*=\s*(?:"[^"]*"|\S+)"""), "")
+                        .replace(Regex("""@\w+(?:\([^)]*\))?"""), "")
                         .replace("[]", "").replace("?", "").trim()
                     val error = validateDefaultValue(fieldType, defaultVal)
                     if (error != null) {
@@ -568,8 +633,11 @@ class VeldAnnotator : Annotator {
         typeExpr: String, line: String, lineStart: Int, contentLen: Int,
         allTypes: Set<String>, holder: AnnotationHolder
     ) {
-        // Strip @annotations before validation so @default(user) doesn't cause false errors
-        val clean = typeExpr.replace(Regex("""@\w+\([^)]*\)"""), "").trim()
+        // Strip @annotations and = value before validation
+        val clean = typeExpr
+            .replace(Regex("""\s*=\s*(?:"[^"]*"|\S+)"""), "")
+            .replace(Regex("""@\w+\([^)]*\)"""), "")
+            .trim()
 
         val colonIdx   = line.indexOf(':')
         val searchFrom = if (colonIdx >= 0) colonIdx else 0

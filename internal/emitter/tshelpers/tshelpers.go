@@ -2,6 +2,7 @@ package tshelpers
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
@@ -117,4 +118,23 @@ func FormatOutputType(act ast.Action) string {
 		return base + "[]"
 	}
 	return base
+}
+
+// TSDefaultLiteral converts a Veld default value to a TypeScript literal.
+// Examples: "0" → "0", "\"hello\"" → "\"hello\"", "true" → "true", "user" → "\"user\""
+func TSDefaultLiteral(val, veldType string) string {
+	// Already a quoted string
+	if strings.HasPrefix(val, "\"") {
+		return val
+	}
+	// Booleans
+	if val == "true" || val == "false" {
+		return val
+	}
+	// Numeric — check if it parses as a number
+	if _, err := strconv.ParseFloat(val, 64); err == nil {
+		return val
+	}
+	// Enum value or identifier — emit as a string literal
+	return "\"" + val + "\""
 }

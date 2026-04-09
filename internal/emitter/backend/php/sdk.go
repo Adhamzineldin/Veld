@@ -61,7 +61,13 @@ func emitPhpSdkTypes(consumed emitter.ConsumedServiceInfo, modelsDir string) err
 				if i == len(m.Fields)-1 {
 					comma = ""
 				}
-				sb.WriteString(fmt.Sprintf("        public %s $%s%s\n", phpType, f.Name, comma))
+				defaultPart := ""
+				if f.Optional {
+					defaultPart = " = null"
+				} else if f.Default != "" {
+					defaultPart = " = " + phpDefaultLiteral(f.Default, f.Type)
+				}
+				sb.WriteString(fmt.Sprintf("        public %s $%s%s%s\n", phpType, f.Name, defaultPart, comma))
 			}
 			sb.WriteString("    ) {}\n\n")
 			// Getters and setters

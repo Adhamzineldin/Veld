@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
@@ -358,8 +359,31 @@ func veldFieldToPy(f ast.Field) string {
 	return base
 }
 
-// pyDefaultVal returns the Python zero-value literal for a field type.
+// pyDefaultVal returns the Python default-value literal for a field.
+// If the field has an explicit default (via = value or @default), it is used;
+// otherwise a type-based zero value is returned.
 func pyDefaultVal(f ast.Field) string {
+	if f.Default != "" {
+		val := f.Default
+		// Quoted string → Python single-quote string: "hello" → 'hello'
+		if strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"") {
+			inner := val[1 : len(val)-1]
+			return "'" + inner + "'"
+		}
+		// Booleans → Python capitalised form
+		if val == "true" {
+			return "True"
+		}
+		if val == "false" {
+			return "False"
+		}
+		// Numeric → pass through
+		if _, err := strconv.ParseFloat(val, 64); err == nil {
+			return val
+		}
+		// Identifier (enum value) → emit as string
+		return "'" + val + "'"
+	}
 	if f.IsArray {
 		return "[]"
 	}
