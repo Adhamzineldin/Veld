@@ -1,0 +1,4 @@
+constants ${NAME} {
+    EXAMPLE_CONSTANT: string = "value"
+}
+

@@ -64,6 +64,16 @@
     "description": "Define a Veld enum"
   },
 
+  "Constants Declaration": {
+    "prefix": "constants",
+    "body": [
+      "constants ${1:GroupName} {",
+      "\t${2:CONSTANT_NAME}: ${3|string,int,float,bool,date,datetime,uuid,decimal|} = ${4:value}",
+      "}"
+    ],
+    "description": "Define a Veld constants group"
+  },
+
   "Module Declaration": {
     "prefix": "module",
     "body": [

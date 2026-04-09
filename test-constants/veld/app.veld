@@ -1,0 +1,22 @@
+constants AccountSystemConfig {
+    description: "System configuration constants"
+    SYSTEM_USER_ID: uuid = "00000000-0000-0000-0000-000000000000"
+    DEFAULT_TIMEOUT: int = 30
+    API_VERSION: string = "v2"
+    TAX_RATE: decimal = "0.0825"
+    LAUNCH_DATE: date = "2024-01-15"
+    LAST_UPDATED: datetime = "2024-01-15T09:30:00Z"
+    FEATURE_ENABLED: bool = true
+}
+model User {
+    id: uuid
+    name: string
+}
+module Users {
+    prefix: /users
+    action GetUser {
+        method: GET
+        path: /:id
+        output: User
+    }
+}

@@ -22,6 +22,7 @@ object VeldTokenTypes {
     @JvmField val MODULE_KEYWORD = IElementType("MODULE", VeldLanguage)
     @JvmField val ACTION_KEYWORD = IElementType("ACTION", VeldLanguage)
     @JvmField val ENUM_KEYWORD = IElementType("ENUM", VeldLanguage)
+    @JvmField val CONSTANTS_KEYWORD = IElementType("CONSTANTS", VeldLanguage)
     @JvmField val IMPORT_KEYWORD = IElementType("IMPORT", VeldLanguage)
     @JvmField val EXTENDS_KEYWORD = IElementType("EXTENDS", VeldLanguage)
     @JvmField val DIRECTIVE_KEYWORD = IElementType("DIRECTIVE", VeldLanguage)
@@ -44,6 +45,7 @@ object VeldTokenTypes {
     @JvmField val RPAREN = IElementType("RPAREN", VeldLanguage)
     @JvmField val LBRACKET = IElementType("LBRACKET", VeldLanguage)
     @JvmField val RBRACKET = IElementType("RBRACKET", VeldLanguage)
+    @JvmField val EQUALS = IElementType("EQUALS", VeldLanguage)
 
     // Import path token: the whole @alias/name portion after `import`
     @JvmField val IMPORT_PATH = IElementType("IMPORT_PATH", VeldLanguage)

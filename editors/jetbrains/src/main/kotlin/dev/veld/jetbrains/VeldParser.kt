@@ -28,6 +28,7 @@ class VeldParser : PsiParser {
                 VeldTokenTypes.IMPORT_KEYWORD -> parseImport(b)
                 VeldTokenTypes.MODEL_KEYWORD -> parseModel(b)
                 VeldTokenTypes.ENUM_KEYWORD -> parseEnum(b)
+                VeldTokenTypes.CONSTANTS_KEYWORD -> parseConstants(b)
                 VeldTokenTypes.MODULE_KEYWORD -> parseModule(b)
                 VeldTokenTypes.COMMENT -> b.advanceLexer()
                 else -> {
@@ -200,6 +201,54 @@ class VeldParser : PsiParser {
         }
 
         marker.done(VeldElementTypes.ENUM_DECLARATION)
+    }
+
+    private fun parseConstants(b: PsiBuilder) {
+        val marker = b.mark()
+        b.advanceLexer() // consume CONSTANTS_KEYWORD
+        skipWhitespace(b)
+
+        // Constants group name
+        if (b.tokenType == VeldTokenTypes.IDENTIFIER) {
+            b.advanceLexer()
+        }
+        skipWhitespace(b)
+
+        // Expect { fields }
+        if (b.tokenType == VeldTokenTypes.LBRACE) {
+            b.advanceLexer() // consume {
+            // Consume constant fields: NAME: type = value
+            while (!b.eof() && b.tokenType != VeldTokenTypes.RBRACE) {
+                if (b.tokenType == VeldTokenTypes.WHITE_SPACE || b.tokenType == VeldTokenTypes.COMMENT) {
+                    b.advanceLexer()
+                } else if (b.tokenType == VeldTokenTypes.DIRECTIVE_KEYWORD) {
+                    // description: "..." inside constants
+                    parseDirective(b)
+                } else {
+                    // Consume the entire constant field line (NAME: type = value)
+                    val fieldMarker = b.mark()
+                    // Consume tokens until newline or closing brace
+                    while (!b.eof()) {
+                        val tt = b.tokenType
+                        if (tt == VeldTokenTypes.RBRACE || tt == VeldTokenTypes.LBRACE) break
+                        if (tt == VeldTokenTypes.WHITE_SPACE) {
+                            val text = b.tokenText ?: ""
+                            if (text.contains('\n')) break
+                            b.advanceLexer()
+                            continue
+                        }
+                        if (tt == VeldTokenTypes.COMMENT) break
+                        b.advanceLexer()
+                    }
+                    fieldMarker.done(VeldElementTypes.FIELD_DECLARATION)
+                }
+            }
+            if (b.tokenType == VeldTokenTypes.RBRACE) {
+                b.advanceLexer()
+            }
+        }
+
+        marker.done(VeldElementTypes.CONSTANTS_DECLARATION)
     }
 
     private fun parseModule(b: PsiBuilder) {

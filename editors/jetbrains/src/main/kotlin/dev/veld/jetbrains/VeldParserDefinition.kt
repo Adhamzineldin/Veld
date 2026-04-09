@@ -31,6 +31,7 @@ class VeldParserDefinition : ParserDefinition {
     override fun createElement(node: ASTNode): PsiElement = when (node.elementType) {
         VeldElementTypes.MODEL_DECLARATION -> VeldModelDeclaration(node)
         VeldElementTypes.ENUM_DECLARATION -> VeldEnumDeclaration(node)
+        VeldElementTypes.CONSTANTS_DECLARATION -> VeldConstantsDeclaration(node)
         VeldElementTypes.MODULE_DECLARATION -> VeldModuleDeclaration(node)
         VeldElementTypes.ACTION_DECLARATION -> VeldActionDeclaration(node)
         VeldElementTypes.FIELD_DECLARATION -> VeldFieldDeclaration(node)

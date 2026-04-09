@@ -51,12 +51,28 @@ interface ImportDef {
     resolvedPath?: string;
 }
 
+interface ConstantFieldDef {
+    name: string;
+    type: string;
+    value: string;
+    line: number;
+}
+
+interface ConstantGroupDef {
+    name: string;
+    line: number;
+    file: string;
+    description?: string;
+    fields: ConstantFieldDef[];
+}
+
 interface VeldDocument {
     uri: string;
     filePath: string;
     content: string;
     models: Map<string, ModelDef>;
     enums: Map<string, EnumDef>;
+    constants: Map<string, ConstantGroupDef>;
     modules: Map<string, ModuleDef>;
     imports: ImportDef[];
 }
@@ -196,6 +212,7 @@ class VeldLanguageServer {
             content,
             models: new Map(),
             enums: new Map(),
+            constants: new Map(),
             modules: new Map(),
             imports: [],
         };
@@ -369,6 +386,30 @@ class VeldLanguageServer {
                 }
             }
 
+            if (trimmed.startsWith('constants ')) {
+                const match = trimmed.match(/constants\s+([A-Za-z_]\w*)/);
+                if (match) {
+                    const groupName = match[1];
+                    const fields: ConstantFieldDef[] = [];
+                    let groupDescription: string | undefined;
+                    let j = i + 1;
+                    while (j < lines.length && lines[j].trim() !== '}') {
+                        const constLine = lines[j].trim();
+                        if (constLine.startsWith('description:')) {
+                            const descMatch = constLine.match(/description:\s*"([^"]*)"/);
+                            if (descMatch) groupDescription = descMatch[1];
+                        } else {
+                            const fieldMatch = constLine.match(/^([A-Z_][A-Za-z0-9_]*)\s*:\s*(string|int|float|decimal|bool|date|datetime|uuid)\s*=\s*(.+?)(?:\s*\/\/.*)?$/);
+                            if (fieldMatch) {
+                                fields.push({ name: fieldMatch[1], type: fieldMatch[2], value: fieldMatch[3].trim(), line: j });
+                            }
+                        }
+                        j++;
+                    }
+                    doc.constants.set(groupName, { name: groupName, line: i, file: filePath, description: groupDescription, fields });
+                }
+            }
+
             if (trimmed.startsWith('module ')) {
                 const match = trimmed.match(/module\s+([A-Za-z_]\w*)/);
                 if (match) {
@@ -444,6 +485,9 @@ class VeldLanguageServer {
                 }
                 for (const [name, enumDef] of importedDoc.enums) {
                     if (!doc.enums.has(name)) doc.enums.set(name, enumDef);
+                }
+                for (const [name, constGroup] of importedDoc.constants) {
+                    if (!doc.constants.has(name)) doc.constants.set(name, constGroup);
                 }
                 for (const [name, moduleDef] of importedDoc.modules) {
                     if (!doc.modules.has(name)) doc.modules.set(name, moduleDef);
@@ -831,6 +875,10 @@ class VeldLanguageServer {
             moduleSnippet.insertText = new vscode.SnippetString('module ${1:Name} {\n  description: "${2:description}"\n  prefix: /${3:path}\n\n  action ${4:ActionName} {\n    method: ${5|GET,POST,PUT,DELETE,PATCH|}\n    path: /${6:path}\n  }\n}');
             moduleSnippet.detail = 'Define a new module';
             completions.push(moduleSnippet);
+            const constantsSnippet = new vscode.CompletionItem('constants', vscode.CompletionItemKind.Snippet);
+            constantsSnippet.insertText = new vscode.SnippetString('constants ${1:GroupName} {\n  ${2:CONSTANT_NAME}: ${3|string,int,float,bool,date,datetime,uuid,decimal|} = ${4:value}\n}');
+            constantsSnippet.detail = 'Define a constants group';
+            completions.push(constantsSnippet);
         } else if (ctx === 'module') {
             for (const d of ['description', 'prefix']) {
                 const item = new vscode.CompletionItem(`${d}: `, vscode.CompletionItemKind.Property);
@@ -938,12 +986,13 @@ class VeldLanguageServer {
         });
     }
 
-    private detectContext(lines: string[], cursorLine: number): 'top' | 'module' | 'action' | 'model' | 'enum' {
+    private detectContext(lines: string[], cursorLine: number): 'top' | 'module' | 'action' | 'model' | 'enum' | 'constants' {
         let depth = 0;
         let inModule = false;
         let inAction = false;
         let inModel = false;
         let inEnum = false;
+        let inConstants = false;
 
         for (let i = 0; i <= cursorLine; i++) {
             const trimmed = lines[i].trim();
@@ -951,13 +1000,14 @@ class VeldLanguageServer {
             if (trimmed.startsWith('module ') && trimmed.includes('{')) { inModule = true; }
             if (trimmed.startsWith('model ') && trimmed.includes('{')) { inModel = true; }
             if (trimmed.startsWith('enum ') && trimmed.includes('{')) { inEnum = true; }
+            if (trimmed.startsWith('constants ') && trimmed.includes('{')) { inConstants = true; }
             if (trimmed.startsWith('action ') && trimmed.includes('{')) { inAction = true; }
 
             for (const ch of trimmed) {
                 if (ch === '{') depth++;
                 if (ch === '}') {
                     depth--;
-                    if (depth <= 0) { inModule = false; inModel = false; inEnum = false; inAction = false; depth = 0; }
+                    if (depth <= 0) { inModule = false; inModel = false; inEnum = false; inConstants = false; inAction = false; depth = 0; }
                     if (depth <= 1) inAction = false;
                 }
             }
@@ -967,6 +1017,7 @@ class VeldLanguageServer {
         if (inModule) return 'module';
         if (inModel) return 'model';
         if (inEnum) return 'enum';
+        if (inConstants) return 'constants';
         return 'top';
     }
 
@@ -1026,6 +1077,19 @@ class VeldLanguageServer {
             md.appendMarkdown(`**Defined in:** \`${sourceFile}\` (line ${enumDef.line + 1})\n\n`);
             md.appendMarkdown(`**Values:** ${enumDef.values.map(v => `\`${v}\``).join(', ')}\n\n`);
             md.appendCodeblock(`enum ${enumDef.name} {\n  ${enumDef.values.join('\n  ')}\n}`, 'veld');
+            return new vscode.Hover(md);
+        }
+
+        if (doc.constants.has(word)) {
+            const cg = doc.constants.get(word)!;
+            const sourceFile = path.basename(cg.file);
+            const fieldsSummary = cg.fields.map(f => `  ${f.name}: ${f.type} = ${f.value}`).join('\n');
+            const md = new vscode.MarkdownString();
+            md.appendMarkdown(`**Constants** \`${cg.name}\`\n\n`);
+            if (cg.description) md.appendMarkdown(`*${cg.description}*\n\n`);
+            md.appendMarkdown(`**Defined in:** \`${sourceFile}\` (line ${cg.line + 1})\n\n`);
+            md.appendMarkdown(`**Fields:** ${cg.fields.length}\n\n`);
+            md.appendCodeblock(`constants ${cg.name} {\n${fieldsSummary}\n}`, 'veld');
             return new vscode.Hover(md);
         }
 
