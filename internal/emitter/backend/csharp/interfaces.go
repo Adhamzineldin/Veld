@@ -86,6 +86,9 @@ func (e *CSharpEmitter) emitInterface(a ast.AST, mod ast.Module, outDir string) 
 		if act.Query != "" {
 			params = append(params, "Dictionary<string, string> query")
 		}
+		if act.Headers != "" {
+			params = append(params, act.Headers+" headers")
+		}
 
 		if act.Description != "" {
 			sb.WriteString(fmt.Sprintf("    /// <summary>%s</summary>\n", act.Description))

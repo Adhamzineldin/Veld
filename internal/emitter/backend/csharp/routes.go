@@ -104,6 +104,9 @@ func writeCSharpAction(sb *strings.Builder, mod ast.Module, act ast.Action, enum
 	if act.Query != "" {
 		params = append(params, "[FromQuery] Dictionary<string, string> query")
 	}
+	if act.Headers != "" {
+		params = append(params, fmt.Sprintf("[FromHeader] %s headers", act.Headers))
+	}
 
 	sb.WriteString(fmt.Sprintf("    public async Task<%s> %s(%s)\n    {\n", responseWrapper, methodName, strings.Join(params, ", ")))
 	sb.WriteString("        try\n        {\n")
@@ -117,6 +120,9 @@ func writeCSharpAction(sb *strings.Builder, mod ast.Module, act ast.Action, enum
 	}
 	if act.Query != "" {
 		callArgs = append(callArgs, "query")
+	}
+	if act.Headers != "" {
+		callArgs = append(callArgs, "headers")
 	}
 
 	serviceCall := fmt.Sprintf("_service.%s(%s)", methodName, strings.Join(callArgs, ", "))

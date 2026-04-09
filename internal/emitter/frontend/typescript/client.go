@@ -52,10 +52,10 @@ func writeModuleClass(sb *strings.Builder, a ast.AST, mod ast.Module, defaultBas
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString("  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {\n")
+	sb.WriteString("  private async request<T>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {\n")
 	sb.WriteString("    const res = await fetch(this.base + path, {\n")
 	sb.WriteString("      method,\n")
-	sb.WriteString("      headers: { 'Content-Type': 'application/json', ...this.hdrs },\n")
+	sb.WriteString("      headers: { 'Content-Type': 'application/json', ...this.hdrs, ...extraHeaders },\n")
 	sb.WriteString("      body: body !== undefined ? JSON.stringify(body) : undefined,\n")
 	sb.WriteString("    });\n")
 	sb.WriteString("    if (!res.ok) throw new VeldApiError(res.status, await res.text());\n")
@@ -144,6 +144,9 @@ func writeActionMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	if act.Query != "" {
 		sigParams = append(sigParams, "query?: "+act.Query)
 	}
+	if act.Headers != "" {
+		sigParams = append(sigParams, "headers: "+act.Headers)
+	}
 	sig := strings.Join(sigParams, ", ")
 
 	queryAppend := ""
@@ -151,11 +154,16 @@ func writeActionMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 		queryAppend = " + buildQueryString(query as Record<string, unknown>)"
 	}
 
+	headersArg := ""
+	if act.Headers != "" {
+		headersArg = ", headers"
+	}
+
 	camelName := emitter.ToCamelCase(act.Name)
 
 	if method == "GET" {
 		sb.WriteString(fmt.Sprintf("  %s(%s): Promise<%s> {\n", camelName, sig, outputType))
-		sb.WriteString(fmt.Sprintf("    return this.request('GET', %s%s);\n", urlExpr, queryAppend))
+		sb.WriteString(fmt.Sprintf("    return this.request('GET', %s%s, undefined%s);\n", urlExpr, queryAppend, headersArg))
 		sb.WriteString("  }\n")
 	} else {
 		bodyArg := "input"
@@ -167,7 +175,7 @@ func writeActionMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 			httpMethod = "DELETE"
 		}
 		sb.WriteString(fmt.Sprintf("  %s(%s): Promise<%s> {\n", camelName, sig, outputType))
-		sb.WriteString(fmt.Sprintf("    return this.request('%s', %s%s, %s);\n", httpMethod, urlExpr, queryAppend, bodyArg))
+		sb.WriteString(fmt.Sprintf("    return this.request('%s', %s%s, %s%s);\n", httpMethod, urlExpr, queryAppend, bodyArg, headersArg))
 		sb.WriteString("  }\n")
 	}
 }

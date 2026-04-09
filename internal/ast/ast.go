@@ -73,6 +73,8 @@ type Action struct {
 	OutputFields  []Field        `json:"outputFields,omitempty"`  // inline output fields (non-empty ⇒ output was declared inline)
 	Query         string         `json:"query,omitempty"`         // query param model (name or synthetic)
 	QueryFields   []Field        `json:"queryFields,omitempty"`   // inline query fields (non-empty ⇒ query was declared inline)
+	Headers       string         `json:"headers,omitempty"`       // required headers model (name or synthetic)
+	HeaderFields  []Field        `json:"headerFields,omitempty"`  // inline header fields (non-empty ⇒ headers was declared inline)
 	Stream        string         `json:"stream,omitempty"`        // server→client push type for WS actions
 	Emit          string         `json:"emit,omitempty"`          // client→server message type for WS actions
 	Errors        []string       `json:"errors,omitempty"`        // typed error codes for this action

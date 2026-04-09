@@ -215,6 +215,10 @@ func (e *RustEmitter) writeHandler(w *codegen.Writer, mod ast.Module, act ast.Ac
 	if hasInput {
 		callArgs = append(callArgs, "payload")
 	}
+	if act.Headers != "" {
+		// TODO: extract headers from axum HeaderMap once full Axum extractor is wired
+		callArgs = append(callArgs, fmt.Sprintf("%s::default()", e.adapter.NamingConvention(act.Headers, lang.NamingContextExported)))
+	}
 
 	serviceCallExpr := fmt.Sprintf("svc.%s(%s).await", methodName, strings.Join(callArgs, ", "))
 	wrapped := strat.WrapHandler(act.Method, returnType, serviceCallExpr)
@@ -329,6 +333,10 @@ func (e *RustEmitter) buildTraitMethod(mod ast.Module, act ast.Action) (string, 
 	if act.Input != "" {
 		inputType := e.adapter.NamingConvention(act.Input, lang.NamingContextExported)
 		params = append(params, fmt.Sprintf("input: %s", inputType))
+	}
+	if act.Headers != "" {
+		headersType := e.adapter.NamingConvention(act.Headers, lang.NamingContextExported)
+		params = append(params, fmt.Sprintf("headers: %s", headersType))
 	}
 
 	returnType := buildRustReturnType(e, act)

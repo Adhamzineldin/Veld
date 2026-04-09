@@ -349,6 +349,10 @@ module ModuleName {
     input: ModelName
     output: ModelName
     query: QueryModel
+    headers: {
+      "Idempotency-Key": string
+      Authorization: string
+    }
     middleware: AuthGuard
     @deprecated "use NewAction instead"
   }

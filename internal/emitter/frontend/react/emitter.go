@@ -246,6 +246,10 @@ func writeTanStackQuery(sb *strings.Builder, hookName, apiName, camelName, outpu
 		paramTypes = append(paramTypes, "query?: "+act.Query)
 		argsList = append(argsList, "query")
 	}
+	if act.Headers != "" {
+		paramTypes = append(paramTypes, "headers: "+act.Headers)
+		argsList = append(argsList, "headers")
+	}
 	paramsStr := strings.Join(paramTypes, ", ")
 	argsStr := strings.Join(argsList, ", ")
 
@@ -283,6 +287,10 @@ func writeTanStackMutation(sb *strings.Builder, hookName, apiName, camelName, ou
 	if act.Input != "" {
 		inputFields = append(inputFields, "input: "+act.Input)
 		mutateParams = append(mutateParams, "vars.input")
+	}
+	if act.Headers != "" {
+		inputFields = append(inputFields, "headers: "+act.Headers)
+		mutateParams = append(mutateParams, "vars.headers")
 	}
 	inputType := "void"
 	if len(inputFields) > 0 {
@@ -367,6 +375,11 @@ func writeCoreQueryHook(sb *strings.Builder, hookName, apiName, camelName, outpu
 		paramTypes = append(paramTypes, "query?: "+act.Query)
 		argsList = append(argsList, "query")
 		deps = append(deps, "JSON.stringify(query)")
+	}
+	if act.Headers != "" {
+		paramTypes = append(paramTypes, "headers: "+act.Headers)
+		argsList = append(argsList, "headers")
+		deps = append(deps, "JSON.stringify(headers)")
 	}
 	paramsStr := strings.Join(paramTypes, ", ")
 	argsStr := strings.Join(argsList, ", ")

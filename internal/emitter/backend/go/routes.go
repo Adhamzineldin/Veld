@@ -272,6 +272,11 @@ func buildCallArgs(e *GoEmitter, act ast.Action, pathParams []string) []string {
 		// Users should decode query params from r.URL.Query() in their service or wrap the handler.
 		args = append(args, "nil")
 	}
+	if act.Headers != "" {
+		// Headers are not automatically decoded; pass nil so the interface compiles.
+		// Users should extract headers from r.Header in their service or wrap the handler.
+		args = append(args, "nil")
+	}
 	return args
 }
 

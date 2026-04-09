@@ -96,8 +96,8 @@ func BuildMarkdown(a ast.AST, services []ServiceInfo) string {
 				sb.WriteString(fmt.Sprintf("**Prefix:** `%s`\n\n", mod.Prefix))
 			}
 
-			sb.WriteString("| Method | Path | Name | Input | Output | Description |\n")
-			sb.WriteString("|--------|------|------|-------|--------|-------------|\n")
+			sb.WriteString("| Method | Path | Name | Input | Output | Headers | Description |\n")
+			sb.WriteString("|--------|------|------|-------|--------|---------|-------------|\n")
 			for _, act := range mod.Actions {
 				routePath := act.Path
 				if mod.Prefix != "" {
@@ -115,12 +115,16 @@ func BuildMarkdown(a ast.AST, services []ServiceInfo) string {
 					}
 					output = "`" + o + "`"
 				}
+				headers := "—"
+				if act.Headers != "" {
+					headers = "`" + act.Headers + "`"
+				}
 				dep := ""
 				if act.Deprecated != "" {
 					dep = " ⚠️"
 				}
-				sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s%s | %s | %s | %s |\n",
-					act.Method, routePath, act.Name, dep, input, output, act.Description))
+				sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s%s | %s | %s | %s | %s |\n",
+					act.Method, routePath, act.Name, dep, input, output, headers, act.Description))
 			}
 			sb.WriteString("\n")
 		}

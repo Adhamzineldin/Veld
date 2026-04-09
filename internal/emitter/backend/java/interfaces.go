@@ -88,6 +88,9 @@ func (e *JavaEmitter) emitInterface(_ jstrategy.FrameworkStrategy, a ast.AST, mo
 		if act.Query != "" {
 			params = append(params, act.Query+" query")
 		}
+		if act.Headers != "" {
+			params = append(params, act.Headers+" headers")
+		}
 
 		hasDoc := act.Description != "" || len(act.Errors) > 0
 		if hasDoc {

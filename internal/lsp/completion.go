@@ -23,7 +23,7 @@ func computeCompletions(text string, pos Position, a ast.AST) []CompletionItem {
 	// Keywords
 	keywords := []string{
 		"model", "module", "action", "enum", "import", "from",
-		"method", "path", "input", "output", "query", "stream",
+		"method", "path", "input", "output", "query", "headers", "stream",
 		"middleware", "errors", "description", "prefix", "extends", "default",
 	}
 	for _, kw := range keywords {

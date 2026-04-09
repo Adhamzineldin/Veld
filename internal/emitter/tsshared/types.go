@@ -9,12 +9,38 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 	"github.com/Adhamzineldin/Veld/internal/emitter/tshelpers"
 )
+
+// jsIdentRegex matches valid JavaScript identifier names.
+var jsIdentRegex = regexp.MustCompile(`^[a-zA-Z_$][a-zA-Z0-9_$]*$`)
+
+// isValidJSIdent returns true if the name is a valid JavaScript identifier
+// (can be used as an unquoted property name in classes/objects).
+func isValidJSIdent(name string) bool {
+	return jsIdentRegex.MatchString(name)
+}
+
+// tsFieldName returns the TypeScript property declaration for a field name.
+// Non-identifier names (e.g. "Idempotency-Key") are quoted with brackets.
+func tsFieldName(name string, optional bool) string {
+	if isValidJSIdent(name) {
+		if optional {
+			return name + "?"
+		}
+		return name + "!"
+	}
+	// Quoted form — use declare-style or index signature approach
+	if optional {
+		return fmt.Sprintf("'%s'?", name)
+	}
+	return fmt.Sprintf("'%s'", name)
+}
 
 // EmitTSTypes writes types/{module}.ts + types/index.ts into outDir.
 //
@@ -157,11 +183,7 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 					sb.WriteString(fmt.Sprintf("  /** @deprecated %s */\n", f.Deprecated))
 				}
 				tsType := tshelpers.VeldFieldToTS(f)
-				if f.Optional {
-					sb.WriteString(fmt.Sprintf("  %s?: %s;\n", f.Name, tsType))
-				} else {
-					sb.WriteString(fmt.Sprintf("  %s!: %s;\n", f.Name, tsType))
-				}
+				sb.WriteString(fmt.Sprintf("  %s: %s;\n", tsFieldName(f.Name, f.Optional), tsType))
 			}
 			sb.WriteString("\n")
 			// Constructor
@@ -170,8 +192,11 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 			} else {
 				sb.WriteString(fmt.Sprintf("  constructor(data?: Partial<%s>) {\n    if (data) Object.assign(this, data);\n  }\n", m.Name))
 			}
-			// Getters and setters
+			// Getters and setters (only for valid JS identifier names)
 			for _, f := range m.Fields {
+				if !isValidJSIdent(f.Name) {
+					continue // skip getter/setter for non-identifier field names (e.g. "Idempotency-Key")
+				}
 				tsType := tshelpers.VeldFieldToTS(f)
 				pascal := strings.ToUpper(f.Name[:1]) + f.Name[1:]
 				if f.Optional {
@@ -233,11 +258,7 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 					csb.WriteString(fmt.Sprintf("  /** @deprecated %s */\n", f.Deprecated))
 				}
 				tsType := tshelpers.VeldFieldToTS(f)
-				if f.Optional {
-					csb.WriteString(fmt.Sprintf("  %s?: %s;\n", f.Name, tsType))
-				} else {
-					csb.WriteString(fmt.Sprintf("  %s!: %s;\n", f.Name, tsType))
-				}
+				csb.WriteString(fmt.Sprintf("  %s: %s;\n", tsFieldName(f.Name, f.Optional), tsType))
 			}
 			csb.WriteString("\n")
 			if m.Extends != "" {
@@ -246,6 +267,9 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 				csb.WriteString(fmt.Sprintf("  constructor(data?: Partial<%s>) {\n    if (data) Object.assign(this, data);\n  }\n", m.Name))
 			}
 			for _, f := range m.Fields {
+				if !isValidJSIdent(f.Name) {
+					continue
+				}
 				tsType := tshelpers.VeldFieldToTS(f)
 				pascal := strings.ToUpper(f.Name[:1]) + f.Name[1:]
 				if f.Optional {

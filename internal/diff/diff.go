@@ -177,6 +177,7 @@ func diffAction(oldAST, newAST ast.AST, module, action string, old, new ast.Acti
 	changes = append(changes, diffActionModel(oldAST, newAST, base+".input", old.Input, new.Input, true)...)
 	changes = append(changes, diffActionModel(oldAST, newAST, base+".output", old.Output, new.Output, false)...)
 	changes = append(changes, diffActionModel(oldAST, newAST, base+".query", old.Query, new.Query, true)...)
+	changes = append(changes, diffActionModel(oldAST, newAST, base+".headers", old.Headers, new.Headers, true)...)
 
 	return changes
 }

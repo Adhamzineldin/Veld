@@ -92,6 +92,9 @@ func writeAction(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	if act.Query != "" {
 		sigParams = append(sigParams, fmt.Sprintf("query: %s? = null", act.Query))
 	}
+	if act.Headers != "" {
+		sigParams = append(sigParams, "headers: Map<String, String> = emptyMap()")
+	}
 	sig := strings.Join(sigParams, ", ")
 
 	urlExpr := emitter.ToTemplateLiteral(routePath)

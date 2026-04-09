@@ -1,0 +1,37 @@
+model TransferRequest {
+    fromAccount: string
+    toAccount: string
+    amount: float
+}
+
+model TransactionResponse {
+    id: string
+    status: string
+}
+
+model CommonHeaders {
+    Authorization: string
+    RequestId: string
+}
+
+module Transactions {
+    prefix: /api/transactions
+
+    action transfer {
+        method: POST
+        path: /transfer
+        headers: {
+            "Idempotency-Key": string
+        }
+        input: TransferRequest
+        output: TransactionResponse
+    }
+
+    action getTransaction {
+        method: GET
+        path: /transfer/:id
+        headers: CommonHeaders
+        output: TransactionResponse
+    }
+}
+
