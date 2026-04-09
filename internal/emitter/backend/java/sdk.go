@@ -326,15 +326,29 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 	className := sdkhelpers.ServiceClassName(consumed.Name)
 	errorsPkg := fmt.Sprintf("maayn.veld.generated.sdk.%s.errors", pkg)
 
-	// Collect all module subpackages that have types used in actions
+	// Collect all module subpackages that have types used in actions,
+	// and detect whether any action needs List or extra type imports.
 	usedModulePkgs := make(map[string]bool)
+	needsList := false
+	extraImports := make(map[string]bool)
 	_, _, modelOwner, _ := emitter.AssignModelsToModules(a)
 	for _, mod := range a.Modules {
 		for _, act := range mod.Actions {
+			if strings.ToUpper(act.Method) == "WS" {
+				continue
+			}
+			if act.OutputArray {
+				needsList = true
+			}
+			// Collect imports from the language adapter for input/output/query types.
 			for _, typeName := range []string{act.Input, act.Output, act.Query} {
 				if typeName != "" {
 					if owner, ok := modelOwner[typeName]; ok {
 						usedModulePkgs[owner] = true
+					}
+					_, imports, _ := javaLang.MapType(typeName)
+					for _, imp := range imports {
+						extraImports[imp] = true
 					}
 				}
 			}
@@ -357,6 +371,12 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 	sb.WriteString("import java.net.http.HttpResponse;\n")
 	sb.WriteString("import java.util.Map;\n")
 	sb.WriteString("import java.util.HashMap;\n")
+	if needsList {
+		sb.WriteString("import java.util.List;\n")
+	}
+	for imp := range extraImports {
+		sb.WriteString(fmt.Sprintf("import %s;\n", imp))
+	}
 	sb.WriteString("import com.fasterxml.jackson.databind.ObjectMapper;\n")
 	sb.WriteString(fmt.Sprintf("import %s.SdkApiError;\n", errorsPkg))
 	for modPkg := range usedModulePkgs {
