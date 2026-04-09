@@ -80,8 +80,8 @@
     </ul>
   ]]></change-notes>
 
-  <!-- Compatible with IntelliJ 2025.1+ (build 251) through 2026.3 (build 263) -->
-  <idea-version since-build="251" until-build="263.*"/>
+  <!-- Compatible with IntelliJ 2024.1+ (build 241) through 2026.3 (build 263) -->
+  <idea-version since-build="241" until-build="263.*"/>
 
   <!-- Plugin works in all JetBrains IDEs -->
   <depends>com.intellij.modules.platform</depends>
