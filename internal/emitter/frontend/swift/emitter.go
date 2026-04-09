@@ -75,5 +75,8 @@ let package = Package(
     ]
 )
 `
-	return os.WriteFile(filepath.Join(dir, "Package.swift"), []byte(swiftPkg), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "Package.swift"), []byte(swiftPkg), 0644); err != nil {
+		return err
+	}
+	return e.emitConstants(a, outDir)
 }

@@ -80,5 +80,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 }
 `
-	return os.WriteFile(filepath.Join(dir, "build.gradle.kts"), []byte(gradle), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "build.gradle.kts"), []byte(gradle), 0644); err != nil {
+		return err
+	}
+	return e.emitConstants(a, outDir)
 }

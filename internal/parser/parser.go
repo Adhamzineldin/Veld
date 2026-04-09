@@ -57,6 +57,12 @@ func (p *Parser) Parse() (ast.AST, error) {
 				return result, err
 			}
 			result.Enums = append(result.Enums, en)
+		case lexer.TConstants:
+			cg, err := p.parseConstants()
+			if err != nil {
+				return result, err
+			}
+			result.Constants = append(result.Constants, cg)
 		case lexer.TIdent:
 			// Contextual keyword: top-level "prefix: /api/v1"
 			if p.peekIdent("prefix") {
@@ -312,6 +318,100 @@ func (p *Parser) parseEnum() (ast.Enum, error) {
 		return en, err
 	}
 	return en, nil
+}
+
+// parseConstants parses: constants GroupName { NAME: type = "value" ... }
+func (p *Parser) parseConstants() (ast.ConstantGroup, error) {
+	startTok := p.consume() // 'constants'
+	nameTok, err := p.expect(lexer.TIdent)
+	if err != nil {
+		return ast.ConstantGroup{}, fmt.Errorf("constants name: %w", err)
+	}
+	if _, err := p.expect(lexer.TLBrace); err != nil {
+		return ast.ConstantGroup{}, err
+	}
+
+	cg := ast.ConstantGroup{Name: nameTok.Value, Line: startTok.Line}
+
+	// optional description: "..."
+	if p.peekIdent("description") && p.peekAt(1).Type == lexer.TColon && p.peekAt(2).Type == lexer.TString {
+		p.consume()            // description
+		p.consume()            // :
+		descTok := p.consume() // "..."
+		cg.Description = descTok.Value
+	}
+
+	for p.peek().Type != lexer.TRBrace && p.peek().Type != lexer.TEOF {
+		fieldLine := p.peek().Line
+
+		// Accept identifiers and keywords as constant names (e.g. DEFAULT_TIMEOUT)
+		nameTok, err := p.expectFieldName()
+		if err != nil {
+			return cg, fmt.Errorf("constant name: %w", err)
+		}
+		if _, err := p.expect(lexer.TColon); err != nil {
+			return cg, fmt.Errorf("constant %s: expected ':', %w", nameTok.Value, err)
+		}
+
+		// Type — accept primitive type tokens and identifiers
+		typeTok := p.consume()
+		var typeName string
+		switch typeTok.Type {
+		case lexer.TTypeString:
+			typeName = "string"
+		case lexer.TTypeInt:
+			typeName = "int"
+		case lexer.TTypeFloat:
+			typeName = "float"
+		case lexer.TTypeDecimal:
+			typeName = "decimal"
+		case lexer.TTypeBool:
+			typeName = "bool"
+		case lexer.TTypeDate:
+			typeName = "date"
+		case lexer.TTypeDatetime:
+			typeName = "datetime"
+		case lexer.TTypeUUID:
+			typeName = "uuid"
+		default:
+			return cg, fmt.Errorf("line %d: expected type for constant %s, got %q", typeTok.Line, nameTok.Value, typeTok.Value)
+		}
+
+		if _, err := p.expect(lexer.TEquals); err != nil {
+			return cg, fmt.Errorf("constant %s: expected '=', %w", nameTok.Value, err)
+		}
+
+		// Value — string, number, or identifier (true/false)
+		valTok := p.consume()
+		var value string
+		switch valTok.Type {
+		case lexer.TString:
+			value = valTok.Value
+		case lexer.TNumber:
+			value = valTok.Value
+		case lexer.TIdent:
+			// Allow true/false for bool constants
+			if valTok.Value == "true" || valTok.Value == "false" {
+				value = valTok.Value
+			} else {
+				return cg, fmt.Errorf("line %d: unexpected value %q for constant %s", valTok.Line, valTok.Value, nameTok.Value)
+			}
+		default:
+			return cg, fmt.Errorf("line %d: expected value for constant %s, got %q", valTok.Line, nameTok.Value, valTok.Value)
+		}
+
+		cg.Fields = append(cg.Fields, ast.ConstantField{
+			Name:  nameTok.Value,
+			Type:  typeName,
+			Value: value,
+			Line:  fieldLine,
+		})
+	}
+
+	if _, err := p.expect(lexer.TRBrace); err != nil {
+		return cg, err
+	}
+	return cg, nil
 }
 
 func (p *Parser) parseModel() (ast.Model, error) {

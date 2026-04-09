@@ -90,6 +90,9 @@ func (e *PythonEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions)
 			return fmt.Errorf("validators: %w", err)
 		}
 	}
+	if err := e.emitConstants(a, outDir); err != nil {
+		return fmt.Errorf("constants: %w", err)
+	}
 	return nil
 }
 

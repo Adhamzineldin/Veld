@@ -10,6 +10,7 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 	"github.com/Adhamzineldin/Veld/internal/emitter/tshelpers"
+	"github.com/Adhamzineldin/Veld/internal/emitter/tsshared"
 )
 
 func init() {
@@ -83,7 +84,12 @@ func (e *AngularEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions
 		pkg.WriteString(fmt.Sprintf(",\n    \"./%s.service\": \"./%s.service.ts\"", modLower, modLower))
 	}
 	pkg.WriteString("\n  }\n}\n")
-	return os.WriteFile(filepath.Join(svcDir, "package.json"), []byte(pkg.String()), 0644)
+	if err := os.WriteFile(filepath.Join(svcDir, "package.json"), []byte(pkg.String()), 0644); err != nil {
+		return err
+	}
+
+	// Constants
+	return tsshared.EmitTSConstants(a, outDir)
 }
 
 func (e *AngularEmitter) emitModels(a ast.AST, dir string) error {

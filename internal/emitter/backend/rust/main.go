@@ -146,6 +146,10 @@ func (e *RustEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		return fmt.Errorf("rust emitter [write Cargo.toml]: %w", err)
 	}
 
+	if err := e.emitConstants(a, outDir); err != nil {
+		return fmt.Errorf("rust emitter [constants]: %w", err)
+	}
+
 	return nil
 }
 

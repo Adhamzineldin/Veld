@@ -18,6 +18,7 @@ const (
 	TMiddleware
 	TImport
 	TEnum
+	TConstants
 	TDescription
 	TQuery
 	TDefault
@@ -68,6 +69,7 @@ const (
 	TComma    // ,
 	TPipe     // |
 	TStar     // *
+	TEquals   // =
 
 	// Other
 	TIdent
@@ -96,6 +98,8 @@ func (t TokenType) String() string {
 		return "\"import\""
 	case TEnum:
 		return "\"enum\""
+	case TConstants:
+		return "\"constants\""
 	case TDescription:
 		return "\"description\""
 	case TQuery:
@@ -170,6 +174,8 @@ func (t TokenType) String() string {
 		return "\",\""
 	case TPipe:
 		return "\"|\""
+	case TEquals:
+		return "\"=\""
 	case TIdent:
 		return "identifier"
 	case TPath:
@@ -196,7 +202,7 @@ type Token struct {
 // type primitive, or identifier). Used by the parser to allow keywords as field names.
 func IsKeyword(t TokenType) bool {
 	switch t {
-	case TModel, TModule, TAction, TInput, TOutput, TMiddleware, TImport, TEnum,
+	case TModel, TModule, TAction, TInput, TOutput, TMiddleware, TImport, TEnum, TConstants,
 		TDescription, TQuery, TDefault, TPrefix, TMethod, TKeyPath,
 		TGET, TPOST, TPUT, TDELETE, TPATCH, TWS, TStream, TEmit, TErrors, TFrom:
 		return true
@@ -303,6 +309,9 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 		} else if ch == '*' {
 			tokens = append(tokens, Token{TStar, "*", l.line})
 			l.pos++
+		} else if ch == '=' {
+			tokens = append(tokens, Token{TEquals, "=", l.line})
+			l.pos++
 		} else if ch == '/' {
 			// Path token: reads until whitespace or brace.
 			start := l.pos
@@ -368,6 +377,8 @@ func classifyWord(word string, line int) Token {
 		return Token{TImport, word, line}
 	case "enum":
 		return Token{TEnum, word, line}
+	case "constants":
+		return Token{TConstants, word, line}
 	case "description":
 		return Token{TIdent, word, line} // contextual keyword — parsed by value in parser
 	case "query":

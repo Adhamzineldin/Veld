@@ -8,6 +8,7 @@ type AST struct {
 	Models      []Model             `json:"models"`
 	Modules     []Module            `json:"modules"`
 	Enums       []Enum              `json:"enums,omitempty"`
+	Constants   []ConstantGroup     `json:"constants,omitempty"`
 	FileImports map[string][]string `json:"-"` // sourceFile → directly imported file paths
 }
 
@@ -79,4 +80,21 @@ type Action struct {
 	Middleware    []string       `json:"middleware"`
 	Deprecated    string         `json:"deprecated,omitempty"` // @deprecated "message"
 	Line          int            `json:"-"`                    // line in source where this action was defined
+}
+
+// ConstantField is a single named constant with a type and a literal value.
+type ConstantField struct {
+	Name  string `json:"name"`
+	Type  string `json:"type"`  // string, int, float, decimal, bool, uuid, date, datetime
+	Value string `json:"value"` // always stored as the literal string (e.g. "42", "true", "hello")
+	Line  int    `json:"-"`
+}
+
+// ConstantGroup is a named collection of typed constants.
+type ConstantGroup struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Fields      []ConstantField `json:"fields"`
+	SourceFile  string          `json:"-"`
+	Line        int             `json:"-"`
 }

@@ -111,6 +111,9 @@ func (e *JavaEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	if err := e.emitBuildFile(strat, outDir); err != nil {
 		return fmt.Errorf("build file: %w", err)
 	}
+	if err := e.emitConstants(a, outDir); err != nil {
+		return fmt.Errorf("constants: %w", err)
+	}
 	return nil
 }
 

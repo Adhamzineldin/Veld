@@ -83,7 +83,12 @@ func (e *JSFrontendEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOpti
 	}
 
 	// 6. client/package.json.
-	return emitClientPackageJSON(a, dir)
+	if err := emitClientPackageJSON(a, dir); err != nil {
+		return err
+	}
+
+	// 7. Constants
+	return emitJsConstants(a, outDir)
 }
 
 // emitModuleApi writes client/{moduleLower}Api.js.

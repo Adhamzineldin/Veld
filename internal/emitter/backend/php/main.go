@@ -95,6 +95,9 @@ func (e *PhpEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) er
 	if err := e.emitRoutes(a, outDir); err != nil {
 		return fmt.Errorf("routes: %w", err)
 	}
+	if err := e.emitConstants(a, outDir); err != nil {
+		return fmt.Errorf("constants: %w", err)
+	}
 	return e.emitComposer(outDir, strat)
 }
 

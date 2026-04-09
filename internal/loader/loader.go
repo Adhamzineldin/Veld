@@ -109,6 +109,9 @@ func resolveFile(path, rootDir string, aliasMap map[string]string, seen map[stri
 	for i := range a.Enums {
 		a.Enums[i].SourceFile = abs
 	}
+	for i := range a.Constants {
+		a.Constants[i].SourceFile = abs
+	}
 
 	dir := filepath.Dir(abs)
 	merged := ast.AST{ASTVersion: "1.0.0"}
@@ -349,5 +352,6 @@ func mergeAST(dst, src ast.AST) ast.AST {
 	dst.Models = append(dst.Models, src.Models...)
 	dst.Modules = append(dst.Modules, src.Modules...)
 	dst.Enums = append(dst.Enums, src.Enums...)
+	dst.Constants = append(dst.Constants, src.Constants...)
 	return dst
 }
