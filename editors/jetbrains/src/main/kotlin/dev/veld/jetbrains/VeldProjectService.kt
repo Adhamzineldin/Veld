@@ -84,7 +84,7 @@ class VeldProjectService(private val project: Project) {
     )
 
     /** Read aliases from veld.config.json — falls back to alias=folder convention. */
-    private fun readAliases(root: VirtualFile): Map<String, String> {
+    fun readAliases(root: VirtualFile): Map<String, String> {
         val configFile = root.findChild("veld.config.json")
             ?: root.findChild("veld")?.findChild("veld.config.json")
             ?: return defaultAliases

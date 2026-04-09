@@ -34,11 +34,11 @@ func (p *Parser) Parse() (ast.AST, error) {
 			}
 			result.Imports = append(result.Imports, imp)
 		case lexer.TFrom:
-			imp, err := p.parseFromImport()
+			imps, err := p.parseFromImport()
 			if err != nil {
 				return result, err
 			}
-			result.Imports = append(result.Imports, imp)
+			result.Imports = append(result.Imports, imps...)
 		case lexer.TModel:
 			m, err := p.parseModel()
 			if err != nil {
@@ -232,13 +232,14 @@ func (p *Parser) parseImport() (string, error) {
 
 // parseFromImport handles:
 //
-//	from @models import *        →  @models/*
-//	from @models import user     →  @models/user.veld
-//	from /models import *        →  @models/*
-//	from /models import user     →  @models/user.veld
-//	from models import *         →  @models/*
-//	from models import user      →  @models/user.veld
-func (p *Parser) parseFromImport() (string, error) {
+//	from @models import *              →  [@models/*]
+//	from @models import user           →  [@models/user.veld]
+//	from @models import User, Role     →  [@models/User.veld, @models/Role.veld]
+//	from /models import *              →  [@models/*]
+//	from /models import user           →  [@models/user.veld]
+//	from models import *               →  [@models/*]
+//	from models import user            →  [@models/user.veld]
+func (p *Parser) parseFromImport() ([]string, error) {
 	p.consume() // consume 'from'
 
 	var folder string
@@ -247,7 +248,7 @@ func (p *Parser) parseFromImport() (string, error) {
 		p.consume() // @
 		aliasTok, err := p.expect(lexer.TIdent)
 		if err != nil {
-			return "", fmt.Errorf("from alias: %w", err)
+			return nil, fmt.Errorf("from alias: %w", err)
 		}
 		folder = aliasTok.Value
 	case lexer.TPath:
@@ -258,25 +259,36 @@ func (p *Parser) parseFromImport() (string, error) {
 		folder = aliasTok.Value
 	default:
 		tok := p.peek()
-		return "", fmt.Errorf("line %d: expected folder path after 'from', got %q", tok.Line, tok.Value)
+		return nil, fmt.Errorf("line %d: expected folder path after 'from', got %q", tok.Line, tok.Value)
 	}
 
 	// Expect 'import'
 	if _, err := p.expect(lexer.TImport); err != nil {
-		return "", fmt.Errorf("from import: %w", err)
+		return nil, fmt.Errorf("from import: %w", err)
 	}
 
-	// Expect * or identifier
+	// Expect * or comma-separated identifiers
 	switch p.peek().Type {
 	case lexer.TStar:
 		p.consume()
-		return "@" + folder + "/*", nil
+		return []string{"@" + folder + "/*"}, nil
 	case lexer.TIdent:
+		var imports []string
 		nameTok := p.consume()
-		return "@" + folder + "/" + nameTok.Value + ".veld", nil
+		imports = append(imports, "@"+folder+"/"+nameTok.Value+".veld")
+		// Consume additional comma-separated names: User, Role, ...
+		for p.peek().Type == lexer.TComma {
+			p.consume() // consume ','
+			nextName, err := p.expect(lexer.TIdent)
+			if err != nil {
+				return nil, fmt.Errorf("from import list: %w", err)
+			}
+			imports = append(imports, "@"+folder+"/"+nextName.Value+".veld")
+		}
+		return imports, nil
 	default:
 		tok := p.peek()
-		return "", fmt.Errorf("line %d: expected '*' or name after 'import', got %q", tok.Line, tok.Value)
+		return nil, fmt.Errorf("line %d: expected '*' or name after 'import', got %q", tok.Line, tok.Value)
 	}
 }
 

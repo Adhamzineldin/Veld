@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
@@ -104,6 +105,22 @@ func runPostGenerate(rc config.ResolvedConfig) {
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, yellow("warning: ")+"postGenerate hook failed: %v\n", err)
 	}
+}
+
+// runClean removes generated output directories and clears cache/lock files.
+// Shared by generate and watch commands so output is always fresh.
+func runClean(rc config.ResolvedConfig) {
+	for _, dir := range rc.OutputDirs() {
+		if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
+			continue
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			fmt.Fprintf(os.Stderr, yellow("warning: ")+"failed to clean %s: %v\n", dir, err)
+		}
+	}
+	cacheFile := filepath.Join(rc.ConfigDir, ".veld-cache.json")
+	os.Remove(cacheFile)
+	_ = diff.DeleteLock(rc.ConfigDir)
 }
 
 // runGenerate parses, validates, and emits output.
@@ -1094,6 +1111,11 @@ func newGenerateCmd() *cobra.Command {
 				Description:       rc.Description,
 			}
 
+			// ── Clean before generating (skip for dry-run) ──────────────────────
+			if !dryRunFlag {
+				runClean(rc)
+			}
+
 			// ── Workspace multi-service mode ─────────────────────────────────────
 			if len(rc.Workspace) > 0 {
 				fmt.Printf("\n%s workspace: %d services\n\n", bold("◆"), len(rc.Workspace))
@@ -1521,6 +1543,9 @@ func newWatchCmd() *cobra.Command {
 				Validate: rc.Validate,
 			}
 
+			// ── clean before initial generation ─────────────────────────
+			runClean(rc)
+
 			// ── initial full generation (never incremental) ─────────────
 			var regenerated []string
 			var initFiles []string
@@ -1599,6 +1624,7 @@ func newWatchCmd() *cobra.Command {
 			defer ticker.Stop()
 
 			var debounceTimer *time.Timer
+			var generating atomic.Bool // prevents re-triggering while generation is in progress
 
 			for {
 				select {
@@ -1607,17 +1633,24 @@ func newWatchCmd() *cobra.Command {
 					return nil
 
 				case <-ticker.C:
+					// Skip change detection while a generation is in flight.
+					if generating.Load() {
+						continue
+					}
+
 					var changedNames []string
 					configChanged := false
 
 					mtimesMu.Lock()
 
 					// Check existing tracked files for modifications.
+					var deletedFiles []string
 					for f, last := range mtimes {
 						info, statErr := os.Stat(f)
 						if statErr != nil {
-							// File was deleted — still counts as a change.
+							// File was deleted — count as change and mark for removal.
 							changedNames = append(changedNames, filepath.Base(f))
+							deletedFiles = append(deletedFiles, f)
 							continue
 						}
 						if info.ModTime().UnixNano() != last {
@@ -1626,6 +1659,10 @@ func newWatchCmd() *cobra.Command {
 								configChanged = true
 							}
 						}
+					}
+					// Purge deleted files so they don't re-trigger on every tick.
+					for _, f := range deletedFiles {
+						delete(mtimes, f)
 					}
 
 					// Discover NEW .veld files that didn't exist at startup.
@@ -1688,6 +1725,9 @@ func newWatchCmd() *cobra.Command {
 					capturedConfigChanged := configChanged
 
 					debounceTimer = time.AfterFunc(300*time.Millisecond, func() {
+						generating.Store(true)
+						defer generating.Store(false)
+
 						ts := dim("[" + time.Now().Format("15:04:05") + "]")
 
 						// ── reload config if it changed ─────────────────
@@ -1716,6 +1756,9 @@ func newWatchCmd() *cobra.Command {
 						// A full regen takes <100ms for typical projects.
 						fmt.Printf("%s %s change in %s — regenerating all...\n",
 							ts, yellow("⟳"), strings.Join(dedup(capturedChanged), ", "))
+
+						// Clean before regeneration.
+						runClean(currentRC)
 
 						start := time.Now()
 						var regen []string
@@ -1747,9 +1790,11 @@ func newWatchCmd() *cobra.Command {
 							fmt.Println()
 						}
 
-						// Refresh tracked file set — picks up new/deleted .veld files.
-						if newFiles != nil {
-							mtimesMu.Lock()
+						// Refresh tracked file set — ALWAYS, even on error.
+						// If we only refresh on success, failed builds leave stale
+						// mtimes that re-trigger on every tick (infinite loop).
+						mtimesMu.Lock()
+						if newFiles != nil && len(newFiles) > 0 {
 							// Rebuild mtimes from scratch with new file list + config.
 							fresh := make(map[string]int64, len(newFiles)+2)
 							for _, f := range newFiles {
@@ -1763,8 +1808,23 @@ func newWatchCmd() *cobra.Command {
 								}
 							}
 							mtimes = fresh
-							mtimesMu.Unlock()
+						} else {
+							// Generation failed or returned no files — refresh
+							// all existing entries so the tick doesn't re-trigger.
+							for f := range mtimes {
+								if info, statErr := os.Stat(f); statErr == nil {
+									mtimes[f] = info.ModTime().UnixNano()
+								} else {
+									delete(mtimes, f)
+								}
+							}
+							for _, cf := range configCandidates {
+								if info, statErr := os.Stat(cf); statErr == nil {
+									mtimes[cf] = info.ModTime().UnixNano()
+								}
+							}
 						}
+						mtimesMu.Unlock()
 					})
 				}
 			}
@@ -1809,24 +1869,18 @@ func newCleanCmd() *cobra.Command {
 
 			cleaned := false
 			for _, dir := range rc.OutputDirs() {
-				if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
-					continue
+				if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+					cleaned = true
 				}
-				if err := os.RemoveAll(dir); err != nil {
-					return fmt.Errorf("failed to remove %s: %w", dir, err)
-				}
-				fmt.Println(green("✓") + " Cleaned " + bold(dir))
-				cleaned = true
 			}
 
-			// Also remove cache and lock file.
-			cacheFile := filepath.Join(rc.ConfigDir, ".veld-cache.json")
-			os.Remove(cacheFile)
-			if err := diff.DeleteLock(rc.ConfigDir); err != nil {
-				fmt.Fprintf(os.Stderr, yellow("warning: ")+"could not remove lock file: %v\n", err)
-			}
+			runClean(rc)
 
-			if !cleaned {
+			if cleaned {
+				for _, dir := range rc.OutputDirs() {
+					fmt.Println(green("✓") + " Cleaned " + bold(dir))
+				}
+			} else {
 				fmt.Println(green("✓") + " Nothing to clean — output directory does not exist")
 			}
 			return nil

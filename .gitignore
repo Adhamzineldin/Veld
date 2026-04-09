@@ -39,6 +39,8 @@ desktop.ini
 
 # ── Gradle (JetBrains plugin) ─────────────────────────────────────────────────
 editors/jetbrains/.gradle/
+editors/jetbrains/.intellijPlatform/
+editors/jetbrains/.kotlin/
 editors/jetbrains/build/
 
 # ── IDEs ─────────────────────────────────────────────────────────────────────

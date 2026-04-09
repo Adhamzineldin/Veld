@@ -285,6 +285,7 @@ func loadFromDir(aliasDir, subpath, origImport, rootDir string, aliasMap map[str
 	default:
 		// Single file — try exact path first, then compound extensions.
 		p := filepath.Join(aliasDir, subpath)
+		found := false
 		if _, statErr := os.Stat(p); statErr != nil {
 			// Try compound extensions: user.veld → user.model.veld, user.module.veld, etc.
 			base := strings.TrimSuffix(subpath, ".veld")
@@ -300,16 +301,56 @@ func loadFromDir(aliasDir, subpath, origImport, rootDir string, aliasMap map[str
 					candidate := filepath.Join(aliasDir, c)
 					if _, cErr := os.Stat(candidate); cErr == nil {
 						p = candidate
+						found = true
 						break
 					}
 				}
 			}
+			// Fallback: scan all .veld files in the alias directory for a
+			// model/enum whose name matches. This handles named imports like
+			// "from @models import User" where User is defined inside
+			// shared.veld rather than User.veld.
+			if !found {
+				typeName := strings.TrimSuffix(subpath, ".veld")
+				entries, readErr := os.ReadDir(aliasDir)
+				if readErr == nil {
+					for _, entry := range entries {
+						if entry.IsDir() || filepath.Ext(entry.Name()) != ".veld" {
+							continue
+						}
+						candidate := filepath.Join(aliasDir, entry.Name())
+						content, cErr := os.ReadFile(candidate)
+						if cErr != nil {
+							continue
+						}
+						// Quick text check: look for "model TypeName" or "enum TypeName"
+						if strings.Contains(string(content), "model "+typeName) ||
+							strings.Contains(string(content), "enum "+typeName) {
+							p = candidate
+							found = true
+							break
+						}
+					}
+				}
+			}
+		} else {
+			found = true
 		}
 		a, _ := filepath.Abs(p)
 		resolved = append(resolved, a)
 		fileImports[a] = append(fileImports[a], a)
 		imp, err := resolveFile(p, rootDir, aliasMap, seen, files, fileImports)
 		if err != nil {
+			// If the file truly doesn't exist and we couldn't find it by scanning,
+			// try loading the entire alias directory as a wildcard import instead
+			// of erroring. This handles "from @models import User" gracefully when
+			// types are spread across multiple files.
+			if !found {
+				wildcardMerged, wildcardResolved, wErr := loadFromDir(aliasDir, "*", origImport, rootDir, aliasMap, seen, files, fileImports)
+				if wErr == nil {
+					return wildcardMerged, wildcardResolved, nil
+				}
+			}
 			return ast.AST{}, nil, fmt.Errorf("import %q: %w", origImport, err)
 		}
 		merged = mergeAST(merged, imp)

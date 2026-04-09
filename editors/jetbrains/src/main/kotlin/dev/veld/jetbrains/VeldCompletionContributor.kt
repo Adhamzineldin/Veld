@@ -45,7 +45,7 @@ class VeldCompletionContributor : CompletionContributor() {
                     when (ctx) {
                         CompletionContext.TOP_LEVEL -> {
                             addKeywords(result)
-                            addImportSnippet(result)
+                            addImportSnippet(result, service, virtualFile)
                         }
                         CompletionContext.AFTER_IMPORT -> {
                             addImportPaths(result, service, virtualFile)
@@ -203,37 +203,27 @@ class VeldCompletionContributor : CompletionContributor() {
         }
     }
 
-    private fun addImportSnippet(result: CompletionResultSet) {
-        result.addElement(
-            LookupElementBuilder.create("import @models/*")
-                .withIcon(AllIcons.Nodes.Include)
-                .withTypeText("import all models")
-        )
-        result.addElement(
-            LookupElementBuilder.create("import @modules/*")
-                .withIcon(AllIcons.Nodes.Include)
-                .withTypeText("import all modules")
-        )
-        result.addElement(
-            LookupElementBuilder.create("import /models/*")
-                .withIcon(AllIcons.Nodes.Include)
-                .withTypeText("import all models (path)")
-        )
-        result.addElement(
-            LookupElementBuilder.create("import /modules/*")
-                .withIcon(AllIcons.Nodes.Include)
-                .withTypeText("import all modules (path)")
-        )
-        result.addElement(
-            LookupElementBuilder.create("from @models import *")
-                .withIcon(AllIcons.Nodes.Include)
-                .withTypeText("from...import syntax")
-        )
-        result.addElement(
-            LookupElementBuilder.create("from @modules import *")
-                .withIcon(AllIcons.Nodes.Include)
-                .withTypeText("from...import syntax")
-        )
+    private fun addImportSnippet(result: CompletionResultSet, service: VeldProjectService, file: com.intellij.openapi.vfs.VirtualFile) {
+        val root = service.findProjectRoot(file)
+        val aliases = if (root != null) service.readAliases(root) else mapOf("models" to "models", "modules" to "modules")
+
+        for ((aliasName, folder) in aliases) {
+            // Only suggest aliases that have an existing directory
+            val dirExists = root?.findFileByRelativePath(folder)?.isDirectory == true
+            if (!dirExists && root != null) continue
+
+            result.addElement(
+                LookupElementBuilder.create("import @$aliasName/*")
+                    .withIcon(AllIcons.Nodes.Include)
+                    .withTypeText("import all from $folder/")
+            )
+            result.addElement(
+                LookupElementBuilder.create("from @$aliasName import *")
+                    .withIcon(AllIcons.Nodes.Include)
+                    .withTypeText("from...import syntax")
+            )
+        }
+
         result.addElement(
             LookupElementBuilder.create("prefix: ")
                 .withIcon(AllIcons.Nodes.Property)
@@ -246,21 +236,23 @@ class VeldCompletionContributor : CompletionContributor() {
 
     private fun addImportPaths(result: CompletionResultSet, service: VeldProjectService, file: com.intellij.openapi.vfs.VirtualFile) {
         val root = service.findProjectRoot(file) ?: return
-        // Scan all standard alias directories
-        for (dirName in listOf("models", "modules", "types", "enums", "schemas", "services", "lib", "common")) {
-            val dir = root.findChild(dirName) ?: continue
+        // Read aliases from veld.config.json (includes defaults + custom aliases)
+        val aliases = service.readAliases(root)
+        for ((aliasName, folder) in aliases) {
+            val dir = root.findFileByRelativePath(folder) ?: continue
+            if (!dir.isDirectory) continue
 
             // Wildcard import for the whole folder
             result.addElement(
-                LookupElementBuilder.create("@$dirName/*")
+                LookupElementBuilder.create("@$aliasName/*")
                     .withIcon(AllIcons.Nodes.Folder)
-                    .withTypeText("import all from $dirName/")
+                    .withTypeText("import all from $folder/")
                     .withTailText("  (wildcard)", true)
             )
             result.addElement(
-                LookupElementBuilder.create("/$dirName/*")
+                LookupElementBuilder.create("/$aliasName/*")
                     .withIcon(AllIcons.Nodes.Folder)
-                    .withTypeText("import all from $dirName/")
+                    .withTypeText("import all from $folder/")
                     .withTailText("  (path wildcard)", true)
             )
 
@@ -269,16 +261,16 @@ class VeldCompletionContributor : CompletionContributor() {
                     val name = child.nameWithoutExtension
                     // @alias/name style (recommended)
                     result.addElement(
-                        LookupElementBuilder.create("@$dirName/$name")
+                        LookupElementBuilder.create("@$aliasName/$name")
                             .withIcon(AllIcons.FileTypes.Any_type)
-                            .withTypeText("$dirName/$name.veld")
+                            .withTypeText("$folder/$name.veld")
                             .withTailText("  (alias)", true)
                     )
                     // /path/name style
                     result.addElement(
-                        LookupElementBuilder.create("/$dirName/$name")
+                        LookupElementBuilder.create("/$aliasName/$name")
                             .withIcon(AllIcons.FileTypes.Any_type)
-                            .withTypeText("$dirName/$name.veld")
+                            .withTypeText("$folder/$name.veld")
                             .withTailText("  (path)", true)
                     )
                 }
