@@ -381,6 +381,7 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg, framew
 	}
 	sb.WriteString("import com.fasterxml.jackson.databind.ObjectMapper;\n")
 	if isSpring {
+		sb.WriteString("import org.springframework.beans.factory.annotation.Autowired;\n")
 		sb.WriteString("import org.springframework.beans.factory.annotation.Value;\n")
 		sb.WriteString("import org.springframework.stereotype.Component;\n")
 	}
@@ -413,16 +414,17 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg, framew
 	springPropKey := fmt.Sprintf("veld.sdk.%s.base-url", sdkhelpers.ServiceFileName(consumed.Name))
 
 	if isSpring {
-		// Primary Spring constructor — injected via @Value from application.properties,
-		// falls back to env var, then to baked-in default.
+		// Primary Spring constructor — @Autowired so Spring picks this one over the manual overload.
+		// @Value resolves: application.properties key → env var → baked-in default.
 		sb.WriteString(fmt.Sprintf("    /**\n     * Spring-managed constructor.\n"))
 		sb.WriteString(fmt.Sprintf("     * Configure via {@code %s} in application.properties,\n", springPropKey))
 		sb.WriteString(fmt.Sprintf("     * or set the {@code %s} environment variable.\n     */\n", envVar))
+		sb.WriteString("    @Autowired\n")
 		if consumed.BaseUrl != "" {
-			sb.WriteString(fmt.Sprintf("    public %s(@Value(\"${%s:#{systemEnvironment['%s'] ?: '%s'}}\") String baseUrl) {\n",
+			sb.WriteString(fmt.Sprintf("    public %s(@Value(\"${%s:${%s:%s}}\") String baseUrl) {\n",
 				className, springPropKey, envVar, consumed.BaseUrl))
 		} else {
-			sb.WriteString(fmt.Sprintf("    public %s(@Value(\"${%s:#{systemEnvironment['%s']}}\") String baseUrl) {\n",
+			sb.WriteString(fmt.Sprintf("    public %s(@Value(\"${%s:${%s:}}\") String baseUrl) {\n",
 				className, springPropKey, envVar))
 		}
 		sb.WriteString("        this.base = baseUrl;\n")
