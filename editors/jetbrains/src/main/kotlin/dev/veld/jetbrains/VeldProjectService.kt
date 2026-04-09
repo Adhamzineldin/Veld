@@ -308,7 +308,7 @@ class VeldProjectService(private val project: Project) {
                             }
                         }
                     }
-                } else if (fromNamed != null && fromWildcard == null) {
+                } else if (fromNamed != null) {
                     // from @models import User, Role — named imports
                     val alias = fromNamed.groupValues[1]
                     val nameList = fromNamed.groupValues[2]

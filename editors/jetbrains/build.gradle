@@ -4,7 +4,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 plugins {
     id 'java'
     id 'org.jetbrains.kotlin.jvm' version '2.1.10'
-    id 'org.jetbrains.intellij.platform' version '2.5.0'
+    id 'org.jetbrains.intellij.platform' version '2.14.0'
 }
 
 group = 'dev.veld'
@@ -26,9 +26,6 @@ dependencies {
         // JSON schema support
         bundledPlugin('com.intellij.modules.json')
 
-        // Required for bytecode instrumentation
-        instrumentationTools()
-
         // Plugin verifier
         pluginVerifier()
     }
@@ -49,17 +46,8 @@ intellijPlatform {
 
     pluginVerification {
         ides {
-            // Minimum supported version
-            ide(IntelliJPlatformType.IntellijIdeaCommunity, '2024.1')
-            ide(IntelliJPlatformType.IntellijIdeaUltimate, '2024.1')
-
-            // Primary build target
-            ide(IntelliJPlatformType.IntellijIdeaCommunity, '2025.1')
-            ide(IntelliJPlatformType.IntellijIdeaUltimate, '2025.1')
-
-            // Forward compatibility — only add versions that are publicly released
-            // ide(IntelliJPlatformType.IntellijIdeaCommunity, '2026.1')  // not yet released
-            // ide(IntelliJPlatformType.IntellijIdeaUltimate, '2026.1')  // not yet released
+            // Auto-select recommended IDEs based on sinceBuild/untilBuild range
+            recommended()
         }
     }
 
@@ -74,14 +62,13 @@ intellijPlatform {
     }
 }
 
-// IntelliJ 2024.1+ runs on Java 21
+// IntelliJ 2024.1+ runs on Java 21 — compile with --release 21 for compatibility
 tasks.withType(JavaCompile).configureEach {
-    sourceCompatibility = '21'
-    targetCompatibility = '21'
+    options.release = 21
 }
 
 tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions {
-        jvmTarget = '21'
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
     }
 }
