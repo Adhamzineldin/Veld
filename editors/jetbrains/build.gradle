@@ -57,9 +57,9 @@ intellijPlatform {
             ide(IntelliJPlatformType.IntellijIdeaCommunity, '2025.1')
             ide(IntelliJPlatformType.IntellijIdeaUltimate, '2025.1')
 
-            // Forward compatibility checks
-            ide(IntelliJPlatformType.IntellijIdeaCommunity, '2026.1')
-            ide(IntelliJPlatformType.IntellijIdeaUltimate, '2026.1')
+            // Forward compatibility — only add versions that are publicly released
+            // ide(IntelliJPlatformType.IntellijIdeaCommunity, '2026.1')  // not yet released
+            // ide(IntelliJPlatformType.IntellijIdeaUltimate, '2026.1')  // not yet released
         }
     }
 
