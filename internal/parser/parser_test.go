@@ -246,6 +246,118 @@ module Auth {
 	}
 }
 
+func TestParseBraceParamPath(t *testing.T) {
+	src := `model User { id: string }
+module Users {
+  action GetUser {
+    method: GET
+    path: /users/{id}
+    output: User
+  }
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.Path != "/users/:id" {
+		t.Errorf("expected path /users/:id (normalized from {id}), got %q", act.Path)
+	}
+}
+
+func TestParseBraceParamMultipleSegments(t *testing.T) {
+	src := `model Txn { id: string }
+module Accounts {
+  action GetTxn {
+    method: GET
+    path: /accounts/{accountId}/transactions/{txnId}
+    output: Txn
+  }
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	expected := "/accounts/:accountId/transactions/:txnId"
+	if act.Path != expected {
+		t.Errorf("expected path %q, got %q", expected, act.Path)
+	}
+}
+
+func TestParseResponseAlias(t *testing.T) {
+	src := `model User { id: string }
+module Auth {
+  action Login {
+    method: POST
+    path: /auth/login
+    input: User
+    response: User
+  }
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.Output != "User" {
+		t.Errorf("expected output User (via response alias), got %q", act.Output)
+	}
+}
+
+func TestParseResponseWithStatusCode(t *testing.T) {
+	src := `model User { id: string }
+module Auth {
+  action Register {
+    method: POST
+    path: /auth/register
+    input: User
+    response: User:201
+  }
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.Output != "User" {
+		t.Errorf("expected output User (via response alias), got %q", act.Output)
+	}
+	if act.SuccessStatus != 201 {
+		t.Errorf("expected success status 201, got %d", act.SuccessStatus)
+	}
+}
+
+func TestParseResponseArrayWithStatus(t *testing.T) {
+	src := `model User { id: string }
+module Users {
+  action ListUsers {
+    method: GET
+    path: /users
+    response: User[]:200
+  }
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.Output != "User" {
+		t.Errorf("expected output User, got %q", act.Output)
+	}
+	if !act.OutputArray {
+		t.Error("expected OutputArray to be true")
+	}
+	if act.SuccessStatus != 200 {
+		t.Errorf("expected success status 200, got %d", act.SuccessStatus)
+	}
+}
+
 func TestParseActionWithMiddlewareBracketList(t *testing.T) {
 	src := `model User { id: string }
 module Auth {

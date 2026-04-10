@@ -426,7 +426,7 @@ class VeldProjectService(private val project: Project) {
                                     "method" -> currentMethod = dirMatch.groupValues[2].trim()
                                     "path" -> currentPath = dirMatch.groupValues[2].trim()
                                     "input" -> currentInput = dirMatch.groupValues[2].trim()
-                                    "output" -> currentOutput = dirMatch.groupValues[2].trim()
+                                    "output", "response" -> currentOutput = dirMatch.groupValues[2].trim()
                                 }
                             }
                         }

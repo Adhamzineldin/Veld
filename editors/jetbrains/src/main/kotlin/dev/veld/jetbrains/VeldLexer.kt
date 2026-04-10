@@ -277,7 +277,7 @@ class VeldLexer : LexerBase() {
             "import" -> VeldTokenTypes.IMPORT_KEYWORD
             "from" -> VeldTokenTypes.IMPORT_KEYWORD
             "extends" -> VeldTokenTypes.EXTENDS_KEYWORD
-            "method", "path", "input", "output", "description", "prefix", "default",
+            "method", "path", "input", "output", "response", "description", "prefix", "default",
             "query", "middleware", "stream", "errors" ->
                 VeldTokenTypes.DIRECTIVE_KEYWORD
             "string", "int", "long", "float", "decimal", "bool", "date", "datetime", "time", "uuid", "bytes", "json", "any" ->

@@ -202,7 +202,7 @@
     },
 
     "path-content": {
-      "comment": "Path value with :param highlighting",
+      "comment": "Path value with :param and {param} highlighting",
       "patterns": [
         {
           "comment": ":paramName path segment",
@@ -213,8 +213,17 @@
           }
         },
         {
+          "comment": "{paramName} path segment",
+          "match": "(\\{)([A-Za-z_][A-Za-z0-9_]*)(\\})",
+          "captures": {
+            "1": { "name": "keyword.operator.path-param.veld" },
+            "2": { "name": "variable.other.path-parameter.veld" },
+            "3": { "name": "keyword.operator.path-param.veld" }
+          }
+        },
+        {
           "name": "string.other.path.veld",
-          "match": "[^:\\s]+"
+          "match": "[^:\\{\\}\\s]+"
         },
         {
           "name": "punctuation.separator.path.veld",
@@ -442,8 +451,8 @@
     },
 
     "type-directive": {
-      "comment": "input: User  /  output: List<User>  /  query: Filter  /  middleware: AuthGuard  /  stream: Message",
-      "begin": "^\\s*(input|output|query|middleware|stream)\\s*(:)\\s*",
+      "comment": "input: User  /  output: List<User>  /  response: List<User>  /  query: Filter  /  middleware: AuthGuard  /  stream: Message",
+      "begin": "^\\s*(input|output|response|query|middleware|stream)\\s*(:)\\s*",
       "end": "$",
       "beginCaptures": {
         "1": { "name": "support.function.directive.veld" },

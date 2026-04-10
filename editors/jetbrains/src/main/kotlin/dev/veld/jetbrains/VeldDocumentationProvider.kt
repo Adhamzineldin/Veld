@@ -141,6 +141,7 @@ class VeldDocumentationProvider : AbstractDocumentationProvider() {
                 "path" to "The URL path for this action (relative to module prefix)",
                 "input" to "The input/request body type for this action",
                 "output" to "The output/response body type for this action",
+                "response" to "The output/response body type for this action (alias for output)",
                 "default" to "The default value for a field or enum"
             )
             return buildSimpleDoc("Directive", word, descriptions[word] ?: "")
