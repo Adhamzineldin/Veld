@@ -204,11 +204,8 @@ func javaDefaultLiteral(val, veldType string) string {
 	if val == "true" || val == "false" {
 		return val
 	}
-	// Numeric — check for long suffix on int types
-	if veldType == "int" {
-		return val + "L" // Java long
-	}
-	if veldType == "float" {
+	// Numeric — int/float pass through as-is
+	if veldType == "int" || veldType == "float" {
 		return val
 	}
 	if veldType == "decimal" {

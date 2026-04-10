@@ -67,7 +67,7 @@ func emitJavaSdk(consumed emitter.ConsumedServiceInfo, outDir, framework string)
 // TypeScript frontend's per-module types split (types/users.ts, types/auth.ts, …).
 func emitJavaSdkModels(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string) error {
 	a := consumed.AST
-	modelGroups, enumGroups, modelOwner, _ := emitter.AssignModelsToModules(a)
+	modelGroups, enumGroups, modelOwner, enumOwner := emitter.AssignModelsToModules(a)
 	keys := emitter.SortedGroupKeys(modelGroups, enumGroups)
 
 	// Write enums and model classes per group.
@@ -136,13 +136,35 @@ func emitJavaSdkModels(consumed emitter.ConsumedServiceInfo, sdkDir, pkg string)
 			}
 			sb.WriteString("import com.fasterxml.jackson.annotation.JsonIgnoreProperties;\n")
 
-			// If this model extends another, import the parent's package
-			if m.Extends != "" {
-				parentMod := modelOwner[m.Extends]
-				if parentMod != "" && parentMod != group {
-					sb.WriteString(fmt.Sprintf("import maayn.veld.generated.sdk.%s.models.%s.%s;\n",
-						pkg, parentMod, m.Extends))
+			// Cross-group imports: extends parent + field-type model/enum references.
+			crossGroupImports := make(map[string]bool) // "pkg.group.TypeName" → true
+			addCrossImport := func(typeName string) {
+				if typeName == "" || emitter.IsPrimitive(typeName) {
+					return
 				}
+				owner := modelOwner[typeName]
+				if owner == "" {
+					owner = enumOwner[typeName]
+				}
+				if owner != "" && owner != group {
+					impPath := fmt.Sprintf("maayn.veld.generated.sdk.%s.models.%s.%s", pkg, owner, typeName)
+					crossGroupImports[impPath] = true
+				}
+			}
+			if m.Extends != "" {
+				addCrossImport(m.Extends)
+			}
+			for _, f := range m.Fields {
+				addCrossImport(f.Type)
+				if f.IsMap {
+					addCrossImport(f.MapValueType)
+				}
+				for _, ut := range f.UnionTypes {
+					addCrossImport(ut)
+				}
+			}
+			for impPath := range crossGroupImports {
+				sb.WriteString(fmt.Sprintf("import %s;\n", impPath))
 			}
 			sb.WriteString("\n@JsonIgnoreProperties(ignoreUnknown = true)\n")
 			extendsClause := ""

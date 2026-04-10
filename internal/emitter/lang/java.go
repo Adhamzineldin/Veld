@@ -26,7 +26,7 @@ func (a *JavaAdapter) Metadata() LanguageMetadata {
 }
 
 // MapType converts Veld types to Java types.
-// Boxed primitive types (Long, Double, Boolean) are used so that optional fields can be null.
+// Boxed primitive types (Integer, Double, Boolean) are used so that optional fields can be null.
 func (a *JavaAdapter) MapType(veldType string) (string, []string, error) {
 	veldType = strings.TrimSpace(veldType)
 
@@ -37,7 +37,7 @@ func (a *JavaAdapter) MapType(veldType string) (string, []string, error) {
 
 	builtins := map[string]entry{
 		"string":   {"String", nil},
-		"int":      {"Long", nil},
+		"int":      {"Integer", nil},
 		"float":    {"Double", nil},
 		"decimal":  {"java.math.BigDecimal", []string{"java.math.BigDecimal"}},
 		"bool":     {"Boolean", nil},

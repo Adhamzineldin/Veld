@@ -73,7 +73,7 @@ func javaConstType(veldType string) string {
 	case "datetime":
 		return "LocalDateTime"
 	case "int":
-		return "long"
+		return "int"
 	case "float":
 		return "double"
 	case "decimal":
@@ -111,7 +111,7 @@ func javaConstValue(f ast.ConstantField) string {
 	case "datetime":
 		return fmt.Sprintf("LocalDateTime.parse(%q)", f.Value)
 	case "int":
-		return f.Value + "L"
+		return f.Value
 	case "float":
 		return f.Value
 	case "decimal":
