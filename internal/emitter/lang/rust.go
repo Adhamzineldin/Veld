@@ -37,7 +37,9 @@ func (a *RustAdapter) MapType(veldType string) (string, []string, error) {
 		"date":     "String", // ISO date string; use chrono crate for full date support
 		"datetime": "String", // ISO datetime string
 		"uuid":     "String", // UUID as string; use uuid crate for typed UUIDs
+		"long":     "i64",
 		"bytes":    "Vec<u8>",
+		"time":     "String",
 		"any":      "serde_json::Value",
 		"json":     "serde_json::Value",
 	}

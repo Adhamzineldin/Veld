@@ -24,8 +24,16 @@ func veldToSQL(t string) string {
 		return "TIMESTAMP"
 	case "date":
 		return "DATE"
+	case "long":
+		return "BIGINT"
 	case "uuid":
 		return "UUID"
+	case "bytes":
+		return "BYTEA"
+	case "time":
+		return "TIME"
+	case "any", "json":
+		return "JSONB"
 	default:
 		return "VARCHAR(255)"
 	}

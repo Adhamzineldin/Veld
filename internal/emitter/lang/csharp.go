@@ -38,7 +38,9 @@ func (a *CSharpAdapter) MapType(veldType string) (string, []string, error) {
 		"date":     "DateTime",
 		"datetime": "DateTime",
 		"uuid":     "Guid",
+		"long":     "long",
 		"bytes":    "byte[]",
+		"time":     "TimeSpan",
 		"any":      "object",
 		"json":     "object",
 	}

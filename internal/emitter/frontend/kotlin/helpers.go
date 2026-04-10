@@ -20,6 +20,14 @@ func veldTypeToKotlin(t string) string {
 		return "java.math.BigDecimal"
 	case "bool":
 		return "Boolean"
+	case "long":
+		return "Long"
+	case "bytes":
+		return "ByteArray"
+	case "time":
+		return "String"
+	case "any", "json":
+		return "Any"
 	case "string", "date", "datetime", "uuid":
 		return "String"
 	default:

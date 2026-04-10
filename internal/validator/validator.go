@@ -12,12 +12,17 @@ import (
 var primitiveTypes = map[string]bool{
 	"string":   true,
 	"int":      true,
+	"long":     true,
 	"float":    true,
 	"decimal":  true,
 	"bool":     true,
 	"date":     true,
 	"datetime": true,
+	"time":     true,
 	"uuid":     true,
+	"bytes":    true,
+	"any":      true,
+	"json":     true,
 }
 
 // loc returns a "file:line:" prefix for error context.

@@ -113,6 +113,10 @@ func gqlType(t string) string {
 		return "Float"
 	case "bool":
 		return "Boolean"
+	case "long":
+		return "Int"
+	case "bytes", "time", "any", "json":
+		return "String"
 	case "string", "date", "datetime", "uuid", "decimal":
 		return "String"
 	default:

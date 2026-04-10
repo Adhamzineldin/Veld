@@ -336,9 +336,11 @@ func pyCollectAllFields(model ast.Model, byName map[string]ast.Model) []ast.Fiel
 // Python quirk: bool is a subclass of int, so int checks exclude bool explicitly.
 func pyScalarCheck(veldType, varExpr string) (expected, check string) {
 	switch veldType {
-	case "string", "date", "datetime", "uuid":
+	case "string", "date", "datetime", "uuid", "time":
 		return "str", fmt.Sprintf("isinstance(%s, str)", varExpr)
-	case "int":
+	case "bytes":
+		return "bytes", fmt.Sprintf("isinstance(%s, bytes)", varExpr)
+	case "int", "long":
 		return "int", fmt.Sprintf("isinstance(%s, int) and not isinstance(%s, bool)", varExpr, varExpr)
 	case "float":
 		return "float", fmt.Sprintf("isinstance(%s, (int, float)) and not isinstance(%s, bool)", varExpr, varExpr)

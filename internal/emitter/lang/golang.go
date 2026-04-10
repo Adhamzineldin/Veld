@@ -31,6 +31,7 @@ func (a *GoAdapter) MapType(veldType string) (string, []string, error) {
 	builtins := map[string]string{
 		"string":   "string",
 		"int":      "int",
+		"long":     "int64",
 		"float":    "float64",
 		"decimal":  "string",
 		"bool":     "bool",

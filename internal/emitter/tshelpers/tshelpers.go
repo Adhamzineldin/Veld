@@ -11,7 +11,7 @@ import (
 // VeldScalarToTS maps a Veld scalar or model name to its TypeScript equivalent.
 func VeldScalarToTS(t string) string {
 	switch t {
-	case "int", "float":
+	case "int", "long", "float":
 		return "number"
 	case "bool":
 		return "boolean"
@@ -23,6 +23,8 @@ func VeldScalarToTS(t string) string {
 		return "UUID"
 	case "decimal":
 		return "Decimal"
+	case "bytes", "time":
+		return "string"
 	case "any", "json":
 		return "any"
 	default:

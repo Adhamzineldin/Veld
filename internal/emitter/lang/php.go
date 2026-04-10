@@ -38,7 +38,9 @@ func (a *PhpAdapter) MapType(veldType string) (string, []string, error) {
 		"date":     "string",
 		"datetime": "string",
 		"uuid":     "string",
+		"long":     "int",
 		"bytes":    "string",
+		"time":     "string",
 		"any":      "mixed",
 		"json":     "array",
 	}

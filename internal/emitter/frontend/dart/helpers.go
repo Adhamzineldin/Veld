@@ -18,6 +18,14 @@ func veldTypeToDart(t string) string {
 		return "double"
 	case "bool":
 		return "bool"
+	case "long":
+		return "int"
+	case "bytes":
+		return "Uint8List"
+	case "time":
+		return "String"
+	case "any", "json":
+		return "dynamic"
 	case "string", "date", "datetime", "uuid", "decimal":
 		return "String"
 	default:
