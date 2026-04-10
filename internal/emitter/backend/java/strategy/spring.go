@@ -80,6 +80,10 @@ func (s *SpringStrategy) NoContentResponse() string {
 	return "return ResponseEntity.noContent().build();"
 }
 
+func (s *SpringStrategy) StatusResponse(code int, expr string) string {
+	return fmt.Sprintf("return ResponseEntity.status(%d).body(%s);", code, expr)
+}
+
 func (s *SpringStrategy) ApiExceptionCatch(errVar string) string {
 	return fmt.Sprintf(
 		"return ResponseEntity.status(%s.getStatus()).body(%s.toErrorResponse());",

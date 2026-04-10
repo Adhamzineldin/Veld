@@ -21,6 +21,8 @@ type CSharpFrameworkStrategy interface {
 	CreatedResponse(expr string) string
 	// NoContentResponse returns code for a 204 response.
 	NoContentResponse() string
+	// StatusResponse returns code for a custom HTTP status response.
+	StatusResponse(code int, expr string) string
 	// ErrorResponse returns code for a 500 response.
 	ErrorResponse(errVar string) string
 	// ControllerUsings returns using directives for controller files.

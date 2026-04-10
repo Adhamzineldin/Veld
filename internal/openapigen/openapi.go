@@ -2,6 +2,7 @@
 package openapigen
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
@@ -31,13 +32,7 @@ func BuildSpec(a ast.AST) map[string]interface{} {
 			pathParams := emitter.ExtractPathParams(routePath)
 
 			responses := make(map[string]interface{})
-			successCode := "200"
-			if strings.ToUpper(act.Method) == "POST" {
-				successCode = "201"
-			}
-			if strings.ToUpper(act.Method) == "DELETE" && act.Output == "" {
-				successCode = "204"
-			}
+			successCode := strconv.Itoa(emitter.SuccessStatusForAction(act))
 
 			if act.Output != "" {
 				outputSchema := schemaRef(act.Output, act.OutputArray, modelMap)

@@ -179,6 +179,14 @@ func diffAction(oldAST, newAST ast.AST, module, action string, old, new ast.Acti
 	changes = append(changes, diffActionModel(oldAST, newAST, base+".query", old.Query, new.Query, true)...)
 	changes = append(changes, diffActionModel(oldAST, newAST, base+".headers", old.Headers, new.Headers, true)...)
 
+	if old.SuccessStatus != new.SuccessStatus {
+		changes = append(changes, Change{
+			Kind:    Added,
+			Path:    base,
+			Message: fmt.Sprintf("success status changed from %d to %d", old.SuccessStatus, new.SuccessStatus),
+		})
+	}
+
 	return changes
 }
 

@@ -90,6 +90,10 @@ func (s *AspNetStrategy) CreatedResponse(expr string) string {
 
 func (s *AspNetStrategy) NoContentResponse() string { return "return NoContent();" }
 
+func (s *AspNetStrategy) StatusResponse(code int, expr string) string {
+	return fmt.Sprintf("return StatusCode(%d, %s);", code, expr)
+}
+
 func (s *AspNetStrategy) ErrorResponse(errVar string) string {
 	return fmt.Sprintf("return StatusCode(500, new { error = %s.Message });", errVar)
 }

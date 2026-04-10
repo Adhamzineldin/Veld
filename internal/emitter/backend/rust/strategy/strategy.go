@@ -7,8 +7,9 @@ type RustFrameworkStrategy interface {
 	// RouterImports returns use declarations for the router/main setup.
 	RouterImports() []string
 	// WrapHandler wraps a service call expression into a framework response.
-	// method: HTTP method, returnType: Rust return type, serviceCall: the service method call expression
-	WrapHandler(method, returnType, serviceCall string) string
+	// method: HTTP method, returnType: Rust return type, serviceCall: the service method call expression,
+	// statusCode: HTTP success status code (e.g. 200, 201, 204)
+	WrapHandler(method, returnType, serviceCall string, statusCode int) string
 	// BuildRouter returns Rust code to build and return the application router.
 	// routes is a slice of (method, path, handlerFn) tuples.
 	BuildRouter(routes []RouteEntry) string

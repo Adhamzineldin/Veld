@@ -135,16 +135,20 @@ func writePhpAction(sb *strings.Builder, mod ast.Module, act ast.Action, enumNam
 
 	serviceCall := fmt.Sprintf("$this->service->%s(%s)", methodName, strings.Join(callArgs, ", "))
 
+	statusCode := emitter.SuccessStatusForAction(act)
 	switch {
-	case act.Method == "DELETE" && returnType == "void":
+	case statusCode == 204:
 		sb.WriteString(fmt.Sprintf("            %s;\n", serviceCall))
 		sb.WriteString(fmt.Sprintf("            %s\n", strat.ReturnNoContent()))
-	case act.Method == "POST":
+	case statusCode == 200:
+		sb.WriteString(fmt.Sprintf("            $result = %s;\n", serviceCall))
+		sb.WriteString(fmt.Sprintf("            %s\n", strat.ReturnOk("$result")))
+	case statusCode == 201:
 		sb.WriteString(fmt.Sprintf("            $result = %s;\n", serviceCall))
 		sb.WriteString(fmt.Sprintf("            %s\n", strat.ReturnCreated("$result")))
 	default:
 		sb.WriteString(fmt.Sprintf("            $result = %s;\n", serviceCall))
-		sb.WriteString(fmt.Sprintf("            %s\n", strat.ReturnOk("$result")))
+		sb.WriteString(fmt.Sprintf("            %s\n", strat.ReturnWithStatus(statusCode, "$result")))
 	}
 
 	sb.WriteString("        } catch (\\Exception $e) {\n")

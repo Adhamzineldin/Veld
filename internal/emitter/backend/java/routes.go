@@ -145,23 +145,23 @@ func (e *JavaEmitter) writeHandler(strat jstrategy.FrameworkStrategy, sb *string
 
 	serviceCall := fmt.Sprintf("service.%s(%s)", methodName, strings.Join(callArgs, ", "))
 
+	statusCode := emitter.SuccessStatusForAction(act)
 	switch {
-	case returnType == "void" && act.Method == "DELETE":
+	case returnType == "void" && statusCode == 204:
 		sb.WriteString(fmt.Sprintf("            %s;\n", serviceCall))
 		sb.WriteString(fmt.Sprintf("            %s\n", strat.NoContentResponse()))
-	case returnType == "void" && act.Method == "POST":
-		// POST with no output — call service, return 201 with no body
-		sb.WriteString(fmt.Sprintf("            %s;\n", serviceCall))
-		sb.WriteString(fmt.Sprintf("            %s\n", strat.CreatedResponse("null")))
 	case returnType == "void":
 		sb.WriteString(fmt.Sprintf("            %s;\n", serviceCall))
-		sb.WriteString(fmt.Sprintf("            %s\n", strat.OkResponse("null")))
-	case act.Method == "POST":
+		sb.WriteString(fmt.Sprintf("            %s\n", strat.StatusResponse(statusCode, "null")))
+	case statusCode == 200:
+		sb.WriteString(fmt.Sprintf("            %s result = %s;\n", returnType, serviceCall))
+		sb.WriteString(fmt.Sprintf("            %s\n", strat.OkResponse("result")))
+	case statusCode == 201:
 		sb.WriteString(fmt.Sprintf("            %s result = %s;\n", returnType, serviceCall))
 		sb.WriteString(fmt.Sprintf("            %s\n", strat.CreatedResponse("result")))
 	default:
 		sb.WriteString(fmt.Sprintf("            %s result = %s;\n", returnType, serviceCall))
-		sb.WriteString(fmt.Sprintf("            %s\n", strat.OkResponse("result")))
+		sb.WriteString(fmt.Sprintf("            %s\n", strat.StatusResponse(statusCode, "result")))
 	}
 
 	sb.WriteString("        } catch (ApiException e) {\n")

@@ -282,6 +282,16 @@ func Validate(a ast.AST) []error {
 					errs = append(errs, fmt.Errorf("%smodule %q, action %q: empty middleware name", loc(mod.SourceFile, act.Line), mod.Name, act.Name))
 				}
 			}
+
+			// Validate explicit success status code
+			if act.SuccessStatus != 0 {
+				if act.SuccessStatus < 200 || act.SuccessStatus > 299 {
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: invalid success status %d (must be 200–299)", loc(mod.SourceFile, act.Line), mod.Name, act.Name, act.SuccessStatus))
+				}
+				if act.SuccessStatus == 204 && act.Output != "" {
+					errs = append(errs, fmt.Errorf("%smodule %q, action %q: status 204 (No Content) cannot have an output type", loc(mod.SourceFile, act.Line), mod.Name, act.Name))
+				}
+			}
 		}
 	}
 

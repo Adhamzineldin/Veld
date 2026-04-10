@@ -903,3 +903,115 @@ model User {
 }`
 	mustParse(t, src)
 }
+
+func TestParseOutputSuccessStatus(t *testing.T) {
+	src := `model User { name: string }
+module Users {
+  action CreateUser {
+    method: POST
+    path: /
+    input: User
+    output: User:201
+  }
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.Output != "User" {
+		t.Errorf("expected output 'User', got %q", act.Output)
+	}
+	if act.SuccessStatus != 201 {
+		t.Errorf("expected SuccessStatus 201, got %d", act.SuccessStatus)
+	}
+}
+
+func TestParseOutputSuccessStatusArray(t *testing.T) {
+	src := `model Item { name: string }
+module Items {
+  action ListItems {
+    method: GET
+    path: /
+    output: Item[]:200
+  }
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.Output != "Item" {
+		t.Errorf("expected output 'Item', got %q", act.Output)
+	}
+	if !act.OutputArray {
+		t.Error("expected OutputArray to be true")
+	}
+	if act.SuccessStatus != 200 {
+		t.Errorf("expected SuccessStatus 200, got %d", act.SuccessStatus)
+	}
+}
+
+func TestParseOutputSuccessStatusCustom(t *testing.T) {
+	src := `model Job { id: string }
+module Jobs {
+  action AcceptJob {
+    method: POST
+    path: /:id/accept
+    output: Job:202
+  }
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.SuccessStatus != 202 {
+		t.Errorf("expected SuccessStatus 202, got %d", act.SuccessStatus)
+	}
+}
+
+func TestParseOutputNoStatus(t *testing.T) {
+	src := `model User { name: string }
+module Users {
+  action GetUser {
+    method: GET
+    path: /:id
+    output: User
+  }
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.SuccessStatus != 0 {
+		t.Errorf("expected SuccessStatus 0 (default), got %d", act.SuccessStatus)
+	}
+}
+
+func TestParseInlineOutputSuccessStatus(t *testing.T) {
+	src := `module Jobs {
+  action CreateJob {
+    method: POST
+    path: /
+    output: { id: string, status: string }:202
+  }
+}`
+	tokens, _ := lexer.New(src).Tokenize()
+	a, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	act := a.Modules[0].Actions[0]
+	if act.SuccessStatus != 202 {
+		t.Errorf("expected SuccessStatus 202, got %d", act.SuccessStatus)
+	}
+	if act.Output != "CreateJobOutput" {
+		t.Errorf("expected synthetic output name 'CreateJobOutput', got %q", act.Output)
+	}
+}

@@ -29,20 +29,13 @@ func (s *AxumStrategy) RouterImports() []string {
 	}
 }
 
-func (s *AxumStrategy) WrapHandler(method, returnType, serviceCall string) string {
+func (s *AxumStrategy) WrapHandler(method, returnType, serviceCall string, statusCode int) string {
 	if returnType == "" {
-		switch strings.ToUpper(method) {
-		case "DELETE":
-			return fmt.Sprintf("%s\nOk(StatusCode::NO_CONTENT)", serviceCall)
-		default:
-			return fmt.Sprintf("%s\nOk(StatusCode::OK)", serviceCall)
-		}
+		rustStatus := rustStatusConst(statusCode)
+		return fmt.Sprintf("%s\nOk(%s)", serviceCall, rustStatus)
 	}
-	statusCode := "StatusCode::OK"
-	if strings.ToUpper(method) == "POST" {
-		statusCode = "StatusCode::CREATED"
-	}
-	return fmt.Sprintf("let result = %s?;\nOk((%s, Json(result)))", serviceCall, statusCode)
+	rustStatus := rustStatusConst(statusCode)
+	return fmt.Sprintf("let result = %s?;\nOk((%s, Json(result)))", serviceCall, rustStatus)
 }
 
 func (s *AxumStrategy) BuildRouter(routes []RouteEntry) string {
@@ -154,5 +147,21 @@ func axumMethodFn(method string) string {
 		return "patch"
 	default:
 		return "get"
+	}
+}
+
+// rustStatusConst maps a numeric HTTP status to its Rust StatusCode constant.
+func rustStatusConst(code int) string {
+	switch code {
+	case 200:
+		return "StatusCode::OK"
+	case 201:
+		return "StatusCode::CREATED"
+	case 202:
+		return "StatusCode::ACCEPTED"
+	case 204:
+		return "StatusCode::NO_CONTENT"
+	default:
+		return fmt.Sprintf("StatusCode::from_u16(%d).unwrap()", code)
 	}
 }

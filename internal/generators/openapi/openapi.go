@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
@@ -139,13 +140,7 @@ func buildPaths(a ast.AST) map[string]interface{} {
 
 			// Responses
 			responses := map[string]interface{}{}
-			successCode := "200"
-			if strings.ToUpper(act.Method) == "POST" {
-				successCode = "201"
-			}
-			if strings.ToUpper(act.Method) == "DELETE" && act.Output == "" {
-				successCode = "204"
-			}
+			successCode := strconv.Itoa(emitter.SuccessStatusForAction(act))
 
 			if act.Output != "" {
 				outputSchema := map[string]interface{}{"$ref": "#/components/schemas/" + act.Output}

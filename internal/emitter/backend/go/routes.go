@@ -220,13 +220,13 @@ func (e *GoEmitter) writeHandler(w *codegen.Writer, mod ast.Module, act ast.Acti
 	w.BlankLine()
 
 	// 5. Write success response.
+	statusCode := emitter.SuccessStatusForAction(act)
 	if hasOutput {
-		statusCode := successStatus(act)
-		w.Writeln(fmt.Sprintf("writeJSON(w, %s, resp)", statusCode))
-	} else if strings.ToUpper(act.Method) == "DELETE" {
+		w.Writeln(fmt.Sprintf("writeJSON(w, %s, resp)", goHTTPStatus(statusCode)))
+	} else if statusCode == 204 {
 		w.Writeln("w.WriteHeader(http.StatusNoContent)")
 	} else {
-		w.Writeln("writeJSON(w, http.StatusOK, nil)")
+		w.Writeln(fmt.Sprintf("writeJSON(w, %s, nil)", goHTTPStatus(statusCode)))
 	}
 
 	// Close inner function (return func body).
@@ -248,12 +248,20 @@ func fullPath(mod ast.Module, act ast.Action) string {
 	return act.Path
 }
 
-// successStatus returns the HTTP status constant for a successful response.
-func successStatus(act ast.Action) string {
-	if strings.ToUpper(act.Method) == "POST" {
+// goHTTPStatus maps an integer status code to a Go http.StatusXxx constant string.
+func goHTTPStatus(code int) string {
+	switch code {
+	case 200:
+		return "http.StatusOK"
+	case 201:
 		return "http.StatusCreated"
+	case 202:
+		return "http.StatusAccepted"
+	case 204:
+		return "http.StatusNoContent"
+	default:
+		return fmt.Sprintf("%d", code)
 	}
-	return "http.StatusOK"
 }
 
 // buildCallArgs constructs the argument list for the service method call.
