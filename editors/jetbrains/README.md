@@ -7,7 +7,7 @@ Official Veld language support for **all JetBrains IDEs** including IntelliJ IDE
 ### ✅ Syntax Highlighting
 - Keywords: `model`, `module`, `action`, `enum`, `import`, `extends`, `from`
 - Distinct colors for each keyword type (model vs module vs action vs enum)
-- Types: `string`, `int`, `float`, `bool`, `date`, `datetime`, `uuid`, `List<T>`, `Map<K,V>`
+- Types: `string`, `int`, `long`, `float`, `decimal`, `bool`, `date`, `datetime`, `time`, `uuid`, `bytes`, `json`, `any`, `List<T>`, `Map<K,V>`
 - Directives: `method`, `path`, `input`, `output`, `description`, `prefix`, `query`, `middleware`, `errors`, `deprecated`
 - HTTP Methods: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `WS`
 - Annotations: `@default`, `@example`, `@unique`, `@index`, `@relation`, `@required`, `@deprecated`, `@min`, `@max`, `@minLength`, `@maxLength`, `@regex`

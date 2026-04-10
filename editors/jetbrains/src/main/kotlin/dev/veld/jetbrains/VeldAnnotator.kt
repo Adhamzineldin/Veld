@@ -519,14 +519,14 @@ class VeldAnnotator : Annotator {
         val isBool = defaultVal == "true" || defaultVal == "false"
 
         return when (fieldType) {
-            "string", "date", "datetime", "uuid", "decimal" -> {
+            "string", "date", "datetime", "time", "uuid", "decimal", "bytes" -> {
                 if (!isQuoted) "@default for $fieldType must be a quoted string, got $defaultVal"
                 else null
             }
-            "int" -> when {
-                isQuoted -> "@default for int must be a number, got $defaultVal"
-                isBool -> "@default for int must be a number, got $defaultVal"
-                defaultVal.contains(".") -> "@default for int must be a whole number, got $defaultVal"
+            "int", "long" -> when {
+                isQuoted -> "@default for $fieldType must be a number, got $defaultVal"
+                isBool -> "@default for $fieldType must be a number, got $defaultVal"
+                defaultVal.contains(".") -> "@default for $fieldType must be a whole number, got $defaultVal"
                 else -> null
             }
             "float" -> when {

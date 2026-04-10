@@ -35,7 +35,7 @@ func computeCompletions(text string, pos Position, a ast.AST) []CompletionItem {
 	}
 
 	// Type names
-	types := []string{"string", "int", "float", "decimal", "bool", "date", "datetime", "uuid"}
+	types := []string{"string", "int", "long", "float", "decimal", "bool", "date", "datetime", "time", "uuid", "bytes", "json", "any"}
 	for _, t := range types {
 		items = append(items, CompletionItem{
 			Label:  t,

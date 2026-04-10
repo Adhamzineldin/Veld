@@ -280,7 +280,7 @@ class VeldLexer : LexerBase() {
             "method", "path", "input", "output", "description", "prefix", "default",
             "query", "middleware", "stream", "errors" ->
                 VeldTokenTypes.DIRECTIVE_KEYWORD
-            "string", "int", "float", "decimal", "bool", "date", "datetime", "uuid", "bytes", "json", "any" ->
+            "string", "int", "long", "float", "decimal", "bool", "date", "datetime", "time", "uuid", "bytes", "json", "any" ->
                 VeldTokenTypes.TYPE_KEYWORD
             "List", "Map" -> VeldTokenTypes.GENERIC_TYPE
             "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS" -> VeldTokenTypes.HTTP_METHOD
