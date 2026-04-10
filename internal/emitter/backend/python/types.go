@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -249,6 +250,49 @@ func (e *PythonEmitter) emitPerModuleTypes(a ast.AST, outDir string) error {
 		if needsDecimal {
 			csb.WriteString("from decimal import Decimal\n")
 		}
+
+		// Import types from module-owned files that unclaimed models reference
+		// (via extends or field types).
+		unclaimedNames := make(map[string]bool)
+		for _, en := range unclaimedEnums {
+			unclaimedNames[en.Name] = true
+		}
+		for _, m := range unclaimedModels {
+			unclaimedNames[m.Name] = true
+		}
+		commonImports := make(map[string][]string) // sourceModule → []typeName
+		for _, m := range unclaimedModels {
+			checkRef := func(typeName string) {
+				if typeName == "" || unclaimedNames[typeName] || emitter.IsPrimitive(typeName) {
+					return
+				}
+				if owner, ok := claimed[typeName]; ok {
+					commonImports[owner] = appendUniquePy(commonImports[owner], typeName)
+				}
+			}
+			if m.Extends != "" {
+				checkRef(m.Extends)
+			}
+			for _, f := range m.Fields {
+				checkRef(f.Type)
+				if f.IsMap {
+					checkRef(f.MapValueType)
+				}
+				for _, ut := range f.UnionTypes {
+					checkRef(ut)
+				}
+			}
+		}
+		sortedSources := make([]string, 0, len(commonImports))
+		for source := range commonImports {
+			sortedSources = append(sortedSources, source)
+		}
+		sort.Strings(sortedSources)
+		for _, source := range sortedSources {
+			names := commonImports[source]
+			sort.Strings(names)
+			csb.WriteString(fmt.Sprintf("from .%s import %s  # noqa: F401\n", source, strings.Join(names, ", ")))
+		}
 		csb.WriteString("\n")
 
 		for _, en := range unclaimedEnums {
@@ -404,4 +448,14 @@ func pyDefaultVal(f ast.Field) string {
 	default:
 		return "None"
 	}
+}
+
+// appendUniquePy appends s to slice only if it is not already present.
+func appendUniquePy(slice []string, s string) []string {
+	for _, v := range slice {
+		if v == s {
+			return slice
+		}
+	}
+	return append(slice, s)
 }
