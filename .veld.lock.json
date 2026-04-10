@@ -2,53 +2,32 @@
   "version": 1,
   "modules": [
     {
-      "name": "IAM",
-      "description": "Identity and Access Management — authentication and user profiles",
-      "prefix": "/api/iam",
+      "name": "Accounts",
+      "description": "Bank account management — open, view, freeze, and close accounts",
+      "prefix": "/api/accounts",
       "actions": [
         {
-          "name": "Register",
-          "description": "Create a new NexusBank user account",
-          "method": "POST",
-          "path": "/register",
-          "input": "RegisterInput",
-          "output": "User",
-          "errors": [
-            "Conflict"
-          ],
-          "middleware": []
-        },
-        {
-          "name": "Login",
-          "description": "Authenticate and receive a JWT token pair",
-          "method": "POST",
-          "path": "/login",
-          "input": "LoginInput",
-          "output": "TokenPair",
-          "errors": [
-            "Unauthorized"
-          ],
-          "middleware": []
-        },
-        {
-          "name": "RefreshToken",
-          "description": "Exchange a refresh token for a new access token",
-          "method": "POST",
-          "path": "/refresh",
-          "input": "RefreshInput",
-          "output": "TokenPair",
-          "errors": [
-            "Unauthorized"
-          ],
-          "middleware": []
-        },
-        {
-          "name": "GetProfile",
-          "description": "Return the currently authenticated user",
+          "name": "ListAccounts",
+          "description": "List all accounts for the authenticated user",
           "method": "GET",
-          "path": "/me",
+          "path": "/",
           "input": "",
-          "output": "User",
+          "output": "Account",
+          "outputArray": true,
+          "errors": [
+            "Unauthorized"
+          ],
+          "middleware": [
+            "AuthGuard"
+          ]
+        },
+        {
+          "name": "GetAccount",
+          "description": "Fetch a single account by ID",
+          "method": "GET",
+          "path": "/:id",
+          "input": "",
+          "output": "Account",
           "errors": [
             "Unauthorized",
             "NotFound"
@@ -58,62 +37,115 @@
           ]
         },
         {
-          "name": "UpdateProfile",
-          "description": "Update name or phone on the authenticated user",
-          "method": "PATCH",
-          "path": "/me",
-          "input": "UpdateProfileInput",
-          "output": "User",
-          "errors": [
-            "Unauthorized",
-            "NotFound"
-          ],
-          "middleware": [
-            "AuthGuard"
-          ]
-        },
-        {
-          "name": "Logout",
-          "description": "Invalidate the current session token",
+          "name": "CreateAccount",
+          "description": "Open a new checking, savings, or investment account",
           "method": "POST",
-          "path": "/logout",
+          "path": "/",
+          "input": "CreateAccountInput",
+          "output": "Account",
+          "errors": [
+            "Unauthorized",
+            "BadRequest"
+          ],
+          "middleware": [
+            "AuthGuard"
+          ]
+        },
+        {
+          "name": "GetSummary",
+          "description": "Portfolio summary — total balance and primary account",
+          "method": "GET",
+          "path": "/summary",
+          "input": "",
+          "output": "AccountSummary",
+          "errors": [
+            "Unauthorized"
+          ],
+          "middleware": [
+            "AuthGuard"
+          ]
+        },
+        {
+          "name": "FreezeAccount",
+          "description": "Freeze an account to block all future transactions",
+          "method": "POST",
+          "path": "/:id/freeze",
+          "input": "",
+          "output": "Account",
+          "errors": [
+            "Unauthorized",
+            "NotFound"
+          ],
+          "middleware": [
+            "AuthGuard"
+          ]
+        },
+        {
+          "name": "CloseAccount",
+          "description": "Permanently close an account",
+          "method": "DELETE",
+          "path": "/:id",
           "input": "",
           "output": "",
           "errors": [
-            "Unauthorized"
+            "Unauthorized",
+            "NotFound"
           ],
           "middleware": [
             "AuthGuard"
           ]
+        },
+        {
+          "name": "banaccount",
+          "method": "POST",
+          "path": "/ban",
+          "input": "",
+          "output": "",
+          "errors": [
+            "Unauthorized",
+            "NotFound"
+          ],
+          "middleware": []
         }
       ]
     }
   ],
   "models": [
     {
-      "name": "User",
-      "description": "A registered NexusBank user",
+      "name": "Account",
+      "description": "A NexusBank financial account",
       "fields": [
         {
           "name": "id",
           "type": "string"
         },
         {
-          "name": "email",
+          "name": "userId",
           "type": "string"
         },
         {
-          "name": "firstName",
+          "name": "type",
+          "type": "AccountType"
+        },
+        {
+          "name": "status",
+          "type": "AccountStatus"
+        },
+        {
+          "name": "name",
           "type": "string"
         },
         {
-          "name": "lastName",
+          "name": "currency",
           "type": "string"
         },
         {
-          "name": "phone",
-          "type": "string",
-          "optional": true
+          "name": "balance",
+          "type": "float"
+        },
+        {
+          "name": "iban",
+          "type": "string"
         },
         {
           "name": "createdAt",
@@ -122,92 +154,38 @@
       ]
     },
     {
-      "name": "RegisterInput",
-      "description": "New user registration payload",
+      "name": "CreateAccountInput",
+      "description": "Payload to open a new bank account",
       "fields": [
         {
-          "name": "email",
+          "name": "type",
+          "type": "AccountType"
+        },
+        {
+          "name": "name",
           "type": "string"
         },
         {
-          "name": "password",
-          "type": "string"
-        },
-        {
-          "name": "firstName",
-          "type": "string"
-        },
-        {
-          "name": "lastName",
-          "type": "string"
-        },
-        {
-          "name": "phone",
-          "type": "string",
-          "optional": true
-        }
-      ]
-    },
-    {
-      "name": "LoginInput",
-      "description": "Credentials for email/password authentication",
-      "fields": [
-        {
-          "name": "email",
-          "type": "string"
-        },
-        {
-          "name": "password",
+          "name": "currency",
           "type": "string"
         }
       ]
     },
     {
-      "name": "TokenPair",
-      "description": "JWT access + refresh token pair",
+      "name": "AccountSummary",
+      "description": "Portfolio overview across all user accounts",
       "fields": [
         {
-          "name": "accessToken",
-          "type": "string"
+          "name": "totalBalance",
+          "type": "float"
         },
         {
-          "name": "refreshToken",
-          "type": "string"
-        },
-        {
-          "name": "expiresIn",
+          "name": "accountCount",
           "type": "int"
-        }
-      ]
-    },
-    {
-      "name": "RefreshInput",
-      "description": "Payload to exchange a refresh token for a new access token",
-      "fields": [
-        {
-          "name": "refreshToken",
-          "type": "string"
-        }
-      ]
-    },
-    {
-      "name": "UpdateProfileInput",
-      "description": "Fields the user may update on their own profile",
-      "fields": [
-        {
-          "name": "firstName",
-          "type": "string",
-          "optional": true
         },
         {
-          "name": "lastName",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "phone",
-          "type": "string",
-          "optional": true
+          "name": "primaryAccount",
+          "type": "Account"
         }
       ]
     }

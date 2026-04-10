@@ -402,12 +402,16 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg, framew
 	errorsPkg := fmt.Sprintf("maayn.veld.generated.sdk.%s.errors", pkg)
 	isSpring := strings.EqualFold(framework, "spring")
 
-	// Collect all module subpackages that have types used in actions,
-	// and detect whether any action needs List or extra type imports.
-	usedModulePkgs := make(map[string]bool)
+	// Collect ALL model sub-packages that contain generated types (models, enums,
+	// or shared). We must import every sub-package because model fields may
+	// reference enums in other packages, and Java requires explicit imports.
+	// Previously only modelOwner was checked (enumOwner was discarded), so
+	// packages that only contained enums were never imported → compile error.
+	modelGroups, enumGroups, _, _ := emitter.AssignModelsToModules(a)
+	allGroupKeys := emitter.SortedGroupKeys(modelGroups, enumGroups)
+
 	needsList := false
 	extraImports := make(map[string]bool)
-	_, _, modelOwner, _ := emitter.AssignModelsToModules(a)
 	for _, mod := range a.Modules {
 		for _, act := range mod.Actions {
 			if strings.ToUpper(act.Method) == "WS" {
@@ -419,20 +423,9 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg, framew
 			// Collect imports from the language adapter for input/output/query types.
 			for _, typeName := range []string{act.Input, act.Output, act.Query} {
 				if typeName != "" {
-					if owner, ok := modelOwner[typeName]; ok {
-						usedModulePkgs[owner] = true
-					}
 					_, imports, _ := javaLang.MapType(typeName)
 					for _, imp := range imports {
 						extraImports[imp] = true
-					}
-				}
-			}
-			// Error models referenced in the errors list
-			for _, errName := range act.Errors {
-				if errName != "" {
-					if owner, ok := modelOwner[errName]; ok {
-						usedModulePkgs[owner] = true
 					}
 				}
 			}
@@ -460,8 +453,8 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg, framew
 		sb.WriteString("import org.springframework.stereotype.Component;\n")
 	}
 	sb.WriteString(fmt.Sprintf("import %s.SdkApiError;\n", errorsPkg))
-	for modPkg := range usedModulePkgs {
-		sb.WriteString(fmt.Sprintf("import maayn.veld.generated.sdk.%s.models.%s.*;\n", pkg, modPkg))
+	for _, groupKey := range allGroupKeys {
+		sb.WriteString(fmt.Sprintf("import maayn.veld.generated.sdk.%s.models.%s.*;\n", pkg, groupKey))
 	}
 	sb.WriteString("\n")
 
