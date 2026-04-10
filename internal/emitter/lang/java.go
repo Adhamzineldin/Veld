@@ -44,7 +44,9 @@ func (a *JavaAdapter) MapType(veldType string) (string, []string, error) {
 		"date":     {"LocalDate", []string{"java.time.LocalDate"}},
 		"datetime": {"LocalDateTime", []string{"java.time.LocalDateTime"}},
 		"uuid":     {"UUID", []string{"java.util.UUID"}},
+		"long":     {"Long", nil},
 		"bytes":    {"byte[]", nil},
+		"time":     {"LocalTime", []string{"java.time.LocalTime"}},
 		"any":      {"Object", nil},
 		"json":     {"Object", nil},
 	}

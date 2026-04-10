@@ -20,6 +20,14 @@ func veldTypeToSwift(t string) string {
 		return "Decimal"
 	case "bool":
 		return "Bool"
+	case "long":
+		return "Int64"
+	case "bytes":
+		return "Data"
+	case "time":
+		return "String"
+	case "any", "json":
+		return "Any"
 	case "string", "date", "datetime", "uuid":
 		return "String"
 	default:

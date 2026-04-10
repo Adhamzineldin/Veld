@@ -296,8 +296,16 @@ func oaTypeSchema(t string) map[string]interface{} {
 		return map[string]interface{}{"type": "string", "format": "date"}
 	case "datetime":
 		return map[string]interface{}{"type": "string", "format": "date-time"}
+	case "long":
+		return map[string]interface{}{"type": "integer", "format": "int64"}
 	case "uuid":
 		return map[string]interface{}{"type": "string", "format": "uuid"}
+	case "bytes":
+		return map[string]interface{}{"type": "string", "format": "byte"}
+	case "time":
+		return map[string]interface{}{"type": "string", "format": "time"}
+	case "any", "json":
+		return map[string]interface{}{"type": "object"}
 	default:
 		// Model/enum reference
 		return map[string]interface{}{"$ref": "#/components/schemas/" + t}

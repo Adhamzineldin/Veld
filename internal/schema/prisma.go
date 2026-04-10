@@ -24,8 +24,18 @@ func veldToPrisma(t string) string {
 		return "DateTime"
 	case "date":
 		return "String"
+	case "long":
+		return "BigInt"
 	case "uuid":
 		return "String"
+	case "bytes":
+		return "Bytes"
+	case "time":
+		return "String"
+	case "json":
+		return "Json"
+	case "any":
+		return "Json"
 	default:
 		return "String"
 	}

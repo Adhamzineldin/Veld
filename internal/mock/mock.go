@@ -202,6 +202,14 @@ func examplePrimitive(typeName string, fieldName string) interface{} {
 		return "2026-03-08"
 	case "datetime":
 		return "2026-03-08T12:00:00Z"
+	case "long":
+		return 9007199254740992
+	case "bytes":
+		return "aGVsbG8="
+	case "time":
+		return "12:00:00"
+	case "any", "json":
+		return map[string]interface{}{}
 	default:
 		return "example-" + fieldName
 	}

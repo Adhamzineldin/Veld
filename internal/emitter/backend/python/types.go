@@ -374,7 +374,7 @@ func (e *PythonEmitter) emitPerModuleTypes(a ast.AST, outDir string) error {
 // veldScalarToPy maps a Veld scalar type name to its Python type annotation.
 func veldScalarToPy(t string) string {
 	switch t {
-	case "int":
+	case "int", "long":
 		return "int"
 	case "float":
 		return "float"
@@ -382,8 +382,10 @@ func veldScalarToPy(t string) string {
 		return "Decimal"
 	case "bool":
 		return "bool"
-	case "string", "date", "datetime", "uuid":
+	case "string", "date", "datetime", "uuid", "time":
 		return "str"
+	case "bytes":
+		return "bytes"
 	case "any", "json":
 		return "Any"
 	default:
@@ -435,14 +437,16 @@ func pyDefaultVal(f ast.Field) string {
 		return "{}"
 	}
 	switch f.Type {
-	case "string", "date", "datetime", "uuid":
+	case "string", "date", "datetime", "uuid", "time":
 		return "''"
-	case "int":
+	case "int", "long":
 		return "0"
 	case "float":
 		return "0.0"
 	case "decimal":
 		return "Decimal('0')"
+	case "bytes":
+		return "b''"
 	case "bool":
 		return "False"
 	default:
