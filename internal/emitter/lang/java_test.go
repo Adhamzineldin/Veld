@@ -11,7 +11,7 @@ func TestJavaAdapterMapType_Builtins(t *testing.T) {
 	a := &lang.JavaAdapter{}
 	cases := []struct{ veld, want string }{
 		{"string", "String"},
-		{"int", "Long"},
+		{"int", "Integer"},
 		{"float", "Double"},
 		{"bool", "Boolean"},
 		{"date", "LocalDate"},
@@ -55,8 +55,8 @@ func TestJavaAdapterMapType_Map(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MapType(Map<string,int>) error: %v", err)
 	}
-	if got != "Map<String, Long>" {
-		t.Errorf("got %q, want %q", got, "Map<String, Long>")
+	if got != "Map<String, Integer>" {
+		t.Errorf("got %q, want %q", got, "Map<String, Integer>")
 	}
 	found := false
 	for _, imp := range imports {
