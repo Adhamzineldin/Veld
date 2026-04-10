@@ -169,6 +169,32 @@ func TestTokenizePath(t *testing.T) {
 	}
 }
 
+func TestTokenizeBraceParamPath(t *testing.T) {
+	src := `/users/{id} /accounts/{accountId}/details`
+	tokens, err := New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if tokens[0].Type != TPath || tokens[0].Value != "/users/{id}" {
+		t.Errorf("expected path /users/{id}, got %s %q", tokens[0].Type, tokens[0].Value)
+	}
+	if tokens[1].Type != TPath || tokens[1].Value != "/accounts/{accountId}/details" {
+		t.Errorf("expected path /accounts/{accountId}/details, got %s %q", tokens[1].Type, tokens[1].Value)
+	}
+}
+
+func TestTokenizeResponseKeyword(t *testing.T) {
+	src := `response`
+	tokens, err := New(src).Tokenize()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tokens[0].Type != TIdent || tokens[0].Value != "response" {
+		t.Errorf("expected TIdent 'response', got %s %q", tokens[0].Type, tokens[0].Value)
+	}
+}
+
 func TestTokenizeStringLiteral(t *testing.T) {
 	src := `import "models/auth.veld"`
 	tokens, err := New(src).Tokenize()

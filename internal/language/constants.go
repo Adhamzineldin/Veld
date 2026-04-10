@@ -57,6 +57,7 @@ func GetLanguageSpec() *VeldLanguageSpec {
 			"path",
 			"input",
 			"output",
+			"response",
 			"query",
 			"stream",
 			"middleware",

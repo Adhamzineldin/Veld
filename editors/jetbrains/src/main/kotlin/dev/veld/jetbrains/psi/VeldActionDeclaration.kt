@@ -33,8 +33,8 @@ class VeldActionDeclaration(node: ASTNode) : ASTWrapperPsiElement(node), PsiName
     /** Returns the input type from an input directive. */
     fun getInput(): String? = getDirectiveValue("input")
 
-    /** Returns the output type from an output directive. */
-    fun getOutput(): String? = getDirectiveValue("output")
+    /** Returns the output type from an output or response directive. */
+    fun getOutput(): String? = getDirectiveValue("output") ?: getDirectiveValue("response")
 
     private fun getDirectiveValue(name: String): String? {
         var child = node.firstChildNode

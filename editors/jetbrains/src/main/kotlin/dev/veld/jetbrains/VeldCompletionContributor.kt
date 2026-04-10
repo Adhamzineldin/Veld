@@ -313,6 +313,7 @@ class VeldCompletionContributor : CompletionContributor() {
             Directive("path", "path: /", "Route path", 0),
             Directive("input", "input: ", "Request body type", 0),
             Directive("output", "output: ", "Response body type", 0),
+            Directive("response", "response: ", "Response body type (alias for output)", 0),
             Directive("query", "query: ", "Query parameters type", 0),
             Directive("middleware", "middleware: ", "Single middleware", 0),
             Directive("middleware []", "middleware: []", "Middleware list", 1),

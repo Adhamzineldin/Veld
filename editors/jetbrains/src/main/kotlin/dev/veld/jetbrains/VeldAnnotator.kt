@@ -68,7 +68,7 @@ class VeldAnnotator : Annotator {
 
         // ── Valid directive keys per block context ───────────────────────────
         /** Keys valid inside action { ... } */
-        val ACTION_KEYS = setOf("method", "path", "input", "output", "query", "stream",
+        val ACTION_KEYS = setOf("method", "path", "input", "output", "response", "query", "stream",
             "middleware", "errors", "description")
         /** Keys valid inside module { ... } (top-level, outside actions) */
         val MODULE_KEYS = setOf("description", "prefix")
@@ -327,7 +327,7 @@ class VeldAnnotator : Annotator {
 
         // ── input / output / query directives — validate as type references ──
         if (trimmed.startsWith("input:") || trimmed.startsWith("output:") ||
-            trimmed.startsWith("query:")
+            trimmed.startsWith("response:") || trimmed.startsWith("query:")
         ) {
             val colonIdx = trimmed.indexOf(':')
             if (colonIdx >= 0) {
@@ -548,12 +548,22 @@ class VeldAnnotator : Annotator {
         pathVal: String, line: String, lineStart: Int, contentLen: Int,
         holder: AnnotationHolder
     ) {
+        // Highlight :param style
         for (m in Regex(""":([\w]+)""").findAll(pathVal)) {
             val searchFrom = line.indexOf(':').let { if (it >= 0) it else 0 }
             val colonStart = lineStart + line.indexOf(":" + m.groupValues[1], searchFrom)
             val end        = colonStart + m.groupValues[1].length + 1
             if (colonStart >= lineStart && end <= contentLen && colonStart < end) {
                 highlightRange(holder, TextRange(colonStart, end), PATH_PARAM)
+            }
+        }
+        // Highlight {param} style
+        for (m in Regex("""\{([\w]+)\}""").findAll(pathVal)) {
+            val searchFrom = line.indexOf('{').let { if (it >= 0) it else 0 }
+            val braceStart = lineStart + line.indexOf("{" + m.groupValues[1] + "}", searchFrom)
+            val end        = braceStart + m.groupValues[1].length + 2
+            if (braceStart >= lineStart && end <= contentLen && braceStart < end) {
+                highlightRange(holder, TextRange(braceStart, end), PATH_PARAM)
             }
         }
     }

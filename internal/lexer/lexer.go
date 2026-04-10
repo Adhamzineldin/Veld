@@ -313,13 +313,25 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 			tokens = append(tokens, Token{TEquals, "=", l.line})
 			l.pos++
 		} else if ch == '/' {
-			// Path token: reads until whitespace or brace.
+			// Path token: reads until whitespace or unmatched brace.
+			// Allows {param} inside paths, e.g. /accounts/{id}/details
 			start := l.pos
-			for l.pos < len(l.source) &&
-				!unicode.IsSpace(l.source[l.pos]) &&
-				l.source[l.pos] != '{' &&
-				l.source[l.pos] != '}' {
-				l.pos++
+			for l.pos < len(l.source) && !unicode.IsSpace(l.source[l.pos]) {
+				if l.source[l.pos] == '{' {
+					// Read until matching '}' — this is a {param} segment
+					l.pos++
+					for l.pos < len(l.source) && l.source[l.pos] != '}' && !unicode.IsSpace(l.source[l.pos]) {
+						l.pos++
+					}
+					if l.pos < len(l.source) && l.source[l.pos] == '}' {
+						l.pos++ // consume '}'
+					}
+				} else if l.source[l.pos] == '}' {
+					// Unmatched '}' — stop, it's a block brace
+					break
+				} else {
+					l.pos++
+				}
 			}
 			tokens = append(tokens, Token{TPath, string(l.source[start:l.pos]), l.line})
 		} else if unicode.IsDigit(ch) || (ch == '-' && l.pos+1 < len(l.source) && unicode.IsDigit(l.source[l.pos+1])) {
@@ -371,6 +383,8 @@ func classifyWord(word string, line int) Token {
 		return Token{TIdent, word, line} // contextual keyword
 	case "output":
 		return Token{TIdent, word, line} // contextual keyword
+	case "response":
+		return Token{TIdent, word, line} // contextual keyword — alias for "output"
 	case "middleware":
 		return Token{TIdent, word, line} // contextual keyword
 	case "import":

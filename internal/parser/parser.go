@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -138,6 +139,15 @@ func (p *Parser) expectFieldName() (lexer.Token, error) {
 // Used for contextual keywords like "description", "prefix", "method", etc.
 func (p *Parser) peekIdent(value string) bool {
 	return p.peek().Type == lexer.TIdent && p.peek().Value == value
+}
+
+// braceParamRe matches {paramName} path segments, e.g. /users/{id}.
+var braceParamRe = regexp.MustCompile(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+
+// normalizePath converts {param} path syntax to :param for internal consistency.
+// Both /users/{id} and /users/:id are accepted; the AST always stores :param form.
+func normalizePath(path string) string {
+	return braceParamRe.ReplaceAllString(path, `:$1`)
 }
 
 // --- import parsing ---
@@ -704,7 +714,7 @@ func (p *Parser) parseModule() (ast.Module, error) {
 		if err != nil {
 			return mod, fmt.Errorf("module prefix: %w", err)
 		}
-		mod.Prefix = prefixTok.Value
+		mod.Prefix = normalizePath(prefixTok.Value)
 	}
 
 	// optional baseUrl: https://...
@@ -769,7 +779,7 @@ func (p *Parser) parseAction() (ast.Action, error) {
 			if err != nil {
 				return act, fmt.Errorf("action path: %w", err)
 			}
-			act.Path = pathTok.Value
+			act.Path = normalizePath(pathTok.Value)
 		case p.peekIdent("description"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
@@ -816,7 +826,7 @@ func (p *Parser) parseAction() (ast.Action, error) {
 				}
 				act.Input = tok.Value
 			}
-		case p.peekIdent("output"):
+		case p.peekIdent("output"), p.peekIdent("response"):
 			p.consume()
 			if _, err := p.expect(lexer.TColon); err != nil {
 				return act, err
