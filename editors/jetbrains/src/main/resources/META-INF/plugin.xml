@@ -1,4 +1,4 @@
-<idea-plugin>
+<idea-plugin package="dev.veld.jetbrains">
   <id>dev.veld.jetbrains</id>
   <name>Veld</name>
   <version>0.6.0</version>
@@ -218,7 +218,7 @@
   <projectListeners>
     <listener
         class="dev.veld.jetbrains.VeldFileChangeListener"
-        topic="com.intellij.openapi.vfs.VirtualFileListener"/>
+        topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
   </projectListeners>
 </idea-plugin>
 
