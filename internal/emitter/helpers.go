@@ -420,14 +420,34 @@ func AssignModelsToModules(a ast.AST) (modelGroups map[string][]ast.Model, enumG
 	modelOwner = make(map[string]string)
 	enumOwner = make(map[string]string)
 
+	// Pre-build lookup sets of actual model and enum names so we never assign
+	// primitives (bool, string, int …) to modelOwner / enumOwner.  Without
+	// this filter, a module whose actions only use primitive I/O types would
+	// pollute modelOwner with entries like modelOwner["bool"] = "account",
+	// causing spurious import statements for packages that contain no files.
+	modelNames := make(map[string]bool, len(a.Models))
+	for _, m := range a.Models {
+		modelNames[m.Name] = true
+	}
+	enumNames := make(map[string]bool, len(a.Enums))
+	for _, en := range a.Enums {
+		enumNames[en.Name] = true
+	}
+
 	for _, mod := range a.Modules {
 		modLower := strings.ToLower(mod.Name)
 		for name := range CollectTransitiveModels(a, mod) {
+			if !modelNames[name] {
+				continue // skip primitives and unknown types
+			}
 			if _, already := modelOwner[name]; !already {
 				modelOwner[name] = modLower
 			}
 		}
 		for name := range CollectUsedEnums(a, mod) {
+			if !enumNames[name] {
+				continue
+			}
 			if _, already := enumOwner[name]; !already {
 				enumOwner[name] = modLower
 			}

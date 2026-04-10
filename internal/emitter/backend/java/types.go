@@ -57,13 +57,30 @@ func (e *JavaEmitter) emitModels(a ast.AST, outDir string) error {
 func javaModuleModelImports(a ast.AST, mod ast.Module) []string {
 	_, _, modelOwner, enumOwner := emitter.AssignModelsToModules(a)
 
+	// Build lookup sets of actual model/enum names so we never import a group
+	// just because a primitive type like "bool" slipped through.
+	modelNames := make(map[string]bool, len(a.Models))
+	for _, m := range a.Models {
+		modelNames[m.Name] = true
+	}
+	enumNames := make(map[string]bool, len(a.Enums))
+	for _, en := range a.Enums {
+		enumNames[en.Name] = true
+	}
+
 	groups := make(map[string]bool)
 	for name := range emitter.CollectTransitiveModels(a, mod) {
+		if !modelNames[name] {
+			continue
+		}
 		if g := modelOwner[name]; g != "" {
 			groups[g] = true
 		}
 	}
 	for name := range emitter.CollectUsedEnums(a, mod) {
+		if !enumNames[name] {
+			continue
+		}
 		if g := enumOwner[name]; g != "" {
 			groups[g] = true
 		}
