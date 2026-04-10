@@ -172,8 +172,8 @@ func (e *JavaEmitter) emitRecord(m ast.Model, enums []ast.Enum, dir, pkg, group 
 	}
 	sb.WriteString("\n")
 
-	// No-arg constructor (protected so Jackson can still deserialize)
-	sb.WriteString(fmt.Sprintf("    protected %s() {}\n\n", m.Name))
+	// No-arg constructor (public so callers can use setters/getters freely)
+	sb.WriteString(fmt.Sprintf("    public %s() {}\n\n", m.Name))
 
 	// All-args constructor
 	if len(m.Fields) > 0 {
