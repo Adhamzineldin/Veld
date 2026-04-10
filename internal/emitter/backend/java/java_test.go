@@ -131,7 +131,7 @@ func TestJavaEmitterModelContent(t *testing.T) {
 		{"list import", "import java.util.List;"},
 		{"class declaration", "public class User"},
 		{"private field", "private String email;"},
-		{"no-arg constructor", "protected User() {}"},
+		{"no-arg constructor", "public User() {}"},
 		{"all-args constructor", "public User(UUID id, String email"},
 		{"getter", "public String getEmail()"},
 		{"setter", "public void setEmail(String email)"},
