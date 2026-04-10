@@ -21,7 +21,7 @@ func TestGoAdapterMapTypeBuiltins(t *testing.T) {
 
 	tests := map[string]string{
 		"string":   "string",
-		"int":      "int64",
+		"int":      "int",
 		"float":    "float64",
 		"bool":     "bool",
 		"date":     "time.Time",
@@ -63,8 +63,8 @@ func TestGoAdapterMapTypeNestedList(t *testing.T) {
 	if err != nil {
 		t.Errorf("MapType(List<List<int>>) failed: %v", err)
 	}
-	if goType != "[][]int64" {
-		t.Errorf("MapType(List<List<int>>) = %q, want %q", goType, "[][]int64")
+	if goType != "[][]int" {
+		t.Errorf("MapType(List<List<int>>) = %q, want %q", goType, "[][]int")
 	}
 }
 
@@ -75,8 +75,8 @@ func TestGoAdapterMapTypeMap(t *testing.T) {
 	if err != nil {
 		t.Errorf("MapType(Map<string, int>) failed: %v", err)
 	}
-	if goType != "map[string]int64" {
-		t.Errorf("MapType(Map<string, int>) = %q, want %q", goType, "map[string]int64")
+	if goType != "map[string]int" {
+		t.Errorf("MapType(Map<string, int>) = %q, want %q", goType, "map[string]int")
 	}
 }
 

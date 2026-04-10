@@ -68,7 +68,7 @@ func csConstType(veldType string) string {
 	case "date", "datetime":
 		return "DateTime"
 	case "int":
-		return "long"
+		return "int"
 	case "float":
 		return "double"
 	case "decimal":

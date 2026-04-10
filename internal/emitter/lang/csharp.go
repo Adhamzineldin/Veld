@@ -31,7 +31,7 @@ func (a *CSharpAdapter) MapType(veldType string) (string, []string, error) {
 
 	builtins := map[string]string{
 		"string":   "string",
-		"int":      "long",
+		"int":      "int",
 		"float":    "double",
 		"decimal":  "decimal",
 		"bool":     "bool",

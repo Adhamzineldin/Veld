@@ -50,7 +50,7 @@ func goConstType(veldType string) string {
 	case "string", "uuid", "date", "datetime", "decimal":
 		return "string"
 	case "int":
-		return "int64"
+		return "int"
 	case "float":
 		return "float64"
 	case "bool":

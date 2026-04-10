@@ -30,7 +30,7 @@ func (a *GoAdapter) MapType(veldType string) (string, []string, error) {
 	// Built-in types
 	builtins := map[string]string{
 		"string":   "string",
-		"int":      "int64",
+		"int":      "int",
 		"float":    "float64",
 		"decimal":  "string",
 		"bool":     "bool",

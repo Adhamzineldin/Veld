@@ -254,7 +254,7 @@ func mapFormat(t string) string {
 	case "uuid":
 		return "uuid"
 	case "int":
-		return "int64"
+		return "int32"
 	case "float":
 		return "double"
 	case "decimal":
