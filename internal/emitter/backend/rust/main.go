@@ -59,13 +59,9 @@ func (e *RustEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 		return err
 	}
 
-	// src/models.rs — all structs and enums.
-	typesData, err := e.generateTypes(a)
-	if err != nil {
+	// src/models/{group}.rs + src/models/mod.rs (barrel with pub use).
+	if err := e.generateTypes(a, outDir); err != nil {
 		return fmt.Errorf("rust emitter [types]: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(outDir, "src", "models.rs"), typesData, 0644); err != nil {
-		return fmt.Errorf("rust emitter [write models.rs]: %w", err)
 	}
 
 	// src/services.rs — async trait definitions.
@@ -226,7 +222,7 @@ func (e *RustEmitter) Summary(modules []string) []emitter.SummaryLine {
 
 	lines = append(lines, emitter.SummaryLine{
 		Dir:   "src/",
-		Files: "main.rs, lib.rs, models.rs, services.rs, router.rs",
+		Files: "main.rs, lib.rs, models/mod.rs, services.rs, router.rs",
 	})
 
 	for _, m := range modules {

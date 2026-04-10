@@ -10,25 +10,36 @@ import (
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
+	"github.com/Adhamzineldin/Veld/internal/emitter"
 )
 
 const csNamespace = "VeldGenerated"
 
 func (e *CSharpEmitter) emitModels(a ast.AST, outDir string) error {
-	dir := filepath.Join(outDir, "Models")
 	enumNames := make(map[string]bool, len(a.Enums))
 	for _, en := range a.Enums {
 		enumNames[en.Name] = true
 	}
 
-	for _, en := range a.Enums {
-		if err := e.emitEnum(en, dir); err != nil {
-			return fmt.Errorf("enum %s: %w", en.Name, err)
+	// Organise into per-module subdirectories for large-project cleanliness.
+	// Namespace stays VeldGenerated.Models throughout — users keep `using VeldGenerated.Models;`.
+	modelGroups, enumGroups, _, _ := emitter.AssignModelsToModules(a)
+	keys := emitter.SortedGroupKeys(modelGroups, enumGroups)
+
+	for _, group := range keys {
+		subDir := filepath.Join(outDir, "Models", group)
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			return err
 		}
-	}
-	for _, m := range a.Models {
-		if err := e.emitRecord(m, enumNames, dir); err != nil {
-			return fmt.Errorf("model %s: %w", m.Name, err)
+		for _, en := range enumGroups[group] {
+			if err := e.emitEnum(en, subDir); err != nil {
+				return fmt.Errorf("enum %s: %w", en.Name, err)
+			}
+		}
+		for _, m := range modelGroups[group] {
+			if err := e.emitRecord(m, enumNames, subDir); err != nil {
+				return fmt.Errorf("model %s: %w", m.Name, err)
+			}
 		}
 	}
 	return nil

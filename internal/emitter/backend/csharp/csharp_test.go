@@ -75,9 +75,9 @@ func TestCSharpEmitterEmit(t *testing.T) {
 	expectedFiles := []string{
 		filepath.Join(outDir, "SETUP.md"),
 		filepath.Join(outDir, "VeldGenerated.csproj"),
-		filepath.Join(outDir, "Models", "LoginInput.cs"),
-		filepath.Join(outDir, "Models", "User.cs"),
-		filepath.Join(outDir, "Models", "Role.cs"),
+		filepath.Join(outDir, "Models", "auth", "LoginInput.cs"),
+		filepath.Join(outDir, "Models", "auth", "User.cs"),
+		filepath.Join(outDir, "Models", "auth", "Role.cs"),
 		filepath.Join(outDir, "Services", "IAuthService.cs"),
 		filepath.Join(outDir, "Controllers", "AuthController.cs"),
 	}
@@ -109,7 +109,7 @@ func TestCSharpEmitterModelContent(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(outDir, "Models", "User.cs"))
+	data, err := os.ReadFile(filepath.Join(outDir, "Models", "auth", "User.cs"))
 	if err != nil {
 		t.Fatalf("ReadFile User.cs: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestCSharpEmitterEnumContent(t *testing.T) {
 		t.Fatalf("Emit() error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(outDir, "Models", "Role.cs"))
+	data, err := os.ReadFile(filepath.Join(outDir, "Models", "auth", "Role.cs"))
 	if err != nil {
 		t.Fatalf("ReadFile Role.cs: %v", err)
 	}

@@ -118,7 +118,7 @@ func (e *JavaEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 }
 
 func (e *JavaEmitter) createDirs(outDir string) error {
-	for _, pkg := range []string{javaPackageModels, javaPackageServices, javaPackageControllers} {
+	for _, pkg := range []string{javaPackageServices, javaPackageControllers} {
 		if err := os.MkdirAll(pkgToDir(outDir, pkg), 0755); err != nil {
 			return err
 		}
