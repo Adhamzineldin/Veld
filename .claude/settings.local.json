@@ -52,7 +52,10 @@
       "Bash(xargs ls:*)",
       "Bash(xargs -I{} sh -c 'echo \"=== {} ===\"; cat \"{}\"')",
       "Bash(../../../veld.exe generate:*)",
-      "Bash(../../../veld.exe ast:*)"
+      "Bash(../../../veld.exe ast:*)",
+      "Bash(\"C:/Program Files/Go/bin/go\" build ./...)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(\"C:/Program Files/Go/bin/go\" test ./internal/emitter/... ./internal/validator/...)"
     ]
   }
 }
