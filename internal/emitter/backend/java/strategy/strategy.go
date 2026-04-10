@@ -25,6 +25,8 @@ type FrameworkStrategy interface {
 	CreatedResponse(expr string) string
 	// NoContentResponse returns a return statement for a 204 No Content response.
 	NoContentResponse() string
+	// StatusResponse returns a return statement for a custom HTTP status response wrapping expr.
+	StatusResponse(code int, expr string) string
 	// ApiExceptionCatch returns a catch block body for ApiException — preserves the
 	// typed HTTP status and machine-readable code set by the service layer.
 	ApiExceptionCatch(errVar string) string

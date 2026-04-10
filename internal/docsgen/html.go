@@ -266,6 +266,10 @@ func BuildHTML(a ast.AST, services []ServiceInfo) string {
 					sb.WriteString("          <dt>Output</dt><dd><span class=\"plain-chip\">void</span></dd>\n")
 				}
 
+				if act.SuccessStatus > 0 {
+					sb.WriteString(fmt.Sprintf("          <dt>Status</dt><dd><span class=\"plain-chip\">%d</span></dd>\n", act.SuccessStatus))
+				}
+
 				if len(act.OutputFields) > 0 {
 					sb.WriteString("          <dt>Response</dt><dd>\n")
 					sb.WriteString("            <div class=\"field-table-wrap\"><table class=\"field-table\"><thead><tr><th>Field</th><th>Type</th><th>Attrs</th></tr></thead><tbody>\n")

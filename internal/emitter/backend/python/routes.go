@@ -155,12 +155,20 @@ func writeRouteHandler(sb *strings.Builder, mod ast.Module, moduleLower string, 
 	serviceCallStr := fmt.Sprintf("service.%s(%s)", emitter.ToSnakeCase(act.Name), strings.Join(callArgs, ", "))
 
 	// ── Service call + optional output assertion + response ──────────────────
+	statusCode := emitter.SuccessStatusForAction(act)
 	switch {
-	case act.Method == "DELETE" && act.Output == "":
+	case statusCode == 204:
 		sb.WriteString(fmt.Sprintf("            %s\n", serviceCallStr))
 		sb.WriteString(fmt.Sprintf("            %s\n", strat.ReturnNoContent()))
 
-	case act.Method == "POST":
+	case statusCode == 200:
+		sb.WriteString(fmt.Sprintf("            result = %s\n", serviceCallStr))
+		if opts.Validate && act.Output != "" {
+			writePyOutputAssertion(sb, act)
+		}
+		sb.WriteString(fmt.Sprintf("            %s\n", strat.ReturnOk("result")))
+
+	case statusCode == 201:
 		sb.WriteString(fmt.Sprintf("            result = %s\n", serviceCallStr))
 		if opts.Validate && act.Output != "" {
 			writePyOutputAssertion(sb, act)
@@ -172,7 +180,7 @@ func writeRouteHandler(sb *strings.Builder, mod ast.Module, moduleLower string, 
 		if opts.Validate && act.Output != "" {
 			writePyOutputAssertion(sb, act)
 		}
-		sb.WriteString(fmt.Sprintf("            %s\n", strat.ReturnOk("result")))
+		sb.WriteString(fmt.Sprintf("            %s\n", strat.ReturnError(fmt.Sprintf("%d", statusCode), "result")))
 	}
 
 	// Catch block: handles VeldValidationError (400), VeldContractError (500), and service errors.

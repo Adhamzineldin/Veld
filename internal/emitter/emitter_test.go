@@ -258,3 +258,29 @@ func TestMergeASTsEmpty(t *testing.T) {
 		t.Error("expected empty merged AST when no consumed services")
 	}
 }
+
+func TestSuccessStatusForAction(t *testing.T) {
+	tests := []struct {
+		name     string
+		act      ast.Action
+		expected int
+	}{
+		{"POST defaults to 201", ast.Action{Method: "POST", Output: "User"}, 201},
+		{"GET defaults to 200", ast.Action{Method: "GET", Output: "User"}, 200},
+		{"PUT defaults to 200", ast.Action{Method: "PUT", Output: "User"}, 200},
+		{"DELETE no output defaults to 204", ast.Action{Method: "DELETE", Output: ""}, 204},
+		{"DELETE with output defaults to 200", ast.Action{Method: "DELETE", Output: "User"}, 200},
+		{"custom 202 overrides POST default", ast.Action{Method: "POST", Output: "Job", SuccessStatus: 202}, 202},
+		{"custom 200 overrides POST default", ast.Action{Method: "POST", Output: "User", SuccessStatus: 200}, 200},
+		{"custom 205 on GET", ast.Action{Method: "GET", Output: "Report", SuccessStatus: 205}, 205},
+		{"custom 204 on DELETE", ast.Action{Method: "DELETE", Output: "", SuccessStatus: 204}, 204},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SuccessStatusForAction(tt.act)
+			if got != tt.expected {
+				t.Errorf("SuccessStatusForAction() = %d, want %d", got, tt.expected)
+			}
+		})
+	}
+}

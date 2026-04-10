@@ -21,6 +21,10 @@ func (s *PlainStrategy) ReturnCreated(expr string) string {
 
 func (s *PlainStrategy) ReturnNoContent() string { return "// 204 No Content" }
 
+func (s *PlainStrategy) ReturnWithStatus(code int, expr string) string {
+	return fmt.Sprintf("return %s; // %d", expr, code)
+}
+
 func (s *PlainStrategy) ReturnError(statusCode int, msgExpr string) string {
 	return fmt.Sprintf("throw new \\RuntimeException(%s);", msgExpr)
 }

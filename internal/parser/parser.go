@@ -853,6 +853,17 @@ func (p *Parser) parseAction() (ast.Action, error) {
 					}
 					act.OutputArray = true
 				}
+				// Optional explicit success status: output: { ... }:201 or { ... }[]:201
+				if p.peek().Type == lexer.TColon {
+					p.consume()
+					numTok, numErr := p.expect(lexer.TNumber)
+					if numErr != nil {
+						return act, fmt.Errorf("output status after ':': expected HTTP status code, e.g. output: %s:201", act.Output)
+					}
+					if code, convErr := strconv.Atoi(numTok.Value); convErr == nil {
+						act.SuccessStatus = code
+					}
+				}
 			} else {
 				tok, err := p.expectTypeOrIdent()
 				if err != nil {
@@ -866,6 +877,17 @@ func (p *Parser) parseAction() (ast.Action, error) {
 						return act, err
 					}
 					act.OutputArray = true
+				}
+				// Optional explicit success status: output: User:201 or User[]:201
+				if p.peek().Type == lexer.TColon {
+					p.consume()
+					numTok, numErr := p.expect(lexer.TNumber)
+					if numErr != nil {
+						return act, fmt.Errorf("output status after ':': expected HTTP status code, e.g. output: %s:201", act.Output)
+					}
+					if code, convErr := strconv.Atoi(numTok.Value); convErr == nil {
+						act.SuccessStatus = code
+					}
 				}
 			}
 		case p.peekIdent("query"):

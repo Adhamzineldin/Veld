@@ -35,6 +35,10 @@ func (s *LaravelStrategy) ReturnNoContent() string {
 	return "return response()->noContent();"
 }
 
+func (s *LaravelStrategy) ReturnWithStatus(code int, expr string) string {
+	return fmt.Sprintf("return response()->json(%s, %d);", expr, code)
+}
+
 func (s *LaravelStrategy) ReturnError(statusCode int, msgExpr string) string {
 	return fmt.Sprintf("return response()->json(['error' => %s], %d);", msgExpr, statusCode)
 }

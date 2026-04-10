@@ -80,6 +80,7 @@ type Action struct {
 	Emit          string         `json:"emit,omitempty"`          // client→server message type for WS actions
 	Errors        []string       `json:"errors,omitempty"`        // typed error codes for this action
 	ErrorStatuses map[string]int `json:"errorStatuses,omitempty"` // explicit HTTP status per error name (e.g. insufficientFunds:400)
+	SuccessStatus int            `json:"successStatus,omitempty"` // explicit HTTP success status (e.g. output: User:201); 0 = use default
 	Middleware    []string       `json:"middleware"`
 	Deprecated    string         `json:"deprecated,omitempty"` // @deprecated "message"
 	Line          int            `json:"-"`                    // line in source where this action was defined

@@ -31,6 +31,10 @@ func (s *PlainStrategy) CreatedResponse(expr string) string {
 
 func (s *PlainStrategy) NoContentResponse() string { return "return; // 204" }
 
+func (s *PlainStrategy) StatusResponse(code int, expr string) string {
+	return fmt.Sprintf("return %s; // %d", expr, code)
+}
+
 func (s *PlainStrategy) ErrorResponse(errVar string) string {
 	return fmt.Sprintf("throw new Exception(%s.Message);", errVar)
 }

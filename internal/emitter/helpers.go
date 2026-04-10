@@ -363,6 +363,25 @@ func ActionErrorStatus(act ast.Action, errName string) int {
 	return ErrorHTTPStatus(errName)
 }
 
+// SuccessStatusForAction returns the HTTP success status code for an action.
+// If the contract specifies an explicit status (output: User:201), that value
+// is returned. Otherwise the default rules apply:
+//   - DELETE with no output → 204
+//   - POST → 201
+//   - everything else → 200
+func SuccessStatusForAction(act ast.Action) int {
+	if act.SuccessStatus > 0 {
+		return act.SuccessStatus
+	}
+	if strings.ToUpper(act.Method) == "DELETE" && act.Output == "" {
+		return 204
+	}
+	if strings.ToUpper(act.Method) == "POST" {
+		return 201
+	}
+	return 200
+}
+
 // HasErrors returns true if any action in the module defines error codes.
 func HasErrors(mod ast.Module) bool {
 	for _, act := range mod.Actions {

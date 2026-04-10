@@ -9,7 +9,7 @@ type PlainStrategy struct{}
 func (s *PlainStrategy) HandlerImports() []string { return nil }
 func (s *PlainStrategy) RouterImports() []string  { return nil }
 
-func (s *PlainStrategy) WrapHandler(method, returnType, serviceCall string) string {
+func (s *PlainStrategy) WrapHandler(method, returnType, serviceCall string, statusCode int) string {
 	return serviceCall
 }
 

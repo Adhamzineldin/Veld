@@ -105,7 +105,11 @@ func computeHover(text string, pos Position, a ast.AST) *Hover {
 					if act.OutputArray {
 						out += "[]"
 					}
-					sb.WriteString(fmt.Sprintf("- output: `%s`\n", out))
+					if act.SuccessStatus > 0 {
+						sb.WriteString(fmt.Sprintf("- output: `%s` → %d\n", out, act.SuccessStatus))
+					} else {
+						sb.WriteString(fmt.Sprintf("- output: `%s`\n", out))
+					}
 				}
 				if act.Stream != "" {
 					sb.WriteString(fmt.Sprintf("- stream: `%s`\n", act.Stream))

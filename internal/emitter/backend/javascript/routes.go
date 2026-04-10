@@ -133,24 +133,25 @@ func writeJSRouteHandler(sb *strings.Builder, mod ast.Module, act ast.Action, op
 
 	serviceCall := fmt.Sprintf("service.%s(%s)", camelName, strings.Join(callArgs, ", "))
 
+	statusCode := emitter.SuccessStatusForAction(act)
 	switch {
-	case act.Method == "DELETE" && act.Output == "":
+	case statusCode == 204:
 		sb.WriteString(fmt.Sprintf("      await %s;\n", serviceCall))
 		sb.WriteString("      res.status(204).end();\n")
 
-	case act.Method == "POST":
+	case statusCode == 200:
 		sb.WriteString(fmt.Sprintf("      const result = await %s;\n", serviceCall))
 		if opts.Validate && act.Output != "" {
 			writeJSOutputAssertion(sb, act)
 		}
-		sb.WriteString("      res.status(201).json(result);\n")
+		sb.WriteString("      res.json(result);\n")
 
 	default:
 		sb.WriteString(fmt.Sprintf("      const result = await %s;\n", serviceCall))
 		if opts.Validate && act.Output != "" {
 			writeJSOutputAssertion(sb, act)
 		}
-		sb.WriteString("      res.json(result);\n")
+		sb.WriteString(fmt.Sprintf("      res.status(%d).json(result);\n", statusCode))
 	}
 
 	sb.WriteString("    } catch (err) {\n")

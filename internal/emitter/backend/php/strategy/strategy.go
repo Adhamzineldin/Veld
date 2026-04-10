@@ -16,6 +16,8 @@ type PHPFrameworkStrategy interface {
 	ReturnCreated(expr string) string
 	// ReturnNoContent returns PHP code for a 204 response.
 	ReturnNoContent() string
+	// ReturnWithStatus returns PHP code for a custom HTTP status response.
+	ReturnWithStatus(code int, expr string) string
 	// ReturnError returns PHP code for an error response.
 	ReturnError(statusCode int, msgExpr string) string
 	// ComposerRequire returns composer.json require entries (package → version).

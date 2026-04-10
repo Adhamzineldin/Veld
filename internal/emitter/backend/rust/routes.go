@@ -221,7 +221,7 @@ func (e *RustEmitter) writeHandler(w *codegen.Writer, mod ast.Module, act ast.Ac
 	}
 
 	serviceCallExpr := fmt.Sprintf("svc.%s(%s).await", methodName, strings.Join(callArgs, ", "))
-	wrapped := strat.WrapHandler(act.Method, returnType, serviceCallExpr)
+	wrapped := strat.WrapHandler(act.Method, returnType, serviceCallExpr, emitter.SuccessStatusForAction(act))
 
 	// Error helper closure (only needed when the strategy generates response code).
 	if wrapped != serviceCallExpr {
@@ -400,14 +400,6 @@ func axumMethod(method string) string {
 	default:
 		return "get"
 	}
-}
-
-// successStatusCode returns the Axum StatusCode constant for a successful response.
-func successStatusCode(act ast.Action) string {
-	if strings.ToUpper(act.Method) == "POST" {
-		return "StatusCode::CREATED"
-	}
-	return "StatusCode::OK"
 }
 
 // rustParamName converts a path param name to a Rust snake_case variable name.

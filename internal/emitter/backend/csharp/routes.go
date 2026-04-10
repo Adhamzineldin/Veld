@@ -80,7 +80,6 @@ func (e *CSharpEmitter) emitController(a ast.AST, mod ast.Module, outDir string,
 func writeCSharpAction(sb *strings.Builder, mod ast.Module, act ast.Action, enumNames map[string]bool, strat csstrategy.CSharpFrameworkStrategy) {
 	routePath := act.Path
 	pathParams := emitter.ExtractPathParams(routePath)
-	returnType := csReturnType(act, enumNames)
 
 	routeAttr := strat.RouteAnnotation(act.Method, routePath, mod.Prefix)
 	responseWrapper := strat.ResponseWrapper()
@@ -127,16 +126,20 @@ func writeCSharpAction(sb *strings.Builder, mod ast.Module, act ast.Action, enum
 
 	serviceCall := fmt.Sprintf("_service.%s(%s)", methodName, strings.Join(callArgs, ", "))
 
+	statusCode := emitter.SuccessStatusForAction(act)
 	switch {
-	case act.Method == "DELETE" && returnType == "":
+	case statusCode == 204:
 		sb.WriteString(fmt.Sprintf("            await %s;\n", serviceCall))
 		sb.WriteString(fmt.Sprintf("            %s\n", strat.NoContentResponse()))
-	case act.Method == "POST":
+	case statusCode == 200:
+		sb.WriteString(fmt.Sprintf("            var result = await %s;\n", serviceCall))
+		sb.WriteString(fmt.Sprintf("            %s\n", strat.OkResponse("result")))
+	case statusCode == 201:
 		sb.WriteString(fmt.Sprintf("            var result = await %s;\n", serviceCall))
 		sb.WriteString(fmt.Sprintf("            %s\n", strat.CreatedResponse("result")))
 	default:
 		sb.WriteString(fmt.Sprintf("            var result = await %s;\n", serviceCall))
-		sb.WriteString(fmt.Sprintf("            %s\n", strat.OkResponse("result")))
+		sb.WriteString(fmt.Sprintf("            %s\n", strat.StatusResponse(statusCode, "result")))
 	}
 
 	sb.WriteString("        }\n        catch (Exception e)\n        {\n")
