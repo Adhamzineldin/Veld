@@ -27,7 +27,7 @@
     "prefix": "model",
     "body": [
       "model ${1:ModelName} {",
-      "\t${2:fieldName}: ${3|string,int,float,bool,date,datetime,uuid|}",
+      "\t${2:fieldName}: ${3|string,int,long,float,decimal,bool,date,datetime,time,uuid,bytes,json,any|}",
       "}"
     ],
     "description": "Define a Veld model"
@@ -38,7 +38,7 @@
     "body": [
       "model ${1:ModelName} {",
       "\tdescription: \"${2:Model description}\"",
-      "\t${3:fieldName}: ${4|string,int,float,bool,date,datetime,uuid|}",
+      "\t${3:fieldName}: ${4|string,int,long,float,decimal,bool,date,datetime,time,uuid,bytes,json,any|}",
       "}"
     ],
     "description": "Define a Veld model with a description"
@@ -48,7 +48,7 @@
     "prefix": "modele",
     "body": [
       "model ${1:ChildModel} extends ${2:ParentModel} {",
-      "\t${3:extraField}: ${4|string,int,float,bool,date,datetime,uuid|}",
+      "\t${3:extraField}: ${4|string,int,long,float,decimal,bool,date,datetime,time,uuid,bytes,json,any|}",
       "}"
     ],
     "description": "Define a Veld model that extends another"
@@ -68,7 +68,7 @@
     "prefix": "constants",
     "body": [
       "constants ${1:GroupName} {",
-      "\t${2:CONSTANT_NAME}: ${3|string,int,float,bool,date,datetime,uuid,decimal|} = ${4:value}",
+      "\t${2:CONSTANT_NAME}: ${3|string,int,long,float,decimal,bool,date,datetime,time,uuid,bytes,json,any|} = ${4:value}",
       "}"
     ],
     "description": "Define a Veld constants group"
@@ -150,19 +150,19 @@
 
   "Optional Field": {
     "prefix": "field?",
-    "body": "${1:fieldName}?: ${2|string,int,float,bool,date,datetime,uuid|}",
+    "body": "${1:fieldName}?: ${2|string,int,long,float,decimal,bool,date,datetime,time,uuid,bytes,json,any|}",
     "description": "Define an optional model field"
   },
 
   "Array Field": {
     "prefix": "field[]",
-    "body": "${1:fieldName}: ${2|string,int,float,bool,date,datetime,uuid|}[]",
+    "body": "${1:fieldName}: ${2|string,int,long,float,decimal,bool,date,datetime,time,uuid,bytes,json,any|}[]",
     "description": "Define an array model field"
   },
 
   "Map Field": {
     "prefix": "fieldmap",
-    "body": "${1:fieldName}: Map<string, ${2|string,int,float,bool|}>",
+    "body": "${1:fieldName}: Map<string, ${2|string,int,long,float,decimal,bool,date,datetime,time,uuid,bytes,json,any|}>",
     "description": "Define a Map<string, V> model field"
   },
 
@@ -174,13 +174,13 @@
 
   "Field with @unique": {
     "prefix": "fieldunique",
-    "body": "${1:fieldName}: ${2|string,int,uuid|} @unique",
+    "body": "${1:fieldName}: ${2|string,int,long,uuid|} @unique",
     "description": "Define a field with unique constraint"
   },
 
   "Field with @index": {
     "prefix": "fieldindex",
-    "body": "${1:fieldName}: ${2|string,int,uuid|} @index",
+    "body": "${1:fieldName}: ${2|string,int,long,uuid|} @index",
     "description": "Define a field with an index hint"
   },
 

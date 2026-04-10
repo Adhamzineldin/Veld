@@ -150,7 +150,7 @@
     "primitive-type": {
       "comment": "Built-in scalar types",
       "name": "support.type.primitive.veld",
-      "match": "\\b(string|int|float|decimal|bool|date|datetime|uuid|bytes|json|any)\\b"
+      "match": "\\b(string|int|long|float|decimal|bool|date|datetime|time|uuid|bytes|json|any)\\b"
     },
 
     "generic-type": {
@@ -334,7 +334,7 @@
 
     "constant-field-definition": {
       "comment": "CONSTANT_NAME: type = value",
-      "match": "^\\s*([A-Z_][A-Za-z0-9_]*)\\s*(:)\\s*(string|int|float|decimal|bool|date|datetime|uuid)\\s*(=)\\s*(\"[^\"]*\"|\\-?\\d+\\.?\\d*|true|false)",
+      "match": "^\\s*([A-Z_][A-Za-z0-9_]*)\\s*(:)\\s*(string|int|long|float|decimal|bool|date|datetime|time|uuid|bytes|json|any)\\s*(=)\\s*(\"[^\"]*\"|\\-?\\d+\\.?\\d*|true|false)",
       "captures": {
         "1": { "name": "variable.other.constant.veld" },
         "2": { "name": "punctuation.separator.key-value.veld" },

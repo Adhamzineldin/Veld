@@ -38,11 +38,13 @@ func GetLanguageSpec() *VeldLanguageSpec {
 		BuiltinTypes: []string{
 			"string",
 			"int",
+			"long",
 			"float",
 			"decimal",
 			"bool",
 			"date",
 			"datetime",
+			"time",
 			"uuid",
 			"bytes",
 			"json",

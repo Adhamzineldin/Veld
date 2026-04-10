@@ -435,7 +435,7 @@ class VeldCompletionContributor : CompletionContributor() {
                 result.addElement(LookupElementBuilder.create("false")
                     .bold().withIcon(AllIcons.Nodes.Constant).withTypeText("boolean"))
             }
-            "string", "date", "datetime", "uuid", "decimal" -> {
+            "string", "date", "datetime", "time", "uuid", "decimal", "bytes" -> {
                 result.addElement(LookupElementBuilder.create("\"\"")
                     .withPresentableText("\"...\"")
                     .withIcon(AllIcons.Nodes.Constant).withTypeText("string value")
@@ -443,7 +443,7 @@ class VeldCompletionContributor : CompletionContributor() {
                         ctx.editor.caretModel.moveToOffset(ctx.tailOffset - 1)
                     })
             }
-            "int" -> {
+            "int", "long" -> {
                 result.addElement(LookupElementBuilder.create("0")
                     .withIcon(AllIcons.Nodes.Constant).withTypeText("integer"))
             }
