@@ -501,6 +501,141 @@ func CrossGroupTypeNames(group string, models []ast.Model, modelOwner, enumOwner
 	return result
 }
 
+// SharedSdkTypes holds model and enum definitions that are structurally
+// identical across two or more consumed services, and can therefore be
+// emitted once to sdk/shared/ instead of being duplicated per service.
+type SharedSdkTypes struct {
+	Models []ast.Model
+	Enums  []ast.Enum
+}
+
+// HasShared reports whether there are any shared types.
+func (s SharedSdkTypes) HasShared() bool { return len(s.Models) > 0 || len(s.Enums) > 0 }
+
+// ModelNames returns a name-keyed set for O(1) membership tests.
+func (s SharedSdkTypes) ModelNames() map[string]bool {
+	m := make(map[string]bool, len(s.Models))
+	for _, model := range s.Models {
+		m[model.Name] = true
+	}
+	return m
+}
+
+// EnumNames returns a name-keyed set for O(1) membership tests.
+func (s SharedSdkTypes) EnumNames() map[string]bool {
+	m := make(map[string]bool, len(s.Enums))
+	for _, en := range s.Enums {
+		m[en.Name] = true
+	}
+	return m
+}
+
+// DetectSharedSdkTypes finds models and enums that appear with identical
+// structure in two or more consumed services so they can be hoisted to a
+// single sdk/shared/ folder instead of being repeated in each service SDK.
+func DetectSharedSdkTypes(consumed []ConsumedServiceInfo) SharedSdkTypes {
+	var result SharedSdkTypes
+	if len(consumed) < 2 {
+		return result
+	}
+
+	type modelEntry struct {
+		m     ast.Model
+		count int
+	}
+	type enumEntry struct {
+		e     ast.Enum
+		count int
+	}
+
+	modelsSeen := make(map[string]*modelEntry)
+	enumsSeen := make(map[string]*enumEntry)
+
+	for _, c := range consumed {
+		visitedModel := make(map[string]bool)
+		for _, m := range c.AST.Models {
+			if visitedModel[m.Name] {
+				continue
+			}
+			visitedModel[m.Name] = true
+			if entry, exists := modelsSeen[m.Name]; exists {
+				if modelsStructurallyEqual(entry.m, m) {
+					entry.count++
+				}
+			} else {
+				modelsSeen[m.Name] = &modelEntry{m: m, count: 1}
+			}
+		}
+		visitedEnum := make(map[string]bool)
+		for _, en := range c.AST.Enums {
+			if visitedEnum[en.Name] {
+				continue
+			}
+			visitedEnum[en.Name] = true
+			if entry, exists := enumsSeen[en.Name]; exists {
+				if enumsStructurallyEqual(entry.e, en) {
+					entry.count++
+				}
+			} else {
+				enumsSeen[en.Name] = &enumEntry{e: en, count: 1}
+			}
+		}
+	}
+
+	// Collect shared types in stable order (first service that declares each name).
+	seenModel := make(map[string]bool)
+	seenEnum := make(map[string]bool)
+	for _, c := range consumed {
+		for _, m := range c.AST.Models {
+			if !seenModel[m.Name] {
+				if entry, ok := modelsSeen[m.Name]; ok && entry.count >= 2 {
+					seenModel[m.Name] = true
+					result.Models = append(result.Models, entry.m)
+				}
+			}
+		}
+		for _, en := range c.AST.Enums {
+			if !seenEnum[en.Name] {
+				if entry, ok := enumsSeen[en.Name]; ok && entry.count >= 2 {
+					seenEnum[en.Name] = true
+					result.Enums = append(result.Enums, entry.e)
+				}
+			}
+		}
+	}
+	return result
+}
+
+// modelsStructurallyEqual returns true when two models share the same name,
+// parent (extends), and identical field list (name, type, optional/array/map flags).
+func modelsStructurallyEqual(a, b ast.Model) bool {
+	if a.Name != b.Name || a.Extends != b.Extends || len(a.Fields) != len(b.Fields) {
+		return false
+	}
+	for i, fa := range a.Fields {
+		fb := b.Fields[i]
+		if fa.Name != fb.Name || fa.Type != fb.Type ||
+			fa.Optional != fb.Optional || fa.IsArray != fb.IsArray ||
+			fa.IsMap != fb.IsMap || fa.MapValueType != fb.MapValueType {
+			return false
+		}
+	}
+	return true
+}
+
+// enumsStructurallyEqual returns true when two enums have the same name and values.
+func enumsStructurallyEqual(a, b ast.Enum) bool {
+	if a.Name != b.Name || len(a.Values) != len(b.Values) {
+		return false
+	}
+	for i, va := range a.Values {
+		if va != b.Values[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // MergeASTs combines multiple service ASTs into one unified AST.
 // Used when the frontend workspace entry consumes multiple backend services
 // so the frontend SDK gets typed clients for every service in one import.
