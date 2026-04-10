@@ -51,7 +51,7 @@ func rustConstType(veldType string) string {
 	case "string", "uuid", "date", "datetime", "decimal":
 		return "&str"
 	case "int":
-		return "i64"
+		return "i32"
 	case "float":
 		return "f64"
 	case "bool":

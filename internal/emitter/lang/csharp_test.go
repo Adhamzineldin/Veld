@@ -11,7 +11,7 @@ func TestCSharpAdapterMapType_Builtins(t *testing.T) {
 	a := &lang.CSharpAdapter{}
 	cases := []struct{ veld, want string }{
 		{"string", "string"},
-		{"int", "long"},
+		{"int", "int"},
 		{"float", "double"},
 		{"bool", "bool"},
 		{"date", "DateTime"},

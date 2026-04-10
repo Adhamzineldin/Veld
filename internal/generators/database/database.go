@@ -114,7 +114,7 @@ func typeormColumnOpts(f ast.Field) string {
 	case "string", "uuid":
 		// default
 	case "int":
-		opts = append(opts, "type: 'bigint'")
+		opts = append(opts, "type: 'int'")
 	case "float":
 		opts = append(opts, "type: 'float'")
 	case "decimal":
@@ -220,7 +220,7 @@ func gormScalar(t string) string {
 	case "string", "uuid", "decimal":
 		return "string"
 	case "int":
-		return "int64"
+		return "int"
 	case "float":
 		return "float64"
 	case "bool":

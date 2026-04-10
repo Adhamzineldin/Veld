@@ -30,7 +30,7 @@ func (a *RustAdapter) MapType(veldType string) (string, []string, error) {
 
 	builtins := map[string]string{
 		"string":   "String",
-		"int":      "i64",
+		"int":      "i32",
 		"float":    "f64",
 		"decimal":  "String",
 		"bool":     "bool",

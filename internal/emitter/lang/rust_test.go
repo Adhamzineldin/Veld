@@ -17,7 +17,7 @@ func TestRustAdapterMapTypeBuiltins(t *testing.T) {
 	a := &RustAdapter{}
 	tests := map[string]string{
 		"string":   "String",
-		"int":      "i64",
+		"int":      "i32",
 		"float":    "f64",
 		"bool":     "bool",
 		"date":     "String",
@@ -53,8 +53,8 @@ func TestRustAdapterMapTypeMap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MapType(Map<string, int>) error: %v", err)
 	}
-	if rustType != "HashMap<String, i64>" {
-		t.Errorf("MapType(Map<string, int>) = %q, want %q", rustType, "HashMap<String, i64>")
+	if rustType != "HashMap<String, i32>" {
+		t.Errorf("MapType(Map<string, int>) = %q, want %q", rustType, "HashMap<String, i32>")
 	}
 }
 

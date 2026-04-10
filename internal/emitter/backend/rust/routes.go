@@ -361,7 +361,7 @@ func mapRustOutputType(e *RustEmitter, t string) string {
 	case "string", "uuid", "date", "datetime", "decimal":
 		return "String"
 	case "int":
-		return "i64"
+		return "i32"
 	case "float":
 		return "f64"
 	case "bool":

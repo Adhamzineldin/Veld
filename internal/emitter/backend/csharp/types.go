@@ -158,7 +158,7 @@ func veldScalarToCS(t string, _ map[string]bool) string {
 	case "date", "datetime":
 		return "DateTime"
 	case "int":
-		return "long"
+		return "int"
 	case "float":
 		return "double"
 	case "decimal":
