@@ -198,7 +198,7 @@
     "http-method-value": {
       "comment": "HTTP method constant values",
       "name": "constant.language.http-method.veld",
-      "match": "\\b(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\b"
+      "match": "\\b(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|WS)\\b"
     },
 
     "path-content": {
@@ -429,7 +429,7 @@
 
     "method-directive": {
       "comment": "method: GET",
-      "match": "^\\s*(method)\\s*(:)\\s*(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\b",
+      "match": "^\\s*(method)\\s*(:)\\s*(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|WS)\\b",
       "captures": {
         "1": { "name": "support.function.directive.veld" },
         "2": { "name": "punctuation.separator.key-value.veld" },
