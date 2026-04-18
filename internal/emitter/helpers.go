@@ -675,6 +675,30 @@ func enumsStructurallyEqual(a, b ast.Enum) bool {
 	return true
 }
 
+// ApplyTopLevelPrefix merges the AST's top-level `prefix` into every module's
+// prefix and clears the top-level field. This mirrors what the main generation
+// pipeline (runGenerate / runGenerateWithAST) does for a service's own output
+// and must be applied to any AST handed to downstream consumers — service
+// SDKs, frontend workspace merges, docs, OpenAPI — so the top-level prefix is
+// not silently dropped. Idempotent: a module prefix that already starts with
+// the top-level prefix is left untouched.
+func ApplyTopLevelPrefix(a ast.AST) ast.AST {
+	if a.Prefix == "" {
+		return a
+	}
+	out := a
+	out.Modules = make([]ast.Module, len(a.Modules))
+	for i, mod := range a.Modules {
+		m := mod
+		if !strings.HasPrefix(m.Prefix, a.Prefix) {
+			m.Prefix = a.Prefix + m.Prefix
+		}
+		out.Modules[i] = m
+	}
+	out.Prefix = ""
+	return out
+}
+
 // MergeASTs combines multiple service ASTs into one unified AST.
 // Used when the frontend workspace entry consumes multiple backend services
 // so the frontend SDK gets typed clients for every service in one import.

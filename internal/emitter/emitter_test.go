@@ -259,6 +259,43 @@ func TestMergeASTsEmpty(t *testing.T) {
 	}
 }
 
+func TestApplyTopLevelPrefix(t *testing.T) {
+	a := ast.AST{
+		Prefix: "/api/v1",
+		Modules: []ast.Module{
+			{Name: "IAM", Prefix: "/iam"},
+			{Name: "Bare"},
+		},
+	}
+	got := ApplyTopLevelPrefix(a)
+	if got.Prefix != "" {
+		t.Errorf("expected top-level prefix to be cleared, got %q", got.Prefix)
+	}
+	if got.Modules[0].Prefix != "/api/v1/iam" {
+		t.Errorf("expected /api/v1/iam, got %q", got.Modules[0].Prefix)
+	}
+	if got.Modules[1].Prefix != "/api/v1" {
+		t.Errorf("expected /api/v1, got %q", got.Modules[1].Prefix)
+	}
+	// Idempotent: running it again must not double-prefix.
+	again := ApplyTopLevelPrefix(got)
+	if again.Modules[0].Prefix != "/api/v1/iam" {
+		t.Errorf("idempotency broken: %q", again.Modules[0].Prefix)
+	}
+	// Caller's AST must not be mutated (defensive copy).
+	if a.Modules[0].Prefix != "/iam" {
+		t.Errorf("input AST was mutated: %q", a.Modules[0].Prefix)
+	}
+}
+
+func TestApplyTopLevelPrefixEmpty(t *testing.T) {
+	a := ast.AST{Modules: []ast.Module{{Name: "X", Prefix: "/x"}}}
+	got := ApplyTopLevelPrefix(a)
+	if got.Modules[0].Prefix != "/x" {
+		t.Errorf("no top-level prefix should leave module untouched, got %q", got.Modules[0].Prefix)
+	}
+}
+
 func TestSuccessStatusForAction(t *testing.T) {
 	tests := []struct {
 		name     string
