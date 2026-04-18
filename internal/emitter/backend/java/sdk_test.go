@@ -59,6 +59,22 @@ func TestEmitServiceSdk(t *testing.T) {
 		t.Error("missing getProfile method")
 	}
 
+	// ObjectMapper must register JavaTimeModule and disable date-as-timestamps
+	// so java.time.LocalDate / LocalDateTime fields round-trip correctly.
+	// Without this, Jackson serialises them as numeric arrays / throws on read.
+	if !strings.Contains(client, "import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;") {
+		t.Error("client missing JavaTimeModule import")
+	}
+	if !strings.Contains(client, "import com.fasterxml.jackson.databind.SerializationFeature;") {
+		t.Error("client missing SerializationFeature import")
+	}
+	if !strings.Contains(client, "registerModule(new JavaTimeModule())") {
+		t.Error("ObjectMapper not configured with JavaTimeModule")
+	}
+	if !strings.Contains(client, "disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)") {
+		t.Error("ObjectMapper not configured to write ISO-8601 dates")
+	}
+
 	// Models are now organised per-module: models/{moduleLower}/{Model}.java
 	// The IAM module owns User and LoginInput, so they land in models/iam/
 	typesPath := filepath.Join(tmp, "src", "main", "java", "maayn", "veld", "generated", "sdk", "iam", "models", "iam", "User.java")

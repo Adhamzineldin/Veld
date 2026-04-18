@@ -447,6 +447,8 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg, framew
 		sb.WriteString(fmt.Sprintf("import %s;\n", imp))
 	}
 	sb.WriteString("import com.fasterxml.jackson.databind.ObjectMapper;\n")
+	sb.WriteString("import com.fasterxml.jackson.databind.SerializationFeature;\n")
+	sb.WriteString("import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;\n")
 	if isSpring {
 		sb.WriteString("import org.springframework.beans.factory.annotation.Autowired;\n")
 		sb.WriteString("import org.springframework.beans.factory.annotation.Value;\n")
@@ -466,7 +468,12 @@ func emitJavaSdkClient(consumed emitter.ConsumedServiceInfo, sdkDir, pkg, framew
 	sb.WriteString("    private final String base;\n")
 	sb.WriteString("    private final HttpClient http;\n")
 	sb.WriteString("    private final Map<String, String> headers;\n")
-	sb.WriteString("    private final ObjectMapper mapper = new ObjectMapper();\n\n")
+	// ObjectMapper pre-configured for java.time.* types (LocalDate/LocalDateTime/Instant)
+	// emitted by Veld's date/datetime fields. Without JavaTimeModule, Jackson serialises
+	// them as numeric arrays or throws InvalidDefinitionException on round-trip.
+	sb.WriteString("    private final ObjectMapper mapper = new ObjectMapper()\n")
+	sb.WriteString("        .registerModule(new JavaTimeModule())\n")
+	sb.WriteString("        .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);\n\n")
 
 	// Public module namespace fields — iamClient.auth.login(req)
 	for _, mod := range a.Modules {
