@@ -1,5 +1,7 @@
 import "../models/user.veld"
 
+prefix: /v1
+
 module IAM {
   description: "Identity and Access Management — authentication and user profiles"
   prefix: /api/iam

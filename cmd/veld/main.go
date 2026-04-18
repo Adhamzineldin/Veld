@@ -207,11 +207,7 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 	}
 
 	// ── apply app-level prefix to module prefixes ────────────────────────
-	if emitAST.Prefix != "" {
-		for i := range emitAST.Modules {
-			emitAST.Modules[i].Prefix = emitAST.Prefix + emitAST.Modules[i].Prefix
-		}
-	}
+	emitAST = emitter.ApplyTopLevelPrefix(emitAST)
 
 	// ── ensure output dirs exist ─────────────────────────────────────────
 	// Emitters overwrite their own files (os.WriteFile). No directory wipe —
@@ -248,17 +244,10 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 		return nil, veldFiles, nil, err
 	}
 	if frontend != nil {
-		// Frontend SDK always gets the full AST (combined output).
-		// App prefix was already applied to emitAST.Modules; apply to `a` too
-		// since frontend uses the unfiltered AST.
-		frontendAST := a
-		if a.Prefix != "" {
-			for i := range frontendAST.Modules {
-				if !strings.HasPrefix(frontendAST.Modules[i].Prefix, a.Prefix) {
-					frontendAST.Modules[i].Prefix = a.Prefix + frontendAST.Modules[i].Prefix
-				}
-			}
-		}
+		// Frontend SDK always gets the full AST (combined output), with the
+		// top-level prefix merged into every module so the SDK URLs match
+		// what the backend emitter wires up.
+		frontendAST := emitter.ApplyTopLevelPrefix(a)
 		if err := frontend.Emit(frontendAST, rc.FrontendOut, opts); err != nil {
 			return nil, veldFiles, nil, fmt.Errorf("%s emitter: %w", rc.Frontend, err)
 		}
@@ -480,7 +469,7 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 				}
 				consumed = append(consumed, emitter.ConsumedServiceInfo{
 					Name:    depName,
-					AST:     dep.ast,
+					AST:     emitter.ApplyTopLevelPrefix(dep.ast),
 					BaseUrl: dep.rc.BaseUrl,
 				})
 			}
@@ -488,6 +477,7 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 		}
 
 		if isFrontendEntry && len(entryOpts.ConsumedServices) > 0 {
+			pe.ast = emitter.ApplyTopLevelPrefix(pe.ast)
 			mergedAST := emitter.MergeASTs(pe.ast, entryOpts.ConsumedServices)
 			pe.ast = mergedAST
 
@@ -548,12 +538,7 @@ func runGenerateWithAST(rc config.ResolvedConfig, a ast.AST, opts emitter.EmitOp
 		}
 	}
 
-	emitAST := a
-	if emitAST.Prefix != "" {
-		for i := range emitAST.Modules {
-			emitAST.Modules[i].Prefix = emitAST.Prefix + emitAST.Modules[i].Prefix
-		}
-	}
+	emitAST := emitter.ApplyTopLevelPrefix(a)
 
 	// Emit backend (types, routes, etc.).
 	backendOrTool, _, err := emitter.GetBackendOrTool(rc.Backend)
@@ -1295,7 +1280,7 @@ func newGenerateCmd() *cobra.Command {
 							}
 							consumed = append(consumed, emitter.ConsumedServiceInfo{
 								Name:    depName,
-								AST:     dep.ast,
+								AST:     emitter.ApplyTopLevelPrefix(dep.ast),
 								BaseUrl: dep.rc.BaseUrl,
 							})
 						}
@@ -1308,6 +1293,7 @@ func newGenerateCmd() *cobra.Command {
 					// Also build a per-module Services map so each module's SDK
 					// client points to the correct service URL.
 					if isFrontendEntry && len(entryOpts.ConsumedServices) > 0 {
+						pe.ast = emitter.ApplyTopLevelPrefix(pe.ast)
 						mergedAST := emitter.MergeASTs(pe.ast, entryOpts.ConsumedServices)
 						pe.ast = mergedAST
 
@@ -1491,11 +1477,7 @@ func computePreChanges(rc config.ResolvedConfig) []diff.Change {
 	// Apply app-level prefix to module prefixes so the comparison matches
 	// what was persisted in the lock file (runGenerate mutates module
 	// prefixes before SaveLock).
-	if a.Prefix != "" {
-		for i := range a.Modules {
-			a.Modules[i].Prefix = a.Prefix + a.Modules[i].Prefix
-		}
-	}
+	a = emitter.ApplyTopLevelPrefix(a)
 	return diff.Diff(oldAST, a)
 }
 
@@ -1982,6 +1964,7 @@ func newOpenAPICmd() *cobra.Command {
 				}
 				return fmt.Errorf("contract validation failed")
 			}
+			a = emitter.ApplyTopLevelPrefix(a)
 			spec := openapigen.BuildSpec(a)
 			data, _ := json.MarshalIndent(spec, "", "  ")
 			if outputFile != "" {
@@ -2079,6 +2062,7 @@ func newGraphQLCmd() *cobra.Command {
 				}
 				return fmt.Errorf("contract validation failed")
 			}
+			a = emitter.ApplyTopLevelPrefix(a)
 			sdl := graphqlgen.BuildSchema(a)
 			if outputFile != "" {
 				if err := os.WriteFile(outputFile, []byte(sdl), 0644); err != nil {
@@ -2242,6 +2226,7 @@ func newDiffCmd() *cobra.Command {
 				}
 				return fmt.Errorf("contract validation failed")
 			}
+			a = emitter.ApplyTopLevelPrefix(a)
 
 			opts := emitter.EmitOptions{BaseUrl: rc.BaseUrl}
 			backendOrTool, _, err := emitter.GetBackendOrTool(rc.Backend)
@@ -2411,14 +2396,7 @@ func newDocsCmd() *cobra.Command {
 						fmt.Fprintf(os.Stderr, yellow("⚠")+"  skipping %s: %v\n", entry.Name, err)
 						continue
 					}
-					// Apply prefix from the entry's veld file.
-					if entryAST.Prefix != "" {
-						for i := range entryAST.Modules {
-							if !strings.HasPrefix(entryAST.Modules[i].Prefix, entryAST.Prefix) {
-								entryAST.Modules[i].Prefix = entryAST.Prefix + entryAST.Modules[i].Prefix
-							}
-						}
-					}
+					entryAST = emitter.ApplyTopLevelPrefix(entryAST)
 					allConsumed = append(allConsumed, emitter.ConsumedServiceInfo{
 						Name:    entry.Name,
 						AST:     entryAST,
@@ -2451,7 +2429,7 @@ func newDocsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				a = parsed
+				a = emitter.ApplyTopLevelPrefix(parsed)
 			}
 
 			if errs := validator.Validate(a); len(errs) > 0 {
@@ -4060,6 +4038,7 @@ func newAgentsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			a = emitter.ApplyTopLevelPrefix(a)
 			content := docsgen.BuildAgentsMd(a, rc)
 			if outputFlag == "" {
 				fmt.Print(content)
