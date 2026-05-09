@@ -14,7 +14,14 @@ export type VeldClientConfig = {
 
 export function resolveBase(config?: VeldClientConfig | string): string {
   if (typeof config === 'string') return config;
-  return config?.baseUrl ?? (typeof process !== 'undefined' ? (process.env['VELD_API_URL'] ?? '') : '');
+  if (config?.baseUrl) return config.baseUrl;
+  // Browser-safe env lookup: avoids referencing 'process' directly so this
+  // file compiles in browser-only TS projects (Vite/Webpack/etc).
+  const g = globalThis as unknown as {
+    process?: { env?: Record<string, string | undefined> };
+    __VELD_API_URL__?: string;
+  };
+  return g.process?.env?.['VELD_API_URL'] ?? g.__VELD_API_URL__ ?? '';
 }
 `)
 }

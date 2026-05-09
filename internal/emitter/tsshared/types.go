@@ -44,6 +44,22 @@ func tsFieldName(name string, optional bool) string {
 	return fmt.Sprintf("'%s'", name)
 }
 
+// tsFieldNameNoBang is like tsFieldName but omits the definite-assignment
+// marker ('!'), for use when the property has an initializer (TS forbids
+// combining `!` with `=`).
+func tsFieldNameNoBang(name string, optional bool) string {
+	if isValidJSIdent(name) {
+		if optional {
+			return name + "?"
+		}
+		return name
+	}
+	if optional {
+		return fmt.Sprintf("'%s'?", name)
+	}
+	return fmt.Sprintf("'%s'", name)
+}
+
 // EmitTSTypes writes types/{module}.ts + types/index.ts into outDir.
 //
 // Types are "owned" by the first module that references them. Later modules
@@ -202,7 +218,8 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 				}
 				tsType := tshelpers.VeldFieldToTS(f)
 				if f.Default != "" {
-					sb.WriteString(fmt.Sprintf("  %s: %s = %s;\n", tsFieldName(f.Name, f.Optional), tsType, tsDefaultLiteral(f.Default, f.Type)))
+					// TS forbids both definite-assignment ('!') and an initializer.
+					sb.WriteString(fmt.Sprintf("  %s: %s = %s;\n", tsFieldNameNoBang(f.Name, f.Optional), tsType, tsDefaultLiteral(f.Default, f.Type)))
 				} else {
 					sb.WriteString(fmt.Sprintf("  %s: %s;\n", tsFieldName(f.Name, f.Optional), tsType))
 				}
@@ -229,7 +246,7 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 					sb.WriteString(fmt.Sprintf("  set%s(value: %s): void { this.%s = value; }\n", pascal, tsType, f.Name))
 				}
 			}
-			sb.WriteString(fmt.Sprintf("\n  toJSON(): Record<string, unknown> { return { ...this }; }\n"))
+			sb.WriteString(fmt.Sprintf("\n  toJSON(): Record<string, unknown> { return { ...this } as Record<string, unknown>; }\n"))
 			sb.WriteString(fmt.Sprintf("  static fromJSON(data: Record<string, unknown>): %s { return new %s(data as any); }\n", m.Name, m.Name))
 			sb.WriteString("}\n\n")
 		}
@@ -349,7 +366,7 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 				}
 				tsType := tshelpers.VeldFieldToTS(f)
 				if f.Default != "" {
-					csb.WriteString(fmt.Sprintf("  %s: %s = %s;\n", tsFieldName(f.Name, f.Optional), tsType, tsDefaultLiteral(f.Default, f.Type)))
+					csb.WriteString(fmt.Sprintf("  %s: %s = %s;\n", tsFieldNameNoBang(f.Name, f.Optional), tsType, tsDefaultLiteral(f.Default, f.Type)))
 				} else {
 					csb.WriteString(fmt.Sprintf("  %s: %s;\n", tsFieldName(f.Name, f.Optional), tsType))
 				}
@@ -374,7 +391,7 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 					csb.WriteString(fmt.Sprintf("  set%s(value: %s): void { this.%s = value; }\n", pascal, tsType, f.Name))
 				}
 			}
-			csb.WriteString(fmt.Sprintf("\n  toJSON(): Record<string, unknown> { return { ...this }; }\n"))
+			csb.WriteString(fmt.Sprintf("\n  toJSON(): Record<string, unknown> { return { ...this } as Record<string, unknown>; }\n"))
 			csb.WriteString(fmt.Sprintf("  static fromJSON(data: Record<string, unknown>): %s { return new %s(data as any); }\n", m.Name, m.Name))
 			csb.WriteString("}\n\n")
 		}
