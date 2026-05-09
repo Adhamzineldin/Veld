@@ -27,14 +27,14 @@ func TestValidateWorkspaceConsumes_UnknownService(t *testing.T) {
 	}
 }
 
-func TestValidateWorkspaceConsumes_CircularDependency(t *testing.T) {
+func TestValidateWorkspaceConsumes_CircularDependencyAllowed(t *testing.T) {
 	entries := []config.WorkspaceEntry{
 		{Name: "a", Consumes: []string{"b"}},
 		{Name: "b", Consumes: []string{"a"}},
 	}
 	errs, _ := ValidateWorkspaceConsumes(entries)
-	if len(errs) == 0 {
-		t.Fatal("expected error for circular dependency")
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
 	}
 }
 
@@ -67,14 +67,14 @@ func TestValidateWorkspaceConsumes_NoBaseUrlWarning(t *testing.T) {
 	}
 }
 
-func TestValidateWorkspaceConsumes_TransitiveCircle(t *testing.T) {
+func TestValidateWorkspaceConsumes_TransitiveCircleAllowed(t *testing.T) {
 	entries := []config.WorkspaceEntry{
 		{Name: "a", Consumes: []string{"b"}},
 		{Name: "b", Consumes: []string{"c"}},
 		{Name: "c", Consumes: []string{"a"}},
 	}
 	errs, _ := ValidateWorkspaceConsumes(entries)
-	if len(errs) == 0 {
-		t.Fatal("expected error for transitive circular dependency a→b→c→a")
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
 	}
 }
