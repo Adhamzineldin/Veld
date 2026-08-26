@@ -35,6 +35,37 @@ jobs:
       - name: Test
         run: go test ./... -race -count=1
 
+  drift:
+    name: Generated files up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      # The plugin language specs are generated from internal/language/constants.go.
+      # Editing them by hand silently desyncs the two editors from the lexer.
+      - name: Regenerate plugin language specs
+        run: go run ./cmd/generate-language
+
+      # The canonical config schema is copied into both plugins by this script.
+      - name: Resync editor config schemas
+        run: bash scripts/sync-schema.sh
+
+      - name: Fail if anything changed
+        run: |
+          if ! git diff --quiet; then
+            echo "::error::Generated files are out of date. Run these locally and commit the result:"
+            echo "  go run ./cmd/generate-language"
+            echo "  bash scripts/sync-schema.sh"
+            git --no-pager diff --stat
+            exit 1
+          fi
+          echo "✓ All generated files are up to date"
+
   build-check:
     name: Build (${{ matrix.goos }}-${{ matrix.goarch }})
     runs-on: ubuntu-latest
