@@ -59,6 +59,9 @@ export const VELD_SPEC = {
   builtinTypes: [` + formatStringArray(spec.BuiltinTypes) + `],
   directives: [` + formatStringArray(spec.Directives) + `],
   specialTypes: [` + formatStringArray(spec.SpecialTypes) + `],
+  annotations: [` + formatStringArray(spec.Annotations) + `],
+  configKeys: {
+` + formatConfigKeysTS(spec.ConfigKeys) + `  },
 };
 
 export const KEYWORDS = new Set(VELD_SPEC.keywords);
@@ -66,6 +69,8 @@ export const HTTP_METHODS = new Set(VELD_SPEC.httpMethods);
 export const BUILTIN_TYPES = new Set(VELD_SPEC.builtinTypes);
 export const DIRECTIVES = new Set(VELD_SPEC.directives);
 export const SPECIAL_TYPES = new Set(VELD_SPEC.specialTypes);
+export const ANNOTATIONS = new Set(VELD_SPEC.annotations);
+export const CONFIG_KEYS = VELD_SPEC.configKeys;
 `
 
 	outputPath := filepath.Join("editors", "vscode", "src", "veld-language-spec.ts")
@@ -96,7 +101,11 @@ object VeldLanguageSpec {
     val BUILTIN_TYPES = setOf(` + formatStringArrayKotlin(spec.BuiltinTypes) + `)
     val DIRECTIVES = setOf(` + formatStringArrayKotlin(spec.Directives) + `)
     val SPECIAL_TYPES = setOf(` + formatStringArrayKotlin(spec.SpecialTypes) + `)
-    
+    val KNOWN_ANNOTATIONS = setOf(` + formatStringArrayKotlin(spec.Annotations) + `)
+
+    val CONFIG_KEYS = mapOf(
+` + formatConfigKeysKotlin(spec.ConfigKeys) + `    )
+
     fun isKeyword(word: String) = KEYWORDS.contains(word)
     fun isHttpMethod(word: String) = HTTP_METHODS.contains(word)
     fun isBuiltinType(word: String) = BUILTIN_TYPES.contains(word)
@@ -115,6 +124,43 @@ object VeldLanguageSpec {
 	fmt.Printf("✅ Generated %s\n", outputPath)
 }
 
+// formatConfigKeysTS renders config keys as TypeScript object entries.
+func formatConfigKeysTS(keys []language.ConfigKey) string {
+	var b strings.Builder
+	for _, k := range keys {
+		b.WriteString(fmt.Sprintf("    %-20s %s,\n", `"`+k.Key+`":`, `"`+escapeQuotes(k.Description)+`"`))
+	}
+	return b.String()
+}
+
+// formatConfigKeysKotlin renders config keys as Kotlin mapOf entries.
+func formatConfigKeysKotlin(keys []language.ConfigKey) string {
+	var b strings.Builder
+	for i, k := range keys {
+		comma := ","
+		if i == len(keys)-1 {
+			comma = ""
+		}
+		b.WriteString(fmt.Sprintf("        %-22s to %s%s\n",
+			`"`+kotlinEscape(k.Key)+`"`, `"`+kotlinEscape(k.Description)+`"`, comma))
+	}
+	return b.String()
+}
+
+func escapeQuotes(s string) string {
+	return strings.ReplaceAll(s, `"`, `\"`)
+}
+
+// kotlinEscape escapes a Go string for a Kotlin double-quoted literal.
+// Kotlin treats `$` as string-template interpolation, so a literal `$`
+// (e.g. the "$schema" config key) must be backslash-escaped or the
+// generated plugin source will not compile.
+func kotlinEscape(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return strings.ReplaceAll(s, `$`, `\$`)
+}
+
 func formatStringArray(arr []string) string {
 	var quoted []string
 	for _, s := range arr {
@@ -126,7 +172,7 @@ func formatStringArray(arr []string) string {
 func formatStringArrayKotlin(arr []string) string {
 	var quoted []string
 	for _, s := range arr {
-		quoted = append(quoted, `"`+s+`"`)
+		quoted = append(quoted, `"`+kotlinEscape(s)+`"`)
 	}
 	return strings.Join(quoted, ", ")
 }
