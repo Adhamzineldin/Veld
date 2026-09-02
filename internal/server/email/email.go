@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/smtp"
+	"strconv"
 	"strings"
 )
 
@@ -58,7 +59,8 @@ func Send(cfg Config, to, subject, htmlBody string) error {
 	if port == 0 {
 		port = 587
 	}
-	addr := fmt.Sprintf("%s:%d", cfg.Host, port)
+	// net.JoinHostPort brackets IPv6 literals correctly; fmt.Sprintf("%s:%d") does not.
+	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(port))
 	log.Printf("[smtp] connecting to %s (from=%s, to=%s, subject=%q)", addr, cfg.From, to, subject)
 
 	msg := strings.Join([]string{

@@ -1,0 +1,49 @@
+# Normalise line endings across the team.
+#
+# Without this, contributors on Windows and Unix produce spurious whole-file
+# diffs, and `gofmt -l` reports every Go file as unformatted on Windows.
+# Text files are stored as LF in git and checked out natively.
+
+* text=auto
+
+# Source — always LF in the repository
+*.go      text eol=lf
+*.ts      text eol=lf
+*.js      text eol=lf
+*.kt      text eol=lf
+*.java    text eol=lf
+*.py      text eol=lf
+*.rs      text eol=lf
+*.php     text eol=lf
+*.cs      text eol=lf
+*.veld    text eol=lf
+*.json    text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.md      text eol=lf
+*.sh      text eol=lf
+*.gradle  text eol=lf
+
+# Scripts that must stay LF to be executable
+gradlew   text eol=lf
+
+# Windows-native files
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+gradlew.bat text eol=crlf
+
+# Binary — never touch
+*.png     binary
+*.jpg     binary
+*.svg     text eol=lf
+*.jar     binary
+*.vsix    binary
+*.exe     binary
+*.docx    binary
+
+# Generated files — collapse in PR review, and mark so diffs are not noise.
+# Regenerate with: go run ./cmd/generate-language
+editors/vscode/src/veld-language-spec.ts                                  linguist-generated=true
+editors/jetbrains/src/main/kotlin/dev/veld/jetbrains/VeldLanguageSpec.kt   linguist-generated=true
+editors/vscode/veld-config.schema.json                                    linguist-generated=true
+editors/jetbrains/src/main/resources/schemas/veld-config.schema.json      linguist-generated=true

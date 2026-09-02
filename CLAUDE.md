@@ -109,20 +109,46 @@ The pipeline is strictly linear — **only AST JSON passes between stages**:
 | LSP | `internal/lsp/` | Language Server Protocol (stdin/stdout) |
 | Docs gen | `internal/docsgen/` | API documentation generator |
 | GraphQL gen | `internal/graphqlgen/` | GraphQL SDL export |
-| OpenAPI gen | `internal/openapigen/` | OpenAPI 3.0 export |
-| Schema gen | `internal/schema/` | Database schema export |
+| OpenAPI gen | `internal/generators/openapi/` | OpenAPI 3.0 — single implementation, used by both `veld openapi` and `tools.openapi` |
+| Schema gen | `internal/schema/` | SQL + Prisma builders (`BuildSQL`, `BuildPrisma`) — reused by the database generator |
 | Setup | `internal/setup/` | tsconfig/paths auto-configuration |
 | Registry client | `internal/registry/` | credentials.go, client.go, tarball.go (pack/unpack/verify) |
 | Registry server | `internal/server/` | PostgreSQL-backed registry: auth, packages, orgs, SMTP, SPA web UI |
 | Cache | `internal/cache/cache.go` | File mtime tracking for incremental builds |
-| CLI | `cmd/veld/main.go` | Single binary — all 26 commands including `veld serve` |
+| Errors | `internal/errors/` | Structured, typed pipeline errors (file/line context) — every stage returns these |
+| Language spec | `internal/language/` | **Single source of truth** for keywords, HTTP methods, builtin types, annotations |
+| Mock | `internal/mock/` | Mock data / mock server support |
+| Codegen writer | `internal/emitter/codegen/` | Shared buffered source writer used by emitters |
+| Lang helpers | `internal/emitter/lang/` | Per-language type-mapping helpers (go, java, csharp, php, rust) |
+| CLI | `cmd/veld/main.go` | Main binary — all commands including `veld serve` |
+| Language generator | `cmd/generate-language/` | Regenerates plugin language specs from `internal/language/` |
 
 **Key isolation rules:**
 - Parser and emitters are completely independent. No emitter may import lexer/parser packages.
 - Emitters self-register via `init()`. Adding a new emitter = new package + one blank import in `main.go`.
 - Config resolution is decoupled from Cobra (uses `FlagOverrides` struct, not `*cobra.Command`).
 - Emitters receive `EmitOptions` (BaseUrl, DryRun) — no direct config dependency.
-- There is **one binary**: `cmd/veld/`. No separate registry binary exists anymore.
+- There are **two binaries**: `cmd/veld/` (the CLI, including `veld serve`) and
+  `cmd/generate-language/` (a build-time code generator, not shipped to users).
+  No separate registry binary exists.
+
+### Generated-from-source files — never edit by hand
+
+`cmd/generate-language` reads `internal/language/constants.go` and writes:
+
+| Generated file | Consumer |
+|----------------|----------|
+| `editors/vscode/src/veld-language-spec.ts` | VS Code extension |
+| `editors/jetbrains/src/main/kotlin/dev/veld/jetbrains/VeldLanguageSpec.kt` | JetBrains plugin |
+| `veld-language.json` | tooling / config |
+
+Regenerate after changing any language constant:
+
+```bash
+go run ./cmd/generate-language
+```
+
+CI fails if these files differ from a fresh generation (see `.github/workflows/ci.yml`).
 
 ## Project Structure (veld init output)
 
@@ -510,11 +536,15 @@ Generated `package.json` enables `@veld/generated` path alias. Add to `tsconfig.
 ```
 module github.com/Adhamzineldin/Veld
 
+go 1.22
+
 require (
+    github.com/lib/pq               // PostgreSQL driver (registry server)
     github.com/spf13/cobra          // CLI framework
     golang.org/x/crypto             // bcrypt for password hashing
-    modernc.org/sqlite              // pure-Go SQLite (fallback/testing)
 )
 ```
 
 PostgreSQL is the registry server's database backend (DSN required for `veld serve`).
+`github.com/lib/pq` is the driver. There is **no** SQLite dependency — the registry
+requires PostgreSQL.

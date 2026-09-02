@@ -93,6 +93,9 @@ func buildPaths(a ast.AST) map[string]interface{} {
 			if mod.Description != "" {
 				op["description"] = mod.Description
 			}
+			if act.Deprecated != "" {
+				op["deprecated"] = true
+			}
 
 			// Path parameters
 			var params []map[string]interface{}
@@ -113,6 +116,23 @@ func buildPaths(a ast.AST) map[string]interface{} {
 							params = append(params, map[string]interface{}{
 								"name":     f.Name,
 								"in":       "query",
+								"required": !f.Optional,
+								"schema":   oaFieldSchema(f),
+							})
+						}
+						break
+					}
+				}
+			}
+
+			// Header parameters from headers model
+			if act.Headers != "" {
+				for _, m := range a.Models {
+					if m.Name == act.Headers {
+						for _, f := range m.Fields {
+							params = append(params, map[string]interface{}{
+								"name":     f.Name,
+								"in":       "header",
 								"required": !f.Optional,
 								"schema":   oaFieldSchema(f),
 							})
@@ -170,6 +190,16 @@ func buildPaths(a ast.AST) map[string]interface{} {
 					},
 				},
 			}
+			// Auth failures are only possible when the action is guarded.
+			if len(act.Middleware) > 0 {
+				responses["401"] = map[string]interface{}{"description": "Unauthorized"}
+				responses["403"] = map[string]interface{}{"description": "Forbidden"}
+			}
+			// A missing resource is only addressable when the path is parameterised.
+			if len(pathParams) > 0 {
+				responses["404"] = map[string]interface{}{"description": "Not Found"}
+			}
+
 			responses["500"] = map[string]interface{}{
 				"description": "Internal Server Error",
 				"content": map[string]interface{}{
@@ -260,19 +290,42 @@ func buildSchemas(a ast.AST) map[string]interface{} {
 }
 
 func oaFieldSchema(f ast.Field) map[string]interface{} {
-	if f.IsMap {
-		return map[string]interface{}{
+	var schema map[string]interface{}
+	switch {
+	case f.IsMap:
+		schema = map[string]interface{}{
 			"type":                 "object",
 			"additionalProperties": oaTypeSchema(f.MapValueType),
 		}
-	}
-	if f.IsArray {
-		return map[string]interface{}{
+	case f.IsArray:
+		schema = map[string]interface{}{
 			"type":  "array",
 			"items": oaTypeSchema(f.Type),
 		}
+	default:
+		schema = oaTypeSchema(f.Type)
 	}
-	return oaTypeSchema(f.Type)
+	return withFieldMetadata(schema, f)
+}
+
+// withFieldMetadata attaches default/example/deprecated to a field schema.
+//
+// A $ref is not annotatable in OpenAPI 3.0 — sibling keys next to $ref are
+// ignored by validators — so metadata is skipped for reference schemas.
+func withFieldMetadata(schema map[string]interface{}, f ast.Field) map[string]interface{} {
+	if _, isRef := schema["$ref"]; isRef {
+		return schema
+	}
+	if f.Default != "" {
+		schema["default"] = f.Default
+	}
+	if f.Example != "" {
+		schema["example"] = f.Example
+	}
+	if f.Deprecated != "" {
+		schema["deprecated"] = true
+	}
+	return schema
 }
 
 func oaTypeSchema(t string) map[string]interface{} {
