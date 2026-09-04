@@ -157,13 +157,6 @@ func CollectUsedTypes(a ast.AST, mod ast.Module) []string {
 				result = append(result, name)
 			}
 		}
-		// Error models referenced in the errors list
-		for _, errName := range act.Errors {
-			if errName != "" && !seen[errName] && !IsPrimitive(errName) {
-				seen[errName] = true
-				result = append(result, errName)
-			}
-		}
 	}
 
 	// Transitive model references.
