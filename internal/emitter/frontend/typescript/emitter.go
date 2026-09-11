@@ -114,7 +114,9 @@ func emitModuleApi(a ast.AST, mod ast.Module, dir string, opts emitter.EmitOptio
 
 	hasQuery := false
 	for _, act := range mod.Actions {
-		if act.Query != "" {
+		// A GET action with `input` also needs buildQueryString — input is sent
+		// as query-string params since GET requests cannot carry a body.
+		if act.Query != "" || (act.Input != "" && strings.ToUpper(act.Method) == "GET") {
 			hasQuery = true
 			break
 		}

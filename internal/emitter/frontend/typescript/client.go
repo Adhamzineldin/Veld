@@ -162,8 +162,18 @@ func writeActionMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	camelName := emitter.ToCamelCase(act.Name)
 
 	if method == "GET" {
+		// GET requests cannot carry a body — the Fetch spec throws on GET/HEAD
+		// with a non-null body — so `input` is sent as query-string params
+		// instead. The generated backend route reads it from req.query to match.
+		getQueryAppend := queryAppend
+		switch {
+		case act.Input != "" && act.Query != "":
+			getQueryAppend = " + buildQueryString({ ...(query as Record<string, unknown>), ...(input as unknown as Record<string, unknown>) })"
+		case act.Input != "":
+			getQueryAppend = " + buildQueryString(input as unknown as Record<string, unknown>)"
+		}
 		sb.WriteString(fmt.Sprintf("  %s(%s): Promise<%s> {\n", camelName, sig, outputType))
-		sb.WriteString(fmt.Sprintf("    return this.request('GET', %s%s, undefined%s);\n", urlExpr, queryAppend, headersArg))
+		sb.WriteString(fmt.Sprintf("    return this.request('GET', %s%s, undefined%s);\n", urlExpr, getQueryAppend, headersArg))
 		sb.WriteString("  }\n")
 	} else {
 		bodyArg := "input"

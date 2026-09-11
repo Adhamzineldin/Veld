@@ -131,7 +131,13 @@ func writeRouteHandler(sb *strings.Builder, a ast.AST, mod ast.Module, act ast.A
 	}
 
 	if act.Input != "" {
-		if opts.Validate {
+		if method == "get" {
+			// GET requests cannot carry a body (the Fetch spec forbids it), so
+			// the generated client sends `input` as query-string params instead.
+			// Passed raw, same as `query:` fields — Zod validation would reject
+			// non-string field types since query values are always strings.
+			callArgs = append(callArgs, "req.query")
+		} else if opts.Validate {
 			// Parse and validate the request body; throws VeldValidationError (400) on failure.
 			sb.WriteString(fmt.Sprintf("      const body = parse%s(req.body);\n", act.Input))
 			callArgs = append(callArgs, "body")
