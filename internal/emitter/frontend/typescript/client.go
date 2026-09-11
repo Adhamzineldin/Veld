@@ -58,7 +58,7 @@ func writeModuleClass(sb *strings.Builder, a ast.AST, mod ast.Module, defaultBas
 	sb.WriteString("      headers: { 'Content-Type': 'application/json', ...this.hdrs, ...extraHeaders },\n")
 	sb.WriteString("      body: body !== undefined ? JSON.stringify(body) : undefined,\n")
 	sb.WriteString("    });\n")
-	sb.WriteString("    if (!res.ok) throw new VeldApiError(res.status, await res.text());\n")
+	sb.WriteString("    if (!res.ok) throw await parseErrorResponse(res);\n")
 	sb.WriteString("    if (res.status === 204) return undefined as T;\n")
 	sb.WriteString("    return res.json() as Promise<T>;\n")
 	sb.WriteString("  }\n")

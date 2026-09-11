@@ -55,7 +55,7 @@ export function isErrorCode(err: unknown, code: string): err is VeldApiError {
   return err instanceof VeldApiError && err.code === code;
 }
 
-async function parseErrorResponse(res: Response): Promise<VeldApiError> {
+export async function parseErrorResponse(res: Response): Promise<VeldApiError> {
   const text = await res.text();
   try {
     const json = JSON.parse(text);
