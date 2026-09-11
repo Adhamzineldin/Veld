@@ -1,0 +1,314 @@
+.wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.svg {
+  width: 100%;
+  max-width: 468px;
+  height: auto;
+  overflow: visible;
+}
+
+/* ---------- sphere ---------- */
+
+.sphere {
+  animation: float 9s ease-in-out infinite;
+  transform-origin: 280px 285px;
+}
+
+.echo,
+.echo2 {
+  fill: none;
+  stroke: rgba(120, 180, 255, 0.5);
+  stroke-width: 1.2;
+  transform-origin: 280px 285px;
+  animation: echo 4s ease-out infinite;
+}
+
+.echo2 {
+  animation-delay: 2s;
+}
+
+.coreGlyph {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 19px;
+  font-weight: 600;
+  fill: rgba(255, 255, 255, 0.92);
+  letter-spacing: 0.04em;
+}
+
+.halo {
+  animation: breathe 7s ease-in-out infinite;
+  transform-origin: 280px 285px;
+}
+
+/* ---------- orbits ---------- */
+
+.dashRing,
+.dashRingFine {
+  fill: none;
+  stroke: rgba(120, 150, 230, 0.22);
+  stroke-width: 1;
+  stroke-dasharray: 2 10;
+  transform-origin: 280px 285px;
+  animation: spin 90s linear infinite;
+}
+
+.dashRingFine {
+  stroke: rgba(120, 150, 230, 0.14);
+  stroke-dasharray: 1 6;
+  animation-duration: 60s;
+  animation-direction: reverse;
+}
+
+.spinSlow,
+.spinMed,
+.spinFront {
+  transform-origin: 280px 285px;
+}
+
+.spinSlow {
+  animation: spin 26s linear infinite;
+}
+
+.spinMed {
+  animation: spin 34s linear infinite reverse;
+}
+
+.spinFront {
+  animation: spin 20s linear infinite;
+}
+
+/* ---------- connectors ---------- */
+
+.link {
+  fill: none;
+  stroke: rgba(125, 155, 225, 0.35);
+  stroke-width: 1.2;
+  transition: stroke 0.5s ease, stroke-width 0.5s ease, filter 0.5s ease;
+}
+
+.linkActive {
+  stroke: rgba(140, 200, 255, 0.95);
+  stroke-width: 1.8;
+  filter: drop-shadow(0 0 6px rgba(77, 141, 255, 0.8));
+}
+
+/* ---------- nodes ---------- */
+
+.nodeBox {
+  fill: rgba(10, 16, 44, 0.85);
+  stroke: rgba(125, 155, 225, 0.4);
+  stroke-width: 1.2;
+  transition: stroke 0.45s ease, fill 0.45s ease, filter 0.45s ease;
+}
+
+.nodeGlyph {
+  font-size: 16px;
+  fill: rgba(190, 210, 255, 0.75);
+  transition: fill 0.45s ease;
+}
+
+.nodeLabel {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  fill: rgba(175, 195, 240, 0.75);
+  transition: fill 0.45s ease;
+}
+
+.nodeSub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  fill: rgba(130, 150, 200, 0.6);
+}
+
+.nodeActive .nodeBox {
+  stroke: var(--node-accent);
+  fill: rgba(40, 70, 150, 0.35);
+  filter: drop-shadow(0 0 10px var(--node-accent));
+}
+
+.nodeActive .nodeGlyph {
+  fill: #fff;
+}
+
+.nodeActive .nodeLabel {
+  fill: #eaf1ff;
+}
+
+/* ---------- decorative telemetry ---------- */
+
+.meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.24em;
+  fill: rgba(125, 148, 200, 0.5);
+}
+
+.dot {
+  fill: rgba(140, 190, 255, 0.8);
+  animation: blink 3s ease-in-out infinite;
+}
+
+/* ---------- caption ---------- */
+
+.caption {
+  margin-top: -6px;
+  width: 100%;
+  max-width: 412px;
+  background: rgba(10, 15, 40, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 18px;
+  backdrop-filter: blur(10px);
+}
+
+.steps {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.stepDot {
+  flex: 1;
+  height: 3px;
+  border: none;
+  padding: 0;
+  border-radius: 2px;
+  background: rgba(125, 155, 225, 0.25);
+  cursor: pointer;
+  transition: background 0.4s ease, box-shadow 0.4s ease;
+}
+
+.stepDotActive {
+  background: linear-gradient(90deg, var(--cyan), var(--violet));
+  box-shadow: 0 0 10px var(--glow-blue);
+}
+
+.captionBody {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  animation: fadeUp 0.5s ease both;
+}
+
+.captionStep {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--cyan);
+  padding-top: 2px;
+}
+
+.captionTitle {
+  display: block;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+}
+
+.captionText {
+  margin-top: 2px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--fg2);
+}
+
+/* ---------- keyframes ---------- */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes echo {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  70% {
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.32);
+    opacity: 0;
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .caption {
+    max-width: 520px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sphere,
+  .halo,
+  .echo,
+  .echo2,
+  .dashRing,
+  .dashRingFine,
+  .spinSlow,
+  .spinMed,
+  .spinFront,
+  .dot,
+  .captionBody {
+    animation: none !important;
+  }
+
+  .pulseGroup {
+    display: none;
+  }
+}
