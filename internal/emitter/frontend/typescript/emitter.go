@@ -175,7 +175,7 @@ func emitModuleApi(a ast.AST, mod ast.Module, dir string, opts emitter.EmitOptio
 		defaultBase = mod.BaseUrl
 	}
 
-	writeModuleClass(&sb, a, mod, defaultBase, false)
+	writeModuleClass(&sb, mod, defaultBase, false)
 
 	// Also emit the legacy object-style export for backward compat.
 	// e.g. export const authApi = new AuthClient();
@@ -306,15 +306,7 @@ func emitClientErrorsBarrel(a ast.AST, dir string) error {
 			} else if len(unique) > 0 {
 				// Conflicts detected — split into type-only and value exports to
 				// satisfy isolatedModules (TS1205).
-				var typeNames, valueNames []string
-				for _, name := range unique {
-					if strings.HasSuffix(name, "ErrorCode") ||
-						(strings.HasSuffix(name, "Error") && !strings.HasSuffix(name, "Errors")) {
-						typeNames = append(typeNames, name)
-					} else {
-						valueNames = append(valueNames, name)
-					}
-				}
+				typeNames, valueNames := tsshared.SplitTypeValueExports(unique)
 				if len(typeNames) > 0 {
 					sb.WriteString(fmt.Sprintf("export type { %s } from '../errors/%s.errors';\n",
 						strings.Join(typeNames, ", "), moduleLower))

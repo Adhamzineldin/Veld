@@ -47,7 +47,7 @@ func emitServerClient(a ast.AST, outDir string, opts emitter.EmitOptions) error 
 		if mod.BaseUrl != "" && defaultBase == "" {
 			defaultBase = mod.BaseUrl
 		}
-		writeModuleClass(&sb, a, mod, defaultBase, true /* serverSdk */)
+		writeModuleClass(&sb, mod, defaultBase, true /* serverSdk */)
 		sb.WriteString("\n")
 	}
 

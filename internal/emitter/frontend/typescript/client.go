@@ -11,18 +11,8 @@ import (
 
 // writeModuleClass writes a full TypeScript class for a module, e.g. AuthClient.
 // defaultBase is the per-module base URL fallback (may be empty).
-func writeModuleClass(sb *strings.Builder, a ast.AST, mod ast.Module, defaultBase string, serverSdk bool) {
+func writeModuleClass(sb *strings.Builder, mod ast.Module, defaultBase string, serverSdk bool) {
 	className := mod.Name + "Client"
-
-	usedTypes := emitter.CollectUsedTypes(a, mod)
-
-	hasQuery := false
-	for _, act := range mod.Actions {
-		if act.Query != "" {
-			hasQuery = true
-			break
-		}
-	}
 
 	// Imports line (used in per-module files; for the bundled api.ts we skip this).
 	// The caller decides whether to write imports; this function only writes the class body.
@@ -62,9 +52,6 @@ func writeModuleClass(sb *strings.Builder, a ast.AST, mod ast.Module, defaultBas
 	sb.WriteString("    if (res.status === 204) return undefined as T;\n")
 	sb.WriteString("    return res.json() as Promise<T>;\n")
 	sb.WriteString("  }\n")
-
-	_ = usedTypes // types are imported at file level by the caller
-	_ = hasQuery  // used by writeActionMethod
 
 	for _, act := range mod.Actions {
 		sb.WriteString("\n")
