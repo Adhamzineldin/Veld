@@ -1,0 +1,64 @@
+%% D5 - Registry entity-relationship model. CURRENT schema from internal/server/db/db.go:49-120; PROPOSED additions marked (P).
+%% Purpose: ground the authorization and immutability discussion in the real tables.
+%% Owner: T3 (content), D1 (drawing). Update trigger: any migration.
+erDiagram
+  USERS {
+    text id PK
+    text email UK
+    text username UK
+    text password_hash
+    bool email_verified
+    text totp_secret
+  }
+  ORGS {
+    text id PK
+    text name UK
+  }
+  ORG_MEMBERS {
+    text org_id PK, FK
+    text user_id PK, FK
+    text role
+  }
+  PACKAGES {
+    text id PK
+    text org_id FK
+    text name
+    text visibility
+    text created_by FK
+  }
+  PACKAGE_VERSIONS {
+    text id PK
+    text package_id FK
+    text version
+    text sha256
+    text storage_key
+    bool deprecated
+    text published_by FK
+  }
+  TOKENS {
+    text id PK
+    text user_id FK
+    text org_id FK
+    text token_hash UK
+    text scopes
+    timestamp expires_at
+  }
+  EMAIL_VERIFICATION_TOKENS {
+    text token PK
+    text user_id FK
+  }
+  AUDIT_EVENTS_P {
+    text id PK
+    text actor_id FK
+    text action
+    text target
+    timestamp at
+  }
+  USERS ||--o{ ORG_MEMBERS : "member of"
+  ORGS ||--o{ ORG_MEMBERS : "has"
+  ORGS ||--o{ PACKAGES : "owns"
+  PACKAGES ||--o{ PACKAGE_VERSIONS : "has (UNIQUE package_id, version)"
+  USERS ||--o{ TOKENS : "issues"
+  ORGS o|--o{ TOKENS : "scoped to (optional)"
+  USERS ||--o{ EMAIL_VERIFICATION_TOKENS : "verifies"
+  USERS ||--o{ AUDIT_EVENTS_P : "(P) acts"

@@ -1,0 +1,21 @@
+%% D3 - External plugin interaction and trust boundaries (PROPOSED, VEP v1).
+%% Purpose: show exactly what the host enforces (path containment, timeout, size cap) and what it does not (sandbox).
+%% Owner: T2 (content), D1 (drawing). Update trigger: any change to the VEP request/response schema or host rules.
+sequenceDiagram
+  autonumber
+  participant U as User
+  participant H as veld CLI (host, trusted)
+  participant P as plugin process (trusted by installation, NOT sandboxed)
+  participant FS as output directory
+  U->>H: veld generate
+  H->>H: compile sources -> IR v1 + diagnostics
+  H->>P: exec `veld-emitter-x --describe`
+  P-->>H: manifest {protocolVersions, irVersions, version, capabilities}
+  H->>H: check protocol/IR/version pin; warn on unsupported capabilities
+  H->>P: exec `--emit`, write EmitRequest JSON to stdin
+  Note over P: may read any file / open network (no sandbox in v1)
+  P-->>H: EmitResponse JSON on stdout (files, diagnostics); logs on stderr
+  H->>H: enforce timeout (default 120 s), stdout cap (64 MiB)
+  H->>H: validate each path: relative, no "..", stays inside outDir
+  H->>FS: atomic writes + update .veld-manifest.json
+  H-->>U: summary + diagnostics; non-zero exit on error
