@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Read `AGENTS.md` first.** It holds the binding quality, testing, security and process rules for every contributor and AI agent, and the end state the project is working toward (`docs/review-2026-10/19-expected-state-at-submission.md`, `20-extended-scope-plan.md`, ADRs in `docs/review-2026-10/adr/`). The 2026-10-21 review found several statements below to be false at commit 6a47f81 (Zod/Pydantic generation, determinism, never writing outside `--out`, top-level registry commands, `doctor`, the `tools` block, Rust/PHP frameworks, "no separate registry binary", "only AST JSON passes between stages"); `AGENTS.md` section 8 lists them. Where this file and `AGENTS.md` conflict, `AGENTS.md` wins until this file is rewritten (backlog B-054).
+
 ## NON-NEGOTIABLE RULES
 
 > These apply to every line of generated code, every emitter, every future feature.
