@@ -189,6 +189,39 @@ func TestUnmanagedCollision(t *testing.T) {
 	}
 }
 
+func TestAdoptOnlyWithoutManifest(t *testing.T) {
+	marked := func(b []byte) bool { return strings.HasPrefix(string(b), "// GENERATED") }
+	cases := []struct {
+		name         string
+		withManifest bool
+		existing     string
+		wantConflict bool
+	}{
+		{name: "marked file in pre-manifest output is adopted", existing: "// GENERATED old\n"},
+		{name: "unmarked file in pre-manifest output conflicts", existing: "// mine\n", wantConflict: true},
+		{name: "marked file not in an existing manifest conflicts", withManifest: true, existing: "// GENERATED old\n", wantConflict: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := filepath.Join(t.TempDir(), "generated")
+			if tc.withManifest {
+				mustGenerate(t, out, map[string]string{"other.ts": "o"}, Options{})
+			}
+			put(t, filepath.Join(out, "index.ts"), tc.existing)
+
+			_, err := generate(t, out, map[string]string{"index.ts": "// GENERATED new\n"}, Options{Adopt: marked})
+
+			var ce *ConflictError
+			if got := errors.As(err, &ce); got != tc.wantConflict {
+				t.Fatalf("conflict = %v (err %v), want %v", got, err, tc.wantConflict)
+			}
+			if !tc.wantConflict && read(t, filepath.Join(out, "index.ts")) != "// GENERATED new\n" {
+				t.Errorf("adopted file not updated")
+			}
+		})
+	}
+}
+
 func TestStaleManagedFiles(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "generated")
 	files := map[string]string{

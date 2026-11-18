@@ -20,6 +20,10 @@ type Options struct {
 	// Partial keeps managed files this run did not produce (incremental
 	// builds emit only some modules), so nothing is deleted.
 	Partial bool
+	// Adopt, if set, is asked about each existing file a staged file would
+	// overwrite in a directory that has no manifest yet (output written
+	// before manifests existed). Returning true treats the file as Veld's.
+	Adopt func(existing []byte) bool
 }
 
 // Plan is the set of changes Apply will make. Building it reads the output
@@ -81,9 +85,13 @@ func (s *Session) Plan(o Options) (*Plan, error) {
 }
 
 func planDir(d stagedDir, o Options) (DirPlan, []string, error) {
-	old, _, err := ReadManifest(d.real)
+	old, hasManifest, err := ReadManifest(d.real)
 	if err != nil {
 		return DirPlan{}, nil, err
+	}
+	adopt := o.Adopt
+	if hasManifest {
+		adopt = nil
 	}
 	files, err := readStaged(d.staged)
 	if err != nil {
@@ -106,15 +114,15 @@ func planDir(d stagedDir, o Options) (DirPlan, []string, error) {
 			conflicts = append(conflicts, dest+" (not a regular file)")
 			continue
 		}
-		sum, _, err := hashFile(dest)
+		existing, err := os.ReadFile(dest)
 		if err != nil {
-			return DirPlan{}, nil, fmt.Errorf("hash %s: %w", dest, err)
+			return DirPlan{}, nil, fmt.Errorf("read %s: %w", dest, err)
 		}
 		_, isManaged := managed[rel]
 		switch {
-		case sum == files[rel].sum:
+		case hashBytes(existing) == files[rel].sum:
 			dp.Unchanged = append(dp.Unchanged, rel)
-		case isManaged || o.OverwriteUnmanaged:
+		case isManaged || o.OverwriteUnmanaged || (adopt != nil && adopt(existing)):
 			dp.Update = append(dp.Update, rel)
 		default:
 			conflicts = append(conflicts, dest+" (not in "+ManifestName+")")
