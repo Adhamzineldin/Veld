@@ -188,6 +188,18 @@ func TestOutputSafetyRefusesOutCoveringSources(t *testing.T) {
 			args: func(dir string) []string { return []string{"generate", "--force", "--out=" + dir} },
 		},
 		{
+			// Moved from config's TestOutPathValidation: the output policy
+			// now owns this rule (B-008).
+			name:   "config out is the parent of the config dir",
+			args:   func(string) []string { return []string{"generate", "--force"} },
+			config: `{ "input": "app.veld", "backend": "node-ts", "out": ".." }`,
+		},
+		{
+			name:   "config backendOut is the parent of the config dir",
+			args:   func(string) []string { return []string{"generate", "--force"} },
+			config: `{ "input": "app.veld", "backend": "node-ts", "backendOut": ".." }`,
+		},
+		{
 			name: "workspace entry out is the config dir",
 			args: func(string) []string { return []string{"generate", "--force"} },
 			config: `{

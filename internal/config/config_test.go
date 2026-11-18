@@ -222,8 +222,11 @@ func TestBuildResolvedAliasesMerge(t *testing.T) {
 	}
 }
 
-func TestOutPathValidation(t *testing.T) {
-	// Test that bare ".." is rejected as an out path
+// TestOutPathResolvedNotJudged: config only resolves output paths. Refusing
+// unsafe ones such as ".." (the parent of the config dir) moved to
+// internal/output.Policy (B-008), which every writing command applies; the
+// CLI case lives in TestOutputSafetyRefusesOutCoveringSources.
+func TestOutPathResolvedNotJudged(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "veld", "veld.config.json")
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
@@ -240,13 +243,21 @@ func TestOutPathValidation(t *testing.T) {
 	defer os.Chdir(orig)
 	os.Chdir(dir)
 
-	_, err := BuildResolved(FlagOverrides{})
-	if err == nil {
-		t.Fatal("expected error for out path '..'")
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("BuildResolved: %v", err)
 	}
-	if !strings.Contains(err.Error(), "must end with a folder name") {
-		t.Errorf("unexpected error message: %v", err)
+	want, _ := filepath.Abs(".")
+	if !sameDir(rc.Out, want) {
+		t.Errorf("out %q resolved to %q, want %q", "..", rc.Out, want)
 	}
+}
+
+// sameDir compares directories after resolving symlinks (macOS temp dirs).
+func sameDir(a, b string) bool {
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	return errA == nil && errB == nil && strings.EqualFold(ra, rb)
 }
 
 func TestOutPathWithFolderAllowed(t *testing.T) {
@@ -502,7 +513,9 @@ func TestSplitOutputFlagOverrides(t *testing.T) {
 	}
 }
 
-func TestSplitOutputPathValidation(t *testing.T) {
+// TestSplitOutPathResolvedNotJudged: like TestOutPathResolvedNotJudged, for
+// backendOut; the refusal is covered by TestOutputSafetyRefusesOutCoveringSources.
+func TestSplitOutPathResolvedNotJudged(t *testing.T) {
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, "veld")
 	os.MkdirAll(cfgDir, 0755)
@@ -518,12 +531,12 @@ func TestSplitOutputPathValidation(t *testing.T) {
 	defer os.Chdir(orig)
 	os.Chdir(dir)
 
-	_, err := BuildResolved(FlagOverrides{})
-	if err == nil {
-		t.Fatal("expected error for backendOut path '..'")
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("BuildResolved: %v", err)
 	}
-	if !strings.Contains(err.Error(), "backendOut") {
-		t.Errorf("error should mention 'backendOut', got: %v", err)
+	if !sameDir(rc.BackendOut, dir) {
+		t.Errorf("backendOut %q resolved to %q, want %q", "..", rc.BackendOut, dir)
 	}
 }
 

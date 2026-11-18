@@ -367,31 +367,9 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		cfg.Out = "./generated"
 	}
 
-	// Validate out path — must end with a named directory, not just ".." or "/"
-	validateOutPath := func(p, label string) error {
-		base := filepath.Base(filepath.Clean(p))
-		if base == ".." || base == "." || base == "/" || base == string(filepath.Separator) {
-			return fmt.Errorf(
-				"invalid %s path %q: must end with a folder name (e.g. \"../generated\", not \"..\")",
-				label, p,
-			)
-		}
-		return nil
-	}
-
-	if err := validateOutPath(cfg.Out, "out"); err != nil {
-		return ResolvedConfig{}, err
-	}
-	if cfg.BackendOut != "" {
-		if err := validateOutPath(cfg.BackendOut, "backendOut"); err != nil {
-			return ResolvedConfig{}, err
-		}
-	}
-	if cfg.FrontendOut != "" {
-		if err := validateOutPath(cfg.FrontendOut, "frontendOut"); err != nil {
-			return ResolvedConfig{}, err
-		}
-	}
+	// Output directories are not judged here: internal/output.Policy refuses
+	// unsafe ones (config, contract or working dir, home, root) before
+	// anything is written, for every command and workspace entry.
 
 	if cfg.Input == "" && len(cfg.Workspace) == 0 {
 		return ResolvedConfig{}, fmt.Errorf("no input file (use --input or create veld/veld.config.json)")
