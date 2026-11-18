@@ -76,7 +76,9 @@ func (e *NodeEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts 
 	}
 
 	var wsMounts strings.Builder
-	for _, act := range mod.Actions {
+	// Express tries routes in registration order: literal paths first, so a
+	// later `/items/me` is not answered by an earlier `/items/:id` (F-NODE-05).
+	for _, act := range emitter.OrderBySpecificity(mod.Actions) {
 		if act.Method == "WS" {
 			writeWSRouteComment(&sb, mod, act)
 			writeWSMountFunction(&wsMounts, mod, act, strat)

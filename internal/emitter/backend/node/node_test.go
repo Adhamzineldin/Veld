@@ -3,6 +3,7 @@ package node_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 	"github.com/Adhamzineldin/Veld/internal/emitter/backend/node"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/backend/node"
+	"github.com/Adhamzineldin/Veld/internal/emitter/emittertest"
 )
 
 // minimalAST returns a small but representative AST for testing.
@@ -356,5 +358,22 @@ func TestNodeEmitterModelsWithNoModules(t *testing.T) {
 	}
 	if !strings.Contains(string(barrelData), "common") {
 		t.Errorf("types/index.ts must reference common.ts:\n%s", string(barrelData))
+	}
+}
+
+// F-NODE-05: static routes are registered before the parametric route that
+// would otherwise shadow them in Express.
+func TestNodeEmitterRouteOrder(t *testing.T) {
+	outDir := t.TempDir()
+	if err := node.New().Emit(emittertest.ShadowingAST(), outDir, emitter.EmitOptions{}); err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(outDir, "routes", "items.routes.ts"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	want := []string{"get /api/items/me", "get /api/items/guarded", "get /api/items/:id"}
+	if got := emittertest.RouteRegistrations(string(data)); !reflect.DeepEqual(got, want) {
+		t.Errorf("registration order = %v, want %v", got, want)
 	}
 }

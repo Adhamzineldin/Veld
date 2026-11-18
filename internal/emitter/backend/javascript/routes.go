@@ -57,7 +57,8 @@ func (e *JSEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts em
 		sb.WriteString(fmt.Sprintf("function %s(router, service) {\n", funcName))
 	}
 
-	for _, act := range mod.Actions {
+	// Express tries routes in registration order: literal paths first (F-NODE-05).
+	for _, act := range emitter.OrderBySpecificity(mod.Actions) {
 		writeJSRouteHandler(&sb, mod, act, opts, strat)
 	}
 
