@@ -24,3 +24,7 @@ All notable changes to Veld are recorded here. The format follows [Keep a Change
 - `veld init` no longer overwrites an existing `README.md` or contract files; it exits 1 and names them. (F-CLI-05)
 - `types/index.ts` lists exports in a stable order, so the same contract always produces byte-identical output. (B-012, F-LEAD-01)
 - `veld watch` and `veld ci` use the configured framework, validation, services and server SDK settings, like `veld generate`.
+- Node backend: routes with a literal segment are registered before `:param` routes, so `GET /items/me` declared after `GET /items/:id` reaches its own handler and its middleware runs. This also applies to the plain JavaScript backend. (B-015, F-NODE-05)
+- Node backend: a 5xx response always says `Internal Server Error` and the error is logged on the server. A 4xx keeps its message, and `code` is sent only for errors that declare a status. One shared `routes/_respond.ts` replaces the copy in every handler. (B-015, F-NODE-10)
+- JavaScript and TypeScript clients (TypeScript, React, Vue, Svelte, Angular, plain JavaScript, Node service SDKs) URL-encode path parameters. (B-015, F-NODE-11)
+- Node backend, TypeScript client and React hooks compile under `tsc --strict`. Query, headers and GET input reach the service as model instances (`Model.fromJSON`), and React hooks pass the input of GET actions. (B-015, F-NODE-06)

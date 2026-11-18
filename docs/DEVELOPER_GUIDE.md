@@ -78,6 +78,15 @@ go test ./...                      # unit tests — every internal/ package has 
 go vet ./...                       # static analysis, run before every commit
 ```
 
+Generated TypeScript is also compiled with `tsc --strict` and run through an Express
+round trip (`cmd/veld/node_toolchain_test.go`). That test needs Node.js and the toolchain
+pinned in `cmd/veld/testdata/node`; without them it is skipped with a message:
+
+```bash
+npm ci --prefix cmd/veld/testdata/node          # once: TypeScript, Express, React types
+go test ./cmd/veld/ -run TestNodeToolchain -v   # CI sets VELD_REQUIRE_TOOLCHAINS=1
+```
+
 There is exactly **one binary**. `cmd/veld/main.go` is the composition root: it blank-imports
 every emitter and tool package so their `init()` functions self-register into
 `internal/emitter`'s registry (see §5.1). If you write a new emitter package and forget to
