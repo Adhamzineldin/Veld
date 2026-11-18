@@ -444,6 +444,9 @@ func EmitTSTypes(a ast.AST, outDir string) error {
 				moduleExports = append(moduleExports, typeName)
 			}
 		}
+		// claimed is a map: sort, or the barrel's export list changes from
+		// run to run (F-LEAD-01).
+		sort.Strings(moduleExports)
 		usedModels := emitter.CollectTransitiveModels(a, mod)
 		usedEnums := emitter.CollectUsedEnums(a, mod)
 		for _, en := range a.Enums {
