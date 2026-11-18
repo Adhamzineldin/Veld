@@ -1,21 +1,18 @@
-//go:build outputsafety
-
 // Output-safety acceptance tests for ADR-007 (backlog B-006 to B-009).
 //
-// They describe the required behaviour, so at 008bad2 most of them fail on
-// purpose: they reproduce the findings listed in
-// docs/notes/2026-10-24-unsafe-write-paths.md. The build tag keeps them out of
-// the default `go test ./...` until the staged writer lands; remove the tag in
-// the B-006 pull request. Run them with:
+// Each case reproduces a finding listed in
+// docs/notes/2026-10-24-unsafe-write-paths.md; all of them failed before the
+// staged writer (internal/output) landed and are regression tests now
+// (AGENTS.md §4). Run only these with:
 //
-//	go test -tags outputsafety -run OutputSafety ./cmd/veld/
+//	go test -run OutputSafety ./cmd/veld/
 //
 // Every case runs inside t.TempDir(). Never add a case whose --out points at
-// the user's home or a filesystem root: today's binary would really delete it.
+// the user's home or a filesystem root: an older binary would really delete it.
 //
 // Assertions are behavioural (exit status, file contents) and deliberately do
-// not pin details still being decided: the manifest format (writer API note,
-// due 2026-10-29) and exit-code numbers (B-046).
+// not pin exit-code numbers, which B-046 has not settled. The manifest format
+// is unit-tested in internal/output.
 
 package main_test
 
