@@ -215,8 +215,9 @@ func (e *ReactEmitter) emitTanStackHooks(a ast.AST, mod ast.Module, dir string) 
 func writeQueryKeyConstant(sb *strings.Builder, constName, modName, camelName string, pathParams []string, act ast.Action) {
 	hasPathParams := len(pathParams) > 0
 	hasQuery := act.Query != ""
+	hasInput := act.Input != "" // GET input travels as query parameters
 
-	if hasPathParams || hasQuery {
+	if hasPathParams || hasQuery || hasInput {
 		// Export a factory function for parameterized queries
 		var paramTypes []string
 		var keyElems []string
@@ -224,6 +225,10 @@ func writeQueryKeyConstant(sb *strings.Builder, constName, modName, camelName st
 		for _, p := range pathParams {
 			paramTypes = append(paramTypes, p+": string")
 			keyElems = append(keyElems, p)
+		}
+		if hasInput {
+			paramTypes = append(paramTypes, "input: "+act.Input)
+			keyElems = append(keyElems, "input")
 		}
 		if hasQuery {
 			paramTypes = append(paramTypes, "query?: "+act.Query)
@@ -242,6 +247,11 @@ func writeTanStackQuery(sb *strings.Builder, hookName, apiName, camelName, outpu
 		paramTypes = append(paramTypes, p+": string")
 		argsList = append(argsList, p)
 	}
+	if act.Input != "" {
+		// GET input is sent as query parameters by the client: same order.
+		paramTypes = append(paramTypes, "input: "+act.Input)
+		argsList = append(argsList, "input")
+	}
 	if act.Query != "" {
 		paramTypes = append(paramTypes, "query?: "+act.Query)
 		argsList = append(argsList, "query")
@@ -256,6 +266,9 @@ func writeTanStackQuery(sb *strings.Builder, hookName, apiName, camelName, outpu
 	keyParts := []string{fmt.Sprintf("'%s'", modName), fmt.Sprintf("'%s'", camelName)}
 	for _, p := range pathParams {
 		keyParts = append(keyParts, p)
+	}
+	if act.Input != "" {
+		keyParts = append(keyParts, "input")
 	}
 	if act.Query != "" {
 		keyParts = append(keyParts, "query")
@@ -370,6 +383,11 @@ func writeCoreQueryHook(sb *strings.Builder, hookName, apiName, camelName, outpu
 		paramTypes = append(paramTypes, p+": string")
 		argsList = append(argsList, p)
 		deps = append(deps, p)
+	}
+	if act.Input != "" {
+		paramTypes = append(paramTypes, "input: "+act.Input)
+		argsList = append(argsList, "input")
+		deps = append(deps, "JSON.stringify(input)")
 	}
 	if act.Query != "" {
 		paramTypes = append(paramTypes, "query?: "+act.Query)

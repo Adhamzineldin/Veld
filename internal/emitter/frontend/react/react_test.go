@@ -8,6 +8,7 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	"github.com/Adhamzineldin/Veld/internal/emitter/emittertest"
 	"github.com/Adhamzineldin/Veld/internal/emitter/frontend/react"
 	_ "github.com/Adhamzineldin/Veld/internal/emitter/frontend/typescript"
 )
@@ -158,5 +159,41 @@ func TestReactSummary(t *testing.T) {
 	}
 	if !found {
 		t.Error("Summary should mention hooks/")
+	}
+}
+
+// GET input is sent as query parameters by the TypeScript client, so the
+// hooks must take it, pass it on, and key the cache by it (they called
+// lookup() with no argument, which fails `tsc --strict`).
+func TestReactHooksPassGetInput(t *testing.T) {
+	outDir := t.TempDir()
+	if err := react.New().Emit(emittertest.RequestModelsAST(), outDir, emitter.EmitOptions{}); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	cases := []struct {
+		file  string
+		wants []string
+	}{
+		{"itemsHooks.ts", []string{
+			"export function useLookup(input: SearchQuery, options?:",
+			"queryKey: ['Items', 'lookup', input],",
+			"queryFn: () => itemsApi.lookup(input),",
+		}},
+		{filepath.Join("core", "itemsHooks.ts"), []string{
+			"export function useLookup(input: SearchQuery) {",
+			"itemsApi.lookup(input)",
+			"}, [JSON.stringify(input)]);",
+		}},
+	}
+	for _, tc := range cases {
+		data, err := os.ReadFile(filepath.Join(outDir, "hooks", tc.file))
+		if err != nil {
+			t.Fatalf("read %s: %v", tc.file, err)
+		}
+		for _, want := range tc.wants {
+			if !strings.Contains(string(data), want) {
+				t.Errorf("%s missing %q:\n%s", tc.file, want, data)
+			}
+		}
 	}
 }
