@@ -97,7 +97,11 @@ func writeManifest(dir string, m Manifest) error {
 	if err := enc.Encode(m); err != nil {
 		return fmt.Errorf("encode manifest: %w", err)
 	}
-	return writeAtomic(filepath.Join(dir, ManifestName), buf.Bytes(), 0o644)
+	dst := filepath.Join(dir, ManifestName)
+	if cur, err := os.ReadFile(dst); err == nil && bytes.Equal(cur, buf.Bytes()) {
+		return nil // unchanged: keep the mtime so file watchers stay quiet
+	}
+	return writeAtomic(dst, buf.Bytes(), 0o644)
 }
 
 // index maps each managed path to its recorded hash.
