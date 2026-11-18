@@ -475,10 +475,7 @@ With:
 				fmt.Fprintln(os.Stderr, yellow("⚠")+"  Breaking changes detected — continuing (pass --strict to block)")
 			}
 
-			opts := emitter.EmitOptions{
-				BaseUrl: rc.BaseUrl,
-			}
-			generatedFiles, _, _, err := runGenerate(rc, false, opts)
+			generatedFiles, _, _, err := runGenerate(rc, false, emitOptions(rc, false))
 			if err != nil {
 				return fmt.Errorf("generate failed: %w", err)
 			}

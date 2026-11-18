@@ -47,10 +47,7 @@ func newWatchCmd() *cobra.Command {
 			fmt.Println(bold("veld watch") + "  •  watching for changes  •  Ctrl-C to stop")
 			fmt.Println()
 
-			opts := emitter.EmitOptions{
-				BaseUrl:  rc.BaseUrl,
-				Validate: rc.Validate,
-			}
+			opts := emitOptions(rc, false)
 
 			// ── clean before initial generation ─────────────────────────
 			runClean(rc)
@@ -251,10 +248,7 @@ func newWatchCmd() *cobra.Command {
 							rc = newRC
 							currentRC = newRC
 							// Update emit options from new config.
-							opts = emitter.EmitOptions{
-								BaseUrl:  currentRC.BaseUrl,
-								Validate: currentRC.Validate,
-							}
+							opts = emitOptions(currentRC, false)
 						}
 
 						// ── always full regeneration ────────────────────
