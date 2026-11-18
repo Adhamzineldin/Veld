@@ -180,7 +180,7 @@ func (e *AngularEmitter) emitService(a ast.AST, mod ast.Module, dir string, opts
 		}
 
 		// Build URL
-		urlExpr := "`${this.baseUrl}" + emitter.ToTemplateLiteral(routePath) + "`"
+		urlExpr := "`${this.baseUrl}" + emitter.ToEncodedTemplateLiteral(routePath) + "`"
 
 		if act.Description != "" {
 			sb.WriteString(fmt.Sprintf("  /** %s */\n", act.Description))

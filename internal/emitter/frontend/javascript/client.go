@@ -105,7 +105,7 @@ func writeAction(sb *strings.Builder, mod ast.Module, act ast.Action) {
 	// Build URL expression.
 	var urlExpr string
 	if len(pathParams) > 0 {
-		urlExpr = "`" + emitter.ToTemplateLiteral(routePath) + "`"
+		urlExpr = "`" + emitter.ToEncodedTemplateLiteral(routePath) + "`"
 	} else {
 		urlExpr = "'" + routePath + "'"
 	}

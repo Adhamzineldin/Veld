@@ -115,7 +115,7 @@ func writeActionMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 
 	var urlExpr string
 	if len(pathParams) > 0 {
-		urlExpr = "`" + emitter.ToTemplateLiteral(routePath) + "`"
+		urlExpr = "`" + emitter.ToEncodedTemplateLiteral(routePath) + "`"
 	} else {
 		urlExpr = "'" + routePath + "'"
 	}
@@ -197,7 +197,7 @@ func writeWsActionMethod(sb *strings.Builder, mod ast.Module, act ast.Action, ro
 
 	var urlExpr string
 	if len(pathParams) > 0 {
-		urlExpr = "`${wsBase}" + emitter.ToTemplateLiteral(routePath) + "`"
+		urlExpr = "`${wsBase}" + emitter.ToEncodedTemplateLiteral(routePath) + "`"
 	} else {
 		urlExpr = "`${wsBase}" + routePath + "`"
 	}

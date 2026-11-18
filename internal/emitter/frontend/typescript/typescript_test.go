@@ -155,3 +155,24 @@ func TestEmitModuleApiContainsTypedMethods(t *testing.T) {
 		t.Error("usersApi.ts should contain list method")
 	}
 }
+
+// F-NODE-11: path parameters are URL-encoded, so an id such as "a/b?x=1#h"
+// stays a single path segment.
+func TestEmitEncodesPathParams(t *testing.T) {
+	a := ast.AST{Modules: []ast.Module{{
+		Name:    "Items",
+		Prefix:  "/api",
+		Actions: []ast.Action{{Name: "GetItem", Method: "GET", Path: "/items/:id"}},
+	}}}
+	dir := t.TempDir()
+	if err := New().Emit(a, dir, emitter.EmitOptions{}); err != nil {
+		t.Fatalf("emit error: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "client", "itemsApi.ts"))
+	if err != nil {
+		t.Fatalf("read error: %v", err)
+	}
+	if want := "`/api/items/${encodeURIComponent(id)}`"; !strings.Contains(string(data), want) {
+		t.Errorf("itemsApi.ts does not build the URL as %s:\n%s", want, data)
+	}
+}

@@ -26,6 +26,13 @@ func ToTemplateLiteral(path string) string {
 	return paramRegex.ReplaceAllString(path, `${$1}`)
 }
 
+// ToEncodedTemplateLiteral converts /users/:id to
+// /users/${encodeURIComponent(id)} for JavaScript and TypeScript clients, so a
+// value with reserved characters (/ ? # %) stays one path segment (F-NODE-11).
+func ToEncodedTemplateLiteral(path string) string {
+	return paramRegex.ReplaceAllString(path, `${encodeURIComponent($1)}`)
+}
+
 // ToFlaskPath converts /users/:id to /users/<id> for Flask route registration.
 func ToFlaskPath(path string) string {
 	return paramRegex.ReplaceAllString(path, `<$1>`)

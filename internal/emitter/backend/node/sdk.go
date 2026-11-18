@@ -267,7 +267,7 @@ func writeNodeSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 
 	var urlExpr string
 	if len(pathParams) > 0 {
-		urlExpr = "`" + emitter.ToTemplateLiteral(routePath) + "`"
+		urlExpr = "`" + emitter.ToEncodedTemplateLiteral(routePath) + "`"
 	} else {
 		urlExpr = "'" + routePath + "'"
 	}
