@@ -66,6 +66,36 @@ jobs:
           fi
           echo "✓ All generated files are up to date"
 
+  # B-015 / F-NODE-19: compile the generated node-ts, TypeScript client and
+  # React hooks output with `tsc --strict`, and run the Express + typed client
+  # round trip (cmd/veld/node_toolchain_test.go). The toolchain is pinned in
+  # cmd/veld/testdata/node/package-lock.json; VELD_REQUIRE_TOOLCHAINS turns
+  # the test's "toolchain missing" skip into a failure.
+  node-toolchain:
+    name: Generated TypeScript compiles and round-trips
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cmd/veld/testdata/node/package-lock.json
+
+      - name: Install the pinned TypeScript toolchain
+        run: npm ci --prefix cmd/veld/testdata/node
+
+      - name: tsc --strict and Express round trip
+        env:
+          VELD_REQUIRE_TOOLCHAINS: "1"
+        run: go test ./cmd/veld/ -run TestNodeToolchain -count=1 -v
+
   build-check:
     name: Build (${{ matrix.goos }}-${{ matrix.goarch }})
     runs-on: ubuntu-latest

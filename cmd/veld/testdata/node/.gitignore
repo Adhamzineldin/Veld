@@ -1,0 +1,3 @@
+# The lockfile pins the toolchain used by the TypeScript compile and Express
+# round-trip tests (`npm ci`), so it is committed, unlike elsewhere.
+!package-lock.json
