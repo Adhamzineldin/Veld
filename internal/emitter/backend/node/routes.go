@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
@@ -43,6 +44,9 @@ func (e *NodeEmitter) emitRoutes(a ast.AST, mod ast.Module, outDir string, opts 
 	sb.WriteString(fmt.Sprintf("import type { I%sService } from '../interfaces/I%sService';\n", mod.Name, mod.Name))
 	if hasHTTP {
 		sb.WriteString(fmt.Sprintf("import { sendError } from '%s';\n", respondModule))
+	}
+	if classes := requestModelClasses(mod); len(classes) > 0 {
+		sb.WriteString(fmt.Sprintf("import { %s } from '../types';\n", strings.Join(classes, ", ")))
 	}
 
 	// Add WS imports when the module has WebSocket actions.
@@ -140,9 +144,8 @@ func writeRouteHandler(sb *strings.Builder, a ast.AST, mod ast.Module, act ast.A
 		if method == "get" {
 			// GET requests cannot carry a body (the Fetch spec forbids it), so
 			// the generated client sends `input` as query-string params instead.
-			// Passed raw, same as `query:` fields — Zod validation would reject
-			// non-string field types since query values are always strings.
-			callArgs = append(callArgs, "req.query")
+			// Built with the model's fromJSON, like `query:` (values stay strings).
+			callArgs = append(callArgs, act.Input+".fromJSON(req.query)")
 		} else if opts.Validate {
 			// Parse and validate the request body; throws VeldValidationError (400) on failure.
 			sb.WriteString(fmt.Sprintf("      const body = parse%s(req.body);\n", act.Input))
@@ -153,21 +156,24 @@ func writeRouteHandler(sb *strings.Builder, a ast.AST, mod ast.Module, act ast.A
 	}
 
 	if act.Query != "" {
-		callArgs = append(callArgs, "req.query")
+		// fromJSON takes Record<string, unknown>, which Express's ParsedQs
+		// satisfies, so this compiles under `tsc --strict` (F-NODE-06) and
+		// the service gets a real model instance.
+		callArgs = append(callArgs, act.Query+".fromJSON(req.query)")
 	}
 
 	if act.Headers != "" {
 		// Extract declared headers from the request and build a typed object.
 		// Header names are lowercased per HTTP spec when accessed via req.headers.
-		sb.WriteString(fmt.Sprintf("      const headers = {\n"))
+		sb.WriteString(fmt.Sprintf("      const headers = %s.fromJSON({\n", act.Headers))
 		headerModel := findModel(a, act.Headers)
 		if headerModel != nil {
 			for _, hf := range headerModel.Fields {
 				lowerName := strings.ToLower(hf.Name)
-				sb.WriteString(fmt.Sprintf("        '%s': req.headers['%s'] as string,\n", hf.Name, lowerName))
+				sb.WriteString(fmt.Sprintf("        '%s': req.headers['%s'],\n", hf.Name, lowerName))
 			}
 		}
-		sb.WriteString(fmt.Sprintf("      };\n"))
+		sb.WriteString("      });\n")
 		callArgs = append(callArgs, "headers")
 	}
 
@@ -203,6 +209,33 @@ func writeRouteHandler(sb *strings.Builder, a ast.AST, mod ast.Module, act ast.A
 	sb.WriteString("    }\n")
 	sb.WriteString("  });\n")
 	return nil
+}
+
+// requestModelClasses lists, sorted, the model classes a module's routes
+// construct from the request with fromJSON: query models, headers models and
+// the input of GET actions (sent as query parameters).
+func requestModelClasses(mod ast.Module) []string {
+	seen := map[string]bool{}
+	for _, act := range mod.Actions {
+		if act.Method == "WS" {
+			continue
+		}
+		if act.Query != "" {
+			seen[act.Query] = true
+		}
+		if act.Headers != "" {
+			seen[act.Headers] = true
+		}
+		if act.Input != "" && strings.EqualFold(act.Method, "GET") {
+			seen[act.Input] = true
+		}
+	}
+	classes := make([]string, 0, len(seen))
+	for name := range seen {
+		classes = append(classes, name)
+	}
+	sort.Strings(classes)
+	return classes
 }
 
 // writeNodeOutputAssertion emits assertX(result) or assertXArray(result).

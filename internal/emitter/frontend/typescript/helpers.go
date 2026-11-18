@@ -73,8 +73,9 @@ func emitBuildQueryString(sb *strings.Builder) {
 /**
  * Build a query string from an object, filtering out undefined and null values.
  * Returns '' if no valid params remain, otherwise returns '?key=value&...'.
+ * Takes any object, so generated model classes need no cast under strict mode.
  */
-export function buildQueryString(params?: Record<string, unknown>): string {
+export function buildQueryString(params?: object): string {
   if (!params) return '';
   const filtered: Record<string, string> = {};
   for (const [key, value] of Object.entries(params)) {
@@ -84,6 +85,21 @@ export function buildQueryString(params?: Record<string, unknown>): string {
   }
   const qs = new URLSearchParams(filtered).toString();
   return qs ? '?' + qs : '';
+}
+
+/**
+ * Convert a typed headers object (a generated headers model) to fetch
+ * headers, dropping undefined and null values.
+ */
+export function toHeaderRecord(headers?: object): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!headers) return out;
+  for (const [key, value] of Object.entries(headers)) {
+    if (value !== undefined && value !== null) {
+      out[key] = String(value);
+    }
+  }
+  return out;
 }
 `)
 }

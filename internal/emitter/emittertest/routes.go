@@ -36,3 +36,25 @@ func RouteRegistrations(src string) []string {
 	}
 	return regs
 }
+
+// RequestModelsAST has one action per way a model reaches a route from the
+// request URL or headers: a query model, a headers model and a GET input
+// (sent as query parameters). These are the F-NODE-06 strict-mode cases.
+func RequestModelsAST() ast.AST {
+	return ast.AST{
+		Models: []ast.Model{
+			{Name: "Item", Fields: []ast.Field{{Name: "id", Type: "string"}}},
+			{Name: "SearchQuery", Fields: []ast.Field{{Name: "q", Type: "string"}}},
+			{Name: "TraceHeaders", Fields: []ast.Field{{Name: "X-Trace-Id", Type: "string"}}},
+		},
+		Modules: []ast.Module{{
+			Name:   "Items",
+			Prefix: "/api",
+			Actions: []ast.Action{
+				{Name: "Search", Method: "GET", Path: "/search", Query: "SearchQuery", Output: "Item", OutputArray: true},
+				{Name: "Lookup", Method: "GET", Path: "/lookup", Input: "SearchQuery", Output: "Item", OutputArray: true},
+				{Name: "Secure", Method: "GET", Path: "/secure", Headers: "TraceHeaders", Output: "Item"},
+			},
+		}},
+	}
+}

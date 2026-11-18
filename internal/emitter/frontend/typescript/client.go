@@ -138,12 +138,12 @@ func writeActionMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 
 	queryAppend := ""
 	if act.Query != "" {
-		queryAppend = " + buildQueryString(query as Record<string, unknown>)"
+		queryAppend = " + buildQueryString(query)"
 	}
 
 	headersArg := ""
 	if act.Headers != "" {
-		headersArg = ", headers"
+		headersArg = ", toHeaderRecord(headers)"
 	}
 
 	camelName := emitter.ToCamelCase(act.Name)
@@ -155,9 +155,9 @@ func writeActionMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 		getQueryAppend := queryAppend
 		switch {
 		case act.Input != "" && act.Query != "":
-			getQueryAppend = " + buildQueryString({ ...(query as Record<string, unknown>), ...(input as unknown as Record<string, unknown>) })"
+			getQueryAppend = " + buildQueryString({ ...query, ...input })"
 		case act.Input != "":
-			getQueryAppend = " + buildQueryString(input as unknown as Record<string, unknown>)"
+			getQueryAppend = " + buildQueryString(input)"
 		}
 		sb.WriteString(fmt.Sprintf("  %s(%s): Promise<%s> {\n", camelName, sig, outputType))
 		sb.WriteString(fmt.Sprintf("    return this.request('GET', %s%s, undefined%s);\n", urlExpr, getQueryAppend, headersArg))

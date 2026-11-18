@@ -408,3 +408,32 @@ func TestNodeEmitterErrorResponder(t *testing.T) {
 		t.Errorf("route handlers still read err.message themselves:\n%s", routes)
 	}
 }
+
+// F-NODE-06: query, headers and GET input are built with the model's
+// fromJSON, which accepts Express's ParsedQs under `tsc --strict`.
+func TestNodeEmitterRequestModels(t *testing.T) {
+	outDir := t.TempDir()
+	opts := emitter.EmitOptions{BackendFramework: "express"}
+	if err := node.New().Emit(emittertest.RequestModelsAST(), outDir, opts); err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(outDir, "routes", "items.routes.ts"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	src := string(data)
+	for _, want := range []string{
+		"import { SearchQuery, TraceHeaders } from '../types';",
+		"service.search(SearchQuery.fromJSON(req.query))",
+		"service.lookup(SearchQuery.fromJSON(req.query))",
+		"const headers = TraceHeaders.fromJSON({",
+		"'X-Trace-Id': req.headers['x-trace-id'],",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("items.routes.ts missing %q:\n%s", want, src)
+		}
+	}
+	if strings.Contains(src, " as string") {
+		t.Errorf("items.routes.ts still casts request values:\n%s", src)
+	}
+}

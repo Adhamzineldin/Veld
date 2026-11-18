@@ -206,7 +206,7 @@ func emitNodeSdkClient(consumed emitter.ConsumedServiceInfo, dir string) error {
 	sb.WriteString("    this.name = 'VeldApiError';\n")
 	sb.WriteString("  }\n}\n\n")
 
-	sb.WriteString("function buildQueryString(params?: Record<string, unknown>): string {\n")
+	sb.WriteString("function buildQueryString(params?: object): string {\n")
 	sb.WriteString("  if (!params) return '';\n")
 	sb.WriteString("  const parts: string[] = [];\n")
 	sb.WriteString("  for (const [k, v] of Object.entries(params)) {\n")
@@ -285,7 +285,7 @@ func writeNodeSdkMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 
 	queryAppend := ""
 	if act.Query != "" {
-		queryAppend = " + buildQueryString(query as Record<string, unknown>)"
+		queryAppend = " + buildQueryString(query)"
 	}
 
 	sb.WriteString(fmt.Sprintf("  %s(%s): Promise<%s> {\n", camelName, strings.Join(sigParams, ", "), outputType))

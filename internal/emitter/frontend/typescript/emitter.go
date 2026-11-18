@@ -121,11 +121,13 @@ func emitModuleApi(a ast.AST, mod ast.Module, dir string, opts emitter.EmitOptio
 			break
 		}
 	}
-	hasWs := false
+	hasWs, hasHeaders := false, false
 	for _, act := range mod.Actions {
 		if strings.ToUpper(act.Method) == "WS" {
 			hasWs = true
-			break
+		}
+		if act.Headers != "" {
+			hasHeaders = true
 		}
 	}
 
@@ -140,6 +142,9 @@ func emitModuleApi(a ast.AST, mod ast.Module, dir string, opts emitter.EmitOptio
 	internalImports = append(internalImports, "resolveBase", "parseErrorResponse")
 	if hasQuery {
 		internalImports = append(internalImports, "buildQueryString")
+	}
+	if hasHeaders {
+		internalImports = append(internalImports, "toHeaderRecord")
 	}
 	if hasWs {
 		internalImports = append(internalImports, "VeldWebSocket")
