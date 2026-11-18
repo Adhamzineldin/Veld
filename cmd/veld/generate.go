@@ -53,10 +53,11 @@ func runClean(rc config.ResolvedConfig) {
 
 // emitOptions derives emitter options from a resolved config, so every
 // command and workspace entry emits the same output for the same config.
-func emitOptions(rc config.ResolvedConfig, dryRun bool) emitter.EmitOptions {
+// DryRun is never set: emitters always write, but only into staging
+// directories, and the host decides whether anything is committed.
+func emitOptions(rc config.ResolvedConfig) emitter.EmitOptions {
 	return emitter.EmitOptions{
 		BaseUrl:           rc.BaseUrl,
-		DryRun:            dryRun,
 		Validate:          rc.Validate,
 		BackendFramework:  rc.BackendFramework,
 		FrontendFramework: rc.FrontendFramework,
@@ -66,15 +67,17 @@ func emitOptions(rc config.ResolvedConfig, dryRun bool) emitter.EmitOptions {
 	}
 }
 
-// runGenerate parses, validates, and emits output.
+// runGenerate parses and validates the contract, then emits into run's
+// staging directories. It writes nothing else: the cache and lock updates are
+// queued on run and happen only after the output is committed.
 //
 // When incremental is false every module is regenerated.
 // When incremental is true only modules whose source files changed are regenerated.
 //
-// Returns (regeneratedModuleNames, veldFileList, breakingChanges, error).
-// breakingChanges is non-nil only when a .veld.lock.json baseline exists;
+// Returns (regeneratedModuleNames, veldFileList, contractChanges, error).
+// contractChanges is non-nil only when a .veld.lock.json baseline exists;
 // callers are responsible for printing / acting on them.
-func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOptions) ([]string, []string, []diff.Change, error) {
+func runGenerate(run *genRun, rc config.ResolvedConfig, incremental bool, opts emitter.EmitOptions) ([]string, []string, []diff.Change, error) {
 	a, veldFiles, err := loader.Parse(rc.Input, rc.Aliases)
 	if err != nil {
 		return nil, nil, nil, err
@@ -90,14 +93,20 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 		fmt.Fprintf(os.Stderr, yellow("warning: ")+"could not read lock file: %v\n", lockErr)
 	}
 
+	c := cache.Load(rc.ConfigDir)
+	saveCache := func() {
+		for _, f := range veldFiles {
+			c.Update(f)
+		}
+		if err := c.Save(rc.ConfigDir); err != nil {
+			fmt.Fprintf(os.Stderr, yellow("warning: ")+"cache save failed: %v\n", err)
+		}
+	}
+
 	// ── incremental: compute which modules need regeneration ──────────────
 	var targetModules map[string]bool
-	var c *cache.Cache
-
 	if incremental {
-		c = cache.Load(rc.ConfigDir)
 		changedFiles := c.ChangedFiles(veldFiles)
-
 		if len(changedFiles) == 0 {
 			return nil, veldFiles, nil, nil
 		}
@@ -116,23 +125,14 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 		}
 
 		targetModules = make(map[string]bool)
-		if anyModelFileChanged {
-			for i := range a.Modules {
+		for i := range a.Modules {
+			if anyModelFileChanged || changedFileSet[a.Modules[i].SourceFile] {
 				targetModules[a.Modules[i].Name] = true
-			}
-		} else {
-			for i := range a.Modules {
-				if changedFileSet[a.Modules[i].SourceFile] {
-					targetModules[a.Modules[i].Name] = true
-				}
 			}
 		}
 
 		if len(targetModules) == 0 {
-			for _, f := range veldFiles {
-				c.Update(f)
-			}
-			_ = c.Save(rc.ConfigDir)
+			run.afterCommit(saveCache)
 			return nil, veldFiles, nil, nil
 		}
 	}
@@ -149,87 +149,30 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 		emitAST.Modules = filtered
 	}
 
-	// ── apply app-level prefix to module prefixes ────────────────────────
+	// The backend gets the (possibly filtered) AST; the frontend SDK always
+	// gets the full AST. Both have the app-level prefix merged into every
+	// module so the SDK URLs match what the backend wires up.
 	emitAST = emitter.ApplyTopLevelPrefix(emitAST)
-
-	// ── ensure output dirs exist ─────────────────────────────────────────
-	// Emitters overwrite their own files (os.WriteFile). No directory wipe —
-	// user files are never touched. Use `veld clean` for explicit cleanup.
-	if !opts.DryRun {
-		for _, dir := range rc.OutputDirs() {
-			if dir == "" {
-				continue
-			}
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				return nil, veldFiles, nil, fmt.Errorf("create output dir %s: %w", dir, err)
-			}
-		}
-	}
-
-	// ── emit: backend ────────────────────────────────────────────────────
-	backendOrTool, _, err := emitter.GetBackendOrTool(rc.Backend)
-	if err != nil {
+	if err := run.emit(rc, emitAST, emitter.ApplyTopLevelPrefix(a), opts); err != nil {
 		return nil, veldFiles, nil, err
 	}
-	if err := backendOrTool.Emit(emitAST, rc.BackendOut, opts); err != nil {
-		return nil, veldFiles, nil, fmt.Errorf("%s emitter: %w", rc.Backend, err)
-	}
 
-	// ── emit: frontend ───────────────────────────────────────────────────
-	// New syntax: --frontend=typescript --frontend-framework=react
-	// Routes "typescript" + frontendFramework="react" to the existing "react" emitter.
-	frontendName := rc.Frontend
-	if opts.FrontendFramework != "" && (frontendName == "typescript" || frontendName == "javascript") {
-		frontendName = opts.FrontendFramework
-	}
-	frontend, err := emitter.GetFrontend(frontendName)
-	if err != nil {
-		return nil, veldFiles, nil, err
-	}
-	if frontend != nil {
-		// Frontend SDK always gets the full AST (combined output), with the
-		// top-level prefix merged into every module so the SDK URLs match
-		// what the backend emitter wires up.
-		frontendAST := emitter.ApplyTopLevelPrefix(a)
-		if err := frontend.Emit(frontendAST, rc.FrontendOut, opts); err != nil {
-			return nil, veldFiles, nil, fmt.Errorf("%s emitter: %w", rc.Frontend, err)
-		}
-	}
-
-	// ── generated/README.md ──────────────────────────────────────────────
-	if !opts.DryRun {
-		for _, dir := range rc.OutputDirs() {
-			writeGeneratedReadme(dir, emitAST)
-		}
-	}
-
-	// ── update cache ─────────────────────────────────────────────────────
-	if c == nil {
-		c = cache.Load(rc.ConfigDir)
-	}
-	for _, f := range veldFiles {
-		c.Update(f)
-	}
-	if err := c.Save(rc.ConfigDir); err != nil {
-		fmt.Fprintf(os.Stderr, yellow("warning: ")+"cache save failed: %v\n", err)
-	}
-
-	// ── breaking-change diff ──────────────────────────────────────────────
-	// Compare against the previous lock; then persist the new snapshot.
+	// ── breaking-change diff; the new snapshot is saved after commit ─────
 	var changes []diff.Change
-	if hasLock && !opts.DryRun {
+	if hasLock {
 		changes = diff.Diff(oldAST, a)
 	}
-	if !opts.DryRun {
+	run.afterCommit(func() {
+		saveCache()
 		if err := diff.SaveLock(rc.ConfigDir, a); err != nil {
 			fmt.Fprintf(os.Stderr, yellow("warning: ")+"lock save failed: %v\n", err)
 		}
-	}
+	})
 
 	// ── lint hint ─────────────────────────────────────────────────────────
 	// Run a quick lint pass and surface a one-liner so developers know to
 	// investigate. Full details are always available via `veld lint`.
-	if !opts.DryRun {
+	if !run.dryRun {
 		if issues := lint.Lint(a); len(issues) > 0 {
 			errCount := 0
 			for _, iss := range issues {
@@ -259,7 +202,7 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 // With serviceSDK (--service-sdk), backend entries that declare no consumes
 // consume every backend sibling. Returns (regeneratedNames, allVeldFiles,
 // changes, error).
-func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, opts emitter.EmitOptions, serviceSDK bool) ([]string, []string, []diff.Change, error) {
+func runWorkspaceGenerate(run *genRun, rc config.ResolvedConfig, flags config.FlagOverrides, opts emitter.EmitOptions, serviceSDK bool) ([]string, []string, []diff.Change, error) {
 	// Validate consumes declarations.
 	if errs, warns := validator.ValidateWorkspaceConsumes(rc.Workspace); len(errs) > 0 || len(warns) > 0 {
 		for _, w := range warns {
@@ -371,7 +314,7 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 		fmt.Printf("  %s %s\n", bold("→"), entry.Name)
 		pe := parsed[entry.Name]
 
-		entryOpts := emitOptions(pe.rc, opts.DryRun)
+		entryOpts := emitOptions(pe.rc)
 
 		// Auto-consume: frontend entries always consume every backend
 		// sibling so one SDK covers all services; with --service-sdk,
@@ -417,11 +360,13 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 		}
 
 		if isFrontendEntry {
-			if err := runGenerateWithAST(pe.rc, pe.ast, entryOpts); err != nil {
+			// The input file may not exist: emit the merged AST directly.
+			emitAST := emitter.ApplyTopLevelPrefix(pe.ast)
+			if err := run.emit(pe.rc, emitAST, emitAST, entryOpts); err != nil {
 				return nil, allVeldFiles, nil, fmt.Errorf("workspace entry %q: %w", entry.Name, err)
 			}
 		} else {
-			if _, _, _, err := runGenerate(pe.rc, false, entryOpts); err != nil {
+			if _, _, _, err := runGenerate(run, pe.rc, false, entryOpts); err != nil {
 				return nil, allVeldFiles, nil, fmt.Errorf("workspace entry %q: %w", entry.Name, err)
 			}
 		}
@@ -437,7 +382,11 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 			if err != nil {
 				return nil, allVeldFiles, nil, fmt.Errorf("workspace entry %q: %w", entry.Name, err)
 			}
-			if err := backend.EmitServiceSdk(entryOpts.ConsumedServices, pe.rc.BackendOut, entryOpts); err != nil {
+			sdkOut, err := run.stagedDir(pe.rc.BackendOut)
+			if err != nil {
+				return nil, allVeldFiles, nil, fmt.Errorf("workspace entry %q: %w", entry.Name, err)
+			}
+			if err := backend.EmitServiceSdk(entryOpts.ConsumedServices, sdkOut, entryOpts); err != nil {
 				return nil, allVeldFiles, nil, fmt.Errorf("workspace entry %q service sdk: %w", entry.Name, err)
 			}
 			fmt.Printf("  %s %s → sdk/ (%s)\n", green("✓"), entry.Name, strings.Join(consumedNames, ", "))
@@ -451,57 +400,6 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 	}
 
 	return allRegenerated, allVeldFiles, nil, nil
-}
-
-// runGenerateWithAST is like runGenerate but takes a pre-built AST instead of
-// calling loader.Parse. Used by frontend workspace entries whose AST has been
-// merged from all consumed backend services.
-func runGenerateWithAST(rc config.ResolvedConfig, a ast.AST, opts emitter.EmitOptions) error {
-	if opts.DryRun {
-		return nil
-	}
-
-	// Ensure output dirs exist (no wipe — emitters overwrite their own files).
-	for _, dir := range rc.OutputDirs() {
-		if dir == "" {
-			continue
-		}
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("create output dir %s: %w", dir, err)
-		}
-	}
-
-	emitAST := emitter.ApplyTopLevelPrefix(a)
-
-	// Emit backend (types, routes, etc.).
-	backendOrTool, _, err := emitter.GetBackendOrTool(rc.Backend)
-	if err != nil {
-		return err
-	}
-	if err := backendOrTool.Emit(emitAST, rc.BackendOut, opts); err != nil {
-		return fmt.Errorf("%s emitter: %w", rc.Backend, err)
-	}
-
-	// Emit frontend SDK.
-	frontendName := rc.Frontend
-	if opts.FrontendFramework != "" && (frontendName == "typescript" || frontendName == "javascript") {
-		frontendName = opts.FrontendFramework
-	}
-	frontend, err := emitter.GetFrontend(frontendName)
-	if err != nil {
-		return err
-	}
-	if frontend != nil {
-		if err := frontend.Emit(emitAST, rc.FrontendOut, opts); err != nil {
-			return fmt.Errorf("%s emitter: %w", rc.Frontend, err)
-		}
-	}
-
-	// Generated README.
-	for _, dir := range rc.OutputDirs() {
-		writeGeneratedReadme(dir, emitAST)
-	}
-	return nil
 }
 
 // printDiffChanges prints breaking changes and additions detected against the
@@ -702,12 +600,15 @@ func newGenerateCmd() *cobra.Command {
 	var backendFlag, frontendFlag, inputFlag, outFlag string
 	var backendFrameworkFlag, frontendFrameworkFlag string
 	var incrementalFlag, dryRunFlag, setupFlag, validateFlag, strictFlag, forceFlag, serverSdkFlag, serviceSdkFlag bool
+	var overwriteUnmanagedFlagValue bool
 
 	cmd := &cobra.Command{
 		Use:   "generate",
 		Short: "Generate code from a .veld contract",
 		Long: "Generates typed backend interfaces and a frontend SDK from your .veld contract.\n\n" +
 			"Every file is (re)generated by default — deterministic and safe for CI/CD.\n" +
+			"Output is staged first and committed only if every step succeeds; Veld\n" +
+			"never deletes or overwrites files it did not write (see .veld-manifest.json).\n" +
 			"Pass --incremental to skip modules whose source files have not changed\n" +
 			"(intended for local development, not production pipelines).\n\n" +
 			"Backends: node-ts, node-js, python, go, rust, java, csharp, php,\n" +
@@ -748,19 +649,27 @@ func newGenerateCmd() *cobra.Command {
 				rc.ServerSdk = true
 			}
 
-			opts := emitOptions(rc, dryRunFlag)
-
-			// ── Clean before generating (skip for dry-run) ──────────────────────
-			if !dryRunFlag {
-				runClean(rc)
+			opts := emitOptions(rc)
+			mode := genMode{
+				incremental:        incrementalFlag,
+				dryRun:             dryRunFlag,
+				overwriteUnmanaged: overwriteUnmanagedFlagValue,
+				serviceSDK:         serviceSdkFlag,
 			}
 
 			// ── Workspace multi-service mode ─────────────────────────────────────
 			if len(rc.Workspace) > 0 {
 				fmt.Printf("\n%s workspace: %d services\n\n", bold("◆"), len(rc.Workspace))
-				if _, _, _, err := runWorkspaceGenerate(rc, flags, opts, serviceSdkFlag); err != nil {
+				res, err := generate(rc, flags, opts, mode)
+				if err != nil {
 					return err
 				}
+				if dryRunFlag {
+					fmt.Println("\n" + green("✓") + " Dry run — no files written. Would change:")
+					printPlan(res.plan)
+					return nil
+				}
+				printKept(res.plan)
 				fmt.Printf("\n%s All services generated\n", green("✓"))
 				return nil
 			}
@@ -788,17 +697,19 @@ func newGenerateCmd() *cobra.Command {
 				}
 			}
 
-			regenerated, _, changes, err := runGenerate(rc, incrementalFlag, opts)
+			res, err := generate(rc, flags, opts, mode)
 			if err != nil {
 				return err
 			}
+			regenerated, changes := res.modules, res.changes
 
 			if dryRunFlag {
-				fmt.Println(green("✓") + " Dry run — no files written")
-				printGenerateSummary(rc, regenerated)
+				fmt.Println(green("✓") + " Dry run — no files written. Would change:")
+				printPlan(res.plan)
 				printDiffChanges(changes)
 				return nil
 			}
+			printKept(res.plan)
 
 			if incrementalFlag {
 				if regenerated == nil {
@@ -838,10 +749,7 @@ func newGenerateCmd() *cobra.Command {
 				printSetupResults(results)
 			}
 
-			// Run postGenerate hook if configured.
-			if !dryRunFlag {
-				runPostGenerate(rc)
-			}
+			runPostGenerate(rc)
 			return nil
 		},
 	}
@@ -852,7 +760,9 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&incrementalFlag, "incremental", false,
 		"skip unchanged modules (dev only — not for production builds)")
 	cmd.Flags().BoolVar(&dryRunFlag, "dry-run", false,
-		"preview what would be generated without writing files")
+		"list the files that would be created, updated or deleted, writing nothing")
+	cmd.Flags().BoolVar(&overwriteUnmanagedFlagValue, overwriteUnmanagedFlag[2:], false,
+		"replace files in the output directory that Veld did not write (not listed in .veld-manifest.json)")
 	cmd.Flags().BoolVar(&setupFlag, "setup", false,
 		"auto-configure project files for seamless imports after generation")
 	cmd.Flags().BoolVar(&validateFlag, "validate", false,
@@ -930,11 +840,13 @@ func newCleanCmd() *cobra.Command {
 
 // ── lint ──────────────────────────────────────────────────────────────────────
 
-func writeGeneratedReadme(outDir string, a ast.AST) {
+// writeGeneratedReadme writes the README of an output directory.
+func writeGeneratedReadme(outDir string, a ast.AST) error {
 	var sb strings.Builder
-	sb.WriteString("# Generated by Veld\n\n")
-	sb.WriteString("> ⚠️ **DO NOT EDIT** — this entire directory is auto-generated by `veld generate`.\n")
-	sb.WriteString("> Any manual changes will be overwritten on the next run.\n\n")
+	sb.WriteString(readmeTitle + "\n\n")
+	sb.WriteString("> ⚠️ **DO NOT EDIT** the files `veld generate` writes here. They are listed in\n")
+	sb.WriteString("> `.veld-manifest.json` and are overwritten on the next run. Files you add\n")
+	sb.WriteString("> yourself are never modified or deleted by Veld.\n\n")
 
 	sb.WriteString("## Modules\n\n")
 	for _, mod := range a.Modules {
@@ -948,7 +860,10 @@ func writeGeneratedReadme(outDir string, a ast.AST) {
 	sb.WriteString("\n## Regenerate\n\n")
 	sb.WriteString("```bash\nveld generate\n```\n")
 
-	os.WriteFile(filepath.Join(outDir, "README.md"), []byte(sb.String()), 0644)
+	if err := os.WriteFile(filepath.Join(outDir, "README.md"), []byte(sb.String()), 0o644); err != nil {
+		return fmt.Errorf("write generated README: %w", err)
+	}
+	return nil
 }
 
 // ── graphql ───────────────────────────────────────────────────────────────────

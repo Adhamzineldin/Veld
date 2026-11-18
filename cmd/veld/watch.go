@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Adhamzineldin/Veld/internal/config"
-	"github.com/Adhamzineldin/Veld/internal/diff"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 	"github.com/spf13/cobra"
 	// Register all emitters via init(). To add a new emitter, add one line here.
@@ -47,21 +46,13 @@ func newWatchCmd() *cobra.Command {
 			fmt.Println(bold("veld watch") + "  •  watching for changes  •  Ctrl-C to stop")
 			fmt.Println()
 
-			opts := emitOptions(rc, false)
-
-			// ── clean before initial generation ─────────────────────────
-			runClean(rc)
+			opts := emitOptions(rc)
 
 			// ── initial full generation (never incremental) ─────────────
-			var regenerated []string
-			var initFiles []string
-			var changes []diff.Change
-			var genErr error
-			if len(rc.Workspace) > 0 {
-				regenerated, initFiles, changes, genErr = runWorkspaceGenerate(rc, flags, opts, false)
-			} else {
-				regenerated, initFiles, changes, genErr = runGenerate(rc, false, opts)
-			}
+			// Staged: a broken contract leaves the previous output in place.
+			res, genErr := generate(rc, flags, opts, genMode{})
+			regenerated, initFiles, changes := res.modules, res.veldFiles, res.changes
+			printKept(res.plan)
 			if genErr != nil {
 				fmt.Fprintln(os.Stderr, red("error: ")+genErr.Error())
 			} else if len(rc.Workspace) > 0 {
@@ -248,7 +239,7 @@ func newWatchCmd() *cobra.Command {
 							rc = newRC
 							currentRC = newRC
 							// Update emit options from new config.
-							opts = emitOptions(currentRC, false)
+							opts = emitOptions(currentRC)
 						}
 
 						// ── always full regeneration ────────────────────
@@ -260,19 +251,12 @@ func newWatchCmd() *cobra.Command {
 						fmt.Printf("%s %s change in %s — regenerating all...\n",
 							ts, yellow("⟳"), strings.Join(dedup(capturedChanged), ", "))
 
-						// Clean before regeneration.
-						runClean(currentRC)
-
+						// Staged: a half-edited contract that fails to compile
+						// leaves the output the dev server imports untouched.
 						start := time.Now()
-						var regen []string
-						var newFiles []string
-						var changes []diff.Change
-						var genErr error
-						if len(currentRC.Workspace) > 0 {
-							regen, newFiles, changes, genErr = runWorkspaceGenerate(currentRC, flags, opts, false)
-						} else {
-							regen, newFiles, changes, genErr = runGenerate(currentRC, false, opts)
-						}
+						res, genErr := generate(currentRC, flags, opts, genMode{})
+						regen, newFiles, changes := res.modules, res.veldFiles, res.changes
+						printKept(res.plan)
 
 						if genErr != nil {
 							// Always show the error summary — the user may have
