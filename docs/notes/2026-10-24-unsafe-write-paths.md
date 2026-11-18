@@ -96,3 +96,16 @@ These are explicit single-file outputs chosen by the user, or registry writes ow
 4. **`tsshared` writes** (C2): these files are produced by both the node backend and the typescript frontend into the same folder. Which emitter owns them in the manifest when backend and frontend share an output dir?
 5. **Exit codes** (with T5): the code for a refused path and for an unmanaged collision, and how `--strict` interacts with the exit-code taxonomy in B-046.
 6. **Failing tests before the fix:** do the WP2 tests land behind a build tag in a non-blocking CI job, or on a branch merged together with B-006?
+
+## 6. Status update (2026-11-18)
+
+Fixed on master by the staged writer (`internal/output`, ADR-007), commits 69108bd to 0ef8746:
+
+- A1–A7: `runClean` is deleted; generate and watch never delete outside the manifest; the lock survives and only `veld clean --lock` removes it.
+- A8, A9 (Java/C# emitter deletes): now run inside the staging dir only, so they cannot reach user files. The ignored errors remain until those emitters are migrated (outside tier 1).
+- B1–B3: `output.Policy` checks every output dir, workspace entries included; the segment-only check in config is removed.
+- C1–C7: emitters write only into staging; `--dry-run` runs them and writes nothing; the README is a managed file; cache and lock are saved only after a successful commit.
+- D1, D2: `veld init` refuses existing files and uses O_EXCL.
+- D3 (`veld setup`) and D4 are unchanged, as planned.
+
+The decisions on the questions in section 5 are in `2026-11-18-staged-writer-decisions.md`.

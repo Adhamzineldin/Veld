@@ -32,3 +32,7 @@
 
 - Every emitter's `Emit` signature changes to return files (or write through a `codegen.Writer` that collects them). This is a mechanical change across `internal/emitter/**` and is scheduled before the IR migration so the two refactors do not collide.
 - Estimated cost 20 to 30 h including tests (output-safety tests become part of the conformance suite).
+
+## Amendment 2026-11-18 (T2): implementation status
+
+Implemented on master in `internal/output` and `cmd/veld/stagedgen.go` (commits 69108bd to 772232e). The status stays PROPOSED until T1 accepts it. Three points differ from the wording above, and the reasons are recorded in `docs/notes/2026-11-18-staged-writer-decisions.md` §3: staging lives under the system temp dir, with an atomic temp file and rename in the destination dir; stale managed files that were edited by hand are kept rather than deleted; and in M1 emitters still write files, but only into the staging dir (returning `[]OutputFile` moves to the M2 IR migration). All 9 output-safety acceptance tests pass in the default `go test ./...`.
