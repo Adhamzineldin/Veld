@@ -61,7 +61,7 @@ func newWatchCmd() *cobra.Command {
 			var changes []diff.Change
 			var genErr error
 			if len(rc.Workspace) > 0 {
-				regenerated, initFiles, changes, genErr = runWorkspaceGenerate(rc, flags, opts)
+				regenerated, initFiles, changes, genErr = runWorkspaceGenerate(rc, flags, opts, false)
 			} else {
 				regenerated, initFiles, changes, genErr = runGenerate(rc, false, opts)
 			}
@@ -275,7 +275,7 @@ func newWatchCmd() *cobra.Command {
 						var changes []diff.Change
 						var genErr error
 						if len(currentRC.Workspace) > 0 {
-							regen, newFiles, changes, genErr = runWorkspaceGenerate(currentRC, flags, opts)
+							regen, newFiles, changes, genErr = runWorkspaceGenerate(currentRC, flags, opts, false)
 						} else {
 							regen, newFiles, changes, genErr = runGenerate(currentRC, false, opts)
 						}

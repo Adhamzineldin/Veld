@@ -51,6 +51,21 @@ func runClean(rc config.ResolvedConfig) {
 	_ = diff.DeleteLock(rc.ConfigDir)
 }
 
+// emitOptions derives emitter options from a resolved config, so every
+// command and workspace entry emits the same output for the same config.
+func emitOptions(rc config.ResolvedConfig, dryRun bool) emitter.EmitOptions {
+	return emitter.EmitOptions{
+		BaseUrl:           rc.BaseUrl,
+		DryRun:            dryRun,
+		Validate:          rc.Validate,
+		BackendFramework:  rc.BackendFramework,
+		FrontendFramework: rc.FrontendFramework,
+		Services:          rc.Services,
+		ServerSdk:         rc.ServerSdk,
+		Description:       rc.Description,
+	}
+}
+
 // runGenerate parses, validates, and emits output.
 //
 // When incremental is false every module is regenerated.
@@ -240,9 +255,11 @@ func runGenerate(rc config.ResolvedConfig, incremental bool, opts emitter.EmitOp
 }
 
 // runWorkspaceGenerate handles code generation for workspace/microservice mode.
-// It iterates over all workspace entries, parses each one, resolves consumes,
-// and emits code per-entry. Returns (regeneratedNames, allVeldFiles, changes, error).
-func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, opts emitter.EmitOptions) ([]string, []string, []diff.Change, error) {
+// It parses every workspace entry, resolves consumes, and emits code per entry.
+// With serviceSDK (--service-sdk), backend entries that declare no consumes
+// consume every backend sibling. Returns (regeneratedNames, allVeldFiles,
+// changes, error).
+func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, opts emitter.EmitOptions, serviceSDK bool) ([]string, []string, []diff.Change, error) {
 	// Validate consumes declarations.
 	if errs, warns := validator.ValidateWorkspaceConsumes(rc.Workspace); len(errs) > 0 || len(warns) > 0 {
 		for _, w := range warns {
@@ -260,7 +277,6 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 	type parsedEntry struct {
 		rc     config.ResolvedConfig
 		ast    ast.AST
-		flags  config.FlagOverrides
 		outDir string
 	}
 	parsed := make(map[string]*parsedEntry, len(rc.Workspace))
@@ -271,6 +287,7 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 		entryFlags.InputSet = true
 		entryFlags.Input = filepath.Join(rc.ConfigDir, entry.Input)
 
+		// Support both flat (entry.Backend) and nested (entry.BackendCfg.Target) format.
 		backendTarget := entry.Backend
 		if backendTarget == "" && entry.BackendCfg != nil && entry.BackendCfg.Target != "" {
 			backendTarget = entry.BackendCfg.Target
@@ -294,23 +311,12 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 			entryFlags.BackendFramework = entry.BackendCfg.Framework
 		}
 
-		outDir := entry.Out
-		if outDir == "" && entry.BackendCfg != nil && entry.BackendCfg.Out != "" {
-			outDir = entry.BackendCfg.Out
-		}
-		if outDir == "" {
-			outDir = filepath.Join(rc.ConfigDir, "generated", entry.Name)
-		} else if !filepath.IsAbs(outDir) {
-			outDir = filepath.Clean(filepath.Join(rc.ConfigDir, outDir))
-		}
+		// Output dirs are absolute before being passed as flags, because
+		// BuildResolved resets cfgDir to CWD when InputSet=true.
+		outDir, feOut := rc.WorkspaceOutDirs(entry)
 		entryFlags.OutSet = true
 		entryFlags.Out = outDir
-
-		if entry.FrontendCfg != nil && entry.FrontendCfg.Out != "" {
-			feOut := entry.FrontendCfg.Out
-			if !filepath.IsAbs(feOut) {
-				feOut = filepath.Clean(filepath.Join(rc.ConfigDir, feOut))
-			}
+		if feOut != "" {
 			entryFlags.FrontendOutSet = true
 			entryFlags.FrontendOut = feOut
 		}
@@ -326,6 +332,10 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 		entryRC.Description = rc.Description
 		entryRC.Services = rc.Services
 
+		// Cross-service aliases: `import @iam/models/*` resolves in any
+		// sibling. @<service-name> → that service's source directory, two
+		// levels up from its input file (services/iam/modules/iam.veld →
+		// services/iam/).
 		crossAliases := make(map[string]string, len(entryRC.Aliases)+len(rc.Workspace))
 		for k, v := range entryRC.Aliases {
 			crossAliases[k] = v
@@ -338,10 +348,11 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 			if !filepath.IsAbs(siblingInput) {
 				siblingInput = filepath.Join(rc.ConfigDir, siblingInput)
 			}
-			serviceRoot := filepath.Dir(filepath.Dir(siblingInput))
-			crossAliases[sibling.Name] = serviceRoot
+			crossAliases[sibling.Name] = filepath.Dir(filepath.Dir(siblingInput))
 		}
 
+		// A frontend-only entry may have no input file: its AST is built
+		// entirely from the services it consumes.
 		isFrontend := frontendTarget != "" && frontendTarget != "none"
 		a, veldFiles, err := loader.Parse(entryRC.Input, crossAliases)
 		if err != nil && isFrontend {
@@ -351,64 +362,48 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 		}
 		allVeldFiles = append(allVeldFiles, veldFiles...)
 
-		parsed[entry.Name] = &parsedEntry{
-			rc:     entryRC,
-			ast:    a,
-			flags:  entryFlags,
-			outDir: outDir,
-		}
+		parsed[entry.Name] = &parsedEntry{rc: entryRC, ast: a, outDir: outDir}
 	}
 
 	// Pass 2: generate each entry with consumed service resolution.
 	var allRegenerated []string
 	for _, entry := range rc.Workspace {
+		fmt.Printf("  %s %s\n", bold("→"), entry.Name)
 		pe := parsed[entry.Name]
 
-		entryOpts := emitter.EmitOptions{
-			BaseUrl:           pe.rc.BaseUrl,
-			DryRun:            opts.DryRun,
-			Validate:          pe.rc.Validate,
-			BackendFramework:  pe.rc.BackendFramework,
-			FrontendFramework: pe.rc.FrontendFramework,
-			Services:          pe.rc.Services,
-			ServerSdk:         pe.rc.ServerSdk,
-			Description:       pe.rc.Description,
-		}
+		entryOpts := emitOptions(pe.rc, opts.DryRun)
 
+		// Auto-consume: frontend entries always consume every backend
+		// sibling so one SDK covers all services; with --service-sdk,
+		// backend entries without consumes do too.
 		consumesList := entry.Consumes
 		isFrontendEntry := entry.Frontend != "" && entry.Frontend != "none"
-		if isFrontendEntry || len(consumesList) == 0 {
-			if isFrontendEntry {
-				consumesList = nil
-				for _, other := range rc.Workspace {
-					if other.Name != entry.Name && (other.Frontend == "" || other.Frontend == "none") {
-						consumesList = append(consumesList, other.Name)
-					}
+		if isFrontendEntry || (serviceSDK && len(consumesList) == 0) {
+			consumesList = nil
+			for _, other := range rc.Workspace {
+				if other.Name != entry.Name && (other.Frontend == "" || other.Frontend == "none") {
+					consumesList = append(consumesList, other.Name)
 				}
 			}
 		}
 
-		if len(consumesList) > 0 {
-			var consumed []emitter.ConsumedServiceInfo
-			for _, depName := range consumesList {
-				dep := parsed[depName]
-				if dep == nil {
-					continue
-				}
-				consumed = append(consumed, emitter.ConsumedServiceInfo{
-					Name:    depName,
-					AST:     emitter.ApplyTopLevelPrefix(dep.ast),
-					BaseUrl: dep.rc.BaseUrl,
-				})
+		for _, depName := range consumesList {
+			dep := parsed[depName]
+			if dep == nil {
+				continue // validated above
 			}
-			entryOpts.ConsumedServices = consumed
+			entryOpts.ConsumedServices = append(entryOpts.ConsumedServices, emitter.ConsumedServiceInfo{
+				Name:    depName,
+				AST:     emitter.ApplyTopLevelPrefix(dep.ast),
+				BaseUrl: dep.rc.BaseUrl,
+			})
 		}
 
+		// Frontend entries get every consumed service merged into their own
+		// AST, plus a per-module base URL map so each module's client
+		// targets the right service.
 		if isFrontendEntry && len(entryOpts.ConsumedServices) > 0 {
-			pe.ast = emitter.ApplyTopLevelPrefix(pe.ast)
-			mergedAST := emitter.MergeASTs(pe.ast, entryOpts.ConsumedServices)
-			pe.ast = mergedAST
-
+			pe.ast = emitter.MergeASTs(emitter.ApplyTopLevelPrefix(pe.ast), entryOpts.ConsumedServices)
 			if entryOpts.Services == nil {
 				entryOpts.Services = make(map[string]string)
 			}
@@ -431,8 +426,13 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 			}
 		}
 
-		// Emit service SDK clients for consumed services.
-		if !isFrontendEntry && len(entryOpts.ConsumedServices) > 0 {
+		consumedNames := make([]string, len(entryOpts.ConsumedServices))
+		for i, c := range entryOpts.ConsumedServices {
+			consumedNames[i] = c.Name
+		}
+		switch {
+		case !isFrontendEntry && len(consumedNames) > 0:
+			// Typed clients for consumed services, in the backend's language.
 			backend, err := emitter.GetBackend(pe.rc.Backend)
 			if err != nil {
 				return nil, allVeldFiles, nil, fmt.Errorf("workspace entry %q: %w", entry.Name, err)
@@ -440,6 +440,11 @@ func runWorkspaceGenerate(rc config.ResolvedConfig, flags config.FlagOverrides, 
 			if err := backend.EmitServiceSdk(entryOpts.ConsumedServices, pe.rc.BackendOut, entryOpts); err != nil {
 				return nil, allVeldFiles, nil, fmt.Errorf("workspace entry %q service sdk: %w", entry.Name, err)
 			}
+			fmt.Printf("  %s %s → sdk/ (%s)\n", green("✓"), entry.Name, strings.Join(consumedNames, ", "))
+		case isFrontendEntry && len(consumedNames) > 0:
+			fmt.Printf("  %s %s → unified frontend SDK (%s)\n", green("✓"), entry.Name, strings.Join(consumedNames, ", "))
+		default:
+			fmt.Printf("  %s %s → %s\n", green("✓"), entry.Name, pe.outDir)
 		}
 
 		allRegenerated = append(allRegenerated, entry.Name)
@@ -743,16 +748,7 @@ func newGenerateCmd() *cobra.Command {
 				rc.ServerSdk = true
 			}
 
-			opts := emitter.EmitOptions{
-				BaseUrl:           rc.BaseUrl,
-				DryRun:            dryRunFlag,
-				Validate:          rc.Validate,
-				BackendFramework:  rc.BackendFramework,
-				FrontendFramework: rc.FrontendFramework,
-				Services:          rc.Services,
-				ServerSdk:         rc.ServerSdk,
-				Description:       rc.Description,
-			}
+			opts := emitOptions(rc, dryRunFlag)
 
 			// ── Clean before generating (skip for dry-run) ──────────────────────
 			if !dryRunFlag {
@@ -762,253 +758,8 @@ func newGenerateCmd() *cobra.Command {
 			// ── Workspace multi-service mode ─────────────────────────────────────
 			if len(rc.Workspace) > 0 {
 				fmt.Printf("\n%s workspace: %d services\n\n", bold("◆"), len(rc.Workspace))
-
-				// ── Validate consumes declarations ───────────────────────────────
-				if errs, warns := validator.ValidateWorkspaceConsumes(rc.Workspace); len(errs) > 0 || len(warns) > 0 {
-					for _, w := range warns {
-						fmt.Fprintf(os.Stderr, yellow("⚠")+"  %s\n", w)
-					}
-					for _, e := range errs {
-						fmt.Fprintf(os.Stderr, red("✗")+"  %s\n", e)
-					}
-					if len(errs) > 0 {
-						return fmt.Errorf("workspace validation failed")
-					}
-				}
-
-				// ── Pass 1: parse all workspace entries and cache ASTs ───────────
-				type parsedEntry struct {
-					rc     config.ResolvedConfig
-					ast    ast.AST
-					flags  config.FlagOverrides
-					outDir string
-				}
-				parsed := make(map[string]*parsedEntry, len(rc.Workspace))
-
-				for _, entry := range rc.Workspace {
-					entryFlags := flags
-					entryFlags.InputSet = true
-					entryFlags.Input = filepath.Join(rc.ConfigDir, entry.Input)
-
-					// Support both flat (entry.Backend) and nested (entry.BackendCfg.Target) format.
-					backendTarget := entry.Backend
-					if backendTarget == "" && entry.BackendCfg != nil && entry.BackendCfg.Target != "" {
-						backendTarget = entry.BackendCfg.Target
-					}
-					if backendTarget != "" {
-						entryFlags.BackendSet = true
-						entryFlags.Backend = backendTarget
-					}
-
-					frontendTarget := entry.Frontend
-					if frontendTarget == "" && entry.FrontendCfg != nil && entry.FrontendCfg.Target != "" {
-						frontendTarget = entry.FrontendCfg.Target
-					}
-					if frontendTarget != "" {
-						entryFlags.FrontendSet = true
-						entryFlags.Frontend = frontendTarget
-					}
-
-					// Apply per-entry framework from nested config.
-					if entry.BackendCfg != nil && entry.BackendCfg.Framework != "" {
-						entryFlags.BackendFrameworkSet = true
-						entryFlags.BackendFramework = entry.BackendCfg.Framework
-					}
-
-					// Resolve out directory: check flat Out, then BackendCfg.Out.
-					// Always make absolute relative to rc.ConfigDir BEFORE passing as a flag,
-					// because BuildResolved resets cfgDir to CWD when InputSet=true.
-					outDir := entry.Out
-					if outDir == "" && entry.BackendCfg != nil && entry.BackendCfg.Out != "" {
-						outDir = entry.BackendCfg.Out
-					}
-					if outDir == "" {
-						outDir = filepath.Join(rc.ConfigDir, "generated", entry.Name)
-					} else if !filepath.IsAbs(outDir) {
-						outDir = filepath.Clean(filepath.Join(rc.ConfigDir, outDir))
-					}
-					entryFlags.OutSet = true
-					entryFlags.Out = outDir
-
-					// Resolve split frontend out if specified.
-					if entry.FrontendCfg != nil && entry.FrontendCfg.Out != "" {
-						feOut := entry.FrontendCfg.Out
-						if !filepath.IsAbs(feOut) {
-							feOut = filepath.Clean(filepath.Join(rc.ConfigDir, feOut))
-						}
-						entryFlags.FrontendOutSet = true
-						entryFlags.FrontendOut = feOut
-					}
-
-					entryRC, err := config.BuildResolved(entryFlags)
-					if err != nil {
-						return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
-					}
-					if entry.BaseUrl != "" {
-						entryRC.BaseUrl = entry.BaseUrl
-					}
-					entryRC.ServerSdk = entry.ServerSdk || rc.ServerSdk
-					entryRC.Description = rc.Description
-					entryRC.Services = rc.Services
-
-					// Build a merged alias map that includes cross-service aliases.
-					// This enables `import @iam/models/*` in any sibling service.
-					// @<service-name> → absolute path to that service's source directory
-					// (two directories up from its input file, e.g. services/iam/ for
-					// services/iam/modules/iam.veld).
-					crossAliases := make(map[string]string, len(entryRC.Aliases)+len(rc.Workspace))
-					for k, v := range entryRC.Aliases {
-						crossAliases[k] = v
-					}
-					for _, sibling := range rc.Workspace {
-						if sibling.Name == entry.Name || sibling.Input == "" {
-							continue
-						}
-						siblingInput := sibling.Input
-						if !filepath.IsAbs(siblingInput) {
-							siblingInput = filepath.Join(rc.ConfigDir, siblingInput)
-						}
-						// Service root is two levels up: services/iam/modules/iam.veld → services/iam/
-						serviceRoot := filepath.Dir(filepath.Dir(siblingInput))
-						crossAliases[sibling.Name] = serviceRoot
-					}
-
-					// Parse the AST for this entry (needed for consumes resolution).
-					// For frontend-only entries, the input file may not exist — the
-					// frontend AST will be built entirely from consumed services.
-					isFrontend := frontendTarget != "" && frontendTarget != "none"
-					a, _, err := loader.Parse(entryRC.Input, crossAliases)
-					if err != nil && isFrontend {
-						// Frontend entry with missing input file — use empty AST.
-						// It will be populated via MergeASTs from consumed services.
-						a = ast.AST{ASTVersion: "1.0.0"}
-					} else if err != nil {
-						return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
-					}
-
-					parsed[entry.Name] = &parsedEntry{
-						rc:     entryRC,
-						ast:    a,
-						flags:  entryFlags,
-						outDir: outDir,
-					}
-				}
-
-				// ── Pass 2: generate each entry with consumed service resolution ─
-				for _, entry := range rc.Workspace {
-					fmt.Printf("  %s %s\n", bold("→"), entry.Name)
-					pe := parsed[entry.Name]
-
-					entryOpts := emitter.EmitOptions{
-						BaseUrl:           pe.rc.BaseUrl,
-						DryRun:            dryRunFlag,
-						Validate:          pe.rc.Validate,
-						BackendFramework:  pe.rc.BackendFramework,
-						FrontendFramework: pe.rc.FrontendFramework,
-						Services:          pe.rc.Services,
-						ServerSdk:         pe.rc.ServerSdk,
-						Description:       pe.rc.Description,
-					}
-
-					// Resolve consumed services from the parsed AST cache.
-					consumesList := entry.Consumes
-
-					// Auto-consume logic:
-					// 1. --service-sdk flag: backend entries consume ALL other siblings.
-					// 2. Frontend entries (frontend != "none") ALWAYS consume all
-					//    backend siblings so the frontend SDK covers every service.
-					isFrontendEntry := entry.Frontend != "" && entry.Frontend != "none"
-					if isFrontendEntry || (serviceSdkFlag && len(consumesList) == 0) {
-						if isFrontendEntry || len(consumesList) == 0 {
-							consumesList = nil // rebuild fresh
-							for _, other := range rc.Workspace {
-								if other.Name != entry.Name && (other.Frontend == "" || other.Frontend == "none") {
-									consumesList = append(consumesList, other.Name)
-								}
-							}
-						}
-					}
-
-					if len(consumesList) > 0 {
-						var consumed []emitter.ConsumedServiceInfo
-						for _, depName := range consumesList {
-							dep := parsed[depName]
-							if dep == nil {
-								continue // validated above
-							}
-							consumed = append(consumed, emitter.ConsumedServiceInfo{
-								Name:    depName,
-								AST:     emitter.ApplyTopLevelPrefix(dep.ast),
-								BaseUrl: dep.rc.BaseUrl,
-							})
-						}
-						entryOpts.ConsumedServices = consumed
-					}
-
-					// For frontend entries: merge all consumed service ASTs into
-					// the frontend's own AST so the frontend SDK (React/Vue/Angular/etc.)
-					// gets typed clients for EVERY service in one unified import.
-					// Also build a per-module Services map so each module's SDK
-					// client points to the correct service URL.
-					if isFrontendEntry && len(entryOpts.ConsumedServices) > 0 {
-						pe.ast = emitter.ApplyTopLevelPrefix(pe.ast)
-						mergedAST := emitter.MergeASTs(pe.ast, entryOpts.ConsumedServices)
-						pe.ast = mergedAST
-
-						// Re-parse into the loader isn't needed — we override the
-						// resolved config's input AST by calling runGenerateWithAST.
-
-						// Build per-module base URL map so the frontend SDK knows
-						// which URL goes to which service module.
-						if entryOpts.Services == nil {
-							entryOpts.Services = make(map[string]string)
-						}
-						for _, consumed := range entryOpts.ConsumedServices {
-							for _, mod := range consumed.AST.Modules {
-								if consumed.BaseUrl != "" {
-									entryOpts.Services[mod.Name] = consumed.BaseUrl
-								}
-							}
-						}
-					}
-
-					if isFrontendEntry {
-						// Frontend entries: skip loader.Parse (the input file may not
-						// exist if the frontend is fully driven by consumed services).
-						// Emit directly with the (possibly merged) AST.
-						if err := runGenerateWithAST(pe.rc, pe.ast, entryOpts); err != nil {
-							return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
-						}
-					} else {
-						if _, _, _, err := runGenerate(pe.rc, false, entryOpts); err != nil {
-							return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
-						}
-					}
-
-					// Emit service SDK clients for consumed services via the backend emitter.
-					// (Only for backend entries — the frontend already got everything via AST merge.)
-					if !isFrontendEntry && len(entryOpts.ConsumedServices) > 0 {
-						backend, err := emitter.GetBackend(pe.rc.Backend)
-						if err != nil {
-							return fmt.Errorf("workspace entry %q: %w", entry.Name, err)
-						}
-						if err := backend.EmitServiceSdk(entryOpts.ConsumedServices, pe.rc.BackendOut, entryOpts); err != nil {
-							return fmt.Errorf("workspace entry %q service sdk: %w", entry.Name, err)
-						}
-						consumedNames := make([]string, len(entryOpts.ConsumedServices))
-						for i, c := range entryOpts.ConsumedServices {
-							consumedNames[i] = c.Name
-						}
-						fmt.Printf("  %s %s → sdk/ (%s)\n", green("✓"), entry.Name, strings.Join(consumedNames, ", "))
-					} else if isFrontendEntry && len(entryOpts.ConsumedServices) > 0 {
-						consumedNames := make([]string, len(entryOpts.ConsumedServices))
-						for i, c := range entryOpts.ConsumedServices {
-							consumedNames[i] = c.Name
-						}
-						fmt.Printf("  %s %s → unified frontend SDK (%s)\n", green("✓"), entry.Name, strings.Join(consumedNames, ", "))
-					} else {
-						fmt.Printf("  %s %s → %s\n", green("✓"), entry.Name, pe.outDir)
-					}
+				if _, _, _, err := runWorkspaceGenerate(rc, flags, opts, serviceSdkFlag); err != nil {
+					return err
 				}
 				fmt.Printf("\n%s All services generated\n", green("✓"))
 				return nil
