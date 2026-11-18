@@ -194,7 +194,9 @@ func TestNodeEmitterRoutesContent(t *testing.T) {
 		{"delete route", "router.delete('/api/auth/logout'"},
 		{"post 201 status", "res.status(201).json(result)"},
 		{"delete 204 status", "res.status(204).end()"},
-		{"try/catch", "} catch (err: any) {"},
+		{"try/catch", "} catch (err) {"},
+		{"shared error responder", "sendError(res, err);"},
+		{"responder import", "import { sendError } from './_respond';"},
 		{"service call camelCase", "service.login("},
 	}
 	for _, c := range checks {
@@ -375,5 +377,34 @@ func TestNodeEmitterRouteOrder(t *testing.T) {
 	want := []string{"get /api/items/me", "get /api/items/guarded", "get /api/items/:id"}
 	if got := emittertest.RouteRegistrations(string(data)); !reflect.DeepEqual(got, want) {
 		t.Errorf("registration order = %v, want %v", got, want)
+	}
+}
+
+// F-NODE-10: one shared responder that never sends a 5xx error's message.
+func TestNodeEmitterErrorResponder(t *testing.T) {
+	outDir := t.TempDir()
+	if err := node.New().Emit(minimalAST(), outDir, emitter.EmitOptions{}); err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(outDir, "routes", "_respond.ts"))
+	if err != nil {
+		t.Fatalf("routes/_respond.ts not emitted: %v", err)
+	}
+	src := string(data)
+	for _, want := range []string{
+		"export function sendError(res: any, err: unknown): void {",
+		"const body: Record<string, string> = { error: 'Internal Server Error' };",
+		"if (status < 500 && typeof e.message === 'string'",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("_respond.ts missing %q:\n%s", want, src)
+		}
+	}
+	routes, err := os.ReadFile(filepath.Join(outDir, "routes", "auth.routes.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(routes), "err.message") {
+		t.Errorf("route handlers still read err.message themselves:\n%s", routes)
 	}
 }

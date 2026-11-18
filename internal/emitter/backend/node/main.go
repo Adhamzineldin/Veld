@@ -62,6 +62,9 @@ func (e *NodeEmitter) Emit(a ast.AST, outDir string, opts emitter.EmitOptions) e
 	if err := e.emitAllErrors(a, outDir); err != nil {
 		return fmt.Errorf("errors: %w", err)
 	}
+	if err := e.emitRespondHelper(a, outDir, strat); err != nil {
+		return fmt.Errorf("error responder: %w", err)
+	}
 	for _, mod := range a.Modules {
 		if err := e.emitInterface(a, mod, outDir); err != nil {
 			return fmt.Errorf("interface for %s: %w", mod.Name, err)
