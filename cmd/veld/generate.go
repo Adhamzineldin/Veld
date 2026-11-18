@@ -14,6 +14,7 @@ import (
 	"github.com/Adhamzineldin/Veld/internal/emitter"
 	"github.com/Adhamzineldin/Veld/internal/lint"
 	"github.com/Adhamzineldin/Veld/internal/loader"
+	"github.com/Adhamzineldin/Veld/internal/output"
 	"github.com/Adhamzineldin/Veld/internal/setup"
 	"github.com/Adhamzineldin/Veld/internal/validator"
 	"github.com/spf13/cobra"
@@ -33,22 +34,6 @@ func runPostGenerate(rc config.ResolvedConfig) {
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, yellow("warning: ")+"postGenerate hook failed: %v\n", err)
 	}
-}
-
-// runClean removes generated output directories and clears cache/lock files.
-// Shared by generate and watch commands so output is always fresh.
-func runClean(rc config.ResolvedConfig) {
-	for _, dir := range rc.OutputDirs() {
-		if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
-			continue
-		}
-		if err := os.RemoveAll(dir); err != nil {
-			fmt.Fprintf(os.Stderr, yellow("warning: ")+"failed to clean %s: %v\n", dir, err)
-		}
-	}
-	cacheFile := filepath.Join(rc.ConfigDir, ".veld-cache.json")
-	os.Remove(cacheFile)
-	_ = diff.DeleteLock(rc.ConfigDir)
 }
 
 // emitOptions derives emitter options from a resolved config, so every
@@ -800,13 +785,21 @@ func computePreChanges(rc config.ResolvedConfig) []diff.Change {
 	return diff.Diff(oldAST, a)
 }
 
-// promptContinue prints a [y/N] prompt and returns true only if the user
-// types "y" or "Y". Any other input (including Enter) returns false.
+// newCleanCmd builds `veld clean`. It deletes only what Veld wrote: the
+// files listed in each output directory's .veld-manifest.json whose content
+// is unchanged (ADR-007 §3). The breaking-change lock is kept unless --lock
+// is given (ADR-007 §7).
 func newCleanCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:     "clean",
-		Short:   "Remove the generated output directory",
-		Example: "  veld clean",
+	var lockFlag bool
+	cmd := &cobra.Command{
+		Use:   "clean",
+		Short: "Remove the files Veld generated",
+		Long: "Removes the files listed in each output directory's .veld-manifest.json,\n" +
+			"then directories left empty. Files you added, and generated files you edited\n" +
+			"by hand, are left in place. An output directory without a manifest is not\n" +
+			"touched and makes the command fail. The breaking-change baseline\n" +
+			"(.veld.lock.json) is kept unless --lock is given.",
+		Example: "  veld clean\n  veld clean --lock",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := config.BuildResolved(config.FlagOverrides{})
 			if err != nil {
@@ -817,25 +810,53 @@ func newCleanCmd() *cobra.Command {
 				fmt.Printf("\n%s workspace: %d services\n\n", bold("◆"), len(rc.Workspace))
 			}
 
-			cleaned := false
+			var unmanaged []string
 			for _, dir := range rc.OutputDirs() {
-				if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
-					cleaned = true
+				res, err := output.Clean(dir)
+				if err != nil {
+					return fmt.Errorf("clean %s: %w", dir, err)
+				}
+				switch {
+				case res.Managed:
+					fmt.Printf("%s Cleaned %s (%d file(s))\n", green("✓"), bold(dir), len(res.Removed))
+					for _, p := range res.Kept {
+						fmt.Fprintf(os.Stderr, yellow("⚠")+"  kept %s: edited since Veld wrote it\n",
+							filepath.Join(dir, filepath.FromSlash(p)))
+					}
+				case dirHasEntries(dir):
+					unmanaged = append(unmanaged, dir)
+				default:
+					fmt.Printf("%s Nothing to clean in %s\n", green("✓"), dir)
 				}
 			}
 
-			runClean(rc)
-
-			if cleaned {
-				for _, dir := range rc.OutputDirs() {
-					fmt.Println(green("✓") + " Cleaned " + bold(dir))
+			if err := cache.Delete(rc.ConfigDir); err != nil {
+				return fmt.Errorf("remove cache: %w", err)
+			}
+			if lockFlag {
+				if err := diff.DeleteLock(rc.ConfigDir); err != nil {
+					return fmt.Errorf("remove lock: %w", err)
 				}
-			} else {
-				fmt.Println(green("✓") + " Nothing to clean — output directory does not exist")
+				fmt.Println(green("✓") + " Removed the breaking-change baseline (.veld.lock.json)")
+			}
+
+			if len(unmanaged) > 0 {
+				return fmt.Errorf("nothing removed from %s: no %s, so Veld cannot tell its files from yours. "+
+					"Run `veld generate` once to record them, or delete the directory yourself",
+					strings.Join(unmanaged, ", "), output.ManifestName)
 			}
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&lockFlag, "lock", false,
+		"also remove the breaking-change baseline (.veld.lock.json)")
+	return cmd
+}
+
+// dirHasEntries reports whether dir exists and is not empty.
+func dirHasEntries(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	return err == nil && len(entries) > 0
 }
 
 // ── lint ──────────────────────────────────────────────────────────────────────

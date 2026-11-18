@@ -449,7 +449,9 @@ func (rc ResolvedConfig) OutputDirs() []string {
 	if rc.SplitOutput() {
 		return []string{rc.BackendOut, rc.FrontendOut}
 	}
-	return []string{rc.Out}
+	// Not rc.Out: when backendOut and frontendOut are both set to the same
+	// directory, out is only an unused fallback.
+	return []string{rc.BackendOut}
 }
 
 // workspaceOutputDirs resolves and deduplicates output directories for every
