@@ -222,8 +222,11 @@ func TestBuildResolvedAliasesMerge(t *testing.T) {
 	}
 }
 
-func TestOutPathValidation(t *testing.T) {
-	// Test that bare ".." is rejected as an out path
+// TestOutPathResolvedNotJudged: config only resolves output paths. Refusing
+// unsafe ones such as ".." (the parent of the config dir) moved to
+// internal/output.Policy (B-008), which every writing command applies; the
+// CLI case lives in TestOutputSafetyRefusesOutCoveringSources.
+func TestOutPathResolvedNotJudged(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "veld", "veld.config.json")
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
@@ -240,13 +243,21 @@ func TestOutPathValidation(t *testing.T) {
 	defer os.Chdir(orig)
 	os.Chdir(dir)
 
-	_, err := BuildResolved(FlagOverrides{})
-	if err == nil {
-		t.Fatal("expected error for out path '..'")
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("BuildResolved: %v", err)
 	}
-	if !strings.Contains(err.Error(), "must end with a folder name") {
-		t.Errorf("unexpected error message: %v", err)
+	want, _ := filepath.Abs(".")
+	if !sameDir(rc.Out, want) {
+		t.Errorf("out %q resolved to %q, want %q", "..", rc.Out, want)
 	}
+}
+
+// sameDir compares directories after resolving symlinks (macOS temp dirs).
+func sameDir(a, b string) bool {
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	return errA == nil && errB == nil && strings.EqualFold(ra, rb)
 }
 
 func TestOutPathWithFolderAllowed(t *testing.T) {
@@ -502,7 +513,9 @@ func TestSplitOutputFlagOverrides(t *testing.T) {
 	}
 }
 
-func TestSplitOutputPathValidation(t *testing.T) {
+// TestSplitOutPathResolvedNotJudged: like TestOutPathResolvedNotJudged, for
+// backendOut; the refusal is covered by TestOutputSafetyRefusesOutCoveringSources.
+func TestSplitOutPathResolvedNotJudged(t *testing.T) {
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, "veld")
 	os.MkdirAll(cfgDir, 0755)
@@ -518,12 +531,288 @@ func TestSplitOutputPathValidation(t *testing.T) {
 	defer os.Chdir(orig)
 	os.Chdir(dir)
 
-	_, err := BuildResolved(FlagOverrides{})
-	if err == nil {
-		t.Fatal("expected error for backendOut path '..'")
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("BuildResolved: %v", err)
 	}
-	if !strings.Contains(err.Error(), "backendOut") {
-		t.Errorf("error should mention 'backendOut', got: %v", err)
+	if !sameDir(rc.BackendOut, dir) {
+		t.Errorf("backendOut %q resolved to %q, want %q", "..", rc.BackendOut, dir)
+	}
+}
+
+func TestNormalizeNestedBackend(t *testing.T) {
+	cfg := RawConfig{
+		Input: "app.veld",
+		BackendCfg: &BackendConfig{
+			Target:    "python",
+			Framework: "flask",
+			Out:       "../backend/generated",
+		},
+		FrontendCfg: &FrontendConfig{
+			Target: "react",
+			Out:    "../frontend/generated",
+		},
+		Hooks: &HooksConfig{
+			PostGenerate: "npm run format",
+		},
+	}
+	cfg.normalize()
+
+	if cfg.Backend != "python" {
+		t.Errorf("Backend = %q, want %q", cfg.Backend, "python")
+	}
+	if cfg.BackendFramework != "flask" {
+		t.Errorf("BackendFramework = %q, want %q", cfg.BackendFramework, "flask")
+	}
+	if cfg.BackendOut != "../backend/generated" {
+		t.Errorf("BackendOut = %q, want %q", cfg.BackendOut, "../backend/generated")
+	}
+	if cfg.Frontend != "react" {
+		t.Errorf("Frontend = %q, want %q", cfg.Frontend, "react")
+	}
+	if cfg.FrontendOut != "../frontend/generated" {
+		t.Errorf("FrontendOut = %q, want %q", cfg.FrontendOut, "../frontend/generated")
+	}
+	if cfg.PostGenerate != "npm run format" {
+		t.Errorf("PostGenerate = %q, want %q", cfg.PostGenerate, "npm run format")
+	}
+}
+
+func TestNormalizeFlatStillWorks(t *testing.T) {
+	cfg := RawConfig{
+		Input:            "app.veld",
+		Backend:          "node",
+		Frontend:         "typescript",
+		BackendFramework: "express",
+		PostGenerate:     "echo done",
+	}
+	cfg.normalize()
+
+	if cfg.Backend != "node" {
+		t.Errorf("Backend = %q, want %q", cfg.Backend, "node")
+	}
+	if cfg.BackendFramework != "express" {
+		t.Errorf("BackendFramework = %q, want %q", cfg.BackendFramework, "express")
+	}
+	if cfg.PostGenerate != "echo done" {
+		t.Errorf("PostGenerate = %q, want %q", cfg.PostGenerate, "echo done")
+	}
+}
+
+func TestNormalizeNestedDoesNotOverrideFlat(t *testing.T) {
+	// If both flat and nested are set, flat wins (user explicitly set it).
+	cfg := RawConfig{
+		Input:   "app.veld",
+		Backend: "go",
+		BackendCfg: &BackendConfig{
+			Target: "python",
+		},
+	}
+	cfg.normalize()
+
+	// Flat "go" was already set, nested "python" should NOT override.
+	if cfg.Backend != "go" {
+		t.Errorf("Backend = %q, want %q (flat should not be overridden)", cfg.Backend, "go")
+	}
+}
+
+func TestNormalizeWorkspaceEntry(t *testing.T) {
+	cfg := RawConfig{
+		Workspace: []WorkspaceEntry{
+			{
+				Name: "iam",
+				BackendCfg: &BackendConfig{
+					Target: "node",
+					Out:    "../backend/iam/generated",
+				},
+			},
+			{
+				Name: "frontend",
+				FrontendCfg: &FrontendConfig{
+					Target: "react",
+					Out:    "../frontend/generated",
+				},
+			},
+		},
+	}
+	cfg.normalize()
+
+	if cfg.Workspace[0].Backend != "node" {
+		t.Errorf("ws[0].Backend = %q, want %q", cfg.Workspace[0].Backend, "node")
+	}
+	if cfg.Workspace[0].Out != "../backend/iam/generated" {
+		t.Errorf("ws[0].Out = %q, want %q", cfg.Workspace[0].Out, "../backend/iam/generated")
+	}
+	if cfg.Workspace[1].Frontend != "react" {
+		t.Errorf("ws[1].Frontend = %q, want %q", cfg.Workspace[1].Frontend, "react")
+	}
+}
+
+func TestNormalizeValidateFromNested(t *testing.T) {
+	v := true
+	cfg := RawConfig{
+		Input: "app.veld",
+		BackendCfg: &BackendConfig{
+			Target:   "node",
+			Validate: &v,
+		},
+	}
+	cfg.normalize()
+
+	if !cfg.Validate {
+		t.Error("Validate should be true from nested config")
+	}
+}
+
+func TestEffectiveBackendDirNested(t *testing.T) {
+	cfg := RawConfig{
+		BackendCfg: &BackendConfig{Dir: "../backend"},
+		BackendDir: "../old-backend",
+	}
+	if got := cfg.effectiveBackendDir(); got != "../backend" {
+		t.Errorf("effectiveBackendDir() = %q, want %q (nested should win)", got, "../backend")
+	}
+}
+
+func TestEffectiveFrontendDirNested(t *testing.T) {
+	cfg := RawConfig{
+		FrontendCfg: &FrontendConfig{Dir: "../frontend"},
+		FrontendDir: "../old-frontend",
+	}
+	if got := cfg.effectiveFrontendDir(); got != "../frontend" {
+		t.Errorf("effectiveFrontendDir() = %q, want %q (nested should win)", got, "../frontend")
+	}
+}
+
+func TestEffectivePostGenerateHooks(t *testing.T) {
+	cfg := RawConfig{
+		Hooks:        &HooksConfig{PostGenerate: "new-cmd"},
+		PostGenerate: "old-cmd",
+	}
+	if got := cfg.effectivePostGenerate(); got != "new-cmd" {
+		t.Errorf("effectivePostGenerate() = %q, want %q (hooks should win)", got, "new-cmd")
+	}
+}
+
+func TestSchemaFieldIgnored(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "veld")
+	os.MkdirAll(cfgDir, 0755)
+
+	cfg := `{
+		"$schema": "https://veld.dev/schemas/veld.config.schema.json",
+		"input": "app.veld",
+		"backend": "node"
+	}`
+	os.WriteFile(filepath.Join(cfgDir, "veld.config.json"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(cfgDir, "app.veld"), []byte(""), 0644)
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rc.Backend != "node-ts" {
+		t.Errorf("Backend = %q, want %q", rc.Backend, "node-ts")
+	}
+}
+
+func TestNestedConfigEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "veld")
+	os.MkdirAll(cfgDir, 0755)
+
+	cfg := `{
+		"$schema": "https://veld.dev/schemas/veld.config.schema.json",
+		"input": "app.veld",
+		"description": "My API",
+		"backendConfig": {
+			"target": "python",
+			"framework": "flask",
+			"out": "../backend/generated",
+			"dir": "../backend"
+		},
+		"frontendConfig": {
+			"target": "vue",
+			"out": "../frontend/generated"
+		},
+		"hooks": {
+			"postGenerate": "echo done"
+		},
+		"baseUrl": "/api"
+	}`
+	os.WriteFile(filepath.Join(cfgDir, "veld.config.json"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(cfgDir, "app.veld"), []byte(""), 0644)
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	rc, err := BuildResolved(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rc.Backend != "python" {
+		t.Errorf("Backend = %q, want %q", rc.Backend, "python")
+	}
+	if rc.BackendFramework != "flask" {
+		t.Errorf("BackendFramework = %q, want %q", rc.BackendFramework, "flask")
+	}
+	if rc.Frontend != "vue" {
+		t.Errorf("Frontend = %q, want %q", rc.Frontend, "vue")
+	}
+	if rc.PostGenerate != "echo done" {
+		t.Errorf("PostGenerate = %q, want %q", rc.PostGenerate, "echo done")
+	}
+	if rc.BaseUrl != "/api" {
+		t.Errorf("BaseUrl = %q, want %q", rc.BaseUrl, "/api")
+	}
+}
+
+func TestNormalizeWildcardConsumes(t *testing.T) {
+	cfg := RawConfig{
+		Workspace: []WorkspaceEntry{
+			{Name: "iam"},
+			{Name: "accounts"},
+			{Name: "transactions"},
+			{Name: "frontend", Consumes: []string{"*"}},
+		},
+	}
+	cfg.normalize()
+
+	// "*" should be expanded to all other service names
+	if len(cfg.Workspace[3].Consumes) != 3 {
+		t.Fatalf("expected 3 consumed services, got %d: %v", len(cfg.Workspace[3].Consumes), cfg.Workspace[3].Consumes)
+	}
+	expected := map[string]bool{"iam": true, "accounts": true, "transactions": true}
+	for _, c := range cfg.Workspace[3].Consumes {
+		if !expected[c] {
+			t.Errorf("unexpected consumed service %q", c)
+		}
+	}
+	// "frontend" should NOT be in its own consumes list
+	for _, c := range cfg.Workspace[3].Consumes {
+		if c == "frontend" {
+			t.Error("frontend should not consume itself")
+		}
+	}
+}
+
+func TestNormalizeWildcardConsumesNotExpanded(t *testing.T) {
+	// Normal consumes without "*" should not be changed
+	cfg := RawConfig{
+		Workspace: []WorkspaceEntry{
+			{Name: "iam"},
+			{Name: "accounts", Consumes: []string{"iam"}},
+		},
+	}
+	cfg.normalize()
+
+	if len(cfg.Workspace[1].Consumes) != 1 || cfg.Workspace[1].Consumes[0] != "iam" {
+		t.Errorf("expected [iam], got %v", cfg.Workspace[1].Consumes)
 	}
 }
 

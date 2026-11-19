@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -60,6 +62,15 @@ func (c *Cache) Save(dir string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, cacheFile), data, 0644)
+}
+
+// Delete removes the cache file from dir. A missing file is not an error.
+func Delete(dir string) error {
+	err := os.Remove(filepath.Join(dir, cacheFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 // HasChanged returns true if the file's content hash differs from the cached value.

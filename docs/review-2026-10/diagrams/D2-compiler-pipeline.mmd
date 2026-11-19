@@ -1,0 +1,22 @@
+%% D2 - Compiler pipeline and allowed dependency direction (PROPOSED target; current packages named in brackets).
+%% Purpose: fix the boundary between syntax, semantics, IR and emission so CLI/LSP/plugins share one compiler API.
+%% Owner: T1 (content), D1 (drawing). Update trigger: any change to internal/compiler, internal/ir or package layout.
+flowchart TB
+  SRC[".veld sources + veld.config.json"] --> LEX["syntax: lexer<br/>[internal/lexer]"]
+  LEX --> PAR["syntax: parser -> AST with spans<br/>[internal/parser, internal/ast]"]
+  PAR --> LOAD["semantic: loader / import graph<br/>[internal/loader]"]
+  LOAD --> RES["semantic: resolver + validator<br/>[internal/validator]"]
+  RES --> IR["ir: normalized, versioned IR (irVersion 1.0)<br/>[NEW internal/ir]"]
+  IR --> APP["compiler API: Compile(ctx, opts) -> (Program, Diagnostics)<br/>[NEW internal/compiler]"]
+  APP --> CLI["cmd/veld"]
+  APP --> LSPS["internal/lsp"]
+  APP --> TESTS["conformance tests<br/>[NEW internal/spec/testdata]"]
+  APP --> HOST["emission host: built-ins + plugin runner + output writer/manifest<br/>[internal/emit, NEW internal/emit/plugin]"]
+  HOST --> BUILTIN["built-in emitters (tier 1/2)<br/>[internal/emitter/backend/*, frontend/*]"]
+  HOST -. "VEP v1 JSON over stdio" .-> EXT["external emitter process"]
+  HOST --> TOOLS["tools: openapi, docs, graphql, schema, mock<br/>[internal/generators, internal/*gen]"]
+  BUILTIN --> OUT["generated/ + .veld-manifest.json"]
+  EXT -. "files in response" .-> HOST
+  TOOLS --> OUT
+  %% Dependency rule (arrows point from depender to dependency):
+  %% emitters/tools -> ir only (never ast/lexer/parser); lsp/cli -> compiler API only; ir -> nothing above it.

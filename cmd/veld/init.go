@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -648,11 +650,25 @@ module %s {
 		}
 	}
 
+	// Refuse before writing anything if a scaffold file already exists
+	// (F-CLI-05): init never overwrites.
+	var existing []string
 	for _, f := range files {
-		if err := os.MkdirAll(filepath.Dir(f.path), 0755); err != nil {
+		if _, err := os.Lstat(f.path); err == nil {
+			existing = append(existing, f.path)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("check %s: %w", f.path, err)
+		}
+	}
+	if len(existing) > 0 {
+		return fmt.Errorf("veld init never overwrites files, and these already exist: %s",
+			strings.Join(existing, ", "))
+	}
+	for _, f := range files {
+		if err := os.MkdirAll(filepath.Dir(f.path), 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(f.path, []byte(f.content), 0644); err != nil {
+		if err := writeNewFile(f.path, []byte(f.content)); err != nil {
 			return err
 		}
 		fmt.Printf("  "+green("✓")+" %s\n", f.label)
@@ -785,7 +801,10 @@ module %s {
   "aliases": {}
 }
 `, descLine, selectedBackend, backendFWLine, relBackend, backendOutLine, feTarget, relFrontend, frontendOutLine)
-				_ = os.WriteFile("veld/veld.config.json", []byte(updatedCfg), 0644)
+				// Replaces the config this run just created.
+				if err := os.WriteFile("veld/veld.config.json", []byte(updatedCfg), 0o644); err != nil {
+					return fmt.Errorf("update veld/veld.config.json: %w", err)
+				}
 				fmt.Println("  " + green("✓") + " updated veld.config.json with project paths")
 			}
 
@@ -826,6 +845,20 @@ module %s {
 }
 
 // readChoice reads a number from stdin, returning def if the user presses Enter.
+// writeNewFile creates path with content; it fails if path already exists,
+// even if it appeared after the existence check (O_EXCL).
+func writeNewFile(path string, content []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(content); err != nil {
+		f.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return f.Close()
+}
+
 func readChoice(reader *bufio.Reader, max, def int) int {
 	line, _ := reader.ReadString('\n')
 	line = strings.TrimSpace(line)

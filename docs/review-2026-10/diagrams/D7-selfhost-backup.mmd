@@ -1,0 +1,21 @@
+%% D7 - Self-hosted deployment (Docker Compose default) and backup/restore flow. PROPOSED.
+%% Purpose: show the minimum operator topology and the two things that must be backed up together.
+%% Owner: T3 (content), D1 (drawing). Update trigger: changes to deploy/compose or the backup runbook.
+flowchart TB
+  subgraph Host["Single host (2 vCPU, 4 GB RAM, 20 GB disk assumed)"]
+    RP["reverse proxy (Caddy)<br/>TLS, custom domain"]
+    REG["veld-registry container<br/>config: env/registry.config.json<br/>/healthz /readyz"]
+    PG[("postgres:16 container<br/>volume: pgdata")]
+    VOL[("artifact volume<br/>/data/packages")]
+    RP --> REG
+    REG --> PG
+    REG --> VOL
+  end
+  OPS["Operator runbook"]
+  BK["backup job (cron)<br/>1. pg_dump -Fc<br/>2. tar of /data/packages<br/>3. write backup-manifest.json {schema_version, app_version, sha256s}"]
+  OBJ[("off-host backup location")]
+  RST["restore procedure<br/>1. deploy same app_version<br/>2. restore DB dump<br/>3. restore artifacts<br/>4. veld-registry verify --storage (sha256 of every package_versions row)"]
+  OPS --> BK --> OBJ
+  OBJ --> RST --> REG
+  UPG["upgrade: backup -> pull image -> migrate (versioned, forward-only) -> readyz -> smoke test pull"]
+  OPS --> UPG --> REG

@@ -138,3 +138,29 @@ func containsStr(s, sub string) bool {
 	}
 	return false
 }
+
+func TestDelete(t *testing.T) {
+	cases := []struct {
+		name    string
+		present bool
+	}{
+		{name: "removes the cache file", present: true},
+		{name: "missing cache file is not an error"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tc.present {
+				if err := newCache().Save(dir); err != nil {
+					t.Fatalf("Save: %v", err)
+				}
+			}
+			if err := Delete(dir); err != nil {
+				t.Fatalf("Delete: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(dir, cacheFile)); !os.IsNotExist(err) {
+				t.Errorf("cache file still present: %v", err)
+			}
+		})
+	}
+}

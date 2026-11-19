@@ -11,18 +11,8 @@ import (
 
 // writeModuleClass writes a full TypeScript class for a module, e.g. AuthClient.
 // defaultBase is the per-module base URL fallback (may be empty).
-func writeModuleClass(sb *strings.Builder, a ast.AST, mod ast.Module, defaultBase string, serverSdk bool) {
+func writeModuleClass(sb *strings.Builder, mod ast.Module, defaultBase string, serverSdk bool) {
 	className := mod.Name + "Client"
-
-	usedTypes := emitter.CollectUsedTypes(a, mod)
-
-	hasQuery := false
-	for _, act := range mod.Actions {
-		if act.Query != "" {
-			hasQuery = true
-			break
-		}
-	}
 
 	// Imports line (used in per-module files; for the bundled api.ts we skip this).
 	// The caller decides whether to write imports; this function only writes the class body.
@@ -58,13 +48,10 @@ func writeModuleClass(sb *strings.Builder, a ast.AST, mod ast.Module, defaultBas
 	sb.WriteString("      headers: { 'Content-Type': 'application/json', ...this.hdrs, ...extraHeaders },\n")
 	sb.WriteString("      body: body !== undefined ? JSON.stringify(body) : undefined,\n")
 	sb.WriteString("    });\n")
-	sb.WriteString("    if (!res.ok) throw new VeldApiError(res.status, await res.text());\n")
+	sb.WriteString("    if (!res.ok) throw await parseErrorResponse(res);\n")
 	sb.WriteString("    if (res.status === 204) return undefined as T;\n")
 	sb.WriteString("    return res.json() as Promise<T>;\n")
 	sb.WriteString("  }\n")
-
-	_ = usedTypes // types are imported at file level by the caller
-	_ = hasQuery  // used by writeActionMethod
 
 	for _, act := range mod.Actions {
 		sb.WriteString("\n")
@@ -128,7 +115,7 @@ func writeActionMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 
 	var urlExpr string
 	if len(pathParams) > 0 {
-		urlExpr = "`" + emitter.ToTemplateLiteral(routePath) + "`"
+		urlExpr = "`" + emitter.ToEncodedTemplateLiteral(routePath) + "`"
 	} else {
 		urlExpr = "'" + routePath + "'"
 	}
@@ -151,19 +138,29 @@ func writeActionMethod(sb *strings.Builder, mod ast.Module, act ast.Action) {
 
 	queryAppend := ""
 	if act.Query != "" {
-		queryAppend = " + buildQueryString(query as Record<string, unknown>)"
+		queryAppend = " + buildQueryString(query)"
 	}
 
 	headersArg := ""
 	if act.Headers != "" {
-		headersArg = ", headers"
+		headersArg = ", toHeaderRecord(headers)"
 	}
 
 	camelName := emitter.ToCamelCase(act.Name)
 
 	if method == "GET" {
+		// GET requests cannot carry a body — the Fetch spec throws on GET/HEAD
+		// with a non-null body — so `input` is sent as query-string params
+		// instead. The generated backend route reads it from req.query to match.
+		getQueryAppend := queryAppend
+		switch {
+		case act.Input != "" && act.Query != "":
+			getQueryAppend = " + buildQueryString({ ...query, ...input })"
+		case act.Input != "":
+			getQueryAppend = " + buildQueryString(input)"
+		}
 		sb.WriteString(fmt.Sprintf("  %s(%s): Promise<%s> {\n", camelName, sig, outputType))
-		sb.WriteString(fmt.Sprintf("    return this.request('GET', %s%s, undefined%s);\n", urlExpr, queryAppend, headersArg))
+		sb.WriteString(fmt.Sprintf("    return this.request('GET', %s%s, undefined%s);\n", urlExpr, getQueryAppend, headersArg))
 		sb.WriteString("  }\n")
 	} else {
 		bodyArg := "input"
@@ -200,7 +197,7 @@ func writeWsActionMethod(sb *strings.Builder, mod ast.Module, act ast.Action, ro
 
 	var urlExpr string
 	if len(pathParams) > 0 {
-		urlExpr = "`${wsBase}" + emitter.ToTemplateLiteral(routePath) + "`"
+		urlExpr = "`${wsBase}" + emitter.ToEncodedTemplateLiteral(routePath) + "`"
 	} else {
 		urlExpr = "`${wsBase}" + routePath + "`"
 	}

@@ -1,0 +1,92 @@
+enum Role { admin user guest }
+
+model Item {
+  id: uuid
+  name: string
+  price: decimal
+  count: int
+  createdAt: datetime
+  tags: string[]
+  meta: Map<string, string>
+  role: Role @default(user)
+  note?: string
+}
+
+model CreateItemInput {
+  name: string
+  count: int
+  tags: string[]
+}
+
+model SearchQuery {
+  q: string
+  page?: int
+}
+
+model Ok {
+  ok: bool
+}
+
+module Items {
+  prefix: /api/v1
+
+  action GetItem {
+    method: GET
+    path: /items/:id
+    output: Item
+  }
+
+  action GetMe {
+    method: GET
+    path: /items/me
+    output: Item
+  }
+
+  action GetGuarded {
+    method: GET
+    path: /items/guarded
+    output: Ok
+    middleware: AuthGuard
+  }
+
+  action Search {
+    method: GET
+    path: /search
+    query: SearchQuery
+    output: Item[]
+  }
+
+  action CreateItem {
+    method: POST
+    path: /items
+    input: CreateItemInput
+    output: Item
+  }
+
+  action DeleteItem {
+    method: DELETE
+    path: /items/:id
+  }
+
+  action Lookup {
+    method: GET
+    path: /lookup
+    input: SearchQuery
+    output: Item[]
+  }
+
+  action Boom {
+    method: GET
+    path: /boom
+    output: Ok
+  }
+
+  action Secure {
+    method: GET
+    path: /secure
+    headers: {
+      "X-Trace-Id": string
+    }
+    output: Ok
+  }
+}

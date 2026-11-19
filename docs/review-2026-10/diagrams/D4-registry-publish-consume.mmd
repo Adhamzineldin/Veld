@@ -1,0 +1,22 @@
+%% D4 - Registry publication and package consumption. CURRENT flow with PROPOSED hardening marked [P].
+%% Purpose: show where integrity is (and is not) verified and where atomicity must be added.
+%% Owner: T3 (content), D1 (drawing). Update trigger: changes to cmd/veld/registry.go, internal/registry, handlers/packages.go.
+sequenceDiagram
+  autonumber
+  participant A as Author (veld push)
+  participant R as Registry server
+  participant DB as PostgreSQL
+  participant ST as Artifact storage
+  participant C as Consumer (veld pull)
+  A->>A: Pack(dir): tar.gz of *.veld + veld.config.json, sha256 (tarball.go:17)
+  A->>R: POST /api/v1/packages (multipart manifest + tarball, Bearer token)
+  R->>R: auth + org membership check
+  R->>ST: store blob [P: write to temp, fsync, rename]
+  R->>DB: insert package_version (UNIQUE package_id, version) [P: single transaction, cleanup blob on failure]
+  R-->>A: 201 {version, sha256}
+  C->>R: GET /packages/{org}/{name}/versions  ("latest" = versions[0], registry.go:200-209)
+  C->>R: GET /packages/{org}/{name}/{ver}/download
+  R-->>C: tarball + header X-Veld-SHA256
+  C->>C: VerifySHA only if header present (registry.go:232) [P: always required; compare to lockfile]
+  C->>C: Unpack into veld/packages/@org/name (tarball.go:98) [P: size/entry limits, temp dir + rename]
+  C->>C: [P] write veld.lock.json {name, version, sha256, registry}

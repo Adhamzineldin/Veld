@@ -8,6 +8,7 @@ import (
 
 	"github.com/Adhamzineldin/Veld/internal/ast"
 	"github.com/Adhamzineldin/Veld/internal/emitter"
+	"github.com/Adhamzineldin/Veld/internal/emitter/emittertest"
 )
 
 func testAST() ast.AST {
@@ -153,5 +154,65 @@ func TestEmitModuleApiContainsTypedMethods(t *testing.T) {
 	// Should contain typed API methods
 	if !strings.Contains(content, "list") {
 		t.Error("usersApi.ts should contain list method")
+	}
+}
+
+// F-NODE-11: path parameters are URL-encoded, so an id such as "a/b?x=1#h"
+// stays a single path segment.
+func TestEmitEncodesPathParams(t *testing.T) {
+	a := ast.AST{Modules: []ast.Module{{
+		Name:    "Items",
+		Prefix:  "/api",
+		Actions: []ast.Action{{Name: "GetItem", Method: "GET", Path: "/items/:id"}},
+	}}}
+	dir := t.TempDir()
+	if err := New().Emit(a, dir, emitter.EmitOptions{}); err != nil {
+		t.Fatalf("emit error: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "client", "itemsApi.ts"))
+	if err != nil {
+		t.Fatalf("read error: %v", err)
+	}
+	if want := "`/api/items/${encodeURIComponent(id)}`"; !strings.Contains(string(data), want) {
+		t.Errorf("itemsApi.ts does not build the URL as %s:\n%s", want, data)
+	}
+}
+
+// F-NODE-06: no Record casts on generated model classes, which `tsc --strict`
+// rejects; typed headers go through toHeaderRecord.
+func TestEmitClientNeedsNoRecordCasts(t *testing.T) {
+	dir := t.TempDir()
+	if err := New().Emit(emittertest.RequestModelsAST(), dir, emitter.EmitOptions{}); err != nil {
+		t.Fatalf("emit error: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "client", "itemsApi.ts"))
+	if err != nil {
+		t.Fatalf("read error: %v", err)
+	}
+	src := string(data)
+	if strings.Contains(src, "as Record<string") || strings.Contains(src, "as unknown as") {
+		t.Errorf("itemsApi.ts still casts models:\n%s", src)
+	}
+	for _, want := range []string{
+		"buildQueryString(query)",
+		"buildQueryString(input)",
+		"toHeaderRecord(headers)",
+		"import { resolveBase, parseErrorResponse, buildQueryString, toHeaderRecord } from './_internal';",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("itemsApi.ts missing %q:\n%s", want, src)
+		}
+	}
+	internal, err := os.ReadFile(filepath.Join(dir, "client", "_internal.ts"))
+	if err != nil {
+		t.Fatalf("read error: %v", err)
+	}
+	for _, want := range []string{
+		"export function buildQueryString(params?: object): string {",
+		"export function toHeaderRecord(headers?: object): Record<string, string> {",
+	} {
+		if !strings.Contains(string(internal), want) {
+			t.Errorf("_internal.ts missing %q", want)
+		}
 	}
 }

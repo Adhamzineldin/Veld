@@ -149,15 +149,7 @@ func emitErrorsBarrel(a ast.AST, dir string) error {
 		if len(unique) == len(allNames) {
 			sb.WriteString(fmt.Sprintf("export * from './%s.errors';\n", moduleLower))
 		} else if len(unique) > 0 {
-			var typeNames, valueNames []string
-			for _, name := range unique {
-				if strings.HasSuffix(name, "ErrorCode") ||
-					(strings.HasSuffix(name, "Error") && !strings.HasSuffix(name, "Errors")) {
-					typeNames = append(typeNames, name)
-				} else {
-					valueNames = append(valueNames, name)
-				}
-			}
+			typeNames, valueNames := SplitTypeValueExports(unique)
 			if len(typeNames) > 0 {
 				sb.WriteString(fmt.Sprintf("export type { %s } from './%s.errors';\n",
 					strings.Join(typeNames, ", "), moduleLower))
@@ -170,4 +162,21 @@ func emitErrorsBarrel(a ast.AST, dir string) error {
 	}
 
 	return os.WriteFile(filepath.Join(dir, "index.ts"), []byte(sb.String()), 0644)
+}
+
+// SplitTypeValueExports partitions error export names into type-only exports
+// (the ErrorCode and Error type aliases) and value exports (the runtime error
+// factory objects), so a barrel with name collisions can emit separate
+// `export type { ... }` / `export { ... }` statements to satisfy TypeScript's
+// isolatedModules (TS1205: re-exporting a type requires `export type`).
+func SplitTypeValueExports(names []string) (typeNames, valueNames []string) {
+	for _, name := range names {
+		if strings.HasSuffix(name, "ErrorCode") ||
+			(strings.HasSuffix(name, "Error") && !strings.HasSuffix(name, "Errors")) {
+			typeNames = append(typeNames, name)
+		} else {
+			valueNames = append(valueNames, name)
+		}
+	}
+	return typeNames, valueNames
 }

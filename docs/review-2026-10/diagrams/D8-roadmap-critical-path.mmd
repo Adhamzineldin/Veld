@@ -1,0 +1,31 @@
+%% D8 - Roadmap dependencies and critical path, 2026-10-21 to readiness gate 2027-05-31 (PROPOSED).
+%% Purpose: make the critical path (compiler IR -> plugin host -> SDK -> reference plugin -> evaluation) visible.
+%% Owner: T1 (content), D1 (drawing). Update trigger: end of every sprint review.
+gantt
+  title Veld roadmap to readiness gate (May 31, 2027); June reserved for submission and defense
+  dateFormat YYYY-MM-DD
+  axisFormat %b %d
+  section Gates
+  Rewrite/migration decision deadline        :milestone, g0, 2026-11-29, 0d
+  Alpha gate (plugin acceptance, registry e2e):milestone, g1, 2027-03-21, 0d
+  Beta gate = feature freeze                  :milestone, g2, 2027-04-18, 0d
+  Release candidate                           :milestone, g3, 2027-05-16, 0d
+  Readiness gate                              :milestone, g4, 2027-05-31, 0d
+  section M0 Discovery
+  S0 decisions, hygiene, skills survey        :m0, 2026-10-21, 2026-11-01
+  section M1 Stabilize + slice
+  P0/P1 fixes, conformance skeleton, gen-code CI :crit, m1, 2026-11-02, 2026-11-29
+  section M2 Core
+  IR v1 + compiler API + manifest/safe writes :crit, m2a, 2026-11-30, 2027-01-10
+  Emitter tiering applied, LSP on compiler API:m2b, 2026-11-30, 2027-01-10
+  section M3 Exams (low capacity)
+  VEP spec frozen, host runner skeleton, docs :crit, m3, 2027-01-11, 2027-02-07
+  section M4 Extend + harden
+  Plugin SDK + hello + extracted emitter      :crit, m4a, 2027-02-08, 2027-03-21
+  Registry split binary, atomic publish, lockfile, authz tests :m4b, 2027-02-08, 2027-03-21
+  section M5 Alpha to Beta
+  Compose + backup/restore tested, user study, docs site :m5, 2027-03-22, 2027-04-18
+  section M6 Hardening + evaluation
+  Evaluation runs, RC, report chapters complete :crit, m6, 2027-04-19, 2027-05-16
+  section M7 Final
+  Final integration, release 1.0, defense rehearsal :crit, m7, 2027-05-17, 2027-05-30

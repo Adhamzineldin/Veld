@@ -1,0 +1,23 @@
+%% D6 - Editor / LSP / compiler interaction (CURRENT transport; PROPOSED: server consumes the shared compiler API).
+%% Purpose: show that diagnostics must come from the same compiler the CLI uses, and where unsaved buffers enter.
+%% Owner: T5 (content), D1 (drawing). Update trigger: changes to internal/lsp or editor clients.
+sequenceDiagram
+  autonumber
+  participant E as Editor (VS Code client / LSP4IJ)
+  participant S as veld lsp (Go, stdio JSON-RPC)
+  participant C as compiler API (shared with CLI) [PROPOSED internal/compiler]
+  E->>S: initialize {capabilities, positionEncoding?}
+  S-->>E: ServerCapabilities
+  E->>S: textDocument/didOpen (full text)
+  S->>C: Compile(overlay: {uri -> text}, config discovered upward from file dir)
+  C-->>S: Program + Diagnostics (byte spans)
+  S->>S: convert byte columns -> UTF-16 columns
+  S-->>E: textDocument/publishDiagnostics
+  E->>S: textDocument/didChange (unsaved edit)
+  S->>C: Compile(overlay updated)  -- imports resolved from disk + overlay
+  C-->>S: Diagnostics
+  S-->>E: publishDiagnostics
+  E->>S: completion / hover / definition
+  S->>C: query symbol table of last good Program
+  C-->>S: symbols
+  S-->>E: result

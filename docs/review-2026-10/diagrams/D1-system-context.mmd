@@ -1,0 +1,29 @@
+%% D1 - System context and components. Legend: solid = exists at 6a47f81; dashed = PROPOSED.
+%% Purpose: show which deployables exist, who talks to whom, and what the target adds.
+%% Owner: D1 (diagram), validated by T1. Update trigger: any ADR that adds/removes a deployable.
+flowchart LR
+  subgraph Dev["Developer machine"]
+    IDE["VS Code / JetBrains<br/>(editors/vscode, editors/jetbrains)"]
+    CLI["veld CLI (Go)<br/>cmd/veld"]
+    LSP["veld lsp<br/>(same binary)"]
+    GEN["generated/ output"]
+    PLUG["External emitter process<br/>(VEP v1)"]:::proposed
+    IDE -- "stdio JSON-RPC" --> LSP
+    CLI -- "writes" --> GEN
+    CLI -. "stdin/stdout JSON" .-> PLUG
+  end
+  subgraph Reg["Self-hosted registry"]
+    SRV["veld serve<br/>internal/server (in CLI binary today)"]
+    SRV2["veld-registry binary<br/>cmd/veld-registry"]:::proposed
+    PG[("PostgreSQL")]
+    FS[("artifact storage<br/>local FS")]
+    UI["embedded SPA<br/>handlers/web.go"]
+    SRV --> PG
+    SRV --> FS
+    SRV --> UI
+  end
+  WEB["website/ (React)<br/>marketing + docs site"]
+  CLI -- "push / pull<br/>/api/v1 (HTTP)" --> SRV
+  NPM["npm / PyPI / Homebrew / Go / NuGet / Composer<br/>packages/* wrappers"] -- "install binary" --> CLI
+  CI["GitHub Actions<br/>.github/workflows"] -- "build/test" --> CLI
+  classDef proposed stroke-dasharray: 5 5,stroke:#b58900;

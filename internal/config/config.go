@@ -367,31 +367,9 @@ func BuildResolved(flags FlagOverrides) (ResolvedConfig, error) {
 		cfg.Out = "./generated"
 	}
 
-	// Validate out path — must end with a named directory, not just ".." or "/"
-	validateOutPath := func(p, label string) error {
-		base := filepath.Base(filepath.Clean(p))
-		if base == ".." || base == "." || base == "/" || base == string(filepath.Separator) {
-			return fmt.Errorf(
-				"invalid %s path %q: must end with a folder name (e.g. \"../generated\", not \"..\")",
-				label, p,
-			)
-		}
-		return nil
-	}
-
-	if err := validateOutPath(cfg.Out, "out"); err != nil {
-		return ResolvedConfig{}, err
-	}
-	if cfg.BackendOut != "" {
-		if err := validateOutPath(cfg.BackendOut, "backendOut"); err != nil {
-			return ResolvedConfig{}, err
-		}
-	}
-	if cfg.FrontendOut != "" {
-		if err := validateOutPath(cfg.FrontendOut, "frontendOut"); err != nil {
-			return ResolvedConfig{}, err
-		}
-	}
+	// Output directories are not judged here: internal/output.Policy refuses
+	// unsafe ones (config, contract or working dir, home, root) before
+	// anything is written, for every command and workspace entry.
 
 	if cfg.Input == "" && len(cfg.Workspace) == 0 {
 		return ResolvedConfig{}, fmt.Errorf("no input file (use --input or create veld/veld.config.json)")
@@ -471,7 +449,9 @@ func (rc ResolvedConfig) OutputDirs() []string {
 	if rc.SplitOutput() {
 		return []string{rc.BackendOut, rc.FrontendOut}
 	}
-	return []string{rc.Out}
+	// Not rc.Out: when backendOut and frontendOut are both set to the same
+	// directory, out is only an unused fallback.
+	return []string{rc.BackendOut}
 }
 
 // workspaceOutputDirs resolves and deduplicates output directories for every
@@ -490,27 +470,39 @@ func (rc ResolvedConfig) workspaceOutputDirs() []string {
 	}
 
 	for _, entry := range rc.Workspace {
-		outDir := entry.Out
-		if outDir == "" && entry.BackendCfg != nil && entry.BackendCfg.Out != "" {
-			outDir = entry.BackendCfg.Out
-		}
-		if outDir == "" {
-			outDir = filepath.Join(rc.ConfigDir, "generated", entry.Name)
-		} else if !filepath.IsAbs(outDir) {
-			outDir = filepath.Clean(filepath.Join(rc.ConfigDir, outDir))
-		}
-		add(outDir)
-
-		// Split frontend output directory.
-		if entry.FrontendCfg != nil && entry.FrontendCfg.Out != "" {
-			feOut := entry.FrontendCfg.Out
-			if !filepath.IsAbs(feOut) {
-				feOut = filepath.Clean(filepath.Join(rc.ConfigDir, feOut))
-			}
-			add(feOut)
-		}
+		out, frontendOut := rc.WorkspaceOutDirs(entry)
+		add(out)
+		add(frontendOut)
 	}
 	return dirs
+}
+
+// WorkspaceOutDirs returns the absolute output directory of a workspace entry
+// and its split frontend output directory ("" when not set):
+//  1. entry.Out (flat) → entry.BackendCfg.Out (nested) → <configDir>/generated/<name>
+//  2. entry.FrontendCfg.Out if present
+//
+// Relative paths resolve against the config directory.
+func (rc ResolvedConfig) WorkspaceOutDirs(entry WorkspaceEntry) (out, frontendOut string) {
+	resolve := func(p string) string {
+		if filepath.IsAbs(p) {
+			return filepath.Clean(p)
+		}
+		return filepath.Clean(filepath.Join(rc.ConfigDir, p))
+	}
+	out = entry.Out
+	if out == "" && entry.BackendCfg != nil {
+		out = entry.BackendCfg.Out
+	}
+	if out == "" {
+		out = filepath.Join(rc.ConfigDir, "generated", entry.Name)
+	} else {
+		out = resolve(out)
+	}
+	if entry.FrontendCfg != nil && entry.FrontendCfg.Out != "" {
+		frontendOut = resolve(entry.FrontendCfg.Out)
+	}
+	return out, frontendOut
 }
 
 // resolveOptionalDir resolves a dir path relative to base. Returns "" if dir is empty.

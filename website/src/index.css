@@ -1,16 +1,27 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --bg: #0d1117;
-  --bg2: #161b22;
-  --bg3: #1c2128;
-  --fg: #e6edf3;
-  --fg2: #8b949e;
-  --accent: #58a6ff;
-  --accent2: #3fb950;
-  --accent3: #d2a8ff;
-  --border: #30363d;
+  /* Surfaces — deep navy / indigo */
+  --bg: #070a1a;
+  --bg2: #0d1230;
+  --bg3: #141a3d;
+  --fg: #e9eeff;
+  --fg2: #8d9cc9;
+
+  /* Neon accents */
+  --accent: #4d8dff;
+  --accent2: #3fd68a;
+  --accent3: #a855f7;
+  --cyan: #35d6ff;
+  --violet: #a855f7;
+  --blue: #3b82ff;
+
+  --border: #1e2750;
   --max-w: 1200px;
+
+  --glow-blue: rgba(59, 130, 255, 0.45);
+  --glow-violet: rgba(168, 85, 247, 0.35);
+  --grad: linear-gradient(135deg, #3b82ff 0%, #7c5cff 55%, #a855f7 100%);
 }
 
 * {
@@ -30,6 +41,24 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ambient neon wash behind the whole page */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(900px 600px at 78% 8%, rgba(59, 130, 255, 0.16), transparent 65%),
+    radial-gradient(700px 500px at 10% 30%, rgba(124, 92, 255, 0.1), transparent 70%),
+    radial-gradient(800px 600px at 50% 100%, rgba(53, 214, 255, 0.06), transparent 70%);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
 }
 
 a {
