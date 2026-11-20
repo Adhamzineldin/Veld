@@ -100,3 +100,45 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo xtask codegen --check
+
+  registry:
+    name: registry (Go server and e2e)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: veld
+          POSTGRES_PASSWORD: veld
+          POSTGRES_DB: veld
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U veld"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CARGO_TERM_COLOR: always
+      # The e2e test starts its own throwaway cluster with these server binaries.
+      VELD_PG_BIN: /usr/lib/postgresql/16/bin
+      VELD_REQUIRE_TOOLCHAINS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: registry/go.mod
+          cache-dependency-path: registry/go.sum
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Go vet and tests
+        working-directory: registry
+        run: |
+          go vet ./...
+          go test ./...
+      - name: Registry client unit tests
+        run: cargo test -p veld-registry-client
+      - name: Registry end-to-end test (real registry and PostgreSQL)
+        run: |
+          test -x "$VELD_PG_BIN/initdb" || { echo "no PostgreSQL server binaries in $VELD_PG_BIN"; ls /usr/lib/postgresql; exit 1; }
+          cargo test -p veld --test registry_e2e -- --nocapture
