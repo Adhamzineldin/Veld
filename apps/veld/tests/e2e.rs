@@ -33,10 +33,10 @@ fn init_check_generate_succeeds() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "api -> generated/server: 6 created",
+            "api -> generated/server: 7 created",
         ))
         .stdout(predicate::str::contains(
-            "web -> generated/client: 5 created",
+            "web -> generated/client: 6 created",
         ));
     assert!(tmp.path().join("generated/server/index.ts").is_file());
     assert!(
