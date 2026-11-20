@@ -7,7 +7,11 @@ use veld_codegen::GenDiagnostic;
 pub enum PluginError {
     /// `E0705`: the executable's SHA-256 differs from the one pinned in `veld.toml`.
     #[error("plugin `{plugin}` executable hash mismatch (expected {expected}, found {actual})")]
-    HashMismatch { plugin: String, expected: String, actual: String },
+    HashMismatch {
+        plugin: String,
+        expected: String,
+        actual: String,
+    },
     /// `E0706`: a handshake or protocol problem (including a different protocol major version).
     #[error("plugin `{plugin}`: {message}")]
     Protocol { plugin: String, message: String },
@@ -35,15 +39,24 @@ impl PluginError {
     }
 
     pub(crate) fn protocol(plugin: &str, message: impl Into<String>) -> Self {
-        Self::Protocol { plugin: plugin.to_string(), message: message.into() }
+        Self::Protocol {
+            plugin: plugin.to_string(),
+            message: message.into(),
+        }
     }
 
     pub(crate) fn process(plugin: &str, message: impl Into<String>) -> Self {
-        Self::Process { plugin: plugin.to_string(), message: message.into() }
+        Self::Process {
+            plugin: plugin.to_string(),
+            message: message.into(),
+        }
     }
 
     pub(crate) fn files(plugin: &str, message: impl Into<String>) -> Self {
-        Self::Files { plugin: plugin.to_string(), message: message.into() }
+        Self::Files {
+            plugin: plugin.to_string(),
+            message: message.into(),
+        }
     }
 }
 
@@ -62,7 +75,10 @@ mod tests {
         let e = PluginError::process("k", "timed out");
         assert_eq!(e.code(), "E0708");
         let d: GenDiagnostic = e.into();
-        assert_eq!((d.code, d.message.as_str()), ("E0708", "plugin `k`: timed out"));
+        assert_eq!(
+            (d.code, d.message.as_str()),
+            ("E0708", "plugin `k`: timed out")
+        );
         assert_eq!(PluginError::protocol("k", "x").code(), "E0706");
         assert_eq!(PluginError::files("k", "x").code(), "E0707");
     }

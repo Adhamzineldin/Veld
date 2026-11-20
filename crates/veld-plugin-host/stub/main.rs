@@ -1,6 +1,11 @@
 //! A scripted plugin for the host's tests. `--mode <m>` selects a behaviour; see `run`.
 //! Not shipped: it exists only so the host can be tested against a real child process.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::print_stderr)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr
+)]
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
@@ -10,7 +15,9 @@ use serde_json::{Value, json};
 
 fn arg(name: &str) -> Option<String> {
     let args: Vec<String> = std::env::args().collect();
-    args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned())
+    args.iter()
+        .position(|a| a == name)
+        .and_then(|i| args.get(i + 1).cloned())
 }
 
 fn send(v: &Value) {
@@ -26,7 +33,11 @@ fn hang() -> ! {
 }
 
 fn hello_reply(mode: &str) -> Value {
-    let roles: Vec<String> = arg("--roles").unwrap_or_else(|| "server,client".into()).split(',').map(str::to_string).collect();
+    let roles: Vec<String> = arg("--roles")
+        .unwrap_or_else(|| "server,client".into())
+        .split(',')
+        .map(str::to_string)
+        .collect();
     json!({
         "type": "hello",
         "protocol": if mode == "proto2" { "2" } else { "1" },
@@ -41,12 +52,20 @@ fn hello_reply(mode: &str) -> Value {
 fn standard_files(ir: &Value, mode: &str) -> Vec<Value> {
     let mut files = Vec::new();
     for d in ir["decls"].as_array().unwrap() {
-        let sig = if mode == "nosig" { "" } else { d["sig"].as_str().unwrap() };
+        let sig = if mode == "nosig" {
+            ""
+        } else {
+            d["sig"].as_str().unwrap()
+        };
         files.push(json!({"path": format!("types/{}.txt", d["qualified"].as_str().unwrap().replace([':', '/'], "_")), "content": sig}));
     }
     for s in ir["services"].as_array().unwrap() {
         for e in s["endpoints"].as_array().unwrap() {
-            let sig = if mode == "nosig" { "" } else { e["sig"].as_str().unwrap() };
+            let sig = if mode == "nosig" {
+                ""
+            } else {
+                e["sig"].as_str().unwrap()
+            };
             files.push(json!({"path": format!("ops/{}.txt", e["sig"].as_str().unwrap().replace([':', '/', '@'], "_")), "content": sig}));
         }
     }
@@ -58,7 +77,10 @@ fn result_for(mode: &str, ir: &Value) -> Value {
     match mode {
         "escape" => files = vec![json!({"path": arg("--path").unwrap(), "content": "x"})],
         "nondeterministic" => {
-            let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
             files.push(json!({"path": "stamp.txt", "content": nanos.to_string()}));
         }
         "env" => {
@@ -83,7 +105,9 @@ fn run(mode: &str) {
     eprintln!("stub starting in mode {mode}");
     let stdin = std::io::stdin();
     let mut lines = stdin.lock().lines();
-    let Some(Ok(_hello)) = lines.next() else { return };
+    let Some(Ok(_hello)) = lines.next() else {
+        return;
+    };
     if mode == "hang-hello" {
         hang();
     }

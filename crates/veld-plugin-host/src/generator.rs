@@ -43,12 +43,15 @@ pub struct Runner {
 
 impl Runner {
     fn resolve(&self) -> Result<PathBuf, PluginError> {
-        self.command.resolve(&self.config.project_root).map_err(|m| PluginError::process(&self.name, m))
+        self.command
+            .resolve(&self.config.project_root)
+            .map_err(|m| PluginError::process(&self.name, m))
     }
 
     /// Starts the plugin and completes the handshake. The session is killed on any error.
     pub fn start(&self, exe: &Path) -> Result<(Session, Handshake), PluginError> {
-        let mut session = Session::spawn(&self.name, exe, &self.command)?;
+        let anchored = self.command.anchored(&self.config.project_root);
+        let mut session = Session::spawn(&self.name, exe, &anchored)?;
         session.send(&protocol::hello(&self.config.veld_version))?;
         let reply = session.recv(self.config.handshake_timeout, "its `hello`")?;
         match protocol::parse_handshake(&self.name, &reply) {
@@ -68,20 +71,31 @@ impl Runner {
     }
 
     /// One complete run: handshake, `generate`, `result`, and a clean exit.
-    pub fn generate(&self, exe: &Path, req: &GenRequest<'_>, options: &serde_json::Value) -> Result<Outcome, PluginError> {
+    pub fn generate(
+        &self,
+        exe: &Path,
+        req: &GenRequest<'_>,
+        options: &serde_json::Value,
+    ) -> Result<Outcome, PluginError> {
         let (timeout, options) = protocol::split_options(&self.name, options)?;
         let (mut session, hello) = self.start(exe)?;
         if !hello.roles.contains(&req.role) {
             session.kill();
-            return Err(PluginError::protocol(&self.name, format!("does not support the `{}` role", req.role.name())));
+            return Err(PluginError::protocol(
+                &self.name,
+                format!("does not support the `{}` role", req.role.name()),
+            ));
         }
-        session.send(&protocol::generate_message(req, &options)?).inspect_err(|_| session.kill())?;
+        session
+            .send(&protocol::generate_message(req, &options)?)
+            .inspect_err(|_| session.kill())?;
         let reply = session.recv(timeout, "a `result`")?;
         let outcome = protocol::parse_result(&self.name, &reply).inspect_err(|_| session.kill())?;
         match session.finish(self.config.exit_grace) {
-            Some(status) if !status.success() => {
-                Err(PluginError::process(&self.name, format!("exited with {} after sending its result", describe(&status))))
-            }
+            Some(status) if !status.success() => Err(PluginError::process(
+                &self.name,
+                format!("exited with {} after sending its result", describe(&status)),
+            )),
             _ => Ok(outcome),
         }
     }
@@ -102,7 +116,11 @@ impl PluginGenerator {
     pub fn connect(spec: &PluginSpec, config: HostConfig) -> Result<Self, PluginError> {
         let command = CommandLine::parse(&spec.command)
             .ok_or_else(|| PluginError::process(&spec.name, "its `command` is empty"))?;
-        let runner = Runner { name: spec.name.clone(), command, config };
+        let runner = Runner {
+            name: spec.name.clone(),
+            command,
+            config,
+        };
         let exe = verified_executable(spec, &runner)?;
         let hello = runner.handshake(&exe)?;
         if let Some(pinned) = &spec.version
@@ -110,7 +128,10 @@ impl PluginGenerator {
         {
             return Err(PluginError::protocol(
                 &spec.name,
-                format!("veld.toml pins version {pinned}, but the plugin reports {}", hello.version),
+                format!(
+                    "veld.toml pins version {pinned}, but the plugin reports {}",
+                    hello.version
+                ),
             ));
         }
         Ok(Self {
@@ -127,9 +148,15 @@ impl PluginGenerator {
 fn verified_executable(spec: &PluginSpec, runner: &Runner) -> Result<PathBuf, PluginError> {
     let exe = runner.resolve()?;
     spec.verify_executable(&exe).map_err(|e| match e {
-        veld_project::config::ConfigError::PluginHashMismatch { plugin, expected, actual } => {
-            PluginError::HashMismatch { plugin, expected, actual }
-        }
+        veld_project::config::ConfigError::PluginHashMismatch {
+            plugin,
+            expected,
+            actual,
+        } => PluginError::HashMismatch {
+            plugin,
+            expected,
+            actual,
+        },
         other => PluginError::process(&spec.name, other.to_string()),
     })?;
     Ok(exe)
@@ -152,14 +179,28 @@ impl DynGenerator for PluginGenerator {
         self.capabilities.clone()
     }
 
-    fn generate_dyn(&self, req: &GenRequest<'_>, opts: &serde_json::Value) -> Result<FileSet, Vec<GenDiagnostic>> {
+    fn generate_dyn(
+        &self,
+        req: &GenRequest<'_>,
+        opts: &serde_json::Value,
+    ) -> Result<FileSet, Vec<GenDiagnostic>> {
         // The hash is checked again before every run, not only when the plugin was first loaded.
         let exe = verified_executable(&self.spec, &self.runner).map_err(|e| vec![e.into()])?;
-        let outcome = self.runner.generate(&exe, req, opts).map_err(|e| vec![e.into()])?;
-        let (warnings, errors): (Vec<_>, Vec<_>) = outcome.diagnostics.into_iter().partition(protocol::is_warning);
+        let outcome = self
+            .runner
+            .generate(&exe, req, opts)
+            .map_err(|e| vec![e.into()])?;
+        let (warnings, errors): (Vec<_>, Vec<_>) = outcome
+            .diagnostics
+            .into_iter()
+            .partition(protocol::is_warning);
         for w in &warnings {
             eprintln!("[plugin:{}] warning: {}", self.id, w.message);
         }
-        if errors.is_empty() { Ok(outcome.files) } else { Err(errors) }
+        if errors.is_empty() {
+            Ok(outcome.files)
+        } else {
+            Err(errors)
+        }
     }
 }

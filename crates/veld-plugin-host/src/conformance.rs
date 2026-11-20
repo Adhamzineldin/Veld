@@ -20,7 +20,10 @@ pub struct Check {
 
 impl Check {
     fn new(name: impl Into<String>, result: Result<(), String>) -> Self {
-        Self { name: name.into(), result }
+        Self {
+            name: name.into(),
+            result,
+        }
     }
 }
 
@@ -48,31 +51,68 @@ pub fn run(runner: &Runner, ir: &Ir) -> Vec<Check> {
     checks
 }
 
-fn role_checks(runner: &Runner, exe: &std::path::Path, _hello: &Handshake, ir: &Ir, role: Role) -> Vec<Check> {
+fn role_checks(
+    runner: &Runner,
+    exe: &std::path::Path,
+    _hello: &Handshake,
+    ir: &Ir,
+    role: Role,
+) -> Vec<Check> {
     let services: Vec<ServiceId> = ir.services.iter().map(|s| s.id).collect();
-    let req = GenRequest { ir, role, services: services.clone(), consumes: vec![], framework: None };
+    let req = GenRequest {
+        ir,
+        role,
+        services: services.clone(),
+        consumes: vec![],
+        framework: None,
+    };
     let label = |what: &str| format!("{what} ({})", role.name());
     let first = match runner.generate(exe, &req, &serde_json::Value::Null) {
         Ok(o) => o,
         Err(e) => return failed_generate(&label, &e),
     };
-    let errors: Vec<String> = first.diagnostics.iter().filter(|d| !crate::protocol::is_warning(d)).map(|d| d.message.clone()).collect();
+    let errors: Vec<String> = first
+        .diagnostics
+        .iter()
+        .filter(|d| !crate::protocol::is_warning(d))
+        .map(|d| d.message.clone())
+        .collect();
     let mut checks = vec![
         Check::new(label("path safety"), Ok(())),
-        Check::new(label("generate"), if errors.is_empty() { Ok(()) } else { Err(errors.join("; ")) }),
+        Check::new(
+            label("generate"),
+            if errors.is_empty() {
+                Ok(())
+            } else {
+                Err(errors.join("; "))
+            },
+        ),
     ];
     let second = runner.generate(exe, &req, &serde_json::Value::Null);
-    checks.push(Check::new(label("determinism"), same_output(&first.files, second)));
-    checks.push(Check::new(label("signatures"), signatures_embedded(ir, &services, &first.files)));
+    checks.push(Check::new(
+        label("determinism"),
+        same_output(&first.files, second),
+    ));
+    checks.push(Check::new(
+        label("signatures"),
+        signatures_embedded(ir, &services, &first.files),
+    ));
     checks
 }
 
 fn failed_generate(label: &dyn Fn(&str) -> String, e: &PluginError) -> Vec<Check> {
-    let name = if e.code() == "E0707" { "path safety" } else { "generate" };
+    let name = if e.code() == "E0707" {
+        "path safety"
+    } else {
+        "generate"
+    };
     vec![Check::new(label(name), Err(e.to_string()))]
 }
 
-fn same_output(first: &veld_codegen::FileSet, second: Result<crate::protocol::Outcome, PluginError>) -> Result<(), String> {
+fn same_output(
+    first: &veld_codegen::FileSet,
+    second: Result<crate::protocol::Outcome, PluginError>,
+) -> Result<(), String> {
     let second = second.map_err(|e| format!("the second run failed: {e}"))?;
     if *first == second.files {
         return Ok(());
@@ -85,20 +125,46 @@ fn same_output(first: &veld_codegen::FileSet, second: Result<crate::protocol::Ou
     let mut unique: Vec<&str> = differing;
     unique.sort_unstable();
     unique.dedup();
-    Err(format!("two runs on the same IR differ in: {}", unique.iter().take(5).copied().collect::<Vec<_>>().join(", ")))
+    Err(format!(
+        "two runs on the same IR differ in: {}",
+        unique
+            .iter()
+            .take(5)
+            .copied()
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
 }
 
 /// Every declaration and operation signature of the request must appear in some generated file.
-fn signatures_embedded(ir: &Ir, services: &[ServiceId], files: &veld_codegen::FileSet) -> Result<(), String> {
-    let mut sigs: Vec<&str> = ir.reachable_decls(services).into_iter().map(|d| ir.decl(d).sig.as_str()).collect();
+fn signatures_embedded(
+    ir: &Ir,
+    services: &[ServiceId],
+    files: &veld_codegen::FileSet,
+) -> Result<(), String> {
+    let mut sigs: Vec<&str> = ir
+        .reachable_decls(services)
+        .into_iter()
+        .map(|d| ir.decl(d).sig.as_str())
+        .collect();
     for sid in services {
         sigs.extend(ir.service(*sid).endpoints.iter().map(|e| e.sig.as_str()));
     }
-    let contents: Vec<String> = files.iter().map(|(_, b)| String::from_utf8_lossy(b).into_owned()).collect();
-    let missing: Vec<&str> = sigs.into_iter().filter(|s| !contents.iter().any(|c| c.contains(s))).collect();
+    let contents: Vec<String> = files
+        .iter()
+        .map(|(_, b)| String::from_utf8_lossy(b).into_owned())
+        .collect();
+    let missing: Vec<&str> = sigs
+        .into_iter()
+        .filter(|s| !contents.iter().any(|c| c.contains(s)))
+        .collect();
     if missing.is_empty() {
         Ok(())
     } else {
-        Err(format!("{} signature(s) are not embedded, for example `{}`", missing.len(), missing[0]))
+        Err(format!(
+            "{} signature(s) are not embedded, for example `{}`",
+            missing.len(),
+            missing[0]
+        ))
     }
 }
