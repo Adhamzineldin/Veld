@@ -370,7 +370,7 @@ func newRegistryCmd() *cobra.Command {
 	cmd.AddCommand(versionsCmd)
 
 	// veld registry login / logout / push / pull / serve
-	cmd.AddCommand(newLoginCmd(), newLogoutCmd(), newPushCmd(), newPullCmd(), newServeCmd())
+	cmd.AddCommand(newLoginCmd(), newLogoutCmd(), newPushCmd(), newPullCmd())
 
 	// veld registry init
 	cmd.AddCommand(newRegistryInitCmd())
