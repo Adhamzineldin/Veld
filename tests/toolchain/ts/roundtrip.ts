@@ -30,7 +30,7 @@ let requests = 0;
 
 const user: srv.User = { id: USER_ID, email: 'ada@example.com', displayName: 'Ada' };
 
-const impl: srv.OrdersService = {
+export const impl: srv.OrdersService = {
   async getOrder(req) {
     const order = store.get(req.id);
     if (!order) throw new srv.NotFound({ resource: 'order' });
@@ -95,7 +95,7 @@ const iamImpl: iamSrv.IamService = {
   },
 };
 
-const hooks: srv.OrdersHooks = {
+export const hooks: srv.OrdersHooks = {
   auth: { bearer: async (token) => (token === 'good' ? { user: 'u1' } : null) },
   middleware: {
     RateLimit: async () => {
@@ -117,11 +117,14 @@ function listen(server: http.Server): Promise<string> {
   });
 }
 
+/** Counts the requests that reach the server; the scenario checks that locally invalid calls send none. */
+export function countRequests(_req: unknown, _res: unknown, next: () => void): void {
+  requests += 1;
+  next();
+}
+
 function count(app: express.Express): express.Express {
-  app.use((_req, _res, next) => {
-    requests += 1;
-    next();
-  });
+  app.use(countRequests);
   return app;
 }
 
@@ -141,7 +144,7 @@ async function raw(url: string, init?: { method?: string; headers?: Record<strin
 // Scenario
 // ---------------------------------------------------------------------------
 
-async function scenario(label: string, base: string): Promise<void> {
+export async function scenario(label: string, base: string): Promise<void> {
   const client = new OrdersClient({ baseUrl: base, auth: { bearer: () => 'good' } });
   const lax = new OrdersClient({ baseUrl: base, auth: { bearer: () => 'good' }, validate: false });
   const tag = (m: string): string => `[${label}] ${m}`;
@@ -363,7 +366,9 @@ async function main(): Promise<void> {
   process.exit(0);
 }
 
-main().catch((e: unknown) => {
-  process.stderr.write(`${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((e: unknown) => {
+    process.stderr.write(`${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`);
+    process.exit(1);
+  });
+}
