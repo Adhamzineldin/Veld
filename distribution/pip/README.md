@@ -1,6 +1,6 @@
-# Veld — pip package
+# Veld - pip package
 
-> Contract-first, multi-stack API code generator.
+> Contract-first API code generator. Write `.veld` contracts once, generate typed servers and clients.
 
 ## Install
 
@@ -8,50 +8,28 @@
 pip install maayn-veld
 ```
 
+On first run the wrapper downloads the `veld` binary that matches this package's version from the
+[GitHub release](https://github.com/Adhamzineldin/Veld/releases), verifies it against the release's
+`SHA256SUMS`, and caches it under `~/.veld/bin/<version>/` (`VELD_HOME` changes the root). A checksum
+mismatch aborts. `VELD_VERSION` overrides the version.
+
+Supported platforms: Linux (x64, arm64), macOS (x64, arm64), Windows (x64).
+
 ## Usage
 
-After installing, the `veld` CLI is available:
-
 ```bash
-veld init                    # Scaffold a new project
-veld generate                # Generate from veld.config.json
-veld generate --dry-run      # Preview what would be generated
-veld watch                   # Auto-regenerate on file changes
-veld validate                # Check contracts for errors
-veld clean                   # Remove generated output
-veld openapi                 # Export OpenAPI 3.0 spec
+veld init       # create veld.toml and an example contract
+veld check      # compile the contracts and report diagnostics
+veld generate   # generate code for every target
+veld clean      # remove generated files you have not modified
 ```
 
-## How it works
-
-This pip package includes pre-built binaries for all supported platforms.
-The wrapper script automatically selects the correct binary for your platform.
-
-**Supported platforms:**
-- Linux (x64, arm64)
-- macOS (x64, Apple Silicon)
-- Windows (x64)
-
-The package version matches the binary version, so `pip install maayn-veld==0.2.0`
-installs exactly version 0.2.0. No runtime downloads needed - works offline and with private repos!
-
-## Alternative installation
+## From source
 
 ```bash
-# npm
-npm install @maayn/veld
-
-# Go
-go install github.com/Adhamzineldin/Veld/cmd/veld@latest
-
-# Homebrew
-brew install maayn-veld/tap/maayn-veld
-
-# Composer (PHP)
-composer require maayn/veld
+cargo install --git https://github.com/Adhamzineldin/Veld veld
 ```
 
 ## License
 
 MIT
-
