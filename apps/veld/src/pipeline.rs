@@ -326,12 +326,8 @@ pub fn build_job<'a>(
         Role::Server => server_services(project, ir, target)?,
         Role::Client => (service_ids(ir, &target.services), Vec::new()),
     };
-    let options = if target.options.is_empty() {
-        serde_json::Value::Null
-    } else {
-        serde_json::to_value(&target.options)
-            .map_err(|e| vec![format!("target `{name}`: invalid options: {e}")])?
-    };
+    let options =
+        job_options(target).map_err(|e| vec![format!("target `{name}`: invalid options: {e}")])?;
     Ok(Job {
         target,
         generator,
@@ -359,6 +355,51 @@ fn server_services(
         _ => Vec::new(),
     };
     Ok((service_ids(ir, &[svc.to_string()]), consumed))
+}
+
+/// The npm name of a target's generated package: `@veld/<target name>`, made npm-safe.
+/// A target name as a lowercase, URL-safe slug (`Orders_API` becomes `orders-api`).
+pub fn slug(target: &str) -> String {
+    let slug: String = target
+        .chars()
+        .map(|c| match c.to_ascii_lowercase() {
+            c if c.is_ascii_alphanumeric() || c == '-' || c == '.' => c,
+            _ => '-',
+        })
+        .collect();
+    let slug = slug.trim_matches(|c| c == '-' || c == '.');
+    if slug.is_empty() {
+        "generated".to_string()
+    } else {
+        slug.to_string()
+    }
+}
+
+/// The npm name of a target's generated package: `@veld/<target name>`, made npm-safe.
+pub fn default_package_name(target: &str) -> String {
+    format!("@veld/{}", slug(target))
+}
+
+/// The options handed to the generator. The built-in TypeScript emitters get `package-name`
+/// defaulted to `@veld/<target name>` (the generator never sees the target name itself).
+fn job_options(target: &TargetSpec) -> Result<serde_json::Value, serde_json::Error> {
+    let ts =
+        matches!(&target.emitter, EmitterRef::Builtin(id) if id == "node" || id == "typescript");
+    if !ts {
+        return if target.options.is_empty() {
+            Ok(serde_json::Value::Null)
+        } else {
+            serde_json::to_value(&target.options)
+        };
+    }
+    let mut options = target.options.clone();
+    if !options.contains_key("package-name") {
+        options.insert(
+            "package-name".to_string(),
+            toml::Value::String(default_package_name(&target.name)),
+        );
+    }
+    serde_json::to_value(&options)
 }
 
 fn format_gen(d: &GenDiagnostic, target: &str) -> String {
@@ -548,13 +589,37 @@ mod tests {
     }
 
     #[test]
+    fn package_names_are_npm_safe() {
+        assert_eq!(default_package_name("api"), "@veld/api");
+        assert_eq!(default_package_name("Orders_API"), "@veld/orders-api");
+        assert_eq!(default_package_name("--"), "@veld/generated");
+    }
+
+    #[test]
     fn options_are_converted_to_json() {
         let ir = empty_ir();
         let p = project(
             "[[targets]]\nrole = \"client\"\nemitter = \"typescript\"\nout = \"gen\"\n[targets.options]\nvalidate = true\n",
         );
         let job = build_job(&p, &ir, &p.targets[0]).ok().unwrap();
-        assert_eq!(job.options, serde_json::json!({ "validate": true }));
+        assert_eq!(
+            job.options,
+            serde_json::json!({ "validate": true, "package-name": "@veld/client-typescript" })
+        );
+        let p = project(
+            "[[targets]]
+role = \"client\"
+emitter = \"typescript\"
+out = \"gen\"
+[targets.options]
+package-name = \"@acme/sdk\"
+",
+        );
+        let job = build_job(&p, &ir, &p.targets[0]).ok().unwrap();
+        assert_eq!(
+            job.options,
+            serde_json::json!({ "package-name": "@acme/sdk" })
+        );
     }
 
     #[test]

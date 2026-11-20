@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use anyhow::Result;
+use veld_project::config::TargetSpec;
 use veld_project::output::{PlanAction, WriteOptions};
 
 use crate::cli::GenerateArgs;
@@ -30,7 +31,7 @@ pub fn generate(
     let targets = pipeline::select_targets(&done.project, args.target.as_deref())?;
     let mut outputs = Vec::new();
     let mut failures = Vec::new();
-    for target in targets {
+    for &target in &targets {
         let result = pipeline::build_job(&done.project, &done.ir, target)
             .and_then(|job| pipeline::run_job(&done.ir, &job));
         match result {
@@ -54,7 +55,20 @@ pub fn generate(
     if !args.dry_run && args.target.is_none() {
         pipeline::write_lock(&done.project, &done.ir)?;
     }
+    if !args.dry_run {
+        hint_setup(ui, &done.project, &targets);
+    }
     Ok(Exit::Ok)
+}
+
+/// One line when generated targets are not wired into their app yet.
+fn hint_setup(ui: &Ui, project: &veld_project::config::Project, targets: &[&TargetSpec]) {
+    let n = crate::setup::unwired(project, targets);
+    if n > 0 {
+        ui.info(&format!(
+            "hint: {n} target(s) are not wired into your app yet; run `veld setup`"
+        ));
+    }
 }
 
 fn print_results(ui: &Ui, written: &[Written], dry_run: bool) {
