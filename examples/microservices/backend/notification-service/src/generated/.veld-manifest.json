@@ -9,6 +9,7 @@
     "clients/iam/prelude.ts": "192fe529d6e35f54892113d93a09667d1d18a81173d4e9ee9cb1261150af6b23",
     "index.ts": "0be4959aba56e0986f19f6fff45d3af3d06d892ed304a473a2a9fb333f22516d",
     "models/notifications.ts": "32658221a01687f1d28cab10a9d47e5166f0c855b69f539aa48f6ede11b2b84b",
+    "package.json": "70773cbcbb9cb263691dd71177e648f320520f5721464bef368e18b2d13616e0",
     "prelude.ts": "6b517ab7ce5828a32b3de12531ee5eea8a121e952b855a1d23f590c3486ea53f",
     "runtime/veld.ts": "07f44091699e2e2e65587c2bdbe3e3e6f40d9c07dbbd81aca984e0e5a712ee32",
     "server/adapters.ts": "82ca2086f71edf5253ac5645091669e00017a2fed4032a096fb0d6f33af06799",
