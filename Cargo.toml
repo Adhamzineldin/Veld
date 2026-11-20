@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/veld-ir",
+  "crates/veld-codegen",
 ]
 
 [workspace.package]
