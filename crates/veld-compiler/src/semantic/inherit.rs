@@ -17,7 +17,12 @@ pub fn flatten(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
     }
 }
 
-/// True when the parent chain of `i` loops. Reports `E0402` for members of the cycle.
+/// The longest `extends` chain the compiler flattens. Flattening recurses along the chain, so
+/// the limit keeps the stack bounded.
+const MAX_INHERITANCE_DEPTH: usize = 64;
+
+/// True when the parent chain of `i` loops or is too long to flatten. Reports `E0402` for
+/// members of a cycle and `E0006` for a chain over [`MAX_INHERITANCE_DEPTH`].
 fn in_or_below_cycle(prog: &Program<'_>, i: usize, diags: &mut Vec<Diagnostic>) -> bool {
     if prog.decls[i].kind != DKind::Model {
         return false;
@@ -39,6 +44,20 @@ fn in_or_below_cycle(prog: &Program<'_>, i: usize, diags: &mut Vec<Diagnostic>) 
             return true;
         }
         if chain.contains(&p) {
+            return true;
+        }
+        if chain.len() >= MAX_INHERITANCE_DEPTH {
+            // One report per program: every model below the first over-long one is also over.
+            if !diags.iter().any(|d| d.code == "E0006") {
+                diags.push(Diagnostic::error(
+                "E0006",
+                format!(
+                    "`{}` extends too many levels of models (the limit is {MAX_INHERITANCE_DEPTH})",
+                    prog.decls[i].name
+                ),
+                prog.decls[i].name_span,
+            ));
+            }
             return true;
         }
         chain.push(p);

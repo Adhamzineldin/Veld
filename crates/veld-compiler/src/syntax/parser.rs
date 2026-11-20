@@ -30,6 +30,7 @@ pub fn parse(text: &str, file: FileId) -> Parsed {
         pos: 0,
         file,
         diags: lexed.diagnostics,
+        depth: 0,
     };
     let ast = p.parse_file();
     Parsed {
@@ -45,7 +46,14 @@ struct Parser<'a> {
     pos: usize,
     file: FileId,
     diags: Vec<Diagnostic>,
+    /// Current nesting of types and annotation arguments (see [`MAX_NESTING`]).
+    depth: usize,
 }
+
+/// The deepest nesting of types (`Map<string, Map<...>>`, `int[][]`) and annotation call
+/// arguments the parser accepts. Every later pass recurses over these, so the limit keeps the
+/// stack bounded for any input.
+pub const MAX_NESTING: usize = 64;
 
 const V1_HELP: &str = "run `veld migrate` to convert v1 contracts";
 
@@ -495,6 +503,21 @@ impl Parser<'_> {
         })
     }
 
+    /// Enters one nesting level; reports E0005 and returns false past [`MAX_NESTING`].
+    fn enter(&mut self, levels: usize) -> bool {
+        if self.depth + levels > MAX_NESTING {
+            let span = self.span();
+            self.err(
+                "E0005",
+                format!("nesting is too deep (the limit is {MAX_NESTING} levels)"),
+                span,
+            );
+            return false;
+        }
+        self.depth += levels;
+        true
+    }
+
     fn parse_arg_value(&mut self) -> Option<ArgValue> {
         if let Tok::Ident(w) = self.peek().clone()
             && !matches!(w.as_str(), "true" | "false" | "null")
@@ -502,7 +525,12 @@ impl Parser<'_> {
             let id = self.expect_ident("an argument")?;
             if matches!(self.peek(), Tok::LParen) {
                 self.advance();
-                let args = self.parse_args()?;
+                if !self.enter(1) {
+                    return None;
+                }
+                let args = self.parse_args();
+                self.depth -= 1;
+                let args = args?;
                 self.expect(&Tok::RParen, "`)` to close the arguments")?;
                 return Some(ArgValue::Call { name: id, args });
             }
@@ -556,12 +584,12 @@ impl Parser<'_> {
         let mut args = Vec::new();
         if matches!(self.peek(), Tok::Lt) {
             self.advance();
-            loop {
-                args.push(self.parse_type()?);
-                if !self.eat(&Tok::Comma) {
-                    break;
-                }
+            if !self.enter(1) {
+                return None;
             }
+            let parsed = self.parse_type_args(&mut args);
+            self.depth -= 1;
+            parsed?;
             span = span.to(self.expect(&Tok::Gt, "`>` to close the type arguments")?);
         }
         Some(TypeExpr {
@@ -570,13 +598,27 @@ impl Parser<'_> {
         })
     }
 
+    fn parse_type_args(&mut self, args: &mut Vec<TypeExpr>) -> Option<()> {
+        loop {
+            args.push(self.parse_type()?);
+            if !self.eat(&Tok::Comma) {
+                return Some(());
+            }
+        }
+    }
+
     fn parse_type(&mut self) -> Option<TypeExpr> {
         if self.is_field_start_at(0) && self.newline_between(self.prev_end(), self.span().start) {
             self.unexpected("a type");
             return None;
         }
         let mut ty = self.parse_typeref()?;
+        let base = self.depth;
         while matches!(self.peek(), Tok::LBracket) && matches!(self.tok_at(1), Tok::RBracket) {
+            if !self.enter(1) {
+                self.depth = base;
+                return None;
+            }
             self.advance();
             let end = self.advance().span;
             let span = ty.span.to(end);
@@ -585,6 +627,7 @@ impl Parser<'_> {
                 span,
             };
         }
+        self.depth = base;
         Some(ty)
     }
 
