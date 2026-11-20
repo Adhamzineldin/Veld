@@ -206,9 +206,14 @@ mod tests {
     fn reserved_commands_are_hidden_from_help() {
         let help = Cli::command().render_help().to_string();
         for hidden in ["publish", "login", "logout", "add", "debug", "lsp"] {
-            assert!(!help.lines().any(|l| l.trim_start().starts_with(hidden)), "`{hidden}` is visible:\n{help}");
+            assert!(
+                !help.lines().any(|l| l.trim_start().starts_with(hidden)),
+                "`{hidden}` is visible:\n{help}"
+            );
         }
-        for shown in ["init", "check", "generate", "clean", "fmt", "diff", "export", "migrate", "plugin"] {
+        for shown in [
+            "init", "check", "generate", "clean", "fmt", "diff", "export", "migrate", "plugin",
+        ] {
             assert!(help.contains(shown));
         }
     }
@@ -223,7 +228,18 @@ mod tests {
         assert!(Cli::try_parse_from(["veld", "fmt", "--check", "x.veld"]).is_ok());
         assert!(Cli::try_parse_from(["veld", "diff", "--against", "main", "--strict"]).is_ok());
         assert!(Cli::try_parse_from(["veld", "diff", "--against", "main", "--lock"]).is_err());
-        assert!(Cli::try_parse_from(["veld", "export", "openapi", "-o", "a.json", "--service", "s"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "veld",
+                "export",
+                "openapi",
+                "-o",
+                "a.json",
+                "--service",
+                "s"
+            ])
+            .is_ok()
+        );
         assert!(Cli::try_parse_from(["veld", "export", "ir"]).is_ok());
         assert!(Cli::try_parse_from(["veld", "migrate", "--from", "d", "--dry-run"]).is_ok());
         assert!(Cli::try_parse_from(["veld", "plugin", "new", "kotlin"]).is_ok());

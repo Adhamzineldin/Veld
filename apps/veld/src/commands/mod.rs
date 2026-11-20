@@ -9,6 +9,7 @@ mod fmt;
 mod generate;
 mod init;
 mod migrate;
+mod plugin;
 mod stubs;
 mod watch;
 
@@ -36,6 +37,6 @@ pub fn run(cli: &Cli, ui: &Ui) -> Result<Exit> {
         Command::Publish(_) => Ok(stubs::coming_soon(ui, "publish")),
         Command::Login(_) => Ok(stubs::coming_soon(ui, "login")),
         Command::Logout(_) => Ok(stubs::coming_soon(ui, "logout")),
-        Command::Plugin(_) => Ok(stubs::coming_soon(ui, "plugin")),
+        Command::Plugin(cmd) => plugin::run(ui, cmd),
     }
 }

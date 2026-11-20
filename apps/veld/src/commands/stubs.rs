@@ -9,7 +9,9 @@ pub fn coming_soon(ui: &Ui, name: &str) -> Exit {
 }
 
 pub fn not_yet(ui: &Ui, name: &str, what: &str) -> Exit {
-    ui.error(&format!("`veld {name}` is not yet implemented ({what} comes later)"));
+    ui.error(&format!(
+        "`veld {name}` is not yet implemented ({what} comes later)"
+    ));
     Exit::Internal
 }
 
@@ -20,7 +22,7 @@ mod tests {
     #[test]
     fn stubs_exit_with_two() {
         let ui = Ui::plain();
-        assert_eq!(coming_soon(&ui, "fmt"), Exit::Internal);
+        assert_eq!(coming_soon(&ui, "publish"), Exit::Internal);
         assert_eq!(not_yet(&ui, "lsp", "the language server"), Exit::Internal);
     }
 }
