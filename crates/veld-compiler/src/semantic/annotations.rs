@@ -1,0 +1,449 @@
+//! Annotation checking (`spec/language.md` section 7): E0601 unknown,
+//! E0602 wrong target or arguments, E0603 pattern outside the regex subset.
+
+use super::regex;
+use crate::diagnostics::{Diagnostic, Span};
+use crate::language::{self, ArgShape, Target};
+use crate::syntax::ast::{Annotation, Arg, ArgValue, LitKind, Literal};
+use veld_ir::{Auth, AuthKind, Constraints, Scalar, StringFormat, Type};
+
+/// The meaning of the annotations written on one node.
+#[derive(Debug, Default)]
+pub struct Anns<'a> {
+    pub deprecated: Option<String>,
+    pub readonly: bool,
+    pub wire: Option<String>,
+    pub example: Option<&'a Literal>,
+    pub constraints: Constraints,
+    pub meta: Vec<String>,
+    pub auth: Option<Auth>,
+    pub middleware: Option<Vec<String>>,
+    pub discriminator: Option<String>,
+    pub query: Option<Span>,
+    pub header: Option<(String, Span)>,
+}
+
+#[must_use]
+pub fn target_name(t: Target) -> &'static str {
+    match t {
+        Target::Service => "service",
+        Target::Endpoint => "endpoint",
+        Target::Model => "model",
+        Target::Error => "error",
+        Target::Enum => "enum",
+        Target::Union => "union",
+        Target::Const => "const",
+        Target::Field => "field",
+        Target::Variant => "enum variant",
+        Target::Param => "parameter",
+    }
+}
+
+/// Validates `anns` for `target`. `ty` is the resolved type of the annotated
+/// field or parameter, used for applicability checks such as `@min`.
+pub fn parse<'a>(
+    anns: &'a [Annotation],
+    target: Target,
+    ty: Option<&Type>,
+    diags: &mut Vec<Diagnostic>,
+) -> Anns<'a> {
+    let mut out = Anns::default();
+    let mut seen: Vec<&str> = Vec::new();
+    for a in anns {
+        let name = a.name.name.as_str();
+        let Some(spec) = language::annotation(name) else {
+            diags.push(unknown(a));
+            continue;
+        };
+        if !spec.targets.contains(&target) {
+            diags.push(wrong_target(a, spec.targets, target));
+            continue;
+        }
+        if seen.contains(&name) {
+            diags.push(Diagnostic::error(
+                "E0602",
+                format!("`@{name}` is written more than once"),
+                a.span,
+            ));
+            continue;
+        }
+        seen.push(name);
+        if let Err(msg) = apply(&mut out, a, spec, ty, diags) {
+            diags.push(
+                Diagnostic::error("E0602", msg, a.span).with_help(format!("usage: {}", spec.usage)),
+            );
+        }
+    }
+    check_bounds(&out, anns, diags);
+    out
+}
+
+fn unknown(a: &Annotation) -> Diagnostic {
+    let known: Vec<String> = language::ANNOTATIONS
+        .iter()
+        .map(|s| format!("@{}", s.name))
+        .collect();
+    Diagnostic::error(
+        "E0601",
+        format!("unknown annotation `@{}`", a.name.name),
+        a.name.span,
+    )
+    .with_help(format!("known annotations: {}", known.join(", ")))
+}
+
+fn wrong_target(a: &Annotation, allowed: &[Target], got: Target) -> Diagnostic {
+    let list: Vec<&str> = allowed.iter().map(|t| target_name(*t)).collect();
+    Diagnostic::error(
+        "E0602",
+        format!(
+            "`@{}` cannot be applied to a {}",
+            a.name.name,
+            target_name(got)
+        ),
+        a.span,
+    )
+    .with_help(format!(
+        "`@{}` applies to: {}",
+        a.name.name,
+        list.join(", ")
+    ))
+}
+
+fn check_bounds(out: &Anns<'_>, anns: &[Annotation], diags: &mut Vec<Diagnostic>) {
+    let c = &out.constraints;
+    let span = anns.last().map_or_else(Span::none, |a| a.span);
+    if let (Some(lo), Some(hi)) = (c.min, c.max)
+        && lo > hi
+    {
+        diags.push(Diagnostic::error(
+            "E0602",
+            format!("`@min({lo})` is greater than `@max({hi})`"),
+            span,
+        ));
+    }
+}
+
+fn apply<'a>(
+    out: &mut Anns<'a>,
+    a: &'a Annotation,
+    spec: &language::AnnotationSpec,
+    ty: Option<&Type>,
+    diags: &mut Vec<Diagnostic>,
+) -> Result<(), String> {
+    let args = a.args.as_deref().unwrap_or(&[]);
+    match (spec.name, spec.args) {
+        (_, ArgShape::None) => no_args(args, spec.name)?,
+        ("deprecated", _) => out.deprecated = Some(one_string(args)?),
+        ("wire", _) => {
+            let w = one_string(args)?;
+            if w.is_empty() {
+                return Err("the wire name must not be empty".to_string());
+            }
+            out.wire = Some(w);
+        }
+        ("pattern", _) => {
+            require_type(ty, is_string, "`@pattern` applies to string fields")?;
+            let p = one_string(args)?;
+            if let Err(reason) = regex::check(&p) {
+                diags.push(
+                    Diagnostic::error("E0603", format!("pattern `{p}` is outside the portable regex subset: {reason}"), a.span)
+                        .with_help("allowed: literals, `.`, `[...]`, `\\d \\w \\s`, `* + ? {n,m}`, `( )`, `|`, `^ $`"),
+                );
+            }
+            out.constraints.pattern = Some(p);
+        }
+        ("format", _) => {
+            require_type(ty, is_string, "`@format` applies to string fields")?;
+            out.constraints.format = Some(format_arg(args)?);
+        }
+        ("min" | "max", _) => {
+            require_type(ty, is_numeric, "`@min` and `@max` apply to numeric fields")?;
+            let n = one_number(args)?;
+            if spec.name == "min" {
+                out.constraints.min = Some(n)
+            } else {
+                out.constraints.max = Some(n)
+            }
+        }
+        ("length", _) => {
+            require_type(ty, is_sized, "`@length` applies to strings, lists and maps")?;
+            length_args(&mut out.constraints, args)?;
+        }
+        ("example", _) => out.example = Some(one_literal(args)?),
+        ("discriminator", _) => out.discriminator = Some(one_string(args)?),
+        ("header", _) => out.header = Some((one_string(args)?, a.span)),
+        ("auth", _) => out.auth = Some(auth_arg(args)?),
+        ("middleware", _) => out.middleware = Some(idents(args)?),
+        _ => {}
+    }
+    match spec.name {
+        "readonly" => out.readonly = true,
+        "query" => out.query = Some(a.span),
+        "unique" | "index" | "primary" => out.meta.push(spec.name.to_string()),
+        _ => {}
+    }
+    Ok(())
+}
+
+fn no_args(args: &[Arg], name: &str) -> Result<(), String> {
+    if args.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("`@{name}` takes no arguments"))
+    }
+}
+
+fn require_type(ty: Option<&Type>, pred: fn(&Type) -> bool, msg: &str) -> Result<(), String> {
+    match ty {
+        Some(t) if !pred(t) => Err(msg.to_string()),
+        _ => Ok(()),
+    }
+}
+
+fn is_string(t: &Type) -> bool {
+    matches!(t, Type::Scalar(Scalar::String))
+}
+
+fn is_numeric(t: &Type) -> bool {
+    matches!(t, Type::Scalar(s) if s.is_numeric())
+}
+
+fn is_sized(t: &Type) -> bool {
+    matches!(
+        t,
+        Type::Scalar(Scalar::String) | Type::List(_) | Type::Map(_)
+    )
+}
+
+fn positional(args: &[Arg]) -> Result<Vec<&Arg>, String> {
+    if args.iter().any(|a| a.name.is_some()) {
+        return Err("named arguments are not accepted here".to_string());
+    }
+    Ok(args.iter().collect())
+}
+
+fn one(args: &[Arg]) -> Result<&Arg, String> {
+    match positional(args)?.as_slice() {
+        [a] => Ok(a),
+        _ => Err("expected exactly one argument".to_string()),
+    }
+}
+
+fn literal_of(a: &Arg) -> Option<&Literal> {
+    match &a.value {
+        ArgValue::Literal(l) => Some(l),
+        _ => None,
+    }
+}
+
+fn one_string(args: &[Arg]) -> Result<String, String> {
+    match literal_of(one(args)?).map(|l| &l.kind) {
+        Some(LitKind::Str(s)) => Ok(s.clone()),
+        _ => Err("expected a string argument".to_string()),
+    }
+}
+
+fn one_number(args: &[Arg]) -> Result<f64, String> {
+    match literal_of(one(args)?).map(|l| &l.kind) {
+        #[allow(clippy::cast_precision_loss)]
+        Some(LitKind::Int(n)) => Ok(*n as f64),
+        Some(LitKind::Float(f)) => Ok(*f),
+        _ => Err("expected a number argument".to_string()),
+    }
+}
+
+fn one_literal(args: &[Arg]) -> Result<&Literal, String> {
+    literal_of(one(args)?).ok_or_else(|| "expected a literal argument".to_string())
+}
+
+fn format_arg(args: &[Arg]) -> Result<StringFormat, String> {
+    match &one(args)?.value {
+        ArgValue::Ident(i) => StringFormat::from_name(&i.name).ok_or_else(|| {
+            format!(
+                "unknown format `{}`; use email, uri, hostname, ipv4 or ipv6",
+                i.name
+            )
+        }),
+        _ => Err("expected one of email, uri, hostname, ipv4, ipv6".to_string()),
+    }
+}
+
+fn length_args(c: &mut Constraints, args: &[Arg]) -> Result<(), String> {
+    if args.is_empty() {
+        return Err("expected `min:` and/or `max:`".to_string());
+    }
+    for a in args {
+        let key = a.name.as_ref().map(|n| n.name.as_str());
+        let value = match literal_of(a).map(|l| &l.kind) {
+            Some(LitKind::Int(n)) if *n >= 0 => n.unsigned_abs(),
+            _ => return Err("length bounds must be non-negative integers".to_string()),
+        };
+        match key {
+            Some("min") => c.min_len = Some(value),
+            Some("max") => c.max_len = Some(value),
+            _ => return Err("expected `min:` and/or `max:`".to_string()),
+        }
+    }
+    if let (Some(lo), Some(hi)) = (c.min_len, c.max_len)
+        && lo > hi
+    {
+        return Err(format!("`min: {lo}` is greater than `max: {hi}`"));
+    }
+    Ok(())
+}
+
+fn auth_arg(args: &[Arg]) -> Result<Auth, String> {
+    let arg = one(args)?;
+    match &arg.value {
+        ArgValue::Ident(i) => match i.name.as_str() {
+            "bearer" => Ok(Auth {
+                kind: AuthKind::Bearer,
+                header: None,
+            }),
+            "basic" => Ok(Auth {
+                kind: AuthKind::Basic,
+                header: None,
+            }),
+            "none" => Ok(Auth::none()),
+            "apiKey" => Err("`apiKey` needs a header: `apiKey(header: \"X-API-Key\")`".to_string()),
+            other => Err(format!("unknown auth scheme `{other}`")),
+        },
+        ArgValue::Literal(Literal {
+            kind: LitKind::Null,
+            ..
+        }) => Ok(Auth::none()),
+        ArgValue::Call { name, args } if name.name == "apiKey" => {
+            let header = match args.as_slice() {
+                [h] if h.name.as_ref().is_some_and(|n| n.name == "header") => {
+                    match literal_of(h).map(|l| &l.kind) {
+                        Some(LitKind::Str(s)) if !s.is_empty() => s.clone(),
+                        _ => return Err("`header:` must be a non-empty string".to_string()),
+                    }
+                }
+                _ => return Err("`apiKey` takes exactly `header: \"Name\"`".to_string()),
+            };
+            Ok(Auth {
+                kind: AuthKind::ApiKey,
+                header: Some(header),
+            })
+        }
+        _ => Err("expected bearer, basic, none or apiKey(header: \"X\")".to_string()),
+    }
+}
+
+fn idents(args: &[Arg]) -> Result<Vec<String>, String> {
+    if args.is_empty() {
+        return Err("expected at least one name".to_string());
+    }
+    positional(args)?
+        .into_iter()
+        .map(|a| match &a.value {
+            ArgValue::Ident(i) => Ok(i.name.clone()),
+            _ => Err("expected plain names".to_string()),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostics::FileId;
+    use crate::syntax::ast::DeclKind;
+    use crate::syntax::parser::parse as parse_src;
+
+    /// Annotations of the first field of a model parsed from `model M { <field> }`.
+    fn run(field: &str, target: Target, ty: Option<Type>) -> (Vec<String>, Vec<&'static str>) {
+        let src = format!("model M {{ {field} }}");
+        let parsed = parse_src(&src, FileId(0));
+        let DeclKind::Model(m) = &parsed.file.decls[0].kind else {
+            panic!("model expected")
+        };
+        let mut diags = Vec::new();
+        let a = parse(&m.fields[0].annotations, target, ty.as_ref(), &mut diags);
+        let mut facts = Vec::new();
+        if a.readonly {
+            facts.push("readonly".to_string());
+        }
+        if let Some(w) = &a.wire {
+            facts.push(format!("wire={w}"));
+        }
+        if let Some(n) = a.constraints.min_len {
+            facts.push(format!("min_len={n}"));
+        }
+        if let Some(n) = a.constraints.max {
+            facts.push(format!("max={n}"));
+        }
+        facts.extend(a.meta.iter().cloned());
+        (facts, diags.iter().map(|d| d.code).collect())
+    }
+
+    const S: Option<Type> = Some(Type::Scalar(Scalar::String));
+    const I: Option<Type> = Some(Type::Scalar(Scalar::Int));
+
+    #[test]
+    fn valid_annotations_are_applied() {
+        let (f, d) = run(
+            "a: string @readonly @wire(\"b\") @length(min: 2) @unique @primary",
+            Target::Field,
+            S,
+        );
+        assert!(d.is_empty());
+        assert_eq!(
+            f,
+            vec!["readonly", "wire=b", "min_len=2", "unique", "primary"]
+        );
+        assert_eq!(run("a: int @max(5)", Target::Field, I).0, vec!["max=5"]);
+    }
+
+    #[test]
+    fn unknown_annotation_is_e0601() {
+        assert_eq!(run("a: int @nope", Target::Field, I).1, vec!["E0601"]);
+    }
+
+    #[test]
+    fn wrong_target_wrong_args_and_duplicates_are_e0602() {
+        assert_eq!(
+            run("a: int @auth(bearer)", Target::Field, I).1,
+            vec!["E0602"]
+        );
+        assert_eq!(run("a: int @wire", Target::Field, I).1, vec!["E0602"]);
+        assert_eq!(
+            run("a: int @readonly(1)", Target::Field, I).1,
+            vec!["E0602"]
+        );
+        assert_eq!(
+            run("a: int @readonly @readonly", Target::Field, I).1,
+            vec!["E0602"]
+        );
+        assert_eq!(run("a: string @min(1)", Target::Field, S).1, vec!["E0602"]);
+        assert_eq!(
+            run("a: int @length(min: 1)", Target::Field, I).1,
+            vec!["E0602"]
+        );
+        assert_eq!(
+            run("a: int @length(min: 3, max: 1)", Target::Field, I).1,
+            vec!["E0602"]
+        );
+        assert_eq!(
+            run("a: int @min(5) @max(1)", Target::Field, I).1,
+            vec!["E0602"]
+        );
+        assert_eq!(
+            run("a: string @format(nope)", Target::Field, S).1,
+            vec!["E0602"]
+        );
+    }
+
+    #[test]
+    fn pattern_outside_subset_is_e0603() {
+        assert_eq!(
+            run("a: string @pattern(\"(?=x)\")", Target::Field, S).1,
+            vec!["E0603"]
+        );
+        assert!(
+            run("a: string @pattern(\"^[a-z]+$\")", Target::Field, S)
+                .1
+                .is_empty()
+        );
+    }
+}
