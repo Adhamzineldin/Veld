@@ -8,9 +8,10 @@ mod export;
 mod fmt;
 mod generate;
 mod init;
+mod lsp;
 mod migrate;
 mod plugin;
-mod stubs;
+mod registry;
 mod watch;
 
 use anyhow::Result;
@@ -28,15 +29,18 @@ pub fn run(cli: &Cli, ui: &Ui) -> Result<Exit> {
         Command::Generate(args) => generate::run(ui, config, args),
         Command::Clean(args) => clean::run(ui, config, args),
         Command::Debug(cmd) => debug::run(ui, config, cmd),
-        Command::Lsp => Ok(stubs::not_yet(ui, "lsp", "the language server")),
+        Command::Lsp => lsp::run(),
         Command::Fmt(args) => fmt::run(ui, config, args),
         Command::Diff(args) => diff::run(ui, config, args),
         Command::Export(cmd) => export::run(ui, config, cmd),
         Command::Migrate(args) => migrate::run(ui, args),
-        Command::Add(_) => Ok(stubs::coming_soon(ui, "add")),
-        Command::Publish(_) => Ok(stubs::coming_soon(ui, "publish")),
-        Command::Login(_) => Ok(stubs::coming_soon(ui, "login")),
-        Command::Logout(_) => Ok(stubs::coming_soon(ui, "logout")),
         Command::Plugin(cmd) => plugin::run(ui, cmd),
+        Command::Add(_)
+        | Command::Install(_)
+        | Command::Publish(_)
+        | Command::Login(_)
+        | Command::Logout(_) => {
+            registry::run(ui, config, &cli.command).unwrap_or_else(|| Ok(Exit::Internal))
+        }
     }
 }

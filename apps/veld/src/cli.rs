@@ -60,14 +60,16 @@ pub enum Command {
     #[command(hide = true)]
     Lsp,
 
-    #[command(hide = true)]
-    Add(Reserved),
-    #[command(hide = true)]
-    Publish(Reserved),
-    #[command(hide = true)]
-    Login(Reserved),
-    #[command(hide = true)]
-    Logout(Reserved),
+    /// Add a registry package to veld.toml, resolve it and pin it in veld.lock
+    Add(AddArgs),
+    /// Install exactly the packages pinned in veld.lock
+    Install(InstallArgs),
+    /// Pack this project's library or service and upload it to the registry
+    Publish(PublishArgs),
+    /// Store a registry API token
+    Login(LoginArgs),
+    /// Forget the stored registry token
+    Logout(LogoutArgs),
 }
 
 #[derive(Debug, Args)]
@@ -185,13 +187,61 @@ pub enum PluginCommand {
     },
 }
 
-/// A command that is reserved but not built yet; it accepts and ignores any arguments.
+/// `veld login`.
 #[derive(Debug, Args)]
-pub struct Reserved {
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
-    pub args: Vec<String>,
+pub struct LoginArgs {
+    /// Registry URL (default: veld.toml `[registry]`, then $VELD_REGISTRY, then the last login)
+    #[arg(long, value_name = "URL")]
+    pub registry: Option<String>,
+    /// API token (vtk_...); read from stdin when omitted
+    #[arg(long, value_name = "TOKEN")]
+    pub token: Option<String>,
+    /// Allow a plain-http registry that is not on localhost
+    #[arg(long)]
+    pub allow_insecure: bool,
 }
 
+#[derive(Debug, Args)]
+pub struct LogoutArgs {
+    /// Registry URL to forget the token for (default: as for `login`)
+    #[arg(long, value_name = "URL")]
+    pub registry: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct AddArgs {
+    /// The package, as @org/name or @org/name@range (for example @acme/billing@^1.2)
+    pub package: String,
+    /// Registry URL (default: veld.toml `[registry]`, then $VELD_REGISTRY, then the last login)
+    #[arg(long, value_name = "URL")]
+    pub registry: Option<String>,
+    /// Allow a plain-http registry that is not on localhost
+    #[arg(long)]
+    pub allow_insecure: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct PublishArgs {
+    /// Pack and check the package, but upload nothing
+    #[arg(long)]
+    pub dry_run: bool,
+    /// The library or service to publish (required in a workspace with several)
+    #[arg(long, value_name = "NAME")]
+    pub package: Option<String>,
+    /// Registry URL (default: veld.toml `[registry]`, then $VELD_REGISTRY, then the last login)
+    #[arg(long, value_name = "URL")]
+    pub registry: Option<String>,
+    /// Allow a plain-http registry that is not on localhost
+    #[arg(long)]
+    pub allow_insecure: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct InstallArgs {
+    /// Allow a plain-http registry that is not on localhost
+    #[arg(long)]
+    pub allow_insecure: bool,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,7 +255,7 @@ mod tests {
     #[test]
     fn reserved_commands_are_hidden_from_help() {
         let help = Cli::command().render_help().to_string();
-        for hidden in ["publish", "login", "logout", "add", "debug", "lsp"] {
+        for hidden in ["debug", "lsp"] {
             assert!(
                 !help.lines().any(|l| l.trim_start().starts_with(hidden)),
                 "`{hidden}` is visible:\n{help}"
@@ -213,14 +263,23 @@ mod tests {
         }
         for shown in [
             "init", "check", "generate", "clean", "fmt", "diff", "export", "migrate", "plugin",
+            "add", "install", "publish", "login", "logout",
         ] {
             assert!(help.contains(shown));
         }
     }
 
     #[test]
-    fn reserved_commands_swallow_arguments() {
-        assert!(Cli::try_parse_from(["veld", "publish", "--check", "x"]).is_ok());
+    fn registry_commands_parse() {
+        assert!(Cli::try_parse_from(["veld", "publish", "--dry-run", "--package", "lib"]).is_ok());
+        assert!(
+            Cli::try_parse_from(["veld", "login", "--registry", "https://r", "--token", "t"])
+                .is_ok()
+        );
+        assert!(Cli::try_parse_from(["veld", "add", "@acme/billing@^1.2"]).is_ok());
+        assert!(Cli::try_parse_from(["veld", "add"]).is_err());
+        assert!(Cli::try_parse_from(["veld", "install"]).is_ok());
+        assert!(Cli::try_parse_from(["veld", "logout"]).is_ok());
     }
 
     #[test]

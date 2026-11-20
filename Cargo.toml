@@ -5,16 +5,16 @@ members = [
   "crates/veld-project",
   "crates/veld-compiler",
   "crates/veld-tools",
+  "crates/veld-registry-client",
+  "crates/veld-lsp",
   "crates/veld-codegen",
-  "crates/veld-emit-conformance",
   "crates/veld-plugin-host",
+  "crates/veld-emit-conformance",
   "crates/emitters/typescript",
   "crates/emitters/node",
   "crates/emitters/java",
   "xtask",
   "apps/veld",
-  "crates/veld-lsp",
-  "crates/veld-registry-client",
 ]
 
 [workspace.package]
