@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
 
+pub mod schema;
+
 pub const IR_VERSION: &str = "1.0";
 
 macro_rules! id_type {
