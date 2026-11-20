@@ -1,0 +1,71 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+warning[W0701]: service `orders` consumes itself
+ --> <workspace>
+
+== ir ==
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "orders",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "orders",
+      "name": "Order",
+      "qualified": "orders:orders.Order",
+      "sig": "veld:orders/Order@d9076dbd2a6512e2",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "orders.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 1,
+            "col": 15
+          }
+        }
+      ]
+    }
+  ],
+  "services": [],
+  "consumes": {
+    "orders": []
+  }
+}

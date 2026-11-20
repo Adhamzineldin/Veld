@@ -1,0 +1,181 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+warning[W0202]: `NotFound` shadows the prelude declaration of the same name
+ --> app/app.veld:1:7
+  |
+1 | error NotFound 404 { what: string }
+  |       ^^^^^^^^
+
+== ir ==
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    },
+    {
+      "id": 1,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "NotFound",
+      "qualified": "app:app.NotFound",
+      "sig": "veld:app/NotFound@0d254e127a2b016b",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 404,
+      "parent": null,
+      "fields": [
+        {
+          "name": "what",
+          "wire": "what",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 1,
+            "col": 22
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 1,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "S",
+      "prefix": "/s",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "f",
+          "method": "GET",
+          "path": "/s",
+          "sig": "veld:app/S.f@3f75352e2f42ea99",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 204,
+            "type": null,
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 404,
+              "decl": 0
+            },
+            {
+              "status": 500,
+              "decl": 1
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 4,
+            "col": 11
+          }
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 3,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {}
+}

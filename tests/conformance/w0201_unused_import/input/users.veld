@@ -1,0 +1,2 @@
+model User { id: uuid }
+model Role { name: string }

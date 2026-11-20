@@ -1,0 +1,3 @@
+model A { a: int }
+
+/// This documents nothing.
