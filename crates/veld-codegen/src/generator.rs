@@ -6,6 +6,7 @@ use serde::de::DeserializeOwned;
 use veld_ir::{DeclKind, Feature, Ir, Origin, ServiceId};
 
 use crate::FileSet;
+use crate::profile::{FrameworkInfo, LanguageInfo, Offer, Profile, strip_profile_keys};
 
 /// Which side of the wire a generator produces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -83,12 +84,19 @@ pub trait Generator {
 
     fn id(&self) -> &'static str;
     fn roles(&self) -> &'static [Role];
-    fn frameworks(&self, role: Role) -> &'static [&'static str];
+    /// The frameworks of `role`, derived from the generator's adapter registry.
+    fn frameworks(&self, role: Role) -> Vec<FrameworkInfo>;
+    /// The language and its supported versions, when the generator has versioned output.
+    fn language(&self) -> Option<LanguageInfo> {
+        None
+    }
     fn capabilities(&self, role: Role) -> Capabilities;
+    /// `profile` is already validated by the core (`resolve_profile`).
     fn generate(
         &self,
         req: &GenRequest<'_>,
         opts: &Self::Options,
+        profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>>;
 }
 
@@ -96,7 +104,10 @@ pub trait Generator {
 pub trait DynGenerator {
     fn id(&self) -> &'static str;
     fn roles(&self) -> &'static [Role];
-    fn frameworks(&self, role: Role) -> &'static [&'static str];
+    fn frameworks(&self, role: Role) -> Vec<FrameworkInfo>;
+    fn language(&self) -> Option<LanguageInfo> {
+        None
+    }
     fn capabilities(&self, role: Role) -> Capabilities;
     fn generate_dyn(
         &self,
@@ -117,8 +128,12 @@ pub fn check_framework(
     let Some(f) = &req.framework else {
         return Ok(());
     };
-    let valid = generator.frameworks(req.role);
-    if valid.contains(&f.as_str()) {
+    let valid: Vec<String> = generator
+        .frameworks(req.role)
+        .into_iter()
+        .map(|i| i.id)
+        .collect();
+    if valid.contains(f) {
         return Ok(());
     }
     let expected = if valid.is_empty() {
@@ -140,6 +155,29 @@ pub fn check_framework(
     ))
 }
 
+/// Resolves and validates the [`Profile`] of a request: the framework (`E0803`), the language
+/// version (`E0802`), the framework version and the language minimum of the adapter (`E0803`).
+/// The core calls this before `generate`; a generator never re-validates.
+///
+/// # Errors
+/// The first problem found, with the valid values in the message.
+pub fn resolve_profile(
+    generator: &dyn DynGenerator,
+    req: &GenRequest<'_>,
+    options: &serde_json::Value,
+) -> Result<Profile, GenDiagnostic> {
+    check_framework(generator, req)?;
+    let language = generator.language();
+    let frameworks = generator.frameworks(req.role);
+    let offer = Offer {
+        generator: generator.id(),
+        role: req.role,
+        language: language.as_ref(),
+        frameworks: &frameworks,
+    };
+    Profile::resolve(&offer, req.framework.as_deref(), options)
+}
+
 impl<T: Generator> DynGenerator for T {
     fn id(&self) -> &'static str {
         Generator::id(self)
@@ -147,8 +185,11 @@ impl<T: Generator> DynGenerator for T {
     fn roles(&self) -> &'static [Role] {
         Generator::roles(self)
     }
-    fn frameworks(&self, role: Role) -> &'static [&'static str] {
+    fn frameworks(&self, role: Role) -> Vec<FrameworkInfo> {
         Generator::frameworks(self, role)
+    }
+    fn language(&self) -> Option<LanguageInfo> {
+        Generator::language(self)
     }
     fn capabilities(&self, role: Role) -> Capabilities {
         Generator::capabilities(self, role)
@@ -158,11 +199,12 @@ impl<T: Generator> DynGenerator for T {
         req: &GenRequest<'_>,
         opts: &serde_json::Value,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
-        check_framework(self, req).map_err(|d| vec![d])?;
-        let parsed = if opts.is_null() {
+        let profile = resolve_profile(self, req, opts).map_err(|d| vec![d])?;
+        let own = strip_profile_keys(opts, Generator::language(self).as_ref());
+        let parsed = if own.is_null() {
             T::Options::default()
         } else {
-            serde_json::from_value(opts.clone()).map_err(|e| {
+            serde_json::from_value(own).map_err(|e| {
                 vec![GenDiagnostic::new(
                     "E0802",
                     format!(
@@ -172,7 +214,7 @@ impl<T: Generator> DynGenerator for T {
                 )]
             })?
         };
-        Generator::generate(self, req, &parsed)
+        Generator::generate(self, req, &parsed, &profile)
     }
 }
 
@@ -216,7 +258,11 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
                     .params
                     .iter()
                     .any(|p| p.binding == veld_ir::Binding::Header),
-                _ => false,
+                Feature::Unions
+                | Feature::Constraints
+                | Feature::Consts
+                | Feature::Page
+                | Feature::Bytes => false,
             };
             if hit {
                 return Some(ep.origin.clone());
@@ -319,16 +365,26 @@ mod tests {
         fn roles(&self) -> &'static [Role] {
             &[Role::Client, Role::Server]
         }
-        fn frameworks(&self, role: Role) -> &'static [&'static str] {
+        fn frameworks(&self, role: Role) -> Vec<FrameworkInfo> {
+            let info = |id: &str| FrameworkInfo {
+                id: id.to_string(),
+                versions: vec![],
+                min_language: None,
+            };
             match role {
-                Role::Server => &["alpha", "beta"],
-                Role::Client => &[],
+                Role::Server => vec![info("alpha"), info("beta")],
+                Role::Client => vec![],
             }
         }
         fn capabilities(&self, _: Role) -> Capabilities {
             Capabilities::default()
         }
-        fn generate(&self, _: &GenRequest<'_>, opts: &Opts) -> Result<FileSet, Vec<GenDiagnostic>> {
+        fn generate(
+            &self,
+            _: &GenRequest<'_>,
+            opts: &Opts,
+            _: &Profile,
+        ) -> Result<FileSet, Vec<GenDiagnostic>> {
             let mut fs = FileSet::new();
             fs.add("flag.txt", if opts.flag { "1" } else { "0" })
                 .map_err(|e| vec![GenDiagnostic::new("E0899", e.to_string())])?;

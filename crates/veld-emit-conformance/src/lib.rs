@@ -203,8 +203,8 @@ mod tests {
         fn roles(&self) -> &'static [Role] {
             &[Role::Client]
         }
-        fn frameworks(&self, _: Role) -> &'static [&'static str] {
-            &[]
+        fn frameworks(&self, _: Role) -> Vec<veld_codegen::FrameworkInfo> {
+            Vec::new()
         }
         fn capabilities(&self, _: Role) -> Capabilities {
             self.caps.clone()
