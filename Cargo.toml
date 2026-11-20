@@ -6,11 +6,12 @@ members = [
   "crates/veld-compiler",
   "crates/veld-tools",
   "crates/veld-codegen",
-  "crates/veld-emit-conformance",
   "crates/veld-plugin-host",
-  "xtask",
+  "crates/veld-emit-conformance",
   "crates/emitters/typescript",
   "crates/emitters/node",
+  "crates/emitters/java",
+  "xtask",
   "apps/veld",
 ]
 
