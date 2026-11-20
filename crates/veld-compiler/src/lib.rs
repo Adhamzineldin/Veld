@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 
+pub mod access;
 pub mod codes;
 pub mod diagnostics;
 pub mod index;
@@ -16,6 +17,7 @@ pub mod semantic;
 pub mod signature;
 pub mod syntax;
 
+pub use access::AccessRules;
 pub use diagnostics::{Diagnostic, FileId, Severity, SourceMap, Span};
 pub use syntax::lexer::Comment;
 
@@ -71,10 +73,20 @@ pub fn parse_file(text: &str, file: FileId) -> (syntax::ast::File, Vec<Comment>,
 /// Compiles a whole workspace.
 #[must_use]
 pub fn compile(input: &CompileInput) -> CompileOutput {
+    compile_with(input, None)
+}
+
+/// Compiles a whole workspace and, when `rules` is given, also checks that every `use` of a
+/// registry package is allowed (`E0206`).
+#[must_use]
+pub fn compile_with(input: &CompileInput, rules: Option<&AccessRules>) -> CompileOutput {
     let mut sources = SourceMap::default();
     let mut diags = Vec::new();
     let mut parsed = parse_packages(input, &mut sources, &mut diags);
     parsed.push(parse_prelude(&mut sources, &mut diags));
+    if let Some(rules) = rules {
+        diags.extend(access::check(rules, &parsed));
+    }
     if has_errors(&diags) {
         return finish(None, diags, sources);
     }

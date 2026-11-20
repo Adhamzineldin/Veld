@@ -19,6 +19,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0203` | error | veld-compiler | Unknown package in a `use` declaration |
 | `E0204` | error | veld-compiler | Unknown module in a `use` declaration |
 | `E0205` | error | veld-compiler | Unknown name |
+| `E0206` | error | veld-compiler | `use @org/name:...` of a registry package that is not a direct dependency (of the project, or of the importing package) |
 | `E0301` | error | veld-compiler | Map key type is not `string` |
 | `E0302` | error | veld-compiler | Type arguments used wrongly (wrong count, or the type is not generic) |
 | `E0303` | error | veld-compiler | Default or example literal does not match the field type (also: optional field with a default) |
@@ -59,8 +60,8 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0707` | error | veld-plugin-host | Plugin returned invalid or unsafe files |
 | `E0708` | error | veld-plugin-host | Plugin process failed or timed out |
 | `E0801` | error | veld-codegen | Feature not supported by the generator for this role |
-| `E0802` | error | veld-codegen | Invalid generator options |
-| `E0803` | error | veld-codegen | Invalid generation request (unknown framework, role or service, nothing selected) |
+| `E0802` | error | veld-codegen | Invalid generator options (also: an unsupported language version, such as `java = "19"`) |
+| `E0803` | error | veld-codegen | Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected) |
 | `E0804` | error | generators | Constant cannot be represented by the generator |
 | `E0805` | error | generators | Generated file cannot be added (bad or duplicate path) |
 | `E0899` | error | veld-codegen | Generator or plugin failure without a more specific code |

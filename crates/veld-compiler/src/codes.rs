@@ -82,6 +82,11 @@ pub const CODES: &[CodeInfo] = &[
     e("E0203", C, "Unknown package in a `use` declaration"),
     e("E0204", C, "Unknown module in a `use` declaration"),
     e("E0205", C, "Unknown name"),
+    e(
+        "E0206",
+        C,
+        "`use @org/name:...` of a registry package that is not a direct dependency (of the project, or of the importing package)",
+    ),
     e("E0301", C, "Map key type is not `string`"),
     e(
         "E0302",
@@ -202,11 +207,15 @@ pub const CODES: &[CodeInfo] = &[
         G,
         "Feature not supported by the generator for this role",
     ),
-    e("E0802", G, "Invalid generator options"),
+    e(
+        "E0802",
+        G,
+        "Invalid generator options (also: an unsupported language version, such as `java = \"19\"`)",
+    ),
     e(
         "E0803",
         G,
-        "Invalid generation request (unknown framework, role or service, nothing selected)",
+        "Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected)",
     ),
     e(
         "E0804",
