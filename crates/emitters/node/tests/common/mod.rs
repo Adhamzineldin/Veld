@@ -120,3 +120,53 @@ pub fn text<'a>(files: &'a FileSet, path: &str) -> &'a str {
     )
     .unwrap_or_default()
 }
+
+/// The hazard fixture: every identifier that is dangerous in TypeScript, JavaScript or Java,
+/// used for endpoints, fields, models and enum variants (`tests/toolchain/contract/hazards`).
+pub fn hazards_ir() -> Ir {
+    let path = repo_root().join("tests/toolchain/contract/hazards/hazards.veld");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "weird".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: "hazards.veld".into(),
+                text,
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    assert!(
+        out.ir.is_some(),
+        "hazard fixture failed to compile:\n{}",
+        out.render()
+    );
+    out.ir.unwrap_or_else(|| unreachable!())
+}
+
+/// The HTTP equality fixture: one package with two services (`Alpha`, `Beta`) whose `fetch`
+/// endpoints share name, path and errors (`tests/toolchain/contract/equality`).
+pub fn equality_ir() -> Ir {
+    let path = repo_root().join("tests/toolchain/contract/equality/shop.veld");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "shop".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: "shop.veld".into(),
+                text,
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    assert!(
+        out.ir.is_some(),
+        "equality fixture failed to compile:\n{}",
+        out.render()
+    );
+    out.ir.unwrap_or_else(|| unreachable!())
+}

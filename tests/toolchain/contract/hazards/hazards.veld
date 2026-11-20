@@ -1,0 +1,80 @@
+/// Every identifier that is dangerous in TypeScript, JavaScript or Java, used as a
+/// field, model, enum variant, endpoint and parameter name.
+model Object {
+  constructor: string
+  prototype: string
+  class: int
+  __proto__?: string
+  toString: string
+  toJSON?: string
+  valueOf?: string
+  hasOwnProperty?: string
+  hashCode: int
+  equals?: bool
+  default: bool = true
+  getClass: long
+  wait?: decimal
+  notify?: string
+  notifyAll?: string
+  finalize?: string
+  clone?: string
+  new?: string
+  core?: string
+  opts?: string
+  client?: string
+  handler?: string
+  data: string @wire("data-x")
+  sig: string
+  status: Status = .default
+}
+
+model Error { message: string, cause?: Error }
+model Promise { then: string }
+model Class { name: string }
+model Void { a: string }
+model Record { b: string }
+model Exception { c: string }
+model Thread { d: string }
+model String2 { e: string }
+
+enum Status { default, new, class, constructor, prototype, hashCode, toString, getClass, wait }
+
+error Clash 409 { sig: string, op: string, status: int, data: string, title: string }
+union Value { object: Object, err: Error }
+
+const VELD_SIG: string = "x"
+const MAX: int = 5
+
+service Weird at "/x" {
+  get "/{class}" new(class: Status, @query default?: int, @header("X-Y") veld: string) -> Object | Clash
+  post "/" delete(body: Value) -> Value[] | Clash
+  put "/p" wait(query: Promise) -> Map<string, Promise>
+  delete "/d" hashCode() -> 204
+  get "/e1" constructor() -> Class
+  get "/e2" core() -> Class
+  get "/e3" getClass() -> Class
+  get "/e4" equals() -> Class
+  get "/e5" toString() -> Class
+  get "/e6" notify() -> Class
+  get "/e7" notifyAll() -> Class
+  get "/e8" finalize() -> Class
+  get "/e9" clone() -> Class
+  get "/e10" __proto__() -> Class
+  get "/e11" prototype() -> Class
+  get "/e12" toJSON() -> Class
+  get "/e13" valueOf() -> Class
+  get "/e14" hasOwnProperty() -> Class
+  get "/e15" opts() -> Class
+  get "/e16" then() -> Class
+  get "/e17" call() -> Class
+  get "/e18" apply() -> Class
+  get "/e19" bind() -> Class
+  get "/e20" length() -> Class
+  get "/e21" name() -> Class
+  get "/e22" client() -> Class
+  get "/e23" handler() -> Class
+  get "/e24" getRequestSpec() -> Class
+  get "/e25" close() -> Class
+  get "/e26" arguments() -> Class
+  get "/e27" eval() -> Class
+}

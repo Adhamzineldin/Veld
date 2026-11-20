@@ -186,3 +186,92 @@ fn generated_typescript_compiles_and_behaves() {
         run(&mut cmd, &format!("node {script}.js"));
     }
 }
+
+/// Endpoints, fields, models and enum variants named with every hazardous identifier must
+/// still compile under `tsc --strict`, on the server and the client.
+#[test]
+fn hazardous_identifiers_compile_strict() {
+    let tsc_path = match locate_toolchain() {
+        Ok(p) => p,
+        Err(why) => {
+            assert!(
+                std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"),
+                "toolchain required but unavailable: {why}"
+            );
+            eprintln!("SKIPPED toolchain test: {why}");
+            return;
+        }
+    };
+    let ir = hazards_ir();
+    std::fs::create_dir_all(toolchain_dir().join(".work")).unwrap();
+    let work_guard = tempfile::Builder::new()
+        .prefix("hazards-")
+        .tempdir_in(toolchain_dir().join(".work"))
+        .unwrap();
+    let work = work_guard.path();
+    let opts = WriteOptions::default();
+    write(&work.join("server"), &gen_server(&ir, "Weird", &[]), &opts).unwrap();
+    write(&work.join("client"), &gen_client(&ir), &opts).unwrap();
+    for module in ["commonjs", "nodenext"] {
+        write_json(
+            &work.join(format!("tsconfig.{module}.json")),
+            &generated_only_config(&["server", "client"], module),
+        );
+        tsc(&tsc_path, work, &format!("tsconfig.{module}.json"));
+    }
+}
+
+/// Errors raised by two separately generated servers over real HTTP and decoded by clients from
+/// two separately generated packages: `same()` holds for the same service, op and payload, and
+/// fails for a different payload and for the other service's otherwise identical error.
+#[test]
+fn equality_holds_over_http_across_packages() {
+    let tsc_path = match locate_toolchain() {
+        Ok(p) => p,
+        Err(why) => {
+            assert!(
+                std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"),
+                "toolchain required but unavailable: {why}"
+            );
+            eprintln!("SKIPPED toolchain test: {why}");
+            return;
+        }
+    };
+    let ir = equality_ir();
+    std::fs::create_dir_all(toolchain_dir().join(".work")).unwrap();
+    let work_guard = tempfile::Builder::new()
+        .prefix("http-eq-")
+        .tempdir_in(toolchain_dir().join(".work"))
+        .unwrap();
+    let work = work_guard.path();
+    let opts = WriteOptions::default();
+    write(
+        &work.join("srv_alpha"),
+        &gen_server(&ir, "Alpha", &[]),
+        &opts,
+    )
+    .unwrap();
+    write(&work.join("srv_beta"), &gen_server(&ir, "Beta", &[]), &opts).unwrap();
+    write(&work.join("cli_1"), &gen_client(&ir), &opts).unwrap();
+    write(&work.join("cli_2"), &gen_client(&ir), &opts).unwrap();
+    std::fs::copy(
+        toolchain_dir().join("http_equality.ts"),
+        work.join("http_equality.ts"),
+    )
+    .unwrap();
+    write_json(
+        &work.join("tsconfig.json"),
+        &json!({
+            "compilerOptions": {
+                "strict": true, "target": "ES2022", "lib": ["ES2022"], "types": ["node"],
+                "module": "commonjs", "moduleResolution": "node10", "esModuleInterop": true,
+                "skipLibCheck": true, "outDir": "out", "rootDir": "."
+            },
+            "include": ["*.ts", "srv_alpha/**/*.ts", "srv_beta/**/*.ts", "cli_1/**/*.ts", "cli_2/**/*.ts"]
+        }),
+    );
+    tsc(&tsc_path, work, "tsconfig.json");
+    let mut cmd = Command::new("node");
+    cmd.arg("out/http_equality.js").current_dir(work);
+    run(&mut cmd, "node http_equality.js");
+}
