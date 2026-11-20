@@ -20,6 +20,10 @@ pub struct VersionInfo {
     pub sha256: String,
     #[serde(default)]
     pub deprecated: Option<String>,
+    /// The version's own `[dependencies]` (name to range), as recorded at publish time.
+    /// Empty for versions published without any, or by an older registry.
+    #[serde(default)]
+    pub dependencies: std::collections::BTreeMap<String, String>,
 }
 
 /// What a registry offers the resolver and installer. Tests implement it with fakes.

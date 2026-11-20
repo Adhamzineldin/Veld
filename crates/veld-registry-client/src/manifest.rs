@@ -20,6 +20,9 @@ pub struct PackageManifest {
     pub language: String,
     #[serde(default)]
     pub description: Option<String>,
+    /// The package's own `[dependencies]`: `@org/name` to a semver range.
+    #[serde(default)]
+    pub dependencies: BTreeMap<String, String>,
     /// SHA-256 of every file in the archive except the manifest, keyed by archive path.
     #[serde(default)]
     pub files: BTreeMap<String, String>,
@@ -38,11 +41,19 @@ impl PackageManifest {
             version: version.to_string(),
             language: LANGUAGE.to_string(),
             description: description.map(str::to_string),
+            dependencies: BTreeMap::new(),
             files: files
                 .iter()
                 .map(|(rel, data)| (format!("{CONTRACTS_DIR}/{rel}"), sha256_hex(data)))
                 .collect(),
         }
+    }
+
+    /// The same manifest declaring `dependencies`.
+    #[must_use]
+    pub fn with_dependencies(mut self, dependencies: BTreeMap<String, String>) -> Self {
+        self.dependencies = dependencies;
+        self
     }
 
     pub fn parse(text: &str) -> Result<Self> {
@@ -69,6 +80,19 @@ impl PackageManifest {
                 self.language
             ));
         }
+        for (dep, range) in &self.dependencies {
+            if split_name(dep).is_none() {
+                return fail(format!(
+                    "dependency `{dep}` is not a valid package name (@org/name)"
+                ));
+            }
+            if *dep == self.name {
+                return fail(format!("`{dep}` cannot depend on itself"));
+            }
+            if let Err(e) = crate::resolver::parse_range(range) {
+                return fail(format!("dependency `{dep}`: {e}"));
+            }
+        }
         for (path, sum) in &self.files {
             if sum.len() != 64 || !sum.bytes().all(|b| b.is_ascii_hexdigit()) {
                 return fail(format!("checksum of `{path}` is not a sha256 hex digest"));
@@ -88,6 +112,12 @@ impl PackageManifest {
         );
         if let Some(d) = self.description.as_deref().filter(|d| !d.is_empty()) {
             out.push_str(&format!("description = {}\n", q(d)));
+        }
+        if !self.dependencies.is_empty() {
+            out.push_str("\n[dependencies]\n");
+            for (dep, range) in &self.dependencies {
+                out.push_str(&format!("{} = {}\n", q(dep), q(range)));
+            }
         }
         out.push_str("\n[files]\n");
         for (path, sum) in &self.files {
@@ -123,6 +153,51 @@ mod tests {
             "name = \"@a/b\"\nversion = \"1.0.0\"\nlanguage = \"2\"\n[files]\n\"contracts/x.veld\" = \"zz\"\n",
         ] {
             assert!(PackageManifest::parse(bad).is_err(), "{bad}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod dependency_tests {
+    use super::*;
+
+    fn deps(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(a, b)| ((*a).to_string(), (*b).to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn dependencies_round_trip_and_sort() {
+        let m = PackageManifest::new("@acme/billing", "1.0.0", None, &[])
+            .with_dependencies(deps(&[("@acme/money", "^1"), ("@acme/ids", ">=1, <3")]));
+        let text = m.to_toml();
+        assert!(text.find("@acme/ids").unwrap() < text.find("@acme/money").unwrap());
+        assert!(text.find("[dependencies]").unwrap() < text.find("[files]").unwrap());
+        assert_eq!(PackageManifest::parse(&text).unwrap(), m);
+    }
+
+    #[test]
+    fn no_dependencies_means_no_section() {
+        let m = PackageManifest::new("@acme/lib", "1.0.0", None, &[]);
+        assert!(!m.to_toml().contains("[dependencies]"));
+    }
+
+    #[test]
+    fn bad_dependencies_are_rejected() {
+        for (dep, range) in [
+            ("acme/money", "^1"),
+            ("@acme/money", "garbage!"),
+            ("@acme/lib", "^1"),
+            ("@a/../x", "^1"),
+        ] {
+            let m = PackageManifest::new("@acme/lib", "1.0.0", None, &[])
+                .with_dependencies(deps(&[(dep, range)]));
+            assert!(
+                PackageManifest::parse(&m.to_toml()).is_err(),
+                "{dep} {range}"
+            );
         }
     }
 }
