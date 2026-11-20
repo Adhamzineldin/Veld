@@ -10,25 +10,32 @@ Status: normative for the built-in TypeScript generators. Both share one impleme
 
 ## 1. Layout
 
-Server target (`role = "server"`, `emitter = "node"`):
+Server target (`role = "server"`, `emitter = "node"`). The server's own package is laid out flat at the root. Any other package whose declarations the server uses goes under `deps/<package>/`. Each consumed service gets a self-contained client tree under `clients/<service>/`:
 ```
 <out>/
   index.ts                       barrel: models, errors, service interfaces, handler, adapters, clients
   runtime/veld.ts                VeldError, VeldHttpError, VeldTransportError, canonical(), same(),
                                  problem+json encode/decode, validation primitives, router core
-  models/<module path>.ts        one file per contract module: interfaces + companion objects
-  errors/<module path>.ts        error classes (only if the module declares errors)
+  models/<module path>.ts        home package: one file per contract module: interfaces + companion objects
+  errors/<module path>.ts        home package: error classes (only if the module declares errors)
   prelude.ts                     prelude errors used by this target (BadRequest, NotFound, ...)
   server/<service>.ts            `<Service>Service` interface, request types, `create<Service>Handler`
   server/adapters.ts             toExpress / toFastify / toHono / toNodeHttp (structural types only)
-  clients/<consumed>/...         a full client layout (§4) for each service in `consumes`
+  deps/<package>/models/...      declarations of other packages that the server imports (and errors/...)
+  clients/<consumed>/            one client tree for each service in `consumes` (client layout below,
+                                 with its own index.ts and prelude.ts):
+    index.ts
+    prelude.ts
+    <package>/{models,errors,client.ts}
 ```
 Client target (`role = "client"`, `emitter = "typescript"`):
 ```
 <out>/
   index.ts
   runtime/veld.ts                identical bytes to the server's runtime/veld.ts
-  <package>/models/... errors/... prelude.ts
+  prelude.ts
+  <package>/models/<module path>.ts
+  <package>/errors/<module path>.ts
   <package>/client.ts            `<Service>Client` class per service block
 ```
 
@@ -69,7 +76,7 @@ export class OutOfStock extends VeldError<{ sku: string }> {
 }
 ```
 - A `VeldError` instance has these fields: `sig`, `op` (operation sig, or `null` until it is raised from an endpoint), `status`, `data`, and `title` (the declaration name). It also has a `veld: 1` brand.
-- `same(a, b)` from the runtime is duck-typed: it works across copies of the runtime in different directories, because it reads only `veld`, `sig`, `op` and `canonical(data)`.
+- `same(a, b)` from the runtime is duck-typed: it works across copies of the runtime in different directories, because it reads only `veld`, `sig`, `op` and the canonical data (schema defaults applied, via the class's static `schema`).
 - **Server behaviour:**
   1. The adapter catches errors thrown by the implementation.
   2. If the error is a `VeldError` whose `sig` is declared for that endpoint, the adapter sets `op` and responds with problem+json at the declared status.
