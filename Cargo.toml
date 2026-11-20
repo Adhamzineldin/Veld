@@ -6,9 +6,7 @@ members = [
   "crates/veld-compiler",
   "crates/veld-tools",
   "crates/veld-codegen",
-  "crates/emitters/typescript",
-  "crates/emitters/node",
-  "apps/veld",
+  "crates/veld-emit-conformance",
 ]
 
 [workspace.package]
@@ -24,6 +22,8 @@ veld-compiler = { path = "crates/veld-compiler" }
 veld-codegen = { path = "crates/veld-codegen" }
 veld-project = { path = "crates/veld-project" }
 veld-tools = { path = "crates/veld-tools" }
+veld-plugin-host = { path = "crates/veld-plugin-host" }
+veld-emit-conformance = { path = "crates/veld-emit-conformance" }
 veld-emit-node = { path = "crates/emitters/node" }
 veld-emit-typescript = { path = "crates/emitters/typescript" }
 veld-emit-java = { path = "crates/emitters/java" }
