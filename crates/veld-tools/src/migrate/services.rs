@@ -221,7 +221,8 @@ impl FileConv<'_> {
                         optional: f.optional,
                         ty: match &f.ty {
                             crate::migrate::v1::ast::V1Type::Named(n) => n.clone(),
-                            _ => "string".to_string(),
+                            crate::migrate::v1::ast::V1Type::List(_)
+                            | crate::migrate::v1::ast::V1Type::Map(_) => "string".to_string(),
                         },
                     })
                     .collect();

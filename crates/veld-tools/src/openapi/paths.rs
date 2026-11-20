@@ -38,7 +38,9 @@ pub(super) fn scheme_object(kind: AuthKind, header: Option<&str>) -> Value {
     match kind {
         AuthKind::Bearer => json!({ "type": "http", "scheme": "bearer" }),
         AuthKind::Basic => json!({ "type": "http", "scheme": "basic" }),
-        _ => json!({ "type": "apiKey", "in": "header", "name": header.unwrap_or("X-API-Key") }),
+        AuthKind::None | AuthKind::ApiKey => {
+            json!({ "type": "apiKey", "in": "header", "name": header.unwrap_or("X-API-Key") })
+        }
     }
 }
 
@@ -51,7 +53,7 @@ fn param_object(ir: &Ir, p: &Param) -> Option<Value> {
             p.header.clone().unwrap_or_else(|| p.name.clone()),
             !p.optional,
         ),
-        _ => return None,
+        Binding::QueryObject | Binding::Body => return None,
     };
     let mut schema = type_schema(ir, &p.ty);
     apply_constraints(&mut schema, &p.ty, &p.constraints);

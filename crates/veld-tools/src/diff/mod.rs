@@ -27,7 +27,6 @@ pub enum Severity {
 /// What changed. The severity can still depend on where a type is used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
-#[non_exhaustive]
 pub enum ChangeKind {
     DeclRemoved,
     DeclAdded,
@@ -149,7 +148,6 @@ pub(crate) fn type_key(ir: &Ir, t: &Type) -> String {
         Type::Map(i) => format!("map<{}>", type_key(ir, i)),
         Type::Page(i) => format!("page<{}>", type_key(ir, i)),
         Type::Decl(id) => format!("ref:{}", ir.decl(*id).qualified),
-        _ => "?".to_string(),
     }
 }
 

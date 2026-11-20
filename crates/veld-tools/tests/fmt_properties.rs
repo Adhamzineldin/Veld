@@ -16,7 +16,7 @@ fn strip_origins(v: &mut Value) {
             m.values_mut().for_each(strip_origins);
         }
         Value::Array(a) => a.iter_mut().for_each(strip_origins),
-        _ => {}
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
     }
 }
 

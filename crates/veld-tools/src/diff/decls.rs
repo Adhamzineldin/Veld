@@ -24,7 +24,6 @@ fn kind_name(d: &Decl) -> &'static str {
         DeclKind::Enum(_) => "enum",
         DeclKind::Union(_) => "union",
         DeclKind::Const(_) => "const",
-        _ => "declaration",
     }
 }
 
@@ -64,7 +63,26 @@ fn diff_decl(ctx: &Ctx<'_>, o: &Decl, n: &Decl, role: Role, out: &mut Vec<Change
         (DeclKind::Union(a), DeclKind::Union(b)) if shape => diff_union(ctx, q, (a, b), role, out),
         (DeclKind::Const(a), DeclKind::Const(b)) => diff_const(ctx, q, a, b, out),
         (DeclKind::Enum(_), DeclKind::Enum(_)) | (DeclKind::Union(_), DeclKind::Union(_)) => {}
-        _ => out.push(Change::breaking(
+        (
+            DeclKind::Model(_) | DeclKind::Error(_),
+            DeclKind::Model(_)
+            | DeclKind::Error(_)
+            | DeclKind::Enum(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_),
+        )
+        | (
+            DeclKind::Enum(_),
+            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Union(_) | DeclKind::Const(_),
+        )
+        | (
+            DeclKind::Union(_),
+            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Const(_),
+        )
+        | (
+            DeclKind::Const(_),
+            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Union(_),
+        ) => out.push(Change::breaking(
             ChangeKind::DeclKindChanged,
             q,
             format!(

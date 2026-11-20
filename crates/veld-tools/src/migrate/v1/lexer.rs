@@ -3,6 +3,12 @@
 //! Unlike the v1 tool, it keeps comments, because the migration carries them
 //! over.
 
+#![allow(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "token scanning: only a few tokens matter, the rest are skipped"
+)]
+
 /// A v1 token.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Tok {

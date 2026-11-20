@@ -71,7 +71,6 @@ pub(super) fn type_schema(ir: &Ir, ty: &Type) -> Value {
             "required": ["items", "total", "page", "size"],
         }),
         Type::Decl(id) => schema_ref(ir, *id),
-        _ => json!({}),
     }
 }
 
@@ -123,7 +122,7 @@ pub(super) fn apply_constraints(schema: &mut Value, ty: &Type, c: &Constraints) 
                 apply_constraints(v, inner, &rest);
             }
         }
-        _ => {}
+        Type::Page(_) | Type::Decl(_) => {}
     }
 }
 
@@ -216,7 +215,7 @@ fn model_schema(ir: &Ir, d: &Decl) -> Value {
         .collect();
     let parent = match &d.kind {
         DeclKind::Model(m) => m.parent,
-        _ => None,
+        DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => None,
     };
     let mut out = match parent {
         Some(p) => json!({ "allOf": [schema_ref(ir, p), object_of(ir, &own)] }),
@@ -270,7 +269,7 @@ pub(super) fn decl_schema(ir: &Ir, d: &Decl) -> Option<Value> {
                 "discriminator": { "propertyName": u.discriminator, "mapping": mapping },
             })
         }
-        _ => return None,
+        DeclKind::Const(_) => return None,
     };
     if let Some(m) = out.as_object_mut() {
         decorate(m, d);

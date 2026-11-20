@@ -135,7 +135,7 @@ impl<'a> FileConv<'a> {
             Kind::Json => Some(match v {
                 Value::Num(n) => n.clone(),
                 Value::Ident(i) if matches!(i.as_str(), "true" | "false") => i.clone(),
-                _ => quote(raw),
+                Value::Str(_) | Value::Ident(_) => quote(raw),
             }),
             Kind::Other => None,
         }

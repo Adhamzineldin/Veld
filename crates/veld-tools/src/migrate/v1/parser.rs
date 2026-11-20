@@ -1,5 +1,11 @@
 //! Recursive-descent parser for the v1 grammar (`internal/parser/parser.go`).
 
+#![allow(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "token scanning: only a few tokens matter, the rest are skipped"
+)]
+
 use super::ast::{
     Action, Comments, Constant, ConstantGroup, Enum, Field, Header, Headers, Import, Item, Model,
     Module, Output, TypeRef, UnionAlt, V1File, V1Type, Value,
