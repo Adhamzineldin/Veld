@@ -11,7 +11,10 @@ use predicates::prelude::*;
 use tempfile::tempdir;
 
 fn init(dir: &std::path::Path) {
-    veld(dir).args(["init", "--name", "demo"]).assert().success();
+    veld(dir)
+        .args(["init", "--name", "demo"])
+        .assert()
+        .success();
 }
 
 #[test]
@@ -29,21 +32,46 @@ fn init_check_generate_succeeds() {
         .arg("generate")
         .assert()
         .success()
-        .stdout(predicate::str::contains("api -> generated/server: 6 created"))
-        .stdout(predicate::str::contains("web -> generated/client: 5 created"));
+        .stdout(predicate::str::contains(
+            "api -> generated/server: 6 created",
+        ))
+        .stdout(predicate::str::contains(
+            "web -> generated/client: 5 created",
+        ));
     assert!(tmp.path().join("generated/server/index.ts").is_file());
-    assert!(tmp.path().join("generated/client/runtime/veld.ts").is_file());
+    assert!(
+        tmp.path()
+            .join("generated/client/runtime/veld.ts")
+            .is_file()
+    );
 }
 
 #[test]
 fn init_workspace_scaffold_generates() {
     let tmp = tempdir().unwrap();
-    veld(tmp.path()).args(["init", "--name", "ws", "--workspace"]).assert().success();
-    veld(tmp.path()).arg("check").assert().success().stdout(predicate::str::contains("2 services"));
+    veld(tmp.path())
+        .args(["init", "--name", "ws", "--workspace"])
+        .assert()
+        .success();
+    veld(tmp.path())
+        .arg("check")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 services"));
     veld(tmp.path()).arg("generate").assert().success();
     let files = tree(tmp.path());
-    assert!(files.keys().any(|p| p.starts_with("services/orders/generated/clients/users/")), "orders gets a users client");
-    assert!(!files.keys().any(|p| p.starts_with("services/users/generated/clients/")), "users consumes nothing");
+    assert!(
+        files
+            .keys()
+            .any(|p| p.starts_with("services/orders/generated/clients/users/")),
+        "orders gets a users client"
+    );
+    assert!(
+        !files
+            .keys()
+            .any(|p| p.starts_with("services/users/generated/clients/")),
+        "users consumes nothing"
+    );
 }
 
 #[test]
@@ -55,7 +83,10 @@ fn init_refuses_to_overwrite() {
         .assert()
         .code(1)
         .stderr(predicate::str::contains("already exists"));
-    assert_eq!(fs::read_to_string(tmp.path().join("veld.toml")).unwrap(), "# mine\n");
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("veld.toml")).unwrap(),
+        "# mine\n"
+    );
     assert!(!tmp.path().join("contracts").exists());
 }
 
@@ -71,7 +102,11 @@ fn generate_twice_gives_identical_tree() {
         .assert()
         .success()
         .stdout(predicate::str::contains("0 created, 0 updated, 0 deleted"));
-    assert_eq!(first, tree(&tmp.path().join("generated")), "second run changed the output");
+    assert_eq!(
+        first,
+        tree(&tmp.path().join("generated")),
+        "second run changed the output"
+    );
 }
 
 #[test]
@@ -83,7 +118,10 @@ fn generation_is_deterministic_across_projects() {
     }
     let (ta, tb) = (tree(a.path()), tree(b.path()));
     assert_eq!(ta.keys().collect::<Vec<_>>(), tb.keys().collect::<Vec<_>>());
-    assert_eq!(ta, tb, "same contracts in different directories must give identical bytes");
+    assert_eq!(
+        ta, tb,
+        "same contracts in different directories must give identical bytes"
+    );
 }
 
 #[test]
@@ -106,7 +144,10 @@ fn user_files_in_the_out_dir_survive() {
     veld(tmp.path()).arg("generate").assert().success();
     write(tmp.path(), "generated/server/notes.txt", "mine");
     veld(tmp.path()).arg("generate").assert().success();
-    assert_eq!(fs::read_to_string(tmp.path().join("generated/server/notes.txt")).unwrap(), "mine");
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("generated/server/notes.txt")).unwrap(),
+        "mine"
+    );
 }
 
 #[test]
@@ -120,11 +161,23 @@ fn conflicting_unmanaged_file_blocks_everything_until_forced() {
         .code(1)
         .stderr(predicate::str::contains("conflict: index.ts"))
         .stderr(predicate::str::contains("--force"));
-    assert_eq!(fs::read_to_string(tmp.path().join("generated/server/index.ts")).unwrap(), "// hand written\n");
-    assert!(!tmp.path().join("generated/server/runtime").exists(), "nothing written in the conflicting target");
-    assert!(!tmp.path().join("generated/client").exists(), "nothing written for the other target either");
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("generated/server/index.ts")).unwrap(),
+        "// hand written\n"
+    );
+    assert!(
+        !tmp.path().join("generated/server/runtime").exists(),
+        "nothing written in the conflicting target"
+    );
+    assert!(
+        !tmp.path().join("generated/client").exists(),
+        "nothing written for the other target either"
+    );
 
-    veld(tmp.path()).args(["generate", "--force"]).assert().success();
+    veld(tmp.path())
+        .args(["generate", "--force"])
+        .assert()
+        .success();
     let text = fs::read_to_string(tmp.path().join("generated/server/index.ts")).unwrap();
     assert!(text.starts_with("// Code generated by veld"), "{text}");
     assert!(tmp.path().join("generated/client/index.ts").is_file());
@@ -136,14 +189,21 @@ fn clean_removes_only_generated_files() {
     init(tmp.path());
     veld(tmp.path()).arg("generate").assert().success();
     write(tmp.path(), "generated/server/notes.txt", "mine");
-    write(tmp.path(), "generated/client/index.ts", "// edited by the user\n");
+    write(
+        tmp.path(),
+        "generated/client/index.ts",
+        "// edited by the user\n",
+    );
 
     veld(tmp.path())
         .args(["clean", "--dry-run"])
         .assert()
         .success()
         .stdout(predicate::str::contains("would remove"));
-    assert!(tmp.path().join("generated/server/index.ts").is_file(), "dry run removes nothing");
+    assert!(
+        tmp.path().join("generated/server/index.ts").is_file(),
+        "dry run removes nothing"
+    );
 
     veld(tmp.path())
         .arg("clean")
@@ -152,16 +212,29 @@ fn clean_removes_only_generated_files() {
         .stdout(predicate::str::contains("kept index.ts (modified"));
     assert!(!tmp.path().join("generated/server/index.ts").exists());
     assert!(!tmp.path().join("generated/server/runtime").exists());
-    assert_eq!(fs::read_to_string(tmp.path().join("generated/server/notes.txt")).unwrap(), "mine");
-    assert_eq!(fs::read_to_string(tmp.path().join("generated/client/index.ts")).unwrap(), "// edited by the user\n");
-    assert!(tmp.path().join("contracts/hello.veld").is_file(), "contracts are never touched");
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("generated/server/notes.txt")).unwrap(),
+        "mine"
+    );
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("generated/client/index.ts")).unwrap(),
+        "// edited by the user\n"
+    );
+    assert!(
+        tmp.path().join("contracts/hello.veld").is_file(),
+        "contracts are never touched"
+    );
 }
 
 #[test]
 fn contract_error_is_rendered_with_exit_one() {
     let tmp = tempdir().unwrap();
     init(tmp.path());
-    write(tmp.path(), "contracts/bad.veld", "model Bad {\n  x: Foo\n}\n");
+    write(
+        tmp.path(),
+        "contracts/bad.veld",
+        "model Bad {\n  x: Foo\n}\n",
+    );
     veld(tmp.path())
         .arg("check")
         .assert()
@@ -169,8 +242,15 @@ fn contract_error_is_rendered_with_exit_one() {
         .stderr(predicate::str::contains("error[E0205]"))
         .stderr(predicate::str::contains("demo/bad.veld:2"))
         .stderr(predicate::str::contains("✗ 1 error, 0 warnings"));
-    veld(tmp.path()).arg("generate").assert().code(1).stderr(predicate::str::contains("error[E0205]"));
-    assert!(!tmp.path().join("generated").exists(), "nothing is generated from a broken contract");
+    veld(tmp.path())
+        .arg("generate")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("error[E0205]"));
+    assert!(
+        !tmp.path().join("generated").exists(),
+        "nothing is generated from a broken contract"
+    );
 }
 
 #[test]
@@ -194,14 +274,34 @@ fn unsupported_feature_is_a_loud_error_and_writes_nothing() {
 fn mutually_consuming_services_generate() {
     let tmp = tempdir().unwrap();
     write_mutual_workspace(tmp.path());
-    veld(tmp.path()).arg("check").assert().success().stdout(predicate::str::contains("2 services, 3 endpoints"));
+    veld(tmp.path())
+        .arg("check")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 services, 3 endpoints"));
     veld(tmp.path()).arg("generate").assert().success();
     let files = tree(tmp.path());
-    let has = |prefix: &str, suffix: &str| files.keys().any(|p| p.starts_with(prefix) && p.ends_with(suffix));
-    assert!(has("servers/orders/clients/payments/", "client.ts"), "orders embeds a payments client");
-    assert!(has("servers/payments/clients/orders/", "client.ts"), "payments embeds an orders client");
-    assert!(has("servers/orders/server/", "orders.ts") && has("servers/payments/server/", "payments.ts"));
-    assert!(has("web/orders/", "client.ts") && has("web/payments/", "client.ts"), "the web client covers both");
+    let has = |prefix: &str, suffix: &str| {
+        files
+            .keys()
+            .any(|p| p.starts_with(prefix) && p.ends_with(suffix))
+    };
+    assert!(
+        has("servers/orders/clients/payments/", "client.ts"),
+        "orders embeds a payments client"
+    );
+    assert!(
+        has("servers/payments/clients/orders/", "client.ts"),
+        "payments embeds an orders client"
+    );
+    assert!(
+        has("servers/orders/server/", "orders.ts")
+            && has("servers/payments/server/", "payments.ts")
+    );
+    assert!(
+        has("web/orders/", "client.ts") && has("web/payments/", "client.ts"),
+        "the web client covers both"
+    );
     assert!(!has("web/", "adapters.ts"), "a client has no server code");
 }
 
@@ -209,7 +309,10 @@ fn mutually_consuming_services_generate() {
 fn single_target_by_name() {
     let tmp = tempdir().unwrap();
     init(tmp.path());
-    veld(tmp.path()).args(["generate", "web"]).assert().success();
+    veld(tmp.path())
+        .args(["generate", "web"])
+        .assert()
+        .success();
     assert!(tmp.path().join("generated/client/index.ts").is_file());
     assert!(!tmp.path().join("generated/server").exists());
     veld(tmp.path())
@@ -223,10 +326,20 @@ fn single_target_by_name() {
 fn debug_ir_prints_valid_json() {
     let tmp = tempdir().unwrap();
     init(tmp.path());
-    let out = veld(tmp.path()).args(["debug", "ir"]).assert().success().get_output().stdout.clone();
+    let out = veld(tmp.path())
+        .args(["debug", "ir"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
     let ir: serde_json::Value = serde_json::from_slice(&out).unwrap();
     assert_eq!(ir["services"][0]["name"], "Hello");
-    assert!(ir["services"][0]["endpoints"][0]["sig"].as_str().is_some_and(|s| s.starts_with("veld:demo/Hello.greet@")));
+    assert!(
+        ir["services"][0]["endpoints"][0]["sig"]
+            .as_str()
+            .is_some_and(|s| s.starts_with("veld:demo/Hello.greet@"))
+    );
 }
 
 #[test]
@@ -269,18 +382,31 @@ fn no_config_is_a_user_error() {
 #[test]
 fn reserved_commands_exit_two_and_are_hidden() {
     let tmp = tempdir().unwrap();
-    for cmd in ["fmt", "diff", "export", "migrate", "add", "publish", "login", "logout", "plugin"] {
+    for cmd in ["add", "publish", "login", "logout"] {
         veld(tmp.path())
             .args([cmd, "--whatever"])
             .assert()
             .code(2)
             .stderr(predicate::str::contains("coming soon"));
     }
-    veld(tmp.path()).arg("lsp").assert().code(2).stderr(predicate::str::contains("not yet implemented"));
-    let help = veld(tmp.path()).arg("--help").assert().success().get_output().stdout.clone();
+    veld(tmp.path())
+        .arg("lsp")
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("not yet implemented"));
+    let help = veld(tmp.path())
+        .arg("--help")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
     let help = String::from_utf8_lossy(&help).to_string();
-    for hidden in ["fmt", "lsp", "debug", "publish", "migrate"] {
-        assert!(!help.lines().any(|l| l.trim_start().starts_with(hidden)), "{hidden} shown:\n{help}");
+    for hidden in ["lsp", "debug", "publish", "add", "login", "logout"] {
+        assert!(
+            !help.lines().any(|l| l.trim_start().starts_with(hidden)),
+            "{hidden} shown:\n{help}"
+        );
     }
 }
 
@@ -288,16 +414,31 @@ fn reserved_commands_exit_two_and_are_hidden() {
 fn usage_errors_exit_two() {
     let tmp = tempdir().unwrap();
     veld(tmp.path()).arg("frobnicate").assert().code(2);
-    veld(tmp.path()).args(["generate", "--no-such-flag"]).assert().code(2);
+    veld(tmp.path())
+        .args(["generate", "--no-such-flag"])
+        .assert()
+        .code(2);
 }
 
 #[test]
 fn quiet_hides_progress_but_not_errors() {
     let tmp = tempdir().unwrap();
     init(tmp.path());
-    veld(tmp.path()).args(["-q", "generate"]).assert().success().stdout(predicate::str::is_empty());
-    write(tmp.path(), "contracts/bad.veld", "model Bad {\n  x: Foo\n}\n");
-    veld(tmp.path()).args(["-q", "check"]).assert().code(1).stderr(predicate::str::contains("E0205"));
+    veld(tmp.path())
+        .args(["-q", "generate"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty());
+    write(
+        tmp.path(),
+        "contracts/bad.veld",
+        "model Bad {\n  x: Foo\n}\n",
+    );
+    veld(tmp.path())
+        .args(["-q", "check"])
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("E0205"));
 }
 
 #[test]
@@ -306,8 +447,14 @@ fn config_flag_selects_the_project() {
     let project = tmp.path().join("proj");
     fs::create_dir_all(&project).unwrap();
     init(&project);
-    veld(tmp.path()).args(["--config", "proj/veld.toml", "check"]).assert().success();
-    veld(tmp.path()).args(["--config", "proj", "check"]).assert().success();
+    veld(tmp.path())
+        .args(["--config", "proj/veld.toml", "check"])
+        .assert()
+        .success();
+    veld(tmp.path())
+        .args(["--config", "proj", "check"])
+        .assert()
+        .success();
 }
 
 /// Kills the watch process when the test ends, however it ends.
@@ -335,7 +482,9 @@ fn wait_until(what: &str, ok: impl Fn() -> bool) {
 fn watch_regenerates_when_a_contract_changes() {
     let tmp = tempdir().unwrap();
     init(tmp.path());
-    let program = assert_cmd::cargo::cargo_bin_cmd!("veld").get_program().to_owned();
+    let program = assert_cmd::cargo::cargo_bin_cmd!("veld")
+        .get_program()
+        .to_owned();
     let child = std::process::Command::new(program)
         .args(["generate", "--watch"])
         .current_dir(tmp.path())
@@ -350,7 +499,12 @@ fn watch_regenerates_when_a_contract_changes() {
     wait_until("first generation", || models.is_file());
     std::thread::sleep(Duration::from_millis(500));
     let contract = tmp.path().join("contracts/hello.veld");
-    let edited = format!("{}\nmodel Farewell {{\n  text: string\n}}\n", fs::read_to_string(&contract).unwrap());
+    let edited = format!(
+        "{}\nmodel Farewell {{\n  text: string\n}}\n",
+        fs::read_to_string(&contract).unwrap()
+    );
     fs::write(&contract, edited).unwrap();
-    wait_until("regeneration after an edit", || fs::read_to_string(&models).is_ok_and(|t| t.contains("Farewell")));
+    wait_until("regeneration after an edit", || {
+        fs::read_to_string(&models).is_ok_and(|t| t.contains("Farewell"))
+    });
 }
