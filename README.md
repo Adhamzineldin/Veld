@@ -1,540 +1,200 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Adhamzineldin/Veld/master/resources/logo.png" alt="Veld" width="120" />
-</p>
+# Veld
 
-<h1 align="center">Veld</h1>
+**Write a `.veld` contract once. Generate typed servers and clients.**
 
-<p align="center">
-  <strong>Contract-first, multi-stack API code generator.</strong><br>
-  Write <code>.veld</code> contracts &rarr; get typed backends, frontend SDKs, validation, and docs &mdash; instantly.
-</p>
+Veld is a contract-first API code generator. You describe your API in a small language (models, enums,
+errors, services). Veld compiles the contract and generates a typed server, a typed client, or both.
+The generated code has no runtime dependencies, is deterministic (same contract, same bytes), and
+never overwrites files you wrote.
 
-<p align="center">
-  <a href="https://app2501.maayn.com/docs">Documentation</a> &bull;
-  <a href="#quick-start">Quick Start</a> &bull;
-  <a href="#installation">Installation</a> &bull;
-  <a href="#what-it-generates">What It Generates</a> &bull;
-  <a href="#supported-stacks">Supported Stacks</a> &bull;
-  <a href="#contract-syntax">Contract Syntax</a> &bull;
-  <a href="#cli-reference">CLI Reference</a> &bull;
-  <a href="#why-veld">Why Veld</a>
-</p>
+Version 2.0 is a rewrite in Rust with a new language. The v1 Go implementation is frozen in
+[`archive/v1/`](archive/v1) (git tag `v1-final`). Existing v1 projects are converted with `veld migrate`.
 
----
+> Status: `2.0.0-beta.1`. The specs in [`spec/`](spec) are normative.
 
-## What is Veld?
+## Install
 
-Veld is a **contract-first code generator** for APIs. You describe your data models and endpoints in `.veld` files, and Veld generates:
-
-- **Backend service interfaces** with typed method signatures
-- **Route handlers** with input validation, error handling, and correct HTTP status codes
-- **Frontend SDKs** with typed API clients using native `fetch`
-- **Validation schemas** (Zod, Pydantic, or zero-dependency runtime validators)
-- **OpenAPI 3.0 specs**, GraphQL schemas, and API documentation
-- **Database schemas** (Prisma and SQL DDL)
-- **Dockerfiles** and CI/CD pipelines (GitHub Actions, GitLab CI)
-
-No runtime dependencies in generated code. No framework lock-in. Works with any compatible library.
-
-[//]: # (> **Full documentation:** [app2501.maayn.com/docs]&#40;https://app2501.maayn.com/docs&#41;)
-
-## Quick Start
-
-### Install
+From source (needs a Rust toolchain):
 
 ```bash
-# npm
-npm install @maayn/veld
+git clone https://github.com/Adhamzineldin/Veld
+cd Veld
+cargo build -p veld --release       # produces target/release/veld, one self-contained binary
+```
 
-# pip
+The npm, pip and Homebrew wrappers in [`distribution/`](distribution) download the release binary
+for your platform and verify its SHA256 (they work once a release is published):
+
+```bash
+npm install -g @maayn/veld
 pip install maayn-veld
-
-# Homebrew
 brew install maayn-veld/tap/maayn-veld
-
-# Go
-go install github.com/Adhamzineldin/Veld/cmd/veld@latest
 ```
 
-> See the full list of supported packages in the [Installation](#installation) section.
-
-### Initialize a project
+## A 60-second tour
 
 ```bash
-mkdir my-api && cd my-api
-veld init
+veld init          # creates veld.toml and contracts/hello.veld
+veld check         # compile the contracts
+veld generate      # write the server and client
 ```
 
-The interactive wizard lets you pick your backend and frontend stack:
-
-```
-  Veld — project setup
-
-  Backend — which server runtime?
-     1  csharp
-     2  go
-     3  java
-     4  node-js
-     5  node-ts (default)
-     6  php
-     7  python
-     8  rust
-
-  Choose [5]: █
-```
-
-This creates:
-
-```
-my-api/
-├── veld/
-│   ├── veld.config.json     ← configuration
-│   ├── app.veld             ← entry point
-│   ├── models/              ← data types
-│   │   ├── user.veld
-│   │   ├── auth.veld
-│   │   └── common.veld
-│   └── modules/             ← API endpoints
-│       ├── users.veld
-│       └── auth.veld
-└── generated/               ← created on first generate
-```
-
-### Generate
-
-```bash
-veld generate
-```
-
-That's it. Your typed backend interfaces, route handlers, frontend SDK, and validation are ready.
-
-### Watch mode
-
-```bash
-veld watch
-```
-
-Auto-regenerates on every file save with 500ms debounce.
-
-## Contract Syntax
+A contract (see [`spec/language.md`](spec/language.md)):
 
 ```veld
-// models/user.veld
+use iam:users.{User}
 
-model User {
-  description: "A registered user"
-  id:       uuid
-  email:    string
-  name:     string
-  role:     Role          @default(user)
-  bio?:     string                        // optional
-  tags:     string[]                      // array
-  settings: Map<string, string>           // record/map
+/// A customer order.
+model Order {
+  id: uuid @readonly
+  customer: User
+  items: OrderItem[] @length(min: 1)
+  status: Status = .pending
+  note?: string @length(max: 500)
 }
 
-model AdminUser extends User {
-  permissions: string[]
+enum Status { pending, paid, shipped }
+
+error OutOfStock 409 {
+  sku: string
 }
 
-enum Role { admin user guest }
-```
+/// Order management.
+@auth(bearer)
+service Orders at "/orders" {
+  /// Fetch one order.
+  get "/{id}" getOrder(id: uuid) -> Order | NotFound
 
-```veld
-// modules/users.veld
-import @models/user
+  post "/" createOrder(body: CreateOrder) -> 201 Order | OutOfStock
 
-module Users {
-  description: "User management"
-  prefix: /api/v1
+  get "/" listOrders(query: OrderFilter) -> Page<Order>
 
-  action ListUsers {
-    method: GET
-    path: /users
-    output: User[]
-    query: PaginationQuery
-  }
-
-  action GetUser {
-    method: GET
-    path: /users/:id
-    output: User
-    errors: [NotFound, Forbidden]
-  }
-
-  action CreateUser {
-    method: POST
-    path: /users
-    input: CreateUserInput
-    output: User
-    errors: [Conflict, ValidationFailed]
-    middleware: RequireAuth
-  }
-
-  action DeleteUser {
-    method: DELETE
-    path: /users/:id
-    middleware: RequireAuth
-  }
+  @auth(none)
+  get "/health" health() -> 204
 }
 ```
 
-### Supported Types
+The project file, `veld.toml` (see [`spec/config.md`](spec/config.md)):
 
-| Veld Type | Description |
-|-----------|-------------|
-| `string` | Text |
-| `int` | Integer number |
-| `float` | Floating point number |
-| `bool` | Boolean |
-| `date` | Date string (YYYY-MM-DD) |
-| `datetime` | ISO 8601 datetime |
-| `uuid` | UUID string |
-| `T[]` | Array of T |
-| `Map<string, V>` | Key-value record |
-| `ModelName` | Reference to another model |
+```toml
+[project]
+name = "shop"
 
-### Features
+[[targets]]
+role = "server"
+emitter = "node"
+framework = "express"
+service = "shop"
+out = "api/src/generated"
 
-- **`extends`** &mdash; model inheritance
-- **`@default(value)`** &mdash; default field values
-- **`@deprecated "reason"`** &mdash; deprecation on fields and actions
-- **`@example("value")`** &mdash; example values for documentation and OpenAPI
-- **`@unique`** &mdash; unique constraint (surfaced in DB schemas and OpenAPI)
-- **`@index`** &mdash; index hint (surfaced in DB schemas)
-- **`@relation(Model)`** &mdash; foreign key relation (surfaced in Prisma schema)
-- **`errors: [NotFound, Forbidden]`** &mdash; typed error codes per action
-- **`middleware: AuthGuard`** &mdash; middleware declarations
-- **`method: WS`** &mdash; WebSocket endpoint support
-- **`stream: MessageType`** &mdash; WebSocket message typing
-- **`/* block comments */`** &mdash; multi-line block comments
-
-## Supported Stacks
-
-### Backends
-
-| Name | Language | Output | Aliases |
-|------|----------|--------|---------|
-| `node-ts` | Node.js | TypeScript (`.ts`) | `node` |
-| `node-js` | Node.js | JavaScript + JSDoc (`.js`) | `js`, `javascript` |
-| `python` | Python | Python + Pydantic | |
-| `go` | Go | Go + Chi router | |
-| `rust` | Rust | Rust + Actix | |
-| `java` | Java | Java + Spring | |
-| `csharp` | C# | C# + ASP.NET | |
-| `php` | PHP | PHP + PSR-15 | |
-
-**Extra backend targets:**
-
-| Name | Description |
-|------|-------------|
-| `openapi` | Export OpenAPI 3.0 spec |
-| `database` | Generate Prisma/SQL schemas |
-| `dockerfile` | Generate Dockerfile |
-| `cicd` | Generate CI/CD pipelines (GitHub Actions, GitLab CI) |
-| `env` | Generate environment variable templates |
-| `scaffold-tests` | Scaffold test files for the backend |
-
-### Frontends
-
-| Name | Language | Aliases |
-|------|----------|---------|
-| `typescript` | TypeScript fetch SDK | `ts` |
-| `javascript` | JavaScript + JSDoc fetch SDK | `js` |
-| `react` | React hooks | `react-hooks` |
-| `vue` | Vue composables | |
-| `angular` | Angular services | |
-| `svelte` | Svelte stores | |
-| `dart` | Dart HTTP client | `flutter` |
-| `kotlin` | Kotlin HTTP client | |
-| `swift` | Swift HTTP client | |
-| `types-only` | Types only, no SDK | |
-| `none` | Skip frontend generation | |
-
-
-## What It Generates
-
-### Backend (node-ts example)
-
-```
-generated/
-├── index.ts                    # Barrel export
-├── package.json                # @veld/generated package
-├── types/
-│   ├── users.ts                # TypeScript interfaces per module
-│   └── index.ts                # Barrel re-export
-├── interfaces/
-│   └── IUsersService.ts        # Service contract — you implement this
-├── routes/
-│   └── users.routes.ts         # Route handlers with try/catch + validation
-├── errors/
-│   └── users.errors.ts         # Typed error classes + factory functions
-├── schemas/
-│   └── schemas.ts              # Zod validation schemas
-└── _validators.ts              # Zero-dep runtime validators (opt-in)
+[[targets]]
+role = "client"
+emitter = "typescript"
+out = "web/src/generated"
 ```
 
-### Frontend (typescript example)
+Prelude errors (`NotFound`, `Unauthorized`, `ValidationError`, ...) and `Page<T>` need no
+declaration. Veld validates requests on the server and in the client, and maps errors to RFC 9457
+`application/problem+json`.
 
-```
-generated/client/
-├── _internal.ts                # VeldApiError, HTTP helpers
-├── usersApi.ts                 # Typed SDK methods
-├── api.ts                      # Barrel + unified `api` object
-├── types.ts                    # Re-exported types
-├── errors.ts                   # Re-exported errors
-└── package.json                # @veld/client package
-```
+More complete projects are in [`examples/`](examples): `hello`, `microservices` and
+`library-package`. Their generated output is committed, and a test checks that it is up to date.
 
-### Generated route handlers
+## Targets
 
-Every route handler includes:
-- **try/catch** error handling
-- **Input validation** (Zod, Pydantic, or zero-dep validators)
-- **Correct status codes**: POST → 201, DELETE (no output) → 204, errors → appropriate 4xx/5xx
-- **Path parameter extraction** from Express-style `:id` params
-- **Middleware** wiring from contract declarations
+| Emitter | Role | Output | Spec |
+|---|---|---|---|
+| `node` | server | TypeScript: handler, service interface, adapters for `express`, `fastify`, `hono` or plain `node:http` (structural types, no imports) | [`spec/targets/typescript.md`](spec/targets/typescript.md) |
+| `typescript` | client | typed client classes, models, errors, validators | [`spec/targets/typescript.md`](spec/targets/typescript.md) |
+| `java` | server and client | Java 17 records, sealed interfaces, `java.net.http` client; JDK HTTP server adapter or Spring Boot 3 adapter | [`spec/targets/java.md`](spec/targets/java.md) |
+| `plugin:<name>` | any | whatever an external emitter plugin produces | [`spec/plugin-protocol.md`](spec/plugin-protocol.md) |
 
-### Frontend SDK usage
+If a target cannot represent a feature (for example streaming in Java), generation fails with
+`E0801`. It never emits wrong code. React, Vue and other framework flavours of the client are not
+part of 2.0 yet. `veld export openapi` produces an OpenAPI 3.1 document.
 
-```typescript
-import { api } from '@veld/client';
-import { isErrorCode } from '@veld/client/errors';
+## Microservices and mutual consumes
 
-// Typed — IDE autocomplete for methods, params, and return types
-const users = await api.Users.listUsers();
-const user = await api.Users.getUser('user-123');
+A workspace lists services, and each service says which others it calls:
 
-try {
-  await api.Users.createUser({ email: 'a@b.com', name: 'Alice' });
-} catch (err) {
-  if (isErrorCode(err, api.Users.errors.createUser.conflict)) {
-    console.log('User already exists');
-  }
-}
+```toml
+[services.accounts]
+contracts = "contracts/accounts"
+consumes = ["iam", "transactions"]
+
+[services.transactions]
+contracts = "contracts/transactions"
+consumes = ["iam", "accounts"]     # accounts and transactions call each other
 ```
 
-## CLI Reference
+Cycles are legal. Every server target also gets a generated client for each consumed service, in
+the server's own language, and modules can import each other's types across services
+(`use accounts:accounts.{Account}`). Shared contracts live in a `[libraries.<name>]` package.
+Server targets of different languages can sit in one workspace: the
+[`microservices` example](examples/microservices) has Node servers and one Java server.
 
-| Command | Description |
-|---------|-------------|
-| `veld init` | Interactive project setup |
-| `veld generate` | Generate all output |
-| `veld generate --dry-run` | Preview without writing files |
-| `veld generate --incremental` | Skip unchanged modules (dev only) |
-| `veld generate --strict` | Exit non-zero on breaking changes (CI/CD) |
-| `veld generate --validate` | Emit zero-dep runtime validators |
-| `veld generate --setup` | Auto-configure project imports after generation |
-| `veld watch` | Auto-regenerate on file changes |
-| `veld validate` | Check contract for structural errors |
-| `veld lint` | Analyse contract quality (unused models, missing descriptions, etc.) |
-| `veld diff` | Detect breaking changes between versions |
-| `veld openapi` | Export OpenAPI 3.0 spec |
-| `veld openapi -o spec.json` | Write OpenAPI spec to file |
-| `veld graphql` | Export GraphQL SDL schema |
-| `veld schema` | Generate database schema (Prisma/SQL) |
-| `veld docs` | Generate API documentation |
-| `veld ast` | Dump AST as JSON |
-| `veld clean` | Remove generated output |
-| `veld setup` | Auto-configure project imports (tsconfig, package.json) |
-| `veld lsp` | Start the Language Server Protocol server |
-| `veld completion` | Generate shell completions (bash/zsh/fish/powershell) |
+## Signature-based equality
 
-### Common flags
+Every model, enum, union and error carries a **signature** computed once by the compiler from its
+wire shape: `veld:<package>/<Name>@<hash>`. Every generated target embeds the signature verbatim, and
+`same(a, b)` compares signatures, the operation and the canonical value bytes, never class identity.
+
+This gives the "same `NotFound`" guarantee: the `NotFound` raised by `orders.getOrder` is recognised
+as the same error by every copy of the generated code, in any directory or language, and it is never
+equal to the `NotFound` of `payments.getPayment`. See [`spec/ir.md`](spec/ir.md) section 5. The
+repository tests this with generated TypeScript and Java that call each other
+(`tests/toolchain`, `apps/veld/tests/toolchain.rs`).
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `veld init` | Create `veld.toml` and an example contract |
+| `veld check` | Compile all contracts and report diagnostics |
+| `veld generate [target]` | Generate code for every target, or one by name. `--dry-run` writes nothing |
+| `veld clean` | Remove generated files that you have not modified |
+| `veld fmt` | Format `.veld` files canonically |
+| `veld diff` | Show breaking and non-breaking contract changes (`--strict` exits 1 on a breaking one) |
+| `veld export openapi` / `export ir` | OpenAPI 3.1, or the compiled IR as JSON |
+| `veld migrate` | Convert a v1 project to v2 |
+| `veld plugin new` / `plugin test` | Scaffold an emitter plugin, run the protocol conformance suite |
+| `veld add` / `install` / `publish` / `login` / `logout` | Registry packages (`veld.lock` pins versions and checksums) |
+
+Generation only ever writes inside a target's `out` directory, through a staged writer with a
+manifest. Files that Veld did not write are never touched.
+
+## Editor support
+
+- VS Code: [`editors/vscode`](editors/vscode), a thin client for the language server in the binary
+  (`veld lsp`): diagnostics, hover, go to definition, completion, rename, formatting.
+- JetBrains: the v1 plugin is frozen. The v2 plan (LSP4IJ with `veld lsp`) is in
+  [`editors/jetbrains`](editors/jetbrains).
+
+## Repository layout
+
+| Path | What |
+|---|---|
+| `spec/` | Normative specs: language, IR, config, plugin protocol, targets |
+| `crates/` | The Rust workspace: compiler, IR, codegen, project writer, tools, emitters |
+| `apps/veld` | The CLI |
+| `registry/` | The package registry server (Go) |
+| `examples/` | Complete example projects |
+| `tests/` | Conformance cases, toolchain round trips, wire goldens |
+| `archive/v1/` | The v1 Go implementation, reference only |
+
+## Documentation
+
+- [`docs/`](docs/README.md): index of guides and specs
+- [`docs/emitter-guide.md`](docs/emitter-guide.md): writing an emitter
+- [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CHANGELOG.md`](CHANGELOG.md), [`CLAUDE.md`](CLAUDE.md)
+
+## Migrating from v1
 
 ```bash
-veld generate --backend=node-ts --frontend=react
-veld generate --backend=python --frontend=dart
-veld generate --out=./src/generated
-veld generate --validate              # enable runtime validators
-veld generate --force                 # skip breaking change prompts
-veld openapi -o openapi.json          # write spec to file
-veld lint --exit-code                 # fail on any lint issue (CI/CD)
-veld schema --format=prisma           # Prisma schema output
-veld schema --format=sql              # SQL DDL output
-```
-
-## Configuration
-
-`veld/veld.config.json`:
-
-```json
-{
-  "input": "app.veld",
-  "backend": "node-ts",
-  "frontend": "typescript",
-  "out": "../generated",
-  "baseUrl": "",
-  "validate": false,
-  "aliases": {
-    "models": "models",
-    "modules": "modules"
-  }
-}
-```
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `input` | *required* | Entry `.veld` file |
-| `backend` | `node-ts` | Backend emitter |
-| `frontend` | `typescript` | Frontend emitter |
-| `out` | `./generated` | Output directory |
-| `baseUrl` | `""` | Baked into frontend SDK (empty = `process.env.VELD_API_URL`) |
-| `validate` | `false` | Generate zero-dep runtime validators |
-| `aliases` | built-in | Import alias mappings |
-
-### Config auto-detection
-
-`veld generate` (no flags) searches for config in order:
-1. `./veld.config.json`
-2. `./veld/veld.config.json`
-
-CLI flags always override config file values.
-
-## Import System
-
-Veld supports two import styles:
-
-```veld
-import @models/user          // Alias-based (recommended)
-import "./models/user.veld"  // Relative path (legacy)
-```
-
-Aliases are resolved from the project root via the `aliases` config. Built-in aliases include: `models`, `modules`, `types`, `enums`, `schemas`, `services`, `lib`, `common`, `shared`.
-
-## Why Veld?
-
-| Problem | Veld's Answer |
-|---------|---------------|
-| Backend and frontend types drift apart | Single source of truth &mdash; one contract, all stacks |
-| Writing boilerplate route handlers | Generated with validation, error handling, correct status codes |
-| Frontend SDK maintenance | Auto-generated typed clients with error matching |
-| Runtime shape violations | Zero-dep validators catch contract mismatches at runtime |
-| OpenAPI spec goes stale | Generated from the same contract, always in sync |
-| Switching frameworks | Framework-agnostic &mdash; generated code uses `router: any`, native `fetch` |
-
-### Design Principles
-
-1. **Zero runtime dependencies** in generated output (by default)
-2. **Framework-agnostic** &mdash; works with Express, Fastify, Hono, Flask, Chi, Actix, or anything else
-3. **Deterministic** &mdash; same input always produces identical output
-4. **Never touches business logic** &mdash; Veld generates interfaces, you write implementations
-5. **Contract-first** &mdash; the `.veld` file is the single source of truth
-
-## IDE Support
-
-| Editor | How to Install | Features |
-|--------|---------------|----------|
-| **VS Code** | Search **"Veld"** in Extensions, or `code --install-extension adhamzineldin.veld-vscode` | Syntax highlighting, diagnostics, completions, hover, go-to-definition |
-| **JetBrains** | Settings → Plugins → Marketplace → **"Veld"** | Syntax highlighting, error highlighting, completions, navigation |
-| **Any LSP editor** | Run `veld lsp` as language server for `.veld` files | Diagnostics, completions, hover, go-to-definition |
-
-### Neovim LSP setup
-
-```lua
-vim.api.nvim_create_autocmd('FileType', {
-  pattern = 'veld',
-  callback = function()
-    vim.lsp.start({
-      name = 'veld',
-      cmd = { 'veld', 'lsp' },
-      root_dir = vim.fs.dirname(
-        vim.fs.find({ 'veld.config.json' }, { upward = true })[1]
-      ),
-    })
-  end,
-})
-```
-
-## Installation
-
-Veld is published to multiple package managers via automated CI/CD. Pick whichever fits your workflow:
-
-### npm
-
-```bash
-npm install @maayn/veld
-
-# Or run directly without installing
-npx @maayn/veld generate
-```
-
-### pip
-
-```bash
-pip install maayn-veld
-
-# Then use the CLI
+veld migrate --from path/to/v1/project   # writes veld.toml and contracts/ (v1 files are not touched)
+veld check
 veld generate
 ```
 
-### Homebrew (macOS / Linux)
-
-```bash
-brew install maayn-veld/tap/maayn-veld
-
-veld generate
-```
-
-### Go
-
-```bash
-go install github.com/Adhamzineldin/Veld/cmd/veld@latest
-
-veld generate
-```
-
-### Composer (PHP)
-
-```bash
-composer require maayn/veld
-
-# The binary is available after install
-vendor/bin/veld generate
-```
-
-### GitHub Releases (manual download)
-
-Pre-built binaries for **Linux**, **macOS**, and **Windows** (amd64 & arm64) are attached to every [GitHub Release](https://github.com/Adhamzineldin/Veld/releases). Download the archive for your platform, extract, and add `veld` to your `PATH`.
-
-> All packages and plugins are published automatically when a version tag (e.g. `v0.3.0`) is pushed.
-
-## Project Structure
-
-```
-veld/                          ← Go source
-├── cmd/veld/                  ← CLI entry point (Cobra)
-├── internal/
-│   ├── ast/                   ← AST data structures
-│   ├── lexer/                 ← Tokenizer
-│   ├── parser/                ← Recursive descent parser
-│   ├── validator/             ← Semantic validation
-│   ├── loader/                ← File loading + import resolution
-│   ├── config/                ← Config file + flag merging
-│   ├── emitter/               ← Code generators
-│   │   ├── backend/           ← node-ts, node-js, python, go, rust, java, csharp, php
-│   │   └── frontend/          ← typescript, javascript, react, vue, angular, svelte, dart, kotlin, swift
-│   ├── lsp/                   ← Language Server Protocol
-│   └── schema/                ← Database schema generators
-├── website/                   ← Website + docs (React + Vite)
-├── editors/                   ← VS Code extension + JetBrains plugin
-└── docs/                      ← Additional documentation
-```
-
-## Contributing
-
-```bash
-# Build
-go build -o veld ./cmd/veld
-
-# Test
-go test ./...
-
-# Lint
-go vet ./...
-```
-
-Emitters self-register via `init()`. Adding a new backend or frontend emitter is one package + one blank import in `cmd/veld/main.go`.
-
-## License
-
-MIT
+Constructs without a v2 equivalent are reported as warnings, and unsupported v1 backends are written
+as commented-out targets. See [`CHANGELOG.md`](CHANGELOG.md).
