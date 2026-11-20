@@ -49,9 +49,18 @@ fn bounds(c: &Constraints) -> Vec<String> {
 pub fn schema_expr(fc: &mut FileCtx<'_, '_>, ty: &Type, c: &Constraints) -> String {
     let mut parts = match ty {
         Type::Scalar(s) => vec![format!("k: '{}'", s.name())],
-        Type::List(t) => vec!["k: 'list'".to_string(), format!("of: {}", schema_expr(fc, t, &Constraints::default()))],
-        Type::Map(t) => vec!["k: 'map'".to_string(), format!("of: {}", schema_expr(fc, t, &Constraints::default()))],
-        Type::Page(t) => vec!["k: 'page'".to_string(), format!("of: {}", schema_expr(fc, t, &Constraints::default()))],
+        Type::List(t) => vec![
+            "k: 'list'".to_string(),
+            format!("of: {}", schema_expr(fc, t, &Constraints::default())),
+        ],
+        Type::Map(t) => vec![
+            "k: 'map'".to_string(),
+            format!("of: {}", schema_expr(fc, t, &Constraints::default())),
+        ],
+        Type::Page(t) => vec![
+            "k: 'page'".to_string(),
+            format!("of: {}", schema_expr(fc, t, &Constraints::default())),
+        ],
         Type::Decl(id) => {
             let name = fc.value_ref(*id);
             vec!["k: 'ref'".to_string(), format!("to: () => {name}.schema")]

@@ -28,7 +28,13 @@ impl<'a> Tree<'a> {
     /// Collects the declarations to emit: everything reachable from the services,
     /// the prelude, and every declaration of the services' own packages.
     #[must_use]
-    pub fn new(ir: &'a Ir, root: &str, flat_home: Option<PackageId>, runtime: &str, services: Vec<ServiceId>) -> Self {
+    pub fn new(
+        ir: &'a Ir,
+        root: &str,
+        flat_home: Option<PackageId>,
+        runtime: &str,
+        services: Vec<ServiceId>,
+    ) -> Self {
         let mut set: BTreeSet<DeclId> = ir.reachable_decls(&services).into_iter().collect();
         let own: BTreeSet<PackageId> = services.iter().map(|s| ir.service(*s).package).collect();
         for d in &ir.decls {
@@ -36,7 +42,14 @@ impl<'a> Tree<'a> {
                 set.insert(d.id);
             }
         }
-        Self { ir, root: root.to_string(), flat_home, runtime: runtime.to_string(), services, decls: set.into_iter().collect() }
+        Self {
+            ir,
+            root: root.to_string(),
+            flat_home,
+            runtime: runtime.to_string(),
+            services,
+            decls: set.into_iter().collect(),
+        }
     }
 
     #[must_use]
@@ -65,7 +78,11 @@ impl<'a> Tree<'a> {
             return self.root.clone();
         }
         let dir = package.name.trim_start_matches('@').replace('/', "-");
-        if self.flat_home.is_some() { format!("{}deps/{dir}/", self.root) } else { format!("{}{dir}/", self.root) }
+        if self.flat_home.is_some() {
+            format!("{}deps/{dir}/", self.root)
+        } else {
+            format!("{}{dir}/", self.root)
+        }
     }
 
     /// Module path (root-relative, no extension) holding `d`.
@@ -74,8 +91,16 @@ impl<'a> Tree<'a> {
         if self.ir.package(d.package).kind == PackageKind::Prelude {
             return format!("{}prelude", self.root);
         }
-        let kind = if matches!(d.kind, DeclKind::Error(_)) { "errors" } else { "models" };
-        let module = if d.module.is_empty() { "root".to_string() } else { d.module.replace('.', "/") };
+        let kind = if matches!(d.kind, DeclKind::Error(_)) {
+            "errors"
+        } else {
+            "models"
+        };
+        let module = if d.module.is_empty() {
+            "root".to_string()
+        } else {
+            d.module.replace('.', "/")
+        };
         format!("{}{kind}/{module}", self.pkg_prefix(d.package))
     }
 
@@ -96,7 +121,12 @@ pub struct Imports {
 
 impl Imports {
     fn add(&mut self, module: &str, name: &str, value: bool) {
-        let entry = self.named.entry(module.to_string()).or_default().entry(name.to_string()).or_insert(false);
+        let entry = self
+            .named
+            .entry(module.to_string())
+            .or_default()
+            .entry(name.to_string())
+            .or_insert(false);
         *entry |= value;
     }
 
@@ -110,13 +140,27 @@ impl Imports {
         }
         for (module, names) in &self.named {
             let spec = util::rel_import(from_file, module);
-            let values: Vec<&str> = names.iter().filter(|(_, v)| **v).map(|(n, _)| n.as_str()).collect();
-            let types: Vec<&str> = names.iter().filter(|(_, v)| !**v).map(|(n, _)| n.as_str()).collect();
+            let values: Vec<&str> = names
+                .iter()
+                .filter(|(_, v)| **v)
+                .map(|(n, _)| n.as_str())
+                .collect();
+            let types: Vec<&str> = names
+                .iter()
+                .filter(|(_, v)| !**v)
+                .map(|(n, _)| n.as_str())
+                .collect();
             if !values.is_empty() {
-                lines.push((spec.clone(), format!("import {{ {} }} from '{spec}';", values.join(", "))));
+                lines.push((
+                    spec.clone(),
+                    format!("import {{ {} }} from '{spec}';", values.join(", ")),
+                ));
             }
             if !types.is_empty() {
-                lines.push((spec.clone(), format!("import type {{ {} }} from '{spec}';", types.join(", "))));
+                lines.push((
+                    spec.clone(),
+                    format!("import type {{ {} }} from '{spec}';", types.join(", ")),
+                ));
             }
         }
         lines.sort();
@@ -136,7 +180,11 @@ pub struct FileCtx<'t, 'a> {
 impl<'t, 'a> FileCtx<'t, 'a> {
     #[must_use]
     pub fn new(tree: &'t Tree<'a>, module: &str) -> Self {
-        Self { tree, module: module.to_string(), imports: Imports::default() }
+        Self {
+            tree,
+            module: module.to_string(),
+            imports: Imports::default(),
+        }
     }
 
     /// `veld.<name>`, recording the runtime import.

@@ -30,14 +30,20 @@ pub fn ts_str(s: &str) -> String {
 #[must_use]
 pub fn is_ident(s: &str) -> bool {
     let mut chars = s.chars();
-    chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
+    chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
 }
 
 /// An object property key: bare when it is an identifier, quoted otherwise.
 #[must_use]
 pub fn prop_key(name: &str) -> String {
-    if is_ident(name) { name.to_string() } else { ts_str(name) }
+    if is_ident(name) {
+        name.to_string()
+    } else {
+        ts_str(name)
+    }
 }
 
 /// The TypeScript identifier of a declaration (reserved words and hazards escaped).
@@ -63,11 +69,20 @@ pub fn literal(l: &Literal) -> String {
 /// Writes a `/** ... */` block for docs and a deprecation notice, or nothing.
 pub fn doc_comment(w: &mut CodeWriter, docs: Option<&str>, deprecated: Option<&str>) {
     let mut lines: Vec<String> = docs
-        .map(|d| d.trim().lines().map(|l| l.trim_end().replace("*/", "*\\/")).collect())
+        .map(|d| {
+            d.trim()
+                .lines()
+                .map(|l| l.trim_end().replace("*/", "*\\/"))
+                .collect()
+        })
         .unwrap_or_default();
     if let Some(msg) = deprecated {
         let msg = msg.replace("*/", "*\\/");
-        lines.push(if msg.is_empty() { "@deprecated".to_string() } else { format!("@deprecated {msg}") });
+        lines.push(if msg.is_empty() {
+            "@deprecated".to_string()
+        } else {
+            format!("@deprecated {msg}")
+        });
     }
     match lines.as_slice() {
         [] => {}
@@ -77,7 +92,11 @@ pub fn doc_comment(w: &mut CodeWriter, docs: Option<&str>, deprecated: Option<&s
         many => {
             w.line("/**");
             for l in many {
-                w.line(if l.is_empty() { " *".to_string() } else { format!(" * {l}") });
+                w.line(if l.is_empty() {
+                    " *".to_string()
+                } else {
+                    format!(" * {l}")
+                });
             }
             w.line(" */");
         }
@@ -94,15 +113,32 @@ pub fn rel_import(from_file: &str, to: &str) -> String {
         parts
     };
     let to_parts: Vec<&str> = to.split('/').collect();
-    let common = from_dir.iter().zip(&to_parts).take_while(|(a, b)| a == b).count();
+    let common = from_dir
+        .iter()
+        .zip(&to_parts)
+        .take_while(|(a, b)| a == b)
+        .count();
     let ups = from_dir.len() - common;
     let rest = to_parts[common..].join("/");
-    if ups == 0 { format!("./{rest}") } else { format!("{}{rest}", "../".repeat(ups)) }
+    if ups == 0 {
+        format!("./{rest}")
+    } else {
+        format!("{}{rest}", "../".repeat(ups))
+    }
 }
 
 /// Adds a generated file, mapping a path error to a generation diagnostic.
-pub fn add_file(files: &mut FileSet, path: &str, content: String) -> Result<(), Vec<GenDiagnostic>> {
-    files.add(path, content).map_err(|e| vec![GenDiagnostic::new("E0805", format!("cannot add generated file: {e}"))])
+pub fn add_file(
+    files: &mut FileSet,
+    path: &str,
+    content: String,
+) -> Result<(), Vec<GenDiagnostic>> {
+    files.add(path, content).map_err(|e| {
+        vec![GenDiagnostic::new(
+            "E0805",
+            format!("cannot add generated file: {e}"),
+        )]
+    })
 }
 
 #[cfg(test)]
@@ -119,7 +155,10 @@ mod tests {
         assert_eq!(rel_import("models/a.ts", "models/b"), "./b");
         assert_eq!(rel_import("models/a.ts", "runtime/veld"), "../runtime/veld");
         assert_eq!(rel_import("index.ts", "models/b"), "./models/b");
-        assert_eq!(rel_import("clients/iam/models/a.ts", "runtime/veld"), "../../../runtime/veld");
+        assert_eq!(
+            rel_import("clients/iam/models/a.ts", "runtime/veld"),
+            "../../../runtime/veld"
+        );
         assert_eq!(rel_import("a/b/c.ts", "a/x/y"), "../x/y");
     }
 
@@ -128,6 +167,9 @@ mod tests {
         let mut w = CodeWriter::new();
         doc_comment(&mut w, Some("One."), None);
         doc_comment(&mut w, Some("A\n\nB"), Some("use C"));
-        assert_eq!(w.finish(), "/** One. */\n/**\n * A\n *\n * B\n * @deprecated use C\n */\n");
+        assert_eq!(
+            w.finish(),
+            "/** One. */\n/**\n * A\n *\n * B\n * @deprecated use C\n */\n"
+        );
     }
 }

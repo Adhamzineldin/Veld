@@ -5,8 +5,7 @@ use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use crate::util::{HEADER, add_file, rel_import};
 
 /// Runtime names re-exported by every top-level barrel.
-const RUNTIME_EXPORTS: &str =
-    "export { VeldError, VeldHttpError, VeldTransportError, canonical, canonicalError, matchesError, same } from './runtime/veld';";
+const RUNTIME_EXPORTS: &str = "export { VeldError, VeldHttpError, VeldTransportError, canonical, canonicalError, matchesError, same } from './runtime/veld';";
 
 /// Writes `<dir>index.ts` re-exporting `modules` (root-relative, no extension) and any
 /// `extra` lines. `top_level` adds the runtime exports.

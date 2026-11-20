@@ -48,7 +48,10 @@ impl RequestNames {
 
     #[must_use]
     pub fn get(&self, service: ServiceId, endpoint: &str) -> String {
-        self.names.get(&(service, endpoint.to_string())).cloned().unwrap_or_else(|| base_name(endpoint))
+        self.names
+            .get(&(service, endpoint.to_string()))
+            .cloned()
+            .unwrap_or_else(|| base_name(endpoint))
     }
 }
 
@@ -89,7 +92,10 @@ fn binding_name(b: Binding) -> &'static str {
 }
 
 fn param_expr(fc: &mut FileCtx<'_, '_>, p: &Param) -> String {
-    let mut parts = vec![format!("name: {}", ts_str(&p.name)), format!("binding: '{}'", binding_name(p.binding))];
+    let mut parts = vec![
+        format!("name: {}", ts_str(&p.name)),
+        format!("binding: '{}'", binding_name(p.binding)),
+    ];
     if let Some(h) = &p.header {
         parts.push(format!("header: {}", ts_str(h)));
     }
@@ -123,7 +129,11 @@ pub fn write_spec_fields(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, ep: &Endp
     if let Some(auth) = auth_expr(ep) {
         w.line(format!("auth: {auth},"));
     }
-    write_list(w, "params", ep.params.iter().map(|p| param_expr(fc, p)).collect());
+    write_list(
+        w,
+        "params",
+        ep.params.iter().map(|p| param_expr(fc, p)).collect(),
+    );
     let success = match &ep.success.ty {
         Some(t) => schema_expr(fc, t, &veld_ir::Constraints::default()),
         None => "null".to_string(),
@@ -162,7 +172,12 @@ fn write_op(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, ep: &En
     w.close_with("};");
 }
 
-fn write_service(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &RequestNames, svc: &Service) {
+fn write_service(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    names: &RequestNames,
+    svc: &Service,
+) {
     for ep in &svc.endpoints {
         let name = names.get(svc.id, &ep.name);
         write_request_type(w, fc, &name, ep);
@@ -190,7 +205,10 @@ fn write_constructor(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service
     let validation = validation_expr(fc);
     w.open(format!("constructor(opts: {opts} = {{}})"));
     w.open_with(format!("this.core = new {core}(opts,"), " {");
-    w.line(format!("envVar: {},", ts_str(&format!("VELD_{}_URL", naming::screaming_snake(&svc.name)))));
+    w.line(format!(
+        "envVar: {},",
+        ts_str(&format!("VELD_{}_URL", naming::screaming_snake(&svc.name)))
+    ));
     match &svc.base_url {
         Some(u) => w.line(format!("baseUrl: {},", ts_str(u))),
         None => w.line("baseUrl: null,"),
@@ -207,12 +225,20 @@ fn validation_expr(fc: &mut FileCtx<'_, '_>) -> String {
         Some(id) => format!("(issues) => new {}({{ issues }})", fc.value_ref(id)),
         None => {
             let base = fc.rt("VeldError");
-            format!("(issues) => new {base}('about:blank', 'ValidationError', {{ issues }}, {{ status: 422 }}, 422)")
+            format!(
+                "(issues) => new {base}('about:blank', 'ValidationError', {{ issues }}, {{ status: 422 }}, 422)"
+            )
         }
     }
 }
 
-fn write_method(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &RequestNames, svc: &Service, ep: &Endpoint) {
+fn write_method(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    names: &RequestNames,
+    svc: &Service,
+    ep: &Endpoint,
+) {
     doc_comment(w, ep.docs.as_deref(), ep.deprecated.as_deref());
     let req = names.get(svc.id, &ep.name);
     let ret = match &ep.success.ty {
@@ -221,8 +247,14 @@ fn write_method(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &RequestNam
     };
     let default = if ep.params.is_empty() { " = {}" } else { "" };
     let init = fc.rt("CallInit");
-    w.open(format!("{}(req: {req}{default}, init?: {init}): Promise<{ret}>", prop_key(&ep.name)));
-    w.line(format!("return this.core.call({}, req, init) as Promise<{ret}>;", op_const(svc, ep)));
+    w.open(format!(
+        "{}(req: {req}{default}, init?: {init}): Promise<{ret}>",
+        prop_key(&ep.name)
+    ));
+    w.line(format!(
+        "return this.core.call({}, req, init) as Promise<{ret}>;",
+        op_const(svc, ep)
+    ));
     w.close();
 }
 
@@ -234,7 +266,11 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
         let module = tree.client_module(pkg);
         let mut fc = FileCtx::new(tree, &module);
         let mut w = CodeWriter::new();
-        for sid in tree.services.iter().filter(|s| tree.ir.service(**s).package == pkg) {
+        for sid in tree
+            .services
+            .iter()
+            .filter(|s| tree.ir.service(**s).package == pkg)
+        {
             write_service(&mut w, &mut fc, &names, tree.ir.service(*sid));
             w.blank();
         }

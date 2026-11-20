@@ -15,7 +15,9 @@ pub mod util;
 pub mod validate;
 
 use serde::Deserialize;
-use veld_codegen::{Capabilities, FileSet, GenDiagnostic, GenRequest, Generator, Role, check_capabilities};
+use veld_codegen::{
+    Capabilities, FileSet, GenDiagnostic, GenRequest, Generator, Role, check_capabilities,
+};
 use veld_ir::Feature;
 
 pub use tree::Tree;
@@ -34,22 +36,43 @@ pub struct TypeScript;
 
 /// Checks the request is well formed for a generator that supports `role`:
 /// the role matches, services exist, every used feature is supported.
-pub fn precheck(req: &GenRequest<'_>, role: Role, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
+pub fn precheck(
+    req: &GenRequest<'_>,
+    role: Role,
+    caps: &Capabilities,
+) -> Result<(), Vec<GenDiagnostic>> {
     if req.role != role {
-        return Err(vec![GenDiagnostic::new("E0803", format!("this generator only produces the `{}` role", role.name()))]);
+        return Err(vec![GenDiagnostic::new(
+            "E0803",
+            format!("this generator only produces the `{}` role", role.name()),
+        )]);
     }
     if req.services.is_empty() {
-        return Err(vec![GenDiagnostic::new("E0803", "no services selected for generation")]);
+        return Err(vec![GenDiagnostic::new(
+            "E0803",
+            "no services selected for generation",
+        )]);
     }
-    if let Some(bad) = req.services.iter().chain(&req.consumes).find(|s| s.index() >= req.ir.services.len()) {
-        return Err(vec![GenDiagnostic::new("E0803", format!("unknown service id {}", bad.0))]);
+    if let Some(bad) = req
+        .services
+        .iter()
+        .chain(&req.consumes)
+        .find(|s| s.index() >= req.ir.services.len())
+    {
+        return Err(vec![GenDiagnostic::new(
+            "E0803",
+            format!("unknown service id {}", bad.0),
+        )]);
     }
     let diags = check_capabilities(req.ir, req, caps);
     if diags.is_empty() { Ok(()) } else { Err(diags) }
 }
 
 /// Emits the files of a client tree (models, errors, prelude, `client.ts`) and returns its module paths.
-pub fn emit_client_tree(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<GenDiagnostic>> {
+pub fn emit_client_tree(
+    files: &mut FileSet,
+    tree: &Tree<'_>,
+) -> Result<Vec<String>, Vec<GenDiagnostic>> {
     let mut modules = models::emit(files, tree)?;
     modules.extend(client::emit(files, tree)?);
     modules.sort();
@@ -75,7 +98,11 @@ impl Generator for TypeScript {
         Capabilities::all_except(&UNSUPPORTED)
     }
 
-    fn generate(&self, req: &GenRequest<'_>, _opts: &Options) -> Result<FileSet, Vec<GenDiagnostic>> {
+    fn generate(
+        &self,
+        req: &GenRequest<'_>,
+        _opts: &Options,
+    ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, Role::Client, &self.capabilities(Role::Client))?;
         let mut files = FileSet::new();
         runtime::emit(&mut files)?;
@@ -85,4 +112,3 @@ impl Generator for TypeScript {
         Ok(files)
     }
 }
-
