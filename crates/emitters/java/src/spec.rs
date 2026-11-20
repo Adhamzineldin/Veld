@@ -93,7 +93,6 @@ pub fn emit_requests(
 fn write_request(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &Endpoint) {
     let idents = unique(ep.params.iter().map(|p| member_ident(&p.name)).collect());
     let json = fc.rt("Json");
-    let codec = fc.rt("Codec");
     let params: Vec<(String, String)> = ep
         .params
         .iter()
@@ -135,6 +134,7 @@ fn write_request(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &
     if ep.params.is_empty() {
         w.line(format!("return new {name}();"));
     } else {
+        let codec = fc.rt("Codec");
         open_call(w, format!("return new {name}"));
         for (i, p) in ep.params.iter().enumerate() {
             let get = if p.optional { "opt" } else { "req" };

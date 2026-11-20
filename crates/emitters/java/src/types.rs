@@ -60,12 +60,11 @@ pub fn java_type(fc: &mut FileCtx<'_, '_>, ty: &Type, boxed: bool) -> String {
 
 /// A `Codec<T>` expression for `ty`.
 pub fn codec_expr(fc: &mut FileCtx<'_, '_>, ty: &Type) -> String {
-    let codec = fc.rt("Codec");
     match ty {
-        Type::Scalar(s) => format!("{codec}.{}()", scalar_codec(*s)),
-        Type::List(t) => format!("{codec}.list({})", codec_expr(fc, t)),
-        Type::Map(t) => format!("{codec}.map({})", codec_expr(fc, t)),
-        Type::Page(t) => format!("{codec}.page({})", codec_expr(fc, t)),
+        Type::Scalar(s) => format!("{}.{}()", fc.rt("Codec"), scalar_codec(*s)),
+        Type::List(t) => format!("{}.list({})", fc.rt("Codec"), codec_expr(fc, t)),
+        Type::Map(t) => format!("{}.map({})", fc.rt("Codec"), codec_expr(fc, t)),
+        Type::Page(t) => format!("{}.page({})", fc.rt("Codec"), codec_expr(fc, t)),
         Type::Decl(id) => format!("{}.codec()", fc.decl(*id)),
     }
 }

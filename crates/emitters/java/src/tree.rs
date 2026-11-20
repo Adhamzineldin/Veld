@@ -135,19 +135,24 @@ pub fn java_path(package: &str, type_name: &str) -> String {
 #[derive(Debug)]
 pub struct FileCtx<'t, 'a> {
     pub tree: &'t Tree<'a>,
+    imports: Imports,
+}
+
+/// The imports of one file: simple name to fully qualified name for every type the file refers to
+/// by its simple name. A name another type already claimed stays fully qualified.
+#[derive(Debug, Clone)]
+pub struct Imports {
     package: String,
-    /// simple name -> fully qualified name, for every type the file refers to by its simple name.
     names: BTreeMap<String, String>,
 }
 
-impl<'t, 'a> FileCtx<'t, 'a> {
-    /// A context for the file declaring `own` in `package`.
+impl Imports {
+    /// The imports of the file declaring `own` in `package`.
     #[must_use]
-    pub fn new(tree: &'t Tree<'a>, package: &str, own: &str) -> Self {
+    pub fn new(package: &str, own: &str) -> Self {
         let mut names = BTreeMap::new();
         names.insert(own.to_string(), format!("{package}.{own}"));
         Self {
-            tree,
             package: package.to_string(),
             names,
         }
@@ -167,20 +172,7 @@ impl<'t, 'a> FileCtx<'t, 'a> {
         }
     }
 
-    /// A runtime type by simple name.
-    pub fn rt(&mut self, simple: &str) -> String {
-        let fqn = format!("{}.{simple}", self.tree.runtime);
-        self.name(&fqn)
-    }
-
-    /// A declaration's type name.
-    pub fn decl(&mut self, id: DeclId) -> String {
-        let d = self.tree.ir.decl(id);
-        let fqn = format!("{}.{}", self.tree.decl_package(d), util::type_name(d));
-        self.name(&fqn)
-    }
-
-    /// Complete file text: header, package, imports, then `body`.
+    /// Complete file text: header, package, sorted imports, then `body`.
     #[must_use]
     pub fn finish(&self, body: &str) -> String {
         let mut imports: Vec<&str> = self
@@ -203,5 +195,41 @@ impl<'t, 'a> FileCtx<'t, 'a> {
         out.push('\n');
         out.push_str(body);
         out
+    }
+}
+
+impl<'t, 'a> FileCtx<'t, 'a> {
+    /// A context for the file declaring `own` in `package`.
+    #[must_use]
+    pub fn new(tree: &'t Tree<'a>, package: &str, own: &str) -> Self {
+        Self {
+            tree,
+            imports: Imports::new(package, own),
+        }
+    }
+
+    /// The name to write for the type `fqn`: its simple name, importing it when needed, or the
+    /// fully qualified name when another type already claimed the simple name.
+    pub fn name(&mut self, fqn: &str) -> String {
+        self.imports.name(fqn)
+    }
+
+    /// A runtime type by simple name.
+    pub fn rt(&mut self, simple: &str) -> String {
+        let fqn = format!("{}.{simple}", self.tree.runtime);
+        self.name(&fqn)
+    }
+
+    /// A declaration's type name.
+    pub fn decl(&mut self, id: DeclId) -> String {
+        let d = self.tree.ir.decl(id);
+        let fqn = format!("{}.{}", self.tree.decl_package(d), util::type_name(d));
+        self.name(&fqn)
+    }
+
+    /// Complete file text: header, package, imports, then `body`.
+    #[must_use]
+    pub fn finish(&self, body: &str) -> String {
+        self.imports.finish(body)
     }
 }
