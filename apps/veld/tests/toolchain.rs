@@ -18,19 +18,27 @@ fn toolchain_dir() -> PathBuf {
 
 /// The `tsc` entry point, or why the toolchain is unavailable.
 fn locate_toolchain() -> Result<PathBuf, String> {
-    let node_ok = Command::new("node").arg("--version").output().is_ok_and(|o| o.status.success());
+    let node_ok = Command::new("node")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success());
     if !node_ok {
         return Err("`node` is not on PATH".into());
     }
     let tsc = toolchain_dir().join("node_modules/typescript/bin/tsc");
     if !tsc.exists() {
-        return Err(format!("{} is missing; run `npm ci` in tests/toolchain/ts", tsc.display()));
+        return Err(format!(
+            "{} is missing; run `npm ci` in tests/toolchain/ts",
+            tsc.display()
+        ));
     }
     Ok(tsc)
 }
 
 fn run(cmd: &mut Command, what: &str) {
-    let out = cmd.output().unwrap_or_else(|e| panic!("{what}: cannot start: {e}"));
+    let out = cmd
+        .output()
+        .unwrap_or_else(|e| panic!("{what}: cannot start: {e}"));
     print!("{}", String::from_utf8_lossy(&out.stdout));
     assert!(
         out.status.success(),
@@ -43,12 +51,25 @@ fn run(cmd: &mut Command, what: &str) {
 
 /// `Service.endpoint -> signature` for every endpoint, read from `veld debug ir`.
 fn signatures(work: &Path) -> Value {
-    let out = veld(work).args(["debug", "ir"]).assert().success().get_output().stdout.clone();
+    let out = veld(work)
+        .args(["debug", "ir"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
     let ir: Value = serde_json::from_slice(&out).unwrap();
     let mut map = Map::new();
     for svc in ir["services"].as_array().unwrap() {
         for ep in svc["endpoints"].as_array().unwrap() {
-            map.insert(format!("{}.{}", svc["name"].as_str().unwrap(), ep["name"].as_str().unwrap()), ep["sig"].clone());
+            map.insert(
+                format!(
+                    "{}.{}",
+                    svc["name"].as_str().unwrap(),
+                    ep["name"].as_str().unwrap()
+                ),
+                ep["sig"].clone(),
+            );
         }
     }
     Value::Object(map)
@@ -59,19 +80,29 @@ fn mutually_consuming_services_run_together() {
     let tsc = match locate_toolchain() {
         Ok(p) => p,
         Err(why) => {
-            assert!(std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"), "toolchain required but unavailable: {why}");
+            assert!(
+                std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"),
+                "toolchain required but unavailable: {why}"
+            );
             eprintln!("SKIPPED toolchain test: {why}");
             return;
         }
     };
     // The work directory lives under tests/toolchain/ts so that node_modules resolves.
     std::fs::create_dir_all(toolchain_dir().join(".work")).unwrap();
-    let guard = tempfile::Builder::new().prefix("veld-mutual-").tempdir_in(toolchain_dir().join(".work")).unwrap();
+    let guard = tempfile::Builder::new()
+        .prefix("veld-mutual-")
+        .tempdir_in(toolchain_dir().join(".work"))
+        .unwrap();
     let work = guard.path();
 
     write_mutual_workspace(work);
     veld(work).arg("generate").assert().success();
-    std::fs::write(work.join("sigs.json"), serde_json::to_string_pretty(&signatures(work)).unwrap()).unwrap();
+    std::fs::write(
+        work.join("sigs.json"),
+        serde_json::to_string_pretty(&signatures(work)).unwrap(),
+    )
+    .unwrap();
     std::fs::copy(toolchain_dir().join("mutual.ts"), work.join("mutual.ts")).unwrap();
     std::fs::write(
         work.join("tsconfig.json"),
@@ -87,6 +118,15 @@ fn mutually_consuming_services_run_together() {
     )
     .unwrap();
 
-    run(Command::new("node").arg(&tsc).args(["-p", "tsconfig.json"]).current_dir(work), "tsc --strict");
-    run(Command::new("node").arg("out/mutual.js").current_dir(work), "node mutual.js");
+    run(
+        Command::new("node")
+            .arg(&tsc)
+            .args(["-p", "tsconfig.json"])
+            .current_dir(work),
+        "tsc --strict",
+    );
+    run(
+        Command::new("node").arg("out/mutual.js").current_dir(work),
+        "node mutual.js",
+    );
 }

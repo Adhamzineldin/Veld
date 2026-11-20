@@ -9,9 +9,15 @@ use anyhow::{Context, Result};
 /// Replaces `path` atomically: the bytes go to a temporary file in the same directory, which
 /// is then renamed over the target. A crash never leaves a half-written file.
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
-    let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
     fs::create_dir_all(dir).with_context(|| format!("cannot create `{}`", dir.display()))?;
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let tmp = dir.join(format!(".{name}.veld-tmp-{}", std::process::id()));
     let result = write_synced(&tmp, bytes).and_then(|()| fs::rename(&tmp, path));
     if let Err(e) = result {
@@ -32,9 +38,14 @@ pub fn create_new(path: &Path, bytes: &[u8]) -> Result<bool> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).with_context(|| format!("cannot create `{}`", dir.display()))?;
     }
-    match fs::OpenOptions::new().write(true).create_new(true).open(path) {
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
         Ok(mut f) => {
-            f.write_all(bytes).with_context(|| format!("cannot write `{}`", path.display()))?;
+            f.write_all(bytes)
+                .with_context(|| format!("cannot write `{}`", path.display()))?;
             Ok(true)
         }
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),

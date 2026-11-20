@@ -17,7 +17,10 @@ pub fn run(ui: &Ui, config: Option<&Path>, cmd: &ExportCommand) -> Result<Exit> 
         return Ok(Exit::User);
     };
     let (value, output) = match cmd {
-        ExportCommand::Ir { output } => (serde_json::to_value(&done.ir).context("cannot serialize the IR")?, output),
+        ExportCommand::Ir { output } => (
+            serde_json::to_value(&done.ir).context("cannot serialize the IR")?,
+            output,
+        ),
         ExportCommand::Openapi { output, service } => {
             let ids = selected_services(&done.ir, service.as_deref())?;
             (veld_tools::openapi(&done.ir, &ids), output)
@@ -43,7 +46,10 @@ fn selected_services(ir: &veld_ir::Ir, name: Option<&str>) -> Result<Vec<Service
         Some(s) => Ok(vec![s.id]),
         None => {
             let known: Vec<&str> = ir.services.iter().map(|s| s.name.as_str()).collect();
-            Err(user(format!("no service named `{name}` (known services: {})", known.join(", "))))
+            Err(user(format!(
+                "no service named `{name}` (known services: {})",
+                known.join(", ")
+            )))
         }
     }
 }

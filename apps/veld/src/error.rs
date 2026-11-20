@@ -45,7 +45,10 @@ pub fn report(ui: &Ui, err: &anyhow::Error) -> Exit {
         ui.error(&format!("{err}"));
         return Exit::User;
     }
-    if err.downcast_ref::<veld_project::config::ConfigError>().is_some() {
+    if err
+        .downcast_ref::<veld_project::config::ConfigError>()
+        .is_some()
+    {
         ui.error(&format!("{err}"));
         return Exit::User;
     }

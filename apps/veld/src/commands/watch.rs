@@ -22,7 +22,10 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &GenerateArgs) -> Result<Exit> 
     loop {
         let project = pipeline::load_project(Some(&file));
         let (roots, outs) = match &project {
-            Ok(p) => (p.packages.iter().map(|pkg| pkg.root.clone()).collect(), p.targets.iter().map(|t| t.out.clone()).collect()),
+            Ok(p) => (
+                p.packages.iter().map(|pkg| pkg.root.clone()).collect(),
+                p.targets.iter().map(|t| t.out.clone()).collect(),
+            ),
             Err(_) => (Vec::new(), Vec::new()),
         };
         run_once(ui, project, args);
@@ -39,17 +42,24 @@ fn run_once(ui: &Ui, project: Result<Project>, args: &GenerateArgs) {
     }
 }
 
-fn watch(config: &Path, roots: &[PathBuf]) -> Result<(RecommendedWatcher, Receiver<notify::Result<Event>>)> {
+fn watch(
+    config: &Path,
+    roots: &[PathBuf],
+) -> Result<(RecommendedWatcher, Receiver<notify::Result<Event>>)> {
     let (tx, rx) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |res| {
         let _ = tx.send(res);
     })
     .context("cannot start the file watcher")?;
     let parent = config.parent().unwrap_or(Path::new("."));
-    watcher.watch(parent, RecursiveMode::NonRecursive).with_context(|| format!("cannot watch `{}`", parent.display()))?;
+    watcher
+        .watch(parent, RecursiveMode::NonRecursive)
+        .with_context(|| format!("cannot watch `{}`", parent.display()))?;
     for root in roots {
         if root.is_dir() {
-            watcher.watch(root, RecursiveMode::Recursive).with_context(|| format!("cannot watch `{}`", root.display()))?;
+            watcher
+                .watch(root, RecursiveMode::Recursive)
+                .with_context(|| format!("cannot watch `{}`", root.display()))?;
         }
     }
     Ok((watcher, rx))
@@ -73,12 +83,15 @@ fn wait_for_change(rx: &Receiver<notify::Result<Event>>, outs: &[PathBuf]) -> Re
 }
 
 fn is_relevant(event: &notify::Result<Event>, outs: &[PathBuf]) -> bool {
-    event.as_ref().is_ok_and(|e| e.paths.iter().any(|p| path_matters(p, outs)))
+    event
+        .as_ref()
+        .is_ok_and(|e| e.paths.iter().any(|p| path_matters(p, outs)))
 }
 
 /// A `.veld` file or `veld.toml`, and not something inside a target's output directory.
 fn path_matters(path: &Path, outs: &[PathBuf]) -> bool {
-    let name_ok = path.extension().is_some_and(|e| e == "veld") || path.file_name().is_some_and(|n| n == CONFIG_FILE);
+    let name_ok = path.extension().is_some_and(|e| e == "veld")
+        || path.file_name().is_some_and(|n| n == CONFIG_FILE);
     name_ok && !outs.iter().any(|o| path.starts_with(o))
 }
 

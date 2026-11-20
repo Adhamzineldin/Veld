@@ -22,13 +22,23 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &DiffArgs) -> Result<Exit> {
         return Ok(Exit::User);
     };
     let (old, label) = match &args.against {
-        Some(git_ref) => (ir_at_ref(ui, &done.project, git_ref)?, format!("git ref `{git_ref}`")),
-        None => (read_lock(&done.project)?, format!("`{}`", pipeline::LOCK_FILE)),
+        Some(git_ref) => (
+            ir_at_ref(ui, &done.project, git_ref)?,
+            format!("git ref `{git_ref}`"),
+        ),
+        None => (
+            read_lock(&done.project)?,
+            format!("`{}`", pipeline::LOCK_FILE),
+        ),
     };
     let changes = veld_tools::diff(&old, &done.ir);
     print_changes(ui, &changes, &label);
     let breaking = veld_tools::has_breaking(&changes);
-    Ok(if breaking && args.strict { Exit::User } else { Exit::Ok })
+    Ok(if breaking && args.strict {
+        Exit::User
+    } else {
+        Exit::Ok
+    })
 }
 
 fn read_lock(project: &Project) -> Result<Ir> {
@@ -39,12 +49,29 @@ fn read_lock(project: &Project) -> Result<Ir> {
             pipeline::display_path(&path)
         ))
     })?;
-    serde_json::from_str(&text).map_err(|e| user(format!("`{}` is not a valid IR snapshot: {e}", pipeline::display_path(&path))))
+    serde_json::from_str(&text).map_err(|e| {
+        user(format!(
+            "`{}` is not a valid IR snapshot: {e}",
+            pipeline::display_path(&path)
+        ))
+    })
 }
 
 fn ir_at_ref(ui: &Ui, project: &Project, git_ref: &str) -> Result<Ir> {
-    git(&project.root, &["rev-parse", "--verify", "--quiet", &format!("{git_ref}^{{commit}}")])
-        .map_err(|_| user(format!("`{git_ref}` is not a git commit, branch or tag in this repository")))?;
+    git(
+        &project.root,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{git_ref}^{{commit}}"),
+        ],
+    )
+    .map_err(|_| {
+        user(format!(
+            "`{git_ref}` is not a git commit, branch or tag in this repository"
+        ))
+    })?;
     let input = pipeline::compile_input_from(project, |pkg| sources_at_ref(pkg, git_ref))?;
     let out = veld_compiler::compile(&input);
     let errors = out.diagnostics.iter().filter(|d| d.is_error()).count();
@@ -65,12 +92,23 @@ fn sources_at_ref(pkg: &PackageSpec, git_ref: &str) -> Result<Vec<(String, Strin
     if !pkg.root.is_dir() {
         return Ok(Vec::new());
     }
-    let listing = git(&pkg.root, &["ls-tree", "-r", "-z", "--name-only", git_ref, "--", "."])?;
-    let mut names: Vec<&str> = listing.split('\0').filter(|n| n.ends_with(".veld")).collect();
+    let listing = git(
+        &pkg.root,
+        &["ls-tree", "-r", "-z", "--name-only", git_ref, "--", "."],
+    )?;
+    let mut names: Vec<&str> = listing
+        .split('\0')
+        .filter(|n| n.ends_with(".veld"))
+        .collect();
     names.sort_unstable();
     names
         .into_iter()
-        .map(|name| Ok((name.to_string(), git(&pkg.root, &["show", &format!("{git_ref}:./{name}")])?)))
+        .map(|name| {
+            Ok((
+                name.to_string(),
+                git(&pkg.root, &["show", &format!("{git_ref}:./{name}")])?,
+            ))
+        })
         .collect()
 }
 
@@ -81,19 +119,34 @@ fn git(dir: &Path, args: &[&str]) -> Result<String> {
         .output()
         .context("cannot run `git`; is it installed and on PATH?")?;
     if !out.status.success() {
-        anyhow::bail!("git {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim());
+        anyhow::bail!(
+            "git {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 fn print_changes(ui: &Ui, changes: &[Change], label: &str) {
     if changes.is_empty() {
-        ui.info(&format!("{} no changes against {label}", ui.out_styled(Style::Green, "✓")));
+        ui.info(&format!(
+            "{} no changes against {label}",
+            ui.out_styled(Style::Green, "✓")
+        ));
         return;
     }
     for (severity, title, mark) in [
-        (Severity::Breaking, "Breaking changes", ui.out_styled(Style::Red, "✗")),
-        (Severity::NonBreaking, "Non-breaking changes", ui.out_styled(Style::Green, "+")),
+        (
+            Severity::Breaking,
+            "Breaking changes",
+            ui.out_styled(Style::Red, "✗"),
+        ),
+        (
+            Severity::NonBreaking,
+            "Non-breaking changes",
+            ui.out_styled(Style::Green, "+"),
+        ),
     ] {
         let group: Vec<&Change> = changes.iter().filter(|c| c.severity == severity).collect();
         if group.is_empty() {

@@ -14,10 +14,22 @@ pub fn run(ui: &Ui, args: &InitArgs) -> Result<Exit> {
     let dir = std::env::current_dir().context("cannot read the current directory")?;
     let name = match &args.name {
         Some(n) => n.clone(),
-        None => dir.file_name().and_then(|n| n.to_str()).map(sanitize).unwrap_or_default(),
+        None => dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(sanitize)
+            .unwrap_or_default(),
     };
-    let name = if name.is_empty() { "app".to_string() } else { name };
-    let files = if args.workspace { workspace_files(&name) } else { single_files(&name) };
+    let name = if name.is_empty() {
+        "app".to_string()
+    } else {
+        name
+    };
+    let files = if args.workspace {
+        workspace_files(&name)
+    } else {
+        single_files(&name)
+    };
     let written = scaffold(&dir, &files)?;
     ui.info(&format!("created {}", written.join(", ")));
     ui.info("next: run `veld check`, then `veld generate`");
@@ -26,23 +38,42 @@ pub fn run(ui: &Ui, args: &InitArgs) -> Result<Exit> {
 
 /// Letters, digits and `_` only (the name becomes a package name).
 fn sanitize(raw: &str) -> String {
-    let s: String = raw.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' }).collect();
+    let s: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
     s.trim_matches('_').to_string()
 }
 
 /// Writes every file, or none: refuses if any of them already exists.
 fn scaffold(dir: &Path, files: &[(String, String)]) -> Result<Vec<String>> {
     if dir.join(CONFIG_FILE).exists() {
-        return Err(user(format!("{CONFIG_FILE} already exists here; nothing was changed")));
+        return Err(user(format!(
+            "{CONFIG_FILE} already exists here; nothing was changed"
+        )));
     }
-    let taken: Vec<&str> = files.iter().filter(|(p, _)| dir.join(p).exists()).map(|(p, _)| p.as_str()).collect();
+    let taken: Vec<&str> = files
+        .iter()
+        .filter(|(p, _)| dir.join(p).exists())
+        .map(|(p, _)| p.as_str())
+        .collect();
     if !taken.is_empty() {
-        return Err(user(format!("refusing to overwrite existing files: {}", taken.join(", "))));
+        return Err(user(format!(
+            "refusing to overwrite existing files: {}",
+            taken.join(", ")
+        )));
     }
     for (path, text) in files {
         let target = dir.join(path);
         if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("cannot create `{}`", parent.display()))?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("cannot create `{}`", parent.display()))?;
         }
         fs::write(&target, text).with_context(|| format!("cannot write `{}`", target.display()))?;
     }
@@ -72,7 +103,10 @@ emitter = "typescript"
 out = "generated/client"
 "#
     );
-    vec![(CONFIG_FILE.to_string(), config), ("contracts/hello.veld".to_string(), HELLO.to_string())]
+    vec![
+        (CONFIG_FILE.to_string(), config),
+        ("contracts/hello.veld".to_string(), HELLO.to_string()),
+    ]
 }
 
 fn workspace_files(name: &str) -> Vec<(String, String)> {
@@ -115,7 +149,10 @@ out = "web/generated"
     vec![
         (CONFIG_FILE.to_string(), config),
         ("contracts/users/users.veld".to_string(), USERS.to_string()),
-        ("contracts/orders/orders.veld".to_string(), ORDERS.to_string()),
+        (
+            "contracts/orders/orders.veld".to_string(),
+            ORDERS.to_string(),
+        ),
     ]
 }
 
@@ -182,9 +219,14 @@ mod tests {
     fn scaffold_refuses_to_overwrite() {
         let tmp = tempfile::tempdir().unwrap();
         fs::write(tmp.path().join("veld.toml"), "keep").unwrap();
-        let err = scaffold(tmp.path(), &single_files("a")).unwrap_err().to_string();
+        let err = scaffold(tmp.path(), &single_files("a"))
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("already exists"), "{err}");
-        assert_eq!(fs::read_to_string(tmp.path().join("veld.toml")).unwrap(), "keep");
+        assert_eq!(
+            fs::read_to_string(tmp.path().join("veld.toml")).unwrap(),
+            "keep"
+        );
         assert!(!tmp.path().join("contracts").exists());
     }
 
@@ -193,9 +235,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         fs::create_dir_all(tmp.path().join("contracts")).unwrap();
         fs::write(tmp.path().join("contracts/hello.veld"), "mine").unwrap();
-        let err = scaffold(tmp.path(), &single_files("a")).unwrap_err().to_string();
+        let err = scaffold(tmp.path(), &single_files("a"))
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("contracts/hello.veld"), "{err}");
         assert!(!tmp.path().join("veld.toml").exists());
-        assert_eq!(fs::read_to_string(tmp.path().join("contracts/hello.veld")).unwrap(), "mine");
+        assert_eq!(
+            fs::read_to_string(tmp.path().join("contracts/hello.veld")).unwrap(),
+            "mine"
+        );
     }
 }

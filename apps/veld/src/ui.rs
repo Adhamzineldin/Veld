@@ -45,16 +45,28 @@ impl Ui {
 
     #[cfg(test)]
     pub fn plain() -> Self {
-        Ui { quiet: false, color_out: false, color_err: false }
+        Ui {
+            quiet: false,
+            color_out: false,
+            color_err: false,
+        }
     }
 
     #[cfg(test)]
     pub fn colored() -> Self {
-        Ui { quiet: false, color_out: true, color_err: true }
+        Ui {
+            quiet: false,
+            color_out: true,
+            color_err: true,
+        }
     }
 
     fn paint(on: bool, style: Style, text: &str) -> String {
-        if on { format!("\x1b[{}m{text}\x1b[0m", style.code()) } else { text.to_string() }
+        if on {
+            format!("\x1b[{}m{text}\x1b[0m", style.code())
+        } else {
+            text.to_string()
+        }
     }
 
     /// Styled text for stdout.
@@ -110,7 +122,10 @@ impl Ui {
             let rest = line.strip_prefix(word)?;
             let end = rest.find(':')?;
             let (code, tail) = rest.split_at(end);
-            Some(format!("{}{tail}", self.err_styled(style, &format!("{word}{code}"))))
+            Some(format!(
+                "{}{tail}",
+                self.err_styled(style, &format!("{word}{code}"))
+            ))
         };
         if let Some(s) = head("error", Style::Red).or_else(|| head("warning", Style::Yellow)) {
             return s;
@@ -141,7 +156,10 @@ mod tests {
     fn colored_ui_marks_only_the_severity_prefix() {
         let ui = Ui::colored();
         let out = ui.colorize_diagnostic("error[E0205]: unknown name\n");
-        assert!(out.starts_with("\x1b[1;31merror[E0205]\x1b[0m: unknown name"), "{out:?}");
+        assert!(
+            out.starts_with("\x1b[1;31merror[E0205]\x1b[0m: unknown name"),
+            "{out:?}"
+        );
         let warn = ui.colorize_diagnostic("warning[W0202]: shadows\n");
         assert!(warn.contains("\x1b[1;33mwarning[W0202]\x1b[0m"));
     }

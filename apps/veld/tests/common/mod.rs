@@ -10,20 +10,27 @@ use assert_cmd::Command;
 /// A `veld` command running in `dir`, with colour and the host environment out of the way.
 pub fn veld(dir: &Path) -> Command {
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("veld");
-    cmd.current_dir(dir).env("NO_COLOR", "1").env_remove("VELD_REQUIRE_TOOLCHAINS");
+    cmd.current_dir(dir)
+        .env("NO_COLOR", "1")
+        .env_remove("VELD_REQUIRE_TOOLCHAINS");
     cmd
 }
 
 /// Every file below `dir` as (relative path with `/`, bytes), sorted.
 pub fn tree(dir: &Path) -> BTreeMap<String, Vec<u8>> {
     fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
-        let Ok(entries) = fs::read_dir(dir) else { return };
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
                 walk(root, &path, out);
             } else if let Ok(rel) = path.strip_prefix(root) {
-                out.insert(rel.to_string_lossy().replace('\\', "/"), fs::read(&path).unwrap_or_default());
+                out.insert(
+                    rel.to_string_lossy().replace('\\', "/"),
+                    fs::read(&path).unwrap_or_default(),
+                );
             }
         }
     }

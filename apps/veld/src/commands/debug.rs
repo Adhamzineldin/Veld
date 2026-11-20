@@ -27,7 +27,8 @@ fn ir(ui: &Ui, config: Option<&Path>) -> Result<Exit> {
 }
 
 fn ast(ui: &Ui, file: &Path) -> Result<Exit> {
-    let text = std::fs::read_to_string(file).with_context(|| format!("cannot read `{}`", file.display()))?;
+    let text = std::fs::read_to_string(file)
+        .with_context(|| format!("cannot read `{}`", file.display()))?;
     let mut sources = SourceMap::default();
     let id = sources.add(file.display().to_string(), text.clone());
     let (ast, _comments, diags) = veld_compiler::parse_file(&text, id);

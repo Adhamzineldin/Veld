@@ -17,7 +17,11 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &GenerateArgs) -> Result<Exit> 
 
 /// One full run over an already loaded project. Nothing is written unless every target
 /// compiled, passed its capability check and generated, and no target has a conflict.
-pub fn generate(ui: &Ui, project: veld_project::config::Project, args: &GenerateArgs) -> Result<Exit> {
+pub fn generate(
+    ui: &Ui,
+    project: veld_project::config::Project,
+    args: &GenerateArgs,
+) -> Result<Exit> {
     pipeline::select_targets(&project, args.target.as_deref())?;
     let Some(done) = pipeline::compile_or_report(ui, project)? else {
         return Ok(Exit::User);
@@ -37,7 +41,10 @@ pub fn generate(ui: &Ui, project: veld_project::config::Project, args: &Generate
         failures.iter().for_each(|m| ui.error(m));
         return Ok(Exit::User);
     }
-    let opts = WriteOptions { dry_run: args.dry_run, force: args.force };
+    let opts = WriteOptions {
+        dry_run: args.dry_run,
+        force: args.force,
+    };
     let written = pipeline::write_all(&outputs, opts)?;
     print_results(ui, &written, args.dry_run);
     if written.iter().any(|w| !w.plan.conflicts().is_empty()) {
@@ -59,11 +66,20 @@ fn print_results(ui: &Ui, written: &[Written], dry_run: bool) {
         let [created, updated, deleted, unchanged] = pipeline::tally(&w.plan);
         let out = pipeline::display_path(&w.out);
         let line = if dry_run {
-            format!("{} -> {out}: would create {created}, update {updated}, delete {deleted} ({unchanged} unchanged)", w.name)
+            format!(
+                "{} -> {out}: would create {created}, update {updated}, delete {deleted} ({unchanged} unchanged)",
+                w.name
+            )
         } else {
-            format!("{} -> {out}: {created} created, {updated} updated, {deleted} deleted, {unchanged} unchanged", w.name)
+            format!(
+                "{} -> {out}: {created} created, {updated} updated, {deleted} deleted, {unchanged} unchanged",
+                w.name
+            )
         };
-        ui.info(&format!("{} {line}", ui.out_styled(Style::Green, if dry_run { "~" } else { "✓" })));
+        ui.info(&format!(
+            "{} {line}",
+            ui.out_styled(Style::Green, if dry_run { "~" } else { "✓" })
+        ));
         if dry_run {
             list_changes(ui, w);
         }

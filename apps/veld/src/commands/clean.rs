@@ -21,7 +21,11 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &CleanArgs) -> Result<Exit> {
         let report = output::clean(&target.out, args.dry_run)
             .map_err(|e| user(format!("target `{}`: {e}", target.name)))?;
         let out = pipeline::display_path(&target.out);
-        let verb = if args.dry_run { "would remove" } else { "removed" };
+        let verb = if args.dry_run {
+            "would remove"
+        } else {
+            "removed"
+        };
         ui.info(&format!(
             "{} {} -> {out}: {verb} {}",
             ui.out_styled(Style::Green, "✓"),
@@ -29,7 +33,9 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &CleanArgs) -> Result<Exit> {
             pipeline::plural(report.removed.len(), "file")
         ));
         for path in &report.modified {
-            ui.info(&format!("    kept {path} (modified since it was generated)"));
+            ui.info(&format!(
+                "    kept {path} (modified since it was generated)"
+            ));
         }
     }
     Ok(Exit::Ok)

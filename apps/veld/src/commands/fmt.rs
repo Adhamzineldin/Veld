@@ -13,7 +13,11 @@ use crate::pipeline;
 use crate::ui::{Style, Ui};
 
 pub fn run(ui: &Ui, config: Option<&Path>, args: &FmtArgs) -> Result<Exit> {
-    let files = if args.paths.is_empty() { project_files(config)? } else { explicit_files(&args.paths)? };
+    let files = if args.paths.is_empty() {
+        project_files(config)?
+    } else {
+        explicit_files(&args.paths)?
+    };
     if files.is_empty() {
         ui.info("no .veld files to format");
         return Ok(Exit::Ok);
@@ -37,7 +41,8 @@ enum Outcome {
 }
 
 fn format_file(ui: &Ui, file: &Path, check: bool) -> Result<Outcome> {
-    let text = fs::read_to_string(file).with_context(|| format!("cannot read `{}`", file.display()))?;
+    let text =
+        fs::read_to_string(file).with_context(|| format!("cannot read `{}`", file.display()))?;
     match veld_tools::format(&text) {
         Ok(out) if out == text => Ok(Outcome::Unchanged),
         Ok(out) => {
@@ -52,7 +57,10 @@ fn format_file(ui: &Ui, file: &Path, check: bool) -> Result<Outcome> {
             for d in &diags {
                 ui.diagnostic(&sources.render(d));
             }
-            ui.error(&format!("{}: not formatted because of syntax errors", pipeline::display_path(file)));
+            ui.error(&format!(
+                "{}: not formatted because of syntax errors",
+                pipeline::display_path(file)
+            ));
             Ok(Outcome::Failed)
         }
     }
@@ -64,15 +72,29 @@ fn summarize(ui: &Ui, check: bool, total: usize, changed: &[String], failed: usi
             ui.data(&format!("would reformat {path}"));
         }
         if !changed.is_empty() {
-            ui.error(&format!("{} would change; run `veld fmt`", pipeline::plural(changed.len(), "file")));
+            ui.error(&format!(
+                "{} would change; run `veld fmt`",
+                pipeline::plural(changed.len(), "file")
+            ));
         }
     } else {
         for path in changed {
-            ui.info(&format!("{} {path}", ui.out_styled(Style::Green, "formatted")));
+            ui.info(&format!(
+                "{} {path}",
+                ui.out_styled(Style::Green, "formatted")
+            ));
         }
-        ui.info(&format!("{} checked, {} reformatted", pipeline::plural(total, "file"), changed.len()));
+        ui.info(&format!(
+            "{} checked, {} reformatted",
+            pipeline::plural(total, "file"),
+            changed.len()
+        ));
     }
-    if failed > 0 || (check && !changed.is_empty()) { Exit::User } else { Exit::Ok }
+    if failed > 0 || (check && !changed.is_empty()) {
+        Exit::User
+    } else {
+        Exit::Ok
+    }
 }
 
 fn project_files(config: Option<&Path>) -> Result<Vec<PathBuf>> {
@@ -105,7 +127,10 @@ fn explicit_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
     for entry in fs::read_dir(dir).with_context(|| format!("cannot read `{}`", dir.display()))? {
         let path = entry?.path();
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         if path.is_dir() {
             if name != "node_modules" && !name.starts_with('.') {
                 walk(&path, out)?;

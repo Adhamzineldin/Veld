@@ -25,7 +25,9 @@ pub fn config_file(config: Option<&Path>) -> Result<PathBuf> {
     Ok(match config {
         Some(p) if p.is_file() => p.to_path_buf(),
         Some(p) => config::find_config(p)?,
-        None => config::find_config(&std::env::current_dir().context("cannot read the current directory")?)?,
+        None => config::find_config(
+            &std::env::current_dir().context("cannot read the current directory")?,
+        )?,
     })
 }
 
@@ -82,8 +84,16 @@ pub fn compile_input_from(
 }
 
 fn package_input(pkg: &PackageSpec, sources: Vec<(String, String)>) -> PackageInput {
-    let files = sources.into_iter().map(|(path, text)| SourceFile { path, text }).collect();
-    PackageInput { name: pkg.name.clone(), kind: pkg.kind, files, base_url: pkg.base_url.clone() }
+    let files = sources
+        .into_iter()
+        .map(|(path, text)| SourceFile { path, text })
+        .collect();
+    PackageInput {
+        name: pkg.name.clone(),
+        kind: pkg.kind,
+        files,
+        base_url: pkg.base_url.clone(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -144,19 +154,31 @@ pub fn report_diagnostics(ui: &Ui, project: &Project, out: &CompileOutput) -> Co
 
 /// `"1 error"`, `"2 warnings"`.
 pub fn plural(n: usize, word: &str) -> String {
-    if n == 1 { format!("{n} {word}") } else { format!("{n} {word}s") }
+    if n == 1 {
+        format!("{n} {word}")
+    } else {
+        format!("{n} {word}s")
+    }
 }
 
 /// Failure summary such as `✗ 2 errors, 1 warning`.
 pub fn failure_summary(ui: &Ui, c: Counts) -> String {
     let mark = ui.err_styled(Style::Red, "✗");
-    format!("{mark} {}, {}", plural(c.errors, "error"), plural(c.warnings, "warning"))
+    format!(
+        "{mark} {}, {}",
+        plural(c.errors, "error"),
+        plural(c.warnings, "warning")
+    )
 }
 
 /// Success summary such as `✓ 3 services, 24 endpoints, 31 types`.
 pub fn success_summary(ui: &Ui, ir: &Ir) -> String {
     let endpoints: usize = ir.services.iter().map(|s| s.endpoints.len()).sum();
-    let types = ir.decls.iter().filter(|d| ir.package(d.package).kind != PackageKind::Prelude).count();
+    let types = ir
+        .decls
+        .iter()
+        .filter(|d| ir.package(d.package).kind != PackageKind::Prelude)
+        .count();
     let mark = ui.out_styled(Style::Green, "✓");
     format!(
         "{mark} {}, {}, {}",
@@ -201,12 +223,21 @@ fn resolve_generator(project: &Project, target: &TargetSpec) -> Result<Generator
     let name = &target.name;
     match &target.emitter {
         EmitterRef::Builtin(id) => registry::find(id).map(Generator::Builtin).ok_or_else(|| {
-            vec![format!("target `{name}`: unknown emitter `{id}` (built-in: {})", registry::ids().join(", "))]
+            vec![format!(
+                "target `{name}`: unknown emitter `{id}` (built-in: {})",
+                registry::ids().join(", ")
+            )]
         }),
         EmitterRef::Plugin(p) => {
-            let spec = project.plugins.iter().find(|s| &s.name == p).ok_or_else(|| {
-                vec![format!("target `{name}`: plugin `{p}` is not declared under `[plugins.{p}]`")]
-            })?;
+            let spec = project
+                .plugins
+                .iter()
+                .find(|s| &s.name == p)
+                .ok_or_else(|| {
+                    vec![format!(
+                        "target `{name}`: plugin `{p}` is not declared under `[plugins.{p}]`"
+                    )]
+                })?;
             PluginGenerator::connect(spec, HostConfig::new(project.root.clone()))
                 .map(|g| Generator::Plugin(Box::new(g)))
                 .map_err(|e| vec![format!("target `{name}`: error[{}]: {e}", e.code())])
@@ -222,27 +253,40 @@ fn role_of(r: config::Role) -> Role {
 }
 
 fn service_ids(ir: &Ir, packages: &[String]) -> Vec<ServiceId> {
-    packages.iter().flat_map(|p| ir.services_of_package(p).map(|s| s.id)).collect()
+    packages
+        .iter()
+        .flat_map(|p| ir.services_of_package(p).map(|s| s.id))
+        .collect()
 }
 
 /// The targets to run: all of them, or the one called `only`.
 pub fn select_targets<'a>(project: &'a Project, only: Option<&str>) -> Result<Vec<&'a TargetSpec>> {
-    let targets: Vec<&TargetSpec> =
-        project.targets.iter().filter(|t| only.is_none_or(|name| t.name == name)).collect();
+    let targets: Vec<&TargetSpec> = project
+        .targets
+        .iter()
+        .filter(|t| only.is_none_or(|name| t.name == name))
+        .collect();
     if !targets.is_empty() {
         return Ok(targets);
     }
     Err(match only {
         Some(name) => {
             let known: Vec<&str> = project.targets.iter().map(|t| t.name.as_str()).collect();
-            user(format!("no target named `{name}` (known targets: {})", known.join(", ")))
+            user(format!(
+                "no target named `{name}` (known targets: {})",
+                known.join(", ")
+            ))
         }
         None => user("veld.toml defines no `[[targets]]`; add one (see `veld init`)"),
     })
 }
 
 /// Resolves one target: finds its generator and computes its services, consumes and options.
-pub fn build_job<'a>(project: &Project, ir: &Ir, target: &'a TargetSpec) -> Result<Job<'a>, Vec<String>> {
+pub fn build_job<'a>(
+    project: &Project,
+    ir: &Ir,
+    target: &'a TargetSpec,
+) -> Result<Job<'a>, Vec<String>> {
     let name = &target.name;
     let generator = resolve_generator(project, target)?;
     let role = role_of(target.role);
@@ -251,7 +295,10 @@ pub fn build_job<'a>(project: &Project, ir: &Ir, target: &'a TargetSpec) -> Resu
             EmitterRef::Builtin(id) => id.clone(),
             EmitterRef::Plugin(p) => format!("plugin:{p}"),
         };
-        return Err(vec![format!("target `{name}`: emitter `{id}` cannot produce the `{}` role", role.name())]);
+        return Err(vec![format!(
+            "target `{name}`: emitter `{id}` cannot produce the `{}` role",
+            role.name()
+        )]);
     }
     let (services, consumes) = match role {
         Role::Server => server_services(project, ir, target)?,
@@ -260,9 +307,17 @@ pub fn build_job<'a>(project: &Project, ir: &Ir, target: &'a TargetSpec) -> Resu
     let options = if target.options.is_empty() {
         serde_json::Value::Null
     } else {
-        serde_json::to_value(&target.options).map_err(|e| vec![format!("target `{name}`: invalid options: {e}")])?
+        serde_json::to_value(&target.options)
+            .map_err(|e| vec![format!("target `{name}`: invalid options: {e}")])?
     };
-    Ok(Job { target, generator, role, services, consumes, options })
+    Ok(Job {
+        target,
+        generator,
+        role,
+        services,
+        consumes,
+        options,
+    })
 }
 
 /// A server serves its own service and, when `clients` is on, gets clients for its `consumes`.
@@ -272,7 +327,10 @@ fn server_services(
     target: &TargetSpec,
 ) -> Result<(Vec<ServiceId>, Vec<ServiceId>), Vec<String>> {
     let Some(svc) = target.service.as_deref() else {
-        return Err(vec![format!("target `{}`: a server target needs `service`", target.name)]);
+        return Err(vec![format!(
+            "target `{}`: a server target needs `service`",
+            target.name
+        )]);
     };
     let consumed = match project.package(svc) {
         Some(pkg) if target.clients => service_ids(ir, &pkg.consumes),
@@ -282,7 +340,11 @@ fn server_services(
 }
 
 fn format_gen(d: &GenDiagnostic, target: &str) -> String {
-    let at = d.origin.as_ref().map(|o| format!("\n --> {}:{}:{}", o.file, o.line, o.col)).unwrap_or_default();
+    let at = d
+        .origin
+        .as_ref()
+        .map(|o| format!("\n --> {}:{}:{}", o.file, o.line, o.col))
+        .unwrap_or_default();
     format!("target `{target}`: error[{}]: {}{at}", d.code, d.message)
 }
 
@@ -297,7 +359,9 @@ pub fn run_job(ir: &Ir, job: &Job<'_>) -> Result<FileSet, Vec<String>> {
     };
     let name = &job.target.name;
     if req.services.is_empty() {
-        return Err(vec![format!("target `{name}`: selects no services (does its package declare a `service` block?)")]);
+        return Err(vec![format!(
+            "target `{name}`: selects no services (does its package declare a `service` block?)"
+        )]);
     }
     let diags = check_capabilities(ir, &req, &job.generator.get().capabilities(job.role));
     if !diags.is_empty() {
@@ -320,12 +384,19 @@ pub struct Written {
 /// Plans every target first and writes only when no target has a conflict, so one bad
 /// target never leaves a partial result behind.
 pub fn write_all(outputs: &[(&TargetSpec, FileSet)], opts: WriteOptions) -> Result<Vec<Written>> {
-    let plan_only = WriteOptions { dry_run: true, ..opts };
+    let plan_only = WriteOptions {
+        dry_run: true,
+        ..opts
+    };
     let mut written = Vec::new();
     for (target, files) in outputs {
         let plan = output::write(&target.out, files, &plan_only)
             .map_err(|e| user(format!("target `{}`: {e}", target.name)))?;
-        written.push(Written { name: target.name.clone(), out: target.out.clone(), plan });
+        written.push(Written {
+            name: target.name.clone(),
+            out: target.out.clone(),
+            plan,
+        });
     }
     if opts.dry_run || written.iter().any(|w| !w.plan.conflicts().is_empty()) {
         return Ok(written);
@@ -340,7 +411,12 @@ pub fn write_all(outputs: &[(&TargetSpec, FileSet)], opts: WriteOptions) -> Resu
 /// File counts of a plan: created, updated, deleted, unchanged.
 pub fn tally(plan: &Plan) -> [usize; 4] {
     let n = |a: PlanAction| plan.paths_with(a).len();
-    [n(PlanAction::Create), n(PlanAction::Update), n(PlanAction::Delete), n(PlanAction::Unchanged)]
+    [
+        n(PlanAction::Create),
+        n(PlanAction::Update),
+        n(PlanAction::Delete),
+        n(PlanAction::Unchanged),
+    ]
 }
 
 /// `path` relative to the current directory when it lies below it, for short messages.
@@ -350,7 +426,11 @@ pub fn display_path(path: &Path) -> String {
         .and_then(|cwd| path.strip_prefix(cwd).ok().map(Path::to_path_buf))
         .unwrap_or_else(|| path.to_path_buf());
     let text = shown.display().to_string().replace('\\', "/");
-    if text.is_empty() { ".".to_string() } else { text }
+    if text.is_empty() {
+        ".".to_string()
+    } else {
+        text
+    }
 }
 
 #[cfg(test)]
@@ -383,14 +463,28 @@ mod tests {
     #[test]
     fn failure_summary_is_plain_without_colour() {
         let ui = Ui::plain();
-        assert_eq!(failure_summary(&ui, Counts { errors: 2, warnings: 1 }), "✗ 2 errors, 1 warning");
+        assert_eq!(
+            failure_summary(
+                &ui,
+                Counts {
+                    errors: 2,
+                    warnings: 1
+                }
+            ),
+            "✗ 2 errors, 1 warning"
+        );
     }
 
     #[test]
     fn unknown_target_name_lists_known_ones() {
-        let p = project("[[targets]]\nname = \"web\"\nrole = \"client\"\nemitter = \"typescript\"\nout = \"gen\"\n");
+        let p = project(
+            "[[targets]]\nname = \"web\"\nrole = \"client\"\nemitter = \"typescript\"\nout = \"gen\"\n",
+        );
         let err = select_targets(&p, Some("api")).unwrap_err().to_string();
-        assert!(err.contains("no target named `api`") && err.contains("web"), "{err}");
+        assert!(
+            err.contains("no target named `api`") && err.contains("web"),
+            "{err}"
+        );
         assert_eq!(select_targets(&p, Some("web")).unwrap().len(), 1);
         assert_eq!(select_targets(&p, None).unwrap().len(), 1);
     }
@@ -398,7 +492,12 @@ mod tests {
     #[test]
     fn no_targets_is_a_user_error() {
         let p = project("");
-        assert!(select_targets(&p, None).unwrap_err().to_string().contains("no `[[targets]]`"));
+        assert!(
+            select_targets(&p, None)
+                .unwrap_err()
+                .to_string()
+                .contains("no `[[targets]]`")
+        );
     }
 
     #[test]
@@ -409,8 +508,14 @@ mod tests {
             let err = build_job(&p, &ir, &p.targets[0]).err().unwrap();
             assert!(err[0].contains(needle), "{err:?}");
         };
-        check("[[targets]]\nrole = \"client\"\nemitter = \"cobol\"\nout = \"gen\"\n", "unknown emitter `cobol`");
-        check("[[targets]]\nrole = \"client\"\nemitter = \"node\"\nout = \"gen\"\n", "cannot produce the `client` role");
+        check(
+            "[[targets]]\nrole = \"client\"\nemitter = \"cobol\"\nout = \"gen\"\n",
+            "unknown emitter `cobol`",
+        );
+        check(
+            "[[targets]]\nrole = \"client\"\nemitter = \"node\"\nout = \"gen\"\n",
+            "cannot produce the `client` role",
+        );
         check(
             "[[targets]]\nrole = \"client\"\nemitter = \"plugin:kotlin\"\nout = \"gen\"\n[plugins.kotlin]\ncommand = \"x\"\n",
             "plugin `kotlin`: executable `x` not found on PATH",
@@ -420,7 +525,9 @@ mod tests {
     #[test]
     fn options_are_converted_to_json() {
         let ir = empty_ir();
-        let p = project("[[targets]]\nrole = \"client\"\nemitter = \"typescript\"\nout = \"gen\"\n[targets.options]\nvalidate = true\n");
+        let p = project(
+            "[[targets]]\nrole = \"client\"\nemitter = \"typescript\"\nout = \"gen\"\n[targets.options]\nvalidate = true\n",
+        );
         let job = build_job(&p, &ir, &p.targets[0]).ok().unwrap();
         assert_eq!(job.options, serde_json::json!({ "validate": true }));
     }
@@ -428,7 +535,8 @@ mod tests {
     #[test]
     fn a_target_with_no_services_is_an_error_not_a_panic() {
         let ir = empty_ir();
-        let p = project("[[targets]]\nrole = \"client\"\nemitter = \"typescript\"\nout = \"gen\"\n");
+        let p =
+            project("[[targets]]\nrole = \"client\"\nemitter = \"typescript\"\nout = \"gen\"\n");
         let job = build_job(&p, &ir, &p.targets[0]).ok().unwrap();
         let err = run_job(&ir, &job).err().unwrap();
         assert!(err[0].contains("selects no services"), "{err:?}");

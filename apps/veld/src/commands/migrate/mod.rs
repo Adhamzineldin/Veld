@@ -27,11 +27,19 @@ pub fn run(ui: &Ui, args: &MigrateArgs) -> Result<Exit> {
         let skip = dir.join(&pkg.dest);
         let files = read_v1_files(&src, &skip)?;
         if files.is_empty() {
-            warnings.push(format!("no v1 .veld files found in `{}`", pipeline::display_path(&src)));
+            warnings.push(format!(
+                "no v1 .veld files found in `{}`",
+                pipeline::display_path(&src)
+            ));
         }
         let result = veld_tools::migrate_v1(&files);
         warnings.extend(result.warnings.iter().map(|w| format!("{}: {w}", pkg.dest)));
-        outputs.extend(result.files.into_iter().map(|(rel, text)| (dir.join(&pkg.dest).join(rel), text)));
+        outputs.extend(
+            result
+                .files
+                .into_iter()
+                .map(|(rel, text)| (dir.join(&pkg.dest).join(rel), text)),
+        );
     }
     outputs.push((dir.join("veld.toml"), cfg.toml.clone()));
     write_outputs(ui, &dir, &outputs, args.dry_run, &mut warnings)?;
@@ -50,9 +58,18 @@ fn write_outputs(
 ) -> Result<()> {
     let (mut written, mut skipped) = (0, 0);
     for (path, text) in outputs {
-        let shown = path.strip_prefix(dir).unwrap_or(path).display().to_string().replace('\\', "/");
+        let shown = path
+            .strip_prefix(dir)
+            .unwrap_or(path)
+            .display()
+            .to_string()
+            .replace('\\', "/");
         if dry_run {
-            let state = if path.exists() { "exists, would be skipped" } else { "would write" };
+            let state = if path.exists() {
+                "exists, would be skipped"
+            } else {
+                "would write"
+            };
             ui.info(&format!("{state}: {shown}"));
         } else if fsutil::create_new(path, text.as_bytes())? {
             written += 1;
@@ -63,7 +80,10 @@ fn write_outputs(
         }
     }
     if !dry_run {
-        ui.info(&format!("migrated: {written} file(s) written, {skipped} skipped; run `veld check` in {}", pipeline::display_path(dir)));
+        ui.info(&format!(
+            "migrated: {written} file(s) written, {skipped} skipped; run `veld check` in {}",
+            pipeline::display_path(dir)
+        ));
     }
     Ok(())
 }
@@ -74,15 +94,26 @@ fn read_v1_config(from: Option<&Path>) -> Result<(PathBuf, serde_json::Value)> {
         Some(p) => p.to_path_buf(),
         None => std::env::current_dir().context("cannot read the current directory")?,
     };
-    let candidates = [start.join(V1_CONFIG), start.join("veld").join(V1_CONFIG), start.clone()];
+    let candidates = [
+        start.join(V1_CONFIG),
+        start.join("veld").join(V1_CONFIG),
+        start.clone(),
+    ];
     let file = candidates
         .into_iter()
         .find(|c| c.is_file() && c.file_name().is_some_and(|n| n == V1_CONFIG))
-        .ok_or_else(|| user(format!("no v1 `{V1_CONFIG}` found in `{}` or its `veld` subdirectory", start.display())))?;
-    let text = fs::read_to_string(&file).with_context(|| format!("cannot read `{}`", file.display()))?;
+        .ok_or_else(|| {
+            user(format!(
+                "no v1 `{V1_CONFIG}` found in `{}` or its `veld` subdirectory",
+                start.display()
+            ))
+        })?;
+    let text =
+        fs::read_to_string(&file).with_context(|| format!("cannot read `{}`", file.display()))?;
     let json = serde_json::from_str(&text)
         .map_err(|e| user(format!("`{}` is not valid JSON: {e}", file.display())))?;
-    let dir = fs::canonicalize(file.parent().unwrap_or(Path::new("."))).context("cannot resolve the v1 config directory")?;
+    let dir = fs::canonicalize(file.parent().unwrap_or(Path::new(".")))
+        .context("cannot resolve the v1 config directory")?;
     Ok((strip_verbatim(dir), json))
 }
 
@@ -115,17 +146,29 @@ fn read_v1_files(root: &Path, skip: &Path) -> Result<Vec<(String, String)>> {
 }
 
 fn walk(root: &Path, dir: &Path, skip: &Path, out: &mut Vec<(String, String)>) -> Result<()> {
-    let Ok(entries) = fs::read_dir(dir) else { return Ok(()) };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Ok(());
+    };
     for entry in entries {
         let path = entry?.path();
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         if path.is_dir() {
-            if !matches!(name.as_str(), "packages" | "node_modules") && !name.starts_with('.') && path != skip {
+            if !matches!(name.as_str(), "packages" | "node_modules")
+                && !name.starts_with('.')
+                && path != skip
+            {
                 walk(root, &path, skip, out)?;
             }
         } else if path.extension().is_some_and(|e| e == "veld") {
-            let rel = path.strip_prefix(root).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default();
-            let text = fs::read_to_string(&path).with_context(|| format!("cannot read `{}`", path.display()))?;
+            let rel = path
+                .strip_prefix(root)
+                .map(|r| r.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
+            let text = fs::read_to_string(&path)
+                .with_context(|| format!("cannot read `{}`", path.display()))?;
             out.push((rel, text.replace("\r\n", "\n")));
         }
     }
@@ -145,7 +188,14 @@ mod tests {
     #[test]
     fn read_v1_files_skips_packages_node_modules_and_the_destination() {
         let tmp = tempfile::tempdir().unwrap();
-        for f in ["a.veld", "m/b.veld", "packages/x.veld", "node_modules/y.veld", "contracts/z.veld", "n.txt"] {
+        for f in [
+            "a.veld",
+            "m/b.veld",
+            "packages/x.veld",
+            "node_modules/y.veld",
+            "contracts/z.veld",
+            "n.txt",
+        ] {
             let p = tmp.path().join(f);
             fs::create_dir_all(p.parent().unwrap()).unwrap();
             fs::write(p, "x").unwrap();
