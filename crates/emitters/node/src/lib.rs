@@ -19,12 +19,17 @@ use veld_codegen::{
     Profile, Role,
 };
 use veld_emit_typescript::tree::Tree;
-use veld_emit_typescript::{UNSUPPORTED, barrel, emit_client_tree, models, precheck, runtime};
+use veld_emit_typescript::{
+    UNSUPPORTED, barrel, emit_client_tree, models, package, precheck, runtime,
+};
 
-/// Options of the `node` generator (none yet).
+/// Options of the `node` generator.
 #[derive(Debug, Default, Clone, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct Options {}
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Options {
+    /// The name in the generated `package.json` (default: `@veld/<target name>`).
+    pub package_name: Option<String>,
+}
 
 /// The Node.js server generator.
 #[derive(Debug, Default, Clone, Copy)]
@@ -56,7 +61,7 @@ impl Generator for Node {
     fn generate(
         &self,
         req: &GenRequest<'_>,
-        _opts: &Options,
+        opts: &Options,
         profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, Role::Server, &self.capabilities(Role::Server))?;
@@ -81,6 +86,11 @@ impl Generator for Node {
         let extra = emit_consumed(&mut files, req)?;
         modules.sort();
         barrel::write(&mut files, "", &modules, &extra, true)?;
+        package::emit(
+            &mut files,
+            opts.package_name.as_deref(),
+            profile.framework(),
+        )?;
         Ok(files)
     }
 }

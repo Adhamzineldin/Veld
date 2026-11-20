@@ -9,6 +9,7 @@ pub mod barrel;
 pub mod client;
 pub mod frameworks;
 pub mod models;
+pub mod package;
 pub mod runtime;
 pub mod tree;
 pub mod types;
@@ -42,10 +43,13 @@ pub fn language() -> LanguageInfo {
 /// Supported `typescript` option values.
 pub const ES_EDITIONS: [&str; 2] = ["es2020", "es2022"];
 
-/// Options of the `typescript` generator (none yet).
+/// Options of the `typescript` generator.
 #[derive(Debug, Default, Clone, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct Options {}
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Options {
+    /// The name in the generated `package.json` (default: `@veld/<target name>`).
+    pub package_name: Option<String>,
+}
 
 /// The TypeScript client generator.
 #[derive(Debug, Default, Clone, Copy)]
@@ -125,7 +129,7 @@ impl Generator for TypeScript {
     fn generate(
         &self,
         req: &GenRequest<'_>,
-        _opts: &Options,
+        opts: &Options,
         profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, Role::Client, &self.capabilities(Role::Client))?;
@@ -144,6 +148,11 @@ impl Generator for TypeScript {
             }
         }
         barrel::write(&mut files, "", &modules, &[], true)?;
+        package::emit(
+            &mut files,
+            opts.package_name.as_deref(),
+            profile.framework(),
+        )?;
         Ok(files)
     }
 }
