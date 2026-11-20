@@ -1,0 +1,10 @@
+const HUGE: float = 1.0e999
+model A {
+  a: float = 1.0e999
+  b: float = -1.0e400
+  c: decimal = 1.0e999
+  d: json = 1.7976931348623157e309
+  e: float @min(-1.0e999) @max(1.0e999)
+  f: float = 1.7976931348623157e308
+  g: float = -0.0
+}

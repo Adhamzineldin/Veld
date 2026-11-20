@@ -1,0 +1,48 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0305]: float literal `1.0e999` is out of range: it is not a finite 64-bit float
+ --> app/app.veld:1:21
+  |
+1 | const HUGE: float = 1.0e999
+  |                     ^^^^^^^
+
+error[E0305]: float literal `1.0e999` is out of range: it is not a finite 64-bit float
+ --> app/app.veld:3:14
+  |
+3 |   a: float = 1.0e999
+  |              ^^^^^^^
+
+error[E0305]: float literal `-1.0e400` is out of range: it is not a finite 64-bit float
+ --> app/app.veld:4:14
+  |
+4 |   b: float = -1.0e400
+  |              ^^^^^^^^
+
+error[E0305]: float literal `1.0e999` is out of range: it is not a finite 64-bit float
+ --> app/app.veld:5:16
+  |
+5 |   c: decimal = 1.0e999
+  |                ^^^^^^^
+
+error[E0305]: float literal `1.7976931348623157e309` is out of range: it is not a finite 64-bit float
+ --> app/app.veld:6:13
+  |
+6 |   d: json = 1.7976931348623157e309
+  |             ^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0305]: float literal `-1.0e999` is out of range: it is not a finite 64-bit float
+ --> app/app.veld:7:17
+  |
+7 |   e: float @min(-1.0e999) @max(1.0e999)
+  |                 ^^^^^^^^
+
+error[E0305]: float literal `1.0e999` is out of range: it is not a finite 64-bit float
+ --> app/app.veld:7:32
+  |
+7 |   e: float @min(-1.0e999) @max(1.0e999)
+  |                                ^^^^^^^
+
+== ir ==
+(no IR: compilation failed)

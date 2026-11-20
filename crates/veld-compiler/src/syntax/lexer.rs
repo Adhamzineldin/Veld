@@ -297,7 +297,7 @@ impl Lexer<'_> {
         }
         let text = self.src.get(start..self.pos).unwrap_or("0");
         let tok = if is_float {
-            Tok::Float(text.parse().unwrap_or(0.0))
+            self.float(text, start)
         } else {
             match text.parse::<i64>() {
                 Ok(n) => Tok::Int(n),
@@ -311,6 +311,25 @@ impl Lexer<'_> {
             tok,
             span: self.span(start, self.pos),
         });
+    }
+
+    /// Parses a float literal. A literal that overflows to infinity has no JSON representation
+    /// (it would serialise as `null`), so it is rejected here, wherever a literal is allowed.
+    fn float(&mut self, text: &str, start: usize) -> Tok {
+        match text.parse::<f64>() {
+            Ok(f) if f.is_finite() => Tok::Float(f),
+            _ => {
+                let span = self.span(start, self.pos);
+                self.out.diagnostics.push(Diagnostic::error(
+                    "E0305",
+                    format!(
+                        "float literal `{text}` is out of range: it is not a finite 64-bit float"
+                    ),
+                    span,
+                ));
+                Tok::Float(0.0)
+            }
+        }
     }
 
     fn exponent(&mut self) {
