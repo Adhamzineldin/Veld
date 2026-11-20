@@ -1,222 +1,121 @@
 /**
- * Veld CLI — postinstall script
+ * Veld CLI postinstall script.
  *
- * Downloads the correct pre-built Veld binary for the current platform
- * from GitHub Releases. Falls back to `go install` if the download fails.
+ * Downloads the pre-built `veld` binary that matches this package's version from
+ * the GitHub release, verifies it against the release's SHA256SUMS, and unpacks it
+ * to ./binaries/<target>/. A checksum mismatch is a hard error: nothing is installed.
  *
- * Supported platforms:
- *   - linux-amd64, linux-arm64
- *   - darwin-amd64, darwin-arm64
- *   - windows-amd64
+ * Release assets (see .github/workflows/release.yml):
+ *   veld-<target-triple>.tar.gz   (veld-x86_64-pc-windows-msvc.zip on Windows)
+ *   SHA256SUMS
  */
 
 "use strict";
 
 const https = require("https");
-const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { execSync } = require("child_process");
-const zlib = require("zlib");
+const crypto = require("crypto");
+const { execFileSync } = require("child_process");
 
 const GITHUB_REPO = "Adhamzineldin/Veld";
-const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+const VERSION = process.env.VELD_VERSION
+  ? process.env.VELD_VERSION.replace(/^v/, "")
+  : require("./package.json").version;
 
-async function getLatestVersion() {
-  // Allow override via environment variable
-  if (process.env.VELD_VERSION) {
-    return process.env.VELD_VERSION.replace(/^v/, "");
-  }
+const TARGETS = {
+  "linux-x64": "x86_64-unknown-linux-musl",
+  "linux-arm64": "aarch64-unknown-linux-musl",
+  "darwin-x64": "x86_64-apple-darwin",
+  "darwin-arm64": "aarch64-apple-darwin",
+  "win32-x64": "x86_64-pc-windows-msvc",
+};
 
-  try {
-    const https = require("https");
-    return new Promise((resolve, reject) => {
-      https.get(GITHUB_API, { timeout: 10000 }, (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            const json = JSON.parse(data);
-            const tag = json.tag_name || "";
-            resolve(tag.replace(/^v/, "") || "latest");
-          } catch {
-            resolve("latest");
-          }
-        });
-        res.on("error", () => resolve("latest"));
-      }).on("error", () => resolve("latest"));
-    });
-  } catch {
-    return "latest";
-  }
-}
-
-function getBaseUrl(version) {
-  if (version === "latest") {
-    return `https://github.com/${GITHUB_REPO}/releases/latest/download`;
-  }
-  return `https://github.com/${GITHUB_REPO}/releases/download/v${version}`;
-}
-
-function getPlatformKey() {
-  const platform = os.platform();
-  const arch = os.arch();
-
-  const platformMap = {
-    linux: "linux",
-    darwin: "darwin",
-    win32: "windows",
-  };
-
-  const archMap = {
-    x64: "amd64",
-    arm64: "arm64",
-  };
-
-  const p = platformMap[platform];
-  const a = archMap[arch];
-
-  if (!p || !a) {
-    return null;
-  }
-
-  return `${p}-${a}`;
-}
-
-function getBinaryName() {
-  return os.platform() === "win32" ? "veld.exe" : "veld";
-}
-
-function getDownloadUrl(platformKey, version) {
-  const ext = os.platform() === "win32" ? ".zip" : ".tar.gz";
-  const baseUrl = getBaseUrl(version);
-  return `${baseUrl}/veld-${platformKey}${ext}`;
-}
-
-function download(url) {
+function download(url, redirects = 5) {
   return new Promise((resolve, reject) => {
-    const get = url.startsWith("https") ? https.get : http.get;
-    get(url, (res) => {
-      // Follow redirects (GitHub sends 302)
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return download(res.headers.location).then(resolve).catch(reject);
-      }
-      if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode} downloading ${url}`));
-        return;
-      }
-      const chunks = [];
-      res.on("data", (chunk) => chunks.push(chunk));
-      res.on("end", () => resolve(Buffer.concat(chunks)));
-      res.on("error", reject);
-    }).on("error", reject);
+    https
+      .get(url, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          if (redirects === 0) return reject(new Error(`too many redirects for ${url}`));
+          return download(res.headers.location, redirects - 1).then(resolve, reject);
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+        }
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => resolve(Buffer.concat(chunks)));
+        res.on("error", reject);
+      })
+      .on("error", reject);
   });
 }
 
-async function extractTarGz(buffer, destDir) {
-  // Write to temp file and use tar
-  const tmpFile = path.join(os.tmpdir(), `veld-${Date.now()}.tar.gz`);
-  fs.writeFileSync(tmpFile, buffer);
-  fs.mkdirSync(destDir, { recursive: true });
-  try {
-    execSync(`tar -xzf "${tmpFile}" -C "${destDir}"`, { stdio: "pipe" });
-  } finally {
-    fs.unlinkSync(tmpFile);
+function expectedSha(sums, asset) {
+  for (const line of sums.split(/\r?\n/)) {
+    const m = line.match(/^([0-9a-fA-F]{64})\s+\*?(.+)$/);
+    if (m && m[2].trim() === asset) return m[1].toLowerCase();
   }
+  return null;
 }
 
-async function extractZip(buffer, destDir) {
-  // Write to temp file and use PowerShell / unzip
-  const tmpFile = path.join(os.tmpdir(), `veld-${Date.now()}.zip`);
-  fs.writeFileSync(tmpFile, buffer);
+function extract(buffer, asset, destDir) {
+  const tmp = path.join(os.tmpdir(), `veld-${process.pid}-${asset}`);
+  fs.writeFileSync(tmp, buffer);
   fs.mkdirSync(destDir, { recursive: true });
   try {
-    if (os.platform() === "win32") {
-      execSync(
-        `powershell -Command "Expand-Archive -Force -Path '${tmpFile}' -DestinationPath '${destDir}'"`,
-        { stdio: "pipe" }
-      );
+    if (asset.endsWith(".zip")) {
+      if (os.platform() === "win32") {
+        execFileSync("powershell", [
+          "-NoProfile", "-Command",
+          `Expand-Archive -Force -Path '${tmp}' -DestinationPath '${destDir}'`,
+        ], { stdio: "pipe" });
+      } else {
+        execFileSync("unzip", ["-o", tmp, "-d", destDir], { stdio: "pipe" });
+      }
     } else {
-      execSync(`unzip -o "${tmpFile}" -d "${destDir}"`, { stdio: "pipe" });
+      execFileSync("tar", ["-xzf", tmp, "-C", destDir], { stdio: "pipe" });
     }
   } finally {
-    fs.unlinkSync(tmpFile);
-  }
-}
-
-async function tryGoInstall() {
-  console.log("Attempting fallback: go install github.com/Adhamzineldin/Veld/cmd/veld@latest");
-  try {
-    execSync("go install github.com/Adhamzineldin/Veld/cmd/veld@latest", {
-      stdio: "inherit",
-    });
-    console.log("✓ Installed veld via go install");
-    return true;
-  } catch {
-    return false;
+    fs.unlinkSync(tmp);
   }
 }
 
 async function main() {
-  const platformKey = getPlatformKey();
-
-  if (!platformKey) {
-    console.warn(
-      `Warning: Unsupported platform ${os.platform()}-${os.arch()}.`
-    );
-    console.warn("Attempting go install fallback...");
-    if (await tryGoInstall()) return;
-    console.warn("Install veld manually: go install github.com/Adhamzineldin/Veld/cmd/veld@latest");
-    return;
+  const key = `${os.platform()}-${os.arch()}`;
+  const target = TARGETS[key];
+  if (!target) {
+    console.error(`veld: no pre-built binary for ${key}. Build from source: cargo install --git https://github.com/${GITHUB_REPO} veld`);
+    process.exit(1);
   }
+  const win = os.platform() === "win32";
+  const asset = `veld-${target}${win ? ".zip" : ".tar.gz"}`;
+  const base = `https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}`;
+  const destDir = path.join(__dirname, "binaries", target);
+  const binary = path.join(destDir, win ? "veld.exe" : "veld");
+  if (fs.existsSync(binary)) return;
 
-  const version = await getLatestVersion();
-  const url = getDownloadUrl(platformKey, version);
-  const destDir = path.join(__dirname, "binaries", platformKey);
-  const binaryName = getBinaryName();
-  const binaryPath = path.join(destDir, binaryName);
+  console.log(`veld: downloading ${asset} (v${VERSION})`);
+  const [archive, sums] = await Promise.all([
+    download(`${base}/${asset}`),
+    download(`${base}/SHA256SUMS`),
+  ]);
+  const want = expectedSha(sums.toString("utf8"), asset);
+  if (!want) throw new Error(`${asset} is not listed in SHA256SUMS`);
+  const got = crypto.createHash("sha256").update(archive).digest("hex");
+  if (got !== want) throw new Error(`checksum mismatch for ${asset}: expected ${want}, got ${got}`);
 
-  // Skip if already downloaded
-  if (fs.existsSync(binaryPath)) {
-    console.log(`✓ veld binary already exists at ${binaryPath}`);
-    return;
-  }
-
-  console.log(`Downloading veld ${version} for ${platformKey}...`);
-  console.log(`  ${url}`);
-
-  try {
-    const buffer = await download(url);
-
-    if (os.platform() === "win32") {
-      await extractZip(buffer, destDir);
-    } else {
-      await extractTarGz(buffer, destDir);
-    }
-
-    // Make binary executable on Unix
-    if (os.platform() !== "win32") {
-      fs.chmodSync(binaryPath, 0o755);
-    }
-
-    if (fs.existsSync(binaryPath)) {
-      console.log(`✓ veld ${version} installed successfully`);
-    } else {
-      throw new Error("Binary not found after extraction");
-    }
-  } catch (err) {
-    console.warn(`Warning: Could not download pre-built binary: ${err.message}`);
-    console.warn("");
-
-    if (await tryGoInstall()) return;
-
-    console.warn("Install veld manually:");
-    console.warn("  go install github.com/Adhamzineldin/Veld/cmd/veld@latest");
-    console.warn("");
-    console.warn("Or download from: https://github.com/Adhamzineldin/Veld/releases");
-  }
+  extract(archive, asset, destDir);
+  if (!fs.existsSync(binary)) throw new Error("binary not found after extraction");
+  if (!win) fs.chmodSync(binary, 0o755);
+  console.log(`veld: v${VERSION} installed`);
 }
 
-main();
-
+main().catch((err) => {
+  console.error(`veld: install failed: ${err.message}`);
+  console.error(`Download a release manually: https://github.com/${GITHUB_REPO}/releases`);
+  process.exit(1);
+});

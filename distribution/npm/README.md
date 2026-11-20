@@ -1,65 +1,39 @@
 # Veld — npm package
 
-> Contract-first, multi-stack API code generator.
+> Contract-first API code generator. Write `.veld` contracts once, generate typed servers and clients.
 
 ## Install
 
 ```bash
-npm install @maayn/veld
+npm install -g @maayn/veld
 # or
 npx @maayn/veld generate
 ```
 
+The `postinstall` script downloads the `veld` binary that matches this package's version from the
+[GitHub release](https://github.com/Adhamzineldin/Veld/releases), verifies it against the release's
+`SHA256SUMS`, and unpacks it. A checksum mismatch aborts the install.
+
+Supported platforms: Linux (x64, arm64), macOS (x64, arm64), Windows (x64).
+Set `VELD_VERSION` to override the version to download.
+
 ## Usage
 
-After installing, the `veld` CLI is available:
-
 ```bash
-veld init                    # Scaffold a new project
-veld generate                # Generate from veld.config.json
-veld generate --dry-run      # Preview what would be generated
-veld watch                   # Auto-regenerate on file changes
-veld validate                # Check contracts for errors
-veld clean                   # Remove generated output
-veld openapi                 # Export OpenAPI 3.0 spec
+veld init       # create veld.toml and an example contract
+veld check      # compile the contracts and report diagnostics
+veld generate   # generate code for every target
+veld clean      # remove generated files you have not modified
 ```
 
-## How it works
+See the [main README](https://github.com/Adhamzineldin/Veld#readme) for the full command list.
 
-This npm package includes pre-built binaries for all supported platforms.
-The wrapper script automatically selects the correct binary for your platform.
-
-**Supported platforms:**
-- Linux (x64, arm64)
-- macOS (x64, Apple Silicon)
-- Windows (x64)
-
-The package version matches the binary version, so `npm install @maayn/veld@0.2.0`
-installs exactly version 0.2.0. No runtime downloads needed - works offline!
-
-## Alternative installation
+## From source
 
 ```bash
-# Go (no npm needed)
-go install github.com/Adhamzineldin/Veld/cmd/veld@latest
-
-# Homebrew
-brew install veld
-
-# pip
-pip install maayn-veld
-
-# Composer (PHP)
-composer require maayn/veld
+cargo install --git https://github.com/Adhamzineldin/Veld veld
 ```
-
-## Links
-
-- [Documentation](https://github.com/Adhamzineldin/Veld)
-- [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=veld-dev.veld-vscode)
-- [JetBrains Plugin](https://plugins.jetbrains.com/plugin/veld)
 
 ## License
 
 MIT
-

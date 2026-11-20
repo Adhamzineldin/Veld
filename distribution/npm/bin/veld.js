@@ -15,28 +15,14 @@ const fs = require("fs");
 const os = require("os");
 
 function getPlatformKey() {
-  const platform = os.platform();
-  const arch = os.arch();
-
-  const platformMap = {
-    linux: "linux",
-    darwin: "darwin",
-    win32: "windows",
+  const targets = {
+    "linux-x64": "x86_64-unknown-linux-musl",
+    "linux-arm64": "aarch64-unknown-linux-musl",
+    "darwin-x64": "x86_64-apple-darwin",
+    "darwin-arm64": "aarch64-apple-darwin",
+    "win32-x64": "x86_64-pc-windows-msvc",
   };
-
-  const archMap = {
-    x64: "amd64",
-    arm64: "arm64",
-  };
-
-  const p = platformMap[platform];
-  const a = archMap[arch];
-
-  if (!p || !a) {
-    return null;
-  }
-
-  return `${p}-${a}`;
+  return targets[os.platform() + "-" + os.arch()] || null;
 }
 
 function getBinaryName() {
@@ -71,10 +57,9 @@ if (!binary) {
   console.error("The postinstall script may have failed. Try:");
   console.error("  npm rebuild @maayn/veld");
   console.error("");
-  console.error("Or install the binary manually:");
-  console.error("  go install github.com/Adhamzineldin/Veld/cmd/veld@latest");
-  console.error("  pip install maayn-veld");
+  console.error("Or install another way:");
   console.error("  brew install maayn-veld/tap/maayn-veld");
+  console.error("  cargo install --git https://github.com/Adhamzineldin/Veld veld");
   process.exit(1);
 }
 
