@@ -72,8 +72,8 @@ npm install -g @maayn/veld
 # pip
 pip install maayn-veld
 
-# Go
-go install github.com/Adhamzineldin/Veld/cmd/veld@latest
+# From source
+cargo install --git https://github.com/Adhamzineldin/Veld veld
 
 # Homebrew
 brew install adhamzineldin/tap/veld

@@ -1,7 +1,7 @@
 /**
  * Veld Language Specification
  * AUTO-GENERATED - DO NOT EDIT
- * Generated from: internal/language/constants.go
+ * Generated from: internal/language/constants.go (v1, archived under archive/v1/go)
  * Version: 1.0.0
  */
 
