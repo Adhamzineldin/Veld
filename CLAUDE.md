@@ -33,7 +33,7 @@ cargo insta test --review                # snapshot changes need a human; agents
 ```
 
 ## Non-negotiable rules
-1. **Generation is never destructive.** All writes go through `veld_project::output`, which uses staging, a manifest and path containment.
+1. **Generation is never destructive.** All writes go through `veld_project::output`, which uses staging, a manifest and path containment. A manifest-listed file whose content hash differs from the manifest is **user-modified**: generate refuses to overwrite or delete it (and a dry run reports it) unless `--force`. `veld clean` keeps such files and leaves a manifest listing only them. Stale `.veld-staging-*` dirs from an interrupted run are removed at the start of a write.
 2. **Output is deterministic.** Use `BTreeMap` or sorted `Vec`. No timestamps, absolute paths or host names in output.
 3. **Zero runtime dependencies in generated code.** The only exception is a framework adapter for the framework the user chose.
 4. **Signatures are computed only in `veld-compiler::signature`.** Generators embed them verbatim. Equality is decided by `same()`, which compares signature, operation and canonical bytes, never class identity.

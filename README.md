@@ -151,7 +151,7 @@ repository tests this with generated TypeScript and Java that call each other
 |---|---|
 | `veld init` | Create `veld.toml` and an example contract |
 | `veld check` | Compile all contracts and report diagnostics |
-| `veld generate [target]` | Generate code for every target, or one by name. `--dry-run` writes nothing |
+| `veld generate [target]` | Generate code for every target, or one by name. `--dry-run` writes nothing. Refuses to overwrite or delete a generated file you edited (`--force` overrides) |
 | `veld clean` | Remove generated files that you have not modified |
 | `veld fmt` | Format `.veld` files canonically |
 | `veld diff` | Show breaking and non-breaking contract changes (`--strict` exits 1 on a breaking one) |
