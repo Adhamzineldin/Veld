@@ -1,7 +1,7 @@
 //! The framework adapters of the Java server: one module per framework and ONE registry slice.
 //!
-//! The JDK adapter is the baseline and is always emitted, so the core server works without any
-//! framework. A target that names another framework gets that adapter as well.
+//! The JDK adapter is the default framework. A target emits the files of its own framework only:
+//! `jdk` gets no Spring file and `spring` gets no JDK adapter.
 
 mod jdk;
 mod spring;
@@ -17,13 +17,42 @@ use crate::util::add_file;
 pub struct ServerModel {
     /// The base Java package; adapters live in `<base>.adapters`.
     pub base: String,
+    /// One entry per service, for adapters that register routes with their framework.
+    pub services: Vec<ServiceModel>,
+}
+
+/// One service as a framework adapter sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceModel {
+    /// The service name in Java case (`Orders`): `<name>Service`, `<name>Hooks`, `<name>Handler`.
+    pub name: String,
+    /// The Java package of those three classes.
+    pub server_package: String,
+    /// The Java package an adapter puts this service's framework class in.
+    pub adapter_package: String,
+    /// Whether the service's endpoints need hooks (auth or middleware).
+    pub needs_hooks: bool,
+    pub endpoints: Vec<EndpointModel>,
+}
+
+/// One endpoint of a service.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EndpointModel {
+    /// The endpoint name, as the runtime knows it.
+    pub name: String,
+    /// The Java method name.
+    pub method_name: String,
+    /// The HTTP method, upper case.
+    pub http_method: &'static str,
+    /// The full path with `{param}` segments.
+    pub path: String,
 }
 
 /// Every framework the Java server supports. This slice is the single source of truth:
 /// `frameworks(role)` and the central `E0803` check are derived from it.
 pub const ADAPTERS: &[&dyn FrameworkAdapter<ServerModel>] = &[&jdk::Jdk, &spring::Spring];
 
-/// The adapter that is emitted whatever the target names.
+/// The framework of a target that names none.
 const BASELINE: &str = jdk::ID;
 
 /// The registry as the core sees it.
@@ -32,14 +61,14 @@ pub fn infos() -> Vec<FrameworkInfo> {
     veld_codegen::framework_infos(ADAPTERS)
 }
 
-/// Emits the baseline adapter and, when the profile names another one, that adapter too.
+/// Emits the adapter of the profile's framework (`jdk` when none is named) and nothing of the others.
 pub fn emit(
     files: &mut FileSet,
     model: &ServerModel,
     profile: &Profile,
 ) -> Result<(), Vec<GenDiagnostic>> {
     for adapter in ADAPTERS {
-        if adapter.id() == BASELINE || Some(adapter.id()) == profile.framework() {
+        if adapter.id() == profile.framework().unwrap_or(BASELINE) {
             for (path, bytes) in adapter.files(model, profile)?.iter() {
                 add_file(files, path, String::from_utf8_lossy(bytes).into_owned())?;
             }
@@ -78,8 +107,11 @@ mod tests {
     }
 
     #[test]
-    fn jdk_is_always_emitted_and_spring_only_when_named() {
-        let model = ServerModel { base: "a.b".into() };
+    fn each_framework_emits_only_its_own_files() {
+        let model = ServerModel {
+            base: "a.b".into(),
+            services: Vec::new(),
+        };
         let paths = |framework: Option<&str>| {
             let fw = infos();
             let lang = veld_codegen::LanguageInfo {
@@ -99,12 +131,6 @@ mod tests {
         };
         assert_eq!(paths(None), ["a/b/adapters/JdkHttpServerAdapter.java"]);
         assert_eq!(paths(Some("jdk")), paths(None));
-        assert_eq!(
-            paths(Some("spring")),
-            [
-                "a/b/adapters/JdkHttpServerAdapter.java",
-                "a/b/adapters/SpringAdapter.java"
-            ]
-        );
+        assert_eq!(paths(Some("spring")), ["a/b/adapters/SpringAdapter.java"]);
     }
 }

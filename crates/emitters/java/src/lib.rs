@@ -130,7 +130,10 @@ impl Generator for Java {
         match req.role {
             Role::Client => client::emit(&mut files, &tree)?,
             Role::Server => {
-                let model = frameworks::ServerModel { base: base.clone() };
+                let model = frameworks::ServerModel {
+                    base: base.clone(),
+                    services: server::service_models(&tree),
+                };
                 frameworks::emit(&mut files, &model, profile)?;
                 server::emit(&mut files, &tree)?;
                 emit_consumed(&mut files, req, &base, &runtime_package)?;

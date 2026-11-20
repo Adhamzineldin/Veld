@@ -13,42 +13,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
 
 /**
- * A Spring Boot 3 (Jakarta) controller that serves a {@link VeldHandler} for every path. Declare
- * the handler as a bean and component-scan this package, or register the controller yourself:
+ * The bridge between Spring MVC and the Veld core, used by the generated {@code @RestController}
+ * of every service. A controller method calls {@link #respond}: it builds a {@link VeldRequest}
+ * from the servlet request, runs the endpoint through the shared pipeline (authentication,
+ * middleware, validation, error mapping) and writes the {@link VeldResponse}.
  *
- * <pre>{@code
- * @Bean
- * VeldHandler veldHandler(MyService impl) {
- *   return MyServiceHandler.create(impl, new MyServiceHooks());
- * }
- * }</pre>
- *
- * <p>This is the only generated file that imports Spring.
+ * <p>This and the generated controllers are the only generated files that import Spring.
  */
-@RestController
-public class SpringAdapter {
-  private final VeldHandler handler;
+public final class SpringAdapter {
+  private SpringAdapter() {}
 
-  /** Creates the controller with the handler bean. */
-  public SpringAdapter(VeldHandler handler) {
-    this.handler = handler;
-  }
-
-  /** Serves every request through the Veld handler; unmatched requests get an empty 404. */
-  @RequestMapping("/**")
-  public ResponseEntity<byte[]> handle(HttpServletRequest request) throws IOException {
-    Map<String, List<String>> headers = new LinkedHashMap<>();
-    for (String name : Collections.list(request.getHeaderNames())) {
-      headers.put(name, new ArrayList<>(Collections.list(request.getHeaders(name))));
-    }
-    String body = new String(request.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-    VeldRequest veld = new VeldRequest(
-        request.getMethod(), request.getRequestURI(), request.getQueryString(), headers, body, request);
-    Optional<VeldResponse> response = handler.handle(veld);
+  /** Runs {@code endpoint} of {@code handler} for {@code request}; an unfit request gets a 404. */
+  public static ResponseEntity<byte[]> respond(
+      VeldHandler handler, String endpoint, HttpServletRequest request) throws IOException {
+    Optional<VeldResponse> response = handler.invoke(endpoint, read(request));
     if (response.isEmpty()) {
       return ResponseEntity.notFound().build();
     }
@@ -56,5 +36,15 @@ public class SpringAdapter {
     response.get().headers().forEach(builder::header);
     String text = response.get().body();
     return text == null ? builder.build() : builder.body(text.getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static VeldRequest read(HttpServletRequest request) throws IOException {
+    Map<String, List<String>> headers = new LinkedHashMap<>();
+    for (String name : Collections.list(request.getHeaderNames())) {
+      headers.put(name, new ArrayList<>(Collections.list(request.getHeaders(name))));
+    }
+    String body = new String(request.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+    return new VeldRequest(
+        request.getMethod(), request.getRequestURI(), request.getQueryString(), headers, body, request);
   }
 }

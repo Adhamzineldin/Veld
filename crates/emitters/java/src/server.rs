@@ -5,6 +5,7 @@ use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{AuthKind, Endpoint, Service};
 
+use crate::frameworks::{EndpointModel, ServiceModel};
 use crate::spec::{
     RequestNames, emit_requests, endpoint_docs, method_name, spec_const, write_spec_const,
 };
@@ -232,10 +233,7 @@ fn write_handler(
         write_spec_const(w, fc, ep);
     }
     w.blank();
-    let needs_hooks = svc
-        .endpoints
-        .iter()
-        .any(|e| auth_kind_name(e.auth.kind).is_some() || !e.middleware.is_empty());
+    let needs_hooks = needs_hooks(svc);
     let hooks_class = format!("{base}Hooks");
     let service = format!("{base}Service");
     if !needs_hooks {
@@ -303,4 +301,43 @@ fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
     };
     let (u, v, i) = (sig("Unauthorized"), sig("ValidationError"), sig("Internal"));
     format!("new {router}.StdSigs({u}, {v}, {i})")
+}
+
+/// Whether any endpoint of the service needs an auth or middleware hook.
+fn needs_hooks(svc: &Service) -> bool {
+    svc.endpoints
+        .iter()
+        .any(|e| auth_kind_name(e.auth.kind).is_some() || !e.middleware.is_empty())
+}
+
+/// The services of the tree as the framework adapters see them, in tree order.
+#[must_use]
+pub fn service_models(tree: &Tree<'_>) -> Vec<ServiceModel> {
+    let mut out = Vec::new();
+    for sid in &tree.services {
+        let svc = tree.ir.service(*sid);
+        let pkg = svc.package;
+        let dir = tree
+            .pkg_package(pkg)
+            .strip_prefix(&format!("{}.", tree.base))
+            .unwrap_or_default()
+            .to_string();
+        out.push(ServiceModel {
+            name: naming::pascal(&svc.name),
+            server_package: tree.api_package(pkg, "server"),
+            adapter_package: format!("{}.adapters.{dir}", tree.base),
+            needs_hooks: needs_hooks(svc),
+            endpoints: svc
+                .endpoints
+                .iter()
+                .map(|ep| EndpointModel {
+                    name: ep.name.clone(),
+                    method_name: method_name(ep),
+                    http_method: ep.method.as_str(),
+                    path: ep.path.clone(),
+                })
+                .collect(),
+        });
+    }
+    out
 }
