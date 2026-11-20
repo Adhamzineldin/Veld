@@ -1,0 +1,166 @@
+---
+source: crates/veld-tools/tests/openapi_snapshots.rs
+expression: "export(\"ok_union\")"
+---
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Veld API",
+    "version": "1.0.0"
+  },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "app.BankTransfer": {
+        "type": "object",
+        "properties": {
+          "iban": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "iban"
+        ],
+        "x-veld-sig": "veld:app/BankTransfer@246cd50f0b97341e"
+      },
+      "app.Card": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "string",
+            "pattern": "^[0-9]{12,19}$"
+          },
+          "expiry": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "expiry"
+        ],
+        "x-veld-sig": "veld:app/Card@61db3d835b85af52"
+      },
+      "app.Notice": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/app.Card"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "const": "card"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/app.BankTransfer"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "const": "bank"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            ]
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "card": "#/components/schemas/app.Card",
+            "bank": "#/components/schemas/app.BankTransfer"
+          }
+        },
+        "x-veld-sig": "veld:app/Notice@96496fc455d9c99c"
+      },
+      "app.Order": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "payment": {
+            "$ref": "#/components/schemas/app.Payment"
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/app.Notice"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "payment"
+        ],
+        "x-veld-sig": "veld:app/Order@7f56efd06cad1735"
+      },
+      "app.Payment": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/app.Card"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "card"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/app.BankTransfer"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "bank"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "card": "#/components/schemas/app.Card",
+            "bank": "#/components/schemas/app.BankTransfer"
+          }
+        },
+        "description": "How a payment is made.",
+        "x-veld-sig": "veld:app/Payment@a183bd3ce7bef306"
+      }
+    }
+  },
+  "x-veld-ir-version": "1.0"
+}

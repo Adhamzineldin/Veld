@@ -1,0 +1,449 @@
+---
+source: crates/veld-tools/tests/openapi_snapshots.rs
+expression: "export(\"ok_streaming_and_auth\")"
+---
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Live",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/live/ping": {
+      "get": {
+        "operationId": "Live.ping",
+        "tags": [
+          "Live"
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Live.ping@2615d1020d7ddbd7"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-middleware": [
+          "RateLimit",
+          "Audit"
+        ],
+        "x-veld-op-sig": "veld:app/Live.ping@2615d1020d7ddbd7"
+      }
+    },
+    "/live/status": {
+      "get": {
+        "operationId": "Live.status",
+        "tags": [
+          "Live"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app.Tick"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Unauthorized@ee241dccf5c82e14"
+                    },
+                    "title": {
+                      "const": "Unauthorized"
+                    },
+                    "status": {
+                      "const": 401
+                    },
+                    "operation": {
+                      "const": "veld:app/Live.status@2854c7e33b936ff6"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Unauthorized"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Forbidden@95d9a9217df05eac"
+                    },
+                    "title": {
+                      "const": "Forbidden"
+                    },
+                    "status": {
+                      "const": 403
+                    },
+                    "operation": {
+                      "const": "veld:app/Live.status@2854c7e33b936ff6"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Forbidden"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TooManyRequests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/TooManyRequests@6bb370c47c942eb5"
+                    },
+                    "title": {
+                      "const": "TooManyRequests"
+                    },
+                    "status": {
+                      "const": 429
+                    },
+                    "operation": {
+                      "const": "veld:app/Live.status@2854c7e33b936ff6"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.TooManyRequests"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Live.status@2854c7e33b936ff6"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "x-veld-middleware": [
+          "RateLimit",
+          "Audit",
+          "Extra"
+        ],
+        "x-veld-op-sig": "veld:app/Live.status@2854c7e33b936ff6"
+      }
+    },
+    "/live/ticks": {
+      "get": {
+        "operationId": "Live.ticks",
+        "tags": [
+          "Live"
+        ],
+        "summary": "Server-sent events.",
+        "description": "Server-sent events.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/app.Tick"
+                }
+              }
+            },
+            "x-veld-stream": true
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Unauthorized@ee241dccf5c82e14"
+                    },
+                    "title": {
+                      "const": "Unauthorized"
+                    },
+                    "status": {
+                      "const": 401
+                    },
+                    "operation": {
+                      "const": "veld:app/Live.ticks@34bf491f48217cbf"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Unauthorized"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Live.ticks@34bf491f48217cbf"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey_X-API-Key": []
+          }
+        ],
+        "x-veld-middleware": [
+          "RateLimit",
+          "Audit"
+        ],
+        "x-veld-op-sig": "veld:app/Live.ticks@34bf491f48217cbf"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "app.Cmd": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "x-veld-sig": "veld:app/Cmd@fc1ee63402d37219"
+      },
+      "app.Tick": {
+        "type": "object",
+        "properties": {
+          "n": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "n"
+        ],
+        "x-veld-sig": "veld:app/Tick@b300b0495fe66945"
+      },
+      "veld.Forbidden": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "x-veld-sig": "veld:veld/Forbidden@95d9a9217df05eac"
+      },
+      "veld.Internal": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "x-veld-sig": "veld:veld/Internal@c2b1f6bb355266e7"
+      },
+      "veld.TooManyRequests": {
+        "type": "object",
+        "properties": {
+          "retryAfter": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "x-veld-sig": "veld:veld/TooManyRequests@6bb370c47c942eb5"
+      },
+      "veld.Unauthorized": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "x-veld-sig": "veld:veld/Unauthorized@ee241dccf5c82e14"
+      },
+      "veld.ValidationError": {
+        "type": "object",
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/veld.ValidationIssue"
+            }
+          }
+        },
+        "required": [
+          "issues"
+        ],
+        "x-veld-sig": "veld:veld/ValidationError@7836aff24d914bea"
+      },
+      "veld.ValidationIssue": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "code",
+          "message"
+        ],
+        "x-veld-sig": "veld:veld/ValidationIssue@253beeea259ebf75"
+      }
+    },
+    "securitySchemes": {
+      "apiKey_X-API-Key": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      },
+      "basicAuth": {
+        "type": "http",
+        "scheme": "basic"
+      }
+    }
+  },
+  "x-veld-websocket-operations": [
+    "veld:app/Live.chat@7fbc247d66f6a8a7"
+  ],
+  "x-veld-ir-version": "1.0"
+}

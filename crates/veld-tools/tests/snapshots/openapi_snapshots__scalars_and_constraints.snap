@@ -1,0 +1,156 @@
+---
+source: crates/veld-tools/tests/openapi_snapshots.rs
+expression: "export(\"ok_scalars_and_constraints\")"
+---
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Veld API",
+    "version": "1.0.0"
+  },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "app.Everything": {
+        "type": "object",
+        "properties": {
+          "s": {
+            "type": "string"
+          },
+          "i": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "l": {
+            "type": "string",
+            "format": "int64"
+          },
+          "f": {
+            "type": "number",
+            "format": "double"
+          },
+          "d": {
+            "type": "string",
+            "format": "decimal"
+          },
+          "b": {
+            "type": "boolean"
+          },
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "moment": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "t": {
+            "type": "string",
+            "format": "time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "raw": {
+            "type": "string",
+            "contentEncoding": "base64"
+          },
+          "any": {},
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "site": {
+            "type": "string",
+            "format": "uri"
+          },
+          "host": {
+            "type": "string",
+            "format": "hostname"
+          },
+          "v4": {
+            "type": "string",
+            "format": "ipv4"
+          },
+          "v6": {
+            "type": "string",
+            "format": "ipv6"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 8,
+            "pattern": "^[A-Z]{3}-\\d{2,4}$"
+          },
+          "score": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0,
+            "maximum": 1.5
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": -5
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10
+          },
+          "grid": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32"
+              }
+            }
+          },
+          "attrs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "maxProperties": 3
+          },
+          "note": {}
+        },
+        "required": [
+          "s",
+          "i",
+          "l",
+          "f",
+          "d",
+          "b",
+          "day",
+          "moment",
+          "t",
+          "id",
+          "raw",
+          "any",
+          "email",
+          "site",
+          "host",
+          "v4",
+          "v6",
+          "code",
+          "score",
+          "count",
+          "tags",
+          "grid",
+          "attrs"
+        ],
+        "x-veld-sig": "veld:app/Everything@cb0696025ac1ce89"
+      }
+    }
+  },
+  "x-veld-ir-version": "1.0"
+}
