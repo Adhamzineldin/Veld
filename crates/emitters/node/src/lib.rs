@@ -10,7 +10,7 @@
 mod frameworks;
 mod server;
 
-pub use frameworks::{ADAPTERS, ServerModel};
+pub use frameworks::{ADAPTERS, EndpointModel, ServerModel, ServiceModel};
 
 use serde::Deserialize;
 use veld_codegen::naming::{self, Lang};
@@ -62,10 +62,6 @@ impl Generator for Node {
         precheck(req, Role::Server, &self.capabilities(Role::Server))?;
         let mut files = FileSet::new();
         runtime::emit(&mut files)?;
-        let model = ServerModel {
-            adapters_path: "server/adapters.ts".to_string(),
-        };
-        frameworks::emit(&mut files, &model, profile)?;
         let home = req.ir.service(req.services[0]).package;
         let tree = Tree::new(
             req.ir,
@@ -74,6 +70,11 @@ impl Generator for Node {
             runtime::MODULE,
             req.services.clone(),
         );
+        let model = ServerModel {
+            adapters_path: "server/adapters.ts".to_string(),
+            services: server::models(&tree),
+        };
+        frameworks::emit(&mut files, &model, profile)?;
         let mut modules = models::emit(&mut files, &tree)?;
         modules.extend(server::emit(&mut files, &tree)?);
         modules.push("server/adapters".to_string());

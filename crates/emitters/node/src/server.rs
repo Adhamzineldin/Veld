@@ -8,6 +8,8 @@ use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{add_file, doc_comment, method_key, prop_key, ts_str};
 use veld_ir::{AuthKind, Endpoint, Service};
 
+use crate::frameworks::{EndpointModel, ServiceModel};
+
 /// Root-relative module path of a service's server file.
 fn module_of(tree: &Tree<'_>, svc: &Service) -> String {
     format!("{}server/{}", tree.root, naming::kebab(&svc.name))
@@ -200,4 +202,59 @@ fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
     };
     let (u, v, i) = (sig("Unauthorized"), sig("ValidationError"), sig("Internal"));
     format!("{{ unauthorized: {u}, validation: {v}, internal: {i} }}")
+}
+
+/// Nest's route syntax: `{id}` becomes `:id`, and the ends carry no slash.
+fn nest_path(path: &str) -> String {
+    let mut out = String::new();
+    let mut rest = path.trim_matches('/');
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let Some(len) = rest[open..].find('}') else {
+            break;
+        };
+        out.push(':');
+        out.push_str(&rest[open + 1..open + len]);
+        rest = &rest[open + len + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The services as the framework adapters see them.
+#[must_use]
+pub fn models(tree: &Tree<'_>) -> Vec<ServiceModel> {
+    tree.services
+        .iter()
+        .map(|sid| {
+            let svc = tree.ir.service(*sid);
+            let (auth, middleware) = required_hooks(svc, "");
+            let prefix = svc.prefix.trim_end_matches('/');
+            let mut endpoints: Vec<(usize, EndpointModel)> = svc
+                .endpoints
+                .iter()
+                .map(|ep| {
+                    let below = ep.path.strip_prefix(prefix).unwrap_or(&ep.path);
+                    let params = ep.path.matches('{').count();
+                    let model = EndpointModel {
+                        name: method_key(&ep.name),
+                        method: ep.method,
+                        path: nest_path(below),
+                        status: ep.success.status,
+                    };
+                    (params, model)
+                })
+                .collect();
+            endpoints.sort_by_key(|(params, _)| *params);
+            ServiceModel {
+                raw_name: svc.name.clone(),
+                name: naming::pascal(&svc.name),
+                file: naming::kebab(&svc.name),
+                module: module_of(tree, svc),
+                prefix: nest_path(prefix),
+                hooks_required: !auth.is_empty() || !middleware.is_empty(),
+                endpoints: endpoints.into_iter().map(|(_, e)| e).collect(),
+            }
+        })
+        .collect()
 }
