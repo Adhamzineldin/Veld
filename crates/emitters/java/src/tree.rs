@@ -1,0 +1,192 @@
+//! Where generated Java files live, and the per-file import bookkeeping.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use veld_ir::{Decl, DeclId, DeclKind, Ir, PackageId, PackageKind, ServiceId};
+
+use crate::util::{self, HEADER};
+
+/// Package names directly below a tree's base that the generator itself uses.
+const RESERVED_DIRS: &[&str] = &["adapters", "clients", "prelude", "runtime"];
+
+/// A set of generated packages rooted at one Java package.
+///
+/// The client target and the server's own code use one tree each at the base package. A server
+/// adds one tree per consumed service under `<base>.clients.<service>`; every tree imports the
+/// single runtime of the output.
+#[derive(Debug, Clone)]
+pub struct Tree<'a> {
+    pub ir: &'a Ir,
+    /// Java package the tree is rooted at.
+    pub base: String,
+    /// Java package of the runtime.
+    pub runtime: String,
+    pub services: Vec<ServiceId>,
+    decls: Vec<DeclId>,
+}
+
+impl<'a> Tree<'a> {
+    /// Collects the declarations to emit: everything reachable from the services, the prelude,
+    /// and every declaration of the services' own packages.
+    #[must_use]
+    pub fn new(ir: &'a Ir, base: &str, runtime: &str, services: Vec<ServiceId>) -> Self {
+        let mut set: BTreeSet<DeclId> = ir.reachable_decls(&services).into_iter().collect();
+        let own: BTreeSet<PackageId> = services.iter().map(|s| ir.service(*s).package).collect();
+        for d in &ir.decls {
+            if ir.package(d.package).kind == PackageKind::Prelude || own.contains(&d.package) {
+                set.insert(d.id);
+            }
+        }
+        Self { ir, base: base.to_string(), runtime: runtime.to_string(), services, decls: set.into_iter().collect() }
+    }
+
+    #[must_use]
+    pub fn decls(&self) -> &[DeclId] {
+        &self.decls
+    }
+
+    /// Packages of the tree's services, in order of first appearance.
+    #[must_use]
+    pub fn packages(&self) -> Vec<PackageId> {
+        let mut out: Vec<PackageId> = Vec::new();
+        for s in &self.services {
+            let p = self.ir.service(*s).package;
+            if !out.contains(&p) {
+                out.push(p);
+            }
+        }
+        out
+    }
+
+    /// Java package holding everything of one contract package: `<base>.<package>`.
+    #[must_use]
+    pub fn pkg_package(&self, pkg: PackageId) -> String {
+        let name = self.ir.package(pkg).name.trim_start_matches('@').replace('/', "_");
+        let mut dir = util::segment(&name);
+        if RESERVED_DIRS.contains(&dir.as_str()) {
+            dir.push('_');
+        }
+        format!("{}.{dir}", self.base)
+    }
+
+    /// Java package of the types of a declaration.
+    #[must_use]
+    pub fn decl_package(&self, d: &Decl) -> String {
+        if self.ir.package(d.package).kind == PackageKind::Prelude {
+            return format!("{}.prelude", self.base);
+        }
+        let mut pkg = self.pkg_package(d.package);
+        for (i, seg) in d.module.split('.').filter(|s| !s.is_empty()).enumerate() {
+            let mut s = util::segment(seg);
+            if i == 0 && (s == "client" || s == "server") {
+                s.push('_');
+            }
+            pkg.push('.');
+            pkg.push_str(&s);
+        }
+        pkg
+    }
+
+    /// Java package of a package's client or server classes (`kind` is `client` or `server`).
+    #[must_use]
+    pub fn api_package(&self, pkg: PackageId, kind: &str) -> String {
+        format!("{}.{kind}", self.pkg_package(pkg))
+    }
+
+    /// A prelude declaration by name (`NotFound`, `ValidationError`, ...).
+    #[must_use]
+    pub fn prelude_decl(&self, name: &str) -> Option<DeclId> {
+        self.ir
+            .decls
+            .iter()
+            .find(|d| d.name == name && self.ir.package(d.package).kind == PackageKind::Prelude)
+            .map(|d| d.id)
+    }
+
+    /// The unions of which `model` is an arm.
+    #[must_use]
+    pub fn unions_of(&self, model: DeclId) -> Vec<DeclId> {
+        self.decls
+            .iter()
+            .copied()
+            .filter(|id| matches!(&self.ir.decl(*id).kind, DeclKind::Union(u) if u.arms.iter().any(|a| a.decl == model)))
+            .collect()
+    }
+}
+
+/// `a.b.C` to `a/b/C.java`.
+#[must_use]
+pub fn java_path(package: &str, type_name: &str) -> String {
+    format!("{}/{type_name}.java", package.replace('.', "/"))
+}
+
+/// A file being generated: tracks the imports its body needs.
+#[derive(Debug)]
+pub struct FileCtx<'t, 'a> {
+    pub tree: &'t Tree<'a>,
+    package: String,
+    /// simple name -> fully qualified name, for every type the file refers to by its simple name.
+    names: BTreeMap<String, String>,
+}
+
+impl<'t, 'a> FileCtx<'t, 'a> {
+    /// A context for the file declaring `own` in `package`.
+    #[must_use]
+    pub fn new(tree: &'t Tree<'a>, package: &str, own: &str) -> Self {
+        let mut names = BTreeMap::new();
+        names.insert(own.to_string(), format!("{package}.{own}"));
+        Self { tree, package: package.to_string(), names }
+    }
+
+    /// The name to write for the type `fqn`: its simple name, importing it when needed, or the
+    /// fully qualified name when another type already claimed the simple name.
+    pub fn name(&mut self, fqn: &str) -> String {
+        let simple = fqn.rsplit('.').next().unwrap_or(fqn).to_string();
+        match self.names.get(&simple) {
+            Some(existing) if existing == fqn => simple,
+            Some(_) => fqn.to_string(),
+            None => {
+                self.names.insert(simple.clone(), fqn.to_string());
+                simple
+            }
+        }
+    }
+
+    /// A runtime type by simple name.
+    pub fn rt(&mut self, simple: &str) -> String {
+        let fqn = format!("{}.{simple}", self.tree.runtime);
+        self.name(&fqn)
+    }
+
+    /// A declaration's type name.
+    pub fn decl(&mut self, id: DeclId) -> String {
+        let d = self.tree.ir.decl(id);
+        let fqn = format!("{}.{}", self.tree.decl_package(d), util::type_name(d));
+        self.name(&fqn)
+    }
+
+    /// Complete file text: header, package, imports, then `body`.
+    #[must_use]
+    pub fn finish(&self, body: &str) -> String {
+        let mut imports: Vec<&str> = self
+            .names
+            .values()
+            .map(String::as_str)
+            .filter(|fqn| {
+                let pkg = fqn.rsplit_once('.').map_or("", |(p, _)| p);
+                pkg != self.package && pkg != "java.lang"
+            })
+            .collect();
+        imports.sort_unstable();
+        let mut out = format!("{HEADER}\npackage {};\n", self.package);
+        if !imports.is_empty() {
+            out.push('\n');
+            for i in imports {
+                out.push_str(&format!("import {i};\n"));
+            }
+        }
+        out.push('\n');
+        out.push_str(body);
+        out
+    }
+}
