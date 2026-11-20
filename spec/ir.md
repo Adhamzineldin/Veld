@@ -98,7 +98,7 @@ decl_sig  = "veld:" package "/" Name "@" hex16( sha256( shape_bytes ) )
   - union: `{ "k": "union", "d": discriminator, "a": { label: "<qualified>" } }`
   - `TShape`: `"string"`, …, `{ "list": TShape }`, `{ "map": TShape }`, `{ "page": TShape }`, `{ "ref": "<qualified>" }`
 - The signature does not include docs, deprecations, constraints, defaults, examples, `meta` or source spans. Renaming a field in source while keeping `@wire` the same keeps the signature.
-- Each `Decl.sig` is computed once by `veld-compiler::lower::signature`. No other code computes signatures.
+- Each `Decl.sig` is computed once by `veld-compiler::signature`. No other code computes signatures.
 
 ### 5.2 Operation signature
 

@@ -274,8 +274,11 @@ The allowed syntax is literal characters, `.`, classes `[...]`, `\d \w \s`, the 
 | Code | Meaning |
 |---|---|
 | `E0004` | Reserved word used as a name |
+| `E0005` | Nesting too deep: types (`Map<string, ...>`, `T[][]`) and annotation call arguments are limited to 64 levels |
+| `E0006` | `extends` chain longer than 64 models |
 | `E0303` | Default/example literal does not match the field type (also: optional field with a default) |
 | `E0304` | Enum default names an unknown variant |
+| `E0305` | Float literal is not finite (overflows a 64-bit float, for example `1.0e999`); applies to defaults, examples, consts and `@min`/`@max` |
 | `E0408` | `extends` target is not a model |
 | `E0409` | Union arm is not a model, or union is empty |
 | `E0410` | Duplicate field, wire name, variant or arm |
