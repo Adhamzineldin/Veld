@@ -1,0 +1,20 @@
+[project]
+name = "hello"
+contracts = "contracts"
+
+# A Node.js server. Framework adapters use structural types, so the generated code has no
+# dependencies. Choose express, fastify, hono or none.
+[[targets]]
+name = "api"
+role = "server"
+emitter = "node"
+framework = "express"
+service = "hello"
+out = "server/src/generated"
+
+# A typed TypeScript client for the same contract.
+[[targets]]
+name = "web"
+role = "client"
+emitter = "typescript"
+out = "web/src/generated"
