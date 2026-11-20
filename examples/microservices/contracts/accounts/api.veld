@@ -1,0 +1,29 @@
+use accounts.{Account, AccountNotActive, AccountSummary, CreateAccountInput, Statement}
+
+/// Bank account management: open, view, freeze and close accounts.
+@auth(bearer)
+service Accounts at "/api/accounts" {
+  /// Lists the accounts of the authenticated user.
+  get "/" listAccounts() -> Account[]
+
+  /// Fetches one account.
+  get "/{id}" getAccount(id: uuid) -> Account | NotFound
+
+  /// Opens a new account.
+  post "/" createAccount(body: CreateAccountInput) -> Account
+
+  /// Total balance and primary account.
+  get "/summary" getSummary() -> AccountSummary
+
+  /// The account with its latest transactions, fetched from the transactions service.
+  get "/{id}/statement" getStatement(id: uuid) -> Statement | NotFound
+
+  /// Blocks all future transactions on an account.
+  post "/{id}/freeze" freezeAccount(id: uuid) -> 200 Account | NotFound | AccountNotActive
+
+  /// Permanently closes an account.
+  delete "/{id}" closeAccount(id: uuid) -> 204 | NotFound | AccountNotActive
+
+  /// Staff only: bans an account.
+  post "/{id}/ban" banAccount(id: uuid) -> 200 Account | Forbidden | NotFound
+}

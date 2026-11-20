@@ -1,0 +1,14 @@
+use transactions.{HistoryFilter, InsufficientFunds, Transaction, TransferInput, TransferReceipt}
+
+/// Transaction history and transfers.
+@auth(bearer)
+service Transactions at "/api/transactions" {
+  /// Paginated transaction history of an account.
+  get "/account/{accountId}" getHistory(accountId: uuid, query: HistoryFilter) -> Page<Transaction> | NotFound
+
+  /// Fetches one transaction.
+  get "/{id}" getTransaction(id: uuid) -> Transaction | NotFound
+
+  /// Moves money to another IBAN. The accounts service is asked to check the source account.
+  post "/transfer" transfer(body: TransferInput) -> 201 TransferReceipt | NotFound | InsufficientFunds
+}

@@ -1,0 +1,45 @@
+use transactions:transactions.{Transaction}
+
+enum AccountType { checking, savings, investment }
+
+enum AccountStatus { active, frozen, closed }
+
+/// A NexusBank financial account.
+model Account {
+  id: uuid @readonly
+  userId: uuid @readonly
+  type: AccountType
+  status: AccountStatus = .active
+  name: string @length(min: 1, max: 80)
+  /// ISO 4217 currency code.
+  currency: string @pattern("^[A-Z]{3}$")
+  balance: decimal @readonly
+  iban: string @readonly
+  createdAt: datetime @readonly
+}
+
+/// Payload to open a new account.
+model CreateAccountInput {
+  type: AccountType
+  name: string @length(min: 1, max: 80)
+  currency: string @pattern("^[A-Z]{3}$")
+}
+
+/// Portfolio overview across all accounts of a user.
+model AccountSummary {
+  totalBalance: decimal
+  accountCount: int
+  primaryAccount?: Account
+}
+
+/// An account together with its latest transactions.
+/// `Transaction` comes from the `transactions` service, which in turn imports `Account`.
+model Statement {
+  account: Account
+  recent: Transaction[]
+}
+
+/// The account is frozen or closed and cannot be changed.
+error AccountNotActive 409 {
+  status: AccountStatus
+}
