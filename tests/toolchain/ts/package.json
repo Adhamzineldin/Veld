@@ -1,0 +1,11 @@
+{
+  "name": "veld-toolchain-ts",
+  "private": true,
+  "description": "Pinned TypeScript toolchain used by the generator behaviour tests",
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/node": "22.20.5",
+    "express": "5.2.1",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,66 @@
+use iam:users.{User}
+use catalog.{Status, Money, Timestamps, OrderItem, Payment}
+
+/// A customer order.
+model Order extends Timestamps {
+  id: uuid @readonly
+  customer: User
+  items: OrderItem[] @length(min: 1)
+  status: Status = .pending
+  note?: string @length(max: 500)
+  payment?: Payment
+  total: Money
+  seq: long
+  attributes?: Map<string, string>
+  extra?: json
+}
+
+model CreateOrder {
+  customerId: uuid @wire("customer_id")
+  items: OrderItem[] @length(min: 1)
+  note?: string @length(max: 500)
+  payment?: Payment
+}
+
+model OrderFilter {
+  status?: Status
+  tag?: string[]
+  limit?: int @min(1) @max(100)
+}
+
+error OutOfStock 409 {
+  sku: string
+}
+
+/// Carries a defaulted field, to prove equality applies schema defaults.
+error Throttled 429 {
+  retryAfter: int = 30
+}
+
+error QuotaExceeded {
+  limit: int
+}
+
+/// Order management.
+@auth(bearer)
+@middleware(RateLimit)
+service Orders at "/orders" {
+  /// Fetch one order.
+  get "/{id}" getOrder(id: uuid) -> Order | NotFound | Unauthorized
+
+  post "/" createOrder(body: CreateOrder, @header("Idempotency-Key") idempotencyKey?: string) -> 201 Order | OutOfStock | 429 QuotaExceeded | Unauthorized
+
+  get "/" listOrders(query: OrderFilter) -> Page<Order> | Unauthorized
+
+  get "/search" searchOrders(@query q: string, @query limit?: int) -> Order[] | Unauthorized
+
+  post "/{id}/pay" payOrder(id: uuid, body: Payment) -> Order | NotFound | Unauthorized
+
+  delete "/{id}" cancelOrder(id: uuid) -> 204 | NotFound | Unauthorized
+
+  @auth(none)
+  get "/health" health() -> 204
+
+  @auth(none)
+  get "/boom" boom() -> Order
+}
