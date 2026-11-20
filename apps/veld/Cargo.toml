@@ -17,6 +17,7 @@ veld-codegen.workspace = true
 veld-project.workspace = true
 veld-tools.workspace = true
 veld-plugin-host.workspace = true
+veld-emit-java.workspace = true
 veld-emit-node.workspace = true
 veld-emit-typescript.workspace = true
 clap.workspace = true
