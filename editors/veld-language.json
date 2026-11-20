@@ -1,0 +1,201 @@
+{
+  "reserved": [
+    "use",
+    "as",
+    "model",
+    "enum",
+    "error",
+    "union",
+    "service",
+    "at",
+    "extends",
+    "const",
+    "stream",
+    "true",
+    "false",
+    "null"
+  ],
+  "contextual": [
+    "get",
+    "post",
+    "put",
+    "patch",
+    "delete",
+    "head",
+    "options",
+    "ws"
+  ],
+  "scalars": [
+    "string",
+    "int",
+    "long",
+    "float",
+    "decimal",
+    "bool",
+    "date",
+    "datetime",
+    "time",
+    "uuid",
+    "bytes",
+    "json"
+  ],
+  "generics": [
+    "Map",
+    "Page"
+  ],
+  "annotations": [
+    {
+      "name": "auth",
+      "targets": [
+        "service",
+        "endpoint"
+      ],
+      "args": "auth",
+      "usage": "@auth(bearer | basic | none | apiKey(header: \"X\"))"
+    },
+    {
+      "name": "middleware",
+      "targets": [
+        "service",
+        "endpoint"
+      ],
+      "args": "idents",
+      "usage": "@middleware(Name, ...)"
+    },
+    {
+      "name": "deprecated",
+      "targets": [
+        "service",
+        "model",
+        "error",
+        "enum",
+        "union",
+        "const",
+        "endpoint",
+        "field",
+        "variant"
+      ],
+      "args": "one_string",
+      "usage": "@deprecated(\"message\")"
+    },
+    {
+      "name": "min",
+      "targets": [
+        "field",
+        "param"
+      ],
+      "args": "one_number",
+      "usage": "@min(n)"
+    },
+    {
+      "name": "max",
+      "targets": [
+        "field",
+        "param"
+      ],
+      "args": "one_number",
+      "usage": "@max(n)"
+    },
+    {
+      "name": "length",
+      "targets": [
+        "field",
+        "param"
+      ],
+      "args": "length",
+      "usage": "@length(min: n, max: n)"
+    },
+    {
+      "name": "pattern",
+      "targets": [
+        "field",
+        "param"
+      ],
+      "args": "one_string",
+      "usage": "@pattern(\"regex\")"
+    },
+    {
+      "name": "format",
+      "targets": [
+        "field",
+        "param"
+      ],
+      "args": "format",
+      "usage": "@format(email | uri | hostname | ipv4 | ipv6)"
+    },
+    {
+      "name": "readonly",
+      "targets": [
+        "field"
+      ],
+      "args": "none",
+      "usage": "@readonly"
+    },
+    {
+      "name": "wire",
+      "targets": [
+        "field"
+      ],
+      "args": "one_string",
+      "usage": "@wire(\"name\")"
+    },
+    {
+      "name": "example",
+      "targets": [
+        "field",
+        "param"
+      ],
+      "args": "one_literal",
+      "usage": "@example(literal)"
+    },
+    {
+      "name": "discriminator",
+      "targets": [
+        "union"
+      ],
+      "args": "one_string",
+      "usage": "@discriminator(\"prop\")"
+    },
+    {
+      "name": "query",
+      "targets": [
+        "param"
+      ],
+      "args": "none",
+      "usage": "@query"
+    },
+    {
+      "name": "header",
+      "targets": [
+        "param"
+      ],
+      "args": "one_string",
+      "usage": "@header(\"Name\")"
+    },
+    {
+      "name": "unique",
+      "targets": [
+        "field"
+      ],
+      "args": "none",
+      "usage": "@unique"
+    },
+    {
+      "name": "index",
+      "targets": [
+        "field"
+      ],
+      "args": "none",
+      "usage": "@index"
+    },
+    {
+      "name": "primary",
+      "targets": [
+        "field"
+      ],
+      "args": "none",
+      "usage": "@primary"
+    }
+  ],
+  "prelude": "error BadRequest 400      { message: string }\nerror Unauthorized 401    { message?: string }\nerror Forbidden 403       { message?: string }\nerror NotFound 404        { resource?: string }\nerror Conflict 409        { message: string }\nerror ValidationError 422 { issues: ValidationIssue[] }\nerror TooManyRequests 429 { retryAfter?: int }\nerror Internal 500        { message?: string }\nmodel ValidationIssue     { path: string, code: string, message: string }\n"
+}
