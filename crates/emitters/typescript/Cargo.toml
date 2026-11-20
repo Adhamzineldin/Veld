@@ -1,0 +1,18 @@
+[package]
+name = "veld-emit-typescript"
+description = "Veld TypeScript client generator (also the shared TypeScript model, runtime and validation generator)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+veld-ir.workspace = true
+veld-codegen.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+
+[lints]
+workspace = true
