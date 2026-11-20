@@ -7,7 +7,8 @@ public final class Serve {
   private Serve() {}
 
   public static void main(String[] args) throws Exception {
-    HttpServer server = new ServerImpl().listen();
+    HttpServer server = gen.a.adapters.JdkHttpServerAdapter.listen(
+        new ServerImpl().handler(), new java.net.InetSocketAddress("127.0.0.1", 0));
     System.out.println("PORT=" + server.getAddress().getPort());
     System.out.flush();
     while (System.in.read() >= 0) {

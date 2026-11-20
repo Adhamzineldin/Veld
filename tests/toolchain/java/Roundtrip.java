@@ -26,7 +26,8 @@ public final class Roundtrip {
 
   public static void main(String[] args) throws Exception {
     ServerImpl impl = new ServerImpl();
-    HttpServer server = impl.listen();
+    HttpServer server = gen.a.adapters.JdkHttpServerAdapter.listen(
+        impl.handler(), new InetSocketAddress("127.0.0.1", 0));
     String base = "http://127.0.0.1:" + server.getAddress().getPort();
     Scenario.run("jdk", base, new Scenario.Probe() {
       @Override

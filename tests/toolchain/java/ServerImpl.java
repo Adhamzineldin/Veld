@@ -1,6 +1,5 @@
 package veldtest;
 
-import gen.a.adapters.JdkHttpServerAdapter;
 import gen.a.iam.users.User;
 import gen.a.orders.catalog.Money;
 import gen.a.orders.catalog.OrderItem;
@@ -23,10 +22,7 @@ import gen.a.prelude.NotFound;
 import gen.a.runtime.Page;
 import gen.a.runtime.RequestContext;
 import gen.a.runtime.VeldHandler;
-import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
 import java.math.BigDecimal;
-import java.net.InetSocketAddress;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -152,10 +148,5 @@ final class ServerImpl implements OrdersService {
       requests.incrementAndGet();
       return core.handle(request);
     };
-  }
-
-  /** Starts the server on a free port. */
-  HttpServer listen() throws IOException {
-    return JdkHttpServerAdapter.listen(handler(), new InetSocketAddress("127.0.0.1", 0));
   }
 }
