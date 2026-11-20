@@ -1,0 +1,15 @@
+---
+source: crates/veld-tools/tests/migrate_examples.rs
+expression: "lines.join(\"\\n\")"
+---
+Breaking AuthAdded veld:accounts/Accounts.closeAccount | authentication is now required
+Breaking AuthAdded veld:accounts/Accounts.createAccount | authentication is now required
+Breaking AuthAdded veld:accounts/Accounts.freezeAccount | authentication is now required
+Breaking AuthAdded veld:accounts/Accounts.getAccount | authentication is now required
+Breaking AuthAdded veld:accounts/Accounts.getSummary | authentication is now required
+Breaking AuthAdded veld:accounts/Accounts.listAccounts | authentication is now required
+Breaking EndpointRemoved veld:accounts/Accounts.banAccount | endpoint `banAccount` was removed or renamed (same route now served by `banaccount`)
+Breaking FieldTypeChanged accounts:models.account.Account | type of field `createdAt` changed
+Breaking SuccessChanged veld:accounts/Accounts.freezeAccount | success status changed from 200 to 201
+NonBreaking DocsChanged veld:accounts/Accounts.getSummary | docs of `getSummary` changed
+NonBreaking EndpointAdded veld:accounts/Accounts.banaccount | endpoint `banaccount` was added
