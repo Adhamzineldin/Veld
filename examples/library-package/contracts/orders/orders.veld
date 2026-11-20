@@ -1,0 +1,32 @@
+use common:errors.{PlanLimitReached, Unavailable}
+use common:money.{Money, PageQuery}
+
+enum OrderStatus { pending, paid, shipped, cancelled }
+
+/// A customer order.
+model Order {
+  id: uuid @readonly
+  status: OrderStatus = .pending
+  total: Money
+  note?: string @length(max: 500)
+  createdAt: datetime @readonly
+}
+
+/// Places a new order.
+model CreateOrder {
+  total: Money
+  note?: string @length(max: 500)
+}
+
+/// Order management.
+@auth(bearer)
+service Orders at "/orders" {
+  /// Fetches one order.
+  get "/{id}" getOrder(id: uuid) -> Order | NotFound
+
+  /// Lists orders, newest first.
+  get "/" listOrders(query: PageQuery) -> Page<Order>
+
+  /// Places an order.
+  post "/" createOrder(body: CreateOrder) -> Order | PlanLimitReached | Unavailable
+}

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "generator": "veld 2.0",
+  "files": {
+    "common/errors/errors.ts": "cda423342e764fb087fbc7da9a0dc142ecdabd47ffbd24f39ee0d91783d37c6e",
+    "common/models/money.ts": "bce5f47d3cc57b07d0c25b0a7bc57118ae8067f9791362cbab77f3a3ca43fc8e",
+    "index.ts": "cb4855cd8b74a976ce78e010e9a3eb82a4976de5c3fba6fc6c2d4a5fb90f60b4",
+    "invoices/client.ts": "5c802117a813308ed2d30854f98977c363dde0eac0ee4831b251edd14f9fd7bc",
+    "invoices/models/invoices.ts": "db33ee62844d41807cd1e2994ff563a41f436d3bf10443d4a579d1be142ce9cf",
+    "orders/client.ts": "f1b0d098d0a33770edc4cbdd50600afb351b2d56aac3ca46691555ff27bba77c",
+    "orders/models/orders.ts": "e99cedc968e91c572580695b7a91baef567d3f98614f96a233764c79b5899fac",
+    "prelude.ts": "e8110d3c264ee63643b440a24507e66e06d80189b9ca49c5960a17f067ec7938",
+    "runtime/veld.ts": "08a037ed7e48b6eb3aa114eee3904dc8cbe96c60ebac99492dca180dd4e3fc9a"
+  }
+}

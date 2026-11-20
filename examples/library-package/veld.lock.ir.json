@@ -1,0 +1,1481 @@
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "common",
+      "kind": "library"
+    },
+    {
+      "id": 1,
+      "name": "invoices",
+      "kind": "service"
+    },
+    {
+      "id": 2,
+      "name": "orders",
+      "kind": "service"
+    },
+    {
+      "id": 3,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "errors",
+      "name": "PlanLimitReached",
+      "qualified": "common:errors.PlanLimitReached",
+      "sig": "veld:common/PlanLimitReached@804293bbf0ec6359",
+      "docs": "The caller's plan does not allow this operation.",
+      "deprecated": null,
+      "origin": {
+        "file": "errors.veld",
+        "line": 7,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 402,
+      "parent": null,
+      "fields": [
+        {
+          "name": "limit",
+          "wire": "limit",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "errors.veld",
+            "line": 8,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "errors",
+      "name": "Unavailable",
+      "qualified": "common:errors.Unavailable",
+      "sig": "veld:common/Unavailable@b89a1706a5a19d54",
+      "docs": "A downstream dependency is unavailable. Retry later.",
+      "deprecated": null,
+      "origin": {
+        "file": "errors.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 503,
+      "parent": null,
+      "fields": [
+        {
+          "name": "retryAfter",
+          "wire": "retryAfter",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "errors.veld",
+            "line": 3,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "money",
+      "name": "Currency",
+      "qualified": "common:money.Currency",
+      "sig": "veld:common/Currency@0dc3cd158d9e1a05",
+      "docs": "Currencies the shop trades in.",
+      "deprecated": null,
+      "origin": {
+        "file": "money.veld",
+        "line": 2,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "USD",
+          "wire": "USD",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "EUR",
+          "wire": "EUR",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "GBP",
+          "wire": "GBP",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "package": 0,
+      "module": "money",
+      "name": "Money",
+      "qualified": "common:money.Money",
+      "sig": "veld:common/Money@2094624f0dee484e",
+      "docs": "An amount of money. `amount` is a decimal string, so no precision is lost.",
+      "deprecated": null,
+      "origin": {
+        "file": "money.veld",
+        "line": 5,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "amount",
+          "wire": "amount",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "money.veld",
+            "line": 6,
+            "col": 3
+          }
+        },
+        {
+          "name": "currency",
+          "wire": "currency",
+          "type": {
+            "decl": 2
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "money.veld",
+            "line": 7,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "package": 0,
+      "module": "money",
+      "name": "PageQuery",
+      "qualified": "common:money.PageQuery",
+      "sig": "veld:common/PageQuery@a67aa1e674e59393",
+      "docs": "Standard paging parameters for list endpoints.",
+      "deprecated": null,
+      "origin": {
+        "file": "money.veld",
+        "line": 11,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "page",
+          "wire": "page",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": {
+            "lit": "int",
+            "value": 1
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": 1.0,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "money.veld",
+            "line": 12,
+            "col": 3
+          }
+        },
+        {
+          "name": "size",
+          "wire": "size",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": {
+            "lit": "int",
+            "value": 20
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": 1.0,
+            "max": 100.0,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "money.veld",
+            "line": 13,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "package": 1,
+      "module": "invoices",
+      "name": "Invoice",
+      "qualified": "invoices:invoices.Invoice",
+      "sig": "veld:invoices/Invoice@5631fbb6b84ccdd0",
+      "docs": "An invoice for an order.",
+      "deprecated": null,
+      "origin": {
+        "file": "invoices.veld",
+        "line": 5,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "invoices.veld",
+            "line": 6,
+            "col": 3
+          }
+        },
+        {
+          "name": "orderId",
+          "wire": "orderId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "invoices.veld",
+            "line": 7,
+            "col": 3
+          }
+        },
+        {
+          "name": "due",
+          "wire": "due",
+          "type": {
+            "decl": 3
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "invoices.veld",
+            "line": 8,
+            "col": 3
+          }
+        },
+        {
+          "name": "paid",
+          "wire": "paid",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": {
+            "lit": "bool",
+            "value": false
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "invoices.veld",
+            "line": 9,
+            "col": 3
+          }
+        },
+        {
+          "name": "issuedAt",
+          "wire": "issuedAt",
+          "type": {
+            "scalar": "date"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "invoices.veld",
+            "line": 10,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "package": 2,
+      "module": "orders",
+      "name": "CreateOrder",
+      "qualified": "orders:orders.CreateOrder",
+      "sig": "veld:orders/CreateOrder@1548fc2c04be0d55",
+      "docs": "Places a new order.",
+      "deprecated": null,
+      "origin": {
+        "file": "orders.veld",
+        "line": 16,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "total",
+          "wire": "total",
+          "type": {
+            "decl": 3
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 17,
+            "col": 3
+          }
+        },
+        {
+          "name": "note",
+          "wire": "note",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": 500,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 18,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "package": 2,
+      "module": "orders",
+      "name": "Order",
+      "qualified": "orders:orders.Order",
+      "sig": "veld:orders/Order@9f7dda9eda320528",
+      "docs": "A customer order.",
+      "deprecated": null,
+      "origin": {
+        "file": "orders.veld",
+        "line": 7,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 8,
+            "col": 3
+          }
+        },
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 8
+          },
+          "optional": false,
+          "default": {
+            "lit": "enum_variant",
+            "value": {
+              "name": "pending",
+              "wire": "pending"
+            }
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 9,
+            "col": 3
+          }
+        },
+        {
+          "name": "total",
+          "wire": "total",
+          "type": {
+            "decl": 3
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 10,
+            "col": 3
+          }
+        },
+        {
+          "name": "note",
+          "wire": "note",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": 500,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 11,
+            "col": 3
+          }
+        },
+        {
+          "name": "createdAt",
+          "wire": "createdAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 12,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "package": 2,
+      "module": "orders",
+      "name": "OrderStatus",
+      "qualified": "orders:orders.OrderStatus",
+      "sig": "veld:orders/OrderStatus@fe94aa2e54e44a93",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "orders.veld",
+        "line": 4,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "pending",
+          "wire": "pending",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "paid",
+          "wire": "paid",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "shipped",
+          "wire": "shipped",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "cancelled",
+          "wire": "cancelled",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "package": 3,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "package": 3,
+      "module": "prelude",
+      "name": "NotFound",
+      "qualified": "veld:prelude.NotFound",
+      "sig": "veld:veld/NotFound@a0eaf7a3323dce7c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 4,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 404,
+      "parent": null,
+      "fields": [
+        {
+          "name": "resource",
+          "wire": "resource",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 4,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "package": 3,
+      "module": "prelude",
+      "name": "Unauthorized",
+      "qualified": "veld:prelude.Unauthorized",
+      "sig": "veld:veld/Unauthorized@ee241dccf5c82e14",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 401,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 2,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "package": 3,
+      "module": "prelude",
+      "name": "ValidationError",
+      "qualified": "veld:prelude.ValidationError",
+      "sig": "veld:veld/ValidationError@7836aff24d914bea",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "issues",
+          "wire": "issues",
+          "type": {
+            "list": {
+              "decl": 13
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 6,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "package": 3,
+      "module": "prelude",
+      "name": "ValidationIssue",
+      "qualified": "veld:prelude.ValidationIssue",
+      "sig": "veld:veld/ValidationIssue@253beeea259ebf75",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 9,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "path",
+          "wire": "path",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 29
+          }
+        },
+        {
+          "name": "code",
+          "wire": "code",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 43
+          }
+        },
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 57
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 1,
+      "name": "Invoices",
+      "prefix": "/invoices",
+      "base_url": "http://invoices:3002",
+      "docs": "Invoice management.",
+      "auth": {
+        "kind": "bearer",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "getInvoice",
+          "method": "GET",
+          "path": "/invoices/{id}",
+          "sig": "veld:invoices/Invoices.getInvoice@6b96cc2c680a2ec6",
+          "docs": "Fetches one invoice.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 5
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 11
+            },
+            {
+              "status": 404,
+              "decl": 10
+            },
+            {
+              "status": 422,
+              "decl": 12
+            },
+            {
+              "status": 500,
+              "decl": 9
+            }
+          ],
+          "origin": {
+            "file": "invoices.veld",
+            "line": 17,
+            "col": 15
+          }
+        },
+        {
+          "name": "listInvoices",
+          "method": "GET",
+          "path": "/invoices",
+          "sig": "veld:invoices/Invoices.listInvoices@0a911b6bf5bf54c6",
+          "docs": "Lists invoices, newest first.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "query",
+              "binding": "query_object",
+              "header": null,
+              "type": {
+                "decl": 4
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "page": {
+                "decl": 5
+              }
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 11
+            },
+            {
+              "status": 422,
+              "decl": 12
+            },
+            {
+              "status": 500,
+              "decl": 9
+            }
+          ],
+          "origin": {
+            "file": "invoices.veld",
+            "line": 20,
+            "col": 11
+          }
+        },
+        {
+          "name": "payInvoice",
+          "method": "POST",
+          "path": "/invoices/{id}/pay",
+          "sig": "veld:invoices/Invoices.payInvoice@4b48fe72a2c90f3f",
+          "docs": "Marks an invoice as paid.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 5
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 11
+            },
+            {
+              "status": 404,
+              "decl": 10
+            },
+            {
+              "status": 422,
+              "decl": 12
+            },
+            {
+              "status": 500,
+              "decl": 9
+            },
+            {
+              "status": 503,
+              "decl": 1
+            }
+          ],
+          "origin": {
+            "file": "invoices.veld",
+            "line": 23,
+            "col": 20
+          }
+        }
+      ],
+      "origin": {
+        "file": "invoices.veld",
+        "line": 15,
+        "col": 9
+      }
+    },
+    {
+      "id": 1,
+      "package": 2,
+      "name": "Orders",
+      "prefix": "/orders",
+      "base_url": "http://orders:3001",
+      "docs": "Order management.",
+      "auth": {
+        "kind": "bearer",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "getOrder",
+          "method": "GET",
+          "path": "/orders/{id}",
+          "sig": "veld:orders/Orders.getOrder@48e9882b53747a6d",
+          "docs": "Fetches one order.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 7
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 11
+            },
+            {
+              "status": 404,
+              "decl": 10
+            },
+            {
+              "status": 422,
+              "decl": 12
+            },
+            {
+              "status": 500,
+              "decl": 9
+            }
+          ],
+          "origin": {
+            "file": "orders.veld",
+            "line": 25,
+            "col": 15
+          }
+        },
+        {
+          "name": "listOrders",
+          "method": "GET",
+          "path": "/orders",
+          "sig": "veld:orders/Orders.listOrders@ef059c89613c7f54",
+          "docs": "Lists orders, newest first.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "query",
+              "binding": "query_object",
+              "header": null,
+              "type": {
+                "decl": 4
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "page": {
+                "decl": 7
+              }
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 11
+            },
+            {
+              "status": 422,
+              "decl": 12
+            },
+            {
+              "status": 500,
+              "decl": 9
+            }
+          ],
+          "origin": {
+            "file": "orders.veld",
+            "line": 28,
+            "col": 11
+          }
+        },
+        {
+          "name": "createOrder",
+          "method": "POST",
+          "path": "/orders",
+          "sig": "veld:orders/Orders.createOrder@b98e19393450fc10",
+          "docs": "Places an order.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 6
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 7
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 11
+            },
+            {
+              "status": 402,
+              "decl": 0
+            },
+            {
+              "status": 422,
+              "decl": 12
+            },
+            {
+              "status": 500,
+              "decl": 9
+            },
+            {
+              "status": 503,
+              "decl": 1
+            }
+          ],
+          "origin": {
+            "file": "orders.veld",
+            "line": 31,
+            "col": 12
+          }
+        }
+      ],
+      "origin": {
+        "file": "orders.veld",
+        "line": 23,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {}
+}
