@@ -39,6 +39,8 @@ pub enum Command {
     Generate(GenerateArgs),
     /// Remove generated files that you have not modified
     Clean(CleanArgs),
+    /// Wire generated targets into your apps (package.json, pom.xml, build.gradle)
+    Setup(SetupArgs),
 
     /// Format .veld files canonically
     Fmt(FmtArgs),
@@ -77,9 +79,31 @@ pub struct InitArgs {
     /// Project name (default: the directory name)
     #[arg(long)]
     pub name: Option<String>,
-    /// Scaffold a two-service workspace instead of a single service
-    #[arg(long)]
-    pub workspace: bool,
+    /// Scaffold a microservices workspace; optionally the comma-separated service names
+    #[arg(long, value_name = "SERVICES", num_args = 0..=1, default_missing_value = "users,orders")]
+    pub workspace: Option<String>,
+    /// Server target: node[:express|fastify|hono|nest|node-http], java[:jdk|spring] or none.
+    /// Prefix with `service=` to set one service of a workspace
+    #[arg(long, value_name = "KIND[:FRAMEWORK]")]
+    pub server: Vec<String>,
+    /// Client target: typescript[:react|vue], java or none
+    #[arg(long, value_name = "KIND[:FRAMEWORK]")]
+    pub client: Option<String>,
+    /// Use the defaults for everything not given as a flag; never prompt
+    #[arg(long, short = 'y')]
+    pub yes: bool,
+}
+
+impl InitArgs {
+    /// No flag at all: the interactive flow applies on a terminal.
+    #[must_use]
+    pub fn is_bare(&self) -> bool {
+        self.name.is_none()
+            && self.workspace.is_none()
+            && self.server.is_empty()
+            && self.client.is_none()
+            && !self.yes
+    }
 }
 
 #[derive(Debug, Args)]
@@ -95,6 +119,15 @@ pub struct GenerateArgs {
     /// Regenerate whenever a .veld file or veld.toml changes
     #[arg(long)]
     pub watch: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct SetupArgs {
+    /// Wire only the target with this name
+    pub target: Option<String>,
+    /// Show the planned edits without writing anything
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Args)]
@@ -262,8 +295,8 @@ mod tests {
             );
         }
         for shown in [
-            "init", "check", "generate", "clean", "fmt", "diff", "export", "migrate", "plugin",
-            "add", "install", "publish", "login", "logout",
+            "init", "check", "generate", "setup", "clean", "fmt", "diff", "export", "migrate",
+            "plugin", "add", "install", "publish", "login", "logout",
         ] {
             assert!(help.contains(shown));
         }

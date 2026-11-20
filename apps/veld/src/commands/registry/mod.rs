@@ -29,7 +29,18 @@ pub fn run(ui: &Ui, config: Option<&std::path::Path>, command: &Command) -> Opti
         Command::Add(a) => add::run(ui, config, a),
         Command::Publish(a) => publish::run(ui, config, a),
         Command::Install(a) => install::run(ui, config, a),
-        _ => return None,
+        Command::Init(_)
+        | Command::Check
+        | Command::Generate(_)
+        | Command::Clean(_)
+        | Command::Setup(_)
+        | Command::Fmt(_)
+        | Command::Diff(_)
+        | Command::Export(_)
+        | Command::Migrate(_)
+        | Command::Plugin(_)
+        | Command::Debug(_)
+        | Command::Lsp => return None,
     })
 }
 

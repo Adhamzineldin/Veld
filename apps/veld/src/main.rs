@@ -9,6 +9,7 @@ mod error;
 mod fsutil;
 mod pipeline;
 mod registry;
+mod setup;
 mod ui;
 
 use std::process::ExitCode;

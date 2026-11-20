@@ -12,6 +12,7 @@ mod lsp;
 mod migrate;
 mod plugin;
 mod registry;
+mod setup;
 mod watch;
 
 use anyhow::Result;
@@ -28,6 +29,7 @@ pub fn run(cli: &Cli, ui: &Ui) -> Result<Exit> {
         Command::Generate(args) if args.watch => watch::run(ui, config, args),
         Command::Generate(args) => generate::run(ui, config, args),
         Command::Clean(args) => clean::run(ui, config, args),
+        Command::Setup(args) => setup::run(ui, config, args),
         Command::Debug(cmd) => debug::run(ui, config, cmd),
         Command::Lsp => lsp::run(),
         Command::Fmt(args) => fmt::run(ui, config, args),
