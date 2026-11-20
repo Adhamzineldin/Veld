@@ -1,0 +1,31 @@
+package dev.veld.runtime;
+
+import java.util.List;
+
+/**
+ * An endpoint of a server: its description, its middleware and the call into the implementation.
+ *
+ * @param spec the endpoint description
+ * @param middleware the middleware names, in declared order
+ * @param call decodes the bound parameters, calls the implementation and encodes the result
+ */
+public record ServerEndpoint(EndpointSpec spec, List<String> middleware, Invoker call) {
+
+  /** Creates an endpoint (the middleware list is copied). */
+  public ServerEndpoint {
+    middleware = List.copyOf(middleware);
+  }
+
+  /** Calls the implementation. */
+  @FunctionalInterface
+  public interface Invoker {
+    /**
+     * Calls the implementation.
+     *
+     * @param params the bound and validated parameters, by parameter name, in wire form
+     * @param ctx the request context
+     * @return the result in wire form, or {@code null} for an endpoint without a response body
+     */
+    Json call(Json.Obj params, RequestContext ctx) throws Exception;
+  }
+}
