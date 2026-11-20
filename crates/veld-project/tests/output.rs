@@ -252,7 +252,7 @@ fn clean_keeps_user_modified_files() {
     assert_eq!(report.removed, ["d/b.ts"]);
     assert_eq!(report.modified, ["c.ts"]);
     assert_eq!(report.missing, ["a.ts"]);
-    assert_eq!(tree(out), ["c.ts", "d/", "d/mine.ts"]);
+    assert_eq!(tree(out), [MANIFEST, "c.ts", "d/", "d/mine.ts"]);
     assert_eq!(read(out, "c.ts"), "edited by user");
 }
 
@@ -357,4 +357,122 @@ fn never_removes_the_out_directory_itself() {
     clean(&out, false).unwrap();
     assert!(out.is_dir());
     assert!(tree(&out).is_empty());
+}
+
+fn force() -> WriteOptions {
+    WriteOptions {
+        force: true,
+        ..opts()
+    }
+}
+
+#[test]
+fn user_edited_generated_file_is_refused_not_overwritten() {
+    let tmp = tempdir().unwrap();
+    let out = tmp.path();
+    write(out, &set(&[("a.ts", "gen1"), ("b.ts", "b")]), &opts()).unwrap();
+    fs::write(out.join("a.ts"), "my edit").unwrap();
+    let files = set(&[("a.ts", "gen2"), ("b.ts", "b2")]);
+    let err = write(out, &files, &opts()).unwrap_err().to_string();
+    assert!(err.contains("you edited generated file"), "{err}");
+    assert!(err.contains("a.ts") && err.contains("--force"), "{err}");
+    assert_eq!(read(out, "a.ts"), "my edit");
+    assert_eq!(read(out, "b.ts"), "b", "refusal is all-or-nothing");
+    write(out, &files, &force()).unwrap();
+    assert_eq!(read(out, "a.ts"), "gen2");
+}
+
+#[test]
+fn user_edited_file_is_not_deleted_when_it_is_no_longer_generated() {
+    let tmp = tempdir().unwrap();
+    let out = tmp.path();
+    write(out, &set(&[("a.ts", "a"), ("old.ts", "old")]), &opts()).unwrap();
+    fs::write(out.join("old.ts"), "my edit").unwrap();
+    let files = set(&[("a.ts", "a")]);
+    let err = write(out, &files, &opts()).unwrap_err().to_string();
+    assert!(err.contains("you edited generated file"), "{err}");
+    assert_eq!(read(out, "old.ts"), "my edit");
+    write(out, &files, &force()).unwrap();
+    assert!(!out.join("old.ts").exists());
+}
+
+#[test]
+fn user_edit_is_refused_even_when_the_generated_content_is_unchanged() {
+    let tmp = tempdir().unwrap();
+    let out = tmp.path();
+    let files = set(&[("a.ts", "a")]);
+    write(out, &files, &opts()).unwrap();
+    fs::write(out.join("a.ts"), "my edit").unwrap();
+    assert!(write(out, &files, &opts()).is_err());
+    assert_eq!(read(out, "a.ts"), "my edit");
+}
+
+#[test]
+fn dry_run_reports_user_modified_files() {
+    let tmp = tempdir().unwrap();
+    let out = tmp.path();
+    write(out, &set(&[("a.ts", "a")]), &opts()).unwrap();
+    fs::write(out.join("a.ts"), "my edit").unwrap();
+    let dry = WriteOptions {
+        dry_run: true,
+        ..opts()
+    };
+    let plan = write(out, &set(&[("a.ts", "new")]), &dry).unwrap();
+    assert_eq!(plan.action_of("a.ts"), Some(PlanAction::Modified));
+    assert_eq!(plan.conflicts(), ["a.ts"]);
+    assert_eq!(read(out, "a.ts"), "my edit");
+}
+
+#[test]
+fn file_kept_by_clean_is_still_reported_as_user_modified() {
+    let tmp = tempdir().unwrap();
+    let out = tmp.path();
+    write(out, &set(&[("a.ts", "a"), ("c.ts", "c")]), &opts()).unwrap();
+    fs::write(out.join("c.ts"), "my edit").unwrap();
+    let report = clean(out, false).unwrap();
+    assert_eq!(report.modified, ["c.ts"]);
+    let files = set(&[("a.ts", "a"), ("c.ts", "c")]);
+    let err = write(out, &files, &opts()).unwrap_err().to_string();
+    assert!(err.contains("you edited generated file"), "{err}");
+    assert!(!err.contains("not created by Veld"), "{err}");
+    assert_eq!(read(out, "c.ts"), "my edit");
+    // The kept-files manifest lists only the kept file.
+    let manifest = read(out, MANIFEST);
+    assert!(
+        manifest.contains("c.ts") && !manifest.contains("a.ts"),
+        "{manifest}"
+    );
+    write(out, &files, &force()).unwrap();
+    assert_eq!(read(out, "c.ts"), "c");
+}
+
+#[test]
+fn clean_that_keeps_nothing_leaves_no_manifest() {
+    let tmp = tempdir().unwrap();
+    let out = tmp.path();
+    write(out, &set(&[("a.ts", "a")]), &opts()).unwrap();
+    clean(out, false).unwrap();
+    assert!(!out.join(MANIFEST).exists());
+}
+
+#[test]
+fn stale_staging_dirs_are_removed_at_the_start_of_a_write() {
+    let tmp = tempdir().unwrap();
+    let out = tmp.path();
+    let stale = out.join(".veld-staging-dead-1-0");
+    fs::create_dir_all(stale.join("files/sub")).unwrap();
+    fs::write(stale.join("files/sub/x"), "x").unwrap();
+    fs::write(out.join("user.txt"), "mine").unwrap();
+    write(out, &set(&[("a.ts", "a")]), &opts()).unwrap();
+    assert_eq!(tree(out), [MANIFEST, "a.ts", "user.txt"]);
+    // A no-op write cleans up too, and a dry run touches nothing.
+    fs::create_dir_all(out.join(".veld-staging-dead-2-0")).unwrap();
+    let dry = WriteOptions {
+        dry_run: true,
+        ..opts()
+    };
+    write(out, &set(&[("a.ts", "a")]), &dry).unwrap();
+    assert!(out.join(".veld-staging-dead-2-0").exists());
+    write(out, &set(&[("a.ts", "a")]), &opts()).unwrap();
+    assert!(!out.join(".veld-staging-dead-2-0").exists());
 }
