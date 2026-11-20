@@ -48,7 +48,7 @@ Type   = { "scalar": "string|int|long|float|decimal|bool|date|datetime|time|uuid
 Constraints = { "min": n|null, "max": n|null, "min_len": n|null, "max_len": n|null,
                 "pattern": "re"|null, "format": "email|uri|hostname|ipv4|ipv6"|null }
 ```
-In Rust, `Type` and `Decl` kinds are `#[non_exhaustive]` enums, and generators match them exhaustively.
+In Rust, `Type`, `DeclKind`, `Feature` and the other IR enums are deliberately **not** `#[non_exhaustive]`, and inside the workspace nothing matches them with a wildcard `_ =>` arm (clippy enforces this with `wildcard_enum_match_arm`). Adding a variant therefore breaks the build at every site that has not handled it, so "nothing forgotten" is checked by the compiler. External plugins are protected by other means: a plugin only sees the JSON IR, which is versioned by `ir_version`, and a new `Feature` is only ever sent to a plugin whose declared capabilities cover it (§4 and `spec/plugin-protocol.md`).
 
 ## 3. Services
 

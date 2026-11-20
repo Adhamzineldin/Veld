@@ -151,7 +151,7 @@ impl Ir {
                         Binding::Body if p.stream => {
                             f.insert(Feature::StreamingWs);
                         }
-                        _ => {}
+                        Binding::Body | Binding::Path | Binding::Query | Binding::QueryObject => {}
                     }
                     if !p.constraints.is_empty() {
                         f.insert(Feature::Constraints);
@@ -245,7 +245,7 @@ impl Decl {
         match &self.kind {
             DeclKind::Model(m) => &m.fields,
             DeclKind::Error(e) => &e.fields.fields,
-            _ => &[],
+            DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => &[],
         }
     }
 
@@ -257,7 +257,6 @@ impl Decl {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-#[non_exhaustive]
 pub enum DeclKind {
     Model(Model),
     Error(ErrorDecl),
@@ -400,7 +399,6 @@ impl fmt::Display for Scalar {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[non_exhaustive]
 pub enum Type {
     Scalar(Scalar),
     List(Box<Type>),
@@ -679,7 +677,6 @@ pub enum AuthKind {
 /// Language features a generator may or may not support (`spec/ir.md` §4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[non_exhaustive]
 pub enum Feature {
     Unions,
     Constraints,
