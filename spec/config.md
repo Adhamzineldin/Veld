@@ -90,8 +90,8 @@ url = "https://registry.example.com"
 
 | Emitter | Role | `framework` values (versions) | `[targets.options]` keys |
 |---|---|---|---|
-| `node` | server | `express`, `fastify`, `hono`, `node-http` (unversioned) | `typescript` |
-| `typescript` | client | none | `typescript` |
+| `node` | server | `express`, `fastify`, `hono`, `node-http` (unversioned), `nest` (`"10"`) | `typescript`, `framework-version` |
+| `typescript` | client | `react` (`"18"`), `vue` (`"3"`); none is the plain client | `typescript`, `framework-version` |
 | `java` | server | `jdk` (unversioned), `spring` (`"3"`) | `package`, `java`, `framework-version` |
 | `java` | client | none | `package`, `java` |
 
@@ -118,7 +118,7 @@ framework-version = "3"    # the framework version: Spring Boot 3
 |---|---|---|---|
 | `java` | `java` | `"17"`, `"21"` | `"17"` |
 | `typescript` | `typescript`, `node` | `"es2020"`, `"es2022"` | `"es2020"` |
-| `framework-version` | any emitter whose framework has versions | the framework's versions (`spring`: `"3"`) | the first version |
+| `framework-version` | any emitter whose framework has versions | the framework's versions (`spring`: `"3"`, `nest`: `"10"`, `react`: `"18"`, `vue`: `"3"`) | the first version |
 
 Checks, all reported before generating, with a message that lists the valid values:
 
