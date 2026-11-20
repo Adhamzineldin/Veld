@@ -19,7 +19,7 @@ Options (`[targets.options]`, validated, unknown keys are `E0802`):
 | `java` | `"17"` | The Java release the output targets: `"17"` or `"21"` (the oldest supported is the default). Anything else is `E0802`, and the message lists the valid values. The generated code is the same for every release today; `Profile::java_at_least(21)` is how newer syntax would be gated. |
 | `framework-version` | the adapter's first version | The version of the framework. Only `spring` has versions (`"3"`: Spring Boot 3, Jakarta). A version outside the adapter's list, or a version for an unversioned framework (`jdk`), is `E0803`. |
 
-`framework` (server only): `jdk` (default) or `spring`. Any other value, or a framework on a client target, is `E0803`. A framework whose `min_language` is newer than the chosen `java` release is `E0803` too (Spring Boot 3 and the JDK adapter both need Java 17). The framework list, versions and minimums come from the adapter registry (`crates/emitters/java/src/frameworks/`: `jdk.rs`, `spring.rs`), the single source of truth. The JDK adapter is always emitted; `spring` adds the Spring adapter.
+`framework` (server only): `jdk` (default) or `spring`. Any other value, or a framework on a client target, is `E0803`. A framework whose `min_language` is newer than the chosen `java` release is `E0803` too (Spring Boot 3 and the JDK adapter both need Java 17). The framework list, versions and minimums come from the adapter registry (`crates/emitters/java/src/frameworks/`: `jdk.rs`, `spring.rs`), the single source of truth. Each framework emits only its own files: `jdk` (the default) emits `JdkHttpServerAdapter` and no Spring file, `spring` emits the Spring adapter and no JDK adapter.
 
 Files go to `<out>/<base as path>/...`. Below the base package:
 
@@ -30,7 +30,8 @@ Files go to `<out>/<base as path>/...`. Below the base package:
 <base>.<package>.client                <Service>Client and its <Operation>Request records   (client role)
 <base>.<package>.server                <Service>Service, <Service>Hooks, <Service>Handler,
                                        <Operation>Request records                          (server role)
-<base>.adapters                        JdkHttpServerAdapter (+ SpringAdapter)              (server role)
+<base>.adapters                        JdkHttpServerAdapter | SpringAdapter (by framework)  (server role)
+<base>.adapters.<package>                 <Service>Controller (spring only)                   (server role)
 <base>.clients.<service>.*             a self-contained client tree for each consumed service (server role)
 ```
 The runtime package is `<base>.runtime`. Packages named `adapters`, `clients`, `prelude` and `runtime` are reserved below the base; identifiers that are Java keywords or clash with `Object` methods are escaped.
@@ -97,10 +98,10 @@ VeldHandler handler = OrdersHandler.create(impl, hooks);
 HttpServer server = JdkHttpServerAdapter.listen(handler, new InetSocketAddress(8080));
 ```
 - The constructor of `<Service>Hooks` takes exactly the hooks the endpoints need (auth kinds, then middleware by first use), so a missing hook is a compile error. A service that needs none also gets `OrdersHandler.create(impl)`.
-- `VeldHandler` is `Optional<VeldResponse> handle(VeldRequest)`; empty means no route matched. Routing is done by the runtime's router from the IR paths: exact on literal segments, a trailing slash is ignored, HEAD is not implicit.
+- `VeldHandler` is `Optional<VeldResponse> handle(VeldRequest)`; empty means no route matched. `invoke(String endpoint, VeldRequest)` runs one named endpoint through the same pipeline without choosing it from the method and path (for frameworks that route themselves); empty when the endpoint is unknown or the path does not fit it. Routing is done by the runtime's router from the IR paths: exact on literal segments, a trailing slash is ignored, HEAD is not implicit.
 - Pipeline: match, auth (`401 Unauthorized`), middleware in declared order, bind and validate path/query/headers/body (`422 ValidationError` with `issues`), call the implementation, optionally validate the response, serialise with the declared success status.
 - `RequestContext` has `method()`, `path()`, `headers()`, `header(name)`, `principal()` and `raw()` (the framework's request object).
-- **Adapters.** `JdkHttpServerAdapter` (`toHttpHandler`, `listen`) serves on `com.sun.net.httpserver`; unmatched requests get an empty 404. `SpringAdapter` is a `@RestController` for `/**` taking a `VeldHandler` bean; emitted only for `framework = "spring"`, the only file that imports Spring.
+- **Adapters.** `JdkHttpServerAdapter` (`toHttpHandler`, `listen`) serves on `com.sun.net.httpserver`; unmatched requests get an empty 404. The Spring adapter (`framework = "spring"`, Spring Boot 3, Jakarta, Java 17+) is native: one `@RestController` per service, `<base>.adapters.<package>.<Service>Controller`, with a `@GetMapping`/`@PostMapping`/`@PutMapping`/`@PatchMapping`/`@DeleteMapping` method per endpoint at its real path (`{id}` path variables), so actuator and springdoc see the real routes. Its constructor takes the `<Service>Service` bean and the `<Service>Hooks` bean (for a service that needs no hooks, an optional `ObjectProvider<<Service>Hooks>`). Each method calls `SpringAdapter.respond(handler, "<endpoint>", request)`, which builds a `VeldRequest` from the servlet request, runs the endpoint through `VeldHandler.invoke(endpoint, request)` (the same pipeline as every other adapter, so auth, middleware, validation, declared-error mapping, `Internal` without leaks and problem+json are not reimplemented) and writes the `VeldResponse`. Register the controllers by component-scanning `<base>.adapters`. The controllers and `SpringAdapter` are the only generated files that import Spring.
 - A server target also contains, for each service in `consumes`, a complete client tree under `<base>.clients.<service>`. `consumes` cycles are legal.
 
 ## 6. Tests every change must keep green
@@ -110,6 +111,7 @@ HttpServer server = JdkHttpServerAdapter.listen(handler, new InetSocketAddress(8
   - everything compiles with `javac --release 17` and `--release 21`, both with `-Xlint:all -Werror`, and every test below runs for both releases (the matrix is `RELEASES` in `tests/common/mod.rs`, the option is `java = "17"|"21"`);
   - Java round trip: the generated server on `JdkHttpServerAdapter` (port 0), every endpoint through the generated client: success, every declared error as the right class with `op`, an undeclared exception as `Internal` 500 without its message, 422 with issues, 401 then success, middleware called;
   - cross-language: the generated TypeScript client against the Java server, and the generated Java client against the Node server, with typed errors and correct `sig`/`op`;
+  - import hygiene: no generated Java file imports a type it does not mention (`javac` does not report this, so the test scans the imports of every generated file), and no file refers to a type by its fully qualified name unless another type claimed the simple name;
   - wire goldens `tests/wire/*.json` through the generated schemas, the same bytes the TypeScript runtime produces;
   - cross-package equality across several generated packages;
-  - the Spring adapter is compiled only when `VELD_SPRING_CLASSPATH` is set.
+  - Spring: `spring_adapter_serves_the_round_trip` generates the toolchain contract with `framework = "spring"`, builds `tests/toolchain/java/spring` (Spring Boot 3.5.6, `spring-boot-starter-web` only, Maven 3.9.9 through the committed Maven Wrapper) with `mvnw -q -B package -DskipTests`, starts the jar (`--server.port=0`; the port comes from Spring's own `Tomcat started on port` log line and readiness is an answered `GET /__probe`) and runs the same client scenario (Java client, then the generated TypeScript client) against it, with the server counters read from a test-only `/__probe`. It is skipped, or fails under `VELD_REQUIRE_TOOLCHAINS=1`, when neither the network nor a populated `~/.m2` can provide Spring. CI runs it in the `spring` job.

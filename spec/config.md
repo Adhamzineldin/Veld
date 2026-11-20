@@ -90,8 +90,8 @@ url = "https://registry.example.com"
 
 | Emitter | Role | `framework` values (versions) | `[targets.options]` keys |
 |---|---|---|---|
-| `node` | server | `express`, `fastify`, `hono`, `node-http` (unversioned), `nest` (`"10"`) | `typescript`, `framework-version` |
-| `typescript` | client | `react` (`"18"`), `vue` (`"3"`); none is the plain client | `typescript`, `framework-version` |
+| `node` | server | `express`, `fastify`, `hono`, `node-http` (unversioned), `nest` (`"10"`) | `typescript`, `framework-version`, `package-name` |
+| `typescript` | client | `react` (`"18"`), `vue` (`"3"`); none is the plain client | `typescript`, `framework-version`, `package-name` |
 | `java` | server | `jdk` (unversioned), `spring` (`"3"`) | `package`, `java`, `framework-version` |
 | `java` | client | none | `package`, `java` |
 
@@ -128,12 +128,25 @@ Checks, all reported before generating, with a message that lists the valid valu
 
 The language and `framework-version` keys belong to the core: they are removed before the emitter's own typed options are checked. For a `plugin:<name>` emitter the language key is the language `id` of the plugin's `hello` (`kotlin = "2.0"`), see `plugin-protocol.md`. Options are checked against the emitter's typed options: an unknown key is `E0802`. A `plugin:<name>` emitter declares its own values and options.
 
+## Importable packages and `veld setup`
+
+Every `node` and `typescript` target writes a `package.json` into its `out`: name `@veld/<target-name>` (override with the target option `package-name`), `private`, no dependencies, `main` and `types` pointing at `index.ts`. A `react`, `vue` or `nest` target declares its framework as a `peerDependency` only. Consumed-service clients of a server are re-exported by the same package as namespaces (`import { transactions } from '@veld/accounts-api'`).
+
+`veld setup [target] [--dry-run]` wires each target into the app that consumes it. The app is the target's `app = "path"` key (relative to `veld.toml`), else the nearest ancestor of `out`, up to the project root, that has a `package.json` (TypeScript) or a `pom.xml`, `build.gradle.kts` or `build.gradle` (Java).
+
+- **TypeScript:** adds `"@veld/<name>": "file:<relative out>"` to the app's `dependencies`, then run `npm install`. A `file:` dependency is ordinary package resolution, so it works for `tsc`, Node (`tsx`), Vite and test runners alike; a `tsconfig` `paths` alias would only serve `tsc`.
+- **Maven:** adds a `build-helper-maven-plugin` `add-source` execution `veld-<target>` for `out` (nothing to do when `out` is `src/main/java`).
+- **Gradle:** appends a `// veld:begin <id>` ... `// veld:end <id>` block with `sourceSets.main.java.srcDir(...)`.
+
+Edits keep the file's formatting, are idempotent, and never touch unrelated keys. When a file cannot be edited safely, setup prints the exact snippet to paste. `veld generate` prints a one-line hint while a target is not wired yet.
+
 ## Rules
 
 - Exactly one of `[project].contracts` or `[services.*]` defines the packages. With no `[services]` section, the project itself is a single service named `project.name`.
 - `consumes` entries MUST name existing services (`E0702`). Listing the service itself is a warning (`W0701`). Cycles are allowed.
 - A target needs `role`, `emitter` and `out`.
   - `service` is required for `role = "server"`.
+  - `app` (optional) is the directory of the app that consumes the output, for `veld setup`.
   - Two targets MUST NOT share an `out` directory (`E0703`).
   - `out` MUST NOT be the project root or a contracts directory (`E0704`).
 - `[plugins.x].entry` is optional. When set, Veld runs `command` with the entry path appended (unless `command` already contains it), and `sha256` is the hash of the entry file, checked before every run. Without `entry`, `sha256` is the hash of the executable that `command` resolves to. For a script plugin always set `entry`, because hashing the interpreter protects nothing.
