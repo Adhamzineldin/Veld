@@ -3,5 +3,6 @@
 src/**
 .gitignore
 tsconfig.json
-node_modules/**
-out/test/**
+node_modules/.bin/**
+**/*.map
+PUBLISHING.md

@@ -1,8 +1,8 @@
 {
   "name": "veld-vscode",
   "displayName": "Veld",
-  "description": "Veld contract language support — syntax highlighting, snippets, and diagnostics",
-  "version": "0.2.0",
+  "description": "Veld contract language support: a thin client for the `veld lsp` language server",
+  "version": "2.0.0",
   "publisher": "adhamzineldin",
   "license": "MIT",
   "engines": {
@@ -10,16 +10,19 @@
   },
   "categories": [
     "Programming Languages",
-    "Snippets",
     "Linters"
   ],
   "icon": "icon.png",
-  "keywords": ["veld", "api", "contract", "code-generation", "schema"],
+  "keywords": ["veld", "api", "contract", "code-generation", "lsp"],
   "repository": {
     "type": "git",
     "url": "https://github.com/Adhamzineldin/Veld"
   },
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:veld",
+    "workspaceContains:**/*.veld",
+    "workspaceContains:veld.toml"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
@@ -41,69 +44,20 @@
         "path": "./syntaxes/veld.tmLanguage.json"
       }
     ],
-    "semanticTokenScopes": [
-      {
-        "language": "veld",
-        "scopes": {
-          "type": ["entity.name.type.reference.veld"],
-          "class": ["entity.name.type.model.veld"],
-          "enum": ["entity.name.type.enum.veld"],
-          "namespace": ["entity.name.namespace.module.veld"],
-          "function": ["entity.name.function.action.veld"],
-          "property": ["variable.other.field.veld"],
-          "keyword": ["storage.type.veld"],
-          "parameter": ["support.function.directive.veld"],
-          "string": ["string.quoted.double.veld"],
-          "number": ["constant.numeric.veld"],
-          "comment": ["comment.line.double-slash.veld"],
-          "variable": ["entity.name.import.veld"],
-          "decorator": ["entity.other.attribute-name.annotation.veld"],
-          "enumMember": ["constant.language.http-method.veld"]
-        }
-      }
-    ],
-    "snippets": [
-      {
-        "language": "veld",
-        "path": "./snippets/veld.json"
-      },
-      {
-        "language": "json",
-        "path": "./snippets/veld-config.json"
-      }
-    ],
-    "jsonValidation": [
-      {
-        "fileMatch": ["veld.config.json", "**/veld/veld.config.json"],
-        "url": "./veld-config.schema.json"
-      }
-    ],
-    "commands": [
-      {
-        "command": "veld.validate",
-        "title": "Veld: Validate Contract"
-      },
-      {
-        "command": "veld.generate",
-        "title": "Veld: Generate Code"
-      },
-      {
-        "command": "veld.generateDryRun",
-        "title": "Veld: Generate (Dry Run)"
-      }
-    ],
     "configuration": {
       "title": "Veld",
       "properties": {
-        "veld.executablePath": {
+        "veld.path": {
           "type": "string",
           "default": "veld",
-          "description": "Path to the veld CLI executable. Defaults to 'veld' (must be on PATH)."
+          "scope": "machine-overridable",
+          "description": "Path to the `veld` executable that is started as `veld lsp`. The default finds it on PATH."
         },
-        "veld.validateOnSave": {
-          "type": "boolean",
-          "default": true,
-          "description": "Run 'veld validate' automatically when a .veld file is saved."
+        "veld.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the Veld language server."
         }
       }
     }
@@ -114,10 +68,13 @@
     "watch": "tsc -watch -p ./",
     "package": "vsce package"
   },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
-    "typescript": "^5.3.0",
-    "@vscode/vsce": "^2.24.0"
+    "@vscode/vsce": "^2.24.0",
+    "typescript": "^5.3.0"
   }
 }
