@@ -204,9 +204,18 @@ out = "generated/server"
 fn cached(app: &Path, file: &str) -> PathBuf {
     app.join(".veld/packages/@acme/billing/1.2.0").join(file)
 }
+/// A running registry (real Go server, throwaway PostgreSQL) with a user, the `acme` org and a
+/// write token. Dropping it tears everything down.
+struct Stack {
+    // Field order matters: the processes stop before the directory is removed.
+    _env: Env,
+    work: tempfile::TempDir,
+    base: String,
+    token: String,
+}
 
-#[test]
-fn publish_add_check_generate_and_tamper_against_the_real_registry() {
+/// Starts the stack; `None` when `go` or PostgreSQL is missing (unless they are required).
+fn start_stack() -> Option<Stack> {
     let pg = pg_bin();
     if !have_go() || pg.is_none() {
         let why = format!(
@@ -216,7 +225,7 @@ fn publish_add_check_generate_and_tamper_against_the_real_registry() {
         );
         assert!(!require(), "VELD_REQUIRE_TOOLCHAINS=1 but {why}");
         eprintln!("SKIPPED registry e2e ({why})");
-        return;
+        return None;
     }
     let work = tempdir().unwrap();
     let work_path = work.path().to_path_buf();
@@ -283,6 +292,21 @@ fn publish_add_check_generate_and_tamper_against_the_real_registry() {
     );
     let token = tok["token"].as_str().unwrap().to_string();
     assert!(token.starts_with("vtk_"), "unexpected token shape");
+    Some(Stack {
+        _env: env,
+        work,
+        base,
+        token,
+    })
+}
+
+#[test]
+fn publish_add_check_generate_and_tamper_against_the_real_registry() {
+    let Some(stack) = start_stack() else {
+        return;
+    };
+    let work_path = stack.work.path().to_path_buf();
+    let (base, token) = (stack.base.clone(), stack.token.clone());
 
     let home = work_path.join("home");
     let lib = work_path.join("lib");
@@ -454,4 +478,220 @@ fn publish_add_check_generate_and_tamper_against_the_real_registry() {
         .stderr(predicate::str::contains("not logged in"));
 
     // 7. Teardown happens in `Env::drop`.
+}
+
+const MONEY: &str =
+    "/// An amount of money.\nmodel Money {\n  amount: decimal\n  currency: string\n}\n";
+
+const BILLING_INVOICES: &str = "use @acme/money:money.{Money}\n\n/// An invoice with a total in money.\nmodel Invoice {\n  id: uuid\n  total: Money\n}\n";
+
+const PAYSLIPS: &str =
+    "use @acme/money:money.{Money}\n\nmodel Payslip {\n  id: uuid\n  net: Money\n}\n";
+
+/// A library project that publishes `package` at `version` from `contracts_dir`.
+fn lib_project(base: &str, name: &str, version: &str) -> String {
+    format!(
+        "[project]\nname = \"libs\"\n\n[libraries.{name}]\ncontracts = \"{name}\"\npackage = \"@acme/{name}\"\nversion = \"{version}\"\n\n[registry]\nurl = \"{base}\"\n"
+    )
+}
+
+fn package_versions(base: &str, name: &str) -> Value {
+    api(
+        "GET",
+        &format!("{base}/api/v1/packages/acme/{name}/versions"),
+        None,
+        None,
+    )
+}
+
+#[test]
+fn transitive_dependencies_against_the_real_registry() {
+    let Some(stack) = start_stack() else {
+        return;
+    };
+    let work = stack.work.path().to_path_buf();
+    let (base, token) = (stack.base.clone(), stack.token.clone());
+    let home = work.join("home");
+    let veld_in = |dir: &Path| {
+        let mut cmd = veld(dir);
+        cmd.env("VELD_HOME", &home);
+        cmd
+    };
+    let money = work.join("money");
+    let billing = work.join("billing");
+    let payroll = work.join("payroll");
+    let app = work.join("app");
+    for d in [&money, &billing, &payroll, &app] {
+        fs::create_dir_all(d).unwrap();
+    }
+    veld_in(&money)
+        .args(["login", "--registry", &base])
+        .write_stdin(format!("{token}\n"))
+        .assert()
+        .success();
+
+    // 1. @acme/money 1.0.0 has no dependencies.
+    write(&money, "veld.toml", &lib_project(&base, "money", "1.0.0"));
+    write(&money, "money/money.veld", MONEY);
+    veld_in(&money).arg("publish").assert().success();
+
+    // 2. @acme/billing depends on money ^1 and uses its types.
+    write(
+        &billing,
+        "veld.toml",
+        &lib_project(&base, "billing", "1.0.0"),
+    );
+    write(&billing, "billing/invoices.veld", BILLING_INVOICES);
+    veld_in(&billing)
+        .args(["add", "@acme/money@^1"])
+        .assert()
+        .success();
+    veld_in(&billing)
+        .arg("publish")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("published @acme/billing@1.0.0"));
+
+    // The registry exposes the dependencies in its versions listing, so resolving never
+    // downloads a package.
+    let listed = package_versions(&base, "billing");
+    assert_eq!(
+        listed[0]["dependencies"],
+        json!({"@acme/money": "^1"}),
+        "{listed}"
+    );
+    assert_eq!(
+        package_versions(&base, "money")[0]["dependencies"],
+        json!({})
+    );
+
+    // 3. In a project, `veld add @acme/billing` installs money transitively.
+    write(
+        &app,
+        "veld.toml",
+        &format!("{APP_TOML}\n[registry]\nurl = \"{base}\"\n"),
+    );
+    write(&app, "contracts/orders.veld", ORDERS);
+    veld_in(&app)
+        .args(["add", "@acme/billing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("added @acme/billing@1.0.0"))
+        .stdout(predicate::str::contains("1 package it depends on"));
+    let toml = fs::read_to_string(app.join("veld.toml")).unwrap();
+    assert!(
+        toml.contains("\"@acme/billing\" = \"^1.0.0\"") && !toml.contains("@acme/money"),
+        "only the direct dependency is written to veld.toml:\n{toml}"
+    );
+    let lock = fs::read_to_string(app.join("veld.lock")).unwrap();
+    assert!(
+        lock.contains("name = \"@acme/money\"")
+            && lock.contains("dependencies = [\"@acme/money\"]"),
+        "the lock holds the whole graph:\n{lock}"
+    );
+    let installed = |pkg: &str, v: &str| app.join(".veld/packages/@acme").join(pkg).join(v);
+    assert!(
+        installed("billing", "1.0.0")
+            .join("contracts/invoices.veld")
+            .is_file()
+    );
+    assert!(
+        installed("money", "1.0.0")
+            .join("contracts/money.veld")
+            .is_file()
+    );
+
+    veld_in(&app).arg("check").assert().success();
+    veld_in(&app).arg("generate").assert().success();
+    let generated = tree(&app.join("generated/server"));
+    let all: String = generated
+        .values()
+        .map(|b| String::from_utf8_lossy(b).into_owned())
+        .collect();
+    assert!(
+        all.contains("Invoice") && all.contains("Money") && all.contains("currency"),
+        "billing's types and the money types they reference are generated: {:?}",
+        generated.keys()
+    );
+
+    // `veld install` restores exactly the locked graph.
+    fs::remove_dir_all(app.join(".veld")).unwrap();
+    veld_in(&app)
+        .arg("install")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "2 packages installed from veld.lock",
+        ));
+    assert!(
+        installed("money", "1.0.0")
+            .join("contracts/money.veld")
+            .is_file()
+    );
+
+    // 4. The project may only use packages it depends on directly.
+    let orders_with_money = format!("use @acme/money:money.{{Money}}\n{ORDERS}");
+    write(&app, "contracts/orders.veld", &orders_with_money);
+    veld_in(&app)
+        .arg("check")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("E0206"))
+        .stderr(predicate::str::contains(
+            "`@acme/money` is not a direct dependency of the project",
+        ))
+        .stderr(predicate::str::contains("veld add @acme/money"));
+    write(&app, "contracts/orders.veld", ORDERS);
+    veld_in(&app).arg("check").assert().success();
+
+    // 5. A conflict: payroll needs money ^2, billing needs money ^1.
+    write(&money, "veld.toml", &lib_project(&base, "money", "2.0.0"));
+    veld_in(&money).arg("publish").assert().success();
+    write(
+        &payroll,
+        "veld.toml",
+        &lib_project(&base, "payroll", "1.0.0"),
+    );
+    write(&payroll, "payroll/payslips.veld", PAYSLIPS);
+    veld_in(&payroll)
+        .args(["add", "@acme/money@^2"])
+        .assert()
+        .success();
+    veld_in(&payroll).arg("publish").assert().success();
+
+    let toml_before = fs::read_to_string(app.join("veld.toml")).unwrap();
+    let lock_before = fs::read_to_string(app.join("veld.lock")).unwrap();
+    let out = veld_in(&app)
+        .args(["add", "@acme/payroll"])
+        .assert()
+        .code(1);
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).into_owned();
+    assert!(
+        stderr.contains("cannot resolve @acme/money")
+            && stderr.contains("veld.toml → @acme/billing@1.0.0 → @acme/money@^1")
+            && stderr.contains("veld.toml → @acme/payroll@1.0.0 → @acme/money@^2"),
+        "the conflict shows both dependency paths:\n{stderr}"
+    );
+    assert_eq!(
+        fs::read_to_string(app.join("veld.toml")).unwrap(),
+        toml_before
+    );
+    assert_eq!(
+        fs::read_to_string(app.join("veld.lock")).unwrap(),
+        lock_before
+    );
+    assert!(
+        !app.join(".veld/packages/@acme/payroll").exists(),
+        "a failed add installs nothing"
+    );
+    veld_in(&app).arg("check").assert().success();
+
+    // 6. Tampering with a transitive package is caught too.
+    let money_file = installed("money", "1.0.0").join("contracts/money.veld");
+    fs::write(&money_file, "model Money { amount: decimal }\n").unwrap();
+    veld_in(&app)
+        .arg("check")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("checksum mismatch"));
 }
