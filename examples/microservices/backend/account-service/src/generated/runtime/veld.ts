@@ -150,7 +150,9 @@ export class VeldHttpError extends Error {
 /** A network failure, or a response body that cannot be understood. */
 export class VeldTransportError extends Error {
   constructor(message: string, cause?: unknown) {
-    super(message, cause === undefined ? undefined : { cause });
+    super(message);
+    // `new Error(message, { cause })` needs ES2022; this is the same non-enumerable own property.
+    if (cause !== undefined) Object.defineProperty(this, 'cause', { value: cause, writable: true, configurable: true });
     this.name = 'VeldTransportError';
   }
 }
@@ -388,7 +390,7 @@ function check(s: Schema, v: unknown, path: string, out: Issue[], o: ValidateOpt
       return checkObject(s, v, path, out, o);
     case 'union': {
       const label = isObject(v) ? v[s.d] : undefined;
-      const arm = typeof label === 'string' && Object.hasOwn(s.arms, label) ? s.arms[label] : undefined;
+      const arm = typeof label === 'string' && Object.prototype.hasOwnProperty.call(s.arms, label) ? s.arms[label] : undefined;
       if (!arm) return push(out, `${path}.${s.d}`, 'discriminator', `must be one of ${Object.keys(s.arms).join(', ')}`);
       return check(arm, v, path, out, o);
     }
@@ -461,7 +463,7 @@ function mapValue(s: Schema, v: unknown, o: MapOpts): unknown {
       return mapObject(s, v, o);
     case 'union': {
       const label = isObject(v) ? v[s.d] : undefined;
-      const arm = typeof label === 'string' && Object.hasOwn(s.arms, label) ? s.arms[label] : undefined;
+      const arm = typeof label === 'string' && Object.prototype.hasOwnProperty.call(s.arms, label) ? s.arms[label] : undefined;
       if (!arm) return v;
       const mapped = mapValue(arm, v, o);
       return isObject(mapped) ? { ...mapped, [s.d]: label } : mapped;
