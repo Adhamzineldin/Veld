@@ -34,9 +34,10 @@ brew install maayn-veld/tap/maayn-veld
 ## A 60-second tour
 
 ```bash
-veld init          # creates veld.toml and contracts/hello.veld
+veld init          # asks a few questions (or use flags); creates veld.toml and contracts
 veld check         # compile the contracts
 veld generate      # write the server and client
+veld setup         # make them importable as @veld/<target>
 ```
 
 A contract (see [`spec/language.md`](spec/language.md)):
@@ -98,7 +99,97 @@ declaration. Veld validates requests on the server and in the client, and maps e
 `application/problem+json`.
 
 More complete projects are in [`examples/`](examples): `hello`, `microservices` and
-`library-package`. Their generated output is committed, and a test checks that it is up to date.
+`library-package`. Each has hand-written servers and frontends that import the generated code, and
+end-to-end tests run them (the generated output is committed and checked to be up to date).
+
+## Using it in your code
+
+Generated folders are npm packages (`@veld/<target name>`), and `veld setup` wires them into the app
+that consumes them, so your code never imports a relative path into `src/generated`. This is the
+[`hello` example](examples/hello), exactly as it is in the repository:
+
+```bash
+veld generate        # writes server/src/generated and web/src/generated (each with a package.json)
+veld setup           # adds "@veld/api" and "@veld/web" as file: dependencies of the two apps
+npm install          # in server/ and web/
+```
+
+The server implements the generated `HelloService` (`server/src/main.ts`):
+
+```ts
+// The hello server: implement the generated `HelloService` and mount its handler on Express.
+// `@veld/api` is the generated package (see `veld setup`), not a relative path.
+import express from 'express';
+import { NotFound, createHelloHandler, toExpress } from '@veld/api';
+import type { GreetRequest, HelloService } from '@veld/api';
+
+/** The business logic. Throw a generated error to answer with its HTTP status. */
+export const hello: HelloService = {
+  async greet({ name }: GreetRequest) {
+    if (name.toLowerCase() === 'nobody') {
+      throw new NotFound({ resource: name });
+    }
+    return { message: `Hello, ${name}!` };
+  },
+};
+
+const app = express();
+app.use(toExpress(createHelloHandler(hello)));
+
+const port = Number(process.env.PORT ?? 3000);
+app.listen(port, '127.0.0.1', () => {
+  console.log(`hello server listening on http://127.0.0.1:${port}`);
+});
+```
+
+The React app (`web/src/App.tsx` and `web/src/Greeter.tsx`) uses the generated client and hooks
+(the client target has `framework = "react"`):
+
+```tsx
+import { HelloClient } from '@veld/web';
+import { VeldProvider } from '@veld/web/hello/react';
+import { Greeter } from './Greeter';
+
+/** One client for the whole app. Same origin: Vite proxies `/hello` to the server in development. */
+const client = new HelloClient({ baseUrl: window.location.origin });
+
+export function App() {
+  return (
+    <VeldProvider clients={{ hello: client }}>
+      <h1>Hello</h1>
+      <Greeter />
+    </VeldProvider>
+  );
+}
+```
+
+```tsx
+import { useState } from 'react';
+import { NotFound } from '@veld/web';
+import { useGreet } from '@veld/web/hello/react';
+
+/** Greets whoever you type. `nobody` makes the server answer with the contract's typed NotFound. */
+export function Greeter() {
+  const [name, setName] = useState('');
+  // A null request holds the call back until there is a name.
+  const greeting = useGreet(name === '' ? null : { name });
+  return (
+    <section>
+      <label>
+        Name <input value={name} onChange={(e) => setName(e.target.value)} />
+      </label>
+      {greeting.loading && <p role="status">Loading...</p>}
+      {greeting.data && <p role="status">{greeting.data.message}</p>}
+      {NotFound.matches(greeting.error) && <p role="alert">Nobody called {name} was found.</p>}
+    </section>
+  );
+}
+```
+
+For Java, `veld setup` adds the generated sources to your Maven (`build-helper-maven-plugin`) or
+Gradle (`sourceSets.main.java.srcDir`) build and you import the generated packages normally. A
+server also gets the clients of the services it consumes, through the same package
+(`import { iam, transactions } from '@veld/accounts-api'`). See [`examples/microservices`](examples/microservices).
 
 ## Targets
 
@@ -110,8 +201,8 @@ More complete projects are in [`examples/`](examples): `hello`, `microservices` 
 | `plugin:<name>` | any | whatever an external emitter plugin produces | [`spec/plugin-protocol.md`](spec/plugin-protocol.md) |
 
 If a target cannot represent a feature (for example streaming in Java), generation fails with
-`E0801`. It never emits wrong code. React, Vue and other framework flavours of the client are not
-part of 2.0 yet. `veld export openapi` produces an OpenAPI 3.1 document.
+`E0801`. It never emits wrong code. The `typescript` client can add React hooks or Vue composables (`framework = "react" | "vue"`), and
+the `node` server also supports `nest`. `veld export openapi` produces an OpenAPI 3.1 document.
 
 ## Microservices and mutual consumes
 
@@ -149,8 +240,9 @@ repository tests this with generated TypeScript and Java that call each other
 
 | Command | What it does |
 |---|---|
-| `veld init` | Create `veld.toml` and an example contract |
+| `veld init` | Create `veld.toml` and starter contracts. On a terminal with no flags it asks (project, single service or workspace, servers, client, output folders); flags `--name`, `--workspace a,b`, `--server node:express`, `--client typescript:react`, `--yes` answer the same questions without a TTY |
 | `veld check` | Compile all contracts and report diagnostics |
+| `veld setup [target]` | Wire generated targets into your apps: `@veld/<target>` `file:` dependencies in `package.json`, a source root in `pom.xml` or `build.gradle(.kts)`. `--dry-run` shows the edits; idempotent and format preserving |
 | `veld generate [target]` | Generate code for every target, or one by name. `--dry-run` writes nothing. Refuses to overwrite or delete a generated file you edited (`--force` overrides) |
 | `veld clean` | Remove generated files that you have not modified |
 | `veld fmt` | Format `.veld` files canonically |

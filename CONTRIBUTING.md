@@ -39,7 +39,7 @@ cargo insta test --review                # snapshot changes need a human review
 
 The toolchain tests compile generated code with `tsc` and `javac`. Install the pinned TypeScript with
 `npm ci --prefix tests/toolchain/ts` and have a JDK 21 on `PATH` (it compiles for `--release 17` and `21`). Set `VELD_REQUIRE_TOOLCHAINS=1` so
-a missing tool fails the test instead of skipping it. CI does this.
+a missing tool fails the test instead of skipping it. CI does this. The Spring test builds `tests/toolchain/java/spring` with the committed Maven Wrapper (`sh mvnw`, `mvnw.cmd`; no Maven install needed, but it downloads Maven and Spring Boot 3 on first run; it skips when offline without a populated `~/.m2`).
 
 ## How the build enforces the architecture
 
