@@ -59,19 +59,6 @@ fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiag
             format!("unknown service id {}", bad.0),
         )]);
     }
-    if let Some(f) = &req.framework
-        && (req.role == Role::Client || !FRAMEWORKS.contains(&f.as_str()))
-    {
-        let expected = if req.role == Role::Client {
-            "none for the client role".to_string()
-        } else {
-            format!("{FRAMEWORKS:?}")
-        };
-        return Err(vec![GenDiagnostic::new(
-            "E0803",
-            format!("unknown framework `{f}`; expected {expected}"),
-        )]);
-    }
     let diags = check_capabilities(req.ir, req, caps);
     if diags.is_empty() { Ok(()) } else { Err(diags) }
 }

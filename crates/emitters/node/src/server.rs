@@ -5,7 +5,7 @@ use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_emit_typescript::client::{RequestNames, write_request_type, write_spec_fields};
 use veld_emit_typescript::tree::{FileCtx, Tree};
 use veld_emit_typescript::types::ts_type;
-use veld_emit_typescript::util::{add_file, doc_comment, prop_key, ts_str};
+use veld_emit_typescript::util::{add_file, doc_comment, method_key, prop_key, ts_str};
 use veld_ir::{AuthKind, Endpoint, Service};
 
 /// Root-relative module path of a service's server file.
@@ -64,7 +64,7 @@ fn write_interface(
         };
         w.line(format!(
             "{}(req: {}, ctx: Ctx): Promise<{ret}>;",
-            prop_key(&ep.name),
+            method_key(&ep.name),
             names.get(svc.id, &ep.name)
         ));
     }
@@ -152,7 +152,7 @@ fn write_endpoint(
     let req = names.get(svc.id, &ep.name);
     w.line(format!(
         "call: (req, ctx) => impl.{}(req as {req}, ctx),",
-        prop_key(&ep.name)
+        method_key(&ep.name)
     ));
     w.close_with("},");
 }

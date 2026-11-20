@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use veld_codegen::{DynGenerator, FileSet, GenDiagnostic, GenRequest, Role, check_capabilities};
+use veld_codegen::{
+    DynGenerator, FileSet, GenDiagnostic, GenRequest, Role, check_capabilities, check_framework,
+};
 use veld_compiler::{CompileInput, CompileOutput, PackageInput, SourceFile};
 use veld_ir::{Ir, PackageKind, ServiceId};
 use veld_plugin_host::{HostConfig, PluginGenerator};
@@ -375,6 +377,9 @@ pub fn run_job(ir: &Ir, job: &Job<'_>) -> Result<FileSet, Vec<String>> {
         return Err(vec![format!(
             "target `{name}`: selects no services (does its package declare a `service` block?)"
         )]);
+    }
+    if let Err(d) = check_framework(job.generator.get(), &req) {
+        return Err(vec![format_gen(&d, name)]);
     }
     let diags = check_capabilities(ir, &req, &job.generator.get().capabilities(job.role));
     if !diags.is_empty() {

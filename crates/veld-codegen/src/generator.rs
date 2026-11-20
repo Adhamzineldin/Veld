@@ -105,6 +105,41 @@ pub trait DynGenerator {
     ) -> Result<FileSet, Vec<GenDiagnostic>>;
 }
 
+/// `E0803` when `req.framework` is not one of the generator's `frameworks(role)`. Every role is
+/// checked here, so a generator cannot silently ignore a value it does not understand.
+///
+/// # Errors
+/// The diagnostic lists the valid values (or says the role takes none).
+pub fn check_framework(
+    generator: &dyn DynGenerator,
+    req: &GenRequest<'_>,
+) -> Result<(), GenDiagnostic> {
+    let Some(f) = &req.framework else {
+        return Ok(());
+    };
+    let valid = generator.frameworks(req.role);
+    if valid.contains(&f.as_str()) {
+        return Ok(());
+    }
+    let expected = if valid.is_empty() {
+        format!(
+            "the `{}` role of generator `{}` takes no framework",
+            req.role.name(),
+            generator.id()
+        )
+    } else {
+        format!("expected one of: {}", valid.join(", "))
+    };
+    Err(GenDiagnostic::new(
+        "E0803",
+        format!(
+            "unknown framework `{f}` for generator `{}` (role `{}`); {expected}",
+            generator.id(),
+            req.role.name()
+        ),
+    ))
+}
+
 impl<T: Generator> DynGenerator for T {
     fn id(&self) -> &'static str {
         Generator::id(self)
@@ -123,6 +158,7 @@ impl<T: Generator> DynGenerator for T {
         req: &GenRequest<'_>,
         opts: &serde_json::Value,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
+        check_framework(self, req).map_err(|d| vec![d])?;
         let parsed = if opts.is_null() {
             T::Options::default()
         } else {
@@ -281,10 +317,13 @@ mod tests {
             "dummy"
         }
         fn roles(&self) -> &'static [Role] {
-            &[Role::Client]
+            &[Role::Client, Role::Server]
         }
-        fn frameworks(&self, _: Role) -> &'static [&'static str] {
-            &[]
+        fn frameworks(&self, role: Role) -> &'static [&'static str] {
+            match role {
+                Role::Server => &["alpha", "beta"],
+                Role::Client => &[],
+            }
         }
         fn capabilities(&self, _: Role) -> Capabilities {
             Capabilities::default()
@@ -318,5 +357,41 @@ mod tests {
             .generate_dyn(&req, &serde_json::json!({ "nope": 1 }))
             .unwrap_err();
         assert_eq!(err[0].code, "E0802");
+    }
+
+    #[test]
+    fn unknown_framework_is_e0803_for_every_role() {
+        let ir = ir_with_sse();
+        let req = |role, framework: Option<&str>| GenRequest {
+            ir: &ir,
+            role,
+            services: vec![],
+            consumes: vec![],
+            framework: framework.map(str::to_string),
+        };
+        let g: Box<dyn DynGenerator> = Box::new(Dummy);
+        let null = serde_json::Value::Null;
+        // A role with no frameworks rejects any value.
+        let err = g
+            .generate_dyn(&req(Role::Client, Some("totally-bogus")), &null)
+            .unwrap_err();
+        assert_eq!(err[0].code, "E0803");
+        assert!(
+            err[0].message.contains("totally-bogus"),
+            "{}",
+            err[0].message
+        );
+        // A role with frameworks lists the valid values.
+        let err = g
+            .generate_dyn(&req(Role::Server, Some("gamma")), &null)
+            .unwrap_err();
+        assert_eq!(err[0].code, "E0803");
+        assert!(err[0].message.contains("alpha") && err[0].message.contains("beta"));
+        assert!(
+            g.generate_dyn(&req(Role::Server, Some("beta")), &null)
+                .is_ok()
+        );
+        assert!(g.generate_dyn(&req(Role::Server, None), &null).is_ok());
+        assert!(g.generate_dyn(&req(Role::Client, None), &null).is_ok());
     }
 }

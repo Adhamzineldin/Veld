@@ -13,5 +13,6 @@ pub mod writer;
 pub use fileset::{FileSet, FileSetError, PathError};
 pub use generator::{
     Capabilities, DynGenerator, GenDiagnostic, GenRequest, Generator, Role, check_capabilities,
+    check_framework,
 };
 pub use writer::CodeWriter;

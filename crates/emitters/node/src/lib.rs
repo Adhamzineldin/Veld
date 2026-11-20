@@ -56,14 +56,6 @@ impl Generator for Node {
         _opts: &Options,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, Role::Server, &self.capabilities(Role::Server))?;
-        if let Some(f) = &req.framework
-            && !FRAMEWORKS.contains(&f.as_str())
-        {
-            return Err(vec![GenDiagnostic::new(
-                "E0803",
-                format!("unknown framework `{f}`; expected one of {FRAMEWORKS:?}"),
-            )]);
-        }
         let mut files = FileSet::new();
         runtime::emit(&mut files)?;
         add_file(
