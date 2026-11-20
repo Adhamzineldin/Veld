@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Adhamzineldin/Veld/internal/server/db"
-	"github.com/Adhamzineldin/Veld/internal/server/models"
+	"github.com/Adhamzineldin/Veld/registry/internal/server/db"
+	"github.com/Adhamzineldin/Veld/registry/internal/server/models"
 )
 
 type contextKey string

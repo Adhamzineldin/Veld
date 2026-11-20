@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"time"
 
-	serverauth "github.com/Adhamzineldin/Veld/internal/server/auth"
-	"github.com/Adhamzineldin/Veld/internal/server/db"
-	"github.com/Adhamzineldin/Veld/internal/server/email"
-	"github.com/Adhamzineldin/Veld/internal/server/handlers"
-	"github.com/Adhamzineldin/Veld/internal/server/storage"
+	serverauth "github.com/Adhamzineldin/Veld/registry/internal/server/auth"
+	"github.com/Adhamzineldin/Veld/registry/internal/server/db"
+	"github.com/Adhamzineldin/Veld/registry/internal/server/email"
+	"github.com/Adhamzineldin/Veld/registry/internal/server/handlers"
+	"github.com/Adhamzineldin/Veld/registry/internal/server/storage"
 )
 
 // Config holds runtime configuration for the registry server.

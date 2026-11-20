@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	serverauth "github.com/Adhamzineldin/Veld/internal/server/auth"
-	"github.com/Adhamzineldin/Veld/internal/server/db"
-	"github.com/Adhamzineldin/Veld/internal/server/models"
+	serverauth "github.com/Adhamzineldin/Veld/registry/internal/server/auth"
+	"github.com/Adhamzineldin/Veld/registry/internal/server/db"
+	"github.com/Adhamzineldin/Veld/registry/internal/server/models"
 )
 
 // OrgHandler handles organization endpoints.

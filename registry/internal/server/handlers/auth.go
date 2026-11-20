@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	serverauth "github.com/Adhamzineldin/Veld/internal/server/auth"
-	"github.com/Adhamzineldin/Veld/internal/server/db"
-	"github.com/Adhamzineldin/Veld/internal/server/email"
-	"github.com/Adhamzineldin/Veld/internal/server/models"
+	serverauth "github.com/Adhamzineldin/Veld/registry/internal/server/auth"
+	"github.com/Adhamzineldin/Veld/registry/internal/server/db"
+	"github.com/Adhamzineldin/Veld/registry/internal/server/email"
+	"github.com/Adhamzineldin/Veld/registry/internal/server/models"
 	"golang.org/x/crypto/bcrypt"
 )
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Adhamzineldin/Veld/internal/server/models"
+	"github.com/Adhamzineldin/Veld/registry/internal/server/models"
 	_ "github.com/lib/pq"
 )
 
