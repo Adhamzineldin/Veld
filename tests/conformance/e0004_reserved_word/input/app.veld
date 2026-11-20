@@ -1,0 +1,4 @@
+model A {
+  use: int
+  get: string
+}

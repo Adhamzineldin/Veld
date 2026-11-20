@@ -1,0 +1,24 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0003]: expected `:` after the field name, found `int`
+ --> app/app.veld:2:5
+  |
+2 |   a int
+  |     ^^^
+
+error[E0003]: expected a type, found `d`
+ --> app/app.veld:5:3
+  |
+5 |   d: int
+  |   ^
+
+error[E0003]: expected a type name, found `}`
+ --> app/app.veld:8:14
+  |
+8 | model B { e: }
+  |              ^
+
+== ir ==
+(no IR: compilation failed)

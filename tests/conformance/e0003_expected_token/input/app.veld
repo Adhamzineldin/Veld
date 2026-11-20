@@ -1,0 +1,10 @@
+model A {
+  a int
+  b: string
+  c:
+  d: int
+}
+
+model B { e: }
+
+model C { ok: int }

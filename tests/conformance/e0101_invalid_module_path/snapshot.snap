@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0101]: path segment `my-file` of `my-file.veld` is not a valid identifier
+ --> app/my-file.veld:1:1
+  |
+1 | model A { a: int }
+  | ^
+  = help: module paths come from file paths; use letters, digits and `_`
+
+== ir ==
+(no IR: compilation failed)
