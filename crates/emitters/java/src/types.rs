@@ -55,7 +55,6 @@ pub fn java_type(fc: &mut FileCtx<'_, '_>, ty: &Type, boxed: bool) -> String {
             format!("{page}<{}>", java_type(fc, t, true))
         }
         Type::Decl(id) => fc.decl(*id),
-        _ => fc.rt("Json"),
     }
 }
 
@@ -68,7 +67,6 @@ pub fn codec_expr(fc: &mut FileCtx<'_, '_>, ty: &Type) -> String {
         Type::Map(t) => format!("{codec}.map({})", codec_expr(fc, t)),
         Type::Page(t) => format!("{codec}.page({})", codec_expr(fc, t)),
         Type::Decl(id) => format!("{}.codec()", fc.decl(*id)),
-        _ => format!("{codec}.json()"),
     }
 }
 
@@ -149,7 +147,6 @@ pub fn schema_expr(fc: &mut FileCtx<'_, '_>, ty: &Type, c: &Constraints, lazy: b
                 format!("{name}.SCHEMA")
             }
         }
-        _ => format!("{schema}.json()"),
     };
     format!("{base}{}", bounds(c))
 }

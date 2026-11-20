@@ -6,6 +6,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 pub mod client;
+pub mod frameworks;
 pub mod models;
 pub mod runtime;
 pub mod server;
@@ -17,7 +18,8 @@ pub mod util;
 use serde::Deserialize;
 use veld_codegen::naming;
 use veld_codegen::{
-    Capabilities, FileSet, GenDiagnostic, GenRequest, Generator, Role, check_capabilities,
+    Capabilities, FileSet, FrameworkInfo, GenDiagnostic, GenRequest, Generator, LanguageInfo,
+    Profile, Role, check_capabilities,
 };
 use veld_ir::Feature;
 
@@ -26,8 +28,9 @@ use crate::tree::Tree;
 /// Features the Java generator does not support yet.
 pub const UNSUPPORTED: [Feature; 2] = [Feature::StreamingSse, Feature::StreamingWs];
 
-/// Server frameworks: the JDK adapter is always emitted, `spring` adds the Spring Boot adapter.
-const FRAMEWORKS: &[&str] = &["jdk", "spring"];
+/// Supported `java` option values: the Java release the output is compiled for, oldest first
+/// (the default). Selected with the target option `java = "21"`.
+pub const JAVA_VERSIONS: [&str; 2] = ["17", "21"];
 
 /// Options of the `java` generator.
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -93,11 +96,18 @@ impl Generator for Java {
         &[Role::Server, Role::Client]
     }
 
-    fn frameworks(&self, role: Role) -> &'static [&'static str] {
+    fn frameworks(&self, role: Role) -> Vec<FrameworkInfo> {
         match role {
-            Role::Server => FRAMEWORKS,
-            Role::Client => &[],
+            Role::Server => frameworks::infos(),
+            Role::Client => Vec::new(),
         }
+    }
+
+    fn language(&self) -> Option<LanguageInfo> {
+        Some(LanguageInfo {
+            id: "java".to_string(),
+            versions: JAVA_VERSIONS.iter().map(|v| (*v).to_string()).collect(),
+        })
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
@@ -108,6 +118,7 @@ impl Generator for Java {
         &self,
         req: &GenRequest<'_>,
         opts: &Options,
+        profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, &self.capabilities(req.role))?;
         let base = base_package(req, opts)?;
@@ -119,11 +130,8 @@ impl Generator for Java {
         match req.role {
             Role::Client => client::emit(&mut files, &tree)?,
             Role::Server => {
-                runtime::emit_adapters(
-                    &mut files,
-                    &base,
-                    req.framework.as_deref() == Some("spring"),
-                )?;
+                let model = frameworks::ServerModel { base: base.clone() };
+                frameworks::emit(&mut files, &model, profile)?;
                 server::emit(&mut files, &tree)?;
                 emit_consumed(&mut files, req, &base, &runtime_package)?;
             }

@@ -45,11 +45,6 @@ runtime_files!(
     "Wire",
 );
 
-/// Source of the JDK `HttpServer` adapter.
-pub const JDK_ADAPTER: &str = include_str!("../adapters/JdkHttpServerAdapter.java");
-/// Source of the Spring Boot adapter.
-pub const SPRING_ADAPTER: &str = include_str!("../adapters/SpringAdapter.java");
-
 /// The Java package of the runtime for a base package.
 #[must_use]
 pub fn package(base: &str) -> String {
@@ -63,7 +58,7 @@ pub fn adapter_package(base: &str) -> String {
 }
 
 /// A runtime or adapter source with its package (and the runtime import) substituted.
-fn substitute(source: &str, base: &str) -> String {
+pub(crate) fn substitute(source: &str, base: &str) -> String {
     let text = source
         .replace(
             &format!("package {SOURCE_PACKAGE};"),
@@ -85,28 +80,6 @@ pub fn emit(files: &mut FileSet, base: &str) -> Result<(), Vec<GenDiagnostic>> {
     let package = package(base);
     for (name, source) in RUNTIME {
         add_file(files, &java_path(&package, name), substitute(source, base))?;
-    }
-    Ok(())
-}
-
-/// Adds the JDK adapter, and the Spring adapter when `spring` is set.
-pub fn emit_adapters(
-    files: &mut FileSet,
-    base: &str,
-    spring: bool,
-) -> Result<(), Vec<GenDiagnostic>> {
-    let package = adapter_package(base);
-    add_file(
-        files,
-        &java_path(&package, "JdkHttpServerAdapter"),
-        substitute(JDK_ADAPTER, base),
-    )?;
-    if spring {
-        add_file(
-            files,
-            &java_path(&package, "SpringAdapter"),
-            substitute(SPRING_ADAPTER, base),
-        )?;
     }
     Ok(())
 }

@@ -51,7 +51,7 @@ fn render(tree: &Tree<'_>, d: &Decl, package: &str, name: &str) -> String {
         DeclKind::Enum(e) => write_enum(&mut w, &mut fc, d, e),
         DeclKind::Union(u) => write_union(&mut w, &mut fc, d, u),
         DeclKind::Error(e) => write_error(&mut w, &mut fc, d, e),
-        _ => {}
+        DeclKind::Const(_) => {}
     }
     fc.finish(&w.finish())
 }
@@ -589,7 +589,34 @@ fn const_value(
             Ok(format!("{enum_name}.{}", consts[pos]))
         }
         (Type::List(_), Literal::EmptyList) => Ok(format!("{}.of()", fc.name("java.util.List"))),
-        _ => Err(unsupported(d, "a composite value")),
+        (
+            Type::Decl(_),
+            Literal::String(_)
+            | Literal::Int(_)
+            | Literal::Float(_)
+            | Literal::Bool(_)
+            | Literal::Null
+            | Literal::EmptyList,
+        )
+        | (
+            Type::List(_),
+            Literal::String(_)
+            | Literal::Int(_)
+            | Literal::Float(_)
+            | Literal::Bool(_)
+            | Literal::Null
+            | Literal::EnumVariant { .. },
+        )
+        | (
+            Type::Map(_) | Type::Page(_),
+            Literal::String(_)
+            | Literal::Int(_)
+            | Literal::Float(_)
+            | Literal::Bool(_)
+            | Literal::Null
+            | Literal::EnumVariant { .. }
+            | Literal::EmptyList,
+        ) => Err(unsupported(d, "a composite value")),
     }
 }
 
@@ -621,6 +648,8 @@ fn scalar_const(
         (Scalar::Uuid, Literal::String(v)) => {
             format!("{}.fromString({})", fc.name("java.util.UUID"), java_str(v))
         }
+        // Every other pairing is unsupported and must fail loudly (E0804), never emit wrong code,
+        // so the fallthrough is the intended behaviour for a new `Scalar` or `Literal` too.
         _ => return Err(unsupported(d, "a literal of an unsupported type")),
     })
 }
