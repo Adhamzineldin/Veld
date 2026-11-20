@@ -2,7 +2,7 @@
 
 Status: **DRAFT.**
 
-A plugin is an executable that `veld.toml` pins by `command`, `version` and `sha256`. Veld runs it as a child process. The working directory is a fresh empty temporary directory, the environment is empty apart from `PATH`, and stdin and stdout are pipes. Each message is a single line of UTF-8 JSON terminated by `\n`. The plugin sends human logs to stderr, and Veld forwards them with the `[plugin:<name>]` prefix.
+A plugin is an executable that `veld.toml` pins by `command`, `version` and `sha256`. Veld runs it as a child process. The working directory is a fresh empty temporary directory, the environment is empty apart from `PATH`, and stdin and stdout are pipes. Each message is a single line of UTF-8 JSON terminated by `\n`. The plugin sends human logs to stderr, and Veld forwards them with the `[plugin:<name>]` prefix. Because of that, an argument of `command` that names an existing file relative to the project root (for example `node plugins/x/main.js`) is made absolute before the process starts.
 
 ## 1. Handshake
 

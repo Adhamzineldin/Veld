@@ -37,43 +37,69 @@ pub struct Session {
 impl Session {
     /// Starts `exe` with a fresh empty working directory and an environment holding only `PATH`.
     pub fn spawn(name: &str, exe: &Path, cmd: &CommandLine) -> Result<Self, PluginError> {
-        let cwd = tempfile::tempdir().map_err(|e| PluginError::process(name, format!("cannot create a work directory: {e}")))?;
+        let cwd = tempfile::tempdir().map_err(|e| {
+            PluginError::process(name, format!("cannot create a work directory: {e}"))
+        })?;
         let mut command = Command::new(exe);
         command.args(&cmd.args).current_dir(cwd.path()).env_clear();
         if let Some(path) = std::env::var_os("PATH") {
             command.env("PATH", path);
         }
-        command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        let mut child = command
-            .spawn()
-            .map_err(|e| PluginError::process(name, format!("cannot start `{}`: {e}", exe.display())))?;
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = command.spawn().map_err(|e| {
+            PluginError::process(name, format!("cannot start `{}`: {e}", exe.display()))
+        })?;
         let stdin = child.stdin.take();
         let lines = spawn_readers(name, &mut child);
-        Ok(Self { name: name.to_string(), child, stdin, lines, _cwd: cwd })
+        Ok(Self {
+            name: name.to_string(),
+            child,
+            stdin,
+            lines,
+            _cwd: cwd,
+        })
     }
 
     /// Sends one JSON message as a single line.
     pub fn send(&mut self, message: &Value) -> Result<(), PluginError> {
-        let mut text = serde_json::to_string(message)
-            .map_err(|e| PluginError::protocol(&self.name, format!("cannot encode a message: {e}")))?;
+        let mut text = serde_json::to_string(message).map_err(|e| {
+            PluginError::protocol(&self.name, format!("cannot encode a message: {e}"))
+        })?;
         text.push('\n');
         let name = self.name.clone();
-        let stdin = self.stdin.as_mut().ok_or_else(|| PluginError::process(&name, "its input is already closed"))?;
+        let stdin = self
+            .stdin
+            .as_mut()
+            .ok_or_else(|| PluginError::process(&name, "its input is already closed"))?;
         stdin
             .write_all(text.as_bytes())
             .and_then(|()| stdin.flush())
-            .map_err(|e| PluginError::process(&name, format!("cannot write to the plugin (did it exit?): {e}")))
+            .map_err(|e| {
+                PluginError::process(
+                    &name,
+                    format!("cannot write to the plugin (did it exit?): {e}"),
+                )
+            })
     }
 
     /// Waits up to `timeout` for the next message. On timeout the plugin is killed.
     pub fn recv(&mut self, timeout: Duration, what: &str) -> Result<Value, PluginError> {
         match self.lines.recv_timeout(timeout) {
-            Ok(Event::Line(line)) => serde_json::from_str(&line)
-                .map_err(|e| PluginError::protocol(&self.name, format!("{what} is not valid JSON: {e}"))),
-            Ok(Event::Bad(why)) => Err(self.fail(PluginError::protocol(&self.name, format!("{what}: {why}")))),
+            Ok(Event::Line(line)) => serde_json::from_str(&line).map_err(|e| {
+                PluginError::protocol(&self.name, format!("{what} is not valid JSON: {e}"))
+            }),
+            Ok(Event::Bad(why)) => {
+                Err(self.fail(PluginError::protocol(&self.name, format!("{what}: {why}"))))
+            }
             Ok(Event::Eof) | Err(RecvTimeoutError::Disconnected) => Err(self.closed(what)),
             Err(RecvTimeoutError::Timeout) => {
-                let msg = format!("did not send {what} within {}; killed", fmt_duration(timeout));
+                let msg = format!(
+                    "did not send {what} within {}; killed",
+                    fmt_duration(timeout)
+                );
                 Err(self.fail(PluginError::process(&self.name, msg)))
             }
         }
@@ -130,7 +156,11 @@ impl Drop for Session {
 }
 
 fn fmt_duration(d: Duration) -> String {
-    if d.as_secs() >= 1 { format!("{} s", d.as_secs()) } else { format!("{} ms", d.as_millis()) }
+    if d.as_secs() >= 1 {
+        format!("{} s", d.as_secs())
+    } else {
+        format!("{} ms", d.as_millis())
+    }
 }
 
 /// `"exit code 3"`, or `"killed by a signal"`.
@@ -151,7 +181,10 @@ fn spawn_readers(name: &str, child: &mut Child) -> Receiver<Event> {
     if let Some(err) = child.stderr.take() {
         let prefix = format!("[plugin:{name}]");
         thread::spawn(move || {
-            for line in BufReader::new(err.take(MAX_STDOUT_BYTES)).lines().map_while(Result::ok) {
+            for line in BufReader::new(err.take(MAX_STDOUT_BYTES))
+                .lines()
+                .map_while(Result::ok)
+            {
                 eprintln!("{prefix} {line}");
             }
         });

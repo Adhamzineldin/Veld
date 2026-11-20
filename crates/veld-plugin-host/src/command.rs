@@ -19,20 +19,53 @@ impl CommandLine {
             return None;
         }
         let program = tokens.remove(0);
-        Some(Self { program, args: tokens })
+        Some(Self {
+            program,
+            args: tokens,
+        })
     }
 
     #[must_use]
     pub fn from_parts(program: impl Into<String>, args: Vec<String>) -> Self {
-        Self { program: program.into(), args }
+        Self {
+            program: program.into(),
+            args,
+        }
+    }
+
+    /// A copy whose relative arguments that name an existing file under `root` are made
+    /// absolute, because plugins run in a scratch working directory, not in the project.
+    #[must_use]
+    pub fn anchored(&self, root: &Path) -> Self {
+        let args = self
+            .args
+            .iter()
+            .map(|a| {
+                let candidate = root.join(a);
+                if !a.starts_with('-') && Path::new(a).is_relative() && candidate.is_file() {
+                    candidate.to_string_lossy().into_owned()
+                } else {
+                    a.clone()
+                }
+            })
+            .collect();
+        Self {
+            program: self.program.clone(),
+            args,
+        }
     }
 
     /// Finds the executable: a path (absolute, or relative to `root`) or a name on `PATH`.
     pub fn resolve(&self, root: &Path) -> Result<PathBuf, String> {
         let p = &self.program;
         if p.contains('/') || p.contains('\\') {
-            let path = if Path::new(p).is_absolute() { PathBuf::from(p) } else { root.join(p) };
-            return with_extension_fallback(&path).ok_or_else(|| format!("executable `{p}` not found"));
+            let path = if Path::new(p).is_absolute() {
+                PathBuf::from(p)
+            } else {
+                root.join(p)
+            };
+            return with_extension_fallback(&path)
+                .ok_or_else(|| format!("executable `{p}` not found"));
         }
         search_path(p).ok_or_else(|| format!("executable `{p}` not found on PATH"))
     }
@@ -93,6 +126,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn anchored_makes_existing_relative_file_arguments_absolute() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("main.js"), "").expect("write");
+        let c = CommandLine::from_parts(
+            "node",
+            vec!["main.js".into(), "--mode".into(), "missing.js".into()],
+        )
+        .anchored(dir.path());
+        assert!(Path::new(&c.args[0]).is_absolute());
+        assert_eq!(c.args[1..], ["--mode", "missing.js"]);
+    }
+    #[test]
     fn parse_splits_and_honours_quotes() {
         let c = CommandLine::parse(r#"node "dir with space/main.js" --x"#).unwrap();
         assert_eq!(c.program, "node");
@@ -108,7 +153,17 @@ mod tests {
         std::fs::write(tmp.path().join("plug"), "x").unwrap();
         let c = CommandLine::parse("./plug").unwrap();
         assert_eq!(c.resolve(tmp.path()).unwrap(), tmp.path().join("./plug"));
-        assert!(CommandLine::parse("./missing").unwrap().resolve(tmp.path()).is_err());
-        assert!(CommandLine::parse("veld-definitely-not-a-program").unwrap().resolve(tmp.path()).is_err());
+        assert!(
+            CommandLine::parse("./missing")
+                .unwrap()
+                .resolve(tmp.path())
+                .is_err()
+        );
+        assert!(
+            CommandLine::parse("veld-definitely-not-a-program")
+                .unwrap()
+                .resolve(tmp.path())
+                .is_err()
+        );
     }
 }
