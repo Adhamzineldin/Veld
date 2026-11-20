@@ -1,5 +1,9 @@
 # Veld JetBrains Plugin
 
+> **Status: v1, frozen.** This Kotlin PSI plugin targets the Veld 1.x language (`module`, `action`, `import`) and is not maintained for Veld 2.0. It is kept for reference and is not rewritten.
+>
+> **The v2 plan** is a thin client: install [LSP4IJ](https://github.com/redhat-developer/lsp4ij) and register `veld lsp` as the language server for `*.veld` files. All language features (diagnostics, hover, go to definition, completion, rename, formatting) come from the server, as in the VS Code extension (`editors/vscode`).
+
 Official Veld language support for **all JetBrains IDEs** including IntelliJ IDEA, WebStorm, PyCharm, PhpStorm, GoLand, RubyMine, CLion, DataGrip, Rider, and Android Studio.
 
 ## Features
