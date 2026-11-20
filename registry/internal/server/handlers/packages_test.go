@@ -178,3 +178,68 @@ func TestPublishRejectsBeforeDatabase(t *testing.T) {
 		})
 	}
 }
+
+func entriesWithDeps(deps string) []entry {
+	e := goodEntries()
+	e[0].body = strings.Replace(e[0].body, "\n[files]", "\n[dependencies]\n"+deps+"\n[files]", 1)
+	return e
+}
+
+func TestValidatePackageAcceptsDependencies(t *testing.T) {
+	deps := "\"@acme/money\" = \"^1.2\"\n\"@acme/ids\" = \">=1, <2\"\n\"@other/x\" = \"*\"\n\"@acme/pre\" = \"^2.0.0-beta.1\"\n"
+	m, err := ValidatePackage("acme", "lib", "1.0.0", bytes.NewReader(makeTarball(t, entriesWithDeps(deps))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Dependencies) != 4 || m.Dependencies["@acme/money"] != "^1.2" {
+		t.Fatalf("dependencies not parsed: %+v", m.Dependencies)
+	}
+}
+
+func TestValidatePackageRejectsBadDependencies(t *testing.T) {
+	cases := map[string]string{
+		"no scope":      "\"money\" = \"^1\"\n",
+		"traversal":     "\"@acme/..\" = \"^1\"\n",
+		"uppercase org": "\"@Acme/money\" = \"^1\"\n",
+		"self":          "\"@acme/lib\" = \"^1\"\n",
+		"garbage range": "\"@acme/money\" = \"garbage!\"\n",
+		"two dots only": "\"@acme/money\" = \"^1..2\"\n",
+		"not a string":  "\"@acme/money\" = 1\n",
+		"long range":    "\"@acme/money\" = \"" + strings.Repeat("1", 200) + "\"\n",
+	}
+	for name, deps := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := ValidatePackage("acme", "lib", "1.0.0", bytes.NewReader(makeTarball(t, entriesWithDeps(deps)))); err == nil {
+				t.Fatal("expected rejection")
+			}
+		})
+	}
+}
+
+func TestValidRange(t *testing.T) {
+	for _, ok := range []string{"", "*", "latest", "1", "1.2", "1.2.3", "^1.2", "~1.2.3", "=1.0.0", ">=1, <2", ">1.0.0,<=2.0.0", "1.*", "^2.0.0-beta.1", "1.2.3+build"} {
+		if !ValidRange(ok) {
+			t.Errorf("%q should be valid", ok)
+		}
+	}
+	for _, bad := range []string{"x", "^", "1.2.3.4", "v1", ">=", "1,,2", "^1 ^2", "01.0.0", "^1.*.3", "1.2.3-"} {
+		if ValidRange(bad) {
+			t.Errorf("%q should be invalid", bad)
+		}
+	}
+}
+
+func TestFillDependenciesReadsTheStoredManifest(t *testing.T) {
+	v := &models.PackageVersion{Manifest: `{"org":"a","name":"b","version":"1.0.0","dependencies":{"@acme/money":"^1"}}`}
+	v.FillDependencies()
+	if v.Dependencies["@acme/money"] != "^1" || len(v.Dependencies) != 1 {
+		t.Fatalf("got %+v", v.Dependencies)
+	}
+	for _, raw := range []string{"{}", "", "not json"} {
+		old := &models.PackageVersion{Manifest: raw}
+		old.FillDependencies()
+		if old.Dependencies == nil || len(old.Dependencies) != 0 {
+			t.Fatalf("%q must give an empty, non-nil map", raw)
+		}
+	}
+}

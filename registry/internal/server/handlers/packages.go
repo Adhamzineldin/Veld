@@ -70,6 +70,7 @@ func (h *PackageHandler) GetPackage(w http.ResponseWriter, r *http.Request) {
 	if versions == nil {
 		versions = []*models.PackageVersion{}
 	}
+	fillDependencies(versions)
 	jsonOK(w, map[string]interface{}{
 		"package":  pkg,
 		"versions": versions,
@@ -92,6 +93,7 @@ func (h *PackageHandler) ListVersions(w http.ResponseWriter, r *http.Request) {
 	if versions == nil {
 		versions = []*models.PackageVersion{}
 	}
+	fillDependencies(versions)
 	jsonOK(w, versions)
 }
 
@@ -136,10 +138,12 @@ func (h *PackageHandler) Publish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	if _, err := ValidatePackage(manifest.OrgName, manifest.PkgName, manifest.Version, file); err != nil {
+	validated, err := ValidatePackage(manifest.OrgName, manifest.PkgName, manifest.Version, file)
+	if err != nil {
 		jsonError(w, "invalid package: "+err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
+	manifest.Dependencies = validated.Dependencies
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		jsonError(w, "server error", http.StatusInternalServerError)
 		return
@@ -348,4 +352,10 @@ func (h *PackageHandler) DeleteVersion(w http.ResponseWriter, r *http.Request) {
 		h.DB.DeletePackageVersion(pkg.ID, r.PathValue("version"))
 	}
 	jsonNoContent(w)
+}
+
+func fillDependencies(versions []*models.PackageVersion) {
+	for _, v := range versions {
+		v.FillDependencies()
+	}
 }

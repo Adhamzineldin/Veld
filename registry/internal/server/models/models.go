@@ -1,7 +1,10 @@
 // Package models defines all shared data structures for the Veld Registry server.
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // User represents a registry account.
 type User struct {
@@ -50,18 +53,21 @@ type Package struct {
 
 // PackageVersion is a specific semver release of a package.
 type PackageVersion struct {
-	ID          string    `json:"id"`
-	PackageID   string    `json:"package_id"`
-	PackageName string    `json:"package_name,omitempty"`
-	OrgName     string    `json:"org_name,omitempty"`
-	Version     string    `json:"version"`
-	TarballKey  string    `json:"tarball_key"`
-	TarballSHA  string    `json:"tarball_sha256"`
-	TarballSize int64     `json:"tarball_size"`
-	Manifest    string    `json:"manifest"` // raw JSON of veld.config.json
-	Deprecated  string    `json:"deprecated,omitempty"`
-	PublishedBy string    `json:"published_by,omitempty"`
-	PublishedAt time.Time `json:"published_at"`
+	ID          string `json:"id"`
+	PackageID   string `json:"package_id"`
+	PackageName string `json:"package_name,omitempty"`
+	OrgName     string `json:"org_name,omitempty"`
+	Version     string `json:"version"`
+	TarballKey  string `json:"tarball_key"`
+	TarballSHA  string `json:"tarball_sha256"`
+	TarballSize int64  `json:"tarball_size"`
+	Manifest    string `json:"manifest"` // raw JSON of veld.config.json
+	Deprecated  string `json:"deprecated,omitempty"`
+	// Dependencies is the package's own `[dependencies]` (name -> semver range), derived
+	// from Manifest so clients can resolve a graph without downloading.
+	Dependencies map[string]string `json:"dependencies"`
+	PublishedBy  string            `json:"published_by,omitempty"`
+	PublishedAt  time.Time         `json:"published_at"`
 }
 
 // Token is an API authentication token.
@@ -85,6 +91,21 @@ type PublishRequest struct {
 	PkgName  string `json:"name"`
 	Version  string `json:"version"`
 	Manifest string `json:"manifest"`
+	// Dependencies is taken from the validated tarball manifest, never from the client.
+	Dependencies map[string]string `json:"dependencies,omitempty"`
+}
+
+// FillDependencies sets Dependencies from the stored Manifest JSON (empty when absent).
+func (v *PackageVersion) FillDependencies() {
+	v.Dependencies = map[string]string{}
+	var m struct {
+		Dependencies map[string]string `json:"dependencies"`
+	}
+	if json.Unmarshal([]byte(v.Manifest), &m) == nil {
+		for k, r := range m.Dependencies {
+			v.Dependencies[k] = r
+		}
+	}
 }
 
 // Semver helpers ─────────────────────────────────────────────────────────────

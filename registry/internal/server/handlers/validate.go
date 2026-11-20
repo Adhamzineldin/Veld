@@ -25,6 +25,8 @@ const (
 	manifestFileName   = "veld-package.toml"
 	supportedLanguage  = "2"
 	maxDescriptionSize = 2000
+	maxDependencies    = 256
+	maxRangeLength     = 128
 )
 
 var (
@@ -32,6 +34,10 @@ var (
 	pkgNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 	semverRe  = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`)
 	sha256Re  = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	// One comparator of a version range: an optional operator and a (partial) version, or `*`.
+	// Ranges are comma separated, as in `>=1.2, <2`.
+	comparatorRe = regexp.MustCompile(`^(\^|~|=|>=|<=|>|<)?\s*(\*|(0|[1-9]\d*)(\.(\*|(0|[1-9]\d*)(\.(\*|(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?))?))?)$`)
+	depNameRe    = regexp.MustCompile(`^@([a-z0-9][a-z0-9-]{0,63})/([a-z0-9][a-z0-9._-]{0,63})$`)
 )
 
 // PackageManifest is the v2 `veld-package.toml` found at the tarball root.
@@ -41,6 +47,9 @@ type PackageManifest struct {
 	Language    string            `toml:"language"`
 	Description string            `toml:"description"`
 	Files       map[string]string `toml:"files"`
+	// Dependencies maps `@org/name` to a semver range (the package's own
+	// `[dependencies]`, written by `veld publish`).
+	Dependencies map[string]string `toml:"dependencies"`
 }
 
 // ValidateNames checks the org/name/version triple from the publish form. The
@@ -162,6 +171,9 @@ func checkManifest(m *PackageManifest, org, name, version string, sums map[strin
 	if len(m.Description) > maxDescriptionSize {
 		return errors.New("manifest description too long")
 	}
+	if err := checkDependencies(m, org, name); err != nil {
+		return err
+	}
 	for p, sum := range m.Files {
 		if !sha256Re.MatchString(sum) {
 			return fmt.Errorf("manifest checksum for %q is not a sha256 hex digest", p)
@@ -193,4 +205,42 @@ func (l *limitedBuffer) Write(p []byte) (int, error) {
 	}
 	l.b = append(l.b, p...)
 	return len(p), nil
+}
+
+// ValidRange reports whether r is a version range the registry clients can
+// resolve: empty, `*`, `latest`, or comma separated comparators such as `^1.2`,
+// `~1.2.3`, `>=1, <2`, `=1.0.0` or `1.*`.
+func ValidRange(r string) bool {
+	r = strings.TrimSpace(r)
+	if r == "" || r == "latest" {
+		return true
+	}
+	if len(r) > maxRangeLength {
+		return false
+	}
+	for _, c := range strings.Split(r, ",") {
+		if !comparatorRe.MatchString(strings.TrimSpace(c)) {
+			return false
+		}
+	}
+	return true
+}
+
+func checkDependencies(m *PackageManifest, org, name string) error {
+	if len(m.Dependencies) > maxDependencies {
+		return fmt.Errorf("manifest lists more than %d dependencies", maxDependencies)
+	}
+	self := "@" + org + "/" + name
+	for dep, rng := range m.Dependencies {
+		if !depNameRe.MatchString(dep) || strings.Contains(dep, "..") {
+			return fmt.Errorf("dependency %q is not a valid package name (@org/name)", dep)
+		}
+		if dep == self {
+			return fmt.Errorf("package %q cannot depend on itself", self)
+		}
+		if !ValidRange(rng) {
+			return fmt.Errorf("dependency %q has an invalid version range %q", dep, rng)
+		}
+	}
+	return nil
 }
