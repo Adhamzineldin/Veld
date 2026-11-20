@@ -40,7 +40,13 @@ pub fn generate(ui: &Ui, project: veld_project::config::Project, args: &Generate
     let opts = WriteOptions { dry_run: args.dry_run, force: args.force };
     let written = pipeline::write_all(&outputs, opts)?;
     print_results(ui, &written, args.dry_run);
-    Ok(if written.iter().any(|w| !w.plan.conflicts().is_empty()) { Exit::User } else { Exit::Ok })
+    if written.iter().any(|w| !w.plan.conflicts().is_empty()) {
+        return Ok(Exit::User);
+    }
+    if !args.dry_run && args.target.is_none() {
+        pipeline::write_lock(&done.project, &done.ir)?;
+    }
+    Ok(Exit::Ok)
 }
 
 fn print_results(ui: &Ui, written: &[Written], dry_run: bool) {

@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use veld_codegen::{DynGenerator, FileSet, GenDiagnostic, GenRequest, Role, check_capabilities};
 use veld_compiler::{CompileInput, CompileOutput, PackageInput, SourceFile};
 use veld_ir::{Ir, PackageKind, ServiceId};
+use veld_plugin_host::{HostConfig, PluginGenerator};
 use veld_project::config::{self, EmitterRef, PackageSpec, Project, TargetSpec};
 use veld_project::output::{self, Plan, PlanAction, WriteOptions};
 
@@ -60,10 +61,19 @@ pub fn compile_project(project: &Project) -> Result<CompileOutput> {
 }
 
 fn compile_input(project: &Project) -> Result<CompileInput> {
+    compile_input_from(project, |pkg| Ok(config::collect_sources(pkg)?))
+}
+
+/// The compiler input for `project`, with each package's sources supplied by `read`
+/// (the working tree normally, a git ref for `veld diff --against`).
+pub fn compile_input_from(
+    project: &Project,
+    read: impl Fn(&PackageSpec) -> Result<Vec<(String, String)>>,
+) -> Result<CompileInput> {
     let mut packages = Vec::new();
     let mut consumes = BTreeMap::new();
     for pkg in &project.packages {
-        packages.push(package_input(pkg)?);
+        packages.push(package_input(pkg, read(pkg)?));
         if pkg.kind == PackageKind::Service && !pkg.consumes.is_empty() {
             consumes.insert(pkg.name.clone(), pkg.consumes.clone());
         }
@@ -71,10 +81,37 @@ fn compile_input(project: &Project) -> Result<CompileInput> {
     Ok(CompileInput { packages, consumes })
 }
 
-fn package_input(pkg: &PackageSpec) -> Result<PackageInput> {
-    let files =
-        config::collect_sources(pkg)?.into_iter().map(|(path, text)| SourceFile { path, text }).collect();
-    Ok(PackageInput { name: pkg.name.clone(), kind: pkg.kind, files, base_url: pkg.base_url.clone() })
+fn package_input(pkg: &PackageSpec, sources: Vec<(String, String)>) -> PackageInput {
+    let files = sources.into_iter().map(|(path, text)| SourceFile { path, text }).collect();
+    PackageInput { name: pkg.name.clone(), kind: pkg.kind, files, base_url: pkg.base_url.clone() }
+}
+
+// ---------------------------------------------------------------------------
+// The IR lock file
+// ---------------------------------------------------------------------------
+
+/// Name of the IR snapshot that `veld generate` writes next to `veld.toml`.
+pub const LOCK_FILE: &str = "veld.lock.ir.json";
+
+pub fn lock_path(project: &Project) -> PathBuf {
+    project.root.join(LOCK_FILE)
+}
+
+/// The lock file's exact bytes: pretty JSON with a trailing newline. Deterministic.
+pub fn lock_text(ir: &Ir) -> Result<String> {
+    let mut text = serde_json::to_string_pretty(ir).context("cannot serialize the IR")?;
+    text.push('\n');
+    Ok(text)
+}
+
+/// Writes the lock file unless it already holds the same bytes (so a clean tree stays clean).
+pub fn write_lock(project: &Project, ir: &Ir) -> Result<()> {
+    let path = lock_path(project);
+    let text = lock_text(ir)?;
+    if std::fs::read_to_string(&path).is_ok_and(|old| old == text) {
+        return Ok(());
+    }
+    crate::fsutil::atomic_write(&path, text.as_bytes())
 }
 
 /// Counts of what a compile found, for the one-line summaries.
@@ -136,11 +173,45 @@ pub fn success_summary(ui: &Ui, ir: &Ir) -> String {
 /// One target, resolved against the IR and ready to run.
 pub struct Job<'a> {
     pub target: &'a TargetSpec,
-    generator: &'static dyn DynGenerator,
+    generator: Generator,
     role: Role,
     services: Vec<ServiceId>,
     consumes: Vec<ServiceId>,
     options: serde_json::Value,
+}
+
+/// A built-in generator, or a plugin that has already completed its handshake.
+enum Generator {
+    Builtin(&'static dyn DynGenerator),
+    Plugin(Box<PluginGenerator>),
+}
+
+impl Generator {
+    fn get(&self) -> &dyn DynGenerator {
+        match self {
+            Self::Builtin(g) => *g,
+            Self::Plugin(p) => p.as_ref(),
+        }
+    }
+}
+
+/// Resolves an `emitter` to a generator. Plugins are started once here to read their
+/// handshake (roles and capabilities); the hash pin is checked before that.
+fn resolve_generator(project: &Project, target: &TargetSpec) -> Result<Generator, Vec<String>> {
+    let name = &target.name;
+    match &target.emitter {
+        EmitterRef::Builtin(id) => registry::find(id).map(Generator::Builtin).ok_or_else(|| {
+            vec![format!("target `{name}`: unknown emitter `{id}` (built-in: {})", registry::ids().join(", "))]
+        }),
+        EmitterRef::Plugin(p) => {
+            let spec = project.plugins.iter().find(|s| &s.name == p).ok_or_else(|| {
+                vec![format!("target `{name}`: plugin `{p}` is not declared under `[plugins.{p}]`")]
+            })?;
+            PluginGenerator::connect(spec, HostConfig::new(project.root.clone()))
+                .map(|g| Generator::Plugin(Box::new(g)))
+                .map_err(|e| vec![format!("target `{name}`: error[{}]: {e}", e.code())])
+        }
+    }
 }
 
 fn role_of(r: config::Role) -> Role {
@@ -173,17 +244,13 @@ pub fn select_targets<'a>(project: &'a Project, only: Option<&str>) -> Result<Ve
 /// Resolves one target: finds its generator and computes its services, consumes and options.
 pub fn build_job<'a>(project: &Project, ir: &Ir, target: &'a TargetSpec) -> Result<Job<'a>, Vec<String>> {
     let name = &target.name;
-    let id = match &target.emitter {
-        EmitterRef::Builtin(id) => id,
-        EmitterRef::Plugin(p) => {
-            return Err(vec![format!("target `{name}`: plugin emitters (`plugin:{p}`) are not supported yet")]);
-        }
-    };
-    let generator = registry::find(id).ok_or_else(|| {
-        vec![format!("target `{name}`: unknown emitter `{id}` (built-in: {})", registry::ids().join(", "))]
-    })?;
+    let generator = resolve_generator(project, target)?;
     let role = role_of(target.role);
-    if !generator.roles().contains(&role) {
+    if !generator.get().roles().contains(&role) {
+        let id = match &target.emitter {
+            EmitterRef::Builtin(id) => id.clone(),
+            EmitterRef::Plugin(p) => format!("plugin:{p}"),
+        };
         return Err(vec![format!("target `{name}`: emitter `{id}` cannot produce the `{}` role", role.name())]);
     }
     let (services, consumes) = match role {
@@ -232,11 +299,12 @@ pub fn run_job(ir: &Ir, job: &Job<'_>) -> Result<FileSet, Vec<String>> {
     if req.services.is_empty() {
         return Err(vec![format!("target `{name}`: selects no services (does its package declare a `service` block?)")]);
     }
-    let diags = check_capabilities(ir, &req, &job.generator.capabilities(job.role));
+    let diags = check_capabilities(ir, &req, &job.generator.get().capabilities(job.role));
     if !diags.is_empty() {
         return Err(diags.iter().map(|d| format_gen(d, name)).collect());
     }
     job.generator
+        .get()
         .generate_dyn(&req, &job.options)
         .map_err(|diags| diags.iter().map(|d| format_gen(d, name)).collect())
 }
@@ -345,7 +413,7 @@ mod tests {
         check("[[targets]]\nrole = \"client\"\nemitter = \"node\"\nout = \"gen\"\n", "cannot produce the `client` role");
         check(
             "[[targets]]\nrole = \"client\"\nemitter = \"plugin:kotlin\"\nout = \"gen\"\n[plugins.kotlin]\ncommand = \"x\"\n",
-            "not supported yet",
+            "plugin `kotlin`: executable `x` not found on PATH",
         );
     }
 

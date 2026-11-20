@@ -793,7 +793,9 @@ dependencies = [
  "veld-emit-node",
  "veld-emit-typescript",
  "veld-ir",
+ "veld-plugin-host",
  "veld-project",
+ "veld-tools",
 ]
 
 [[package]]
@@ -815,6 +817,32 @@ dependencies = [
  "serde_json",
  "sha2",
  "veld-ir",
+]
+
+[[package]]
+name = "veld-emit-conformance"
+version = "2.0.0-beta.1"
+dependencies = [
+ "serde_json",
+ "veld-codegen",
+ "veld-compiler",
+ "veld-ir",
+]
+
+[[package]]
+name = "veld-emit-java"
+version = "2.0.0-beta.1"
+dependencies = [
+ "insta",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "veld-codegen",
+ "veld-compiler",
+ "veld-emit-node",
+ "veld-emit-typescript",
+ "veld-ir",
+ "veld-project",
 ]
 
 [[package]]
@@ -848,6 +876,20 @@ version = "2.0.0-beta.1"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "veld-plugin-host"
+version = "2.0.0-beta.1"
+dependencies = [
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "veld-codegen",
+ "veld-compiler",
+ "veld-ir",
+ "veld-project",
 ]
 
 [[package]]
@@ -1004,6 +1046,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "xtask"
+version = "2.0.0-beta.1"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "tempfile",
+ "veld-compiler",
+ "veld-ir",
 ]
 
 [[package]]
