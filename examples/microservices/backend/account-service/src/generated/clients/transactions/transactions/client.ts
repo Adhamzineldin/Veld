@@ -81,10 +81,10 @@ const transactionsTransferOp: veld.EndpointSpec = {
 
 /** Transaction history and transfers. */
 export class TransactionsClient {
-  private readonly core: veld.ClientCore;
+  readonly #core: veld.ClientCore;
 
   constructor(opts: veld.ClientOptions = {}) {
-    this.core = new veld.ClientCore(opts, {
+    this.#core = new veld.ClientCore(opts, {
       envVar: 'VELD_TRANSACTIONS_URL',
       baseUrl: 'http://transaction-service:3003',
       validation: (issues) => new ValidationError({ issues }),
@@ -93,16 +93,16 @@ export class TransactionsClient {
 
   /** Paginated transaction history of an account. */
   getHistory(req: GetHistoryRequest, init?: veld.CallInit): Promise<veld.Page<Transaction>> {
-    return this.core.call(transactionsGetHistoryOp, req, init) as Promise<veld.Page<Transaction>>;
+    return this.#core.call(transactionsGetHistoryOp, req, init) as Promise<veld.Page<Transaction>>;
   }
 
   /** Fetches one transaction. */
   getTransaction(req: GetTransactionRequest, init?: veld.CallInit): Promise<Transaction> {
-    return this.core.call(transactionsGetTransactionOp, req, init) as Promise<Transaction>;
+    return this.#core.call(transactionsGetTransactionOp, req, init) as Promise<Transaction>;
   }
 
   /** Moves money to another IBAN. The accounts service is asked to check the source account. */
   transfer(req: TransferRequest, init?: veld.CallInit): Promise<TransferReceipt> {
-    return this.core.call(transactionsTransferOp, req, init) as Promise<TransferReceipt>;
+    return this.#core.call(transactionsTransferOp, req, init) as Promise<TransferReceipt>;
   }
 }

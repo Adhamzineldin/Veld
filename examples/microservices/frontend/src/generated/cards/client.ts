@@ -120,10 +120,10 @@ const cardsCancelCardOp: veld.EndpointSpec = {
 
 /** Payment card management: request, view, freeze and cancel. */
 export class CardsClient {
-  private readonly core: veld.ClientCore;
+  readonly #core: veld.ClientCore;
 
   constructor(opts: veld.ClientOptions = {}) {
-    this.core = new veld.ClientCore(opts, {
+    this.#core = new veld.ClientCore(opts, {
       envVar: 'VELD_CARDS_URL',
       baseUrl: 'http://card-service:3004',
       validation: (issues) => new ValidationError({ issues }),
@@ -132,26 +132,26 @@ export class CardsClient {
 
   /** Lists the cards of the authenticated user. */
   listCards(req: ListCardsRequest = {}, init?: veld.CallInit): Promise<Card[]> {
-    return this.core.call(cardsListCardsOp, req, init) as Promise<Card[]>;
+    return this.#core.call(cardsListCardsOp, req, init) as Promise<Card[]>;
   }
 
   /** Fetches one card. */
   getCard(req: GetCardRequest, init?: veld.CallInit): Promise<Card> {
-    return this.core.call(cardsGetCardOp, req, init) as Promise<Card>;
+    return this.#core.call(cardsGetCardOp, req, init) as Promise<Card>;
   }
 
   /** Requests a new card linked to an account. */
   requestCard(req: RequestCardRequest, init?: veld.CallInit): Promise<Card> {
-    return this.core.call(cardsRequestCardOp, req, init) as Promise<Card>;
+    return this.#core.call(cardsRequestCardOp, req, init) as Promise<Card>;
   }
 
   /** Temporarily blocks all usage of a card. */
   freezeCard(req: FreezeCardRequest, init?: veld.CallInit): Promise<Card> {
-    return this.core.call(cardsFreezeCardOp, req, init) as Promise<Card>;
+    return this.#core.call(cardsFreezeCardOp, req, init) as Promise<Card>;
   }
 
   /** Permanently cancels a card. */
   cancelCard(req: CancelCardRequest, init?: veld.CallInit): Promise<void> {
-    return this.core.call(cardsCancelCardOp, req, init) as Promise<void>;
+    return this.#core.call(cardsCancelCardOp, req, init) as Promise<void>;
   }
 }

@@ -28,10 +28,10 @@ const helloGreetOp: veld.EndpointSpec = {
 
 /** Says hello. */
 export class HelloClient {
-  private readonly core: veld.ClientCore;
+  readonly #core: veld.ClientCore;
 
   constructor(opts: veld.ClientOptions = {}) {
-    this.core = new veld.ClientCore(opts, {
+    this.#core = new veld.ClientCore(opts, {
       envVar: 'VELD_HELLO_URL',
       baseUrl: null,
       validation: (issues) => new ValidationError({ issues }),
@@ -40,6 +40,6 @@ export class HelloClient {
 
   /** Greets the person with the given name. */
   greet(req: GreetRequest, init?: veld.CallInit): Promise<Greeting> {
-    return this.core.call(helloGreetOp, req, init) as Promise<Greeting>;
+    return this.#core.call(helloGreetOp, req, init) as Promise<Greeting>;
   }
 }

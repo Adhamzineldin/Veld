@@ -183,10 +183,10 @@ const accountsBanAccountOp: veld.EndpointSpec = {
 
 /** Bank account management: open, view, freeze and close accounts. */
 export class AccountsClient {
-  private readonly core: veld.ClientCore;
+  readonly #core: veld.ClientCore;
 
   constructor(opts: veld.ClientOptions = {}) {
-    this.core = new veld.ClientCore(opts, {
+    this.#core = new veld.ClientCore(opts, {
       envVar: 'VELD_ACCOUNTS_URL',
       baseUrl: 'http://account-service:3002',
       validation: (issues) => new ValidationError({ issues }),
@@ -195,41 +195,41 @@ export class AccountsClient {
 
   /** Lists the accounts of the authenticated user. */
   listAccounts(req: ListAccountsRequest = {}, init?: veld.CallInit): Promise<Account[]> {
-    return this.core.call(accountsListAccountsOp, req, init) as Promise<Account[]>;
+    return this.#core.call(accountsListAccountsOp, req, init) as Promise<Account[]>;
   }
 
   /** Fetches one account. */
   getAccount(req: GetAccountRequest, init?: veld.CallInit): Promise<Account> {
-    return this.core.call(accountsGetAccountOp, req, init) as Promise<Account>;
+    return this.#core.call(accountsGetAccountOp, req, init) as Promise<Account>;
   }
 
   /** Opens a new account. */
   createAccount(req: CreateAccountRequest, init?: veld.CallInit): Promise<Account> {
-    return this.core.call(accountsCreateAccountOp, req, init) as Promise<Account>;
+    return this.#core.call(accountsCreateAccountOp, req, init) as Promise<Account>;
   }
 
   /** Total balance and primary account. */
   getSummary(req: GetSummaryRequest = {}, init?: veld.CallInit): Promise<AccountSummary> {
-    return this.core.call(accountsGetSummaryOp, req, init) as Promise<AccountSummary>;
+    return this.#core.call(accountsGetSummaryOp, req, init) as Promise<AccountSummary>;
   }
 
   /** The account with its latest transactions, fetched from the transactions service. */
   getStatement(req: GetStatementRequest, init?: veld.CallInit): Promise<Statement> {
-    return this.core.call(accountsGetStatementOp, req, init) as Promise<Statement>;
+    return this.#core.call(accountsGetStatementOp, req, init) as Promise<Statement>;
   }
 
   /** Blocks all future transactions on an account. */
   freezeAccount(req: FreezeAccountRequest, init?: veld.CallInit): Promise<Account> {
-    return this.core.call(accountsFreezeAccountOp, req, init) as Promise<Account>;
+    return this.#core.call(accountsFreezeAccountOp, req, init) as Promise<Account>;
   }
 
   /** Permanently closes an account. */
   closeAccount(req: CloseAccountRequest, init?: veld.CallInit): Promise<void> {
-    return this.core.call(accountsCloseAccountOp, req, init) as Promise<void>;
+    return this.#core.call(accountsCloseAccountOp, req, init) as Promise<void>;
   }
 
   /** Staff only: bans an account. */
   banAccount(req: BanAccountRequest, init?: veld.CallInit): Promise<Account> {
-    return this.core.call(accountsBanAccountOp, req, init) as Promise<Account>;
+    return this.#core.call(accountsBanAccountOp, req, init) as Promise<Account>;
   }
 }

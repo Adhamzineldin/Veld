@@ -79,10 +79,10 @@ const invoicesPayInvoiceOp: veld.EndpointSpec = {
 
 /** Invoice management. */
 export class InvoicesClient {
-  private readonly core: veld.ClientCore;
+  readonly #core: veld.ClientCore;
 
   constructor(opts: veld.ClientOptions = {}) {
-    this.core = new veld.ClientCore(opts, {
+    this.#core = new veld.ClientCore(opts, {
       envVar: 'VELD_INVOICES_URL',
       baseUrl: 'http://invoices:3002',
       validation: (issues) => new ValidationError({ issues }),
@@ -91,16 +91,16 @@ export class InvoicesClient {
 
   /** Fetches one invoice. */
   getInvoice(req: GetInvoiceRequest, init?: veld.CallInit): Promise<Invoice> {
-    return this.core.call(invoicesGetInvoiceOp, req, init) as Promise<Invoice>;
+    return this.#core.call(invoicesGetInvoiceOp, req, init) as Promise<Invoice>;
   }
 
   /** Lists invoices, newest first. */
   listInvoices(req: ListInvoicesRequest, init?: veld.CallInit): Promise<veld.Page<Invoice>> {
-    return this.core.call(invoicesListInvoicesOp, req, init) as Promise<veld.Page<Invoice>>;
+    return this.#core.call(invoicesListInvoicesOp, req, init) as Promise<veld.Page<Invoice>>;
   }
 
   /** Marks an invoice as paid. */
   payInvoice(req: PayInvoiceRequest, init?: veld.CallInit): Promise<Invoice> {
-    return this.core.call(invoicesPayInvoiceOp, req, init) as Promise<Invoice>;
+    return this.#core.call(invoicesPayInvoiceOp, req, init) as Promise<Invoice>;
   }
 }

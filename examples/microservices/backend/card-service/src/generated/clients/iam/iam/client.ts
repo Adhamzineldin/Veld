@@ -130,10 +130,10 @@ const iamLogoutOp: veld.EndpointSpec = {
 
 /** Identity and access management: authentication and user profiles. */
 export class IamClient {
-  private readonly core: veld.ClientCore;
+  readonly #core: veld.ClientCore;
 
   constructor(opts: veld.ClientOptions = {}) {
-    this.core = new veld.ClientCore(opts, {
+    this.#core = new veld.ClientCore(opts, {
       envVar: 'VELD_IAM_URL',
       baseUrl: 'http://iam-service:3001',
       validation: (issues) => new ValidationError({ issues }),
@@ -142,31 +142,31 @@ export class IamClient {
 
   /** Creates a new user account. */
   register(req: RegisterRequest, init?: veld.CallInit): Promise<User> {
-    return this.core.call(iamRegisterOp, req, init) as Promise<User>;
+    return this.#core.call(iamRegisterOp, req, init) as Promise<User>;
   }
 
   /** Authenticates and returns a token pair. */
   login(req: LoginRequest, init?: veld.CallInit): Promise<TokenPair> {
-    return this.core.call(iamLoginOp, req, init) as Promise<TokenPair>;
+    return this.#core.call(iamLoginOp, req, init) as Promise<TokenPair>;
   }
 
   /** Exchanges a refresh token for a new token pair. */
   refreshToken(req: RefreshTokenRequest, init?: veld.CallInit): Promise<TokenPair> {
-    return this.core.call(iamRefreshTokenOp, req, init) as Promise<TokenPair>;
+    return this.#core.call(iamRefreshTokenOp, req, init) as Promise<TokenPair>;
   }
 
   /** Returns the authenticated user. */
   getProfile(req: GetProfileRequest = {}, init?: veld.CallInit): Promise<User> {
-    return this.core.call(iamGetProfileOp, req, init) as Promise<User>;
+    return this.#core.call(iamGetProfileOp, req, init) as Promise<User>;
   }
 
   /** Updates the name or phone of the authenticated user. */
   updateProfile(req: UpdateProfileRequest, init?: veld.CallInit): Promise<User> {
-    return this.core.call(iamUpdateProfileOp, req, init) as Promise<User>;
+    return this.#core.call(iamUpdateProfileOp, req, init) as Promise<User>;
   }
 
   /** Invalidates the current session. */
   logout(req: LogoutRequest = {}, init?: veld.CallInit): Promise<void> {
-    return this.core.call(iamLogoutOp, req, init) as Promise<void>;
+    return this.#core.call(iamLogoutOp, req, init) as Promise<void>;
   }
 }

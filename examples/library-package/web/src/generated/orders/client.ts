@@ -79,10 +79,10 @@ const ordersCreateOrderOp: veld.EndpointSpec = {
 
 /** Order management. */
 export class OrdersClient {
-  private readonly core: veld.ClientCore;
+  readonly #core: veld.ClientCore;
 
   constructor(opts: veld.ClientOptions = {}) {
-    this.core = new veld.ClientCore(opts, {
+    this.#core = new veld.ClientCore(opts, {
       envVar: 'VELD_ORDERS_URL',
       baseUrl: 'http://orders:3001',
       validation: (issues) => new ValidationError({ issues }),
@@ -91,16 +91,16 @@ export class OrdersClient {
 
   /** Fetches one order. */
   getOrder(req: GetOrderRequest, init?: veld.CallInit): Promise<Order> {
-    return this.core.call(ordersGetOrderOp, req, init) as Promise<Order>;
+    return this.#core.call(ordersGetOrderOp, req, init) as Promise<Order>;
   }
 
   /** Lists orders, newest first. */
   listOrders(req: ListOrdersRequest, init?: veld.CallInit): Promise<veld.Page<Order>> {
-    return this.core.call(ordersListOrdersOp, req, init) as Promise<veld.Page<Order>>;
+    return this.#core.call(ordersListOrdersOp, req, init) as Promise<veld.Page<Order>>;
   }
 
   /** Places an order. */
   createOrder(req: CreateOrderRequest, init?: veld.CallInit): Promise<Order> {
-    return this.core.call(ordersCreateOrderOp, req, init) as Promise<Order>;
+    return this.#core.call(ordersCreateOrderOp, req, init) as Promise<Order>;
   }
 }

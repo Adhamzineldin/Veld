@@ -86,10 +86,10 @@ const notificationsUpdatePreferencesOp: veld.EndpointSpec = {
 
 /** User notifications and preferences. */
 export class NotificationsClient {
-  private readonly core: veld.ClientCore;
+  readonly #core: veld.ClientCore;
 
   constructor(opts: veld.ClientOptions = {}) {
-    this.core = new veld.ClientCore(opts, {
+    this.#core = new veld.ClientCore(opts, {
       envVar: 'VELD_NOTIFICATIONS_URL',
       baseUrl: 'http://notification-service:3005',
       validation: (issues) => new ValidationError({ issues }),
@@ -98,21 +98,21 @@ export class NotificationsClient {
 
   /** Lists the notifications of the authenticated user. */
   listNotifications(req: ListNotificationsRequest = {}, init?: veld.CallInit): Promise<Notification[]> {
-    return this.core.call(notificationsListNotificationsOp, req, init) as Promise<Notification[]>;
+    return this.#core.call(notificationsListNotificationsOp, req, init) as Promise<Notification[]>;
   }
 
   /** Marks a notification as read. */
   markAsRead(req: MarkAsReadRequest, init?: veld.CallInit): Promise<Notification> {
-    return this.core.call(notificationsMarkAsReadOp, req, init) as Promise<Notification>;
+    return this.#core.call(notificationsMarkAsReadOp, req, init) as Promise<Notification>;
   }
 
   /** Returns the notification preferences. */
   getPreferences(req: GetPreferencesRequest = {}, init?: veld.CallInit): Promise<NotificationPreferences> {
-    return this.core.call(notificationsGetPreferencesOp, req, init) as Promise<NotificationPreferences>;
+    return this.#core.call(notificationsGetPreferencesOp, req, init) as Promise<NotificationPreferences>;
   }
 
   /** Updates one or more categories. */
   updatePreferences(req: UpdatePreferencesRequest, init?: veld.CallInit): Promise<NotificationPreferences> {
-    return this.core.call(notificationsUpdatePreferencesOp, req, init) as Promise<NotificationPreferences>;
+    return this.#core.call(notificationsUpdatePreferencesOp, req, init) as Promise<NotificationPreferences>;
   }
 }
