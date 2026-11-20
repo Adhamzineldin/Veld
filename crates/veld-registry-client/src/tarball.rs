@@ -153,6 +153,10 @@ pub fn read_archive(archive: &[u8], limits: &Limits) -> Result<BTreeMap<String, 
         let path = std::str::from_utf8(&entry.path_bytes())
             .map_err(|_| bad("entry name is not valid UTF-8"))?
             .to_string();
+        #[allow(
+            clippy::wildcard_enum_match_arm,
+            reason = "tar::EntryType is a foreign enum; every type but files and directories is rejected"
+        )]
         match kind {
             EntryType::Directory => {
                 check_path(&path)?;

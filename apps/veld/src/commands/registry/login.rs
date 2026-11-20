@@ -34,11 +34,15 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &LoginArgs) -> Result<Exit> {
         session.allow_insecure,
     )
     .map_err(fail)?;
-    let username = client.me().map_err(|e| match e {
-        veld_registry_client::RegistryError::Http { status: 401, .. } => {
+    let username = client.me().map_err(|e| {
+        if matches!(
+            e,
+            veld_registry_client::RegistryError::Http { status: 401, .. }
+        ) {
             user(format!("{registry} rejected the token"))
+        } else {
+            fail(e)
         }
-        other => fail(other),
     })?;
     let registry = client.base_url().to_string();
     session.creds.set(&registry, Token::new(token));

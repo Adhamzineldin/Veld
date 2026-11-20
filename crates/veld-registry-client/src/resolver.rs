@@ -181,14 +181,15 @@ impl Solver<'_> {
         let (org, pkg) = split_name(name).ok_or_else(|| {
             RegistryError::Resolve(format!("`{name}` is not a valid package name"))
         })?;
-        let listed = self.source.versions(org, pkg).map_err(|e| match e {
-            RegistryError::Http { status: 404, .. } if via.len() > 1 => {
+        let listed = self.source.versions(org, pkg).map_err(|e| {
+            if matches!(e, RegistryError::Http { status: 404, .. }) && via.len() > 1 {
                 RegistryError::Resolve(format!(
                     "{name} is not in the registry (required by {})",
                     via.join(" → ")
                 ))
+            } else {
+                e
             }
-            other => other,
         })?;
         let mut candidates: Vec<(Version, VersionInfo)> = listed
             .iter()
