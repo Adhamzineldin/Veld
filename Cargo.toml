@@ -8,6 +8,7 @@ members = [
   "crates/veld-codegen",
   "crates/veld-emit-conformance",
   "crates/veld-plugin-host",
+  "xtask",
 ]
 
 [workspace.package]
