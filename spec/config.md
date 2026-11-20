@@ -88,14 +88,45 @@ url = "https://registry.example.com"
 
 `framework` is optional and is validated by the generator for the target's role. An unknown value is `E0803`, and the message lists the valid values. A role that takes no framework rejects any value.
 
-| Emitter | Role | `framework` values | `[targets.options]` keys |
+| Emitter | Role | `framework` values (versions) | `[targets.options]` keys |
 |---|---|---|---|
-| `node` | server | `express`, `fastify`, `hono`, `node-http` | none |
-| `typescript` | client | none | none |
-| `java` | server | `jdk`, `spring` | `package` |
-| `java` | client | none | `package` |
+| `node` | server | `express`, `fastify`, `hono`, `node-http` (unversioned) | `typescript` |
+| `typescript` | client | none | `typescript` |
+| `java` | server | `jdk` (unversioned), `spring` (`"3"`) | `package`, `java`, `framework-version` |
+| `java` | client | none | `package`, `java` |
 
-Options are checked against the emitter's typed options: an unknown key is `E0802`. A `plugin:<name>` emitter declares its own values and options.
+The frameworks of a built-in emitter come from its adapter registry, one slice per emitter, so this table, the `E0803` message and the generated adapters cannot drift apart.
+
+### Language version and framework version
+
+Three options are resolved **once**, centrally, into a `Profile` before the generator runs. Generators query the profile (`java_at_least(21)`) and never compare raw version strings.
+
+```toml
+[[targets]]
+role = "server"
+service = "orders"
+emitter = "java"
+framework = "spring"
+out = "services/orders/src/main/java"
+
+[targets.options]
+java = "21"                # the language: "17" (default, the oldest supported) or "21"
+framework-version = "3"    # the framework version: Spring Boot 3
+```
+
+| Option | Emitters | Values | Default |
+|---|---|---|---|
+| `java` | `java` | `"17"`, `"21"` | `"17"` |
+| `typescript` | `typescript`, `node` | `"es2020"`, `"es2022"` | `"es2020"` |
+| `framework-version` | any emitter whose framework has versions | the framework's versions (`spring`: `"3"`) | the first version |
+
+Checks, all reported before generating, with a message that lists the valid values:
+
+- An unknown language version is `E0802`.
+- A `framework-version` outside the adapter's list, a `framework-version` without a `framework`, or one for an unversioned framework is `E0803`.
+- A language older than the framework's `min_language` is `E0803`.
+
+The language and `framework-version` keys belong to the core: they are removed before the emitter's own typed options are checked. For a `plugin:<name>` emitter the language key is the language `id` of the plugin's `hello` (`kotlin = "2.0"`), see `plugin-protocol.md`. Options are checked against the emitter's typed options: an unknown key is `E0802`. A `plugin:<name>` emitter declares its own values and options.
 
 ## Rules
 
@@ -130,7 +161,14 @@ Each `out` directory holds a manifest, `.veld-manifest.json`, listing the files 
 ## Registry packages
 
 - `[registry].url` is the registry; the flags `--registry` and `VELD_REGISTRY` override it. Registry URLs must be `https`, except for `localhost`/`127.0.0.1` (or `--allow-insecure`).
-- `veld add @org/name[@range]` writes `[dependencies]`, resolves the highest matching non-deprecated version, installs it and pins it in `veld.lock` (TOML: `name`, `version`, `sha256` of the tarball, `registry`). `veld install` installs exactly the locked versions. A checksum mismatch is a hard error.
+- `veld add @org/name[@range]` writes `[dependencies]`, resolves the whole dependency graph, installs it and pins it in `veld.lock`. `veld install` installs exactly the locked graph, direct and transitive, and verifies every checksum. A checksum mismatch is a hard error.
+- `veld.lock` is TOML. Each `[[package]]` entry has `name`, `version`, `sha256` of the tarball, `registry` and `dependencies`, the sorted names of the packages that entry depends on. Every package in the graph has an entry, so the lock is closed: a dependency that is not locked makes the lock invalid. The output is deterministic (sorted by name).
+- **Transitive dependencies.** A package's own `[dependencies]` are written to its `veld-package.toml` by `veld publish` (a `[dependencies]` table of `"@org/name" = "range"`), and the registry validates names and ranges at publish time and returns them as `dependencies` in `GET /api/v1/packages/{org}/{name}/versions`. The resolver reads them from that listing, so resolving never downloads a package.
+  - **One version per package.** The resolver picks the highest version that satisfies every range in the graph (the version already pinned in `veld.lock` is kept when it still fits, so `veld add` does not upgrade unrelated packages). Two versions of a package are never installed side by side, so `use @org/name:...` is unambiguous. Deprecated versions are skipped. Prerelease versions match only ranges that name a prerelease of the same `major.minor.patch`.
+  - **Conflicts** are a hard error that shows the dependency paths, for example `veld.toml → @acme/billing@1.0.0 → @acme/money@^1` next to `veld.toml → @acme/payroll@1.0.0 → @acme/money@^2`. Nothing is changed.
+  - **Cycles** between packages are legal (contract imports may cycle by design) and resolve as long as the versions are consistent; an inconsistent cycle is reported as a conflict marked `(dependency cycle)`.
+  - `veld add` updates `veld.toml`, `veld.lock` and the cache as a unit: on any failure nothing is changed. `veld install` and `veld add` also check that every installed package's manifest declares the dependencies the lock records for it, and that each locked version satisfies the ranges of the packages that depend on it.
+  - **Visibility.** The project may `use` only the packages listed in its own `[dependencies]`; a registry package may `use` only the packages in its own `[dependencies]`. Importing a package that is merely installed because something else needs it is `E0206`, with a help line saying where to declare it.
 - Installed packages live in `.veld/packages/@org/name/<version>/` (gitignored). `veld check` and `veld generate` install what `veld.lock` pins and the cache lacks; without a lock they never touch the network.
 - To publish, a `[project]`, `[libraries.*]` or `[services.*]` section sets `package = "@org/name"`, `version` (semver) and optionally `description`. `veld publish [--package <name>]` packs `contracts/**.veld` plus `veld-package.toml` (`name`, `version`, `language = "2"`, `[files]` sha256 checksums) into a deterministic tar.gz.
 - API tokens are stored per registry URL in `~/.veld/credentials.toml` (`$VELD_HOME` overrides the directory) and are never printed.
