@@ -70,6 +70,7 @@ generated/
 # Veld 2.0 toolchain tests
 /tests/toolchain/ts/node_modules/
 /tests/toolchain/ts/.work/
+/tests/toolchain/java/.work/
 /veld
 /veld.exe
 .idea/
