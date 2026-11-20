@@ -49,7 +49,7 @@ fn required_edges<'p>(prog: &'p Program<'_>, d: usize) -> Vec<(usize, &'p RField
             Type::Decl(t) if matches!(prog.decls[t.index()].kind, DKind::Model | DKind::Error) => {
                 Some((t.index(), f))
             }
-            _ => None,
+            Type::Decl(_) | Type::Scalar(_) | Type::List(_) | Type::Map(_) | Type::Page(_) => None,
         })
         .collect()
 }

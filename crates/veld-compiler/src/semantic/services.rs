@@ -351,7 +351,7 @@ impl Ctx<'_, '_> {
             let by = match binding {
                 Binding::Path => "its name appears in the path",
                 Binding::Body => "it is named `body`",
-                _ => "it is named `query`",
+                Binding::Query | Binding::QueryObject | Binding::Header => "it is named `query`",
             };
             diags.push(Diagnostic::error(
                 "E0602",
@@ -388,14 +388,14 @@ impl Ctx<'_, '_> {
         match ty {
             Type::Scalar(_) => true,
             Type::Decl(d) => self.prog.decls[d.index()].kind == DKind::Enum,
-            _ => false,
+            Type::List(_) | Type::Map(_) | Type::Page(_) => false,
         }
     }
 
     fn is_simple_or_list(&self, ty: &Type) -> bool {
         match ty {
             Type::List(inner) => self.is_simple(inner),
-            other => self.is_simple(other),
+            Type::Scalar(_) | Type::Map(_) | Type::Page(_) | Type::Decl(_) => self.is_simple(ty),
         }
     }
 
@@ -545,7 +545,7 @@ impl Ctx<'_, '_> {
     fn error_decl(&self, ty: Option<&Type>) -> Option<usize> {
         match ty? {
             Type::Decl(d) if self.prog.decls[d.index()].kind == DKind::Error => Some(d.index()),
-            _ => None,
+            Type::Decl(_) | Type::Scalar(_) | Type::List(_) | Type::Map(_) | Type::Page(_) => None,
         }
     }
 

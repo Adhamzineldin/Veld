@@ -1,5 +1,11 @@
 //! Hand-written, error-tolerant lexer.
 
+#![allow(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "token scanning: only a few tokens matter, the rest are skipped"
+)]
+
 use crate::diagnostics::{Diagnostic, FileId, Span};
 
 #[derive(Debug, Clone, PartialEq)]

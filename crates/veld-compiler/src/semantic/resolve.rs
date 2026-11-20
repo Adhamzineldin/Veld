@@ -227,7 +227,6 @@ impl Program<'_> {
                 .decls
                 .get(d.index())
                 .map_or_else(|| "?".to_string(), |d| d.name.clone()),
-            _ => "?".to_string(),
         }
     }
 
@@ -379,7 +378,11 @@ impl Program<'_> {
                     )
                 })
                 .collect(),
-            _ => Vec::new(),
+            DeclKind::Model(_)
+            | DeclKind::Error(_)
+            | DeclKind::Union(_)
+            | DeclKind::Service(_)
+            | DeclKind::Const(_) => Vec::new(),
         }
     }
 
@@ -391,7 +394,7 @@ impl Program<'_> {
             Type::Decl(d) if self.decls[d.index()].kind == DKind::Enum => {
                 self.enum_literal(d.index(), &lit.kind)
             }
-            _ => Err((
+            Type::List(_) | Type::Map(_) | Type::Page(_) | Type::Decl(_) => Err((
                 "E0303",
                 format!(
                     "a literal cannot be used as a value of type `{}`",
@@ -767,7 +770,7 @@ fn resolve_arms(
                 diags.push(error_position(&prog.decls[decl].name, arm.ty.span));
                 continue;
             }
-            _ => {
+            DKind::Enum | DKind::Union | DKind::Const => {
                 diags.push(Diagnostic::error(
                     "E0409",
                     format!(

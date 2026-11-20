@@ -232,7 +232,7 @@ fn one(args: &[Arg]) -> Result<&Arg, String> {
 fn literal_of(a: &Arg) -> Option<&Literal> {
     match &a.value {
         ArgValue::Literal(l) => Some(l),
-        _ => None,
+        ArgValue::Ident(_) | ArgValue::Call { .. } => None,
     }
 }
 
@@ -264,7 +264,9 @@ fn format_arg(args: &[Arg]) -> Result<StringFormat, String> {
                 i.name
             )
         }),
-        _ => Err("expected one of email, uri, hostname, ipv4, ipv6".to_string()),
+        ArgValue::Literal(_) | ArgValue::Call { .. } => {
+            Err("expected one of email, uri, hostname, ipv4, ipv6".to_string())
+        }
     }
 }
 
@@ -327,7 +329,9 @@ fn auth_arg(args: &[Arg]) -> Result<Auth, String> {
                 header: Some(header),
             })
         }
-        _ => Err("expected bearer, basic, none or apiKey(header: \"X\")".to_string()),
+        ArgValue::Literal(_) | ArgValue::Call { .. } => {
+            Err("expected bearer, basic, none or apiKey(header: \"X\")".to_string())
+        }
     }
 }
 
@@ -339,7 +343,7 @@ fn idents(args: &[Arg]) -> Result<Vec<String>, String> {
         .into_iter()
         .map(|a| match &a.value {
             ArgValue::Ident(i) => Ok(i.name.clone()),
-            _ => Err("expected plain names".to_string()),
+            ArgValue::Literal(_) | ArgValue::Call { .. } => Err("expected plain names".to_string()),
         })
         .collect()
 }

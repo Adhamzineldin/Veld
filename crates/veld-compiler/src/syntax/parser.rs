@@ -3,6 +3,12 @@
 //! Recovery points: the end of a declaration, the start of the next field,
 //! variant, arm or endpoint. One file can therefore report several errors.
 
+#![allow(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants,
+    reason = "token scanning: only a few tokens matter, the rest are skipped"
+)]
+
 use super::ast::{
     Annotation, Arg, ArgValue, ConstDecl, Decl, DeclKind, Doc, Endpoint, EnumDecl, ErrorDecl,
     Field, File, HttpMethod, Ident, Import, LitKind, Literal, ModelDecl, Param, RespItem,

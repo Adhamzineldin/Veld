@@ -115,7 +115,6 @@ fn tshape(t: &Type, decls: &[Decl]) -> Json {
         Type::Map(i) => obj(vec![("map", tshape(i, decls))]),
         Type::Page(i) => obj(vec![("page", tshape(i, decls))]),
         Type::Decl(d) => obj(vec![("ref", text(&decls[d.index()].qualified))]),
-        _ => text("?"),
     }
 }
 
@@ -158,7 +157,6 @@ fn local_shape(d: &Decl, decls: &[Decl]) -> Json {
             ])
         }
         DeclKind::Const(c) => obj(vec![("k", text("const")), ("t", tshape(&c.ty, decls))]),
-        _ => obj(vec![("k", text("unknown"))]),
     }
 }
 
@@ -171,7 +169,7 @@ fn shape_refs(d: &Decl) -> Vec<usize> {
         }
         DeclKind::Union(u) => ids.extend(u.arms.iter().map(|a| a.decl)),
         DeclKind::Const(c) => c.ty.collect_decls(&mut ids),
-        _ => {}
+        DeclKind::Enum(_) => {}
     }
     ids.into_iter().map(veld_ir::DeclId::index).collect()
 }

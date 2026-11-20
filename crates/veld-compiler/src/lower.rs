@@ -112,7 +112,6 @@ impl Lowerer<'_, '_> {
             Type::Map(i) => Type::Map(Box::new(self.remap(i))),
             Type::Page(i) => Type::Page(Box::new(self.remap(i))),
             Type::Decl(d) => Type::Decl(self.decl_id(d.index())),
-            other => other.clone(),
         }
     }
 
