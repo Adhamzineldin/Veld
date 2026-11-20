@@ -78,6 +78,8 @@ pub struct TargetSection {
     pub services: Option<Vec<String>>,
     pub out: Option<String>,
     pub clients: Option<bool>,
+    /// The app that consumes the output, for `veld setup` (default: nearest package.json or build file).
+    pub app: Option<String>,
     #[serde(default)]
     pub options: Table,
 }
@@ -125,6 +127,7 @@ const TARGET: &[&str] = &[
     "services",
     "out",
     "clients",
+    "app",
     "options",
 ];
 const PLUGIN: &[&str] = &["command", "version", "sha256", "entry"];

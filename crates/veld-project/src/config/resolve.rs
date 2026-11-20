@@ -230,6 +230,7 @@ fn build_target(
         services: target_services,
         out,
         clients: t.clients.unwrap_or(true),
+        app: t.app.as_deref().map(|a| normalize(&root.join(a))),
         options: t.options.clone(),
     })
 }
@@ -479,6 +480,21 @@ out = "web/src/generated"
         assert_eq!(p.targets[0].name, "server-node");
         assert_eq!(p.targets[1].name, "client-typescript");
         assert!(p.targets[0].clients);
+        assert_eq!(p.targets[0].app, None);
+    }
+
+    #[test]
+    fn app_is_resolved_against_the_project_root() {
+        let text = SINGLE.replace(
+            "out = \"../web/src/generated\"
+",
+            "out = \"../web/src/generated\"
+app = \"../web\"
+",
+        );
+        let p = load(&text).unwrap();
+        assert_eq!(p.targets[1].app, Some(normalize(&root().join("../web"))));
+        assert_eq!(p.targets[0].app, None);
     }
 
     #[test]

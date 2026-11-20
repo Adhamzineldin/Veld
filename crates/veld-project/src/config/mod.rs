@@ -56,6 +56,8 @@ pub struct TargetSpec {
     pub out: PathBuf,
     /// Whether a server also emits clients for its `consumes`.
     pub clients: bool,
+    /// Absolute directory of the app that consumes the output (`app` in `veld.toml`), if set.
+    pub app: Option<PathBuf>,
     /// Emitter-specific options, validated later by the emitter.
     pub options: toml::Table,
 }
