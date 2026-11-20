@@ -3,7 +3,7 @@
 Status: normative for the built-in Java generator. It follows `spec/targets/typescript.md` semantically: the same contract gives the same wire behaviour, the same errors with the same signatures, and the same canonical bytes. One implementation of models and runtime serves both roles.
 
 ## 0. Hard rules
-- **Java 17 or newer.** Generated code compiles with `javac --release 17 -Xlint:all -Werror` with zero warnings. It uses records, sealed interfaces and `java.net.http`, and nothing newer.
+- **Java 17 or newer.** Generated code compiles with `javac --release 17 -Xlint:all -Werror` and with `--release 21`, with zero warnings in both. It uses records, sealed interfaces and `java.net.http`, and nothing newer than 17 unless the profile (`java = "21"`) says so; today the output is identical for both.
 - **Zero dependencies.** Generated code imports only the JDK (`java.*`, and `com.sun.net.httpserver` for the JDK adapter). The single exception is the optional Spring adapter, which imports Spring Boot 3 (Jakarta) and is emitted only for `framework = "spring"`. There is no JSON library, no annotation library and no logging library: the runtime contains its own JSON parser and writer.
 - **Identity by signature, never by class.** Two generated copies of a type in different Java packages are different classes. Every model, enum, union and error exposes `VELD_SIG`, equal to the IR signature verbatim (`spec/ir.md` §5.1).
 - **Unsupported is loud.** SSE and WebSocket streaming are not supported: the capability gate reports `E0801`. Nothing wrong is emitted.
@@ -16,8 +16,10 @@ Options (`[targets.options]`, validated, unknown keys are `E0802`):
 | Option | Default | Meaning |
 |---|---|---|
 | `package` | `dev.veld.generated.<package of the first service>` | The base Java package. Must be a valid package name, else `E0802`. |
+| `java` | `"17"` | The Java release the output targets: `"17"` or `"21"` (the oldest supported is the default). Anything else is `E0802`, and the message lists the valid values. The generated code is the same for every release today; `Profile::java_at_least(21)` is how newer syntax would be gated. |
+| `framework-version` | the adapter's first version | The version of the framework. Only `spring` has versions (`"3"`: Spring Boot 3, Jakarta). A version outside the adapter's list, or a version for an unversioned framework (`jdk`), is `E0803`. |
 
-`framework` (server only): `jdk` (default) or `spring`. Any other value, or a framework on a client target, is `E0803`.
+`framework` (server only): `jdk` (default) or `spring`. Any other value, or a framework on a client target, is `E0803`. A framework whose `min_language` is newer than the chosen `java` release is `E0803` too (Spring Boot 3 and the JDK adapter both need Java 17). The framework list, versions and minimums come from the adapter registry (`crates/emitters/java/src/frameworks/`: `jdk.rs`, `spring.rs`), the single source of truth. The JDK adapter is always emitted; `spring` adds the Spring adapter.
 
 Files go to `<out>/<base as path>/...`. Below the base package:
 
@@ -105,7 +107,7 @@ HttpServer server = JdkHttpServerAdapter.listen(handler, new InetSocketAddress(8
 - `crates/emitters/java/tests/snapshots.rs`: snapshots of the generated files for `tests/toolchain/contract`, determinism, signatures equal to the IR, `E0801`/`E0802`/`E0803`.
 - `crates/emitters/java/tests/conformance.rs`: the `veld-emit-conformance` kit.
 - `crates/emitters/java/tests/toolchain.rs` (needs a JDK; cross-language tests also need `node` and `tests/toolchain/ts/node_modules`; `VELD_REQUIRE_TOOLCHAINS=1` turns a skip into a failure):
-  - everything compiles with `javac --release 17 -Xlint:all -Werror`;
+  - everything compiles with `javac --release 17` and `--release 21`, both with `-Xlint:all -Werror`, and every test below runs for both releases (the matrix is `RELEASES` in `tests/common/mod.rs`, the option is `java = "17"|"21"`);
   - Java round trip: the generated server on `JdkHttpServerAdapter` (port 0), every endpoint through the generated client: success, every declared error as the right class with `op`, an undeclared exception as `Internal` 500 without its message, 422 with issues, 401 then success, middleware called;
   - cross-language: the generated TypeScript client against the Java server, and the generated Java client against the Node server, with typed errors and correct `sig`/`op`;
   - wire goldens `tests/wire/*.json` through the generated schemas, the same bytes the TypeScript runtime produces;
