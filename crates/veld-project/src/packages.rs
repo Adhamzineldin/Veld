@@ -4,6 +4,7 @@
 //! package (`contracts/**.veld` and `veld-package.toml`). Installing is the job of
 //! `veld-registry-client`; this module only reads what is installed.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -45,6 +46,10 @@ pub struct LockedPackage {
     pub sha256: String,
     /// The registry the package was resolved from.
     pub registry: String,
+    /// Names of the packages this one depends on (its own `[dependencies]`), sorted. Each is
+    /// also an entry of the lock: the lock holds the whole graph, one version per package.
+    #[serde(default)]
+    pub dependencies: Vec<String>,
 }
 
 /// The contents of `veld.lock`.
@@ -77,13 +82,31 @@ impl Lockfile {
             packages: raw.packages,
         };
         lock.packages.sort_by(|a, b| a.name.cmp(&b.name));
+        for p in &mut lock.packages {
+            p.dependencies.sort();
+            p.dependencies.dedup();
+        }
         if let Some(w) = lock.packages.windows(2).find(|w| w[0].name == w[1].name) {
             return Err(PackagesError::Lock(format!(
                 "package `{}` is listed twice",
                 w[0].name
             )));
         }
+        lock.check_closed()?;
         Ok(lock)
+    }
+
+    /// Every dependency of a locked package must itself be locked (the lock is the whole graph).
+    fn check_closed(&self) -> Result<(), PackagesError> {
+        for p in &self.packages {
+            if let Some(missing) = p.dependencies.iter().find(|d| self.get(d).is_none()) {
+                return Err(PackagesError::Lock(format!(
+                    "`{}` depends on `{missing}`, which is not in the lock",
+                    p.name
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Reads `<root>/veld.lock`; `Ok(None)` when there is none.
@@ -112,6 +135,10 @@ impl Lockfile {
             ] {
                 out.push_str(&format!("{k} = {}\n", toml_string(v)));
             }
+            let mut deps: Vec<&String> = p.dependencies.iter().collect();
+            deps.sort();
+            let list: Vec<String> = deps.into_iter().map(|d| toml_string(d)).collect();
+            out.push_str(&format!("dependencies = [{}]\n", list.join(", ")));
         }
         out
     }
@@ -229,6 +256,24 @@ impl Project {
         }
         Ok(out)
     }
+
+    /// Which registry packages each package may `use`, for the compiler's access check:
+    /// every project package may use the project's direct `[dependencies]`; every locked
+    /// registry package may use the dependencies the lock records for it. Keyed by package name.
+    pub fn registry_access(&self) -> Result<BTreeMap<String, BTreeSet<String>>, PackagesError> {
+        let direct: BTreeSet<String> = self.dependencies.keys().cloned().collect();
+        let mut out: BTreeMap<String, BTreeSet<String>> = self
+            .packages
+            .iter()
+            .map(|p| (p.name.clone(), direct.clone()))
+            .collect();
+        if let Some(lock) = Lockfile::read(&self.root)? {
+            for p in lock.packages {
+                out.insert(p.name, p.dependencies.into_iter().collect());
+            }
+        }
+        Ok(out)
+    }
 }
 
 #[cfg(test)]
@@ -241,6 +286,7 @@ mod tests {
             version: version.into(),
             sha256: "ab".repeat(32),
             registry: "https://r.example".into(),
+            dependencies: Vec::new(),
         }
     }
 
@@ -305,5 +351,88 @@ mod tests {
         let state = install_state(root).unwrap();
         assert_eq!(state.installed.len(), 1);
         assert_eq!(state.missing[0].name, "@a/gone");
+    }
+
+    fn with_deps(mut p: LockedPackage, deps: &[&str]) -> LockedPackage {
+        p.dependencies = deps.iter().map(|d| (*d).to_string()).collect();
+        p
+    }
+
+    #[test]
+    fn lock_records_dependencies_and_round_trips() {
+        let lock = Lockfile {
+            packages: vec![
+                with_deps(pkg("@acme/billing", "1.0.0"), &["@acme/money", "@acme/ids"]),
+                pkg("@acme/money", "1.2.0"),
+                pkg("@acme/ids", "1.0.0"),
+            ],
+        };
+        let text = lock.to_toml();
+        assert!(
+            text.contains("dependencies = [\"@acme/ids\", \"@acme/money\"]"),
+            "sorted: {text}"
+        );
+        assert!(text.contains("dependencies = []"));
+        let back = Lockfile::parse(&text).unwrap();
+        assert_eq!(
+            back.get("@acme/billing").unwrap().dependencies,
+            ["@acme/ids", "@acme/money"]
+        );
+        assert_eq!(back.to_toml(), text, "stable");
+    }
+
+    #[test]
+    fn old_locks_without_dependencies_still_parse() {
+        let old = "version = 1\n\n[[package]]\nname = \"@a/b\"\nversion = \"1.0.0\"\nsha256 = \"x\"\nregistry = \"r\"\n";
+        assert!(
+            Lockfile::parse(old).unwrap().packages[0]
+                .dependencies
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn lock_must_be_closed_but_may_have_cycles() {
+        let dangling = Lockfile {
+            packages: vec![with_deps(pkg("@a/x", "1.0.0"), &["@a/missing"])],
+        };
+        let err = Lockfile::parse(&dangling.to_toml())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("@a/missing"), "{err}");
+        let cycle = Lockfile {
+            packages: vec![
+                with_deps(pkg("@a/x", "1.0.0"), &["@a/y"]),
+                with_deps(pkg("@a/y", "1.0.0"), &["@a/x"]),
+            ],
+        };
+        assert!(Lockfile::parse(&cycle.to_toml()).is_ok());
+    }
+
+    #[test]
+    fn access_rules_follow_the_lock() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("contracts")).unwrap();
+        std::fs::write(
+            root.join("veld.toml"),
+            "[project]\nname = \"app\"\n[dependencies]\n\"@acme/billing\" = \"^1\"\n",
+        )
+        .unwrap();
+        let lock = Lockfile {
+            packages: vec![
+                with_deps(pkg("@acme/billing", "1.0.0"), &["@acme/money"]),
+                pkg("@acme/money", "1.0.0"),
+            ],
+        };
+        std::fs::write(root.join(LOCK_FILE), lock.to_toml()).unwrap();
+        let project = crate::config::load(&root.join("veld.toml")).unwrap();
+        let access = project.registry_access().unwrap();
+        assert_eq!(access["app"], BTreeSet::from(["@acme/billing".to_string()]));
+        assert_eq!(
+            access["@acme/billing"],
+            BTreeSet::from(["@acme/money".to_string()])
+        );
+        assert!(access["@acme/money"].is_empty());
     }
 }
