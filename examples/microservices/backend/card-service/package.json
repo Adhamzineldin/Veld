@@ -1,0 +1,22 @@
+{
+  "name": "nexusbank-card-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The cards service of the NexusBank example",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc --noEmit && esbuild src/main.ts --bundle --platform=node --outfile=dist/main.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@veld/cards-api": "file:src/generated",
+    "fastify": "5.12.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}
