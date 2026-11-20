@@ -276,7 +276,13 @@ fn copy_dir(from: &Path, to: &Path) {
 fn migrate_example(name: &str) -> tempfile::TempDir {
     let tmp = tempdir().unwrap();
     let dir = tmp.path().join(name);
-    copy_dir(&repo_root().join("examples").join(name).join("veld"), &dir);
+    copy_dir(
+        &repo_root()
+            .join("archive/v1/examples")
+            .join(name)
+            .join("veld"),
+        &dir,
+    );
     veld(&dir).arg("migrate").assert().success();
     veld(&dir).arg("check").assert().success();
     tmp
@@ -313,7 +319,10 @@ fn migrated_node_react_example_passes_check_and_generates() {
 fn migrate_never_overwrites_and_dry_run_writes_nothing() {
     let tmp = tempdir().unwrap();
     let dir = tmp.path().join("p");
-    copy_dir(&repo_root().join("examples/node-react/veld"), &dir);
+    copy_dir(
+        &repo_root().join("archive/v1/examples/node-react/veld"),
+        &dir,
+    );
     let before = tree(&dir);
     veld(&dir)
         .args(["migrate", "--dry-run"])

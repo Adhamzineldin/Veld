@@ -1,4 +1,4 @@
-//! Migrates every v1 contract under `examples/*/veld` and compiles the result.
+//! Migrates every v1 contract under `archive/v1/examples/*/veld` and compiles the result.
 #![allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 
 mod common;
@@ -12,7 +12,7 @@ use veld_ir::PackageKind;
 use veld_tools::migrate_v1;
 
 fn examples_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../archive/v1/examples")
 }
 
 /// Reads `.veld` files below `dir`, skipping copies in `packages/` and
