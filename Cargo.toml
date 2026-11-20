@@ -2,9 +2,10 @@
 resolver = "3"
 members = [
   "crates/veld-ir",
-  "crates/veld-codegen",
   "crates/veld-project",
   "crates/veld-compiler",
+  "crates/veld-tools",
+  "crates/veld-codegen",
   "crates/emitters/typescript",
   "crates/emitters/node",
   "apps/veld",

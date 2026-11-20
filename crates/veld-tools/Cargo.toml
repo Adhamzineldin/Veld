@@ -1,0 +1,19 @@
+[package]
+name = "veld-tools"
+description = "Veld tools: formatter, OpenAPI export, breaking-change diff and v1 migration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+veld-compiler.workspace = true
+veld-ir.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+
+[lints]
+workspace = true
