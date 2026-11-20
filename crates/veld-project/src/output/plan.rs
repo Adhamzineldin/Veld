@@ -17,6 +17,8 @@ pub enum PlanAction {
     Unchanged,
     /// An existing file Veld does not own, with different content.
     Conflict,
+    /// A file Veld wrote earlier that the user has edited since (its hash differs from the manifest).
+    Modified,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,8 +44,13 @@ impl Plan {
         })
     }
 
+    /// Every path that blocks the write: unowned files and user-edited generated files.
     pub fn conflicts(&self) -> Vec<String> {
-        self.paths_with(PlanAction::Conflict)
+        self.entries
+            .iter()
+            .filter(|e| matches!(e.action, PlanAction::Conflict | PlanAction::Modified))
+            .map(|e| e.path.clone())
+            .collect()
     }
 
     pub fn paths_with(&self, action: PlanAction) -> Vec<String> {
@@ -76,10 +83,15 @@ pub(crate) fn build(
         });
     }
     for rel in old.files.keys().filter(|p| !files.contains(p)) {
-        if stale_exists(out, rel)? {
+        if let Some(current) = stale_hash(out, rel)? {
+            let edited = old.files.get(rel) != Some(&current);
             entries.push(PlanEntry {
                 path: rel.clone(),
-                action: PlanAction::Delete,
+                action: if edited && !force {
+                    PlanAction::Modified
+                } else {
+                    PlanAction::Delete
+                },
             });
         }
     }
@@ -108,21 +120,31 @@ fn classify(
         });
     }
     let existing = fs::read(&target).map_err(io_at(&target))?;
-    Ok(if sha256_hex(&existing) == sha256_hex(bytes) {
+    let current = sha256_hex(&existing);
+    Ok(if current == sha256_hex(bytes) {
         PlanAction::Unchanged
-    } else if old.files.contains_key(rel) || force {
+    } else if force {
         PlanAction::Update
     } else {
-        PlanAction::Conflict
+        match old.files.get(rel) {
+            Some(listed) if *listed == current => PlanAction::Update,
+            // Veld wrote this file, but the user has edited it since.
+            Some(_) => PlanAction::Modified,
+            None => PlanAction::Conflict,
+        }
     })
 }
 
-fn stale_exists(out: &Path, rel: &str) -> Result<bool, OutputError> {
+/// The content hash of the manifest-listed file at `rel`, or `None` if it is not a file.
+fn stale_hash(out: &Path, rel: &str) -> Result<Option<String>, OutputError> {
     ensure_path_clear(out, rel)?;
     let target = target_path(out, rel)?;
     match fs::symlink_metadata(&target) {
-        Ok(m) => Ok(m.is_file()),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Ok(m) if m.is_file() => Ok(Some(sha256_hex(
+            &fs::read(&target).map_err(io_at(&target))?,
+        ))),
+        Ok(_) => Ok(None),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(io_at(&target)(e)),
     }
 }

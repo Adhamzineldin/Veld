@@ -1,4 +1,5 @@
-//! `clean`: remove only what Veld wrote and the user has not modified.
+//! `clean`: remove only what Veld wrote and the user has not modified. Files it keeps stay in a
+//! manifest that lists only them, with their original hashes.
 
 use std::fs;
 use std::io;
@@ -9,7 +10,7 @@ use super::manifest::{Manifest, sha256_hex};
 use super::safety::{absolute, ensure_path_clear, prune_empty_parents, target_path};
 use crate::fileset::MANIFEST_NAME;
 
-/// What a clean removed or left behind. With `dry_run`, `removed` is what would go.
+/// What a clean removed or left behind. Kept files stay listed in a reduced manifest. With `dry_run`, `removed` is what would go.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CleanReport {
     pub removed: Vec<String>,
@@ -45,7 +46,21 @@ pub fn clean(out: &Path, dry_run: bool) -> Result<CleanReport, OutputError> {
     }
     if !dry_run {
         let manifest_path = out.join(MANIFEST_NAME);
-        fs::remove_file(&manifest_path).map_err(io_at(&manifest_path))?;
+        if report.modified.is_empty() {
+            fs::remove_file(&manifest_path).map_err(io_at(&manifest_path))?;
+        } else {
+            // Keep ownership of the files the user edited, with their original hashes, so a
+            // later `generate` reports them as user-modified rather than as foreign files.
+            let kept = Manifest {
+                files: manifest
+                    .files
+                    .iter()
+                    .filter(|(rel, _)| report.modified.contains(rel))
+                    .map(|(rel, hash)| (rel.clone(), hash.clone()))
+                    .collect(),
+            };
+            fs::write(&manifest_path, kept.to_bytes()?).map_err(io_at(&manifest_path))?;
+        }
         report
             .removed
             .iter()
@@ -88,7 +103,9 @@ mod tests {
         assert_eq!(report.removed, ["a/x.txt"]);
         assert_eq!(report.modified, ["b.txt"]);
         assert!(!tmp.path().join("a").exists());
-        assert!(!tmp.path().join(MANIFEST_NAME).exists());
+        // The manifest survives, reduced to the kept file.
+        let m = Manifest::load(tmp.path()).unwrap().unwrap();
+        assert_eq!(m.files.keys().collect::<Vec<_>>(), ["b.txt"]);
         assert_eq!(
             fs::read_to_string(tmp.path().join("b.txt")).unwrap(),
             "edited"

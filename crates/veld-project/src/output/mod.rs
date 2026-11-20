@@ -1,7 +1,8 @@
 //! The safe, staged output writer.
 //!
 //! Guarantees: generation never deletes anything Veld did not write (tracked by
-//! `.veld-manifest.json`), refuses to clobber unmanaged files, never follows
+//! `.veld-manifest.json`), refuses to clobber unmanaged files and files the user has edited
+//! since Veld wrote them (their hash differs from the manifest; `--force` overrides), never follows
 //! symlinks, swaps files in through a staging directory with rollback on
 //! failure, and writes the manifest last.
 
@@ -28,7 +29,7 @@ use error::io_at;
 pub struct WriteOptions {
     /// Compute and return the plan; write nothing at all.
     pub dry_run: bool,
-    /// Overwrite unmanaged files whose content differs.
+    /// Overwrite unmanaged files and user-edited generated files whose content differs.
     pub force: bool,
 }
 
@@ -37,13 +38,17 @@ pub fn write(out: &Path, files: &FileSet, opts: &WriteOptions) -> Result<Plan, O
     let out = safety::absolute(out)?;
     check_out_dir(&out)?;
     let old = Manifest::load(&out)?;
+    if !opts.dry_run {
+        commit::remove_stale_staging(&out)?;
+    }
     let plan = plan::build(&out, &old.clone().unwrap_or_default(), files, opts.force)?;
     if opts.dry_run {
         return Ok(plan);
     }
-    let conflicts = plan.conflicts();
-    if !conflicts.is_empty() {
-        return Err(OutputError::Conflicts { paths: conflicts });
+    let foreign = plan.paths_with(PlanAction::Conflict);
+    let edited = plan.paths_with(PlanAction::Modified);
+    if !foreign.is_empty() || !edited.is_empty() {
+        return Err(OutputError::Conflicts { foreign, edited });
     }
     let new = Manifest::from_files(files);
     let manifest_current = old.as_ref() == Some(&new);

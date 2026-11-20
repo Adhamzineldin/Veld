@@ -8,8 +8,13 @@ use thiserror::Error;
 pub enum OutputError {
     #[error("I/O error at `{}`: {source}", path.display())]
     Io { path: PathBuf, source: io::Error },
-    #[error("refusing to overwrite {} file(s) not created by Veld (use --force): {}", paths.len(), paths.join(", "))]
-    Conflicts { paths: Vec<String> },
+    #[error("{}", conflict_message(foreign, edited))]
+    Conflicts {
+        /// Existing files Veld did not create.
+        foreign: Vec<String>,
+        /// Files Veld generated earlier that the user has edited since.
+        edited: Vec<String>,
+    },
     #[error("refusing to write through symlink `{}`", path.display())]
     Symlink { path: PathBuf },
     #[error("cannot write `{path}`: {reason}")]
@@ -34,4 +39,22 @@ pub(crate) fn io_at(path: &Path) -> impl FnOnce(io::Error) -> OutputError + '_ {
         path: path.to_path_buf(),
         source,
     }
+}
+
+fn conflict_message(foreign: &[String], edited: &[String]) -> String {
+    let mut parts = Vec::new();
+    if !edited.is_empty() {
+        parts.push(format!(
+            "you edited generated file(s) {}; generating would overwrite or delete your changes",
+            edited.join(", ")
+        ));
+    }
+    if !foreign.is_empty() {
+        parts.push(format!(
+            "{} existing file(s) were not created by Veld: {}",
+            foreign.len(),
+            foreign.join(", ")
+        ));
+    }
+    format!("{} (use --force to overwrite)", parts.join("; "))
 }

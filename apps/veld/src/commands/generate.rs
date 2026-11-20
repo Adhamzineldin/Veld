@@ -59,9 +59,8 @@ pub fn generate(
 
 fn print_results(ui: &Ui, written: &[Written], dry_run: bool) {
     for w in written {
-        let conflicts = w.plan.conflicts();
-        if !conflicts.is_empty() {
-            report_conflicts(ui, w, &conflicts);
+        if !w.plan.conflicts().is_empty() {
+            report_conflicts(ui, w);
             continue;
         }
         let [created, updated, deleted, unchanged] = pipeline::tally(&w.plan);
@@ -93,21 +92,36 @@ fn list_changes(ui: &Ui, w: &Written) {
             PlanAction::Create => "+",
             PlanAction::Update => "~",
             PlanAction::Delete => "-",
-            PlanAction::Unchanged | PlanAction::Conflict => continue,
+            PlanAction::Unchanged | PlanAction::Conflict | PlanAction::Modified => continue,
         };
         ui.info(&format!("    {mark} {}", e.path));
     }
 }
 
-fn report_conflicts(ui: &Ui, w: &Written, conflicts: &[String]) {
+fn report_conflicts(ui: &Ui, w: &Written) {
     let out = pipeline::display_path(&w.out);
-    ui.error(&format!(
-        "target `{}`: {} file(s) in `{out}` already exist and were not created by Veld; nothing was written",
-        w.name,
-        conflicts.len()
-    ));
-    for path in conflicts {
-        eprintln!("  conflict: {path}");
+    let foreign = w.plan.paths_with(PlanAction::Conflict);
+    let edited = w.plan.paths_with(PlanAction::Modified);
+    if !foreign.is_empty() {
+        ui.error(&format!(
+            "target `{}`: {} file(s) in `{out}` already exist and were not created by Veld; nothing was written",
+            w.name,
+            foreign.len()
+        ));
+        for path in &foreign {
+            eprintln!("  conflict: {path}");
+        }
+        eprintln!("  move them away, or re-run with --force to overwrite them");
     }
-    eprintln!("  move them away, or re-run with --force to overwrite them");
+    if !edited.is_empty() {
+        ui.error(&format!(
+            "target `{}`: {} generated file(s) in `{out}` were edited since Veld wrote them; nothing was written",
+            w.name,
+            edited.len()
+        ));
+        for path in &edited {
+            eprintln!("  you edited generated file: {path}");
+        }
+        eprintln!("  keep your edits elsewhere, or re-run with --force to overwrite them");
+    }
 }
