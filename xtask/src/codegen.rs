@@ -1,6 +1,7 @@
 //! `cargo xtask codegen [--check]`: files generated from the Rust sources.
 //!
 //! - `editors/veld-language.json`: the language table, for editor grammars
+//! - `editors/vscode/syntaxes/veld.tmLanguage.json`: the TextMate grammar, from the table above
 //! - `spec/ir.d.ts`: the TypeScript types of the IR and the plugin messages
 
 use std::fs;
@@ -13,8 +14,10 @@ pub fn outputs() -> Result<Vec<(&'static str, String)>> {
     let mut language = serde_json::to_string_pretty(&veld_compiler::language::spec())
         .context("cannot serialize the language table")?;
     language.push('\n');
+    let grammar = crate::grammar::tm_language(&language)?;
     Ok(vec![
         ("editors/veld-language.json", language),
+        ("editors/vscode/syntaxes/veld.tmLanguage.json", grammar),
         ("spec/ir.d.ts", veld_ir::schema::typescript()),
     ])
 }
@@ -55,7 +58,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         assert!(run(tmp.path(), true).is_err(), "nothing is generated yet");
         let written = run(tmp.path(), false).unwrap();
-        assert_eq!(written.len(), 2);
+        assert_eq!(written.len(), 3);
         assert!(run(tmp.path(), true).unwrap().is_empty());
         fs::write(tmp.path().join("editors/veld-language.json"), "{}").unwrap();
         let err = run(tmp.path(), true).unwrap_err().to_string();
