@@ -1,2 +1,7 @@
 .veld/
 node_modules/
+dist/
+target/
+*.tsbuildinfo
+# The repository ignores package-lock.json; the examples commit theirs (npm ci in tests and Docker).
+!package-lock.json
