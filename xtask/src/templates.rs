@@ -7,6 +7,7 @@ description = "Veld {{Struct}} generator ({{roles_text}})"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]

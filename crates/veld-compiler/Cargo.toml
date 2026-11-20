@@ -4,6 +4,7 @@ description = "Veld compiler: lexer, parser, semantic analysis and lowering to t
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]

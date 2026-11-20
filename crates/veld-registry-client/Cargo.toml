@@ -4,6 +4,7 @@ description = "Veld package registry client: credentials, pack/unpack, resolver,
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]

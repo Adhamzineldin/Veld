@@ -4,6 +4,7 @@ description = "Veld project config (veld.toml) loading and the safe staged outpu
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
