@@ -22,13 +22,19 @@ fn toolchain_dir() -> PathBuf {
 
 /// The `tsc` entry point, or why the toolchain is unavailable.
 fn locate_toolchain() -> Result<PathBuf, String> {
-    let node_ok = Command::new("node").arg("--version").output().is_ok_and(|o| o.status.success());
+    let node_ok = Command::new("node")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success());
     if !node_ok {
         return Err("`node` is not on PATH".into());
     }
     let tsc = toolchain_dir().join("node_modules/typescript/bin/tsc");
     if !tsc.exists() {
-        return Err(format!("{} is missing; run `npm ci` in tests/toolchain/ts", tsc.display()));
+        return Err(format!(
+            "{} is missing; run `npm ci` in tests/toolchain/ts",
+            tsc.display()
+        ));
     }
     Ok(tsc)
 }
@@ -47,7 +53,9 @@ fn sig_map(ir: &Ir) -> Value {
 }
 
 fn run(cmd: &mut Command, what: &str) {
-    let out = cmd.output().unwrap_or_else(|e| panic!("{what}: cannot start: {e}"));
+    let out = cmd
+        .output()
+        .unwrap_or_else(|e| panic!("{what}: cannot start: {e}"));
     print!("{}", String::from_utf8_lossy(&out.stdout));
     assert!(
         out.status.success(),
@@ -59,7 +67,13 @@ fn run(cmd: &mut Command, what: &str) {
 }
 
 fn tsc(tsc: &Path, work: &Path, project: &str) {
-    run(Command::new("node").arg(tsc).args(["-p", project]).current_dir(work), &format!("tsc -p {project}"));
+    run(
+        Command::new("node")
+            .arg(tsc)
+            .args(["-p", project])
+            .current_dir(work),
+        &format!("tsc -p {project}"),
+    );
 }
 
 fn write_json(path: &Path, value: &Value) {
@@ -67,8 +81,11 @@ fn write_json(path: &Path, value: &Value) {
 }
 
 fn generated_only_config(dirs: &[&str], module: &str) -> Value {
-    let (module_resolution, module) =
-        if module == "nodenext" { ("nodenext", "nodenext") } else { ("node10", "commonjs") };
+    let (module_resolution, module) = if module == "nodenext" {
+        ("nodenext", "nodenext")
+    } else {
+        ("node10", "commonjs")
+    };
     json!({
         "compilerOptions": {
             "strict": true, "target": "ES2022", "lib": ["ES2022"], "types": [],
@@ -85,18 +102,29 @@ fn generated_typescript_compiles_and_behaves() {
     let tsc_path = match locate_toolchain() {
         Ok(p) => p,
         Err(why) => {
-            assert!(std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"), "toolchain required but unavailable: {why}");
+            assert!(
+                std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"),
+                "toolchain required but unavailable: {why}"
+            );
             eprintln!("SKIPPED toolchain test: {why}");
             return;
         }
     };
 
     let a = standard_ir();
-    let c = compile_contract("orders", &|s| s.replace("error OutOfStock 409 {\n  sku: string\n}", "error OutOfStock 409 {\n  sku: string\n  warehouse: string\n}"));
+    let c = compile_contract("orders", &|s| {
+        s.replace(
+            "error OutOfStock 409 {\n  sku: string\n}",
+            "error OutOfStock 409 {\n  sku: string\n  warehouse: string\n}",
+        )
+    });
     let d = compile_contract("warehouse", &|s| s.to_string());
 
     std::fs::create_dir_all(toolchain_dir().join(".work")).unwrap();
-    let work_guard = tempfile::Builder::new().prefix("run-").tempdir_in(toolchain_dir().join(".work")).unwrap();
+    let work_guard = tempfile::Builder::new()
+        .prefix("run-")
+        .tempdir_in(toolchain_dir().join(".work"))
+        .unwrap();
     let work = work_guard.path();
     let opts = WriteOptions::default();
     let put = |dir: &str, files: &veld_codegen::FileSet| {
@@ -109,15 +137,31 @@ fn generated_typescript_compiles_and_behaves() {
     put("copy_c", &gen_client(&c));
     put("copy_d", &gen_client(&d));
 
-    write_json(&work.join("sigs.json"), &json!({ "a": sig_map(&a), "c": sig_map(&c), "d": sig_map(&d) }));
+    write_json(
+        &work.join("sigs.json"),
+        &json!({ "a": sig_map(&a), "c": sig_map(&c), "d": sig_map(&d) }),
+    );
     for script in ["roundtrip.ts", "equality.ts", "wire.ts"] {
         std::fs::copy(toolchain_dir().join(script), work.join(script)).unwrap();
     }
 
     // 1. Each generated target compiles on its own: strict, no types packages, both module modes.
-    let dirs = ["server", "server_iam", "copy_a", "copy_b", "copy_c", "copy_d"];
-    write_json(&work.join("tsconfig.commonjs.json"), &generated_only_config(&dirs, "commonjs"));
-    write_json(&work.join("tsconfig.nodenext.json"), &generated_only_config(&dirs, "nodenext"));
+    let dirs = [
+        "server",
+        "server_iam",
+        "copy_a",
+        "copy_b",
+        "copy_c",
+        "copy_d",
+    ];
+    write_json(
+        &work.join("tsconfig.commonjs.json"),
+        &generated_only_config(&dirs, "commonjs"),
+    );
+    write_json(
+        &work.join("tsconfig.nodenext.json"),
+        &generated_only_config(&dirs, "nodenext"),
+    );
     tsc(&tsc_path, work, "tsconfig.commonjs.json");
     tsc(&tsc_path, work, "tsconfig.nodenext.json");
 

@@ -29,7 +29,12 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
     Ok(modules)
 }
 
-fn write_service(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &RequestNames, svc: &Service) {
+fn write_service(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    names: &RequestNames,
+    svc: &Service,
+) {
     for ep in &svc.endpoints {
         write_request_type(w, fc, &names.get(svc.id, &ep.name), ep);
         w.blank();
@@ -41,7 +46,12 @@ fn write_service(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &RequestNa
     write_factory(w, fc, names, svc);
 }
 
-fn write_interface(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &RequestNames, svc: &Service) {
+fn write_interface(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    names: &RequestNames,
+    svc: &Service,
+) {
     let name = naming::pascal(&svc.name);
     let ctx = fc.rt("RequestContext");
     doc_comment(w, svc.docs.as_deref(), None);
@@ -52,7 +62,11 @@ fn write_interface(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &Request
             Some(t) => ts_type(fc, t),
             None => "void".to_string(),
         };
-        w.line(format!("{}(req: {}, ctx: Ctx): Promise<{ret}>;", prop_key(&ep.name), names.get(svc.id, &ep.name)));
+        w.line(format!(
+            "{}(req: {}, ctx: Ctx): Promise<{ret}>;",
+            prop_key(&ep.name),
+            names.get(svc.id, &ep.name)
+        ));
     }
     w.close();
 }
@@ -60,11 +74,18 @@ fn write_interface(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &Request
 fn auth_hook(kind: AuthKind, ctx: &str) -> Option<(&'static str, String)> {
     match kind {
         AuthKind::None => None,
-        AuthKind::Bearer => Some(("bearer", format!("(token: string, ctx: {ctx}) => Promise<unknown | null>"))),
-        AuthKind::Basic => {
-            Some(("basic", format!("(username: string, password: string, ctx: {ctx}) => Promise<unknown | null>")))
-        }
-        AuthKind::ApiKey => Some(("apiKey", format!("(key: string, ctx: {ctx}) => Promise<unknown | null>"))),
+        AuthKind::Bearer => Some((
+            "bearer",
+            format!("(token: string, ctx: {ctx}) => Promise<unknown | null>"),
+        )),
+        AuthKind::Basic => Some((
+            "basic",
+            format!("(username: string, password: string, ctx: {ctx}) => Promise<unknown | null>"),
+        )),
+        AuthKind::ApiKey => Some((
+            "apiKey",
+            format!("(key: string, ctx: {ctx}) => Promise<unknown | null>"),
+        )),
     }
 }
 
@@ -91,7 +112,10 @@ fn required_hooks(svc: &Service, ctx: &str) -> (Vec<(&'static str, String)>, Vec
 fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     let ctx = fc.rt("RequestContext");
     let (auth, middleware) = required_hooks(svc, &ctx);
-    w.open(format!("export interface {}Hooks", naming::pascal(&svc.name)));
+    w.open(format!(
+        "export interface {}Hooks",
+        naming::pascal(&svc.name)
+    ));
     if !auth.is_empty() {
         w.open("auth:");
         for (name, ty) in &auth {
@@ -102,7 +126,10 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     if !middleware.is_empty() {
         w.open("middleware:");
         for name in &middleware {
-            w.line(format!("{}: (ctx: {ctx}) => Promise<void>;", prop_key(name)));
+            w.line(format!(
+                "{}: (ctx: {ctx}) => Promise<void>;",
+                prop_key(name)
+            ));
         }
         w.close_with("};");
     }
@@ -111,23 +138,48 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     w.close();
 }
 
-fn write_endpoint(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &RequestNames, svc: &Service, ep: &Endpoint) {
+fn write_endpoint(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    names: &RequestNames,
+    svc: &Service,
+    ep: &Endpoint,
+) {
     w.open_with("", "{");
     write_spec_fields(w, fc, ep);
     let list: Vec<String> = ep.middleware.iter().map(|m| ts_str(m)).collect();
     w.line(format!("middleware: [{}],", list.join(", ")));
     let req = names.get(svc.id, &ep.name);
-    w.line(format!("call: (req, ctx) => impl.{}(req as {req}, ctx),", prop_key(&ep.name)));
+    w.line(format!(
+        "call: (req, ctx) => impl.{}(req as {req}, ctx),",
+        prop_key(&ep.name)
+    ));
     w.close_with("},");
 }
 
-fn write_factory(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &RequestNames, svc: &Service) {
+fn write_factory(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    names: &RequestNames,
+    svc: &Service,
+) {
     let name = naming::pascal(&svc.name);
     let ctx = fc.rt("RequestContext");
     let (auth, middleware) = required_hooks(svc, &ctx);
-    let default = if auth.is_empty() && middleware.is_empty() { " = {}" } else { "" };
+    let default = if auth.is_empty() && middleware.is_empty() {
+        " = {}"
+    } else {
+        ""
+    };
     let handler = fc.rt("VeldHandler");
-    doc_comment(w, Some(&format!("Builds the HTTP handler for `{}`. Mount it with an adapter from `./adapters`.", svc.name)), None);
+    doc_comment(
+        w,
+        Some(&format!(
+            "Builds the HTTP handler for `{}`. Mount it with an adapter from `./adapters`.",
+            svc.name
+        )),
+        None,
+    );
     w.open(format!("export function create{name}Handler(impl: {name}Service, hooks: {name}Hooks{default}): {handler}"));
     let endpoint = fc.rt("ServerEndpoint");
     w.open_with(format!("const endpoints: {endpoint}[] ="), " [");

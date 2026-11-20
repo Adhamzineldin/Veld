@@ -50,18 +50,35 @@ impl Generator for Node {
         Capabilities::all_except(&UNSUPPORTED)
     }
 
-    fn generate(&self, req: &GenRequest<'_>, _opts: &Options) -> Result<FileSet, Vec<GenDiagnostic>> {
+    fn generate(
+        &self,
+        req: &GenRequest<'_>,
+        _opts: &Options,
+    ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, Role::Server, &self.capabilities(Role::Server))?;
         if let Some(f) = &req.framework
             && !FRAMEWORKS.contains(&f.as_str())
         {
-            return Err(vec![GenDiagnostic::new("E0803", format!("unknown framework `{f}`; expected one of {FRAMEWORKS:?}"))]);
+            return Err(vec![GenDiagnostic::new(
+                "E0803",
+                format!("unknown framework `{f}`; expected one of {FRAMEWORKS:?}"),
+            )]);
         }
         let mut files = FileSet::new();
         runtime::emit(&mut files)?;
-        add_file(&mut files, "server/adapters.ts", ADAPTERS_SOURCE.to_string())?;
+        add_file(
+            &mut files,
+            "server/adapters.ts",
+            ADAPTERS_SOURCE.to_string(),
+        )?;
         let home = req.ir.service(req.services[0]).package;
-        let tree = Tree::new(req.ir, "", Some(home), runtime::MODULE, req.services.clone());
+        let tree = Tree::new(
+            req.ir,
+            "",
+            Some(home),
+            runtime::MODULE,
+            req.services.clone(),
+        );
         let mut modules = models::emit(&mut files, &tree)?;
         modules.extend(server::emit(&mut files, &tree)?);
         modules.push("server/adapters".to_string());
@@ -73,7 +90,10 @@ impl Generator for Node {
 }
 
 /// Emits a client tree under `clients/<service>/` for each consumed service; returns barrel lines.
-fn emit_consumed(files: &mut FileSet, req: &GenRequest<'_>) -> Result<Vec<String>, Vec<GenDiagnostic>> {
+fn emit_consumed(
+    files: &mut FileSet,
+    req: &GenRequest<'_>,
+) -> Result<Vec<String>, Vec<GenDiagnostic>> {
     let mut lines = Vec::new();
     for sid in &req.consumes {
         let svc = req.ir.service(*sid);
