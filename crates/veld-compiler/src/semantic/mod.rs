@@ -3,6 +3,7 @@
 
 pub mod annotations;
 mod collect;
+pub use collect::module_path;
 mod inherit;
 pub mod regex;
 mod resolve;
@@ -229,6 +230,17 @@ pub fn analyze<'a>(
     consumes: &BTreeMap<String, Vec<String>>,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<Program<'a>> {
+    let prog = analyze_lenient(packages, consumes, diags);
+    if has_errors(diags) { None } else { Some(prog) }
+}
+
+/// Runs every semantic pass and returns the program even when there are errors, so that
+/// tools (the language server) can still resolve names in a broken workspace.
+pub fn analyze_lenient<'a>(
+    packages: &'a [ParsedPackage],
+    consumes: &BTreeMap<String, Vec<String>>,
+    diags: &mut Vec<Diagnostic>,
+) -> Program<'a> {
     let mut prog = collect::collect(packages, diags);
     resolve::build_scopes(&mut prog, diags);
     resolve::resolve_decls(&mut prog, diags);
@@ -237,5 +249,5 @@ pub fn analyze<'a>(
     services::analyze(&mut prog, diags);
     resolve::report_unused_imports(&prog, diags);
     collect::check_consumes(&prog, consumes, diags);
-    if has_errors(diags) { None } else { Some(prog) }
+    prog
 }

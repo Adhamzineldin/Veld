@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 
 pub mod diagnostics;
+pub mod index;
 pub mod language;
 pub mod lower;
 pub mod semantic;
@@ -81,7 +82,7 @@ pub fn compile(input: &CompileInput) -> CompileOutput {
     finish(ir, diags, sources)
 }
 
-fn finish(
+pub(crate) fn finish(
     ir: Option<veld_ir::Ir>,
     mut diags: Vec<Diagnostic>,
     sources: SourceMap,
@@ -94,7 +95,7 @@ fn finish(
     }
 }
 
-fn parse_packages(
+pub(crate) fn parse_packages(
     input: &CompileInput,
     sources: &mut SourceMap,
     diags: &mut Vec<Diagnostic>,
@@ -129,7 +130,7 @@ fn parse_packages(
         .collect()
 }
 
-fn parse_prelude(sources: &mut SourceMap, diags: &mut Vec<Diagnostic>) -> ParsedPackage {
+pub(crate) fn parse_prelude(sources: &mut SourceMap, diags: &mut Vec<Diagnostic>) -> ParsedPackage {
     let id = sources.add(
         format!("{}/{}", language::PRELUDE_PACKAGE, language::PRELUDE_FILE),
         language::PRELUDE_SOURCE,
