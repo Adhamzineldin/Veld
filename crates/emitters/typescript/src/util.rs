@@ -46,6 +46,13 @@ pub fn prop_key(name: &str) -> String {
     }
 }
 
+/// The TypeScript method name for an endpoint: a property key with member hazards
+/// (`new`, `constructor`, ...) escaped. The wire name and path are unaffected.
+#[must_use]
+pub fn method_key(name: &str) -> String {
+    prop_key(&naming::member(Lang::Ts, name))
+}
+
 /// The TypeScript identifier of a declaration (reserved words and hazards escaped).
 #[must_use]
 pub fn type_name(d: &Decl) -> String {

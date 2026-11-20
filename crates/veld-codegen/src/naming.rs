@@ -264,6 +264,45 @@ pub fn escape(lang: Lang, ident: &str) -> String {
     out
 }
 
+/// Names that are not safe as a method name in a TypeScript interface or class body:
+/// `new` is a construct signature, `constructor` is the constructor, `__proto__` and
+/// `prototype` change object or class semantics.
+const TS_MEMBER_HAZARDS: &[&str] = &["__proto__", "constructor", "new", "prototype", "then"];
+
+/// Java methods every object already has (or that the generated classes themselves declare).
+/// A generated method with one of these names would overload, override or clash with it.
+const JAVA_MEMBER_HAZARDS: &[&str] = &[
+    "clone",
+    "equals",
+    "finalize",
+    "getClass",
+    "hashCode",
+    "notify",
+    "notifyAll",
+    "toString",
+    "wait",
+];
+
+/// Like [`escape`], for names that become a method of a generated class or interface.
+///
+/// Only names that are invalid or dangerous as a *member name* are changed (a method named
+/// `delete` is fine). The wire name is never passed through this function.
+#[must_use]
+pub fn member(lang: Lang, name: &str) -> String {
+    let hazards = match lang {
+        Lang::Ts => TS_MEMBER_HAZARDS,
+        Lang::Java => JAVA_MEMBER_HAZARDS,
+    };
+    let mut out = name.to_string();
+    if lang == Lang::Java {
+        out = escape(lang, &out);
+    }
+    if hazards.contains(&out.as_str()) {
+        out.push('_');
+    }
+    out
+}
+
 /// Like [`escape`], for names that become type, class or companion identifiers.
 #[must_use]
 pub fn escape_type(lang: Lang, name: &str) -> String {
@@ -307,5 +346,19 @@ mod tests {
         assert_eq!(escape(Lang::Ts, "1st"), "_1st");
         assert_eq!(escape_type(Lang::Ts, "Record"), "Record_");
         assert_eq!(escape_type(Lang::Ts, "Order"), "Order");
+    }
+
+    #[test]
+    fn escapes_member_hazards() {
+        assert_eq!(member(Lang::Ts, "new"), "new_");
+        assert_eq!(member(Lang::Ts, "constructor"), "constructor_");
+        assert_eq!(member(Lang::Ts, "__proto__"), "__proto___");
+        assert_eq!(member(Lang::Ts, "then"), "then_");
+        assert_eq!(member(Lang::Ts, "delete"), "delete");
+        assert_eq!(member(Lang::Ts, "order"), "order");
+        assert_eq!(member(Lang::Java, "getClass"), "getClass_");
+        assert_eq!(member(Lang::Java, "wait"), "wait_");
+        assert_eq!(member(Lang::Java, "class"), "class_");
+        assert_eq!(member(Lang::Java, "order"), "order");
     }
 }

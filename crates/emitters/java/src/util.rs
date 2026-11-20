@@ -79,24 +79,15 @@ const TYPE_HAZARDS: &[&str] = &[
     "Wire",
 ];
 
-/// Names a record component or method must not take: they would clash with `Object` methods or
-/// with members the generator adds.
+/// Names (beyond the `Object` methods that `naming::member` escapes) a record component or
+/// method must not take: they would clash with members the generator adds.
 const MEMBER_HAZARDS: &[&str] = &[
-    "clone",
     "codec",
     "data",
-    "equals",
-    "finalize",
     "fromWire",
-    "getClass",
-    "hashCode",
-    "notify",
-    "notifyAll",
-    "toString",
     "toWire",
     "veldCanonical",
     "veldOp",
-    "wait",
     "wire",
 ];
 
@@ -142,7 +133,7 @@ pub fn type_name(d: &Decl) -> String {
 pub fn member_ident(name: &str) -> String {
     let id = naming::camel(name);
     let id = if id.is_empty() { "_".to_string() } else { id };
-    let id = naming::escape(Lang::Java, &id);
+    let id = naming::member(Lang::Java, &id);
     if MEMBER_HAZARDS.contains(&id.as_str()) {
         format!("{id}_")
     } else {
