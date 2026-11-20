@@ -28,7 +28,11 @@ impl CodeWriter {
     /// A writer with a custom indentation unit (for example four spaces).
     #[must_use]
     pub fn with_unit(unit: &'static str) -> Self {
-        Self { buf: String::new(), level: 0, unit }
+        Self {
+            buf: String::new(),
+            level: 0,
+            unit,
+        }
     }
 
     /// Writes `text` at the current indentation. Embedded newlines produce
@@ -129,12 +133,15 @@ mod tests {
         w.open("a");
         w.line("one  \n\n  two");
         w.close();
-        assert_eq!(w.finish(), "a {
+        assert_eq!(
+            w.finish(),
+            "a {
     one
 
       two
 }
-");
+"
+        );
     }
 
     #[test]

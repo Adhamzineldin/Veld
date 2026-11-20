@@ -140,7 +140,8 @@ mod tests {
 
     #[test]
     fn integers_and_big_numbers_through_json() {
-        let v: Value = serde_json::from_str("[1, -0, 1e21, 0.1, 12345678901234567890, 1.0]").unwrap();
+        let v: Value =
+            serde_json::from_str("[1, -0, 1e21, 0.1, 12345678901234567890, 1.0]").unwrap();
         assert_eq!(canonical(&v), "[1,0,1e+21,0.1,12345678901234567000,1]");
     }
 
@@ -148,7 +149,10 @@ mod tests {
     fn keys_sort_by_utf16_units() {
         // U+1F600 is the surrogate pair D83D DE00, so it sorts before U+FF5E.
         let v = json!({ "\u{ff5e}": 1, "\u{1f600}": 2, "b": 3, "a": 4, "": 5 });
-        assert_eq!(canonical(&v), "{\"\":5,\"a\":4,\"b\":3,\"\u{1f600}\":2,\"\u{ff5e}\":1}");
+        assert_eq!(
+            canonical(&v),
+            "{\"\":5,\"a\":4,\"b\":3,\"\u{1f600}\":2,\"\u{ff5e}\":1}"
+        );
     }
 
     #[test]
@@ -160,6 +164,9 @@ mod tests {
     #[test]
     fn nested_structures() {
         let v = json!({ "z": [true, null, { "b": 1, "a": [] }], "a": {} });
-        assert_eq!(canonical(&v), "{\"a\":{},\"z\":[true,null,{\"a\":[],\"b\":1}]}");
+        assert_eq!(
+            canonical(&v),
+            "{\"a\":{},\"z\":[true,null,{\"a\":[],\"b\":1}]}"
+        );
     }
 }

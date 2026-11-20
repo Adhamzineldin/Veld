@@ -14,13 +14,26 @@ fn wire_dir() -> PathBuf {
 #[test]
 fn json_goldens_match_canonical_bytes() {
     let mut checked = 0;
-    let mut entries: Vec<_> = std::fs::read_dir(wire_dir()).unwrap().map(|e| e.unwrap().path()).collect();
+    let mut entries: Vec<_> = std::fs::read_dir(wire_dir())
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
     entries.sort();
-    for path in entries.iter().filter(|p| p.extension().is_some_and(|e| e == "json")) {
-        let cases: Vec<Value> = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    for path in entries
+        .iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "json"))
+    {
+        let cases: Vec<Value> =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         for case in cases.iter().filter(|c| c["kind"] == "json") {
             let want = case["canonical"].as_str().unwrap();
-            assert_eq!(canonical(&case["input"]), want, "{}: {}", path.display(), case["name"]);
+            assert_eq!(
+                canonical(&case["input"]),
+                want,
+                "{}: {}",
+                path.display(),
+                case["name"]
+            );
             checked += 1;
         }
     }

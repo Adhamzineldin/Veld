@@ -70,7 +70,10 @@ fn validate_component(comp: &str) -> Result<(), PathError> {
         ".." => Err(PathError::Traversal),
         _ if comp.contains(':') => Err(PathError::Colon),
         _ if comp.ends_with('.') || comp.ends_with(' ') => Err(PathError::InvalidComponent),
-        _ if comp.chars().any(|c| matches!(c, '<' | '>' | '"' | '|' | '?' | '*') || c.is_control()) => {
+        _ if comp
+            .chars()
+            .any(|c| matches!(c, '<' | '>' | '"' | '|' | '?' | '*') || c.is_control()) =>
+        {
             Err(PathError::InvalidComponent)
         }
         _ => Ok(()),
@@ -97,9 +100,16 @@ impl FileSet {
     }
 
     /// Adds a file. The path must be relative, `/`-separated and free of `..`.
-    pub fn add(&mut self, path: impl Into<String>, bytes: impl Into<Vec<u8>>) -> Result<(), FileSetError> {
+    pub fn add(
+        &mut self,
+        path: impl Into<String>,
+        bytes: impl Into<Vec<u8>>,
+    ) -> Result<(), FileSetError> {
         let path = path.into();
-        validate_rel_path(&path).map_err(|reason| FileSetError::InvalidPath { path: path.clone(), reason })?;
+        validate_rel_path(&path).map_err(|reason| FileSetError::InvalidPath {
+            path: path.clone(),
+            reason,
+        })?;
         if self.files.contains_key(&path) {
             return Err(FileSetError::Duplicate(path));
         }
@@ -112,14 +122,20 @@ impl FileSet {
         for (idx, _) in path.match_indices('/') {
             let ancestor = &path[..idx];
             if self.files.contains_key(ancestor) {
-                return Err(FileSetError::Collision { file: ancestor.to_string(), other: path.to_string() });
+                return Err(FileSetError::Collision {
+                    file: ancestor.to_string(),
+                    other: path.to_string(),
+                });
             }
         }
         let prefix = format!("{path}/");
         if let Some((existing, _)) = self.files.range(prefix.clone()..).next()
             && existing.starts_with(&prefix)
         {
-            return Err(FileSetError::Collision { file: path.to_string(), other: existing.clone() });
+            return Err(FileSetError::Collision {
+                file: path.to_string(),
+                other: existing.clone(),
+            });
         }
         Ok(())
     }
@@ -196,9 +212,15 @@ mod tests {
         let mut fs = FileSet::new();
         fs.add("a", "1").unwrap();
         assert_eq!(fs.add("a", "2"), Err(FileSetError::Duplicate("a".into())));
-        assert!(matches!(fs.add("a/b", "3"), Err(FileSetError::Collision { .. })));
+        assert!(matches!(
+            fs.add("a/b", "3"),
+            Err(FileSetError::Collision { .. })
+        ));
         fs.add("d/x", "1").unwrap();
-        assert!(matches!(fs.add("d", "3"), Err(FileSetError::Collision { .. })));
+        assert!(matches!(
+            fs.add("d", "3"),
+            Err(FileSetError::Collision { .. })
+        ));
         fs.add("dd", "ok").unwrap();
     }
 }

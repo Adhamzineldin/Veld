@@ -32,7 +32,12 @@ impl Capabilities {
     /// Everything except the listed features.
     #[must_use]
     pub fn all_except(unsupported: &[Feature]) -> Self {
-        Self(Feature::ALL.into_iter().filter(|f| !unsupported.contains(f)).collect())
+        Self(
+            Feature::ALL
+                .into_iter()
+                .filter(|f| !unsupported.contains(f))
+                .collect(),
+        )
     }
 
     #[must_use]
@@ -64,7 +69,11 @@ pub struct GenDiagnostic {
 impl GenDiagnostic {
     #[must_use]
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
-        Self { code, message: message.into(), origin: None }
+        Self {
+            code,
+            message: message.into(),
+            origin: None,
+        }
     }
 }
 
@@ -76,7 +85,11 @@ pub trait Generator {
     fn roles(&self) -> &'static [Role];
     fn frameworks(&self, role: Role) -> &'static [&'static str];
     fn capabilities(&self, role: Role) -> Capabilities;
-    fn generate(&self, req: &GenRequest<'_>, opts: &Self::Options) -> Result<FileSet, Vec<GenDiagnostic>>;
+    fn generate(
+        &self,
+        req: &GenRequest<'_>,
+        opts: &Self::Options,
+    ) -> Result<FileSet, Vec<GenDiagnostic>>;
 }
 
 /// Object-safe form of [`Generator`]: options arrive as JSON.
@@ -85,7 +98,11 @@ pub trait DynGenerator {
     fn roles(&self) -> &'static [Role];
     fn frameworks(&self, role: Role) -> &'static [&'static str];
     fn capabilities(&self, role: Role) -> Capabilities;
-    fn generate_dyn(&self, req: &GenRequest<'_>, opts: &serde_json::Value) -> Result<FileSet, Vec<GenDiagnostic>>;
+    fn generate_dyn(
+        &self,
+        req: &GenRequest<'_>,
+        opts: &serde_json::Value,
+    ) -> Result<FileSet, Vec<GenDiagnostic>>;
 }
 
 impl<T: Generator> DynGenerator for T {
@@ -101,12 +118,22 @@ impl<T: Generator> DynGenerator for T {
     fn capabilities(&self, role: Role) -> Capabilities {
         Generator::capabilities(self, role)
     }
-    fn generate_dyn(&self, req: &GenRequest<'_>, opts: &serde_json::Value) -> Result<FileSet, Vec<GenDiagnostic>> {
+    fn generate_dyn(
+        &self,
+        req: &GenRequest<'_>,
+        opts: &serde_json::Value,
+    ) -> Result<FileSet, Vec<GenDiagnostic>> {
         let parsed = if opts.is_null() {
             T::Options::default()
         } else {
             serde_json::from_value(opts.clone()).map_err(|e| {
-                vec![GenDiagnostic::new("E0802", format!("invalid options for generator `{}`: {e}", Generator::id(self)))]
+                vec![GenDiagnostic::new(
+                    "E0802",
+                    format!(
+                        "invalid options for generator `{}`: {e}",
+                        Generator::id(self)
+                    ),
+                )]
             })?
         };
         Generator::generate(self, req, &parsed)
@@ -115,7 +142,11 @@ impl<T: Generator> DynGenerator for T {
 
 /// `E0801` for every used feature `caps` does not support. The core calls this before `generate`.
 #[must_use]
-pub fn check_capabilities(ir: &Ir, req: &GenRequest<'_>, caps: &Capabilities) -> Vec<GenDiagnostic> {
+pub fn check_capabilities(
+    ir: &Ir,
+    req: &GenRequest<'_>,
+    caps: &Capabilities,
+) -> Vec<GenDiagnostic> {
     let mut all = req.services.clone();
     all.extend(req.consumes.iter().copied());
     ir.features_used(&all)
@@ -123,7 +154,11 @@ pub fn check_capabilities(ir: &Ir, req: &GenRequest<'_>, caps: &Capabilities) ->
         .filter(|f| !caps.supports(*f))
         .map(|f| GenDiagnostic {
             code: "E0801",
-            message: format!("feature `{}` is not supported by this generator for role `{}`", f.name(), req.role.name()),
+            message: format!(
+                "feature `{}` is not supported by this generator for role `{}`",
+                f.name(),
+                req.role.name()
+            ),
             origin: first_use(ir, &all, f),
         })
         .collect()
@@ -137,9 +172,14 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
                 Feature::Auth => ep.auth.kind != veld_ir::AuthKind::None,
                 Feature::Middleware => !ep.middleware.is_empty(),
                 Feature::StreamingSse | Feature::StreamingWs => {
-                    ep.success.stream || ep.method == veld_ir::Method::Ws || ep.params.iter().any(|p| p.stream)
+                    ep.success.stream
+                        || ep.method == veld_ir::Method::Ws
+                        || ep.params.iter().any(|p| p.stream)
                 }
-                Feature::Headers => ep.params.iter().any(|p| p.binding == veld_ir::Binding::Header),
+                Feature::Headers => ep
+                    .params
+                    .iter()
+                    .any(|p| p.binding == veld_ir::Binding::Header),
                 _ => false,
             };
             if hit {
@@ -152,7 +192,10 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
     ir.reachable_decls(services)
         .into_iter()
         .map(|id| ir.decl(id))
-        .find(|d| (wanted_union && matches!(d.kind, DeclKind::Union(_))) || (wanted_const && matches!(d.kind, DeclKind::Const(_))))
+        .find(|d| {
+            (wanted_union && matches!(d.kind, DeclKind::Union(_)))
+                || (wanted_const && matches!(d.kind, DeclKind::Const(_)))
+        })
         .map(|d| d.origin.clone())
 }
 
@@ -172,13 +215,25 @@ mod tests {
             auth: Auth::none(),
             middleware: vec![],
             params: vec![],
-            success: Success { status: 200, ty: Some(Type::Scalar(Scalar::String)), stream: true },
+            success: Success {
+                status: 200,
+                ty: Some(Type::Scalar(Scalar::String)),
+                stream: true,
+            },
             errors: vec![],
-            origin: Origin { file: "a.veld".into(), line: 3, col: 1 },
+            origin: Origin {
+                file: "a.veld".into(),
+                line: 3,
+                col: 1,
+            },
         };
         Ir {
             ir_version: IR_VERSION.into(),
-            packages: vec![Package { id: PackageId(0), name: "a".into(), kind: PackageKind::Service }],
+            packages: vec![Package {
+                id: PackageId(0),
+                name: "a".into(),
+                kind: PackageKind::Service,
+            }],
             decls: vec![],
             services: vec![Service {
                 id: ServiceId(0),
@@ -199,7 +254,13 @@ mod tests {
     #[test]
     fn unsupported_feature_reports_e0801_with_origin() {
         let ir = ir_with_sse();
-        let req = GenRequest { ir: &ir, role: Role::Client, services: vec![ServiceId(0)], consumes: vec![], framework: None };
+        let req = GenRequest {
+            ir: &ir,
+            role: Role::Client,
+            services: vec![ServiceId(0)],
+            consumes: vec![],
+            framework: None,
+        };
         let caps = Capabilities::all_except(&[Feature::StreamingSse]);
         let diags = check_capabilities(&ir, &req, &caps);
         assert_eq!(diags.len(), 1);
@@ -230,7 +291,8 @@ mod tests {
         }
         fn generate(&self, _: &GenRequest<'_>, opts: &Opts) -> Result<FileSet, Vec<GenDiagnostic>> {
             let mut fs = FileSet::new();
-            fs.add("flag.txt", if opts.flag { "1" } else { "0" }).map_err(|e| vec![GenDiagnostic::new("E0899", e.to_string())])?;
+            fs.add("flag.txt", if opts.flag { "1" } else { "0" })
+                .map_err(|e| vec![GenDiagnostic::new("E0899", e.to_string())])?;
             Ok(fs)
         }
     }
@@ -238,13 +300,23 @@ mod tests {
     #[test]
     fn dyn_generator_decodes_options() {
         let ir = ir_with_sse();
-        let req = GenRequest { ir: &ir, role: Role::Client, services: vec![], consumes: vec![], framework: None };
+        let req = GenRequest {
+            ir: &ir,
+            role: Role::Client,
+            services: vec![],
+            consumes: vec![],
+            framework: None,
+        };
         let g: Box<dyn DynGenerator> = Box::new(Dummy);
-        let fs = g.generate_dyn(&req, &serde_json::json!({ "flag": true })).unwrap();
+        let fs = g
+            .generate_dyn(&req, &serde_json::json!({ "flag": true }))
+            .unwrap();
         assert_eq!(fs.get("flag.txt"), Some(&b"1"[..]));
         let fs = g.generate_dyn(&req, &serde_json::Value::Null).unwrap();
         assert_eq!(fs.get("flag.txt"), Some(&b"0"[..]));
-        let err = g.generate_dyn(&req, &serde_json::json!({ "nope": 1 })).unwrap_err();
+        let err = g
+            .generate_dyn(&req, &serde_json::json!({ "nope": 1 }))
+            .unwrap_err();
         assert_eq!(err[0].code, "E0802");
     }
 }
