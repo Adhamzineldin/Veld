@@ -1,6 +1,6 @@
 ---
 source: crates/emitters/node/tests/snapshots.rs
-assertion_line: 373
+assertion_line: 378
 expression: "fs.paths().collect::<Vec<_>>().join(\"\\n\")"
 ---
 iam/client.ts
@@ -13,6 +13,7 @@ orders/errors/orders.ts
 orders/models/catalog.ts
 orders/models/orders.ts
 orders/react.ts
+package.json
 prelude.ts
 runtime/react.ts
 runtime/veld.ts
