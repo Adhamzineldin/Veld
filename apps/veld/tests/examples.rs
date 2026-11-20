@@ -26,8 +26,19 @@ fn examples() -> Vec<PathBuf> {
     dirs
 }
 
+/// Every file of an example except installed dependencies and build output.
+fn source_tree(dir: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+    tree(dir)
+        .into_iter()
+        .filter(|(rel, _)| {
+            !rel.split('/')
+                .any(|p| matches!(p, "node_modules" | "dist" | "target" | ".veld"))
+        })
+        .collect()
+}
+
 fn copy_tree(from: &Path, to: &Path) {
-    for (rel, bytes) in tree(from) {
+    for (rel, bytes) in source_tree(from) {
         let target = to.join(&rel);
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         fs::write(target, bytes).unwrap();
@@ -89,10 +100,27 @@ fn generating_twice_from_scratch_gives_the_committed_bytes() {
         veld(work.path()).arg("clean").assert().success();
         veld(work.path()).arg("generate").assert().success();
         assert_eq!(
-            tree(&example),
-            tree(work.path()),
+            source_tree(&example),
+            source_tree(work.path()),
             "{}: regenerating changed the output",
             example.display()
+        );
+    }
+}
+
+/// The README's "Using it in your code" section quotes the hello example verbatim.
+#[test]
+fn readme_quotes_the_hello_example_exactly() {
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    for file in [
+        "server/src/main.ts",
+        "web/src/App.tsx",
+        "web/src/Greeter.tsx",
+    ] {
+        let code = fs::read_to_string(examples_dir().join("hello").join(file)).unwrap();
+        assert!(
+            readme.contains(code.trim_end()),
+            "README.md no longer matches examples/hello/{file}; update its \"Using it in your code\" section"
         );
     }
 }
