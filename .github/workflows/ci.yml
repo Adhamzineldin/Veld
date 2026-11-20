@@ -67,6 +67,30 @@ jobs:
           VELD_REQUIRE_TOOLCHAINS: "1"
           VELD_JAVA_RELEASES: "17"
 
+  spring:
+    name: generated Spring adapter runs in Spring Boot 3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: tests/toolchain/java/spring/pom.xml
+      - name: Install the pinned TypeScript toolchain
+        run: npm ci --prefix tests/toolchain/ts
+      - name: Build the Spring Boot application with the Maven Wrapper and call it from the generated clients
+        run: cargo test -p veld-emit-java --test toolchain spring_adapter_serves_the_round_trip
+        env:
+          VELD_REQUIRE_TOOLCHAINS: "1"
+          VELD_JAVA_RELEASES: "17"
+
   determinism:
     name: determinism (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
