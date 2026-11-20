@@ -7,20 +7,19 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+mod frameworks;
 mod server;
+
+pub use frameworks::{ADAPTERS, ServerModel};
 
 use serde::Deserialize;
 use veld_codegen::naming::{self, Lang};
-use veld_codegen::{Capabilities, FileSet, GenDiagnostic, GenRequest, Generator, Role};
+use veld_codegen::{
+    Capabilities, FileSet, FrameworkInfo, GenDiagnostic, GenRequest, Generator, LanguageInfo,
+    Profile, Role,
+};
 use veld_emit_typescript::tree::Tree;
-use veld_emit_typescript::util::add_file;
 use veld_emit_typescript::{UNSUPPORTED, barrel, emit_client_tree, models, precheck, runtime};
-
-/// Frameworks the adapters cover. All four adapters are always emitted.
-const FRAMEWORKS: &[&str] = &["express", "fastify", "hono", "node-http"];
-
-/// Source of `server/adapters.ts`.
-pub const ADAPTERS_SOURCE: &str = include_str!("../runtime/adapters.ts");
 
 /// Options of the `node` generator (none yet).
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -42,8 +41,12 @@ impl Generator for Node {
         &[Role::Server]
     }
 
-    fn frameworks(&self, _role: Role) -> &'static [&'static str] {
-        FRAMEWORKS
+    fn frameworks(&self, _role: Role) -> Vec<FrameworkInfo> {
+        frameworks::infos()
+    }
+
+    fn language(&self) -> Option<LanguageInfo> {
+        Some(veld_emit_typescript::language())
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
@@ -54,15 +57,15 @@ impl Generator for Node {
         &self,
         req: &GenRequest<'_>,
         _opts: &Options,
+        profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, Role::Server, &self.capabilities(Role::Server))?;
         let mut files = FileSet::new();
         runtime::emit(&mut files)?;
-        add_file(
-            &mut files,
-            "server/adapters.ts",
-            ADAPTERS_SOURCE.to_string(),
-        )?;
+        let model = ServerModel {
+            adapters_path: "server/adapters.ts".to_string(),
+        };
+        frameworks::emit(&mut files, &model, profile)?;
         let home = req.ir.service(req.services[0]).package;
         let tree = Tree::new(
             req.ir,
