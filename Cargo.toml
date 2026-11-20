@@ -6,13 +6,14 @@ members = [
   "crates/veld-compiler",
   "crates/veld-tools",
   "crates/veld-codegen",
-  "crates/veld-plugin-host",
   "crates/veld-emit-conformance",
+  "crates/veld-plugin-host",
   "crates/emitters/typescript",
   "crates/emitters/node",
   "crates/emitters/java",
   "xtask",
   "apps/veld",
+  "crates/veld-lsp",
 ]
 
 [workspace.package]
@@ -29,6 +30,7 @@ veld-codegen = { path = "crates/veld-codegen" }
 veld-project = { path = "crates/veld-project" }
 veld-tools = { path = "crates/veld-tools" }
 veld-plugin-host = { path = "crates/veld-plugin-host" }
+veld-registry-client = { path = "crates/veld-registry-client" }
 veld-emit-conformance = { path = "crates/veld-emit-conformance" }
 veld-emit-node = { path = "crates/emitters/node" }
 veld-emit-typescript = { path = "crates/emitters/typescript" }
@@ -47,6 +49,12 @@ predicates = "3"
 lsp-server = "0.7"
 lsp-types = "0.97"
 notify = "6"
+ureq = { version = "2", default-features = false, features = ["tls"] }
+semver = { version = "1", features = ["serde"] }
+flate2 = "1"
+tar = { version = "0.4", default-features = false }
+toml_edit = "0.22"
+url = "2"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
