@@ -9,5 +9,6 @@
 pub mod config;
 pub mod fileset;
 pub mod output;
+pub mod packages;
 
 pub use fileset::{FileSet, FileSetError, PathError};
