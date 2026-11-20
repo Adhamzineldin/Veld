@@ -1,7 +1,14 @@
 # Veld documentation
 
+## Start here
+- [`README.md`](../README.md): what Veld is, install, a 60-second tour, targets, commands.
+- [`examples/`](../examples): `hello`, `microservices` and `library-package`, with committed generated output.
+- [`CHANGELOG.md`](../CHANGELOG.md): what changed in 2.0.0-beta.1, with breaking changes and migration steps (`veld migrate`).
+- [`CONTRIBUTING.md`](../CONTRIBUTING.md): workspace layout, commands, the definition of done, the commit convention.
+
 ## Guides
 - [Writing an emitter](emitter-guide.md): built-in Rust emitters and plugins, and the tests they need.
+- [`distribution/`](../distribution): how the npm, pip and Homebrew wrappers and the release workflow fit together.
 
 ## Specifications (normative)
 - [`spec/language.md`](../spec/language.md): the `.veld` language.
@@ -13,4 +20,4 @@
 
 ## Other
 - [`CLAUDE.md`](../CLAUDE.md): repository map, commands and the non-negotiable rules.
-- `archive/v1/`: the old Go implementation. Reference only.
+- [`archive/v1/`](../archive/v1): the old Go implementation, its docs and examples. Reference only (see its README).
