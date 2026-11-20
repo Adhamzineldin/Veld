@@ -4,8 +4,6 @@
 # the cmd/veld/ SOURCE DIRECTORY and silently exclude every .go file inside it.
 /veld
 /veld.exe
-/registry
-/registry.exe
 /veld-registry
 /veld-registry.exe
 /generate-language
@@ -74,3 +72,4 @@ generated/
 /veld
 /veld.exe
 .idea/
+.veld/
