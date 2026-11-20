@@ -12,6 +12,14 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # A dry run builds every artifact and uploads it as a workflow artifact. It creates no release
+  # and pushes no image.
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Build and upload artifacts only: no release, no image push"
+        type: boolean
+        default: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -29,7 +37,7 @@ jobs:
         include:
           - { target: x86_64-unknown-linux-musl,  os: ubuntu-latest,  cross: true }
           - { target: aarch64-unknown-linux-musl, os: ubuntu-latest,  cross: true }
-          - { target: x86_64-apple-darwin,        os: macos-13,       cross: false }
+          - { target: x86_64-apple-darwin,        os: macos-15-intel, cross: false }
           - { target: aarch64-apple-darwin,       os: macos-latest,   cross: false }
           - { target: x86_64-pc-windows-msvc,     os: windows-latest, cross: false }
     steps:
@@ -107,8 +115,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Secrets cannot be used in `if:` directly, so they are mirrored here.
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Only a tag push may push an image; a dry run never sees the credentials.
+      DOCKERHUB_USERNAME: ${{ startsWith(github.ref, 'refs/tags/') && secrets.DOCKERHUB_USERNAME || '' }}
+      DOCKERHUB_TOKEN: ${{ startsWith(github.ref, 'refs/tags/') && secrets.DOCKERHUB_TOKEN || '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Build the image (no push without credentials)
@@ -139,8 +148,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
 
-  publish:
-    name: github release
+  checksums:
+    name: SHA256SUMS
     needs: [veld, registry]
     runs-on: ubuntu-latest
     steps:
@@ -155,6 +164,28 @@ jobs:
           ls -l
           sha256sum *.tar.gz *.zip > SHA256SUMS
           cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SHA256SUMS
+          path: artifacts/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/SHA256SUMS
+
+  publish:
+    name: github release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [checksums]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: artifacts
       - uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -163,3 +194,26 @@ jobs:
             artifacts/SHA256SUMS
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+  wrappers:
+    name: wrapper tests (npm, pip, homebrew)
+    needs: [checksums]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: artifacts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: npm wrapper
+        run: node distribution/tests/npm-wrapper.test.js artifacts
+      - name: pip wrapper
+        run: python distribution/tests/pip_wrapper_test.py artifacts
+      - name: homebrew formula
+        run: bash distribution/tests/homebrew-formula.test.sh artifacts/SHA256SUMS

@@ -12,6 +12,7 @@ Release assets (see .github/workflows/release.yml):
 Environment:
     VELD_VERSION   override the version to download
     VELD_HOME      cache root (default: ~/.veld)
+    VELD_DOWNLOAD_BASE  directory URL holding the release assets (for testing and mirrors)
 """
 
 import hashlib
@@ -78,7 +79,8 @@ def expected_sha(sums: str, asset: str) -> Optional[str]:
 
 def download(target: str, dest: Path) -> None:
     asset = f"veld-{target}" + (".zip" if sys.platform == "win32" else ".tar.gz")
-    base = f"https://github.com/{REPO}/releases/download/v{version()}"
+    base = os.environ.get("VELD_DOWNLOAD_BASE") or f"https://github.com/{REPO}/releases/download/v{version()}"
+    base = base.rstrip("/")
     print(f"veld: downloading {asset} (v{version()})", file=sys.stderr)
     archive = fetch(f"{base}/{asset}")
     sums = fetch(f"{base}/SHA256SUMS").decode("utf-8")

@@ -13,6 +13,7 @@
 "use strict";
 
 const https = require("https");
+const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -34,7 +35,7 @@ const TARGETS = {
 
 function download(url, redirects = 5) {
   return new Promise((resolve, reject) => {
-    https
+    (url.startsWith("http:") ? http : https)
       .get(url, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume();
@@ -93,7 +94,11 @@ async function main() {
   }
   const win = os.platform() === "win32";
   const asset = `veld-${target}${win ? ".zip" : ".tar.gz"}`;
-  const base = `https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}`;
+  // VELD_DOWNLOAD_BASE (testing and mirrors): a directory URL holding the release assets.
+  const base = (
+    process.env.VELD_DOWNLOAD_BASE ||
+    `https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}`
+  ).replace(/[/]+$/, "");
   const destDir = path.join(__dirname, "binaries", target);
   const binary = path.join(destDir, win ? "veld.exe" : "veld");
   if (fs.existsSync(binary)) return;
