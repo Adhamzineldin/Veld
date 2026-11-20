@@ -9,7 +9,9 @@
 //!
 //! Without `javac` (or `node` and `node_modules` for the cross-language tests) a test is skipped
 //! with a message, unless `VELD_REQUIRE_TOOLCHAINS=1`, in which case it fails.
-//! The Spring adapter is compiled only when `VELD_SPRING_CLASSPATH` is set.
+//! The Spring adapter is exercised by a real Spring Boot 3 application built with the Maven Wrapper
+//! (`tests/toolchain/java/spring`); that test is skipped when neither the network nor a populated
+//! `~/.m2` can provide Spring, unless `VELD_REQUIRE_TOOLCHAINS=1`.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod common;
 
@@ -171,6 +173,11 @@ fn build_java(release: &'static str) -> Result<Java, Unavailable> {
     let put = |dir: &str, files: &FileSet| write(&work.join(dir), files, &opts).unwrap();
     put(
         "gen_a",
+        &gen_server_for(&a, "Orders", &["Iam"], "gen.a", None, Some(release)),
+    );
+    // The Spring flavour of the same server: built by Maven in `build_spring_app`, never by plain javac.
+    put(
+        "gen_spring",
         &gen_server_for(
             &a,
             "Orders",
@@ -190,19 +197,18 @@ fn build_java(release: &'static str) -> Result<Java, Unavailable> {
     put("gen_cd", &gen_client_for(&d, "gen.cd", Some(release)));
     write_sigs(&work);
 
-    // 1. Generated code alone: zero warnings (the Spring adapter needs Spring on the classpath).
+    // 1. Generated code alone: zero warnings.
     let generated: Vec<PathBuf> = ["gen_a", "gen_i", "gen_ca", "gen_cb", "gen_cc", "gen_cd"]
         .iter()
-        .flat_map(|d| java_files(&work.join(d), &["SpringAdapter.java"]))
+        .flat_map(|d| java_files(&work.join(d), &[]))
         .collect();
     javac(&work, release, "classes_gen", None, &[], &generated);
 
     // 2. The test programs against the compiled generated code.
     std::fs::create_dir_all(work.join("tests")).unwrap();
-    for f in java_files(&java_dir(), &[])
-        .iter()
-        .filter(|p| !p.starts_with(java_dir().join(".work")))
-    {
+    for f in java_files(&java_dir(), &[]).iter().filter(|p| {
+        !p.starts_with(java_dir().join(".work")) && !p.starts_with(java_dir().join("spring"))
+    }) {
         std::fs::copy(f, work.join("tests").join(f.file_name().unwrap())).unwrap();
     }
     javac(
@@ -314,31 +320,6 @@ fn cross_package_equality() {
 fn wire_goldens() {
     each_java("wire_goldens", |j| {
         assert!(run_java(j, "veldtest.WireCheck", &[]).contains("wire ok"));
-    });
-}
-
-#[test]
-fn spring_adapter_compiles_with_spring_on_the_classpath() {
-    let Ok(spring) = std::env::var("VELD_SPRING_CLASSPATH") else {
-        eprintln!(
-            "SKIPPED spring_adapter_compiles_with_spring_on_the_classpath: VELD_SPRING_CLASSPATH is not set"
-        );
-        return;
-    };
-    each_java("spring_adapter", |j| {
-        let source = j.work.join("gen_a/gen/a/adapters/SpringAdapter.java");
-        let cp = format!(
-            "classes_gen{}{spring}",
-            if cfg!(windows) { ';' } else { ':' }
-        );
-        javac(
-            &j.work,
-            j.release,
-            "classes_spring",
-            Some(&cp),
-            &[],
-            &[source],
-        );
     });
 }
 
@@ -473,6 +454,12 @@ impl Server {
 
 impl Drop for Server {
     fn drop(&mut self) {
+        // On Windows `java` can be a launcher shim: stop its whole process tree.
+        if cfg!(windows) {
+            let _ = Command::new("taskkill")
+                .args(["/PID", &self.child.id().to_string(), "/T", "/F"])
+                .output();
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -556,7 +543,7 @@ fn hazards_compile_on(release: &str) {
     put("cli", &gen_client_for(&ir, "hz.cli", Some(release)));
     let sources: Vec<PathBuf> = ["srv", "cli"]
         .iter()
-        .flat_map(|d| java_files(&work.join(d), &["SpringAdapter.java"]))
+        .flat_map(|d| java_files(&work.join(d), &[]))
         .collect();
     javac(&work, release, "classes", None, &[], &sources);
 }
@@ -625,7 +612,7 @@ fn java_and_typescript_clients_decode_errors_identically() {
             .current_dir(&work),
         "tsc",
     );
-    let mut sources = java_files(&work.join("java_cli"), &["SpringAdapter.java"]);
+    let mut sources = java_files(&work.join("java_cli"), &[]);
     sources.push(work.join("EqDecode.java"));
     javac(&work, RELEASES[0], "classes", None, &[], &sources);
 
@@ -670,4 +657,257 @@ fn java_and_typescript_clients_decode_errors_identically() {
     );
     let (ax_canon, bx_canon) = (ax[5], bx[5]);
     assert_eq!(ax_canon, bx_canon, "same payload from either service");
+}
+
+// ---------------------------------------------------------------------------
+// Spring Boot 3
+// ---------------------------------------------------------------------------
+
+fn spring_project() -> PathBuf {
+    java_dir().join("spring")
+}
+
+/// Whether Maven can get Spring: a populated `~/.m2`, or a network route to Maven Central.
+fn maven_reachable() -> Result<(), String> {
+    use std::net::{TcpStream, ToSocketAddrs};
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from);
+    if home.is_some_and(|h| {
+        h.join(".m2/repository/org/springframework/boot/spring-boot-starter-web")
+            .is_dir()
+    }) {
+        return Ok(());
+    }
+    let reachable = "repo.maven.apache.org:443"
+        .to_socket_addrs()
+        .ok()
+        .and_then(|mut a| a.next())
+        .is_some_and(|addr| {
+            TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(10)).is_ok()
+        });
+    if reachable {
+        Ok(())
+    } else {
+        Err("no network route to Maven Central and no Spring in ~/.m2".into())
+    }
+}
+
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let path = entry.unwrap().path();
+        let dest = to.join(path.file_name().unwrap());
+        if path.is_dir() {
+            copy_tree(&path, &dest);
+        } else {
+            std::fs::copy(&path, &dest).unwrap();
+        }
+    }
+}
+
+/// Copies the generated sources, the Maven project and the test application into a work
+/// directory and runs `mvnw package`. Returns the path of the executable jar.
+fn build_spring_app(j: &Java) -> PathBuf {
+    let work = java_dir().join(format!(".work/spring-{}", j.release));
+    let _ = std::fs::remove_dir_all(&work);
+    let sources = work.join("src/main/java");
+    std::fs::create_dir_all(sources.join("veldtest")).unwrap();
+    let generated = j.work.join("gen_spring");
+    for file in java_files(&generated, &[]) {
+        let rel = file.strip_prefix(&generated).unwrap();
+        let dest = sources.join(rel);
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        std::fs::copy(&file, dest).unwrap();
+    }
+    let project = spring_project();
+    for name in ["pom.xml", "mvnw", "mvnw.cmd"] {
+        std::fs::copy(project.join(name), work.join(name)).unwrap();
+    }
+    copy_tree(&project.join(".mvn"), &work.join(".mvn"));
+    copy_tree(
+        &project.join("src/main/java/veldtest"),
+        &sources.join("veldtest"),
+    );
+    for shared in ["ServerImpl.java", "Check.java"] {
+        std::fs::copy(
+            java_dir().join(shared),
+            sources.join("veldtest").join(shared),
+        )
+        .unwrap();
+    }
+    let mut mvn = if cfg!(windows) {
+        let mut c = Command::new("cmd");
+        c.args(["/c", r".\mvnw.cmd"]);
+        c
+    } else {
+        let mut c = Command::new("sh");
+        c.arg("mvnw");
+        c
+    };
+    mvn.args(["-q", "-B", "package", "-DskipTests"])
+        .current_dir(&work);
+    run(&mut mvn, "mvnw package");
+    work.join("target/app.jar")
+}
+
+/// The port in Spring's `Tomcat started on port 55983 (http) ...` log line.
+fn started_port(line: &str) -> Option<u16> {
+    let rest = line.split("Tomcat started on port ").nth(1)?;
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().ok()
+}
+
+/// Whether `GET /__probe` answers 200 (the application is serving, not just listening).
+fn probe_answers(port: u16) -> bool {
+    use std::io::{Read, Write};
+    let Ok(mut stream) = std::net::TcpStream::connect(("127.0.0.1", port)) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+    let request = "GET /__probe HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+    let mut reply = String::new();
+    stream.write_all(request.as_bytes()).is_ok()
+        && stream.read_to_string(&mut reply).is_ok()
+        && reply.starts_with("HTTP/1.1 200")
+}
+
+/// Starts the jar and waits until it really serves. The server picks its own port (`0`, so no
+/// port can be taken between choosing and binding it) and reports it in its log; readiness is an
+/// answered request, and an exit or a missing port within the timeout fails the test.
+fn start_spring(jar: &Path) -> Server {
+    let mut child = Command::new("java")
+        .arg("-jar")
+        .arg(jar)
+        .args(["--server.port=0", "--server.address=127.0.0.1"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .expect("cannot start the Spring application");
+    let stdout = child.stdout.take().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            eprintln!("{line}");
+            if let Some(port) = started_port(&line) {
+                let _ = tx.send(port);
+            }
+        }
+    });
+    let mut server = Server {
+        child,
+        url: String::new(),
+    };
+    let port = rx
+        .recv_timeout(std::time::Duration::from_secs(120))
+        .unwrap_or_else(|e| panic!("the Spring application never reported its port: {e}"));
+    server.url = format!("http://127.0.0.1:{port}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while !probe_answers(port) {
+        assert!(
+            server.child.try_wait().unwrap().is_none(),
+            "the Spring application exited before it served"
+        );
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the Spring application did not answer /__probe within 60s"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    server
+}
+
+/// The generated Spring adapter in a real Spring Boot 3 application (Maven Wrapper, starter-web
+/// only): the same behaviours as the JDK adapter round trip, through the Java client, and the
+/// generated TypeScript client against the same running server.
+#[test]
+fn spring_adapter_serves_the_round_trip() {
+    let name = "spring_adapter_serves_the_round_trip";
+    let Some(j) = need_java(name, "17") else {
+        return;
+    };
+    if let Err(why) = maven_reachable() {
+        let _: Option<()> = skip(name, &Unavailable::Missing(why));
+        return;
+    }
+    let jar = build_spring_app(j);
+    let server = start_spring(&jar);
+    let out = run_java(j, "veldtest.SpringCrossClient", &[&server.url]);
+    assert!(out.contains("spring client ok"));
+    drop(server);
+    // The TypeScript scenario counts on a fresh server, so it gets a second instance of the jar.
+    if let Some((_, t)) = both(name, "17") {
+        let server = start_spring(&jar);
+        let out = run(
+            Command::new("node")
+                .args(["out/crossclient.js", &server.url])
+                .current_dir(&t.work),
+            "crossclient.js",
+        );
+        assert!(out.contains("ts client against java server ok"));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Import hygiene
+// ---------------------------------------------------------------------------
+
+/// Whether `word` occurs in `text` as a whole identifier.
+fn mentions(text: &str, word: &str) -> bool {
+    let ident = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
+    text.match_indices(word).any(|(i, _)| {
+        let before = text[..i].chars().next_back();
+        let after = text[i + word.len()..].chars().next();
+        !before.is_some_and(ident) && !after.is_some_and(ident)
+    })
+}
+
+/// The imports of `source` that its body never mentions. `javac` does not report these.
+fn unused_imports(source: &str) -> Vec<String> {
+    let (imports, body): (Vec<&str>, Vec<&str>) = source
+        .lines()
+        .partition(|l| l.trim_start().starts_with("import "));
+    let body = body.join("\n");
+    imports
+        .iter()
+        .filter_map(|l| l.trim().strip_prefix("import ")?.strip_suffix(';'))
+        .filter(|fqn| {
+            let simple = fqn.rsplit('.').next().unwrap_or(fqn);
+            simple != "*" && !mentions(&body, simple)
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn the_import_scan_finds_unused_imports() {
+    let source = "package a;\nimport b.Used;\nimport b.Unused;\nclass A { Used u; }\n";
+    assert_eq!(unused_imports(source), ["b.Unused"]);
+    assert!(mentions("x.GetMapping(\"/\")", "GetMapping"));
+    assert!(!mentions("MyGetMapping", "GetMapping"));
+}
+
+#[test]
+fn generated_java_has_no_unused_imports() {
+    each_java("generated_java_has_no_unused_imports", |j| {
+        let mut problems = Vec::new();
+        for dir in [
+            "gen_a",
+            "gen_spring",
+            "gen_i",
+            "gen_ca",
+            "gen_cb",
+            "gen_cc",
+            "gen_cd",
+        ] {
+            for file in java_files(&j.work.join(dir), &[]) {
+                let source = std::fs::read_to_string(&file).unwrap();
+                for fqn in unused_imports(&source) {
+                    problems.push(format!("{}: unused import {fqn}", file.display()));
+                }
+            }
+        }
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
+    });
 }

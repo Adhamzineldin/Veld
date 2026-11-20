@@ -17,6 +17,10 @@ fn files_of(fs: &FileSet) -> Vec<(String, Vec<u8>)> {
 }
 
 fn server() -> FileSet {
+    gen_server(&standard_ir(), "Orders", &["Iam"], "gen.a", None)
+}
+
+fn spring_server() -> FileSet {
     gen_server(&standard_ir(), "Orders", &["Iam"], "gen.a", Some("spring"))
 }
 
@@ -62,12 +66,32 @@ fn server_snapshots() {
         "gen/a/orders/server/OrdersHooks.java",
         "gen/a/orders/server/CreateOrderRequest.java",
         "gen/a/adapters/JdkHttpServerAdapter.java",
-        "gen/a/adapters/SpringAdapter.java",
         "gen/a/runtime/Veld.java",
         "gen/a/runtime/VeldError.java",
     ] {
         insta::assert_snapshot!(
             format!("server_{}", path.replace('/', "__")),
+            text(&fs, path)
+        );
+    }
+}
+
+#[test]
+fn spring_server_snapshots() {
+    let fs = spring_server();
+    insta::assert_snapshot!(
+        "spring_server_file_list",
+        fs.paths().collect::<Vec<_>>().join(
+            "
+"
+        )
+    );
+    for path in [
+        "gen/a/adapters/SpringAdapter.java",
+        "gen/a/adapters/orders/OrdersController.java",
+    ] {
+        insta::assert_snapshot!(
+            format!("spring_server_{}", path.replace('/', "__")),
             text(&fs, path)
         );
     }
@@ -81,6 +105,7 @@ fn output_is_deterministic() {
         files_of(&gen_client(&ir, "gen.c"))
     );
     assert_eq!(files_of(&server()), files_of(&server()));
+    assert_eq!(files_of(&spring_server()), files_of(&spring_server()));
     assert_eq!(
         files_of(&client()),
         files_of(&gen_client(&standard_ir(), "gen.c"))
