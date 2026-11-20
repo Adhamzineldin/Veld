@@ -9,6 +9,9 @@ members = [
   "crates/veld-emit-conformance",
   "crates/veld-plugin-host",
   "xtask",
+  "crates/emitters/typescript",
+  "crates/emitters/node",
+  "apps/veld",
 ]
 
 [workspace.package]
