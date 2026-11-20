@@ -1,0 +1,32 @@
+[package]
+name = "veld"
+description = "The Veld CLI: contract-first API code generation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "veld"
+path = "src/main.rs"
+
+[dependencies]
+veld-ir.workspace = true
+veld-compiler.workspace = true
+veld-codegen.workspace = true
+veld-project.workspace = true
+veld-emit-node.workspace = true
+veld-emit-typescript.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+notify.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

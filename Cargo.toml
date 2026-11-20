@@ -7,6 +7,7 @@ members = [
   "crates/veld-compiler",
   "crates/emitters/typescript",
   "crates/emitters/node",
+  "apps/veld",
 ]
 
 [workspace.package]
