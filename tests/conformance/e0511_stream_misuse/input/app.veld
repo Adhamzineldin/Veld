@@ -1,0 +1,7 @@
+model M { a: int }
+
+service S at "/s" {
+  post "/a" fa(body: M) -> stream M
+  post "/b" fb(body: stream M)
+  get "/c" fc() -> M | stream NotFound
+}

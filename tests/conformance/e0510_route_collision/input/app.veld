@@ -1,0 +1,7 @@
+service A at "/a" {
+  get "/{x}" one(x: int)
+}
+
+service B at "/a" {
+  get "/{y}" two(y: int)
+}

@@ -1,0 +1,6 @@
+model M { a: int }
+
+service S at "/s" {
+  get "/" f(body: M)
+  head "/h" g(body: M)
+}

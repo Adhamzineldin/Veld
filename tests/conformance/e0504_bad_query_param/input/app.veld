@@ -1,0 +1,8 @@
+model Nested { n: Inner }
+model Inner { a: int }
+
+service S at "/s" {
+  get "/a" fa(query: string)
+  get "/b" fb(query: Nested)
+  get "/c" fc(@query q: Inner)
+}

@@ -1,0 +1,5 @@
+model A {
+  a: string @pattern("(?=x)a")
+  b: string @pattern("(a)\\1")
+  c: string @pattern("^[a-z]+$")
+}

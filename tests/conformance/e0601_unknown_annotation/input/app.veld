@@ -1,0 +1,4 @@
+@bogus
+model A {
+  a: int @nope(1)
+}

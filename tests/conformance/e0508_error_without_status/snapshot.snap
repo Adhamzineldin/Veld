@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0508]: error `Odd` has no status here and no default status
+ --> app/app.veld:4:18
+  |
+4 |   get "/" f() -> Odd
+  |                  ^^^
+  = help: write `<status> Odd` or give the error a default: `error Odd 409 { ... }`
+
+== ir ==
+(no IR: compilation failed)

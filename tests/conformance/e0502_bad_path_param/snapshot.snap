@@ -1,0 +1,24 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0502]: path parameter `a` must be a scalar or an enum, found `M`
+ --> app/app.veld:4:20
+  |
+4 |   get "/{a}" fa(a: M)
+  |                    ^
+
+error[E0502]: path parameter `b` cannot be optional
+ --> app/app.veld:5:19
+  |
+5 |   get "/x/{b}" fb(b?: string)
+  |                   ^
+
+error[E0502]: path parameter `c` must be a scalar or an enum, found `string[]`
+ --> app/app.veld:6:22
+  |
+6 |   get "/y/{c}" fc(c: string[])
+  |                      ^^^^^^^^
+
+== ir ==
+(no IR: compilation failed)

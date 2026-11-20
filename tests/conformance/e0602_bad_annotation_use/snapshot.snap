@@ -1,0 +1,60 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0602]: `@readonly` cannot be applied to a model
+ --> app/app.veld:1:1
+  |
+1 | @readonly
+  | ^^^^^^^^^
+  = help: `@readonly` applies to: field
+
+error[E0602]: `@auth` cannot be applied to a field
+ --> app/app.veld:3:10
+  |
+3 |   a: int @auth(bearer)
+  |          ^^^^^^^^^^^^^
+  = help: `@auth` applies to: service, endpoint
+
+error[E0602]: expected exactly one argument
+ --> app/app.veld:4:10
+  |
+4 |   b: int @wire
+  |          ^^^^^
+  = help: usage: @wire("name")
+
+error[E0602]: `@min` and `@max` apply to numeric fields
+ --> app/app.veld:5:13
+  |
+5 |   c: string @min(1)
+  |             ^^^^^^^
+  = help: usage: @min(n)
+
+error[E0602]: `@length` applies to strings, lists and maps
+ --> app/app.veld:6:10
+  |
+6 |   d: int @length(min: 1)
+  |          ^^^^^^^^^^^^^^^
+  = help: usage: @length(min: n, max: n)
+
+error[E0602]: `@min(5)` is greater than `@max(1)`
+ --> app/app.veld:7:18
+  |
+7 |   e: int @min(5) @max(1)
+  |                  ^^^^^^^
+
+error[E0602]: unknown format `nope`; use email, uri, hostname, ipv4 or ipv6
+ --> app/app.veld:8:13
+  |
+8 |   f: string @format(nope)
+  |             ^^^^^^^^^^^^^
+  = help: usage: @format(email | uri | hostname | ipv4 | ipv6)
+
+error[E0602]: `@readonly` is written more than once
+ --> app/app.veld:9:20
+  |
+9 |   g: int @readonly @readonly
+  |                    ^^^^^^^^^
+
+== ir ==
+(no IR: compilation failed)

@@ -1,0 +1,12 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0512]: parameter `body` is declared twice
+ --> app/app.veld:4:23
+  |
+4 |   post "/" f(body: M, body: M)
+  |                       ^^^^
+
+== ir ==
+(no IR: compilation failed)

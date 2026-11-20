@@ -1,0 +1,24 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0511]: `stream` responses are only allowed on `get` (SSE) and `ws` endpoints, not `post`
+ --> app/app.veld:4:28
+  |
+4 |   post "/a" fa(body: M) -> stream M
+  |                            ^^^^^^^^
+
+error[E0511]: `stream` parameters are only allowed as `body: stream T` on `ws` endpoints
+ --> app/app.veld:5:16
+  |
+5 |   post "/b" fb(body: stream M)
+  |                ^^^^
+
+error[E0511]: `stream` is not allowed on an error response
+ --> app/app.veld:6:24
+  |
+6 |   get "/c" fc() -> M | stream NotFound
+  |                        ^^^^^^^^^^^^^^^
+
+== ir ==
+(no IR: compilation failed)

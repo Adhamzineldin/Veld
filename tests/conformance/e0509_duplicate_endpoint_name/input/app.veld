@@ -1,0 +1,4 @@
+service S at "/s" {
+  get "/a" f()
+  get "/b" f()
+}

@@ -1,0 +1,20 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0603]: pattern `(?=x)a` is outside the portable regex subset: `(?` groups (lookaround, non-capturing, named) are not supported
+ --> app/app.veld:2:13
+  |
+2 |   a: string @pattern("(?=x)a")
+  |             ^^^^^^^^^^^^^^^^^^
+  = help: allowed: literals, `.`, `[...]`, `\d \w \s`, `* + ? {n,m}`, `( )`, `|`, `^ $`
+
+error[E0603]: pattern `(a)\1` is outside the portable regex subset: backreference `\1` is not supported
+ --> app/app.veld:3:13
+  |
+3 |   b: string @pattern("(a)\\1")
+  |             ^^^^^^^^^^^^^^^^^^
+  = help: allowed: literals, `.`, `[...]`, `\d \w \s`, `* + ? {n,m}`, `( )`, `|`, `^ $`
+
+== ir ==
+(no IR: compilation failed)

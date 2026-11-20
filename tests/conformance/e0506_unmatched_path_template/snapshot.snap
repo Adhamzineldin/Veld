@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0506]: path parameter `{sku}` has no matching parameter
+ --> app/app.veld:2:7
+  |
+2 |   get "/{id}/items/{sku}" f(id: uuid)
+  |       ^^^^^^^^^^^^^^^^^^^
+  = help: add `sku: <type>` to the parameter list
+
+== ir ==
+(no IR: compilation failed)
