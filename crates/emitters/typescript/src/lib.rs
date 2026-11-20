@@ -7,6 +7,7 @@
 
 pub mod barrel;
 pub mod client;
+pub mod frameworks;
 pub mod models;
 pub mod runtime;
 pub mod tree;
@@ -20,6 +21,8 @@ use veld_codegen::{
     Profile, Role, check_capabilities,
 };
 use veld_ir::Feature;
+
+use crate::util::add_file;
 
 pub use tree::Tree;
 
@@ -104,8 +107,11 @@ impl Generator for TypeScript {
         &[Role::Client]
     }
 
-    fn frameworks(&self, _role: Role) -> Vec<FrameworkInfo> {
-        Vec::new()
+    fn frameworks(&self, role: Role) -> Vec<FrameworkInfo> {
+        match role {
+            Role::Client => frameworks::infos(),
+            Role::Server => Vec::new(),
+        }
     }
 
     fn language(&self) -> Option<LanguageInfo> {
@@ -120,13 +126,23 @@ impl Generator for TypeScript {
         &self,
         req: &GenRequest<'_>,
         _opts: &Options,
-        _profile: &Profile,
+        profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, Role::Client, &self.capabilities(Role::Client))?;
         let mut files = FileSet::new();
         runtime::emit(&mut files)?;
         let tree = Tree::new(req.ir, "", None, runtime::MODULE, req.services.clone());
         let modules = emit_client_tree(&mut files, &tree)?;
+        let model = frameworks::model(&tree);
+        for adapter in frameworks::ADAPTERS {
+            for (path, bytes) in adapter.files(&model, profile)?.iter() {
+                add_file(
+                    &mut files,
+                    path,
+                    String::from_utf8_lossy(bytes).into_owned(),
+                )?;
+            }
+        }
         barrel::write(&mut files, "", &modules, &[], true)?;
         Ok(files)
     }
