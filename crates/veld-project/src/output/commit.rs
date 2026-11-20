@@ -63,6 +63,31 @@ pub(crate) fn apply(
     }
 }
 
+/// Removes `.veld-staging-*` directories in `out` left behind by an interrupted run. The prefix
+/// is reserved (a generated path may not use it), so these are always ours.
+pub(crate) fn remove_stale_staging(out: &Path) -> Result<(), OutputError> {
+    let entries = match fs::read_dir(out) {
+        Ok(e) => e,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(io_at(out)(e)),
+    };
+    for entry in entries {
+        let entry = entry.map_err(io_at(out))?;
+        let path = entry.path();
+        let is_staging = entry
+            .file_name()
+            .to_str()
+            .is_some_and(|n| n.starts_with(STAGING_PREFIX));
+        let is_real_dir = entry
+            .file_type()
+            .is_ok_and(|t| t.is_dir() && !t.is_symlink());
+        if is_staging && is_real_dir {
+            fs::remove_dir_all(&path).map_err(io_at(&path))?;
+        }
+    }
+    Ok(())
+}
+
 fn create_staging(out: &Path) -> Result<PathBuf, OutputError> {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
