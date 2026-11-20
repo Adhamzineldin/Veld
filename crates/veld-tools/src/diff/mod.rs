@@ -1,0 +1,220 @@
+//! Breaking-change detection between two IRs.
+//!
+//! Declarations are matched by qualified name and endpoints by (package,
+//! service, endpoint name). The declaration `sig` is a fast path: equal
+//! signatures mean the wire shape is unchanged, so only metadata (constraints,
+//! defaults, docs, deprecations) is compared.
+//!
+//! "Request-reachable" and "response-reachable" are computed on the old IR,
+//! because the clients that can break are the ones built against it. A type the
+//! old IR never uses falls back to the new IR.
+
+mod decls;
+mod endpoints;
+mod usage;
+
+use serde::Serialize;
+use veld_ir::{Constraints, Ir, Type};
+
+/// How a change affects existing clients.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Severity {
+    Breaking,
+    NonBreaking,
+}
+
+/// What changed. The severity can still depend on where a type is used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ChangeKind {
+    DeclRemoved,
+    DeclAdded,
+    DeclKindChanged,
+    FieldRemoved,
+    FieldAdded,
+    RequiredFieldAdded,
+    FieldTypeChanged,
+    FieldBecameRequired,
+    FieldBecameOptional,
+    EnumVariantRemoved,
+    EnumVariantAdded,
+    UnionArmRemoved,
+    UnionArmAdded,
+    UnionArmChanged,
+    DiscriminatorChanged,
+    ConstraintTightened,
+    ConstraintLoosened,
+    ConstChanged,
+    DocsChanged,
+    Deprecated,
+    Undeprecated,
+    EndpointRemoved,
+    EndpointAdded,
+    MethodChanged,
+    PathChanged,
+    ParamRemoved,
+    ParamAdded,
+    ParamBindingChanged,
+    ParamTypeChanged,
+    ParamBecameRequired,
+    ParamBecameOptional,
+    SuccessChanged,
+    ErrorRemoved,
+    ErrorAdded,
+    AuthAdded,
+    AuthChanged,
+    AuthRemoved,
+}
+
+/// One difference between the old and the new contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Change {
+    pub kind: ChangeKind,
+    pub severity: Severity,
+    /// Qualified declaration name, or the operation signature without its hash
+    /// (`veld:orders/Orders.getOrder`).
+    pub subject: String,
+    pub message: String,
+}
+
+impl Change {
+    pub(crate) fn new(
+        kind: ChangeKind,
+        severity: Severity,
+        subject: &str,
+        message: impl Into<String>,
+    ) -> Change {
+        Change {
+            kind,
+            severity,
+            subject: subject.to_string(),
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn breaking(kind: ChangeKind, subject: &str, message: impl Into<String>) -> Change {
+        Change::new(kind, Severity::Breaking, subject, message)
+    }
+
+    pub(crate) fn non_breaking(kind: ChangeKind, subject: &str, message: impl Into<String>) -> Change {
+        Change::new(kind, Severity::NonBreaking, subject, message)
+    }
+
+    /// Breaking when `breaking` holds, otherwise non-breaking.
+    pub(crate) fn when(
+        breaking: bool,
+        kind: ChangeKind,
+        subject: &str,
+        message: impl Into<String>,
+    ) -> Change {
+        if breaking {
+            Change::breaking(kind, subject, message)
+        } else {
+            Change::non_breaking(kind, subject, message)
+        }
+    }
+}
+
+/// True when any change is breaking.
+#[must_use]
+pub fn has_breaking(changes: &[Change]) -> bool {
+    changes.iter().any(|c| c.severity == Severity::Breaking)
+}
+
+/// Both IRs, for comparisons that need to resolve declaration ids.
+pub(crate) struct Ctx<'a> {
+    pub old: &'a Ir,
+    pub new: &'a Ir,
+}
+
+impl Ctx<'_> {
+    /// Structural key of a type with declarations by qualified name, so ids
+    /// from different IRs compare correctly.
+    pub fn type_key(&self, in_old: bool, t: &Type) -> String {
+        let ir = if in_old { self.old } else { self.new };
+        type_key(ir, t)
+    }
+}
+
+pub(crate) fn type_key(ir: &Ir, t: &Type) -> String {
+    match t {
+        Type::Scalar(s) => s.name().to_string(),
+        Type::List(i) => format!("[{}]", type_key(ir, i)),
+        Type::Map(i) => format!("map<{}>", type_key(ir, i)),
+        Type::Page(i) => format!("page<{}>", type_key(ir, i)),
+        Type::Decl(id) => format!("ref:{}", ir.decl(*id).qualified),
+        _ => "?".to_string(),
+    }
+}
+
+/// Which side of a bound moved: `Some(true)` tightened, `Some(false)` loosened.
+fn bound(old: Option<f64>, new: Option<f64>, lower: bool) -> Option<bool> {
+    match (old, new) {
+        (None, None) => None,
+        (None, Some(_)) => Some(true),
+        (Some(_), None) => Some(false),
+        (Some(a), Some(b)) if (a - b).abs() < f64::EPSILON => None,
+        (Some(a), Some(b)) => Some(if lower { b > a } else { b < a }),
+    }
+}
+
+fn text_rule<T: PartialEq>(old: &Option<T>, new: &Option<T>) -> Option<bool> {
+    match (old, new) {
+        (None, None) => None,
+        (None, Some(_)) => Some(true),
+        (Some(_), None) => Some(false),
+        (Some(a), Some(b)) => (a != b).then_some(true),
+    }
+}
+
+/// Constraint changes as (name, tightened).
+pub(crate) fn constraint_changes(old: &Constraints, new: &Constraints) -> Vec<(&'static str, bool)> {
+    #[allow(clippy::cast_precision_loss)]
+    let len = |v: Option<u64>| v.map(|n| n as f64);
+    let checks = [
+        ("min", bound(old.min, new.min, true)),
+        ("max", bound(old.max, new.max, false)),
+        ("min length", bound(len(old.min_len), len(new.min_len), true)),
+        ("max length", bound(len(old.max_len), len(new.max_len), false)),
+        ("pattern", text_rule(&old.pattern, &new.pattern)),
+        ("format", text_rule(&old.format, &new.format)),
+    ];
+    checks
+        .into_iter()
+        .filter_map(|(name, t)| t.map(|t| (name, t)))
+        .collect()
+}
+
+/// Reports constraint changes of one subject element.
+pub(crate) fn push_constraint_changes(
+    out: &mut Vec<Change>,
+    subject: &str,
+    what: &str,
+    old: &Constraints,
+    new: &Constraints,
+) {
+    for (name, tightened) in constraint_changes(old, new) {
+        let (kind, verb) = if tightened {
+            (ChangeKind::ConstraintTightened, "tightened")
+        } else {
+            (ChangeKind::ConstraintLoosened, "loosened")
+        };
+        out.push(Change::when(tightened, kind, subject, format!("{what}: {name} constraint {verb}")));
+    }
+}
+
+/// Compares two IRs and lists every change, breaking or not, in a stable order.
+#[must_use]
+pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
+    let ctx = Ctx { old, new };
+    let usage = usage::Usage::of(old, new);
+    let mut out = Vec::new();
+    decls::diff_decls(&ctx, &usage, &mut out);
+    endpoints::diff_endpoints(&ctx, &mut out);
+    out
+}
+
+#[cfg(test)]
+mod tests;
