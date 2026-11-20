@@ -1,0 +1,53 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/veld-ir",
+]
+
+[workspace.package]
+version = "2.0.0-beta.1"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/Adhamzineldin/Veld"
+rust-version = "1.90"
+
+[workspace.dependencies]
+veld-ir = { path = "crates/veld-ir" }
+veld-compiler = { path = "crates/veld-compiler" }
+veld-codegen = { path = "crates/veld-codegen" }
+veld-project = { path = "crates/veld-project" }
+veld-tools = { path = "crates/veld-tools" }
+veld-emit-node = { path = "crates/emitters/node" }
+veld-emit-typescript = { path = "crates/emitters/typescript" }
+veld-emit-java = { path = "crates/emitters/java" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+thiserror = "2"
+anyhow = "1"
+toml = "0.8"
+clap = { version = "4", features = ["derive"] }
+tempfile = "3"
+insta = { version = "1", features = ["json"] }
+assert_cmd = "2"
+predicates = "3"
+lsp-server = "0.7"
+lsp-types = "0.97"
+notify = "6"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+dbg_macro = "warn"
+todo = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
