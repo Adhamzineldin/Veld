@@ -1,0 +1,1153 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "iam",
+      "kind": "library"
+    },
+    {
+      "id": 1,
+      "name": "orders",
+      "kind": "service"
+    },
+    {
+      "id": 2,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "users",
+      "name": "User",
+      "qualified": "iam:users.User",
+      "sig": "veld:iam/User@98280e83c0377c54",
+      "docs": "A platform user.",
+      "deprecated": null,
+      "origin": {
+        "file": "users.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 3,
+            "col": 3
+          }
+        },
+        {
+          "name": "name",
+          "wire": "name",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 4,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 1,
+      "module": "orders",
+      "name": "CreateOrder",
+      "qualified": "orders:orders.CreateOrder",
+      "sig": "veld:orders/CreateOrder@f515f80f8406c979",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "orders.veld",
+        "line": 38,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "customer",
+          "wire": "customer",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 39,
+            "col": 3
+          }
+        },
+        {
+          "name": "items",
+          "wire": "items",
+          "type": {
+            "list": {
+              "decl": 4
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 40,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 1,
+      "module": "orders",
+      "name": "Order",
+      "qualified": "orders:orders.Order",
+      "sig": "veld:orders/Order@2206a128bf3c3fe3",
+      "docs": "A customer order.",
+      "deprecated": null,
+      "origin": {
+        "file": "orders.veld",
+        "line": 4,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 5,
+            "col": 3
+          }
+        },
+        {
+          "name": "customer",
+          "wire": "customer",
+          "type": {
+            "decl": 0
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 6,
+            "col": 3
+          }
+        },
+        {
+          "name": "items",
+          "wire": "items",
+          "type": {
+            "list": {
+              "decl": 4
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 7,
+            "col": 3
+          }
+        },
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 6
+          },
+          "optional": false,
+          "default": {
+            "lit": "enum_variant",
+            "value": {
+              "name": "pending",
+              "wire": "pending"
+            }
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 8,
+            "col": 3
+          }
+        },
+        {
+          "name": "note",
+          "wire": "note",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": 500,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 9,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "package": 1,
+      "module": "orders",
+      "name": "OrderFilter",
+      "qualified": "orders:orders.OrderFilter",
+      "sig": "veld:orders/OrderFilter@ee351b9b3cfd286a",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "orders.veld",
+        "line": 43,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 6
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 44,
+            "col": 3
+          }
+        },
+        {
+          "name": "customer",
+          "wire": "customer",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 45,
+            "col": 3
+          }
+        },
+        {
+          "name": "tags",
+          "wire": "tags",
+          "type": {
+            "list": {
+              "scalar": "string"
+            }
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 46,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "package": 1,
+      "module": "orders",
+      "name": "OrderItem",
+      "qualified": "orders:orders.OrderItem",
+      "sig": "veld:orders/OrderItem@ed09a732f1c50576",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "orders.veld",
+        "line": 33,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "sku",
+          "wire": "sku",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 34,
+            "col": 3
+          }
+        },
+        {
+          "name": "quantity",
+          "wire": "quantity",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": 1.0,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 35,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "package": 1,
+      "module": "orders",
+      "name": "OutOfStock",
+      "qualified": "orders:orders.OutOfStock",
+      "sig": "veld:orders/OutOfStock@a530338d0d4c48f9",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "orders.veld",
+        "line": 14,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": [
+        {
+          "name": "sku",
+          "wire": "sku",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "orders.veld",
+            "line": 15,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "package": 1,
+      "module": "orders",
+      "name": "Status",
+      "qualified": "orders:orders.Status",
+      "sig": "veld:orders/Status@25be8907dd2bc1d3",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "orders.veld",
+        "line": 12,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "pending",
+          "wire": "pending",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "paid",
+          "wire": "paid",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "shipped",
+          "wire": "shipped",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "package": 2,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "package": 2,
+      "module": "prelude",
+      "name": "NotFound",
+      "qualified": "veld:prelude.NotFound",
+      "sig": "veld:veld/NotFound@a0eaf7a3323dce7c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 4,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 404,
+      "parent": null,
+      "fields": [
+        {
+          "name": "resource",
+          "wire": "resource",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 4,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "package": 2,
+      "module": "prelude",
+      "name": "Unauthorized",
+      "qualified": "veld:prelude.Unauthorized",
+      "sig": "veld:veld/Unauthorized@ee241dccf5c82e14",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 401,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 2,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "package": 2,
+      "module": "prelude",
+      "name": "ValidationError",
+      "qualified": "veld:prelude.ValidationError",
+      "sig": "veld:veld/ValidationError@7836aff24d914bea",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "issues",
+          "wire": "issues",
+          "type": {
+            "list": {
+              "decl": 11
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 6,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "package": 2,
+      "module": "prelude",
+      "name": "ValidationIssue",
+      "qualified": "veld:prelude.ValidationIssue",
+      "sig": "veld:veld/ValidationIssue@253beeea259ebf75",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 9,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "path",
+          "wire": "path",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 29
+          }
+        },
+        {
+          "name": "code",
+          "wire": "code",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 43
+          }
+        },
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 57
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 1,
+      "name": "Orders",
+      "prefix": "/orders",
+      "base_url": "http://orders:3002",
+      "docs": "Order management.",
+      "auth": {
+        "kind": "bearer",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "getOrder",
+          "method": "GET",
+          "path": "/orders/{id}",
+          "sig": "veld:orders/Orders.getOrder@48e9882b53747a6d",
+          "docs": "Fetch one order.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 2
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 9
+            },
+            {
+              "status": 404,
+              "decl": 8
+            },
+            {
+              "status": 422,
+              "decl": 10
+            },
+            {
+              "status": 500,
+              "decl": 7
+            }
+          ],
+          "origin": {
+            "file": "orders.veld",
+            "line": 22,
+            "col": 15
+          }
+        },
+        {
+          "name": "createOrder",
+          "method": "POST",
+          "path": "/orders",
+          "sig": "veld:orders/Orders.createOrder@b98e19393450fc10",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 1
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 2
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 9
+            },
+            {
+              "status": 409,
+              "decl": 5
+            },
+            {
+              "status": 422,
+              "decl": 10
+            },
+            {
+              "status": 500,
+              "decl": 7
+            }
+          ],
+          "origin": {
+            "file": "orders.veld",
+            "line": 24,
+            "col": 12
+          }
+        },
+        {
+          "name": "listOrders",
+          "method": "GET",
+          "path": "/orders",
+          "sig": "veld:orders/Orders.listOrders@ef059c89613c7f54",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "query",
+              "binding": "query_object",
+              "header": null,
+              "type": {
+                "decl": 3
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "page": {
+                "decl": 2
+              }
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 9
+            },
+            {
+              "status": 422,
+              "decl": 10
+            },
+            {
+              "status": 500,
+              "decl": 7
+            }
+          ],
+          "origin": {
+            "file": "orders.veld",
+            "line": 26,
+            "col": 11
+          }
+        },
+        {
+          "name": "health",
+          "method": "GET",
+          "path": "/orders/health",
+          "sig": "veld:orders/Orders.health@4e6d5e894df71e8b",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 204,
+            "type": null,
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 500,
+              "decl": 7
+            }
+          ],
+          "origin": {
+            "file": "orders.veld",
+            "line": 29,
+            "col": 17
+          }
+        }
+      ],
+      "origin": {
+        "file": "orders.veld",
+        "line": 20,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {
+    "orders": [
+      "iam"
+    ]
+  }
+}

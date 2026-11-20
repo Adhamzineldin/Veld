@@ -1,0 +1,25 @@
+use models.account.{Account, AccountSummary, CreateAccountInput}
+
+/// Bank account management: open, view, freeze, and close accounts
+@middleware(AuthGuard)
+service Accounts at "/api/accounts" {
+  /// List all accounts for the authenticated user
+  get "/" listAccounts() -> Account[] | Unauthorized
+
+  /// Fetch a single account by ID
+  get "/{id}" getAccount(id: string) -> Account | Unauthorized | NotFound
+
+  /// Open a new checking, savings, or investment account
+  post "/" createAccount(body: CreateAccountInput) -> Account | Unauthorized | BadRequest
+
+  /// Portfolio summary: total balance and primary account
+  get "/summary" getSummary() -> AccountSummary | Unauthorized
+
+  /// Freeze an account to block all future transactions
+  post "/{id}/freeze" freezeAccount(id: string) -> 200 Account | Unauthorized | NotFound
+
+  /// Permanently close an account
+  delete "/{id}" closeAccount(id: string) -> Unauthorized | NotFound
+
+  post "/ban" banAccount() -> Unauthorized | NotFound
+}

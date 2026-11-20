@@ -1,0 +1,358 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Entity",
+      "qualified": "app:app.Entity",
+      "sig": "veld:app/Entity@6c863f3aadd60332",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 2,
+            "col": 3
+          }
+        },
+        {
+          "name": "createdAt",
+          "wire": "createdAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 3,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "Named",
+      "qualified": "app:app.Named",
+      "sig": "veld:app/Named@974d7bc89740d213",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": 0,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 2,
+            "col": 3
+          }
+        },
+        {
+          "name": "createdAt",
+          "wire": "createdAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 3,
+            "col": 3
+          }
+        },
+        {
+          "name": "name",
+          "wire": "name",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": 80,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 7,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "app",
+      "name": "Person",
+      "qualified": "app:app.Person",
+      "sig": "veld:app/Person@1990014500cc1a87",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 10,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": 1,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 2,
+            "col": 3
+          }
+        },
+        {
+          "name": "createdAt",
+          "wire": "createdAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 3,
+            "col": 3
+          }
+        },
+        {
+          "name": "name",
+          "wire": "name",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 1,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": 80,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 7,
+            "col": 3
+          }
+        },
+        {
+          "name": "email",
+          "wire": "email",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": "email"
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 11,
+            "col": 3
+          }
+        },
+        {
+          "name": "age",
+          "wire": "age",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": 0.0,
+            "max": 150.0,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 12,
+            "col": 3
+          }
+        }
+      ]
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

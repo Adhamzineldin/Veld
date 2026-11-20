@@ -1,0 +1,302 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "BankTransfer",
+      "qualified": "app:app.BankTransfer",
+      "sig": "veld:app/BankTransfer@246cd50f0b97341e",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "iban",
+          "wire": "iban",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 7,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "Card",
+      "qualified": "app:app.Card",
+      "sig": "veld:app/Card@61db3d835b85af52",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "number",
+          "wire": "number",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": "^[0-9]{12,19}$",
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 2,
+            "col": 3
+          }
+        },
+        {
+          "name": "expiry",
+          "wire": "expiry",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 3,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "app",
+      "name": "Notice",
+      "qualified": "app:app.Notice",
+      "sig": "veld:app/Notice@96496fc455d9c99c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 14,
+        "col": 7
+      },
+      "kind": "union",
+      "discriminator": "type",
+      "arms": [
+        {
+          "label": "card",
+          "decl": 1
+        },
+        {
+          "label": "bank",
+          "decl": 0
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "package": 0,
+      "module": "app",
+      "name": "Order",
+      "qualified": "app:app.Order",
+      "sig": "veld:app/Order@7f56efd06cad1735",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 16,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 17,
+            "col": 3
+          }
+        },
+        {
+          "name": "payment",
+          "wire": "payment",
+          "type": {
+            "decl": 4
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 18,
+            "col": 3
+          }
+        },
+        {
+          "name": "notices",
+          "wire": "notices",
+          "type": {
+            "list": {
+              "decl": 2
+            }
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 19,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "package": 0,
+      "module": "app",
+      "name": "Payment",
+      "qualified": "app:app.Payment",
+      "sig": "veld:app/Payment@a183bd3ce7bef306",
+      "docs": "How a payment is made.",
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 11,
+        "col": 7
+      },
+      "kind": "union",
+      "discriminator": "kind",
+      "arms": [
+        {
+          "label": "card",
+          "decl": 1
+        },
+        {
+          "label": "bank",
+          "decl": 0
+        }
+      ]
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

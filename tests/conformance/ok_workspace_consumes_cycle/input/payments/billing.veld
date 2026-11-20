@@ -1,0 +1,14 @@
+use orders:orders.{Order}
+
+enum PaymentMethod { card, bank, cash }
+
+model Invoice {
+  id: uuid
+  amount: decimal
+  order?: Order
+}
+
+service Payments at "/payments" {
+  get "/{id}" getInvoice(id: uuid) -> Invoice | NotFound
+  post "/{id}/pay" pay(id: uuid, @query method: PaymentMethod) -> 200 Invoice | Conflict
+}

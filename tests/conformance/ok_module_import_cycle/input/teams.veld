@@ -1,0 +1,7 @@
+use users.{User}
+
+model Team {
+  id: uuid
+  members: User[]
+  lead?: User
+}

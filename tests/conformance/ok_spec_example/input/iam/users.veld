@@ -1,0 +1,5 @@
+/// A platform user.
+model User {
+  id: uuid
+  name: string
+}

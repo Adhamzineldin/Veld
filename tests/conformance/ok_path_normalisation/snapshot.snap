@@ -1,0 +1,235 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    },
+    {
+      "id": 1,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 1,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "meta": [],
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "Api",
+      "prefix": "/api/v1",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "list",
+          "method": "GET",
+          "path": "/api/v1",
+          "sig": "veld:app/Api.list@37bcd9acec907a01",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 204,
+            "type": null,
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 500,
+              "decl": 0
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 7,
+            "col": 11
+          }
+        },
+        {
+          "name": "x",
+          "method": "GET",
+          "path": "/api/v1/x",
+          "sig": "veld:app/Api.x@286eeddac41c1189",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 204,
+            "type": null,
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 500,
+              "decl": 0
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 8,
+            "col": 14
+          }
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 6,
+        "col": 9
+      }
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "name": "Root",
+      "prefix": "/",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "index",
+          "method": "GET",
+          "path": "/",
+          "sig": "veld:app/Root.index@987302274c101e25",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 204,
+            "type": null,
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 500,
+              "decl": 0
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 2,
+            "col": 11
+          }
+        },
+        {
+          "name": "about",
+          "method": "GET",
+          "path": "/about",
+          "sig": "veld:app/Root.about@411daefd1f697120",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 204,
+            "type": null,
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 500,
+              "decl": 0
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 3,
+            "col": 17
+          }
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {}
+}

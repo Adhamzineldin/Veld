@@ -1,0 +1,20 @@
+model Card {
+  number: string @pattern("^[0-9]{12,19}$")
+  expiry: string
+}
+
+model BankTransfer {
+  iban: string
+}
+
+/// How a payment is made.
+union Payment { card: Card, bank: BankTransfer }
+
+@discriminator("type")
+union Notice { card: Card, bank: BankTransfer }
+
+model Order {
+  id: uuid
+  payment: Payment
+  notices?: Notice[]
+}

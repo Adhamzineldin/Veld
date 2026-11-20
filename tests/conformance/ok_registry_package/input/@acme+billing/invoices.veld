@@ -1,0 +1,4 @@
+model Invoice {
+  id: uuid
+  total: decimal
+}
