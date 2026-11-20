@@ -57,6 +57,7 @@ fn spec_for(exe: &Path, args: &str) -> PluginSpec {
         command: format!("{} {args}", quote(exe)),
         version: None,
         sha256: None,
+        entry: None,
     }
 }
 
@@ -293,6 +294,41 @@ fn plugin_error_diagnostics_fail_the_run_with_their_code() {
 }
 
 #[test]
+fn entry_script_is_pinned_and_appended_to_the_command() {
+    let ir = ir();
+    let tmp = tempfile::tempdir().unwrap();
+    let entry = tmp.path().join("main.js");
+    fs::write(&entry, "console.log(1)").unwrap();
+    let mut spec = spec_for(&stub_path(), "--mode ok");
+    spec.entry = Some("main.js".into());
+    spec.sha256 = Some(sha_of(&entry));
+    let config = HostConfig::new(tmp.path());
+    let plugin = PluginGenerator::connect(&spec, config.clone()).unwrap();
+    assert!(
+        plugin
+            .generate_dyn(&request(&ir, Role::Client), &serde_json::Value::Null)
+            .is_ok()
+    );
+    // The executable is not what is pinned: changing the entry script is refused.
+    fs::write(&entry, "console.log(2)").unwrap();
+    let err = plugin
+        .generate_dyn(&request(&ir, Role::Client), &serde_json::Value::Null)
+        .unwrap_err();
+    assert_eq!(codes(&err), ["E0705"]);
+    assert_eq!(
+        PluginGenerator::connect(&spec, config.clone())
+            .unwrap_err()
+            .code(),
+        "E0705"
+    );
+    // A command that already names the entry is not given it twice.
+    let mut named = spec_for(&stub_path(), "--mode ok main.js");
+    named.entry = Some("main.js".into());
+    named.sha256 = Some(sha_of(&entry));
+    assert!(PluginGenerator::connect(&named, config).is_ok());
+}
+
+#[test]
 fn unsupported_role_and_missing_executable_are_reported() {
     let ir = ir();
     let plugin = PluginGenerator::connect(&spec("--roles client"), config()).unwrap();
@@ -305,6 +341,7 @@ fn unsupported_role_and_missing_executable_are_reported() {
         command: "./no-such-plugin".into(),
         version: None,
         sha256: None,
+        entry: None,
     };
     assert_eq!(
         PluginGenerator::connect(&missing, config())

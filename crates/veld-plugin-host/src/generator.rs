@@ -114,8 +114,13 @@ pub struct PluginGenerator {
 impl PluginGenerator {
     /// Verifies the pinned hash (E0705), starts the plugin once and reads its handshake.
     pub fn connect(spec: &PluginSpec, config: HostConfig) -> Result<Self, PluginError> {
-        let command = CommandLine::parse(&spec.command)
+        let mut command = CommandLine::parse(&spec.command)
             .ok_or_else(|| PluginError::process(&spec.name, "its `command` is empty"))?;
+        if let Some(entry) = &spec.entry
+            && !command.args.iter().any(|a| a == entry)
+        {
+            command.args.push(entry.clone());
+        }
         let runner = Runner {
             name: spec.name.clone(),
             command,
@@ -147,7 +152,11 @@ impl PluginGenerator {
 /// Resolves the executable and checks it against the pinned hash.
 fn verified_executable(spec: &PluginSpec, runner: &Runner) -> Result<PathBuf, PluginError> {
     let exe = runner.resolve()?;
-    spec.verify_executable(&exe).map_err(|e| match e {
+    // With an `entry`, the pin covers the script the interpreter runs, not the interpreter.
+    let pinned = spec
+        .entry_path(&runner.config.project_root)
+        .unwrap_or_else(|| exe.clone());
+    spec.verify_executable(&pinned).map_err(|e| match e {
         veld_project::config::ConfigError::PluginHashMismatch {
             plugin,
             expected,
