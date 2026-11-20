@@ -74,10 +74,11 @@ emitter = "node"
 framework = "hono"
 out = "backend/notification-service/src/generated"
 
-# One TypeScript client for the frontend, covering every service. The React hooks of v1 are not
-# part of 2.0, so there is no `framework` here.
+# One TypeScript client with React hooks for the web app, covering every service.
+# Importable as `@veld/web` after `veld setup`.
 [[targets]]
-name = "frontend"
+name = "web"
 role = "client"
 emitter = "typescript"
-out = "frontend/src/generated"
+framework = "react"
+out = "web/src/generated"

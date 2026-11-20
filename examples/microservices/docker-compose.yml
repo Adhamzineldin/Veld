@@ -1,0 +1,63 @@
+# docker compose up --build   ->   http://localhost:8080
+# Every service finds the others by name (the `base-url` values in veld.toml); the VELD_<SERVICE>_URL
+# variables below say the same thing explicitly and are what you would change elsewhere.
+x-urls: &urls
+  VELD_IAM_URL: http://iam-service:3001
+  VELD_ACCOUNTS_URL: http://account-service:3002
+  VELD_TRANSACTIONS_URL: http://transaction-service:3003
+  VELD_CARDS_URL: http://card-service:3004
+  VELD_NOTIFICATIONS_URL: http://notification-service:3005
+
+services:
+  iam-service:
+    build:
+      context: ./backend/iam-service
+      dockerfile: ../Dockerfile.node
+    environment:
+      <<: *urls
+      PORT: "3001"
+
+  account-service:
+    build:
+      context: ./backend/account-service
+      dockerfile: ../Dockerfile.node
+    environment:
+      <<: *urls
+      PORT: "3002"
+    depends_on: [iam-service, transaction-service]
+
+  transaction-service:
+    build: ./backend/transaction-service
+    environment:
+      <<: *urls
+      PORT: "3003"
+    depends_on: [iam-service, account-service]
+
+  card-service:
+    build:
+      context: ./backend/card-service
+      dockerfile: ../Dockerfile.node
+    environment:
+      <<: *urls
+      PORT: "3004"
+    depends_on: [iam-service, account-service]
+
+  notification-service:
+    build:
+      context: ./backend/notification-service
+      dockerfile: ../Dockerfile.node
+    environment:
+      <<: *urls
+      PORT: "3005"
+    depends_on: [iam-service]
+
+  web:
+    build: ./web
+    ports:
+      - "8080:80"
+    depends_on:
+      - iam-service
+      - account-service
+      - transaction-service
+      - card-service
+      - notification-service
