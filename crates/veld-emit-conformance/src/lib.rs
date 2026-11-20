@@ -33,7 +33,10 @@ pub fn compile(name: &str, source: &str) -> Ir {
         packages: vec![PackageInput {
             name: "app".into(),
             kind: veld_ir::PackageKind::Service,
-            files: vec![SourceFile { path: format!("{name}.veld"), text: source.into() }],
+            files: vec![SourceFile {
+                path: format!("{name}.veld"),
+                text: source.into(),
+            }],
             base_url: Some("http://localhost:3000".into()),
         }],
         consumes: BTreeMap::new(),
@@ -48,7 +51,11 @@ pub fn compile(name: &str, source: &str) -> Ir {
 /// Every declaration signature and operation signature of `services` and what they reach.
 #[must_use]
 pub fn expected_signatures(ir: &Ir, services: &[ServiceId]) -> Vec<String> {
-    let mut sigs: Vec<String> = ir.reachable_decls(services).into_iter().map(|d| ir.decl(d).sig.clone()).collect();
+    let mut sigs: Vec<String> = ir
+        .reachable_decls(services)
+        .into_iter()
+        .map(|d| ir.decl(d).sig.clone())
+        .collect();
     for sid in services {
         sigs.extend(ir.service(*sid).endpoints.iter().map(|e| e.sig.clone()));
     }
@@ -57,13 +64,22 @@ pub fn expected_signatures(ir: &Ir, services: &[ServiceId]) -> Vec<String> {
 
 /// Checks that every expected signature occurs verbatim in some generated file.
 pub fn check_signatures(ir: &Ir, services: &[ServiceId], files: &FileSet) -> Result<(), String> {
-    let contents: Vec<String> = files.iter().map(|(_, b)| String::from_utf8_lossy(b).into_owned()).collect();
-    let missing: Vec<String> =
-        expected_signatures(ir, services).into_iter().filter(|s| !contents.iter().any(|c| c.contains(s.as_str()))).collect();
+    let contents: Vec<String> = files
+        .iter()
+        .map(|(_, b)| String::from_utf8_lossy(b).into_owned())
+        .collect();
+    let missing: Vec<String> = expected_signatures(ir, services)
+        .into_iter()
+        .filter(|s| !contents.iter().any(|c| c.contains(s.as_str())))
+        .collect();
     if missing.is_empty() {
         Ok(())
     } else {
-        Err(format!("{} signature(s) are not embedded verbatim, for example `{}`", missing.len(), missing[0]))
+        Err(format!(
+            "{} signature(s) are not embedded verbatim, for example `{}`",
+            missing.len(),
+            missing[0]
+        ))
     }
 }
 
@@ -77,7 +93,12 @@ pub fn run_checks(generator: &dyn DynGenerator) -> Vec<String> {
     for role in generator.roles() {
         for fixture in FIXTURES {
             if let Err(e) = check_fixture(generator, *role, fixture) {
-                failures.push(format!("[{} / {} / {}] {e}", generator.id(), role.name(), fixture.name));
+                failures.push(format!(
+                    "[{} / {} / {}] {e}",
+                    generator.id(),
+                    role.name(),
+                    fixture.name
+                ));
             }
         }
     }
@@ -90,24 +111,47 @@ pub fn run_checks(generator: &dyn DynGenerator) -> Vec<String> {
 /// When any check fails.
 pub fn check_generator(generator: &dyn DynGenerator) {
     let failures = run_checks(generator);
-    assert!(failures.is_empty(), "generator conformance failed:\n  {}", failures.join("\n  "));
+    assert!(
+        failures.is_empty(),
+        "generator conformance failed:\n  {}",
+        failures.join("\n  ")
+    );
 }
 
-fn check_fixture(generator: &dyn DynGenerator, role: Role, fixture: &Fixture) -> Result<(), String> {
+fn check_fixture(
+    generator: &dyn DynGenerator,
+    role: Role,
+    fixture: &Fixture,
+) -> Result<(), String> {
     let ir = compile(fixture.name, fixture.source);
     if let Some(feature) = fixture.feature {
         let used = ir.features_used(&all_services(&ir));
         if !used.contains(&feature) {
-            return Err(format!("the fixture does not use `{}` (a bug in veld-emit-conformance)", feature.name()));
+            return Err(format!(
+                "the fixture does not use `{}` (a bug in veld-emit-conformance)",
+                feature.name()
+            ));
         }
     }
     let services = all_services(&ir);
-    let req = GenRequest { ir: &ir, role, services: services.clone(), consumes: vec![], framework: None };
+    let req = GenRequest {
+        ir: &ir,
+        role,
+        services: services.clone(),
+        consumes: vec![],
+        framework: None,
+    };
     let caps = generator.capabilities(role);
     let gate = check_capabilities(&ir, &req, &caps);
-    let unsupported: Vec<Feature> = ir.features_used(&services).into_iter().filter(|f| !caps.supports(*f)).collect();
+    let unsupported: Vec<Feature> = ir
+        .features_used(&services)
+        .into_iter()
+        .filter(|f| !caps.supports(*f))
+        .collect();
     if gate.len() != unsupported.len() || gate.iter().any(|d| d.code != "E0801") {
-        return Err(format!("the capability gate reported {gate:?} for the unsupported features {unsupported:?}"));
+        return Err(format!(
+            "the capability gate reported {gate:?} for the unsupported features {unsupported:?}"
+        ));
     }
     if !unsupported.is_empty() {
         return Ok(());
@@ -126,10 +170,18 @@ fn all_services(ir: &Ir) -> Vec<ServiceId> {
 }
 
 fn generate(generator: &dyn DynGenerator, req: &GenRequest<'_>) -> Result<FileSet, String> {
-    generator.generate_dyn(req, &serde_json::Value::Null).map_err(|d| {
-        let lines: Vec<String> = d.iter().map(|d| format!("{}: {}", d.code, d.message)).collect();
-        format!("generation failed although every used feature is declared:\n    {}", lines.join("\n    "))
-    })
+    generator
+        .generate_dyn(req, &serde_json::Value::Null)
+        .map_err(|d| {
+            let lines: Vec<String> = d
+                .iter()
+                .map(|d| format!("{}: {}", d.code, d.message))
+                .collect();
+            format!(
+                "generation failed although every used feature is declared:\n    {}",
+                lines.join("\n    ")
+            )
+        })
 }
 
 #[cfg(test)]
@@ -157,10 +209,20 @@ mod tests {
         fn capabilities(&self, _: Role) -> Capabilities {
             self.caps.clone()
         }
-        fn generate_dyn(&self, req: &GenRequest<'_>, _: &serde_json::Value) -> Result<FileSet, Vec<GenDiagnostic>> {
+        fn generate_dyn(
+            &self,
+            req: &GenRequest<'_>,
+            _: &serde_json::Value,
+        ) -> Result<FileSet, Vec<GenDiagnostic>> {
             let mut files = FileSet::new();
-            let sigs = if self.embed { expected_signatures(req.ir, &req.services) } else { vec![] };
-            files.add("all.txt", sigs.join("\n")).map_err(|e| vec![GenDiagnostic::new("E0899", e.to_string())])?;
+            let sigs = if self.embed {
+                expected_signatures(req.ir, &req.services)
+            } else {
+                vec![]
+            };
+            files
+                .add("all.txt", sigs.join("\n"))
+                .map_err(|e| vec![GenDiagnostic::new("E0899", e.to_string())])?;
             Ok(files)
         }
     }
@@ -178,24 +240,43 @@ mod tests {
         let covered: Vec<Feature> = FIXTURES.iter().filter_map(|f| f.feature).collect();
         // `consts` is never reported by `features_used` (see fixtures.rs), so it has no fixture.
         for feature in Feature::ALL.into_iter().filter(|f| *f != Feature::Consts) {
-            assert!(covered.contains(&feature), "no fixture for `{}`", feature.name());
+            assert!(
+                covered.contains(&feature),
+                "no fixture for `{}`",
+                feature.name()
+            );
         }
     }
 
     #[test]
     fn a_minimal_generator_with_no_capabilities_conforms() {
-        assert_eq!(run_checks(&Minimal { embed: true, caps: Capabilities::default() }), Vec::<String>::new());
+        assert_eq!(
+            run_checks(&Minimal {
+                embed: true,
+                caps: Capabilities::default()
+            }),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
     fn a_generator_that_drops_signatures_fails() {
-        let failures = run_checks(&Minimal { embed: false, caps: Capabilities::default() });
-        assert!(failures.iter().any(|f| f.contains("not embedded verbatim")), "{failures:?}");
+        let failures = run_checks(&Minimal {
+            embed: false,
+            caps: Capabilities::default(),
+        });
+        assert!(
+            failures.iter().any(|f| f.contains("not embedded verbatim")),
+            "{failures:?}"
+        );
     }
 
     #[test]
     fn claiming_a_feature_it_cannot_generate_is_caught_by_the_signature_check() {
-        let failures = run_checks(&Minimal { embed: false, caps: Capabilities::all_except(&[]) });
+        let failures = run_checks(&Minimal {
+            embed: false,
+            caps: Capabilities::all_except(&[]),
+        });
         assert!(failures.len() >= FIXTURES.len(), "{failures:?}");
     }
 }

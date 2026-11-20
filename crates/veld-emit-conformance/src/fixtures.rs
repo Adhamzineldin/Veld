@@ -130,17 +130,61 @@ service Blobs at "/blobs" {
 
 /// The plain contract first, then one per feature.
 pub const FIXTURES: &[Fixture] = &[
-    Fixture { name: "plain", feature: None, source: BASE },
-    Fixture { name: "unions", feature: Some(Feature::Unions), source: UNIONS },
-    Fixture { name: "constraints", feature: Some(Feature::Constraints), source: CONSTRAINTS },
-    Fixture { name: "auth", feature: Some(Feature::Auth), source: AUTH },
-    Fixture { name: "middleware", feature: Some(Feature::Middleware), source: MIDDLEWARE },
-    Fixture { name: "headers", feature: Some(Feature::Headers), source: HEADERS },
-    Fixture { name: "streaming_sse", feature: Some(Feature::StreamingSse), source: SSE },
-    Fixture { name: "streaming_ws", feature: Some(Feature::StreamingWs), source: WS },
-    Fixture { name: "page", feature: Some(Feature::Page), source: PAGE },
+    Fixture {
+        name: "plain",
+        feature: None,
+        source: BASE,
+    },
+    Fixture {
+        name: "unions",
+        feature: Some(Feature::Unions),
+        source: UNIONS,
+    },
+    Fixture {
+        name: "constraints",
+        feature: Some(Feature::Constraints),
+        source: CONSTRAINTS,
+    },
+    Fixture {
+        name: "auth",
+        feature: Some(Feature::Auth),
+        source: AUTH,
+    },
+    Fixture {
+        name: "middleware",
+        feature: Some(Feature::Middleware),
+        source: MIDDLEWARE,
+    },
+    Fixture {
+        name: "headers",
+        feature: Some(Feature::Headers),
+        source: HEADERS,
+    },
+    Fixture {
+        name: "streaming_sse",
+        feature: Some(Feature::StreamingSse),
+        source: SSE,
+    },
+    Fixture {
+        name: "streaming_ws",
+        feature: Some(Feature::StreamingWs),
+        source: WS,
+    },
+    Fixture {
+        name: "page",
+        feature: Some(Feature::Page),
+        source: PAGE,
+    },
     // `Feature::Consts` is never reported today: `features_used` only looks at declarations reachable
     // from endpoints, and nothing references a `const`. The fixture still guards against crashes.
-    Fixture { name: "consts", feature: None, source: CONSTS },
-    Fixture { name: "bytes", feature: Some(Feature::Bytes), source: BYTES },
+    Fixture {
+        name: "consts",
+        feature: None,
+        source: CONSTS,
+    },
+    Fixture {
+        name: "bytes",
+        feature: Some(Feature::Bytes),
+        source: BYTES,
+    },
 ];
