@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "generator": "veld 2.0",
+  "files": {
+    "clients/iam/iam/client.ts": "9fc72c624f70e056d2f67c55e9423bec51b17bde63c2061ec95aa242135a17d5",
+    "clients/iam/iam/errors/users.ts": "5f09fcac1cb10398af8308478db3119ccc3892baf8752500e8f5303428178b78",
+    "clients/iam/iam/models/users.ts": "4e1751a50cefc9879e14ee1e50c2a314f9e982a6ec0d69f5f77c5d62d756d3dc",
+    "clients/iam/index.ts": "8f42013b0209ce1fae0a1ab314dbab355095720c2e0997360a586618254b92c2",
+    "clients/iam/prelude.ts": "192fe529d6e35f54892113d93a09667d1d18a81173d4e9ee9cb1261150af6b23",
+    "index.ts": "0be4959aba56e0986f19f6fff45d3af3d06d892ed304a473a2a9fb333f22516d",
+    "models/notifications.ts": "32658221a01687f1d28cab10a9d47e5166f0c855b69f539aa48f6ede11b2b84b",
+    "prelude.ts": "6b517ab7ce5828a32b3de12531ee5eea8a121e952b855a1d23f590c3486ea53f",
+    "runtime/veld.ts": "08a037ed7e48b6eb3aa114eee3904dc8cbe96c60ebac99492dca180dd4e3fc9a",
+    "server/adapters.ts": "82ca2086f71edf5253ac5645091669e00017a2fed4032a096fb0d6f33af06799",
+    "server/notifications.ts": "73c63f2b19f07d3cf5c4bebba72cf6dd73a96a7d794970f8470c81d34c1b7ce6"
+  }
+}
