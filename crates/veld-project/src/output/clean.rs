@@ -29,7 +29,10 @@ pub fn clean(out: &Path, dry_run: bool) -> Result<CleanReport, OutputError> {
         ensure_path_clear(&out, rel)?;
         let target = target_path(&out, rel)?;
         match fs::symlink_metadata(&target) {
-            Ok(meta) if meta.is_file() && sha256_hex(&fs::read(&target).map_err(io_at(&target))?) == *hash => {
+            Ok(meta)
+                if meta.is_file()
+                    && sha256_hex(&fs::read(&target).map_err(io_at(&target))?) == *hash =>
+            {
                 if !dry_run {
                     fs::remove_file(&target).map_err(io_at(&target))?;
                 }
@@ -43,7 +46,11 @@ pub fn clean(out: &Path, dry_run: bool) -> Result<CleanReport, OutputError> {
     if !dry_run {
         let manifest_path = out.join(MANIFEST_NAME);
         fs::remove_file(&manifest_path).map_err(io_at(&manifest_path))?;
-        report.removed.iter().chain(&report.missing).for_each(|rel| prune_empty_parents(&out, rel));
+        report
+            .removed
+            .iter()
+            .chain(&report.missing)
+            .for_each(|rel| prune_empty_parents(&out, rel));
     }
     Ok(report)
 }
@@ -60,7 +67,10 @@ mod tests {
         fs::write(tmp.path().join("user.txt"), "u").unwrap();
         assert_eq!(clean(tmp.path(), false).unwrap(), CleanReport::default());
         assert!(tmp.path().join("user.txt").exists());
-        assert_eq!(clean(&tmp.path().join("absent"), false).unwrap(), CleanReport::default());
+        assert_eq!(
+            clean(&tmp.path().join("absent"), false).unwrap(),
+            CleanReport::default()
+        );
     }
 
     #[test]
@@ -79,6 +89,9 @@ mod tests {
         assert_eq!(report.modified, ["b.txt"]);
         assert!(!tmp.path().join("a").exists());
         assert!(!tmp.path().join(MANIFEST_NAME).exists());
-        assert_eq!(fs::read_to_string(tmp.path().join("b.txt")).unwrap(), "edited");
+        assert_eq!(
+            fs::read_to_string(tmp.path().join("b.txt")).unwrap(),
+            "edited"
+        );
     }
 }

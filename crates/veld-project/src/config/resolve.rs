@@ -33,11 +33,16 @@ pub(super) fn resolve(root: &Path, cfg: Config) -> Result<Project, ConfigError> 
 }
 
 fn valid_name(kind: &str, name: &str) -> Result<(), ConfigError> {
-    let ok = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    let ok = !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     if ok {
         Ok(())
     } else {
-        Err(ConfigError::invalid(format!("{kind} name `{name}` must be non-empty and use only letters, digits, `_` and `-`")))
+        Err(ConfigError::invalid(format!(
+            "{kind} name `{name}` must be non-empty and use only letters, digits, `_` and `-`"
+        )))
     }
 }
 
@@ -45,14 +50,17 @@ fn package_root(root: &Path, contracts: &str) -> PathBuf {
     normalize(&root.join(contracts))
 }
 
-fn build_packages(root: &Path, cfg: &Config, warnings: &mut Vec<Warning>) -> Result<Vec<PackageSpec>, ConfigError> {
+fn build_packages(
+    root: &Path,
+    cfg: &Config,
+    warnings: &mut Vec<Warning>,
+) -> Result<Vec<PackageSpec>, ConfigError> {
     let mut packages = Vec::new();
     for (name, lib) in &cfg.libraries {
         valid_name("library", name)?;
-        let contracts = lib
-            .contracts
-            .as_deref()
-            .ok_or_else(|| ConfigError::invalid(format!("`[libraries.{name}]` is missing `contracts`")))?;
+        let contracts = lib.contracts.as_deref().ok_or_else(|| {
+            ConfigError::invalid(format!("`[libraries.{name}]` is missing `contracts`"))
+        })?;
         packages.push(PackageSpec {
             name: name.clone(),
             kind: PackageKind::Library,
@@ -72,7 +80,9 @@ fn build_packages(root: &Path, cfg: &Config, warnings: &mut Vec<Warning>) -> Res
         });
     } else {
         if cfg.project.contracts.is_some() {
-            return Err(ConfigError::invalid("`[project].contracts` cannot be combined with `[services.*]`"));
+            return Err(ConfigError::invalid(
+                "`[project].contracts` cannot be combined with `[services.*]`",
+            ));
         }
         for (name, svc) in &cfg.services {
             packages.push(build_service(root, name, svc, cfg, warnings)?);
@@ -90,10 +100,9 @@ fn build_service(
     warnings: &mut Vec<Warning>,
 ) -> Result<PackageSpec, ConfigError> {
     valid_name("service", name)?;
-    let contracts = svc
-        .contracts
-        .as_deref()
-        .ok_or_else(|| ConfigError::invalid(format!("`[services.{name}]` is missing `contracts`")))?;
+    let contracts = svc.contracts.as_deref().ok_or_else(|| {
+        ConfigError::invalid(format!("`[services.{name}]` is missing `contracts`"))
+    })?;
     Ok(PackageSpec {
         name: name.to_string(),
         kind: PackageKind::Service,
@@ -117,7 +126,11 @@ fn resolve_consumes(
                 message: format!("service `{owner}` lists itself in `consumes`; ignoring"),
             });
         } else if !cfg.services.contains_key(name) {
-            return Err(unknown_service(&format!("service `{owner}`"), name, cfg.services.keys().map(String::as_str)));
+            return Err(unknown_service(
+                &format!("service `{owner}`"),
+                name,
+                cfg.services.keys().map(String::as_str),
+            ));
         } else if !resolved.contains(name) {
             resolved.push(name.clone());
         }
@@ -125,7 +138,11 @@ fn resolve_consumes(
     Ok(resolved)
 }
 
-fn unknown_service<'a>(owner: &str, name: &str, known: impl Iterator<Item = &'a str> + Clone) -> ConfigError {
+fn unknown_service<'a>(
+    owner: &str,
+    name: &str,
+    known: impl Iterator<Item = &'a str> + Clone,
+) -> ConfigError {
     let suggestion = closest(name, known.clone());
     let valid: Vec<&str> = known.collect();
     ConfigError::UnknownService {
@@ -139,27 +156,43 @@ fn unknown_service<'a>(owner: &str, name: &str, known: impl Iterator<Item = &'a 
 fn check_unique_package_names(packages: &[PackageSpec]) -> Result<(), ConfigError> {
     let mut seen = BTreeSet::new();
     match packages.iter().find(|p| !seen.insert(p.name.as_str())) {
-        Some(dup) => Err(ConfigError::invalid(format!("`{}` is declared as both a library and a service", dup.name))),
+        Some(dup) => Err(ConfigError::invalid(format!(
+            "`{}` is declared as both a library and a service",
+            dup.name
+        ))),
         None => Ok(()),
     }
 }
 
-fn build_plugins(plugins: &std::collections::BTreeMap<String, PluginSection>) -> Result<Vec<PluginSpec>, ConfigError> {
+fn build_plugins(
+    plugins: &std::collections::BTreeMap<String, PluginSection>,
+) -> Result<Vec<PluginSpec>, ConfigError> {
     plugins
         .iter()
         .map(|(name, p)| {
-            let command = p
-                .command
-                .clone()
-                .ok_or_else(|| ConfigError::invalid(format!("`[plugins.{name}]` is missing `command`")))?;
-            Ok(PluginSpec { name: name.clone(), command, version: p.version.clone(), sha256: p.sha256.clone() })
+            let command = p.command.clone().ok_or_else(|| {
+                ConfigError::invalid(format!("`[plugins.{name}]` is missing `command`"))
+            })?;
+            Ok(PluginSpec {
+                name: name.clone(),
+                command,
+                version: p.version.clone(),
+                sha256: p.sha256.clone(),
+            })
         })
         .collect()
 }
 
-fn build_targets(root: &Path, cfg: &Config, packages: &[PackageSpec]) -> Result<Vec<TargetSpec>, ConfigError> {
-    let services: Vec<&str> =
-        packages.iter().filter(|p| p.kind == PackageKind::Service).map(|p| p.name.as_str()).collect();
+fn build_targets(
+    root: &Path,
+    cfg: &Config,
+    packages: &[PackageSpec],
+) -> Result<Vec<TargetSpec>, ConfigError> {
+    let services: Vec<&str> = packages
+        .iter()
+        .filter(|p| p.kind == PackageKind::Service)
+        .map(|p| p.name.as_str())
+        .collect();
     let mut targets = cfg
         .targets
         .iter()
@@ -177,9 +210,14 @@ fn build_target(
     services: &[&str],
     n: usize,
 ) -> Result<TargetSpec, ConfigError> {
-    let missing = |key: &str| ConfigError::invalid(format!("`[[targets]]` #{n} is missing `{key}`"));
+    let missing =
+        |key: &str| ConfigError::invalid(format!("`[[targets]]` #{n} is missing `{key}`"));
     let role = t.role.ok_or_else(|| missing("role"))?;
-    let emitter = parse_emitter(cfg, t.emitter.as_deref().ok_or_else(|| missing("emitter"))?, n)?;
+    let emitter = parse_emitter(
+        cfg,
+        t.emitter.as_deref().ok_or_else(|| missing("emitter"))?,
+        n,
+    )?;
     let out = normalize(&root.join(t.out.as_deref().ok_or_else(|| missing("out"))?));
     let (service, target_services) = target_services(role, t, services, n)?;
     Ok(TargetSpec {
@@ -197,12 +235,16 @@ fn build_target(
 
 fn parse_emitter(cfg: &Config, id: &str, n: usize) -> Result<EmitterRef, ConfigError> {
     match id.strip_prefix("plugin:") {
-        Some("") => Err(ConfigError::invalid(format!("`[[targets]]` #{n}: `plugin:` needs a plugin name"))),
+        Some("") => Err(ConfigError::invalid(format!(
+            "`[[targets]]` #{n}: `plugin:` needs a plugin name"
+        ))),
         Some(name) if cfg.plugins.contains_key(name) => Ok(EmitterRef::Plugin(name.to_string())),
         Some(name) => Err(ConfigError::invalid(format!(
             "`[[targets]]` #{n}: plugin `{name}` is not declared under `[plugins.{name}]`"
         ))),
-        None if id.is_empty() => Err(ConfigError::invalid(format!("`[[targets]]` #{n}: `emitter` is empty"))),
+        None if id.is_empty() => Err(ConfigError::invalid(format!(
+            "`[[targets]]` #{n}: `emitter` is empty"
+        ))),
         None => Ok(EmitterRef::Builtin(id.to_string())),
     }
 }
@@ -218,25 +260,34 @@ fn target_services(
     match role {
         Role::Server => {
             if t.services.is_some() {
-                return Err(ConfigError::invalid(format!("{owner}: `services` is only valid for role = \"client\"")));
+                return Err(ConfigError::invalid(format!(
+                    "{owner}: `services` is only valid for role = \"client\""
+                )));
             }
             let name = match (&t.service, services) {
                 (Some(s), _) => s.as_str(),
                 (None, [only]) => only,
-                (None, _) => return Err(ConfigError::invalid(format!("{owner}: role = \"server\" requires `service`"))),
+                (None, _) => {
+                    return Err(ConfigError::invalid(format!(
+                        "{owner}: role = \"server\" requires `service`"
+                    )));
+                }
             };
             check_known(&owner, name, services)?;
             Ok((Some(name.to_string()), Vec::new()))
         }
         Role::Client => {
             if t.service.is_some() {
-                return Err(ConfigError::invalid(format!("{owner}: `service` is only valid for role = \"server\"")));
+                return Err(ConfigError::invalid(format!(
+                    "{owner}: `service` is only valid for role = \"server\""
+                )));
             }
             let list = match &t.services {
                 Some(list) => list.clone(),
                 None => services.iter().map(|s| s.to_string()).collect(),
             };
-            list.iter().try_for_each(|s| check_known(&owner, s, services))?;
+            list.iter()
+                .try_for_each(|s| check_known(&owner, s, services))?;
             Ok((None, dedup(list)))
         }
     }
@@ -253,7 +304,11 @@ fn dedup(list: Vec<String>) -> Vec<String> {
 }
 
 fn check_known(owner: &str, name: &str, services: &[&str]) -> Result<(), ConfigError> {
-    if services.contains(&name) { Ok(()) } else { Err(unknown_service(owner, name, services.iter().copied())) }
+    if services.contains(&name) {
+        Ok(())
+    } else {
+        Err(unknown_service(owner, name, services.iter().copied()))
+    }
 }
 
 /// Explicit names must be unique; unnamed targets get `<role>-<emitter>[-N]`.
@@ -261,7 +316,9 @@ fn assign_names(raw: &[TargetSection], targets: &mut [TargetSpec]) -> Result<(),
     let mut taken = BTreeSet::new();
     for name in raw.iter().filter_map(|t| t.name.as_deref()) {
         if name.is_empty() || !taken.insert(name.to_string()) {
-            return Err(ConfigError::invalid(format!("target name `{name}` is empty or used more than once")));
+            return Err(ConfigError::invalid(format!(
+                "target name `{name}` is empty or used more than once"
+            )));
         }
     }
     for (spec, r) in targets.iter_mut().zip(raw) {
@@ -274,7 +331,11 @@ fn assign_names(raw: &[TargetSection], targets: &mut [TargetSpec]) -> Result<(),
 }
 
 fn unique_default_name(spec: &TargetSpec, taken: &mut BTreeSet<String>) -> String {
-    let role = if spec.role == Role::Server { "server" } else { "client" };
+    let role = if spec.role == Role::Server {
+        "server"
+    } else {
+        "client"
+    };
     let (EmitterRef::Builtin(e) | EmitterRef::Plugin(e)) = &spec.emitter;
     let base = format!("{role}-{e}");
     let mut name = base.clone();
@@ -287,7 +348,11 @@ fn unique_default_name(spec: &TargetSpec, taken: &mut BTreeSet<String>) -> Strin
 }
 
 fn fold(p: &Path) -> PathBuf {
-    if cfg!(windows) { PathBuf::from(p.to_string_lossy().to_lowercase()) } else { p.to_path_buf() }
+    if cfg!(windows) {
+        PathBuf::from(p.to_string_lossy().to_lowercase())
+    } else {
+        p.to_path_buf()
+    }
 }
 
 fn nested(a: &Path, b: &Path) -> bool {
@@ -295,28 +360,50 @@ fn nested(a: &Path, b: &Path) -> bool {
     a.starts_with(&b) || b.starts_with(&a)
 }
 
-fn check_outputs(root: &Path, targets: &[TargetSpec], packages: &[PackageSpec]) -> Result<(), ConfigError> {
+fn check_outputs(
+    root: &Path,
+    targets: &[TargetSpec],
+    packages: &[PackageSpec],
+) -> Result<(), ConfigError> {
     for t in targets {
         check_out_allowed(root, t, packages)?;
     }
     for (i, a) in targets.iter().enumerate() {
         for b in &targets[i + 1..] {
             if nested(&a.out, &b.out) {
-                let reason = if fold(&a.out) == fold(&b.out) { "same directory" } else { "one is inside the other" };
-                return Err(ConfigError::OutputOverlap { first: a.name.clone(), second: b.name.clone(), reason });
+                let reason = if fold(&a.out) == fold(&b.out) {
+                    "same directory"
+                } else {
+                    "one is inside the other"
+                };
+                return Err(ConfigError::OutputOverlap {
+                    first: a.name.clone(),
+                    second: b.name.clone(),
+                    reason,
+                });
             }
         }
     }
     Ok(())
 }
 
-fn check_out_allowed(root: &Path, t: &TargetSpec, packages: &[PackageSpec]) -> Result<(), ConfigError> {
-    let forbid = |reason: String| ConfigError::OutputForbidden { target: t.name.clone(), reason };
+fn check_out_allowed(
+    root: &Path,
+    t: &TargetSpec,
+    packages: &[PackageSpec],
+) -> Result<(), ConfigError> {
+    let forbid = |reason: String| ConfigError::OutputForbidden {
+        target: t.name.clone(),
+        reason,
+    };
     if fold(&t.out) == fold(root) {
         return Err(forbid("is the project root".into()));
     }
     match packages.iter().find(|p| nested(&t.out, &p.root)) {
-        Some(p) => Err(forbid(format!("overlaps the contracts directory of `{}` (inside it, or containing it)", p.name))),
+        Some(p) => Err(forbid(format!(
+            "overlaps the contracts directory of `{}` (inside it, or containing it)",
+            p.name
+        ))),
         None => Ok(()),
     }
 }
@@ -383,7 +470,10 @@ out = "web/src/generated"
         assert_eq!(p.packages[0].root, normalize(&root().join("contracts")));
         assert_eq!(p.targets[0].service.as_deref(), Some("shop"));
         assert_eq!(p.targets[1].services, ["shop"]);
-        assert_eq!(p.targets[0].out, normalize(&root().join("../api/src/generated")));
+        assert_eq!(
+            p.targets[0].out,
+            normalize(&root().join("../api/src/generated"))
+        );
         assert!(p.targets[0].out.is_absolute());
         assert_eq!(p.targets[0].name, "server-node");
         assert_eq!(p.targets[1].name, "client-typescript");
@@ -393,10 +483,19 @@ out = "web/src/generated"
     #[test]
     fn workspace_mode_with_cycles() {
         let p = load(WORKSPACE).unwrap();
-        assert_eq!(p.packages.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), ["common", "iam", "orders", "payments"]);
+        assert_eq!(
+            p.packages
+                .iter()
+                .map(|x| x.name.as_str())
+                .collect::<Vec<_>>(),
+            ["common", "iam", "orders", "payments"]
+        );
         assert_eq!(p.package("common").unwrap().kind, PackageKind::Library);
         assert_eq!(p.package("orders").unwrap().consumes, ["iam", "payments"]);
-        assert_eq!(p.package("iam").unwrap().base_url.as_deref(), Some("http://iam:3001"));
+        assert_eq!(
+            p.package("iam").unwrap().base_url.as_deref(),
+            Some("http://iam:3001")
+        );
         assert_eq!(p.targets[0].name, "orders-api");
         assert_eq!(p.targets[1].services, ["iam", "orders"]);
         assert!(p.warnings.is_empty());
@@ -411,7 +510,8 @@ out = "web/src/generated"
 
     #[test]
     fn unknown_consumed_service_is_e0702_with_suggestion() {
-        let err = load(&WORKSPACE.replace("\"iam\", \"payments\"", "\"iamm\", \"payments\"")).unwrap_err();
+        let err = load(&WORKSPACE.replace("\"iam\", \"payments\"", "\"iamm\", \"payments\""))
+            .unwrap_err();
         assert_eq!(err.code(), Some("E0702"));
         assert!(err.to_string().contains("did you mean `iam`"), "{err}");
     }
@@ -444,7 +544,13 @@ out = "web/src/generated"
 
     #[test]
     fn forbidden_outs_are_e0704() {
-        for out in [".", "contracts", "contracts/sub", "sub/../contracts/x", ".."] {
+        for out in [
+            ".",
+            "contracts",
+            "contracts/sub",
+            "sub/../contracts/x",
+            "..",
+        ] {
             let text = SINGLE.replace("../web/src/generated", out);
             let err = load(&text).unwrap_err();
             assert_eq!(err.code(), Some("E0704"), "out = {out}: {err}");
@@ -459,13 +565,16 @@ out = "web/src/generated"
         assert_eq!(load(&bad_service).unwrap_err().code(), Some("E0702"));
         let missing_out = SINGLE.replace("out = \"../web/src/generated\"\n", "");
         assert_eq!(load(&missing_out).unwrap_err().code(), Some("E0700"));
-        let dup_name = format!("{SINGLE}\n[[targets]]\nname=\"a\"\nrole=\"client\"\nemitter=\"x\"\nout=\"o1\"\n[[targets]]\nname=\"a\"\nrole=\"client\"\nemitter=\"x\"\nout=\"o2\"\n");
+        let dup_name = format!(
+            "{SINGLE}\n[[targets]]\nname=\"a\"\nrole=\"client\"\nemitter=\"x\"\nout=\"o1\"\n[[targets]]\nname=\"a\"\nrole=\"client\"\nemitter=\"x\"\nout=\"o2\"\n"
+        );
         assert_eq!(load(&dup_name).unwrap_err().code(), Some("E0700"));
     }
 
     #[test]
     fn default_target_names_do_not_collide() {
-        let text = format!("{SINGLE}\n[[targets]]\nrole=\"client\"\nemitter=\"typescript\"\nout=\"o3\"\n");
+        let text =
+            format!("{SINGLE}\n[[targets]]\nrole=\"client\"\nemitter=\"typescript\"\nout=\"o3\"\n");
         let p = load(&text).unwrap();
         assert_eq!(p.targets[2].name, "client-typescript-2");
     }
@@ -478,7 +587,9 @@ out = "web/src/generated"
         let p = load(&text).unwrap();
         assert_eq!(p.targets[2].emitter, EmitterRef::Plugin("kotlin".into()));
         assert_eq!(p.plugins[0].command, "veld-emit-kotlin");
-        let undeclared = format!("{SINGLE}\n[[targets]]\nrole=\"client\"\nemitter=\"plugin:kotlin\"\nout=\"k\"\n");
+        let undeclared = format!(
+            "{SINGLE}\n[[targets]]\nrole=\"client\"\nemitter=\"plugin:kotlin\"\nout=\"k\"\n"
+        );
         assert_eq!(load(&undeclared).unwrap_err().code(), Some("E0700"));
     }
 
@@ -494,7 +605,10 @@ out = "web/src/generated"
             "{SINGLE}\n[targets.options]\nvalidate = true\n[registry]\nurl = \"https://r\"\n[dependencies]\n\"@a/b\" = \"^1\"\n"
         );
         let p = load(&text).unwrap();
-        assert_eq!(p.targets[1].options.get("validate"), Some(&toml::Value::Boolean(true)));
+        assert_eq!(
+            p.targets[1].options.get("validate"),
+            Some(&toml::Value::Boolean(true))
+        );
         assert_eq!(p.registry.as_deref(), Some("https://r"));
         assert_eq!(p.dependencies["@a/b"], "^1");
     }

@@ -29,18 +29,31 @@ pub struct Manifest {
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 impl Manifest {
     pub fn from_files(files: &FileSet) -> Self {
-        Self { files: files.iter().map(|(p, b)| (p.to_string(), sha256_hex(b))).collect() }
+        Self {
+            files: files
+                .iter()
+                .map(|(p, b)| (p.to_string(), sha256_hex(b)))
+                .collect(),
+        }
     }
 
     /// Deterministic bytes: sorted keys, pretty JSON, trailing newline.
     pub fn to_bytes(&self) -> Result<Vec<u8>, OutputError> {
-        let wire = Wire { version: VERSION, generator: GENERATOR.into(), files: self.files.clone() };
-        let mut bytes = serde_json::to_vec_pretty(&wire).map_err(|e| OutputError::Internal(e.to_string()))?;
+        let wire = Wire {
+            version: VERSION,
+            generator: GENERATOR.into(),
+            files: self.files.clone(),
+        };
+        let mut bytes =
+            serde_json::to_vec_pretty(&wire).map_err(|e| OutputError::Internal(e.to_string()))?;
         bytes.push(b'\n');
         Ok(bytes)
     }
@@ -48,7 +61,10 @@ impl Manifest {
     /// Loads the manifest in `out`; `None` if there is none.
     pub fn load(out: &Path) -> Result<Option<Self>, OutputError> {
         let path = out.join(MANIFEST_NAME);
-        let invalid = |reason: String| OutputError::ManifestInvalid { path: path.clone(), reason };
+        let invalid = |reason: String| OutputError::ManifestInvalid {
+            path: path.clone(),
+            reason,
+        };
         match fs::symlink_metadata(&path) {
             Ok(meta) if is_link(&meta) => return Err(OutputError::Symlink { path }),
             Ok(_) => {}
@@ -58,7 +74,10 @@ impl Manifest {
         let bytes = fs::read(&path).map_err(io_at(&path))?;
         let wire: Wire = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
         if wire.version != VERSION {
-            return Err(invalid(format!("unsupported manifest version {}", wire.version)));
+            return Err(invalid(format!(
+                "unsupported manifest version {}",
+                wire.version
+            )));
         }
         for key in wire.files.keys() {
             validate_rel_path(key).map_err(|e| invalid(format!("bad path `{key}`: {e}")))?;
@@ -73,7 +92,10 @@ mod tests {
 
     #[test]
     fn hash_known_value() {
-        assert_eq!(sha256_hex(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]
@@ -85,7 +107,11 @@ mod tests {
         let text = String::from_utf8(bytes).unwrap();
         assert!(text.ends_with("}\n"));
         assert!(text.find("a.txt").unwrap() < text.find("b.txt").unwrap());
-        assert!(text.starts_with("{\n  \"version\": 1,\n  \"generator\": \"veld 2.0\",\n  \"files\": {"));
+        assert!(
+            text.starts_with(
+                "{\n  \"version\": 1,\n  \"generator\": \"veld 2.0\",\n  \"files\": {"
+            )
+        );
     }
 
     #[test]
@@ -102,7 +128,10 @@ mod tests {
             r#"{"version":1,"generator":"x","files":{"../evil":"00"}}"#,
         )
         .unwrap();
-        assert!(matches!(Manifest::load(tmp.path()), Err(OutputError::ManifestInvalid { .. })));
+        assert!(matches!(
+            Manifest::load(tmp.path()),
+            Err(OutputError::ManifestInvalid { .. })
+        ));
         std::fs::write(tmp.path().join(MANIFEST_NAME), "not json").unwrap();
         assert!(Manifest::load(tmp.path()).is_err());
     }

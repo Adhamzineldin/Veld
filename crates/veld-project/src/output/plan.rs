@@ -34,7 +34,12 @@ pub struct Plan {
 impl Plan {
     /// Whether any file would be created, updated or deleted.
     pub fn has_changes(&self) -> bool {
-        self.entries.iter().any(|e| matches!(e.action, PlanAction::Create | PlanAction::Update | PlanAction::Delete))
+        self.entries.iter().any(|e| {
+            matches!(
+                e.action,
+                PlanAction::Create | PlanAction::Update | PlanAction::Delete
+            )
+        })
     }
 
     pub fn conflicts(&self) -> Vec<String> {
@@ -42,29 +47,53 @@ impl Plan {
     }
 
     pub fn paths_with(&self, action: PlanAction) -> Vec<String> {
-        self.entries.iter().filter(|e| e.action == action).map(|e| e.path.clone()).collect()
+        self.entries
+            .iter()
+            .filter(|e| e.action == action)
+            .map(|e| e.path.clone())
+            .collect()
     }
 
     pub fn action_of(&self, path: &str) -> Option<PlanAction> {
-        self.entries.iter().find(|e| e.path == path).map(|e| e.action)
+        self.entries
+            .iter()
+            .find(|e| e.path == path)
+            .map(|e| e.action)
     }
 }
 
-pub(crate) fn build(out: &Path, old: &Manifest, files: &FileSet, force: bool) -> Result<Plan, OutputError> {
+pub(crate) fn build(
+    out: &Path,
+    old: &Manifest,
+    files: &FileSet,
+    force: bool,
+) -> Result<Plan, OutputError> {
     let mut entries = Vec::new();
     for (rel, bytes) in files.iter() {
-        entries.push(PlanEntry { path: rel.to_string(), action: classify(out, rel, bytes, old, force)? });
+        entries.push(PlanEntry {
+            path: rel.to_string(),
+            action: classify(out, rel, bytes, old, force)?,
+        });
     }
     for rel in old.files.keys().filter(|p| !files.contains(p)) {
         if stale_exists(out, rel)? {
-            entries.push(PlanEntry { path: rel.clone(), action: PlanAction::Delete });
+            entries.push(PlanEntry {
+                path: rel.clone(),
+                action: PlanAction::Delete,
+            });
         }
     }
     entries.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(Plan { entries })
 }
 
-fn classify(out: &Path, rel: &str, bytes: &[u8], old: &Manifest, force: bool) -> Result<PlanAction, OutputError> {
+fn classify(
+    out: &Path,
+    rel: &str,
+    bytes: &[u8],
+    old: &Manifest,
+    force: bool,
+) -> Result<PlanAction, OutputError> {
     ensure_path_clear(out, rel)?;
     let target = target_path(out, rel)?;
     let meta = match fs::symlink_metadata(&target) {
@@ -73,7 +102,10 @@ fn classify(out: &Path, rel: &str, bytes: &[u8], old: &Manifest, force: bool) ->
         Err(e) => return Err(io_at(&target)(e)),
     };
     if !meta.is_file() {
-        return Err(OutputError::Blocked { path: rel.to_string(), reason: "the path exists and is not a regular file" });
+        return Err(OutputError::Blocked {
+            path: rel.to_string(),
+            reason: "the path exists and is not a regular file",
+        });
     }
     let existing = fs::read(&target).map_err(io_at(&target))?;
     Ok(if sha256_hex(&existing) == sha256_hex(bytes) {
@@ -116,7 +148,12 @@ mod tests {
         fs::write(out.join("foreign"), "user").unwrap();
         fs::write(out.join("stale"), "s").unwrap();
         let old = Manifest::from_files(&set(&[("managed", "old"), ("stale", "s"), ("gone", "g")]));
-        let new = set(&[("same", "1"), ("managed", "new"), ("foreign", "gen"), ("fresh", "f")]);
+        let new = set(&[
+            ("same", "1"),
+            ("managed", "new"),
+            ("foreign", "gen"),
+            ("fresh", "f"),
+        ]);
         let plan = build(out, &old, &new, false).unwrap();
         let get = |p: &str| plan.action_of(p).unwrap();
         assert_eq!(get("same"), PlanAction::Unchanged);
@@ -125,7 +162,10 @@ mod tests {
         assert_eq!(get("fresh"), PlanAction::Create);
         assert_eq!(get("stale"), PlanAction::Delete);
         assert_eq!(plan.action_of("gone"), None);
-        assert_eq!(build(out, &old, &new, true).unwrap().action_of("foreign"), Some(PlanAction::Update));
+        assert_eq!(
+            build(out, &old, &new, true).unwrap().action_of("foreign"),
+            Some(PlanAction::Update)
+        );
     }
 
     #[test]

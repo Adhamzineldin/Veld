@@ -13,12 +13,18 @@ pub(crate) fn absolute(out: &Path) -> Result<PathBuf, OutputError> {
 
 /// Joins a validated relative path onto `out`, checking containment.
 pub(crate) fn target_path(out: &Path, rel: &str) -> Result<PathBuf, OutputError> {
-    let escapes = || OutputError::PathEscapes { path: rel.to_string() };
+    let escapes = || OutputError::PathEscapes {
+        path: rel.to_string(),
+    };
     validate_rel_path(rel).map_err(|_| escapes())?;
     let mut path = out.to_path_buf();
     rel.split('/').for_each(|c| path.push(c));
     // `Path::starts_with` compares whole components, i.e. a trailing-separator prefix test.
-    if path.starts_with(out) && path != out { Ok(path) } else { Err(escapes()) }
+    if path.starts_with(out) && path != out {
+        Ok(path)
+    } else {
+        Err(escapes())
+    }
 }
 
 pub(crate) fn is_link(meta: &fs::Metadata) -> bool {
@@ -52,7 +58,12 @@ pub(crate) fn ensure_path_clear(out: &Path, rel: &str) -> Result<(), OutputError
             }
             Ok(_) => {}
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
-            Err(e) => return Err(OutputError::Io { path: cur, source: e }),
+            Err(e) => {
+                return Err(OutputError::Io {
+                    path: cur,
+                    source: e,
+                });
+            }
         }
     }
     Ok(())
@@ -61,7 +72,10 @@ pub(crate) fn ensure_path_clear(out: &Path, rel: &str) -> Result<(), OutputError
 /// Removes now-empty parent directories of `rel`, stopping at `out` or the
 /// first directory that still has content. Never removes `out` itself.
 pub(crate) fn prune_empty_parents(out: &Path, rel: &str) {
-    let Some(mut dir) = target_path(out, rel).ok().and_then(|p| p.parent().map(Path::to_path_buf)) else {
+    let Some(mut dir) = target_path(out, rel)
+        .ok()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+    else {
         return;
     };
     while dir != out && dir.starts_with(out) {
@@ -92,7 +106,10 @@ mod tests {
     fn clear_path_detects_file_parent() {
         let tmp = tempfile::tempdir().unwrap();
         fs::write(tmp.path().join("f"), "x").unwrap();
-        assert!(matches!(ensure_path_clear(tmp.path(), "f/g"), Err(OutputError::Blocked { .. })));
+        assert!(matches!(
+            ensure_path_clear(tmp.path(), "f/g"),
+            Err(OutputError::Blocked { .. })
+        ));
         assert!(ensure_path_clear(tmp.path(), "f").is_ok());
         assert!(ensure_path_clear(tmp.path(), "missing/g").is_ok());
     }

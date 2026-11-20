@@ -30,7 +30,11 @@ fn tree(out: &Path) -> Vec<String> {
     fn walk(base: &Path, dir: &Path, acc: &mut Vec<String>) {
         for e in fs::read_dir(dir).unwrap() {
             let p = e.unwrap().path();
-            let rel = p.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
+            let rel = p
+                .strip_prefix(base)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
             if p.is_dir() {
                 acc.push(format!("{rel}/"));
                 walk(base, &p, acc);
@@ -49,10 +53,21 @@ fn tree(out: &Path) -> Vec<String> {
 fn first_write_creates_files_and_manifest() {
     let tmp = tempdir().unwrap();
     let out = tmp.path().join("gen");
-    let plan = write(&out, &set(&[("index.ts", "i"), ("types/a.ts", "a")]), &opts()).unwrap();
-    assert_eq!(plan.paths_with(PlanAction::Create), ["index.ts", "types/a.ts"]);
+    let plan = write(
+        &out,
+        &set(&[("index.ts", "i"), ("types/a.ts", "a")]),
+        &opts(),
+    )
+    .unwrap();
+    assert_eq!(
+        plan.paths_with(PlanAction::Create),
+        ["index.ts", "types/a.ts"]
+    );
     assert_eq!(read(&out, "types/a.ts"), "a");
-    assert_eq!(tree(&out), [".veld-manifest.json", "index.ts", "types/", "types/a.ts"]);
+    assert_eq!(
+        tree(&out),
+        [".veld-manifest.json", "index.ts", "types/", "types/a.ts"]
+    );
     let manifest = read(&out, MANIFEST);
     assert!(manifest.contains("\"types/a.ts\""));
     assert!(manifest.ends_with('\n'));
@@ -62,13 +77,26 @@ fn first_write_creates_files_and_manifest() {
 fn rewrite_removes_stale_files_and_prunes_empty_dirs() {
     let tmp = tempdir().unwrap();
     let out = tmp.path();
-    write(out, &set(&[("keep.ts", "k"), ("old/dir/gone.ts", "g"), ("upd.ts", "1")]), &opts()).unwrap();
-    let plan = write(out, &set(&[("keep.ts", "k"), ("upd.ts", "2"), ("new.ts", "n")]), &opts()).unwrap();
+    write(
+        out,
+        &set(&[("keep.ts", "k"), ("old/dir/gone.ts", "g"), ("upd.ts", "1")]),
+        &opts(),
+    )
+    .unwrap();
+    let plan = write(
+        out,
+        &set(&[("keep.ts", "k"), ("upd.ts", "2"), ("new.ts", "n")]),
+        &opts(),
+    )
+    .unwrap();
     assert_eq!(plan.action_of("old/dir/gone.ts"), Some(PlanAction::Delete));
     assert_eq!(plan.action_of("keep.ts"), Some(PlanAction::Unchanged));
     assert_eq!(plan.action_of("upd.ts"), Some(PlanAction::Update));
     assert_eq!(plan.action_of("new.ts"), Some(PlanAction::Create));
-    assert_eq!(tree(out), [".veld-manifest.json", "keep.ts", "new.ts", "upd.ts"]);
+    assert_eq!(
+        tree(out),
+        [".veld-manifest.json", "keep.ts", "new.ts", "upd.ts"]
+    );
     assert_eq!(read(out, "upd.ts"), "2");
 }
 
@@ -96,7 +124,15 @@ fn conflicting_unmanaged_file_is_refused_then_forced() {
     assert_eq!(read(out, "a.ts"), "user content");
     assert!(!out.join("b.ts").exists(), "refusal must be all-or-nothing");
     assert!(!out.join(MANIFEST).exists());
-    write(out, &files, &WriteOptions { force: true, ..opts() }).unwrap();
+    write(
+        out,
+        &files,
+        &WriteOptions {
+            force: true,
+            ..opts()
+        },
+    )
+    .unwrap();
     assert_eq!(read(out, "a.ts"), "generated");
 }
 
@@ -117,7 +153,10 @@ fn identical_unmanaged_file_is_adopted() {
 fn traversal_and_bad_paths_are_rejected() {
     let mut files = FileSet::new();
     for bad in ["../x", "/abs", "C:/x", "a\\b", "a/../../x", "", "a\0b"] {
-        assert!(matches!(files.add(bad, "x"), Err(FileSetError::InvalidPath { .. })), "{bad:?}");
+        assert!(
+            matches!(files.add(bad, "x"), Err(FileSetError::InvalidPath { .. })),
+            "{bad:?}"
+        );
     }
     assert!(files.is_empty());
 }
@@ -129,7 +168,11 @@ fn tampered_manifest_cannot_delete_outside_out() {
     fs::create_dir(&out).unwrap();
     let victim = tmp.path().join("victim.txt");
     fs::write(&victim, "precious").unwrap();
-    fs::write(out.join(MANIFEST), r#"{"version":1,"generator":"x","files":{"../victim.txt":"00"}}"#).unwrap();
+    fs::write(
+        out.join(MANIFEST),
+        r#"{"version":1,"generator":"x","files":{"../victim.txt":"00"}}"#,
+    )
+    .unwrap();
     assert!(write(&out, &set(&[("a", "a")]), &opts()).is_err());
     assert!(clean(&out, false).is_err());
     assert_eq!(fs::read_to_string(&victim).unwrap(), "precious");
@@ -147,7 +190,9 @@ fn symlink_inside_out_is_refused() {
     #[cfg(windows)]
     let linked = std::os::windows::fs::symlink_dir(&elsewhere, out.join("link")).is_ok();
     if !linked {
-        eprintln!("SKIPPED symlink_inside_out_is_refused: creating symlinks is not permitted on this host");
+        eprintln!(
+            "SKIPPED symlink_inside_out_is_refused: creating symlinks is not permitted on this host"
+        );
         return;
     }
     let err = write(&out, &set(&[("link/x.ts", "x")]), &opts()).unwrap_err();
@@ -159,7 +204,10 @@ fn symlink_inside_out_is_refused() {
 fn dry_run_writes_nothing() {
     let tmp = tempdir().unwrap();
     let out = tmp.path().join("gen");
-    let dry = WriteOptions { dry_run: true, ..opts() };
+    let dry = WriteOptions {
+        dry_run: true,
+        ..opts()
+    };
     let plan = write(&out, &set(&[("a.ts", "a")]), &dry).unwrap();
     assert_eq!(plan.action_of("a.ts"), Some(PlanAction::Create));
     assert!(!out.exists(), "dry run must not even create the out dir");
@@ -179,7 +227,10 @@ fn dry_run_writes_nothing() {
 fn dry_run_reports_conflicts_without_failing() {
     let tmp = tempdir().unwrap();
     fs::write(tmp.path().join("a.ts"), "user").unwrap();
-    let dry = WriteOptions { dry_run: true, ..opts() };
+    let dry = WriteOptions {
+        dry_run: true,
+        ..opts()
+    };
     let plan = write(tmp.path(), &set(&[("a.ts", "gen")]), &dry).unwrap();
     assert_eq!(plan.conflicts(), ["a.ts"]);
 }
@@ -188,7 +239,12 @@ fn dry_run_reports_conflicts_without_failing() {
 fn clean_keeps_user_modified_files() {
     let tmp = tempdir().unwrap();
     let out = tmp.path();
-    write(out, &set(&[("a.ts", "a"), ("d/b.ts", "b"), ("c.ts", "c")]), &opts()).unwrap();
+    write(
+        out,
+        &set(&[("a.ts", "a"), ("d/b.ts", "b"), ("c.ts", "c")]),
+        &opts(),
+    )
+    .unwrap();
     fs::write(out.join("c.ts"), "edited by user").unwrap();
     fs::write(out.join("d/mine.ts"), "mine").unwrap();
     fs::remove_file(out.join("a.ts")).unwrap();
@@ -224,7 +280,16 @@ fn directory_in_the_way_leaves_previous_output_intact() {
     assert_eq!(read(out, "z.ts"), "old-z");
     assert_eq!(read(out, MANIFEST), manifest);
     assert_eq!(read(out, "userdir/f"), "f");
-    assert_eq!(tree(out), [".veld-manifest.json", "a.ts", "userdir/", "userdir/f", "z.ts"]);
+    assert_eq!(
+        tree(out),
+        [
+            ".veld-manifest.json",
+            "a.ts",
+            "userdir/",
+            "userdir/f",
+            "z.ts"
+        ]
+    );
 }
 
 #[test]
@@ -242,7 +307,11 @@ fn no_staging_dir_is_left_behind() {
     let tmp = tempdir().unwrap();
     write(tmp.path(), &set(&[("a", "1")]), &opts()).unwrap();
     write(tmp.path(), &set(&[("a", "2")]), &opts()).unwrap();
-    assert!(tree(tmp.path()).iter().all(|p| !p.starts_with(".veld-staging-")));
+    assert!(
+        tree(tmp.path())
+            .iter()
+            .all(|p| !p.starts_with(".veld-staging-"))
+    );
 }
 
 #[test]
@@ -253,7 +322,10 @@ fn manifest_is_deterministic() {
     write(a.path(), &files, &opts()).unwrap();
     write(b.path(), &files, &opts()).unwrap();
     write(b.path(), &files, &opts()).unwrap();
-    let (ma, mb) = (fs::read(a.path().join(MANIFEST)).unwrap(), fs::read(b.path().join(MANIFEST)).unwrap());
+    let (ma, mb) = (
+        fs::read(a.path().join(MANIFEST)).unwrap(),
+        fs::read(b.path().join(MANIFEST)).unwrap(),
+    );
     assert_eq!(ma, mb);
     let text = String::from_utf8(ma).unwrap();
     assert!(!text.contains('\r'));
@@ -268,7 +340,10 @@ fn insertion_order_does_not_matter() {
     let (x, y) = (tempdir().unwrap(), tempdir().unwrap());
     write(x.path(), &forward, &opts()).unwrap();
     write(y.path(), &backward, &opts()).unwrap();
-    assert_eq!(fs::read(x.path().join(MANIFEST)).unwrap(), fs::read(y.path().join(MANIFEST)).unwrap());
+    assert_eq!(
+        fs::read(x.path().join(MANIFEST)).unwrap(),
+        fs::read(y.path().join(MANIFEST)).unwrap()
+    );
 }
 
 #[test]

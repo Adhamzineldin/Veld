@@ -14,15 +14,37 @@ pub enum ConfigError {
     #[error("E0700: invalid veld.toml: {message}")]
     Invalid { message: String },
     #[error("E0701: unknown key `{key}` in {location}{hint}")]
-    UnknownKey { location: String, key: String, suggestion: Option<String>, hint: String },
+    UnknownKey {
+        location: String,
+        key: String,
+        suggestion: Option<String>,
+        hint: String,
+    },
     #[error("E0702: {owner} refers to unknown service `{name}`{hint}")]
-    UnknownService { owner: String, name: String, suggestion: Option<String>, hint: String },
-    #[error("E0703: targets `{first}` and `{second}` have overlapping output directories ({reason})")]
-    OutputOverlap { first: String, second: String, reason: &'static str },
+    UnknownService {
+        owner: String,
+        name: String,
+        suggestion: Option<String>,
+        hint: String,
+    },
+    #[error(
+        "E0703: targets `{first}` and `{second}` have overlapping output directories ({reason})"
+    )]
+    OutputOverlap {
+        first: String,
+        second: String,
+        reason: &'static str,
+    },
     #[error("E0704: target `{target}`: output directory {reason}")]
     OutputForbidden { target: String, reason: String },
-    #[error("E0705: plugin `{plugin}` executable hash mismatch (expected {expected}, found {actual})")]
-    PluginHashMismatch { plugin: String, expected: String, actual: String },
+    #[error(
+        "E0705: plugin `{plugin}` executable hash mismatch (expected {expected}, found {actual})"
+    )]
+    PluginHashMismatch {
+        plugin: String,
+        expected: String,
+        actual: String,
+    },
     #[error("`{}` is a symlink that points outside the package root", path.display())]
     SymlinkEscape { path: PathBuf },
     #[error("`{}` is not valid UTF-8", path.display())]
@@ -44,7 +66,9 @@ impl ConfigError {
     }
 
     pub(crate) fn invalid(message: impl Into<String>) -> Self {
-        Self::Invalid { message: message.into() }
+        Self::Invalid {
+            message: message.into(),
+        }
     }
 }
 

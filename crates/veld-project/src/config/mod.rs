@@ -17,7 +17,8 @@ use veld_ir::PackageKind;
 pub use error::{ConfigError, Warning};
 pub use paths::{CONFIG_FILE, find_config};
 pub use raw::{
-    Config, LibrarySection, PluginSection, ProjectSection, RegistrySection, Role, ServiceSection, TargetSection,
+    Config, LibrarySection, PluginSection, ProjectSection, RegistrySection, Role, ServiceSection,
+    TargetSection,
 };
 pub use sources::collect_sources;
 
@@ -73,13 +74,22 @@ impl PluginSpec {
         let Some(expected) = &self.sha256 else {
             return Ok(());
         };
-        let bytes =
-            fs::read(executable).map_err(|source| ConfigError::Io { path: executable.to_path_buf(), source })?;
-        let actual: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+        let bytes = fs::read(executable).map_err(|source| ConfigError::Io {
+            path: executable.to_path_buf(),
+            source,
+        })?;
+        let actual: String = Sha256::digest(&bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         if actual.eq_ignore_ascii_case(expected.trim()) {
             Ok(())
         } else {
-            Err(ConfigError::PluginHashMismatch { plugin: self.name.clone(), expected: expected.clone(), actual })
+            Err(ConfigError::PluginHashMismatch {
+                plugin: self.name.clone(),
+                expected: expected.clone(),
+                actual,
+            })
         }
     }
 }
@@ -104,14 +114,19 @@ impl Project {
     }
 
     pub fn services(&self) -> impl Iterator<Item = &PackageSpec> {
-        self.packages.iter().filter(|p| p.kind == PackageKind::Service)
+        self.packages
+            .iter()
+            .filter(|p| p.kind == PackageKind::Service)
     }
 }
 
 /// Reads and resolves the `veld.toml` at `path`.
 pub fn load(path: &Path) -> Result<Project, ConfigError> {
     let path = paths::absolutize(path)?;
-    let text = fs::read_to_string(&path).map_err(|source| ConfigError::Io { path: path.clone(), source })?;
+    let text = fs::read_to_string(&path).map_err(|source| ConfigError::Io {
+        path: path.clone(),
+        source,
+    })?;
     let root = path
         .parent()
         .map(Path::to_path_buf)
@@ -133,9 +148,15 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let exe = tmp.path().join("plug");
         fs::write(&exe, b"abc").unwrap();
-        let mut spec = PluginSpec { name: "p".into(), command: "plug".into(), version: None, sha256: None };
+        let mut spec = PluginSpec {
+            name: "p".into(),
+            command: "plug".into(),
+            version: None,
+            sha256: None,
+        };
         assert!(spec.verify_executable(&exe).is_ok());
-        spec.sha256 = Some("BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD".into());
+        spec.sha256 =
+            Some("BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD".into());
         assert!(spec.verify_executable(&exe).is_ok());
         spec.sha256 = Some("00".into());
         let err = spec.verify_executable(&exe).unwrap_err();

@@ -3,15 +3,18 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::error::ConfigError;
 use super::PackageSpec;
+use super::error::ConfigError;
 
 /// `(relative path with '/', text)` for every `**/*.veld` file, sorted by path.
 ///
 /// Symlinks that resolve outside the package root are rejected; symlinks that
 /// stay inside are skipped (the target is found at its real location).
 pub fn collect_sources(pkg: &PackageSpec) -> Result<Vec<(String, String)>, ConfigError> {
-    let root = fs::canonicalize(&pkg.root).map_err(|source| ConfigError::Io { path: pkg.root.clone(), source })?;
+    let root = fs::canonicalize(&pkg.root).map_err(|source| ConfigError::Io {
+        path: pkg.root.clone(),
+        source,
+    })?;
     let mut found = Vec::new();
     walk(&root, &root, &mut found)?;
     found.sort_by(|a, b| a.0.cmp(&b.0));
@@ -40,14 +43,31 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) -> Result<(), 
 }
 
 fn check_link(root: &Path, link: &Path) -> Result<(), ConfigError> {
-    let target = fs::canonicalize(link).map_err(|source| ConfigError::Io { path: link.to_path_buf(), source })?;
-    if target.starts_with(root) { Ok(()) } else { Err(ConfigError::SymlinkEscape { path: link.to_path_buf() }) }
+    let target = fs::canonicalize(link).map_err(|source| ConfigError::Io {
+        path: link.to_path_buf(),
+        source,
+    })?;
+    if target.starts_with(root) {
+        Ok(())
+    } else {
+        Err(ConfigError::SymlinkEscape {
+            path: link.to_path_buf(),
+        })
+    }
 }
 
 fn relative(root: &Path, path: &Path) -> Result<String, ConfigError> {
-    let rel = path.strip_prefix(root).map_err(|_| ConfigError::SymlinkEscape { path: path.to_path_buf() })?;
+    let rel = path
+        .strip_prefix(root)
+        .map_err(|_| ConfigError::SymlinkEscape {
+            path: path.to_path_buf(),
+        })?;
     let parts: Option<Vec<&str>> = rel.components().map(|c| c.as_os_str().to_str()).collect();
-    parts.map(|p| p.join("/")).ok_or_else(|| ConfigError::NonUtf8Path { path: PathBuf::from(path) })
+    parts
+        .map(|p| p.join("/"))
+        .ok_or_else(|| ConfigError::NonUtf8Path {
+            path: PathBuf::from(path),
+        })
 }
 
 #[cfg(test)]
@@ -101,6 +121,9 @@ mod tests {
             eprintln!("skipping: symlink creation not permitted on this host");
             return;
         }
-        assert!(matches!(collect_sources(&spec(&pkg)), Err(ConfigError::SymlinkEscape { .. })));
+        assert!(matches!(
+            collect_sources(&spec(&pkg)),
+            Err(ConfigError::SymlinkEscape { .. })
+        ));
     }
 }

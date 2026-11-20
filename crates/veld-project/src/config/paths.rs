@@ -16,7 +16,10 @@ pub(crate) fn normalize(path: &Path) -> PathBuf {
                 let can_pop = matches!(out.components().next_back(), Some(Component::Normal(_)));
                 if can_pop {
                     out.pop();
-                } else if !matches!(out.components().next_back(), Some(Component::RootDir | Component::Prefix(_))) {
+                } else if !matches!(
+                    out.components().next_back(),
+                    Some(Component::RootDir | Component::Prefix(_))
+                ) {
                     out.push("..");
                 }
             }
@@ -30,14 +33,21 @@ pub(crate) fn normalize(path: &Path) -> PathBuf {
 pub(crate) fn absolutize(path: &Path) -> Result<PathBuf, ConfigError> {
     std::path::absolute(path)
         .map(|p| normalize(&p))
-        .map_err(|source| ConfigError::Io { path: path.to_path_buf(), source })
+        .map_err(|source| ConfigError::Io {
+            path: path.to_path_buf(),
+            source,
+        })
 }
 
 /// Searches `start` (a directory, or a file whose directory is used) and its
 /// ancestors for `veld.toml`.
 pub fn find_config(start: &Path) -> Result<PathBuf, ConfigError> {
     let abs = absolutize(start)?;
-    let dir = if abs.is_file() { abs.parent().map(Path::to_path_buf).unwrap_or(abs.clone()) } else { abs.clone() };
+    let dir = if abs.is_file() {
+        abs.parent().map(Path::to_path_buf).unwrap_or(abs.clone())
+    } else {
+        abs.clone()
+    };
     dir.ancestors()
         .map(|d| d.join(CONFIG_FILE))
         .find(|candidate| candidate.is_file())
@@ -52,9 +62,26 @@ mod tests {
     #[test]
     fn normalizes_dots() {
         let base = std::env::temp_dir();
-        assert_eq!(normalize(&base.join("a/./b/../c")), normalize(&base.join("a/c")));
+        assert_eq!(
+            normalize(&base.join("a/./b/../c")),
+            normalize(&base.join("a/c"))
+        );
         assert_eq!(normalize(Path::new("a/../../b")), PathBuf::from("../b"));
-        assert_eq!(normalize(&base.join("..").join("..").join("..").join("..").join("..").join("..").join("x")).file_name().unwrap(), "x");
+        assert_eq!(
+            normalize(
+                &base
+                    .join("..")
+                    .join("..")
+                    .join("..")
+                    .join("..")
+                    .join("..")
+                    .join("..")
+                    .join("x")
+            )
+            .file_name()
+            .unwrap(),
+            "x"
+        );
     }
 
     #[test]
@@ -64,7 +91,10 @@ mod tests {
         fs::create_dir_all(&nested).unwrap();
         fs::write(tmp.path().join("a").join(CONFIG_FILE), "").unwrap();
         let found = find_config(&nested).unwrap();
-        assert_eq!(found, absolutize(&tmp.path().join("a").join(CONFIG_FILE)).unwrap());
+        assert_eq!(
+            found,
+            absolutize(&tmp.path().join("a").join(CONFIG_FILE)).unwrap()
+        );
         let from_file = find_config(&found).unwrap();
         assert_eq!(from_file, found);
     }

@@ -41,7 +41,11 @@ fn no_config_is_not_found() {
 fn error_codes_surface_through_load() {
     let tmp = tempdir().unwrap();
     let file = tmp.path().join(CONFIG_FILE);
-    fs::write(&file, "[project]\nname = \"x\"\n[[targets]]\nrole=\"client\"\nemiter=\"ts\"\nout=\"o\"\n").unwrap();
+    fs::write(
+        &file,
+        "[project]\nname = \"x\"\n[[targets]]\nrole=\"client\"\nemiter=\"ts\"\nout=\"o\"\n",
+    )
+    .unwrap();
     let err = load(&file).unwrap_err();
     assert_eq!(err.code(), Some("E0701"));
     assert!(err.to_string().contains("did you mean `emitter`"));

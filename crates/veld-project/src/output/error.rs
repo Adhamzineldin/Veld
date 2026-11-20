@@ -30,5 +30,8 @@ pub enum OutputError {
 
 /// Builds an `Io` error mapper for `path`.
 pub(crate) fn io_at(path: &Path) -> impl FnOnce(io::Error) -> OutputError + '_ {
-    move |source| OutputError::Io { path: path.to_path_buf(), source }
+    move |source| OutputError::Io {
+        path: path.to_path_buf(),
+        source,
+    }
 }

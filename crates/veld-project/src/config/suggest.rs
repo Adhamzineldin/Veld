@@ -16,7 +16,10 @@ pub(crate) fn levenshtein(a: &str, b: &str) -> usize {
 }
 
 /// The closest candidate to `word`, if it is close enough to be a plausible typo.
-pub(crate) fn closest<'a>(word: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<String> {
+pub(crate) fn closest<'a>(
+    word: &str,
+    candidates: impl IntoIterator<Item = &'a str>,
+) -> Option<String> {
     let limit = (word.chars().count() / 3).max(2);
     candidates
         .into_iter()

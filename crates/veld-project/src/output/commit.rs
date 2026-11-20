@@ -28,9 +28,20 @@ struct Commit<'a> {
 }
 
 /// Applies `plan`, then (last) the manifest. On failure the previous output is restored.
-pub(crate) fn apply(out: &Path, files: &FileSet, plan: &Plan, manifest: Option<&[u8]>) -> Result<(), OutputError> {
+pub(crate) fn apply(
+    out: &Path,
+    files: &FileSet,
+    plan: &Plan,
+    manifest: Option<&[u8]>,
+) -> Result<(), OutputError> {
     let staging = create_staging(out)?;
-    let mut commit = Commit { out, files, staging, journal: Vec::new(), created_dirs: Vec::new() };
+    let mut commit = Commit {
+        out,
+        files,
+        staging,
+        journal: Vec::new(),
+        created_dirs: Vec::new(),
+    };
     let result = commit.run(plan, manifest);
     match result {
         Ok(()) => {
@@ -43,24 +54,35 @@ pub(crate) fn apply(out: &Path, files: &FileSet, plan: &Plan, manifest: Option<&
                 let _ = fs::remove_dir_all(&commit.staging);
                 Err(cause)
             } else {
-                Err(OutputError::RollbackIncomplete { cause: cause.to_string(), staging: commit.staging })
+                Err(OutputError::RollbackIncomplete {
+                    cause: cause.to_string(),
+                    staging: commit.staging,
+                })
             }
         }
     }
 }
 
 fn create_staging(out: &Path) -> Result<PathBuf, OutputError> {
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
     for _ in 0..32 {
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = out.join(format!("{STAGING_PREFIX}{:x}-{nanos:x}-{n}", std::process::id()));
+        let path = out.join(format!(
+            "{STAGING_PREFIX}{:x}-{nanos:x}-{n}",
+            std::process::id()
+        ));
         match fs::create_dir(&path) {
             Ok(()) => return Ok(path),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(e) => return Err(io_at(&path)(e)),
         }
     }
-    Err(OutputError::Internal("could not create a unique staging directory".into()))
+    Err(OutputError::Internal(
+        "could not create a unique staging directory".into(),
+    ))
 }
 
 fn writes(plan: &Plan) -> impl Iterator<Item = &str> {
@@ -82,16 +104,23 @@ impl Commit<'_> {
     }
 
     fn staged_path(&self, rel: &str) -> PathBuf {
-        rel.split('/').fold(self.staging.join("files"), |p, c| p.join(c))
+        rel.split('/')
+            .fold(self.staging.join("files"), |p, c| p.join(c))
     }
 
     fn backup_path(&self, rel: &str) -> PathBuf {
-        rel.split('/').fold(self.staging.join("backup"), |p, c| p.join(c))
+        rel.split('/')
+            .fold(self.staging.join("backup"), |p, c| p.join(c))
     }
 
     fn stage_files(&self, plan: &Plan) -> Result<(), OutputError> {
         for rel in writes(plan) {
-            let bytes = self.files.get(rel).ok_or_else(|| OutputError::MissingContent { path: rel.to_string() })?;
+            let bytes = self
+                .files
+                .get(rel)
+                .ok_or_else(|| OutputError::MissingContent {
+                    path: rel.to_string(),
+                })?;
             let dest = self.staged_path(rel);
             make_parent(&dest)?;
             fs::write(&dest, bytes).map_err(io_at(&dest))?;
@@ -113,7 +142,11 @@ impl Commit<'_> {
     }
 
     fn remove_stale(&mut self, plan: &Plan) -> Result<(), OutputError> {
-        for entry in plan.entries.iter().filter(|e| e.action == PlanAction::Delete) {
+        for entry in plan
+            .entries
+            .iter()
+            .filter(|e| e.action == PlanAction::Delete)
+        {
             let target = target_path(self.out, &entry.path)?;
             self.displace(&target, &entry.path)?;
         }
@@ -132,13 +165,19 @@ impl Commit<'_> {
     /// nothing exists there, journals the (about to be created) path.
     fn displace(&mut self, target: &Path, rel: &str) -> Result<(), OutputError> {
         if fs::symlink_metadata(target).is_err() {
-            self.journal.push(Moved { target: target.to_path_buf(), backup: None });
+            self.journal.push(Moved {
+                target: target.to_path_buf(),
+                backup: None,
+            });
             return Ok(());
         }
         let backup = self.backup_path(rel);
         make_parent(&backup)?;
         fs::rename(target, &backup).map_err(io_at(target))?;
-        self.journal.push(Moved { target: target.to_path_buf(), backup: Some(backup) });
+        self.journal.push(Moved {
+            target: target.to_path_buf(),
+            backup: Some(backup),
+        });
         Ok(())
     }
 
@@ -164,7 +203,9 @@ impl Commit<'_> {
     fn rollback(&mut self) -> bool {
         let mut ok = true;
         for moved in self.journal.drain(..).rev() {
-            if fs::symlink_metadata(&moved.target).is_ok() && fs::remove_file(&moved.target).is_err() {
+            if fs::symlink_metadata(&moved.target).is_ok()
+                && fs::remove_file(&moved.target).is_err()
+            {
                 ok = false;
                 continue;
             }
@@ -179,7 +220,11 @@ impl Commit<'_> {
     }
 
     fn prune(&self, plan: &Plan) {
-        for entry in plan.entries.iter().filter(|e| e.action == PlanAction::Delete) {
+        for entry in plan
+            .entries
+            .iter()
+            .filter(|e| e.action == PlanAction::Delete)
+        {
             prune_empty_parents(self.out, &entry.path);
         }
     }
@@ -198,7 +243,10 @@ mod tests {
     use crate::output::plan::PlanEntry;
 
     fn entry(path: &str, action: PlanAction) -> PlanEntry {
-        PlanEntry { path: path.into(), action }
+        PlanEntry {
+            path: path.into(),
+            action,
+        }
     }
 
     #[test]
@@ -212,20 +260,37 @@ mod tests {
         files.add("blocker/child", "x").unwrap();
         // A hand-built plan that skips the plan-time checks: "a" swaps fine, then
         // creating "blocker/child" fails because "blocker" is a file.
-        let plan = Plan { entries: vec![entry("a", PlanAction::Update), entry("blocker/child", PlanAction::Create)] };
+        let plan = Plan {
+            entries: vec![
+                entry("a", PlanAction::Update),
+                entry("blocker/child", PlanAction::Create),
+            ],
+        };
         assert!(apply(out, &files, &plan, Some(b"{}")).is_err());
         assert_eq!(fs::read_to_string(out.join("a")).unwrap(), "old-a");
-        assert_eq!(fs::read_to_string(out.join("blocker")).unwrap(), "i am a file");
+        assert_eq!(
+            fs::read_to_string(out.join("blocker")).unwrap(),
+            "i am a file"
+        );
         assert!(!out.join(MANIFEST_NAME).exists());
-        let leftovers: Vec<_> = fs::read_dir(out).unwrap().map(|e| e.unwrap().file_name()).collect();
-        assert_eq!(leftovers.len(), 2, "staging dir must be removed: {leftovers:?}");
+        let leftovers: Vec<_> = fs::read_dir(out)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(
+            leftovers.len(),
+            2,
+            "staging dir must be removed: {leftovers:?}"
+        );
     }
 
     #[test]
     fn missing_staged_content_changes_nothing() {
         let tmp = tempfile::tempdir().unwrap();
         let files = FileSet::new();
-        let plan = Plan { entries: vec![entry("nope", PlanAction::Create)] };
+        let plan = Plan {
+            entries: vec![entry("nope", PlanAction::Create)],
+        };
         let err = apply(tmp.path(), &files, &plan, None).unwrap_err();
         assert!(matches!(err, OutputError::MissingContent { .. }));
         assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 0);

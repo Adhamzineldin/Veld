@@ -84,21 +84,42 @@ pub struct RegistrySection {
     pub url: Option<String>,
 }
 
-const TOP: &[&str] = &["project", "libraries", "services", "targets", "plugins", "registry", "dependencies"];
+const TOP: &[&str] = &[
+    "project",
+    "libraries",
+    "services",
+    "targets",
+    "plugins",
+    "registry",
+    "dependencies",
+];
 const PROJECT: &[&str] = &["name", "contracts"];
 const LIBRARY: &[&str] = &["contracts"];
 const SERVICE: &[&str] = &["contracts", "base-url", "consumes"];
-const TARGET: &[&str] =
-    &["name", "role", "emitter", "framework", "service", "services", "out", "clients", "options"];
+const TARGET: &[&str] = &[
+    "name",
+    "role",
+    "emitter",
+    "framework",
+    "service",
+    "services",
+    "out",
+    "clients",
+    "options",
+];
 const PLUGIN: &[&str] = &["command", "version", "sha256"];
 const REGISTRY: &[&str] = &["url"];
 
 impl Config {
     /// Parses `veld.toml` text. Unknown keys give E0701 with a suggestion.
     pub fn parse(text: &str) -> Result<Self, ConfigError> {
-        let table: Table = text.parse().map_err(|e: toml::de::Error| ConfigError::invalid(e.message()))?;
+        let table: Table = text
+            .parse()
+            .map_err(|e: toml::de::Error| ConfigError::invalid(e.message()))?;
         check_unknown_keys(&table)?;
-        table.try_into().map_err(|e: toml::de::Error| ConfigError::invalid(e.message()))
+        table
+            .try_into()
+            .map_err(|e: toml::de::Error| ConfigError::invalid(e.message()))
     }
 }
 
@@ -185,19 +206,29 @@ url = "https://r"
     fn parses_full_example() {
         let cfg = Config::parse(FULL).unwrap();
         assert_eq!(cfg.project.name, "nexusbank");
-        assert_eq!(cfg.services["iam"].base_url.as_deref(), Some("http://iam:3001"));
+        assert_eq!(
+            cfg.services["iam"].base_url.as_deref(),
+            Some("http://iam:3001")
+        );
         assert_eq!(cfg.targets[0].role, Some(Role::Server));
-        assert_eq!(cfg.targets[0].options.get("validate"), Some(&Value::Boolean(true)));
+        assert_eq!(
+            cfg.targets[0].options.get("validate"),
+            Some(&Value::Boolean(true))
+        );
         assert_eq!(cfg.plugins["kotlin"].sha256.as_deref(), Some("ab"));
         assert_eq!(cfg.dependencies["@acme/billing"], "^1.2");
     }
 
     #[test]
     fn unknown_target_key_suggests() {
-        let err = Config::parse("[project]\nname=\"x\"\n[[targets]]\nemiter=\"node\"\n").unwrap_err();
+        let err =
+            Config::parse("[project]\nname=\"x\"\n[[targets]]\nemiter=\"node\"\n").unwrap_err();
         assert_eq!(err.code(), Some("E0701"));
         let msg = err.to_string();
-        assert!(msg.contains("`emiter`") && msg.contains("did you mean `emitter`"), "{msg}");
+        assert!(
+            msg.contains("`emiter`") && msg.contains("did you mean `emitter`"),
+            "{msg}"
+        );
     }
 
     #[test]
@@ -205,11 +236,20 @@ url = "https://r"
         for (text, near) in [
             ("[projct]\nname=\"x\"", "project"),
             ("[project]\nnam=\"x\"", "name"),
-            ("[project]\nname=\"x\"\n[services.a]\ncontract=\"c\"", "contracts"),
-            ("[project]\nname=\"x\"\n[services.a]\nbase_url=\"c\"", "base-url"),
+            (
+                "[project]\nname=\"x\"\n[services.a]\ncontract=\"c\"",
+                "contracts",
+            ),
+            (
+                "[project]\nname=\"x\"\n[services.a]\nbase_url=\"c\"",
+                "base-url",
+            ),
             ("[project]\nname=\"x\"\n[plugins.a]\nsha=\"c\"", "sha256"),
             ("[project]\nname=\"x\"\n[registry]\nurls=\"c\"", "url"),
-            ("[project]\nname=\"x\"\n[libraries.a]\ncontract=\"c\"", "contracts"),
+            (
+                "[project]\nname=\"x\"\n[libraries.a]\ncontract=\"c\"",
+                "contracts",
+            ),
         ] {
             let err = Config::parse(text).unwrap_err();
             assert_eq!(err.code(), Some("E0701"), "{text}");
@@ -220,7 +260,15 @@ url = "https://r"
     #[test]
     fn syntax_and_type_errors_are_e0700() {
         assert_eq!(Config::parse("[project").unwrap_err().code(), Some("E0700"));
-        assert_eq!(Config::parse("[project]\nname = 3").unwrap_err().code(), Some("E0700"));
-        assert_eq!(Config::parse("[project]\nname=\"x\"\n[[targets]]\nrole=\"both\"").unwrap_err().code(), Some("E0700"));
+        assert_eq!(
+            Config::parse("[project]\nname = 3").unwrap_err().code(),
+            Some("E0700")
+        );
+        assert_eq!(
+            Config::parse("[project]\nname=\"x\"\n[[targets]]\nrole=\"both\"")
+                .unwrap_err()
+                .code(),
+            Some("E0700")
+        );
     }
 }

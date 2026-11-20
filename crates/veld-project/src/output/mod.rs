@@ -51,14 +51,20 @@ pub fn write(out: &Path, files: &FileSet, opts: &WriteOptions) -> Result<Plan, O
         return Ok(plan);
     }
     fs::create_dir_all(&out).map_err(io_at(&out))?;
-    let bytes = if manifest_current { None } else { Some(new.to_bytes()?) };
+    let bytes = if manifest_current {
+        None
+    } else {
+        Some(new.to_bytes()?)
+    };
     commit::apply(&out, files, &plan, bytes.as_deref())?;
     Ok(plan)
 }
 
 fn check_out_dir(out: &Path) -> Result<(), OutputError> {
     match fs::metadata(out) {
-        Ok(m) if !m.is_dir() => Err(OutputError::OutNotDirectory { path: out.to_path_buf() }),
+        Ok(m) if !m.is_dir() => Err(OutputError::OutNotDirectory {
+            path: out.to_path_buf(),
+        }),
         Ok(_) => Ok(()),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(io_at(out)(e)),
