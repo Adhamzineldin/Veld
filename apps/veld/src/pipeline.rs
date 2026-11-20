@@ -80,6 +80,19 @@ pub fn compile_input_from(
             consumes.insert(pkg.name.clone(), pkg.consumes.clone());
         }
     }
+    for rp in project.registry_packages()? {
+        let files = rp
+            .sources
+            .into_iter()
+            .map(|(path, text)| SourceFile { path, text })
+            .collect();
+        packages.push(PackageInput {
+            name: rp.name,
+            kind: PackageKind::Registry,
+            files,
+            base_url: None,
+        });
+    }
     Ok(CompileInput { packages, consumes })
 }
 

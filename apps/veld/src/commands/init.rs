@@ -31,9 +31,27 @@ pub fn run(ui: &Ui, args: &InitArgs) -> Result<Exit> {
         single_files(&name)
     };
     let written = scaffold(&dir, &files)?;
+    gitignore(ui, &dir)?;
     ui.info(&format!("created {}", written.join(", ")));
     ui.info("next: run `veld check`, then `veld generate`");
     Ok(Exit::Ok)
+}
+
+/// The package cache (`.veld/`) must not be committed. Creates `.gitignore` when there is
+/// none; an existing one is never edited, only mentioned.
+fn gitignore(ui: &Ui, dir: &Path) -> Result<()> {
+    let path = dir.join(".gitignore");
+    match fs::read_to_string(&path) {
+        Ok(text) if text.lines().any(|l| matches!(l.trim(), ".veld" | ".veld/")) => {}
+        Ok(_) => ui.info("add `.veld/` to your .gitignore (the registry package cache)"),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            fs::write(&path, "# Veld package cache\n.veld/\n")
+                .with_context(|| format!("cannot write `{}`", path.display()))?;
+            ui.info("created .gitignore (ignores .veld/)");
+        }
+        Err(_) => {}
+    }
+    Ok(())
 }
 
 /// Letters, digits and `_` only (the name becomes a package name).

@@ -10,6 +10,7 @@ use crate::ui::Ui;
 
 pub fn run(ui: &Ui, config: Option<&Path>) -> Result<Exit> {
     let project = pipeline::load_project(config)?;
+    super::registry::auto_install(ui, &project)?;
     match pipeline::compile_or_report(ui, project)? {
         Some(done) => {
             ui.info(&pipeline::success_summary(ui, &done.ir));

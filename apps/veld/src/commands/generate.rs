@@ -12,6 +12,7 @@ use crate::ui::{Style, Ui};
 
 pub fn run(ui: &Ui, config: Option<&Path>, args: &GenerateArgs) -> Result<Exit> {
     let project = pipeline::load_project(config)?;
+    super::registry::auto_install(ui, &project)?;
     generate(ui, project, args)
 }
 
