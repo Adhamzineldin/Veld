@@ -1,0 +1,5 @@
+enum Level {
+  low = "L"
+  mid = "L"
+  high
+}

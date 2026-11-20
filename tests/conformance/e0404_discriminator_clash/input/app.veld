@@ -1,0 +1,4 @@
+model Card { kind: string }
+model Bank { iban: string }
+
+union Payment { card: Card, bank: Bank }

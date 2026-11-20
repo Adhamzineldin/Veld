@@ -1,0 +1,7 @@
+error OutOfStock 409 { sku: string }
+
+model Holder { e: OutOfStock }
+
+service S at "/s" {
+  get "/" f(x: OutOfStock) -> Holder | OutOfStock | Holder
+}

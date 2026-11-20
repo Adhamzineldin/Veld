@@ -1,0 +1,5 @@
+enum Color { red }
+model M { a: int }
+
+union U { c: Color }
+union Empty { }

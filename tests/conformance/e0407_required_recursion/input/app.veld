@@ -1,0 +1,4 @@
+model A { a: A }
+
+model B { c: C }
+model C { b: B }

@@ -1,0 +1,16 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0403]: enum wire value `L` is used by more than one variant
+ --> app/app.veld:3:3
+  |
+3 |   mid = "L"
+  |   ^^^^^^^^^
+ --> app/app.veld:2:3
+  |
+2 |   low = "L"
+  |   --- first used here
+
+== ir ==
+(no IR: compilation failed)

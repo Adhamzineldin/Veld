@@ -1,0 +1,13 @@
+model Base { id: uuid }
+
+model Child extends Base {
+  id: string
+}
+
+model Aliased extends Base {
+  other: int @wire("id")
+}
+
+model Grandchild extends Child {
+  id: int
+}

@@ -1,0 +1,24 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0402]: inheritance cycle: A -> B -> C -> A
+ --> app/app.veld:1:7
+  |
+1 | model A extends B { a: int }
+  |       ^
+
+error[E0402]: inheritance cycle: B -> C -> A -> B
+ --> app/app.veld:2:7
+  |
+2 | model B extends C { b: int }
+  |       ^
+
+error[E0402]: inheritance cycle: C -> A -> B -> C
+ --> app/app.veld:3:7
+  |
+3 | model C extends A { c: int }
+  |       ^
+
+== ir ==
+(no IR: compilation failed)

@@ -1,0 +1,46 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0410]: duplicate field name `a`
+ --> app/app.veld:3:3
+  |
+3 |   a: string
+  |   ^
+ --> app/app.veld:2:3
+  |
+2 |   a: int
+  |   - first used here
+
+error[E0410]: duplicate wire name `x`
+ --> app/app.veld:5:3
+  |
+5 |   c: int @wire("x")
+  |   ^
+ --> app/app.veld:4:3
+  |
+4 |   b: int @wire("x")
+  |   - first used here
+
+error[E0410]: duplicate variant `one`
+ --> app/app.veld:8:15
+  |
+8 | enum E { one, one = "ONE" }
+  |               ^^^
+ --> app/app.veld:8:10
+  |
+8 | enum E { one, one = "ONE" }
+  |          --- first declared here
+
+error[E0410]: duplicate union arm `x`
+ --> app/app.veld:10:17
+   |
+10 | union U { x: A, x: A }
+   |                 ^
+ --> app/app.veld:10:11
+   |
+10 | union U { x: A, x: A }
+   |           ---- first used here
+
+== ir ==
+(no IR: compilation failed)
