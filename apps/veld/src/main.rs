@@ -6,6 +6,7 @@
 mod cli;
 mod commands;
 mod error;
+mod fsutil;
 mod pipeline;
 mod registry;
 mod ui;

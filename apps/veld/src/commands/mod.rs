@@ -3,8 +3,12 @@
 mod check;
 mod clean;
 mod debug;
+mod diff;
+mod export;
+mod fmt;
 mod generate;
 mod init;
+mod migrate;
 mod stubs;
 mod watch;
 
@@ -24,10 +28,10 @@ pub fn run(cli: &Cli, ui: &Ui) -> Result<Exit> {
         Command::Clean(args) => clean::run(ui, config, args),
         Command::Debug(cmd) => debug::run(ui, config, cmd),
         Command::Lsp => Ok(stubs::not_yet(ui, "lsp", "the language server")),
-        Command::Fmt(_) => Ok(stubs::coming_soon(ui, "fmt")),
-        Command::Diff(_) => Ok(stubs::coming_soon(ui, "diff")),
-        Command::Export(_) => Ok(stubs::coming_soon(ui, "export")),
-        Command::Migrate(_) => Ok(stubs::coming_soon(ui, "migrate")),
+        Command::Fmt(args) => fmt::run(ui, config, args),
+        Command::Diff(args) => diff::run(ui, config, args),
+        Command::Export(cmd) => export::run(ui, config, cmd),
+        Command::Migrate(args) => migrate::run(ui, args),
         Command::Add(_) => Ok(stubs::coming_soon(ui, "add")),
         Command::Publish(_) => Ok(stubs::coming_soon(ui, "publish")),
         Command::Login(_) => Ok(stubs::coming_soon(ui, "login")),

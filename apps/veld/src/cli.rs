@@ -40,6 +40,19 @@ pub enum Command {
     /// Remove generated files that you have not modified
     Clean(CleanArgs),
 
+    /// Format .veld files canonically
+    Fmt(FmtArgs),
+    /// Show breaking and non-breaking contract changes
+    Diff(DiffArgs),
+    /// Export the contracts as OpenAPI or as IR JSON
+    #[command(subcommand)]
+    Export(ExportCommand),
+    /// Convert a v1 project (veld.config.json and .veld files) to v2
+    Migrate(MigrateArgs),
+    /// Create and test emitter plugins
+    #[command(subcommand)]
+    Plugin(PluginCommand),
+
     /// Internal commands for debugging the compiler
     #[command(hide = true, subcommand)]
     Debug(DebugCommand),
@@ -48,14 +61,6 @@ pub enum Command {
     Lsp,
 
     #[command(hide = true)]
-    Fmt(Reserved),
-    #[command(hide = true)]
-    Diff(Reserved),
-    #[command(hide = true)]
-    Export(Reserved),
-    #[command(hide = true)]
-    Migrate(Reserved),
-    #[command(hide = true)]
     Add(Reserved),
     #[command(hide = true)]
     Publish(Reserved),
@@ -63,8 +68,6 @@ pub enum Command {
     Login(Reserved),
     #[command(hide = true)]
     Logout(Reserved),
-    #[command(hide = true)]
-    Plugin(Reserved),
 }
 
 #[derive(Debug, Args)]
@@ -110,6 +113,78 @@ pub enum DebugCommand {
     },
 }
 
+#[derive(Debug, Args)]
+pub struct FmtArgs {
+    /// Files or directories to format (default: every contract of the project)
+    pub paths: Vec<PathBuf>,
+    /// Change nothing; list the files that would change and exit 1 if there are any
+    #[arg(long)]
+    pub check: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct DiffArgs {
+    /// Compare against the contracts at this git ref (read with `git show`, nothing is checked out)
+    #[arg(long, value_name = "REF", conflicts_with = "lock")]
+    pub against: Option<String>,
+    /// Compare against veld.lock.ir.json (the default)
+    #[arg(long)]
+    pub lock: bool,
+    /// Exit 1 if any change is breaking
+    #[arg(long)]
+    pub strict: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ExportCommand {
+    /// OpenAPI 3.1 JSON
+    Openapi {
+        /// Write to this file instead of stdout
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
+        /// Export only this service
+        #[arg(long)]
+        service: Option<String>,
+    },
+    /// The compiled IR as JSON, for plugin authors
+    Ir {
+        /// Write to this file instead of stdout
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
+    },
+}
+
+#[derive(Debug, Args)]
+pub struct MigrateArgs {
+    /// Directory holding the v1 veld.config.json (default: ./ or ./veld)
+    #[arg(long, value_name = "DIR")]
+    pub from: Option<PathBuf>,
+    /// Directory for the v2 contracts, relative to the v1 config directory
+    #[arg(long, default_value = "contracts", value_name = "DIR")]
+    pub out: String,
+    /// Print what would be written without writing it
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum PluginCommand {
+    /// Scaffold a standalone plugin project in ./<name>
+    New {
+        /// Plugin name, for example `kotlin`
+        name: String,
+        /// Implementation language
+        #[arg(long, default_value = "ts")]
+        lang: String,
+    },
+    /// Run the protocol conformance suite against a plugin command
+    Test {
+        /// The plugin executable and any leading arguments, for example `node dist/main.js`
+        #[arg(required = true, num_args = 1.., trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
+}
+
 /// A command that is reserved but not built yet; it accepts and ignores any arguments.
 #[derive(Debug, Args)]
 pub struct Reserved {
@@ -130,16 +205,28 @@ mod tests {
     #[test]
     fn reserved_commands_are_hidden_from_help() {
         let help = Cli::command().render_help().to_string();
-        for hidden in ["fmt", "diff", "export", "migrate", "publish", "login", "plugin", "debug", "lsp"] {
+        for hidden in ["publish", "login", "logout", "add", "debug", "lsp"] {
             assert!(!help.lines().any(|l| l.trim_start().starts_with(hidden)), "`{hidden}` is visible:\n{help}");
         }
-        for shown in ["init", "check", "generate", "clean"] {
+        for shown in ["init", "check", "generate", "clean", "fmt", "diff", "export", "migrate", "plugin"] {
             assert!(help.contains(shown));
         }
     }
 
     #[test]
     fn reserved_commands_swallow_arguments() {
+        assert!(Cli::try_parse_from(["veld", "publish", "--check", "x"]).is_ok());
+    }
+
+    #[test]
+    fn new_commands_parse() {
         assert!(Cli::try_parse_from(["veld", "fmt", "--check", "x.veld"]).is_ok());
+        assert!(Cli::try_parse_from(["veld", "diff", "--against", "main", "--strict"]).is_ok());
+        assert!(Cli::try_parse_from(["veld", "diff", "--against", "main", "--lock"]).is_err());
+        assert!(Cli::try_parse_from(["veld", "export", "openapi", "-o", "a.json", "--service", "s"]).is_ok());
+        assert!(Cli::try_parse_from(["veld", "export", "ir"]).is_ok());
+        assert!(Cli::try_parse_from(["veld", "migrate", "--from", "d", "--dry-run"]).is_ok());
+        assert!(Cli::try_parse_from(["veld", "plugin", "new", "kotlin"]).is_ok());
+        assert!(Cli::try_parse_from(["veld", "plugin", "test", "node", "dist/main.js"]).is_ok());
     }
 }
