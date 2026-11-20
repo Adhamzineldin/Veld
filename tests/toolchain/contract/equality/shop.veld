@@ -1,0 +1,13 @@
+/// Two services in one package whose `fetch` endpoints have the same name, relative path and
+/// errors. They differ only in the service, which is what the HTTP equality tests rely on.
+model Item { id: string }
+
+error Gone 410 { id: string }
+
+service Alpha at "/a" {
+  get "/{id}" fetch(id: string) -> Item | Gone
+}
+
+service Beta at "/b" {
+  get "/{id}" fetch(id: string) -> Item | Gone
+}

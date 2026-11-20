@@ -472,3 +472,138 @@ fn java_client_calls_the_node_server() {
     let out = run_java(j, "veldtest.CrossClient", &[&server.url, "node"]);
     assert!(out.contains("cross client ok"));
 }
+
+/// Endpoints, fields, models and enum variants named with every hazardous identifier must still
+/// compile under `javac -Xlint:all -Werror`, on the server and the client.
+#[test]
+fn hazardous_identifiers_compile_without_warnings() {
+    if !succeeds("javac", "--version") {
+        let why = Unavailable::Missing("`javac` is not on PATH".into());
+        let _: Option<()> = skip("hazardous_identifiers_compile_without_warnings", &why);
+        return;
+    }
+    let work = java_dir().join(".work/hazards");
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).unwrap();
+    let ir = hazards_ir();
+    let opts = WriteOptions::default();
+    let put = |dir: &str, files: &FileSet| write(&work.join(dir), files, &opts).unwrap();
+    put("srv", &gen_server(&ir, "Weird", &[], "hz.srv", None));
+    put("cli", &gen_client(&ir, "hz.cli"));
+    let sources: Vec<PathBuf> = ["srv", "cli"]
+        .iter()
+        .flat_map(|d| java_files(&work.join(d), &["SpringAdapter.java"]))
+        .collect();
+    javac(&work, "classes", None, &[], &sources);
+}
+
+/// The generated Java client and the generated TypeScript client call the same Node servers over
+/// HTTP and decode the same declared errors: they must agree on signature, operation and
+/// canonical payload, and the other service's identical error must differ in the operation only.
+#[test]
+fn java_and_typescript_clients_decode_errors_identically() {
+    let name = "java_and_typescript_clients_decode_errors_identically";
+    if !succeeds("javac", "--version") {
+        let why = Unavailable::Missing("`javac` is not on PATH".into());
+        let _: Option<()> = skip(name, &why);
+        return;
+    }
+    if !succeeds("node", "--version") || !ts_dir().join("node_modules/typescript/bin/tsc").exists()
+    {
+        let why = Unavailable::Missing("node or the TypeScript toolchain is missing".into());
+        let _: Option<()> = skip(name, &why);
+        return;
+    }
+    let work = ts_dir().join(".work/eq-http");
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).unwrap();
+    let ir = equality_ir();
+    let opts = WriteOptions::default();
+    let put = |dir: &str, files: &FileSet| write(&work.join(dir), files, &opts).unwrap();
+    put(
+        "srv_alpha",
+        &gen_ts(&Node, &ir, Role::Server, &["Alpha"], &[]),
+    );
+    put(
+        "srv_beta",
+        &gen_ts(&Node, &ir, Role::Server, &["Beta"], &[]),
+    );
+    put(
+        "cli_1",
+        &gen_ts(&TypeScript, &ir, Role::Client, &["Alpha", "Beta"], &[]),
+    );
+    put("java_cli", &gen_client(&ir, "eqj"));
+    for script in ["eq_serve.ts", "eq_decode.ts"] {
+        std::fs::copy(ts_dir().join(script), work.join(script)).unwrap();
+    }
+    std::fs::copy(
+        repo_root().join("tests/toolchain/java_eq/EqDecode.java"),
+        work.join("EqDecode.java"),
+    )
+    .unwrap();
+    std::fs::write(
+        work.join("tsconfig.json"),
+        serde_json::to_string_pretty(&json!({
+            "compilerOptions": {
+                "strict": true, "target": "ES2022", "lib": ["ES2022"], "types": ["node"],
+                "module": "commonjs", "moduleResolution": "node10", "esModuleInterop": true,
+                "skipLibCheck": true, "outDir": "out", "rootDir": "."
+            },
+            "include": ["*.ts", "srv_alpha/**/*.ts", "srv_beta/**/*.ts", "cli_1/**/*.ts"]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    run(
+        Command::new("node")
+            .arg(ts_dir().join("node_modules/typescript/bin/tsc"))
+            .args(["-p", "tsconfig.json"])
+            .current_dir(&work),
+        "tsc",
+    );
+    let mut sources = java_files(&work.join("java_cli"), &["SpringAdapter.java"]);
+    sources.push(work.join("EqDecode.java"));
+    javac(&work, "classes", None, &[], &sources);
+
+    let serve = |which: &str| {
+        let mut cmd = Command::new("node");
+        cmd.args(["out/eq_serve.js", which]).current_dir(&work);
+        Server::start(cmd)
+    };
+    let (alpha, beta) = (serve("alpha"), serve("beta"));
+    let ts_out = run(
+        Command::new("node")
+            .args(["out/eq_decode.js", &alpha.url, &beta.url])
+            .current_dir(&work),
+        "eq_decode.js",
+    );
+    let java_out = run(
+        Command::new("java")
+            .args(["-cp", "classes", "veldtest.EqDecode", &alpha.url, &beta.url])
+            .current_dir(&work),
+        "EqDecode",
+    );
+    // `println` ends lines with CRLF on Windows.
+    let normalize = |s: &str| s.lines().collect::<Vec<_>>().join("\n");
+    let (java_out, ts_out) = (normalize(&java_out), normalize(&ts_out));
+    assert_eq!(java_out, ts_out, "Java and TypeScript decode differently");
+
+    let rows: Vec<Vec<&str>> = ts_out.lines().map(|l| l.split('\t').collect()).collect();
+    assert_eq!(rows.len(), 4, "{ts_out}");
+    let find = |svc: &str, id: &str| {
+        rows.iter()
+            .find(|r| r[0] == svc && r[1] == id)
+            .unwrap_or_else(|| panic!("no row for {svc} {id}"))
+    };
+    let (ax, ay, bx) = (find("Alpha", "x"), find("Alpha", "y"), find("Beta", "x"));
+    assert_eq!(ax[2], "Gone", "decoded into the declared error class");
+    assert_eq!(ax[3], bx[3], "same error declaration, same signature");
+    assert_ne!(ax[4], bx[4], "the other service has a different operation");
+    assert!(ax[4].contains("/Alpha.fetch@") && bx[4].contains("/Beta.fetch@"));
+    assert_ne!(
+        ax[5], ay[5],
+        "different payload has different canonical bytes"
+    );
+    let (ax_canon, bx_canon) = (ax[5], bx[5]);
+    assert_eq!(ax_canon, bx_canon, "same payload from either service");
+}
