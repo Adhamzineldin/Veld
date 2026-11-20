@@ -11,4 +11,16 @@ public interface VeldHandler {
    * @return the response, or empty when no route matched
    */
   Optional<VeldResponse> handle(VeldRequest request);
+
+  /**
+   * Runs one named endpoint through the same pipeline as {@link #handle}, without choosing the
+   * endpoint from the method and path. Frameworks that do their own routing (Spring MVC) use it
+   * so the semantics live in one place.
+   *
+   * @param endpoint the endpoint name, as in {@code EndpointSpec.name()}
+   * @return the response, or empty when the endpoint is unknown or the path does not fit it
+   */
+  default Optional<VeldResponse> invoke(String endpoint, VeldRequest request) {
+    return handle(request);
+  }
 }

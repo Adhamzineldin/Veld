@@ -1,5 +1,6 @@
 package dev.veld.runtime;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
@@ -117,6 +118,18 @@ public final class Router implements VeldHandler {
       Matcher m = r.pattern().matcher(path);
       if (m.matches()) {
         return Optional.of(run(r, m, request));
+      }
+    }
+    return Optional.empty();
+  }
+
+  @Override
+  public Optional<VeldResponse> invoke(String endpoint, VeldRequest request) {
+    String path = normalizePath(request.path());
+    for (Route r : routes) {
+      if (r.endpoint().spec().name().equals(endpoint)) {
+        Matcher m = r.pattern().matcher(path);
+        return m.matches() ? Optional.of(run(r, m, request)) : Optional.empty();
       }
     }
     return Optional.empty();
@@ -408,7 +421,7 @@ public final class Router implements VeldHandler {
     if (s.indexOf('%') < 0) {
       return s;
     }
-    java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
     for (int i = 0; i < s.length(); i++) {
       char c = s.charAt(i);
       if (c != '%') {
