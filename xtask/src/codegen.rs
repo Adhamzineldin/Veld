@@ -10,10 +10,13 @@ use anyhow::{Context, Result, bail};
 
 /// `(path relative to the repository root, contents)` of every generated file.
 pub fn outputs() -> Result<Vec<(&'static str, String)>> {
-    let mut language =
-        serde_json::to_string_pretty(&veld_compiler::language::spec()).context("cannot serialize the language table")?;
+    let mut language = serde_json::to_string_pretty(&veld_compiler::language::spec())
+        .context("cannot serialize the language table")?;
     language.push('\n');
-    Ok(vec![("editors/veld-language.json", language), ("spec/ir.d.ts", veld_ir::schema::typescript())])
+    Ok(vec![
+        ("editors/veld-language.json", language),
+        ("spec/ir.d.ts", veld_ir::schema::typescript()),
+    ])
 }
 
 /// Writes the files, or with `check` only compares them. Returns the paths that differ (or were written).
@@ -28,13 +31,17 @@ pub fn run(root: &Path, check: bool) -> Result<Vec<String>> {
         drift.push(rel.to_string());
         if !check {
             if let Some(dir) = path.parent() {
-                fs::create_dir_all(dir).with_context(|| format!("cannot create `{}`", dir.display()))?;
+                fs::create_dir_all(dir)
+                    .with_context(|| format!("cannot create `{}`", dir.display()))?;
             }
             fs::write(&path, text).with_context(|| format!("cannot write `{}`", path.display()))?;
         }
     }
     if check && !drift.is_empty() {
-        bail!("generated files are out of date: {}\nrun `cargo xtask codegen` and commit the result", drift.join(", "));
+        bail!(
+            "generated files are out of date: {}\nrun `cargo xtask codegen` and commit the result",
+            drift.join(", ")
+        );
     }
     Ok(drift)
 }
@@ -64,6 +71,9 @@ mod tests {
     #[test]
     fn language_json_lists_the_declaration_keywords() {
         let text = &outputs().unwrap()[0].1;
-        assert!(text.contains("\"model\"") && text.contains("\"service\""), "{text}");
+        assert!(
+            text.contains("\"model\"") && text.contains("\"service\""),
+            "{text}"
+        );
     }
 }

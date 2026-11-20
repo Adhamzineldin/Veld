@@ -42,7 +42,13 @@ fn new_emitter_cmd(root: &std::path::Path, args: &[String]) -> Result<()> {
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
-            "--roles" => roles = Some(it.next().ok_or_else(|| anyhow::anyhow!("`--roles` needs a value"))?.as_str()),
+            "--roles" => {
+                roles = Some(
+                    it.next()
+                        .ok_or_else(|| anyhow::anyhow!("`--roles` needs a value"))?
+                        .as_str(),
+                )
+            }
             a if a.starts_with("--roles=") => roles = a.strip_prefix("--roles="),
             a if a.starts_with('-') => bail!("unknown option `{a}`\n{USAGE}"),
             a if name.is_none() => name = Some(a),
@@ -55,7 +61,9 @@ fn new_emitter_cmd(root: &std::path::Path, args: &[String]) -> Result<()> {
     for path in &created {
         println!("created {path}");
     }
-    println!("registered `{name}` in Cargo.toml, apps/veld/Cargo.toml and apps/veld/src/registry.rs");
+    println!(
+        "registered `{name}` in Cargo.toml, apps/veld/Cargo.toml and apps/veld/src/registry.rs"
+    );
     println!("next: open crates/emitters/{name}/README.md and follow the checklist");
     Ok(())
 }
