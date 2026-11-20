@@ -68,7 +68,8 @@ validate = true
 [plugins.kotlin]
 command = "veld-emit-kotlin"     # resolved on PATH or relative path
 version = "1.2.0"
-sha256 = "…"                     # of the executable; mismatch = refuse to run (E0705)
+entry = "plugins/kotlin/main.js" # optional: the script an interpreter `command` runs
+sha256 = "…"                     # of `entry` if set, else of the executable; mismatch = refuse (E0705)
 
 [registry]
 url = "https://registry.example.com"
@@ -85,6 +86,7 @@ url = "https://registry.example.com"
   - `service` is required for `role = "server"`.
   - Two targets MUST NOT share an `out` directory (`E0703`).
   - `out` MUST NOT be the project root or a contracts directory (`E0704`).
+- `[plugins.x].entry` is optional. When set, Veld runs `command` with the entry path appended (unless `command` already contains it), and `sha256` is the hash of the entry file, checked before every run. Without `entry`, `sha256` is the hash of the executable that `command` resolves to. For a script plugin always set `entry`, because hashing the interpreter protects nothing.
 - `emitter` is either a built-in id (`node`, `typescript`, `java`) or `plugin:<name>`.
 - `base-url` resolution in generated clients, highest priority first:
   1. the constructor argument
@@ -92,3 +94,11 @@ url = "https://registry.example.com"
   3. the config `base-url`
   4. otherwise an error at client construction
 - Generated output never contains absolute paths, user names, hostnames or timestamps.
+
+## Registry packages
+
+- `[registry].url` is the registry; the flags `--registry` and `VELD_REGISTRY` override it. Registry URLs must be `https`, except for `localhost`/`127.0.0.1` (or `--allow-insecure`).
+- `veld add @org/name[@range]` writes `[dependencies]`, resolves the highest matching non-deprecated version, installs it and pins it in `veld.lock` (TOML: `name`, `version`, `sha256` of the tarball, `registry`). `veld install` installs exactly the locked versions. A checksum mismatch is a hard error.
+- Installed packages live in `.veld/packages/@org/name/<version>/` (gitignored). `veld check` and `veld generate` install what `veld.lock` pins and the cache lacks; without a lock they never touch the network.
+- To publish, a `[project]`, `[libraries.*]` or `[services.*]` section sets `package = "@org/name"`, `version` (semver) and optionally `description`. `veld publish [--package <name>]` packs `contracts/**.veld` plus `veld-package.toml` (`name`, `version`, `language = "2"`, `[files]` sha256 checksums) into a deterministic tar.gz.
+- API tokens are stored per registry URL in `~/.veld/credentials.toml` (`$VELD_HOME` overrides the directory) and are never printed.

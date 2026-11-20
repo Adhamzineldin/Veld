@@ -66,10 +66,25 @@ pub struct PluginSpec {
     pub command: String,
     pub version: Option<String>,
     pub sha256: Option<String>,
+    /// Script the interpreter in `command` runs. When set, `sha256` covers this file instead
+    /// of the executable.
+    pub entry: Option<String>,
 }
 
 impl PluginSpec {
-    /// Refuses (E0705) to run an executable whose SHA-256 differs from `sha256`, if one is pinned.
+    /// The entry script as a path: absolute, or relative to the project `root`.
+    pub fn entry_path(&self, root: &Path) -> Option<PathBuf> {
+        let entry = self.entry.as_deref()?;
+        let p = Path::new(entry);
+        Some(if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            root.join(p)
+        })
+    }
+
+    /// Refuses (E0705) to run a pinned file (the entry script, else the executable) whose
+    /// SHA-256 differs from `sha256`, if one is pinned.
     pub fn verify_executable(&self, executable: &Path) -> Result<(), ConfigError> {
         let Some(expected) = &self.sha256 else {
             return Ok(());
@@ -153,6 +168,7 @@ mod tests {
             command: "plug".into(),
             version: None,
             sha256: None,
+            entry: None,
         };
         assert!(spec.verify_executable(&exe).is_ok());
         spec.sha256 =
@@ -161,6 +177,23 @@ mod tests {
         spec.sha256 = Some("00".into());
         let err = spec.verify_executable(&exe).unwrap_err();
         assert_eq!(err.code(), Some("E0705"));
+    }
+
+    #[test]
+    fn entry_path_is_relative_to_the_root() {
+        let mut spec = PluginSpec {
+            name: "p".into(),
+            command: "node".into(),
+            version: None,
+            sha256: None,
+            entry: None,
+        };
+        assert!(spec.entry_path(Path::new("/r")).is_none());
+        spec.entry = Some("dist/main.js".into());
+        assert_eq!(
+            spec.entry_path(Path::new("/r")),
+            Some(Path::new("/r").join("dist/main.js"))
+        );
     }
 
     #[test]

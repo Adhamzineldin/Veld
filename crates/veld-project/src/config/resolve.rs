@@ -178,6 +178,7 @@ fn build_plugins(
                 command,
                 version: p.version.clone(),
                 sha256: p.sha256.clone(),
+                entry: p.entry.clone(),
             })
         })
         .collect()

@@ -31,18 +31,30 @@ pub struct ProjectSection {
     #[serde(default)]
     pub name: String,
     pub contracts: Option<String>,
+    /// Registry name (`@org/name`), version and description used by `veld publish`.
+    pub package: Option<String>,
+    pub version: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct LibrarySection {
     pub contracts: Option<String>,
+    /// Registry name (`@org/name`), version and description used by `veld publish`.
+    pub package: Option<String>,
+    pub version: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct ServiceSection {
     pub contracts: Option<String>,
+    /// Registry name (`@org/name`), version and description used by `veld publish`.
+    pub package: Option<String>,
+    pub version: Option<String>,
+    pub description: Option<String>,
     pub base_url: Option<String>,
     #[serde(default)]
     pub consumes: Vec<String>,
@@ -76,6 +88,7 @@ pub struct PluginSection {
     pub command: Option<String>,
     pub version: Option<String>,
     pub sha256: Option<String>,
+    pub entry: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -93,9 +106,16 @@ const TOP: &[&str] = &[
     "registry",
     "dependencies",
 ];
-const PROJECT: &[&str] = &["name", "contracts"];
-const LIBRARY: &[&str] = &["contracts"];
-const SERVICE: &[&str] = &["contracts", "base-url", "consumes"];
+const PROJECT: &[&str] = &["name", "contracts", "package", "version", "description"];
+const LIBRARY: &[&str] = &["contracts", "package", "version", "description"];
+const SERVICE: &[&str] = &[
+    "contracts",
+    "base-url",
+    "consumes",
+    "package",
+    "version",
+    "description",
+];
 const TARGET: &[&str] = &[
     "name",
     "role",
@@ -107,7 +127,7 @@ const TARGET: &[&str] = &[
     "clients",
     "options",
 ];
-const PLUGIN: &[&str] = &["command", "version", "sha256"];
+const PLUGIN: &[&str] = &["command", "version", "sha256", "entry"];
 const REGISTRY: &[&str] = &["url"];
 
 impl Config {
@@ -196,6 +216,7 @@ validate = true
 command = "veld-emit-kotlin"
 version = "1.2.0"
 sha256 = "ab"
+entry = "main.js"
 [registry]
 url = "https://r"
 [dependencies]
@@ -216,6 +237,7 @@ url = "https://r"
             Some(&Value::Boolean(true))
         );
         assert_eq!(cfg.plugins["kotlin"].sha256.as_deref(), Some("ab"));
+        assert_eq!(cfg.plugins["kotlin"].entry.as_deref(), Some("main.js"));
         assert_eq!(cfg.dependencies["@acme/billing"], "^1.2");
     }
 
