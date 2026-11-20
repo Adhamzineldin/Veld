@@ -437,9 +437,15 @@ mod services {
 
     #[test]
     fn implicit_unauthorized_and_internal() {
-        let ir = ir("model M { a: int }\n@auth(bearer)\nservice S at \"/\" {\n get \"/a\" a() -> M\n get \"/b\" b() -> M | Unauthorized | Internal\n @auth(none)\n get \"/c\" c() -> M\n}");
+        let ir = ir(
+            "model M { a: int }\n@auth(bearer)\nservice S at \"/\" {\n get \"/a\" a() -> M\n get \"/b\" b() -> M | Unauthorized | Internal\n @auth(none)\n get \"/c\" c() -> M\n}",
+        );
         let st = |i: usize| -> Vec<u16> {
-            ir.services[0].endpoints[i].errors.iter().map(|x| x.status).collect()
+            ir.services[0].endpoints[i]
+                .errors
+                .iter()
+                .map(|x| x.status)
+                .collect()
         };
         assert_eq!(st(0), vec![401, 500]);
         assert_eq!(st(1), vec![401, 500]);

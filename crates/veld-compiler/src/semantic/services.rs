@@ -650,7 +650,10 @@ impl Ctx<'_, '_> {
         let Some(&v) = self.prog.prelude.get(name) else {
             return;
         };
-        let listed = ep.errors.iter().any(|(_, d)| self.prog.decls[*d].name == name);
+        let listed = ep
+            .errors
+            .iter()
+            .any(|(_, d)| self.prog.decls[*d].name == name);
         if !listed {
             ep.errors.push((status, v));
         }
