@@ -26,8 +26,10 @@ use veld_emit_typescript::TypeScript;
 use veld_ir::Ir;
 use veld_project::output::{WriteOptions, write};
 
-const CHANGED_ERROR: (&str, &str) =
-    ("error OutOfStock 409 {\n  sku: string\n}", "error OutOfStock 409 {\n  sku: string\n  warehouse: string\n}");
+const CHANGED_ERROR: (&str, &str) = (
+    "error OutOfStock 409 {\n  sku: string\n}",
+    "error OutOfStock 409 {\n  sku: string\n  warehouse: string\n}",
+);
 
 /// Why a toolchain is not usable: missing (skip) or a real failure (panic).
 #[derive(Clone)]
@@ -45,11 +47,16 @@ fn ts_dir() -> PathBuf {
 }
 
 fn succeeds(program: &str, arg: &str) -> bool {
-    Command::new(program).arg(arg).output().is_ok_and(|o| o.status.success())
+    Command::new(program)
+        .arg(arg)
+        .output()
+        .is_ok_and(|o| o.status.success())
 }
 
 fn run(cmd: &mut Command, what: &str) -> String {
-    let out = cmd.output().unwrap_or_else(|e| panic!("{what}: cannot start: {e}"));
+    let out = cmd
+        .output()
+        .unwrap_or_else(|e| panic!("{what}: cannot start: {e}"));
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     print!("{stdout}");
     assert!(
@@ -78,7 +85,11 @@ fn write_sigs(dir: &Path) {
     let a = standard_ir();
     let c = compile_contract("orders", &|s| s.replace(CHANGED_ERROR.0, CHANGED_ERROR.1));
     let d = compile_contract("warehouse", &|s| s.to_string());
-    std::fs::write(dir.join("sigs.json"), json!({ "a": sig_map(&a), "c": sig_map(&c), "d": sig_map(&d) }).to_string()).unwrap();
+    std::fs::write(
+        dir.join("sigs.json"),
+        json!({ "a": sig_map(&a), "c": sig_map(&c), "d": sig_map(&d) }).to_string(),
+    )
+    .unwrap();
 }
 
 fn java_files(dir: &Path, skip: &[&str]) -> Vec<PathBuf> {
@@ -90,7 +101,9 @@ fn java_files(dir: &Path, skip: &[&str]) -> Vec<PathBuf> {
             if path.is_dir() {
                 stack.push(path);
             } else if path.extension().is_some_and(|e| e == "java")
-                && !skip.iter().any(|s| path.file_name().is_some_and(|n| n == *s))
+                && !skip
+                    .iter()
+                    .any(|s| path.file_name().is_some_and(|n| n == *s))
             {
                 out.push(path);
             }
@@ -102,15 +115,29 @@ fn java_files(dir: &Path, skip: &[&str]) -> Vec<PathBuf> {
 
 /// `javac --release 17 -Xlint:all -Werror` over `sources`; any warning fails the build.
 fn javac(work: &Path, out: &str, classpath: Option<&str>, extra: &[&str], sources: &[PathBuf]) {
-    let list: Vec<String> = sources.iter().map(|p| p.display().to_string().replace('\\', "/")).collect();
+    let list: Vec<String> = sources
+        .iter()
+        .map(|p| p.display().to_string().replace('\\', "/"))
+        .collect();
     let argfile = work.join(format!("{out}.args"));
     std::fs::write(&argfile, list.join("\n")).unwrap();
     let mut cmd = Command::new("javac");
-    cmd.args(["--release", "17", "-Xlint:all", "-Werror", "-encoding", "UTF-8", "-d", out]);
+    cmd.args([
+        "--release",
+        "17",
+        "-Xlint:all",
+        "-Werror",
+        "-encoding",
+        "UTF-8",
+        "-d",
+        out,
+    ]);
     if let Some(cp) = classpath {
         cmd.args(["-cp", cp]);
     }
-    cmd.args(extra).arg(format!("@{}.args", out)).current_dir(work);
+    cmd.args(extra)
+        .arg(format!("@{}.args", out))
+        .current_dir(work);
     run(&mut cmd, &format!("javac ({out})"));
 }
 
@@ -121,7 +148,9 @@ struct Java {
 /// Generates every Java target and compiles them together with the test programs.
 fn build_java() -> Result<Java, Unavailable> {
     if !succeeds("javac", "--version") || !succeeds("java", "--version") {
-        return Err(Unavailable::Missing("`javac`/`java` are not on PATH".into()));
+        return Err(Unavailable::Missing(
+            "`javac`/`java` are not on PATH".into(),
+        ));
     }
     let work = java_dir().join(".work/run");
     let _ = std::fs::remove_dir_all(&work);
@@ -131,7 +160,10 @@ fn build_java() -> Result<Java, Unavailable> {
     let d = compile_contract("warehouse", &|s| s.to_string());
     let opts = WriteOptions::default();
     let put = |dir: &str, files: &FileSet| write(&work.join(dir), files, &opts).unwrap();
-    put("gen_a", &gen_server(&a, "Orders", &["Iam"], "gen.a", Some("spring")));
+    put(
+        "gen_a",
+        &gen_server(&a, "Orders", &["Iam"], "gen.a", Some("spring")),
+    );
     put("gen_i", &gen_server(&a, "Iam", &[], "gen.i", None));
     put("gen_ca", &gen_client(&a, "gen.ca"));
     put("gen_cb", &gen_client(&a, "gen.cb"));
@@ -148,10 +180,19 @@ fn build_java() -> Result<Java, Unavailable> {
 
     // 2. The test programs against the compiled generated code.
     std::fs::create_dir_all(work.join("tests")).unwrap();
-    for f in java_files(&java_dir(), &[]).iter().filter(|p| !p.starts_with(java_dir().join(".work"))) {
+    for f in java_files(&java_dir(), &[])
+        .iter()
+        .filter(|p| !p.starts_with(java_dir().join(".work")))
+    {
         std::fs::copy(f, work.join("tests").join(f.file_name().unwrap())).unwrap();
     }
-    javac(&work, "classes_test", Some("classes_gen"), &[], &java_files(&work.join("tests"), &[]));
+    javac(
+        &work,
+        "classes_test",
+        Some("classes_gen"),
+        &[],
+        &java_files(&work.join("tests"), &[]),
+    );
     Ok(Java { work })
 }
 
@@ -159,7 +200,11 @@ fn java() -> Result<&'static Java, Unavailable> {
     static JAVA: OnceLock<Result<Java, Unavailable>> = OnceLock::new();
     match JAVA.get_or_init(|| {
         std::panic::catch_unwind(build_java).unwrap_or_else(|e| {
-            Err(Unavailable::Failed(e.downcast_ref::<String>().cloned().unwrap_or_else(|| "build panicked".into())))
+            Err(Unavailable::Failed(
+                e.downcast_ref::<String>()
+                    .cloned()
+                    .unwrap_or_else(|| "build panicked".into()),
+            ))
         })
     }) {
         Ok(j) => Ok(j),
@@ -179,7 +224,10 @@ fn skip<T>(test: &str, why: &Unavailable) -> Option<T> {
     match why {
         Unavailable::Failed(msg) => panic!("{msg}"),
         Unavailable::Missing(msg) => {
-            assert!(std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"), "toolchain required but unavailable: {msg}");
+            assert!(
+                std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"),
+                "toolchain required but unavailable: {msg}"
+            );
             eprintln!("SKIPPED {test}: {msg}");
             None
         }
@@ -188,7 +236,10 @@ fn skip<T>(test: &str, why: &Unavailable) -> Option<T> {
 
 /// The class path of the compiled generated code and test programs.
 fn run_classpath() -> String {
-    format!("classes_gen{}classes_test", if cfg!(windows) { ';' } else { ':' })
+    format!(
+        "classes_gen{}classes_test",
+        if cfg!(windows) { ';' } else { ':' }
+    )
 }
 
 fn run_java(j: &Java, class: &str, args: &[&str]) -> String {
@@ -232,12 +283,19 @@ fn wire_goldens() {
 #[test]
 fn spring_adapter_compiles_with_spring_on_the_classpath() {
     let Ok(spring) = std::env::var("VELD_SPRING_CLASSPATH") else {
-        eprintln!("SKIPPED spring_adapter_compiles_with_spring_on_the_classpath: VELD_SPRING_CLASSPATH is not set");
+        eprintln!(
+            "SKIPPED spring_adapter_compiles_with_spring_on_the_classpath: VELD_SPRING_CLASSPATH is not set"
+        );
         return;
     };
-    let Some(j) = need_java("spring_adapter") else { return };
+    let Some(j) = need_java("spring_adapter") else {
+        return;
+    };
     let source = j.work.join("gen_a/gen/a/adapters/SpringAdapter.java");
-    let cp = format!("classes_gen{}{spring}", if cfg!(windows) { ';' } else { ':' });
+    let cp = format!(
+        "classes_gen{}{spring}",
+        if cfg!(windows) { ';' } else { ':' }
+    );
     javac(&j.work, "classes_spring", Some(&cp), &[], &[source]);
 }
 
@@ -249,10 +307,24 @@ struct Ts {
     work: PathBuf,
 }
 
-fn gen_ts(generator: &dyn DynGenerator, ir: &Ir, role: Role, services: &[&str], consumes: &[&str]) -> FileSet {
+fn gen_ts(
+    generator: &dyn DynGenerator,
+    ir: &Ir,
+    role: Role,
+    services: &[&str],
+    consumes: &[&str],
+) -> FileSet {
     let ids = |names: &[&str]| names.iter().map(|n| service_id(ir, n)).collect::<Vec<_>>();
-    let req = GenRequest { ir, role, services: ids(services), consumes: ids(consumes), framework: None };
-    generator.generate_dyn(&req, &Value::Null).unwrap_or_else(|d| panic!("generation failed: {d:?}"))
+    let req = GenRequest {
+        ir,
+        role,
+        services: ids(services),
+        consumes: ids(consumes),
+        framework: None,
+    };
+    generator
+        .generate_dyn(&req, &Value::Null)
+        .unwrap_or_else(|d| panic!("generation failed: {d:?}"))
 }
 
 fn build_ts() -> Result<Ts, Unavailable> {
@@ -261,15 +333,28 @@ fn build_ts() -> Result<Ts, Unavailable> {
     }
     let tsc = ts_dir().join("node_modules/typescript/bin/tsc");
     if !tsc.exists() {
-        return Err(Unavailable::Missing(format!("{} is missing; run `npm ci` in tests/toolchain/ts", tsc.display())));
+        return Err(Unavailable::Missing(format!(
+            "{} is missing; run `npm ci` in tests/toolchain/ts",
+            tsc.display()
+        )));
     }
     let work = ts_dir().join(".work/java-interop");
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work).unwrap();
     let a = standard_ir();
     let opts = WriteOptions::default();
-    write(&work.join("server"), &gen_ts(&Node, &a, Role::Server, &["Orders"], &["Iam"]), &opts).unwrap();
-    write(&work.join("copy_a"), &gen_ts(&TypeScript, &a, Role::Client, &["Iam", "Orders"], &[]), &opts).unwrap();
+    write(
+        &work.join("server"),
+        &gen_ts(&Node, &a, Role::Server, &["Orders"], &["Iam"]),
+        &opts,
+    )
+    .unwrap();
+    write(
+        &work.join("copy_a"),
+        &gen_ts(&TypeScript, &a, Role::Client, &["Iam", "Orders"], &[]),
+        &opts,
+    )
+    .unwrap();
     write_sigs(&work);
     for script in ["serve.ts", "crossclient.ts"] {
         std::fs::copy(ts_dir().join(script), work.join(script)).unwrap();
@@ -282,8 +367,18 @@ fn build_ts() -> Result<Ts, Unavailable> {
         },
         "include": ["*.ts", "server/**/*.ts", "copy_a/**/*.ts"]
     });
-    std::fs::write(work.join("tsconfig.json"), serde_json::to_string_pretty(&config).unwrap()).unwrap();
-    run(Command::new("node").arg(&tsc).args(["-p", "tsconfig.json"]).current_dir(&work), "tsc");
+    std::fs::write(
+        work.join("tsconfig.json"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .unwrap();
+    run(
+        Command::new("node")
+            .arg(&tsc)
+            .args(["-p", "tsconfig.json"])
+            .current_dir(&work),
+        "tsc",
+    );
     Ok(Ts { work })
 }
 
@@ -291,7 +386,11 @@ fn ts() -> Result<&'static Ts, Unavailable> {
     static TS: OnceLock<Result<Ts, Unavailable>> = OnceLock::new();
     match TS.get_or_init(|| {
         std::panic::catch_unwind(build_ts).unwrap_or_else(|e| {
-            Err(Unavailable::Failed(e.downcast_ref::<String>().cloned().unwrap_or_else(|| "build panicked".into())))
+            Err(Unavailable::Failed(
+                e.downcast_ref::<String>()
+                    .cloned()
+                    .unwrap_or_else(|| "build panicked".into()),
+            ))
         })
     }) {
         Ok(t) => Ok(t),
@@ -308,11 +407,24 @@ struct Server {
 impl Server {
     /// Starts `cmd`, waits for its `PORT=<n>` line and keeps stdin open (closing it stops the server).
     fn start(mut cmd: Command) -> Server {
-        let mut child = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn().expect("cannot start server");
+        let mut child = cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("cannot start server");
         let mut line = String::new();
-        BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
-        let port = line.trim().strip_prefix("PORT=").unwrap_or_else(|| panic!("server did not report a port: {line:?}"));
-        Server { url: format!("http://127.0.0.1:{port}"), child }
+        BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        let port = line
+            .trim()
+            .strip_prefix("PORT=")
+            .unwrap_or_else(|| panic!("server did not report a port: {line:?}"));
+        Server {
+            url: format!("http://127.0.0.1:{port}"),
+            child,
+        }
     }
 }
 
@@ -333,17 +445,27 @@ fn both(test: &str) -> Option<(&'static Java, &'static Ts)> {
 
 #[test]
 fn typescript_client_calls_the_java_server() {
-    let Some((j, t)) = both("typescript_client_calls_the_java_server") else { return };
+    let Some((j, t)) = both("typescript_client_calls_the_java_server") else {
+        return;
+    };
     let mut cmd = Command::new("java");
-    cmd.args(["-cp", &run_classpath(), "veldtest.Serve"]).current_dir(&j.work);
+    cmd.args(["-cp", &run_classpath(), "veldtest.Serve"])
+        .current_dir(&j.work);
     let server = Server::start(cmd);
-    let out = run(Command::new("node").args(["out/crossclient.js", &server.url]).current_dir(&t.work), "crossclient.js");
+    let out = run(
+        Command::new("node")
+            .args(["out/crossclient.js", &server.url])
+            .current_dir(&t.work),
+        "crossclient.js",
+    );
     assert!(out.contains("ts client against java server ok"));
 }
 
 #[test]
 fn java_client_calls_the_node_server() {
-    let Some((j, t)) = both("java_client_calls_the_node_server") else { return };
+    let Some((j, t)) = both("java_client_calls_the_node_server") else {
+        return;
+    };
     let mut cmd = Command::new("node");
     cmd.arg("out/serve.js").current_dir(&t.work);
     let server = Server::start(cmd);

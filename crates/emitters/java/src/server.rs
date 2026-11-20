@@ -5,7 +5,9 @@ use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{AuthKind, Endpoint, Service};
 
-use crate::spec::{RequestNames, emit_requests, endpoint_docs, method_name, spec_const, write_spec_const};
+use crate::spec::{
+    RequestNames, emit_requests, endpoint_docs, method_name, spec_const, write_spec_const,
+};
 use crate::tree::{FileCtx, Tree, java_path};
 use crate::types::{codec_expr, java_type};
 use crate::util::{add_file, doc_comment, end_call, java_str, member_ident, open_call, unique};
@@ -15,29 +17,54 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
     let names = RequestNames::new(tree.ir, &tree.services);
     for pkg in tree.packages() {
         let package = tree.api_package(pkg, "server");
-        for sid in tree.services.iter().filter(|s| tree.ir.service(**s).package == pkg) {
+        for sid in tree
+            .services
+            .iter()
+            .filter(|s| tree.ir.service(**s).package == pkg)
+        {
             let svc = tree.ir.service(*sid);
             emit_requests(files, tree, &package, &names, svc)?;
             let base = naming::pascal(&svc.name);
-            let mut put = |suffix: &str, write: &dyn Fn(&mut CodeWriter, &mut FileCtx<'_, '_>, &str)| {
-                let class = format!("{base}{suffix}");
-                let mut fc = FileCtx::new(tree, &package, &class);
-                let mut w = CodeWriter::new();
-                write(&mut w, &mut fc, &class);
-                add_file(files, &java_path(&package, &class), fc.finish(&w.finish()))
-            };
-            put("Service", &|w, fc, class| write_interface(w, fc, &names, svc, class))?;
+            let mut put =
+                |suffix: &str, write: &dyn Fn(&mut CodeWriter, &mut FileCtx<'_, '_>, &str)| {
+                    let class = format!("{base}{suffix}");
+                    let mut fc = FileCtx::new(tree, &package, &class);
+                    let mut w = CodeWriter::new();
+                    write(&mut w, &mut fc, &class);
+                    add_file(files, &java_path(&package, &class), fc.finish(&w.finish()))
+                };
+            put("Service", &|w, fc, class| {
+                write_interface(w, fc, &names, svc, class)
+            })?;
             put("Hooks", &|w, fc, class| write_hooks(w, fc, svc, class))?;
-            put("Handler", &|w, fc, class| write_handler(w, fc, &names, svc, class, &base))?;
+            put("Handler", &|w, fc, class| {
+                write_handler(w, fc, &names, svc, class, &base)
+            })?;
         }
     }
     Ok(())
 }
 
-fn write_interface(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &RequestNames, svc: &Service, class: &str) {
+fn write_interface(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    names: &RequestNames,
+    svc: &Service,
+    class: &str,
+) {
     let ctx = fc.rt("RequestContext");
-    let docs = svc.docs.clone().unwrap_or_else(|| format!("The implementation of the `{}` service.", svc.name));
-    doc_comment(w, Some(&format!("{docs}\n\nMethods may throw any exception: a declared error is answered at its status, anything else becomes `Internal`.")), &[], None);
+    let docs = svc
+        .docs
+        .clone()
+        .unwrap_or_else(|| format!("The implementation of the `{}` service.", svc.name));
+    doc_comment(
+        w,
+        Some(&format!(
+            "{docs}\n\nMethods may throw any exception: a declared error is answered at its status, anything else becomes `Internal`."
+        )),
+        &[],
+        None,
+    );
     w.line("@SuppressWarnings(\"deprecation\")");
     w.open(format!("public interface {class}"));
     for (i, ep) in svc.endpoints.iter().enumerate() {
@@ -50,7 +77,10 @@ fn write_interface(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &Request
             None => "void".to_string(),
         };
         let request = names.get(svc.id, &ep.name);
-        w.line(format!("{ret} {}({request} request, {ctx} ctx) throws Exception;", method_name(ep)));
+        w.line(format!(
+            "{ret} {}({request} request, {ctx} ctx) throws Exception;",
+            method_name(ep)
+        ));
     }
     w.close();
 }
@@ -95,7 +125,10 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
     }
     auth.sort_unstable();
     let params = unique(
-        auth.iter().map(|a| a.0.to_string()).chain(middleware.iter().map(|m| member_ident(m))).collect(),
+        auth.iter()
+            .map(|a| a.0.to_string())
+            .chain(middleware.iter().map(|m| member_ident(m)))
+            .collect(),
     );
     let mut out = Vec::new();
     for (i, (setter, ty, doc)) in auth.iter().enumerate() {
@@ -123,23 +156,36 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     let required = required_hooks(fc, svc);
     doc_comment(
         w,
-        Some(&format!("The hooks of the `{}` service. The constructor takes the hooks its endpoints need.", svc.name)),
+        Some(&format!(
+            "The hooks of the `{}` service. The constructor takes the hooks its endpoints need.",
+            svc.name
+        )),
         &[],
         None,
     );
     w.open(format!("public final class {class}"));
-    w.line(format!("private final {hooks}.Builder builder = {hooks}.builder();"));
+    w.line(format!(
+        "private final {hooks}.Builder builder = {hooks}.builder();"
+    ));
     w.blank();
-    let params: Vec<(String, String)> = required.iter().map(|h| (h.param.clone(), h.doc.clone())).collect();
+    let params: Vec<(String, String)> = required
+        .iter()
+        .map(|h| (h.param.clone(), h.doc.clone()))
+        .collect();
     doc_comment(w, Some("Creates the hooks."), &params, None);
-    let sig: Vec<String> = required.iter().map(|h| format!("{} {}", h.ty, h.param)).collect();
+    let sig: Vec<String> = required
+        .iter()
+        .map(|h| format!("{} {}", h.ty, h.param))
+        .collect();
     w.open(format!("public {class}({})", sig.join(", ")));
     for h in &required {
         w.line(h.register.clone());
     }
     w.close();
     w.blank();
-    w.line("/** Observes errors that become `Internal`; a failing hook never changes the response. */");
+    w.line(
+        "/** Observes errors that become `Internal`; a failing hook never changes the response. */",
+    );
     w.open(format!("public {class} onError({hooks}.ErrorHook hook)"));
     w.line("builder.onError(hook);");
     w.line("return this;");
@@ -169,7 +215,15 @@ fn write_handler(
     let router = fc.rt("Router");
     let endpoint = fc.rt("ServerEndpoint");
     let list = fc.name("java.util.List");
-    doc_comment(w, Some(&format!("Builds the HTTP handler for `{}`. Mount it with an adapter.", svc.name)), &[], None);
+    doc_comment(
+        w,
+        Some(&format!(
+            "Builds the HTTP handler for `{}`. Mount it with an adapter.",
+            svc.name
+        )),
+        &[],
+        None,
+    );
     w.line("@SuppressWarnings(\"deprecation\")");
     w.open(format!("public final class {class}"));
     w.line(format!("private {class}() {{}}"));
@@ -178,7 +232,10 @@ fn write_handler(
         write_spec_const(w, fc, ep);
     }
     w.blank();
-    let needs_hooks = svc.endpoints.iter().any(|e| auth_kind_name(e.auth.kind).is_some() || !e.middleware.is_empty());
+    let needs_hooks = svc
+        .endpoints
+        .iter()
+        .any(|e| auth_kind_name(e.auth.kind).is_some() || !e.middleware.is_empty());
     let hooks_class = format!("{base}Hooks");
     let service = format!("{base}Service");
     if !needs_hooks {
@@ -189,19 +246,30 @@ fn write_handler(
         w.blank();
     }
     w.line("/** Builds the handler. */");
-    w.open(format!("public static {handler} create({service} impl, {hooks_class} hooks)"));
+    w.open(format!(
+        "public static {handler} create({service} impl, {hooks_class} hooks)"
+    ));
     open_call(w, format!("{list}<{endpoint}> endpoints = {list}.of"));
     for (i, ep) in svc.endpoints.iter().enumerate() {
         write_endpoint(w, fc, names, svc, ep, i + 1 == svc.endpoints.len());
     }
     end_call(w);
     let std = std_sigs(fc);
-    w.line(format!("return {router}.create(endpoints, {std}, hooks.build());"));
+    w.line(format!(
+        "return {router}.create(endpoints, {std}, hooks.build());"
+    ));
     w.close();
     w.close();
 }
 
-fn write_endpoint(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, names: &RequestNames, svc: &Service, ep: &Endpoint, last: bool) {
+fn write_endpoint(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    names: &RequestNames,
+    svc: &Service,
+    ep: &Endpoint,
+    last: bool,
+) {
     let endpoint = fc.rt("ServerEndpoint");
     let list = fc.name("java.util.List");
     let request = names.get(svc.id, &ep.name);

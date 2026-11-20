@@ -37,7 +37,13 @@ impl<'a> Tree<'a> {
                 set.insert(d.id);
             }
         }
-        Self { ir, base: base.to_string(), runtime: runtime.to_string(), services, decls: set.into_iter().collect() }
+        Self {
+            ir,
+            base: base.to_string(),
+            runtime: runtime.to_string(),
+            services,
+            decls: set.into_iter().collect(),
+        }
     }
 
     #[must_use]
@@ -61,7 +67,12 @@ impl<'a> Tree<'a> {
     /// Java package holding everything of one contract package: `<base>.<package>`.
     #[must_use]
     pub fn pkg_package(&self, pkg: PackageId) -> String {
-        let name = self.ir.package(pkg).name.trim_start_matches('@').replace('/', "_");
+        let name = self
+            .ir
+            .package(pkg)
+            .name
+            .trim_start_matches('@')
+            .replace('/', "_");
         let mut dir = util::segment(&name);
         if RESERVED_DIRS.contains(&dir.as_str()) {
             dir.push('_');
@@ -135,7 +146,11 @@ impl<'t, 'a> FileCtx<'t, 'a> {
     pub fn new(tree: &'t Tree<'a>, package: &str, own: &str) -> Self {
         let mut names = BTreeMap::new();
         names.insert(own.to_string(), format!("{package}.{own}"));
-        Self { tree, package: package.to_string(), names }
+        Self {
+            tree,
+            package: package.to_string(),
+            names,
+        }
     }
 
     /// The name to write for the type `fqn`: its simple name, importing it when needed, or the

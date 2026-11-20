@@ -6,12 +6,15 @@ use std::collections::BTreeMap;
 
 use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
-use veld_ir::{Const, Decl, DeclId, DeclKind, Enum, ErrorDecl, Field, Literal, Model, Scalar, Type, Union};
+use veld_ir::{
+    Const, Decl, DeclId, DeclKind, Enum, ErrorDecl, Field, Literal, Model, Scalar, Type, Union,
+};
 
 use crate::tree::{FileCtx, Tree, java_path};
 use crate::types::{codec_expr, java_type, json_literal, nullable, schema_expr};
 use crate::util::{
-    add_file, deprecated_annotation, doc_comment, end_call, java_str, member_ident, open_call, type_name, unique,
+    add_file, deprecated_annotation, doc_comment, end_call, java_str, member_ident, open_call,
+    type_name, unique,
 };
 
 const SUPPRESS: &str = "@SuppressWarnings(\"deprecation\")";
@@ -27,7 +30,11 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
             continue;
         }
         let name = type_name(d);
-        add_file(files, &java_path(&package, &name), render(tree, d, &package, &name))?;
+        add_file(
+            files,
+            &java_path(&package, &name),
+            render(tree, d, &package, &name),
+        )?;
     }
     for (package, ids) in consts {
         let text = render_constants(tree, &package, &ids)?;
@@ -61,7 +68,12 @@ fn field_params(fields: &[Field], idents: &[String]) -> Vec<(String, String)> {
         .iter()
         .zip(idents)
         .filter_map(|(f, id)| {
-            let first = f.docs.as_deref().and_then(|d| d.trim().lines().next()).unwrap_or("").to_string();
+            let first = f
+                .docs
+                .as_deref()
+                .and_then(|d| d.trim().lines().next())
+                .unwrap_or("")
+                .to_string();
             let text = match (&f.deprecated, first.is_empty()) {
                 (Some(m), true) => format!("Deprecated: {m}"),
                 (Some(m), false) => format!("{first} Deprecated: {m}"),
@@ -77,7 +89,13 @@ fn field_idents(fields: &[Field]) -> Vec<String> {
 }
 
 /// `public record Name(` / components / `) implements X {`, leaving the writer inside the body.
-fn open_record(w: &mut CodeWriter, modifiers: &str, name: &str, comps: &[String], implements: &str) {
+fn open_record(
+    w: &mut CodeWriter,
+    modifiers: &str,
+    name: &str,
+    comps: &[String],
+    implements: &str,
+) {
     if comps.is_empty() {
         w.open(format!("{modifiers} record {name}(){implements}"));
         return;
@@ -95,11 +113,21 @@ fn open_record(w: &mut CodeWriter, modifiers: &str, name: &str, comps: &[String]
 }
 
 fn components(fc: &mut FileCtx<'_, '_>, fields: &[Field], idents: &[String]) -> Vec<String> {
-    fields.iter().zip(idents).map(|(f, id)| format!("{} {id}", java_type(fc, &f.ty, nullable(f)))).collect()
+    fields
+        .iter()
+        .zip(idents)
+        .map(|(f, id)| format!("{} {id}", java_type(fc, &f.ty, nullable(f))))
+        .collect()
 }
 
 /// `fromWire` and `toWire` of a record with `fields`.
-fn write_wire_methods(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, fields: &[Field], idents: &[String]) {
+fn write_wire_methods(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    name: &str,
+    fields: &[Field],
+    idents: &[String],
+) {
     let json = fc.rt("Json");
     let codec = fc.rt("Codec");
     w.line("/** Reads the wire form of a value that was validated and prepared with `Wire`. */");
@@ -134,10 +162,18 @@ fn write_wire_methods(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, 
 
 fn write_sig(w: &mut CodeWriter, d: &Decl, modifiers: &str) {
     w.line("/** The declaration signature (spec/ir.md section 5.1). */");
-    w.line(format!("{modifiers}String VELD_SIG = {};", java_str(&d.sig)));
+    w.line(format!(
+        "{modifiers}String VELD_SIG = {};",
+        java_str(&d.sig)
+    ));
 }
 
-fn write_object_schema(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, fields: &[Field], modifiers: &str) {
+fn write_object_schema(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    fields: &[Field],
+    modifiers: &str,
+) {
     let schema = fc.rt("Schema");
     w.line("/** The wire description: validation, defaults and canonical bytes. */");
     if fields.is_empty() {
@@ -147,7 +183,10 @@ fn write_object_schema(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, fields: &[F
     open_call(w, format!("{modifiers}{schema} SCHEMA = {schema}.object"));
     for (i, f) in fields.iter().enumerate() {
         let ty = schema_expr(fc, &f.ty, &f.constraints, true);
-        let default = f.default.as_ref().map_or_else(|| "null".to_string(), |l| json_literal(fc, l));
+        let default = f
+            .default
+            .as_ref()
+            .map_or_else(|| "null".to_string(), |l| json_literal(fc, l));
         let sep = if i + 1 == fields.len() { ");" } else { "," };
         w.line(format!(
             "{schema}.field({}, {}, {ty}, {}, {default}, {}){sep}",
@@ -165,7 +204,9 @@ fn write_codec_and_canonical(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name:
     let wire = fc.rt("Wire");
     w.line("/** A codec for use in composite types. */");
     w.open(format!("public static {codec}<{name}> codec()"));
-    w.line(format!("return {codec}.of({name}::fromWire, {name}::toWire);"));
+    w.line(format!(
+        "return {codec}.of({name}::fromWire, {name}::toWire);"
+    ));
     w.close();
     w.blank();
     w.line("/** The canonical bytes of this value (spec/ir.md section 5.3). */");
@@ -178,8 +219,17 @@ fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model
     let name = type_name(d);
     let idents = field_idents(&m.fields);
     head_docs(w, d, &field_params(&m.fields, &idents));
-    let unions: Vec<String> = fc.tree.unions_of(d.id).into_iter().map(|u| fc.decl(u)).collect();
-    let implements = if unions.is_empty() { String::new() } else { format!(" implements {}", unions.join(", ")) };
+    let unions: Vec<String> = fc
+        .tree
+        .unions_of(d.id)
+        .into_iter()
+        .map(|u| fc.decl(u))
+        .collect();
+    let implements = if unions.is_empty() {
+        String::new()
+    } else {
+        format!(" implements {}", unions.join(", "))
+    };
     let comps = components(fc, &m.fields, &idents);
     open_record(w, "public", &name, &comps, &implements);
     write_sig(w, d, "public static final ");
@@ -213,7 +263,10 @@ fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) 
     w.blank();
     let values: Vec<String> = e.variants.iter().map(|v| java_str(&v.wire)).collect();
     w.line("/** The wire description: validation and canonical bytes. */");
-    w.line(format!("public static final {schema} SCHEMA = {schema}.enumOf({});", values.join(", ")));
+    w.line(format!(
+        "public static final {schema} SCHEMA = {schema}.enumOf({});",
+        values.join(", ")
+    ));
     w.blank();
     w.line("private final String wire;");
     w.blank();
@@ -239,14 +292,18 @@ fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) 
     w.line("return v;");
     w.close();
     w.close();
-    w.line(format!("throw new IllegalArgumentException(\"unknown {name}: \" + value);"));
+    w.line(format!(
+        "throw new IllegalArgumentException(\"unknown {name}: \" + value);"
+    ));
     w.close();
     w.blank();
     let codec = fc.rt("Codec");
     let wire = fc.rt("Wire");
     w.line("/** A codec for use in composite types. */");
     w.open(format!("public static {codec}<{name}> codec()"));
-    w.line(format!("return {codec}.of({name}::fromWire, {name}::toWire);"));
+    w.line(format!(
+        "return {codec}.of({name}::fromWire, {name}::toWire);"
+    ));
     w.close();
     w.blank();
     w.line("/** The canonical bytes of this value (spec/ir.md section 5.3). */");
@@ -258,7 +315,12 @@ fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) 
 
 /// Java constant names for the variants of an enum, unique and legal.
 fn enum_constants(e: &Enum) -> Vec<String> {
-    unique(e.variants.iter().map(|v| naming::escape(naming::Lang::Java, &naming::screaming_snake(&v.name))).collect())
+    unique(
+        e.variants
+            .iter()
+            .map(|v| naming::escape(naming::Lang::Java, &naming::screaming_snake(&v.name)))
+            .collect(),
+    )
 }
 
 fn write_union(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, u: &Union) {
@@ -267,9 +329,15 @@ fn write_union(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, u: &Union
     head_docs(w, d, &[]);
     let package = fc.tree.decl_package(d);
     let arms: Vec<String> = u.arms.iter().map(|a| fc.decl(a.decl)).collect();
-    let same_package = u.arms.iter().all(|a| fc.tree.decl_package(fc.tree.ir.decl(a.decl)) == package);
+    let same_package = u
+        .arms
+        .iter()
+        .all(|a| fc.tree.decl_package(fc.tree.ir.decl(a.decl)) == package);
     if same_package && !arms.is_empty() {
-        w.open(format!("public sealed interface {name} permits {}", arms.join(", ")));
+        w.open(format!(
+            "public sealed interface {name} permits {}",
+            arms.join(", ")
+        ));
     } else {
         w.open(format!("public interface {name}"));
     }
@@ -277,13 +345,19 @@ fn write_union(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, u: &Union
     w.blank();
     w.line("/** The wire description: validation and canonical bytes. */");
     if arms.is_empty() {
-        w.line(format!("{schema} SCHEMA = {schema}.union({});", java_str(&u.discriminator)));
+        w.line(format!(
+            "{schema} SCHEMA = {schema}.union({});",
+            java_str(&u.discriminator)
+        ));
     } else {
         open_call(w, format!("{schema} SCHEMA = {schema}.union"));
         w.line(format!("{},", java_str(&u.discriminator)));
         for (i, (a, t)) in u.arms.iter().zip(&arms).enumerate() {
             let sep = if i + 1 == arms.len() { ");" } else { "," };
-            w.line(format!("{schema}.arm({}, () -> {t}.SCHEMA){sep}", java_str(&a.label)));
+            w.line(format!(
+                "{schema}.arm({}, () -> {t}.SCHEMA){sep}",
+                java_str(&a.label)
+            ));
         }
         end_call(w);
     }
@@ -292,7 +366,13 @@ fn write_union(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, u: &Union
     w.close();
 }
 
-fn write_union_methods(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, u: &Union, arms: &[String]) {
+fn write_union_methods(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    name: &str,
+    u: &Union,
+    arms: &[String],
+) {
     let json = fc.rt("Json");
     let codec = fc.rt("Codec");
     let wire = fc.rt("Wire");
@@ -301,28 +381,39 @@ fn write_union_methods(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str,
     w.open(format!("static {json}.Obj toWire({name} value)"));
     for (a, t) in u.arms.iter().zip(arms) {
         w.open(format!("if (value instanceof {t} v)"));
-        w.line(format!("return v.toWire().with({disc}, {json}.of({}));", java_str(&a.label)));
+        w.line(format!(
+            "return v.toWire().with({disc}, {json}.of({}));",
+            java_str(&a.label)
+        ));
         w.close();
     }
-    w.line(format!("throw new IllegalArgumentException(\"unknown {name} arm: \" + value);"));
+    w.line(format!(
+        "throw new IllegalArgumentException(\"unknown {name} arm: \" + value);"
+    ));
     w.close();
     w.blank();
     w.line("/** Reads an arm by its discriminator. */");
     w.open(format!("static {name} fromWire({json} json)"));
-    w.line(format!("String label = {codec}.req(json.asObject(), {disc}, {codec}.string());"));
+    w.line(format!(
+        "String label = {codec}.req(json.asObject(), {disc}, {codec}.string());"
+    ));
     w.open("switch (label)");
     for (a, t) in u.arms.iter().zip(arms) {
         w.line(format!("case {}:", java_str(&a.label)));
         w.line(format!("  return {t}.fromWire(json);"));
     }
     w.line("default:");
-    w.line(format!("  throw new IllegalArgumentException(\"unknown {name} arm: \" + label);"));
+    w.line(format!(
+        "  throw new IllegalArgumentException(\"unknown {name} arm: \" + label);"
+    ));
     w.close();
     w.close();
     w.blank();
     w.line("/** A codec for use in composite types. */");
     w.open(format!("static {codec}<{name}> codec()"));
-    w.line(format!("return {codec}.of({name}::fromWire, {name}::toWire);"));
+    w.line(format!(
+        "return {codec}.of({name}::fromWire, {name}::toWire);"
+    ));
     w.close();
     w.blank();
     w.line("/** The canonical bytes of an arm (spec/ir.md section 5.3). */");
@@ -346,7 +437,9 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
     write_sig(w, d, "public static final ");
     if let Some(status) = e.default_status {
         w.line("/** The status used when none is given. */");
-        w.line(format!("public static final int DEFAULT_STATUS = {status};"));
+        w.line(format!(
+            "public static final int DEFAULT_STATUS = {status};"
+        ));
     }
     w.blank();
     write_object_schema(w, fc, fields, "public static final ");
@@ -359,7 +452,11 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
     w.blank();
     w.line("private final transient Data data;");
     w.blank();
-    let default = if e.default_status.is_some() { "DEFAULT_STATUS" } else { "500" };
+    let default = if e.default_status.is_some() {
+        "DEFAULT_STATUS"
+    } else {
+        "500"
+    };
     w.line("/** Creates the error with its default status. */");
     w.open(format!("public {name}(Data data)"));
     w.line(format!("this(data, {default}, null);"));
@@ -367,13 +464,20 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
     w.blank();
     w.line("/** Creates the error with an explicit status and operation signature. */");
     w.open(format!("public {name}(Data data, int status, String op)"));
-    w.line(format!("super(VELD_SIG, {}, status, op);", java_str(&d.name)));
+    w.line(format!(
+        "super(VELD_SIG, {}, status, op);",
+        java_str(&d.name)
+    ));
     w.line("this.data = data;");
     w.close();
     w.blank();
     w.line("/** Decodes the error from its wire data, as a client does. */");
-    w.open(format!("public static {name} fromWire({json} data, int status, String op)"));
-    w.line(format!("return new {name}(Data.fromWire(data), status, op);"));
+    w.open(format!(
+        "public static {name} fromWire({json} data, int status, String op)"
+    ));
+    w.line(format!(
+        "return new {name}(Data.fromWire(data), status, op);"
+    ));
     w.close();
     w.blank();
     write_error_accessors(w, &name, &json, &schema, &veld);
@@ -396,7 +500,9 @@ fn write_error_accessors(w: &mut CodeWriter, name: &str, json: &str, schema: &st
     w.line("return SCHEMA;");
     w.close();
     w.blank();
-    w.line(format!("/** Whether {{@code error}} is a `{name}`, whichever generated package it comes from. */"));
+    w.line(format!(
+        "/** Whether {{@code error}} is a `{name}`, whichever generated package it comes from. */"
+    ));
     w.open("public static boolean matches(Throwable error)");
     w.line(format!("return {veld}.matches(error, VELD_SIG, null);"));
     w.close();
@@ -409,16 +515,36 @@ fn write_error_accessors(w: &mut CodeWriter, name: &str, json: &str, schema: &st
 
 // -- constants ----------------------------------------------------------------------------------
 
-fn render_constants(tree: &Tree<'_>, package: &str, ids: &[DeclId]) -> Result<String, Vec<GenDiagnostic>> {
+fn render_constants(
+    tree: &Tree<'_>,
+    package: &str,
+    ids: &[DeclId],
+) -> Result<String, Vec<GenDiagnostic>> {
     let mut fc = FileCtx::new(tree, package, "Constants");
     let mut w = CodeWriter::new();
-    doc_comment(&mut w, Some("Constants declared by the contract."), &[], None);
+    doc_comment(
+        &mut w,
+        Some("Constants declared by the contract."),
+        &[],
+        None,
+    );
     w.open("public final class Constants");
     w.line("private Constants() {}");
-    let names = unique(ids.iter().map(|id| naming::escape(naming::Lang::Java, &naming::screaming_snake(&tree.ir.decl(*id).name))).collect());
+    let names = unique(
+        ids.iter()
+            .map(|id| {
+                naming::escape(
+                    naming::Lang::Java,
+                    &naming::screaming_snake(&tree.ir.decl(*id).name),
+                )
+            })
+            .collect(),
+    );
     for (id, name) in ids.iter().zip(names) {
         let d = tree.ir.decl(*id);
-        let DeclKind::Const(c) = &d.kind else { continue };
+        let DeclKind::Const(c) = &d.kind else {
+            continue;
+        };
         w.blank();
         doc_comment(&mut w, d.docs.as_deref(), &[], d.deprecated.as_deref());
         deprecated_annotation(&mut w, d.deprecated.as_deref());
@@ -433,20 +559,33 @@ fn render_constants(tree: &Tree<'_>, package: &str, ids: &[DeclId]) -> Result<St
 fn unsupported(d: &Decl, what: &str) -> Vec<GenDiagnostic> {
     vec![GenDiagnostic {
         code: "E0804",
-        message: format!("constant `{}` has {what}, which the java generator cannot represent", d.name),
+        message: format!(
+            "constant `{}` has {what}, which the java generator cannot represent",
+            d.name
+        ),
         origin: Some(d.origin.clone()),
     }]
 }
 
 /// The Java initialiser of a constant.
-fn const_value(fc: &mut FileCtx<'_, '_>, d: &Decl, c: &Const) -> Result<String, Vec<GenDiagnostic>> {
+fn const_value(
+    fc: &mut FileCtx<'_, '_>,
+    d: &Decl,
+    c: &Const,
+) -> Result<String, Vec<GenDiagnostic>> {
     match (&c.ty, &c.value) {
         (Type::Scalar(s), lit) => scalar_const(fc, d, *s, lit),
         (Type::Decl(id), Literal::EnumVariant { name, .. }) => {
             let enum_name = fc.decl(*id);
-            let DeclKind::Enum(e) = &fc.tree.ir.decl(*id).kind else { return Err(unsupported(d, "a non-enum declaration type")) };
+            let DeclKind::Enum(e) = &fc.tree.ir.decl(*id).kind else {
+                return Err(unsupported(d, "a non-enum declaration type"));
+            };
             let consts = enum_constants(e);
-            let pos = e.variants.iter().position(|v| &v.name == name).ok_or_else(|| unsupported(d, "an unknown variant"))?;
+            let pos = e
+                .variants
+                .iter()
+                .position(|v| &v.name == name)
+                .ok_or_else(|| unsupported(d, "an unknown variant"))?;
             Ok(format!("{enum_name}.{}", consts[pos]))
         }
         (Type::List(_), Literal::EmptyList) => Ok(format!("{}.of()", fc.name("java.util.List"))),
@@ -454,7 +593,12 @@ fn const_value(fc: &mut FileCtx<'_, '_>, d: &Decl, c: &Const) -> Result<String, 
     }
 }
 
-fn scalar_const(fc: &mut FileCtx<'_, '_>, d: &Decl, s: Scalar, lit: &Literal) -> Result<String, Vec<GenDiagnostic>> {
+fn scalar_const(
+    fc: &mut FileCtx<'_, '_>,
+    d: &Decl,
+    s: Scalar,
+    lit: &Literal,
+) -> Result<String, Vec<GenDiagnostic>> {
     Ok(match (s, lit) {
         (Scalar::String, Literal::String(v)) => java_str(v),
         (Scalar::Int, Literal::Int(i)) if i32::try_from(*i).is_ok() => i.to_string(),
@@ -462,11 +606,21 @@ fn scalar_const(fc: &mut FileCtx<'_, '_>, d: &Decl, s: Scalar, lit: &Literal) ->
         (Scalar::Float, Literal::Float(f)) => crate::types::java_double(*f),
         (Scalar::Float, Literal::Int(i)) => format!("{i}.0"),
         (Scalar::Bool, Literal::Bool(b)) => b.to_string(),
-        (Scalar::Decimal, Literal::String(v)) => format!("new {}({})", fc.name("java.math.BigDecimal"), java_str(v)),
-        (Scalar::Date, Literal::String(v)) => format!("{}.parse({})", fc.name("java.time.LocalDate"), java_str(v)),
-        (Scalar::Datetime, Literal::String(v)) => format!("{}.parse({})", fc.name("java.time.Instant"), java_str(v)),
-        (Scalar::Time, Literal::String(v)) => format!("{}.parse({})", fc.name("java.time.LocalTime"), java_str(v)),
-        (Scalar::Uuid, Literal::String(v)) => format!("{}.fromString({})", fc.name("java.util.UUID"), java_str(v)),
+        (Scalar::Decimal, Literal::String(v)) => {
+            format!("new {}({})", fc.name("java.math.BigDecimal"), java_str(v))
+        }
+        (Scalar::Date, Literal::String(v)) => {
+            format!("{}.parse({})", fc.name("java.time.LocalDate"), java_str(v))
+        }
+        (Scalar::Datetime, Literal::String(v)) => {
+            format!("{}.parse({})", fc.name("java.time.Instant"), java_str(v))
+        }
+        (Scalar::Time, Literal::String(v)) => {
+            format!("{}.parse({})", fc.name("java.time.LocalTime"), java_str(v))
+        }
+        (Scalar::Uuid, Literal::String(v)) => {
+            format!("{}.fromString({})", fc.name("java.util.UUID"), java_str(v))
+        }
         _ => return Err(unsupported(d, "a literal of an unsupported type")),
     })
 }

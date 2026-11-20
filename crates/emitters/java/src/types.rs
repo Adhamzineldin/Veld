@@ -15,7 +15,13 @@ pub fn nullable(f: &Field) -> bool {
 
 /// The Java type of a scalar. `boxed` selects `Integer` over `int` and so on.
 fn scalar_java(fc: &mut FileCtx<'_, '_>, s: Scalar, boxed: bool) -> String {
-    let pick = |prim: &str, wrapper: &str| if boxed { wrapper.to_string() } else { prim.to_string() };
+    let pick = |prim: &str, wrapper: &str| {
+        if boxed {
+            wrapper.to_string()
+        } else {
+            prim.to_string()
+        }
+    };
     match s {
         Scalar::String => "String".to_string(),
         Scalar::Int => pick("int", "Integer"),
@@ -123,12 +129,25 @@ pub fn schema_expr(fc: &mut FileCtx<'_, '_>, ty: &Type, c: &Constraints, lazy: b
     let schema = fc.rt("Schema");
     let base = match ty {
         Type::Scalar(s) => format!("{schema}.{}()", scalar_codec(*s)),
-        Type::List(t) => format!("{schema}.list({})", schema_expr(fc, t, &Constraints::default(), lazy)),
-        Type::Map(t) => format!("{schema}.map({})", schema_expr(fc, t, &Constraints::default(), lazy)),
-        Type::Page(t) => format!("{schema}.page({})", schema_expr(fc, t, &Constraints::default(), lazy)),
+        Type::List(t) => format!(
+            "{schema}.list({})",
+            schema_expr(fc, t, &Constraints::default(), lazy)
+        ),
+        Type::Map(t) => format!(
+            "{schema}.map({})",
+            schema_expr(fc, t, &Constraints::default(), lazy)
+        ),
+        Type::Page(t) => format!(
+            "{schema}.page({})",
+            schema_expr(fc, t, &Constraints::default(), lazy)
+        ),
         Type::Decl(id) => {
             let name = fc.decl(*id);
-            if lazy { format!("{schema}.ref(() -> {name}.SCHEMA)") } else { format!("{name}.SCHEMA") }
+            if lazy {
+                format!("{schema}.ref(() -> {name}.SCHEMA)")
+            } else {
+                format!("{name}.SCHEMA")
+            }
         }
         _ => format!("{schema}.json()"),
     };
@@ -152,7 +171,11 @@ pub fn json_literal(fc: &mut FileCtx<'_, '_>, l: &Literal) -> String {
 /// A Java `double` literal: always has a `.` or an exponent so it is never read as an `int`.
 pub fn java_double(f: f64) -> String {
     let s = es_number(f);
-    if s.contains(['.', 'e']) { s } else { format!("{s}.0") }
+    if s.contains(['.', 'e']) {
+        s
+    } else {
+        format!("{s}.0")
+    }
 }
 
 #[cfg(test)]

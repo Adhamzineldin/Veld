@@ -65,9 +65,18 @@ pub fn adapter_package(base: &str) -> String {
 /// A runtime or adapter source with its package (and the runtime import) substituted.
 fn substitute(source: &str, base: &str) -> String {
     let text = source
-        .replace(&format!("package {SOURCE_PACKAGE};"), &format!("package {};", package(base)))
-        .replace(&format!("package {ADAPTER_PACKAGE};"), &format!("package {};", adapter_package(base)))
-        .replace(&format!("import {SOURCE_PACKAGE}."), &format!("import {}.", package(base)));
+        .replace(
+            &format!("package {SOURCE_PACKAGE};"),
+            &format!("package {};", package(base)),
+        )
+        .replace(
+            &format!("package {ADAPTER_PACKAGE};"),
+            &format!("package {};", adapter_package(base)),
+        )
+        .replace(
+            &format!("import {SOURCE_PACKAGE}."),
+            &format!("import {}.", package(base)),
+        );
     format!("{HEADER}\n{text}")
 }
 
@@ -81,11 +90,23 @@ pub fn emit(files: &mut FileSet, base: &str) -> Result<(), Vec<GenDiagnostic>> {
 }
 
 /// Adds the JDK adapter, and the Spring adapter when `spring` is set.
-pub fn emit_adapters(files: &mut FileSet, base: &str, spring: bool) -> Result<(), Vec<GenDiagnostic>> {
+pub fn emit_adapters(
+    files: &mut FileSet,
+    base: &str,
+    spring: bool,
+) -> Result<(), Vec<GenDiagnostic>> {
     let package = adapter_package(base);
-    add_file(files, &java_path(&package, "JdkHttpServerAdapter"), substitute(JDK_ADAPTER, base))?;
+    add_file(
+        files,
+        &java_path(&package, "JdkHttpServerAdapter"),
+        substitute(JDK_ADAPTER, base),
+    )?;
     if spring {
-        add_file(files, &java_path(&package, "SpringAdapter"), substitute(SPRING_ADAPTER, base))?;
+        add_file(
+            files,
+            &java_path(&package, "SpringAdapter"),
+            substitute(SPRING_ADAPTER, base),
+        )?;
     }
     Ok(())
 }

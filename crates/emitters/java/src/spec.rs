@@ -8,7 +8,10 @@ use veld_ir::{AuthKind, Binding, Endpoint, Ir, Param, Service, ServiceId};
 
 use crate::tree::{FileCtx, Tree, java_path};
 use crate::types::{codec_expr, java_type, schema_expr};
-use crate::util::{add_file, deprecated_annotation, doc_comment, end_call, java_str, member_ident, open_call, unique};
+use crate::util::{
+    add_file, deprecated_annotation, doc_comment, end_call, java_str, member_ident, open_call,
+    unique,
+};
 
 /// Names of request records: `<Endpoint>Request`, prefixed by the service name when two services
 /// of the same set would otherwise collide.
@@ -44,7 +47,10 @@ impl RequestNames {
 
     #[must_use]
     pub fn get(&self, service: ServiceId, endpoint: &str) -> String {
-        self.names.get(&(service, endpoint.to_string())).cloned().unwrap_or_else(|| base_name(endpoint))
+        self.names
+            .get(&(service, endpoint.to_string()))
+            .cloned()
+            .unwrap_or_else(|| base_name(endpoint))
     }
 }
 
@@ -88,19 +94,39 @@ fn write_request(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &
     let idents = unique(ep.params.iter().map(|p| member_ident(&p.name)).collect());
     let json = fc.rt("Json");
     let codec = fc.rt("Codec");
-    let params: Vec<(String, String)> =
-        ep.params.iter().zip(&idents).map(|(p, id)| (id.clone(), param_doc(p))).collect();
-    doc_comment(w, Some(&format!("The parameters of `{}`. Absent optional parameters are `null`.", ep.name)), &params, None);
+    let params: Vec<(String, String)> = ep
+        .params
+        .iter()
+        .zip(&idents)
+        .map(|(p, id)| (id.clone(), param_doc(p)))
+        .collect();
+    doc_comment(
+        w,
+        Some(&format!(
+            "The parameters of `{}`. Absent optional parameters are `null`.",
+            ep.name
+        )),
+        &params,
+        None,
+    );
     w.line("@SuppressWarnings(\"deprecation\")");
-    let comps: Vec<String> =
-        ep.params.iter().zip(&idents).map(|(p, id)| format!("{} {id}", java_type(fc, &p.ty, p.optional))).collect();
+    let comps: Vec<String> = ep
+        .params
+        .iter()
+        .zip(&idents)
+        .map(|(p, id)| format!("{} {id}", java_type(fc, &p.ty, p.optional)))
+        .collect();
     if comps.is_empty() {
         w.open(format!("public record {name}()"));
     } else {
         w.line(format!("public record {name}("));
         w.indent().indent();
         for (i, c) in comps.iter().enumerate() {
-            w.line(if i + 1 == comps.len() { format!("{c}) {{") } else { format!("{c},") });
+            w.line(if i + 1 == comps.len() {
+                format!("{c}) {{")
+            } else {
+                format!("{c},")
+            });
         }
         w.dedent();
     }
@@ -114,7 +140,10 @@ fn write_request(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &
             let get = if p.optional { "opt" } else { "req" };
             let sep = if i + 1 == ep.params.len() { ");" } else { "," };
             let c = codec_expr(fc, &p.ty);
-            w.line(format!("{codec}.{get}(params, {}, {c}){sep}", java_str(&p.name)));
+            w.line(format!(
+                "{codec}.{get}(params, {}, {c}){sep}",
+                java_str(&p.name)
+            ));
         }
         end_call(w);
     }
@@ -142,7 +171,11 @@ fn param_doc(p: &Param) -> String {
         Binding::Header => format!("header `{}`", p.header.as_deref().unwrap_or(&p.name)),
         Binding::Body => "request body".to_string(),
     };
-    if p.optional { format!("The {place}; optional.") } else { format!("The {place}.") }
+    if p.optional {
+        format!("The {place}; optional.")
+    } else {
+        format!("The {place}.")
+    }
 }
 
 fn binding_name(b: Binding) -> &'static str {
@@ -163,13 +196,20 @@ fn auth_expr(fc: &mut FileCtx<'_, '_>, ep: &Endpoint) -> String {
         AuthKind::ApiKey => "API_KEY",
     };
     let spec = fc.rt("EndpointSpec");
-    let header = ep.auth.header.as_deref().map_or_else(|| "null".to_string(), java_str);
+    let header = ep
+        .auth
+        .header
+        .as_deref()
+        .map_or_else(|| "null".to_string(), java_str);
     format!("new {spec}.Auth({spec}.AuthKind.{kind}, {header})")
 }
 
 fn param_expr(fc: &mut FileCtx<'_, '_>, p: &Param) -> String {
     let spec = fc.rt("EndpointSpec");
-    let header = p.header.as_deref().map_or_else(|| "null".to_string(), java_str);
+    let header = p
+        .header
+        .as_deref()
+        .map_or_else(|| "null".to_string(), java_str);
     let ty = schema_expr(fc, &p.ty, &p.constraints, false);
     format!(
         "new {spec}.Param({}, {spec}.Binding.{}, {header}, {ty}, {})",
@@ -200,7 +240,13 @@ fn write_list(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, items: &[String], tr
 /// `private static final EndpointSpec NAME = new EndpointSpec(...);`
 pub fn write_spec_const(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, ep: &Endpoint) {
     let spec = fc.rt("EndpointSpec");
-    open_call(w, format!("private static final {spec} {} = new {spec}", spec_const(ep)));
+    open_call(
+        w,
+        format!(
+            "private static final {spec} {} = new {spec}",
+            spec_const(ep)
+        ),
+    );
     w.line(format!("{},", java_str(&ep.name)));
     w.line(format!("{},", java_str(ep.method.as_str())));
     w.line(format!("{},", java_str(&ep.path)));
@@ -220,7 +266,10 @@ pub fn write_spec_const(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, ep: &Endpo
         .iter()
         .map(|e| {
             let class = fc.decl(e.decl);
-            format!("new {spec}.Declared({}, {class}.VELD_SIG, {class}.SCHEMA, {class}::fromWire)", e.status)
+            format!(
+                "new {spec}.Declared({}, {class}.VELD_SIG, {class}.SCHEMA, {class}::fromWire)",
+                e.status
+            )
         })
         .collect();
     write_list(w, fc, &errors, ");");
