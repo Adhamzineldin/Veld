@@ -1,0 +1,13 @@
+package dev.veld.runtime;
+
+import java.util.List;
+import java.util.function.Function;
+
+/**
+ * What a generated client knows about its service.
+ *
+ * @param envVar the environment variable consulted for the base URL, such as {@code VELD_ORDERS_URL}
+ * @param baseUrl the base URL baked in from the contract, or {@code null}
+ * @param validation builds the local {@code ValidationError} for a request that fails validation
+ */
+public record ClientDefaults(String envVar, String baseUrl, Function<List<Issue>, VeldError> validation) {}

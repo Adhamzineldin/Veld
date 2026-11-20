@@ -1,0 +1,90 @@
+package dev.veld.runtime;
+
+import java.util.List;
+
+/**
+ * The description of one endpoint, shared by the router core and the client core.
+ *
+ * @param name the endpoint name
+ * @param method the HTTP method
+ * @param path the full path with {@code {param}} segments
+ * @param sig the operation signature (spec/ir.md section 5.2)
+ * @param status the success status
+ * @param auth the authentication scheme, or {@code null}
+ * @param params the parameters and where they are bound
+ * @param success the success type, or {@code null} for no body
+ * @param errors the declared errors
+ */
+public record EndpointSpec(
+    String name,
+    String method,
+    String path,
+    String sig,
+    int status,
+    Auth auth,
+    List<Param> params,
+    Schema success,
+    List<Declared> errors) {
+
+  /** Creates a description (the lists are copied). */
+  public EndpointSpec {
+    params = List.copyOf(params);
+    errors = List.copyOf(errors);
+  }
+
+  /** Where a parameter is bound. */
+  public enum Binding {
+    PATH, QUERY, QUERY_OBJECT, HEADER, BODY
+  }
+
+  /** An authentication scheme. */
+  public enum AuthKind {
+    BEARER, BASIC, API_KEY
+  }
+
+  /**
+   * An authentication requirement.
+   *
+   * @param kind the scheme
+   * @param header the header carrying an API key, or {@code null} for the default
+   */
+  public record Auth(AuthKind kind, String header) {}
+
+  /**
+   * A parameter.
+   *
+   * @param name the parameter name
+   * @param binding where it is bound
+   * @param header the header name for {@link Binding#HEADER}, otherwise {@code null}
+   * @param type the parameter type
+   * @param optional whether it may be absent
+   */
+  public record Param(String name, Binding binding, String header, Schema type, boolean optional) {
+    String location() {
+      return switch (binding) {
+        case PATH -> "path." + name;
+        case BODY -> "body";
+        case QUERY_OBJECT -> "query";
+        case QUERY -> "query." + name;
+        case HEADER -> "header." + (header == null ? name : header);
+      };
+    }
+  }
+
+  /** Builds a typed error from its wire data. */
+  @FunctionalInterface
+  public interface ErrorFactory {
+    /** Creates the error. */
+    VeldError create(Json data, int status, String op);
+  }
+
+  /**
+   * A declared error response.
+   *
+   * @param status the status this endpoint answers with
+   * @param sig the error declaration signature
+   * @param schema the schema of the error data
+   * @param factory builds the typed error from its data
+   */
+  public record Declared(int status, String sig, Schema schema, ErrorFactory factory) {}
+}
