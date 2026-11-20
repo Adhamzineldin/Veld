@@ -26,18 +26,11 @@ const methods = [
     run: 'veld generate',
   },
   {
-    id: 'go',
-    label: 'Go',
+    id: 'cargo',
+    label: 'Cargo',
     icon: <Terminal size={16} />,
-    command: 'go install github.com/Adhamzineldin/Veld/cmd/veld@latest',
+    command: 'cargo install --git https://github.com/Adhamzineldin/Veld veld',
     run: 'veld generate',
-  },
-  {
-    id: 'composer',
-    label: 'Composer',
-    icon: <Package size={16} />,
-    command: 'composer require maayn/veld',
-    run: 'vendor/bin/veld generate',
   },
 ];
 

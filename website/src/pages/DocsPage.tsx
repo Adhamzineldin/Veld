@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { highlightVeld, highlightTS } from '../components/SyntaxHighlighter';
+import V1Banner from '../components/V1Banner';
 import styles from './DocsPage.module.css';
 
 const sidebarSections = [
@@ -170,11 +171,13 @@ export default function DocsPage() {
     pnpm: { install: 'pnpm add -g @maayn/veld', run: 'veld generate' },
     pip: { install: 'pip install maayn-veld', run: 'veld generate' },
     brew: { install: 'brew install maayn-veld/tap/maayn-veld', run: 'veld generate' },
-    go: { install: 'go install github.com/Adhamzineldin/Veld/cmd/veld@latest', run: 'veld generate' },
+    cargo: { install: 'cargo install --git https://github.com/Adhamzineldin/Veld veld', run: 'veld generate' },
     binary: { install: '# Download from GitHub Releases:\n# https://github.com/Adhamzineldin/Veld/releases\n# Extract and add to your PATH', run: 'veld generate' },
   };
 
   return (
+    <>
+    <V1Banner />
     <div className={styles.docsLayout}>
       <div
         className={`${styles.mobileOverlay} ${sidebarOpen ? styles.mobileOverlayOpen : ''}`}
@@ -2516,5 +2519,6 @@ veld registry token create --name … --scopes read,write`}
 
       </div>
     </div>
+    </>
   );
 }
