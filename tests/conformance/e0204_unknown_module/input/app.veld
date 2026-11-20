@@ -1,0 +1,3 @@
+use nothing.{User}
+
+model A { a: int }

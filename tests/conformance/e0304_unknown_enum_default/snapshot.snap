@@ -1,0 +1,12 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0304]: enum `Status` has no variant `shipped` (variants: pending, paid)
+ --> app/app.veld:3:23
+  |
+3 | model A { s: Status = .shipped }
+  |                       ^^^^^^^^
+
+== ir ==
+(no IR: compilation failed)

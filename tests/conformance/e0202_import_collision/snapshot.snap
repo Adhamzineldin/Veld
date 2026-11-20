@@ -1,0 +1,17 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0202]: imported name `User` collides with another name in this module
+ --> app/orders.veld:1:17
+  |
+1 | use lib:common.{User}
+  |                 ^^^^
+ --> app/orders.veld:3:7
+  |
+3 | model User { id: uuid }
+  |       ---- already declared or imported here
+  = help: rename it with `as`: `use mod.{Name as Other}`
+
+== ir ==
+(no IR: compilation failed)

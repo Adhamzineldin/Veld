@@ -1,0 +1,37 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0303]: expected a `int` value, found a string
+ --> app/app.veld:3:12
+  |
+3 |   a: int = "text"
+  |            ^^^^^^
+
+error[E0303]: `99999999999` does not fit in a 32-bit `int`
+ --> app/app.veld:4:12
+  |
+4 |   b: int = 99999999999
+  |            ^^^^^^^^^^^
+
+error[E0303]: a literal cannot be used as a value of type `B`
+ --> app/app.veld:5:10
+  |
+5 |   c: B = 1
+  |          ^
+
+error[E0303]: optional field `d` cannot have a default
+ --> app/app.veld:6:3
+  |
+6 |   d?: int = 1
+  |   ^^^^^^^^^^^
+  = help: drop the `?`: a field with a default is required in output and optional in input
+
+error[E0303]: expected a `string` value, found null
+ --> app/app.veld:7:15
+  |
+7 |   e: string = null
+  |               ^^^^
+
+== ir ==
+(no IR: compilation failed)

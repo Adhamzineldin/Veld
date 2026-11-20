@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0204]: package `app` has no module `nothing`
+ --> app/app.veld:1:5
+  |
+1 | use nothing.{User}
+  |     ^^^^^^^
+  = help: modules in `app`: app, users
+
+== ir ==
+(no IR: compilation failed)

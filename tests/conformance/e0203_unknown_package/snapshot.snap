@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0203]: unknown package `ghost`
+ --> app/app.veld:1:5
+  |
+1 | use ghost:users.{User}
+  |     ^^^^^
+  = help: known packages: app
+
+== ir ==
+(no IR: compilation failed)

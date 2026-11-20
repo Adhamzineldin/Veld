@@ -1,0 +1,31 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0302]: `B` is not generic
+ --> app/app.veld:3:6
+  |
+3 |   a: B<int>
+  |      ^^^^^^
+  = help: only `Map<string, T>` and `Page<T>` take type arguments
+
+error[E0302]: `Map` takes two type arguments: `Map<string, T>`
+ --> app/app.veld:4:6
+  |
+4 |   b: Map<string>
+  |      ^^^^^^^^^^^
+
+error[E0302]: scalar `string` takes no type arguments
+ --> app/app.veld:5:6
+  |
+5 |   c: string<int>
+  |      ^^^^^^^^^^^
+
+error[E0302]: `Page` takes exactly one type argument: `Page<T>`
+ --> app/app.veld:6:6
+  |
+6 |   d: Page
+  |      ^^^^
+
+== ir ==
+(no IR: compilation failed)

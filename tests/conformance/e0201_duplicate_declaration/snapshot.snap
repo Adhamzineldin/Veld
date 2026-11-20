@@ -1,0 +1,17 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0201]: `User` is already declared in package `app`
+ --> app/users.veld:1:7
+  |
+1 | model User { id: uuid }
+  |       ^^^^
+ --> app/accounts.veld:1:7
+  |
+1 | model User { name: string }
+  |       ---- first declared here
+  = help: declaration names are unique across all modules of a package
+
+== ir ==
+(no IR: compilation failed)

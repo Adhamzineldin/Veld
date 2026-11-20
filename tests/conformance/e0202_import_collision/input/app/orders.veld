@@ -1,0 +1,3 @@
+use lib:common.{User}
+
+model User { id: uuid }

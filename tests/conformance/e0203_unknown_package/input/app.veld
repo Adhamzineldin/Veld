@@ -1,0 +1,3 @@
+use ghost:users.{User}
+
+model A { u: User }
