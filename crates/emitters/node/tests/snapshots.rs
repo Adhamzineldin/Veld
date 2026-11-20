@@ -283,3 +283,47 @@ fn changed_contract_changes_signatures() {
     };
     assert_ne!(sig(&a), sig(&c));
 }
+
+#[test]
+fn typescript_edition_is_validated_centrally() {
+    let ir = standard_ir();
+    let orders = service_id(&ir, "Orders");
+    let req = GenRequest {
+        ir: &ir,
+        role: Role::Server,
+        services: vec![orders],
+        consumes: vec![],
+        framework: Some("express".into()),
+    };
+    let err = Node
+        .generate_dyn(&req, &serde_json::json!({ "typescript": "es2015" }))
+        .unwrap_err();
+    assert_eq!(err[0].code, "E0802");
+    assert!(
+        err[0].message.contains("es2020, es2022"),
+        "{}",
+        err[0].message
+    );
+    let err = Node
+        .generate_dyn(&req, &serde_json::json!({ "framework-version": "4" }))
+        .unwrap_err();
+    assert_eq!(err[0].code, "E0803");
+    assert!(err[0].message.contains("no versions"), "{}", err[0].message);
+    // The same output for every supported edition.
+    let base = Node.generate_dyn(&req, &serde_json::Value::Null).unwrap();
+    for edition in ["es2020", "es2022"] {
+        let files = Node
+            .generate_dyn(&req, &serde_json::json!({ "typescript": edition }))
+            .unwrap();
+        assert_eq!(base, files, "{edition}");
+    }
+    let client = GenRequest {
+        role: Role::Client,
+        framework: None,
+        ..req.clone()
+    };
+    let err = TypeScript
+        .generate_dyn(&client, &serde_json::json!({ "typescript": "es5" }))
+        .unwrap_err();
+    assert_eq!(err[0].code, "E0802");
+}

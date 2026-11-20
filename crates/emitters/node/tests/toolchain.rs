@@ -80,25 +80,9 @@ fn write_json(path: &Path, value: &Value) {
     std::fs::write(path, serde_json::to_string_pretty(value).unwrap()).unwrap();
 }
 
-fn generated_only_config(dirs: &[&str], module: &str) -> Value {
-    let (module_resolution, module) = if module == "nodenext" {
-        ("nodenext", "nodenext")
-    } else {
-        ("node10", "commonjs")
-    };
-    json!({
-        "compilerOptions": {
-            "strict": true, "target": "ES2022", "lib": ["ES2022"], "types": [],
-            "module": module, "moduleResolution": module_resolution,
-            "noEmit": true, "skipLibCheck": false,
-            "noUnusedLocals": false, "forceConsistentCasingInFileNames": true
-        },
-        "include": dirs.iter().map(|d| format!("{d}/**/*.ts")).collect::<Vec<_>>()
-    })
-}
-
-#[test]
-fn generated_typescript_compiles_and_behaves() {
+/// Runs `body` once per language version of the matrix (`typescript = "es2020"|"es2022"` with the
+/// matching `tsc --target`), or skips when the toolchain is missing.
+fn matrix(body: fn(&Path, &str, &str)) {
     let tsc_path = match locate_toolchain() {
         Ok(p) => p,
         Err(why) => {
@@ -110,7 +94,29 @@ fn generated_typescript_compiles_and_behaves() {
             return;
         }
     };
+    for (edition, target) in TARGETS {
+        body(&tsc_path, edition, target);
+    }
+}
 
+fn generated_only_config(dirs: &[&str], module: &str, target: &str) -> Value {
+    let (module_resolution, module) = if module == "nodenext" {
+        ("nodenext", "nodenext")
+    } else {
+        ("node10", "commonjs")
+    };
+    json!({
+        "compilerOptions": {
+            "strict": true, "target": target, "lib": [target], "types": [],
+            "module": module, "moduleResolution": module_resolution,
+            "noEmit": true, "skipLibCheck": false,
+            "noUnusedLocals": false, "forceConsistentCasingInFileNames": true
+        },
+        "include": dirs.iter().map(|d| format!("{d}/**/*.ts")).collect::<Vec<_>>()
+    })
+}
+
+fn generated_typescript_compiles_and_behaves(tsc_path: &Path, edition: &str, target: &str) {
     let a = standard_ir();
     let c = compile_contract("orders", &|s| {
         s.replace(
@@ -130,12 +136,18 @@ fn generated_typescript_compiles_and_behaves() {
     let put = |dir: &str, files: &veld_codegen::FileSet| {
         write(&work.join(dir), files, &opts).unwrap();
     };
-    put("server", &gen_server(&a, "Orders", &["Iam"]));
-    put("server_iam", &gen_server(&a, "Iam", &[]));
-    put("copy_a", &gen_client(&a));
-    put("copy_b", &gen_client(&a));
-    put("copy_c", &gen_client(&c));
-    put("copy_d", &gen_client(&d));
+    put(
+        "server",
+        &gen_server_with(&a, "Orders", &["Iam"], &typescript_option(edition)),
+    );
+    put(
+        "server_iam",
+        &gen_server_with(&a, "Iam", &[], &typescript_option(edition)),
+    );
+    put("copy_a", &gen_client_with(&a, &typescript_option(edition)));
+    put("copy_b", &gen_client_with(&a, &typescript_option(edition)));
+    put("copy_c", &gen_client_with(&c, &typescript_option(edition)));
+    put("copy_d", &gen_client_with(&d, &typescript_option(edition)));
 
     write_json(
         &work.join("sigs.json"),
@@ -156,28 +168,28 @@ fn generated_typescript_compiles_and_behaves() {
     ];
     write_json(
         &work.join("tsconfig.commonjs.json"),
-        &generated_only_config(&dirs, "commonjs"),
+        &generated_only_config(&dirs, "commonjs", target),
     );
     write_json(
         &work.join("tsconfig.nodenext.json"),
-        &generated_only_config(&dirs, "nodenext"),
+        &generated_only_config(&dirs, "nodenext", target),
     );
-    tsc(&tsc_path, work, "tsconfig.commonjs.json");
-    tsc(&tsc_path, work, "tsconfig.nodenext.json");
+    tsc(tsc_path, work, "tsconfig.commonjs.json");
+    tsc(tsc_path, work, "tsconfig.nodenext.json");
 
     // 2. Behaviour scripts compile (with Node and Express types) and run.
     write_json(
         &work.join("tsconfig.json"),
         &json!({
             "compilerOptions": {
-                "strict": true, "target": "ES2022", "lib": ["ES2022"], "types": ["node"],
+                "strict": true, "target": target, "lib": [target], "types": ["node"],
                 "module": "commonjs", "moduleResolution": "node10", "esModuleInterop": true,
                 "skipLibCheck": true, "outDir": "out", "rootDir": "."
             },
             "include": ["*.ts", "server/**/*.ts", "server_iam/**/*.ts", "copy_a/**/*.ts", "copy_b/**/*.ts", "copy_c/**/*.ts", "copy_d/**/*.ts"]
         }),
     );
-    tsc(&tsc_path, work, "tsconfig.json");
+    tsc(tsc_path, work, "tsconfig.json");
     for script in ["roundtrip", "equality", "wire"] {
         let mut cmd = Command::new("node");
         cmd.arg(format!("out/{script}.js"))
@@ -187,21 +199,14 @@ fn generated_typescript_compiles_and_behaves() {
     }
 }
 
+#[test]
+fn generated_typescript_compiles_and_behaves_per_version() {
+    matrix(generated_typescript_compiles_and_behaves);
+}
+
 /// Endpoints, fields, models and enum variants named with every hazardous identifier must
 /// still compile under `tsc --strict`, on the server and the client.
-#[test]
-fn hazardous_identifiers_compile_strict() {
-    let tsc_path = match locate_toolchain() {
-        Ok(p) => p,
-        Err(why) => {
-            assert!(
-                std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"),
-                "toolchain required but unavailable: {why}"
-            );
-            eprintln!("SKIPPED toolchain test: {why}");
-            return;
-        }
-    };
+fn hazardous_identifiers_compile_strict(tsc_path: &Path, edition: &str, target: &str) {
     let ir = hazards_ir();
     std::fs::create_dir_all(toolchain_dir().join(".work")).unwrap();
     let work_guard = tempfile::Builder::new()
@@ -210,33 +215,36 @@ fn hazardous_identifiers_compile_strict() {
         .unwrap();
     let work = work_guard.path();
     let opts = WriteOptions::default();
-    write(&work.join("server"), &gen_server(&ir, "Weird", &[]), &opts).unwrap();
-    write(&work.join("client"), &gen_client(&ir), &opts).unwrap();
+    write(
+        &work.join("server"),
+        &gen_server_with(&ir, "Weird", &[], &typescript_option(edition)),
+        &opts,
+    )
+    .unwrap();
+    write(
+        &work.join("client"),
+        &gen_client_with(&ir, &typescript_option(edition)),
+        &opts,
+    )
+    .unwrap();
     for module in ["commonjs", "nodenext"] {
         write_json(
             &work.join(format!("tsconfig.{module}.json")),
-            &generated_only_config(&["server", "client"], module),
+            &generated_only_config(&["server", "client"], module, target),
         );
-        tsc(&tsc_path, work, &format!("tsconfig.{module}.json"));
+        tsc(tsc_path, work, &format!("tsconfig.{module}.json"));
     }
+}
+
+#[test]
+fn hazardous_identifiers_compile_strict_per_version() {
+    matrix(hazardous_identifiers_compile_strict);
 }
 
 /// Errors raised by two separately generated servers over real HTTP and decoded by clients from
 /// two separately generated packages: `same()` holds for the same service, op and payload, and
 /// fails for a different payload and for the other service's otherwise identical error.
-#[test]
-fn equality_holds_over_http_across_packages() {
-    let tsc_path = match locate_toolchain() {
-        Ok(p) => p,
-        Err(why) => {
-            assert!(
-                std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"),
-                "toolchain required but unavailable: {why}"
-            );
-            eprintln!("SKIPPED toolchain test: {why}");
-            return;
-        }
-    };
+fn equality_holds_over_http_across_packages(tsc_path: &Path, edition: &str, target: &str) {
     let ir = equality_ir();
     std::fs::create_dir_all(toolchain_dir().join(".work")).unwrap();
     let work_guard = tempfile::Builder::new()
@@ -247,13 +255,28 @@ fn equality_holds_over_http_across_packages() {
     let opts = WriteOptions::default();
     write(
         &work.join("srv_alpha"),
-        &gen_server(&ir, "Alpha", &[]),
+        &gen_server_with(&ir, "Alpha", &[], &typescript_option(edition)),
         &opts,
     )
     .unwrap();
-    write(&work.join("srv_beta"), &gen_server(&ir, "Beta", &[]), &opts).unwrap();
-    write(&work.join("cli_1"), &gen_client(&ir), &opts).unwrap();
-    write(&work.join("cli_2"), &gen_client(&ir), &opts).unwrap();
+    write(
+        &work.join("srv_beta"),
+        &gen_server_with(&ir, "Beta", &[], &typescript_option(edition)),
+        &opts,
+    )
+    .unwrap();
+    write(
+        &work.join("cli_1"),
+        &gen_client_with(&ir, &typescript_option(edition)),
+        &opts,
+    )
+    .unwrap();
+    write(
+        &work.join("cli_2"),
+        &gen_client_with(&ir, &typescript_option(edition)),
+        &opts,
+    )
+    .unwrap();
     std::fs::copy(
         toolchain_dir().join("http_equality.ts"),
         work.join("http_equality.ts"),
@@ -263,15 +286,20 @@ fn equality_holds_over_http_across_packages() {
         &work.join("tsconfig.json"),
         &json!({
             "compilerOptions": {
-                "strict": true, "target": "ES2022", "lib": ["ES2022"], "types": ["node"],
+                "strict": true, "target": target, "lib": [target], "types": ["node"],
                 "module": "commonjs", "moduleResolution": "node10", "esModuleInterop": true,
                 "skipLibCheck": true, "outDir": "out", "rootDir": "."
             },
             "include": ["*.ts", "srv_alpha/**/*.ts", "srv_beta/**/*.ts", "cli_1/**/*.ts", "cli_2/**/*.ts"]
         }),
     );
-    tsc(&tsc_path, work, "tsconfig.json");
+    tsc(tsc_path, work, "tsconfig.json");
     let mut cmd = Command::new("node");
     cmd.arg("out/http_equality.js").current_dir(work);
     run(&mut cmd, "node http_equality.js");
+}
+
+#[test]
+fn equality_holds_over_http_across_packages_per_version() {
+    matrix(equality_holds_over_http_across_packages);
 }

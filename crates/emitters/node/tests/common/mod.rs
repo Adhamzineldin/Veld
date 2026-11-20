@@ -78,6 +78,7 @@ fn run(
     role: Role,
     services: Vec<ServiceId>,
     consumes: Vec<ServiceId>,
+    options: &serde_json::Value,
 ) -> FileSet {
     let req = GenRequest {
         ir,
@@ -90,18 +91,42 @@ fn run(
     let diags = check_capabilities(ir, &req, &caps);
     assert!(diags.is_empty(), "capability errors: {diags:?}");
     generator
-        .generate_dyn(&req, &serde_json::Value::Null)
+        .generate_dyn(&req, options)
         .unwrap_or_else(|d| panic!("generation failed: {d:?}"))
+}
+
+/// The language versions every toolchain test compiles for: the target option `typescript` and
+/// the matching `tsc --target`.
+pub const TARGETS: [(&str, &str); 2] = [("es2020", "ES2020"), ("es2022", "ES2022")];
+
+/// The target options that select the ECMAScript edition `edition`.
+pub fn typescript_option(edition: &str) -> serde_json::Value {
+    serde_json::json!({ "typescript": edition })
 }
 
 /// Client files for every service of the IR.
 pub fn gen_client(ir: &Ir) -> FileSet {
+    gen_client_with(ir, &serde_json::Value::Null)
+}
+
+/// Client files for every service of the IR, with target options.
+pub fn gen_client_with(ir: &Ir, options: &serde_json::Value) -> FileSet {
     let all = ir.services.iter().map(|s| s.id).collect();
-    run(&TypeScript, ir, Role::Client, all, vec![])
+    run(&TypeScript, ir, Role::Client, all, vec![], options)
 }
 
 /// Server files for `service`, with clients for `consumes`.
 pub fn gen_server(ir: &Ir, service: &str, consumes: &[&str]) -> FileSet {
+    gen_server_with(ir, service, consumes, &serde_json::Value::Null)
+}
+
+/// Server files for `service`, with clients for `consumes`, with target options.
+pub fn gen_server_with(
+    ir: &Ir,
+    service: &str,
+    consumes: &[&str],
+    options: &serde_json::Value,
+) -> FileSet {
     let consumed = consumes.iter().map(|n| service_id(ir, n)).collect();
     run(
         &Node,
@@ -109,6 +134,7 @@ pub fn gen_server(ir: &Ir, service: &str, consumes: &[&str]) -> FileSet {
         Role::Server,
         vec![service_id(ir, service)],
         consumed,
+        options,
     )
 }
 

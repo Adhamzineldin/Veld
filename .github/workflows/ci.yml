@@ -26,10 +26,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      # Both JDKs are installed; the last one (21) is the default on PATH. javac 21 compiles the
+      # generated code for `--release 17` and `--release 21` (the version matrix of the toolchain tests).
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: |
+            17
+            21
       - name: Install the pinned TypeScript toolchain
         run: npm ci --prefix tests/toolchain/ts
       - name: Format
@@ -40,6 +44,28 @@ jobs:
         run: cargo test --workspace
         env:
           VELD_REQUIRE_TOOLCHAINS: "1"
+
+  java17:
+    name: generated Java runs on a JDK 17 JVM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install the pinned TypeScript toolchain
+        run: npm ci --prefix tests/toolchain/ts
+      - name: Java toolchain tests with javac and java 17 (release 17 only)
+        run: cargo test -p veld-emit-java --test toolchain
+        env:
+          VELD_REQUIRE_TOOLCHAINS: "1"
+          VELD_JAVA_RELEASES: "17"
 
   determinism:
     name: determinism (${{ matrix.os }})

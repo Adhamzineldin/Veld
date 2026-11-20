@@ -266,3 +266,66 @@ fn spring_adapter_only_with_the_spring_framework() {
             .is_some()
     );
 }
+
+#[test]
+fn language_and_framework_versions_are_validated_centrally() {
+    let ir = standard_ir();
+    let orders = service_id(&ir, "Orders");
+    let req = |role, framework: Option<&str>| GenRequest {
+        ir: &ir,
+        role,
+        services: vec![orders],
+        consumes: vec![],
+        framework: framework.map(str::to_string),
+    };
+    let err = |role, framework, options: serde_json::Value| {
+        Java.generate_dyn(&req(role, framework), &options)
+            .unwrap_err()
+            .remove(0)
+    };
+    let bad_java = err(Role::Client, None, serde_json::json!({ "java": "11" }));
+    assert_eq!(bad_java.code, "E0802");
+    assert!(bad_java.message.contains("17, 21"), "{}", bad_java.message);
+    let bad_version = err(
+        Role::Server,
+        Some("spring"),
+        serde_json::json!({ "framework-version": "2" }),
+    );
+    assert_eq!(bad_version.code, "E0803");
+    assert!(bad_version.message.contains("expected one of: 3"));
+    let unversioned = err(
+        Role::Server,
+        Some("jdk"),
+        serde_json::json!({ "framework-version": "1" }),
+    );
+    assert_eq!(unversioned.code, "E0803");
+    // Valid combinations generate, and the options never reach the typed `Options`.
+    for java in ["17", "21"] {
+        let options = serde_json::json!({ "java": java, "framework-version": "3" });
+        assert!(
+            Java.generate_dyn(&req(Role::Server, Some("spring")), &options)
+                .is_ok(),
+            "java {java}"
+        );
+    }
+}
+
+/// `java = "21"` does not change the output: the profile only gates newer syntax, and the
+/// generated code is the same for every supported release.
+#[test]
+fn java_release_does_not_change_the_default_output() {
+    let ir = standard_ir();
+    let run_with = |options: serde_json::Value| {
+        run(
+            &ir,
+            Role::Client,
+            ir.services.iter().map(|s| s.id).collect(),
+            vec![],
+            None,
+            options,
+        )
+    };
+    let base = run_with(serde_json::json!({ "package": "gen.a" }));
+    let v21 = run_with(serde_json::json!({ "package": "gen.a", "java": "21" }));
+    assert_eq!(base, v21);
+}

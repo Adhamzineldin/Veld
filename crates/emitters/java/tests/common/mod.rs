@@ -93,8 +93,37 @@ pub fn run(
         .unwrap_or_else(|d| panic!("generation failed: {d:?}"))
 }
 
+/// The Java releases every toolchain test compiles for: the target option `java` and the matching
+/// `javac --release`. The first is the default.
+pub const RELEASES: [&str; 2] = ["17", "21"];
+
+/// [`RELEASES`] narrowed by the env var `VELD_JAVA_RELEASES` (a comma list, for example `17` on a
+/// machine whose `javac` is JDK 17 and cannot compile `--release 21`).
+pub fn releases() -> Vec<&'static str> {
+    match std::env::var("VELD_JAVA_RELEASES") {
+        Ok(only) => RELEASES
+            .into_iter()
+            .filter(|r| only.split(',').any(|o| o.trim() == *r))
+            .collect(),
+        Err(_) => RELEASES.to_vec(),
+    }
+}
+
+/// Target options with the base package and, when given, the Java release.
+pub fn options(package: &str, release: Option<&str>) -> serde_json::Value {
+    match release {
+        Some(r) => serde_json::json!({ "package": package, "java": r }),
+        None => serde_json::json!({ "package": package }),
+    }
+}
+
 /// Client files for every service of the IR, in the Java package `package`.
 pub fn gen_client(ir: &Ir, package: &str) -> FileSet {
+    gen_client_for(ir, package, None)
+}
+
+/// Like [`gen_client`], for the Java release `release`.
+pub fn gen_client_for(ir: &Ir, package: &str, release: Option<&str>) -> FileSet {
     let all = ir.services.iter().map(|s| s.id).collect();
     run(
         ir,
@@ -102,7 +131,7 @@ pub fn gen_client(ir: &Ir, package: &str) -> FileSet {
         all,
         vec![],
         None,
-        serde_json::json!({ "package": package }),
+        options(package, release),
     )
 }
 
@@ -114,6 +143,18 @@ pub fn gen_server(
     package: &str,
     framework: Option<&str>,
 ) -> FileSet {
+    gen_server_for(ir, service, consumes, package, framework, None)
+}
+
+/// Like [`gen_server`], for the Java release `release`.
+pub fn gen_server_for(
+    ir: &Ir,
+    service: &str,
+    consumes: &[&str],
+    package: &str,
+    framework: Option<&str>,
+    release: Option<&str>,
+) -> FileSet {
     let consumed = consumes.iter().map(|n| service_id(ir, n)).collect();
     run(
         ir,
@@ -121,7 +162,7 @@ pub fn gen_server(
         vec![service_id(ir, service)],
         consumed,
         framework,
-        serde_json::json!({ "package": package }),
+        options(package, release),
     )
 }
 
