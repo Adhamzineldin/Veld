@@ -61,7 +61,10 @@ impl ConfigError {
             Self::OutputOverlap { .. } => Some("E0703"),
             Self::OutputForbidden { .. } => Some("E0704"),
             Self::PluginHashMismatch { .. } => Some("E0705"),
-            _ => None,
+            Self::NotFound { .. }
+            | Self::Io { .. }
+            | Self::SymlinkEscape { .. }
+            | Self::NonUtf8Path { .. } => None,
         }
     }
 

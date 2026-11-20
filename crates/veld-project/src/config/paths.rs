@@ -23,7 +23,9 @@ pub(crate) fn normalize(path: &Path) -> PathBuf {
                     out.push("..");
                 }
             }
-            other => out.push(other.as_os_str()),
+            other @ (Component::Prefix(_) | Component::RootDir | Component::Normal(_)) => {
+                out.push(other.as_os_str());
+            }
         }
     }
     out
