@@ -144,7 +144,10 @@ pub fn plan(config_path: &Path, project: &Project, package: Option<&str>) -> Res
         .into_iter()
         .map(|(path, text)| (path, text.into_bytes()))
         .collect();
-    let manifest = PackageManifest::new(&name, &version, meta.description.as_deref(), &files);
+    // The package's own `[dependencies]` travel in its manifest, so installing it can resolve
+    // its whole graph. For a workspace, every package shares the project's dependencies.
+    let manifest = PackageManifest::new(&name, &version, meta.description.as_deref(), &files)
+        .with_dependencies(project.dependencies.clone());
     let packed = pack(&manifest, &files)?;
     Ok(PublishPlan {
         name,
@@ -184,6 +187,28 @@ mod tests {
         assert_eq!(plan.parts().unwrap(), ("acme", "lib"));
         let again = super::plan(&path, &p, None).unwrap();
         assert_eq!(plan.packed, again.packed, "deterministic");
+    }
+
+    #[test]
+    fn dependencies_are_written_to_the_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (path, p) = project(
+            tmp.path(),
+            "[project]
+name = \"lib\"
+package = \"@acme/billing\"
+version = \"1.0.0\"
+[dependencies]
+\"@acme/money\" = \"^1.0\"
+",
+        );
+        let plan = plan(&path, &p, None).unwrap();
+        let files =
+            crate::tarball::read_archive(&plan.packed.bytes, &crate::tarball::Limits::default())
+                .unwrap();
+        let text = String::from_utf8(files[veld_project::packages::MANIFEST_FILE].clone()).unwrap();
+        let m = PackageManifest::parse(&text).unwrap();
+        assert_eq!(m.dependencies["@acme/money"], "^1.0");
     }
 
     #[test]
