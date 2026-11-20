@@ -1,96 +1,46 @@
-# Veld — Package Manager Wrappers
+# Veld distribution wrappers (2.x)
 
-This directory contains wrapper packages for distributing the Veld CLI through
-various package managers. Each wrapper downloads the pre-built Go binary for the
-user's platform from GitHub Releases.
+The `veld` CLI is one self-contained Rust binary. The wrappers here only download the release
+binary for the user's platform, verify its SHA256 against the release's `SHA256SUMS`, and run it.
 
-## Supported Package Managers
+| Channel | Package | Install |
+|---|---|---|
+| npm | `@maayn/veld` | `npm install -g @maayn/veld` |
+| pip | `maayn-veld` | `pip install maayn-veld` |
+| Homebrew | `maayn-veld/tap/maayn-veld` | `brew install maayn-veld/tap/maayn-veld` |
+| source | | `cargo install --git https://github.com/Adhamzineldin/Veld veld` |
 
-| Manager    | Package                  | Install Command                                       |
-|------------|--------------------------|-------------------------------------------------------|
-| **npm**    | `veld`                   | `npm install veld` / `npx veld generate`              |
-| **pip**    | `veld`                   | `pip install veld`                                    |
-| **Homebrew** | `maayn-veld/tap/maayn-veld` | `brew install maayn-veld/tap/maayn-veld`              |
-| **Go**     | `github.com/Adhamzineldin/Veld` | `go install github.com/Adhamzineldin/Veld/cmd/veld@latest` |
-| **Composer** | `maayn/veld`           | `composer require maayn/veld`                         |
+All three wrappers are at version `2.0.0-beta.1` and fetch from
+`https://github.com/Adhamzineldin/Veld/releases/download/v<version>/`.
 
-## How they work
+## Release assets
 
-All wrappers follow the same pattern:
+Built by `.github/workflows/release.yml` when a `v*` tag is pushed:
 
-1. On install (or first run), detect platform and architecture
-2. Download the pre-built binary from `https://github.com/Adhamzineldin/Veld/releases/download/v{VERSION}/veld-{os}-{arch}`
-3. Cache the binary locally
-4. Proxy all CLI arguments to the binary
+| Asset | Platform |
+|---|---|
+| `veld-x86_64-unknown-linux-musl.tar.gz` | Linux x64 |
+| `veld-aarch64-unknown-linux-musl.tar.gz` | Linux arm64 |
+| `veld-x86_64-apple-darwin.tar.gz` | macOS x64 |
+| `veld-aarch64-apple-darwin.tar.gz` | macOS arm64 |
+| `veld-x86_64-pc-windows-msvc.zip` | Windows x64 |
+| `veld-registry-linux-amd64.tar.gz`, `veld-registry-linux-arm64.tar.gz` | the Go registry server |
+| `SHA256SUMS` | checksums of all of the above |
 
-If the download fails, each wrapper falls back to `go install`.
+Each `veld` archive contains the `veld` (or `veld.exe`) binary at its root.
 
-## Release workflow
+## Maintained and archived channels
 
-Releases are **fully automated** via GitHub Actions (`.github/workflows/release.yml`).
+npm, pip and Homebrew are maintained in 2.x. The Go (`go install`), NuGet, Chocolatey, apt and
+Composer channels wrapped the v1 Go binary and are **not maintained for 2.0**. They are kept for
+reference in [`archive/v1/distribution/`](../archive/v1/distribution). They can come back
+later as wrappers around the same release assets.
 
-### How to release
+## Releasing
 
-```bash
-# 1. Commit your changes
-git add -A && git commit -m "feat: your changes"
+1. Tag the commit: `git tag v2.0.0-beta.1 && git push origin v2.0.0-beta.1`.
+2. The workflow builds, checksums and uploads the assets (tags with a `-` are marked pre-release).
+3. Publish the wrappers (see [PUBLISHING.md](PUBLISHING.md)). For Homebrew run
+   `homebrew/update-formula.sh SHA256SUMS` first.
 
-# 2. Tag with a version
-git tag v0.2.0
-
-# 3. Push the tag
-git push origin v0.2.0
-```
-
-That's it. The CI pipeline will:
-
-1. **Run tests** — `go test ./... -race`
-2. **Build binaries** — cross-compile for linux/darwin/windows × amd64/arm64
-3. **Create GitHub Release** — upload all archives + SHA256 checksums + auto-generated changelog
-4. **Publish to npm** — updates version and runs `npm publish`
-5. **Publish to PyPI** — updates version and runs `twine upload`
-6. **Update Homebrew formula** — computes SHA256 hashes and patches `Formula/veld.rb`
-
-### Required secrets
-
-Set these in your GitHub repo → Settings → Secrets → Actions:
-
-| Secret | Required for | How to get |
-|--------|-------------|------------|
-| `NPM_TOKEN` | npm publish | npmjs.com → Access Tokens → Generate |
-| `PYPI_TOKEN` | pip publish | pypi.org → Account Settings → API tokens |
-| `HOMEBREW_TAP_TOKEN` | Homebrew tap push (optional) | GitHub PAT with `repo` scope on the tap repo |
-
-> `GITHUB_TOKEN` is provided automatically — no setup needed for the release itself.
-
-### Pre-release versions
-
-Tags with a hyphen (e.g. `v0.2.0-beta.1`) are published as **pre-release** on GitHub
-and **skip** npm/pip/Homebrew publishing.
-
-## Directory structure
-
-```
-packages/
-├── npm/              # npm wrapper (Node.js)
-│   ├── package.json
-│   ├── bin/veld.js
-│   ├── install.js
-│   └── README.md
-├── pip/              # pip wrapper (Python)
-│   ├── pyproject.toml
-│   ├── veld/__init__.py
-│   ├── veld/__main__.py
-│   └── README.md
-├── homebrew/         # Homebrew formula (macOS/Linux)
-│   ├── Formula/maayn-veld.rb
-│   └── README.md
-├── composer/         # Composer wrapper (PHP)
-│   ├── composer.json
-│   ├── bin/veld
-│   ├── src/Installer.php
-│   └── README.md
-└── go/               # Go install instructions
-    └── README.md
-```
-
+Optional workflow secrets: `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` enable the registry Docker image push.
