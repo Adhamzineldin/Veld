@@ -11,7 +11,7 @@ use veld_ir::{AuthKind, Binding, Endpoint, Ir, Param, Service, ServiceId};
 
 use crate::tree::{FileCtx, Tree};
 use crate::types::ts_type;
-use crate::util::{add_file, doc_comment, prop_key, ts_str};
+use crate::util::{add_file, doc_comment, method_key, prop_key, ts_str};
 use crate::validate::schema_expr;
 
 /// Names of request interfaces. `<Endpoint>Request`, prefixed by the service name
@@ -189,7 +189,7 @@ fn write_service(
     doc_comment(w, svc.docs.as_deref(), None);
     w.open(format!("export class {class}"));
     let core = fc.rt("ClientCore");
-    w.line(format!("private readonly core: {core};"));
+    w.line(format!("readonly #core: {core};"));
     w.blank();
     write_constructor(w, fc, svc);
     for ep in &svc.endpoints {
@@ -204,7 +204,7 @@ fn write_constructor(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service
     let core = fc.rt("ClientCore");
     let validation = validation_expr(fc);
     w.open(format!("constructor(opts: {opts} = {{}})"));
-    w.open_with(format!("this.core = new {core}(opts,"), " {");
+    w.open_with(format!("this.#core = new {core}(opts,"), " {");
     w.line(format!(
         "envVar: {},",
         ts_str(&format!("VELD_{}_URL", naming::screaming_snake(&svc.name)))
@@ -249,10 +249,10 @@ fn write_method(
     let init = fc.rt("CallInit");
     w.open(format!(
         "{}(req: {req}{default}, init?: {init}): Promise<{ret}>",
-        prop_key(&ep.name)
+        method_key(&ep.name)
     ));
     w.line(format!(
-        "return this.core.call({}, req, init) as Promise<{ret}>;",
+        "return this.#core.call({}, req, init) as Promise<{ret}>;",
         op_const(svc, ep)
     ));
     w.close();
