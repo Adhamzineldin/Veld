@@ -82,7 +82,8 @@ impl<'a> FileConv<'a> {
     }
 
     pub fn warn(&mut self, msg: impl AsRef<str>) {
-        self.warnings.push(format!("{}: {}", self.rel, msg.as_ref()));
+        self.warnings
+            .push(format!("{}: {}", self.rel, msg.as_ref()));
     }
 
     /// The v2 text of a type name; records references to user types.
@@ -105,7 +106,9 @@ impl<'a> FileConv<'a> {
     }
 
     pub fn kind_of(&self, t: &V1Type) -> Kind {
-        let V1Type::Named(n) = t else { return Kind::Other };
+        let V1Type::Named(n) = t else {
+            return Kind::Other;
+        };
         match scalar(n) {
             Some("string" | "uuid" | "date" | "datetime") => Kind::Str,
             Some("int" | "long") => Kind::Int,
@@ -147,7 +150,11 @@ fn float_literal(raw: &str, v: &Value, decimal: bool) -> Option<String> {
     if !n.is_finite() {
         return None;
     }
-    Some(if raw.contains('.') && !raw.ends_with('.') { raw.to_string() } else { raw.trim_end_matches('.').to_string() })
+    Some(if raw.contains('.') && !raw.ends_with('.') {
+        raw.to_string()
+    } else {
+        raw.trim_end_matches('.').to_string()
+    })
 }
 
 #[cfg(test)]
@@ -177,7 +184,10 @@ mod tests {
         assert_eq!(c.type_text(&t), "Map<string, Item[]>");
         assert!(c.refs.contains("Item"));
         assert_eq!(c.type_text(&named("NotFound")), "NotFound");
-        assert!(!c.refs.contains("NotFound"), "prelude names are not imported");
+        assert!(
+            !c.refs.contains("NotFound"),
+            "prelude names are not imported"
+        );
     }
 
     #[test]
@@ -192,9 +202,15 @@ mod tests {
         assert_eq!(lit(Value::Num("2.5".into()), "decimal"), Some("2.5".into()));
         assert_eq!(lit(Value::Str("x".into()), "string"), Some("\"x\"".into()));
         assert_eq!(lit(Value::Num("7".into()), "string"), Some("\"7\"".into()));
-        assert_eq!(lit(Value::Ident("true".into()), "bool"), Some("true".into()));
+        assert_eq!(
+            lit(Value::Ident("true".into()), "bool"),
+            Some("true".into())
+        );
         assert_eq!(lit(Value::Ident("yes".into()), "bool"), None);
-        assert_eq!(lit(Value::Ident("user".into()), "Role"), Some(".user".into()));
+        assert_eq!(
+            lit(Value::Ident("user".into()), "Role"),
+            Some(".user".into())
+        );
         assert_eq!(lit(Value::Ident("x".into()), "Mystery"), None);
         assert_eq!(lit(Value::Str("abc".into()), "int"), None);
     }

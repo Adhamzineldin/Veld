@@ -36,7 +36,10 @@ pub fn migrate_v1(files: &[(String, String)]) -> MigrateResult {
     let mut warnings = Vec::new();
     let mut sorted: Vec<&(String, String)> = files.iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
-    let sources: Vec<Source> = sorted.iter().map(|(p, t)| parse_source(p, t, &mut warnings)).collect();
+    let sources: Vec<Source> = sorted
+        .iter()
+        .map(|(p, t)| parse_source(p, t, &mut warnings))
+        .collect();
     let ctx = Ctx::collect(&sources);
     warnings.extend(ctx.warnings.iter().cloned());
     let mut out = Vec::new();
@@ -47,13 +50,18 @@ pub fn migrate_v1(files: &[(String, String)]) -> MigrateResult {
     }
     check_imports(&sources, &mut warnings);
     check_compiles(&out, &mut warnings);
-    MigrateResult { files: out, warnings }
+    MigrateResult {
+        files: out,
+        warnings,
+    }
 }
 
 fn parse_source(rel: &str, text: &str, warnings: &mut Vec<String>) -> Source {
     let (_, _, renamed) = names::module_of(rel);
     if renamed {
-        warnings.push(format!("{rel}: path segments are not valid identifiers; the module path was sanitized"));
+        warnings.push(format!(
+            "{rel}: path segments are not valid identifiers; the module path was sanitized"
+        ));
     }
     let parsed = match v1::parse(text) {
         Ok(p) => {
@@ -68,14 +76,22 @@ fn parse_source(rel: &str, text: &str, warnings: &mut Vec<String>) -> Source {
     Source::new(rel, text, parsed)
 }
 
-fn convert_source(ctx: &Ctx, sources: &[Source], idx: usize, warnings: &mut Vec<String>) -> Option<String> {
+fn convert_source(
+    ctx: &Ctx,
+    sources: &[Source],
+    idx: usize,
+    warnings: &mut Vec<String>,
+) -> Option<String> {
     let s = &sources[idx];
     let file = match &s.parsed {
         Ok(f) => f,
         Err(e) => return Some(unparsed(s, e)),
     };
     if file.items.is_empty() && file.trailing.is_empty() {
-        warnings.push(format!("{}: only contains imports or settings; no v2 file is needed", s.rel));
+        warnings.push(format!(
+            "{}: only contains imports or settings; no v2 file is needed",
+            s.rel
+        ));
         return None;
     }
     let mut c = FileConv::new(ctx, &s.rel);
@@ -118,7 +134,10 @@ fn finish(rel: &str, text: String, warnings: &mut Vec<String>) -> String {
         Ok(t) => t,
         Err(diags) => {
             let codes: Vec<&str> = diags.iter().map(|d| d.code).collect();
-            warnings.push(format!("{rel}: the migrated source could not be formatted ({})", codes.join(", ")));
+            warnings.push(format!(
+                "{rel}: the migrated source could not be formatted ({})",
+                codes.join(", ")
+            ));
             text
         }
     }
@@ -126,7 +145,12 @@ fn finish(rel: &str, text: String, warnings: &mut Vec<String>) -> String {
 
 /// A file that failed to parse is kept as comments so no text is lost.
 fn unparsed(s: &Source, error: &str) -> String {
-    let mut out = format!("{}\n", todo_comment(&format!("this v1 file could not be parsed ({error}); the original follows")));
+    let mut out = format!(
+        "{}\n",
+        todo_comment(&format!(
+            "this v1 file could not be parsed ({error}); the original follows"
+        ))
+    );
     for l in s.raw.lines() {
         out.push_str(&format!("// {l}\n"));
     }
@@ -145,27 +169,45 @@ fn use_lines(c: &FileConv<'_>, sources: &[Source], idx: usize) -> Vec<String> {
             .or_else(|| c.ctx.errors.values().find(|g| &g.name == r).map(|g| g.file));
         match target {
             Some(t) if t != idx => {
-                by_module.entry(sources[t].module.as_str()).or_default().insert(r.as_str());
+                by_module
+                    .entry(sources[t].module.as_str())
+                    .or_default()
+                    .insert(r.as_str());
             }
             _ => {}
         }
     }
     by_module
         .into_iter()
-        .map(|(m, names)| format!("use {m}.{{{}}}", names.into_iter().collect::<Vec<_>>().join(", ")))
+        .map(|(m, names)| {
+            format!(
+                "use {m}.{{{}}}",
+                names.into_iter().collect::<Vec<_>>().join(", ")
+            )
+        })
         .collect()
 }
 
 /// Imports are rebuilt from the names each file uses. Warn about explicit
 /// imports that match no file, because they may have named something missing.
 fn check_imports(sources: &[Source], warnings: &mut Vec<String>) {
-    let stems: Vec<&str> = sources.iter().map(|s| s.rel.strip_suffix(".veld").unwrap_or(&s.rel)).collect();
+    let stems: Vec<&str> = sources
+        .iter()
+        .map(|s| s.rel.strip_suffix(".veld").unwrap_or(&s.rel))
+        .collect();
     for s in sources {
         let Ok(f) = &s.parsed else { continue };
         for imp in f.imports.iter().filter(|i| !i.glob) {
-            let hit = stems.iter().any(|st| *st == imp.text || st.ends_with(&format!("/{}", imp.text)) || st.ends_with(&imp.text));
+            let hit = stems.iter().any(|st| {
+                *st == imp.text
+                    || st.ends_with(&format!("/{}", imp.text))
+                    || st.ends_with(&imp.text)
+            });
             if !hit {
-                warnings.push(format!("{}: import `{}` matches no file in this package", s.rel, imp.text));
+                warnings.push(format!(
+                    "{}: import `{}` matches no file in this package",
+                    s.rel, imp.text
+                ));
             }
         }
     }
@@ -179,7 +221,10 @@ fn check_compiles(files: &[(String, String)], warnings: &mut Vec<String>) {
             kind: PackageKind::Service,
             files: files
                 .iter()
-                .map(|(p, t)| SourceFile { path: p.clone(), text: t.clone() })
+                .map(|(p, t)| SourceFile {
+                    path: p.clone(),
+                    text: t.clone(),
+                })
                 .collect(),
             base_url: None,
         }],
@@ -189,9 +234,17 @@ fn check_compiles(files: &[(String, String)], warnings: &mut Vec<String>) {
         let loc = out
             .sources
             .line_col(d.primary.file, d.primary.start)
-            .map(|(l, c)| format!("{}:{l}:{c}", out.sources.path(d.primary.file).unwrap_or("?")))
+            .map(|(l, c)| {
+                format!(
+                    "{}:{l}:{c}",
+                    out.sources.path(d.primary.file).unwrap_or("?")
+                )
+            })
             .unwrap_or_default();
-        warnings.push(format!("migrated output has an error {} at {loc}: {}", d.code, d.message));
+        warnings.push(format!(
+            "migrated output has an error {} at {loc}: {}",
+            d.code, d.message
+        ));
     }
 }
 

@@ -67,10 +67,21 @@ fn diff_decl(ctx: &Ctx<'_>, o: &Decl, n: &Decl, role: Role, out: &mut Vec<Change
         _ => out.push(Change::breaking(
             ChangeKind::DeclKindChanged,
             q,
-            format!("`{}` changed from {} to {}", o.name, kind_name(o), kind_name(n)),
+            format!(
+                "`{}` changed from {} to {}",
+                o.name,
+                kind_name(o),
+                kind_name(n)
+            ),
         )),
     }
-    diff_docs(q, &o.name, (&o.docs, &n.docs), (&o.deprecated, &n.deprecated), out);
+    diff_docs(
+        q,
+        &o.name,
+        (&o.docs, &n.docs),
+        (&o.deprecated, &n.deprecated),
+        out,
+    );
 }
 
 /// Docs and deprecation changes of a named element; always non-breaking.
@@ -82,7 +93,11 @@ pub(super) fn diff_docs(
     out: &mut Vec<Change>,
 ) {
     if docs.0 != docs.1 {
-        out.push(Change::non_breaking(ChangeKind::DocsChanged, subject, format!("docs of `{what}` changed")));
+        out.push(Change::non_breaking(
+            ChangeKind::DocsChanged,
+            subject,
+            format!("docs of `{what}` changed"),
+        ));
     }
     match (dep.0, dep.1) {
         (None, Some(m)) => out.push(Change::non_breaking(
@@ -141,7 +156,11 @@ fn diff_fields(
                 format!("required field `{w}` was added to a request type"),
             ));
         } else {
-            out.push(Change::non_breaking(ChangeKind::FieldAdded, q, format!("field `{w}` was added")));
+            out.push(Change::non_breaking(
+                ChangeKind::FieldAdded,
+                q,
+                format!("field `{w}` was added"),
+            ));
         }
     }
 }
@@ -157,7 +176,11 @@ fn diff_field(
     let (o, n) = pair;
     let w = &o.wire;
     if shape && ctx.type_key(true, &o.ty) != ctx.type_key(false, &n.ty) {
-        out.push(Change::breaking(ChangeKind::FieldTypeChanged, q, format!("type of field `{w}` changed")));
+        out.push(Change::breaking(
+            ChangeKind::FieldTypeChanged,
+            q,
+            format!("type of field `{w}` changed"),
+        ));
     }
     if !request_required(o) && request_required(n) {
         out.push(Change::when(
@@ -175,8 +198,20 @@ fn diff_field(
             format!("field `{w}` became optional"),
         ));
     }
-    push_constraint_changes(out, q, &format!("field `{w}`"), &o.constraints, &n.constraints);
-    diff_docs(q, w, (&o.docs, &n.docs), (&o.deprecated, &n.deprecated), out);
+    push_constraint_changes(
+        out,
+        q,
+        &format!("field `{w}`"),
+        &o.constraints,
+        &n.constraints,
+    );
+    diff_docs(
+        q,
+        w,
+        (&o.docs, &n.docs),
+        (&o.deprecated, &n.deprecated),
+        out,
+    );
 }
 
 fn diff_enum(q: &str, o: &Enum, n: &Enum, role: Role, out: &mut Vec<Change>) {
@@ -206,7 +241,10 @@ fn diff_union(ctx: &Ctx<'_>, q: &str, pair: (&Union, &Union), role: Role, out: &
         out.push(Change::breaking(
             ChangeKind::DiscriminatorChanged,
             q,
-            format!("discriminator changed from `{}` to `{}`", o.discriminator, n.discriminator),
+            format!(
+                "discriminator changed from `{}` to `{}`",
+                o.discriminator, n.discriminator
+            ),
         ));
     }
     let target = |ir: &Ir, d| ir.decl(d).qualified.clone();
@@ -217,15 +255,21 @@ fn diff_union(ctx: &Ctx<'_>, q: &str, pair: (&Union, &Union), role: Role, out: &
                 q,
                 format!("union arm `{}` was removed", a.label),
             )),
-            Some(b) if target(ctx.old, a.decl) != target(ctx.new, b.decl) => out.push(Change::breaking(
-                ChangeKind::UnionArmChanged,
-                q,
-                format!("union arm `{}` now points to a different model", a.label),
-            )),
+            Some(b) if target(ctx.old, a.decl) != target(ctx.new, b.decl) => {
+                out.push(Change::breaking(
+                    ChangeKind::UnionArmChanged,
+                    q,
+                    format!("union arm `{}` now points to a different model", a.label),
+                ))
+            }
             Some(_) => {}
         }
     }
-    for b in n.arms.iter().filter(|b| !o.arms.iter().any(|a| a.label == b.label)) {
+    for b in n
+        .arms
+        .iter()
+        .filter(|b| !o.arms.iter().any(|a| a.label == b.label))
+    {
         let breaking = role.response && !role.request;
         out.push(Change::when(
             breaking,
@@ -238,8 +282,16 @@ fn diff_union(ctx: &Ctx<'_>, q: &str, pair: (&Union, &Union), role: Role, out: &
 
 fn diff_const(ctx: &Ctx<'_>, q: &str, o: &Const, n: &Const, out: &mut Vec<Change>) {
     if ctx.type_key(true, &o.ty) != ctx.type_key(false, &n.ty) {
-        out.push(Change::breaking(ChangeKind::ConstChanged, q, "constant type changed"));
+        out.push(Change::breaking(
+            ChangeKind::ConstChanged,
+            q,
+            "constant type changed",
+        ));
     } else if o.value != n.value {
-        out.push(Change::non_breaking(ChangeKind::ConstChanged, q, "constant value changed"));
+        out.push(Change::non_breaking(
+            ChangeKind::ConstChanged,
+            q,
+            "constant value changed",
+        ));
     }
 }

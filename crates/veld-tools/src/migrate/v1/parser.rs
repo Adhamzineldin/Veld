@@ -17,7 +17,12 @@ pub(super) struct Parser {
 
 impl Parser {
     pub fn new(toks: Vec<Token>, comments: Vec<Comment>) -> Parser {
-        Parser { toks, pos: 0, comments, cpos: 0 }
+        Parser {
+            toks,
+            pos: 0,
+            comments,
+            cpos: 0,
+        }
     }
 
     // ---- token helpers --------------------------------------------------
@@ -37,7 +42,9 @@ impl Parser {
     }
 
     fn prev_line(&self) -> usize {
-        self.toks.get(self.pos.saturating_sub(1)).map_or(0, |t| t.line)
+        self.toks
+            .get(self.pos.saturating_sub(1))
+            .map_or(0, |t| t.line)
     }
 
     fn advance(&mut self) -> Tok {
@@ -69,7 +76,11 @@ impl Parser {
         if self.eat(t) {
             Ok(())
         } else {
-            self.err(format!("expected {}, found {}", t.describe(), self.peek().describe()))
+            self.err(format!(
+                "expected {}, found {}",
+                t.describe(),
+                self.peek().describe()
+            ))
         }
     }
 
@@ -163,7 +174,9 @@ impl Parser {
                 }
                 "model" => file.items.push(Item::Model(self.model(pending)?)),
                 "enum" => file.items.push(Item::Enum(self.enum_decl(pending)?)),
-                "constants" | "constant" => file.items.push(Item::Constants(self.constants(pending)?)),
+                "constants" | "constant" => {
+                    file.items.push(Item::Constants(self.constants(pending)?))
+                }
                 "module" => file.items.push(Item::Module(self.module(pending)?)),
                 other => return self.err(format!("unexpected token `{other}`")),
             }
@@ -204,9 +217,16 @@ impl Parser {
             }
             Tok::Str(s) => {
                 self.advance();
-                s.trim_start_matches("./").trim_start_matches("../").to_string()
+                s.trim_start_matches("./")
+                    .trim_start_matches("../")
+                    .to_string()
             }
-            other => return self.err(format!("expected an import path, found {}", other.describe())),
+            other => {
+                return self.err(format!(
+                    "expected an import path, found {}",
+                    other.describe()
+                ));
+            }
         };
         let text = text.trim_end_matches(".veld").to_string();
         let glob = text.ends_with('*');
@@ -226,13 +246,19 @@ impl Parser {
         }
         self.advance();
         if self.eat(&Tok::Star) {
-            return Ok(Import { text: format!("{folder}/*"), glob: true });
+            return Ok(Import {
+                text: format!("{folder}/*"),
+                glob: true,
+            });
         }
         let first = self.ident("an imported name")?;
         while self.eat(&Tok::Comma) {
             self.ident("an imported name")?;
         }
-        Ok(Import { text: format!("{folder}/{first}"), glob: false })
+        Ok(Import {
+            text: format!("{folder}/{first}"),
+            glob: false,
+        })
     }
 
     // ---- enums and constants -------------------------------------------
@@ -261,7 +287,12 @@ impl Parser {
         }
         self.expect(&Tok::RBrace)?;
         comments.extend(self.take_comments_through(self.prev_line()));
-        Ok(Enum { name, description, values, comments })
+        Ok(Enum {
+            name,
+            description,
+            values,
+            comments,
+        })
     }
 
     fn constants(&mut self, mut comments: Comments) -> R<ConstantGroup> {
@@ -277,11 +308,21 @@ impl Parser {
             let ty = self.ident("a constant type")?;
             self.expect(&Tok::Eq)?;
             let value = self.value()?;
-            items.push(Constant { name: cname, ty, value, comments: c });
+            items.push(Constant {
+                name: cname,
+                ty,
+                value,
+                comments: c,
+            });
         }
         self.expect(&Tok::RBrace)?;
         comments.extend(self.take_comments_through(self.prev_line()));
-        Ok(ConstantGroup { name, description, items, comments })
+        Ok(ConstantGroup {
+            name,
+            description,
+            items,
+            comments,
+        })
     }
 
     // ---- models ---------------------------------------------------------
@@ -303,7 +344,13 @@ impl Parser {
         }
         self.expect(&Tok::RBrace)?;
         comments.extend(self.take_comments_through(self.prev_line()));
-        Ok(Model { name, extends, description, fields, comments })
+        Ok(Model {
+            name,
+            extends,
+            description,
+            fields,
+            comments,
+        })
     }
 
     fn field(&mut self) -> R<Field> {
@@ -349,7 +396,12 @@ impl Parser {
                 match self.advance() {
                     Tok::Ident(n) => union.push(UnionAlt::Type(n)),
                     Tok::Str(s) => union.push(UnionAlt::Literal(s)),
-                    other => return self.err(format!("expected a type after `|`, found {}", other.describe())),
+                    other => {
+                        return self.err(format!(
+                            "expected a type after `|`, found {}",
+                            other.describe()
+                        ));
+                    }
                 }
             }
         }
@@ -446,7 +498,10 @@ impl Parser {
         self.advance();
         let name = self.ident("a module name")?;
         self.expect(&Tok::LBrace)?;
-        let mut m = Module { name, ..Module::default() };
+        let mut m = Module {
+            name,
+            ..Module::default()
+        };
         while !matches!(self.peek(), Tok::RBrace | Tok::Eof) {
             self.module_item(&mut m)?;
         }
@@ -474,7 +529,10 @@ impl Parser {
             let a = self.action()?;
             m.actions.push(a);
         } else {
-            return self.err(format!("unexpected token {} in module body", self.peek().describe()));
+            return self.err(format!(
+                "unexpected token {} in module body",
+                self.peek().describe()
+            ));
         }
         Ok(())
     }
@@ -484,7 +542,10 @@ impl Parser {
         self.advance();
         let name = self.ident("an action name")?;
         self.expect(&Tok::LBrace)?;
-        let mut a = Action { name, ..Action::default() };
+        let mut a = Action {
+            name,
+            ..Action::default()
+        };
         while !matches!(self.peek(), Tok::RBrace | Tok::Eof) {
             self.action_item(&mut a)?;
         }
@@ -492,7 +553,10 @@ impl Parser {
         comments.extend(self.take_comments_through(self.prev_line()));
         a.comments = comments;
         if a.method.is_empty() || a.path.is_empty() {
-            return self.err(format!("action `{}` needs both `method` and `path`", a.name));
+            return self.err(format!(
+                "action `{}` needs both `method` and `path`",
+                a.name
+            ));
         }
         Ok(a)
     }
@@ -550,7 +614,8 @@ impl Parser {
 
     fn output(&mut self) -> R<Output> {
         let ty = self.type_ref()?;
-        let array = matches!(self.peek(), Tok::LBracket) && matches!(self.peek_at(1), Tok::RBracket);
+        let array =
+            matches!(self.peek(), Tok::LBracket) && matches!(self.peek_at(1), Tok::RBracket);
         if array {
             self.advance();
             self.advance();
@@ -573,7 +638,12 @@ impl Parser {
         while !matches!(self.peek(), Tok::RBrace | Tok::Eof) {
             let name = match self.advance() {
                 Tok::Str(s) | Tok::Ident(s) => s,
-                other => return self.err(format!("expected a header name, found {}", other.describe())),
+                other => {
+                    return self.err(format!(
+                        "expected a header name, found {}",
+                        other.describe()
+                    ));
+                }
             };
             let optional = self.eat(&Tok::Question);
             self.expect(&Tok::Colon)?;

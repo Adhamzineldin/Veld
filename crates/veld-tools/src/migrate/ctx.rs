@@ -18,7 +18,13 @@ pub(super) struct Source {
 impl Source {
     pub fn new(rel: &str, raw: &str, parsed: Result<V1File, String>) -> Source {
         let (module, out_path, _) = module_of(rel);
-        Source { rel: rel.to_string(), raw: raw.to_string(), out_path, module, parsed }
+        Source {
+            rel: rel.to_string(),
+            raw: raw.to_string(),
+            out_path,
+            module,
+            parsed,
+        }
     }
 }
 
@@ -79,7 +85,9 @@ impl Ctx {
             match item {
                 Item::Model(m) => {
                     self.declare(&m.name, idx, rel);
-                    self.models.entry(m.name.clone()).or_insert_with(|| m.fields.clone());
+                    self.models
+                        .entry(m.name.clone())
+                        .or_insert_with(|| m.fields.clone());
                 }
                 Item::Enum(e) => {
                     self.declare(&e.name, idx, rel);
@@ -105,11 +113,20 @@ impl Ctx {
         if prelude_status(name).is_some() || self.errors.contains_key(name) {
             return;
         }
-        let final_name = if self.decls.contains_key(name) { format!("{name}Error") } else { name.to_string() };
+        let final_name = if self.decls.contains_key(name) {
+            format!("{name}Error")
+        } else {
+            name.to_string()
+        };
         let guess = status.or_else(|| inferred_status(name));
         self.errors.insert(
             name.to_string(),
-            GenError { name: final_name, status: guess.unwrap_or(400), inferred: status.is_none(), file: idx },
+            GenError {
+                name: final_name,
+                status: guess.unwrap_or(400),
+                inferred: status.is_none(),
+                file: idx,
+            },
         );
     }
 
@@ -150,7 +167,10 @@ mod tests {
         assert!(ctx.enums.contains("E"));
         assert!(!ctx.errors.contains_key("NotFound"));
         let teapot = ctx.errors.get("Teapot");
-        assert_eq!(teapot.map(|e| (e.name.as_str(), e.status, e.file)), Some(("Teapot", 418, 1)));
+        assert_eq!(
+            teapot.map(|e| (e.name.as_str(), e.status, e.file)),
+            Some(("Teapot", 418, 1))
+        );
         assert_eq!(ctx.errors.get("A").map(|e| e.name.as_str()), Some("AError"));
     }
 

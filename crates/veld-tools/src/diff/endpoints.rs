@@ -67,7 +67,9 @@ fn removed(o: &Endpoint, new: &BTreeMap<Key, (&Service, &Endpoint)>) -> Change {
         .values()
         .find(|(_, n)| n.method == o.method && erased(&n.path) == erased(&o.path))
         .map(|(_, n)| n.name.as_str());
-    let hint = twin.map_or_else(String::new, |t| format!(" (same route now served by `{t}`)"));
+    let hint = twin.map_or_else(String::new, |t| {
+        format!(" (same route now served by `{t}`)")
+    });
     Change::breaking(
         ChangeKind::EndpointRemoved,
         subject(o),
@@ -82,7 +84,11 @@ fn diff_endpoint(ctx: &Ctx<'_>, o: &Endpoint, n: &Endpoint, out: &mut Vec<Change
             out.push(Change::breaking(
                 ChangeKind::MethodChanged,
                 s,
-                format!("method changed from {} to {}", o.method.as_str(), n.method.as_str()),
+                format!(
+                    "method changed from {} to {}",
+                    o.method.as_str(),
+                    n.method.as_str()
+                ),
             ));
         }
         if erased(&o.path) != erased(&n.path) {
@@ -97,7 +103,13 @@ fn diff_endpoint(ctx: &Ctx<'_>, o: &Endpoint, n: &Endpoint, out: &mut Vec<Change
     diff_success(ctx, s, o, n, out);
     diff_errors(ctx, s, o, n, out);
     diff_auth(s, o, n, out);
-    diff_docs(s, &o.name, (&o.docs, &n.docs), (&o.deprecated, &n.deprecated), out);
+    diff_docs(
+        s,
+        &o.name,
+        (&o.docs, &n.docs),
+        (&o.deprecated, &n.deprecated),
+        out,
+    );
 }
 
 fn diff_params(ctx: &Ctx<'_>, s: &str, o: &Endpoint, n: &Endpoint, out: &mut Vec<Change>) {
@@ -111,13 +123,21 @@ fn diff_params(ctx: &Ctx<'_>, s: &str, o: &Endpoint, n: &Endpoint, out: &mut Vec
             Some(q) => diff_param(ctx, s, (p, q), out),
         }
     }
-    for q in n.params.iter().filter(|q| !o.params.iter().any(|p| p.name == q.name)) {
+    for q in n
+        .params
+        .iter()
+        .filter(|q| !o.params.iter().any(|p| p.name == q.name))
+    {
         let required = !q.optional;
         out.push(Change::when(
             required,
             ChangeKind::ParamAdded,
             s,
-            format!("{} parameter `{}` was added", if required { "required" } else { "optional" }, q.name),
+            format!(
+                "{} parameter `{}` was added",
+                if required { "required" } else { "optional" },
+                q.name
+            ),
         ));
     }
 }
@@ -152,7 +172,13 @@ fn diff_param(ctx: &Ctx<'_>, s: &str, pair: (&Param, &Param), out: &mut Vec<Chan
             format!("parameter `{name}` became optional"),
         ));
     }
-    push_constraint_changes(out, s, &format!("parameter `{name}`"), &p.constraints, &q.constraints);
+    push_constraint_changes(
+        out,
+        s,
+        &format!("parameter `{name}`"),
+        &p.constraints,
+        &q.constraints,
+    );
 }
 
 fn diff_success(ctx: &Ctx<'_>, s: &str, o: &Endpoint, n: &Endpoint, out: &mut Vec<Change>) {
@@ -161,11 +187,18 @@ fn diff_success(ctx: &Ctx<'_>, s: &str, o: &Endpoint, n: &Endpoint, out: &mut Ve
         out.push(Change::breaking(
             ChangeKind::SuccessChanged,
             s,
-            format!("success status changed from {} to {}", o.success.status, n.success.status),
+            format!(
+                "success status changed from {} to {}",
+                o.success.status, n.success.status
+            ),
         ));
     }
     if key(true, o) != key(false, n) || o.success.stream != n.success.stream {
-        out.push(Change::breaking(ChangeKind::SuccessChanged, s, "success type changed"));
+        out.push(Change::breaking(
+            ChangeKind::SuccessChanged,
+            s,
+            "success type changed",
+        ));
     }
 }
 
@@ -200,11 +233,23 @@ fn diff_auth(s: &str, o: &Endpoint, n: &Endpoint, out: &mut Vec<Change>) {
         return;
     }
     if o.auth.kind == NoAuth {
-        out.push(Change::breaking(ChangeKind::AuthAdded, s, "authentication is now required"));
+        out.push(Change::breaking(
+            ChangeKind::AuthAdded,
+            s,
+            "authentication is now required",
+        ));
     } else if n.auth.kind == NoAuth {
-        out.push(Change::non_breaking(ChangeKind::AuthRemoved, s, "authentication is no longer required"));
+        out.push(Change::non_breaking(
+            ChangeKind::AuthRemoved,
+            s,
+            "authentication is no longer required",
+        ));
     } else {
-        out.push(Change::breaking(ChangeKind::AuthChanged, s, "authentication scheme changed"));
+        out.push(Change::breaking(
+            ChangeKind::AuthChanged,
+            s,
+            "authentication scheme changed",
+        ));
     }
 }
 

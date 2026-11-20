@@ -10,7 +10,13 @@ use super::schema::{apply_constraints, field_schema, schema_ref, type_schema};
 fn sanitize(header: &str) -> String {
     header
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -20,7 +26,10 @@ pub(super) fn scheme_name(kind: AuthKind, header: Option<&str>) -> Option<String
         AuthKind::None => None,
         AuthKind::Bearer => Some("bearerAuth".into()),
         AuthKind::Basic => Some("basicAuth".into()),
-        AuthKind::ApiKey => Some(format!("apiKey_{}", sanitize(header.unwrap_or("X-API-Key")))),
+        AuthKind::ApiKey => Some(format!(
+            "apiKey_{}",
+            sanitize(header.unwrap_or("X-API-Key"))
+        )),
     }
 }
 
@@ -37,7 +46,11 @@ fn param_object(ir: &Ir, p: &Param) -> Option<Value> {
     let (place, name, required) = match p.binding {
         Binding::Path => ("path", p.name.clone(), true),
         Binding::Query => ("query", p.name.clone(), !p.optional),
-        Binding::Header => ("header", p.header.clone().unwrap_or_else(|| p.name.clone()), !p.optional),
+        Binding::Header => (
+            "header",
+            p.header.clone().unwrap_or_else(|| p.name.clone()),
+            !p.optional,
+        ),
         _ => return None,
     };
     let mut schema = type_schema(ir, &p.ty);
@@ -84,14 +97,20 @@ fn request_body(ir: &Ir, ep: &Endpoint) -> Option<Value> {
     let p = ep.body()?;
     let mut schema = type_schema(ir, &p.ty);
     apply_constraints(&mut schema, &p.ty, &p.constraints);
-    Some(json!({ "required": !p.optional, "content": { "application/json": { "schema": schema } } }))
+    Some(
+        json!({ "required": !p.optional, "content": { "application/json": { "schema": schema } } }),
+    )
 }
 
 fn success_response(ir: &Ir, ep: &Endpoint) -> Value {
     let Some(ty) = &ep.success.ty else {
         return json!({ "description": "No content" });
     };
-    let media = if ep.success.stream { "text/event-stream" } else { "application/json" };
+    let media = if ep.success.stream {
+        "text/event-stream"
+    } else {
+        "application/json"
+    };
     let mut r = json!({
         "description": "Success",
         "content": { media: { "schema": type_schema(ir, ty) } },
@@ -159,7 +178,10 @@ fn responses(ir: &Ir, ep: &Endpoint) -> Value {
 /// The operation object of an endpoint.
 pub(super) fn operation(ir: &Ir, svc: &Service, ep: &Endpoint) -> Value {
     let mut o = Map::new();
-    o.insert("operationId".into(), Value::from(format!("{}.{}", svc.name, ep.name)));
+    o.insert(
+        "operationId".into(),
+        Value::from(format!("{}.{}", svc.name, ep.name)),
+    );
     o.insert("tags".into(), json!([svc.name]));
     if let Some(docs) = &ep.docs {
         let summary = docs.lines().next().unwrap_or_default();

@@ -61,9 +61,21 @@ impl Layout {
         let mut kids: Vec<Node> = file.uses.iter().map(use_node).collect();
         kids.extend(file.decls.iter().map(decl_node));
         kids.sort_by_key(|n| n.start);
-        let mut b = Builder { src, comments, lay: Layout::default() };
+        let mut b = Builder {
+            src,
+            comments,
+            lay: Layout::default(),
+        };
         for i in 0..comments.len() {
-            b.place(&kids, &Parent { key: ROOT, anchor: None, end: u32::MAX }, i);
+            b.place(
+                &kids,
+                &Parent {
+                    key: ROOT,
+                    anchor: None,
+                    end: u32::MAX,
+                },
+                i,
+            );
         }
         b.lay
     }
@@ -110,9 +122,16 @@ impl Builder<'_> {
         if let Some(k) = nodes.iter().find(|k| k.start <= cs && ce <= k.end) {
             if cs < k.kw {
                 let gap = self.gap_after(i, k.kw);
-                self.entry(k.start).leading.push(Lead { comment: c, gap_after: gap });
+                self.entry(k.start).leading.push(Lead {
+                    comment: c,
+                    gap_after: gap,
+                });
             } else if k.braced {
-                let p = Parent { key: k.start, anchor: Some(k.anchor), end: k.end };
+                let p = Parent {
+                    key: k.start,
+                    anchor: Some(k.anchor),
+                    end: k.end,
+                };
                 self.place(&k.kids, &p, i);
             } else {
                 self.entry(k.start).trailing.push(c);
@@ -140,11 +159,17 @@ impl Builder<'_> {
         match nodes.get(pos) {
             Some(next) => {
                 let gap = self.gap_after(i, next.start);
-                self.entry(next.start).leading.push(Lead { comment: c, gap_after: gap });
+                self.entry(next.start).leading.push(Lead {
+                    comment: c,
+                    gap_after: gap,
+                });
             }
             None => {
                 let gap = self.gap_after(i, parent.end);
-                self.entry(parent.key).tail.push(Lead { comment: c, gap_after: gap });
+                self.entry(parent.key).tail.push(Lead {
+                    comment: c,
+                    gap_after: gap,
+                });
             }
         }
     }
@@ -157,11 +182,25 @@ fn first_start(kw: u32, docs: &[Doc], anns: &[ast::Annotation]) -> u32 {
 }
 
 fn use_node(u: &ast::Use) -> Node {
-    Node { start: u.span.start, kw: u.span.start, anchor: u.span.start, end: u.span.end, braced: false, kids: vec![] }
+    Node {
+        start: u.span.start,
+        kw: u.span.start,
+        anchor: u.span.start,
+        end: u.span.end,
+        braced: false,
+        kids: vec![],
+    }
 }
 
 fn leaf(start: u32, kw: u32, end: u32) -> Node {
-    Node { start, kw, anchor: kw, end, braced: false, kids: vec![] }
+    Node {
+        start,
+        kw,
+        anchor: kw,
+        end,
+        braced: false,
+        kids: vec![],
+    }
 }
 
 fn decl_kids(d: &ast::Decl) -> (bool, Vec<Node>) {
@@ -172,15 +211,33 @@ fn decl_kids(d: &ast::Decl) -> (bool, Vec<Node>) {
             true,
             e.variants
                 .iter()
-                .map(|v| leaf(first_start(v.span.start, &v.docs, &v.annotations), v.span.start, v.span.end))
+                .map(|v| {
+                    leaf(
+                        first_start(v.span.start, &v.docs, &v.annotations),
+                        v.span.start,
+                        v.span.end,
+                    )
+                })
                 .collect(),
         ),
-        DeclKind::Union(u) => (true, u.arms.iter().map(|a| leaf(a.span.start, a.span.start, a.span.end)).collect()),
+        DeclKind::Union(u) => (
+            true,
+            u.arms
+                .iter()
+                .map(|a| leaf(a.span.start, a.span.start, a.span.end))
+                .collect(),
+        ),
         DeclKind::Service(s) => (
             true,
             s.endpoints
                 .iter()
-                .map(|e| leaf(first_start(e.span.start, &e.docs, &e.annotations), e.span.start, e.span.end))
+                .map(|e| {
+                    leaf(
+                        first_start(e.span.start, &e.docs, &e.annotations),
+                        e.span.start,
+                        e.span.end,
+                    )
+                })
                 .collect(),
         ),
         DeclKind::Const(_) => (false, vec![]),
@@ -188,15 +245,29 @@ fn decl_kids(d: &ast::Decl) -> (bool, Vec<Node>) {
 }
 
 fn field_node(f: &ast::Field) -> Node {
-    leaf(first_start(f.span.start, &f.docs, &f.annotations), f.span.start, f.span.end)
+    leaf(
+        first_start(f.span.start, &f.docs, &f.annotations),
+        f.span.start,
+        f.span.end,
+    )
 }
 
 /// Node of a declaration. Its `kw` is the span start, which already covers
 /// annotations; docs precede it.
 pub(super) fn decl_node(d: &ast::Decl) -> Node {
     let (braced, kids) = decl_kids(d);
-    let start = d.docs.first().map_or(d.span.start, |x| x.span.start.min(d.span.start));
-    Node { start, kw: d.span.start, anchor: d.name().span.start, end: d.span.end, braced, kids }
+    let start = d
+        .docs
+        .first()
+        .map_or(d.span.start, |x| x.span.start.min(d.span.start));
+    Node {
+        start,
+        kw: d.span.start,
+        anchor: d.name().span.start,
+        end: d.span.end,
+        braced,
+        kids,
+    }
 }
 
 /// Key under which a declaration's comments are stored.

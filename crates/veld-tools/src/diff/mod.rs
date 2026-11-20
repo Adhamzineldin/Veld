@@ -98,7 +98,11 @@ impl Change {
         Change::new(kind, Severity::Breaking, subject, message)
     }
 
-    pub(crate) fn non_breaking(kind: ChangeKind, subject: &str, message: impl Into<String>) -> Change {
+    pub(crate) fn non_breaking(
+        kind: ChangeKind,
+        subject: &str,
+        message: impl Into<String>,
+    ) -> Change {
         Change::new(kind, Severity::NonBreaking, subject, message)
     }
 
@@ -170,14 +174,23 @@ fn text_rule<T: PartialEq>(old: &Option<T>, new: &Option<T>) -> Option<bool> {
 }
 
 /// Constraint changes as (name, tightened).
-pub(crate) fn constraint_changes(old: &Constraints, new: &Constraints) -> Vec<(&'static str, bool)> {
+pub(crate) fn constraint_changes(
+    old: &Constraints,
+    new: &Constraints,
+) -> Vec<(&'static str, bool)> {
     #[allow(clippy::cast_precision_loss)]
     let len = |v: Option<u64>| v.map(|n| n as f64);
     let checks = [
         ("min", bound(old.min, new.min, true)),
         ("max", bound(old.max, new.max, false)),
-        ("min length", bound(len(old.min_len), len(new.min_len), true)),
-        ("max length", bound(len(old.max_len), len(new.max_len), false)),
+        (
+            "min length",
+            bound(len(old.min_len), len(new.min_len), true),
+        ),
+        (
+            "max length",
+            bound(len(old.max_len), len(new.max_len), false),
+        ),
         ("pattern", text_rule(&old.pattern, &new.pattern)),
         ("format", text_rule(&old.format, &new.format)),
     ];
@@ -201,7 +214,12 @@ pub(crate) fn push_constraint_changes(
         } else {
             (ChangeKind::ConstraintLoosened, "loosened")
         };
-        out.push(Change::when(tightened, kind, subject, format!("{what}: {name} constraint {verb}")));
+        out.push(Change::when(
+            tightened,
+            kind,
+            subject,
+            format!("{what}: {name} constraint {verb}"),
+        ));
     }
 }
 

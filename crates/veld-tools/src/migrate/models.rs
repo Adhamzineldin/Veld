@@ -11,7 +11,13 @@ impl FileConv<'_> {
     /// The v2 text of a v1 model.
     pub fn model(&mut self, m: &Model) -> String {
         self.locals.insert(m.name.clone());
-        self.model_text(&m.name, m.extends.as_deref(), &m.description, &m.fields, &m.comments)
+        self.model_text(
+            &m.name,
+            m.extends.as_deref(),
+            &m.description,
+            &m.fields,
+            &m.comments,
+        )
     }
 
     /// Shared by named and inline (synthetic) models.
@@ -41,7 +47,14 @@ impl FileConv<'_> {
         let mut lines = comment_block(&f.comments);
         let ty = self.field_type(model, f, &mut lines);
         let (name, wire) = self.field_name(model, &f.name);
-        let mut line = format!("{name}{}: {ty}", if f.optional && f.default.is_none() { "?" } else { "" });
+        let mut line = format!(
+            "{name}{}: {ty}",
+            if f.optional && f.default.is_none() {
+                "?"
+            } else {
+                ""
+            }
+        );
         if f.optional && f.default.is_some() {
             self.warn(format!(
                 "{model}.{}: optional field with a default; v2 fields with a default are never optional, kept the default and dropped `?`",
@@ -81,7 +94,13 @@ impl FileConv<'_> {
         let literals: Vec<&str> = f
             .union
             .iter()
-            .filter_map(|a| if let UnionAlt::Literal(s) = a { Some(s.as_str()) } else { None })
+            .filter_map(|a| {
+                if let UnionAlt::Literal(s) = a {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
             .collect();
         let only_literals = f.union.iter().all(|a| match a {
             UnionAlt::Literal(_) => true,
@@ -90,9 +109,15 @@ impl FileConv<'_> {
         if only_literals && !literals.is_empty() {
             return self.union_enum(model, &f.name, &literals);
         }
-        let msg = format!("{model}.{}: field-level union of types has no v2 form; typed as json", f.name);
+        let msg = format!(
+            "{model}.{}: field-level union of types has no v2 form; typed as json",
+            f.name
+        );
         self.warn(&msg);
-        lines.push(todo_comment(&format!("{} was a union of types; narrow the json type", f.name)));
+        lines.push(todo_comment(&format!(
+            "{} was a union of types; narrow the json type",
+            f.name
+        )));
         "json".to_string()
     }
 
@@ -100,7 +125,8 @@ impl FileConv<'_> {
     fn union_enum(&mut self, model: &str, field: &str, literals: &[&str]) -> String {
         let name = format!("{model}{}", capitalize(field));
         let variants: Vec<String> = literals.iter().map(|l| variant_text(l)).collect();
-        self.generated.push(format!("enum {name} {{ {} }}", variants.join(", ")));
+        self.generated
+            .push(format!("enum {name} {{ {} }}", variants.join(", ")));
         self.locals.insert(name.clone());
         self.warn(format!(
             "{model}.{field}: union of string literals became the generated enum `{name}`"
@@ -109,7 +135,12 @@ impl FileConv<'_> {
     }
 
     /// `= default` is handled here too, because it is part of the field line.
-    fn field_annotations(&mut self, model: &str, f: &Field, lines: &mut Vec<String>) -> Vec<String> {
+    fn field_annotations(
+        &mut self,
+        model: &str,
+        f: &Field,
+        lines: &mut Vec<String>,
+    ) -> Vec<String> {
         let mut out = Vec::new();
         if let Some(d) = &f.default {
             match self.literal(d, &f.ty) {
@@ -140,18 +171,36 @@ impl FileConv<'_> {
     }
 
     fn dropped(&mut self, model: &str, f: &Field, what: &str, lines: &mut Vec<String>) {
-        self.warn(format!("{model}.{}: the {what} value does not fit type and was dropped", f.name));
-        lines.push(todo_comment(&format!("{what} of `{}` could not be converted", f.name)));
+        self.warn(format!(
+            "{model}.{}: the {what} value does not fit type and was dropped",
+            f.name
+        ));
+        lines.push(todo_comment(&format!(
+            "{what} of `{}` could not be converted",
+            f.name
+        )));
     }
 
     fn unmapped(&mut self, model: &str, f: &Field, lines: &mut Vec<String>) {
         if let Some(r) = &f.relation {
-            self.warn(format!("{model}.{}: @relation({r}) has no v2 equivalent and was dropped", f.name));
-            lines.push(todo_comment(&format!("@relation({r}) on `{}` has no v2 equivalent", f.name)));
+            self.warn(format!(
+                "{model}.{}: @relation({r}) has no v2 equivalent and was dropped",
+                f.name
+            ));
+            lines.push(todo_comment(&format!(
+                "@relation({r}) on `{}` has no v2 equivalent",
+                f.name
+            )));
         }
         for u in &f.unknown {
-            self.warn(format!("{model}.{}: unknown annotation {u} was dropped", f.name));
-            lines.push(todo_comment(&format!("annotation {u} on `{}` was dropped", f.name)));
+            self.warn(format!(
+                "{model}.{}: unknown annotation {u} was dropped",
+                f.name
+            ));
+            lines.push(todo_comment(&format!(
+                "annotation {u} on `{}` was dropped",
+                f.name
+            )));
         }
     }
 
@@ -184,14 +233,24 @@ impl FileConv<'_> {
 
     fn constant(&mut self, group: &str, c: &Constant) -> Vec<String> {
         let mut lines = comment_block(&c.comments);
-        let name = if self.ctx.dup_consts.contains(&c.name) { format!("{group}_{}", c.name) } else { c.name.clone() };
+        let name = if self.ctx.dup_consts.contains(&c.name) {
+            format!("{group}_{}", c.name)
+        } else {
+            c.name.clone()
+        };
         let ty = crate::migrate::v1::ast::V1Type::Named(c.ty.clone());
         let lit = scalar(&c.ty).and_then(|_| self.literal(&c.value, &ty));
         match (scalar(&c.ty), lit) {
             (Some(s), Some(l)) => lines.push(format!("const {name}: {s} = {l}")),
             _ => {
-                self.warn(format!("constant {group}.{} could not be converted", c.name));
-                lines.push(todo_comment(&format!("constant `{}` ({}) could not be converted", c.name, c.ty)));
+                self.warn(format!(
+                    "constant {group}.{} could not be converted",
+                    c.name
+                ));
+                lines.push(todo_comment(&format!(
+                    "constant `{}` ({}) could not be converted",
+                    c.name, c.ty
+                )));
             }
         }
         lines

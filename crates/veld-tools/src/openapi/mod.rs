@@ -31,13 +31,20 @@ pub fn openapi(ir: &Ir, services: &[ServiceId]) -> Value {
     if !ws.is_empty() {
         doc.insert("x-veld-websocket-operations".into(), json!(ws));
     }
-    doc.insert("x-veld-ir-version".into(), Value::from(ir.ir_version.clone()));
+    doc.insert(
+        "x-veld-ir-version".into(),
+        Value::from(ir.ir_version.clone()),
+    );
     Value::Object(doc)
 }
 
 fn info(ir: &Ir, ids: &[ServiceId]) -> Value {
     let names: Vec<&str> = ids.iter().map(|i| ir.service(*i).name.as_str()).collect();
-    let title = if names.is_empty() { "Veld API".to_string() } else { names.join(", ") };
+    let title = if names.is_empty() {
+        "Veld API".to_string()
+    } else {
+        names.join(", ")
+    };
     let desc = ids.iter().find_map(|i| ir.service(*i).docs.clone());
     let mut m = Map::new();
     m.insert("title".into(), Value::from(title));
@@ -87,7 +94,11 @@ fn build_paths(ir: &Ir, ids: &[ServiceId]) -> (Value, Vec<String>) {
 
 fn components(ir: &Ir, ids: &[ServiceId]) -> Value {
     let mut schemas: BTreeMap<String, Value> = BTreeMap::new();
-    let decls = if ids.is_empty() { ir.all_decl_ids() } else { ir.reachable_decls(ids) };
+    let decls = if ids.is_empty() {
+        ir.all_decl_ids()
+    } else {
+        ir.reachable_decls(ids)
+    };
     for id in decls {
         if let Some(s) = schema::decl_schema(ir, ir.decl(id)) {
             schemas.insert(schema::schema_name(ir, id), s);

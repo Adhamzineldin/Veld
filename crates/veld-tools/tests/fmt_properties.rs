@@ -86,19 +86,36 @@ fn formatting_is_idempotent_and_preserves_everything() {
                 };
                 files += 1;
                 let twice = format(&once);
-                assert_eq!(twice.as_deref().ok(), Some(once.as_str()), "{name}/{}: not idempotent", f.path);
+                assert_eq!(
+                    twice.as_deref().ok(),
+                    Some(once.as_str()),
+                    "{name}/{}: not idempotent",
+                    f.path
+                );
                 assert_eq!(
                     comment_multiset(&f.text),
                     comment_multiset(&once),
                     "{name}/{}: comments changed",
                     f.path
                 );
-                assert_eq!(doc_lines(&f.text), doc_lines(&once), "{name}/{}: docs changed", f.path);
-                assert!(once.ends_with('\n') && !once.ends_with("\n\n"), "{name}/{}: trailing newline", f.path);
+                assert_eq!(
+                    doc_lines(&f.text),
+                    doc_lines(&once),
+                    "{name}/{}: docs changed",
+                    f.path
+                );
+                assert!(
+                    once.ends_with('\n') && !once.ends_with("\n\n"),
+                    "{name}/{}: trailing newline",
+                    f.path
+                );
             }
         }
     }
-    assert!(files >= 60, "only {files} files formatted ({refused} refused)");
+    assert!(
+        files >= 60,
+        "only {files} files formatted ({refused} refused)"
+    );
 }
 
 #[test]
@@ -110,7 +127,11 @@ fn formatting_preserves_the_ir() {
         if n == 0 {
             continue;
         }
-        assert_eq!(ir_json(&input), ir_json(&formatted), "{name}: semantics changed");
+        assert_eq!(
+            ir_json(&input),
+            ir_json(&formatted),
+            "{name}: semantics changed"
+        );
     }
 }
 

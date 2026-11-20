@@ -101,10 +101,7 @@ impl Printer<'_> {
             self.blank_line();
             self.decl(d);
         }
-        let tail = self
-            .att(ROOT)
-            .map(|a| a.tail.clone())
-            .unwrap_or_default();
+        let tail = self.att(ROOT).map(|a| a.tail.clone()).unwrap_or_default();
         if !tail.is_empty() {
             self.blank_line();
             self.lead_list(&tail, 0);
@@ -305,7 +302,10 @@ impl Printer<'_> {
         } else {
             format!("enum {} {{ {} }}", e.name.name, items.join(", "))
         };
-        if plain && self.node_quiet(key) && !self.has_comments(&keys) && one.chars().count() <= WIDTH
+        if plain
+            && self.node_quiet(key)
+            && !self.has_comments(&keys)
+            && one.chars().count() <= WIDTH
         {
             self.out.push_str(&one);
             self.end_line(key, 0);

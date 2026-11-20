@@ -3,7 +3,9 @@
 use veld_compiler::language::is_reserved;
 
 use super::conv::{FileConv, comment_block, doc_lines, todo_comment};
-use super::names::{header_param_name, join_prefix, lower_camel, path_params, prelude_status, v2_path};
+use super::names::{
+    header_param_name, join_prefix, lower_camel, path_params, prelude_status, v2_path,
+};
 use super::v1::ast::{Action, Header, Headers, Module, Output, TypeRef, V1File};
 use crate::fmt::text::quote;
 
@@ -38,13 +40,22 @@ impl FileConv<'_> {
             self.warn(format!("module {}: no prefix; used \"/\"", m.name));
         }
         if let Some(u) = &m.base_url {
-            self.warn(format!("module {}: baseUrl `{u}` was dropped; set base_url in veld.toml", m.name));
+            self.warn(format!(
+                "module {}: baseUrl `{u}` was dropped; set base_url in veld.toml",
+                m.name
+            ));
         }
         if let Some(p) = &file.prefix {
-            self.warn(format!("module {}: top-level `prefix: {p}` was prepended to the module prefix", m.name));
+            self.warn(format!(
+                "module {}: top-level `prefix: {p}` was prepended to the module prefix",
+                m.name
+            ));
         }
         let guards: Vec<Guards> = m.actions.iter().map(|a| self.guards(a)).collect();
-        let hoist = guards.first().filter(|g| !g.is_empty() && guards.iter().all(|x| x == *g)).cloned();
+        let hoist = guards
+            .first()
+            .filter(|g| !g.is_empty() && guards.iter().all(|x| x == *g))
+            .cloned();
         let mut lines = comment_block(&m.comments);
         lines.extend(doc_lines(&m.description));
         if let Some(h) = &hoist {
@@ -52,7 +63,11 @@ impl FileConv<'_> {
         }
         lines.push(format!("service {} at {} {{", m.name, quote(&prefix)));
         for (a, g) in m.actions.iter().zip(&guards) {
-            let own = if hoist.is_some() { Guards::default() } else { g.clone() };
+            let own = if hoist.is_some() {
+                Guards::default()
+            } else {
+                g.clone()
+            };
             for l in self.endpoint(a, &own) {
                 lines.push(format!("  {l}"));
             }
@@ -102,7 +117,9 @@ impl FileConv<'_> {
     fn endpoint_name(&mut self, v1: &str) -> String {
         let n = lower_camel(v1);
         if is_reserved(&n) {
-            self.warn(format!("action {v1}: `{n}` is a reserved word; renamed to `{n}Action`"));
+            self.warn(format!(
+                "action {v1}: `{n}` is a reserved word; renamed to `{n}Action`"
+            ));
             return format!("{n}Action");
         }
         n
@@ -110,8 +127,17 @@ impl FileConv<'_> {
 
     // ---- parameters -------------------------------------------------------
 
-    fn params(&mut self, a: &Action, method: &str, path: &str, lines: &mut Vec<String>) -> Vec<String> {
-        let mut out: Vec<String> = path_params(path).into_iter().map(|p| format!("{p}: string")).collect();
+    fn params(
+        &mut self,
+        a: &Action,
+        method: &str,
+        path: &str,
+        lines: &mut Vec<String>,
+    ) -> Vec<String> {
+        let mut out: Vec<String> = path_params(path)
+            .into_iter()
+            .map(|p| format!("{p}: string"))
+            .collect();
         let bodyless = matches!(method, "get" | "head" | "options");
         let ws = method == "ws";
         let (body, query) = self.input_and_query(a, bodyless, lines);
@@ -127,17 +153,31 @@ impl FileConv<'_> {
     }
 
     /// Resolves `input` and `query` into a body type and a query type.
-    fn input_and_query(&mut self, a: &Action, bodyless: bool, lines: &mut Vec<String>) -> (Option<String>, Option<String>) {
+    fn input_and_query(
+        &mut self,
+        a: &Action,
+        bodyless: bool,
+        lines: &mut Vec<String>,
+    ) -> (Option<String>, Option<String>) {
         let input = a.input.as_ref().map(|t| self.type_ref(t, &a.name, "Input"));
         let query = a.query.as_ref().map(|t| self.type_ref(t, &a.name, "Query"));
         match (input, query, bodyless) {
             (Some(i), None, true) => {
-                self.warn(format!("action {}: `input` on a body-less method became `query`", a.name));
+                self.warn(format!(
+                    "action {}: `input` on a body-less method became `query`",
+                    a.name
+                ));
                 (None, Some(i))
             }
             (Some(i), Some(q), true) => {
-                self.warn(format!("action {}: both `input` and `query` on a body-less method; `input` dropped", a.name));
-                lines.push(todo_comment(&format!("input `{i}` of {} could not be mapped", a.name)));
+                self.warn(format!(
+                    "action {}: both `input` and `query` on a body-less method; `input` dropped",
+                    a.name
+                ));
+                lines.push(todo_comment(&format!(
+                    "input `{i}` of {} could not be mapped",
+                    a.name
+                )));
                 (None, Some(q))
             }
             (i, q, _) => (i, q),
@@ -164,8 +204,14 @@ impl FileConv<'_> {
             Some(Headers::Inline(hs)) => hs.iter().map(|h| self.header_param(h)).collect(),
             Some(Headers::Named(m)) => {
                 let Some(fields) = self.ctx.models.get(m) else {
-                    self.warn(format!("action {}: headers model `{m}` not found; headers dropped", a.name));
-                    lines.push(todo_comment(&format!("headers `{m}` of {} could not be expanded", a.name)));
+                    self.warn(format!(
+                        "action {}: headers model `{m}` not found; headers dropped",
+                        a.name
+                    ));
+                    lines.push(todo_comment(&format!(
+                        "headers `{m}` of {} could not be expanded",
+                        a.name
+                    )));
                     return Vec::new();
                 };
                 let hs: Vec<Header> = fields
@@ -187,7 +233,11 @@ impl FileConv<'_> {
     fn header_param(&mut self, h: &Header) -> String {
         let ty = self.type_name(&h.ty);
         let name = header_param_name(&h.name);
-        format!("@header({}) {name}{}: {ty}", quote(&h.name), if h.optional { "?" } else { "" })
+        format!(
+            "@header({}) {name}{}: {ty}",
+            quote(&h.name),
+            if h.optional { "?" } else { "" }
+        )
     }
 
     // ---- responses --------------------------------------------------------
@@ -195,11 +245,17 @@ impl FileConv<'_> {
     fn responses(&mut self, a: &Action) -> Vec<String> {
         let mut items = Vec::new();
         if a.method.eq_ignore_ascii_case("ws") {
-            let t = a.stream.clone().or_else(|| a.output.as_ref().and_then(named_of));
+            let t = a
+                .stream
+                .clone()
+                .or_else(|| a.output.as_ref().and_then(named_of));
             items.extend(t.map(|t| format!("stream {}", self.type_name(&t))));
         } else {
             if a.stream.is_some() {
-                self.warn(format!("action {}: `stream` is only valid on WS actions and was dropped", a.name));
+                self.warn(format!(
+                    "action {}: `stream` is only valid on WS actions and was dropped",
+                    a.name
+                ));
             }
             if let Some(o) = &a.output {
                 items.push(self.success(a, o));
@@ -245,8 +301,15 @@ impl FileConv<'_> {
         let ctx = self.ctx;
         for (v1, g) in ctx.errors.iter().filter(|(_, g)| g.file == idx) {
             self.locals.insert(g.name.clone());
-            let how = if g.inferred { "status guessed from the name; v1 errors carry none" } else { "status from the v1 contract" };
-            self.warn(format!("error `{v1}` is not in the v2 prelude; declared `error {}` with status {} ({how})", g.name, g.status));
+            let how = if g.inferred {
+                "status guessed from the name; v1 errors carry none"
+            } else {
+                "status from the v1 contract"
+            };
+            self.warn(format!(
+                "error `{v1}` is not in the v2 prelude; declared `error {}` with status {} ({how})",
+                g.name, g.status
+            ));
             self.generated.push(format!(
                 "// generated by veld migrate from the v1 error name `{v1}`\nerror {} {} {{\n  message?: string\n}}",
                 g.name, g.status
@@ -261,4 +324,3 @@ fn named_of(o: &Output) -> Option<String> {
         TypeRef::Inline(_) => None,
     }
 }
-

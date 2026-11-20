@@ -104,7 +104,10 @@ impl Lexer {
     }
 
     fn push(&mut self, tok: Tok) {
-        self.out.tokens.push(Token { tok, line: self.line });
+        self.out.tokens.push(Token {
+            tok,
+            line: self.line,
+        });
     }
 
     fn run(&mut self) {
@@ -119,7 +122,9 @@ impl Lexer {
                 '/' if self.peek(1) == Some('/') => self.line_comment(),
                 '"' => self.string(),
                 '/' => self.path(),
-                c if c.is_ascii_digit() || (c == '-' && self.peek(1).is_some_and(|d| d.is_ascii_digit())) => {
+                c if c.is_ascii_digit()
+                    || (c == '-' && self.peek(1).is_some_and(|d| d.is_ascii_digit())) =>
+                {
                     self.number();
                 }
                 c if c.is_alphabetic() || c == '_' => self.ident(),
@@ -147,9 +152,10 @@ impl Lexer {
             '*' => Tok::Star,
             '=' => Tok::Eq,
             other => {
-                self.out
-                    .errors
-                    .push(format!("line {}: unexpected character `{other}`", self.line));
+                self.out.errors.push(format!(
+                    "line {}: unexpected character `{other}`",
+                    self.line
+                ));
                 self.pos += 1;
                 return;
             }
@@ -194,7 +200,10 @@ impl Lexer {
                 "line {start_line}: unterminated block comment; v1 treated the rest of the file as a comment (`/**` in an import starts one)"
             ));
         }
-        self.out.comments.push(Comment { line: start_line, text });
+        self.out.comments.push(Comment {
+            line: start_line,
+            text,
+        });
     }
 
     fn string(&mut self) {
@@ -255,7 +264,10 @@ impl Lexer {
 
     fn ident(&mut self) {
         let start = self.pos;
-        while self.peek(0).is_some_and(|c| c.is_alphanumeric() || c == '_') {
+        while self
+            .peek(0)
+            .is_some_and(|c| c.is_alphanumeric() || c == '_')
+        {
             self.pos += 1;
         }
         let value: String = self.src[start..self.pos].iter().collect();
@@ -289,7 +301,13 @@ mod tests {
     fn comments_are_collected_with_their_lines() {
         let l = lex("// one\nmodel A {} /* two\nlines */\n");
         assert_eq!(l.comments.len(), 2);
-        assert_eq!(l.comments[0], Comment { line: 1, text: " one".into() });
+        assert_eq!(
+            l.comments[0],
+            Comment {
+                line: 1,
+                text: " one".into()
+            }
+        );
         assert_eq!(l.comments[1].line, 2);
         assert!(l.comments[1].text.contains("lines"));
     }
@@ -298,7 +316,12 @@ mod tests {
     fn numbers_and_strings() {
         assert_eq!(
             toks("-5 3.25 \"hi\""),
-            vec![Tok::Num("-5".into()), Tok::Num("3.25".into()), Tok::Str("hi".into()), Tok::Eof]
+            vec![
+                Tok::Num("-5".into()),
+                Tok::Num("3.25".into()),
+                Tok::Str("hi".into()),
+                Tok::Eof
+            ]
         );
     }
 

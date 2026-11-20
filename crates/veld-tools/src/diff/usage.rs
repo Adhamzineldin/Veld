@@ -26,7 +26,10 @@ pub(super) struct Usage {
 
 impl Usage {
     pub fn of(old: &Ir, new: &Ir) -> Usage {
-        Usage { old: roles(old), new: roles(new) }
+        Usage {
+            old: roles(old),
+            new: roles(new),
+        }
     }
 
     /// The role in the old IR, or in the new IR when the old one never uses it.
@@ -76,10 +79,14 @@ fn roles(ir: &Ir) -> BTreeMap<String, Role> {
     }
     let mut out: BTreeMap<String, Role> = BTreeMap::new();
     for id in closure(ir, req) {
-        out.entry(ir.decl(id).qualified.clone()).or_default().request = true;
+        out.entry(ir.decl(id).qualified.clone())
+            .or_default()
+            .request = true;
     }
     for id in closure(ir, resp) {
-        out.entry(ir.decl(id).qualified.clone()).or_default().response = true;
+        out.entry(ir.decl(id).qualified.clone())
+            .or_default()
+            .response = true;
     }
     out
 }

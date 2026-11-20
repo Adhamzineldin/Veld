@@ -1,7 +1,8 @@
 use super::format;
 
 fn f(src: &str) -> String {
-    format(src).unwrap_or_else(|d| format!("ERR {:?}", d.iter().map(|x| x.code).collect::<Vec<_>>()))
+    format(src)
+        .unwrap_or_else(|d| format!("ERR {:?}", d.iter().map(|x| x.code).collect::<Vec<_>>()))
 }
 
 fn assert_stable(src: &str) -> String {
@@ -68,7 +69,10 @@ fn messy_source_gets_canonical_style() {
 fn empty_and_comment_only_files() {
     assert_eq!(f(""), "");
     assert_eq!(f("\n\n"), "");
-    assert_eq!(assert_stable("// only\n\n\n/* a */"), "// only\n\n/* a */\n");
+    assert_eq!(
+        assert_stable("// only\n\n\n/* a */"),
+        "// only\n\n/* a */\n"
+    );
 }
 
 #[test]
@@ -92,7 +96,10 @@ fn comments_attached_to_uses_move_with_them() {
 #[test]
 fn annotations_go_after_the_field_type() {
     let out = f("model A {\n @readonly @wire(\"i\") id: uuid\n n: int @min(1)\n}");
-    assert_eq!(out, "model A {\n  id: uuid @readonly @wire(\"i\")\n  n: int @min(1)\n}\n");
+    assert_eq!(
+        out,
+        "model A {\n  id: uuid @readonly @wire(\"i\")\n  n: int @min(1)\n}\n"
+    );
 }
 
 #[test]
@@ -101,13 +108,18 @@ fn enum_one_line_when_it_fits_else_one_per_line_with_trailing_commas() {
     assert_eq!(short, "enum S { a, b }\n");
     let names: Vec<String> = (0..12).map(|i| format!("variant_number_{i}")).collect();
     let long = f(&format!("enum L {{ {} }}", names.join(", ")));
-    assert!(long.starts_with("enum L {\n  variant_number_0,\n"), "{long}");
+    assert!(
+        long.starts_with("enum L {\n  variant_number_0,\n"),
+        "{long}"
+    );
     assert!(long.ends_with("  variant_number_11,\n}\n"), "{long}");
 }
 
 #[test]
 fn wide_endpoints_wrap_their_responses() {
-    let out = f("service S at \"/s\" {\n get \"/aaaaaaaaaaaaaaaaaaaaaaaa\" operationWithLongName(id: uuid) -> LongResponseType | NotFound | Conflict | BadRequest\n}");
+    let out = f(
+        "service S at \"/s\" {\n get \"/aaaaaaaaaaaaaaaaaaaaaaaa\" operationWithLongName(id: uuid) -> LongResponseType | NotFound | Conflict | BadRequest\n}",
+    );
     assert_eq!(
         out,
         "service S at \"/s\" {\n  get \"/aaaaaaaaaaaaaaaaaaaaaaaa\" operationWithLongName(id: uuid) -> LongResponseType\n      | NotFound\n      | Conflict\n      | BadRequest\n}\n"
@@ -116,7 +128,9 @@ fn wide_endpoints_wrap_their_responses() {
 
 #[test]
 fn blank_lines_separate_only_heavy_endpoints() {
-    let out = f("service S at \"/\" {\n get \"/a\" a()\n get \"/b\" b()\n /// d\n get \"/c\" c()\n get \"/d\" d()\n}");
+    let out = f(
+        "service S at \"/\" {\n get \"/a\" a()\n get \"/b\" b()\n /// d\n get \"/c\" c()\n get \"/d\" d()\n}",
+    );
     assert_eq!(
         out,
         "service S at \"/\" {\n  get \"/a\" a()\n  get \"/b\" b()\n\n  /// d\n  get \"/c\" c()\n\n  get \"/d\" d()\n}\n"
@@ -131,7 +145,9 @@ fn comments_inside_leaf_items_become_trailing() {
 
 #[test]
 fn two_line_comments_in_one_item_do_not_merge() {
-    let out = assert_stable("model A {\n a: int // one\n b: int\n}\nservice S at \"/\" {\n get \"/\" g( // x\n ) // y\n}");
+    let out = assert_stable(
+        "model A {\n a: int // one\n b: int\n}\nservice S at \"/\" {\n get \"/\" g( // x\n ) // y\n}",
+    );
     assert!(out.contains("// x") && out.contains("// y"), "{out}");
 }
 

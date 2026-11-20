@@ -25,5 +25,8 @@ pub fn parse(source: &str) -> Result<Parsed, String> {
     let lexed = lexer::lex(source);
     let mut p = parser::Parser::new(lexed.tokens, lexed.comments);
     let file = p.parse_file()?;
-    Ok(Parsed { file, warnings: lexed.errors })
+    Ok(Parsed {
+        file,
+        warnings: lexed.errors,
+    })
 }

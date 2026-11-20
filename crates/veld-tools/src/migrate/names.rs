@@ -15,7 +15,10 @@ pub(super) const PRELUDE_ERRORS: [(&str, u16); 8] = [
 ];
 
 pub(super) fn prelude_status(name: &str) -> Option<u16> {
-    PRELUDE_ERRORS.iter().find(|(n, _)| *n == name).map(|(_, s)| *s)
+    PRELUDE_ERRORS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, s)| *s)
 }
 
 /// Names that the prelude provides, errors and the one model.
@@ -35,7 +38,13 @@ pub(super) fn is_ident(s: &str) -> bool {
 pub(super) fn sanitize_ident(s: &str) -> String {
     let mut out: String = s
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     if out.is_empty() || out.starts_with(|c: char| c.is_ascii_digit()) {
         out.insert(0, '_');
@@ -48,8 +57,9 @@ pub(super) fn sanitize_ident(s: &str) -> String {
 
 pub(super) fn capitalize(s: &str) -> String {
     let mut c = s.chars();
-    c.next()
-        .map_or_else(String::new, |f| f.to_uppercase().collect::<String>() + c.as_str())
+    c.next().map_or_else(String::new, |f| {
+        f.to_uppercase().collect::<String>() + c.as_str()
+    })
 }
 
 /// `ListAccounts` -> `listAccounts`, `IAMLogin` -> `iamLogin`, `GET` -> `get`.
@@ -65,7 +75,13 @@ pub(super) fn lower_camel(name: &str) -> String {
     chars
         .iter()
         .enumerate()
-        .map(|(i, c)| if i < lower_to { c.to_ascii_lowercase() } else { *c })
+        .map(|(i, c)| {
+            if i < lower_to {
+                c.to_ascii_lowercase()
+            } else {
+                *c
+            }
+        })
         .collect()
 }
 
@@ -97,7 +113,11 @@ pub(super) fn v2_path(path: &str) -> String {
             at_segment_start = true;
         } else if c == ':' && at_segment_start {
             let mut name = String::new();
-            while let Some(n) = chars.peek().copied().filter(|n| n.is_ascii_alphanumeric() || *n == '_') {
+            while let Some(n) = chars
+                .peek()
+                .copied()
+                .filter(|n| n.is_ascii_alphanumeric() || *n == '_')
+            {
                 name.push(n);
                 chars.next();
             }
@@ -132,7 +152,11 @@ pub(super) fn join_prefix(app: Option<&str>, module: Option<&str>) -> String {
     let m = module.unwrap_or("");
     let joined = format!("{a}{m}");
     let joined = v2_path(&joined);
-    if joined.is_empty() { "/".to_string() } else { joined }
+    if joined.is_empty() {
+        "/".to_string()
+    } else {
+        joined
+    }
 }
 
 /// The module path and output path of a source file.
@@ -150,7 +174,6 @@ pub(super) fn module_of(rel: &str) -> (String, String, bool) {
         .collect();
     (segs.join("."), format!("{}.veld", segs.join("/")), changed)
 }
-
 
 /// A status for a well-known HTTP error name that the prelude lacks.
 pub(super) fn inferred_status(name: &str) -> Option<u16> {
@@ -221,9 +244,15 @@ mod tests {
 
     #[test]
     fn module_paths_are_sanitized() {
-        assert_eq!(module_of("models/account.veld"), ("models.account".into(), "models/account.veld".into(), false));
+        assert_eq!(
+            module_of("models/account.veld"),
+            ("models.account".into(), "models/account.veld".into(), false)
+        );
         let (m, p, changed) = module_of("my-dir/error.veld");
-        assert_eq!((m.as_str(), p.as_str(), changed), ("my_dir.error_", "my_dir/error_.veld", true));
+        assert_eq!(
+            (m.as_str(), p.as_str(), changed),
+            ("my_dir.error_", "my_dir/error_.veld", true)
+        );
     }
 
     #[test]

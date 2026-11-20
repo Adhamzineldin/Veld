@@ -13,7 +13,10 @@ struct Case {
 }
 
 fn run(old: &str, new: &str) -> Vec<(ChangeKind, Severity)> {
-    let mut v: Vec<_> = diff(&ir(old), &ir(new)).into_iter().map(|c| (c.kind, c.severity)).collect();
+    let mut v: Vec<_> = diff(&ir(old), &ir(new))
+        .into_iter()
+        .map(|c| (c.kind, c.severity))
+        .collect();
     v.sort();
     v
 }
@@ -74,8 +77,20 @@ fn with(model: &str, svc: &str) -> String {
 fn field_rules() {
     let (req, resp) = (REQ, RESP);
     let cases = [
-        ("removed (request)", "model M { a: int, b: int }", "model M { a: int }", req, vec![(FieldRemoved, B)]),
-        ("removed (response)", "model M { a: int, b: int }", "model M { a: int }", resp, vec![(FieldRemoved, B)]),
+        (
+            "removed (request)",
+            "model M { a: int, b: int }",
+            "model M { a: int }",
+            req,
+            vec![(FieldRemoved, B)],
+        ),
+        (
+            "removed (response)",
+            "model M { a: int, b: int }",
+            "model M { a: int }",
+            resp,
+            vec![(FieldRemoved, B)],
+        ),
         (
             "renamed is removed plus added",
             "model M { a: int }",
@@ -83,17 +98,83 @@ fn field_rules() {
             resp,
             vec![(FieldRemoved, B), (FieldAdded, N)],
         ),
-        ("type changed", "model M { a: int }", "model M { a: string }", resp, vec![(FieldTypeChanged, B)]),
-        ("list element changed", "model M { a: int[] }", "model M { a: long[] }", resp, vec![(FieldTypeChanged, B)]),
-        ("optional field added", "model M { a: int }", "model M { a: int, b?: int }", req, vec![(FieldAdded, N)]),
-        ("required field added (response)", "model M { a: int }", "model M { a: int, b: int }", resp, vec![(FieldAdded, N)]),
-        ("required field added (request)", "model M { a: int }", "model M { a: int, b: int }", req, vec![(RequiredFieldAdded, B)]),
-        ("defaulted field added (request)", "model M { a: int }", "model M { a: int, b: int = 1 }", req, vec![(FieldAdded, N)]),
-        ("optional to required (request)", "model M { a?: int }", "model M { a: int }", req, vec![(FieldBecameRequired, B)]),
-        ("optional to required (response)", "model M { a?: int }", "model M { a: int }", resp, vec![(FieldBecameRequired, N)]),
-        ("required to optional (response)", "model M { a: int }", "model M { a?: int }", resp, vec![(FieldBecameOptional, B)]),
-        ("required to optional (request)", "model M { a: int }", "model M { a?: int }", req, vec![(FieldBecameOptional, N)]),
-        ("default removed makes it required (request)", "model M { a: int = 1 }", "model M { a: int }", req, vec![(FieldBecameRequired, B)]),
+        (
+            "type changed",
+            "model M { a: int }",
+            "model M { a: string }",
+            resp,
+            vec![(FieldTypeChanged, B)],
+        ),
+        (
+            "list element changed",
+            "model M { a: int[] }",
+            "model M { a: long[] }",
+            resp,
+            vec![(FieldTypeChanged, B)],
+        ),
+        (
+            "optional field added",
+            "model M { a: int }",
+            "model M { a: int, b?: int }",
+            req,
+            vec![(FieldAdded, N)],
+        ),
+        (
+            "required field added (response)",
+            "model M { a: int }",
+            "model M { a: int, b: int }",
+            resp,
+            vec![(FieldAdded, N)],
+        ),
+        (
+            "required field added (request)",
+            "model M { a: int }",
+            "model M { a: int, b: int }",
+            req,
+            vec![(RequiredFieldAdded, B)],
+        ),
+        (
+            "defaulted field added (request)",
+            "model M { a: int }",
+            "model M { a: int, b: int = 1 }",
+            req,
+            vec![(FieldAdded, N)],
+        ),
+        (
+            "optional to required (request)",
+            "model M { a?: int }",
+            "model M { a: int }",
+            req,
+            vec![(FieldBecameRequired, B)],
+        ),
+        (
+            "optional to required (response)",
+            "model M { a?: int }",
+            "model M { a: int }",
+            resp,
+            vec![(FieldBecameRequired, N)],
+        ),
+        (
+            "required to optional (response)",
+            "model M { a: int }",
+            "model M { a?: int }",
+            resp,
+            vec![(FieldBecameOptional, B)],
+        ),
+        (
+            "required to optional (request)",
+            "model M { a: int }",
+            "model M { a?: int }",
+            req,
+            vec![(FieldBecameOptional, N)],
+        ),
+        (
+            "default removed makes it required (request)",
+            "model M { a: int = 1 }",
+            "model M { a: int }",
+            req,
+            vec![(FieldBecameRequired, B)],
+        ),
     ];
     for (name, old, new, svc, expect) in cases {
         let mut want = expect;
@@ -106,13 +187,55 @@ fn field_rules() {
 fn enum_rules() {
     let both = "service S at \"/s\" { post \"/\" make(body: M) -> M }";
     let cases = [
-        ("removed (response)", RESP, "enum E { a, b }", "enum E { a }", vec![(EnumVariantRemoved, B)]),
-        ("removed (request)", REQ, "enum E { a, b }", "enum E { a }", vec![(EnumVariantRemoved, B)]),
-        ("added (response only)", RESP, "enum E { a }", "enum E { a, b }", vec![(EnumVariantAdded, B)]),
-        ("added (request)", REQ, "enum E { a }", "enum E { a, b }", vec![(EnumVariantAdded, N)]),
-        ("added (request and response)", both, "enum E { a }", "enum E { a, b }", vec![(EnumVariantAdded, N)]),
-        ("wire value changed", RESP, "enum E { a }", "enum E { a = \"A\" }", vec![(EnumVariantRemoved, B), (EnumVariantAdded, B)]),
-        ("source rename keeping the wire value", RESP, "enum E { a = \"A\" }", "enum E { b = \"A\" }", vec![]),
+        (
+            "removed (response)",
+            RESP,
+            "enum E { a, b }",
+            "enum E { a }",
+            vec![(EnumVariantRemoved, B)],
+        ),
+        (
+            "removed (request)",
+            REQ,
+            "enum E { a, b }",
+            "enum E { a }",
+            vec![(EnumVariantRemoved, B)],
+        ),
+        (
+            "added (response only)",
+            RESP,
+            "enum E { a }",
+            "enum E { a, b }",
+            vec![(EnumVariantAdded, B)],
+        ),
+        (
+            "added (request)",
+            REQ,
+            "enum E { a }",
+            "enum E { a, b }",
+            vec![(EnumVariantAdded, N)],
+        ),
+        (
+            "added (request and response)",
+            both,
+            "enum E { a }",
+            "enum E { a, b }",
+            vec![(EnumVariantAdded, N)],
+        ),
+        (
+            "wire value changed",
+            RESP,
+            "enum E { a }",
+            "enum E { a = \"A\" }",
+            vec![(EnumVariantRemoved, B), (EnumVariantAdded, B)],
+        ),
+        (
+            "source rename keeping the wire value",
+            RESP,
+            "enum E { a = \"A\" }",
+            "enum E { b = \"A\" }",
+            vec![],
+        ),
     ];
     for (name, svc, old, new, expect) in cases {
         let model = |e: &str| format!("{e}\nmodel M {{ e: E }}\n{svc}");
@@ -127,10 +250,34 @@ fn union_rules() {
     let base = "model A { x: int }\nmodel B { y: int }\nmodel C { z: int }\n";
     let wrap = |u: &str, svc: &str| format!("{base}{u}\nmodel M {{ u: U }}\n{svc}");
     let cases = [
-        ("arm removed", RESP, "union U { a: A, b: B }", "union U { a: A }", vec![(UnionArmRemoved, B)]),
-        ("arm added (response)", RESP, "union U { a: A }", "union U { a: A, b: B }", vec![(UnionArmAdded, B)]),
-        ("arm added (request)", REQ, "union U { a: A }", "union U { a: A, b: B }", vec![(UnionArmAdded, N)]),
-        ("arm retargeted", RESP, "union U { a: A }", "union U { a: C }", vec![(UnionArmChanged, B)]),
+        (
+            "arm removed",
+            RESP,
+            "union U { a: A, b: B }",
+            "union U { a: A }",
+            vec![(UnionArmRemoved, B)],
+        ),
+        (
+            "arm added (response)",
+            RESP,
+            "union U { a: A }",
+            "union U { a: A, b: B }",
+            vec![(UnionArmAdded, B)],
+        ),
+        (
+            "arm added (request)",
+            REQ,
+            "union U { a: A }",
+            "union U { a: A, b: B }",
+            vec![(UnionArmAdded, N)],
+        ),
+        (
+            "arm retargeted",
+            RESP,
+            "union U { a: A }",
+            "union U { a: C }",
+            vec![(UnionArmChanged, B)],
+        ),
         (
             "discriminator changed",
             RESP,
@@ -330,12 +477,42 @@ fn auth_rules() {
 fn constraint_rules() {
     let (req, resp) = (REQ, RESP);
     let cases = [
-        ("min raised", "model M { a: int @min(1) }", "model M { a: int @min(2) }", vec![(ConstraintTightened, B)]),
-        ("min lowered", "model M { a: int @min(2) }", "model M { a: int @min(1) }", vec![(ConstraintLoosened, N)]),
-        ("max lowered", "model M { a: int @max(9) }", "model M { a: int @max(5) }", vec![(ConstraintTightened, B)]),
-        ("max raised", "model M { a: int @max(5) }", "model M { a: int @max(9) }", vec![(ConstraintLoosened, N)]),
-        ("bound added", "model M { a: int }", "model M { a: int @max(5) }", vec![(ConstraintTightened, B)]),
-        ("bound removed", "model M { a: int @max(5) }", "model M { a: int }", vec![(ConstraintLoosened, N)]),
+        (
+            "min raised",
+            "model M { a: int @min(1) }",
+            "model M { a: int @min(2) }",
+            vec![(ConstraintTightened, B)],
+        ),
+        (
+            "min lowered",
+            "model M { a: int @min(2) }",
+            "model M { a: int @min(1) }",
+            vec![(ConstraintLoosened, N)],
+        ),
+        (
+            "max lowered",
+            "model M { a: int @max(9) }",
+            "model M { a: int @max(5) }",
+            vec![(ConstraintTightened, B)],
+        ),
+        (
+            "max raised",
+            "model M { a: int @max(5) }",
+            "model M { a: int @max(9) }",
+            vec![(ConstraintLoosened, N)],
+        ),
+        (
+            "bound added",
+            "model M { a: int }",
+            "model M { a: int @max(5) }",
+            vec![(ConstraintTightened, B)],
+        ),
+        (
+            "bound removed",
+            "model M { a: int @max(5) }",
+            "model M { a: int }",
+            vec![(ConstraintLoosened, N)],
+        ),
         (
             "length tightened",
             "model M { a: string @length(min: 1, max: 9) }",
@@ -475,8 +652,12 @@ fn messages_name_the_element_and_subject_is_the_qualified_name_or_op() {
 
 #[test]
 fn transitive_changes_are_reported_on_the_declaration_that_changed() {
-    let old = ir("model Inner { a: int }\nmodel Outer { i: Inner }\nservice S at \"/s\" { get \"/\" f() -> Outer }");
-    let new = ir("model Inner { a: string }\nmodel Outer { i: Inner }\nservice S at \"/s\" { get \"/\" f() -> Outer }");
+    let old = ir(
+        "model Inner { a: int }\nmodel Outer { i: Inner }\nservice S at \"/s\" { get \"/\" f() -> Outer }",
+    );
+    let new = ir(
+        "model Inner { a: string }\nmodel Outer { i: Inner }\nservice S at \"/s\" { get \"/\" f() -> Outer }",
+    );
     let changes = diff(&old, &new);
     assert_eq!(changes.len(), 1, "{changes:?}");
     assert_eq!(changes[0].subject, "app:app.Inner");
@@ -486,14 +667,20 @@ fn transitive_changes_are_reported_on_the_declaration_that_changed() {
 fn renamed_endpoint_message_points_at_the_new_name() {
     let old = ir("service S at \"/s\" { get \"/a\" a() }");
     let new = ir("service S at \"/s\" { get \"/a\" b() }");
-    let msg = diff(&old, &new).into_iter().find(|c| c.kind == EndpointRemoved).map(|c| c.message);
+    let msg = diff(&old, &new)
+        .into_iter()
+        .find(|c| c.kind == EndpointRemoved)
+        .map(|c| c.message);
     assert!(msg.is_some_and(|m| m.contains("now served by `b`")));
 }
 
 #[test]
 fn changes_come_out_in_a_stable_order() {
-    let old = ir("model A { a: int }\nmodel B { b: int }\nservice S at \"/s\" { get \"/\" f() -> A }");
-    let new = ir("model A { a: string }\nmodel B { b: string }\nservice S at \"/s\" { get \"/\" f() -> A }");
+    let old =
+        ir("model A { a: int }\nmodel B { b: int }\nservice S at \"/s\" { get \"/\" f() -> A }");
+    let new = ir(
+        "model A { a: string }\nmodel B { b: string }\nservice S at \"/s\" { get \"/\" f() -> A }",
+    );
     let a = diff(&old, &new);
     let b = diff(&old, &new);
     assert_eq!(a, b);

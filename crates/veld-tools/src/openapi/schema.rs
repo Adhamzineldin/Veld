@@ -13,7 +13,13 @@ pub(super) fn schema_name(ir: &Ir, id: DeclId) -> String {
     let safe: String = pkg
         .trim_start_matches('@')
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     format!("{safe}.{}", d.name)
 }
@@ -96,7 +102,11 @@ pub(super) fn apply_constraints(schema: &mut Value, ty: &Type, c: &Constraints) 
         Type::List(inner) => {
             put(m, "minItems", c.min_len.map(Value::from));
             put(m, "maxItems", c.max_len.map(Value::from));
-            let rest = Constraints { min_len: None, max_len: None, ..c.clone() };
+            let rest = Constraints {
+                min_len: None,
+                max_len: None,
+                ..c.clone()
+            };
             if let Some(items) = m.get_mut("items") {
                 apply_constraints(items, inner, &rest);
             }
@@ -104,7 +114,11 @@ pub(super) fn apply_constraints(schema: &mut Value, ty: &Type, c: &Constraints) 
         Type::Map(inner) => {
             put(m, "minProperties", c.min_len.map(Value::from));
             put(m, "maxProperties", c.max_len.map(Value::from));
-            let rest = Constraints { min_len: None, max_len: None, ..c.clone() };
+            let rest = Constraints {
+                min_len: None,
+                max_len: None,
+                ..c.clone()
+            };
             if let Some(v) = m.get_mut("additionalProperties") {
                 apply_constraints(v, inner, &rest);
             }
@@ -154,8 +168,16 @@ pub(super) fn field_schema(ir: &Ir, f: &Field) -> Value {
         if f.readonly {
             m.insert("readOnly".into(), Value::Bool(true));
         }
-        put(m, "default", f.default.as_ref().map(|d| literal_json(&f.ty, d)));
-        put(m, "examples", f.example.as_ref().map(|e| json!([literal_json(&f.ty, e)])));
+        put(
+            m,
+            "default",
+            f.default.as_ref().map(|d| literal_json(&f.ty, d)),
+        );
+        put(
+            m,
+            "examples",
+            f.example.as_ref().map(|e| json!([literal_json(&f.ty, e)])),
+        );
     }
     s
 }
@@ -187,7 +209,11 @@ fn decorate(m: &mut Map<String, Value>, d: &Decl) {
 }
 
 fn model_schema(ir: &Ir, d: &Decl) -> Value {
-    let own: Vec<&Field> = d.fields().iter().filter(|f| f.inherited_from.is_none()).collect();
+    let own: Vec<&Field> = d
+        .fields()
+        .iter()
+        .filter(|f| f.inherited_from.is_none())
+        .collect();
     let parent = match &d.kind {
         DeclKind::Model(m) => m.parent,
         _ => None,
@@ -265,8 +291,14 @@ mod tests {
 
     #[test]
     fn scalar_mapping_follows_the_wire_format() {
-        assert_eq!(scalar_schema(Scalar::Long), json!({"type": "string", "format": "int64"}));
-        assert_eq!(scalar_schema(Scalar::Decimal), json!({"type": "string", "format": "decimal"}));
+        assert_eq!(
+            scalar_schema(Scalar::Long),
+            json!({"type": "string", "format": "int64"})
+        );
+        assert_eq!(
+            scalar_schema(Scalar::Decimal),
+            json!({"type": "string", "format": "decimal"})
+        );
         assert_eq!(
             scalar_schema(Scalar::Bytes),
             json!({"type": "string", "contentEncoding": "base64"})
@@ -278,9 +310,16 @@ mod tests {
     fn length_applies_to_the_outer_container_and_bounds_to_items() {
         let ty = Type::List(Box::new(Type::Scalar(Scalar::Int)));
         let mut s = json!({"type": "array", "items": {"type": "integer"}});
-        let c = Constraints { min: Some(1.0), max_len: Some(4), ..Constraints::default() };
+        let c = Constraints {
+            min: Some(1.0),
+            max_len: Some(4),
+            ..Constraints::default()
+        };
         apply_constraints(&mut s, &ty, &c);
-        assert_eq!(s, json!({"type": "array", "items": {"type": "integer", "minimum": 1}, "maxItems": 4}));
+        assert_eq!(
+            s,
+            json!({"type": "array", "items": {"type": "integer", "minimum": 1}, "maxItems": 4})
+        );
     }
 
     #[test]
@@ -305,6 +344,9 @@ mod tests {
     fn long_literals_are_strings_on_the_wire() {
         let ty = Type::Scalar(Scalar::Long);
         assert_eq!(literal_json(&ty, &Literal::Int(5)), json!("5"));
-        assert_eq!(literal_json(&Type::Scalar(Scalar::Int), &Literal::Int(5)), json!(5));
+        assert_eq!(
+            literal_json(&Type::Scalar(Scalar::Int), &Literal::Int(5)),
+            json!(5)
+        );
     }
 }
