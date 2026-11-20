@@ -44,9 +44,9 @@ fn node_output(args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
-fn sha256_of_node() -> String {
-    let script = "const c=require('crypto'),f=require('fs');console.log(c.createHash('sha256').update(f.readFileSync(process.execPath)).digest('hex'))";
-    node_output(&["-e", script])
+fn sha256_of_file(path: &std::path::Path) -> String {
+    let script = "const c=require('crypto'),f=require('fs');console.log(c.createHash('sha256').update(f.readFileSync(process.argv[1])).digest('hex'))";
+    node_output(&["-e", script, &path.to_string_lossy()])
 }
 
 fn compile(dir: &std::path::Path) {
@@ -123,9 +123,9 @@ fn scaffolded_plugin_builds_passes_conformance_and_generates() {
         dir,
         "veld.toml",
         &format!(
-            "[project]\nname = \"hello\"\n\n[plugins.demo]\ncommand = \"node demo/dist/main.js\"\nsha256 = \"{}\"\n\n\
+            "[project]\nname = \"hello\"\n\n[plugins.demo]\ncommand = \"node\"\nentry = \"demo/dist/main.js\"\nsha256 = \"{}\"\n\n\
              [[targets]]\nname = \"demo\"\nrole = \"client\"\nemitter = \"plugin:demo\"\nout = \"gen/demo\"\n",
-            sha256_of_node()
+            sha256_of_file(&dir.join("demo/dist/main.js"))
         ),
     );
     veld(dir).arg("generate").assert().success();
@@ -139,4 +139,15 @@ fn scaffolded_plugin_builds_passes_conformance_and_generates() {
         "signature embedded"
     );
     assert!(out.keys().any(|p| p.starts_with("services/")));
+
+    // Editing the pinned entry script afterwards is refused.
+    let main = dir.join("demo/dist/main.js");
+    let mut text = std::fs::read_to_string(&main).unwrap();
+    text.push_str("\n// tampered\n");
+    std::fs::write(&main, text).unwrap();
+    veld(dir)
+        .arg("generate")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("E0705"));
 }

@@ -380,20 +380,22 @@ fn no_config_is_a_user_error() {
 }
 
 #[test]
-fn reserved_commands_exit_two_and_are_hidden() {
+fn lsp_is_hidden_and_speaks_stdio() {
     let tmp = tempdir().unwrap();
-    for cmd in ["add", "publish", "login", "logout"] {
-        veld(tmp.path())
-            .args([cmd, "--whatever"])
-            .assert()
-            .code(2)
-            .stderr(predicate::str::contains("coming soon"));
-    }
+    let frame = |body: &str| format!("Content-Length: {}\r\n\r\n{body}", body.len());
+    let input = [
+        frame(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{},"rootUri":null}}"#),
+        frame(r#"{"jsonrpc":"2.0","method":"initialized","params":{}}"#),
+        frame(r#"{"jsonrpc":"2.0","id":2,"method":"shutdown","params":null}"#),
+        frame(r#"{"jsonrpc":"2.0","method":"exit","params":null}"#),
+    ]
+    .concat();
     veld(tmp.path())
         .arg("lsp")
+        .write_stdin(input)
         .assert()
-        .code(2)
-        .stderr(predicate::str::contains("not yet implemented"));
+        .success()
+        .stdout(predicate::str::contains("\"capabilities\""));
     let help = veld(tmp.path())
         .arg("--help")
         .assert()
@@ -402,7 +404,7 @@ fn reserved_commands_exit_two_and_are_hidden() {
         .stdout
         .clone();
     let help = String::from_utf8_lossy(&help).to_string();
-    for hidden in ["lsp", "debug", "publish", "add", "login", "logout"] {
+    for hidden in ["lsp", "debug"] {
         assert!(
             !help.lines().any(|l| l.trim_start().starts_with(hidden)),
             "{hidden} shown:\n{help}"

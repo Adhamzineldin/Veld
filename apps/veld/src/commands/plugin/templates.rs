@@ -211,11 +211,13 @@ Copy `veld.plugin.toml` into the project's `veld.toml` and add a target with
 pub const PLUGIN_TOML: &str = r#"# Add this to your project's veld.toml.
 [plugins.{{name}}]
 # The executable and its arguments. A relative path is resolved against veld.toml.
-command = "node plugins/{{name}}/dist/main.js"
+command = "node"
+# The script `node` runs. Veld appends it to `command` (unless `command` already names it).
+entry = "plugins/{{name}}/dist/main.js"
 version = "0.1.0"
-# SHA-256 of the executable (the first word of `command`): Veld refuses to run it if it differs.
-# Compute it with:
-#   node -e "const c=require('crypto'),f=require('fs');console.log(c.createHash('sha256').update(f.readFileSync(process.argv[1])).digest('hex'))" <path to the executable>
+# SHA-256 of the `entry` file (without `entry`, of the executable in `command`): Veld refuses
+# to run the plugin if it differs. Compute it again after every build:
+#   node -e "const c=require('crypto'),f=require('fs');console.log(c.createHash('sha256').update(f.readFileSync(process.argv[1])).digest('hex'))" plugins/{{name}}/dist/main.js
 # sha256 = "..."
 
 [[targets]]
