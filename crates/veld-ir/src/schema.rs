@@ -38,9 +38,19 @@ pub enum Def {
     /// Serde's default enum form: `{ "<variant>": <payload> }`.
     External(&'static str, &'static [(&'static str, T)]),
     /// Serde's `tag = "..."` form with fields shared by all variants.
-    Internal { name: &'static str, common: Fields, tag: &'static str, variants: &'static [(&'static str, Fields)] },
+    Internal {
+        name: &'static str,
+        common: Fields,
+        tag: &'static str,
+        variants: &'static [(&'static str, Fields)],
+    },
     /// Serde's `tag = "..", content = ".."` form; a `None` payload has no content key.
-    Adjacent { name: &'static str, tag: &'static str, content: &'static str, variants: &'static [(&'static str, Option<T>)] },
+    Adjacent {
+        name: &'static str,
+        tag: &'static str,
+        content: &'static str,
+        variants: &'static [(&'static str, Option<T>)],
+    },
 }
 
 impl Def {
@@ -56,7 +66,10 @@ impl Def {
 const ORIGIN: T = T::Ref("Origin");
 const DECL_ID: T = T::Ref("DeclId");
 const OPT_STR: T = T::Nullable(&T::Str);
-const MODEL_FIELDS: Fields = &[("parent", T::Nullable(&DECL_ID)), ("fields", T::List(&T::Ref("Field")))];
+const MODEL_FIELDS: Fields = &[
+    ("parent", T::Nullable(&DECL_ID)),
+    ("fields", T::List(&T::Ref("Field"))),
+];
 
 const DECL_COMMON: Fields = &[
     ("id", DECL_ID),
@@ -74,11 +87,24 @@ const DECL_KINDS: &[(&str, Fields)] = &[
     ("model", MODEL_FIELDS),
     (
         "error",
-        &[("default_status", T::Nullable(&T::Num)), ("parent", T::Nullable(&DECL_ID)), ("fields", T::List(&T::Ref("Field")))],
+        &[
+            ("default_status", T::Nullable(&T::Num)),
+            ("parent", T::Nullable(&DECL_ID)),
+            ("fields", T::List(&T::Ref("Field"))),
+        ],
     ),
     ("enum", &[("variants", T::List(&T::Ref("Variant")))]),
-    ("union", &[("discriminator", T::Str), ("arms", T::List(&T::Ref("UnionArm")))]),
-    ("const", &[("type", T::Ref("Type")), ("value", T::Ref("Literal"))]),
+    (
+        "union",
+        &[
+            ("discriminator", T::Str),
+            ("arms", T::List(&T::Ref("UnionArm"))),
+        ],
+    ),
+    (
+        "const",
+        &[("type", T::Ref("Type")), ("value", T::Ref("Literal"))],
+    ),
 ];
 
 const FIELD: Fields = &[
@@ -140,16 +166,45 @@ pub const DEFS: &[Def] = &[
     Def::Alias("PackageId", T::Num),
     Def::Alias("DeclId", T::Num),
     Def::Alias("ServiceId", T::Num),
-    Def::Object("Package", &[("id", T::Ref("PackageId")), ("name", T::Str), ("kind", T::Ref("PackageKind"))]),
-    Def::Strings("PackageKind", &["service", "library", "registry", "prelude"]),
-    Def::Object("Origin", &[("file", T::Str), ("line", T::Num), ("col", T::Num)]),
-    Def::Internal { name: "Decl", common: DECL_COMMON, tag: "kind", variants: DECL_KINDS },
-    Def::Object("Variant", &[("name", T::Str), ("wire", T::Str), ("docs", OPT_STR), ("deprecated", OPT_STR)]),
+    Def::Object(
+        "Package",
+        &[
+            ("id", T::Ref("PackageId")),
+            ("name", T::Str),
+            ("kind", T::Ref("PackageKind")),
+        ],
+    ),
+    Def::Strings(
+        "PackageKind",
+        &["service", "library", "registry", "prelude"],
+    ),
+    Def::Object(
+        "Origin",
+        &[("file", T::Str), ("line", T::Num), ("col", T::Num)],
+    ),
+    Def::Internal {
+        name: "Decl",
+        common: DECL_COMMON,
+        tag: "kind",
+        variants: DECL_KINDS,
+    },
+    Def::Object(
+        "Variant",
+        &[
+            ("name", T::Str),
+            ("wire", T::Str),
+            ("docs", OPT_STR),
+            ("deprecated", OPT_STR),
+        ],
+    ),
     Def::Object("UnionArm", &[("label", T::Str), ("decl", DECL_ID)]),
     Def::Object("Field", FIELD),
     Def::Strings(
         "Scalar",
-        &["string", "int", "long", "float", "decimal", "bool", "date", "datetime", "time", "uuid", "bytes", "json"],
+        &[
+            "string", "int", "long", "float", "decimal", "bool", "date", "datetime", "time",
+            "uuid", "bytes", "json",
+        ],
     ),
     Def::External(
         "Type",
@@ -172,7 +227,10 @@ pub const DEFS: &[Def] = &[
             ("format", T::Nullable(&T::Ref("StringFormat"))),
         ],
     ),
-    Def::Strings("StringFormat", &["email", "uri", "hostname", "ipv4", "ipv6"]),
+    Def::Strings(
+        "StringFormat",
+        &["email", "uri", "hostname", "ipv4", "ipv6"],
+    ),
     Def::Adjacent {
         name: "Literal",
         tag: "lit",
@@ -189,9 +247,17 @@ pub const DEFS: &[Def] = &[
     },
     Def::Object("EnumVariantLiteral", &[("name", T::Str), ("wire", T::Str)]),
     Def::Object("Service", SERVICE),
-    Def::Strings("Method", &["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "WS"]),
+    Def::Strings(
+        "Method",
+        &[
+            "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "WS",
+        ],
+    ),
     Def::Object("Endpoint", ENDPOINT),
-    Def::Strings("Binding", &["path", "query", "query_object", "header", "body"]),
+    Def::Strings(
+        "Binding",
+        &["path", "query", "query_object", "header", "body"],
+    ),
     Def::Object(
         "Param",
         &[
@@ -204,7 +270,14 @@ pub const DEFS: &[Def] = &[
             ("constraints", T::Ref("Constraints")),
         ],
     ),
-    Def::Object("Success", &[("status", T::Num), ("type", T::Nullable(&T::Ref("Type"))), ("stream", T::Bool)]),
+    Def::Object(
+        "Success",
+        &[
+            ("status", T::Num),
+            ("type", T::Nullable(&T::Ref("Type"))),
+            ("stream", T::Bool),
+        ],
+    ),
     Def::Object("ErrorResponse", &[("status", T::Num), ("decl", DECL_ID)]),
     Def::Object("Auth", &[("kind", T::Ref("AuthKind")), ("header", OPT_STR)]),
     Def::Strings("AuthKind", &["none", "bearer", "basic", "api_key"]),
@@ -225,7 +298,14 @@ pub const DEFS: &[Def] = &[
         ],
     ),
     Def::Strings("Role", &["server", "client"]),
-    Def::Object("HostHello", &[("type", T::Str), ("protocol", T::Str), ("veld_version", T::Str)]),
+    Def::Object(
+        "HostHello",
+        &[
+            ("type", T::Str),
+            ("protocol", T::Str),
+            ("veld_version", T::Str),
+        ],
+    ),
     Def::Object(
         "PluginHello",
         &[
@@ -249,18 +329,33 @@ pub const DEFS: &[Def] = &[
             ("consumes", T::List(&T::Ref("ServiceId"))),
         ],
     ),
-    Def::Object("PluginFile", &[("path", T::Str), ("content", T::Str), ("executable", T::Optional(&T::Bool))]),
+    Def::Object(
+        "PluginFile",
+        &[
+            ("path", T::Str),
+            ("content", T::Str),
+            ("executable", T::Optional(&T::Bool)),
+        ],
+    ),
     Def::Strings("Severity", &["error", "warning"]),
     Def::Object(
         "PluginDiagnostic",
-        &[("code", T::Str), ("severity", T::Ref("Severity")), ("message", T::Str), ("ir_ref", T::Optional(&T::Str))],
+        &[
+            ("code", T::Str),
+            ("severity", T::Ref("Severity")),
+            ("message", T::Str),
+            ("ir_ref", T::Optional(&T::Str)),
+        ],
     ),
     Def::Object(
         "GenerateResult",
         &[
             ("type", T::Str),
             ("files", T::List(&T::Ref("PluginFile"))),
-            ("diagnostics", T::Optional(&T::List(&T::Ref("PluginDiagnostic")))),
+            (
+                "diagnostics",
+                T::Optional(&T::List(&T::Ref("PluginDiagnostic"))),
+            ),
         ],
     ),
 ];
@@ -307,7 +402,11 @@ fn ts_type(t: &T) -> String {
 }
 
 fn ts_field(name: &str, t: &T) -> String {
-    let key = if name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') { name.to_string() } else { format!("\"{name}\"") };
+    let key = if name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        name.to_string()
+    } else {
+        format!("\"{name}\"")
+    };
     let opt = if matches!(t, T::Optional(_)) { "?" } else { "" };
     format!("{key}{opt}: {}", ts_type(t))
 }
@@ -320,18 +419,34 @@ fn ts_object_body(fields: &[(&str, T)], extra: &[String], indent: &str) -> Strin
 
 fn ts_def(def: &Def) -> String {
     match def {
-        Def::Object(name, fields) => format!("export interface {name} {{\n{}}}\n", ts_object_body(fields, &[], "  ")),
+        Def::Object(name, fields) => format!(
+            "export interface {name} {{\n{}}}\n",
+            ts_object_body(fields, &[], "  ")
+        ),
         Def::Strings(name, values) => {
             let items: Vec<String> = values.iter().map(|v| format!("\"{v}\"")).collect();
             format!("export type {name} = {};\n", items.join(" | "))
         }
         Def::Alias(name, t) => format!("export type {name} = {};\n", ts_type(t)),
         Def::External(name, variants) => {
-            let arms: String = variants.iter().map(|(k, t)| format!("  | {{ {k}: {} }}\n", ts_type(t))).collect();
+            let arms: String = variants
+                .iter()
+                .map(|(k, t)| format!("  | {{ {k}: {} }}\n", ts_type(t)))
+                .collect();
             format!("export type {name} =\n{arms}")
         }
-        Def::Internal { name, common, tag, variants } => ts_internal(name, common, tag, variants),
-        Def::Adjacent { name, tag, content, variants } => {
+        Def::Internal {
+            name,
+            common,
+            tag,
+            variants,
+        } => ts_internal(name, common, tag, variants),
+        Def::Adjacent {
+            name,
+            tag,
+            content,
+            variants,
+        } => {
             let arms: String = variants
                 .iter()
                 .map(|(v, t)| match t {
@@ -350,7 +465,11 @@ fn ts_internal(name: &str, common: Fields, tag: &str, variants: &[(&str, Fields)
         let mut all: Vec<(&str, T)> = common.to_vec();
         all.extend(fields.iter().copied());
         out.push_str("  | {\n");
-        out.push_str(&ts_object_body(&all, &[format!("{tag}: \"{value}\"")], "      "));
+        out.push_str(&ts_object_body(
+            &all,
+            &[format!("{tag}: \"{value}\"")],
+            "      ",
+        ));
         out.push_str("    }\n");
     }
     out
@@ -368,7 +487,8 @@ pub fn check(root: &str, value: &Value) -> Result<(), String> {
 }
 
 fn check_ref(name: &str, value: &Value, path: &str) -> Result<(), String> {
-    let def = find(name).ok_or_else(|| format!("{path}: the schema refers to the undefined type `{name}`"))?;
+    let def = find(name)
+        .ok_or_else(|| format!("{path}: the schema refers to the undefined type `{name}`"))?;
     check_def(def, value, path)
 }
 
@@ -381,7 +501,12 @@ fn check_def(def: &Def, value: &Value, path: &str) -> Result<(), String> {
         },
         Def::Alias(_, t) => check_ty(t, value, path),
         Def::External(_, variants) => check_external(variants, value, path),
-        Def::Internal { common, tag, variants, .. } => {
+        Def::Internal {
+            common,
+            tag,
+            variants,
+            ..
+        } => {
             let kind = value.get(*tag).and_then(Value::as_str).unwrap_or_default();
             let (_, fields) = variants
                 .iter()
@@ -391,26 +516,55 @@ fn check_def(def: &Def, value: &Value, path: &str) -> Result<(), String> {
             all.extend(fields.iter().copied());
             check_object(&all, &[tag], value, path)
         }
-        Def::Adjacent { tag, content, variants, .. } => check_adjacent(tag, content, variants, value, path),
+        Def::Adjacent {
+            tag,
+            content,
+            variants,
+            ..
+        } => check_adjacent(tag, content, variants, value, path),
     }
 }
 
 fn check_external(variants: &[(&str, T)], value: &Value, path: &str) -> Result<(), String> {
-    let obj = value.as_object().filter(|o| o.len() == 1).ok_or_else(|| format!("{path}: expected a one-key object"))?;
-    let (key, payload) = obj.iter().next().ok_or_else(|| format!("{path}: empty object"))?;
-    let (_, t) = variants.iter().find(|(k, _)| k == key).ok_or_else(|| format!("{path}: unknown variant `{key}`"))?;
+    let obj = value
+        .as_object()
+        .filter(|o| o.len() == 1)
+        .ok_or_else(|| format!("{path}: expected a one-key object"))?;
+    let (key, payload) = obj
+        .iter()
+        .next()
+        .ok_or_else(|| format!("{path}: empty object"))?;
+    let (_, t) = variants
+        .iter()
+        .find(|(k, _)| k == key)
+        .ok_or_else(|| format!("{path}: unknown variant `{key}`"))?;
     check_ty(t, payload, &format!("{path}.{key}"))
 }
 
-fn check_adjacent(tag: &str, content: &str, variants: &[(&str, Option<T>)], value: &Value, path: &str) -> Result<(), String> {
+fn check_adjacent(
+    tag: &str,
+    content: &str,
+    variants: &[(&str, Option<T>)],
+    value: &Value,
+    path: &str,
+) -> Result<(), String> {
     let kind = value.get(tag).and_then(Value::as_str).unwrap_or_default();
-    let (_, payload) = variants.iter().find(|(v, _)| *v == kind).ok_or_else(|| format!("{path}: unknown `{tag}` value {:?}", value.get(tag)))?;
-    let obj = value.as_object().ok_or_else(|| format!("{path}: expected an object"))?;
+    let (_, payload) = variants
+        .iter()
+        .find(|(v, _)| *v == kind)
+        .ok_or_else(|| format!("{path}: unknown `{tag}` value {:?}", value.get(tag)))?;
+    let obj = value
+        .as_object()
+        .ok_or_else(|| format!("{path}: expected an object"))?;
     match payload {
         Some(t) => {
-            let inner = obj.get(content).ok_or_else(|| format!("{path}: missing `{content}`"))?;
+            let inner = obj
+                .get(content)
+                .ok_or_else(|| format!("{path}: missing `{content}`"))?;
             if obj.len() != 2 {
-                return Err(format!("{path}: unexpected keys next to `{tag}` and `{content}`"));
+                return Err(format!(
+                    "{path}: unexpected keys next to `{tag}` and `{content}`"
+                ));
             }
             check_ty(t, inner, &format!("{path}.{content}"))
         }
@@ -419,17 +573,30 @@ fn check_adjacent(tag: &str, content: &str, variants: &[(&str, Option<T>)], valu
     }
 }
 
-fn check_object(fields: &[(&str, T)], tags: &[&str], value: &Value, path: &str) -> Result<(), String> {
-    let obj = value.as_object().ok_or_else(|| format!("{path}: expected an object, found {value}"))?;
+fn check_object(
+    fields: &[(&str, T)],
+    tags: &[&str],
+    value: &Value,
+    path: &str,
+) -> Result<(), String> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| format!("{path}: expected an object, found {value}"))?;
     for key in obj.keys() {
         if !fields.iter().any(|(n, _)| n == key) && !tags.contains(&key.as_str()) {
-            return Err(format!("{path}: unknown key \"{key}\" (add it to veld_ir::schema)"));
+            return Err(format!(
+                "{path}: unknown key \"{key}\" (add it to veld_ir::schema)"
+            ));
         }
     }
     for (name, t) in fields {
         match (obj.get(*name), t) {
             (None, T::Optional(_)) => {}
-            (None, _) => return Err(format!("{path}: missing key \"{name}\" (remove it from veld_ir::schema?)")),
+            (None, _) => {
+                return Err(format!(
+                    "{path}: missing key \"{name}\" (remove it from veld_ir::schema?)"
+                ));
+            }
             (Some(v), t) => check_ty(t, v, &format!("{path}.{name}"))?,
         }
     }
@@ -450,11 +617,16 @@ fn check_ty(t: &T, v: &Value, path: &str) -> Result<(), String> {
         T::Nullable(_) if v.is_null() => Ok(()),
         T::Nullable(i) | T::Optional(i) => check_ty(i, v, path),
         T::List(i) => match v.as_array() {
-            Some(items) => items.iter().enumerate().try_for_each(|(k, x)| check_ty(i, x, &format!("{path}[{k}]"))),
+            Some(items) => items
+                .iter()
+                .enumerate()
+                .try_for_each(|(k, x)| check_ty(i, x, &format!("{path}[{k}]"))),
             None => wrong("an array"),
         },
         T::Map(i) => match v.as_object() {
-            Some(o) => o.iter().try_for_each(|(k, x)| check_ty(i, x, &format!("{path}.{k}"))),
+            Some(o) => o
+                .iter()
+                .try_for_each(|(k, x)| check_ty(i, x, &format!("{path}.{k}"))),
             None => wrong("an object"),
         },
     }

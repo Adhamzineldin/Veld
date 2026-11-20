@@ -14,7 +14,9 @@ pub const IR_VERSION: &str = "1.0";
 
 macro_rules! id_type {
     ($name:ident) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+        #[derive(
+            Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+        )]
         #[serde(transparent)]
         pub struct $name(pub u32);
         impl $name {
@@ -55,12 +57,19 @@ impl Ir {
     }
     #[must_use]
     pub fn service_by_name(&self, name: &str) -> Option<&Service> {
-        self.services.iter().find(|s| self.package(s.package).name == name || s.name == name)
+        self.services
+            .iter()
+            .find(|s| self.package(s.package).name == name || s.name == name)
     }
     /// Services belonging to a package name (a workspace service package may
     /// declare several `service` blocks).
-    pub fn services_of_package<'a>(&'a self, pkg: &'a str) -> impl Iterator<Item = &'a Service> + 'a {
-        self.services.iter().filter(move |s| self.package(s.package).name == pkg)
+    pub fn services_of_package<'a>(
+        &'a self,
+        pkg: &'a str,
+    ) -> impl Iterator<Item = &'a Service> + 'a {
+        self.services
+            .iter()
+            .filter(move |s| self.package(s.package).name == pkg)
     }
 
     /// Every declaration reachable from the given services' endpoints, sorted
@@ -152,7 +161,11 @@ impl Ir {
                     t.features(&mut f);
                 }
                 if ep.success.stream {
-                    f.insert(if ep.method == Method::Ws { Feature::StreamingWs } else { Feature::StreamingSse });
+                    f.insert(if ep.method == Method::Ws {
+                        Feature::StreamingWs
+                    } else {
+                        Feature::StreamingSse
+                    });
                 }
                 if ep.method == Method::Ws {
                     f.insert(Feature::StreamingWs);
@@ -372,7 +385,10 @@ impl Scalar {
     }
     #[must_use]
     pub fn is_numeric(self) -> bool {
-        matches!(self, Scalar::Int | Scalar::Long | Scalar::Float | Scalar::Decimal)
+        matches!(
+            self,
+            Scalar::Int | Scalar::Long | Scalar::Float | Scalar::Decimal
+        )
     }
 }
 
@@ -466,7 +482,10 @@ pub enum Literal {
     Bool(bool),
     Null,
     /// Enum variant by source name; `wire` is the resolved wire value.
-    EnumVariant { name: String, wire: String },
+    EnumVariant {
+        name: String,
+        wire: String,
+    },
     EmptyList,
 }
 
@@ -641,7 +660,10 @@ pub struct Auth {
 impl Auth {
     #[must_use]
     pub fn none() -> Self {
-        Auth { kind: AuthKind::None, header: None }
+        Auth {
+            kind: AuthKind::None,
+            header: None,
+        }
     }
 }
 

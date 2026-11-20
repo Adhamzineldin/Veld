@@ -4,7 +4,11 @@ use super::*;
 use crate::*;
 
 fn origin() -> Origin {
-    Origin { file: "a.veld".into(), line: 1, col: 1 }
+    Origin {
+        file: "a.veld".into(),
+        line: 1,
+        col: 1,
+    }
 }
 
 fn all_literals() -> Vec<Literal> {
@@ -20,7 +24,10 @@ fn all_literals() -> Vec<Literal> {
         Literal::Float(1.5),
         Literal::Bool(true),
         Literal::Null,
-        Literal::EnumVariant { name: "A".into(), wire: "a".into() },
+        Literal::EnumVariant {
+            name: "A".into(),
+            wire: "a".into(),
+        },
         Literal::EmptyList,
     ]
 }
@@ -81,7 +88,11 @@ fn decl(id: u32, name: &str, kind: DeclKind) -> Decl {
 fn decls() -> Vec<Decl> {
     let probe = DeclKind::Enum(Enum { variants: vec![] });
     match probe {
-        DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => {}
+        DeclKind::Model(_)
+        | DeclKind::Error(_)
+        | DeclKind::Enum(_)
+        | DeclKind::Union(_)
+        | DeclKind::Const(_) => {}
     }
     let fields: Vec<Field> = all_types()
         .into_iter()
@@ -89,15 +100,60 @@ fn decls() -> Vec<Decl> {
         .enumerate()
         .map(|(i, (t, l))| field(&format!("f{i}"), t, l))
         .collect();
-    let model = Model { parent: Some(DeclId(0)), fields };
-    let variant = Variant { name: "A".into(), wire: "a".into(), docs: Some("d".into()), deprecated: None };
+    let model = Model {
+        parent: Some(DeclId(0)),
+        fields,
+    };
+    let variant = Variant {
+        name: "A".into(),
+        wire: "a".into(),
+        docs: Some("d".into()),
+        deprecated: None,
+    };
     vec![
-        decl(0, "A", DeclKind::Model(Model { parent: None, fields: vec![] })),
+        decl(
+            0,
+            "A",
+            DeclKind::Model(Model {
+                parent: None,
+                fields: vec![],
+            }),
+        ),
         decl(1, "B", DeclKind::Model(model.clone())),
-        decl(2, "E", DeclKind::Error(ErrorDecl { default_status: Some(404), fields: model })),
-        decl(3, "En", DeclKind::Enum(Enum { variants: vec![variant] })),
-        decl(4, "U", DeclKind::Union(Union { discriminator: "kind".into(), arms: vec![UnionArm { label: "a".into(), decl: DeclId(1) }] })),
-        decl(5, "C", DeclKind::Const(Const { ty: Type::Scalar(Scalar::Int), value: Literal::Int(1) })),
+        decl(
+            2,
+            "E",
+            DeclKind::Error(ErrorDecl {
+                default_status: Some(404),
+                fields: model,
+            }),
+        ),
+        decl(
+            3,
+            "En",
+            DeclKind::Enum(Enum {
+                variants: vec![variant],
+            }),
+        ),
+        decl(
+            4,
+            "U",
+            DeclKind::Union(Union {
+                discriminator: "kind".into(),
+                arms: vec![UnionArm {
+                    label: "a".into(),
+                    decl: DeclId(1),
+                }],
+            }),
+        ),
+        decl(
+            5,
+            "C",
+            DeclKind::Const(Const {
+                ty: Type::Scalar(Scalar::Int),
+                value: Literal::Int(1),
+            }),
+        ),
     ]
 }
 
@@ -109,7 +165,10 @@ fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
         sig: "veld:p/S.op@0".into(),
         docs: Some("d".into()),
         deprecated: Some("x".into()),
-        auth: Auth { kind: auth, header: Some("X-Key".into()) },
+        auth: Auth {
+            kind: auth,
+            header: Some("X-Key".into()),
+        },
         middleware: vec!["m".into()],
         params: vec![Param {
             name: "p".into(),
@@ -120,31 +179,73 @@ fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
             stream: true,
             constraints: Constraints::default(),
         }],
-        success: Success { status: 200, ty: Some(Type::Decl(DeclId(1))), stream: false },
-        errors: vec![ErrorResponse { status: 404, decl: DeclId(2) }],
+        success: Success {
+            status: 200,
+            ty: Some(Type::Decl(DeclId(1))),
+            stream: false,
+        },
+        errors: vec![ErrorResponse {
+            status: 404,
+            decl: DeclId(2),
+        }],
         origin: origin(),
     }
 }
 
-const METHODS: [Method; 8] =
-    [Method::Get, Method::Post, Method::Put, Method::Patch, Method::Delete, Method::Head, Method::Options, Method::Ws];
-const BINDINGS: [Binding; 5] = [Binding::Path, Binding::Query, Binding::QueryObject, Binding::Header, Binding::Body];
-const AUTHS: [AuthKind; 4] = [AuthKind::None, AuthKind::Bearer, AuthKind::Basic, AuthKind::ApiKey];
-const KINDS: [PackageKind; 4] = [PackageKind::Service, PackageKind::Library, PackageKind::Registry, PackageKind::Prelude];
+const METHODS: [Method; 8] = [
+    Method::Get,
+    Method::Post,
+    Method::Put,
+    Method::Patch,
+    Method::Delete,
+    Method::Head,
+    Method::Options,
+    Method::Ws,
+];
+const BINDINGS: [Binding; 5] = [
+    Binding::Path,
+    Binding::Query,
+    Binding::QueryObject,
+    Binding::Header,
+    Binding::Body,
+];
+const AUTHS: [AuthKind; 4] = [
+    AuthKind::None,
+    AuthKind::Bearer,
+    AuthKind::Basic,
+    AuthKind::ApiKey,
+];
+const KINDS: [PackageKind; 4] = [
+    PackageKind::Service,
+    PackageKind::Library,
+    PackageKind::Registry,
+    PackageKind::Prelude,
+];
 
 /// Adding a variant to one of these enums breaks this function, which points to the lists above.
 fn exhaustive() {
     match Method::Get {
-        Method::Get | Method::Post | Method::Put | Method::Patch | Method::Delete | Method::Head | Method::Options | Method::Ws => {}
+        Method::Get
+        | Method::Post
+        | Method::Put
+        | Method::Patch
+        | Method::Delete
+        | Method::Head
+        | Method::Options
+        | Method::Ws => {}
     }
     match Binding::Path {
-        Binding::Path | Binding::Query | Binding::QueryObject | Binding::Header | Binding::Body => {}
+        Binding::Path | Binding::Query | Binding::QueryObject | Binding::Header | Binding::Body => {
+        }
     }
     match AuthKind::None {
         AuthKind::None | AuthKind::Bearer | AuthKind::Basic | AuthKind::ApiKey => {}
     }
     match PackageKind::Service {
-        PackageKind::Service | PackageKind::Library | PackageKind::Registry | PackageKind::Prelude => {}
+        PackageKind::Service
+        | PackageKind::Library
+        | PackageKind::Registry
+        | PackageKind::Prelude => {}
     }
 }
 
@@ -159,7 +260,11 @@ fn full_ir() -> Ir {
     let packages = KINDS
         .into_iter()
         .enumerate()
-        .map(|(i, kind)| Package { id: PackageId(i as u32), name: format!("p{i}"), kind })
+        .map(|(i, kind)| Package {
+            id: PackageId(i as u32),
+            name: format!("p{i}"),
+            kind,
+        })
         .collect();
     Ir {
         ir_version: IR_VERSION.into(),
@@ -177,7 +282,9 @@ fn full_ir() -> Ir {
             endpoints,
             origin: origin(),
         }],
-        consumes: [("S".to_string(), vec!["T".to_string()])].into_iter().collect(),
+        consumes: [("S".to_string(), vec!["T".to_string()])]
+            .into_iter()
+            .collect(),
     }
 }
 
@@ -202,17 +309,41 @@ fn the_schema_lists_every_string_variant_of_the_rust_enums() {
     let methods: Vec<String> = METHODS.iter().map(|m| m.as_str().to_string()).collect();
     assert_eq!(names("Method"), methods);
     for (def, values) in [
-        ("Binding", BINDINGS.iter().map(|v| serde_json::to_value(v).unwrap()).collect::<Vec<_>>()),
-        ("AuthKind", AUTHS.iter().map(|v| serde_json::to_value(v).unwrap()).collect()),
-        ("PackageKind", KINDS.iter().map(|v| serde_json::to_value(v).unwrap()).collect()),
+        (
+            "Binding",
+            BINDINGS
+                .iter()
+                .map(|v| serde_json::to_value(v).unwrap())
+                .collect::<Vec<_>>(),
+        ),
+        (
+            "AuthKind",
+            AUTHS
+                .iter()
+                .map(|v| serde_json::to_value(v).unwrap())
+                .collect(),
+        ),
+        (
+            "PackageKind",
+            KINDS
+                .iter()
+                .map(|v| serde_json::to_value(v).unwrap())
+                .collect(),
+        ),
     ] {
-        let want: Vec<String> = values.iter().map(|v| v.as_str().unwrap().to_string()).collect();
+        let want: Vec<String> = values
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
         assert_eq!(names(def), want, "{def}");
     }
     for n in ["email", "uri", "hostname", "ipv4", "ipv6"] {
         assert!(StringFormat::from_name(n).is_some(), "{n}");
     }
-    assert_eq!(names("StringFormat"), ["email", "uri", "hostname", "ipv4", "ipv6"]);
+    assert_eq!(
+        names("StringFormat"),
+        ["email", "uri", "hostname", "ipv4", "ipv6"]
+    );
 }
 
 #[test]
@@ -221,22 +352,50 @@ fn drift_is_reported_with_the_path_of_the_mismatch() {
     let mut extra = good.clone();
     extra["decls"][1]["fields"][0]["brand_new"] = json!(1);
     let err = check("Ir", &extra).unwrap_err();
-    assert!(err.contains("Ir.decls[1].fields[0]") && err.contains("unknown key \"brand_new\""), "{err}");
+    assert!(
+        err.contains("Ir.decls[1].fields[0]") && err.contains("unknown key \"brand_new\""),
+        "{err}"
+    );
     let mut missing = good.clone();
-    missing["services"][0]["endpoints"][0].as_object_mut().unwrap().remove("sig");
-    assert!(check("Ir", &missing).unwrap_err().contains("missing key \"sig\""));
+    missing["services"][0]["endpoints"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("sig");
+    assert!(
+        check("Ir", &missing)
+            .unwrap_err()
+            .contains("missing key \"sig\"")
+    );
     let mut wrong_type = good;
     wrong_type["services"][0]["name"] = json!(3);
-    assert!(check("Ir", &wrong_type).unwrap_err().contains("expected a string"));
+    assert!(
+        check("Ir", &wrong_type)
+            .unwrap_err()
+            .contains("expected a string")
+    );
 }
 
 #[test]
 fn protocol_messages_validate() {
-    check("HostHello", &json!({"type":"hello","protocol":"1","veld_version":"2.0.0"})).unwrap();
+    check(
+        "HostHello",
+        &json!({"type":"hello","protocol":"1","veld_version":"2.0.0"}),
+    )
+    .unwrap();
     let hello = json!({"type":"hello","protocol":"1","name":"k","version":"1","roles":["client"],"capabilities":["auth"]});
     check("PluginHello", &hello).unwrap();
-    check("GenerateResult", &json!({"type":"result","files":[{"path":"a","content":"b"}]})).unwrap();
-    assert!(check("GenerateResult", &json!({"type":"result","files":[{"path":"a"}]})).is_err());
+    check(
+        "GenerateResult",
+        &json!({"type":"result","files":[{"path":"a","content":"b"}]}),
+    )
+    .unwrap();
+    assert!(
+        check(
+            "GenerateResult",
+            &json!({"type":"result","files":[{"path":"a"}]})
+        )
+        .is_err()
+    );
     let ir = serde_json::to_value(full_ir()).unwrap();
     let request = json!({"type":"generate","role":"client","ir":ir,"services":[0],"options":{},"consumes":[]});
     check("GenerateRequest", &request).unwrap();
@@ -263,7 +422,11 @@ fn typescript_is_deterministic_and_complete() {
     }
     for def in DEFS {
         let name = def.name();
-        assert!(ts.contains(&format!("export interface {name} ")) || ts.contains(&format!("export type {name} ")), "{name}");
+        assert!(
+            ts.contains(&format!("export interface {name} "))
+                || ts.contains(&format!("export type {name} ")),
+            "{name}"
+        );
     }
 }
 
