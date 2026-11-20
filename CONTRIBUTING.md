@@ -38,8 +38,19 @@ cargo insta test --review                # snapshot changes need a human review
 ```
 
 The toolchain tests compile generated code with `tsc` and `javac`. Install the pinned TypeScript with
-`npm ci --prefix tests/toolchain/ts` and have a JDK 17+ on `PATH`. Set `VELD_REQUIRE_TOOLCHAINS=1` so
+`npm ci --prefix tests/toolchain/ts` and have a JDK 21 on `PATH` (it compiles for `--release 17` and `21`). Set `VELD_REQUIRE_TOOLCHAINS=1` so
 a missing tool fails the test instead of skipping it. CI does this.
+
+## How the build enforces the architecture
+
+The architecture is checked by the compiler, the linter and the test suites, not by review. Work with these mechanisms, not around them.
+
+- **Exhaustive matches.** The IR enums (`Type`, `DeclKind`, `Feature`, `Binding`, ...) are not `#[non_exhaustive]`, and `clippy::wildcard_enum_match_arm` and `match_wildcard_for_single_variants` are warnings (errors in CI with `-D warnings`). Match every variant explicitly, so adding one breaks the build at each site that must handle it. Where a wildcard is genuinely right (scanning a token stream, or a foreign enum), allow the lint on that item with `#[allow(..., reason = "...")]`. External plugins are protected by `ir_version` and the capability check instead.
+- **Traits.** A generator implements `Generator` (`veld-codegen`); a server framework implements `FrameworkAdapter<M>` for the emitter's own server model, and the emitter lists its adapters in ONE registry slice (`crates/emitters/<name>/src/frameworks/`). `frameworks(role)` and the central `E0803` check are derived from that slice. The language and framework versions are resolved once into a `Profile`; code asks `profile.java_at_least(21)` and never compares version strings.
+- **Crate boundaries.** `apps -> tools/emitters -> codegen -> ir` and `compiler -> ir`. Cargo rejects any other edge, so an emitter cannot reach into the compiler and nothing outside `veld-project::output` writes files.
+- **The capability check (`E0801`).** Before `generate`, the core compares the features a contract uses with the generator's `Capabilities` and reports `E0801` for the rest. A generator that declares a capability must implement it; one that does not can never emit wrong code for it.
+- **The conformance kit.** `veld-emit-conformance` runs every emitter against fixtures for each `Feature` and checks the capability gate, determinism and embedded signatures. `veld plugin test` runs the same protocol checks against an external plugin, including its declared language and framework matrix.
+- **Toolchain tests.** Generated code is compiled and run with the real tools: `javac --release 17` and `--release 21`, and `tsc --target es2020` and `es2022`, the matrix being the supported language versions. CI installs JDK 17 and 21 for it. A new language version or framework version joins the matrix in the same change.
 
 ## Definition of done
 
