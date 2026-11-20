@@ -65,7 +65,6 @@ pub fn schema_expr(fc: &mut FileCtx<'_, '_>, ty: &Type, c: &Constraints) -> Stri
             let name = fc.value_ref(*id);
             vec!["k: 'ref'".to_string(), format!("to: () => {name}.schema")]
         }
-        _ => vec!["k: 'json'".to_string()],
     };
     parts.extend(bounds(c));
     format!("{{ {} }}", parts.join(", "))

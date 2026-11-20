@@ -50,7 +50,6 @@ fn write_decl(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl) {
         DeclKind::Union(u) => write_union(w, fc, d, u),
         DeclKind::Const(c) => write_const(w, fc, d, c),
         DeclKind::Error(e) => write_error(w, fc, d, e),
-        _ => {}
     }
 }
 

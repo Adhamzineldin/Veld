@@ -33,6 +33,5 @@ pub fn ts_type(fc: &mut FileCtx<'_, '_>, ty: &Type) -> String {
             format!("{page}<{}>", ts_type(fc, t))
         }
         Type::Decl(id) => fc.type_ref(*id),
-        _ => "unknown".to_string(),
     }
 }

@@ -16,7 +16,8 @@ pub mod validate;
 
 use serde::Deserialize;
 use veld_codegen::{
-    Capabilities, FileSet, GenDiagnostic, GenRequest, Generator, Role, check_capabilities,
+    Capabilities, FileSet, FrameworkInfo, GenDiagnostic, GenRequest, Generator, LanguageInfo,
+    Profile, Role, check_capabilities,
 };
 use veld_ir::Feature;
 
@@ -24,6 +25,19 @@ pub use tree::Tree;
 
 /// Features no TypeScript generator supports yet.
 pub const UNSUPPORTED: [Feature; 2] = [Feature::StreamingSse, Feature::StreamingWs];
+
+/// The TypeScript language versions: ECMAScript editions, the oldest first (the default).
+/// Selected with the target option `typescript = "es2022"`.
+#[must_use]
+pub fn language() -> LanguageInfo {
+    LanguageInfo {
+        id: "typescript".to_string(),
+        versions: ES_EDITIONS.iter().map(|v| (*v).to_string()).collect(),
+    }
+}
+
+/// Supported `typescript` option values.
+pub const ES_EDITIONS: [&str; 2] = ["es2020", "es2022"];
 
 /// Options of the `typescript` generator (none yet).
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -90,8 +104,12 @@ impl Generator for TypeScript {
         &[Role::Client]
     }
 
-    fn frameworks(&self, _role: Role) -> &'static [&'static str] {
-        &[]
+    fn frameworks(&self, _role: Role) -> Vec<FrameworkInfo> {
+        Vec::new()
+    }
+
+    fn language(&self) -> Option<LanguageInfo> {
+        Some(language())
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
@@ -102,6 +120,7 @@ impl Generator for TypeScript {
         &self,
         req: &GenRequest<'_>,
         _opts: &Options,
+        _profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, Role::Client, &self.capabilities(Role::Client))?;
         let mut files = FileSet::new();
