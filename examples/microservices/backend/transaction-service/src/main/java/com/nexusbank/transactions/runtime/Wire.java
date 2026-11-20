@@ -6,12 +6,14 @@ import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -301,7 +303,7 @@ public final class Wire {
   }
 
   private static boolean validDate(String s) {
-    java.util.regex.Matcher m = RE_DATE.matcher(s);
+    Matcher m = RE_DATE.matcher(s);
     if (!m.matches()) {
       return false;
     }
@@ -422,7 +424,7 @@ public final class Wire {
   static String normalizeDatetime(String v) {
     String s = v;
     if (!s.endsWith("Z")) {
-      Instant at = OffsetDateTime.parse(s).toInstant().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+      Instant at = OffsetDateTime.parse(s).toInstant().truncatedTo(ChronoUnit.MILLIS);
       s = at.toString();
     }
     return s.replaceAll("(\\.\\d*?)0+Z$", "$1Z").replaceAll("\\.Z$", "Z");

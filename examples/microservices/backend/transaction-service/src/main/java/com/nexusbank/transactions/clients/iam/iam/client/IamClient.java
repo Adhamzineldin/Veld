@@ -15,7 +15,6 @@ import com.nexusbank.transactions.clients.iam.prelude.ValidationError;
 import com.nexusbank.transactions.runtime.ClientCore;
 import com.nexusbank.transactions.runtime.ClientDefaults;
 import com.nexusbank.transactions.runtime.ClientOptions;
-import com.nexusbank.transactions.runtime.Codec;
 import com.nexusbank.transactions.runtime.EndpointSpec;
 import com.nexusbank.transactions.runtime.Router;
 import com.nexusbank.transactions.runtime.Schema;

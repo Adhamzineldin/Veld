@@ -2,6 +2,7 @@
 package com.nexusbank.transactions.runtime;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /** What a service implementation, an auth hook and a middleware hook know about a request. */
@@ -36,7 +37,7 @@ public final class RequestContext {
 
   /** The first value of a header, or {@code null}. */
   public String header(String name) {
-    List<String> values = headers.get(name.toLowerCase(java.util.Locale.ROOT));
+    List<String> values = headers.get(name.toLowerCase(Locale.ROOT));
     return values == null || values.isEmpty() ? null : values.get(0);
   }
 
