@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 
+pub mod codes;
 pub mod diagnostics;
 pub mod index;
 pub mod language;

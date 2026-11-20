@@ -89,6 +89,10 @@ impl Diagnostic {
         Diagnostic::new(code, Severity::Warning, message.into(), primary)
     }
     fn new(code: &'static str, severity: Severity, message: String, primary: Span) -> Diagnostic {
+        debug_assert!(
+            crate::codes::lookup(code).is_some(),
+            "diagnostic code `{code}` is not in the code table (crates/veld-compiler/src/codes.rs)"
+        );
         Diagnostic {
             code,
             severity,
