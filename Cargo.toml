@@ -14,6 +14,7 @@ members = [
   "xtask",
   "apps/veld",
   "crates/veld-lsp",
+  "crates/veld-registry-client",
 ]
 
 [workspace.package]

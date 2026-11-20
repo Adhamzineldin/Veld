@@ -1,0 +1,28 @@
+[package]
+name = "veld-registry-client"
+description = "Veld package registry client: credentials, pack/unpack, resolver, lock and install"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+veld-ir.workspace = true
+veld-project.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+toml_edit.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+ureq.workspace = true
+semver.workspace = true
+flate2.workspace = true
+tar.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
