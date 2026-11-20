@@ -90,7 +90,11 @@ fn variant_index(ix: &Index, decl: usize, name: &str) -> Option<usize> {
     let d = ix.decls.get(decl)?;
     match &ix.decl_ast(d)?.kind {
         DeclKind::Enum(e) => e.variants.iter().position(|v| v.name.name == name),
-        _ => None,
+        DeclKind::Model(_)
+        | DeclKind::Error(_)
+        | DeclKind::Union(_)
+        | DeclKind::Service(_)
+        | DeclKind::Const(_) => None,
     }
 }
 
@@ -267,7 +271,13 @@ pub fn occurrences(ix: &Index, sym: &Symbol, with_def: bool) -> Vec<Span> {
                 1,
             )
         }
-        _ => Vec::new(),
+        Symbol::Field { .. }
+        | Symbol::Arm { .. }
+        | Symbol::Service(_)
+        | Symbol::Endpoint { .. }
+        | Symbol::Param { .. }
+        | Symbol::Package(_)
+        | Symbol::Annotation(_) => Vec::new(),
     };
     if with_def && let Some(s) = definition_span(ix, sym) {
         out.push(s);
@@ -304,14 +314,22 @@ pub fn definition_span(ix: &Index, sym: &Symbol) -> Option<Span> {
             let d = ix.decls.get(*decl)?;
             match &ix.decl_ast(d)?.kind {
                 DeclKind::Enum(e) => e.variants.get(*variant).map(|v| v.name.span),
-                _ => None,
+                DeclKind::Model(_)
+                | DeclKind::Error(_)
+                | DeclKind::Union(_)
+                | DeclKind::Service(_)
+                | DeclKind::Const(_) => None,
             }
         }
         Symbol::Arm { decl, arm } => {
             let d = ix.decls.get(*decl)?;
             match &ix.decl_ast(d)?.kind {
                 DeclKind::Union(u) => u.arms.get(*arm).map(|a| a.label.span),
-                _ => None,
+                DeclKind::Model(_)
+                | DeclKind::Enum(_)
+                | DeclKind::Error(_)
+                | DeclKind::Service(_)
+                | DeclKind::Const(_) => None,
             }
         }
         Symbol::Service(s) => Some(service_ast(ix, *s)?.name.span),
@@ -350,7 +368,11 @@ pub fn service_ast(ix: &Index, service: usize) -> Option<&ast::ServiceDecl> {
     let s = ix.services.get(service)?;
     match &ix.file(s.file)?.ast.decls.get(s.ast_index)?.kind {
         DeclKind::Service(sd) => Some(sd),
-        _ => None,
+        DeclKind::Model(_)
+        | DeclKind::Enum(_)
+        | DeclKind::Error(_)
+        | DeclKind::Union(_)
+        | DeclKind::Const(_) => None,
     }
 }
 

@@ -32,7 +32,15 @@ pub fn definition(a: &Analysis, file: FileId, offset: u32) -> Option<Location> {
                 })?;
             location(a, Span::new(first.id, 0, 0))
         }
-        s => location(a, query::definition_span(&a.index, s)?),
+        s @ (Symbol::Decl(_)
+        | Symbol::Field { .. }
+        | Symbol::Variant { .. }
+        | Symbol::Arm { .. }
+        | Symbol::Service(_)
+        | Symbol::Endpoint { .. }
+        | Symbol::Param { .. }
+        | Symbol::Module(_)
+        | Symbol::Annotation(_)) => location(a, query::definition_span(&a.index, s)?),
     }
 }
 
@@ -100,7 +108,9 @@ fn renamable(a: &Analysis, file: FileId, offset: u32) -> Result<Hit, RenameError
         | Symbol::Service(_)
         | Symbol::Endpoint { .. }
         | Symbol::Param { .. } => {}
-        _ => return Err(RenameError::NotRenamable),
+        Symbol::Module(_) | Symbol::Package(_) | Symbol::Annotation(_) => {
+            return Err(RenameError::NotRenamable);
+        }
     }
     let name = text_of(ix, hit.span);
     if matches!(hit.symbol, Symbol::Decl(_)) && name != decl_name(ix, &hit.symbol) {
@@ -113,7 +123,15 @@ fn renamable(a: &Analysis, file: FileId, offset: u32) -> Result<Hit, RenameError
 fn decl_name<'a>(ix: &'a Index, s: &Symbol) -> &'a str {
     match s {
         Symbol::Decl(d) => ix.decls.get(*d).map_or("", |d| d.name.as_str()),
-        _ => "",
+        Symbol::Field { .. }
+        | Symbol::Variant { .. }
+        | Symbol::Arm { .. }
+        | Symbol::Service(_)
+        | Symbol::Endpoint { .. }
+        | Symbol::Param { .. }
+        | Symbol::Module(_)
+        | Symbol::Package(_)
+        | Symbol::Annotation(_) => "",
     }
 }
 
@@ -195,7 +213,7 @@ fn check_collision(ix: &Index, sym: &Symbol, new: &str) -> Result<(), RenameErro
         } => query::service_ast(ix, *service)
             .and_then(|s| s.endpoints.get(*endpoint))
             .is_some_and(|e| e.params.iter().any(|p| p.name.name == new)),
-        _ => false,
+        Symbol::Module(_) | Symbol::Package(_) | Symbol::Annotation(_) => false,
     };
     if taken {
         Err(RenameError::Taken(new.to_string()))

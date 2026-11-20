@@ -77,7 +77,7 @@ impl Client {
             match self.recv() {
                 Message::Response(r) if r.id == id => return r,
                 Message::Notification(n) => self.notes.push(n),
-                _ => {}
+                Message::Request(_) | Message::Response(_) => {}
             }
         }
     }
@@ -102,7 +102,9 @@ impl Client {
             }
             match self.recv() {
                 Message::Notification(n) => self.notes.push(n),
-                other => panic!("unexpected message {other:?}"),
+                other @ (Message::Request(_) | Message::Response(_)) => {
+                    panic!("unexpected message {other:?}")
+                }
             }
         }
     }

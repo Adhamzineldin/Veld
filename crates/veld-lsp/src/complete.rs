@@ -423,7 +423,7 @@ fn parse_use_path(stmt: &[Tok]) -> (Option<String>, Vec<String>) {
             Tok::Ident(w) => cur = Some(w.clone()),
             Tok::Punct(':') => pkg = cur.take(),
             Tok::Punct('.') => segs.extend(cur.take()),
-            _ => {}
+            Tok::Punct(_) | Tok::Arrow | Tok::Str | Tok::Num => {}
         }
     }
     segs.extend(cur);

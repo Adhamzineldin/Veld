@@ -132,7 +132,7 @@ impl State {
                     self.stack.push(Block::Body(k));
                 }
             }
-            other => {
+            other @ (Tok::Punct(_) | Tok::Arrow | Tok::Str | Tok::Num) => {
                 if let Some(u) = &mut self.use_stmt {
                     u.push(other.clone());
                 }
@@ -168,7 +168,7 @@ impl State {
                     self.stack.pop();
                 }
             }
-            _ => {}
+            Tok::Ident(_) | Tok::Punct(_) | Tok::Arrow | Tok::Str | Tok::Num => {}
         }
     }
 }
