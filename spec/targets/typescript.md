@@ -28,7 +28,7 @@ Server target (`role = "server"`, `emitter = "node"`). The server's own package 
     prelude.ts
     <package>/{models,errors,client.ts}
 ```
-Client target (`role = "client"`, `emitter = "typescript"`):
+Client target (`role = "client"`, `emitter = "typescript"`; it takes no `framework`, and any value is `E0803`):
 ```
 <out>/
   index.ts
@@ -96,6 +96,7 @@ export class OrdersClient {
 }
 export interface GetOrderRequest { id: string }   // path params by name, `body`, `query`, single @query params, headers by param name
 ```
+- Method names come from `veld-codegen::naming::member`: an endpoint named `new`, `constructor`, `__proto__`, `prototype` or `then` becomes `new_`, `constructor_`, and so on (a construct signature, the constructor or a thenable would otherwise break the class or interface). Wire names and paths never change. The client keeps its internals in ECMAScript `#private` fields (`#core`), so no endpoint name can collide with them.
 - Path params are encoded with `encodeURIComponent`. Query objects are serialised as repeated keys for lists, absent optionals are left out, and keys are sorted for determinism.
 - Before sending, the client validates the request with the companion validators, and it throws a `VeldError` `ValidationError` locally with `op` set. The `validate` option is on by default.
 - Success: the client parses JSON according to the success type, and resolves to `void` for no-body responses.

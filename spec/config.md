@@ -14,7 +14,7 @@ contracts = "contracts"    # package root (default "contracts")
 [[targets]]
 role = "server"
 emitter = "node"
-framework = "express"      # express | fastify | hono | none
+framework = "express"      # express | fastify | hono | node-http (node server)
 out = "../api/src/generated"
 
 [[targets]]
@@ -59,11 +59,17 @@ out = "services/orders/src/generated"
 role = "client"
 services = ["iam", "orders"]     # default: all services
 emitter = "typescript"
-framework = "react"              # none | react | vue
 out = "web/src/generated"
 
+[[targets]]
+role = "server"
+service = "payments"
+emitter = "java"
+framework = "spring"             # jdk | spring
+out = "services/payments/src/main/java"
+
 [targets.options]                # emitter-specific, validated by the emitter's typed Options
-validate = true
+package = "com.acme.payments"    # java: the base Java package
 
 [plugins.kotlin]
 command = "veld-emit-kotlin"     # resolved on PATH or relative path
@@ -77,6 +83,19 @@ url = "https://registry.example.com"
 [dependencies]
 "@acme/billing" = "^1.2"         # resolved and pinned in veld.lock
 ```
+
+## Frameworks and options per emitter
+
+`framework` is optional and is validated by the generator for the target's role. An unknown value is `E0803`, and the message lists the valid values. A role that takes no framework rejects any value.
+
+| Emitter | Role | `framework` values | `[targets.options]` keys |
+|---|---|---|---|
+| `node` | server | `express`, `fastify`, `hono`, `node-http` | none |
+| `typescript` | client | none | none |
+| `java` | server | `jdk`, `spring` | `package` |
+| `java` | client | none | `package` |
+
+Options are checked against the emitter's typed options: an unknown key is `E0802`. A `plugin:<name>` emitter declares its own values and options.
 
 ## Rules
 
@@ -94,6 +113,19 @@ url = "https://registry.example.com"
   3. the config `base-url`
   4. otherwise an error at client construction
 - Generated output never contains absolute paths, user names, hostnames or timestamps.
+
+## `veld.lock.ir.json`
+
+`veld generate` (for all targets, not a dry run, no conflicts) writes `veld.lock.ir.json` next to `veld.toml`: the compiled IR as pretty JSON with sorted, deterministic content. It is a snapshot of the contract as last generated. **Commit it.** `veld diff --lock` (the default of `veld diff`) compares the current contracts against this snapshot and reports breaking and non-breaking changes, so a pull request shows exactly what a contract change does to the wire. The file is rewritten only when its content changes. It is distinct from `veld.lock` (pinned registry packages).
+
+## Generated output
+
+Each `out` directory holds a manifest, `.veld-manifest.json`, listing the files Veld wrote with their content hashes.
+
+- `veld generate` never deletes or overwrites a file that Veld did not write (it reports it as a conflict).
+- A listed file whose content differs from its manifest hash is **user-modified**. If generating would overwrite or delete it, `generate` refuses and names it ("you edited generated file ..."). A dry run reports it too. `--force` overwrites it.
+- `veld clean` removes unmodified generated files and keeps user-modified ones. It leaves a manifest that lists only the kept files with their original hashes, so a later `generate` still reports them as user-modified.
+- A write starts by removing stale `.veld-staging-*` directories in `out`, left by an interrupted run. Generated paths may not use that prefix.
 
 ## Registry packages
 
