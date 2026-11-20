@@ -7,6 +7,7 @@ members = [
   "crates/veld-tools",
   "crates/veld-codegen",
   "crates/veld-emit-conformance",
+  "crates/veld-plugin-host",
 ]
 
 [workspace.package]
