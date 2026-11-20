@@ -8,7 +8,7 @@ use veld_project::packages::{Lockfile, split_name};
 use veld_registry_client::depsedit::set_dependency;
 use veld_registry_client::install::ensure_installed;
 use veld_registry_client::resolve_registry;
-use veld_registry_client::resolver::{parse_range, resolve};
+use veld_registry_client::resolver::{parse_range, resolve_preferring};
 
 use super::{Session, fail};
 use crate::cli::AddArgs;
@@ -48,74 +48,59 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &AddArgs) -> Result<Exit> {
     let client = session.client(&registry)?;
     let registry = client.base_url().to_string();
 
+    let old = Lockfile::read(&project.root)?.unwrap_or_default();
     let mut deps = project.dependencies.clone();
-    let wanted = range.unwrap_or("*").to_string();
-    // Resolve the new dependency first, so an unknown package or range changes nothing.
-    let fresh = resolve(
-        &BTreeMap::from([(name.to_string(), wanted)]),
-        &registry,
-        &client,
-    )
-    .map_err(fail)?;
-    let chosen = fresh.packages[0].clone();
-    let written = range.map_or_else(|| format!("^{}", chosen.version), str::to_string);
-    deps.insert(name.to_string(), written.clone());
-
-    let lock = merged_lock(&project.root, &deps, name, chosen, &registry, &client)?;
+    deps.insert(name.to_string(), range.unwrap_or("*").to_string());
+    // Resolve the whole graph first, so an unknown package, a bad range or a conflict changes
+    // nothing. Packages the lock already pins keep their version when it still fits; the added
+    // package is re-resolved to the newest.
+    let prefer: BTreeMap<String, String> = old
+        .packages
+        .iter()
+        .filter(|p| p.name != name)
+        .map(|p| (p.name.clone(), p.version.clone()))
+        .collect();
+    let lock = resolve_preferring(&deps, &registry, &client, &prefer).map_err(fail)?;
+    let chosen = lock.get(name).map(|p| p.version.clone()).ok_or_else(|| {
+        user(format!(
+            "internal error: {name} is missing from the resolution"
+        ))
+    })?;
+    let written = range.map_or_else(|| format!("^{chosen}"), str::to_string);
     ensure_installed(&project.root, &lock, &mut |p| session.download(p)).map_err(fail)?;
 
     let text = std::fs::read_to_string(&config_file)
         .with_context(|| format!("cannot read `{}`", config_file.display()))?;
     let set_registry = project.registry.is_none().then_some(registry.as_str());
     let edited = set_dependency(&text, name, &written, set_registry).map_err(fail)?;
-    atomic_write(&config_file, edited.as_bytes())?;
-    atomic_write(
-        &project.root.join(veld_project::packages::LOCK_FILE),
-        lock.to_toml().as_bytes(),
-    )?;
-    let version = &lock
-        .get(name)
-        .map(|p| p.version.clone())
-        .unwrap_or_default();
+    commit(&config_file, &text, &edited, &project.root, &lock)?;
+    let transitive = lock.packages.len().saturating_sub(deps.len());
+    let extra = match transitive {
+        0 => String::new(),
+        1 => ", plus 1 package it depends on".to_string(),
+        n => format!(", plus {n} packages it depends on"),
+    };
     ui.info(&format!(
-        "added {name}@{version} (veld.toml and veld.lock updated)"
+        "added {name}@{chosen} (veld.toml and veld.lock updated{extra})"
     ));
     Ok(Exit::Ok)
 }
 
-/// The existing pins that still satisfy `[dependencies]`, plus the new one; anything else
-/// that is declared but not pinned is resolved.
-fn merged_lock(
+/// Writes `veld.toml` and `veld.lock` together: if the second write fails, the first is undone.
+fn commit(
+    config_file: &Path,
+    old_text: &str,
+    new_text: &str,
     root: &Path,
-    deps: &BTreeMap<String, String>,
-    added: &str,
-    chosen: veld_project::packages::LockedPackage,
-    registry: &str,
-    client: &veld_registry_client::Client,
-) -> Result<Lockfile> {
-    let old = Lockfile::read(root)?.unwrap_or_default();
-    let mut packages = vec![chosen];
-    let mut unresolved = BTreeMap::new();
-    for (dep, range) in deps.iter().filter(|(d, _)| d.as_str() != added) {
-        let kept = old.get(dep).filter(|p| {
-            parse_range(range)
-                .is_ok_and(|req| semver::Version::parse(&p.version).is_ok_and(|v| req.matches(&v)))
-        });
-        match kept {
-            Some(p) => packages.push(p.clone()),
-            None => {
-                unresolved.insert(dep.clone(), range.clone());
-            }
-        }
+    lock: &Lockfile,
+) -> Result<()> {
+    atomic_write(config_file, new_text.as_bytes())?;
+    let lock_path = root.join(veld_project::packages::LOCK_FILE);
+    if let Err(e) = atomic_write(&lock_path, lock.to_toml().as_bytes()) {
+        let _ = atomic_write(config_file, old_text.as_bytes());
+        return Err(e);
     }
-    if !unresolved.is_empty() {
-        packages.extend(
-            resolve(&unresolved, registry, client)
-                .map_err(fail)?
-                .packages,
-        );
-    }
-    Ok(Lockfile { packages })
+    Ok(())
 }
 
 #[cfg(test)]

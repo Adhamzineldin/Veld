@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use veld_codegen::{
-    DynGenerator, FileSet, GenDiagnostic, GenRequest, Role, check_capabilities, check_framework,
+    DynGenerator, FileSet, GenDiagnostic, GenRequest, Role, check_capabilities, resolve_profile,
 };
 use veld_compiler::{CompileInput, CompileOutput, PackageInput, SourceFile};
 use veld_ir::{Ir, PackageKind, ServiceId};
@@ -61,7 +61,14 @@ pub fn compile_or_report(ui: &Ui, project: Project) -> Result<Option<Compiled>> 
 
 /// Reads every package's `.veld` files and compiles them together.
 pub fn compile_project(project: &Project) -> Result<CompileOutput> {
-    Ok(veld_compiler::compile(&compile_input(project)?))
+    // Registry packages are importable only by the packages that depend on them directly.
+    let rules = veld_compiler::AccessRules {
+        allowed: project.registry_access()?,
+    };
+    Ok(veld_compiler::compile_with(
+        &compile_input(project)?,
+        Some(&rules),
+    ))
 }
 
 fn compile_input(project: &Project) -> Result<CompileInput> {
@@ -378,7 +385,7 @@ pub fn run_job(ir: &Ir, job: &Job<'_>) -> Result<FileSet, Vec<String>> {
             "target `{name}`: selects no services (does its package declare a `service` block?)"
         )]);
     }
-    if let Err(d) = check_framework(job.generator.get(), &req) {
+    if let Err(d) = resolve_profile(job.generator.get(), &req, &job.options) {
         return Err(vec![format_gen(&d, name)]);
     }
     let diags = check_capabilities(ir, &req, &job.generator.get().capabilities(job.role));
