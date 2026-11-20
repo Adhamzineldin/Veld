@@ -38,14 +38,46 @@ fn hello_reply(mode: &str) -> Value {
         .split(',')
         .map(str::to_string)
         .collect();
-    json!({
+    let mut hello = json!({
         "type": "hello",
         "protocol": if mode == "proto2" { "2" } else { "1" },
         "name": "stub",
         "version": arg("--version").unwrap_or_else(|| "1.0.0".into()),
         "roles": roles,
         "capabilities": ["constraints", "auth"],
-    })
+    });
+    declare_target(&mut hello);
+    hello
+}
+
+/// `--fw id:v1+v2:min_language,...` declares server frameworks, `--lang id:v1+v2` the language.
+fn declare_target(hello: &mut Value) {
+    if let Some(spec) = arg("--fw") {
+        let list: Vec<Value> = spec
+            .split(',')
+            .map(|f| {
+                let mut parts = f.split(':');
+                let id = parts.next().unwrap_or_default();
+                let versions: Vec<&str> = parts
+                    .next()
+                    .unwrap_or_default()
+                    .split('+')
+                    .filter(|v| !v.is_empty())
+                    .collect();
+                let mut o = json!({ "id": id, "versions": versions });
+                if let Some(min) = parts.next() {
+                    o["min_language"] = json!(min);
+                }
+                o
+            })
+            .collect();
+        hello["frameworks"] = json!({ "server": list, "client": [] });
+    }
+    if let Some(spec) = arg("--lang") {
+        let (id, versions) = spec.split_once(':').unwrap_or((spec.as_str(), ""));
+        let versions: Vec<&str> = versions.split('+').filter(|v| !v.is_empty()).collect();
+        hello["language"] = json!({ "id": id, "versions": versions });
+    }
 }
 
 /// One file per declaration and per endpoint, each holding its signature.

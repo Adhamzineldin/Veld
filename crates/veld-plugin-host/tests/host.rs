@@ -409,3 +409,128 @@ fn conformance_catches_each_kind_of_misbehaviour() {
             .any(|n| n.starts_with("generate"))
     );
 }
+
+const KTOR: &str = "--mode ok --fw ktor:2:1.9,plain::1.9 --lang kotlin:1.9+2.0";
+
+fn server_request<'a>(ir: &'a Ir, framework: Option<&str>) -> GenRequest<'a> {
+    GenRequest {
+        framework: framework.map(str::to_string),
+        ..request(ir, Role::Server)
+    }
+}
+
+#[test]
+fn declared_frameworks_and_language_are_exposed_through_the_generator_traits() {
+    let plugin = PluginGenerator::connect(&spec(KTOR), config()).unwrap();
+    let infos = plugin.frameworks(Role::Server);
+    let ids: Vec<&str> = infos.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(ids, ["ktor", "plain"]);
+    assert_eq!(infos[0].versions, ["2"]);
+    assert!(plugin.frameworks(Role::Client).is_empty());
+    let lang = plugin.language().unwrap();
+    assert_eq!(
+        (lang.id.as_str(), lang.versions),
+        ("kotlin", vec!["1.9".to_string(), "2.0".to_string()])
+    );
+}
+
+#[test]
+fn the_host_applies_the_central_framework_check_to_plugins() {
+    let ir = ir();
+    let plugin = PluginGenerator::connect(&spec(KTOR), config()).unwrap();
+    let ok = |framework, options: serde_json::Value| {
+        plugin.generate_dyn(&server_request(&ir, framework), &options)
+    };
+    assert!(ok(None, serde_json::Value::Null).is_ok());
+    assert!(
+        ok(
+            Some("ktor"),
+            serde_json::json!({ "framework-version": "2", "kotlin": "2.0" })
+        )
+        .is_ok()
+    );
+    assert!(ok(Some("plain"), serde_json::Value::Null).is_ok());
+
+    let err = ok(Some("spring"), serde_json::Value::Null).unwrap_err();
+    assert_eq!(codes(&err), ["E0803"]);
+    assert!(err[0].message.contains("ktor, plain"), "{}", err[0].message);
+    let err = ok(
+        Some("ktor"),
+        serde_json::json!({ "framework-version": "3" }),
+    )
+    .unwrap_err();
+    assert_eq!(codes(&err), ["E0803"]);
+    assert!(
+        err[0].message.contains("expected one of: 2"),
+        "{}",
+        err[0].message
+    );
+    let err = ok(None, serde_json::json!({ "kotlin": "1.8" })).unwrap_err();
+    assert_eq!(codes(&err), ["E0802"]);
+    assert!(err[0].message.contains("1.9, 2.0"), "{}", err[0].message);
+}
+
+#[test]
+fn a_plugin_without_declarations_has_no_frameworks_and_any_language_version() {
+    let ir = ir();
+    let plugin = PluginGenerator::connect(&spec("--mode ok"), config()).unwrap();
+    assert!(plugin.frameworks(Role::Server).is_empty() && plugin.language().is_none());
+    let err = plugin
+        .generate_dyn(
+            &server_request(&ir, Some("anything")),
+            &serde_json::Value::Null,
+        )
+        .unwrap_err();
+    assert_eq!(codes(&err), ["E0803"]);
+    // No language declared: the option is not interpreted by the host.
+    assert!(
+        plugin
+            .generate_dyn(
+                &server_request(&ir, None),
+                &serde_json::json!({ "kotlin": "9.9" })
+            )
+            .is_ok()
+    );
+}
+
+#[test]
+fn a_framework_that_needs_a_newer_language_than_the_default_is_e0803() {
+    let ir = ir();
+    let plugin = PluginGenerator::connect(
+        &spec("--mode ok --fw late:1:2.0 --lang kotlin:1.9+2.0"),
+        config(),
+    )
+    .unwrap();
+    let err = plugin
+        .generate_dyn(&server_request(&ir, Some("late")), &serde_json::Value::Null)
+        .unwrap_err();
+    assert_eq!(codes(&err), ["E0803"]);
+    assert!(
+        err[0].message.contains("kotlin 2 or newer") || err[0].message.contains("kotlin 2.0"),
+        "{}",
+        err[0].message
+    );
+    assert!(
+        plugin
+            .generate_dyn(
+                &server_request(&ir, Some("late")),
+                &serde_json::json!({ "kotlin": "2.0" })
+            )
+            .is_ok()
+    );
+}
+
+#[test]
+fn conformance_exercises_every_declared_framework_and_version() {
+    let ir = ir();
+    let runner = Runner {
+        name: "stub".into(),
+        command: CommandLine::parse(&spec(KTOR).command).unwrap(),
+        config: config(),
+    };
+    let checks = conformance::run(&runner, &ir);
+    let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
+    assert!(names.contains(&"framework ktor 2 (server)"), "{names:?}");
+    assert!(names.contains(&"framework plain (server)"), "{names:?}");
+    assert!(conformance::all_passed(&checks), "{checks:?}");
+}

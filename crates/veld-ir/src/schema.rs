@@ -316,7 +316,28 @@ pub const DEFS: &[Def] = &[
             ("roles", T::List(&T::Ref("Role"))),
             ("capabilities", T::List(&T::Ref("Feature"))),
             ("options_schema", T::Optional(&T::Any)),
+            ("frameworks", T::Optional(&T::Ref("FrameworkSupport"))),
+            ("language", T::Optional(&T::Ref("LanguageSupport"))),
         ],
+    ),
+    Def::Object(
+        "FrameworkSupport",
+        &[
+            ("server", T::Optional(&T::List(&T::Ref("FrameworkDecl")))),
+            ("client", T::Optional(&T::List(&T::Ref("FrameworkDecl")))),
+        ],
+    ),
+    Def::Object(
+        "FrameworkDecl",
+        &[
+            ("id", T::Str),
+            ("versions", T::Optional(&T::List(&T::Str))),
+            ("min_language", T::Optional(&T::Str)),
+        ],
+    ),
+    Def::Object(
+        "LanguageSupport",
+        &[("id", T::Str), ("versions", T::List(&T::Str))],
     ),
     Def::Object(
         "GenerateRequest",
@@ -393,7 +414,9 @@ fn ts_type(t: &T) -> String {
         T::Ref(n) => (*n).to_string(),
         T::List(i) => match **i {
             T::Nullable(_) | T::Optional(_) => format!("({})[]", ts_type(i)),
-            _ => format!("{}[]", ts_type(i)),
+            T::Str | T::Num | T::Bool | T::Any | T::Ref(_) | T::List(_) | T::Map(_) => {
+                format!("{}[]", ts_type(i))
+            }
         },
         T::Map(i) => format!("Record<string, {}>", ts_type(i)),
         T::Nullable(i) => format!("{} | null", ts_type(i)),

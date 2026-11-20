@@ -202,7 +202,7 @@ mod tests {
                     }
                 }
                 Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
-                _ => {}
+                Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
             }
         }
         let mut all = Vec::new();

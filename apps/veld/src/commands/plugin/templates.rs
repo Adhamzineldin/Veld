@@ -41,7 +41,15 @@ pub const PROTOCOL_TS: &str = r#"// The Veld plugin protocol (spec/plugin-protoc
 // Veld forwards stderr lines with a `[plugin:{{name}}]` prefix.
 
 import { createInterface } from "node:readline";
-import type { Feature, GenerateRequest, GenerateResult, PluginHello, Role } from "./ir";
+import type {
+  Feature,
+  FrameworkSupport,
+  GenerateRequest,
+  GenerateResult,
+  LanguageSupport,
+  PluginHello,
+  Role,
+} from "./ir";
 
 /** What `generate` returns: the files and optional diagnostics. The `type` tag is added for you. */
 export type Generated = Omit<GenerateResult, "type">;
@@ -54,6 +62,18 @@ export interface Plugin {
   capabilities: Feature[];
   /** JSON Schema for `[targets.options]`, optional. */
   optionsSchema?: unknown;
+  /**
+   * The frameworks per role, with their versions and the oldest language they need, for example
+   * `{ server: [{ id: "ktor", versions: ["2"], min_language: "1.9" }], client: [] }`.
+   * Optional: absent means no frameworks (Veld rejects `framework = ...` with E0803).
+   */
+  frameworks?: FrameworkSupport;
+  /**
+   * The language and its versions, for example `{ id: "kotlin", versions: ["1.9", "2.0"] }`. The first
+   * version is the default. Targets pick one with the option `kotlin = "2.0"`; it arrives in
+   * `request.options`. Optional: absent means any version.
+   */
+  language?: LanguageSupport;
   generate(request: GenerateRequest): Generated | Promise<Generated>;
 }
 
@@ -75,6 +95,8 @@ function hello(plugin: Plugin): PluginHello {
     capabilities: plugin.capabilities,
   };
   if (plugin.optionsSchema !== undefined) reply.options_schema = plugin.optionsSchema;
+  if (plugin.frameworks !== undefined) reply.frameworks = plugin.frameworks;
+  if (plugin.language !== undefined) reply.language = plugin.language;
   return reply;
 }
 
@@ -136,6 +158,10 @@ export const plugin: Plugin = {
   roles: ["client"],
   // TODO({{name}}): add features one at a time, for example "constraints", "auth", "unions".
   capabilities: [],
+  // TODO({{name}}): declare the language versions and server frameworks you support, so Veld
+  // validates `framework`, `framework-version` and the language option (E0802 / E0803) for you:
+  //   language: { id: "{{name}}", versions: ["1.0", "2.0"] },
+  //   frameworks: { server: [{ id: "myframework", versions: ["1"], min_language: "1.0" }], client: [] },
   generate,
 };
 
@@ -197,10 +223,13 @@ npm test           # veld plugin test node dist/main.js
 2. Be **deterministic**: two runs on the same IR give the same files.
 3. Use **relative `/` paths** without `..`. Veld refuses anything else (`E0707`).
 4. Declare only the capabilities you implemented. Veld reports `E0801` for the rest.
+   Declare the `language` versions and `frameworks` you support (both optional): Veld checks the
+   target's `framework`, `framework-version` and language option against them (`E0802`, `E0803`).
 5. Write logs to **stderr**. stdout is the protocol.
 
 `veld plugin test node dist/main.js` checks the handshake, path safety, determinism across two
-runs and signature embedding.
+runs and signature embedding. It also generates once for every language version and every
+framework (with each of its versions) you declared.
 
 ## Use it in a project
 

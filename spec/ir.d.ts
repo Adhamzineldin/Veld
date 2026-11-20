@@ -241,6 +241,24 @@ export interface PluginHello {
   roles: Role[];
   capabilities: Feature[];
   options_schema?: unknown;
+  frameworks?: FrameworkSupport;
+  language?: LanguageSupport;
+}
+
+export interface FrameworkSupport {
+  server?: FrameworkDecl[];
+  client?: FrameworkDecl[];
+}
+
+export interface FrameworkDecl {
+  id: string;
+  versions?: string[];
+  min_language?: string;
+}
+
+export interface LanguageSupport {
+  id: string;
+  versions: string[];
 }
 
 export interface GenerateRequest {

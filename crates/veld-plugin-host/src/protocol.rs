@@ -4,7 +4,12 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use veld_codegen::{Capabilities, FileSet, GenDiagnostic, GenRequest, Role};
+use std::collections::BTreeMap;
+
+use veld_codegen::{
+    Capabilities, FileSet, FrameworkInfo, GenDiagnostic, GenRequest, LanguageInfo, LanguageVersion,
+    Role,
+};
 use veld_ir::Feature;
 
 use crate::error::PluginError;
@@ -28,6 +33,18 @@ pub struct Handshake {
     pub version: String,
     pub roles: Vec<Role>,
     pub capabilities: Capabilities,
+    /// Frameworks per role. Absent in `hello` means none (a framework is then `E0803`).
+    pub frameworks: BTreeMap<Role, Vec<FrameworkInfo>>,
+    /// The language and its versions. Absent in `hello` means any version, unchecked.
+    pub language: Option<LanguageInfo>,
+}
+
+impl Handshake {
+    /// The frameworks the plugin declared for `role`.
+    #[must_use]
+    pub fn frameworks_for(&self, role: Role) -> Vec<FrameworkInfo> {
+        self.frameworks.get(&role).cloned().unwrap_or_default()
+    }
 }
 
 #[must_use]
@@ -60,11 +77,15 @@ pub fn parse_handshake(plugin: &str, msg: &Value) -> Result<Handshake, PluginErr
     let version = text("version").ok_or_else(|| bad("its `hello` has no `version`".into()))?;
     let roles = parse_roles(plugin, msg.get("roles"))?;
     let capabilities = parse_capabilities(plugin, msg.get("capabilities"))?;
+    let frameworks = parse_frameworks(plugin, msg.get("frameworks"))?;
+    let language = parse_language(plugin, msg.get("language"))?;
     Ok(Handshake {
         name,
         version,
         roles,
         capabilities,
+        frameworks,
+        language,
     })
 }
 
@@ -106,6 +127,130 @@ fn parse_capabilities(plugin: &str, v: Option<&Value>) -> Result<Capabilities, P
         set.insert(feature);
     }
     Ok(Capabilities(set))
+}
+
+/// A non-empty string field, or a protocol error naming `what`.
+fn text_field(plugin: &str, v: &Value, key: &str, what: &str) -> Result<String, PluginError> {
+    v.get(key)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| PluginError::protocol(plugin, format!("{what} needs a string `{key}`")))
+}
+
+/// `versions`: absent means none; otherwise an array of non-empty strings.
+fn versions_field(plugin: &str, v: &Value, what: &str) -> Result<Vec<String>, PluginError> {
+    let bad = || {
+        PluginError::protocol(
+            plugin,
+            format!("{what}: `versions` must be an array of strings"),
+        )
+    };
+    match v.get("versions") {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|i| i.as_str().filter(|s| !s.is_empty()).map(str::to_string))
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(bad),
+        Some(_) => Err(bad()),
+    }
+}
+
+/// The optional `frameworks` of `hello`: `{ "server": [ {id, versions?, min_language?} ], "client": [] }`.
+fn parse_frameworks(
+    plugin: &str,
+    v: Option<&Value>,
+) -> Result<BTreeMap<Role, Vec<FrameworkInfo>>, PluginError> {
+    let mut out = BTreeMap::new();
+    let Some(v) = v.filter(|v| !v.is_null()) else {
+        return Ok(out);
+    };
+    let map = v.as_object().ok_or_else(|| {
+        PluginError::protocol(
+            plugin,
+            "`frameworks` must be an object with `server` and `client`",
+        )
+    })?;
+    for (key, list) in map {
+        let role = match key.as_str() {
+            "server" => Role::Server,
+            "client" => Role::Client,
+            other => {
+                return Err(PluginError::protocol(
+                    plugin,
+                    format!(
+                        "`frameworks` has the unknown role `{other}` (expected `server` or `client`)"
+                    ),
+                ));
+            }
+        };
+        let items = list.as_array().ok_or_else(|| {
+            PluginError::protocol(plugin, format!("`frameworks.{key}` must be an array"))
+        })?;
+        let mut infos: Vec<FrameworkInfo> = Vec::new();
+        for item in items {
+            let info = parse_framework(plugin, item)?;
+            if infos.iter().any(|i| i.id == info.id) {
+                return Err(PluginError::protocol(
+                    plugin,
+                    format!("`frameworks.{key}` lists `{}` twice", info.id),
+                ));
+            }
+            infos.push(info);
+        }
+        out.insert(role, infos);
+    }
+    Ok(out)
+}
+
+fn parse_framework(plugin: &str, item: &Value) -> Result<FrameworkInfo, PluginError> {
+    let id = text_field(plugin, item, "id", "a framework")?;
+    let what = format!("framework `{id}`");
+    let versions = versions_field(plugin, item, &what)?;
+    let min_language =
+        match item.get("min_language") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(s)) => Some(s.parse::<LanguageVersion>().map_err(|e| {
+                PluginError::protocol(plugin, format!("{what}: `min_language`: {e}"))
+            })?),
+            Some(_) => {
+                return Err(PluginError::protocol(
+                    plugin,
+                    format!("{what}: `min_language` must be a string"),
+                ));
+            }
+        };
+    Ok(FrameworkInfo {
+        id,
+        versions,
+        min_language,
+    })
+}
+
+/// The optional `language` of `hello`: `{ "id": "kotlin", "versions": ["1.9", "2.0"] }`.
+fn parse_language(plugin: &str, v: Option<&Value>) -> Result<Option<LanguageInfo>, PluginError> {
+    let Some(v) = v.filter(|v| !v.is_null()) else {
+        return Ok(None);
+    };
+    if !v.is_object() {
+        return Err(PluginError::protocol(
+            plugin,
+            "`language` must be an object with `id` and `versions`",
+        ));
+    }
+    let id = text_field(plugin, v, "id", "`language`")?;
+    let versions = versions_field(plugin, v, "`language`")?;
+    if let Some(bad) = versions
+        .iter()
+        .find(|s| s.parse::<LanguageVersion>().is_err())
+    {
+        return Err(PluginError::protocol(
+            plugin,
+            format!("`language.versions` has `{bad}`, which is not a version like `17` or `1.9`"),
+        ));
+    }
+    Ok(Some(LanguageInfo { id, versions }))
 }
 
 /// The generate timeout from the target's options (`timeout`, in seconds), and the options
@@ -273,6 +418,69 @@ mod tests {
             h.capabilities.supports(Feature::Auth) && !h.capabilities.supports(Feature::Unions)
         );
         assert!(parse_handshake("k", &hello_reply(json!({"protocol":"1.4"}))).is_ok());
+    }
+
+    #[test]
+    fn handshake_without_frameworks_or_language_still_parses() {
+        let h = parse_handshake("k", &hello_reply(json!({}))).unwrap();
+        assert!(h.frameworks.is_empty() && h.language.is_none());
+        assert!(h.frameworks_for(Role::Server).is_empty());
+    }
+
+    #[test]
+    fn handshake_reads_frameworks_and_language() {
+        let extra = json!({
+            "frameworks": { "server": [ { "id": "ktor", "versions": ["2"], "min_language": "1.9" } ], "client": [] },
+            "language": { "id": "kotlin", "versions": ["1.9", "2.0"] }
+        });
+        let h = parse_handshake("k", &hello_reply(extra)).unwrap();
+        let ktor = &h.frameworks_for(Role::Server)[0];
+        assert_eq!(
+            (ktor.id.as_str(), ktor.versions.clone()),
+            ("ktor", vec!["2".to_string()])
+        );
+        assert_eq!(ktor.min_language, Some(LanguageVersion::new(1, 9)));
+        assert!(h.frameworks_for(Role::Client).is_empty());
+        let lang = h.language.unwrap();
+        assert_eq!((lang.id.as_str(), lang.versions.len()), ("kotlin", 2));
+    }
+
+    #[test]
+    fn handshake_rejects_malformed_frameworks_and_language() {
+        for (extra, needle) in [
+            (json!({"frameworks": []}), "must be an object"),
+            (json!({"frameworks": {"both": []}}), "unknown role"),
+            (json!({"frameworks": {"server": {}}}), "must be an array"),
+            (
+                json!({"frameworks": {"server": [{"versions": ["1"]}]}}),
+                "needs a string `id`",
+            ),
+            (
+                json!({"frameworks": {"server": [{"id": "a"}, {"id": "a"}]}}),
+                "twice",
+            ),
+            (
+                json!({"frameworks": {"server": [{"id": "a", "versions": "1"}]}}),
+                "array of strings",
+            ),
+            (
+                json!({"frameworks": {"server": [{"id": "a", "min_language": "new"}]}}),
+                "min_language",
+            ),
+            (json!({"language": "kotlin"}), "must be an object"),
+            (
+                json!({"language": {"versions": ["1"]}}),
+                "needs a string `id`",
+            ),
+            (
+                json!({"language": {"id": "k", "versions": ["one"]}}),
+                "not a version",
+            ),
+        ] {
+            let err = parse_handshake("k", &hello_reply(extra)).unwrap_err();
+            assert_eq!(err.code(), "E0706");
+            assert!(err.to_string().contains(needle), "{err}");
+        }
     }
 
     #[test]

@@ -30,7 +30,10 @@ pub const LIB_RS: &str = r#"//! The `{{name}}` generator ({{roles_text}}).
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 use serde::Deserialize;
-use veld_codegen::{Capabilities, FileSet, GenDiagnostic, GenRequest, Generator, Role};
+use veld_codegen::{
+    Capabilities, FileSet, FrameworkInfo, GenDiagnostic, GenRequest, Generator, LanguageInfo, Profile,
+    Role,
+};
 
 /// Options of the `{{name}}` generator (none yet).
 // TODO({{name}}): add typed options here; they come from `[targets.options]` in veld.toml.
@@ -53,9 +56,16 @@ impl Generator for {{Struct}} {
         &[{{roles}}]
     }
 
-    fn frameworks(&self, _role: Role) -> &'static [&'static str] {
-        // TODO({{name}}): list the framework adapters, for example `&["spring"]`.
-        &[]
+    fn frameworks(&self, _role: Role) -> Vec<FrameworkInfo> {
+        // TODO({{name}}): list the framework adapters as ONE registry slice of `FrameworkAdapter`s
+        // (see `crates/emitters/java/src/frameworks`) and return `framework_infos(ADAPTERS)`.
+        Vec::new()
+    }
+
+    fn language(&self) -> Option<LanguageInfo> {
+        // TODO({{name}}): return the language and its supported versions (the first is the default)
+        // to let targets pick one with the option `<language> = "<version>"`.
+        None
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
@@ -66,7 +76,12 @@ impl Generator for {{Struct}} {
         Capabilities::default()
     }
 
-    fn generate(&self, req: &GenRequest<'_>, _opts: &Options) -> Result<FileSet, Vec<GenDiagnostic>> {
+    fn generate(
+        &self,
+        req: &GenRequest<'_>,
+        _opts: &Options,
+        _profile: &Profile,
+    ) -> Result<FileSet, Vec<GenDiagnostic>> {
         let mut services = req.services.clone();
         services.extend(req.consumes.iter().copied());
         let mut files = FileSet::new();

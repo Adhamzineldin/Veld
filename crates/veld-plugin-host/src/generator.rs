@@ -1,10 +1,14 @@
 //! `PluginGenerator`: a plugin behind the same `DynGenerator` interface as the built-ins.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use veld_codegen::{Capabilities, DynGenerator, FileSet, GenDiagnostic, GenRequest, Role};
-use veld_project::config::PluginSpec;
+use veld_codegen::{
+    Capabilities, DynGenerator, FileSet, FrameworkInfo, GenDiagnostic, GenRequest, LanguageInfo,
+    Role, resolve_profile,
+};
+use veld_project::config::{ConfigError, PluginSpec};
 
 use crate::command::CommandLine;
 use crate::error::PluginError;
@@ -109,6 +113,8 @@ pub struct PluginGenerator {
     id: &'static str,
     roles: &'static [Role],
     capabilities: Capabilities,
+    frameworks: BTreeMap<Role, Vec<FrameworkInfo>>,
+    language: Option<LanguageInfo>,
 }
 
 impl PluginGenerator {
@@ -145,6 +151,8 @@ impl PluginGenerator {
             id: Box::leak(spec.name.clone().into_boxed_str()),
             roles: Box::leak(hello.roles.into_boxed_slice()),
             capabilities: hello.capabilities,
+            frameworks: hello.frameworks,
+            language: hello.language,
         })
     }
 }
@@ -157,7 +165,7 @@ fn verified_executable(spec: &PluginSpec, runner: &Runner) -> Result<PathBuf, Pl
         .entry_path(&runner.config.project_root)
         .unwrap_or_else(|| exe.clone());
     spec.verify_executable(&pinned).map_err(|e| match e {
-        veld_project::config::ConfigError::PluginHashMismatch {
+        ConfigError::PluginHashMismatch {
             plugin,
             expected,
             actual,
@@ -166,7 +174,15 @@ fn verified_executable(spec: &PluginSpec, runner: &Runner) -> Result<PathBuf, Pl
             expected,
             actual,
         },
-        other => PluginError::process(&spec.name, other.to_string()),
+        other @ (ConfigError::NotFound { .. }
+        | ConfigError::Io { .. }
+        | ConfigError::Invalid { .. }
+        | ConfigError::UnknownKey { .. }
+        | ConfigError::UnknownService { .. }
+        | ConfigError::OutputOverlap { .. }
+        | ConfigError::OutputForbidden { .. }
+        | ConfigError::SymlinkEscape { .. }
+        | ConfigError::NonUtf8Path { .. }) => PluginError::process(&spec.name, other.to_string()),
     })?;
     Ok(exe)
 }
@@ -180,8 +196,14 @@ impl DynGenerator for PluginGenerator {
         self.roles
     }
 
-    fn frameworks(&self, _role: Role) -> &'static [&'static str] {
-        &[]
+    /// What the plugin declared in its `hello`; no declaration means no frameworks.
+    fn frameworks(&self, role: Role) -> Vec<FrameworkInfo> {
+        self.frameworks.get(&role).cloned().unwrap_or_default()
+    }
+
+    /// What the plugin declared in its `hello`; none means any version.
+    fn language(&self) -> Option<LanguageInfo> {
+        self.language.clone()
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
@@ -193,6 +215,8 @@ impl DynGenerator for PluginGenerator {
         req: &GenRequest<'_>,
         opts: &serde_json::Value,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
+        // The same central framework, version and language check as the built-in generators.
+        resolve_profile(self, req, opts).map_err(|d| vec![d])?;
         // The hash is checked again before every run, not only when the plugin was first loaded.
         let exe = verified_executable(&self.spec, &self.runner).map_err(|e| vec![e.into()])?;
         let outcome = self

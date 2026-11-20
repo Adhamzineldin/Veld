@@ -4,7 +4,8 @@
 //! paths and limits) plus what first-party plugins must also satisfy: deterministic output and
 //! embedded signatures.
 
-use veld_codegen::{GenRequest, Role};
+use serde_json::{Value, json};
+use veld_codegen::{FRAMEWORK_VERSION_KEY, GenRequest, Offer, Profile, Role};
 use veld_ir::{Ir, ServiceId};
 
 use crate::error::PluginError;
@@ -54,7 +55,7 @@ pub fn run(runner: &Runner, ir: &Ir) -> Vec<Check> {
 fn role_checks(
     runner: &Runner,
     exe: &std::path::Path,
-    _hello: &Handshake,
+    hello: &Handshake,
     ir: &Ir,
     role: Role,
 ) -> Vec<Check> {
@@ -97,7 +98,88 @@ fn role_checks(
         label("signatures"),
         signatures_embedded(ir, &services, &first.files),
     ));
+    checks.extend(target_checks(runner, exe, hello, &req, role));
     checks
+}
+
+/// The declared target matrix: every language version and every framework (with every version)
+/// must resolve through the central check and generate without an error.
+fn target_checks(
+    runner: &Runner,
+    exe: &std::path::Path,
+    hello: &Handshake,
+    base: &GenRequest<'_>,
+    role: Role,
+) -> Vec<Check> {
+    let mut cases: Vec<(String, Option<String>, Value)> = Vec::new();
+    if let Some(lang) = &hello.language {
+        for v in &lang.versions {
+            cases.push((
+                format!("language {} {v}", lang.id),
+                None,
+                json!({ lang.id.as_str(): v }),
+            ));
+        }
+    }
+    for fw in hello.frameworks_for(role) {
+        let versions: Vec<Option<String>> = if fw.versions.is_empty() {
+            vec![None]
+        } else {
+            fw.versions.iter().cloned().map(Some).collect()
+        };
+        for v in versions {
+            let name = v.as_ref().map_or_else(
+                || format!("framework {}", fw.id),
+                |v| format!("framework {} {v}", fw.id),
+            );
+            let options = v.map_or(Value::Null, |v| json!({ FRAMEWORK_VERSION_KEY: v }));
+            cases.push((name, Some(fw.id.clone()), options));
+        }
+    }
+    cases
+        .into_iter()
+        .map(|(name, framework, options)| {
+            let result = run_case(runner, exe, hello, base, role, framework, &options);
+            Check::new(format!("{name} ({})", role.name()), result)
+        })
+        .collect()
+}
+
+fn run_case(
+    runner: &Runner,
+    exe: &std::path::Path,
+    hello: &Handshake,
+    base: &GenRequest<'_>,
+    role: Role,
+    framework: Option<String>,
+    options: &Value,
+) -> Result<(), String> {
+    let frameworks = hello.frameworks_for(role);
+    let offer = Offer {
+        generator: &hello.name,
+        role,
+        language: hello.language.as_ref(),
+        frameworks: &frameworks,
+    };
+    Profile::resolve(&offer, framework.as_deref(), options).map_err(|d| d.message)?;
+    let req = GenRequest {
+        framework,
+        ..base.clone()
+    };
+    let outcome = runner
+        .generate(exe, &req, options)
+        .map_err(|e| e.to_string())?;
+    let errors: Vec<String> = outcome
+        .diagnostics
+        .iter()
+        .filter(|d| !crate::protocol::is_warning(d))
+        .map(|d| d.message.clone())
+        .collect();
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
 }
 
 fn failed_generate(label: &dyn Fn(&str) -> String, e: &PluginError) -> Vec<Check> {
