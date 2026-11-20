@@ -1,0 +1,20 @@
+---
+source: crates/emitters/node/tests/snapshots.rs
+assertion_line: 345
+expression: "fs.paths().collect::<Vec<_>>().join(\"\\n\")"
+---
+clients/iam/iam/client.ts
+clients/iam/iam/errors/users.ts
+clients/iam/iam/models/users.ts
+clients/iam/index.ts
+clients/iam/prelude.ts
+deps/iam/models/users.ts
+errors/orders.ts
+index.ts
+models/catalog.ts
+models/orders.ts
+prelude.ts
+runtime/veld.ts
+server/adapters.ts
+server/nest/orders.ts
+server/orders.ts

@@ -327,3 +327,71 @@ fn typescript_edition_is_validated_centrally() {
         .unwrap_err();
     assert_eq!(err[0].code, "E0802");
 }
+
+fn without_framework_files(fs: &FileSet, keep: &dyn Fn(&str) -> bool) -> Vec<(String, Vec<u8>)> {
+    files_of(fs).into_iter().filter(|(p, _)| keep(p)).collect()
+}
+
+#[test]
+fn nest_snapshots() {
+    let ir = standard_ir();
+    let fs = gen_server_fw(
+        &ir,
+        "Orders",
+        &["Iam"],
+        &serde_json::Value::Null,
+        Some("nest"),
+    );
+    insta::assert_snapshot!("nest_file_list", fs.paths().collect::<Vec<_>>().join("\n"));
+    insta::assert_snapshot!(
+        "nest_server__nest__orders.ts",
+        text(&fs, "server/nest/orders.ts")
+    );
+    // Nest adds files and changes nothing else: every other file is what the plain server emits.
+    let plain = gen_server(&ir, "Orders", &["Iam"]);
+    assert_eq!(
+        without_framework_files(&fs, &|p| !p.starts_with("server/nest/")),
+        files_of(&plain)
+    );
+    // The nest file is the only one that imports a package.
+    for (path, bytes) in files_of(&fs) {
+        let text = String::from_utf8(bytes).unwrap();
+        assert_eq!(
+            text.contains("from '@nestjs/"),
+            path.starts_with("server/nest/"),
+            "{path}"
+        );
+    }
+}
+
+#[test]
+fn react_and_vue_snapshots() {
+    let ir = standard_ir();
+    let plain = gen_client(&ir);
+    for framework in ["react", "vue"] {
+        let fs = gen_client_fw(&ir, &serde_json::Value::Null, Some(framework));
+        insta::assert_snapshot!(
+            format!("{framework}_file_list"),
+            fs.paths().collect::<Vec<_>>().join("\n")
+        );
+        insta::assert_snapshot!(
+            format!("{framework}_orders__{framework}.ts"),
+            text(&fs, &format!("orders/{framework}.ts"))
+        );
+        insta::assert_snapshot!(
+            format!("{framework}_runtime__{framework}.ts"),
+            text(&fs, &format!("runtime/{framework}.ts"))
+        );
+        // The plain client output is unchanged; only the framework files are added.
+        let own = |p: &str| p.ends_with(&format!("/{framework}.ts"));
+        assert_eq!(without_framework_files(&fs, &|p| !own(p)), files_of(&plain));
+        for (path, bytes) in files_of(&fs) {
+            let text = String::from_utf8(bytes).unwrap();
+            assert_eq!(
+                text.contains(&format!("from '{framework}'")),
+                own(&path),
+                "{path}"
+            );
+        }
+    }
+}

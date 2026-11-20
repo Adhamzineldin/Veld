@@ -303,3 +303,182 @@ fn equality_holds_over_http_across_packages(tsc_path: &Path, edition: &str, targ
 fn equality_holds_over_http_across_packages_per_version() {
     matrix(equality_holds_over_http_across_packages);
 }
+
+// ---------------------------------------------------------------------------
+// Framework adapters: NestJS on the server, React and Vue helpers on the client
+// ---------------------------------------------------------------------------
+
+/// The target options of `edition` plus the framework version.
+fn framework_options(edition: &str, framework_version: &str) -> Value {
+    json!({ "typescript": edition, "framework-version": framework_version })
+}
+
+/// A fresh work directory under `tests/toolchain/ts/.work`, so `node_modules` resolves from it.
+fn work_dir(prefix: &str) -> tempfile::TempDir {
+    std::fs::create_dir_all(toolchain_dir().join(".work")).unwrap();
+    tempfile::Builder::new()
+        .prefix(prefix)
+        .tempdir_in(toolchain_dir().join(".work"))
+        .unwrap()
+}
+
+/// Writes the generated `server` (Orders, consuming Iam), `server_iam` and `copy_a` (the client)
+/// plus the scripts, `sigs.json` and the tsconfigs. Returns the generated directories.
+struct FrameworkRun<'a> {
+    edition: &'a str,
+    target: &'a str,
+    server_framework: Option<(&'a str, &'a str)>,
+    client_framework: Option<(&'a str, &'a str)>,
+    scripts: &'a [&'a str],
+    /// Extra `compilerOptions` of the behaviour compile (decorators, jsx).
+    behaviour: Value,
+}
+
+fn framework_run(work: &Path, tsc_path: &Path, run: &FrameworkRun<'_>) {
+    let a = standard_ir();
+    let opts = WriteOptions::default();
+    let with = |fw: Option<(&str, &str)>| match fw {
+        Some((_, version)) => framework_options(run.edition, version),
+        None => typescript_option(run.edition),
+    };
+    let server = gen_server_fw(
+        &a,
+        "Orders",
+        &["Iam"],
+        &with(run.server_framework),
+        run.server_framework.map(|(id, _)| id),
+    );
+    write(&work.join("server"), &server, &opts).unwrap();
+    write(
+        &work.join("server_iam"),
+        &gen_server_with(&a, "Iam", &[], &typescript_option(run.edition)),
+        &opts,
+    )
+    .unwrap();
+    let client = gen_client_fw(
+        &a,
+        &with(run.client_framework),
+        run.client_framework.map(|(id, _)| id),
+    );
+    write(&work.join("copy_a"), &client, &opts).unwrap();
+    write_json(&work.join("sigs.json"), &json!({ "a": sig_map(&a) }));
+    for script in run.scripts.iter().chain(&["roundtrip.ts"]) {
+        std::fs::copy(toolchain_dir().join(script), work.join(script)).unwrap();
+    }
+
+    // 1. The files that need no framework compile alone, strict, WITHOUT decorator flags, JSX or
+    //    framework packages: everything except the framework's own files.
+    let exclude = [
+        "server/server/nest/**",
+        "copy_a/runtime/react.ts",
+        "copy_a/runtime/vue.ts",
+        "copy_a/**/react.ts",
+        "copy_a/**/vue.ts",
+    ];
+    for module in ["commonjs", "nodenext"] {
+        let mut cfg =
+            generated_only_config(&["server", "server_iam", "copy_a"], module, run.target);
+        cfg["exclude"] = json!(exclude);
+        write_json(&work.join(format!("tsconfig.plain-{module}.json")), &cfg);
+        tsc(tsc_path, work, &format!("tsconfig.plain-{module}.json"));
+    }
+
+    // 2. Everything, with the flags the framework needs, plus the behaviour scripts.
+    let mut compiler = json!({
+        "strict": true, "target": run.target, "lib": [run.target], "types": ["node"],
+        "module": "commonjs", "moduleResolution": "node10", "esModuleInterop": true,
+        "skipLibCheck": true, "outDir": "out", "rootDir": "."
+    });
+    for (k, v) in run.behaviour.as_object().unwrap() {
+        compiler[k] = v.clone();
+    }
+    write_json(
+        &work.join("tsconfig.json"),
+        &json!({
+            "compilerOptions": compiler,
+            "include": ["*.ts", "*.tsx", "server/**/*.ts", "server_iam/**/*.ts", "copy_a/**/*.ts"]
+        }),
+    );
+    tsc(tsc_path, work, "tsconfig.json");
+}
+
+fn node_script(work: &Path, script: &str) {
+    let mut cmd = Command::new("node");
+    cmd.arg(format!("out/{script}.js")).current_dir(work);
+    run(&mut cmd, &format!("node {script}.js"));
+}
+
+/// A generated NestJS app is booted on port 0 and the generated client runs the SAME scenario as
+/// the Express round trip against it.
+fn nest_server_round_trip(tsc_path: &Path, edition: &str, target: &str) {
+    let guard = work_dir("nest-");
+    let work = guard.path();
+    framework_run(
+        work,
+        tsc_path,
+        &FrameworkRun {
+            edition,
+            target,
+            server_framework: Some(("nest", "10")),
+            client_framework: None,
+            scripts: &["nest_roundtrip.ts"],
+            behaviour: json!({ "experimentalDecorators": true, "emitDecoratorMetadata": true }),
+        },
+    );
+    node_script(work, "nest_roundtrip");
+    // The plain round trip still passes against the same directory (adapters are unchanged).
+    node_script(work, "roundtrip");
+}
+
+#[test]
+fn nest_server_round_trip_per_version() {
+    matrix(nest_server_round_trip);
+}
+
+/// React hooks rendered with react-test-renderer against the real generated Express server.
+fn react_hooks_run_against_the_real_server(tsc_path: &Path, edition: &str, target: &str) {
+    let guard = work_dir("react-");
+    let work = guard.path();
+    framework_run(
+        work,
+        tsc_path,
+        &FrameworkRun {
+            edition,
+            target,
+            server_framework: None,
+            client_framework: Some(("react", "18")),
+            scripts: &["react_hooks.tsx"],
+            behaviour: json!({ "jsx": "react-jsx" }),
+        },
+    );
+    node_script(work, "react_hooks");
+}
+
+#[test]
+fn react_hooks_run_against_the_real_server_per_version() {
+    matrix(react_hooks_run_against_the_real_server);
+}
+
+/// Vue composables in an effect scope against the real generated Express server.
+fn vue_composables_run_against_the_real_server(tsc_path: &Path, edition: &str, target: &str) {
+    let guard = work_dir("vue-");
+    let work = guard.path();
+    framework_run(
+        work,
+        tsc_path,
+        &FrameworkRun {
+            edition,
+            target,
+            server_framework: None,
+            client_framework: Some(("vue", "3")),
+            scripts: &["vue_composables.ts"],
+            behaviour: json!({}),
+        },
+    );
+    node_script(work, "vue_composables");
+}
+
+#[test]
+fn vue_composables_run_against_the_real_server_per_version() {
+    matrix(vue_composables_run_against_the_real_server);
+}

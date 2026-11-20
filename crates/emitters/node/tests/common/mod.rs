@@ -79,13 +79,14 @@ fn run(
     services: Vec<ServiceId>,
     consumes: Vec<ServiceId>,
     options: &serde_json::Value,
+    framework: Option<&str>,
 ) -> FileSet {
     let req = GenRequest {
         ir,
         role,
         services,
         consumes,
-        framework: None,
+        framework: framework.map(str::to_string),
     };
     let caps = generator.capabilities(role);
     let diags = check_capabilities(ir, &req, &caps);
@@ -111,8 +112,21 @@ pub fn gen_client(ir: &Ir) -> FileSet {
 
 /// Client files for every service of the IR, with target options.
 pub fn gen_client_with(ir: &Ir, options: &serde_json::Value) -> FileSet {
+    gen_client_fw(ir, options, None)
+}
+
+/// Client files for every service of the IR, with target options and a framework.
+pub fn gen_client_fw(ir: &Ir, options: &serde_json::Value, framework: Option<&str>) -> FileSet {
     let all = ir.services.iter().map(|s| s.id).collect();
-    run(&TypeScript, ir, Role::Client, all, vec![], options)
+    run(
+        &TypeScript,
+        ir,
+        Role::Client,
+        all,
+        vec![],
+        options,
+        framework,
+    )
 }
 
 /// Server files for `service`, with clients for `consumes`.
@@ -127,6 +141,17 @@ pub fn gen_server_with(
     consumes: &[&str],
     options: &serde_json::Value,
 ) -> FileSet {
+    gen_server_fw(ir, service, consumes, options, None)
+}
+
+/// Server files for `service`, with clients for `consumes`, target options and a framework.
+pub fn gen_server_fw(
+    ir: &Ir,
+    service: &str,
+    consumes: &[&str],
+    options: &serde_json::Value,
+    framework: Option<&str>,
+) -> FileSet {
     let consumed = consumes.iter().map(|n| service_id(ir, n)).collect();
     run(
         &Node,
@@ -135,6 +160,7 @@ pub fn gen_server_with(
         vec![service_id(ir, service)],
         consumed,
         options,
+        framework,
     )
 }
 
