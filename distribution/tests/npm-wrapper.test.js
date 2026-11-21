@@ -20,7 +20,7 @@ const fs = require("fs");
 const http = require("http");
 const os = require("os");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 
 const TARGETS = {
   "linux-x64": "x86_64-unknown-linux-musl",
@@ -74,17 +74,24 @@ function copyPackage(name) {
   return dest;
 }
 
-/** Runs a command with its output captured, so a leaked child can never hold our pipes. */
+/**
+ * Runs a command with its output captured (so a leaked child can never hold our pipes). It must
+ * be asynchronous: the HTTP server serving the assets lives in this very process.
+ */
 function run(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, {
-    encoding: "utf8",
-    timeout: 180000,
-    windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"],
-    ...opts,
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"], ...opts });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stderr.on("data", (d) => (stderr += d));
+    const timer = setTimeout(() => child.kill("SIGKILL"), 180000);
+    child.on("error", reject);
+    child.on("close", (status) => {
+      clearTimeout(timer);
+      resolve({ status, stdout, stderr });
+    });
   });
-  if (r.error) throw r.error;
-  return r;
 }
 
 function npm(args, opts) {
@@ -114,12 +121,12 @@ async function main() {
 
   // 1. Happy path: the right asset, verified, installed, runs.
   const pkg = copyPackage("good");
-  let r = installJs(pkg, good.base);
+  let r = await installJs(pkg, good.base);
   assert.strictEqual(r.status, 0, `install failed:\n${r.stdout}\n${r.stderr}`);
   assert.ok(r.stdout.includes(asset), `expected download of ${asset}:\n${r.stdout}`);
   const bin = path.join(pkg, "binaries", target, binName);
   assert.ok(fs.existsSync(bin), "binary not installed");
-  r = run(process.execPath, [path.join(pkg, "bin", "veld.js"), "--version"]);
+  r = await run(process.execPath, [path.join(pkg, "bin", "veld.js"), "--version"]);
   assert.strictEqual(r.status, 0, r.stderr);
   assert.ok(r.stdout.includes(version.replace(/-.*/, "")), `--version said ${r.stdout}`);
   console.log(`ok: installed ${asset}, \`veld --version\` -> ${r.stdout.trim()}`);
@@ -130,7 +137,7 @@ async function main() {
   });
   const bad = await serve(tampered);
   const pkgBad = copyPackage("bad");
-  r = installJs(pkgBad, bad.base);
+  r = await installJs(pkgBad, bad.base);
   assert.notStrictEqual(r.status, 0, "a tampered archive was accepted");
   assert.ok(/checksum mismatch/.test(r.stderr), r.stderr);
   assert.ok(!fs.existsSync(path.join(pkgBad, "binaries")), "something was installed from a tampered archive");
@@ -143,22 +150,22 @@ async function main() {
   });
   const un = await serve(unlisted);
   const pkgUn = copyPackage("unlisted");
-  r = installJs(pkgUn, un.base);
+  r = await installJs(pkgUn, un.base);
   assert.notStrictEqual(r.status, 0, "an unlisted asset was accepted");
   assert.ok(/not listed in SHA256SUMS/.test(r.stderr), r.stderr);
   console.log("ok: asset missing from SHA256SUMS rejected");
 
   // 4. npm install of the packed tarball, then `npx veld --version`.
-  const packed = npm(["pack", "--pack-destination", tmp, pkgDir]);
+  const packed = await npm(["pack", "--pack-destination", tmp, pkgDir]);
   assert.strictEqual(packed.status, 0, packed.stderr);
   const tarball = path.join(tmp, packed.stdout.trim().split(/\r?\n/).pop());
   const project = path.join(tmp, "project");
   fs.mkdirSync(project);
   fs.writeFileSync(path.join(project, "package.json"), '{"name":"veld-npx-test","private":true}');
   const env = { ...process.env, VELD_DOWNLOAD_BASE: good.base };
-  r = npm(["install", tarball], { cwd: project, env });
+  r = await npm(["install", tarball], { cwd: project, env });
   assert.strictEqual(r.status, 0, `npm install failed:\n${r.stdout}\n${r.stderr}`);
-  r = npm(["exec", "--no", "--", "veld", "--version"], { cwd: project, env });
+  r = await npm(["exec", "--no", "--", "veld", "--version"], { cwd: project, env });
   assert.strictEqual(r.status, 0, `npx veld --version failed:\n${r.stdout}\n${r.stderr}`);
   assert.ok(r.stdout.includes(version.replace(/-.*/, "")), r.stdout);
   console.log(`ok: npx veld --version -> ${r.stdout.trim()}`);
