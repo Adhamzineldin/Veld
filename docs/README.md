@@ -7,8 +7,10 @@
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md): workspace layout, commands, the definition of done, the commit convention.
 
 ## Guides
+- [Getting started](guides/getting-started.md), [generated output](guides/generated-output.md), [microservices](guides/microservices.md), [CI](guides/ci.md), [migrating from v1](guides/migrating-from-v1.md)
+- [Developer guide](DEVELOPER_GUIDE.md): the compiler, generators and tests, for contributors
 - [Writing an emitter](emitter-guide.md): built-in Rust emitters and plugins, and the tests they need.
-- [`distribution/`](../distribution): how the npm, pip and Homebrew wrappers and the release workflow fit together.
+- [`distribution/`](../distribution): how the npm, pip, Homebrew, apt/rpm, Chocolatey and Scoop packages and the release workflow fit together.
 
 ## Specifications (normative)
 - [`spec/language.md`](../spec/language.md): the `.veld` language.
