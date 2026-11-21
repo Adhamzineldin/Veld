@@ -1,6 +1,7 @@
 //! `veld generate`: the full pipeline, for every target or one.
 
 use std::path::Path;
+use std::time::Instant;
 
 use anyhow::Result;
 use veld_project::config::TargetSpec;
@@ -9,10 +10,12 @@ use veld_project::output::{PlanAction, WriteOptions};
 use crate::cli::GenerateArgs;
 use crate::error::Exit;
 use crate::pipeline::{self, Written};
-use crate::ui::{Style, Ui};
+use crate::ui::Ui;
+use crate::ui::render::{self, TargetSummary};
 
 pub fn run(ui: &Ui, config: Option<&Path>, args: &GenerateArgs) -> Result<Exit> {
     let project = pipeline::load_project(config)?;
+    ui.header("generate", &project.name);
     super::registry::auto_install(ui, &project)?;
     generate(ui, project, args)
 }
@@ -24,6 +27,7 @@ pub fn generate(
     project: veld_project::config::Project,
     args: &GenerateArgs,
 ) -> Result<Exit> {
+    let started = Instant::now();
     pipeline::select_targets(&project, args.target.as_deref())?;
     let Some(done) = pipeline::compile_or_report(ui, project)? else {
         return Ok(Exit::User);
@@ -32,8 +36,10 @@ pub fn generate(
     let mut outputs = Vec::new();
     let mut failures = Vec::new();
     for &target in &targets {
+        let spin = ui.spinner(&format!("Generating {}", target.name));
         let result = pipeline::build_job(&done.project, &done.ir, target)
             .and_then(|job| pipeline::run_job(&done.ir, &job));
+        spin.finish();
         match result {
             Ok(files) => outputs.push((target, files)),
             Err(messages) => failures.extend(messages),
@@ -47,9 +53,12 @@ pub fn generate(
         dry_run: args.dry_run,
         force: args.force,
     };
-    let written = pipeline::write_all(&outputs, opts)?;
-    print_results(ui, &written, args.dry_run);
-    if written.iter().any(|w| !w.plan.conflicts().is_empty()) {
+    let spin = ui.spinner("Writing files");
+    let written = pipeline::write_all(&outputs, opts);
+    spin.finish();
+    let written = written?;
+    let clean = print_results(ui, &written, args.dry_run, started);
+    if !clean {
         return Ok(Exit::User);
     }
     if !args.dry_run && args.target.is_none() {
@@ -65,39 +74,51 @@ pub fn generate(
 fn hint_setup(ui: &Ui, project: &veld_project::config::Project, targets: &[&TargetSpec]) {
     let n = crate::setup::unwired(project, targets);
     if n > 0 {
-        ui.info(&format!(
-            "hint: {n} target(s) are not wired into your app yet; run `veld setup`"
+        ui.hint(&format!(
+            "{n} target(s) are not wired into your app yet. Setup: run `veld setup`, then `npm install`"
         ));
     }
 }
 
-fn print_results(ui: &Ui, written: &[Written], dry_run: bool) {
+fn summary_of(w: &Written) -> TargetSummary {
+    let [created, updated, deleted, unchanged] = pipeline::tally(&w.plan);
+    TargetSummary {
+        name: w.name.clone(),
+        out: pipeline::display_path(&w.out),
+        created,
+        updated,
+        deleted,
+        unchanged,
+    }
+}
+
+/// Prints every target's result and the closing line. Returns false if any target conflicted.
+fn print_results(ui: &Ui, written: &[Written], dry_run: bool, started: Instant) -> bool {
+    let t = ui.theme_out();
+    let mut shown = Vec::new();
+    let mut clean = true;
     for w in written {
         if !w.plan.conflicts().is_empty() {
             report_conflicts(ui, w);
+            clean = false;
             continue;
         }
-        let [created, updated, deleted, unchanged] = pipeline::tally(&w.plan);
-        let out = pipeline::display_path(&w.out);
-        let line = if dry_run {
-            format!(
-                "{} -> {out}: would create {created}, update {updated}, delete {deleted} ({unchanged} unchanged)",
-                w.name
-            )
-        } else {
-            format!(
-                "{} -> {out}: {created} created, {updated} updated, {deleted} deleted, {unchanged} unchanged",
-                w.name
-            )
-        };
-        ui.info(&format!(
-            "{} {line}",
-            ui.out_styled(Style::Green, if dry_run { "~" } else { "✓" })
-        ));
+        let s = summary_of(w);
+        ui.info(&render::target_line(&t, &s, dry_run));
         if dry_run {
             list_changes(ui, w);
         }
+        shown.push(s);
     }
+    if clean {
+        ui.info(&render::generate_tail(
+            &t,
+            &shown,
+            dry_run,
+            Some(started.elapsed()),
+        ));
+    }
+    clean
 }
 
 fn list_changes(ui: &Ui, w: &Written) {

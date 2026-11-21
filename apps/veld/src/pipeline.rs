@@ -16,7 +16,7 @@ use veld_project::output::{self, Plan, PlanAction, WriteOptions};
 
 use crate::error::user;
 use crate::registry;
-use crate::ui::{Style, Ui};
+use crate::ui::Ui;
 
 // ---------------------------------------------------------------------------
 // Load and compile
@@ -48,7 +48,10 @@ pub struct Compiled {
 /// Compiles `project` and prints its diagnostics. Returns `None` after printing the failure
 /// summary when there are errors.
 pub fn compile_or_report(ui: &Ui, project: Project) -> Result<Option<Compiled>> {
-    let out = compile_project(&project)?;
+    let spin = ui.spinner("Compiling contracts");
+    let out = compile_project(&project);
+    spin.finish();
+    let out = out?;
     let counts = report_diagnostics(ui, &project, &out);
     match out.ir {
         Some(ir) if counts.errors == 0 => Ok(Some(Compiled { project, ir })),
@@ -185,11 +188,13 @@ pub fn plural(n: usize, word: &str) -> String {
 
 /// Failure summary such as `✗ 2 errors, 1 warning`.
 pub fn failure_summary(ui: &Ui, c: Counts) -> String {
-    let mark = ui.err_styled(Style::Red, "✗");
-    format!(
-        "{mark} {}, {}",
-        plural(c.errors, "error"),
-        plural(c.warnings, "warning")
+    crate::ui::render::fail(
+        &ui.theme_err(),
+        &format!(
+            "{}, {}",
+            plural(c.errors, "error"),
+            plural(c.warnings, "warning")
+        ),
     )
 }
 
@@ -201,12 +206,14 @@ pub fn success_summary(ui: &Ui, ir: &Ir) -> String {
         .iter()
         .filter(|d| ir.package(d.package).kind != PackageKind::Prelude)
         .count();
-    let mark = ui.out_styled(Style::Green, "✓");
-    format!(
-        "{mark} {}, {}, {}",
-        plural(ir.services.len(), "service"),
-        plural(endpoints, "endpoint"),
-        plural(types, "type")
+    crate::ui::render::ok(
+        &ui.theme_out(),
+        &format!(
+            "{}, {}, {}",
+            plural(ir.services.len(), "service"),
+            plural(endpoints, "endpoint"),
+            plural(types, "type")
+        ),
     )
 }
 

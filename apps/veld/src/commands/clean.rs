@@ -9,9 +9,10 @@ use veld_project::output;
 use crate::cli::CleanArgs;
 use crate::error::{Exit, user};
 use crate::pipeline;
-use crate::ui::{Style, Ui};
+use crate::ui::Ui;
 
 pub fn run(ui: &Ui, config: Option<&Path>, args: &CleanArgs) -> Result<Exit> {
+    ui.header("clean", "");
     let project = pipeline::load_project(config)?;
     let mut seen = BTreeSet::new();
     for target in &project.targets {
@@ -26,15 +27,15 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &CleanArgs) -> Result<Exit> {
         } else {
             "removed"
         };
-        ui.info(&format!(
-            "{} {} -> {out}: {verb} {}",
-            ui.out_styled(Style::Green, "✓"),
+        ui.ok(&format!(
+            "{} -> {out}: {verb} {}",
             target.name,
             pipeline::plural(report.removed.len(), "file")
         ));
         for path in &report.modified {
-            ui.info(&format!(
-                "    kept {path} (modified since it was generated)"
+            ui.info(&ui.out_styled(
+                crate::ui::Style::Yellow,
+                &format!("    kept {path} (modified since it was generated)"),
             ));
         }
     }
