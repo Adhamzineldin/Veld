@@ -42,7 +42,7 @@ jobs:
           - { target: x86_64-pc-windows-msvc,     os: windows-latest, cross: false }
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
@@ -59,23 +59,12 @@ jobs:
       - name: Build (native)
         if: ${{ !matrix.cross }}
         run: cargo build -p veld --release --locked --target ${{ matrix.target }}
-      - name: Package (unix)
-        if: runner.os != 'Windows'
+      - name: Package
         shell: bash
         run: |
           set -euo pipefail
-          name="veld-${{ matrix.target }}"
-          mkdir -p "dist/$name"
-          cp "target/${{ matrix.target }}/release/veld" "dist/$name/"
-          tar -C "dist/$name" -czf "dist/$name.tar.gz" .
-      - name: Package (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $name = "veld-${{ matrix.target }}"
-          New-Item -ItemType Directory -Force "dist/$name" | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/veld.exe" "dist/$name/"
-          Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip"
+          exe=veld; if [ "$RUNNER_OS" = Windows ]; then exe=veld.exe; fi
+          bash distribution/package.sh veld "${{ matrix.target }}" "target/${{ matrix.target }}/release/$exe" dist
       - uses: actions/upload-artifact@v4
         with:
           name: veld-${{ matrix.target }}
@@ -104,7 +93,7 @@ jobs:
           set -euo pipefail
           mkdir -p ../dist/stage
           go build -trimpath -ldflags="-s -w" -o ../dist/stage/veld-registry ./cmd/veld-registry
-          tar -C ../dist/stage -czf ../dist/veld-registry-linux-${{ matrix.goarch }}.tar.gz veld-registry
+          bash ../distribution/package.sh registry "${{ matrix.goarch }}" ../dist/stage/veld-registry ../dist
       - uses: actions/upload-artifact@v4
         with:
           name: veld-registry-linux-${{ matrix.goarch }}
@@ -153,6 +142,7 @@ jobs:
     needs: [veld, registry]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -162,8 +152,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -l
-          sha256sum *.tar.gz *.zip > SHA256SUMS
-          cat SHA256SUMS
+          bash ../distribution/package.sh sums .
       - uses: actions/upload-artifact@v4
         with:
           name: SHA256SUMS
