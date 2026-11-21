@@ -58,10 +58,31 @@ pub struct EndpointModel {
     pub request: String,
     /// TypeScript type of the success value (`void` for none).
     pub response: String,
-    /// `true` for GET endpoints, which become query hooks; the rest are mutations.
+    /// `true` for GET endpoints that are not streams, which become query hooks; the rest are
+    /// mutations, except streams.
     pub query: bool,
+    /// `true` for SSE (`get ... -> stream`) and `ws` endpoints, which become `use<Endpoint>Stream`.
+    pub stream: bool,
+    /// `true` for a `ws` endpoint: its stream hook can also `send`.
+    pub ws: bool,
+    /// The type the client sends on a `ws` channel (`never` when it sends nothing).
+    pub message: String,
+    /// The stream hook name (`useTicksStream`).
+    pub stream_hook: String,
     /// `true` when the request has no parameters, so the hook defaults it to `{}`.
     pub empty_request: bool,
+}
+
+impl ClientModel {
+    /// Whether any endpoint is a stream, so the framework runtime needs its streaming part.
+    #[must_use]
+    pub fn has_streams(&self) -> bool {
+        self.packages
+            .iter()
+            .flat_map(|p| &p.services)
+            .flat_map(|s| &s.endpoints)
+            .any(|e| e.stream)
+    }
 }
 
 /// Every client framework helper. The single source of truth for `frameworks(Role::Client)`.
@@ -96,21 +117,35 @@ fn package_model(tree: &Tree<'_>, names: &RequestNames, pkg: PackageId) -> Packa
     {
         let svc = tree.ir.service(*sid);
         let mut endpoints = Vec::new();
-        for ep in svc.endpoints.iter().filter(|e| e.method != Method::Ws) {
+        for ep in &svc.endpoints {
             let request = names.get(svc.id, &ep.name);
             let response = match &ep.success.ty {
                 Some(t) => ts_type(&mut fc, t),
                 None => "void".to_string(),
             };
+            let stream = ep.success.stream || ep.method == Method::Ws;
+            let message = match ep.params.iter().find(|p| p.stream) {
+                Some(p) => ts_type(&mut fc, &p.ty),
+                None => "never".to_string(),
+            };
+            let base = request.strip_suffix("Request").unwrap_or(&request);
             endpoints.push(EndpointModel {
                 docs: ep.docs.clone(),
                 deprecated: ep.deprecated.clone(),
                 method: crate::util::method_key(&ep.name),
-                hook: format!("use{}", request.strip_suffix("Request").unwrap_or(&request)),
+                hook: format!("use{base}"),
+                stream_hook: format!("use{base}Stream"),
+                response: if ep.method == Method::Ws && ep.success.ty.is_none() {
+                    "never".to_string()
+                } else {
+                    response
+                },
                 request,
-                response,
-                query: ep.method == Method::Get,
-                empty_request: ep.params.is_empty(),
+                query: ep.method == Method::Get && !stream,
+                stream,
+                ws: ep.method == Method::Ws,
+                message,
+                empty_request: ep.params.iter().all(|p| p.stream),
             });
         }
         services.push(ServiceModel {
@@ -134,11 +169,18 @@ fn package_model(tree: &Tree<'_>, names: &RequestNames, pkg: PackageId) -> Packa
 fn framework_files(
     id: &str,
     runtime: &str,
+    stream_runtime: &str,
     model: &ClientModel,
     package: fn(&PackageModel, &str) -> String,
 ) -> Result<FileSet, Vec<GenDiagnostic>> {
     let mut files = FileSet::new();
-    add_file(&mut files, &format!("runtime/{id}.ts"), runtime.to_string())?;
+    // The streaming helpers are appended only when the contract streams, so the runtime of a
+    // contract without streams is unchanged.
+    let mut runtime = runtime.to_string();
+    if model.has_streams() {
+        runtime.push_str(stream_runtime);
+    }
+    add_file(&mut files, &format!("runtime/{id}.ts"), runtime)?;
     for pkg in &model.packages {
         let path = format!("{}{id}.ts", pkg.prefix);
         add_file(&mut files, &path, package(pkg, &path))?;
@@ -168,12 +210,22 @@ fn header(w: &mut CodeWriter, pkg: &PackageModel, flavor: &Flavor, path: &str) {
         w.line(*line);
     }
     let runtime = rel_import(path, &format!("runtime/{}", flavor.id));
-    w.line(format!(
-        "import {{ useMutation, useQuery }} from '{runtime}';"
-    ));
-    w.line(format!(
-        "import type {{ MutationOptions, MutationResult, QueryOptions, QueryResult }} from '{runtime}';"
-    ));
+    let streams = pkg
+        .services
+        .iter()
+        .any(|s| s.endpoints.iter().any(|e| e.stream));
+    let hooks = if streams {
+        "useMutation, useQuery, useStream"
+    } else {
+        "useMutation, useQuery"
+    };
+    let types = if streams {
+        "ChannelResult, MutationOptions, MutationResult, QueryOptions, QueryResult, StreamOptions, StreamResult"
+    } else {
+        "MutationOptions, MutationResult, QueryOptions, QueryResult"
+    };
+    w.line(format!("import {{ {hooks} }} from '{runtime}';"));
+    w.line(format!("import type {{ {types} }} from '{runtime}';"));
     let client = rel_import(path, &format!("{}client", pkg.prefix));
     let mut names: Vec<&str> = pkg
         .services
@@ -203,7 +255,9 @@ fn write_hooks(w: &mut CodeWriter, svc: &ServiceModel, flavor: &Flavor) {
         doc_comment(w, ep.docs.as_deref(), ep.deprecated.as_deref());
         let method = &ep.method;
         let (req, res) = (&ep.request, &ep.response);
-        if ep.query {
+        if ep.stream {
+            write_stream_hook(w, svc, ep, flavor, &lookup);
+        } else if ep.query {
             let wrapped = (flavor.query_request)(req);
             let default = if ep.empty_request { " = {}" } else { "" };
             w.open(format!(
@@ -226,6 +280,36 @@ fn write_hooks(w: &mut CodeWriter, svc: &ServiceModel, flavor: &Flavor) {
         }
         w.close();
     }
+}
+
+/// `use<Endpoint>Stream(req, opts?)`: Server-Sent Events or a WebSocket channel.
+fn write_stream_hook(
+    w: &mut CodeWriter,
+    svc: &ServiceModel,
+    ep: &EndpointModel,
+    flavor: &Flavor,
+    lookup: &str,
+) {
+    let client = &svc.client;
+    let wrapped = (flavor.query_request)(&ep.request);
+    let default = if ep.empty_request { " = {}" } else { "" };
+    let (res, method) = (&ep.response, &ep.method);
+    let (ret, generics) = if ep.ws {
+        (
+            format!("ChannelResult<{res}, {}>", ep.message),
+            format!("<{}, {res}, {}>", ep.request, ep.message),
+        )
+    } else {
+        (format!("StreamResult<{res}>"), String::new())
+    };
+    w.open(format!(
+        "export function {}(req: {wrapped}{default}, opts: StreamOptions<{client}> = {{}}): {ret}",
+        ep.stream_hook
+    ));
+    w.line(format!("const client = {lookup}(opts.client);"));
+    w.line(format!(
+        "return useStream{generics}((r, init) => client.{method}(r, init), req, opts);"
+    ));
 }
 
 /// The clients map type, `{ orders?: OrdersClient; ... }`.

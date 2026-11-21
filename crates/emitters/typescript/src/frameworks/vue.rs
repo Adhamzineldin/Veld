@@ -14,6 +14,7 @@ use super::{
 pub const ID: &str = "vue";
 
 const RUNTIME: &str = include_str!("../../runtime/vue.ts");
+const STREAM_RUNTIME: &str = include_str!("../../runtime/vue_stream.ts");
 
 /// The `vue` framework (Vue 3).
 #[derive(Debug, Clone, Copy)]
@@ -36,7 +37,7 @@ impl FrameworkAdapter<ClientModel> for Vue {
         if profile.framework() != Some(ID) {
             return Ok(FileSet::new());
         }
-        framework_files(ID, RUNTIME, model, package_source)
+        framework_files(ID, RUNTIME, STREAM_RUNTIME, model, package_source)
     }
 }
 

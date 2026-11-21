@@ -13,6 +13,7 @@ use super::{
 pub const ID: &str = "react";
 
 const RUNTIME: &str = include_str!("../../runtime/react.ts");
+const STREAM_RUNTIME: &str = include_str!("../../runtime/react_stream.ts");
 
 /// The `react` framework (React 18).
 #[derive(Debug, Clone, Copy)]
@@ -35,7 +36,7 @@ impl FrameworkAdapter<ClientModel> for React {
         if profile.framework() != Some(ID) {
             return Ok(FileSet::new());
         }
-        framework_files(ID, RUNTIME, model, package_source)
+        framework_files(ID, RUNTIME, STREAM_RUNTIME, model, package_source)
     }
 }
 
