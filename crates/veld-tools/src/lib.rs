@@ -1,17 +1,20 @@
-//! Veld tools: the canonical formatter, the OpenAPI exporter, breaking-change
-//! detection and the v1 to v2 migration.
+//! Veld tools: the canonical formatter, the OpenAPI exporter, lint, the dependency graph and
+//! breaking-change detection.
 //!
 //! Every tool is a pure function over source text or the IR. None of them
 //! touches the file system.
 
+pub mod deps;
 pub mod diff;
 pub mod fmt;
-pub mod migrate;
+pub mod gate;
+pub mod lint;
 pub mod openapi;
 
+pub use deps::{DepGraph, DepsFormat, deps};
 pub use diff::{Change, ChangeKind, Severity, diff, has_breaking};
 pub use fmt::format;
-pub use migrate::{MigrateResult, migrate_v1};
+pub use gate::{GateDecision, GatePolicy, GateResult, breaking_gate};
 pub use openapi::openapi;
 
 #[cfg(test)]
@@ -39,5 +42,13 @@ pub(crate) mod testutil {
             Some(ir) => ir,
             None => panic!("test source does not compile:\n{}", out.render()),
         }
+    }
+
+    /// A contract that uses every feature the exporters map.
+    pub const SHOP: &str = include_str!("testdata/shop.veld");
+
+    /// The IR of [`SHOP`].
+    pub fn shop() -> Ir {
+        ir(SHOP)
     }
 }

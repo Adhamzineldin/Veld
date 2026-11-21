@@ -1,6 +1,6 @@
 [package]
 name = "veld-tools"
-description = "Veld tools: formatter, OpenAPI export, breaking-change diff and v1 migration"
+description = "Veld tools: formatter, OpenAPI export, lint and breaking-change diff"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,11 +10,15 @@ rust-version.workspace = true
 [dependencies]
 veld-compiler.workspace = true
 veld-ir.workspace = true
+veld-codegen.workspace = true
+thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+tempfile.workspace = true
+veld-test-support.workspace = true
 
 [lints]
 workspace = true
