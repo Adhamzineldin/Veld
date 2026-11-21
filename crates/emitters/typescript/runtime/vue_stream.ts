@@ -1,4 +1,6 @@
 
+import type { Reconnect } from './veld';
+
 // -- streaming (appended only when a contract has `get ... -> stream` or `ws` endpoints) ------
 
 export interface StreamOptions<C> {
@@ -10,6 +12,8 @@ export interface StreamOptions<C> {
   accumulate?: boolean;
   /** Keep at most this many items: the newest ones. Default: unlimited. */
   max?: number;
+  /** Reconnect with exponential backoff after a connection failure. On by default here; `false` switches it off. */
+  reconnect?: Reconnect | false;
 }
 
 export interface StreamResult<T> {
@@ -40,9 +44,9 @@ interface Opened<T> extends AsyncIterable<T> {
  * and when the scope is disposed. A `null` request holds it back.
  */
 export function useStream<Req, T, Out = never>(
-  open: (req: Req, init: CallInit) => AsyncIterable<T>,
+  open: (req: Req, init: CallInit & { reconnect?: Reconnect | false }) => AsyncIterable<T>,
   req: MaybeRefOrGetter<Req | null>,
-  options: { enabled?: MaybeRefOrGetter<boolean>; accumulate?: boolean; max?: number } = {},
+  options: { enabled?: MaybeRefOrGetter<boolean>; accumulate?: boolean; max?: number; reconnect?: Reconnect | false } = {},
 ): ChannelResult<T, Out> {
   const items = shallowRef<T[]>([]);
   const latest = shallowRef<T | undefined>(undefined);
@@ -66,7 +70,7 @@ export function useStream<Req, T, Out = never>(
     latest.value = undefined;
     error.value = undefined;
     streaming.value = true;
-    const stream = open(current, { signal: mine.signal }) as Opened<T>;
+    const stream = open(current, { signal: mine.signal, reconnect: options.reconnect ?? {} }) as Opened<T>;
     opened = stream;
     void (async () => {
       try {

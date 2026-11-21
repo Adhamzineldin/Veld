@@ -21,6 +21,9 @@ pub struct Tree<'a> {
     /// Module path of the runtime relative to the output root, without extension.
     pub runtime: String,
     pub services: Vec<ServiceId>,
+    /// False when the target option `validate = false` is set: the generated clients and handlers
+    /// default to skipping runtime request validation. The types are unchanged.
+    pub validate: bool,
     decls: Vec<DeclId>,
 }
 
@@ -48,8 +51,16 @@ impl<'a> Tree<'a> {
             flat_home,
             runtime: runtime.to_string(),
             services,
+            validate: true,
             decls: set.into_iter().collect(),
         }
+    }
+
+    /// Sets whether the generated code validates requests at run time by default.
+    #[must_use]
+    pub fn with_validate(mut self, validate: bool) -> Self {
+        self.validate = validate;
+        self
     }
 
     #[must_use]

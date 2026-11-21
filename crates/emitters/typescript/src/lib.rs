@@ -7,9 +7,12 @@
 
 pub mod barrel;
 pub mod client;
+pub mod clients;
 pub mod frameworks;
 pub mod models;
 pub mod package;
+pub mod query;
+pub mod readme;
 pub mod runtime;
 pub mod tree;
 pub mod types;
@@ -49,6 +52,11 @@ pub const ES_EDITIONS: [&str; 2] = ["es2020", "es2022"];
 pub struct Options {
     /// The name in the generated `package.json` (default: `@veld/<target name>`).
     pub package_name: Option<String>,
+    /// `false` skips runtime request validation by default (the types stay). Default: `true`.
+    pub validate: Option<bool>,
+    /// `true` also generates `<package>/queries.ts`: query keys, query options and mutation options as
+    /// plain objects (no imports; usable with TanStack Query, SWR or your own hooks). Default: `false`.
+    pub query_options: Option<bool>,
 }
 
 /// The TypeScript client generator.
@@ -135,8 +143,14 @@ impl Generator for TypeScript {
         precheck(req, Role::Client, &self.capabilities(Role::Client))?;
         let mut files = FileSet::new();
         runtime::emit(&mut files)?;
-        let tree = Tree::new(req.ir, "", None, runtime::MODULE, req.services.clone());
-        let modules = emit_client_tree(&mut files, &tree)?;
+        let tree = Tree::new(req.ir, "", None, runtime::MODULE, req.services.clone())
+            .with_validate(opts.validate != Some(false));
+        let mut modules = emit_client_tree(&mut files, &tree)?;
+        modules.push(clients::emit(&mut files, &tree)?);
+        if opts.query_options == Some(true) {
+            modules.extend(query::emit(&mut files, &tree)?);
+        }
+        modules.sort();
         let model = frameworks::model(&tree);
         for adapter in frameworks::ADAPTERS {
             for (path, bytes) in adapter.files(&model, profile)?.iter() {
@@ -152,6 +166,18 @@ impl Generator for TypeScript {
             &mut files,
             opts.package_name.as_deref(),
             profile.framework(),
+        )?;
+        readme::emit(
+            &mut files,
+            &readme::Readme {
+                package: opts
+                    .package_name
+                    .as_deref()
+                    .unwrap_or(package::DEFAULT_NAME),
+                server: false,
+                clients: &clients::keys(&tree),
+                handlers: &[],
+            },
         )?;
         Ok(files)
     }

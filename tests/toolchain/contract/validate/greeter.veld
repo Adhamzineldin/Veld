@@ -1,0 +1,9 @@
+/// A reply.
+model Greeting {
+  text: string
+}
+
+/// One endpoint with a constraint that run-time validation checks.
+service Greeter at "/greeter" {
+  get "/hello" hello(@query @length(min: 3) name: string) -> Greeting
+}

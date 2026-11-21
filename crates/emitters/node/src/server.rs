@@ -162,6 +162,10 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     }
     w.line(format!("onError?: (err: unknown, ctx: {ctx}) => void;"));
     w.line("validateResponses?: boolean;");
+    if !fc.tree.validate {
+        w.line("/** This target was generated with `validate = false`: requests are not validated unless this is true. */");
+        w.line("validateRequests?: boolean;");
+    }
     w.close();
 }
 
@@ -225,7 +229,12 @@ fn write_factory(
     w.close_with("];");
     let std = std_sigs(fc);
     let create = fc.rt("createHandler");
-    w.line(format!("return {create}(endpoints, {std}, hooks);"));
+    let hooks = if fc.tree.validate {
+        "hooks"
+    } else {
+        "{ validateRequests: false, ...hooks }"
+    };
+    w.line(format!("return {create}(endpoints, {std}, {hooks});"));
     w.close();
 }
 

@@ -212,7 +212,12 @@ fn write_constructor(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service
     let core = fc.rt("ClientCore");
     let validation = validation_expr(fc);
     w.open(format!("constructor(opts: {opts} = {{}})"));
-    w.open_with(format!("this.#core = new {core}(opts,"), " {");
+    let passed = if fc.tree.validate {
+        "opts"
+    } else {
+        "{ validate: false, ...opts }"
+    };
+    w.open_with(format!("this.#core = new {core}({passed},"), " {");
     w.line(format!(
         "envVar: {},",
         ts_str(&format!("VELD_{}_URL", naming::screaming_snake(&svc.name)))

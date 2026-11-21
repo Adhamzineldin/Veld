@@ -1,8 +1,9 @@
 ---
 source: crates/emitters/node/tests/snapshots.rs
-assertion_line: 24
 expression: "fs.paths().collect::<Vec<_>>().join(\"\\n\")"
 ---
+README.md
+clients.ts
 iam/client.ts
 iam/errors/users.ts
 iam/models/users.ts

@@ -40,7 +40,7 @@ impl FrameworkAdapter<ClientModel> for React {
     }
 }
 
-const FLAVOR: Flavor = Flavor {
+pub(super) const FLAVOR: Flavor = Flavor {
     id: ID,
     title: "React hooks",
     imports: &[

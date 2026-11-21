@@ -274,3 +274,22 @@ fn a_server_without_ws_endpoints_has_no_ws_adapter_and_no_peer_dependency() {
     assert!(files.get("server/ws.ts").is_none());
     assert!(!text(&files, "package.json").contains("peerDependencies"));
 }
+
+/// Reconnect with exponential backoff (SSE with `Last-Event-ID`, WebSocket, and the hooks, where it
+/// is on by default) against a hand-written server that drops connections on purpose.
+fn reconnect_after_dropped_connections(tsc_path: &Path, edition: &str, target: &str) {
+    let guard = work_dir("stream-rc-");
+    let work = guard.path();
+    generate(work, edition, &["stream_reconnect.tsx", "flaky.ts"]);
+    write_json(
+        &work.join("tsconfig.json"),
+        &behaviour_config(target, &json!({ "jsx": "react-jsx" })),
+    );
+    tsc(tsc_path, work, "tsconfig.json");
+    node_script(work, "stream_reconnect");
+}
+
+#[test]
+fn reconnect_after_dropped_connections_per_version() {
+    matrix(reconnect_after_dropped_connections);
+}

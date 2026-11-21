@@ -13,6 +13,15 @@ const listener =
           async fetch(req) {
             throw new alphaSrv.Gone({ id: req.id });
           },
+          async item(req) {
+            return { id: req.id };
+          },
+          async thing(req) {
+            return { id: req.id };
+          },
+          async echo(req) {
+            return { id: req.body.id };
+          },
         }),
       )
     : betaSrv.toNodeHttp(

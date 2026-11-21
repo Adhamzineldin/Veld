@@ -2,6 +2,7 @@
 source: crates/emitters/node/tests/streaming.rs
 expression: "server.paths().collect::<Vec<_>>().join(\"\\n\")"
 ---
+README.md
 errors/live.ts
 index.ts
 models/live.ts

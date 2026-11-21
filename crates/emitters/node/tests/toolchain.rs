@@ -332,6 +332,10 @@ struct FrameworkRun<'a> {
     scripts: &'a [&'a str],
     /// Extra `compilerOptions` of the behaviour compile (decorators, jsx).
     behaviour: Value,
+    /// Generates `queries.ts` (`query-options = true`) for the client.
+    query_options: bool,
+    /// Generates the server and the client with `validate = false`.
+    no_validate: bool,
 }
 
 fn framework_run(work: &Path, tsc_path: &Path, run: &FrameworkRun<'_>) {
@@ -341,11 +345,15 @@ fn framework_run(work: &Path, tsc_path: &Path, run: &FrameworkRun<'_>) {
         Some((_, version)) => framework_options(run.edition, version),
         None => typescript_option(run.edition),
     };
+    let mut server_options = with(run.server_framework);
+    if run.no_validate {
+        server_options["validate"] = json!(false);
+    }
     let server = gen_server_fw(
         &a,
         "Orders",
         &["Iam"],
-        &with(run.server_framework),
+        &server_options,
         run.server_framework.map(|(id, _)| id),
     );
     write(&work.join("server"), &server, &opts).unwrap();
@@ -355,11 +363,14 @@ fn framework_run(work: &Path, tsc_path: &Path, run: &FrameworkRun<'_>) {
         &opts,
     )
     .unwrap();
-    let client = gen_client_fw(
-        &a,
-        &with(run.client_framework),
-        run.client_framework.map(|(id, _)| id),
-    );
+    let mut client_options = with(run.client_framework);
+    if run.query_options {
+        client_options["query-options"] = json!(true);
+    }
+    if run.no_validate {
+        client_options["validate"] = json!(false);
+    }
+    let client = gen_client_fw(&a, &client_options, run.client_framework.map(|(id, _)| id));
     write(&work.join("copy_a"), &client, &opts).unwrap();
     write_json(&work.join("sigs.json"), &json!({ "a": sig_map(&a) }));
     for script in run.scripts.iter().chain(&["roundtrip.ts"]) {
@@ -423,6 +434,8 @@ fn nest_server_round_trip(tsc_path: &Path, edition: &str, target: &str) {
             client_framework: None,
             scripts: &["nest_roundtrip.ts"],
             behaviour: json!({ "experimentalDecorators": true, "emitDecoratorMetadata": true }),
+            query_options: false,
+            no_validate: false,
         },
     );
     node_script(work, "nest_roundtrip");
@@ -449,6 +462,8 @@ fn react_hooks_run_against_the_real_server(tsc_path: &Path, edition: &str, targe
             client_framework: Some(("react", "18")),
             scripts: &["react_hooks.tsx"],
             behaviour: json!({ "jsx": "react-jsx" }),
+            query_options: false,
+            no_validate: false,
         },
     );
     node_script(work, "react_hooks");
@@ -473,6 +488,8 @@ fn vue_composables_run_against_the_real_server(tsc_path: &Path, edition: &str, t
             client_framework: Some(("vue", "3")),
             scripts: &["vue_composables.ts"],
             behaviour: json!({}),
+            query_options: false,
+            no_validate: false,
         },
     );
     node_script(work, "vue_composables");
@@ -481,4 +498,58 @@ fn vue_composables_run_against_the_real_server(tsc_path: &Path, edition: &str, t
 #[test]
 fn vue_composables_run_against_the_real_server_per_version() {
     matrix(vue_composables_run_against_the_real_server);
+}
+
+/// The generated query options (`query-options = true`, no import in the generated code) driven by
+/// the pinned `@tanstack/react-query` and by a hand-written hook, against the real server.
+fn query_options_run_against_the_real_server(tsc_path: &Path, edition: &str, target: &str) {
+    let guard = work_dir("query-options-");
+    let work = guard.path();
+    framework_run(
+        work,
+        tsc_path,
+        &FrameworkRun {
+            edition,
+            target,
+            server_framework: None,
+            client_framework: None,
+            scripts: &["query_options.tsx"],
+            behaviour: json!({ "jsx": "react-jsx" }),
+            query_options: true,
+            no_validate: false,
+        },
+    );
+    node_script(work, "query_options");
+}
+
+#[test]
+fn query_options_run_against_the_real_server_per_version() {
+    matrix(query_options_run_against_the_real_server);
+}
+
+/// `validate = false` on the node server and the typescript client: no run-time request checks,
+/// the types are unchanged, and `validate: true` brings the client check back.
+fn validate_false_skips_runtime_validation(tsc_path: &Path, edition: &str, target: &str) {
+    let guard = work_dir("no-validate-");
+    let work = guard.path();
+    framework_run(
+        work,
+        tsc_path,
+        &FrameworkRun {
+            edition,
+            target,
+            server_framework: None,
+            client_framework: None,
+            scripts: &["no_validate.ts"],
+            behaviour: json!({}),
+            query_options: false,
+            no_validate: true,
+        },
+    );
+    node_script(work, "no_validate");
+}
+
+#[test]
+fn validate_false_skips_runtime_validation_per_version() {
+    matrix(validate_false_skips_runtime_validation);
 }

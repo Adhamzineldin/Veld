@@ -1,4 +1,6 @@
 
+import type { Reconnect } from './veld';
+
 // -- streaming (appended only when a contract has `get ... -> stream` or `ws` endpoints) ------
 
 export interface StreamOptions<C> {
@@ -10,6 +12,8 @@ export interface StreamOptions<C> {
   accumulate?: boolean;
   /** Keep at most this many items: the newest ones. Default: unlimited. */
   max?: number;
+  /** Reconnect with exponential backoff after a connection failure. On by default here; `false` switches it off. */
+  reconnect?: Reconnect | false;
 }
 
 export interface StreamResult<T> {
@@ -49,9 +53,9 @@ interface StreamState<T> {
  * unmount. `null` holds it back.
  */
 export function useStream<Req, T, Out = never>(
-  open: (req: Req, init: CallInit) => AsyncIterable<T>,
+  open: (req: Req, init: CallInit & { reconnect?: Reconnect | false }) => AsyncIterable<T>,
   req: Req | null,
-  options: { enabled?: boolean; accumulate?: boolean; max?: number } = {},
+  options: { enabled?: boolean; accumulate?: boolean; max?: number; reconnect?: Reconnect | false } = {},
 ): ChannelResult<T, Out> {
   const key = req === null || options.enabled === false ? null : canonical(req);
   const [state, setState] = useState<StreamState<T> | null>(null);
@@ -64,7 +68,7 @@ export function useStream<Req, T, Out = never>(
     const aborter = newAborter();
     const { open: openStream, req: current } = latest.current;
     setState({ key, round, items: [], latest: undefined, error: undefined, done: false });
-    const stream = openStream(current as Req, { signal: aborter.signal }) as Opened<T>;
+    const stream = openStream(current as Req, { signal: aborter.signal, reconnect: latest.current.options.reconnect ?? {} }) as Opened<T>;
     opened.current = stream;
     const mine = (s: StreamState<T> | null): s is StreamState<T> => s !== null && s.key === key && s.round === round;
     void (async () => {

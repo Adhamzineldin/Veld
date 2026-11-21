@@ -5,6 +5,8 @@ import * as A from './copy_a/index';
 import * as B from './copy_b/index';
 import * as C from './copy_c/index';
 import * as D from './copy_d/index';
+import { IamClient } from './copy_a/iam/client';
+import { OrdersClient } from './copy_a/orders/client';
 
 interface Sigs {
   a: Record<string, string>;
@@ -71,8 +73,53 @@ assert.ok(B.same(thr(B, { retryAfter: 30 }), thr(A, {})));
 assert.ok(!A.same(thr(A, {}), thr(B, { retryAfter: 31 })), 'a different value is different');
 assert.equal(A.canonicalError(thr(A, {})), A.canonicalError(thr(B, { retryAfter: 30 })));
 
+// Models carry their declaration: `same` needs it on both sides and compares signature AND bytes.
+const wire = { amount: '1.50', currency: 'USD' };
+const decoded = A.Money.fromWire(wire);
+const built = A.Money.of({ amount: '1.50', currency: 'USD' });
+assert.ok(A.same(decoded, built), 'decoded vs constructed');
+assert.ok(A.same(B.Money.of({ amount: '1.50', currency: 'USD' }), decoded), 'across two generated copies');
+assert.ok(!A.same(decoded, A.Money.of({ amount: '2.00', currency: 'USD' })), 'different data');
+assert.ok(C.same(C.Money.of(money), decoded), 'copy C changed only an error: Money keeps its signature');
+// Same fields, different declaring package: a different signature, so never the same.
+assert.notEqual(A.Money.sig, D.Money.sig);
+assert.ok(!A.same(decoded, D.Money.of(money)) && !D.same(D.Money.of(money), decoded), 'same fields, other package');
+assert.ok(!A.Money.same(decoded, D.Money.of(money)), 'the companion refuses a foreign declaration');
+// A model against an error whose data is identical.
+const errData = new A.OutOfStock({ sku: 'X' }, { op: null });
+assert.ok(!A.same(decoded, errData) && !A.same(errData, decoded));
+// Another model of the same package with the same shape is another declaration.
+const orderItem = A.OrderItem.of({ sku: 'ABC-1', quantity: 1 });
+const card = A.Card.of({ last4: '1234' });
+const bank = A.BankTransfer.of({ iban: '1234' });
+assert.equal(A.Card.canonical(card).replace('last4', 'x'), A.BankTransfer.canonical(bank).replace('iban', 'x'));
+assert.ok(!A.same(card, bank) && !A.same(bank, card), 'Card vs BankTransfer: identical shape, different declaration');
+assert.ok(!A.same(orderItem, card));
+// Without identity `same` refuses to guess.
+assert.throws(() => A.same(money, money), TypeError);
+assert.throws(() => A.same(decoded, { ...decoded }), /Model.same/);
+assert.throws(() => A.same('paid', 'paid'), TypeError, 'enum values are primitives: use Status.same or ===');
+assert.ok(A.Money.same(money, decoded), 'the companion accepts plain objects');
+assert.equal(JSON.stringify(decoded), JSON.stringify(wire), 'identity is not serialised');
+assert.deepEqual(Object.keys(decoded), ['amount', 'currency']);
+
 // Companion signatures equal the IR's.
 assert.equal(A.Money.sig, sigs.a['decl:orders:catalog.Money']);
 assert.equal(A.OutOfStock.sig, sigs.a['decl:orders:orders.OutOfStock']);
 
-process.stdout.write('equality ok\n');
+// createClients: one client per service from one set of options, with per-service overrides.
+void (async () => {
+  const urls: string[] = [];
+  const spy = (async (url: string) => {
+    urls.push(url);
+    throw new Error('offline');
+  }) as unknown as A.veld.FetchLike;
+  const api = A.createClients({ baseUrl: 'http://orders.test', fetch: spy }, { iam: { baseUrl: 'http://iam.test', fetch: spy } });
+  assert.deepEqual(Object.keys(api).sort(), ['iam', 'orders']);
+  assert.ok(api.orders instanceof OrdersClient && api.iam instanceof IamClient);
+  await assert.rejects(api.orders.health({}), A.VeldTransportError);
+  await assert.rejects(api.iam.getUser({ id: '11111111-1111-4111-8111-111111111111' }), A.VeldTransportError);
+  assert.ok(urls[0]?.startsWith('http://orders.test/'), String(urls[0]));
+  assert.ok(urls[1]?.startsWith('http://iam.test/'), String(urls[1]));
+  process.stdout.write('equality ok\n');
+})();

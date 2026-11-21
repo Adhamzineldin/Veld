@@ -412,3 +412,49 @@ fn react_and_vue_snapshots() {
         }
     }
 }
+
+#[test]
+fn query_options_snapshots() {
+    let ir = standard_ir();
+    let plain = gen_client(&ir);
+    assert!(
+        !plain.paths().any(|p| p.ends_with("queries.ts")),
+        "no queries.ts unless `query-options = true`"
+    );
+    let fs = gen_client_fw(&ir, &serde_json::json!({ "query-options": true }), None);
+    insta::assert_snapshot!(
+        "query_options_file_list",
+        fs.paths().collect::<Vec<_>>().join(
+            "
+"
+        )
+    );
+    insta::assert_snapshot!(
+        "query_options_orders__queries.ts",
+        text(&fs, "orders/queries.ts")
+    );
+    // The plain client output is unchanged; only `queries.ts` and its barrel line are added.
+    let own = |p: &str| p.ends_with("/queries.ts");
+    let keep = |p: &str| !own(p) && !p.ends_with("index.ts");
+    assert_eq!(
+        without_framework_files(&fs, &keep),
+        without_framework_files(&plain, &keep)
+    );
+    // Zero runtime dependencies: every import of the generated files is relative.
+    for (path, bytes) in files_of(&fs) {
+        if !path.ends_with(".ts") {
+            continue;
+        }
+        let text = String::from_utf8(bytes).unwrap();
+        for line in text
+            .lines()
+            .filter(|l| l.starts_with("import ") || l.starts_with("export "))
+        {
+            if let Some(from) = line.split(" from '").nth(1) {
+                assert!(from.starts_with('.'), "{path}: {line}");
+            }
+        }
+    }
+    let package = text(&fs, "package.json");
+    assert!(!package.contains("tanstack") && !package.contains("peerDependencies"));
+}

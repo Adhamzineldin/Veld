@@ -29,6 +29,8 @@ use veld_emit_typescript::{
 pub struct Options {
     /// The name in the generated `package.json` (default: `@veld/<target name>`).
     pub package_name: Option<String>,
+    /// `false` skips runtime request validation by default (the types stay). Default: `true`.
+    pub validate: Option<bool>,
 }
 
 /// The Node.js server generator.
@@ -74,7 +76,8 @@ impl Generator for Node {
             Some(home),
             runtime::MODULE,
             req.services.clone(),
-        );
+        )
+        .with_validate(opts.validate != Some(false));
         let model = ServerModel {
             adapters_path: "server/adapters.ts".to_string(),
             services: server::models(&tree),
@@ -91,7 +94,7 @@ impl Generator for Node {
             frameworks::emit_ws(&mut files)?;
             modules.push("server/ws".to_string());
         }
-        let extra = emit_consumed(&mut files, req)?;
+        let extra = emit_consumed(&mut files, req, opts.validate != Some(false))?;
         modules.sort();
         barrel::write(&mut files, "", &modules, &extra, true)?;
         // The `ws` package is a peer dependency of a server that hosts `ws` endpoints.
@@ -102,6 +105,26 @@ impl Generator for Node {
             profile.framework(),
             peers,
         )?;
+        let handlers: Vec<(String, String)> = req
+            .services
+            .iter()
+            .map(|s| {
+                let name = naming::pascal(&req.ir.service(*s).name);
+                (name.clone(), format!("create{name}Handler"))
+            })
+            .collect();
+        veld_emit_typescript::readme::emit(
+            &mut files,
+            &veld_emit_typescript::readme::Readme {
+                package: opts
+                    .package_name
+                    .as_deref()
+                    .unwrap_or(package::DEFAULT_NAME),
+                server: true,
+                clients: &[],
+                handlers: &handlers,
+            },
+        )?;
         Ok(files)
     }
 }
@@ -110,13 +133,15 @@ impl Generator for Node {
 fn emit_consumed(
     files: &mut FileSet,
     req: &GenRequest<'_>,
+    validate: bool,
 ) -> Result<Vec<String>, Vec<GenDiagnostic>> {
     let mut lines = Vec::new();
     for sid in &req.consumes {
         let svc = req.ir.service(*sid);
         let dir = naming::kebab(&svc.name);
         let root = format!("clients/{dir}/");
-        let tree = Tree::new(req.ir, &root, None, runtime::MODULE, vec![*sid]);
+        let tree =
+            Tree::new(req.ir, &root, None, runtime::MODULE, vec![*sid]).with_validate(validate);
         let modules = emit_client_tree(files, &tree)?;
         barrel::write(files, &root, &modules, &[], false)?;
         let ns = naming::escape(Lang::Ts, &naming::camel(&svc.name));
