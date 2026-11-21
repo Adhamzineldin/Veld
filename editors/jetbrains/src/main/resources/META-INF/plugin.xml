@@ -1,224 +1,48 @@
-<idea-plugin package="dev.veld.jetbrains">
+<idea-plugin>
   <id>dev.veld.jetbrains</id>
   <name>Veld</name>
-  <version>0.6.0</version>
-  <vendor email="support@veld.dev" url="https://veld.dev">Veld</vendor>
+  <vendor url="https://veld.dev">Veld</vendor>
 
   <description><![CDATA[
-    <p>Professional Veld contract language support for all JetBrains IDEs.</p>
-    <p>Features:</p>
+    <p>Veld 2.0 contract language support, as a thin client of the <code>veld lsp</code> language server.</p>
     <ul>
-      <li>Full syntax highlighting for .veld files</li>
-      <li>Context-aware code completion (models, enums, types, HTTP methods, directives)</li>
-      <li>Real-time validation and error highlighting</li>
-      <li>Go-to-definition for types and imports (Ctrl+Click)</li>
-      <li>Find references across files</li>
-      <li>Import resolution with @models/ and @modules/ paths</li>
-      <li>Brace matching and auto-closing</li>
-      <li>Code style settings</li>
-      <li>File templates for models, modules, and enums</li>
-      <li>Veld CLI integration (validate, generate)</li>
+      <li>Diagnostics, hover, go to definition, references, completion, rename, formatting and semantic
+          tokens from the same engine as the compiler (through LSP4IJ)</li>
+      <li>Syntax highlighting from a TextMate grammar</li>
+      <li>Requires the <code>veld</code> binary on PATH, or set in Settings | Tools | Veld</li>
     </ul>
-    <p>
-      Veld is a contract-first API development tool that generates type-safe
-      backends and frontends from simple schema files.
-    </p>
   ]]></description>
 
-  <change-notes><![CDATA[
-    <h3>0.6.0</h3>
-    <ul>
-      <li>Compatibility update: now supports IntelliJ IDEA / GoLand / CLion 2026.1 (build 261)</li>
-      <li>Raised minimum supported version to IntelliJ 2024.1 (build 241)</li>
-    </ul>
-    <h3>0.5.0</h3>
-    <ul>
-      <li>Distinct colors for model/module/enum/action/import/extends keywords</li>
-      <li>Full PSI tree: model, enum, module, action, field, import statement nodes</li>
-      <li>Structure view: see models, enums, modules with fields and actions in the Structure tool window</li>
-      <li>Improved go-to-definition using PSI tree (Ctrl+Click on type names)</li>
-      <li>@alias/name recognized in type positions (after colon and extends)</li>
-      <li>New File action: right-click -> New -> Veld File (Model, Module, Enum)</li>
-      <li>Enum declarations use INTERFACE_NAME color (distinct from model CLASS_NAME)</li>
-      <li>Annotations use METADATA color for better distinction</li>
-    </ul>
-    <h3>0.4.0</h3>
-    <ul>
-      <li>Fixed Go-to-Definition: more robust leaf traversal (no longer relies on strict token type matching)</li>
-      <li>Fixed Annotation color: @default/@required now visually distinct from type references</li>
-      <li>Added @annotation code completion in field definitions (@default, @required, @min, @max, @minLength, @maxLength, @regex, @unique, @deprecated)</li>
-      <li>Annotation completions place cursor inside parentheses automatically</li>
-    </ul>
-    <h3>0.3.0</h3>
-    <ul>
-      <li>Fixed Go-to-Definition: Ctrl+Click / Ctrl+B now reliably navigates to type declarations</li>
-      <li>Fixed import path color (was string green, now distinct metadata color)</li>
-      <li>Fixed URL path color (was string green, now distinct)</li>
-      <li>Added enum value semantic highlighting (distinct constant color)</li>
-      <li>Added @annotation highlighting (e.g. @default(user) on fields)</li>
-      <li>Added :param highlighting in path directives</li>
-      <li>Fixed false validation errors for @default annotations on fields</li>
-      <li>Added query: and middleware: directive completion and type-checking</li>
-      <li>Improved model hover documentation with field table</li>
-      <li>Added block-context-aware annotator (correct enum vs model body detection)</li>
-    </ul>
-    <h3>0.2.0</h3>
-    <ul>
-      <li>Go-to-definition for types and import paths</li>
-      <li>Real-time in-editor validation (no CLI required)</li>
-      <li>Context-aware completions with imported models/enums</li>
-      <li>Import path autocompletion from filesystem</li>
-      <li>Fixed path literal highlighting (/ no longer marked as error)</li>
-      <li>Cross-file type resolution</li>
-    </ul>
-    <h3>0.1.0 - Initial Release</h3>
-    <ul>
-      <li>Syntax highlighting for all Veld constructs</li>
-      <li>File type association for .veld files</li>
-      <li>Code completion for built-in types</li>
-      <li>Quick actions for validate and generate</li>
-    </ul>
-  ]]></change-notes>
-
-  <!-- Compatible with IntelliJ 2024.1+ (build 241) through 2026.3 (build 263) -->
-  <idea-version since-build="241" until-build="263.*"/>
-
-  <!-- Plugin works in all JetBrains IDEs -->
   <depends>com.intellij.modules.platform</depends>
-  <depends optional="true" config-file="veld-json.xml">com.intellij.modules.json</depends>
+  <depends>com.intellij.modules.lang</depends>
+  <depends>org.jetbrains.plugins.textmate</depends>
+  <depends>com.redhat.devtools.lsp4ij</depends>
 
   <extensions defaultExtensionNs="com.intellij">
-    <!-- Project Service -->
-    <projectService
-        serviceImplementation="dev.veld.jetbrains.VeldProjectService"/>
-
-    <!-- File Type -->
-    <fileType
-        name="Veld"
-        implementationClass="dev.veld.jetbrains.VeldFileType"
-        fieldName="INSTANCE"
-        language="Veld"
-        extensions="veld"/>
-
-    <!-- Language -->
-    <lang.parserDefinition
-        language="Veld"
-        implementationClass="dev.veld.jetbrains.VeldParserDefinition"/>
-
-    <!-- Syntax Highlighter -->
+    <fileType name="Veld"
+              implementationClass="dev.veld.jetbrains.VeldFileType"
+              fieldName="INSTANCE"
+              language="Veld"
+              extensions="veld"/>
     <lang.syntaxHighlighterFactory
         language="Veld"
-        implementationClass="dev.veld.jetbrains.VeldSyntaxHighlighterFactory"/>
-
-    <!-- Color Settings -->
-    <colorSettingsPage
-        implementation="dev.veld.jetbrains.VeldColorSettingsPage"/>
-
-    <!-- Code Style Settings -->
-    <codeStyleSettingsProvider
-        implementation="dev.veld.jetbrains.VeldCodeStyleSettingsProvider"/>
-
-    <langCodeStyleSettingsProvider
-        implementation="dev.veld.jetbrains.VeldLanguageCodeStyleSettingsProvider"/>
-
-    <!-- Commenter -->
-    <lang.commenter
-        language="Veld"
-        implementationClass="dev.veld.jetbrains.VeldCommenter"/>
-
-    <!-- Brace Matcher -->
-    <lang.braceMatcher
-        language="Veld"
-        implementationClass="dev.veld.jetbrains.VeldBraceMatcher"/>
-
-    <!-- Code Completion -->
-    <completion.contributor
-        language="Veld"
-        implementationClass="dev.veld.jetbrains.VeldCompletionContributor"/>
-
-    <!-- In-Editor Annotator (real-time validation) -->
-    <annotator
-        language="Veld"
-        implementationClass="dev.veld.jetbrains.VeldAnnotator"/>
-
-    <!-- External Annotator (CLI validation on save) -->
-    <externalAnnotator
-        language="Veld"
-        implementationClass="dev.veld.jetbrains.VeldExternalAnnotator"/>
-
-    <!-- Documentation Provider (hover info) -->
-    <lang.documentationProvider
-        language="Veld"
-        implementationClass="dev.veld.jetbrains.VeldDocumentationProvider"/>
-
-    <!-- References (go-to-definition, find usages) -->
-    <psi.referenceContributor
-        language="Veld"
-        implementation="dev.veld.jetbrains.VeldReferenceContributor"/>
-
-    <!-- Structure View -->
-    <lang.psiStructureViewFactory
-        language="Veld"
-        implementationClass="dev.veld.jetbrains.VeldStructureViewFactory"/>
-
-    <!-- File Templates -->
-    <internalFileTemplate name="Veld App"/>
-    <internalFileTemplate name="Veld Config"/>
-    <internalFileTemplate name="Veld Model"/>
-    <internalFileTemplate name="Veld Module"/>
-    <internalFileTemplate name="Veld Enum"/>
+        implementationClass="org.jetbrains.plugins.textmate.language.syntax.highlighting.TextMateSyntaxHighlighterFactory"/>
+    <textmate.bundleProvider implementation="dev.veld.jetbrains.VeldTextMateBundleProvider"/>
+    <applicationService serviceImplementation="dev.veld.jetbrains.VeldSettings"/>
+    <applicationConfigurable parentId="tools"
+                             id="dev.veld.jetbrains.settings"
+                             instance="dev.veld.jetbrains.VeldConfigurable"
+                             displayName="Veld"/>
+    <notificationGroup id="Veld" displayType="BALLOON"/>
   </extensions>
 
-  <actions>
-    <!-- Tools Menu Actions -->
-    <group id="Veld.ActionGroup" text="Veld" popup="true">
-      <add-to-group group-id="ToolsMenu" anchor="last"/>
-
-      <action id="Veld.Validate"
-              class="dev.veld.jetbrains.actions.VeldValidateAction"
-              text="Validate Contract"
-              description="Run veld validate on the current project"
-              icon="AllIcons.Actions.RunAll">
-        <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt V"/>
-      </action>
-
-      <action id="Veld.Generate"
-              class="dev.veld.jetbrains.actions.VeldGenerateAction"
-              text="Generate Code"
-              description="Run veld generate to create backend/frontend code"
-              icon="AllIcons.Actions.Compile">
-        <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt G"/>
-      </action>
-
-      <action id="Veld.GenerateDryRun"
-              class="dev.veld.jetbrains.actions.VeldGenerateDryRunAction"
-              text="Generate (Dry Run)"
-              description="Preview what veld generate would create"
-              icon="AllIcons.Actions.Preview">
-      </action>
-    </group>
-
-    <!-- Editor Popup Actions -->
-    <group id="Veld.EditorPopupMenu">
-      <add-to-group group-id="EditorPopupMenu" anchor="last"/>
-      <separator/>
-      <reference ref="Veld.Validate"/>
-      <reference ref="Veld.Generate"/>
-    </group>
-
-    <!-- New File Action -->
-    <action id="Veld.NewFile"
-            class="dev.veld.jetbrains.VeldCreateFileAction"
-            text="Veld File"
-            description="Create a new Veld contract file">
-      <add-to-group group-id="NewGroup" anchor="before" relative-to-action="NewFile"/>
-    </action>
-  </actions>
-
-  <projectListeners>
-    <listener
-        class="dev.veld.jetbrains.VeldFileChangeListener"
-        topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
-  </projectListeners>
+  <extensions defaultExtensionNs="com.redhat.devtools.lsp4ij">
+    <server id="veld"
+            name="Veld Language Server"
+            factoryClass="dev.veld.jetbrains.VeldLanguageServerFactory">
+      <description><![CDATA[Runs <code>veld lsp</code> over stdio.]]></description>
+    </server>
+    <languageMapping language="Veld" serverId="veld"/>
+    <fileNamePatternMapping patterns="*.veld" serverId="veld" languageId="veld"/>
+  </extensions>
 </idea-plugin>
-
