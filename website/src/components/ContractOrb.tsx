@@ -9,19 +9,19 @@ const PHASES: { key: PhaseKey; step: string; title: string; body: string }[] = [
     key: 'contract',
     step: '01',
     title: 'Write one contract',
-    body: 'Models, modules and actions live in .veld files — a single source of truth.',
+    body: 'Models, errors and services live in .veld files — a single source of truth.',
   },
   {
     key: 'backend',
     step: '02',
     title: 'Generate the backend',
-    body: 'Typed interfaces, validated routes and schemas — Node, Go, Python, Rust, Java…',
+    body: 'A typed service interface, validation and adapters: Node (Express, Fastify, Hono, NestJS) or Java (JDK, Spring).',
   },
   {
     key: 'frontend',
     step: '03',
     title: 'Generate the frontend',
-    body: 'A fetch-based SDK carrying the exact same types — React, Vue, Swift, Kotlin…',
+    body: 'A client carrying the exact same types: TypeScript with React hooks or Vue composables, or Java.',
   },
   {
     key: 'sync',

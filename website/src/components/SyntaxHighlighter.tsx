@@ -27,12 +27,12 @@ export function highlightVeld(code: string): React.ReactNode[] {
     }
 
     // Tokenize
-    const veldKeywords = /\b(model|module|action|enum|import|extends|prefix|method|path|input|output|errors|query|middleware|stream|description)\b/g;
-    const veldBuiltinTypes = /\b(string|int|float|bool|date|datetime|uuid)\b/g;
+    const veldKeywords = /\b(model|enum|error|union|service|const|use|as|at|extends|stream|true|false|null)\b/g;
+    const veldBuiltinTypes = /\b(string|int|long|float|decimal|bool|date|datetime|time|uuid|bytes|json)\b/g;
     const veldUserTypes = /\b([A-Z][A-Za-z0-9]*)\b/g;
-    const veldMethods = /\b(GET|POST|PUT|DELETE|PATCH|WS)\b/g;
+    const veldMethods = /\b(get|post|put|patch|delete|head|options|ws)(?=\s+")/g;
     const decorators = /@\w+(?:\([^)]*\))?/g;
-    const strings = /\/[\w/:.-]+/g;
+    const strings = /"[^"]*"/g;
     const veldArraySuffix = /\[\]/g;
 
     // Build a list of colored ranges
@@ -48,10 +48,7 @@ export function highlightVeld(code: string): React.ReactNode[] {
     while ((m = veldUserTypes.exec(rest)) !== null) {
       // PascalCase words that aren't keywords → type color (blue)
       const word = m[0];
-      const isKeyword = /^(GET|POST|PUT|DELETE|PATCH|WS)$/.test(word);
-      if (!isKeyword) {
-        ranges.push({ start: m.index, end: m.index + m[0].length, color: '#58a6ff' });
-      }
+      ranges.push({ start: m.index, end: m.index + word.length, color: '#58a6ff' });
     }
     while ((m = veldMethods.exec(rest)) !== null) {
       ranges.push({ start: m.index, end: m.index + m[0].length, color: '#3fb950' });
@@ -63,10 +60,7 @@ export function highlightVeld(code: string): React.ReactNode[] {
       ranges.push({ start: m.index, end: m.index + m[0].length, color: '#58a6ff' });
     }
     while ((m = strings.exec(rest)) !== null) {
-      // Only color paths that look like routes (start with /)
-      if (rest[m.index] === '/') {
-        ranges.push({ start: m.index, end: m.index + m[0].length, color: '#3fb950' });
-      }
+      ranges.push({ start: m.index, end: m.index + m[0].length, color: '#3fb950' });
     }
 
     // Sort and remove overlaps
