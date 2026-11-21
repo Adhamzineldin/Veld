@@ -126,6 +126,22 @@ impl Client {
             .to_string())
     }
 
+    /// `GET <path>` as JSON, for the read-only `veld registry` commands.
+    pub fn get_json(&self, path: &str) -> Result<serde_json::Value> {
+        let resp = self.call(self.request("GET", path), None)?;
+        parse_json(&read_limited(resp, 8 << 20)?)
+    }
+
+    /// `POST <path>` with a JSON body, answering JSON (token creation).
+    pub fn post_json(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
+        let bytes = body.to_string().into_bytes();
+        let resp = self.call(
+            self.request("POST", path),
+            Some(("application/json", &bytes)),
+        )?;
+        parse_json(&read_limited(resp, 1 << 20)?)
+    }
+
     /// `POST /api/v1/packages`: uploads one packed version.
     pub fn publish(&self, org: &str, name: &str, version: &str, tarball: &[u8]) -> Result<()> {
         let boundary = "veld-boundary-7f3a9c1e5b2d4f60";
@@ -155,6 +171,11 @@ impl Source for Client {
         let resp = self.call(self.request("GET", &path), None)?;
         read_limited(resp, MAX_DOWNLOAD)
     }
+}
+
+fn parse_json(body: &[u8]) -> Result<serde_json::Value> {
+    serde_json::from_slice(body)
+        .map_err(|e| RegistryError::Other(format!("unexpected response: {e}")))
 }
 
 fn read_limited(resp: ureq::Response, max: u64) -> Result<Vec<u8>> {
