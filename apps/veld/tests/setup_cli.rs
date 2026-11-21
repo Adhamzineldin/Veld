@@ -125,7 +125,7 @@ fn generate_hints_at_setup_until_it_is_done() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "hint: 2 target(s) are not wired into your app yet; run `veld setup`",
+            "2 target(s) are not wired into your app yet",
         ));
     veld(tmp.path())
         .arg("setup")
