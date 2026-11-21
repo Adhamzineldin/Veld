@@ -6,6 +6,7 @@
 //!   bundled into the JetBrains plugin
 //! - `spec/diagnostics.md`: every diagnostic code, from `veld_compiler::codes`
 //! - `spec/ir.d.ts`: the TypeScript types of the IR and the plugin messages
+//! - `editors/veld.toml.schema.json`: the JSON Schema of `veld.toml`, for editor completion and validation, with copies bundled into the VS Code and JetBrains plugins
 
 use std::fs;
 use std::path::Path;
@@ -18,6 +19,7 @@ pub fn outputs() -> Result<Vec<(&'static str, String)>> {
         .context("cannot serialize the language table")?;
     language.push('\n');
     let grammar = crate::grammar::tm_language(&language)?;
+    let schema = crate::schema::veld_toml();
     Ok(vec![
         ("editors/veld-language.json", language),
         (
@@ -30,6 +32,15 @@ pub fn outputs() -> Result<Vec<(&'static str, String)>> {
         ),
         ("spec/diagnostics.md", veld_compiler::codes::markdown()),
         ("spec/ir.d.ts", veld_ir::schema::typescript()),
+        ("editors/veld.toml.schema.json", schema.clone()),
+        (
+            "editors/vscode/schemas/veld.toml.schema.json",
+            schema.clone(),
+        ),
+        (
+            "editors/jetbrains/src/main/resources/schemas/veld.toml.schema.json",
+            schema,
+        ),
     ])
 }
 
@@ -69,7 +80,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         assert!(run(tmp.path(), true).is_err(), "nothing is generated yet");
         let written = run(tmp.path(), false).unwrap();
-        assert_eq!(written.len(), 5);
+        assert_eq!(written.len(), 8);
         assert!(run(tmp.path(), true).unwrap().is_empty());
         fs::write(tmp.path().join("editors/veld-language.json"), "{}").unwrap();
         let err = run(tmp.path(), true).unwrap_err().to_string();
@@ -111,14 +122,14 @@ mod code_table_tests {
         }
     }
 
-    /// Every `E####` / `W####` token in `text`.
+    /// Every `E####` / `W####` / `L####` token in `text`.
     fn codes_in(text: &str) -> Vec<String> {
         let b = text.as_bytes();
         let mut found = Vec::new();
         for i in 0..b.len().saturating_sub(4) {
             let boundary = i == 0 || !b[i - 1].is_ascii_alphanumeric();
             if boundary
-                && matches!(b[i], b'E' | b'W')
+                && matches!(b[i], b'E' | b'W' | b'L')
                 && b[i + 1..i + 5].iter().all(u8::is_ascii_digit)
                 && b.get(i + 5).is_none_or(|c| !c.is_ascii_alphanumeric())
             {

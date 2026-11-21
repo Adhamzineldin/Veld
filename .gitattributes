@@ -45,5 +45,6 @@ gradlew.bat text eol=crlf
 # Regenerate with: go run ./cmd/generate-language
 editors/vscode/src/veld-language-spec.ts                                  linguist-generated=true
 editors/jetbrains/src/main/kotlin/dev/veld/jetbrains/VeldLanguageSpec.kt   linguist-generated=true
-editors/vscode/veld-config.schema.json                                    linguist-generated=true
-editors/jetbrains/src/main/resources/schemas/veld-config.schema.json      linguist-generated=true
+editors/veld.toml.schema.json                                           linguist-generated=true
+editors/jetbrains/src/main/resources/schemas/veld.toml.schema.json          linguist-generated=true
+editors/vscode/schemas/veld.toml.schema.json                                linguist-generated=true

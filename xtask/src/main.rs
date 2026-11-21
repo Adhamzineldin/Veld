@@ -9,6 +9,7 @@ mod codegen;
 mod edit;
 mod grammar;
 mod new_emitter;
+mod schema;
 mod templates;
 
 use std::process::ExitCode;
