@@ -2,6 +2,7 @@
 source: crates/emitters/java/tests/snapshots.rs
 expression: "set.paths().collect::<Vec<_>>().join(\"\\n\")"
 ---
+README.md
 gen/sf/live/client/AnnounceRequest.java
 gen/sf/live/client/ChatRequest.java
 gen/sf/live/client/EchoRequest.java
@@ -32,6 +33,7 @@ gen/sf/runtime/Json.java
 gen/sf/runtime/JsonParser.java
 gen/sf/runtime/JsonWriter.java
 gen/sf/runtime/Page.java
+gen/sf/runtime/Reconnect.java
 gen/sf/runtime/RequestContext.java
 gen/sf/runtime/Router.java
 gen/sf/runtime/Schema.java

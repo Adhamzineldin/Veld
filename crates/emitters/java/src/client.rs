@@ -107,8 +107,9 @@ fn write_constructor_body(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Se
     open_call(w, format!("this.core = new {core}"));
     w.line("options,");
     w.line(format!(
-        "new {defaults}({}, {base}, issues -> {validation}));",
-        java_str(env)
+        "new {defaults}({}, {base}, issues -> {validation}{}));",
+        java_str(env),
+        if fc.tree.validate { "" } else { ", false" }
     ));
     end_call(w);
 }

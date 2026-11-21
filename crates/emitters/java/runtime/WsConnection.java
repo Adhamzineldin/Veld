@@ -23,13 +23,20 @@ final class WsConnection implements WsSession<Json, Json> {
   private final Schema incomingSchema;
   private final WsSocket socket;
   private final boolean validateResponses;
+  private final boolean validateRequests;
   private final Router.StdSigs std;
   private final BlockingQueue<Object> inbox = new LinkedBlockingQueue<>();
   private final List<String> early = new ArrayList<>();
   private boolean ready;
   private volatile boolean closed;
 
-  WsConnection(EndpointSpec spec, WsSocket socket, boolean validateResponses, Router.StdSigs std) {
+  WsConnection(
+      EndpointSpec spec,
+      WsSocket socket,
+      boolean validateResponses,
+      boolean validateRequests,
+      Router.StdSigs std) {
+    this.validateRequests = validateRequests;
     this.spec = spec;
     this.socket = socket;
     this.validateResponses = validateResponses;
@@ -90,7 +97,8 @@ final class WsConnection implements WsSession<Json, Json> {
       invalid(new Issue("message", "json", "message is not valid JSON"));
       return;
     }
-    List<Issue> issues = Wire.validate(incomingSchema, raw, "message", true);
+    List<Issue> issues =
+        validateRequests ? Wire.validate(incomingSchema, raw, "message", true) : List.of();
     if (!issues.isEmpty()) {
       fail(validation(issues));
       return;

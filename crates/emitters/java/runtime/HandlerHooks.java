@@ -47,6 +47,7 @@ public final class HandlerHooks {
   private final Map<String, Middleware> middleware;
   private final ErrorHook onError;
   private final boolean validateResponses;
+  private final boolean validateRequests;
 
   private HandlerHooks(Builder b) {
     this.bearer = b.bearer;
@@ -55,6 +56,7 @@ public final class HandlerHooks {
     this.middleware = Map.copyOf(b.middleware);
     this.onError = b.onError;
     this.validateResponses = b.validateResponses;
+    this.validateRequests = b.validateRequests;
   }
 
   /** Starts a builder. */
@@ -86,6 +88,10 @@ public final class HandlerHooks {
     return validateResponses;
   }
 
+  boolean validateRequests() {
+    return validateRequests;
+  }
+
   /** Builds {@link HandlerHooks}. */
   public static final class Builder {
     private BearerAuth bearer;
@@ -94,6 +100,7 @@ public final class HandlerHooks {
     private final Map<String, Middleware> middleware = new LinkedHashMap<>();
     private ErrorHook onError;
     private boolean validateResponses;
+    private boolean validateRequests = true;
 
     private Builder() {}
 
@@ -130,6 +137,12 @@ public final class HandlerHooks {
     /** When true, a response that fails validation becomes a 500 (default false). */
     public Builder validateResponses(boolean value) {
       this.validateResponses = value;
+      return this;
+    }
+
+    /** When false, request parameters and bodies are decoded but not validated (default true). */
+    public Builder validateRequests(boolean value) {
+      this.validateRequests = value;
       return this;
     }
 

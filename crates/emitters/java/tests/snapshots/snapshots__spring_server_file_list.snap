@@ -1,8 +1,8 @@
 ---
 source: crates/emitters/java/tests/snapshots.rs
-assertion_line: 82
 expression: "fs.paths().collect::<Vec<_>>().join(\"\n\")"
 ---
+README.md
 gen/a/adapters/SpringAdapter.java
 gen/a/adapters/orders/OrdersController.java
 gen/a/clients/iam/iam/client/GetUserRequest.java

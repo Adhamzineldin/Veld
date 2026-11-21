@@ -80,7 +80,7 @@ public final class ClientCore {
   }
 
   private void check(EndpointSpec ep, Json.Obj params) {
-    if (options.validate()) {
+    if (options.validate(defaults.validate())) {
       List<Issue> issues = requestIssues(ep, params);
       if (!issues.isEmpty()) {
         VeldError err = defaults.validation().apply(issues);
@@ -95,16 +95,39 @@ public final class ClientCore {
    * Opens a Server-Sent Events call. The HTTP call is eager: a non-2xx response throws its typed
    * error from this method. The returned stream reads events as they arrive; closing it cancels
    * the request. A final {@code error} event throws the typed error when it is consumed, and a
-   * broken connection throws {@link VeldTransportError}. There is no automatic reconnect: call
-   * again with {@link SseOptions#resumeAfter} to resume.
+   * broken connection throws {@link VeldTransportError}. With a {@link Reconnect} policy (client
+   * options or {@link SseOptions#withReconnect}) a refused or broken connection is retried with
+   * backoff, resuming with {@code Last-Event-ID}; without one call again with
+   * {@link SseOptions#resumeAfter} to resume.
    *
    * @return the events in wire form
    */
   public Stream<Json> stream(EndpointSpec ep, Json.Obj params, SseOptions sse) {
     check(ep, params);
+    Reconnect policy = sse.reconnect() != null ? sse.reconnect() : options.reconnect();
+    InputStream first = retrying(policy, () -> openEvents(ep, params, sse.lastEventId()));
+    return SseStream.open(ep, first, sse, policy, last -> openEvents(ep, params, last));
+  }
+
+  /** Runs {@code attempt}, retrying connection failures with backoff when a policy is set. */
+  private static <T> T retrying(Reconnect policy, java.util.function.Supplier<T> attempt) {
+    int failures = 0;
+    while (true) {
+      try {
+        return attempt.get();
+      } catch (VeldTransportError e) {
+        if (policy == null || failures >= policy.retries()) {
+          throw e;
+        }
+        Reconnect.sleep(policy.backoffMs(failures++));
+      }
+    }
+  }
+
+  private InputStream openEvents(EndpointSpec ep, Json.Obj params, String lastEventId) {
     Map<String, String> extra = new LinkedHashMap<>();
-    if (sse.lastEventId() != null) {
-      extra.put("last-event-id", sse.lastEventId());
+    if (lastEventId != null) {
+      extra.put("last-event-id", lastEventId);
     }
     HttpRequest request = buildRequest(ep, params, "text/event-stream", extra);
     HttpResponse<InputStream> res = send(ep, request, HttpResponse.BodyHandlers.ofInputStream());
@@ -113,7 +136,7 @@ public final class ClientCore {
       decodeText(ep, status, readAll(ep, res.body()));
       throw new VeldTransportError(ep.method() + " " + ep.path() + ": unexpected status " + status);
     }
-    return SseStream.open(ep, res.body(), sse);
+    return res.body();
   }
 
   private static String readAll(EndpointSpec ep, InputStream in) {
@@ -131,20 +154,26 @@ public final class ClientCore {
    * ({@code access_token} for bearer, {@code api_key} for an API key); {@code @header} parameters
    * travel as query parameters too. Basic auth cannot be sent on a WebSocket.
    *
-   * @throws VeldTransportError when the connection cannot be opened
+   * @throws VeldTransportError when the connection cannot be opened (after the retries of the
+   *     {@link Reconnect} policy, if one is set)
    */
   public <In, Out> WsChannel<In, Out> connect(
       EndpointSpec ep, Json.Obj params, Codec<In> in, Codec<Out> out) {
     check(ep, params);
-    WsChannel<In, Out> channel = new WsChannel<>(ep, in, out, options.validate(), defaults.validation());
-    WebSocket.Builder builder = http.newWebSocketBuilder().connectTimeout(options.timeout());
-    options.headers().get().forEach(builder::header);
+    WsChannel<In, Out> channel = new WsChannel<>(ep, in, out, options.validate(defaults.validate()), defaults.validation());
     URI uri = wsUri(ep, params);
-    try {
-      channel.attach(builder.buildAsync(uri, channel.listener()).join());
-    } catch (CompletionException e) {
-      throw new VeldTransportError(ep.method() + " " + ep.path() + ": could not connect", e.getCause());
-    }
+    java.util.function.Function<WebSocket.Listener, WebSocket> opener =
+        listener -> {
+          WebSocket.Builder builder = http.newWebSocketBuilder().connectTimeout(options.timeout());
+          options.headers().get().forEach(builder::header);
+          try {
+            return builder.buildAsync(uri, listener).join();
+          } catch (CompletionException e) {
+            throw new VeldTransportError(
+                ep.method() + " " + ep.path() + ": could not connect", e.getCause());
+          }
+        };
+    channel.open(opener, options.reconnect());
     return channel;
   }
 

@@ -1,6 +1,7 @@
 package veldtest;
 
 import gen.ca.orders.catalog.Money;
+import java.util.List;
 import gen.ca.orders.orders.OutOfStock;
 import gen.ca.orders.orders.Throttled;
 import gen.ca.prelude.NotFound;
@@ -28,6 +29,40 @@ public final class Equality {
 
   private static gen.cb.orders.orders.OutOfStock b(String sku, String op) {
     return new gen.cb.orders.orders.OutOfStock(new gen.cb.orders.orders.OutOfStock.Data(sku), 409, op);
+  }
+
+  /**
+   * Model identity: `Item` and `Thing` of the shop contract have the same fields, so the same
+   * canonical bytes, but they are two declarations. The contract is generated into gen.ma and gen.mb.
+   */
+  private static void models() {
+    var item = new gen.ma.shop.shop.Item("x");
+    var itemB = new gen.mb.shop.shop.Item("x");
+    var thing = new gen.ma.shop.shop.Thing("x");
+    var thingB = new gen.mb.shop.shop.Thing("x");
+    Check.equal(item.veldCanonical(), thing.veldCanonical(), "identical canonical bytes");
+    Check.that(!gen.ma.shop.shop.Item.VELD_SIG.equals(gen.ma.shop.shop.Thing.VELD_SIG), "two declarations, two signatures");
+    // Never the same, whatever the data and whichever package they come from.
+    Check.that(!Veld.same(item, thing) && !Veld.same(thing, item), "Item vs Thing");
+    Check.that(!Veld.same(item, thingB) && !gen.mb.runtime.Veld.same(thingB, item), "Item vs Thing across packages");
+    // The same declaration with equal data is the same, across separately generated packages.
+    Check.that(Veld.same(item, itemB) && gen.mb.runtime.Veld.same(itemB, item), "Item across packages");
+    Check.that(Veld.same(thing, thingB), "Thing across packages");
+    Check.that(!Veld.same(item, new gen.mb.shop.shop.Item("y")), "different data");
+    // Record equality is class based, so it never confuses models either.
+    Check.that(!item.equals(thing) && item.equals(new gen.ma.shop.shop.Item("x")), "equals");
+    // A decoded value against a constructed one.
+    var decoded = gen.ma.shop.shop.Item.fromWire(gen.ma.runtime.Json.parse("{\"id\":\"x\"}"));
+    Check.that(Veld.same(decoded, itemB), "decoded vs constructed");
+    // An error against a model with identical data.
+    var gone = new gen.ma.shop.shop.Gone(new gen.ma.shop.shop.Gone.Data("x"), 410, null);
+    Check.equal(gone.veldCanonical(), item.veldCanonical(), "identical data");
+    Check.that(!Veld.same(gone, item) && !Veld.same(item, gone), "error vs model");
+    // A generated value never equals a value that carries no identity, whatever its data.
+    Check.that(!Veld.same(item, "x") && !Veld.same("x", item) && !Veld.same(item, null), "no identity on one side");
+    // Lists compare element by element, across packages.
+    Check.that(Veld.same(List.of(item, thing), List.of(itemB, thingB)), "lists across packages");
+    Check.that(!Veld.same(List.of(item), List.of(thingB)), "lists of different declarations");
   }
 
   public static void main(String[] args) throws Exception {
@@ -100,6 +135,7 @@ public final class Equality {
     Check.equal(irSigs.get("decl:orders:catalog.Money").asString(), Money.VELD_SIG, "Money sig");
     Check.equal(irSigs.get("decl:orders:orders.OutOfStock").asString(), OutOfStock.VELD_SIG, "OutOfStock sig");
 
+    models();
     System.out.println("equality ok");
   }
 }

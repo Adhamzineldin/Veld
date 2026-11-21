@@ -22,6 +22,8 @@ pub struct Tree<'a> {
     /// Java package of the runtime.
     pub runtime: String,
     pub services: Vec<ServiceId>,
+    /// False when the target option `validate = false` is set (the types stay).
+    pub validate: bool,
     decls: Vec<DeclId>,
 }
 
@@ -42,8 +44,16 @@ impl<'a> Tree<'a> {
             base: base.to_string(),
             runtime: runtime.to_string(),
             services,
+            validate: true,
             decls: set.into_iter().collect(),
         }
+    }
+
+    /// Sets whether the generated code validates requests at run time by default.
+    #[must_use]
+    pub fn with_validate(mut self, validate: bool) -> Self {
+        self.validate = validate;
+        self
     }
 
     #[must_use]

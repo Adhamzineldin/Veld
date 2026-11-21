@@ -9,6 +9,7 @@ import java.net.http.WebSocket;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.concurrent.BlockingQueue;
@@ -43,6 +44,13 @@ public final class WsChannel<In, Out> implements AutoCloseable {
   private volatile WebSocket socket;
   private volatile boolean ended;
   private volatile boolean sawError;
+  private final ConcurrentLinkedQueue<String> outbox = new ConcurrentLinkedQueue<>();
+  private Function<WebSocket.Listener, WebSocket> opener;
+  private Reconnect reconnect;
+  private volatile int generation;
+  private volatile boolean connected;
+  private volatile int failures;
+  private volatile long openedAt;
 
   WsChannel(
       EndpointSpec ep,
@@ -64,13 +72,86 @@ public final class WsChannel<In, Out> implements AutoCloseable {
     this.outgoing = message;
   }
 
-  /** The listener that feeds this channel; the core passes it to the WebSocket builder. */
-  WebSocket.Listener listener() {
-    return new Listener();
+  /**
+   * Opens the first connection (blocking) and remembers how to open it again. With a {@code
+   * reconnect} policy an abnormal close, a failed connection and an error reopen the socket with
+   * exponential backoff; messages sent in between are queued and delivered after the reconnect.
+   */
+  void open(Function<WebSocket.Listener, WebSocket> opener, Reconnect reconnect) {
+    this.opener = opener;
+    this.reconnect = reconnect;
+    int attempt = 0;
+    while (true) {
+      try {
+        connect();
+        return;
+      } catch (VeldTransportError e) {
+        if (reconnect == null || attempt >= reconnect.retries()) {
+          throw e;
+        }
+        Reconnect.sleep(reconnect.backoffMs(attempt++));
+      }
+    }
   }
 
-  void attach(WebSocket webSocket) {
-    this.socket = webSocket;
+  private void connect() {
+    int mine = ++generation;
+    WebSocket opened = opener.apply(new Listener(mine));
+    synchronized (sendLock) {
+      this.socket = opened;
+      this.connected = true;
+      this.openedAt = System.nanoTime();
+      String queued;
+      while ((queued = outbox.poll()) != null) {
+        opened.sendText(queued, true).join();
+      }
+    }
+  }
+
+  /** The connection failed or closed abnormally: reconnect on a background thread, or fail. */
+  private void lost(int from, Throwable cause, String what) {
+    if (ended || from != generation) {
+      return;
+    }
+    Reconnect policy = reconnect;
+    // A connection that lived at least maxMs (or delivered a frame) was a healthy one: count afresh.
+    if (policy != null && connected && (System.nanoTime() - openedAt) / 1_000_000 >= policy.maxMs()) {
+      failures = 0;
+    }
+    if (policy == null || failures >= policy.retries()) {
+      fail(cause, what);
+      return;
+    }
+    connected = false;
+    generation++;
+    Thread t = new Thread(() -> redial(policy, cause, what), "veld-ws-reconnect");
+    t.setDaemon(true);
+    t.start();
+  }
+
+  private void redial(Reconnect policy, Throwable cause, String what) {
+    while (!ended) {
+      if (failures >= policy.retries()) {
+        fail(cause, what);
+        return;
+      }
+      try {
+        Reconnect.sleep(policy.backoffMs(failures));
+      } catch (VeldTransportError e) {
+        fail(e, what);
+        return;
+      }
+      failures++;
+      if (ended) {
+        return;
+      }
+      try {
+        connect();
+        return;
+      } catch (VeldTransportError e) {
+        // Try again after the next, longer delay.
+      }
+    }
   }
 
   /**
@@ -98,6 +179,10 @@ public final class WsChannel<In, Out> implements AutoCloseable {
     String text = Wire.canonicalOf(outgoing, wire);
     try {
       synchronized (sendLock) {
+        if (!connected) {
+          outbox.add(text);
+          return;
+        }
         socket.sendText(text, true).join();
       }
     } catch (CompletionException e) {
@@ -210,6 +295,11 @@ public final class WsChannel<In, Out> implements AutoCloseable {
 
   private final class Listener implements WebSocket.Listener {
     private final StringBuilder partial = new StringBuilder();
+    private final int mine;
+
+    private Listener(int mine) {
+      this.mine = mine;
+    }
 
     @Override
     public void onOpen(WebSocket webSocket) {
@@ -222,7 +312,10 @@ public final class WsChannel<In, Out> implements AutoCloseable {
       if (last) {
         String text = partial.toString();
         partial.setLength(0);
-        frame(text);
+        if (mine == generation) {
+          failures = 0;
+          frame(text);
+        }
       }
       webSocket.request(1);
       return null;
@@ -230,17 +323,20 @@ public final class WsChannel<In, Out> implements AutoCloseable {
 
     @Override
     public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
+      if (mine != generation) {
+        return null;
+      }
       if (sawError || statusCode == WebSocket.NORMAL_CLOSURE || statusCode == 1005) {
         end();
       } else {
-        fail(null, ep.method() + " " + ep.path() + ": the WebSocket closed (code " + statusCode + ")");
+        lost(mine, null, ep.method() + " " + ep.path() + ": the WebSocket closed (code " + statusCode + ")");
       }
       return null;
     }
 
     @Override
     public void onError(WebSocket webSocket, Throwable error) {
-      fail(error, ep.method() + " " + ep.path() + ": the WebSocket failed");
+      lost(mine, error, ep.method() + " " + ep.path() + ": the WebSocket failed");
     }
   }
 }

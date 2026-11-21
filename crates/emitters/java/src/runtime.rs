@@ -33,6 +33,7 @@ runtime_files!(
     "JsonParser",
     "JsonWriter",
     "Page",
+    "Reconnect",
     "RequestContext",
     "Router",
     "Schema",
@@ -92,7 +93,9 @@ impl Streaming {
 
     /// Whether a runtime class belongs to a transport this target does not use.
     fn omits(self, class: &str) -> bool {
-        (class.starts_with("Sse") && !self.sse) || (class.starts_with("Ws") && !self.ws)
+        (class.starts_with("Sse") && !self.sse)
+            || (class.starts_with("Ws") && !self.ws)
+            || (class == "Reconnect" && !(self.sse || self.ws))
     }
 
     fn keeps(self, tag: &str) -> Option<bool> {

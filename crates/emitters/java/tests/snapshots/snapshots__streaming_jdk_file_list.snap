@@ -1,8 +1,8 @@
 ---
 source: crates/emitters/java/tests/snapshots.rs
-assertion_line: 358
 expression: "set.paths().collect::<Vec<_>>().join(\"\\n\")"
 ---
+README.md
 gen/s/adapters/JdkHttpServerAdapter.java
 gen/s/live/live/Heard.java
 gen/s/live/live/NoSuchRoom.java
@@ -34,6 +34,7 @@ gen/s/runtime/Json.java
 gen/s/runtime/JsonParser.java
 gen/s/runtime/JsonWriter.java
 gen/s/runtime/Page.java
+gen/s/runtime/Reconnect.java
 gen/s/runtime/RequestContext.java
 gen/s/runtime/Router.java
 gen/s/runtime/Schema.java

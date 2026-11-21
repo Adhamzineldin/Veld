@@ -159,8 +159,13 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
         None,
     );
     w.open(format!("public final class {class}"));
+    let off = if fc.tree.validate {
+        ""
+    } else {
+        ".validateRequests(false)"
+    };
     w.line(format!(
-        "private final {hooks}.Builder builder = {hooks}.builder();"
+        "private final {hooks}.Builder builder = {hooks}.builder(){off};"
     ));
     w.blank();
     let params: Vec<(String, String)> = required

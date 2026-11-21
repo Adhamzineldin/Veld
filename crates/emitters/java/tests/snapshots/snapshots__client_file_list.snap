@@ -2,6 +2,7 @@
 source: crates/emitters/java/tests/snapshots.rs
 expression: "fs.paths().collect::<Vec<_>>().join(\"\\n\")"
 ---
+README.md
 gen/c/iam/client/GetUserRequest.java
 gen/c/iam/client/IamClient.java
 gen/c/iam/users/User.java

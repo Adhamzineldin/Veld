@@ -298,3 +298,48 @@ pub fn streaming_ir() -> Ir {
 pub fn streaming_sse_ir() -> Ir {
     compile_streaming(without_ws(&streaming_source()))
 }
+
+/// The `validate = false` fixture: one endpoint whose query parameter has a length constraint
+/// (`tests/toolchain/contract/validate`).
+pub fn validate_ir() -> Ir {
+    let path = repo_root().join("tests/toolchain/contract/validate/greeter.veld");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "greeter".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: "greeter.veld".into(),
+                text,
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    assert!(
+        out.ir.is_some(),
+        "validate fixture failed to compile:\n{}",
+        out.render()
+    );
+    out.ir.unwrap_or_else(|| unreachable!())
+}
+
+/// Generator options with `validate = false`.
+pub fn options_no_validate(package: &str, release: Option<&str>) -> serde_json::Value {
+    let mut o = options(package, release);
+    o["validate"] = serde_json::json!(false);
+    o
+}
+
+/// The `Greeter` server (JDK adapter) and its client in one package, generated with `validate = false`.
+pub fn gen_unvalidated(ir: &Ir, role: Role, package: &str, release: Option<&str>) -> FileSet {
+    let all = ir.services.iter().map(|s| s.id).collect();
+    run(
+        ir,
+        role,
+        all,
+        vec![],
+        None,
+        options_no_validate(package, release),
+    )
+}

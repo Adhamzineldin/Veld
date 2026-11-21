@@ -22,25 +22,41 @@ import java.util.stream.StreamSupport;
  */
 final class SseStream implements Iterator<Json> {
   private final EndpointSpec ep;
-  private final InputStream body;
-  private final Reader reader;
+  /** Opens the response body again, resuming after {@code lastEventId} (may be {@code null}). */
+  @FunctionalInterface
+  interface Reopen {
+    InputStream open(String lastEventId);
+  }
+
+  private InputStream body;
+  private Reader reader;
   private final SseOptions options;
-  private final SseParser parser = new SseParser();
+  private final Reconnect reconnect;
+  private final Reopen reopen;
+  private SseParser parser = new SseParser();
+  private String lastId;
+  private boolean delivered;
+  private int failures;
   private final Deque<SseParser.Message> queue = new ArrayDeque<>();
   private final char[] buffer = new char[4096];
   private volatile boolean closed;
   private boolean done;
 
-  private SseStream(EndpointSpec ep, InputStream body, SseOptions options) {
+  private SseStream(
+      EndpointSpec ep, InputStream body, SseOptions options, Reconnect reconnect, Reopen reopen) {
     this.ep = ep;
     this.body = body;
     this.reader = new InputStreamReader(body, StandardCharsets.UTF_8);
     this.options = options;
+    this.reconnect = reconnect;
+    this.reopen = reopen;
+    this.lastId = options.lastEventId();
   }
 
   /** The events of {@code body} as a stream of wire values; closing it closes {@code body}. */
-  static Stream<Json> open(EndpointSpec ep, InputStream body, SseOptions options) {
-    SseStream events = new SseStream(ep, body, options);
+  static Stream<Json> open(
+      EndpointSpec ep, InputStream body, SseOptions options, Reconnect reconnect, Reopen reopen) {
+    SseStream events = new SseStream(ep, body, options, reconnect, reopen);
     return StreamSupport.stream(
             Spliterators.spliteratorUnknownSize(events, Spliterator.ORDERED | Spliterator.NONNULL),
             false)
@@ -61,9 +77,13 @@ final class SseStream implements Iterator<Json> {
       throw new NoSuchElementException();
     }
     SseParser.Message message = queue.poll();
-    if (message.id() != null && options.onEventId() != null) {
-      options.onEventId().accept(message.id());
+    if (message.id() != null) {
+      lastId = message.id();
+      if (options.onEventId() != null) {
+        options.onEventId().accept(message.id());
+      }
     }
+    delivered = true;
     return value(message);
   }
 
@@ -74,6 +94,9 @@ final class SseStream implements Iterator<Json> {
     } catch (IOException e) {
       if (closed) {
         n = -1;
+      } else if (reconnect != null && reopen != null) {
+        resume(e);
+        return;
       } else {
         close();
         throw new VeldTransportError(ep.method() + " " + ep.path() + ": the stream broke", e);
@@ -84,6 +107,40 @@ final class SseStream implements Iterator<Json> {
       return;
     }
     queue.addAll(parser.push(new String(buffer, 0, n)));
+  }
+
+  /** The connection broke: wait, then open the request again with {@code Last-Event-ID}. */
+  private void resume(IOException failure) {
+    IOException cause = failure;
+    if (delivered) {
+      failures = 0;
+      delivered = false;
+    }
+    try {
+      body.close();
+    } catch (IOException e) {
+      // The connection is already gone.
+    }
+    while (true) {
+      if (closed) {
+        return;
+      }
+      if (failures >= reconnect.retries()) {
+        close();
+        throw new VeldTransportError(ep.method() + " " + ep.path() + ": the stream broke", cause);
+      }
+      Reconnect.sleep(reconnect.backoffMs(failures));
+      failures++;
+      try {
+        InputStream next = reopen.open(lastId);
+        body = next;
+        reader = new InputStreamReader(next, StandardCharsets.UTF_8);
+        parser = new SseParser();
+        return;
+      } catch (VeldTransportError e) {
+        cause = new IOException(e.getMessage(), e);
+      }
+    }
   }
 
   private Json value(SseParser.Message message) {

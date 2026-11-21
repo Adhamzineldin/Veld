@@ -22,8 +22,11 @@ public final class ClientOptions {
   private final Supplier<String> bearer;
   private final Supplier<Basic> basic;
   private final Supplier<String> apiKey;
-  private final boolean validate;
+  private final Boolean validate;
   private final Duration timeout;
+  // veld:streaming
+  private final Reconnect reconnect;
+  // veld:end
 
   private ClientOptions(Builder b) {
     this.baseUrl = b.baseUrl;
@@ -34,6 +37,9 @@ public final class ClientOptions {
     this.apiKey = b.apiKey;
     this.validate = b.validate;
     this.timeout = b.timeout;
+    // veld:streaming
+    this.reconnect = b.reconnect;
+    // veld:end
   }
 
   /** Options with everything at its default. */
@@ -70,13 +76,19 @@ public final class ClientOptions {
     return apiKey;
   }
 
-  boolean validate() {
-    return validate;
+  boolean validate(boolean fallback) {
+    return validate == null ? fallback : validate;
   }
 
   Duration timeout() {
     return timeout;
   }
+
+  // veld:streaming
+  Reconnect reconnect() {
+    return reconnect;
+  }
+  // veld:end
 
   /** Builds {@link ClientOptions}. */
   public static final class Builder {
@@ -86,8 +98,11 @@ public final class ClientOptions {
     private Supplier<String> bearer;
     private Supplier<Basic> basic;
     private Supplier<String> apiKey;
-    private boolean validate = true;
+    private Boolean validate;
     private Duration timeout = Duration.ofSeconds(30);
+    // veld:streaming
+    private Reconnect reconnect;
+    // veld:end
 
     private Builder() {}
 
@@ -134,7 +149,7 @@ public final class ClientOptions {
       return this;
     }
 
-    /** Validates requests before sending them (default true). */
+    /** Validates requests before sending them (default true, unless the target was generated with {@code validate = false}). */
     public Builder validate(boolean value) {
       this.validate = value;
       return this;
@@ -145,6 +160,16 @@ public final class ClientOptions {
       this.timeout = value;
       return this;
     }
+
+    // veld:streaming
+    /**
+     * Reconnects Server-Sent Events and WebSocket calls after a connection failure (default: off).
+     */
+    public Builder reconnect(Reconnect value) {
+      this.reconnect = value;
+      return this;
+    }
+    // veld:end
 
     /** The finished options. */
     public ClientOptions build() {

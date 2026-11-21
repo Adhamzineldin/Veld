@@ -8,6 +8,7 @@
 pub mod client;
 pub mod frameworks;
 pub mod models;
+pub mod readme;
 pub mod runtime;
 pub mod server;
 pub mod spec;
@@ -35,6 +36,8 @@ pub const JAVA_VERSIONS: [&str; 2] = ["17", "21"];
 pub struct Options {
     /// The base Java package. Default: `dev.veld.generated.<package of the first service>`.
     pub package: Option<String>,
+    /// `false` skips runtime request validation by default (the types stay). Default: `true`.
+    pub validate: Option<bool>,
 }
 
 /// The Java generator (roles `server` and `client`).
@@ -147,7 +150,8 @@ impl Generator for Java {
         used.extend(req.consumes.iter().copied());
         let streaming = runtime::Streaming::of(&req.ir.features_used(&used));
         runtime::emit(&mut files, &base, streaming)?;
-        let tree = Tree::new(req.ir, &base, &runtime_package, req.services.clone());
+        let tree = Tree::new(req.ir, &base, &runtime_package, req.services.clone())
+            .with_validate(opts.validate != Some(false));
         models::emit(&mut files, &tree)?;
         match req.role {
             Role::Client => client::emit(&mut files, &tree)?,
@@ -158,9 +162,16 @@ impl Generator for Java {
                 };
                 frameworks::emit(&mut files, &model, profile)?;
                 server::emit(&mut files, &tree)?;
-                emit_consumed(&mut files, req, &base, &runtime_package)?;
+                emit_consumed(
+                    &mut files,
+                    req,
+                    &base,
+                    &runtime_package,
+                    opts.validate != Some(false),
+                )?;
             }
         }
+        readme::emit(&mut files, &base, req)?;
         Ok(files)
     }
 }
@@ -171,6 +182,7 @@ fn emit_consumed(
     req: &GenRequest<'_>,
     base: &str,
     runtime_package: &str,
+    validate: bool,
 ) -> Result<(), Vec<GenDiagnostic>> {
     for sid in &req.consumes {
         let svc = req.ir.service(*sid);
@@ -183,7 +195,8 @@ fn emit_consumed(
             &format!("{base}.clients.{dir}"),
             runtime_package,
             vec![*sid],
-        );
+        )
+        .with_validate(validate);
         models::emit(files, &tree)?;
         client::emit(files, &tree)?;
     }

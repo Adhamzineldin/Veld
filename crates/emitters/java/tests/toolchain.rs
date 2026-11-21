@@ -195,6 +195,10 @@ fn build_java(release: &'static str) -> Result<Java, Unavailable> {
     put("gen_cb", &gen_client_for(&a, "gen.cb", Some(release)));
     put("gen_cc", &gen_client_for(&c, "gen.cc", Some(release)));
     put("gen_cd", &gen_client_for(&d, "gen.cd", Some(release)));
+    // Two models with the same fields in one contract, generated into two packages (model identity).
+    let shop = equality_ir();
+    put("gen_ma", &gen_client_for(&shop, "gen.ma", Some(release)));
+    put("gen_mb", &gen_client_for(&shop, "gen.mb", Some(release)));
     // The streaming contract: the JDK server can only serve its SSE endpoints (`E0801` for `ws`), so
     // `gen.s` is built from the SSE-only contract; the client and the Spring server get everything.
     let streaming = streaming_ir();
@@ -222,11 +226,22 @@ fn build_java(release: &'static str) -> Result<Java, Unavailable> {
             Some(release),
         ),
     );
+    // `validate = false`: a server and a client of the `Greeter` fixture, in two packages.
+    let greeter = validate_ir();
+    put(
+        "gen_nvs",
+        &gen_unvalidated(&greeter, Role::Server, "gen.nvs", Some(release)),
+    );
+    put(
+        "gen_nvc",
+        &gen_unvalidated(&greeter, Role::Client, "gen.nvc", Some(release)),
+    );
     write_sigs(&work);
 
     // 1. Generated code alone: zero warnings.
     let generated: Vec<PathBuf> = [
-        "gen_a", "gen_i", "gen_ca", "gen_cb", "gen_cc", "gen_cd", "gen_s", "gen_sf",
+        "gen_a", "gen_i", "gen_ca", "gen_cb", "gen_cc", "gen_cd", "gen_ma", "gen_mb", "gen_s",
+        "gen_sf", "gen_nvs", "gen_nvc",
     ]
     .iter()
     .flat_map(|d| java_files(&work.join(d), &[]))
@@ -335,6 +350,13 @@ fn java_round_trip() {
     each_java("java_round_trip", |j| {
         let out = run_java(j, "veldtest.Roundtrip", &[]);
         assert!(out.contains("roundtrip ok"), "java {}", j.release);
+    });
+}
+
+#[test]
+fn validate_false_skips_runtime_validation() {
+    each_java("validate_false_skips_runtime_validation", |j| {
+        assert!(run_java(j, "veldtest.NoValidate", &[]).contains("no-validate ok"));
     });
 }
 
@@ -595,7 +617,12 @@ fn build_ts_stream() -> Result<TsStream, Unavailable> {
         &opts,
     )
     .unwrap();
-    for script in ["stream_server.ts", "stream_cross.ts"] {
+    for script in [
+        "stream_server.ts",
+        "stream_cross.ts",
+        "flaky.ts",
+        "flaky_serve.ts",
+    ] {
         std::fs::copy(ts_dir().join(script), work.join(script)).unwrap();
     }
     let config = json!({
@@ -1147,4 +1174,21 @@ fn generated_java_has_no_unused_imports() {
         }
         assert!(problems.is_empty(), "{}", problems.join("\n"));
     });
+}
+
+/// Reconnect with exponential backoff (SSE with `Last-Event-ID`, WebSocket with queued sends) from
+/// the generated Java client against a Node server that drops connections on purpose.
+#[test]
+fn java_client_reconnects_after_dropped_connections() {
+    let name = "java_client_reconnects_after_dropped_connections";
+    for release in releases() {
+        let Some((j, t)) = both_stream(name, release) else {
+            return;
+        };
+        let mut cmd = Command::new("node");
+        cmd.arg("out/flaky_serve.js").current_dir(&t.work);
+        let server = Server::start(cmd);
+        let out = run_java(j, "veldtest.StreamReconnect", &[&server.url]);
+        assert!(out.contains("java reconnect ok"), "java {release}");
+    }
 }
