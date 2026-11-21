@@ -17,8 +17,8 @@ use veld_ir::PackageKind;
 pub use error::{ConfigError, Warning};
 pub use paths::{CONFIG_FILE, find_config};
 pub use raw::{
-    Config, LibrarySection, PluginSection, ProjectSection, RegistrySection, Role, ServiceSection,
-    TargetSection,
+    Config, HooksSection, LibrarySection, OneOrMany, PluginSection, ProjectSection,
+    RegistrySection, Role, ServiceSection, TargetSection,
 };
 pub use sources::collect_sources;
 
@@ -32,6 +32,9 @@ pub struct PackageSpec {
     pub base_url: Option<String>,
     /// Names of consumed services (self-references removed, duplicates dropped).
     pub consumes: Vec<String>,
+    /// Route prefix prepended to every service prefix of this package (`[project].prefix`
+    /// then `[services.x].prefix`); empty when none.
+    pub prefix: String,
 }
 
 /// Who an emitter id refers to.
@@ -111,17 +114,32 @@ impl PluginSpec {
     }
 }
 
+/// Resolved `[hooks]`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Hooks {
+    /// Shell commands run after a successful, non-dry-run generate, in order.
+    pub post_generate: Vec<String>,
+    /// A failing hook fails the run (otherwise it is only a warning).
+    pub fail: bool,
+}
+
 /// A fully resolved project.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
     /// Absolute directory containing `veld.toml`.
     pub root: PathBuf,
     pub name: String,
+    /// `[project].description`, written by `veld init`.
+    pub description: Option<String>,
     pub packages: Vec<PackageSpec>,
     pub targets: Vec<TargetSpec>,
     pub plugins: Vec<PluginSpec>,
     pub registry: Option<String>,
     pub dependencies: BTreeMap<String, String>,
+    /// `[lint]` rule levels by rule name (unvalidated names; see `veld_tools::lint::LintConfig`).
+    pub lint: BTreeMap<String, veld_codegen::LintLevel>,
+    /// `[hooks]`.
+    pub hooks: Hooks,
     pub warnings: Vec<Warning>,
 }
 
@@ -134,6 +152,17 @@ impl Project {
         self.packages
             .iter()
             .filter(|p| p.kind == PackageKind::Service)
+    }
+
+    /// Package name to route prefix, for `veld_compiler::compile_prefixed` (packages without a
+    /// prefix are left out).
+    #[must_use]
+    pub fn prefixes(&self) -> BTreeMap<String, String> {
+        self.packages
+            .iter()
+            .filter(|p| !p.prefix.is_empty())
+            .map(|p| (p.name.clone(), p.prefix.clone()))
+            .collect()
     }
 }
 
@@ -198,6 +227,39 @@ mod tests {
         );
     }
 
+    #[test]
+    fn hooks_accept_a_string_or_a_list_and_default_to_warning() {
+        let one = load_str(
+            Path::new("/p"),
+            "[project]\nname = \"s\"\n[hooks]\npost-generate = \"prettier --write gen\"\n",
+        )
+        .unwrap();
+        assert_eq!(one.hooks.post_generate, ["prettier --write gen"]);
+        assert!(!one.hooks.fail);
+        let many = load_str(
+            Path::new("/p"),
+            "[project]\nname = \"s\"\n[hooks]\npost-generate = [\"a\", \"b\"]\nfail = true\n",
+        )
+        .unwrap();
+        assert_eq!(many.hooks.post_generate, ["a", "b"]);
+        assert!(many.hooks.fail);
+        let none = load_str(Path::new("/p"), "[project]\nname = \"s\"\n").unwrap();
+        assert_eq!(none.hooks, Hooks::default());
+    }
+
+    #[test]
+    fn an_unknown_hooks_key_suggests_the_right_one() {
+        let err = load_str(
+            Path::new("/p"),
+            "[project]\nname = \"s\"\n[hooks]\npost-generat = \"x\"\n",
+        )
+        .unwrap_err();
+        assert_eq!(err.code(), Some("E0701"));
+        assert!(
+            err.to_string().contains("did you mean `post-generate`"),
+            "{err}"
+        );
+    }
     #[test]
     fn load_reads_a_file() {
         let tmp = tempfile::tempdir().unwrap();

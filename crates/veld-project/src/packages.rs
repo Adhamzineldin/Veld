@@ -247,6 +247,7 @@ impl Project {
                 root: p.contracts,
                 base_url: None,
                 consumes: Vec::new(),
+                prefix: String::new(),
             };
             out.push(RegistryPackage {
                 name: p.name,

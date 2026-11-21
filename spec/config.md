@@ -94,8 +94,10 @@ url = "https://registry.example.com"
 | `typescript` | client | `react` (`"18"`), `vue` (`"3"`); none is the plain client | `typescript`, `framework-version`, `package-name` |
 | `java` | server | `jdk` (unversioned), `spring` (`"3"`) | `package`, `java`, `framework-version` |
 | `java` | client | none | `package`, `java` |
+| `rust` | server | `axum` (`"0.8"`, the default) | `crate-name`, `transport`, `validate` |
+| `rust` | client | `reqwest` (`"0.13"`, the default), `ureq` (`"2"`, blocking) | `crate-name`, `validate` |
 
-Streaming (`get ... -> stream`, `ws`) works with every framework above, except that a `java` server with `framework = "jdk"` reports `E0801` for `ws` endpoints (the JDK has no WebSocket server; use `spring`). A `node` server with `ws` endpoints adds a `ws` peer dependency to its `package.json` and needs `ws` installed by the application; a `spring` server with `ws` endpoints needs `spring-boot-starter-websocket`.
+Streaming (`get ... -> stream`, `ws`) works with every framework above, except that a `rust` client on `ureq` reports `E0801` for `ws` endpoints (the blocking transport has no WebSocket client; use `reqwest`) and that a `java` server with `framework = "jdk"` reports `E0801` for `ws` endpoints (the JDK has no WebSocket server; use `spring`). A `node` server with `ws` endpoints adds a `ws` peer dependency to its `package.json` and needs `ws` installed by the application; a `spring` server with `ws` endpoints needs `spring-boot-starter-websocket`.
 
 The frameworks of a built-in emitter come from its adapter registry, one slice per emitter, so this table, the `E0803` message and the generated adapters cannot drift apart.
 
@@ -145,14 +147,17 @@ Edits keep the file's formatting, are idempotent, and never touch unrelated keys
 ## Rules
 
 - Exactly one of `[project].contracts` or `[services.*]` defines the packages. With no `[services]` section, the project itself is a single service named `project.name`.
-- `consumes` entries MUST name existing services (`E0702`). Listing the service itself is a warning (`W0701`). Cycles are allowed.
+- `consumes` entries MUST name existing services (`E0702`). Listing the service itself is a warning (`W0701`). Cycles are allowed. `consumes = ["*"]` means every other service (it can be combined with named services and is expanded when the config is loaded).
+- `prefix` (optional, in `[project]` and in `[services.<name>]`) is a route prefix such as `/api` that is prepended to every service prefix of the service in the IR, so every target and export agrees on the full route. The project prefix comes first: `[project] prefix = "/api"` and `[services.iam] prefix = "/v1"` give `/api/v1/<service prefix>`. A prefix MUST start with `/`; trailing slashes are dropped.
+- `[lint]` maps a lint rule name to `"off"`, `"warn"` or `"error"` (`veld check` runs the rules; see `spec/diagnostics.md`, codes `L####`). An unknown rule name is a configuration error that lists the valid names; rules not listed keep their default level (`warn`). `veld check` exits 1 when a rule set to `error` finds something.
+- `[hooks]` (optional): `post-generate` is a shell command or a list of commands. `veld generate` runs them in order, from the directory of `veld.toml`, after a successful write (never on `--dry-run` or `--check`); their output is streamed. A failing hook is a warning and generate still exits 0, unless `fail = true` is set, which makes it exit 1. An unknown key under `[hooks]` is `E0701`.
 - A target needs `role`, `emitter` and `out`.
   - `service` is required for `role = "server"`.
   - `app` (optional) is the directory of the app that consumes the output, for `veld setup`.
   - Two targets MUST NOT share an `out` directory (`E0703`).
   - `out` MUST NOT be the project root or a contracts directory (`E0704`).
 - `[plugins.x].entry` is optional. When set, Veld runs `command` with the entry path appended (unless `command` already contains it), and `sha256` is the hash of the entry file, checked before every run. Without `entry`, `sha256` is the hash of the executable that `command` resolves to. For a script plugin always set `entry`, because hashing the interpreter protects nothing.
-- `emitter` is either a built-in id (`node`, `typescript`, `java`) or `plugin:<name>`.
+- `emitter` is either a built-in id (`node`, `typescript`, `java`, `rust`) or `plugin:<name>`.
 - `base-url` resolution in generated clients, highest priority first:
   1. the constructor argument
   2. the env var `VELD_<SERVICE>_URL` (service name in UPPER_SNAKE)
@@ -172,6 +177,8 @@ Each `out` directory holds a manifest, `.veld-manifest.json`, listing the files 
 - A listed file whose content differs from its manifest hash is **user-modified**. If generating would overwrite or delete it, `generate` refuses and names it ("you edited generated file ..."). A dry run reports it too. `--force` overwrites it.
 - `veld clean` removes unmodified generated files and keeps user-modified ones. It leaves a manifest that lists only the kept files with their original hashes, so a later `generate` still reports them as user-modified.
 - A write starts by removing stale `.veld-staging-*` directories in `out`, left by an interrupted run. Generated paths may not use that prefix.
+- `veld generate --check` writes nothing and exits 1 when any target would create, update or delete a file, or has a user-modified or unowned file in the way. Before writing, `generate` compares the contracts with `veld.lock.ir.json`: a breaking change is confirmed on a terminal, fails off a terminal or with `--strict`, and passes with `--accept-breaking` (`--check` and `--dry-run` only print the list).
+- `veld export openapi -o FILE` writes a file the user owns: staged and contained like generated output, but with no manifest, so `generate` and `clean` never touch it. A differing existing file is refused unless `--force`.
 
 ## Registry packages
 

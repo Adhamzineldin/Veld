@@ -82,6 +82,7 @@ mod tests {
             root: root.to_path_buf(),
             base_url: None,
             consumes: vec![],
+            prefix: String::new(),
         }
     }
 

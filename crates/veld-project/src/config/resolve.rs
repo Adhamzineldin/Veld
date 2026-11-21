@@ -7,9 +7,10 @@ use veld_ir::PackageKind;
 
 use super::error::{ConfigError, Warning};
 use super::paths::normalize;
+use super::raw::OneOrMany;
 use super::raw::{Config, PluginSection, Role, ServiceSection, TargetSection};
 use super::suggest::{closest, hint};
-use super::{EmitterRef, PackageSpec, PluginSpec, Project, TargetSpec};
+use super::{EmitterRef, Hooks, PackageSpec, PluginSpec, Project, TargetSpec};
 
 pub(super) fn resolve(root: &Path, cfg: Config) -> Result<Project, ConfigError> {
     if cfg.project.name.trim().is_empty() {
@@ -23,11 +24,21 @@ pub(super) fn resolve(root: &Path, cfg: Config) -> Result<Project, ConfigError> 
     Ok(Project {
         root: root.to_path_buf(),
         name: cfg.project.name,
+        description: cfg.project.description,
         packages,
         targets,
         plugins,
         registry: cfg.registry.and_then(|r| r.url),
         dependencies: cfg.dependencies,
+        lint: cfg.lint,
+        hooks: Hooks {
+            post_generate: match cfg.hooks.post_generate {
+                None => Vec::new(),
+                Some(OneOrMany::One(c)) => vec![c],
+                Some(OneOrMany::Many(c)) => c,
+            },
+            fail: cfg.hooks.fail,
+        },
         warnings,
     })
 }
@@ -67,6 +78,7 @@ fn build_packages(
             root: package_root(root, contracts),
             base_url: None,
             consumes: Vec::new(),
+            prefix: String::new(),
         });
     }
     if cfg.services.is_empty() {
@@ -77,6 +89,7 @@ fn build_packages(
             root: package_root(root, contracts),
             base_url: None,
             consumes: Vec::new(),
+            prefix: join_prefix(cfg.project.prefix.as_deref(), None)?,
         });
     } else {
         if cfg.project.contracts.is_some() {
@@ -109,7 +122,27 @@ fn build_service(
         root: package_root(root, contracts),
         base_url: svc.base_url.clone(),
         consumes: resolve_consumes(name, &svc.consumes, cfg, warnings)?,
+        prefix: join_prefix(cfg.project.prefix.as_deref(), svc.prefix.as_deref())?,
     })
+}
+
+/// Joins the project and service route prefixes (`/api` + `/v1` = `/api/v1`). Each must start with
+/// `/`; trailing slashes are dropped. `/` alone means none.
+fn join_prefix(project: Option<&str>, service: Option<&str>) -> Result<String, ConfigError> {
+    let mut out = String::new();
+    for (key, value) in [
+        ("[project].prefix", project),
+        ("[services.<name>].prefix", service),
+    ] {
+        let Some(v) = value else { continue };
+        if !v.starts_with('/') {
+            return Err(ConfigError::invalid(format!(
+                "`{key}` must start with `/`, found `{v}`"
+            )));
+        }
+        out.push_str(v.trim_end_matches('/'));
+    }
+    Ok(out)
 }
 
 fn resolve_consumes(
@@ -120,7 +153,13 @@ fn resolve_consumes(
 ) -> Result<Vec<String>, ConfigError> {
     let mut resolved: Vec<String> = Vec::new();
     for name in consumes {
-        if name == owner {
+        if name == "*" {
+            for other in cfg.services.keys().filter(|s| s.as_str() != owner) {
+                if !resolved.contains(other) {
+                    resolved.push(other.clone());
+                }
+            }
+        } else if name == owner {
             warnings.push(Warning {
                 code: "W0701",
                 message: format!("service `{owner}` lists itself in `consumes`; ignoring"),
@@ -263,7 +302,7 @@ fn target_services(
         Role::Server => {
             if t.services.is_some() {
                 return Err(ConfigError::invalid(format!(
-                    "{owner}: `services` is only valid for role = \"client\""
+                    "{owner}: `services` is only valid for role = \"client\" or \"spec\""
                 )));
             }
             let name = match (&t.service, services) {
@@ -537,6 +576,52 @@ app = \"../web\"
     fn consuming_a_library_is_unknown_service() {
         let err = load(&WORKSPACE.replace("\"iam\", \"payments\"", "\"common\"")).unwrap_err();
         assert_eq!(err.code(), Some("E0702"));
+    }
+
+    #[test]
+    fn consumes_wildcard_expands_to_every_other_service() {
+        let p = load(&WORKSPACE.replace("[\"iam\", \"payments\"]", "[\"*\"]")).unwrap();
+        assert_eq!(p.package("orders").unwrap().consumes, ["iam", "payments"]);
+        assert!(p.warnings.is_empty());
+        let p =
+            load(&WORKSPACE.replace("[\"iam\", \"payments\"]", "[\"payments\", \"*\"]")).unwrap();
+        assert_eq!(p.package("orders").unwrap().consumes, ["payments", "iam"]);
+    }
+
+    #[test]
+    fn prefixes_join_project_then_service() {
+        let text = WORKSPACE
+            .replace(
+                "name = \"bank\"",
+                "name = \"bank\"
+prefix = \"/api/\"",
+            )
+            .replace("base-url = \"http://iam:3001\"", "prefix = \"/v1\"");
+        let p = load(&text).unwrap();
+        assert_eq!(p.package("iam").unwrap().prefix, "/api/v1");
+        assert_eq!(p.package("orders").unwrap().prefix, "/api");
+        assert_eq!(p.package("common").unwrap().prefix, "");
+        let map = p.prefixes();
+        assert_eq!(map.len(), 3);
+        assert_eq!(map["iam"], "/api/v1");
+    }
+
+    #[test]
+    fn single_service_project_prefix_and_bad_prefix() {
+        let p = load(&SINGLE.replace(
+            "name = \"shop\"",
+            "name = \"shop\"
+prefix = \"/api\"",
+        ))
+        .unwrap();
+        assert_eq!(p.packages[0].prefix, "/api");
+        let err = load(&SINGLE.replace(
+            "name = \"shop\"",
+            "name = \"shop\"
+prefix = \"api\"",
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("must start with"), "{err}");
     }
 
     #[test]

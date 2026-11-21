@@ -44,6 +44,22 @@ impl Plan {
         })
     }
 
+    /// Whether the output on disk differs from what was generated: a file would be created,
+    /// updated or deleted, or a path is blocked (unowned or user-edited). This is what
+    /// `generate --check` exits 1 on.
+    pub fn is_stale(&self) -> bool {
+        self.has_changes() || !self.conflicts().is_empty()
+    }
+
+    /// The paths behind [`Plan::is_stale`] with their action, sorted by path (everything except
+    /// `Unchanged`).
+    pub fn stale_entries(&self) -> Vec<&PlanEntry> {
+        self.entries
+            .iter()
+            .filter(|e| e.action != PlanAction::Unchanged)
+            .collect()
+    }
+
     /// Every path that blocks the write: unowned files and user-edited generated files.
     pub fn conflicts(&self) -> Vec<String> {
         self.entries

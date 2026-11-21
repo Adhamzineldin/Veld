@@ -23,8 +23,31 @@ pub struct Config {
     pub registry: Option<RegistrySection>,
     #[serde(default)]
     pub dependencies: BTreeMap<String, String>,
+    /// `[lint]`: rule name to level. Rule names are validated by `veld-tools::lint`.
+    #[serde(default)]
+    pub lint: BTreeMap<String, veld_codegen::LintLevel>,
+    /// `[hooks]`: commands run around `veld generate`.
+    #[serde(default)]
+    pub hooks: HooksSection,
 }
 
+/// One command or a list of commands.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum OneOrMany {
+    One(String),
+    Many(Vec<String>),
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct HooksSection {
+    /// Shell command(s) run after a successful, non-dry-run `veld generate`.
+    pub post_generate: Option<OneOrMany>,
+    /// A failing hook fails `generate` (default: only a warning).
+    #[serde(default)]
+    pub fail: bool,
+}
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct ProjectSection {
@@ -35,6 +58,8 @@ pub struct ProjectSection {
     pub package: Option<String>,
     pub version: Option<String>,
     pub description: Option<String>,
+    /// Route prefix (`/api`) prepended to every service prefix of every service.
+    pub prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -58,6 +83,8 @@ pub struct ServiceSection {
     pub base_url: Option<String>,
     #[serde(default)]
     pub consumes: Vec<String>,
+    /// Route prefix (`/v1`) prepended to this service's prefixes, after `[project].prefix`.
+    pub prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -107,13 +134,23 @@ const TOP: &[&str] = &[
     "plugins",
     "registry",
     "dependencies",
+    "lint",
+    "hooks",
 ];
-const PROJECT: &[&str] = &["name", "contracts", "package", "version", "description"];
+const PROJECT: &[&str] = &[
+    "name",
+    "contracts",
+    "package",
+    "version",
+    "description",
+    "prefix",
+];
 const LIBRARY: &[&str] = &["contracts", "package", "version", "description"];
 const SERVICE: &[&str] = &[
     "contracts",
     "base-url",
     "consumes",
+    "prefix",
     "package",
     "version",
     "description",
@@ -132,6 +169,7 @@ const TARGET: &[&str] = &[
 ];
 const PLUGIN: &[&str] = &["command", "version", "sha256", "entry"];
 const REGISTRY: &[&str] = &["url"];
+const HOOKS: &[&str] = &["post-generate", "fail"];
 
 impl Config {
     /// Parses `veld.toml` text. Unknown keys give E0701 with a suggestion.
@@ -179,6 +217,9 @@ fn check_unknown_keys(root: &Table) -> Result<(), ConfigError> {
     if let Some(Value::Table(t)) = root.get("registry") {
         check_keys(t, "`[registry]`", REGISTRY)?;
     }
+    if let Some(Value::Table(t)) = root.get("hooks") {
+        check_keys(t, "`[hooks]`", HOOKS)?;
+    }
     check_named_tables(root, "libraries", LIBRARY)?;
     check_named_tables(root, "services", SERVICE)?;
     check_named_tables(root, "plugins", PLUGIN)?;
@@ -225,6 +266,31 @@ url = "https://r"
 [dependencies]
 "@acme/billing" = "^1.2"
 "#;
+
+    #[test]
+    fn lint_levels_parse_and_reject_unknown_levels() {
+        let cfg = Config::parse(
+            "[project]
+name = \"x\"
+[lint]
+unused-model = \"off\"
+empty-model = \"error\"
+",
+        )
+        .unwrap();
+        assert_eq!(cfg.lint["unused-model"], veld_codegen::LintLevel::Off);
+        assert_eq!(cfg.lint["empty-model"], veld_codegen::LintLevel::Error);
+        assert!(
+            Config::parse(
+                "[project]
+name = \"x\"
+[lint]
+unused-model = \"loud\"
+"
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn parses_full_example() {

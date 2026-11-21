@@ -33,6 +33,19 @@ pub struct WriteOptions {
     pub force: bool,
 }
 
+/// The plan for writing `files` into `out`, touching nothing: the stale-output check behind
+/// `generate --check` (`plan.is_stale()`). Same as a dry-run [`write`].
+pub fn check(out: &Path, files: &FileSet) -> Result<Plan, OutputError> {
+    write(
+        out,
+        files,
+        &WriteOptions {
+            dry_run: true,
+            force: false,
+        },
+    )
+}
+
 /// Writes `files` into `out`, returning what was (or, for a dry run, would be) done.
 pub fn write(out: &Path, files: &FileSet, opts: &WriteOptions) -> Result<Plan, OutputError> {
     let out = safety::absolute(out)?;
@@ -65,6 +78,29 @@ pub fn write(out: &Path, files: &FileSet, opts: &WriteOptions) -> Result<Plan, O
     Ok(plan)
 }
 
+/// Writes files the user will own and edit (`veld export ci|env|docker`): staged like [`write`], but
+/// with no manifest, so the files are never overwritten or deleted by a later `generate` or
+/// `clean`. An existing file with different content is refused (`OutputError::Conflicts`) unless
+/// `force`; identical files are left untouched. Nothing is ever deleted.
+pub fn write_unmanaged(out: &Path, files: &FileSet, force: bool) -> Result<Plan, OutputError> {
+    let out = safety::absolute(out)?;
+    check_out_dir(&out)?;
+    let plan = plan::build(&out, &Manifest::default(), files, force)?;
+    let foreign = plan.paths_with(PlanAction::Conflict);
+    if !foreign.is_empty() {
+        return Err(OutputError::Conflicts {
+            foreign,
+            edited: Vec::new(),
+        });
+    }
+    if plan.has_changes() {
+        fs::create_dir_all(&out).map_err(io_at(&out))?;
+        commit::remove_stale_staging(&out)?;
+        commit::apply(&out, files, &plan, None)?;
+    }
+    Ok(plan)
+}
+
 fn check_out_dir(out: &Path) -> Result<(), OutputError> {
     match fs::metadata(out) {
         Ok(m) if !m.is_dir() => Err(OutputError::OutNotDirectory {
@@ -87,6 +123,52 @@ mod tests {
         fs::write(&f, "x").unwrap();
         let err = write(&f, &FileSet::new(), &WriteOptions::default()).unwrap_err();
         assert!(matches!(err, OutputError::OutNotDirectory { .. }));
+    }
+
+    #[test]
+    fn check_reports_staleness_without_writing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut files = FileSet::new();
+        files.add("a.txt", "a").unwrap();
+        assert!(check(tmp.path(), &files).unwrap().is_stale());
+        assert!(!tmp.path().join("a.txt").exists());
+        write(tmp.path(), &files, &WriteOptions::default()).unwrap();
+        assert!(!check(tmp.path(), &files).unwrap().is_stale());
+        files.add("b.txt", "b").unwrap();
+        let plan = check(tmp.path(), &files).unwrap();
+        assert_eq!(plan.stale_entries().len(), 1);
+        let mut shrunk = FileSet::new();
+        shrunk.add("a.txt", "changed").unwrap();
+        std::fs::write(tmp.path().join("a.txt"), "edited").unwrap();
+        assert!(check(tmp.path(), &shrunk).unwrap().is_stale());
+    }
+
+    #[test]
+    fn unmanaged_write_creates_keeps_and_refuses() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut files = FileSet::new();
+        files.add("ci/a.yml", "a").unwrap();
+        files.add("b.txt", "b").unwrap();
+        let plan = write_unmanaged(tmp.path(), &files, false).unwrap();
+        assert_eq!(plan.paths_with(PlanAction::Create).len(), 2);
+        assert!(
+            !tmp.path().join(".veld-manifest.json").exists(),
+            "no manifest"
+        );
+        let again = write_unmanaged(tmp.path(), &files, false).unwrap();
+        assert!(!again.has_changes());
+        std::fs::write(tmp.path().join("b.txt"), "mine").unwrap();
+        let err = write_unmanaged(tmp.path(), &files, false).unwrap_err();
+        assert!(matches!(err, OutputError::Conflicts { .. }));
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("b.txt")).unwrap(),
+            "mine"
+        );
+        write_unmanaged(tmp.path(), &files, true).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("b.txt")).unwrap(),
+            "b"
+        );
     }
 
     #[test]
