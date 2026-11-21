@@ -102,14 +102,18 @@ fn kill_tree_of(pid: u32) {
 
 #[cfg(unix)]
 fn kill_tree_of(pid: u32) {
-    // The child leads its own process group (see `isolate`): signal the whole group.
-    let _ = Command::new("kill")
-        .args(["-KILL", &format!("-{pid}")])
+    // The child leads its own process group (see `isolate`): signal the whole group. The shell
+    // builtin is used because a slim image may have no `kill` executable (procps).
+    let _ = Command::new("sh")
+        .args(["-c", &format!("kill -s KILL -- -{pid}")])
         .stdin(Stdio::null())
+        .stderr(Stdio::null())
         .output();
 }
 
-/// Whether a process with this id is alive.
+/// Whether a process with this id is alive. A zombie (dead, not yet reaped) is not alive: after
+/// its parent is killed a grandchild can stay a zombie for as long as its new parent, such as
+/// PID 1 of a container, does not reap it, and `kill -0` still succeeds for it.
 #[must_use]
 pub fn pid_alive(pid: u32) -> bool {
     #[cfg(windows)]
@@ -122,13 +126,30 @@ pub fn pid_alive(pid: u32) -> bool {
     }
     #[cfg(unix)]
     {
-        Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
+        unix_state(pid).is_some_and(|state| !state.starts_with('Z'))
     }
+}
+
+/// The scheduler state of a process (`R`, `S`, `Z`, ...), or `None` when there is no such process.
+#[cfg(target_os = "linux")]
+fn unix_state(pid: u32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // `pid (comm) S ...`: the name may contain spaces and parentheses, so cut at the last `)`.
+    let rest = stat.get(stat.rfind(')')? + 1..)?;
+    rest.split_whitespace().next().map(str::to_string)
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn unix_state(pid: u32) -> Option<String> {
+    let out = Command::new("ps")
+        .args(["-o", "stat=", "-p", &pid.to_string()])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let state = text.trim();
+    (out.status.success() && !state.is_empty()).then(|| state.to_string())
 }
 
 #[cfg(test)]
@@ -188,7 +209,10 @@ setInterval(() => {}, 1000);
             .trim()
             .parse()
             .unwrap();
-        assert!(pid_alive(parent) && pid_alive(grandchild));
+        // The pid file proves the grandchild was spawned, not that the OS lists it yet: wait.
+        wait_for("the parent and the grandchild to be alive", || {
+            pid_alive(parent) && pid_alive(grandchild)
+        });
 
         drop(tree);
 
@@ -196,5 +220,23 @@ setInterval(() => {}, 1000);
             !pid_alive(parent) && !pid_alive(grandchild)
         });
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn this_process_is_alive() {
+        assert!(pid_alive(std::process::id()));
+    }
+
+    /// A child that exited but was not reaped is a zombie: it is not alive.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreaped_exited_child_is_not_alive() {
+        let mut child = Command::new("sh")
+            .args(["-c", "exit 0"])
+            .stdin(Stdio::null())
+            .spawn()
+            .unwrap();
+        wait_for("the child to be reported dead", || !pid_alive(child.id()));
+        let _ = child.wait();
     }
 }
