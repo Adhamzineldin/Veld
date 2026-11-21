@@ -1,0 +1,30 @@
+# nfpm config for the .deb and .rpm packages (https://nfpm.goreleaser.com/configuration/).
+# Built by `package.sh deb|rpm` from the binary inside the release archive:
+#   ARCH=amd64 VERSION=2.0.0-beta.1 VELD_BIN=./veld nfpm pkg --config distribution/apt/nfpm.yaml --packager deb
+name: veld
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+# A prerelease such as 2.0.0-beta.1 becomes 2.0.0~beta.1 in deb and rpm, so it sorts before 2.0.0.
+version_schema: semver
+section: devel
+priority: optional
+maintainer: "Adhamzineldin <adham@veld.dev>"
+description: |
+  Contract-first API code generator.
+  Write .veld contracts and generate typed servers and clients (TypeScript, Node, Java).
+homepage: https://github.com/Adhamzineldin/Veld
+license: MIT
+
+contents:
+  # The release binary is a static musl build with no runtime dependencies.
+  - src: ${VELD_BIN}
+    expand: true
+    dst: /usr/bin/veld
+    file_info:
+      mode: 0755
+  - src: ${VELD_LICENSE}
+    expand: true
+    dst: /usr/share/doc/veld/copyright
+    file_info:
+      mode: 0644

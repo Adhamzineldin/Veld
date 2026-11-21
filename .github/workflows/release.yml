@@ -2,7 +2,8 @@ name: release
 
 # Pushing a tag such as v2.0.0-beta.1 builds the `veld` CLI and `veld-registry`
 # for every supported platform and attaches the archives plus SHA256SUMS to the
-# GitHub release. The distribution wrappers (npm, pip, Homebrew) download these
+# GitHub release, plus .deb/.rpm (nfpm), a Chocolatey .nupkg and the filled Scoop manifest
+# veld.json. The distribution wrappers (npm, pip, Homebrew, Scoop, Chocolatey) download these
 # exact asset names:
 #
 #   veld-<target-triple>.tar.gz            (veld.zip on Windows)
@@ -165,21 +166,89 @@ jobs:
             artifacts/*.zip
             artifacts/SHA256SUMS
 
+  packages:
+    name: deb, rpm and scoop manifest
+    needs: [checksums]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: artifacts
+      - name: Install nfpm (pinned, checksum verified)
+        run: |
+          set -euo pipefail
+          v=2.41.3
+          curl -sSfL -o nfpm.tar.gz "https://github.com/goreleaser/nfpm/releases/download/v${v}/nfpm_${v}_Linux_x86_64.tar.gz"
+          echo "22aa6d3bc2ec239d62d3d190bcb036a47f2b24e0c3c6edfccebb6a55fbb2078e  nfpm.tar.gz" | sha256sum -c -
+          sudo tar -xzf nfpm.tar.gz -C /usr/local/bin nfpm
+      - name: Build packages
+        run: |
+          set -euo pipefail
+          version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          mkdir -p packages bin-amd64 bin-arm64
+          tar -xzf artifacts/veld-x86_64-unknown-linux-musl.tar.gz -C bin-amd64
+          tar -xzf artifacts/veld-aarch64-unknown-linux-musl.tar.gz -C bin-arm64
+          for fmt in deb rpm; do
+            bash distribution/package.sh "$fmt" amd64 "$version" bin-amd64/veld packages
+            bash distribution/package.sh "$fmt" arm64 "$version" bin-arm64/veld packages
+          done
+          bash distribution/package.sh scoop "$version" artifacts/SHA256SUMS packages
+          ls -l packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: packages/*
+
+  chocolatey:
+    name: chocolatey package
+    needs: [checksums]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: artifacts
+      - name: Pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          bash distribution/package.sh choco "$version" artifacts/SHA256SUMS packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chocolatey-package
+          path: packages/*.nupkg
+
   publish:
     name: github release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [checksums]
+    needs: [checksums, packages, chocolatey]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: release-assets
           path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-packages
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: chocolatey-package
+          path: artifacts
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/*.tar.gz
             artifacts/*.zip
+            artifacts/*.deb
+            artifacts/*.rpm
+            artifacts/*.nupkg
+            artifacts/veld.json
             artifacts/SHA256SUMS
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
@@ -206,3 +275,5 @@ jobs:
         run: python distribution/tests/pip_wrapper_test.py artifacts
       - name: homebrew formula
         run: bash distribution/tests/homebrew-formula.test.sh artifacts/SHA256SUMS
+      - name: scoop manifest
+        run: bash distribution/tests/packages.test.sh artifacts/SHA256SUMS

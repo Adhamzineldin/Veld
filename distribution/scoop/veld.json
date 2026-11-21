@@ -1,0 +1,27 @@
+{
+    "version": "2.0.0-beta.1",
+    "description": "Contract-first API code generator: typed servers and clients from .veld contracts",
+    "homepage": "https://github.com/Adhamzineldin/Veld",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/Adhamzineldin/Veld/releases/download/v2.0.0-beta.1/veld-x86_64-pc-windows-msvc.zip",
+            "hash": "PLACEHOLDER_SHA256_X86_64_PC_WINDOWS_MSVC"
+        }
+    },
+    "bin": "veld.exe",
+    "checkver": {
+        "github": "https://github.com/Adhamzineldin/Veld"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/Adhamzineldin/Veld/releases/download/v$version/veld-x86_64-pc-windows-msvc.zip"
+            }
+        },
+        "hash": {
+            "url": "https://github.com/Adhamzineldin/Veld/releases/download/v$version/SHA256SUMS",
+            "regex": "([a-fA-F0-9]{64})\\s+\\*?$basename"
+        }
+    }
+}
