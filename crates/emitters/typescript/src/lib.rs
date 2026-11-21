@@ -27,8 +27,8 @@ use crate::util::add_file;
 
 pub use tree::Tree;
 
-/// Features no TypeScript generator supports yet.
-pub const UNSUPPORTED: [Feature; 2] = [Feature::StreamingSse, Feature::StreamingWs];
+/// Features no TypeScript generator lacks: streaming (SSE and WebSocket) is supported.
+pub const UNSUPPORTED: [Feature; 0] = [];
 
 /// The TypeScript language versions: ECMAScript editions, the oldest first (the default).
 /// Selected with the target option `typescript = "es2022"`.

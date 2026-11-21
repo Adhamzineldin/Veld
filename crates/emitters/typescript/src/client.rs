@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
-use veld_ir::{AuthKind, Binding, Endpoint, Ir, Param, Service, ServiceId};
+use veld_ir::{AuthKind, Binding, Endpoint, Ir, Method, Param, Service, ServiceId};
 
 use crate::tree::{FileCtx, Tree};
 use crate::types::ts_type;
@@ -68,12 +68,14 @@ pub fn op_const(svc: &Service, ep: &Endpoint) -> String {
 /// `export interface GetOrderRequest { ... }`: path params, `body`, `query`, single
 /// query params and headers, all by parameter name.
 pub fn write_request_type(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &Endpoint) {
-    if ep.params.is_empty() {
+    // `body: stream T` on a `ws` endpoint is the client's message type, not part of the request.
+    let params: Vec<&Param> = ep.params.iter().filter(|p| !p.stream).collect();
+    if params.is_empty() {
         w.line(format!("export type {name} = {{}};"));
         return;
     }
     w.open(format!("export interface {name}"));
-    for p in &ep.params {
+    for p in params {
         let opt = if p.optional { "?" } else { "" };
         let ty = ts_type(fc, &p.ty);
         w.line(format!("{}{opt}: {ty};", prop_key(&p.name)));
@@ -103,6 +105,9 @@ fn param_expr(fc: &mut FileCtx<'_, '_>, p: &Param) -> String {
     if p.optional {
         parts.push("o: true".to_string());
     }
+    if p.stream {
+        parts.push("s: true".to_string());
+    }
     format!("{{ {} }},", parts.join(", "))
 }
 
@@ -126,6 +131,9 @@ pub fn write_spec_fields(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, ep: &Endp
     w.line(format!("path: {},", ts_str(&ep.path)));
     w.line(format!("sig: {},", ts_str(&ep.sig)));
     w.line(format!("status: {},", ep.success.status));
+    if ep.success.stream {
+        w.line("stream: true,");
+    }
     if let Some(auth) = auth_expr(ep) {
         w.line(format!("auth: {auth},"));
     }
@@ -245,7 +253,28 @@ fn write_method(
         Some(t) => ts_type(fc, t),
         None => "void".to_string(),
     };
-    let default = if ep.params.is_empty() { " = {}" } else { "" };
+    let default = if ep.params.iter().all(|p| p.stream) {
+        " = {}"
+    } else {
+        ""
+    };
+    if ep.method == Method::Ws {
+        write_ws_method(w, fc, svc, ep, &req, default);
+        return;
+    }
+    if ep.success.stream {
+        let init = fc.rt("StreamInit");
+        w.open(format!(
+            "{}(req: {req}{default}, init?: {init}): AsyncIterable<{ret}>",
+            method_key(&ep.name)
+        ));
+        w.line(format!(
+            "return this.#core.stream({}, req, init) as AsyncIterable<{ret}>;",
+            op_const(svc, ep)
+        ));
+        w.close();
+        return;
+    }
     let init = fc.rt("CallInit");
     w.open(format!(
         "{}(req: {req}{default}, init?: {init}): Promise<{ret}>",
@@ -253,6 +282,37 @@ fn write_method(
     ));
     w.line(format!(
         "return this.#core.call({}, req, init) as Promise<{ret}>;",
+        op_const(svc, ep)
+    ));
+    w.close();
+}
+
+/// `chat(req, init?): WsChannel<ServerMessage, ClientMessage>`; a side that has no messages is `never`.
+fn write_ws_method(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    svc: &Service,
+    ep: &Endpoint,
+    req: &str,
+    default: &str,
+) {
+    let incoming = match &ep.success.ty {
+        Some(t) => ts_type(fc, t),
+        None => "never".to_string(),
+    };
+    let outgoing = match ep.params.iter().find(|p| p.stream) {
+        Some(p) => ts_type(fc, &p.ty),
+        None => "never".to_string(),
+    };
+    let init = fc.rt("WsInit");
+    let channel = fc.rt("WsChannel");
+    let ret = format!("{channel}<{incoming}, {outgoing}>");
+    w.open(format!(
+        "{}(req: {req}{default}, init?: {init}): {ret}",
+        method_key(&ep.name)
+    ));
+    w.line(format!(
+        "return this.#core.connect({}, req, init) as {ret};",
         op_const(svc, ep)
     ));
     w.close();
