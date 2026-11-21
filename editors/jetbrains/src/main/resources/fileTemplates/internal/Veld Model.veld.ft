@@ -1,6 +1,0 @@
-// ${NAME} model
-
-model ${NAME} {
-  id: string
-}
-
