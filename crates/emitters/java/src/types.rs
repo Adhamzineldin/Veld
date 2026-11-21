@@ -123,25 +123,22 @@ fn bounds(c: &Constraints) -> String {
 /// declarations are `Schema.ref(() -> X.SCHEMA)` when `lazy` (inside declarations, which may be
 /// recursive) and `X.SCHEMA` otherwise.
 pub fn schema_expr(fc: &mut FileCtx<'_, '_>, ty: &Type, c: &Constraints, lazy: bool) -> String {
-    let schema = fc.rt("Schema");
+    // `Schema` is imported only when the expression names it: a plain `Model.SCHEMA` does not.
     let base = match ty {
-        Type::Scalar(s) => format!("{schema}.{}()", scalar_codec(*s)),
-        Type::List(t) => format!(
-            "{schema}.list({})",
-            schema_expr(fc, t, &Constraints::default(), lazy)
-        ),
-        Type::Map(t) => format!(
-            "{schema}.map({})",
-            schema_expr(fc, t, &Constraints::default(), lazy)
-        ),
-        Type::Page(t) => format!(
-            "{schema}.page({})",
-            schema_expr(fc, t, &Constraints::default(), lazy)
-        ),
+        Type::Scalar(s) => format!("{}.{}()", fc.rt("Schema"), scalar_codec(*s)),
+        Type::List(t) | Type::Map(t) | Type::Page(t) => {
+            let inner = schema_expr(fc, t, &Constraints::default(), lazy);
+            let wrap = match ty {
+                Type::List(_) => "list",
+                Type::Map(_) => "map",
+                Type::Scalar(_) | Type::Page(_) | Type::Decl(_) => "page",
+            };
+            format!("{}.{wrap}({inner})", fc.rt("Schema"))
+        }
         Type::Decl(id) => {
             let name = fc.decl(*id);
             if lazy {
-                format!("{schema}.ref(() -> {name}.SCHEMA)")
+                format!("{}.ref(() -> {name}.SCHEMA)", fc.rt("Schema"))
             } else {
                 format!("{name}.SCHEMA")
             }

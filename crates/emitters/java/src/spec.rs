@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
-use veld_ir::{AuthKind, Binding, Endpoint, Ir, Param, Service, ServiceId};
+use veld_ir::{AuthKind, Binding, Endpoint, Ir, Method, Param, Service, ServiceId};
 
 use crate::tree::{FileCtx, Tree, java_path};
 use crate::types::{codec_expr, java_type, schema_expr};
@@ -91,10 +91,10 @@ pub fn emit_requests(
 /// A record with one component per parameter: path params, `body`, `query`, single query params
 /// and headers, all by parameter name. `fromWire` and `toWire` use the parameter name as the key.
 fn write_request(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &Endpoint) {
-    let idents = unique(ep.params.iter().map(|p| member_ident(&p.name)).collect());
+    let shown: Vec<&Param> = ep.params.iter().filter(|p| !p.stream).collect();
+    let idents = unique(shown.iter().map(|p| member_ident(&p.name)).collect());
     let json = fc.rt("Json");
-    let params: Vec<(String, String)> = ep
-        .params
+    let params: Vec<(String, String)> = shown
         .iter()
         .zip(&idents)
         .map(|(p, id)| (id.clone(), param_doc(p)))
@@ -109,8 +109,7 @@ fn write_request(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &
         None,
     );
     w.line("@SuppressWarnings(\"deprecation\")");
-    let comps: Vec<String> = ep
-        .params
+    let comps: Vec<String> = shown
         .iter()
         .zip(&idents)
         .map(|(p, id)| format!("{} {id}", java_type(fc, &p.ty, p.optional)))
@@ -131,14 +130,14 @@ fn write_request(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &
     }
     w.line("/** Reads the parameters bound by the router, keyed by parameter name. */");
     w.open(format!("public static {name} fromWire({json}.Obj params)"));
-    if ep.params.is_empty() {
+    if shown.is_empty() {
         w.line(format!("return new {name}();"));
     } else {
         let codec = fc.rt("Codec");
         open_call(w, format!("return new {name}"));
-        for (i, p) in ep.params.iter().enumerate() {
+        for (i, p) in shown.iter().enumerate() {
             let get = if p.optional { "opt" } else { "req" };
-            let sep = if i + 1 == ep.params.len() { ");" } else { "," };
+            let sep = if i + 1 == shown.len() { ");" } else { "," };
             let c = codec_expr(fc, &p.ty);
             w.line(format!(
                 "{codec}.{get}(params, {}, {c}){sep}",
@@ -153,7 +152,7 @@ fn write_request(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &
     w.open(format!("public {json}.Obj toWire()"));
     w.line(format!("return {json}.object()"));
     w.indent().indent();
-    for (p, id) in ep.params.iter().zip(&idents) {
+    for (p, id) in shown.iter().zip(&idents) {
         let c = codec_expr(fc, &p.ty);
         w.line(format!(".put({}, {id}, {c})", java_str(&p.name)));
     }
@@ -211,8 +210,9 @@ fn param_expr(fc: &mut FileCtx<'_, '_>, p: &Param) -> String {
         .as_deref()
         .map_or_else(|| "null".to_string(), java_str);
     let ty = schema_expr(fc, &p.ty, &p.constraints, false);
+    let stream = if p.stream { ", true" } else { "" };
     format!(
-        "new {spec}.Param({}, {spec}.Binding.{}, {header}, {ty}, {})",
+        "new {spec}.Param({}, {spec}.Binding.{}, {header}, {ty}, {}{stream})",
         java_str(&p.name),
         binding_name(p.binding),
         p.optional
@@ -272,7 +272,12 @@ pub fn write_spec_const(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, ep: &Endpo
             )
         })
         .collect();
-    write_list(w, fc, &errors, ");");
+    if ep.success.stream {
+        write_list(w, fc, &errors, ",");
+        w.line("true);");
+    } else {
+        write_list(w, fc, &errors, ");");
+    }
     end_call(w);
 }
 
@@ -280,4 +285,37 @@ pub fn write_spec_const(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, ep: &Endpo
 pub fn endpoint_docs(w: &mut CodeWriter, ep: &Endpoint) {
     doc_comment(w, ep.docs.as_deref(), &[], ep.deprecated.as_deref());
     deprecated_annotation(w, ep.deprecated.as_deref());
+}
+
+/// Like [`endpoint_docs`], with `note` appended to the description.
+pub fn endpoint_docs_note(w: &mut CodeWriter, ep: &Endpoint, note: &str) {
+    let docs = match ep.docs.as_deref() {
+        Some(d) => format!(
+            "{}
+
+{note}",
+            d.trim()
+        ),
+        None => note.to_string(),
+    };
+    doc_comment(w, Some(&docs), &[], ep.deprecated.as_deref());
+    deprecated_annotation(w, ep.deprecated.as_deref());
+}
+
+/// Whether an endpoint is Server-Sent Events: a `get` that streams its response.
+#[must_use]
+pub fn is_sse(ep: &Endpoint) -> bool {
+    ep.success.stream && ep.method != Method::Ws
+}
+
+/// Whether an endpoint is a WebSocket.
+#[must_use]
+pub fn is_ws(ep: &Endpoint) -> bool {
+    ep.method == Method::Ws
+}
+
+/// The message type the client sends on a `ws` endpoint (its `body: stream T`), if any.
+#[must_use]
+pub fn ws_incoming(ep: &Endpoint) -> Option<&Param> {
+    ep.params.iter().find(|p| p.stream)
 }

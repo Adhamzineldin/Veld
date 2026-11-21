@@ -25,9 +25,6 @@ use veld_ir::Feature;
 
 use crate::tree::Tree;
 
-/// Features the Java generator does not support yet.
-pub const UNSUPPORTED: [Feature; 2] = [Feature::StreamingSse, Feature::StreamingWs];
-
 /// Supported `java` option values: the Java release the output is compiled for, oldest first
 /// (the default). Selected with the target option `java = "21"`.
 pub const JAVA_VERSIONS: [&str; 2] = ["17", "21"];
@@ -85,6 +82,27 @@ fn base_package(req: &GenRequest<'_>, opts: &Options) -> Result<String, Vec<GenD
     Ok(format!("dev.veld.generated.{}", util::segment(&name)))
 }
 
+/// The `jdk` framework has no WebSocket server: a contract with `ws` endpoints needs `spring`.
+fn check_framework_features(
+    req: &GenRequest<'_>,
+    profile: &Profile,
+) -> Result<(), Vec<GenDiagnostic>> {
+    let framework = profile.framework().unwrap_or(frameworks::BASELINE);
+    if req.role == Role::Server
+        && framework == frameworks::BASELINE
+        && req
+            .ir
+            .features_used(&req.services)
+            .contains(&Feature::StreamingWs)
+    {
+        return Err(vec![GenDiagnostic::new(
+            "E0801",
+            "generator `java` with framework `jdk` cannot serve `ws` endpoints (the JDK has no WebSocket server); use framework = \"spring\" or serve this contract from another generator",
+        )]);
+    }
+    Ok(())
+}
+
 impl Generator for Java {
     type Options = Options;
 
@@ -111,7 +129,7 @@ impl Generator for Java {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        Capabilities::all_except(&UNSUPPORTED)
+        Capabilities::all_except(&[])
     }
 
     fn generate(
@@ -121,10 +139,14 @@ impl Generator for Java {
         profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, &self.capabilities(req.role))?;
+        check_framework_features(req, profile)?;
         let base = base_package(req, opts)?;
         let runtime_package = runtime::package(&base);
         let mut files = FileSet::new();
-        runtime::emit(&mut files, &base)?;
+        let mut used = req.services.clone();
+        used.extend(req.consumes.iter().copied());
+        let streaming = runtime::Streaming::of(&req.ir.features_used(&used));
+        runtime::emit(&mut files, &base, streaming)?;
         let tree = Tree::new(req.ir, &base, &runtime_package, req.services.clone());
         models::emit(&mut files, &tree)?;
         match req.role {

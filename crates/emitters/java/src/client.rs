@@ -5,7 +5,8 @@ use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{Endpoint, Service};
 
 use crate::spec::{
-    RequestNames, emit_requests, endpoint_docs, method_name, spec_const, write_spec_const,
+    RequestNames, emit_requests, endpoint_docs, endpoint_docs_note, is_sse, is_ws, method_name,
+    spec_const, write_spec_const, ws_incoming,
 };
 use crate::tree::{FileCtx, Tree, java_path};
 use crate::types::{codec_expr, java_type};
@@ -113,6 +114,12 @@ fn write_constructor_body(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Se
 }
 
 fn write_method(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, request: &str, ep: &Endpoint) {
+    if is_sse(ep) {
+        return write_sse_method(w, fc, request, ep);
+    }
+    if is_ws(ep) {
+        return write_ws_method(w, fc, request, ep);
+    }
     let method = method_name(ep);
     let konst = spec_const(ep);
     let (ret, decode) = match &ep.success.ty {
@@ -148,4 +155,91 @@ fn write_method(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, request: &str, ep:
 
 fn decode_is_void(ret: &str) -> bool {
     ret == "void"
+}
+
+/// A Server-Sent Events method: an eager call that returns a closeable `Stream` of items.
+fn write_sse_method(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, request: &str, ep: &Endpoint) {
+    let (method, konst) = (method_name(ep), spec_const(ep));
+    let (stream, options) = (fc.name("java.util.stream.Stream"), fc.rt("SseOptions"));
+    let (item, codec) = match &ep.success.ty {
+        Some(t) => (java_type(fc, t, true), codec_expr(fc, t)),
+        None => ("Void".to_string(), "null".to_string()),
+    };
+    endpoint_docs_note(
+        w,
+        ep,
+        "The call is eager: an error response throws from this method.
+The returned stream reads events as they arrive; close it to cancel the request.
+A final `error` event throws the typed error when it is consumed.
+There is no automatic reconnect: pass `SseOptions.resumeAfter(id)` to resume
+after the last event id received.",
+    );
+    w.open(format!(
+        "public {stream}<{item}> {method}({request} request, {options} options)"
+    ));
+    w.line(format!(
+        "return core.stream({konst}, request.toWire(), options).map({codec}::decode);"
+    ));
+    w.close();
+    w.blank();
+    w.line(format!("/** Calls `{}` without options. */", ep.name));
+    w.open(format!(
+        "public {stream}<{item}> {method}({request} request)"
+    ));
+    w.line(format!("return {method}(request, {options}.none());"));
+    w.close();
+    if ep.params.is_empty() {
+        w.blank();
+        w.line(format!("/** Calls `{}` without parameters. */", ep.name));
+        w.open(format!(
+            "public {stream}<{item}> {method}({options} options)"
+        ));
+        w.line(format!("return {method}(new {request}(), options);"));
+        w.close();
+        w.blank();
+        w.line(format!(
+            "/** Calls `{}` without parameters or options. */",
+            ep.name
+        ));
+        w.open(format!("public {stream}<{item}> {method}()"));
+        w.line(format!(
+            "return {method}(new {request}(), {options}.none());"
+        ));
+        w.close();
+    }
+}
+
+/// A `ws` method: connects and returns the channel.
+fn write_ws_method(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, request: &str, ep: &Endpoint) {
+    let (method, konst) = (method_name(ep), spec_const(ep));
+    let channel = fc.rt("WsChannel");
+    let side = |fc: &mut FileCtx<'_, '_>, ty: Option<&veld_ir::Type>| match ty {
+        Some(t) => (java_type(fc, t, true), codec_expr(fc, t)),
+        None => ("Void".to_string(), "null".to_string()),
+    };
+    let (incoming, in_codec) = side(fc, ep.success.ty.as_ref());
+    let (outgoing, out_codec) = side(fc, ws_incoming(ep).map(|p| &p.ty));
+    endpoint_docs_note(
+        w,
+        ep,
+        "Opens the WebSocket; the channel is connected when this returns.
+Auth is sent in the query string (`access_token` or `api_key`), as are header
+parameters.",
+    );
+    w.open(format!(
+        "public {channel}<{incoming}, {outgoing}> {method}({request} request)"
+    ));
+    w.line(format!(
+        "return core.connect({konst}, request.toWire(), {in_codec}, {out_codec});"
+    ));
+    w.close();
+    if ep.params.iter().all(|p| p.stream) {
+        w.blank();
+        w.line(format!("/** Opens `{}` without parameters. */", ep.name));
+        w.open(format!(
+            "public {channel}<{incoming}, {outgoing}> {method}()"
+        ));
+        w.line(format!("return {method}(new {request}());"));
+        w.close();
+    }
 }

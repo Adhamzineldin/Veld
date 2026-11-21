@@ -5,9 +5,10 @@ use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{AuthKind, Endpoint, Service};
 
-use crate::frameworks::{EndpointModel, ServiceModel};
+use crate::frameworks::{EndpointKind, EndpointModel, ServiceModel};
 use crate::spec::{
-    RequestNames, emit_requests, endpoint_docs, method_name, spec_const, write_spec_const,
+    RequestNames, emit_requests, endpoint_docs, is_sse, is_ws, method_name, spec_const,
+    write_spec_const, ws_incoming,
 };
 use crate::tree::{FileCtx, Tree, java_path};
 use crate::types::{codec_expr, java_type};
@@ -73,15 +74,8 @@ fn write_interface(
             w.blank();
         }
         endpoint_docs(w, ep);
-        let ret = match &ep.success.ty {
-            Some(t) => java_type(fc, t, true),
-            None => "void".to_string(),
-        };
         let request = names.get(svc.id, &ep.name);
-        w.line(format!(
-            "{ret} {}({request} request, {ctx} ctx) throws Exception;",
-            method_name(ep)
-        ));
+        w.line(signature(fc, ep, &request, &ctx));
     }
     w.close();
 }
@@ -275,22 +269,71 @@ fn write_endpoint(
     let end = if last { ");" } else { "," };
     let method = method_name(ep);
     let call = format!("impl.{method}({request}.fromWire(params), ctx)");
-    open_call(w, format!("new {endpoint}"));
+    let head = if is_ws(ep) {
+        format!("{endpoint}.ws")
+    } else if is_sse(ep) {
+        format!("{endpoint}.sse")
+    } else {
+        format!("new {endpoint}")
+    };
+    open_call(w, head);
     w.line(format!("{},", spec_const(ep)));
     w.line(format!("{list}.of({}),", middleware.join(", ")));
-    match &ep.success.ty {
-        Some(t) => {
-            let c = codec_expr(fc, t);
-            w.line(format!("(params, ctx) -> {c}.encode({call})){end}"));
-        }
-        None => {
-            w.open_with("(params, ctx) ->", " {");
-            w.line(format!("{call};"));
-            w.line("return null;");
-            w.close_with(format!("}}){end}"));
+    if is_ws(ep) {
+        write_ws_call(
+            w,
+            fc,
+            ep,
+            &format!("impl.{method}({request}.fromWire(params), ctx, "),
+            end,
+        );
+    } else if is_sse(ep) {
+        let (encode, codec) = (
+            fc.rt("SseEvent"),
+            ep.success.ty.as_ref().map(|t| codec_expr(fc, t)),
+        );
+        let codec = codec.unwrap_or_else(|| "null".to_string());
+        w.line(format!(
+            "(params, ctx) -> {encode}.encode({call}, {codec})){end}"
+        ));
+    } else {
+        match &ep.success.ty {
+            Some(t) => {
+                let c = codec_expr(fc, t);
+                w.line(format!("(params, ctx) -> {c}.encode({call})){end}"));
+            }
+            None => {
+                w.open_with("(params, ctx) ->", " {");
+                w.line(format!("{call};"));
+                w.line("return null;");
+                w.close_with(format!("}}){end}"));
+            }
         }
     }
     end_call(w);
+}
+
+/// The lambda of a `ws` endpoint: the router's raw session is wrapped with the message codecs.
+fn write_ws_call(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    ep: &Endpoint,
+    call: &str,
+    end: &str,
+) {
+    let session = fc.rt("WsSession");
+    let incoming = ws_incoming(ep)
+        .map(|p| codec_expr(fc, &p.ty))
+        .unwrap_or_else(|| "null".to_string());
+    let outgoing = ep
+        .success
+        .ty
+        .as_ref()
+        .map(|t| codec_expr(fc, t))
+        .unwrap_or_else(|| "null".to_string());
+    w.line(format!(
+        "(params, ctx, ws) -> {call}{session}.adapt(ws, {incoming}, {outgoing}))){end}"
+    ));
 }
 
 fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
@@ -335,9 +378,51 @@ pub fn service_models(tree: &Tree<'_>) -> Vec<ServiceModel> {
                     method_name: method_name(ep),
                     http_method: ep.method.as_str(),
                     path: ep.path.clone(),
+                    kind: if is_ws(ep) {
+                        EndpointKind::Ws
+                    } else if is_sse(ep) {
+                        EndpointKind::Sse
+                    } else {
+                        EndpointKind::Http
+                    },
                 })
                 .collect(),
         });
     }
     out
+}
+
+/// The message types of a `ws` endpoint as Java text: (from the client, to the client); `Void`
+/// for a side that has none.
+fn ws_types(fc: &mut FileCtx<'_, '_>, ep: &Endpoint) -> (String, String) {
+    let incoming = match ws_incoming(ep) {
+        Some(p) => java_type(fc, &p.ty, true),
+        None => "Void".to_string(),
+    };
+    let outgoing = match &ep.success.ty {
+        Some(t) => java_type(fc, t, true),
+        None => "Void".to_string(),
+    };
+    (incoming, outgoing)
+}
+
+/// The declaration of an endpoint's method in the `<Service>Service` interface.
+fn signature(fc: &mut FileCtx<'_, '_>, ep: &Endpoint, request: &str, ctx: &str) -> String {
+    let method = method_name(ep);
+    if is_ws(ep) {
+        let (incoming, outgoing) = ws_types(fc, ep);
+        let session = fc.rt("WsSession");
+        return format!(
+            "void {method}({request} request, {ctx} ctx, {session}<{incoming}, {outgoing}> ws) throws Exception;"
+        );
+    }
+    let ret = match &ep.success.ty {
+        Some(t) if is_sse(ep) => {
+            let (stream, event) = (fc.name("java.util.stream.Stream"), fc.rt("SseEvent"));
+            format!("{stream}<{event}<{}>>", java_type(fc, t, true))
+        }
+        Some(t) => java_type(fc, t, true),
+        None => "void".to_string(),
+    };
+    format!("{ret} {method}({request} request, {ctx} ctx) throws Exception;")
 }
