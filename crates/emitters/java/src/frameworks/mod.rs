@@ -46,6 +46,49 @@ pub struct EndpointModel {
     pub http_method: &'static str,
     /// The full path with `{param}` segments.
     pub path: String,
+    /// What the endpoint speaks.
+    pub kind: EndpointKind,
+}
+
+/// The transport of an endpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EndpointKind {
+    /// A request and a response.
+    Http,
+    /// Server-Sent Events: a `get` that streams its response.
+    Sse,
+    /// A WebSocket.
+    Ws,
+}
+
+impl ServiceModel {
+    /// Whether any endpoint of the service is a WebSocket.
+    #[must_use]
+    pub fn has_ws(&self) -> bool {
+        self.endpoints.iter().any(|e| e.kind == EndpointKind::Ws)
+    }
+}
+
+impl ServerModel {
+    /// The streaming transports the served services use: what an adapter must carry code for.
+    #[must_use]
+    pub fn streaming(&self) -> runtime::Streaming {
+        let any = |kind: EndpointKind| {
+            self.services
+                .iter()
+                .any(|s| s.endpoints.iter().any(|e| e.kind == kind))
+        };
+        runtime::Streaming {
+            sse: any(EndpointKind::Sse),
+            ws: any(EndpointKind::Ws),
+        }
+    }
+
+    /// Whether any service has a WebSocket endpoint.
+    #[must_use]
+    pub fn has_ws(&self) -> bool {
+        self.services.iter().any(ServiceModel::has_ws)
+    }
 }
 
 /// Every framework the Java server supports. This slice is the single source of truth:
@@ -53,7 +96,7 @@ pub struct EndpointModel {
 pub const ADAPTERS: &[&dyn FrameworkAdapter<ServerModel>] = &[&jdk::Jdk, &spring::Spring];
 
 /// The framework of a target that names none.
-const BASELINE: &str = jdk::ID;
+pub(crate) const BASELINE: &str = jdk::ID;
 
 /// The registry as the core sees it.
 #[must_use]
@@ -88,7 +131,7 @@ fn class_file(
     add_file(
         &mut files,
         &java_path(&package, class),
-        runtime::substitute(source, &model.base),
+        runtime::substitute(source, &model.base, model.streaming()),
     )?;
     Ok(files)
 }

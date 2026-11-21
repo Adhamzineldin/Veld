@@ -5,14 +5,26 @@ import dev.veld.runtime.VeldRequest;
 import dev.veld.runtime.VeldResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
+// veld:sse
+import java.io.OutputStream;
+// veld:end
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+// veld:sse
+import java.util.Iterator;
+// veld:end
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+// veld:sse
+import java.util.stream.Stream;
+// veld:end
 import org.springframework.http.ResponseEntity;
+// veld:sse
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+// veld:end
 
 /**
  * The bridge between Spring MVC and the Veld core, used by the generated {@code @RestController}
@@ -37,6 +49,49 @@ public final class SpringAdapter {
     String text = response.get().body();
     return text == null ? builder.build() : builder.body(text.getBytes(StandardCharsets.UTF_8));
   }
+  // veld:sse
+
+  /**
+   * Like {@link #respond}, for an endpoint that streams (Server-Sent Events): the frames are
+   * written and flushed as the implementation yields them, and the stream is closed when the
+   * client goes away. An error before the first event is an ordinary problem response.
+   *
+   * <p>The body is written on a Spring task thread for as long as the stream lives; size the
+   * executor (for example {@code spring.task.execution.pool.max-size}) for the number of
+   * concurrent streams.
+   */
+  public static ResponseEntity<StreamingResponseBody> stream(
+      VeldHandler handler, String endpoint, HttpServletRequest request) throws IOException {
+    Optional<VeldResponse> response = handler.invoke(endpoint, read(request));
+    if (response.isEmpty()) {
+      return ResponseEntity.notFound().build();
+    }
+    VeldResponse res = response.get();
+    ResponseEntity.BodyBuilder builder = ResponseEntity.status(res.status());
+    res.headers().forEach(builder::header);
+    return builder.body(out -> write(res, out));
+  }
+
+  private static void write(VeldResponse res, OutputStream out) {
+    try {
+      if (res.frames() == null) {
+        if (res.body() != null) {
+          out.write(res.body().getBytes(StandardCharsets.UTF_8));
+        }
+        return;
+      }
+      try (Stream<String> frames = res.frames()) {
+        Iterator<String> it = frames.iterator();
+        while (it.hasNext()) {
+          out.write(it.next().getBytes(StandardCharsets.UTF_8));
+          out.flush();
+        }
+      }
+    } catch (IOException e) {
+      // The client closed the connection.
+    }
+  }
+  // veld:end
 
   private static VeldRequest read(HttpServletRequest request) throws IOException {
     Map<String, List<String>> headers = new LinkedHashMap<>();

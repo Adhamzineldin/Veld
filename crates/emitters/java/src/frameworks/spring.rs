@@ -9,12 +9,13 @@ use veld_codegen::{
     CodeWriter, FileSet, FrameworkAdapter, GenDiagnostic, LanguageVersion, Profile,
 };
 
-use super::{EndpointModel, ServerModel, ServiceModel, class_file};
+use super::{EndpointKind, EndpointModel, ServerModel, ServiceModel, class_file};
 use crate::runtime;
 use crate::tree::{Imports, java_path};
 use crate::util::{add_file, java_str};
 
 const SOURCE: &str = include_str!("../../adapters/SpringAdapter.java");
+const WS_SOURCE: &str = include_str!("../../adapters/SpringWebSocketAdapter.java");
 
 /// The `spring` framework.
 #[derive(Debug, Clone, Copy)]
@@ -41,6 +42,15 @@ impl FrameworkAdapter<ServerModel> for Spring {
         _profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         let mut files = class_file(model, "SpringAdapter", SOURCE)?;
+        if model.has_ws() {
+            for (path, bytes) in class_file(model, "SpringWebSocketAdapter", WS_SOURCE)?.iter() {
+                add_file(
+                    &mut files,
+                    path,
+                    String::from_utf8_lossy(bytes).into_owned(),
+                )?;
+            }
+        }
         for svc in &model.services {
             let class = controller_class(svc);
             add_file(
@@ -48,9 +58,42 @@ impl FrameworkAdapter<ServerModel> for Spring {
                 &java_path(&svc.adapter_package, &class),
                 controller(model, svc, &class),
             )?;
+            if svc.has_ws() {
+                let config = ws_config_class(svc);
+                add_file(
+                    &mut files,
+                    &java_path(&svc.adapter_package, &config),
+                    ws_config(model, svc, &config),
+                )?;
+            }
         }
         Ok(files)
     }
+}
+
+/// The constructor that builds the shared handler from the service bean and the hooks bean.
+fn write_ctor(
+    w: &mut CodeWriter,
+    imp: &mut Imports,
+    svc: &ServiceModel,
+    class: &str,
+    (service, hooks, handler_factory): (&str, &str, &str),
+) {
+    if svc.needs_hooks {
+        w.open(format!("public {class}({service} service, {hooks} hooks)"));
+        w.line(format!(
+            "this.handler = {handler_factory}.create(service, hooks);"
+        ));
+    } else {
+        let provider = imp.name("org.springframework.beans.factory.ObjectProvider");
+        w.open(format!(
+            "public {class}({service} service, {provider}<{hooks}> hooks)"
+        ));
+        w.line(format!(
+            "this.handler = {handler_factory}.create(service, hooks.getIfAvailable({hooks}::new));"
+        ));
+    }
+    w.close();
 }
 
 fn controller_class(svc: &ServiceModel) -> String {
@@ -88,14 +131,7 @@ fn controller(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
     let hooks = imp.name(&format!("{server}.{name}Hooks"));
     let handler_factory = imp.name(&format!("{server}.{name}Handler"));
     let veld = imp.name(&format!("{}.VeldHandler", runtime::package(&model.base)));
-    let bridge = imp.name(&format!(
-        "{}.SpringAdapter",
-        runtime::adapter_package(&model.base)
-    ));
     let rest_controller = imp.name(&format!("{MVC}.RestController"));
-    let response = imp.name("org.springframework.http.ResponseEntity");
-    let request = imp.name("jakarta.servlet.http.HttpServletRequest");
-    let io_exception = imp.name("java.io.IOException");
     let mut w = CodeWriter::new();
     w.line(format!(
         "/** The Spring MVC routes of the `{name}` service. Every method runs the shared Veld pipeline. */"
@@ -114,34 +150,118 @@ fn controller(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
         }
     ));
     w.line(" */");
-    if svc.needs_hooks {
-        w.open(format!("public {class}({service} service, {hooks} hooks)"));
-        w.line(format!(
-            "this.handler = {handler_factory}.create(service, hooks);"
-        ));
-    } else {
-        let provider = imp.name("org.springframework.beans.factory.ObjectProvider");
-        w.open(format!(
-            "public {class}({service} service, {provider}<{hooks}> hooks)"
-        ));
-        w.line(format!(
-            "this.handler = {handler_factory}.create(service, hooks.getIfAvailable({hooks}::new));"
-        ));
-    }
-    w.close();
-    for ep in &svc.endpoints {
+    write_ctor(
+        &mut w,
+        &mut imp,
+        svc,
+        class,
+        (&service, &hooks, &handler_factory),
+    );
+    for ep in svc.endpoints.iter().filter(|e| e.kind != EndpointKind::Ws) {
         w.blank();
         w.line(mapping(&mut imp, ep));
+        let bridge = imp.name(&format!(
+            "{}.SpringAdapter",
+            runtime::adapter_package(&model.base)
+        ));
+        let response = imp.name("org.springframework.http.ResponseEntity");
+        let request = imp.name("jakarta.servlet.http.HttpServletRequest");
+        let io_exception = imp.name("java.io.IOException");
+        let (body, call) = if ep.kind == EndpointKind::Sse {
+            (
+                imp.name(
+                    "org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody",
+                ),
+                "stream",
+            )
+        } else {
+            ("byte[]".to_string(), "respond")
+        };
         w.open(format!(
-            "public {response}<byte[]> {}({request} request) throws {io_exception}",
+            "public {response}<{body}> {}({request} request) throws {io_exception}",
             ep.method_name
         ));
         w.line(format!(
-            "return {bridge}.respond(handler, {}, request);",
+            "return {bridge}.{call}(handler, {}, request);",
             java_str(&ep.name)
         ));
         w.close();
     }
+    w.close();
+    imp.finish(&w.finish())
+}
+
+fn ws_config_class(svc: &ServiceModel) -> String {
+    format!("{}WebSocketConfig", svc.name)
+}
+
+/// The path of a `ws` endpoint as an Ant pattern: `{param}` segments become `*`.
+fn ant_pattern(path: &str) -> String {
+    path.split('/')
+        .map(|seg| {
+            if seg.starts_with('{') && seg.ends_with('}') {
+                "*"
+            } else {
+                seg
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// A `WebSocketConfigurer` that registers the service's `ws` endpoints with Spring WebSocket.
+fn ws_config(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
+    let server = &svc.server_package;
+    let name = &svc.name;
+    let mut imp = Imports::new(&svc.adapter_package, class);
+    let service = imp.name(&format!("{server}.{name}Service"));
+    let hooks = imp.name(&format!("{server}.{name}Hooks"));
+    let handler_factory = imp.name(&format!("{server}.{name}Handler"));
+    let veld = imp.name(&format!("{}.VeldHandler", runtime::package(&model.base)));
+    let bridge = imp.name(&format!(
+        "{}.SpringWebSocketAdapter",
+        runtime::adapter_package(&model.base)
+    ));
+    let ws = "org.springframework.web.socket";
+    let configurer = imp.name(&format!("{ws}.config.annotation.WebSocketConfigurer"));
+    let registry = imp.name(&format!("{ws}.config.annotation.WebSocketHandlerRegistry"));
+    let enable = imp.name(&format!("{ws}.config.annotation.EnableWebSocket"));
+    let configuration = imp.name("org.springframework.context.annotation.Configuration");
+    let paths: Vec<String> = svc
+        .endpoints
+        .iter()
+        .filter(|e| e.kind == EndpointKind::Ws)
+        .map(|e| java_str(&ant_pattern(&e.path)))
+        .collect();
+    let mut w = CodeWriter::new();
+    w.line(format!(
+        "/** Registers the `ws` endpoints of the `{name}` service with Spring WebSocket. */"
+    ));
+    w.line(format!("@{configuration}"));
+    w.line(format!("@{enable}"));
+    w.open(format!("public class {class} implements {configurer}"));
+    w.line(format!("private final {veld} handler;"));
+    w.blank();
+    w.line(format!(
+        "/** Creates the configuration from the {name}Service bean and its hooks. */"
+    ));
+    write_ctor(
+        &mut w,
+        &mut imp,
+        svc,
+        class,
+        (&service, &hooks, &handler_factory),
+    );
+    w.blank();
+    w.line("@Override");
+    w.open(format!(
+        "public void registerWebSocketHandlers({registry} registry)"
+    ));
+    w.line(format!(
+        "registry.addHandler({bridge}.handler(handler), {});",
+        paths.join(", ")
+    ));
+    w.close();
     w.close();
     imp.finish(&w.finish())
 }
@@ -165,12 +285,14 @@ mod tests {
                         method_name: "getOrder".into(),
                         http_method: "GET",
                         path: "/orders/{id}".into(),
+                        kind: EndpointKind::Http,
                     },
                     EndpointModel {
                         name: "ping".into(),
                         method_name: "ping".into(),
                         http_method: "HEAD",
                         path: "/ping".into(),
+                        kind: EndpointKind::Http,
                     },
                 ],
             }],
@@ -180,5 +302,65 @@ mod tests {
         assert!(text.contains("@RequestMapping(path = \"/ping\", method = RequestMethod.HEAD)"));
         assert!(text.contains("SpringAdapter.respond(handler, \"getOrder\", request)"));
         assert!(text.contains("OrdersHandler.create(service, hooks)"));
+    }
+    fn streaming_model() -> ServerModel {
+        let endpoint = |name: &str, path: &str, kind| EndpointModel {
+            name: name.into(),
+            method_name: name.into(),
+            http_method: if kind == EndpointKind::Ws {
+                "WS"
+            } else {
+                "GET"
+            },
+            path: path.into(),
+            kind,
+        };
+        ServerModel {
+            base: "a.b".into(),
+            services: vec![ServiceModel {
+                name: "Live".into(),
+                server_package: "a.b.live.server".into(),
+                adapter_package: "a.b.adapters.live".into(),
+                needs_hooks: false,
+                endpoints: vec![
+                    endpoint("ticks", "/live/ticks", EndpointKind::Sse),
+                    endpoint("chat", "/live/chat/{room}", EndpointKind::Ws),
+                ],
+            }],
+        }
+    }
+
+    #[test]
+    fn websocket_endpoints_get_a_config_and_no_controller_method() {
+        let model = streaming_model();
+        let svc = &model.services[0];
+        let controller = controller(&model, svc, "LiveController");
+        assert!(controller.contains("ResponseEntity<StreamingResponseBody> ticks("));
+        assert!(controller.contains("SpringAdapter.stream(handler, \"ticks\", request)"));
+        assert!(!controller.contains("chat"), "{controller}");
+        let config = ws_config(&model, svc, "LiveWebSocketConfig");
+        assert!(config.contains(
+            "registry.addHandler(SpringWebSocketAdapter.handler(handler), \"/live/chat/*\");"
+        ));
+        assert!(config.contains("@EnableWebSocket"));
+        assert!(!config.contains("ticks"));
+    }
+
+    #[test]
+    fn the_websocket_adapter_is_emitted_only_for_ws_contracts() {
+        let files = |model: &ServerModel| {
+            Spring
+                .files(model, &Profile::default())
+                .unwrap()
+                .paths()
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        };
+        let with_ws = files(&streaming_model());
+        assert!(with_ws.contains(&"a/b/adapters/SpringWebSocketAdapter.java".to_string()));
+        assert!(with_ws.contains(&"a/b/adapters/live/LiveWebSocketConfig.java".to_string()));
+        let mut sse_only = streaming_model();
+        sse_only.services[0].endpoints.pop();
+        assert!(files(&sse_only).iter().all(|p| !p.contains("WebSocket")));
     }
 }

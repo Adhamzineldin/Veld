@@ -11,6 +11,9 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+// veld:sse
+import java.util.Iterator;
+// veld:end
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +21,9 @@ import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+// veld:sse
+import java.util.stream.Stream;
+// veld:end
 
 /**
  * Mounts a {@link VeldHandler} on the JDK's built-in {@code com.sun.net.httpserver} (module
@@ -71,6 +77,12 @@ public final class JdkHttpServerAdapter {
 
   private static void write(HttpExchange exchange, VeldResponse response) throws IOException {
     response.headers().forEach((k, v) -> exchange.getResponseHeaders().set(k, v));
+    // veld:sse
+    if (response.frames() != null) {
+      stream(exchange, response);
+      return;
+    }
+    // veld:end
     if (response.body() == null) {
       exchange.sendResponseHeaders(response.status(), -1);
       return;
@@ -81,4 +93,24 @@ public final class JdkHttpServerAdapter {
       out.write(bytes);
     }
   }
+  // veld:sse
+
+  /**
+   * Server-Sent Events: each frame is written and flushed as it arrives. A write that fails means
+   * the client went away; the stream is closed either way, which tells the implementation.
+   */
+  private static void stream(HttpExchange exchange, VeldResponse response) throws IOException {
+    exchange.sendResponseHeaders(response.status(), 0);
+    try (Stream<String> frames = response.frames();
+        OutputStream out = exchange.getResponseBody()) {
+      Iterator<String> it = frames.iterator();
+      while (it.hasNext()) {
+        out.write(it.next().getBytes(StandardCharsets.UTF_8));
+        out.flush();
+      }
+    } catch (IOException e) {
+      // The client closed the connection.
+    }
+  }
+  // veld:end
 }
