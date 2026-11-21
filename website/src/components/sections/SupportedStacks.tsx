@@ -3,34 +3,28 @@ import styles from './SupportedStacks.module.css';
 
 const backends = [
   { name: 'Node.js (TypeScript)', icon: '🟦' },
-  { name: 'Node.js (JavaScript)', icon: '🟨' },
-  { name: 'Python', icon: '🐍' },
-  { name: 'Go', icon: '🐹' },
-  { name: 'Rust', icon: '🦀' },
-  { name: 'Java', icon: '☕' },
-  { name: 'C#', icon: '💜' },
-  { name: 'PHP', icon: '🐘' },
+  { name: 'Express', icon: '🚂' },
+  { name: 'Fastify', icon: '⚡' },
+  { name: 'Hono', icon: '🔥' },
+  { name: 'node:http', icon: '🟩' },
+  { name: 'NestJS', icon: '🐈' },
+  { name: 'Java (JDK HTTP server)', icon: '☕' },
+  { name: 'Spring Boot 3', icon: '🍃' },
 ];
 
 const frontends = [
-  { name: 'TypeScript', icon: '🔷' },
-  { name: 'JavaScript', icon: '🟡' },
-  { name: 'React', icon: '⚛️' },
-  { name: 'Vue', icon: '💚' },
-  { name: 'Angular', icon: '🔺' },
-  { name: 'Svelte', icon: '🔥' },
-  { name: 'Dart / Flutter', icon: '🎯' },
-  { name: 'Kotlin', icon: '🟣' },
-  { name: 'Swift', icon: '🍎' },
+  { name: 'TypeScript client', icon: '🔷' },
+  { name: 'React hooks', icon: '⚛️' },
+  { name: 'Vue composables', icon: '💚' },
+  { name: 'Java client', icon: '☕' },
 ];
 
 const extras = [
-  { name: 'OpenAPI 3.0', icon: '📋' },
-  { name: 'Prisma Schema', icon: '💎' },
-  { name: 'SQL DDL', icon: '🗄️' },
-  { name: 'Dockerfile', icon: '🐳' },
-  { name: 'GitHub Actions', icon: '⚡' },
-  { name: 'GitLab CI', icon: '🦊' },
+  { name: 'OpenAPI 3.1', icon: '📋' },
+  { name: 'IR JSON export', icon: '🧩' },
+  { name: 'Emitter plugins', icon: '🔌' },
+  { name: 'Package registry', icon: '📦' },
+  { name: 'Language server', icon: '🧠' },
 ];
 
 const container = {
@@ -55,12 +49,12 @@ export default function SupportedStacks() {
         >
           <h2 className={styles.heading}>Works with your stack</h2>
           <p className={styles.subtitle}>
-            Mix and match any backend with any frontend. Veld generates code for all of them.
+            Servers and clients are generated from the same contract, in the language you choose. Anything else is an emitter plugin away.
           </p>
         </motion.div>
 
         <div className={styles.stackGroup}>
-          <div className={styles.label}>Backends</div>
+          <div className={styles.label}>Servers</div>
           <motion.div
             className={styles.row}
             variants={container}
@@ -78,7 +72,7 @@ export default function SupportedStacks() {
         </div>
 
         <div className={styles.stackGroup}>
-          <div className={styles.label}>Frontend SDKs</div>
+          <div className={styles.label}>Clients</div>
           <motion.div
             className={styles.row}
             variants={container}

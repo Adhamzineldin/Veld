@@ -5,37 +5,37 @@ import styles from './Installation.module.css';
 
 const methods = [
   {
+    id: 'source',
+    label: 'From source',
+    icon: <Terminal size={16} />,
+    command: 'cargo build -p veld --release',
+    run: 'veld init',
+  },
+  {
     id: 'npm',
     label: 'npm',
     icon: <Package size={16} />,
-    command: 'npm install @maayn/veld',
-    run: 'npx @maayn/veld generate',
+    command: 'npm install -g @maayn/veld',
+    run: 'veld init',
   },
   {
     id: 'pip',
     label: 'pip',
     icon: <Package size={16} />,
     command: 'pip install maayn-veld',
-    run: 'veld generate',
+    run: 'veld init',
   },
   {
     id: 'brew',
     label: 'Homebrew',
     icon: <Terminal size={16} />,
     command: 'brew install maayn-veld/tap/maayn-veld',
-    run: 'veld generate',
-  },
-  {
-    id: 'cargo',
-    label: 'Cargo',
-    icon: <Terminal size={16} />,
-    command: 'cargo install --git https://github.com/Adhamzineldin/Veld veld',
-    run: 'veld generate',
+    run: 'veld init',
   },
 ];
 
 export default function Installation() {
-  const [active, setActive] = useState('npm');
+  const [active, setActive] = useState('source');
   const [copied, setCopied] = useState(false);
 
   const current = methods.find((m) => m.id === active)!;
@@ -57,7 +57,7 @@ export default function Installation() {
         >
           <h2 className={styles.heading}>Install in seconds</h2>
           <p className={styles.subtitle}>
-            Available on every major package manager. Pick your favorite.
+            Build the single binary from source, or use a wrapper that downloads the release binary for your platform and verifies its SHA256 (wrappers work once a release is published).
           </p>
         </motion.div>
 
@@ -109,17 +109,17 @@ export default function Installation() {
           <div className={styles.extraCard}>
             <h4>📦 Editor Plugins</h4>
             <p>
-              <strong>VS Code:</strong> Search "Veld" in the Extensions marketplace
+              <strong>VS Code:</strong> <code>editors/vscode</code>, a client for <code>veld lsp</code>
             </p>
             <p>
-              <strong>JetBrains:</strong> Settings → Plugins → Marketplace → "Veld"
+              <strong>JetBrains:</strong> <code>editors/jetbrains</code> (2024.3+), also on <code>veld lsp</code>
             </p>
           </div>
           <div className={styles.extraCard}>
             <h4>📥 Manual Download</h4>
             <p>
-              Pre-built binaries for <strong>Linux</strong>, <strong>macOS</strong>, and{' '}
-              <strong>Windows</strong> (amd64 & arm64) are available on{' '}
+              Release binaries for <strong>Linux</strong> (x64, arm64), <strong>macOS</strong> (x64, arm64) and{' '}
+              <strong>Windows</strong> (x64), with <code>SHA256SUMS</code>, are published on{' '}
               <a
                 href="https://github.com/Adhamzineldin/Veld/releases"
                 target="_blank"

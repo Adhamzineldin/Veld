@@ -2,81 +2,48 @@ import { motion } from 'framer-motion';
 import { highlightVeld, highlightTS } from '../SyntaxHighlighter';
 import styles from './CodeExample.module.css';
 
-const veldCode = `model User {
-  id:    uuid
-  email: string
-  name:  string
-  role:  Role   @default(user)
+// Everything below is real code from examples/hello in the Veld repository.
+const veldCode = `/// A greeting for one person.
+model Greeting {
+  message: string
 }
 
-enum Role { admin user guest }
-
-module Users {
-  prefix: /api/v1
-
-  action GetUser {
-    method: GET
-    path:   /users/:id
-    output: User
-    errors: [NotFound]
-  }
-
-  action CreateUser {
-    method: POST
-    path:   /users
-    input:  CreateUserInput
-    output: User
-  }
+/// Says hello.
+service Hello at "/hello" {
+  /// Greets the person with the given name.
+  get "/{name}" greet(name: string) -> Greeting | NotFound
 }`;
 
-const sdkCode = `import { api } from '@veld/client';
-import { isErrorCode } from '@veld/client/errors';
+const clientCode = `import { HelloClient, NotFound } from '@veld/web';
 
-// Fully typed — autocomplete for methods,
-// params, and return types
+const client = new HelloClient({ baseUrl: 'http://127.0.0.1:3000' });
 
-const user = await api.Users.getUser('user-123');
-// ^? Promise<User>
-
+// Fully typed: the request, the result and the error
 try {
-  await api.Users.createUser({
-    email: 'alice@co.dev',
-    name:  'Alice',
-  });
-} catch (err) {
-  if (isErrorCode(err,
-    api.Users.errors.getUser.notFound)) {
-    // handle typed error
+  const greeting = await client.greet({ name: 'Ada' });
+  console.log(greeting.message);
+} catch (e) {
+  if (NotFound.matches(e)) {
+    // the contract's typed NotFound
   }
 }`;
 
-const backendCode = `// generated/routes/users.routes.ts
-import { IUsersService } from '../interfaces/IUsersService';
-import { CreateUserInputSchema } from '../schemas/schemas';
+const serverCode = `// server/src/main.ts: implement the generated HelloService and mount its handler on Express.
+import express from 'express';
+import { NotFound, createHelloHandler, toExpress } from '@veld/api';
+import type { GreetRequest, HelloService } from '@veld/api';
 
-export function registerUsersRoutes(
-  router: any,
-  service: IUsersService
-) {
-  router.get('/api/v1/users/:id', async (req, res) => {
-    try {
-      const result = await service.getUser(req.params.id);
-      res.status(200).json(result);
-    } catch (err) {
-      res.status(500).json({ error: 'Internal error' });
+export const hello: HelloService = {
+  async greet({ name }: GreetRequest) {
+    if (name.toLowerCase() === 'nobody') {
+      throw new NotFound({ resource: name });
     }
-  });
+    return { message: \`Hello, \${name}!\` };
+  },
+};
 
-  router.post('/api/v1/users', async (req, res) => {
-    try {
-      const input = CreateUserInputSchema.parse(req.body);
-      const result = await service.createUser(input);
-      res.status(201).json(result);
-    } catch (err) {
-      // ZodError → 400 with validation details
-    }
-  });
-}`;
+const app = express();
+app.use(toExpress(createHelloHandler(hello)));`;
 
 export default function CodeExample() {
   return (
@@ -90,7 +57,7 @@ export default function CodeExample() {
         >
           <h2 className={styles.heading}>See it in action</h2>
           <p className={styles.subtitle}>
-            Write a contract on the left, get typed code on the right. It's that simple.
+            One contract, a typed server and a typed client. This is the hello example from the repository.
           </p>
         </motion.div>
 
@@ -106,7 +73,7 @@ export default function CodeExample() {
               <span className={styles.dot} style={{ background: '#f85149' }} />
               <span className={styles.dot} style={{ background: '#f0883e' }} />
               <span className={styles.dot} style={{ background: 'var(--accent2)' }} />
-              <span>You write — users.veld</span>
+              <span>You write — hello.veld</span>
             </div>
             <pre className={styles.pre}>{highlightVeld(veldCode)}</pre>
           </div>
@@ -116,9 +83,9 @@ export default function CodeExample() {
               <span className={styles.dot} style={{ background: '#f85149' }} />
               <span className={styles.dot} style={{ background: '#f0883e' }} />
               <span className={styles.dot} style={{ background: 'var(--accent2)' }} />
-              <span>Veld generates — Frontend SDK</span>
+              <span>You write — a typed client call</span>
             </div>
-            <pre className={styles.pre}>{highlightTS(sdkCode)}</pre>
+            <pre className={styles.pre}>{highlightTS(clientCode)}</pre>
           </div>
         </motion.div>
 
@@ -134,9 +101,9 @@ export default function CodeExample() {
               <span className={styles.dot} style={{ background: '#f85149' }} />
               <span className={styles.dot} style={{ background: '#f0883e' }} />
               <span className={styles.dot} style={{ background: 'var(--accent2)' }} />
-              <span>Veld generates — Backend Routes (Node.js)</span>
+              <span>You write — the Express server</span>
             </div>
-            <pre className={styles.pre}>{highlightTS(backendCode)}</pre>
+            <pre className={styles.pre}>{highlightTS(serverCode)}</pre>
           </div>
         </motion.div>
       </div>
