@@ -22,6 +22,10 @@ export interface NodeResponseLike {
   statusCode: number;
   setHeader(name: string, value: string): unknown;
   end(chunk?: string): unknown;
+  /** Needed for Server-Sent Events. */
+  write?(chunk: string): unknown;
+  flushHeaders?(): void;
+  on?(event: 'close', listener: () => void): unknown;
 }
 
 interface TextDecoderLike {
@@ -58,10 +62,31 @@ function readText(req: NodeRequestLike): Promise<string> {
   });
 }
 
-function writeNode(res: NodeResponseLike, out: VeldResponse): void {
+async function writeNode(res: NodeResponseLike, out: VeldResponse): Promise<void> {
   res.statusCode = out.status;
   for (const name of Object.keys(out.headers)) res.setHeader(name, out.headers[name] ?? '');
-  res.end(out.body ?? '');
+  if (out.stream === undefined) {
+    res.end(out.body ?? '');
+    return;
+  }
+  // Server-Sent Events: write each frame as it arrives, and stop when the client goes away.
+  res.flushHeaders?.();
+  const it = out.stream[Symbol.asyncIterator]();
+  let onGone: () => void = () => undefined;
+  const gone = new Promise<null>((resolve) => {
+    onGone = () => resolve(null);
+  });
+  res.on?.('close', () => onGone());
+  try {
+    for (;;) {
+      const step = await Promise.race([it.next(), gone]);
+      if (step === null || step.done === true) break;
+      res.write?.(step.value);
+    }
+  } finally {
+    void Promise.resolve(it.return?.()).catch(() => undefined);
+    res.end();
+  }
 }
 
 async function dispatchNode(handler: VeldHandler, req: NodeRequestLike): Promise<VeldResponse | null> {

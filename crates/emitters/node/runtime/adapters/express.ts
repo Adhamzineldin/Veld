@@ -11,10 +11,9 @@ export type ExpressMiddleware = (req: NodeRequestLike, res: NodeResponseLike, ne
  */
 export function toExpress(handler: VeldHandler): ExpressMiddleware {
   return (req, res, next) => {
-    dispatchNode(handler, req).then(
-      (out) => (out === null ? next() : writeNode(res, out)),
-      (err: unknown) => next(err),
-    );
+    dispatchNode(handler, req)
+      .then((out) => (out === null ? next() : writeNode(res, out)))
+      .catch((err: unknown) => next(err));
   };
 }
 

@@ -14,6 +14,9 @@ export interface FastifyReplyLike {
   code(statusCode: number): unknown;
   header(name: string, value: string): unknown;
   send(payload?: unknown): unknown;
+  /** Needed for Server-Sent Events: takes the response over from Fastify. */
+  hijack?(): unknown;
+  raw?: NodeResponseLike;
 }
 
 export type FastifyRouteHandler = (request: FastifyRequestLike, reply: FastifyReplyLike) => Promise<unknown>;
@@ -31,6 +34,11 @@ export function toFastify(handler: VeldHandler): FastifyRouteHandler {
         body: request.body ?? undefined,
         raw: request,
       })) ?? NOT_FOUND;
+    if (out.stream !== undefined && reply.raw !== undefined) {
+      reply.hijack?.();
+      await writeNode(reply.raw, out);
+      return undefined;
+    }
     reply.code(out.status);
     for (const name of Object.keys(out.headers)) reply.header(name, out.headers[name] ?? '');
     return reply.send(out.body ?? '');

@@ -6,7 +6,7 @@ use veld_emit_typescript::client::{RequestNames, write_request_type, write_spec_
 use veld_emit_typescript::tree::{FileCtx, Tree};
 use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{add_file, doc_comment, method_key, prop_key, ts_str};
-use veld_ir::{AuthKind, Endpoint, Service};
+use veld_ir::{AuthKind, Endpoint, Method, Service};
 
 use crate::frameworks::{EndpointModel, ServiceModel};
 
@@ -64,13 +64,38 @@ fn write_interface(
             Some(t) => ts_type(fc, t),
             None => "void".to_string(),
         };
-        w.line(format!(
-            "{}(req: {}, ctx: Ctx): Promise<{ret}>;",
-            method_key(&ep.name),
-            names.get(svc.id, &ep.name)
-        ));
+        let (key, req) = (method_key(&ep.name), names.get(svc.id, &ep.name));
+        if ep.method == Method::Ws {
+            let (incoming, outgoing) = ws_types(fc, ep);
+            let session = fc.rt("WsSession");
+            w.line(format!(
+                "{key}(req: {req}, ctx: Ctx, ws: {session}<{incoming}, {outgoing}>): Promise<void>;"
+            ));
+        } else if ep.success.stream {
+            let event = fc.rt("SseEvent");
+            let item = format!("{ret} | {event}<{ret}>");
+            w.line(format!(
+                "{key}(req: {req}, ctx: Ctx): AsyncIterable<{item}> | Promise<AsyncIterable<{item}>>;"
+            ));
+        } else {
+            w.line(format!("{key}(req: {req}, ctx: Ctx): Promise<{ret}>;"));
+        }
     }
     w.close();
+}
+
+/// The message types of a `ws` endpoint: (from the client, to the client); `never` for a side
+/// that has none.
+fn ws_types(fc: &mut FileCtx<'_, '_>, ep: &Endpoint) -> (String, String) {
+    let incoming = match ep.params.iter().find(|p| p.stream) {
+        Some(p) => ts_type(fc, &p.ty),
+        None => "never".to_string(),
+    };
+    let outgoing = match &ep.success.ty {
+        Some(t) => ts_type(fc, t),
+        None => "never".to_string(),
+    };
+    (incoming, outgoing)
 }
 
 fn auth_hook(kind: AuthKind, ctx: &str) -> Option<(&'static str, String)> {
@@ -152,10 +177,19 @@ fn write_endpoint(
     let list: Vec<String> = ep.middleware.iter().map(|m| ts_str(m)).collect();
     w.line(format!("middleware: [{}],", list.join(", ")));
     let req = names.get(svc.id, &ep.name);
-    w.line(format!(
-        "call: (req, ctx) => impl.{}(req as {req}, ctx),",
-        method_key(&ep.name)
-    ));
+    if ep.method == Method::Ws {
+        let (incoming, outgoing) = ws_types(fc, ep);
+        let session = fc.rt("WsSession");
+        w.line(format!(
+            "call: (req, ctx, ws) => impl.{}(req as {req}, ctx, ws as {session}<{incoming}, {outgoing}>),",
+            method_key(&ep.name)
+        ));
+    } else {
+        w.line(format!(
+            "call: (req, ctx) => impl.{}(req as {req}, ctx),",
+            method_key(&ep.name)
+        ));
+    }
     w.close_with("},");
 }
 
@@ -233,6 +267,8 @@ pub fn models(tree: &Tree<'_>) -> Vec<ServiceModel> {
             let mut endpoints: Vec<(usize, EndpointModel)> = svc
                 .endpoints
                 .iter()
+                // `ws` endpoints are not Nest routes: they attach to the HTTP server (`server/ws.ts`).
+                .filter(|ep| ep.method != Method::Ws)
                 .map(|ep| {
                     let below = ep.path.strip_prefix(prefix).unwrap_or(&ep.path);
                     let params = ep.path.matches('{').count();
