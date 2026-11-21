@@ -13,6 +13,7 @@ use crate::pipeline;
 use crate::ui::Ui;
 
 pub fn run(ui: &Ui, config: Option<&Path>, args: &LoginArgs) -> Result<Exit> {
+    ui.header("login", "");
     let mut session = Session::load(args.allow_insecure)?;
     let project = pipeline::load_project(config).ok();
     let registry = resolve_registry(
@@ -47,7 +48,7 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &LoginArgs) -> Result<Exit> {
     let registry = client.base_url().to_string();
     session.creds.set(&registry, Token::new(token));
     session.creds.save(&session.path).map_err(fail)?;
-    ui.info(&format!("logged in to {registry} as {username}"));
+    ui.ok(&format!("logged in to {registry} as {username}"));
     Ok(Exit::Ok)
 }
 

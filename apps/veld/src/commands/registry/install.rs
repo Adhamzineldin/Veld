@@ -16,6 +16,7 @@ use crate::pipeline;
 use crate::ui::Ui;
 
 pub fn run(ui: &Ui, config: Option<&Path>, args: &InstallArgs) -> Result<Exit> {
+    ui.header("install", "");
     let project = pipeline::load_project(config)?;
     let Some(lock) = Lockfile::read(&project.root)? else {
         return Err(user(
@@ -27,7 +28,7 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &InstallArgs) -> Result<Exit> {
     let done =
         ensure_installed(&project.root, &lock, &mut |p| session.download(p)).map_err(fail)?;
     report(ui, &done);
-    ui.info(&format!(
+    ui.ok(&format!(
         "{} installed from veld.lock",
         pipeline::plural(done.len(), "package")
     ));
@@ -52,7 +53,7 @@ pub fn auto_install(ui: &Ui, project: &Project) -> Result<()> {
 
 fn report(ui: &Ui, done: &[Installed]) {
     for p in done.iter().filter(|p| p.downloaded) {
-        ui.info(&format!("installed {}@{}", p.name, p.version));
+        ui.ok(&format!("installed {}@{}", p.name, p.version));
     }
 }
 

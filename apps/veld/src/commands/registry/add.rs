@@ -33,6 +33,7 @@ fn parse_spec(spec: &str) -> Result<(&str, Option<&str>)> {
 
 pub fn run(ui: &Ui, config: Option<&Path>, args: &AddArgs) -> Result<Exit> {
     let (name, range) = parse_spec(&args.package)?;
+    ui.header("add", name);
     if let Some(r) = range {
         parse_range(r).map_err(fail)?;
     }
@@ -80,7 +81,7 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &AddArgs) -> Result<Exit> {
         1 => ", plus 1 package it depends on".to_string(),
         n => format!(", plus {n} packages it depends on"),
     };
-    ui.info(&format!(
+    ui.ok(&format!(
         "added {name}@{chosen} (veld.toml and veld.lock updated{extra})"
     ));
     Ok(Exit::Ok)

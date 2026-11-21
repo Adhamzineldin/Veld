@@ -17,12 +17,14 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &PublishArgs) -> Result<Exit> {
     let project = veld_project::config::load(&config_file)?;
     let plan = plan(&config_file, &project, args.package.as_deref()).map_err(fail)?;
     let size = plan.packed.bytes.len();
+    ui.header("publish", &plan.name);
     ui.info(&format!(
         "{}@{}: {} files, {size} bytes, sha256 {}",
         plan.name, plan.version, plan.files, plan.packed.sha256
     ));
     if args.dry_run {
         ui.info("dry run: nothing was uploaded");
+        ui.hint("run `veld publish` without --dry-run to upload");
         return Ok(Exit::Ok);
     }
     let session = Session::load(args.allow_insecure)?;
@@ -34,10 +36,11 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &PublishArgs) -> Result<Exit> {
     .map_err(fail)?;
     let client = session.authed_client(&registry)?;
     let (org, name) = plan.parts().map_err(fail)?;
-    client
-        .publish(org, name, &plan.version, &plan.packed.bytes)
-        .map_err(fail)?;
-    ui.info(&format!(
+    let spin = ui.spinner(&format!("Uploading {}@{}", plan.name, plan.version));
+    let sent = client.publish(org, name, &plan.version, &plan.packed.bytes);
+    spin.finish();
+    sent.map_err(fail)?;
+    ui.ok(&format!(
         "published {}@{} to {}",
         plan.name,
         plan.version,

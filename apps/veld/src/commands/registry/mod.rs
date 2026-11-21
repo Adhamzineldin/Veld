@@ -32,6 +32,7 @@ pub fn run(ui: &Ui, config: Option<&std::path::Path>, command: &Command) -> Opti
         Command::Init(_)
         | Command::Check
         | Command::Generate(_)
+        | Command::Watch(_)
         | Command::Clean(_)
         | Command::Setup(_)
         | Command::Fmt(_)

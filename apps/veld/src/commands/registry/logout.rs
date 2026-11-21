@@ -12,6 +12,7 @@ use crate::pipeline;
 use crate::ui::Ui;
 
 pub fn run(ui: &Ui, config: Option<&Path>, args: &LogoutArgs) -> Result<Exit> {
+    ui.header("logout", "");
     let mut session = Session::load(false)?;
     let project = pipeline::load_project(config).ok();
     let registry = resolve_registry(
@@ -22,7 +23,7 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &LogoutArgs) -> Result<Exit> {
     .map_err(fail)?;
     if session.creds.remove(&registry) {
         session.creds.save(&session.path).map_err(fail)?;
-        ui.info(&format!("logged out of {registry}"));
+        ui.ok(&format!("logged out of {registry}"));
     } else {
         ui.info(&format!("not logged in to {registry}"));
     }

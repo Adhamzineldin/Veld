@@ -40,6 +40,7 @@ fn valid_name(name: &str) -> bool {
 }
 
 fn new(ui: &Ui, name: &str, lang: &str) -> Result<Exit> {
+    ui.header("plugin new", name);
     if lang != "ts" {
         return Err(user(format!(
             "unsupported plugin language `{lang}`; only `ts` is available"
@@ -81,8 +82,8 @@ fn new(ui: &Ui, name: &str, lang: &str) -> Result<Exit> {
         };
         fs::write(&path, body).with_context(|| format!("cannot write `{}`", path.display()))?;
     }
-    ui.info(&format!("created plugin `{name}` in ./{name}"));
-    ui.info(&format!(
+    ui.ok(&format!("created plugin `{name}` in ./{name}"));
+    ui.hint(&format!(
         "next: cd {name} && npm install && npm run build && npm test"
     ));
     Ok(Exit::Ok)
@@ -108,6 +109,7 @@ fn sample_ir() -> Result<veld_ir::Ir> {
 }
 
 fn test(ui: &Ui, command: &[String]) -> Result<Exit> {
+    ui.header("plugin test", "");
     let Some((program, args)) = command.split_first() else {
         return Err(user(
             "give the plugin command, for example `veld plugin test node dist/main.js`".to_string(),
@@ -122,13 +124,19 @@ fn test(ui: &Ui, command: &[String]) -> Result<Exit> {
     let checks = conformance::run(&runner, &sample_ir()?);
     for check in &checks {
         match &check.result {
-            Ok(()) => ui.info(&format!("  ok    {}", check.name)),
-            Err(why) => ui.info(&format!("  FAIL  {}: {why}", check.name)),
+            Ok(()) => ui.ok(&check.name),
+            Err(why) => ui.info(&crate::ui::render::fail(
+                &ui.theme_out(),
+                &format!("{}: {why}", check.name),
+            )),
         }
     }
     let failed = checks.iter().filter(|c| c.result.is_err()).count();
     if failed == 0 {
-        ui.info(&format!("{} checks passed", checks.len()));
+        ui.info(&ui.out_styled(
+            crate::ui::Style::Bold,
+            &format!("{} checks passed", checks.len()),
+        ));
         Ok(Exit::Ok)
     } else {
         ui.error(&format!("{failed} of {} checks failed", checks.len()));
