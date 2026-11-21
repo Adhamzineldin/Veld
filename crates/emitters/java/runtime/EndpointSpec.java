@@ -14,6 +14,8 @@ import java.util.List;
  * @param params the parameters and where they are bound
  * @param success the success type, or {@code null} for no body
  * @param errors the declared errors
+ * @param stream whether the endpoint streams: Server-Sent Events on a GET, server-to-client
+ *     messages on a {@code WS} endpoint
  */
 public record EndpointSpec(
     String name,
@@ -24,12 +26,27 @@ public record EndpointSpec(
     Auth auth,
     List<Param> params,
     Schema success,
-    List<Declared> errors) {
+    List<Declared> errors,
+    boolean stream) {
 
   /** Creates a description (the lists are copied). */
   public EndpointSpec {
     params = List.copyOf(params);
     errors = List.copyOf(errors);
+  }
+
+  /** Creates the description of an endpoint that does not stream. */
+  public EndpointSpec(
+      String name,
+      String method,
+      String path,
+      String sig,
+      int status,
+      Auth auth,
+      List<Param> params,
+      Schema success,
+      List<Declared> errors) {
+    this(name, method, path, sig, status, auth, params, success, errors, false);
   }
 
   /** Where a parameter is bound. */
@@ -58,8 +75,16 @@ public record EndpointSpec(
    * @param header the header name for {@link Binding#HEADER}, otherwise {@code null}
    * @param type the parameter type
    * @param optional whether it may be absent
+   * @param stream true for the stream body of a {@code ws} endpoint: the client-to-server message
+   *     type, which is not an HTTP body
    */
-  public record Param(String name, Binding binding, String header, Schema type, boolean optional) {
+  public record Param(
+      String name, Binding binding, String header, Schema type, boolean optional, boolean stream) {
+    /** Creates an ordinary parameter. */
+    public Param(String name, Binding binding, String header, Schema type, boolean optional) {
+      this(name, binding, header, type, optional, false);
+    }
+
     String location() {
       return switch (binding) {
         case PATH -> "path." + name;

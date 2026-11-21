@@ -15,6 +15,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+// veld:sse
+import java.util.stream.Stream;
+// veld:end
 
 /**
  * The router core. Routing is done once, from the endpoint paths: matching is exact on literal
@@ -142,24 +145,149 @@ public final class Router implements VeldHandler {
     EndpointSpec spec = ep.spec();
     RequestContext ctx = new RequestContext(spec.method(), normalizePath(request.path()), lowerHeaders(request.headers()), request.raw());
     try {
-      if (spec.auth() != null) {
-        ctx.setPrincipal(authenticate(spec.auth(), ctx));
-        if (ctx.principal() == null) {
-          return problem(std.unauthorized(), "Unauthorized", 401, spec.sig(), Json.object().build());
-        }
+      Guarded guarded = guard(route, match, request, ctx, false);
+      if (guarded.failure != null) {
+        return guarded.failure;
       }
-      for (String name : ep.middleware()) {
-        hooks.middleware(name).run(ctx);
+      Json.Obj params = new Json.Obj(guarded.bound.values);
+      // veld:sse
+      if (spec.stream()) {
+        return startSse(ep, ep.sse().call(params, ctx), ctx);
       }
-      Bound bound = bind(route, match, request, ctx);
-      if (!bound.issues.isEmpty()) {
-        return problem(std.validation(), "ValidationError", 422, spec.sig(), issuesData(bound.issues));
-      }
-      return success(ep, ep.call().call(new Json.Obj(bound.values), ctx));
+      // veld:end
+      return success(ep, ep.call().call(params, ctx));
     } catch (Exception | StackOverflowError err) {
       return failure(err, spec, ctx);
     }
   }
+
+  /** The outcome of the part of the pipeline every transport shares: a response, or the bound values. */
+  private static final class Guarded {
+    VeldResponse failure;
+    Bound bound;
+  }
+
+  /** Authentication, middleware, binding and validation. */
+  private Guarded guard(Route route, Matcher match, VeldRequest request, RequestContext ctx, boolean ws)
+      throws Exception {
+    EndpointSpec spec = route.endpoint().spec();
+    Guarded out = new Guarded();
+    if (spec.auth() != null) {
+      ctx.setPrincipal(authenticate(spec.auth(), ctx));
+      if (ctx.principal() == null) {
+        out.failure = problem(std.unauthorized(), "Unauthorized", 401, spec.sig(), Json.object().build());
+        return out;
+      }
+    }
+    for (String name : route.endpoint().middleware()) {
+      hooks.middleware(name).run(ctx);
+    }
+    out.bound = bind(route, match, request, ctx, ws);
+    if (!out.bound.issues.isEmpty()) {
+      out.failure = problem(std.validation(), "ValidationError", 422, spec.sig(), issuesData(out.bound.issues));
+    }
+    return out;
+  }
+  // veld:sse
+
+  /**
+   * Pulls the first event before answering, so that an error raised before any event is a normal
+   * problem response. After that the status is final and a failure becomes the last event.
+   */
+  private VeldResponse startSse(ServerEndpoint ep, Stream<SseEvent<Json>> source, RequestContext ctx) {
+    EndpointSpec spec = ep.spec();
+    Stream<String> frames = SseFrames.open(
+        source,
+        event -> sseFrame(spec, event),
+        err -> SseEvent.frame(failure(err, spec, ctx).body(), null, "error", null));
+    Map<String, String> headers = Map.of(
+        "content-type", "text/event-stream", "cache-control", "no-cache", "x-accel-buffering", "no");
+    return new VeldResponse(spec.status(), headers, null, frames);
+  }
+
+  private String sseFrame(EndpointSpec spec, SseEvent<Json> event) {
+    if (spec.success() == null) {
+      throw new IllegalStateException(spec.name() + ": a stream needs an item type");
+    }
+    Json wire = Wire.prepare(spec.success(), event.data(), Wire.Mode.RESPONSE);
+    if (hooks.validateResponses()) {
+      List<Issue> issues = Wire.validate(spec.success(), wire, "$", false);
+      if (!issues.isEmpty()) {
+        throw new IllegalStateException(spec.name() + ": stream item failed validation: " + issues);
+      }
+    }
+    return SseEvent.frame(Wire.canonicalOf(spec.success(), wire), event.id(), event.event(), event.retry());
+  }
+  // veld:end
+
+  // veld:ws
+  @Override
+  public boolean ws(VeldRequest request, WsSocket socket) {
+    String path = normalizePath(request.path());
+    for (Route r : routes) {
+      if (!r.endpoint().spec().method().equals("WS")) {
+        continue;
+      }
+      Matcher m = r.pattern().matcher(path);
+      if (m.matches()) {
+        startWs(r, m, request, socket);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private void startWs(Route route, Matcher match, VeldRequest request, WsSocket socket) {
+    WsConnection conn = new WsConnection(route.endpoint().spec(), socket, hooks.validateResponses(), std);
+    conn.attach();
+    Thread thread = new Thread(() -> runWs(route, match, request, conn), "veld-ws");
+    thread.setDaemon(true);
+    thread.start();
+  }
+
+  private void runWs(Route route, Matcher match, VeldRequest request, WsConnection conn) {
+    ServerEndpoint ep = route.endpoint();
+    EndpointSpec spec = ep.spec();
+    RequestContext ctx = new RequestContext(
+        "WS", normalizePath(request.path()), wsHeaders(spec, request), request.raw());
+    try {
+      Guarded guarded = guard(route, match, request, ctx, true);
+      if (guarded.failure != null) {
+        conn.fail(guarded.failure);
+        return;
+      }
+      conn.ready();
+      ep.ws().call(new Json.Obj(guarded.bound.values), ctx, conn);
+      conn.finish(1000, "done");
+    } catch (Exception | StackOverflowError err) {
+      conn.fail(failure(err, spec, ctx));
+    }
+  }
+
+  /** The headers of a ws upgrade: `Authorization` from `access_token`, the API key from `api_key`. */
+  private static Map<String, List<String>> wsHeaders(EndpointSpec spec, VeldRequest request) {
+    Map<String, List<String>> headers = new LinkedHashMap<>(lowerHeaders(request.headers()));
+    Map<String, List<String>> query = parseQuery(request.query());
+    EndpointSpec.Auth auth = spec.auth();
+    if (auth == null) {
+      return Collections.unmodifiableMap(headers);
+    }
+    if (auth.kind() == EndpointSpec.AuthKind.BEARER && !headers.containsKey("authorization")) {
+      List<String> token = query.get("access_token");
+      if (token != null && !token.isEmpty()) {
+        headers.put("authorization", List.of("Bearer " + token.get(0)));
+      }
+    }
+    String keyHeader = (auth.header() == null ? "X-API-Key" : auth.header()).toLowerCase(Locale.ROOT);
+    if (auth.kind() == EndpointSpec.AuthKind.API_KEY && !headers.containsKey(keyHeader)) {
+      List<String> key = query.get("api_key");
+      if (key != null && !key.isEmpty()) {
+        headers.put(keyHeader, List.of(key.get(0)));
+      }
+    }
+    return Collections.unmodifiableMap(headers);
+  }
+  // veld:end
 
   private static Json issuesData(List<Issue> issues) {
     List<Json> items = new ArrayList<>();
@@ -267,7 +395,7 @@ public final class Router implements VeldHandler {
     return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
   }
 
-  private static VeldResponse problem(String sig, String title, int status, String op, Json data) {
+  static VeldResponse problem(String sig, String title, int status, String op, Json data) {
     Json body = Json.object()
         .put("type", Json.of(sig))
         .put("title", Json.of(title))
@@ -285,10 +413,13 @@ public final class Router implements VeldHandler {
     final List<Issue> issues = new ArrayList<>();
   }
 
-  private static Bound bind(Route r, Matcher m, VeldRequest req, RequestContext ctx) {
+  private static Bound bind(Route r, Matcher m, VeldRequest req, RequestContext ctx, boolean ws) {
     Bound b = new Bound();
     Map<String, List<String>> query = parseQuery(req.query());
     for (EndpointSpec.Param p : r.endpoint().spec().params()) {
+      if (p.stream()) {
+        continue;
+      }
       switch (p.binding()) {
         case PATH -> {
           int i = r.names().indexOf(p.name());
@@ -298,7 +429,11 @@ public final class Router implements VeldHandler {
         case QUERY -> bindSimple(p, query.get(p.name()), b);
         case QUERY_OBJECT -> bindQueryObject(p, query, b);
         case HEADER -> {
-          String h = ctx.header(p.header() == null ? p.name() : p.header());
+          String name = p.header() == null ? p.name() : p.header();
+          String h = ctx.header(name);
+          if (h == null && ws && query.get(name) != null && !query.get(name).isEmpty()) {
+            h = query.get(name).get(0);
+          }
           bindSimple(p, h == null ? null : List.of(h), b);
         }
         case BODY -> bindBody(p, req, b);
