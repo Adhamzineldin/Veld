@@ -424,21 +424,21 @@ fn ts() -> Result<&'static Ts, Unavailable> {
 
 /// A server running in another process; killed when dropped.
 struct Server {
-    child: Child,
+    tree: veld_test_support::ProcessTree,
     url: String,
 }
 
 impl Server {
     /// Starts `cmd`, waits for its `PORT=<n>` line and keeps stdin open (closing it stops the server).
     fn start(mut cmd: Command) -> Server {
-        let mut child = cmd
-            .stdin(Stdio::piped())
+        cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .expect("cannot start server");
+            .stderr(Stdio::piped());
+        let mut tree =
+            veld_test_support::ProcessTree::spawn(&mut cmd).expect("cannot start server");
+        drain_stderr(tree.child_mut());
         let mut line = String::new();
-        BufReader::new(child.stdout.take().unwrap())
+        BufReader::new(tree.child_mut().stdout.take().unwrap())
             .read_line(&mut line)
             .unwrap();
         let port = line
@@ -447,21 +447,19 @@ impl Server {
             .unwrap_or_else(|| panic!("server did not report a port: {line:?}"));
         Server {
             url: format!("http://127.0.0.1:{port}"),
-            child,
+            tree,
         }
     }
 }
 
-impl Drop for Server {
-    fn drop(&mut self) {
-        // On Windows `java` can be a launcher shim: stop its whole process tree.
-        if cfg!(windows) {
-            let _ = Command::new("taskkill")
-                .args(["/PID", &self.child.id().to_string(), "/T", "/F"])
-                .output();
-        }
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+/// Forwards the child's stderr from a thread, so the child never holds the test's own stderr.
+fn drain_stderr(child: &mut Child) {
+    if let Some(err) = child.stderr.take() {
+        std::thread::spawn(move || {
+            for line in BufReader::new(err).lines().map_while(Result::ok) {
+                eprintln!("{line}");
+            }
+        });
     }
 }
 
@@ -742,7 +740,7 @@ fn build_spring_app(j: &Java) -> PathBuf {
         c
     } else {
         let mut c = Command::new("sh");
-        c.arg("mvnw");
+        c.arg("./mvnw");
         c
     };
     mvn.args(["-q", "-B", "package", "-DskipTests"])
@@ -776,16 +774,17 @@ fn probe_answers(port: u16) -> bool {
 /// port can be taken between choosing and binding it) and reports it in its log; readiness is an
 /// answered request, and an exit or a missing port within the timeout fails the test.
 fn start_spring(jar: &Path) -> Server {
-    let mut child = Command::new("java")
-        .arg("-jar")
+    let mut cmd = Command::new("java");
+    cmd.arg("-jar")
         .arg(jar)
         .args(["--server.port=0", "--server.address=127.0.0.1"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
+        .stderr(Stdio::piped());
+    let mut tree = veld_test_support::ProcessTree::spawn(&mut cmd)
         .expect("cannot start the Spring application");
-    let stdout = child.stdout.take().unwrap();
+    drain_stderr(tree.child_mut());
+    let stdout = tree.child_mut().stdout.take().unwrap();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
@@ -796,7 +795,7 @@ fn start_spring(jar: &Path) -> Server {
         }
     });
     let mut server = Server {
-        child,
+        tree,
         url: String::new(),
     };
     let port = rx
@@ -806,7 +805,7 @@ fn start_spring(jar: &Path) -> Server {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     while !probe_answers(port) {
         assert!(
-            server.child.try_wait().unwrap().is_none(),
+            server.tree.child_mut().try_wait().unwrap().is_none(),
             "the Spring application exited before it served"
         );
         assert!(
