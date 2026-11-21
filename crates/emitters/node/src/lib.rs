@@ -83,13 +83,24 @@ impl Generator for Node {
         let mut modules = models::emit(&mut files, &tree)?;
         modules.extend(server::emit(&mut files, &tree)?);
         modules.push("server/adapters".to_string());
+        let ws = req
+            .ir
+            .features_used(&req.services)
+            .contains(&veld_ir::Feature::StreamingWs);
+        if ws {
+            frameworks::emit_ws(&mut files)?;
+            modules.push("server/ws".to_string());
+        }
         let extra = emit_consumed(&mut files, req)?;
         modules.sort();
         barrel::write(&mut files, "", &modules, &extra, true)?;
-        package::emit(
+        // The `ws` package is a peer dependency of a server that hosts `ws` endpoints.
+        let peers: &[(&str, &str)] = if ws { &[("ws", "^8.0.0")] } else { &[] };
+        package::emit_with(
             &mut files,
             opts.package_name.as_deref(),
             profile.framework(),
+            peers,
         )?;
         Ok(files)
     }

@@ -65,6 +65,14 @@ pub const ADAPTERS: &[&dyn FrameworkAdapter<ServerModel>] = &[
     &nest::Nest,
 ];
 
+/// `server/ws.ts`: the WebSocket adapter, emitted when the server hosts `ws` endpoints.
+const WS: &str = include_str!("../../runtime/ws.ts");
+
+/// Adds `server/ws.ts`. It is the only generated file written against the `ws` package.
+pub fn emit_ws(files: &mut FileSet) -> Result<(), Vec<GenDiagnostic>> {
+    add_file(files, "server/ws.ts", WS.to_string())
+}
+
 /// The registry as the core sees it.
 #[must_use]
 pub fn infos() -> Vec<FrameworkInfo> {
