@@ -20,7 +20,10 @@ pub fn outputs() -> Result<Vec<(&'static str, String)>> {
     let grammar = crate::grammar::tm_language(&language)?;
     Ok(vec![
         ("editors/veld-language.json", language),
-        ("editors/vscode/syntaxes/veld.tmLanguage.json", grammar.clone()),
+        (
+            "editors/vscode/syntaxes/veld.tmLanguage.json",
+            grammar.clone(),
+        ),
         (
             "editors/jetbrains/src/main/resources/textmate/veld/syntaxes/veld.tmLanguage.json",
             grammar,
@@ -66,7 +69,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         assert!(run(tmp.path(), true).is_err(), "nothing is generated yet");
         let written = run(tmp.path(), false).unwrap();
-        assert_eq!(written.len(), 4);
+        assert_eq!(written.len(), 5);
         assert!(run(tmp.path(), true).unwrap().is_empty());
         fs::write(tmp.path().join("editors/veld-language.json"), "{}").unwrap();
         let err = run(tmp.path(), true).unwrap_err().to_string();
