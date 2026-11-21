@@ -1,0 +1,48 @@
+[package]
+name = "veld-wasm"
+description = "The real Veld engine (compiler, generators, formatter, OpenAPI export) as WebAssembly, for the website playground"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+# `cdylib` is the wasm module; `rlib` lets the same code run in native tests.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+veld-ir.workspace = true
+veld-compiler.workspace = true
+veld-codegen.workspace = true
+veld-tools.workspace = true
+veld-emit-java.workspace = true
+veld-emit-node.workspace = true
+veld-emit-typescript.workspace = true
+veld-emit-rust.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Pinned exactly: the `wasm-bindgen` CLI that writes the JS bindings must be the same version.
+wasm-bindgen = "=0.2.130"
+
+[dev-dependencies]
+veld-project.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+
+# Same lints as the workspace, except that `wasm-bindgen`'s generated glue needs `unsafe`,
+# so it is denied (not forbidden) and allowed only in `src/wasm.rs`.
+[lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+dbg_macro = "warn"
+todo = "warn"
+wildcard_enum_match_arm = "warn"
+match_wildcard_for_single_variants = "warn"
