@@ -200,7 +200,9 @@ server also gets the clients of the services it consumes, through the same packa
 | `java` | server and client | Java 17 records, sealed interfaces, `java.net.http` client; JDK HTTP server adapter or Spring Boot 3 adapter | [`spec/targets/java.md`](spec/targets/java.md) |
 | `plugin:<name>` | any | whatever an external emitter plugin produces | [`spec/plugin-protocol.md`](spec/plugin-protocol.md) |
 
-If a target cannot represent a feature (for example streaming in Java), generation fails with
+Streaming is supported: Server-Sent Events (`get ... -> stream T`) and WebSockets (`ws`) in the `node` server, the `typescript` client (with React hooks and Vue composables), and `java` (WebSockets on the JDK server are `E0801`, they need `framework = "spring"`). The only generated-code dependency exception is WebSocket: the `ws` package for a Node server that hosts `ws` endpoints (the adapter is typed structurally and imports nothing), `spring-boot-starter-websocket` for Spring; clients use the platform `WebSocket` and `java.net.http.WebSocket`.
+
+If a target cannot represent a feature, generation fails with
 `E0801`. It never emits wrong code. The `typescript` client can add React hooks or Vue composables (`framework = "react" | "vue"`), and
 the `node` server also supports `nest`. `veld export openapi` produces an OpenAPI 3.1 document.
 
@@ -259,8 +261,8 @@ manifest. Files that Veld did not write are never touched.
 
 - VS Code: [`editors/vscode`](editors/vscode), a thin client for the language server in the binary
   (`veld lsp`): diagnostics, hover, go to definition, completion, rename, formatting.
-- JetBrains: the v1 plugin is frozen. The v2 plan (LSP4IJ with `veld lsp`) is in
-  [`editors/jetbrains`](editors/jetbrains).
+- JetBrains (IntelliJ IDEA, RustRover, WebStorm 2024.3+): [`editors/jetbrains`](editors/jetbrains), a
+  thin client that runs `veld lsp` through LSP4IJ, with TextMate highlighting from the same grammar.
 
 ## Repository layout
 

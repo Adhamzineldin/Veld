@@ -95,6 +95,8 @@ url = "https://registry.example.com"
 | `java` | server | `jdk` (unversioned), `spring` (`"3"`) | `package`, `java`, `framework-version` |
 | `java` | client | none | `package`, `java` |
 
+Streaming (`get ... -> stream`, `ws`) works with every framework above, except that a `java` server with `framework = "jdk"` reports `E0801` for `ws` endpoints (the JDK has no WebSocket server; use `spring`). A `node` server with `ws` endpoints adds a `ws` peer dependency to its `package.json` and needs `ws` installed by the application; a `spring` server with `ws` endpoints needs `spring-boot-starter-websocket`.
+
 The frameworks of a built-in emitter come from its adapter registry, one slice per emitter, so this table, the `E0803` message and the generated adapters cannot drift apart.
 
 ### Language version and framework version

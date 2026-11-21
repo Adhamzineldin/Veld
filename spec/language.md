@@ -221,7 +221,7 @@ Prelude errors belong to the reserved package `veld`. Their identity at runtime 
   - **Implicit `ValidationError`:** every endpoint that has a body, query, header or path parameters implicitly declares `| ValidationError` unless it already lists one.
   - **Implicit `Unauthorized` and `Internal`:** every endpoint whose effective auth is not `none` implicitly declares `| Unauthorized` (401), and every endpoint implicitly declares `| Internal` (500), unless already listed. Together with `ValidationError` this means every response the server runtime can produce has a declared signature.
 - **Endpoint names** MUST be unique within a service (`E0509`). The pair (method, full path) MUST be unique across all services of one package (`E0510`). Paths are compared with parameter names erased: `/a/{x}` and `/a/{y}` collide.
-- **Streaming** (capability-gated):
+- **Streaming** (capability-gated; the wire format is in the target specs: `spec/targets/typescript.md` §4b, `spec/targets/java.md`):
   - On `get`, `-> stream T` is Server-Sent Events.
   - On `ws`, `-> stream T` sends server-to-client messages, and `body: stream T` receives client-to-server messages.
   - `stream` is not allowed anywhere else (`E0511`).
