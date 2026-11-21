@@ -62,7 +62,6 @@ fn field(name: &str, ty: Type, lit: Literal) -> Field {
             pattern: Some("^a$".into()),
             format: Some(StringFormat::Email),
         },
-        meta: vec!["m".into()],
         example: Some(lit),
         docs: Some("d".into()),
         deprecated: Some("x".into()),

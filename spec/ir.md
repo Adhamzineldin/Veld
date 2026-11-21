@@ -41,7 +41,7 @@ Union  = { "kind": "union", "discriminator": "kind", "arms": [ { "label": "card"
 Const  = { "kind": "const", "type": Type, "value": Literal }
 Field  = { "name": "firstName", "wire": "first_name", "type": Type, "optional": false,
            "default": Literal|null, "readonly": false, "inherited_from": DeclId|null,
-           "constraints": Constraints, "meta": ["unique","index","primary"], "example": Literal|null,
+           "constraints": Constraints, "example": Literal|null,
            "docs": .., "deprecated": .. }
 Type   = { "scalar": "string|int|long|float|decimal|bool|date|datetime|time|uuid|bytes|json" }
        | { "list": Type } | { "map": Type } | { "page": Type } | { "decl": DeclId }
@@ -97,7 +97,7 @@ decl_sig  = "veld:" package "/" Name "@" hex16( sha256( shape_bytes ) )
   - enum: `{ "k": "enum", "v": [wire values sorted] }`
   - union: `{ "k": "union", "d": discriminator, "a": { label: "<qualified>" } }`
   - `TShape`: `"string"`, …, `{ "list": TShape }`, `{ "map": TShape }`, `{ "page": TShape }`, `{ "ref": "<qualified>" }`
-- The signature does not include docs, deprecations, constraints, defaults, examples, `meta` or source spans. Renaming a field in source while keeping `@wire` the same keeps the signature.
+- The signature does not include docs, deprecations, constraints, defaults, examples or source spans. Renaming a field in source while keeping `@wire` the same keeps the signature.
 - Each `Decl.sig` is computed once by `veld-compiler::signature`. No other code computes signatures.
 
 ### 5.2 Operation signature
@@ -128,6 +128,7 @@ X.matches(err) := err.decl_sig == X.decl_sig
                   && service_of(err.op_sig) == service_of(X's declaring context)
 ```
 
+- Canonical bytes alone never decide: two different declarations with identical fields have identical bytes, so every target needs the declaration signature of **both** operands. A value that carries none cannot be compared with `same(a, b)`; a target either refuses loudly (TypeScript throws a `TypeError`) or is false (Java), and offers a declaration-qualified form (`Model.same(a, b)`) for plain data.
 - The comparison is by signature, never by class or prototype identity, so two copies of `Orders.NotFound` generated into different packages are `same` when the service, operation and payload all match.
 - A `NotFound` from `payments`, or from a different operation, is never `same`.
 - `matches` is the looser check: it means "this declaration, raised by this service, from any operation".

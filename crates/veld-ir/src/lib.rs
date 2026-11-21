@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 pub mod schema;
+pub mod suggest;
 
 pub const IR_VERSION: &str = "1.0";
 
@@ -322,7 +323,6 @@ pub struct Field {
     pub readonly: bool,
     pub inherited_from: Option<DeclId>,
     pub constraints: Constraints,
-    pub meta: Vec<String>,
     pub example: Option<Literal>,
     pub docs: Option<String>,
     pub deprecated: Option<String>,

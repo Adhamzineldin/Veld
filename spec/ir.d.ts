@@ -122,7 +122,6 @@ export interface Field {
   readonly: boolean;
   inherited_from: DeclId | null;
   constraints: Constraints;
-  meta: string[];
   example: Literal | null;
   docs: string | null;
   deprecated: string | null;

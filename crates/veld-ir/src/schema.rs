@@ -116,7 +116,6 @@ const FIELD: Fields = &[
     ("readonly", T::Bool),
     ("inherited_from", T::Nullable(&DECL_ID)),
     ("constraints", T::Ref("Constraints")),
-    ("meta", T::List(&T::Str)),
     ("example", T::Nullable(&T::Ref("Literal"))),
     ("docs", OPT_STR),
     ("deprecated", OPT_STR),
