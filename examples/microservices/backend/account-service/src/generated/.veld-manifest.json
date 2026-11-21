@@ -2,6 +2,7 @@
   "version": 1,
   "generator": "veld 2.0",
   "files": {
+    "README.md": "b8aca7c6f3cf9a2a9c826365aa0363bdd7da317c7b8e247893f6854bf41848fa",
     "clients/iam/iam/client.ts": "644939602edb9c30fe366ee589710f3d4ad7cd26d4641df8313d0f360a1f5352",
     "clients/iam/iam/errors/users.ts": "5f09fcac1cb10398af8308478db3119ccc3892baf8752500e8f5303428178b78",
     "clients/iam/iam/models/users.ts": "4e1751a50cefc9879e14ee1e50c2a314f9e982a6ec0d69f5f77c5d62d756d3dc",
@@ -19,7 +20,7 @@
     "models/accounts.ts": "20ec746dec6ec600c45c68bd89fd2714da9416d8ccd615bbc5773b1c03f2b19a",
     "package.json": "95cbbb6e8302cc20c9758d722126e64993776b2bbd64f7d9720aee60bf8df315",
     "prelude.ts": "6b517ab7ce5828a32b3de12531ee5eea8a121e952b855a1d23f590c3486ea53f",
-    "runtime/veld.ts": "95021208f07c0cb56f95ae0b24db23bf8d5678e3aa76c85c8be283b00a80ffbd",
+    "runtime/veld.ts": "626c161cfd99d1311c22ff9027ca106c8c8d9ed33101708e4ee9e3740e952464",
     "server/accounts.ts": "5c104c09010c334d53ef8462271a86aab2fee6f7e900d5112a4ba9ba833f8276",
     "server/adapters.ts": "f182d6e48b7a1f38fb3b4de6b1669ed8a7b8fca01f7625d556b9fdf1712ca2f9"
   }

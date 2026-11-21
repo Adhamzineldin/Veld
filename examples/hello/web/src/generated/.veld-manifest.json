@@ -2,13 +2,15 @@
   "version": 1,
   "generator": "veld 2.0",
   "files": {
+    "README.md": "99db3171625407156a754d8d65ce33ddd71d3604274f5c8cb783cb4e99a6e086",
+    "clients.ts": "3524322b7447a12f54d677955e03f75fdc1762f69ef9bf4211abe998217cf79e",
     "hello/client.ts": "a57e876366633eda08ae1c45d15a0d738c833401b2e3d785b92f6cd82f28069c",
     "hello/models/hello.ts": "b36bc642c8c11823766031d9734be733c1b95c24b0ca1697f4776bd223fb77d8",
     "hello/react.ts": "a10a91b24b1b64fe4cae3f7a4fa66cf01039e3d4f3df8c8f4e322a01e43ff5a4",
-    "index.ts": "089617da826422d9763072c8d950d4b275f85a53256b440d5bef4f3bb1200c01",
+    "index.ts": "6cc59002a15c285b5dcd1cdd3480061c5b19d3e8e3bf0f7464a4e809fce36b28",
     "package.json": "0bf1e401087ae0c84db2a4b8d72141c13e199f210200825c83f07d09cae98d35",
     "prelude.ts": "4f80c54907a04295cab1f98da4ed4a34b1e7a1945a5b7f004f8c7ab5b638b283",
     "runtime/react.ts": "329bd077398e7713035cf2871bfeeaa6c30111a5d69b2ff16a8b1c340b47a05b",
-    "runtime/veld.ts": "95021208f07c0cb56f95ae0b24db23bf8d5678e3aa76c85c8be283b00a80ffbd"
+    "runtime/veld.ts": "626c161cfd99d1311c22ff9027ca106c8c8d9ed33101708e4ee9e3740e952464"
   }
 }

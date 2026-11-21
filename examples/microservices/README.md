@@ -1,7 +1,7 @@
 # microservices (NexusBank)
 
 A banking platform with five services and a React app, written by hand against Veld's generated
-code. The contracts are the v1 NexusBank example, migrated with `veld migrate` and then rewritten in
+code. The contracts are the v1 NexusBank example, rewritten in
 idiomatic v2. The v1 original is in `archive/v1/examples/microservices`.
 
 | Service | Server | Consumes | What the hand-written code does |

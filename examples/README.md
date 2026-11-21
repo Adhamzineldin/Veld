@@ -1,18 +1,16 @@
 # Veld examples
 
-Each example is a complete Veld 2.0 project: contracts, `veld.toml`, the generated output
-(committed) and **hand-written servers and frontends that use it**. The hand-written code imports
-the generated code as packages (`@veld/<target>`), wired by `veld setup`, and the examples are
-tested end to end: the servers are booted and called over HTTP, and the React apps are rendered
-against them.
+Each example includes its contracts, `veld.toml`, generated packages and handwritten application
+code. End-to-end tests call the servers over HTTP and exercise the clients.
 
 | Example | Shows |
 |---|---|
 | [`hello/`](hello) | The minimum, end to end: an Express server implementing `HelloService`, and a Vite + React app using the generated hooks, with a README walk-through |
 | [`microservices/`](microservices) | Five services (four Node, one Java), mutual `consumes` between Node and Java, typed errors across both, a React app, Docker compose |
+| [`rust-catalog/`](rust-catalog) | An Axum book catalog and a blocking Rust CLI that looks up books and handles typed 404 responses |
 | [`library-package/`](library-package) | A shared `[libraries.common]` package whose types and errors are used by two services (Express and Fastify) and a typed client script |
 
-In an example directory (build the CLI once with `cargo build -p veld --release`):
+For the Rust example, follow its Cargo commands. For the Node examples, build the CLI once with `cargo build -p veld --release`, then run
 
 ```bash
 veld generate            # write the generated code
@@ -20,7 +18,7 @@ veld setup               # add @veld/<target> to the package.json files (Maven/G
 npm install              # in each app folder
 ```
 
-then follow the example's README. Every app has `start`, `dev` and `build` scripts and a committed
+Follow the example's README to start the apps. Each Node app has `start`, `dev` and `build` scripts and a committed
 `package-lock.json`; `node_modules` and build output are ignored (`examples/.gitignore`).
 
 ## Tests

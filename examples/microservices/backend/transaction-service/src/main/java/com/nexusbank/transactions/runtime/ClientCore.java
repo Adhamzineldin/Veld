@@ -69,7 +69,7 @@ public final class ClientCore {
   }
 
   private void check(EndpointSpec ep, Json.Obj params) {
-    if (options.validate()) {
+    if (options.validate(defaults.validate())) {
       List<Issue> issues = requestIssues(ep, params);
       if (!issues.isEmpty()) {
         VeldError err = defaults.validation().apply(issues);

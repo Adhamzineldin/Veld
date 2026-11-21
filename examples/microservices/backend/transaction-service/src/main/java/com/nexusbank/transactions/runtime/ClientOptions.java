@@ -23,7 +23,7 @@ public final class ClientOptions {
   private final Supplier<String> bearer;
   private final Supplier<Basic> basic;
   private final Supplier<String> apiKey;
-  private final boolean validate;
+  private final Boolean validate;
   private final Duration timeout;
 
   private ClientOptions(Builder b) {
@@ -71,13 +71,14 @@ public final class ClientOptions {
     return apiKey;
   }
 
-  boolean validate() {
-    return validate;
+  boolean validate(boolean fallback) {
+    return validate == null ? fallback : validate;
   }
 
   Duration timeout() {
     return timeout;
   }
+
 
   /** Builds {@link ClientOptions}. */
   public static final class Builder {
@@ -87,7 +88,7 @@ public final class ClientOptions {
     private Supplier<String> bearer;
     private Supplier<Basic> basic;
     private Supplier<String> apiKey;
-    private boolean validate = true;
+    private Boolean validate;
     private Duration timeout = Duration.ofSeconds(30);
 
     private Builder() {}
@@ -135,7 +136,7 @@ public final class ClientOptions {
       return this;
     }
 
-    /** Validates requests before sending them (default true). */
+    /** Validates requests before sending them (default true, unless the target was generated with {@code validate = false}). */
     public Builder validate(boolean value) {
       this.validate = value;
       return this;
@@ -146,6 +147,7 @@ public final class ClientOptions {
       this.timeout = value;
       return this;
     }
+
 
     /** The finished options. */
     public ClientOptions build() {

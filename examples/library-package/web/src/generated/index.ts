@@ -2,6 +2,7 @@
 
 export * as veld from './runtime/veld';
 export { VeldError, VeldHttpError, VeldTransportError, canonical, canonicalError, matchesError, same } from './runtime/veld';
+export * from './clients';
 export * from './common/errors/errors';
 export * from './common/models/money';
 export * from './invoices/client';

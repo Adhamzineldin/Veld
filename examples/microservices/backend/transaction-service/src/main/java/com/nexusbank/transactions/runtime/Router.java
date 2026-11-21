@@ -175,7 +175,7 @@ public final class Router implements VeldHandler {
     for (String name : route.endpoint().middleware()) {
       hooks.middleware(name).run(ctx);
     }
-    out.bound = bind(route, match, request, ctx, ws);
+    out.bound = bind(route, match, request, ctx, ws, hooks.validateRequests());
     if (!out.bound.issues.isEmpty()) {
       out.failure = problem(std.validation(), "ValidationError", 422, spec.sig(), issuesData(out.bound.issues));
     }
@@ -303,12 +303,14 @@ public final class Router implements VeldHandler {
   // -- binding -------------------------------------------------------------------------------
 
   private static final class Bound {
+    boolean check = true;
     final Map<String, Json> values = new LinkedHashMap<>();
     final List<Issue> issues = new ArrayList<>();
   }
 
-  private static Bound bind(Route r, Matcher m, VeldRequest req, RequestContext ctx, boolean ws) {
+  private static Bound bind(Route r, Matcher m, VeldRequest req, RequestContext ctx, boolean ws, boolean check) {
     Bound b = new Bound();
+    b.check = check;
     Map<String, List<String>> query = parseQuery(req.query());
     for (EndpointSpec.Param p : r.endpoint().spec().params()) {
       if (p.stream()) {
@@ -345,7 +347,7 @@ public final class Router implements VeldHandler {
       return;
     }
     Json v = coerceMany(p.type(), raw);
-    List<Issue> issues = Wire.validate(p.type(), v, loc, false);
+    List<Issue> issues = b.check ? Wire.validate(p.type(), v, loc, false) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
       b.values.put(p.name(), v);
@@ -365,7 +367,7 @@ public final class Router implements VeldHandler {
       }
     }
     Json obj = new Json.Obj(wire);
-    List<Issue> issues = Wire.validate(p.type(), obj, p.location(), true);
+    List<Issue> issues = b.check ? Wire.validate(p.type(), obj, p.location(), true) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
       b.values.put(p.name(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST));
@@ -390,7 +392,7 @@ public final class Router implements VeldHandler {
       }
       return;
     }
-    List<Issue> issues = Wire.validate(p.type(), raw, "body", true);
+    List<Issue> issues = b.check ? Wire.validate(p.type(), raw, "body", true) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
       b.values.put(p.name(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST));

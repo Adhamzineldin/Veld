@@ -8,6 +8,7 @@ export * from './accounts/models/accounts';
 export * from './cards/client';
 export * from './cards/errors/cards';
 export * from './cards/models/cards';
+export * from './clients';
 export * from './iam/client';
 export * from './iam/errors/users';
 export * from './iam/models/users';

@@ -65,8 +65,8 @@ export type Schema = Bounds &
       }
     | { k: 'enum'; values: readonly string[] }
     | { k: 'list' | 'map' | 'page'; of: Schema }
-    | { k: 'object'; fields: readonly FieldSchema[] }
-    | { k: 'union'; d: string; arms: Readonly<Record<string, Schema>> }
+    | { k: 'object'; fields: readonly FieldSchema[]; sig?: string }
+    | { k: 'union'; d: string; arms: Readonly<Record<string, Schema>>; sig?: string }
     | { k: 'ref'; to: () => Schema }
   );
 
@@ -195,15 +195,68 @@ export function canonicalError(e: VeldError): string {
 }
 
 /**
- * Structural equality that works across separately generated copies of the
- * runtime: errors compare by `sig`, `op` and canonical data.
+ * Declaration identity of a value (spec/ir.md 5.4). Every value the generated code produces
+ * (client decode, server request binding, `Model.of`) carries its declaration `sig` and schema
+ * under these non-enumerable symbols: JSON.stringify, `Object.keys` and spreads do not see them.
+ * `Symbol.for` makes them the same symbols in every separately generated copy of this runtime.
+ */
+export const SIG: unique symbol = Symbol.for('veld.sig') as never;
+const SCHEMA: unique symbol = Symbol.for('veld.schema') as never;
+
+/** Stamps `value` (in place) with its declaration identity and returns it. Primitives are returned as is. */
+export function stamp<T>(value: T, sig: string, schema: Schema): T {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    Object.defineProperties(value, {
+      [SIG]: { value: sig, configurable: true, writable: true },
+      [SCHEMA]: { value: schema, configurable: true, writable: true },
+    });
+  }
+  return value;
+}
+
+/** The declaration signature a value carries, or `undefined`. */
+export function sigOf(value: unknown): string | undefined {
+  if (isVeldError(value)) return value.sig;
+  if (typeof value !== 'object' || value === null) return undefined;
+  const s = (value as Record<symbol, unknown>)[SIG];
+  return typeof s === 'string' ? s : undefined;
+}
+
+/**
+ * Equality by identity (spec/ir.md 5.4): the same declaration signature (for errors also the same
+ * operation) and the same canonical bytes. It works across separately generated copies of the
+ * runtime, because it reads only the signature symbol, `op` and the canonical data.
+ *
+ * Both operands must carry a declaration identity (decoded by a client, bound by a server, built
+ * with `Model.of`, or an error). `same` never guesses: an operand without identity (a plain object
+ * literal, a primitive such as an enum value, a `Page`) throws a `TypeError` that names the fix,
+ * because answering `false` would silently hide a bug and answering by data alone is the bug
+ * this rule exists to prevent. Arrays are compared element by element. For plain objects use the
+ * companion, `Model.same(a, b)`, where the declaration is implied.
  */
 export function same(a: unknown, b: unknown): boolean {
-  if (isVeldError(a) && isVeldError(b)) {
+  if (isVeldError(a) || isVeldError(b)) {
+    if (!isVeldError(a) || !isVeldError(b)) return false;
     return a.sig === b.sig && a.op === b.op && canonicalError(a) === canonicalError(b);
   }
-  if (isVeldError(a) || isVeldError(b)) return false;
-  return canonical(a) === canonical(b);
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => same(x, b[i]));
+  }
+  const sa = sigOf(a);
+  const sb = sigOf(b);
+  if (sa === undefined || sb === undefined) {
+    throw new TypeError(
+      `same(): ${sa === undefined ? 'the first' : 'the second'} operand carries no declaration identity ` +
+        '(it is a plain object or a primitive). Compare with the companion, `Model.same(a, b)`, or build the ' +
+        'value with `Model.of(...)`.',
+    );
+  }
+  if (sa !== sb) return false;
+  const sch = (a as Record<symbol, unknown>)[SCHEMA] as Schema | undefined;
+  const other = (b as Record<symbol, unknown>)[SCHEMA] as Schema | undefined;
+  const ca = sch === undefined ? canonical(a) : canonicalOf(sch, a);
+  const cb = other === undefined ? canonical(b) : canonicalOf(other, b);
+  return ca === cb;
 }
 
 // ---------------------------------------------------------------------------
@@ -428,6 +481,11 @@ function cloneDefault(d: Json): Json {
 
 function mapObject(s: Schema & { k: 'object' }, v: unknown, o: MapOpts): unknown {
   if (!isObject(v)) return v;
+  const out = mapFields(s, v, o);
+  return o.dir === 'from' && s.sig !== undefined ? stamp(out, s.sig, s) : out;
+}
+
+function mapFields(s: Schema & { k: 'object' }, v: Record<string, unknown>, o: MapOpts): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const f of s.fields) {
     if (o.dir === 'from' && o.request && f.ro) continue;
@@ -466,7 +524,9 @@ function mapValue(s: Schema, v: unknown, o: MapOpts): unknown {
       const arm = typeof label === 'string' && Object.prototype.hasOwnProperty.call(s.arms, label) ? s.arms[label] : undefined;
       if (!arm) return v;
       const mapped = mapValue(arm, v, o);
-      return isObject(mapped) ? { ...mapped, [s.d]: label } : mapped;
+      if (!isObject(mapped)) return mapped;
+      const out = { ...mapped, [s.d]: label };
+      return o.dir === 'from' && s.sig !== undefined ? stamp(out, s.sig, s) : out;
     }
     case 'uuid':
       return o.normalize && typeof v === 'string' ? v.toLowerCase() : v;
@@ -501,20 +561,29 @@ export interface Companion<T> {
   readonly schema: Schema;
   validate(value: unknown, path?: string): Issue[];
   canonical(value: T): string;
+  /** Equality of two values of this declaration. Plain objects are fine: the declaration is implied. */
   same(a: T, b: T): boolean;
   toWire(value: T): unknown;
   fromWire(wire: unknown): T;
+  /** A copy of `value` that carries this declaration's identity, for the global `same()`. */
+  of(value: T): T;
 }
 
-export function companion<T>(sig: string, schema: Schema): Companion<T> {
+export function companion<T>(sig: string, base: Schema): Companion<T> {
+  const schema: Schema = base.k === 'object' || base.k === 'union' ? { ...base, sig } : base;
+  const foreign = (v: unknown): boolean => {
+    const s = sigOf(v);
+    return s !== undefined && s !== sig;
+  };
   return {
     sig,
     schema,
     validate: (value, path = '$') => validate(schema, value, path),
     canonical: (value) => canonicalOf(schema, value),
-    same: (a, b) => canonicalOf(schema, a) === canonicalOf(schema, b),
+    same: (a, b) => !foreign(a) && !foreign(b) && canonicalOf(schema, a) === canonicalOf(schema, b),
     toWire: (value) => toWire(schema, value),
     fromWire: (wire) => fromWire(schema, wire) as T,
+    of: (value) => stamp(isObject(value) ? ({ ...value } as T) : value, sig, schema),
   };
 }
 
@@ -672,6 +741,8 @@ export interface HandlerHooks {
   auth?: AuthHooks;
   middleware?: Readonly<Record<string, (ctx: RequestContext) => Promise<void>>>;
   onError?: (err: unknown, ctx: RequestContext) => void;
+  /** Validate request parameters and bodies against the contract (default true). Off: values are only decoded. */
+  validateRequests?: boolean;
   validateResponses?: boolean;
 }
 
@@ -764,6 +835,8 @@ function coerceMany(s: Schema, raw: string[]): unknown {
 interface Bound {
   value: Record<string, unknown>;
   issues: Issue[];
+  /** False when the handler runs with `validateRequests: false`. */
+  check: boolean;
 }
 
 function bindSimple(p: ParamSpec, raw: string[] | undefined, b: Bound): void {
@@ -773,7 +846,7 @@ function bindSimple(p: ParamSpec, raw: string[] | undefined, b: Bound): void {
     return;
   }
   const v = coerceMany(p.t, raw);
-  const issues = validate(p.t, v, loc, { wire: true });
+  const issues = b.check ? validate(p.t, v, loc, { wire: true }) : [];
   b.issues.push(...issues);
   if (issues.length === 0) b.value[p.name] = v;
 }
@@ -786,7 +859,7 @@ function bindQueryObject(p: ParamSpec, query: Map<string, string[]>, b: Bound): 
     const raw = query.get(f.w ?? f.n);
     if (raw !== undefined) wire[f.w ?? f.n] = coerceMany(f.t, raw);
   }
-  const issues = validate(p.t, wire, paramLoc(p), { wire: true, request: true });
+  const issues = b.check ? validate(p.t, wire, paramLoc(p), { wire: true, request: true }) : [];
   b.issues.push(...issues);
   if (issues.length === 0) b.value[p.name] = fromWire(p.t, wire, { request: true });
 }
@@ -810,13 +883,13 @@ async function bindBody(p: ParamSpec, req: VeldRequest, b: Bound): Promise<void>
     if (!p.o && !b.issues.some((i) => i.code === 'json')) push(b.issues, 'body', 'required', 'is required');
     return;
   }
-  const issues = validate(p.t, raw, 'body', { wire: true, request: true });
+  const issues = b.check ? validate(p.t, raw, 'body', { wire: true, request: true }) : [];
   b.issues.push(...issues);
   if (issues.length === 0) b.value[p.name] = fromWire(p.t, raw, { request: true });
 }
 
-async function bind(r: Route, m: RegExpExecArray, req: VeldRequest, headers: Headers, ws: boolean): Promise<Bound> {
-  const b: Bound = { value: {}, issues: [] };
+async function bind(r: Route, m: RegExpExecArray, req: VeldRequest, headers: Headers, ws: boolean, check: boolean): Promise<Bound> {
+  const b: Bound = { value: {}, issues: [], check };
   const query = parseQuery(req.query);
   for (const p of r.ep.params) {
     if (p.s) continue;
@@ -974,7 +1047,7 @@ async function guard(
     if (ctx.principal === null) return problem(std.unauthorized, 'Unauthorized', 401, ep.sig, {});
   }
   for (const name of ep.middleware) await hooks.middleware?.[name]?.(ctx);
-  const bound = await bind(r, m, req, ctx.headers, ws);
+  const bound = await bind(r, m, req, ctx.headers, ws, hooks.validateRequests !== false);
   if (bound.issues.length > 0) {
     return problem(std.validation, 'ValidationError', 422, ep.sig, { issues: bound.issues });
   }
@@ -1253,7 +1326,8 @@ async function runWs(
     } catch {
       return invalid([{ path: 'message', code: 'json', message: 'message is not valid JSON' }]);
     }
-    const issues = validate(incomingSchema, raw, 'message', { wire: true, request: true });
+    const issues =
+      hooks.validateRequests === false ? [] : validate(incomingSchema, raw, 'message', { wire: true, request: true });
     if (issues.length > 0) return invalid(issues);
     inbox.push(fromWire(incomingSchema, raw, { request: true }));
   };
@@ -1386,8 +1460,70 @@ export interface CallInit {
   signal?: AbortSignalLike;
 }
 
+/**
+ * Reconnect with exponential backoff after a connection failure (a refused or broken connection,
+ * an abnormal WebSocket close). A typed error, a normal end of the stream and an abort never
+ * reconnect. Off unless given; the React and Vue hooks turn it on by default.
+ */
+export interface Reconnect {
+  /** Delay before the first retry. Default: 1000. */
+  initialMs?: number;
+  /** The delay doubles after every failed attempt up to this. Default: 30000. */
+  maxMs?: number;
+  /** Consecutive failed attempts before the failure is thrown. Default: 10. */
+  retries?: number;
+}
+
+/** `reconnect` of a streaming call: a policy, or `false` to switch off the default of a hook. */
+export interface ReconnectInit {
+  reconnect?: Reconnect | false;
+}
+
+interface ReconnectPolicy {
+  initialMs: number;
+  maxMs: number;
+  retries: number;
+}
+
+function reconnectPolicy(r: Reconnect | false | undefined): ReconnectPolicy | null {
+  if (r === undefined || r === false) return null;
+  return { initialMs: r.initialMs ?? 1000, maxMs: r.maxMs ?? 30000, retries: r.retries ?? 10 };
+}
+
+/** The delay before retry number `attempt` (0-based): `initialMs` doubling up to `maxMs`. */
+export function backoffMs(policy: Reconnect, attempt: number): number {
+  const initial = policy.initialMs ?? 1000;
+  const max = policy.maxMs ?? 30000;
+  return Math.min(max, initial * 2 ** Math.min(attempt, 30));
+}
+
+/** Errors that mean "the connection failed", as opposed to a typed or protocol error. */
+const RETRYABLE = new WeakSet<object>();
+
+function retryable<E extends object>(e: E): E {
+  RETRYABLE.add(e);
+  return e;
+}
+
+function isAborted(signal: AbortSignalLike | undefined): boolean {
+  return signal?.aborted === true;
+}
+
+function sleep(ms: number, signal: AbortSignalLike | undefined): Promise<void> {
+  type Timer = (fn: () => void, ms: number) => unknown;
+  const set = (globalThis as { setTimeout?: Timer }).setTimeout;
+  return new Promise((resolve) => {
+    if (!set) return resolve();
+    const t = set(resolve, ms);
+    signal?.addEventListener?.('abort', () => {
+      (globalThis as { clearTimeout?: (t: unknown) => void }).clearTimeout?.(t);
+      resolve();
+    });
+  });
+}
+
 /** Options of a Server-Sent Events call. */
-export interface StreamInit extends CallInit {
+export interface StreamInit extends CallInit, ReconnectInit {
   /** Sent as `Last-Event-ID`, to resume after the last event a previous call delivered. */
   lastEventId?: string;
   /** Called with the `id` of every event that has one. */
@@ -1395,7 +1531,7 @@ export interface StreamInit extends CallInit {
 }
 
 /** Options of a WebSocket call. Aborting the signal closes the socket. */
-export type WsInit = CallInit;
+export interface WsInit extends CallInit, ReconnectInit {}
 
 /**
  * A WebSocket endpoint seen from the client. Iterate it for the server's messages: it ends when
@@ -1578,8 +1714,9 @@ export class ClientCore {
   /**
    * Server-Sent Events: an `AsyncIterable` that opens the request when iteration starts. It ends
    * when the server ends the stream or the signal aborts, and throws the typed error of a failed
-   * response or of a final `error` event. There is no automatic reconnect: call again with
-   * `lastEventId` to resume.
+   * response or of a final `error` event. There is no automatic reconnect unless `init.reconnect`
+   * is given: then a broken or refused connection is retried with exponential backoff, resuming
+   * with `Last-Event-ID`. Otherwise call again with `lastEventId` to resume.
    */
   stream(ep: EndpointSpec, input: object, init: StreamInit = {}): AsyncIterable<unknown> {
     const req = input as Record<string, unknown>;
@@ -1588,6 +1725,41 @@ export class ClientCore {
 
   private async *events(ep: EndpointSpec, req: Record<string, unknown>, init: StreamInit): AsyncGenerator<unknown> {
     this.check(ep, req);
+    const policy = reconnectPolicy(init.reconnect);
+    let lastId = init.lastEventId;
+    let failures = 0;
+    for (;;) {
+      let delivered = false;
+      try {
+        yield* this.eventsOnce(ep, req, {
+          ...(init.signal ? { signal: init.signal } : {}),
+          ...(lastId === undefined ? {} : { lastEventId: lastId }),
+          onEventId: (id) => {
+            lastId = id;
+            init.onEventId?.(id);
+          },
+          onItem: () => {
+            delivered = true;
+          },
+        });
+        return;
+      } catch (err) {
+        const again = typeof err === 'object' && err !== null && RETRYABLE.has(err);
+        if (policy === null || !again || isAborted(init.signal)) throw err;
+        if (delivered) failures = 0;
+        if (failures >= policy.retries) throw err;
+        await sleep(backoffMs(policy, failures), init.signal);
+        failures += 1;
+        if (isAborted(init.signal)) return;
+      }
+    }
+  }
+
+  private async *eventsOnce(
+    ep: EndpointSpec,
+    req: Record<string, unknown>,
+    init: StreamInit & { onItem: () => void },
+  ): AsyncGenerator<unknown> {
     const link = linkAbort(init.signal);
     let reader: StreamReaderLike | undefined;
     try {
@@ -1606,12 +1778,14 @@ export class ClientCore {
           chunk = await reader.read();
         } catch (cause) {
           if (link.signal.aborted) return;
-          throw new VeldTransportError(`${ep.method} ${ep.path}: the stream broke`, cause);
+          throw retryable(new VeldTransportError(`${ep.method} ${ep.path}: the stream broke`, cause));
         }
         if (chunk.done) return;
         for (const message of parser.push(decoder.decode(chunk.value, { stream: true }))) {
           if (message.id !== undefined) init.onEventId?.(message.id);
-          yield this.eventValue(ep, message);
+          const value = this.eventValue(ep, message);
+          init.onItem();
+          yield value;
         }
       }
     } catch (err) {
@@ -1682,25 +1856,50 @@ export class ClientCore {
         fail(new VeldTransportError(`${ep.method} ${ep.path}: a frame is not valid JSON`, cause));
       }
     };
+    const policy = reconnectPolicy(init.reconnect);
+    let failures = 0;
+    // A connection failure: retry with backoff when a policy is set and attempts remain, else fail.
+    const lost = (err: Error): void => {
+      if (ended) return;
+      if (policy === null || failures >= policy.retries) return fail(err);
+      const delay = backoffMs(policy, failures);
+      failures += 1;
+      sleep(delay, init.signal)
+        .then(() => (ended ? undefined : open()))
+        .catch(fail);
+    };
     const open = async (): Promise<void> => {
       const url = await this.wsUrl(ep, req);
       if (ended) return;
       const s = new Socket(url);
       socket = s;
       let connected = false;
+      let handled = false;
+      let openedAt = 0;
+      const failed = (err: Error): void => {
+        if (handled || socket !== s) return;
+        handled = true;
+        // A connection that lived at least `maxMs` (or delivered a frame) was a healthy one: start counting again.
+        if (policy !== null && connected && Date.now() - openedAt >= policy.maxMs) failures = 0;
+        lost(err);
+      };
       s.onopen = () => {
         connected = true;
+        openedAt = Date.now();
         for (const text of outbox.splice(0)) s.send(text);
       };
-      s.onmessage = (ev) => onFrame(typeof ev.data === 'string' ? ev.data : String(ev.data));
+      s.onmessage = (ev) => {
+        failures = 0;
+        onFrame(typeof ev.data === 'string' ? ev.data : String(ev.data));
+      };
       // Some runtimes report a refused connection as `error` alone, with no `close` after it.
       s.onerror = () => {
-        if (!connected) fail(new VeldTransportError(`${ep.method} ${ep.path}: could not connect`));
+        if (!connected) failed(new VeldTransportError(`${ep.method} ${ep.path}: could not connect`));
       };
       s.onclose = (ev) => {
         if (ended) return;
         if (sawError || ev.code === 1000 || ev.code === 1005) return end();
-        fail(new VeldTransportError(`${ep.method} ${ep.path}: the WebSocket closed (code ${ev.code})`));
+        failed(new VeldTransportError(`${ep.method} ${ep.path}: the WebSocket closed (code ${ev.code})`));
       };
     };
     open().catch(fail);
@@ -1785,7 +1984,7 @@ export class ClientCore {
     try {
       return await this.doFetch(`${this.baseUrl}${path}${qs === '' ? '' : `?${qs}`}`, fetchInit);
     } catch (cause) {
-      throw new VeldTransportError(`${ep.method} ${path} failed`, cause);
+      throw retryable(new VeldTransportError(`${ep.method} ${path} failed`, cause));
     }
   }
 
