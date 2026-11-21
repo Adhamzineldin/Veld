@@ -71,6 +71,9 @@ fn config(a: &Answers) -> (String, Vec<String>) {
     let mut t = String::new();
     let mut ts_outs = Vec::new();
     t.push_str(&format!("[project]\nname = \"{}\"\n", a.name));
+    if !a.description.is_empty() {
+        t.push_str(&format!("description = {}\n", toml_string(&a.description)));
+    }
     if a.is_workspace() {
         t.push('\n');
         for (i, svc) in a.services.iter().enumerate() {
@@ -92,8 +95,25 @@ fn config(a: &Answers) -> (String, Vec<String>) {
     for (svc, server) in &a.servers {
         server_target(a, &mut t, &mut ts_outs, svc, server);
     }
-    client_target(a, &mut t, &mut ts_outs);
+    for client in &a.clients {
+        client_target(a, client, &mut t, &mut ts_outs);
+    }
     (t, ts_outs)
+}
+
+/// A TOML basic string.
+fn toml_string(text: &str) -> String {
+    let mut s = String::from("\"");
+    for c in text.chars() {
+        match c {
+            '"' => s.push_str("\\\""),
+            '\\' => s.push_str("\\\\"),
+            c if c.is_control() => s.push(' '),
+            c => s.push(c),
+        }
+    }
+    s.push('"');
+    s
 }
 
 fn server_target(a: &Answers, t: &mut String, ts_outs: &mut Vec<String>, svc: &str, s: &Server) {
@@ -138,8 +158,8 @@ fn server_target(a: &Answers, t: &mut String, ts_outs: &mut Vec<String>, svc: &s
     t.push('\n');
 }
 
-fn client_target(a: &Answers, t: &mut String, ts_outs: &mut Vec<String>) {
-    match &a.client {
+fn client_target(a: &Answers, client: &Client, t: &mut String, ts_outs: &mut Vec<String>) {
+    match client {
         Client::None => {}
         Client::Ts(fw) => {
             let default = if a.is_workspace() {
@@ -258,8 +278,12 @@ mod tests {
             name: "shop".to_string(),
             services,
             servers,
-            client,
+            clients: match client {
+                Client::None => Vec::new(),
+                c @ (Client::Ts(_) | Client::Java) => vec![c],
+            },
             outs: Vec::new(),
+            description: String::new(),
         }
     }
 
@@ -338,6 +362,20 @@ mod tests {
         let f = files(&a);
         assert!(f[0].text.contains("out = \"server/src/generated\""));
         assert!(f.iter().any(|x| x.path == "server/package.json"));
+    }
+
+    #[test]
+    fn description_is_escaped_and_two_clients_render() {
+        let mut a = answers(&[], Server::Node("express".into()), Client::Ts(None));
+        a.description = "Say \"hi\" \\ now".into();
+        a.clients.push(Client::Java);
+        let p = valid(&a);
+        assert_eq!(p.targets.len(), 3);
+        assert!(
+            files(&a)[0]
+                .text
+                .contains(r#"description = "Say \"hi\" \\ now""#)
+        );
     }
 
     #[test]

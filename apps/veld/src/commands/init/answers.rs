@@ -85,6 +85,27 @@ impl Client {
     }
 }
 
+impl Client {
+    /// Parses every `--client` value; `none` adds nothing and a kind may appear only once.
+    pub fn parse_list(specs: &[String]) -> Result<Vec<Self>> {
+        let mut out: Vec<Self> = Vec::new();
+        for spec in specs {
+            let c = Self::parse(spec)?;
+            if c == Self::None {
+                continue;
+            }
+            if out
+                .iter()
+                .any(|o| std::mem::discriminant(o) == std::mem::discriminant(&c))
+            {
+                return Err(user(format!("client `{spec}` is given twice")));
+            }
+            out.push(c);
+        }
+        Ok(out)
+    }
+}
+
 /// Everything `init` needs to write the project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Answers {
@@ -93,9 +114,12 @@ pub struct Answers {
     pub services: Vec<String>,
     /// `(service, server)`; a single-service project has one entry for `name`.
     pub servers: Vec<(String, Server)>,
-    pub client: Client,
+    /// The client targets; empty for none.
+    pub clients: Vec<Client>,
     /// Output folder overrides by target name.
     pub outs: Vec<(String, String)>,
+    /// One line for `[project].description`; empty for none.
+    pub description: String,
 }
 
 impl Answers {
@@ -230,6 +254,19 @@ mod tests {
         for bad in ["python", "typescript:svelte", "java:x"] {
             assert!(Client::parse(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn client_lists_combine_and_reject_duplicates() {
+        let l = |v: &[&str]| {
+            Client::parse_list(&v.iter().map(|s| (*s).to_string()).collect::<Vec<_>>())
+        };
+        assert_eq!(
+            l(&["typescript:vue", "java"]).unwrap(),
+            [Client::Ts(Some("vue".into())), Client::Java]
+        );
+        assert!(l(&["none"]).unwrap().is_empty());
+        assert!(l(&["typescript", "ts:react"]).is_err());
     }
 
     #[test]
