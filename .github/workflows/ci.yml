@@ -194,3 +194,23 @@ jobs:
           export VELD_PG_BIN
           test -x "$VELD_PG_BIN/initdb" || { echo "no PostgreSQL server binaries in $VELD_PG_BIN"; ls /usr/lib/postgresql; exit 1; }
           cargo test -p veld --test registry_e2e -- --nocapture
+
+  jetbrains:
+    name: JetBrains plugin builds and its tests pass
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/jetbrains
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+      - name: Build the plugin zip
+        run: ./gradlew buildPlugin --no-daemon
+      - name: Test
+        run: ./gradlew test --no-daemon
