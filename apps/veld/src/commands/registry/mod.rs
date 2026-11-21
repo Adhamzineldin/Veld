@@ -5,6 +5,7 @@ mod add;
 mod install;
 mod login;
 mod logout;
+mod lookup;
 mod publish;
 
 use std::path::PathBuf;
@@ -29,8 +30,9 @@ pub fn run(ui: &Ui, config: Option<&std::path::Path>, command: &Command) -> Opti
         Command::Add(a) => add::run(ui, config, a),
         Command::Publish(a) => publish::run(ui, config, a),
         Command::Install(a) => install::run(ui, config, a),
+        Command::Registry(c) => lookup::run(ui, config, c),
         Command::Init(_)
-        | Command::Check
+        | Command::Check(_)
         | Command::Generate(_)
         | Command::Watch(_)
         | Command::Clean(_)
@@ -38,9 +40,10 @@ pub fn run(ui: &Ui, config: Option<&std::path::Path>, command: &Command) -> Opti
         | Command::Fmt(_)
         | Command::Diff(_)
         | Command::Export(_)
-        | Command::Migrate(_)
         | Command::Plugin(_)
         | Command::Debug(_)
+        | Command::Doctor
+        | Command::Completions { .. }
         | Command::Lsp => return None,
     })
 }

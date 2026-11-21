@@ -192,6 +192,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.6.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a35200383f20018d41c14d1ab19c1727c697f544492143f7d93aa39f0187848"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.6.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1506,6 +1515,7 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "clap",
+ "clap_complete",
  "cliclack",
  "console",
  "ctrlc",
@@ -1514,6 +1524,7 @@ dependencies = [
  "predicates",
  "semver",
  "serde_json",
+ "similar",
  "tempfile",
  "time",
  "toml",
@@ -1522,6 +1533,7 @@ dependencies = [
  "veld-compiler",
  "veld-emit-java",
  "veld-emit-node",
+ "veld-emit-rust",
  "veld-emit-typescript",
  "veld-ir",
  "veld-lsp",
@@ -1595,6 +1607,23 @@ dependencies = [
  "veld-emit-typescript",
  "veld-ir",
  "veld-project",
+]
+
+[[package]]
+name = "veld-emit-rust"
+version = "2.0.0-beta.1"
+dependencies = [
+ "insta",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "veld-codegen",
+ "veld-compiler",
+ "veld-emit-conformance",
+ "veld-emit-node",
+ "veld-emit-typescript",
+ "veld-ir",
+ "veld-test-support",
 ]
 
 [[package]]
@@ -1691,10 +1720,32 @@ dependencies = [
  "insta",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "veld-codegen",
  "veld-compiler",
  "veld-ir",
+ "veld-test-support",
+]
+
+[[package]]
+name = "veld-wasm"
+version = "2.0.0-beta.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "veld-codegen",
+ "veld-compiler",
+ "veld-emit-java",
+ "veld-emit-node",
+ "veld-emit-rust",
+ "veld-emit-typescript",
+ "veld-ir",
+ "veld-project",
+ "veld-tools",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1987,6 +2038,7 @@ dependencies = [
  "tempfile",
  "veld-compiler",
  "veld-ir",
+ "veld-project",
 ]
 
 [[package]]

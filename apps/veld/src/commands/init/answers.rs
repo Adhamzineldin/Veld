@@ -11,6 +11,8 @@ pub enum Server {
     Node(String),
     /// `java` with a framework: jdk or spring.
     Java(String),
+    /// `rust` with a framework: axum.
+    Rust(String),
     None,
 }
 
@@ -20,15 +22,19 @@ pub enum Client {
     /// `typescript`, with an optional framework (`react`, `vue`).
     Ts(Option<String>),
     Java,
+    /// `rust` with a transport: reqwest or ureq.
+    Rust(String),
     None,
 }
 
 pub const NODE_FRAMEWORKS: [&str; 5] = ["express", "fastify", "hono", "nest", "node-http"];
 pub const JAVA_FRAMEWORKS: [&str; 2] = ["jdk", "spring"];
+pub const RUST_SERVER_FRAMEWORKS: [&str; 1] = ["axum"];
+pub const RUST_CLIENT_FRAMEWORKS: [&str; 2] = ["reqwest", "ureq"];
 pub const TS_FRAMEWORKS: [&str; 2] = ["react", "vue"];
 
 impl Server {
-    /// Parses `node`, `node:fastify`, `java`, `java:spring` or `none`.
+    /// Parses `node`, `node:fastify`, `java`, `java:spring`, `rust` or `none`.
     pub fn parse(text: &str) -> Result<Self> {
         let text = text.trim().to_ascii_lowercase();
         let (kind, fw) = match text.split_once(':') {
@@ -48,18 +54,20 @@ impl Server {
         match kind {
             "node" => Ok(Self::Node(pick(fw, &NODE_FRAMEWORKS, "express")?)),
             "java" => Ok(Self::Java(pick(fw, &JAVA_FRAMEWORKS, "jdk")?)),
+            "rust" => Ok(Self::Rust(pick(fw, &RUST_SERVER_FRAMEWORKS, "axum")?)),
             "none" if fw.is_none() => Ok(Self::None),
             other => Err(user(format!(
-                "unknown server `{other}` (valid: node[:{}], java[:{}], none)",
+                "unknown server `{other}` (valid: node[:{}], java[:{}], rust[:{}], none)",
                 NODE_FRAMEWORKS.join("|"),
-                JAVA_FRAMEWORKS.join("|")
+                JAVA_FRAMEWORKS.join("|"),
+                RUST_SERVER_FRAMEWORKS.join("|")
             ))),
         }
     }
 }
 
 impl Client {
-    /// Parses `typescript`, `typescript:react`, `typescript:vue`, `java` or `none`.
+    /// Parses `typescript`, `typescript:react`, `typescript:vue`, `java`, `rust`, `rust:ureq` or `none`.
     pub fn parse(text: &str) -> Result<Self> {
         let text = text.trim().to_ascii_lowercase();
         let (kind, fw) = match text.split_once(':') {
@@ -76,10 +84,19 @@ impl Client {
                 TS_FRAMEWORKS.join(", ")
             ))),
             ("java", None) => Ok(Self::Java),
+            ("rust", None) => Ok(Self::Rust("reqwest".to_string())),
+            ("rust", Some(f)) if RUST_CLIENT_FRAMEWORKS.contains(&f) => {
+                Ok(Self::Rust(f.to_string()))
+            }
+            ("rust", Some(f)) => Err(user(format!(
+                "unknown client framework `{f}` (valid: {})",
+                RUST_CLIENT_FRAMEWORKS.join(", ")
+            ))),
             ("none", None) => Ok(Self::None),
             _ => Err(user(format!(
-                "unknown client `{text}` (valid: typescript[:{}], java, none)",
-                TS_FRAMEWORKS.join("|")
+                "unknown client `{text}` (valid: typescript[:{}], java, rust[:{}], none)",
+                TS_FRAMEWORKS.join("|"),
+                RUST_CLIENT_FRAMEWORKS.join("|")
             ))),
         }
     }
@@ -109,6 +126,8 @@ impl Client {
 /// Everything `init` needs to write the project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Answers {
+    /// The starter contracts of a single-service project.
+    pub template: crate::cli::Template,
     pub name: String,
     /// Empty for a single-service project (the one service is `name`).
     pub services: Vec<String>,
@@ -116,6 +135,10 @@ pub struct Answers {
     pub servers: Vec<(String, Server)>,
     /// The client targets; empty for none.
     pub clients: Vec<Client>,
+    /// `(service, base URL)` of every service of a workspace; empty for a single service.
+    pub base_urls: Vec<(String, String)>,
+    /// `(service, consumed services)` of a workspace. Nothing is consumed unless the user says so.
+    pub consumes: Vec<(String, Vec<String>)>,
     /// Output folder overrides by target name.
     pub outs: Vec<(String, String)>,
     /// One line for `[project].description`; empty for none.
@@ -128,6 +151,28 @@ impl Answers {
         !self.services.is_empty()
     }
 
+    /// The base URL of `service`.
+    #[must_use]
+    pub fn base_url(&self, service: &str) -> String {
+        self.base_urls
+            .iter()
+            .find(|(s, _)| s == service)
+            .map_or_else(
+                || default_base_url(self.services.iter().position(|s| s == service).unwrap_or(0)),
+                |(_, u)| u.clone(),
+            )
+    }
+
+    /// The services `service` consumes.
+    #[must_use]
+    pub fn consumes_of(&self, service: &str) -> Vec<String> {
+        self.consumes
+            .iter()
+            .find(|(s, _)| s == service)
+            .map(|(_, c)| c.clone())
+            .unwrap_or_default()
+    }
+
     /// The output folder of `target`: the override, else `default`.
     #[must_use]
     pub fn out(&self, target: &str, default: &str) -> String {
@@ -136,6 +181,82 @@ impl Answers {
             .find(|(t, _)| t == target)
             .map_or_else(|| default.to_string(), |(_, o)| o.clone())
     }
+}
+
+/// The suggested base URL of the `index`-th service of a workspace.
+#[must_use]
+pub fn default_base_url(index: usize) -> String {
+    format!("http://localhost:{}", 3001 + index)
+}
+
+/// A base URL: `http://` or `https://`, then a host.
+pub fn check_base_url(url: &str) -> Result<String> {
+    let u = url.trim();
+    let host = u
+        .strip_prefix("http://")
+        .or_else(|| u.strip_prefix("https://"));
+    match host {
+        Some(h) if !h.is_empty() && !u.contains('"') && !u.contains(char::is_whitespace) => {
+            Ok(u.trim_end_matches('/').to_string())
+        }
+        _ => Err(user(format!(
+            "`{u}` is not a base URL (use http://host:port or https://host)"
+        ))),
+    }
+}
+
+/// Parses `--base-url service=URL` values; services without one get `default_base_url`.
+pub fn assign_base_urls(services: &[String], specs: &[String]) -> Result<Vec<(String, String)>> {
+    let mut urls: Vec<(String, String)> = services
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.clone(), default_base_url(i)))
+        .collect();
+    for spec in specs {
+        let (svc, url) = spec
+            .split_once('=')
+            .ok_or_else(|| user(format!("`--base-url {spec}`: use SERVICE=URL")))?;
+        let slot = urls
+            .iter_mut()
+            .find(|(s, _)| s == svc.trim())
+            .ok_or_else(|| user(format!("`--base-url {spec}`: no service `{svc}`")))?;
+        slot.1 = check_base_url(url)?;
+    }
+    Ok(urls)
+}
+
+/// Parses `--consumes service=a,b` values. Nothing is assigned for a service that has none.
+pub fn assign_consumes(
+    services: &[String],
+    specs: &[String],
+) -> Result<Vec<(String, Vec<String>)>> {
+    let mut out: Vec<(String, Vec<String>)> = Vec::new();
+    for spec in specs {
+        let (svc, list) = spec
+            .split_once('=')
+            .ok_or_else(|| user(format!("`--consumes {spec}`: use SERVICE=a,b")))?;
+        let svc = svc.trim();
+        if !services.iter().any(|s| s == svc) {
+            return Err(user(format!("`--consumes {spec}`: no service `{svc}`")));
+        }
+        let mut wanted: Vec<String> = Vec::new();
+        for raw in list.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            if raw == svc {
+                return Err(user(format!(
+                    "`--consumes {spec}`: a service cannot consume itself"
+                )));
+            }
+            if !services.iter().any(|s| s == raw) {
+                return Err(user(format!("`--consumes {spec}`: no service `{raw}`")));
+            }
+            if !wanted.iter().any(|w| w == raw) {
+                wanted.push(raw.to_string());
+            }
+        }
+        out.retain(|(s, _)| s != svc);
+        out.push((svc.to_string(), wanted));
+    }
+    Ok(out)
 }
 
 /// Letters, digits and `_` only (the name becomes a package name).
@@ -288,5 +409,31 @@ mod tests {
         assert_eq!(s[0].1, Server::Java("spring".into()));
         assert_eq!(s[1].1, Server::Node("hono".into()));
         assert!(assign_servers(&svcs, &["c=node".into()]).is_err());
+    }
+
+    #[test]
+    fn base_urls_default_per_service_and_flags_override() {
+        let svcs = vec!["a".to_string(), "b".to_string()];
+        let u = assign_base_urls(&svcs, &["b=https://b.example.com/".into()]).unwrap();
+        assert_eq!(u[0].1, "http://localhost:3001");
+        assert_eq!(u[1].1, "https://b.example.com");
+        for bad in ["c=http://x", "a", "a=ftp://x", "a=http://"] {
+            assert!(assign_base_urls(&svcs, &[bad.into()]).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn consumes_are_only_what_was_asked_for() {
+        let svcs = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        assert!(assign_consumes(&svcs, &[]).unwrap().is_empty());
+        let c = assign_consumes(&svcs, &["a=b,c".into(), "c=a".into()]).unwrap();
+        assert_eq!(
+            c[0],
+            ("a".to_string(), vec!["b".to_string(), "c".to_string()])
+        );
+        assert_eq!(c[1], ("c".to_string(), vec!["a".to_string()]));
+        for bad in ["a=a", "a=z", "z=a", "a"] {
+            assert!(assign_consumes(&svcs, &[bad.into()]).is_err(), "{bad}");
+        }
     }
 }

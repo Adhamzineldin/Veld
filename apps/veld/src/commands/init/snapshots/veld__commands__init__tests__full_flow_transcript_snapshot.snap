@@ -1,6 +1,5 @@
 ---
 source: apps/veld/src/commands/init/mod.rs
-assertion_line: 505
 expression: out
 ---
 ┌  veld 2.0  contract-first API code generator
@@ -26,7 +25,8 @@ expression: out
 ◆  Server stack for `users`
 │  ✓ 1) Node  TypeScript server
 │    2) Java  Java 17+ server
-│    3) None  contracts and clients only
+│    3) Rust  Rust server (axum)
+│    4) None  contracts and clients only
 │  choose [1] 1
 ◇  Server stack for `users`  Node
 │
@@ -42,7 +42,8 @@ expression: out
 ◆  Server stack for `billing`
 │  ✓ 1) Node  TypeScript server
 │    2) Java  Java 17+ server
-│    3) None  contracts and clients only
+│    3) Rust  Rust server (axum)
+│    4) None  contracts and clients only
 │  choose [1] 2
 ◇  Server stack for `billing`  Java
 │
@@ -52,9 +53,28 @@ expression: out
 │  choose [1] 2
 ◇  Java framework  spring
 │
+◆  Base URL of `users`
+│  > [http://localhost:3001] 
+◇  Base URL of `users`  http://localhost:3001
+│
+◆  Base URL of `billing`
+│  > [http://localhost:3002] 
+◇  Base URL of `billing`  http://localhost:3002
+│
+◆  Which services does `users` call? (space selects, none is fine)
+│    1) billing  gets a generated client
+│  numbers, comma-separated, `-` for none [] 1
+◇  Which services does `users` call? (space selects, none is fine)  billing
+│
+◆  Which services does `billing` call? (space selects, none is fine)
+│    1) users  gets a generated client
+│  numbers, comma-separated, `-` for none [] -
+◇  Which services does `billing` call? (space selects, none is fine)  none
+│
 ◆  Client stacks (space selects)
 │  ✓ 1) TypeScript  typed fetch client
 │    2) Java  typed client for JVM apps
+│    3) Rust  typed client, bring your own HTTP stack
 │  numbers, comma-separated, `-` for none [1] 1,2
 ◇  Client stacks (space selects)  TypeScript, Java
 │
@@ -103,13 +123,14 @@ expression: out
 │  layout   microservices workspace (2 services)
 │  servers  users: Node + fastify
 │           billing: Java + spring
+│  calls    users -> billing
 │  clients  TypeScript + vue, Java
 │  output   users-api -> svc/users/gen
 │           billing-api -> services/billing/src/main/java
 │           web -> web/src/generated
 │           java-client -> clients/java/src/main/java
 │  about    Shop APIs
-│  files    5 to create
+│  files    6 to create
 │
 └─────────────────────────────────────────────────────────
 ◆  Create this project?
@@ -117,7 +138,7 @@ expression: out
 ◇  Create this project?  yes
 │
 ◆  Writing files...
-✓  Created 5 files
+✓  Created 6 files
 │
 ◇  Files ──────────────────────────────────────────────────
 │
@@ -126,6 +147,7 @@ expression: out
 │  + contracts/billing/billing.veld
 │  + svc/users/package.json
 │  + web/package.json
+│  + README.md
 │  + created .gitignore (ignores .veld/ and node_modules/)
 │
 └──────────────────────────────────────────────────────────

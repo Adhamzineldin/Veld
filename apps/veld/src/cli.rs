@@ -25,6 +25,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub no_color: bool,
 
+    /// Show phases, write-plan entries and timings (repeat for more detail)
+    #[arg(short, long, global = true, action = clap::ArgAction::Count)]
+    pub verbose: u8,
+
     #[command(subcommand)]
     pub command: Command,
 }
@@ -33,26 +37,27 @@ pub struct Cli {
 pub enum Command {
     /// Create veld.toml and an example contract
     Init(InitArgs),
-    /// Compile all contracts and report diagnostics
-    Check,
+    /// Compile all contracts, lint them and report diagnostics
+    Check(CheckArgs),
     /// Generate code for every target (or one, by name)
     Generate(GenerateArgs),
-    /// Regenerate whenever a contract, veld.toml or veld.lock changes (same as `generate --watch`)
+    /// Same as `generate --watch`
+    #[command(hide = true)]
     Watch(WatchArgs),
     /// Remove generated files that you have not modified
     Clean(CleanArgs),
     /// Wire generated targets into your apps (package.json, pom.xml, build.gradle)
     Setup(SetupArgs),
+    /// Check the project, its tools and its environment, and say how to fix problems
+    Doctor,
 
     /// Format .veld files canonically
     Fmt(FmtArgs),
     /// Show breaking and non-breaking contract changes
     Diff(DiffArgs),
-    /// Export the contracts as OpenAPI or as IR JSON
+    /// Export OpenAPI or the compiled IR
     #[command(subcommand)]
     Export(ExportCommand),
-    /// Convert a v1 project (veld.config.json and .veld files) to v2
-    Migrate(MigrateArgs),
     /// Create and test emitter plugins
     #[command(subcommand)]
     Plugin(PluginCommand),
@@ -60,9 +65,15 @@ pub enum Command {
     /// Internal commands for debugging the compiler
     #[command(hide = true, subcommand)]
     Debug(DebugCommand),
-    /// Language server (not yet implemented)
+    /// Language server
     #[command(hide = true)]
     Lsp,
+    /// Print a shell completion script
+    #[command(hide = true)]
+    Completions {
+        /// The shell to generate for
+        shell: clap_complete::Shell,
+    },
 
     /// Add a registry package to veld.toml, resolve it and pin it in veld.lock
     Add(AddArgs),
@@ -74,8 +85,95 @@ pub enum Command {
     Login(LoginArgs),
     /// Forget the stored registry token
     Logout(LogoutArgs),
+    /// Look things up in the registry: info, search, versions, token
+    #[command(subcommand)]
+    Registry(RegistryCommand),
 }
 
+/// `veld registry`: the read-only and account commands that have no natural home elsewhere
+/// (login, logout, add, install and publish stay top-level because they change a project).
+#[derive(Debug, Subcommand)]
+pub enum RegistryCommand {
+    /// Show the registry URL in use and the account behind the stored token
+    Info(RegistryOpts),
+    /// Search packages by name or description
+    Search {
+        /// Text to search for (default: list everything visible)
+        query: Option<String>,
+        #[command(flatten)]
+        opts: RegistryOpts,
+    },
+    /// List the published versions of a package
+    Versions {
+        /// The package, as @org/name
+        package: String,
+        #[command(flatten)]
+        opts: RegistryOpts,
+    },
+    /// Manage API tokens
+    #[command(subcommand)]
+    Token(TokenCommand),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum TokenCommand {
+    /// Create an API token (it is printed once)
+    Create {
+        /// A label for the token
+        #[arg(long)]
+        name: String,
+        /// Scopes, comma-separated: read, write, delete
+        #[arg(long, value_delimiter = ',', default_value = "read")]
+        scopes: Vec<String>,
+        /// Days until it expires (default: never)
+        #[arg(long, value_name = "DAYS")]
+        expires_days: Option<u32>,
+        #[command(flatten)]
+        opts: RegistryOpts,
+    },
+}
+
+#[derive(Debug, Args, Default)]
+pub struct RegistryOpts {
+    /// Registry URL (default: veld.toml `[registry]`, then $VELD_REGISTRY, then the last login)
+    #[arg(long, value_name = "URL")]
+    pub registry: Option<String>,
+    /// Allow a plain-http registry that is not on localhost
+    #[arg(long)]
+    pub allow_insecure: bool,
+}
+
+/// `veld check`.
+#[derive(Debug, Args, Default)]
+pub struct CheckArgs {
+    /// Report only diagnostics in these .veld files or directories (the project still compiles whole)
+    pub paths: Vec<PathBuf>,
+    /// Skip the lint rules
+    #[arg(long)]
+    pub no_lint: bool,
+    /// Lint warnings fail the check too
+    #[arg(long)]
+    pub strict: bool,
+    /// Print the service dependency graph instead of the summary
+    #[arg(long, value_name = "FORMAT", num_args = 0..=1, default_missing_value = "text", value_enum)]
+    pub graph: Option<GraphFormat>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum GraphFormat {
+    Text,
+    Dot,
+    Json,
+}
+
+/// `veld init --template`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Template {
+    /// One tiny service with a `hello` endpoint
+    Hello,
+    /// Users CRUD, auth (login, token) and a reusable `Page` type
+    Crud,
+}
 #[derive(Debug, Args)]
 pub struct InitArgs {
     /// Project name (default: the directory name)
@@ -84,13 +182,19 @@ pub struct InitArgs {
     /// Scaffold a microservices workspace; optionally the comma-separated service names
     #[arg(long, value_name = "SERVICES", num_args = 0..=1, default_missing_value = "users,orders")]
     pub workspace: Option<String>,
-    /// Server target: node[:express|fastify|hono|nest|node-http], java[:jdk|spring] or none.
+    /// Server target: node[:express|fastify|hono|nest|node-http], java[:jdk|spring], rust[:axum] or none.
     /// Prefix with `service=` to set one service of a workspace
     #[arg(long, value_name = "KIND[:FRAMEWORK]")]
     pub server: Vec<String>,
-    /// Client targets (repeat or comma-separate): typescript[:react|vue], java or none
+    /// Client targets (repeat or comma-separate): typescript[:react|vue], java, rust[:reqwest|ureq] or none
     #[arg(long, value_name = "KIND[:FRAMEWORK]", value_delimiter = ',')]
     pub client: Vec<String>,
+    /// Base URL of a workspace service, as SERVICE=URL (repeatable; default http://localhost:300N)
+    #[arg(long, value_name = "SERVICE=URL")]
+    pub base_url: Vec<String>,
+    /// Services a workspace service consumes, as SERVICE=a,b (repeatable; nothing is consumed by default)
+    #[arg(long, value_name = "SERVICE=A,B")]
+    pub consumes: Vec<String>,
     /// Change the output folder of a target, as TARGET=DIR (repeatable)
     #[arg(long, value_name = "TARGET=DIR")]
     pub out: Vec<String>,
@@ -103,6 +207,9 @@ pub struct InitArgs {
     /// List the files that would be written, and write nothing
     #[arg(long)]
     pub dry_run: bool,
+    /// Starter contracts: `hello` (default) or `crud` (users, auth and pagination)
+    #[arg(long, value_name = "NAME", value_enum)]
+    pub template: Option<Template>,
 }
 
 impl InitArgs {
@@ -114,27 +221,51 @@ impl InitArgs {
             && self.server.is_empty()
             && self.client.is_empty()
             && self.out.is_empty()
+            && self.base_url.is_empty()
+            && self.consumes.is_empty()
             && self.description.is_none()
             && !self.yes
             && !self.dry_run
     }
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Args, Default)]
 pub struct GenerateArgs {
     /// Generate only the target with this name
     pub target: Option<String>,
     /// Show what would change without writing anything
     #[arg(long)]
     pub dry_run: bool,
+    /// Write nothing; list what is stale and exit 1 if any target would change (for CI)
+    #[arg(long, conflicts_with_all = ["dry_run", "force", "watch"])]
+    pub check: bool,
+    /// With --check or --dry-run, print unified diffs of the changes
+    #[arg(long)]
+    pub diff: bool,
     /// Overwrite existing files that Veld did not create
     #[arg(long)]
     pub force: bool,
     /// Regenerate whenever a .veld file or veld.toml changes
     #[arg(long)]
     pub watch: bool,
+    /// Fail on breaking changes instead of prompting (for CI)
+    #[arg(long, conflicts_with = "accept_breaking")]
+    pub strict: bool,
+    /// Continue past breaking changes without asking
+    #[arg(long)]
+    pub accept_breaking: bool,
+    /// Run `veld setup` after generating
+    #[arg(long)]
+    pub setup: bool,
 }
 
+impl GenerateArgs {
+    /// Whether this run writes nothing.
+    #[must_use]
+    pub fn read_only(&self) -> bool {
+        self.dry_run || self.check
+    }
+}
 /// `veld watch`.
 #[derive(Debug, Args)]
 pub struct WatchArgs {
@@ -162,6 +293,9 @@ pub struct SetupArgs {
 
 #[derive(Debug, Args)]
 pub struct CleanArgs {
+    /// Also remove veld.lock.ir.json, the breaking-change baseline
+    #[arg(long)]
+    pub lock: bool,
     /// List what would be removed without removing it
     #[arg(long)]
     pub dry_run: bool,
@@ -203,14 +337,7 @@ pub struct DiffArgs {
 #[derive(Debug, Subcommand)]
 pub enum ExportCommand {
     /// OpenAPI 3.1 JSON
-    Openapi {
-        /// Write to this file instead of stdout
-        #[arg(short, long, value_name = "FILE")]
-        output: Option<PathBuf>,
-        /// Export only this service
-        #[arg(long)]
-        service: Option<String>,
-    },
+    Openapi(DocOut),
     /// The compiled IR as JSON, for plugin authors
     Ir {
         /// Write to this file instead of stdout
@@ -219,17 +346,18 @@ pub enum ExportCommand {
     },
 }
 
-#[derive(Debug, Args)]
-pub struct MigrateArgs {
-    /// Directory holding the v1 veld.config.json (default: ./ or ./veld)
-    #[arg(long, value_name = "DIR")]
-    pub from: Option<PathBuf>,
-    /// Directory for the v2 contracts, relative to the v1 config directory
-    #[arg(long, default_value = "contracts", value_name = "DIR")]
-    pub out: String,
-    /// Print what would be written without writing it
+/// Exports that produce one document.
+#[derive(Debug, Args, Default)]
+pub struct DocOut {
+    /// Write to this file instead of stdout
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+    /// Export only this service (repeatable; default: all)
     #[arg(long)]
-    pub dry_run: bool,
+    pub service: Vec<String>,
+    /// Overwrite an existing, different FILE
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -318,53 +446,129 @@ mod tests {
     #[test]
     fn reserved_commands_are_hidden_from_help() {
         let help = Cli::command().render_help().to_string();
-        for hidden in ["debug", "lsp"] {
+        for hidden in ["debug", "lsp", "watch", "completions"] {
             assert!(
                 !help.lines().any(|l| l.trim_start().starts_with(hidden)),
                 "`{hidden}` is visible:\n{help}"
             );
         }
         for shown in [
-            "init", "check", "generate", "watch", "setup", "clean", "fmt", "diff", "export",
-            "migrate", "plugin", "add", "install", "publish", "login", "logout",
+            "init", "check", "generate", "setup", "clean", "doctor", "fmt", "diff", "export",
+            "plugin", "add", "install", "publish", "login", "logout", "registry",
         ] {
-            assert!(help.contains(shown));
+            assert!(
+                help.lines().any(|l| l.trim_start().starts_with(shown)),
+                "`{shown}` is missing:\n{help}"
+            );
         }
+    }
+
+    fn ok(args: &[&str]) {
+        let mut v = vec!["veld"];
+        v.extend_from_slice(args);
+        assert!(Cli::try_parse_from(&v).is_ok(), "{args:?} should parse");
+    }
+
+    fn bad(args: &[&str]) {
+        let mut v = vec!["veld"];
+        v.extend_from_slice(args);
+        assert!(
+            Cli::try_parse_from(&v).is_err(),
+            "{args:?} should not parse"
+        );
     }
 
     #[test]
     fn registry_commands_parse() {
-        assert!(Cli::try_parse_from(["veld", "publish", "--dry-run", "--package", "lib"]).is_ok());
-        assert!(
-            Cli::try_parse_from(["veld", "login", "--registry", "https://r", "--token", "t"])
-                .is_ok()
-        );
-        assert!(Cli::try_parse_from(["veld", "add", "@acme/billing@^1.2"]).is_ok());
-        assert!(Cli::try_parse_from(["veld", "add"]).is_err());
-        assert!(Cli::try_parse_from(["veld", "install"]).is_ok());
-        assert!(Cli::try_parse_from(["veld", "logout"]).is_ok());
+        ok(&["publish", "--dry-run", "--package", "lib"]);
+        ok(&["login", "--registry", "https://r", "--token", "t"]);
+        ok(&["add", "@acme/billing@^1.2"]);
+        bad(&["add"]);
+        ok(&["install"]);
+        ok(&["logout"]);
+        ok(&["registry", "info"]);
+        ok(&["registry", "search", "billing"]);
+        ok(&["registry", "versions", "@acme/billing"]);
+        ok(&[
+            "registry",
+            "token",
+            "create",
+            "--name",
+            "ci",
+            "--scopes",
+            "read,write",
+        ]);
+        bad(&["registry", "token", "create"]);
     }
 
     #[test]
-    fn new_commands_parse() {
-        assert!(Cli::try_parse_from(["veld", "fmt", "--check", "x.veld"]).is_ok());
-        assert!(Cli::try_parse_from(["veld", "diff", "--against", "main", "--strict"]).is_ok());
-        assert!(Cli::try_parse_from(["veld", "diff", "--against", "main", "--lock"]).is_err());
-        assert!(
-            Cli::try_parse_from([
-                "veld",
-                "export",
-                "openapi",
-                "-o",
-                "a.json",
-                "--service",
-                "s"
-            ])
-            .is_ok()
-        );
-        assert!(Cli::try_parse_from(["veld", "export", "ir"]).is_ok());
-        assert!(Cli::try_parse_from(["veld", "migrate", "--from", "d", "--dry-run"]).is_ok());
-        assert!(Cli::try_parse_from(["veld", "plugin", "new", "kotlin"]).is_ok());
-        assert!(Cli::try_parse_from(["veld", "plugin", "test", "node", "dist/main.js"]).is_ok());
+    fn tool_commands_parse() {
+        ok(&["fmt", "--check", "x.veld"]);
+        ok(&["diff", "--against", "main", "--strict"]);
+        bad(&["diff", "--against", "main", "--lock"]);
+        ok(&[
+            "export",
+            "openapi",
+            "-o",
+            "a.json",
+            "--service",
+            "s",
+            "--service",
+            "t",
+        ]);
+        bad(&["export", "nope"]);
+        ok(&["export", "ir"]);
+        ok(&["plugin", "new", "kotlin"]);
+        ok(&["plugin", "test", "node", "dist/main.js"]);
+    }
+
+    #[test]
+    fn generate_flags_parse_and_conflict() {
+        ok(&["generate", "--check", "--diff"]);
+        bad(&["generate", "--check", "--dry-run"]);
+        bad(&["generate", "--check", "--force"]);
+        bad(&["generate", "--strict", "--accept-breaking"]);
+        ok(&["generate", "--setup", "--accept-breaking"]);
+        bad(&[
+            "generate",
+            "--emitter",
+            "node",
+            "--role",
+            "server",
+            "--out",
+            "d",
+        ]);
+        bad(&["generate", "--input", "a.veld"]);
+        ok(&["watch", "api"]);
+        ok(&["generate", "--watch"]);
+    }
+
+    #[test]
+    fn check_clean_doctor_and_global_flags_parse() {
+        ok(&["check", "a.veld", "contracts/b"]);
+        ok(&["check", "--no-lint", "--strict"]);
+        ok(&["check", "--graph"]);
+        ok(&["check", "--graph", "dot"]);
+        ok(&["check", "--graph=json", "x.veld"]);
+        bad(&["check", "--graph", "yaml"]);
+        ok(&["clean", "--lock", "--dry-run"]);
+        ok(&["doctor"]);
+        ok(&["completions", "zsh"]);
+        bad(&["completions", "tcsh"]);
+        let cli = Cli::try_parse_from(["veld", "-vv", "check"]).unwrap();
+        assert_eq!(cli.verbose, 2);
+        let cli = Cli::try_parse_from(["veld", "check", "-v"]).unwrap();
+        assert_eq!(cli.verbose, 1);
+        ok(&["init", "--template", "crud"]);
+        ok(&[
+            "init",
+            "--workspace",
+            "a,b",
+            "--base-url",
+            "a=http://h:1",
+            "--consumes",
+            "b=a",
+        ]);
+        bad(&["init", "--template", "nope"]);
     }
 }

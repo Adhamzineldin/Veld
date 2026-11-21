@@ -104,3 +104,39 @@ fn watch_regenerates_reports_errors_inline_and_recovers() {
 
     tree_guard.kill_tree();
 }
+
+/// `generate --watch` is the canonical spelling; breaking edits do not stop a watch.
+#[test]
+fn generate_watch_regenerates_and_does_not_block_on_breaking_changes() {
+    let tmp = tempdir().unwrap();
+    let dir = tmp.path();
+    veld(dir)
+        .args(["init", "--name", "demo", "--client", "none"])
+        .assert()
+        .success();
+    let log_dir = tempdir().unwrap();
+    let log = log_dir.path().join("watch.log");
+    let exe = assert_cmd::cargo::cargo_bin("veld");
+    let mut cmd = Command::new(exe);
+    cmd.current_dir(dir)
+        .env("NO_COLOR", "1")
+        .args(["generate", "--watch"]);
+    let mut guard = ProcessTree::spawn_logged(&mut cmd, &log).unwrap();
+    wait_until("the first run", &log, |t| t.contains("ready in"));
+    assert!(any_file_contains(&dir.join("generated"), "Greeting"));
+
+    // Renaming the path parameter is a breaking change: `generate` would refuse, a watch goes on.
+    let contract = dir.join("contracts/hello.veld");
+    let original = fs::read_to_string(&contract).unwrap();
+    fs::write(
+        &contract,
+        original
+            .replace("{name}", "{who}")
+            .replace("greet(name:", "greet(who:"),
+    )
+    .unwrap();
+    let text = wait_until("the regeneration", &log, |t| t.contains("regenerated in"));
+    assert!(text.contains("breaking changes"), "{text}");
+    assert!(any_file_contains(&dir.join("generated"), "who"));
+    guard.kill_tree();
+}

@@ -18,7 +18,7 @@ use clap::Parser;
 
 fn main() -> ExitCode {
     let cli = cli::Cli::parse();
-    let ui = ui::Ui::new(cli.no_color, cli.quiet);
+    let ui = ui::Ui::new(cli.no_color, cli.quiet, cli.verbose);
     match commands::run(&cli, &ui) {
         Ok(code) => code.into(),
         Err(err) => error::report(&ui, &err).into(),

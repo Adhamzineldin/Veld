@@ -15,6 +15,8 @@ pub use theme::{Style, Theme};
 #[derive(Debug, Clone, Copy)]
 pub struct Ui {
     pub quiet: bool,
+    /// `-v` count: 1 shows phases and timings, 2 also write-plan entries.
+    pub verbose: u8,
     color_out: bool,
     color_err: bool,
     unicode: bool,
@@ -23,7 +25,7 @@ pub struct Ui {
 
 impl Ui {
     /// Colour is on only for a terminal, never with `--no-color` or a non-empty `NO_COLOR`.
-    pub fn new(no_color: bool, quiet: bool) -> Self {
+    pub fn new(no_color: bool, quiet: bool, verbose: u8) -> Self {
         let allowed = theme::color_allowed(no_color);
         if !allowed {
             console::set_colors_enabled(false);
@@ -31,6 +33,7 @@ impl Ui {
         }
         let err_tty = std::io::stderr().is_terminal();
         Ui {
+            verbose,
             quiet,
             color_out: allowed && std::io::stdout().is_terminal(),
             color_err: allowed && err_tty,
@@ -42,6 +45,7 @@ impl Ui {
     #[cfg(test)]
     pub fn plain() -> Self {
         Ui {
+            verbose: 0,
             quiet: false,
             color_out: false,
             color_err: false,
@@ -53,6 +57,7 @@ impl Ui {
     #[cfg(test)]
     pub fn colored() -> Self {
         Ui {
+            verbose: 0,
             quiet: false,
             color_out: true,
             color_err: true,
@@ -135,6 +140,13 @@ impl Ui {
     pub fn warn(&self, msg: &str) {
         if !self.quiet {
             eprintln!("{} {msg}", self.err_styled(Style::Yellow, "warning:"));
+        }
+    }
+
+    /// A `-v` line on stderr (level 1: phases and timings, level 2: plan entries).
+    pub fn debug(&self, level: u8, msg: &str) {
+        if self.verbose >= level {
+            eprintln!("{}", self.err_styled(Style::Dim, &format!("  · {msg}")));
         }
     }
 

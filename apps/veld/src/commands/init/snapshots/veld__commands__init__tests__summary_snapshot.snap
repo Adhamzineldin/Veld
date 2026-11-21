@@ -1,16 +1,16 @@
 ---
 source: apps/veld/src/commands/init/mod.rs
-assertion_line: 490
 expression: "flow::summary(&a).join(\"\\n\")"
 ---
 project  shop
 layout   microservices workspace (2 services)
 servers  users: Java + spring
          billing: Java + spring
+calls    users -> billing
 clients  TypeScript + vue, Java
 output   users-api -> services/users/src/main/java
          billing-api -> services/billing/src/main/java
          web -> web/generated
          java-client -> clients/java/src/main/java
 about    Shop APIs
-files    4 to create
+files    5 to create

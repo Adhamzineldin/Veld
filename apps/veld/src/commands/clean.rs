@@ -39,5 +39,27 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &CleanArgs) -> Result<Exit> {
             ));
         }
     }
+    if args.lock {
+        clean_lock(ui, &project, args.dry_run)?;
+    }
     Ok(Exit::Ok)
+}
+
+/// `clean --lock`: removes the breaking-change baseline (`veld.lock.ir.json`).
+fn clean_lock(ui: &Ui, project: &veld_project::config::Project, dry_run: bool) -> Result<()> {
+    let path = pipeline::lock_path(project);
+    if !path.is_file() {
+        ui.info(&format!("no {} to remove", pipeline::LOCK_FILE));
+        return Ok(());
+    }
+    if !dry_run {
+        std::fs::remove_file(&path)
+            .map_err(|e| user(format!("cannot remove `{}`: {e}", path.display())))?;
+    }
+    let verb = if dry_run { "would remove" } else { "removed" };
+    ui.ok(&format!(
+        "{verb} {} (the breaking-change baseline)",
+        pipeline::LOCK_FILE
+    ));
+    Ok(())
 }

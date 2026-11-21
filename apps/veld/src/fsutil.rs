@@ -33,26 +33,6 @@ fn write_synced(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     f.sync_all()
 }
 
-/// Creates `path` only if it does not exist yet. Returns `false` when it already exists.
-pub fn create_new(path: &Path, bytes: &[u8]) -> Result<bool> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).with_context(|| format!("cannot create `{}`", dir.display()))?;
-    }
-    match fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-    {
-        Ok(mut f) => {
-            f.write_all(bytes)
-                .with_context(|| format!("cannot write `{}`", path.display()))?;
-            Ok(true)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
-        Err(e) => Err(e).with_context(|| format!("cannot create `{}`", path.display())),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,14 +45,5 @@ mod tests {
         atomic_write(&p, b"two").unwrap();
         assert_eq!(fs::read(&p).unwrap(), b"two");
         assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 1);
-    }
-
-    #[test]
-    fn create_new_never_overwrites() {
-        let tmp = tempfile::tempdir().unwrap();
-        let p = tmp.path().join("sub/b.txt");
-        assert!(create_new(&p, b"x").unwrap());
-        assert!(!create_new(&p, b"y").unwrap());
-        assert_eq!(fs::read(&p).unwrap(), b"x");
     }
 }

@@ -3,11 +3,17 @@
 use veld_codegen::DynGenerator;
 use veld_emit_java::Java;
 use veld_emit_node::Node;
+use veld_emit_rust::Rust;
 use veld_emit_typescript::TypeScript;
 
 /// Every generator compiled into this binary, in a fixed order.
 pub fn generators() -> &'static [&'static dyn DynGenerator] {
-    &[&Java, &Node, &TypeScript]
+    &[
+        &Java,
+        &Node,
+        &TypeScript,
+        &Rust, // xtask:new-emitter rust
+    ]
 }
 
 /// The built-in generator with the given id.
@@ -27,7 +33,7 @@ mod tests {
 
     #[test]
     fn lists_the_built_in_generators() {
-        assert_eq!(ids(), ["java", "node", "typescript"]);
+        assert_eq!(ids(), ["java", "node", "typescript", "rust"]);
         assert!(find("node").is_some_and(|g| g.roles() == [Role::Server]));
         assert!(find("typescript").is_some_and(|g| g.roles() == [Role::Client]));
         assert!(find("java").is_some_and(|g| g.roles() == [Role::Server, Role::Client]));

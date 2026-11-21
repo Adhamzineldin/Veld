@@ -107,7 +107,7 @@ pub fn relative(base: &Path, path: &Path) -> String {
 
 /// The directory of the app consuming `target`: its `app` key, else the nearest ancestor of
 /// `out` (up to the project root) holding one of `markers`.
-fn app_dir(project: &Project, target: &TargetSpec, markers: &[&str]) -> Option<PathBuf> {
+pub(crate) fn app_dir(project: &Project, target: &TargetSpec, markers: &[&str]) -> Option<PathBuf> {
     if let Some(app) = &target.app {
         return Some(app.clone());
     }

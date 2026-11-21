@@ -14,12 +14,24 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &SetupArgs) -> Result<Exit> {
     ui.header("setup", "");
     let project = pipeline::load_project(config)?;
     let targets = pipeline::select_targets(&project, args.target.as_deref())?;
-    let plan = setup::plan(&project, &targets)?;
-    report(ui, &project.root, &plan, args.dry_run);
-    if !args.dry_run {
+    apply_to(ui, &project, &targets, args.dry_run)?;
+    Ok(Exit::Ok)
+}
+
+/// Plans, reports and (unless `dry_run`) applies the app wiring for `targets`. Also used by
+/// `veld generate --setup`.
+pub fn apply_to(
+    ui: &Ui,
+    project: &veld_project::config::Project,
+    targets: &[&veld_project::config::TargetSpec],
+    dry_run: bool,
+) -> Result<()> {
+    let plan = setup::plan(project, targets)?;
+    report(ui, &project.root, &plan, dry_run);
+    if !dry_run {
         setup::apply(&plan)?;
     }
-    Ok(Exit::Ok)
+    Ok(())
 }
 
 fn report(ui: &Ui, root: &Path, plan: &Plan, dry_run: bool) {

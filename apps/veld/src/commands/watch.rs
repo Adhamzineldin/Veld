@@ -134,7 +134,9 @@ fn run_once(ui: &Ui, project: Result<Project>, opts: &Options, rerun: bool) {
         target: opts.target.clone(),
         dry_run: opts.dry_run,
         force: opts.force,
-        watch: false,
+        // A watch never prompts or blocks: it shows the breaking list and carries on.
+        accept_breaking: true,
+        ..GenerateArgs::default()
     };
     let t = ui.theme_out();
     let started = Instant::now();

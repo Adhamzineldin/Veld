@@ -43,6 +43,10 @@ fn init_flags_describe_a_workspace_without_a_tty() {
             "billing=java:spring",
             "--client",
             "typescript:react",
+            "--consumes",
+            "billing=users",
+            "--base-url",
+            "users=https://users.example.com",
         ])
         .assert()
         .success()
@@ -50,6 +54,7 @@ fn init_flags_describe_a_workspace_without_a_tty() {
     let toml = read(tmp.path(), "veld.toml");
     assert!(toml.contains("framework = \"fastify\"") && toml.contains("framework = \"spring\""));
     assert!(toml.contains("framework = \"react\"") && toml.contains("consumes = [\"users\"]"));
+    assert!(toml.contains("base-url = \"https://users.example.com\""));
     assert!(tmp.path().join("contracts/billing/billing.veld").is_file());
     assert!(tmp.path().join("services/users/package.json").is_file());
     assert!(tmp.path().join("web/package.json").is_file());

@@ -3,9 +3,10 @@
 use anyhow::Result;
 
 use super::answers::{
-    Answers, Client, JAVA_FRAMEWORKS, NODE_FRAMEWORKS, Server, TS_FRAMEWORKS, parse_services,
-    sanitize,
+    Answers, Client, JAVA_FRAMEWORKS, NODE_FRAMEWORKS, RUST_CLIENT_FRAMEWORKS, Server,
+    TS_FRAMEWORKS, check_base_url, default_base_url, parse_services, sanitize,
 };
+use super::detect::Detected;
 use super::render;
 use crate::error::user;
 use crate::ui::prompt::{Choice, Prompter, Text, cancelled};
@@ -21,6 +22,48 @@ fn valid_name(text: &str) -> std::result::Result<(), String> {
     } else {
         Ok(())
     }
+}
+
+fn valid_base_url(text: &str) -> std::result::Result<(), String> {
+    check_base_url(text).map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Per service of a workspace: its base URL, then which of the other services it calls. Nothing
+/// is consumed unless picked.
+#[allow(clippy::type_complexity)]
+fn ask_wiring(
+    p: &mut dyn Prompter,
+    services: &[String],
+) -> Result<(Vec<(String, String)>, Vec<(String, Vec<String>)>)> {
+    let mut urls = Vec::new();
+    for (i, svc) in services.iter().enumerate() {
+        let label = format!("Base URL of `{svc}`");
+        let url = p.text(&Text {
+            label: &label,
+            default: &default_base_url(i),
+            placeholder: "",
+            required: true,
+            validate: valid_base_url,
+        })?;
+        urls.push((svc.clone(), check_base_url(&url)?));
+    }
+    let mut consumes = Vec::new();
+    if services.len() > 1 {
+        for svc in services {
+            let others: Vec<&String> = services.iter().filter(|s| *s != svc).collect();
+            let items: Vec<Choice> = others
+                .iter()
+                .map(|o| Choice::new(o, "gets a generated client"))
+                .collect();
+            let label = format!("Which services does `{svc}` call? (space selects, none is fine)");
+            let picked = p.multiselect(&label, &items, &[])?;
+            let list: Vec<String> = picked.into_iter().map(|i| others[i].clone()).collect();
+            if !list.is_empty() {
+                consumes.push((svc.clone(), list));
+            }
+        }
+    }
+    Ok((urls, consumes))
 }
 
 fn valid_services(text: &str) -> std::result::Result<(), String> {
@@ -69,6 +112,13 @@ fn java_hint(f: &str) -> &'static str {
     }
 }
 
+fn rust_hint(f: &str) -> &'static str {
+    match f {
+        "reqwest" => "async, on reqwest (tokio)",
+        _ => "blocking, on ureq",
+    }
+}
+
 fn ts_hint(f: &str) -> &'static str {
     match f {
         "react" => "hooks on top of the client",
@@ -76,32 +126,56 @@ fn ts_hint(f: &str) -> &'static str {
     }
 }
 
-/// Language first, then its framework.
-fn ask_server(p: &mut dyn Prompter, label: &str) -> Result<Server> {
+/// Language first, then its framework. `pref` (what the folder already contains) only moves the
+/// initial selection.
+fn ask_server(p: &mut dyn Prompter, label: &str, pref: Option<&Server>) -> Result<Server> {
     let langs = [
         Choice::new("Node", "TypeScript server"),
         Choice::new("Java", "Java 17+ server"),
+        Choice::new("Rust", "Rust server (axum)"),
         Choice::new("None", "contracts and clients only"),
     ];
-    match p.select(label, &langs, 0)? {
+    let initial = match pref {
+        Some(Server::Java(_)) => 1,
+        _ => 0,
+    };
+    let framework_of = |list: &[&str]| match pref {
+        Some(Server::Node(f) | Server::Java(f) | Server::Rust(f)) => {
+            list.iter().position(|x| x == f).unwrap_or(0)
+        }
+        _ => 0,
+    };
+    match p.select(label, &langs, initial)? {
         0 => {
             let fws = frameworks(&NODE_FRAMEWORKS, node_hint);
-            let i = p.select("Node framework", &fws, 0)?;
+            let start = if initial == 0 {
+                framework_of(&NODE_FRAMEWORKS)
+            } else {
+                0
+            };
+            let i = p.select("Node framework", &fws, start)?;
             Ok(Server::Node(NODE_FRAMEWORKS[i].to_string()))
         }
         1 => {
             let fws = frameworks(&JAVA_FRAMEWORKS, java_hint);
-            let i = p.select("Java framework", &fws, 0)?;
+            let start = if initial == 1 {
+                framework_of(&JAVA_FRAMEWORKS)
+            } else {
+                0
+            };
+            let i = p.select("Java framework", &fws, start)?;
             Ok(Server::Java(JAVA_FRAMEWORKS[i].to_string()))
         }
+        2 => Ok(Server::Rust("axum".to_string())),
         _ => Ok(Server::None),
     }
 }
 
-fn ask_clients(p: &mut dyn Prompter) -> Result<Vec<Client>> {
+fn ask_clients(p: &mut dyn Prompter, pref: Option<&Client>) -> Result<Vec<Client>> {
     let items = [
         Choice::new("TypeScript", "typed fetch client"),
         Choice::new("Java", "typed client for JVM apps"),
+        Choice::new("Rust", "typed client, bring your own HTTP stack"),
     ];
     let picked = p.multiselect("Client stacks (space selects)", &items, &[0])?;
     let mut clients = Vec::new();
@@ -109,18 +183,33 @@ fn ask_clients(p: &mut dyn Prompter) -> Result<Vec<Client>> {
         if i == 0 {
             let mut fws = vec![Choice::new("None", "plain client, no UI framework")];
             fws.extend(frameworks(&TS_FRAMEWORKS, ts_hint));
-            let k = p.select("TypeScript UI framework", &fws, 0)?;
+            let start = match pref {
+                Some(Client::Ts(Some(f))) => TS_FRAMEWORKS
+                    .iter()
+                    .position(|x| x == f)
+                    .map_or(0, |j| j + 1),
+                _ => 0,
+            };
+            let k = p.select("TypeScript UI framework", &fws, start)?;
             clients.push(Client::Ts(
                 k.checked_sub(1).map(|j| TS_FRAMEWORKS[j].to_string()),
             ));
-        } else {
+        } else if i == 1 {
             clients.push(Client::Java);
+        } else {
+            let fws = frameworks(&RUST_CLIENT_FRAMEWORKS, rust_hint);
+            let k = p.select("Rust HTTP transport", &fws, 0)?;
+            clients.push(Client::Rust(RUST_CLIENT_FRAMEWORKS[k].to_string()));
         }
     }
     Ok(clients)
 }
 
-fn ask_servers(p: &mut dyn Prompter, names: &[String]) -> Result<Vec<(String, Server)>> {
+fn ask_servers(
+    p: &mut dyn Prompter,
+    names: &[String],
+    pref: Option<&Server>,
+) -> Result<Vec<(String, Server)>> {
     if names.len() > 1 {
         let same = p.confirm(
             &format!(
@@ -130,7 +219,7 @@ fn ask_servers(p: &mut dyn Prompter, names: &[String]) -> Result<Vec<(String, Se
             true,
         )?;
         if same {
-            let s = ask_server(p, "Server stack for all services")?;
+            let s = ask_server(p, "Server stack for all services", pref)?;
             return Ok(names.iter().map(|n| (n.clone(), s.clone())).collect());
         }
     }
@@ -141,18 +230,14 @@ fn ask_servers(p: &mut dyn Prompter, names: &[String]) -> Result<Vec<(String, Se
         } else {
             format!("Server stack for `{svc}`")
         };
-        out.push((svc.clone(), ask_server(p, &label)?));
+        out.push((svc.clone(), ask_server(p, &label, pref)?));
     }
     Ok(out)
 }
 
 /// `(target name, default out)` of the config the answers render.
 pub fn default_outs(a: &Answers) -> Vec<(String, String)> {
-    let text = render::files(a)
-        .into_iter()
-        .next()
-        .map(|f| f.text)
-        .unwrap_or_default();
+    let text = render::config_text(a);
     let Ok(table) = text.parse::<toml::Table>() else {
         return Vec::new();
     };
@@ -213,10 +298,15 @@ pub fn summary(a: &Answers) -> Vec<String> {
         let what = match s {
             Server::Node(fw) => format!("Node + {fw}"),
             Server::Java(fw) => format!("Java + {fw}"),
+            Server::Rust(fw) => format!("Rust + {fw}"),
             Server::None => "none".to_string(),
         };
         let label = if i == 0 { "servers" } else { "" };
         rows.push((label, format!("{svc}: {what}")));
+    }
+    for (i, (svc, list)) in a.consumes.iter().enumerate() {
+        let label = if i == 0 { "calls" } else { "" };
+        rows.push((label, format!("{svc} -> {}", list.join(", "))));
     }
     let clients: Vec<String> = a
         .clients
@@ -225,6 +315,7 @@ pub fn summary(a: &Answers) -> Vec<String> {
             Client::Ts(Some(fw)) => format!("TypeScript + {fw}"),
             Client::Ts(None) => "TypeScript".to_string(),
             Client::Java => "Java".to_string(),
+            Client::Rust(fw) => format!("Rust + {fw}"),
             Client::None => "none".to_string(),
         })
         .collect();
@@ -249,7 +340,17 @@ pub fn summary(a: &Answers) -> Vec<String> {
 }
 
 /// The questions, in order: name, layout, servers, clients, outputs, description, confirm.
+#[cfg(test)]
 pub fn ask_answers(p: &mut dyn Prompter, dir_name: &str) -> Result<Answers> {
+    ask_answers_in(p, dir_name, &Detected::default())
+}
+
+/// [`ask_answers`], starting from what was detected in the folder.
+pub fn ask_answers_in(
+    p: &mut dyn Prompter,
+    dir_name: &str,
+    detected: &Detected,
+) -> Result<Answers> {
     let name = p.text(&Text {
         label: "Project name",
         default: dir_name,
@@ -286,12 +387,20 @@ pub fn ask_answers(p: &mut dyn Prompter, dir_name: &str) -> Result<Answers> {
     } else {
         vec![name.clone()]
     };
-    let servers = ask_servers(p, &names)?;
-    let clients = ask_clients(p)?;
+    let servers = ask_servers(p, &names, detected.server.as_ref())?;
+    let (base_urls, consumes) = if workspace {
+        ask_wiring(p, &services)?
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    let clients = ask_clients(p, detected.client.as_ref())?;
     let mut answers = Answers {
+        template: crate::cli::Template::Hello,
         name,
         services,
         servers,
+        base_urls,
+        consumes,
         clients,
         outs: Vec::new(),
         description: String::new(),

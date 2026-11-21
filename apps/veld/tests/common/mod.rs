@@ -12,31 +12,65 @@ pub fn veld(dir: &Path) -> Command {
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("veld");
     cmd.current_dir(dir)
         .env("NO_COLOR", "1")
+        .env_remove("TERM")
+        .env_remove("VELD_ASCII")
+        .env("LC_ALL", "C.UTF-8")
         .env_remove("VELD_REQUIRE_TOOLCHAINS");
     cmd
 }
 
 /// Every file below `dir` as (relative path with `/`, bytes), sorted.
 pub fn tree(dir: &Path) -> BTreeMap<String, Vec<u8>> {
-    fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
+    tree_excluding(dir, &[])
+}
+
+pub fn tree_excluding(dir: &Path, excluded_dirs: &[&str]) -> BTreeMap<String, Vec<u8>> {
+    fn walk(root: &Path, dir: &Path, excluded: &[&str], out: &mut BTreeMap<String, Vec<u8>>) {
         let Ok(entries) = fs::read_dir(dir) else {
             return;
         };
-        for entry in entries.flatten() {
+        for entry in entries {
+            let entry = entry.unwrap();
             let path = entry.path();
             if path.is_dir() {
-                walk(root, &path, out);
-            } else if let Ok(rel) = path.strip_prefix(root) {
+                if !excluded.contains(&entry.file_name().to_string_lossy().as_ref()) {
+                    walk(root, &path, excluded, out);
+                }
+            } else {
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
                 out.insert(
-                    rel.to_string_lossy().replace('\\', "/"),
-                    fs::read(&path).unwrap_or_default(),
+                    rel,
+                    fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())),
                 );
             }
         }
     }
     let mut out = BTreeMap::new();
-    walk(dir, dir, &mut out);
+    walk(dir, dir, excluded_dirs, &mut out);
     out
+}
+
+pub fn assert_same_tree(
+    before: &BTreeMap<String, Vec<u8>>,
+    after: &BTreeMap<String, Vec<u8>>,
+    context: &str,
+) {
+    let mut changes = Vec::new();
+    for (path, bytes) in before {
+        match after.get(path) {
+            None => changes.push(format!("missing {path}")),
+            Some(other) if other != bytes => changes.push(format!("changed {path}")),
+            _ => {}
+        }
+    }
+    for path in after.keys().filter(|path| !before.contains_key(*path)) {
+        changes.push(format!("added {path}"));
+    }
+    assert!(changes.is_empty(), "{context}: {}", changes.join("\n"));
 }
 
 pub fn write(dir: &Path, rel: &str, text: &str) {

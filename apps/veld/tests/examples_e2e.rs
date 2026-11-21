@@ -263,16 +263,16 @@ fn num(v: &Value) -> f64 {
 fn assert_up_to_date(root: &Path) {
     let before = tree(root);
     veld(root).arg("generate").assert().success();
-    assert_eq!(
-        before,
-        tree(root),
-        "regenerating changed the committed example"
+    assert_same_tree(
+        &before,
+        &tree(root),
+        "regenerating changed the committed example",
     );
     veld(root).arg("setup").assert().success();
-    assert_eq!(
-        before,
-        tree(root),
-        "`veld setup` changed the committed example"
+    assert_same_tree(
+        &before,
+        &tree(root),
+        "`veld setup` changed the committed example",
     );
 }
 
@@ -307,6 +307,59 @@ fn run_render_test(app: &Path, envs: &[(&str, String)]) {
         out.status.success() && stdout.contains("render ok"),
         "the React render test failed\n{stdout}\n{}",
         String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn rust_catalog_lookup_against_the_axum_server() {
+    let (guard, root) = copy_example("rust-catalog");
+    veld(&root).arg("generate").assert().success();
+    let target = repo_root().join("target/rust-catalog-e2e");
+    let build = Command::new(env!("CARGO"))
+        .args(["build", "--locked", "--bins", "--target-dir"])
+        .arg(&target)
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let binary = |name: &str| {
+        target
+            .join("debug")
+            .join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
+    };
+    let port = free_port();
+    let _server = Svc::start(
+        "catalog",
+        Command::new(binary("server")),
+        port,
+        guard.path(),
+    );
+    let lookup = |isbn: &str| {
+        Command::new(binary("lookup"))
+            .env("CATALOG_URL", url(port))
+            .arg(isbn)
+            .output()
+            .unwrap()
+    };
+    let found = lookup("9780141439518");
+    assert!(
+        found.status.success(),
+        "{}",
+        String::from_utf8_lossy(&found.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&found.stdout).trim(),
+        "Pride and Prejudice (9780141439518)"
+    );
+    let missing = lookup("000");
+    assert_eq!(missing.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&missing.stderr).trim(),
+        "No book found for ISBN 000"
     );
 }
 

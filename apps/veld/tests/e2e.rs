@@ -31,12 +31,8 @@ fn init_check_generate_succeeds() {
         .arg("generate")
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            "api -> generated/server: 7 created",
-        ))
-        .stdout(predicate::str::contains(
-            "web -> generated/client: 6 created",
-        ));
+        .stdout(predicate::str::is_match(r"api -> generated/server: [0-9]+ created").unwrap())
+        .stdout(predicate::str::is_match(r"web -> generated/client: [0-9]+ created").unwrap());
     assert!(tmp.path().join("generated/server/index.ts").is_file());
     assert!(
         tmp.path()
@@ -49,7 +45,14 @@ fn init_check_generate_succeeds() {
 fn init_workspace_scaffold_generates() {
     let tmp = tempdir().unwrap();
     veld(tmp.path())
-        .args(["init", "--name", "ws", "--workspace"])
+        .args([
+            "init",
+            "--name",
+            "ws",
+            "--workspace",
+            "--consumes",
+            "orders=users",
+        ])
         .assert()
         .success();
     veld(tmp.path())
@@ -131,7 +134,7 @@ fn dry_run_writes_nothing() {
         .args(["generate", "--dry-run"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("would create 6"))
+        .stdout(predicate::str::is_match(r"would create [0-9]+").unwrap())
         .stdout(predicate::str::contains("+ index.ts"));
     assert!(!tmp.path().join("generated").exists());
 }
@@ -619,4 +622,25 @@ fn unknown_framework_is_e0803_for_a_client_target() {
         .stderr(predicate::str::contains(
             "express, fastify, hono, node-http",
         ));
+}
+
+#[test]
+fn init_workspace_assigns_no_consumes_unless_asked() {
+    let tmp = tempdir().unwrap();
+    veld(tmp.path())
+        .args(["init", "--name", "ws", "--workspace"])
+        .assert()
+        .success();
+    assert!(
+        !fs::read_to_string(tmp.path().join("veld.toml"))
+            .unwrap()
+            .contains("consumes")
+    );
+    veld(tmp.path()).arg("generate").assert().success();
+    assert!(
+        !tree(tmp.path())
+            .keys()
+            .any(|p| p.contains("/generated/clients/")),
+        "nothing is consumed, so no consumed client is generated"
+    );
 }

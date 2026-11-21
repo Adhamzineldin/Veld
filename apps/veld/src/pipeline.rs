@@ -1,7 +1,7 @@
 //! The shared pipeline: load config, collect sources, compile, render diagnostics, check
 //! capabilities, generate per target, write. Commands compose these steps.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -48,10 +48,19 @@ pub struct Compiled {
 /// Compiles `project` and prints its diagnostics. Returns `None` after printing the failure
 /// summary when there are errors.
 pub fn compile_or_report(ui: &Ui, project: Project) -> Result<Option<Compiled>> {
+    let started = std::time::Instant::now();
     let spin = ui.spinner("Compiling contracts");
     let out = compile_project(&project);
     spin.finish();
     let out = out?;
+    ui.debug(
+        1,
+        &format!(
+            "compiled {} in {}",
+            plural(project.packages.len(), "package"),
+            crate::ui::render::elapsed(started.elapsed())
+        ),
+    );
     let counts = report_diagnostics(ui, &project, &out);
     match out.ir {
         Some(ir) if counts.errors == 0 => Ok(Some(Compiled { project, ir })),
@@ -68,9 +77,11 @@ pub fn compile_project(project: &Project) -> Result<CompileOutput> {
     let rules = veld_compiler::AccessRules {
         allowed: project.registry_access()?,
     };
-    Ok(veld_compiler::compile_with(
-        &compile_input(project)?,
+    let compile_input = compile_input(project)?;
+    Ok(veld_compiler::compile_prefixed(
+        &compile_input,
         Some(&rules),
+        &project.prefixes(),
     ))
 }
 
@@ -132,6 +143,12 @@ pub fn lock_path(project: &Project) -> PathBuf {
     project.root.join(LOCK_FILE)
 }
 
+/// The previous IR snapshot (`veld.lock.ir.json`), if there is a readable one.
+pub fn read_lock(project: &Project) -> Option<Ir> {
+    let text = std::fs::read_to_string(lock_path(project)).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
 /// The lock file's exact bytes: pretty JSON with a trailing newline. Deterministic.
 pub fn lock_text(ir: &Ir) -> Result<String> {
     let mut text = serde_json::to_string_pretty(ir).context("cannot serialize the IR")?;
@@ -159,11 +176,32 @@ pub struct Counts {
 /// Prints all diagnostics (and config warnings) to stderr and counts them.
 /// `--quiet` hides warnings but never errors.
 pub fn report_diagnostics(ui: &Ui, project: &Project, out: &CompileOutput) -> Counts {
+    report_diagnostics_in(ui, project, out, None).0
+}
+
+/// [`report_diagnostics`] limited to the files in `scope`. The second value is the number of
+/// errors in other files, which are counted but not printed.
+pub fn report_diagnostics_in(
+    ui: &Ui,
+    project: &Project,
+    out: &CompileOutput,
+    scope: Option<&Scope>,
+) -> (Counts, usize) {
     let mut counts = Counts::default();
+    let mut hidden = 0;
     for w in &project.warnings {
         ui.warn(&format!("[{}] {}", w.code, w.message));
     }
     for d in &out.diagnostics {
+        let shown = scope.is_none_or(|s| {
+            out.sources
+                .path(d.primary.file)
+                .is_some_and(|p| s.has_qualified(p))
+        });
+        if !shown {
+            hidden += usize::from(d.is_error());
+            continue;
+        }
         if d.is_error() {
             counts.errors += 1;
         } else {
@@ -174,7 +212,7 @@ pub fn report_diagnostics(ui: &Ui, project: &Project, out: &CompileOutput) -> Co
         }
         ui.diagnostic(&out.sources.render(d));
     }
-    counts
+    (counts, hidden)
 }
 
 /// `"1 error"`, `"2 warnings"`.
@@ -215,6 +253,76 @@ pub fn success_summary(ui: &Ui, ir: &Ir) -> String {
             plural(types, "type")
         ),
     )
+}
+
+// ---------------------------------------------------------------------------
+// Reporting scope (`veld check PATH...`)
+// ---------------------------------------------------------------------------
+
+/// The contract files a report is limited to.
+#[derive(Debug, Clone, Default)]
+pub struct Scope {
+    /// `<package>/<path in package>`, the form compiler diagnostics use.
+    qualified: BTreeSet<String>,
+    /// `<path in package>`, the form IR origins (and lint findings) use.
+    relative: BTreeSet<String>,
+}
+
+impl Scope {
+    /// Whether a compiler diagnostic path (`pkg/rel.veld`) is in scope.
+    pub fn has_qualified(&self, path: &str) -> bool {
+        self.qualified.contains(path)
+    }
+
+    /// Whether a package-relative path is in scope.
+    pub fn has_relative(&self, path: &str) -> bool {
+        self.relative.contains(path)
+    }
+}
+
+/// Package-relative contract path to the name of the package that owns it (first wins), so a
+/// finding that only knows the relative path can be printed as `<package>/<path>`.
+pub fn file_packages(project: &Project) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    for pkg in &project.packages {
+        for (rel, _) in config::collect_sources(pkg).unwrap_or_default() {
+            map.entry(rel).or_insert_with(|| pkg.name.clone());
+        }
+    }
+    map
+}
+/// Resolves files and directories given on the command line to the project's contract files.
+/// A path that matches no contract is an error, so a typo is never a silent pass.
+pub fn scope_of(project: &Project, paths: &[PathBuf]) -> Result<Scope> {
+    let wanted: Vec<PathBuf> = paths
+        .iter()
+        .map(|p| {
+            std::fs::canonicalize(p)
+                .map_err(|e| user(format!("cannot read `{}`: {e}", p.display())))
+        })
+        .collect::<Result<_, _>>()?;
+    let mut scope = Scope::default();
+    let mut matched = vec![false; wanted.len()];
+    for pkg in &project.packages {
+        let root = std::fs::canonicalize(&pkg.root).unwrap_or_else(|_| pkg.root.clone());
+        for (rel, _) in config::collect_sources(pkg)? {
+            let abs = root.join(&rel);
+            for (i, w) in wanted.iter().enumerate() {
+                if abs.starts_with(w) {
+                    matched[i] = true;
+                    scope.qualified.insert(format!("{}/{rel}", pkg.name));
+                    scope.relative.insert(rel.clone());
+                }
+            }
+        }
+    }
+    if let Some(i) = matched.iter().position(|m| !m) {
+        return Err(user(format!(
+            "`{}` is not a contract of this project (no .veld file under it belongs to a package)",
+            paths[i].display()
+        )));
+    }
+    Ok(scope)
 }
 
 // ---------------------------------------------------------------------------

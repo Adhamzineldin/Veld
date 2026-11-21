@@ -1,6 +1,7 @@
 //! Renders the files `veld init` writes from its [`Answers`].
 
 use super::answers::{Answers, Client, Server, pascal, sanitize};
+use crate::cli::Template;
 
 /// One file to write. An `optional` file is skipped (not an error) when it already exists.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,7 +35,14 @@ pub fn files(a: &Answers) -> Vec<File> {
     }];
     files.extend(contracts(a));
     files.extend(package_jsons(a, &outs));
+    files.push(readme(a));
     files
+}
+
+/// The `veld.toml` text alone (no other file), for callers that only need the targets.
+#[must_use]
+pub fn config_text(a: &Answers) -> String {
+    config(a).0
 }
 
 /// The output folders of the TypeScript targets, which sit in apps with a `package.json`.
@@ -76,15 +84,17 @@ fn config(a: &Answers) -> (String, Vec<String>) {
     }
     if a.is_workspace() {
         t.push('\n');
-        for (i, svc) in a.services.iter().enumerate() {
+        for svc in &a.services {
             t.push_str(&format!(
-                "[services.{svc}]\ncontracts = \"contracts/{svc}\"\nbase-url = \"http://localhost:{}\"\n",
-                3001 + i
+                "[services.{svc}]\ncontracts = \"contracts/{svc}\"\nbase-url = {}\n",
+                toml_string(&a.base_url(svc))
             ));
-            if i > 0 {
+            let consumed = a.consumes_of(svc);
+            if !consumed.is_empty() {
+                let list: Vec<String> = consumed.iter().map(|c| toml_string(c)).collect();
                 t.push_str(&format!(
-                    "consumes = [\"{}\"]   # {svc} gets a generated client for {}\n",
-                    a.services[0], a.services[0]
+                    "consumes = [{}]   # {svc} gets a generated client for each\n",
+                    list.join(", ")
                 ));
             }
             t.push('\n');
@@ -133,6 +143,15 @@ fn server_target(a: &Answers, t: &mut String, ts_outs: &mut Vec<String>, svc: &s
                 "generated/server".to_string()
             },
         ),
+        Server::Rust(fw) => (
+            "rust",
+            fw,
+            if a.is_workspace() {
+                format!("{flat}/generated")
+            } else {
+                "generated/rust-server".to_string()
+            },
+        ),
         Server::Java(fw) => (
             "java",
             fw,
@@ -147,7 +166,15 @@ fn server_target(a: &Answers, t: &mut String, ts_outs: &mut Vec<String>, svc: &s
     t.push_str(&format!(
         "[[targets]]\nname = \"{name}\"\nrole = \"server\"\nemitter = \"{emitter}\"\nframework = \"{fw}\"\nservice = \"{svc}\"\nout = \"{out}\"\n"
     ));
-    if emitter == "java" {
+    if emitter == "rust" {
+        t.push_str(&format!(
+            "
+[targets.options]
+crate-name = \"{}-server\"
+",
+            sanitize(svc).to_ascii_lowercase()
+        ));
+    } else if emitter == "java" {
         t.push_str(&format!(
             "\n[targets.options]\npackage = \"com.example.{}\"\n",
             sanitize(svc).to_ascii_lowercase()
@@ -177,6 +204,28 @@ fn client_target(a: &Answers, client: &Client, t: &mut String, ts_outs: &mut Vec
             t.push_str(&format!("out = \"{out}\"\n\n"));
             ts_outs.push(out);
         }
+        Client::Rust(fw) => {
+            let default = if a.is_workspace() {
+                "clients/rust"
+            } else {
+                "generated/rust-client"
+            };
+            let out = a.out("rust-client", default);
+            t.push_str(&format!(
+                "[[targets]]
+name = \"rust-client\"
+role = \"client\"
+emitter = \"rust\"
+framework = \"{fw}\"
+out = \"{out}\"
+
+[targets.options]
+crate-name = \"{}-client\"
+
+",
+                sanitize(&a.name).to_ascii_lowercase()
+            ));
+        }
         Client::Java => {
             let default = if a.is_workspace() {
                 "clients/java/src/main/java"
@@ -199,7 +248,10 @@ fn contracts(a: &Answers) -> Vec<File> {
         optional: false,
     };
     if !a.is_workspace() {
-        return vec![file("contracts/hello.veld".to_string(), HELLO.to_string())];
+        return match a.template {
+            Template::Hello => vec![file("contracts/hello.veld".to_string(), HELLO.to_string())],
+            Template::Crud => crud_contracts(),
+        };
     }
     a.services
         .iter()
@@ -259,6 +311,156 @@ service Orders at "/orders" {
 }
 "#;
 
+/// The project `README.md`: what the folders are and the commands to use. Deterministic, and
+/// `optional`, so an existing README is never replaced.
+fn readme(a: &Answers) -> File {
+    let mut t = format!("# {}\n\n", a.name);
+    if !a.description.is_empty() {
+        t.push_str(&format!("{}\n\n", a.description));
+    }
+    t.push_str("An API described with [Veld](https://github.com/Adhamzineldin/Veld) contracts. ");
+    t.push_str("The `.veld` files are the source of truth; the servers and clients are generated from them.\n\n");
+    t.push_str("## Layout\n\n");
+    if a.is_workspace() {
+        t.push_str("- `contracts/<service>/`: the contracts, one folder per service\n");
+    } else {
+        t.push_str("- `contracts/`: the API contracts (`.veld` files)\n");
+    }
+    t.push_str("- `veld.toml`: the project and its generated targets\n");
+    for (name, out) in super::flow::default_outs(a) {
+        t.push_str(&format!(
+            "- `{}`: generated output of `{name}` (do not edit; `veld clean` removes it)\n",
+            a.out(&name, &out)
+        ));
+    }
+    t.push_str("\n## Commands\n\n```bash\nveld check            # compile the contracts and lint them\nveld generate         # write the generated code\nveld generate --check # exit 1 if the generated code is out of date (CI)\nveld setup            # make the generated packages importable\nveld doctor           # check the project and the tools it needs\nveld export openapi   # OpenAPI 3.1 for the contracts\n```\n\n");
+    t.push_str("Edit a contract, run `veld generate`, and commit both the contracts and the generated output.\n");
+    File {
+        path: "README.md".to_string(),
+        text: t,
+        optional: true,
+    }
+}
+
+/// The `crud` starter: users, auth and pagination in three modules of one package.
+fn crud_contracts() -> Vec<File> {
+    [
+        ("contracts/common.veld", COMMON),
+        ("contracts/users.veld", CRUD_USERS),
+        ("contracts/auth.veld", CRUD_AUTH),
+    ]
+    .iter()
+    .map(|(path, text)| File {
+        path: (*path).to_string(),
+        text: (*text).to_string(),
+        optional: false,
+    })
+    .collect()
+}
+
+const COMMON: &str = r#"/// Paging parameters shared by every list endpoint.
+model PageQuery {
+  /// 1-based page number.
+  page?: int @min(1)
+  /// Items per page.
+  size?: int @min(1) @max(100)
+}
+"#;
+
+const CRUD_USERS: &str = r#"use common.{PageQuery}
+
+enum Role { admin, member }
+
+/// A registered user.
+model User {
+  id: uuid @readonly
+  email: string @format(email)
+  name: string @length(min: 1, max: 80)
+  role: Role = .member
+  createdAt: datetime @readonly
+}
+
+/// Payload to create a user.
+model CreateUserInput {
+  email: string @format(email)
+  name: string @length(min: 1, max: 80)
+  role?: Role
+}
+
+/// Payload to change a user; absent fields stay as they are.
+model UpdateUserInput {
+  name?: string @length(min: 1, max: 80)
+  role?: Role
+}
+
+/// A user with this email already exists.
+error EmailTaken 409 {
+  email: string
+}
+
+/// User management with pagination.
+@auth(bearer)
+service Users at "/users" {
+  /// Lists users, one page at a time.
+  get "/" listUsers(query: PageQuery) -> Page<User>
+
+  /// Fetches one user.
+  get "/{id}" getUser(id: uuid) -> User | NotFound
+
+  /// Creates a user.
+  post "/" createUser(body: CreateUserInput) -> User | EmailTaken
+
+  /// Changes a user.
+  patch "/{id}" updateUser(id: uuid, body: UpdateUserInput) -> User | NotFound
+
+  /// Deletes a user.
+  delete "/{id}" deleteUser(id: uuid) -> 204 | NotFound
+}
+"#;
+
+const CRUD_AUTH: &str = r#"use users.{EmailTaken, User}
+
+/// Payload to sign up.
+model RegisterInput {
+  email: string @format(email)
+  name: string @length(min: 1, max: 80)
+  password: string @length(min: 8, max: 128)
+}
+
+/// Payload to sign in.
+model LoginInput {
+  email: string @format(email)
+  password: string
+}
+
+/// A bearer token to send in the `Authorization` header.
+model Session {
+  accessToken: string
+  /// Seconds until the token expires.
+  expiresIn: int
+}
+
+/// The email or password is wrong.
+error InvalidCredentials 401 {
+  message?: string
+}
+
+/// Sign up, sign in and the current user.
+service Auth at "/auth" {
+  /// Creates an account.
+  @auth(none)
+  post "/register" register(body: RegisterInput) -> User | EmailTaken
+
+  /// Exchanges credentials for a token.
+  @auth(none)
+  post "/login" login(body: LoginInput) -> 200 Session | InvalidCredentials
+
+  /// The signed-in user.
+  @auth(bearer)
+  get "/me" me() -> User
+}
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,13 +477,16 @@ mod tests {
                 .collect()
         };
         Answers {
+            template: crate::cli::Template::Hello,
             name: "shop".to_string(),
             services,
             servers,
             clients: match client {
                 Client::None => Vec::new(),
-                c @ (Client::Ts(_) | Client::Java) => vec![c],
+                c @ (Client::Ts(_) | Client::Java | Client::Rust(_)) => vec![c],
             },
+            base_urls: Vec::new(),
+            consumes: Vec::new(),
             outs: Vec::new(),
             description: String::new(),
         }
@@ -336,14 +541,37 @@ mod tests {
     }
 
     #[test]
-    fn workspace_services_consume_the_first_and_get_their_own_apps() {
-        let a = answers(
+    fn workspace_services_consume_only_what_was_chosen_and_get_their_own_apps() {
+        let mut a = answers(
             &["users", "orders", "billing"],
             Server::Node("express".into()),
             Client::Ts(Some("react".into())),
         );
+        let none = files(&a);
+        assert!(
+            !none[0].text.contains("consumes"),
+            "no auto-assigned consumes"
+        );
+        assert!(
+            none[0]
+                .text
+                .contains("base-url = \"http://localhost:3002\"")
+        );
+        a.consumes = vec![
+            ("orders".to_string(), vec!["users".to_string()]),
+            (
+                "billing".to_string(),
+                vec!["users".to_string(), "orders".to_string()],
+            ),
+        ];
+        a.base_urls = vec![("users".to_string(), "https://users.example.com".to_string())];
         let f = files(&a);
-        assert!(f[0].text.matches("consumes = [\"users\"]").count() == 2);
+        assert!(f[0].text.contains("consumes = [\"users\"]"));
+        assert!(f[0].text.contains("consumes = [\"users\", \"orders\"]"));
+        assert!(
+            f[0].text
+                .contains("base-url = \"https://users.example.com\"")
+        );
         assert!(f[0].text.contains("framework = \"react\""));
         let paths: Vec<&str> = f.iter().map(|x| x.path.as_str()).collect();
         for want in [

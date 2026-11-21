@@ -143,12 +143,16 @@ fn a_failing_check_keeps_the_rustc_style_diagnostic() {
 }
 
 #[test]
-fn watch_is_a_listed_command() {
-    veld(tempdir().unwrap().path())
+fn watch_is_a_hidden_alias_that_still_works() {
+    let out = veld(tempdir().unwrap().path())
         .arg("--help")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("watch"));
+        .output()
+        .unwrap();
+    let help = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !help.lines().any(|l| l.trim_start().starts_with("watch")),
+        "`watch` must not be listed:\n{help}"
+    );
     veld(tempdir().unwrap().path())
         .args(["watch", "--help"])
         .assert()

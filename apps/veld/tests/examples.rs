@@ -28,13 +28,7 @@ fn examples() -> Vec<PathBuf> {
 
 /// Every file of an example except installed dependencies and build output.
 fn source_tree(dir: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
-    tree(dir)
-        .into_iter()
-        .filter(|(rel, _)| {
-            !rel.split('/')
-                .any(|p| matches!(p, "node_modules" | "dist" | "target" | ".veld"))
-        })
-        .collect()
+    tree_excluding(dir, &["node_modules", "dist", "target", ".veld"])
 }
 
 fn copy_tree(from: &Path, to: &Path) {
@@ -51,7 +45,7 @@ fn the_expected_examples_exist() {
         .iter()
         .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
         .collect();
-    for want in ["hello", "library-package", "microservices"] {
+    for want in ["hello", "library-package", "microservices", "rust-catalog"] {
         assert!(names.iter().any(|n| n == want), "missing example {want}");
     }
 }
@@ -88,7 +82,7 @@ fn committed_output_of_every_example_is_up_to_date() {
                 "{name}: committed output is stale, run `veld generate`: {line}"
             );
         }
-        assert_eq!(before, tree(work.path()), "{name}: a dry run changed files");
+        assert_same_tree(&before, &tree(work.path()), &format!("{name}: dry run"));
     }
 }
 
@@ -99,11 +93,10 @@ fn generating_twice_from_scratch_gives_the_committed_bytes() {
         copy_tree(&example, work.path());
         veld(work.path()).arg("clean").assert().success();
         veld(work.path()).arg("generate").assert().success();
-        assert_eq!(
-            source_tree(&example),
-            source_tree(work.path()),
-            "{}: regenerating changed the output",
-            example.display()
+        assert_same_tree(
+            &source_tree(&example),
+            &source_tree(work.path()),
+            &format!("{}: regeneration", example.display()),
         );
     }
 }
