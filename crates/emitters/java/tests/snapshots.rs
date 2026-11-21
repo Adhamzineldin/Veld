@@ -202,29 +202,184 @@ fn sse_ir() -> Ir {
     out.ir.unwrap()
 }
 
+fn streaming_server(framework: Option<&str>, ir: &Ir) -> FileSet {
+    gen_server_services(ir, &["Live", "Vault"], "gen.s", framework, None)
+}
+
+fn streaming_client() -> FileSet {
+    gen_client(&streaming_ir(), "gen.sf")
+}
+
+/// What `generate` answers for a server request, without the capability check of `common::run`.
+fn server_request(
+    ir: &Ir,
+    services: &[&str],
+    framework: Option<&str>,
+) -> Result<FileSet, Vec<veld_codegen::GenDiagnostic>> {
+    let req = GenRequest {
+        ir,
+        role: Role::Server,
+        services: services.iter().map(|n| service_id(ir, n)).collect(),
+        consumes: vec![],
+        framework: framework.map(str::to_string),
+    };
+    Java.generate_dyn(&req, &serde_json::Value::Null)
+}
+
+/// SSE generates for the client and for every server framework; `ws` generates for the client and
+/// for Spring, and is `E0801` (with a message that says what to do) for the JDK adapter, which has
+/// no WebSocket server. The capability gate itself accepts both features.
 #[test]
-fn streaming_reports_e0801() {
-    let ir = sse_ir();
-    let svc = ir.services[0].id;
-    assert!(ir.features_used(&[svc]).contains(&Feature::StreamingSse));
+fn streaming_generates_except_ws_on_the_jdk_adapter() {
+    let sse = sse_ir();
+    let svc = sse.services[0].id;
+    assert!(sse.features_used(&[svc]).contains(&Feature::StreamingSse));
     for role in [Role::Client, Role::Server] {
         let req = GenRequest {
-            ir: &ir,
+            ir: &sse,
             role,
             services: vec![svc],
             consumes: vec![],
             framework: None,
         };
-        let diags = check_capabilities(&ir, &req, &Java.capabilities(role));
-        assert_eq!(diags.len(), 1, "{diags:?}");
-        assert_eq!(diags[0].code, "E0801");
-        assert_eq!(
-            Java.generate_dyn(&req, &serde_json::Value::Null)
-                .unwrap_err()[0]
-                .code,
-            "E0801"
+        assert!(check_capabilities(&sse, &req, &Java.capabilities(role)).is_empty());
+        assert!(Java.generate_dyn(&req, &serde_json::Value::Null).is_ok());
+    }
+    for framework in [None, Some("jdk"), Some("spring")] {
+        let files = server_request(&sse, &["Feed"], framework).unwrap();
+        let path = files
+            .paths()
+            .find(|p| p.ends_with("/FeedService.java"))
+            .unwrap();
+        let service = text(&files, path);
+        assert!(
+            service.contains(
+                "Stream<SseEvent<String>> events(EventsRequest request, RequestContext ctx)"
+            ),
+            "{service}"
         );
     }
+
+    let full = streaming_ir();
+    let live = service_id(&full, "Live");
+    assert!(full.features_used(&[live]).contains(&Feature::StreamingWs));
+    for framework in [None, Some("jdk")] {
+        let diags = server_request(&full, &["Live", "Vault"], framework).unwrap_err();
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].code, "E0801");
+        assert!(diags[0].message.contains("ws"), "{}", diags[0].message);
+        assert!(diags[0].message.contains("spring"), "{}", diags[0].message);
+    }
+    let spring = streaming_server(Some("spring"), &full);
+    let paths: Vec<&str> = spring.paths().collect();
+    for expected in [
+        "gen/s/adapters/SpringAdapter.java",
+        "gen/s/adapters/SpringWebSocketAdapter.java",
+        "gen/s/adapters/live/LiveController.java",
+        "gen/s/adapters/live/LiveWebSocketConfig.java",
+        "gen/s/adapters/live/VaultWebSocketConfig.java",
+    ] {
+        assert!(paths.contains(&expected), "{expected} in {paths:?}");
+    }
+    assert!(!paths.iter().any(|p| p.contains("JdkHttpServerAdapter")));
+    assert!(
+        gen_client(&full, "gen.c")
+            .get("gen/c/live/client/LiveClient.java")
+            .is_some()
+    );
+}
+
+/// The WebSocket adapter, and with it the Spring WebSocket dependency, exists only when the contract
+/// has `ws` endpoints.
+#[test]
+fn the_spring_websocket_adapter_only_for_contracts_with_ws() {
+    let sse = server_request(&sse_ir(), &["Feed"], Some("spring")).unwrap();
+    assert!(
+        sse.paths().all(|p| !p.contains("WebSocket")),
+        "SSE needs no WebSocket"
+    );
+    let plain = spring_server();
+    assert!(plain.paths().all(|p| !p.contains("WebSocket")));
+    for set in [&sse, &plain] {
+        for path in set.paths() {
+            assert!(
+                !text(set, path).contains("org.springframework.web.socket"),
+                "{path}"
+            );
+        }
+    }
+}
+
+#[test]
+fn streaming_snapshots() {
+    let full = streaming_ir();
+    let jdk = streaming_server(None, &streaming_sse_ir());
+    let spring = streaming_server(Some("spring"), &full);
+    let client = streaming_client();
+    for (set, label, paths) in [
+        (
+            &jdk,
+            "jdk",
+            vec![
+                "gen/s/live/server/LiveService.java",
+                "gen/s/live/server/LiveHandler.java",
+                "gen/s/live/server/VaultHandler.java",
+                "gen/s/adapters/JdkHttpServerAdapter.java",
+            ],
+        ),
+        (
+            &spring,
+            "spring",
+            vec![
+                "gen/s/live/server/LiveService.java",
+                "gen/s/live/server/LiveHandler.java",
+                "gen/s/live/server/VaultService.java",
+                "gen/s/live/server/ChatRequest.java",
+                "gen/s/adapters/SpringAdapter.java",
+                "gen/s/adapters/SpringWebSocketAdapter.java",
+                "gen/s/adapters/live/LiveController.java",
+                "gen/s/adapters/live/LiveWebSocketConfig.java",
+            ],
+        ),
+        (
+            &client,
+            "client",
+            vec![
+                "gen/sf/live/client/LiveClient.java",
+                "gen/sf/live/client/VaultClient.java",
+                "gen/sf/live/client/ChatRequest.java",
+                "gen/sf/runtime/SseEvent.java",
+                "gen/sf/runtime/SseParser.java",
+                "gen/sf/runtime/WsChannel.java",
+                "gen/sf/runtime/WsSession.java",
+            ],
+        ),
+    ] {
+        insta::assert_snapshot!(
+            format!("streaming_{label}_file_list"),
+            set.paths().collect::<Vec<_>>().join("\n")
+        );
+        for path in paths {
+            insta::assert_snapshot!(
+                format!("streaming_{label}_{}", path.replace('/', "__")),
+                text(set, path)
+            );
+        }
+    }
+}
+
+#[test]
+fn streaming_output_is_deterministic() {
+    let full = streaming_ir();
+    let sse = streaming_sse_ir();
+    for framework in [None, Some("spring")] {
+        let ir = if framework.is_some() { &full } else { &sse };
+        assert_eq!(
+            files_of(&streaming_server(framework, ir)),
+            files_of(&streaming_server(framework, ir))
+        );
+    }
+    assert_eq!(files_of(&streaming_client()), files_of(&streaming_client()));
 }
 
 #[test]

@@ -224,3 +224,77 @@ pub fn equality_ir() -> Ir {
     );
     out.ir.unwrap_or_else(|| unreachable!())
 }
+
+/// Server files for several services of one package.
+pub fn gen_server_services(
+    ir: &Ir,
+    services: &[&str],
+    package: &str,
+    framework: Option<&str>,
+    release: Option<&str>,
+) -> FileSet {
+    run(
+        ir,
+        Role::Server,
+        services.iter().map(|n| service_id(ir, n)).collect(),
+        vec![],
+        framework,
+        options(package, release),
+    )
+}
+
+fn streaming_source() -> String {
+    let path = repo_root().join("tests/toolchain/contract/streaming/live.veld");
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+/// The streaming contract without its `ws` endpoints (and the doc comments of those): what the
+/// `jdk` framework can serve.
+fn without_ws(source: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    let mut docs: Vec<&str> = Vec::new();
+    for line in source.lines() {
+        let t = line.trim_start();
+        let indented = line.len() != t.len();
+        if indented && t.starts_with("///") {
+            docs.push(line);
+        } else if indented && t.starts_with("ws ") {
+            docs.clear();
+        } else {
+            out.append(&mut docs);
+            out.push(line);
+        }
+    }
+    out.join("\n")
+}
+
+fn compile_streaming(text: String) -> Ir {
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "live".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: "live.veld".into(),
+                text,
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    assert!(
+        out.ir.is_some(),
+        "streaming fixture failed to compile:\n{}",
+        out.render()
+    );
+    out.ir.unwrap_or_else(|| unreachable!())
+}
+
+/// The streaming fixture: SSE and WebSocket endpoints (`tests/toolchain/contract/streaming`).
+pub fn streaming_ir() -> Ir {
+    compile_streaming(streaming_source())
+}
+
+/// The streaming fixture with the SSE endpoints only.
+pub fn streaming_sse_ir() -> Ir {
+    compile_streaming(without_ws(&streaming_source()))
+}

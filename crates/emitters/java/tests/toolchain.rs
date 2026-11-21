@@ -195,13 +195,42 @@ fn build_java(release: &'static str) -> Result<Java, Unavailable> {
     put("gen_cb", &gen_client_for(&a, "gen.cb", Some(release)));
     put("gen_cc", &gen_client_for(&c, "gen.cc", Some(release)));
     put("gen_cd", &gen_client_for(&d, "gen.cd", Some(release)));
+    // The streaming contract: the JDK server can only serve its SSE endpoints (`E0801` for `ws`), so
+    // `gen.s` is built from the SSE-only contract; the client and the Spring server get everything.
+    let streaming = streaming_ir();
+    put(
+        "gen_s",
+        &gen_server_services(
+            &streaming_sse_ir(),
+            &["Live", "Vault"],
+            "gen.s",
+            None,
+            Some(release),
+        ),
+    );
+    put(
+        "gen_sf",
+        &gen_client_for(&streaming, "gen.sf", Some(release)),
+    );
+    put(
+        "gen_spring_s",
+        &gen_server_services(
+            &streaming,
+            &["Live", "Vault"],
+            "gen.w",
+            Some("spring"),
+            Some(release),
+        ),
+    );
     write_sigs(&work);
 
     // 1. Generated code alone: zero warnings.
-    let generated: Vec<PathBuf> = ["gen_a", "gen_i", "gen_ca", "gen_cb", "gen_cc", "gen_cd"]
-        .iter()
-        .flat_map(|d| java_files(&work.join(d), &[]))
-        .collect();
+    let generated: Vec<PathBuf> = [
+        "gen_a", "gen_i", "gen_ca", "gen_cb", "gen_cc", "gen_cd", "gen_s", "gen_sf",
+    ]
+    .iter()
+    .flat_map(|d| java_files(&work.join(d), &[]))
+    .collect();
     javac(&work, release, "classes_gen", None, &[], &generated);
 
     // 2. The test programs against the compiled generated code.
@@ -320,6 +349,23 @@ fn cross_package_equality() {
 fn wire_goldens() {
     each_java("wire_goldens", |j| {
         assert!(run_java(j, "veldtest.WireCheck", &[]).contains("wire ok"));
+    });
+}
+
+#[test]
+fn streaming_round_trip_on_the_jdk_adapter() {
+    each_java("streaming_round_trip_on_the_jdk_adapter", |j| {
+        let out = run_java(j, "veldtest.StreamRoundtrip", &[]);
+        assert!(out.contains("stream roundtrip ok"), "java {}", j.release);
+    });
+}
+
+/// `tests/wire/streaming/sse.json` through the Java runtime's frame writer and `SseParser`.
+#[test]
+fn sse_wire_golden() {
+    each_java("sse_wire_golden", |j| {
+        let out = run_java(j, "veldtest.SseWire", &[]);
+        assert!(out.contains("sse wire ok"), "java {}", j.release);
     });
 }
 
@@ -511,6 +557,133 @@ fn java_client_calls_the_node_server_on(release: &str) {
     let server = Server::start(cmd);
     let out = run_java(j, "veldtest.CrossClient", &[&server.url, "node"]);
     assert!(out.contains("cross client ok"));
+}
+
+// ---------------------------------------------------------------------------
+// Streaming across languages
+// ---------------------------------------------------------------------------
+
+/// The generated Node server and TypeScript client of the streaming contract, compiled.
+struct TsStream {
+    work: PathBuf,
+}
+
+fn build_ts_stream() -> Result<TsStream, Unavailable> {
+    if !succeeds("node", "--version") {
+        return Err(Unavailable::Missing("`node` is not on PATH".into()));
+    }
+    let tsc = ts_dir().join("node_modules/typescript/bin/tsc");
+    if !tsc.exists() || !ts_dir().join("node_modules/ws/package.json").exists() {
+        return Err(Unavailable::Missing(
+            "run `npm ci` in tests/toolchain/ts (needs typescript and ws)".into(),
+        ));
+    }
+    let work = ts_dir().join(".work/java-stream");
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).unwrap();
+    let ir = streaming_ir();
+    let opts = WriteOptions::default();
+    write(
+        &work.join("server"),
+        &gen_ts(&Node, &ir, Role::Server, &["Live", "Vault"], &[]),
+        &opts,
+    )
+    .unwrap();
+    write(
+        &work.join("client"),
+        &gen_ts(&TypeScript, &ir, Role::Client, &["Live", "Vault"], &[]),
+        &opts,
+    )
+    .unwrap();
+    for script in ["stream_server.ts", "stream_cross.ts"] {
+        std::fs::copy(ts_dir().join(script), work.join(script)).unwrap();
+    }
+    let config = json!({
+        "compilerOptions": {
+            "strict": true, "target": "ES2022", "lib": ["ES2022"], "types": ["node"],
+            "module": "commonjs", "moduleResolution": "node10", "esModuleInterop": true,
+            "skipLibCheck": true, "outDir": "out", "rootDir": "."
+        },
+        "include": ["*.ts", "server/**/*.ts", "client/**/*.ts"]
+    });
+    std::fs::write(
+        work.join("tsconfig.json"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .unwrap();
+    run(
+        Command::new("node")
+            .arg(&tsc)
+            .args(["-p", "tsconfig.json"])
+            .current_dir(&work),
+        "tsc (streaming)",
+    );
+    Ok(TsStream { work })
+}
+
+fn ts_stream() -> Result<&'static TsStream, Unavailable> {
+    static TS: OnceLock<Result<TsStream, Unavailable>> = OnceLock::new();
+    match TS.get_or_init(|| {
+        std::panic::catch_unwind(build_ts_stream).unwrap_or_else(|e| {
+            Err(Unavailable::Failed(
+                e.downcast_ref::<String>()
+                    .cloned()
+                    .unwrap_or_else(|| "build panicked".into()),
+            ))
+        })
+    }) {
+        Ok(t) => Ok(t),
+        Err(e) => Err(e.clone()),
+    }
+}
+
+fn both_stream(test: &str, release: &str) -> Option<(&'static Java, &'static TsStream)> {
+    let j = need_java(test, release)?;
+    match ts_stream() {
+        Ok(t) => Some((j, t)),
+        Err(why) => skip(test, &why),
+    }
+}
+
+/// The generated Java client (SSE and `ws`) against the generated Node server.
+#[test]
+fn java_client_streams_from_the_node_server() {
+    let name = "java_client_streams_from_the_node_server";
+    for release in releases() {
+        let Some((j, t)) = both_stream(name, release) else {
+            return;
+        };
+        let mut cmd = Command::new("node");
+        cmd.arg("out/stream_server.js").current_dir(&t.work);
+        let server = Server::start(cmd);
+        let out = run_java(j, "veldtest.StreamCrossClient", &[&server.url, "node"]);
+        assert!(out.contains("stream cross client ok"), "java {release}");
+    }
+}
+
+/// The generated TypeScript client against the generated Java server on the JDK adapter (SSE).
+#[test]
+fn typescript_client_streams_from_the_java_server() {
+    let name = "typescript_client_streams_from_the_java_server";
+    for release in releases() {
+        let Some((j, t)) = both_stream(name, release) else {
+            return;
+        };
+        let mut cmd = Command::new("java");
+        cmd.args(["-cp", &run_classpath(), "veldtest.StreamServe"])
+            .current_dir(&j.work);
+        let server = Server::start(cmd);
+        let out = run(
+            Command::new("node")
+                .args(["out/stream_cross.js", &server.url])
+                .current_dir(&t.work),
+            "stream_cross.js",
+        );
+        assert!(
+            out.contains("ts stream client against java server ok"),
+            "java {release}"
+        );
+    }
 }
 
 /// Endpoints, fields, models and enum variants named with every hazardous identifier must still
@@ -711,12 +884,14 @@ fn build_spring_app(j: &Java) -> PathBuf {
     let _ = std::fs::remove_dir_all(&work);
     let sources = work.join("src/main/java");
     std::fs::create_dir_all(sources.join("veldtest")).unwrap();
-    let generated = j.work.join("gen_spring");
-    for file in java_files(&generated, &[]) {
-        let rel = file.strip_prefix(&generated).unwrap();
-        let dest = sources.join(rel);
-        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
-        std::fs::copy(&file, dest).unwrap();
+    for tree in ["gen_spring", "gen_spring_s"] {
+        let generated = j.work.join(tree);
+        for file in java_files(&generated, &[]) {
+            let rel = file.strip_prefix(&generated).unwrap();
+            let dest = sources.join(rel);
+            std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+            std::fs::copy(&file, dest).unwrap();
+        }
     }
     let project = spring_project();
     for name in ["pom.xml", "mvnw", "mvnw.cmd"] {
@@ -744,9 +919,32 @@ fn build_spring_app(j: &Java) -> PathBuf {
         c
     };
     mvn.args(["-q", "-B", "package", "-DskipTests"])
+        .arg(format!("-Djava.version={}", j.release))
         .current_dir(&work);
-    run(&mut mvn, "mvnw package");
+    run_logged(&mut mvn, "mvnw package", &work.join("mvnw.log"));
     work.join("target/app.jar")
+}
+
+/// Runs a build tool as a process tree (a launcher such as `cmd` or `sh` that starts the real
+/// process), killed as a whole on drop, with its output in `log`.
+fn run_logged(cmd: &mut Command, what: &str, log: &Path) {
+    let mut tree = veld_test_support::ProcessTree::spawn_logged(cmd, log)
+        .unwrap_or_else(|e| panic!("{what}: cannot start: {e}"));
+    let status = tree.child_mut().wait().unwrap();
+    let output = std::fs::read_to_string(log).unwrap_or_default();
+    print!("{output}");
+    assert!(
+        status.success(),
+        "{what} failed ({status})
+{output}"
+    );
+}
+
+/// The executable jar of the Spring application for `j`, built once per release.
+fn spring_jar(j: &Java) -> PathBuf {
+    static JARS: [OnceLock<PathBuf>; RELEASES.len()] = [const { OnceLock::new() }; RELEASES.len()];
+    let i = RELEASES.iter().position(|r| *r == j.release).unwrap();
+    JARS[i].get_or_init(|| build_spring_app(j)).clone()
 }
 
 /// The port in Spring's `Tomcat started on port 55983 (http) ...` log line.
@@ -830,7 +1028,7 @@ fn spring_adapter_serves_the_round_trip() {
         let _: Option<()> = skip(name, &Unavailable::Missing(why));
         return;
     }
-    let jar = build_spring_app(j);
+    let jar = spring_jar(j);
     let server = start_spring(&jar);
     let out = run_java(j, "veldtest.SpringCrossClient", &[&server.url]);
     assert!(out.contains("spring client ok"));
@@ -845,6 +1043,43 @@ fn spring_adapter_serves_the_round_trip() {
             "crossclient.js",
         );
         assert!(out.contains("ts client against java server ok"));
+    }
+}
+
+/// Server-Sent Events and WebSocket (Spring WebSocket, `spring-boot-starter-websocket`) through the
+/// generated Spring adapter in the same Spring Boot application: the Java client, then the generated
+/// TypeScript client, each against a fresh instance of the jar.
+#[test]
+fn spring_adapter_serves_sse_and_websockets() {
+    let name = "spring_adapter_serves_sse_and_websockets";
+    if let Err(why) = maven_reachable() {
+        let _: Option<()> = skip(name, &Unavailable::Missing(why));
+        return;
+    }
+    for release in releases() {
+        let Some((j, t)) = both_stream(name, release) else {
+            return;
+        };
+        let jar = spring_jar(j);
+        let server = start_spring(&jar);
+        let out = run_java(
+            j,
+            "veldtest.StreamCrossClient",
+            &[&server.url, "spring", "probe"],
+        );
+        assert!(out.contains("stream cross client ok"), "java {release}");
+        drop(server);
+        let server = start_spring(&jar);
+        let out = run(
+            Command::new("node")
+                .args(["out/stream_cross.js", &server.url, "full", "spring"])
+                .current_dir(&t.work),
+            "stream_cross.js (spring)",
+        );
+        assert!(
+            out.contains("ts stream client against java server ok"),
+            "java {release}"
+        );
     }
 }
 
@@ -894,6 +1129,9 @@ fn generated_java_has_no_unused_imports() {
         for dir in [
             "gen_a",
             "gen_spring",
+            "gen_spring_s",
+            "gen_s",
+            "gen_sf",
             "gen_i",
             "gen_ca",
             "gen_cb",
