@@ -1,0 +1,5 @@
+/// TODO: describe ${NAME}.
+model ${NAME} {
+  id: uuid @readonly
+  name: string @length(min: 1)
+}

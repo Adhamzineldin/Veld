@@ -1,0 +1,493 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://veld.dev/schemas/veld.toml.schema.json",
+  "title": "veld.toml",
+  "description": "Veld 2 project configuration. Unknown keys are errors (E0701).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "project"
+  ],
+  "properties": {
+    "project": {
+      "type": "object",
+      "description": "The project. With no `[services]` section it is itself a single service named `name`.",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Package name of the implicit default service (single service), or the workspace name."
+        },
+        "contracts": {
+          "type": "string",
+          "default": "contracts",
+          "description": "Package root of the implicit service. Default `contracts`. Mutually exclusive with `[services.*]`."
+        },
+        "package": {
+          "type": "string",
+          "pattern": "^@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$",
+          "description": "Registry name `@org/name` used by `veld publish`.",
+          "examples": [
+            "@acme/billing"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$",
+          "description": "Semantic version published by `veld publish`.",
+          "examples": [
+            "1.0.0"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "Short description shown in the registry."
+        }
+      }
+    },
+    "libraries": {
+      "type": "object",
+      "description": "Shared contract packages.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "description": "A shared contract package, importable as `use <name>:<module>.{Name}`.",
+        "additionalProperties": false,
+        "properties": {
+          "contracts": {
+            "type": "string",
+            "description": "Package root: the directory holding the `.veld` files, relative to `veld.toml`."
+          },
+          "package": {
+            "type": "string",
+            "pattern": "^@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$",
+            "description": "Registry name `@org/name` used by `veld publish`.",
+            "examples": [
+              "@acme/billing"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$",
+            "description": "Semantic version published by `veld publish`.",
+            "examples": [
+              "1.0.0"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "description": "Short description shown in the registry."
+          }
+        }
+      }
+    },
+    "services": {
+      "type": "object",
+      "description": "The services of a workspace (microservices). Mutually exclusive with `[project].contracts`.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "description": "A service of a workspace. Its contracts are one package.",
+        "additionalProperties": false,
+        "properties": {
+          "contracts": {
+            "type": "string",
+            "description": "Package root: the directory holding the `.veld` files, relative to `veld.toml`."
+          },
+          "base-url": {
+            "type": "string",
+            "description": "Default base URL of the service for generated clients (lower priority than the constructor argument and `VELD_<SERVICE>_URL`)."
+          },
+          "consumes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true,
+            "description": "Services this service calls. Each must exist (E0702). Cycles are allowed. A server target generates a client for each one under `<out>/clients/<service>/`."
+          },
+          "package": {
+            "type": "string",
+            "pattern": "^@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$",
+            "description": "Registry name `@org/name` used by `veld publish`.",
+            "examples": [
+              "@acme/billing"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$",
+            "description": "Semantic version published by `veld publish`.",
+            "examples": [
+              "1.0.0"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "description": "Short description shown in the registry."
+          }
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "description": "The generated outputs.",
+      "items": {
+        "type": "object",
+        "description": "One generated output: a role, an emitter and an output directory.",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "emitter",
+          "out"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Optional name, used by `veld generate <name>` and for the package name `@veld/<name>`."
+          },
+          "role": {
+            "enum": [
+              "client",
+              "server",
+              "spec"
+            ],
+            "description": "`server`, `client`, or `spec` (an OpenAPI, GraphQL, schema or docs export)."
+          },
+          "emitter": {
+            "anyOf": [
+              {
+                "enum": [
+                  "node",
+                  "typescript",
+                  "java"
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^plugin:[A-Za-z0-9_-]+$"
+              }
+            ],
+            "description": "A built-in emitter (`node`, `typescript`, `java`) or `plugin:<name>` naming a `[plugins.<name>]` entry."
+          },
+          "framework": {
+            "type": "string",
+            "description": "The framework of the target. Valid values depend on emitter and role (E0803 lists them): node server `express`, `fastify`, `hono`, `node-http`, `nest`; typescript client `react`, `vue`; java server `jdk`, `spring`."
+          },
+          "service": {
+            "type": "string",
+            "description": "The service a `server` target implements. Required for `role = \"server\"`."
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The services a `client` target covers. Default: all services."
+          },
+          "out": {
+            "type": "string",
+            "description": "Output directory, relative to `veld.toml`. Two targets must not share one (E0703); it must not be the project root or a contracts directory (E0704)."
+          },
+          "clients": {
+            "type": "boolean",
+            "default": true,
+            "description": "Server targets only: set `false` to skip the generated clients for consumed services."
+          },
+          "app": {
+            "type": "string",
+            "description": "The directory of the app that consumes the output, for `veld setup`. Default: the nearest ancestor of `out` with a `package.json`, `pom.xml` or `build.gradle[.kts]`."
+          },
+          "options": {
+            "type": "object",
+            "description": "Emitter-specific options, checked against the emitter's typed options. An unknown key is E0802.",
+            "properties": {
+              "java": {
+                "enum": [
+                  "17",
+                  "21"
+                ],
+                "default": "17",
+                "description": "`java` emitter: the language version (default `17`, the oldest supported)."
+              },
+              "typescript": {
+                "enum": [
+                  "es2020",
+                  "es2022"
+                ],
+                "default": "es2020",
+                "description": "`typescript` and `node` emitters: the TypeScript target."
+              },
+              "framework-version": {
+                "type": "string",
+                "description": "The framework version: `spring` `\"3\"`, `nest` `\"10\"`, `react` `\"18\"`, `vue` `\"3\"`. Needs a `framework`; unversioned frameworks reject it (E0803)."
+              },
+              "package": {
+                "type": "string",
+                "description": "`java` emitter: the base Java package.",
+                "examples": [
+                  "com.acme.payments"
+                ]
+              },
+              "package-name": {
+                "type": "string",
+                "description": "`node` and `typescript` emitters: the generated `package.json` name (default `@veld/<target-name>`)."
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "emitter": {
+                  "const": "node"
+                },
+                "role": {
+                  "const": "server"
+                }
+              },
+              "required": [
+                "emitter",
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "framework": {
+                  "enum": [
+                    "express",
+                    "fastify",
+                    "hono",
+                    "node-http",
+                    "nest"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "emitter": {
+                  "const": "typescript"
+                },
+                "role": {
+                  "const": "client"
+                }
+              },
+              "required": [
+                "emitter",
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "framework": {
+                  "enum": [
+                    "react",
+                    "vue"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "emitter": {
+                  "const": "java"
+                },
+                "role": {
+                  "const": "server"
+                }
+              },
+              "required": [
+                "emitter",
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "framework": {
+                  "enum": [
+                    "jdk",
+                    "spring"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "emitter": {
+                  "const": "java"
+                },
+                "role": {
+                  "const": "client"
+                }
+              },
+              "required": [
+                "emitter",
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "framework": false
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "server"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "required": [
+                "service"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "plugins": {
+      "type": "object",
+      "description": "Generator plugins.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "A generator plugin, started over the plugin protocol (`spec/plugin-protocol.md`).",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Executable, resolved on PATH or relative to `veld.toml`."
+          },
+          "version": {
+            "type": "string",
+            "description": "Plugin version."
+          },
+          "entry": {
+            "type": "string",
+            "description": "Optional script an interpreter `command` runs; its path is appended to the command."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{64}$",
+            "description": "SHA-256 of `entry` if set, else of the executable. A mismatch is refused (E0705)."
+          }
+        }
+      }
+    },
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The package registry.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Registry URL. Must be https except for localhost; `--registry` and `VELD_REGISTRY` override it."
+        }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "description": "Registry packages, resolved and pinned in `veld.lock`.",
+      "propertyNames": {
+        "pattern": "^@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "description": "A semver range.",
+        "examples": [
+          "^1.2"
+        ]
+      }
+    },
+    "lint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unused-model": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0001."
+        },
+        "empty-service": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0002."
+        },
+        "empty-model": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0003."
+        },
+        "empty-constants": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0004."
+        },
+        "missing-description": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0005."
+        },
+        "deprecated-endpoint": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0006."
+        },
+        "deprecated-field": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0007."
+        },
+        "file-naming-convention": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0008."
+        },
+        "type-name-case": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0009."
+        },
+        "field-name-case": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0010."
+        },
+        "endpoint-name-case": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0011."
+        },
+        "variant-name-case": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0012."
+        },
+        "deprecated-declaration": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0013."
+        }
+      },
+      "description": "Lint rule levels (`off`, `warn`, `error`). Every rule defaults to `warn`; `veld check` reports them."
+    }
+  },
+  "$defs": {
+    "lintLevel": {
+      "enum": [
+        "off",
+        "warn",
+        "error"
+      ]
+    }
+  }
+}

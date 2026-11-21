@@ -1,0 +1,24 @@
+[project]
+name = "workspace"
+
+[services.users]
+contracts = "contracts/users"
+base-url = "http://users:3001"
+
+[services.orders]
+contracts = "contracts/orders"
+base-url = "http://orders:3002"
+consumes = ["users"]
+
+[[targets]]
+name = "orders-api"
+role = "server"
+service = "orders"
+emitter = "node"
+framework = "express"
+out = "services/orders/src/generated"
+
+[[targets]]
+role = "client"
+emitter = "typescript"
+out = "web/src/generated"

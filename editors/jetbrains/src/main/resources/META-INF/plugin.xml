@@ -9,6 +9,7 @@
       <li>Diagnostics, hover, go to definition, references, completion, rename, formatting and semantic
           tokens from the same engine as the compiler (through LSP4IJ)</li>
       <li>Syntax highlighting from a TextMate grammar</li>
+      <li>Tools | Veld: Validate, Generate, Dry Run, Check, Setup, Watch, Export OpenAPI, Doctor in a run console; New | Veld File templates; <code>veld.toml</code> schema</li>
       <li>Requires the <code>veld</code> binary on PATH, or set in Settings | Tools | Veld</li>
     </ul>
   ]]></description>
@@ -17,6 +18,7 @@
   <depends>com.intellij.modules.lang</depends>
   <depends>org.jetbrains.plugins.textmate</depends>
   <depends>com.redhat.devtools.lsp4ij</depends>
+  <depends optional="true" config-file="veld-json-schema.xml">com.intellij.modules.json</depends>
 
   <extensions defaultExtensionNs="com.intellij">
     <fileType name="Veld"
@@ -34,6 +36,12 @@
                              instance="dev.veld.jetbrains.VeldConfigurable"
                              displayName="Veld"/>
     <notificationGroup id="Veld" displayType="BALLOON"/>
+    <internalFileTemplate name="Veld Model"/>
+    <internalFileTemplate name="Veld Enum"/>
+    <internalFileTemplate name="Veld Error"/>
+    <internalFileTemplate name="Veld Service"/>
+    <internalFileTemplate name="Veld Config"/>
+    <internalFileTemplate name="Veld Workspace Config"/>
   </extensions>
 
   <extensions defaultExtensionNs="com.redhat.devtools.lsp4ij">
@@ -45,4 +53,31 @@
     <languageMapping language="Veld" serverId="veld"/>
     <fileNamePatternMapping patterns="*.veld" serverId="veld" languageId="veld"/>
   </extensions>
+
+  <actions>
+    <group id="dev.veld.ToolsMenu" text="Veld" popup="true">
+      <add-to-group group-id="ToolsMenu" anchor="last"/>
+      <action id="dev.veld.validate" class="dev.veld.jetbrains.VeldValidateAction" text="Validate Contracts"
+              description="Run veld check (compile and lint the contracts)"/>
+      <action id="dev.veld.generate" class="dev.veld.jetbrains.VeldGenerateAction" text="Generate"
+              description="Run veld generate"/>
+      <action id="dev.veld.generateDryRun" class="dev.veld.jetbrains.VeldGenerateDryRunAction" text="Generate (Dry Run)"
+              description="Run veld generate --dry-run: list what would change, write nothing"/>
+      <action id="dev.veld.generateCheck" class="dev.veld.jetbrains.VeldGenerateCheckAction" text="Check Generated Code Is Up To Date"
+              description="Run veld generate --check (fails when generated files are stale)"/>
+      <action id="dev.veld.setup" class="dev.veld.jetbrains.VeldSetupAction" text="Setup (Wire Targets Into Apps)"
+              description="Run veld setup"/>
+      <action id="dev.veld.watch" class="dev.veld.jetbrains.VeldWatchAction" text="Watch (Generate On Change)"
+              description="Run veld generate --watch until stopped"/>
+      <action id="dev.veld.exportOpenApi" class="dev.veld.jetbrains.VeldExportOpenApiAction" text="Export OpenAPI..."
+              description="Run veld export openapi -o FILE"/>
+      <action id="dev.veld.doctor" class="dev.veld.jetbrains.VeldDoctorAction" text="Doctor"
+              description="Run veld doctor"/>
+    </group>
+    <action id="dev.veld.newFile" class="dev.veld.jetbrains.VeldNewFileAction" text="Veld File"
+            description="Create a new Veld contract or veld.toml">
+      <add-to-group group-id="NewGroup" anchor="before" relative-to-action="NewFile"/>
+    </action>
+  </actions>
+
 </idea-plugin>

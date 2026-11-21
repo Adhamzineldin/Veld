@@ -23,6 +23,7 @@ dependencies {
         // Compile against the oldest supported platform (2024.3); verify against newer ones.
         create(IntelliJPlatformType.IntellijIdeaCommunity, "2024.3.5")
         bundledPlugin("org.jetbrains.plugins.textmate")
+        bundledPlugin("com.intellij.modules.json")
         plugin("com.redhat.devtools.lsp4ij", "0.19.4")
         testFramework(TestFrameworkType.Platform)
         pluginVerifier()

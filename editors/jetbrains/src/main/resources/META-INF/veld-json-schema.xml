@@ -1,0 +1,5 @@
+<idea-plugin>
+  <extensions defaultExtensionNs="JavaScript">
+    <JsonSchema.ProviderFactory implementation="dev.veld.jetbrains.VeldTomlSchemaProviderFactory"/>
+  </extensions>
+</idea-plugin>
