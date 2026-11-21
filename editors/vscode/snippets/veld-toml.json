@@ -1,0 +1,147 @@
+{
+  "Single service": {
+    "prefix": "veld-single",
+    "description": "veld.toml for one service",
+    "body": [
+      "[project]",
+      "name = \"${1:shop}\"",
+      "contracts = \"${2:contracts}\"",
+      "",
+      "$0"
+    ]
+  },
+  "Workspace": {
+    "prefix": "veld-workspace",
+    "description": "veld.toml for several services",
+    "body": [
+      "[project]",
+      "name = \"${1:acme}\"",
+      "",
+      "[services.${2:orders}]",
+      "contracts = \"contracts/${2:orders}\"",
+      "base-url = \"http://${2:orders}:${3:3001}\"",
+      "consumes = [$4]",
+      "",
+      "$0"
+    ]
+  },
+  "Library": {
+    "prefix": "veld-library",
+    "description": "Shared contracts importable by services",
+    "body": ["[libraries.${1:common}]", "contracts = \"contracts/${1:common}\""]
+  },
+  "Service": {
+    "prefix": "veld-service",
+    "description": "A workspace service",
+    "body": [
+      "[services.${1:payments}]",
+      "contracts = \"contracts/${1:payments}\"",
+      "base-url = \"http://${1:payments}:${2:3002}\"",
+      "consumes = [$3]"
+    ]
+  },
+  "Server target (node)": {
+    "prefix": "veld-node",
+    "description": "Node server target",
+    "body": [
+      "[[targets]]",
+      "role = \"server\"",
+      "service = \"${1:shop}\"",
+      "emitter = \"node\"",
+      "framework = \"${2|express,fastify,hono,node-http,nest|}\"",
+      "out = \"${3:api/src/generated}\""
+    ]
+  },
+  "Server target (java)": {
+    "prefix": "veld-java",
+    "description": "Java server target",
+    "body": [
+      "[[targets]]",
+      "role = \"server\"",
+      "service = \"${1:shop}\"",
+      "emitter = \"java\"",
+      "framework = \"${2|jdk,spring|}\"",
+      "out = \"${3:src/main/java}\"",
+      "",
+      "[targets.options]",
+      "package = \"${4:com.acme.shop}\"",
+      "java = \"${5|17,21|}\""
+    ]
+  },
+  "Client target (typescript)": {
+    "prefix": "veld-typescript",
+    "description": "TypeScript client target",
+    "body": [
+      "[[targets]]",
+      "role = \"client\"",
+      "emitter = \"typescript\"",
+      "out = \"${1:web/src/generated}\""
+    ]
+  },
+  "Client target (react)": {
+    "prefix": "veld-react",
+    "description": "TypeScript client with React hooks",
+    "body": [
+      "[[targets]]",
+      "role = \"client\"",
+      "emitter = \"typescript\"",
+      "framework = \"react\"",
+      "out = \"${1:web/src/generated}\""
+    ]
+  },
+  "Client target (vue)": {
+    "prefix": "veld-vue",
+    "description": "TypeScript client with Vue composables",
+    "body": [
+      "[[targets]]",
+      "role = \"client\"",
+      "emitter = \"typescript\"",
+      "framework = \"vue\"",
+      "out = \"${1:web/src/generated}\""
+    ]
+  },
+  "Client target (java)": {
+    "prefix": "veld-javaclient",
+    "description": "Java client target",
+    "body": [
+      "[[targets]]",
+      "role = \"client\"",
+      "emitter = \"java\"",
+      "out = \"${1:src/main/java}\"",
+      "",
+      "[targets.options]",
+      "package = \"${2:com.acme.client}\""
+    ]
+  },
+  "Plugin": {
+    "prefix": "veld-plugin",
+    "description": "Generator plugin and a target that uses it",
+    "body": [
+      "[plugins.${1:kotlin}]",
+      "command = \"${2:veld-emit-kotlin}\"",
+      "version = \"${3:1.0.0}\"",
+      "sha256 = \"${4:hash}\"",
+      "",
+      "[[targets]]",
+      "role = \"${5|server,client|}\"",
+      "emitter = \"plugin:${1:kotlin}\"",
+      "out = \"${6:generated}\""
+    ]
+  },
+  "Registry dependency": {
+    "prefix": "veld-dependency",
+    "description": "Registry and a package dependency",
+    "body": [
+      "[registry]",
+      "url = \"${1:https://registry.example.com}\"",
+      "",
+      "[dependencies]",
+      "\"@${2:acme}/${3:billing}\" = \"^${4:1.0}\""
+    ]
+  },
+  "Lint levels": {
+    "prefix": "veld-lint",
+    "description": "Configure lint rule levels",
+    "body": ["[lint]", "${1:unused-model} = \"${2|off,warn,error|}\""]
+  }
+}

@@ -1,0 +1,303 @@
+{
+  "Use (same package)": {
+    "prefix": "use",
+    "description": "Import names from a module of the same package",
+    "body": ["use ${1:module}.{${2:Name}}"]
+  },
+  "Use (other package)": {
+    "prefix": "usepkg",
+    "description": "Import names from another service or library",
+    "body": ["use ${1:package}:${2:module}.{${3:Name}}"]
+  },
+  "Use (registry package)": {
+    "prefix": "usereg",
+    "description": "Import names from a registry package",
+    "body": ["use @${1:org}/${2:name}:${3:module}.{${4:Name}}"]
+  },
+  "Use (renamed)": {
+    "prefix": "useas",
+    "description": "Import a name under a local alias",
+    "body": ["use ${1:package}:${2:module}.{${3:Name} as ${4:Alias}}"]
+  },
+  "Model": {
+    "prefix": "model",
+    "description": "Model declaration",
+    "body": ["model ${1:Name} {", "  id: uuid @readonly", "  ${2:name}: string", "}"]
+  },
+  "Model with docs": {
+    "prefix": "modeld",
+    "description": "Model with a doc comment",
+    "body": ["/// ${1:What this model is.}", "model ${2:Name} {", "  id: uuid @readonly", "  ${3:name}: string", "}"]
+  },
+  "Model extends": {
+    "prefix": "modele",
+    "description": "Model that extends another model",
+    "body": ["model ${1:Name} extends ${2:Parent} {", "  ${3:field}: ${4:string}", "}"]
+  },
+  "Enum": {
+    "prefix": "enum",
+    "description": "Enum declaration (the wire value is the variant name)",
+    "body": ["enum ${1:Name} { ${2:first}, ${3:second} }"]
+  },
+  "Enum with wire values": {
+    "prefix": "enumw",
+    "description": "Enum with explicit wire values",
+    "body": ["enum ${1:Name} {", "  ${2:first} = \"${3:FIRST}\",", "  ${4:second} = \"${5:SECOND}\",", "}"]
+  },
+  "Error": {
+    "prefix": "error",
+    "description": "Error declaration with a default status",
+    "body": ["error ${1:Name} ${2:409} {", "  ${3:message}: string", "}"]
+  },
+  "Union": {
+    "prefix": "union",
+    "description": "Discriminated union of models",
+    "body": ["union ${1:Name} {", "  ${2:first}: ${3:FirstModel},", "  ${4:second}: ${5:SecondModel},", "}"]
+  },
+  "Union with discriminator": {
+    "prefix": "uniond",
+    "description": "Union with a custom discriminator property",
+    "body": ["@discriminator(\"${1:type}\")", "union ${2:Name} {", "  ${3:first}: ${4:FirstModel},", "  ${5:second}: ${6:SecondModel},", "}"]
+  },
+  "Const": {
+    "prefix": "const",
+    "description": "Named constant emitted in every target",
+    "body": ["const ${1:NAME}: ${2:int} = ${3:0}"]
+  },
+  "Service": {
+    "prefix": "service",
+    "description": "Service with one endpoint",
+    "body": [
+      "/// ${1:What this service does.}",
+      "service ${2:Orders} at \"/${3:orders}\" {",
+      "  get \"/{id}\" ${4:getOrder}(id: uuid) -> ${5:Order} | NotFound",
+      "}"
+    ]
+  },
+  "Service (authenticated)": {
+    "prefix": "servicea",
+    "description": "Service with a bearer auth requirement",
+    "body": [
+      "@auth(bearer)",
+      "service ${1:Orders} at \"/${2:orders}\" {",
+      "  $0",
+      "}"
+    ]
+  },
+  "GET endpoint": {
+    "prefix": "get",
+    "description": "GET endpoint with a path parameter",
+    "body": ["get \"/{id}\" ${1:getThing}(id: ${2:uuid}) -> ${3:Thing} | NotFound"]
+  },
+  "GET list endpoint": {
+    "prefix": "getlist",
+    "description": "GET endpoint with a query model and a page",
+    "body": ["get \"/\" ${1:listThings}(query: ${2:ThingFilter}) -> Page<${3:Thing}>"]
+  },
+  "POST endpoint": {
+    "prefix": "post",
+    "description": "POST endpoint with a body",
+    "body": ["post \"/\" ${1:createThing}(body: ${2:CreateThing}) -> 201 ${3:Thing}"]
+  },
+  "PUT endpoint": {
+    "prefix": "put",
+    "description": "PUT endpoint with a path parameter and a body",
+    "body": ["put \"/{id}\" ${1:replaceThing}(id: ${2:uuid}, body: ${3:ReplaceThing}) -> ${4:Thing} | NotFound"]
+  },
+  "PATCH endpoint": {
+    "prefix": "patch",
+    "description": "PATCH endpoint with a path parameter and a body",
+    "body": ["patch \"/{id}\" ${1:updateThing}(id: ${2:uuid}, body: ${3:UpdateThing}) -> ${4:Thing} | NotFound"]
+  },
+  "DELETE endpoint": {
+    "prefix": "delete",
+    "description": "DELETE endpoint without a body",
+    "body": ["delete \"/{id}\" ${1:deleteThing}(id: ${2:uuid}) -> 204 | NotFound"]
+  },
+  "HEAD endpoint": {
+    "prefix": "head",
+    "description": "HEAD endpoint",
+    "body": ["head \"/{id}\" ${1:thingExists}(id: ${2:uuid}) -> 204 | NotFound"]
+  },
+  "Endpoint without auth": {
+    "prefix": "public",
+    "description": "Endpoint that opts out of the service auth",
+    "body": ["@auth(none)", "get \"/${1:health}\" ${2:health}() -> 204"]
+  },
+  "SSE endpoint": {
+    "prefix": "sse",
+    "description": "Server-Sent Events: GET returning a stream",
+    "body": ["get \"/${1:events}\" ${2:watchEvents}() -> stream ${3:Event}"]
+  },
+  "WebSocket endpoint": {
+    "prefix": "ws",
+    "description": "WebSocket: client messages in, server messages out",
+    "body": ["ws \"/${1:chat}\" ${2:chat}(body: stream ${3:ClientMessage}) -> stream ${4:ServerMessage}"]
+  },
+  "CRUD service": {
+    "prefix": "crud",
+    "description": "Models and a CRUD service",
+    "body": [
+      "model ${1:Thing} {",
+      "  id: uuid @readonly",
+      "  ${2:name}: string @length(min: 1)",
+      "}",
+      "",
+      "model Create${1:Thing} {",
+      "  ${2:name}: string @length(min: 1)",
+      "}",
+      "",
+      "model Update${1:Thing} {",
+      "  ${2:name}?: string @length(min: 1)",
+      "}",
+      "",
+      "service ${3:Things} at \"/${4:things}\" {",
+      "  get \"/\" list${3:Things}(query: ${1:Thing}Filter) -> Page<${1:Thing}>",
+      "  get \"/{id}\" get${1:Thing}(id: uuid) -> ${1:Thing} | NotFound",
+      "  post \"/\" create${1:Thing}(body: Create${1:Thing}) -> 201 ${1:Thing}",
+      "  patch \"/{id}\" update${1:Thing}(id: uuid, body: Update${1:Thing}) -> ${1:Thing} | NotFound",
+      "  delete \"/{id}\" delete${1:Thing}(id: uuid) -> 204 | NotFound",
+      "}"
+    ]
+  },
+  "Field": {
+    "prefix": "field",
+    "description": "Required field",
+    "body": ["${1:name}: ${2:string}"]
+  },
+  "Optional field": {
+    "prefix": "field?",
+    "description": "Field that may be absent",
+    "body": ["${1:name}?: ${2:string}"]
+  },
+  "Array field": {
+    "prefix": "field[]",
+    "description": "List field",
+    "body": ["${1:items}: ${2:string}[]"]
+  },
+  "Map field": {
+    "prefix": "fieldmap",
+    "description": "Map field (keys are strings)",
+    "body": ["${1:attributes}: Map<string, ${2:string}>"]
+  },
+  "Page type": {
+    "prefix": "page",
+    "description": "Built-in Page<T> response",
+    "body": ["Page<${1:Model}>"]
+  },
+  "Field with default": {
+    "prefix": "fielddef",
+    "description": "Field with a default value",
+    "body": ["${1:status}: ${2:Status} = .${3:pending}"]
+  },
+  "Field with doc comment": {
+    "prefix": "fieldd",
+    "description": "Field with a doc comment",
+    "body": ["/// ${1:What the field means.}", "${2:name}: ${3:string}"]
+  },
+  "Annotation readonly": {
+    "prefix": "@readonly",
+    "description": "Field set by the server",
+    "body": ["@readonly"]
+  },
+  "Annotation wire": {
+    "prefix": "@wire",
+    "description": "Override the JSON property name",
+    "body": ["@wire(\"${1:json_name}\")"]
+  },
+  "Annotation deprecated": {
+    "prefix": "@deprecated",
+    "description": "Deprecation notice",
+    "body": ["@deprecated(\"${1:Use X instead.}\")"]
+  },
+  "Annotation min and max": {
+    "prefix": "@range",
+    "description": "Inclusive numeric bounds",
+    "body": ["@min(${1:0}) @max(${2:100})"]
+  },
+  "Annotation length": {
+    "prefix": "@length",
+    "description": "Length bounds for strings, lists and maps",
+    "body": ["@length(min: ${1:1}, max: ${2:255})"]
+  },
+  "Annotation pattern": {
+    "prefix": "@pattern",
+    "description": "Regular expression constraint",
+    "body": ["@pattern(\"${1:^[a-z]+\\$}\")"]
+  },
+  "Annotation format": {
+    "prefix": "@format",
+    "description": "String format check",
+    "body": ["@format(${1|email,uri,hostname,ipv4,ipv6|})"]
+  },
+  "Annotation example": {
+    "prefix": "@example",
+    "description": "Documentation and mock data",
+    "body": ["@example(${1:\"value\"})"]
+  },
+  "Annotation unique": {
+    "prefix": "@unique",
+    "description": "Unique constraint metadata for tools",
+    "body": ["@unique"]
+  },
+  "Annotation index": {
+    "prefix": "@index",
+    "description": "Index metadata for tools",
+    "body": ["@index"]
+  },
+  "Annotation primary": {
+    "prefix": "@primary",
+    "description": "Primary key metadata for tools",
+    "body": ["@primary"]
+  },
+  "Annotation autoincrement": {
+    "prefix": "@autoincrement",
+    "description": "Auto-increment metadata (int and long fields)",
+    "body": ["@autoincrement"]
+  },
+  "Annotation relation": {
+    "prefix": "@relation",
+    "description": "Foreign key to another model",
+    "body": ["@relation(${1:Model})"]
+  },
+  "Annotation auth": {
+    "prefix": "@auth",
+    "description": "Auth requirement",
+    "body": ["@auth(${1|bearer,basic,none|})"]
+  },
+  "Annotation auth apiKey": {
+    "prefix": "@authkey",
+    "description": "API key in a header",
+    "body": ["@auth(apiKey(header: \"${1:X-Api-Key}\"))"]
+  },
+  "Annotation middleware": {
+    "prefix": "@middleware",
+    "description": "Named hooks the generated server asks you to implement",
+    "body": ["@middleware(${1:RateLimit})"]
+  },
+  "Annotation query": {
+    "prefix": "@query",
+    "description": "Single query parameter",
+    "body": ["@query ${1:name}?: ${2:string}"]
+  },
+  "Annotation header": {
+    "prefix": "@header",
+    "description": "Header parameter",
+    "body": ["@header(\"${1:X-Request-Id}\") ${2:requestId}?: string"]
+  },
+  "Annotation discriminator": {
+    "prefix": "@discriminator",
+    "description": "Discriminator property of a union",
+    "body": ["@discriminator(\"${1:type}\")"]
+  },
+  "Doc comment": {
+    "prefix": "///",
+    "description": "Doc comment (Markdown) that attaches to the next declaration",
+    "body": ["/// ${1:Description.}"]
+  },
+  "Block comment": {
+    "prefix": "block",
+    "description": "Block comment",
+    "body": ["/*", " * ${1:comment}", " */"]
+  }
+}
