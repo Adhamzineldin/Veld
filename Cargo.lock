@@ -1228,6 +1228,7 @@ dependencies = [
  "veld-plugin-host",
  "veld-project",
  "veld-registry-client",
+ "veld-test-support",
  "veld-tools",
 ]
 
@@ -1277,6 +1278,7 @@ dependencies = [
  "veld-emit-typescript",
  "veld-ir",
  "veld-project",
+ "veld-test-support",
 ]
 
 [[package]]
@@ -1289,6 +1291,7 @@ dependencies = [
  "tempfile",
  "veld-codegen",
  "veld-compiler",
+ "veld-emit-conformance",
  "veld-emit-typescript",
  "veld-ir",
  "veld-project",
@@ -1376,6 +1379,10 @@ dependencies = [
  "veld-ir",
  "veld-project",
 ]
+
+[[package]]
+name = "veld-test-support"
+version = "2.0.0-beta.1"
 
 [[package]]
 name = "veld-tools"
