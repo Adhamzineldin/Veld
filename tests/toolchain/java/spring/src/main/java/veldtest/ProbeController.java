@@ -16,6 +16,21 @@ public class ProbeController {
     this.impl = impl;
   }
 
+  /** What the streaming endpoints saw: closed streams, ended chats and the messages of the sink. */
+  @GetMapping(path = "/__streams", produces = MediaType.APPLICATION_JSON_VALUE)
+  public String streams() {
+    List<Json> sink = new ArrayList<>();
+    for (String s : SpringStreamImpl.SINK) {
+      sink.add(Json.of(s));
+    }
+    return Json.object()
+        .put("foreverClosed", Json.of((long) SpringStreamImpl.FOREVER_CLOSED.get()))
+        .put("chatEnded", Json.of((long) SpringStreamImpl.CHAT_ENDED.get()))
+        .put("sink", Json.array(sink))
+        .build()
+        .write();
+  }
+
   @GetMapping(path = "/__probe", produces = MediaType.APPLICATION_JSON_VALUE)
   public String probe() {
     List<Json> thrown = new ArrayList<>();

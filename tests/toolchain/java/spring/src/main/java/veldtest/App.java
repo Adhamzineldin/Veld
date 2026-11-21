@@ -1,6 +1,7 @@
 package veldtest;
 
 import gen.a.orders.server.OrdersHooks;
+import gen.w.live.server.VaultHooks;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,7 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * {@code OrdersController} is found by component scan; the service and its hooks are plain beans.
  * The application is copied next to the generated sources by crates/emitters/java/tests/toolchain.rs.
  */
-@SpringBootApplication(scanBasePackages = {"veldtest", "gen.a.adapters"})
+@SpringBootApplication(scanBasePackages = {"veldtest", "gen.a.adapters", "gen.w.adapters"})
 public class App {
   public static void main(String[] args) {
     SpringApplication.run(App.class, args);
@@ -26,6 +27,22 @@ public class App {
   @Bean
   ServerImpl serverImpl() {
     return new ServerImpl();
+  }
+
+  /** The streaming contract: both services, and the bearer hook of the Vault. */
+  @Bean
+  SpringStreamImpl.Live liveService() {
+    return new SpringStreamImpl.Live();
+  }
+
+  @Bean
+  SpringStreamImpl.Vault vaultService() {
+    return new SpringStreamImpl.Vault();
+  }
+
+  @Bean
+  VaultHooks vaultHooks() {
+    return new VaultHooks((token, ctx) -> "good".equals(token) ? java.util.Map.of("user", "u1") : null);
   }
 
   @Bean
