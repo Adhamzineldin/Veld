@@ -1,0 +1,23 @@
+---
+source: crates/emitters/rust/tests/snapshots.rs
+expression: "files.paths().collect::<Vec<_>>().join(\"\\n\")"
+---
+Cargo.toml
+README.md
+src/lib.rs
+src/live/live.rs
+src/live/live_client.rs
+src/live/mod.rs
+src/live/vault_client.rs
+src/prelude.rs
+src/veld/canonical.rs
+src/veld/client.rs
+src/veld/error.rs
+src/veld/mod.rs
+src/veld/page.rs
+src/veld/regex.rs
+src/veld/schema.rs
+src/veld/spec.rs
+src/veld/stream.rs
+src/veld/transport_reqwest.rs
+src/veld/util.rs

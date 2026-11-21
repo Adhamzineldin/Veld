@@ -1,0 +1,26 @@
+[package]
+name = "veld-emit-rust"
+description = "Veld Rust generator (server and client): serde models, an axum server, a transport-generic client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+veld-ir.workspace = true
+veld-codegen.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+veld-compiler.workspace = true
+veld-emit-node.workspace = true
+veld-emit-typescript.workspace = true
+veld-emit-conformance.workspace = true
+veld-test-support.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+insta.workspace = true
+
+[lints]
+workspace = true

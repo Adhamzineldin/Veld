@@ -1,0 +1,25 @@
+[package]
+name = "harness"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+orders-server = { path = "../server" }
+orders-client = { path = "../client" }
+orders-client-b = { path = "../client_b" }
+orders-client-c = { path = "../client_c" }
+orders-client-d = { path = "../client_d" }
+orders-client-ureq = { path = "../client_ureq" }
+greeter-server = { path = "../greeter_server" }
+greeter-client = { path = "../greeter_client" }
+live-server = { path = "../live_server" }
+live-client = { path = "../live_client" }
+shop-a = { path = "../shop_a" }
+shop-b = { path = "../shop_b" }
+axum = "0.8"
+reqwest = "0.13"
+serde_json = "1"
+futures-util = "0.3"
+tokio-tungstenite = "0.30"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "io-std", "io-util"] }
