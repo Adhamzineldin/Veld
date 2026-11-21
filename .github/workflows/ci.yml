@@ -1,9 +1,10 @@
 name: ci
 
 on:
-  push:
-    branches: [master, "feat/**"]
+  # No push trigger, to save Actions minutes: CI runs on pull requests and by hand.
   pull_request:
+    branches: [master]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,7 +20,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.100.0
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
@@ -50,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.100.0
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
@@ -72,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.100.0
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
@@ -100,7 +101,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.100.0
       - uses: Swatinem/rust-cache@v2
       - name: Build veld
         run: cargo build -p veld
@@ -147,7 +148,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.100.0
       - uses: Swatinem/rust-cache@v2
       - run: cargo xtask codegen --check
 
@@ -170,8 +171,6 @@ jobs:
           --health-retries 10
     env:
       CARGO_TERM_COLOR: always
-      # The e2e test starts its own throwaway cluster with these server binaries.
-      VELD_PG_BIN: /usr/lib/postgresql/16/bin
       VELD_REQUIRE_TOOLCHAINS: "1"
     steps:
       - uses: actions/checkout@v4
@@ -179,7 +178,7 @@ jobs:
         with:
           go-version-file: registry/go.mod
           cache-dependency-path: registry/go.sum
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.100.0
       - uses: Swatinem/rust-cache@v2
       - name: Go vet and tests
         working-directory: registry
@@ -190,5 +189,8 @@ jobs:
         run: cargo test -p veld-registry-client
       - name: Registry end-to-end test (real registry and PostgreSQL)
         run: |
+          # The test starts its own throwaway cluster with the runner's newest server binaries.
+          VELD_PG_BIN="$(ls -d /usr/lib/postgresql/*/bin | sort -V | tail -n 1)"
+          export VELD_PG_BIN
           test -x "$VELD_PG_BIN/initdb" || { echo "no PostgreSQL server binaries in $VELD_PG_BIN"; ls /usr/lib/postgresql; exit 1; }
           cargo test -p veld --test registry_e2e -- --nocapture
