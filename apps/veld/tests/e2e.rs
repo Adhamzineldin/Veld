@@ -254,12 +254,18 @@ fn contract_error_is_rendered_with_exit_one() {
 
 #[test]
 fn unsupported_feature_is_a_loud_error_and_writes_nothing() {
+    // The JDK server has no WebSocket server: a `ws` endpoint is `E0801`, never wrong code.
     let tmp = tempdir().unwrap();
     init(tmp.path());
     write(
         tmp.path(),
         "contracts/feed.veld",
-        "model Tick {\n  n: int\n}\n\nservice Feed at \"/feed\" {\n  get \"/ticks\" ticks() -> stream Tick\n}\n",
+        "model Tick {\n  n: int\n}\n\nservice Feed at \"/feed\" {\n  ws \"/live\" live() -> stream Tick\n}\n",
+    );
+    write(
+        tmp.path(),
+        "veld.toml",
+        "[project]\nname = \"demo\"\n\n[[targets]]\nname = \"api\"\nrole = \"server\"\nemitter = \"java\"\nout = \"generated/server\"\n",
     );
     veld(tmp.path())
         .arg("generate")
