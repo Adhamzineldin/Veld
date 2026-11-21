@@ -1,0 +1,33 @@
+/// How urgent a ticket is.
+enum Priority { low, normal, high, urgent }
+
+/// A support ticket.
+model Ticket {
+  id: uuid @readonly
+  title: string @length(min: 3, max: 120)
+  priority: Priority = .normal
+  assignee?: string
+  createdAt: datetime @readonly
+}
+
+/// The fields of a new ticket.
+model OpenTicket {
+  title: string @length(min: 3, max: 120)
+  priority: Priority = .normal
+}
+
+/// The ticket is closed and can no longer change.
+error TicketClosed 409 {
+  closedAt: datetime
+}
+
+/// The customer has too many open tickets.
+error TooManyOpen 429 {
+  limit: int
+  open: int
+}
+
+/// An internal queue is down; try again soon.
+error QueueUnavailable 503 {
+  retryAfter?: int
+}

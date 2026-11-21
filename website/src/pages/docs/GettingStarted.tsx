@@ -38,6 +38,14 @@ export default function GettingStarted() {
         </P>
       </Section>
 
+      <Section id="try-browser" title="Try it in the browser">
+        <P>
+          The <a href="/playground">playground</a> runs the real Veld compiler and generators in your browser, compiled to
+          WebAssembly. Edit a contract, pick a target (Node server, TypeScript client, Java, Rust or OpenAPI) and read the
+          generated files, with diagnostics and their codes inline. The output is byte for byte what <code>veld generate</code>{' '}
+          writes, and you can download it as a zip. Nothing is uploaded, and it works offline once loaded.
+        </P>
+      </Section>
       <Section id="install" title="Install">
         <P>
           Veld is one self-contained binary. Build it from source, or use a wrapper that downloads the
@@ -75,6 +83,8 @@ export default function GettingStarted() {
             [<code>--workspace [&lt;SERVICES&gt;]</code>, 'Scaffold a microservices workspace, optionally with comma-separated service names'],
             [<code>--server &lt;KIND[:FRAMEWORK]&gt;</code>, <>Server target: <code>node[:express|fastify|hono|nest|node-http]</code>, <code>java[:jdk|spring]</code> or <code>none</code>. Prefix with <code>service=</code> to set one service of a workspace</>],
             [<code>--client &lt;KIND[:FRAMEWORK]&gt;</code>, <>Client target: <code>typescript[:react|vue]</code>, <code>java</code> or <code>none</code></>],
+            [<code>--base-url &lt;SERVICE=URL&gt;</code>, 'Base URL of a workspace service (repeatable). A workspace asks for it per service'],
+            [<code>--consumes &lt;SERVICE=A,B&gt;</code>, 'Services a workspace service calls (repeatable). Nothing is consumed unless you say so'],
             [<code>-y, --yes</code>, 'Use the defaults for everything not given as a flag; never prompt'],
           ]}
         />

@@ -9,6 +9,7 @@ export const nav: NavGroup[] = [
     group: 'Getting started',
     items: [
       { id: 'getting-started', label: 'Overview' },
+      { id: 'try-browser', label: 'Try it in the browser' },
       { id: 'install', label: 'Install' },
       { id: 'init', label: 'veld init' },
       { id: 'first-contract', label: 'A first contract' },
@@ -76,7 +77,6 @@ export const nav: NavGroup[] = [
       { id: 'registry', label: 'Registry' },
       { id: 'editors', label: 'Editors' },
       { id: 'extending', label: 'Extending Veld' },
-      { id: 'migrating', label: 'Migrating from v1' },
     ],
   },
 ];

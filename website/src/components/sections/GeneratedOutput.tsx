@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import { Play } from 'lucide-react';
 import { highlightVeld, highlightTS } from '../SyntaxHighlighter';
 import styles from './CodeExample.module.css';
 
@@ -87,6 +89,13 @@ export default function GeneratedOutput() {
           <Block title="Generated server interface">{highlightTS(server)}</Block>
           <Block title="Generated client">{highlightTS(client)}</Block>
         </motion.div>
+
+        <div className={styles.tryRow}>
+          <Link to="/playground" className={styles.tryLink}>
+            <Play size={16} aria-hidden="true" /> Try it live in the playground
+          </Link>
+          <span className={styles.tryNote}>The real Veld engine, compiled to WebAssembly. Nothing to install.</span>
+        </div>
       </div>
     </section>
   );

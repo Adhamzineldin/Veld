@@ -17,7 +17,6 @@ const commands: Cmd[] = [
   { key: 'veld export', about: 'Export the contracts as OpenAPI 3.1 or as the compiled IR.' },
   { key: 'veld export openapi', about: 'OpenAPI 3.1 JSON for the whole workspace, or one service.' },
   { key: 'veld export ir', about: 'The compiled IR as JSON, for plugin authors (see spec/ir.md).' },
-  { key: 'veld migrate', about: 'Convert a v1 project to v2. Never modifies the v1 files.' },
   { key: 'veld plugin', about: 'Create and test emitter plugins.' },
   { key: 'veld plugin new', about: 'Scaffold a plugin project in ./<name> (a TypeScript project by default).' },
   { key: 'veld plugin test', about: 'Run the protocol conformance suite against a plugin command. Exits 1 on any failure.' },

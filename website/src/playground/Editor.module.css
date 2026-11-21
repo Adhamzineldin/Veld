@@ -1,0 +1,98 @@
+.editor {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  background: var(--bg2);
+}
+
+/* One scroll box holds the gutter and the text, so they never drift apart. */
+.scroll {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  line-height: 22px;
+  tab-size: 2;
+}
+
+.gutter {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: none;
+  min-width: 48px;
+  padding: 14px 10px 14px 12px;
+  text-align: right;
+  color: #5a6890;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  user-select: none;
+}
+
+.num {
+  height: 22px;
+}
+
+.numError {
+  color: #ff5d6c;
+  font-weight: 700;
+}
+
+.numWarn {
+  color: #f5b14a;
+  font-weight: 700;
+}
+
+.stack {
+  position: relative;
+  flex: 1;
+  min-width: max-content;
+  min-height: calc(100% - 0px);
+}
+
+.layer,
+.input {
+  margin: 0;
+  padding: 14px 18px 14px 14px;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: 0;
+  white-space: pre;
+  tab-size: 2;
+  border: 0;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.layer {
+  position: relative;
+  color: var(--fg);
+  pointer-events: none;
+  min-height: 100%;
+}
+
+.input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--fg);
+  outline: none;
+}
+
+.input::selection {
+  background: rgba(77, 141, 255, 0.35);
+  color: transparent;
+}
+
+.input[readonly] {
+  caret-color: transparent;
+}

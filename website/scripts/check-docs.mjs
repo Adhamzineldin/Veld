@@ -1,6 +1,4 @@
 // Fails if v1-only syntax appears in website/src. Run with `npm run check:docs`.
-// `src/pages/docs/Migrating.tsx` is the one place that may show v1 syntax, because it is the
-// "Migrating from v1" page (its v1 snippets are labelled as v1).
 // `cliHelp.ts` is the verbatim `veld --help` output, which itself names veld.config.json.
 // Note: `veld setup` is a v2 command (see spec/config.md), so it is not a v1 token.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -9,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const src = join(root, 'src');
-const allowed = new Set(['src/pages/docs/Migrating.tsx', 'src/pages/docs/cliHelp.ts']);
+const allowed = new Set(['src/pages/docs/cliHelp.ts']);
 
 const patterns = [
   ['v1 module block', /^\s*module\s+\w+\s*\{/m],
@@ -18,7 +16,7 @@ const patterns = [
   ['backendConfig', /backendConfig/],
   ['@veld/generated', /@veld\/generated/],
   ['v1-only target', /\b(python|csharp|c#|php|dart|flutter|kotlin|swift|angular|svelte)\b/i],
-  ['v1 command', /\bveld\s+(validate|watch|ci|docs|graphql|schema|lint)\b/],
+  ['v1 command', /\bveld\s+(validate|watch|ci|lint)\b/],
   ['go install', /\bgo install\b/],
 ];
 

@@ -15,7 +15,6 @@ import Diagnostics from './docs/Diagnostics';
 import Registry from './docs/Registry';
 import Editors from './docs/Editors';
 import Extending from './docs/Extending';
-import Migrating from './docs/Migrating';
 
 /** The docs page: a sidebar plus the section components in `./docs`. */
 export default function DocsPage() {
@@ -104,7 +103,6 @@ export default function DocsPage() {
           <Registry />
           <Editors />
           <Extending />
-          <Migrating />
           <Diagnostics />
         </div>
       </div>

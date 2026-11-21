@@ -1,73 +1,26 @@
-# React + TypeScript + Vite
+# Veld website
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Vite + React 19 + TypeScript. Docs live in `src/pages/docs`; the live playground is `src/pages/PlaygroundPage.tsx`.
 
-Currently, two official plugins are available:
+## The playground engine (WebAssembly)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The playground runs the real Veld compiler and generators, built from `crates/veld-wasm`.
 
-## React Compiler
+**Prerequisites:** Rust (rustup + cargo). `npm run build:wasm` (run automatically by `npm run build`, and by `npm run dev` when missing) adds the `wasm32-unknown-unknown` target and installs the exact `wasm-bindgen-cli` version the crate pins if they are absent (`rustup target add wasm32-unknown-unknown` by hand also works). `wasm-opt` is used when installed.
 
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
+The generated `src/wasm/` is git-ignored: it is rebuilt from the Rust sources on every deploy build, so the deploy environment needs Rust. Set `VELD_WASM_SKIP=1` to use an already built `src/wasm/`.
 
-## Expanding the ESLint configuration
+Parity with the CLI: `cargo test -p veld-wasm --test parity` (CLI vs engine, byte for byte, for every example and preset), then `npm run test:wasm` replays the same cases through the built `.wasm`.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+For the browser acceptance test, run the native parity test, then run the following from `website/`:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+npm install
+npx playwright-core install chromium
+npm run build
+npm run test:playground
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The test opens the production site in isolated Chromium, compares each preset's downloaded ZIP with CLI output, and exercises streaming targets, diagnostics, formatting, and copying. Set `CHROMIUM_PATH` to use an existing Chromium executable.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Other scripts: `npm run lint`, `npm run check:docs`, `npm run gen:cli-help`.

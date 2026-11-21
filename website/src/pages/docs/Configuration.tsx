@@ -107,6 +107,8 @@ url = "https://registry.example.com"
           [c('framework-version'), 'any emitter whose framework has versions', 'the framework\'s versions', 'the first version'],
           [c('package'), 'java', 'a valid Java package name', <code>dev.veld.generated.&lt;package&gt;</code>],
           [c('package-name'), 'node, typescript', <>the npm package name</>, <code>@veld/&lt;target name&gt;</code>],
+          [c('validate'), 'node, typescript, java', <><code>true</code>, <code>false</code> (skip run-time request validation, keep the types)</>, <code>true</code>],
+          [c('query-options'), 'typescript', <><code>true</code> writes <code>queries.ts</code>: query keys and query options as plain objects, no dependency</>, <code>false</code>],
         ]}
       />
       <List>

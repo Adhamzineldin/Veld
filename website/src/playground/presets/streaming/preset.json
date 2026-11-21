@@ -1,0 +1,6 @@
+{
+  "title": "Streaming",
+  "blurb": "Server-Sent Events and WebSockets, typed end to end.",
+  "project": { "packages": [{ "name": "live" }] },
+  "target": { "emitter": "typescript", "role": "client" }
+}

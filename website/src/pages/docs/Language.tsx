@@ -263,7 +263,6 @@ use @acme/billing:invoices.{Invoice}     // registry package (must be in veld.lo
             [<code>@example(literal)</code>, 'field, param', 'Documentation and mock data.'],
             [<code>@discriminator("prop")</code>, 'union', 'Discriminator property.'],
             [<><code>@query</code>, <code>@header("Name")</code></>, 'param', 'Binding.'],
-            [<><code>@unique</code>, <code>@index</code>, <code>@primary</code></>, 'field', 'Metadata passed through the IR for tools. No validation semantics.'],
           ]}
         />
         <P>

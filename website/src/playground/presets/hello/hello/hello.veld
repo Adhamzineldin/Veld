@@ -1,0 +1,10 @@
+/// A greeting for one person.
+model Greeting {
+  message: string
+}
+
+/// Says hello.
+service Hello at "/hello" {
+  /// Greets the person with the given name.
+  get "/{name}" greet(name: string) -> Greeting | NotFound
+}
