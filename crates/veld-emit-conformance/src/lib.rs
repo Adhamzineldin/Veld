@@ -83,16 +83,40 @@ pub fn check_signatures(ir: &Ir, services: &[ServiceId], files: &FileSet) -> Res
     }
 }
 
+/// How to run the checks for a generator whose support depends on the framework.
+///
+/// The `framework` applies to the `server` role only (a client has no framework). Every feature in
+/// `rejected` must be refused with `E0801` for that framework, by a generator that declares it in
+/// its capabilities; every other feature must generate.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Setup<'a> {
+    /// The framework of the server role, or `None` for the generator's default.
+    pub framework: Option<&'a str>,
+    /// Features that this framework cannot serve.
+    pub rejected: &'a [Feature],
+}
+
 /// Runs every check; returns the failures (empty when the generator conforms).
 #[must_use]
 pub fn run_checks(generator: &dyn DynGenerator) -> Vec<String> {
+    run_checks_with(generator, Setup::default())
+}
+
+/// [`run_checks`] for a given framework and the features it must reject with `E0801`.
+#[must_use]
+pub fn run_checks_with(generator: &dyn DynGenerator, setup: Setup<'_>) -> Vec<String> {
     let mut failures = Vec::new();
     if generator.id().is_empty() || generator.roles().is_empty() {
         failures.push("a generator needs a non-empty id and at least one role".to_string());
     }
     for role in generator.roles() {
         for fixture in FIXTURES {
-            if let Err(e) = check_fixture(generator, *role, fixture) {
+            let setup = if *role == Role::Server {
+                setup
+            } else {
+                Setup::default()
+            };
+            if let Err(e) = check_fixture(generator, *role, fixture, setup) {
                 failures.push(format!(
                     "[{} / {} / {}] {e}",
                     generator.id(),
@@ -110,7 +134,15 @@ pub fn run_checks(generator: &dyn DynGenerator) -> Vec<String> {
 /// # Panics
 /// When any check fails.
 pub fn check_generator(generator: &dyn DynGenerator) {
-    let failures = run_checks(generator);
+    check_generator_with(generator, Setup::default());
+}
+
+/// [`check_generator`] for a given framework and the features it must reject with `E0801`.
+///
+/// # Panics
+/// When any check fails.
+pub fn check_generator_with(generator: &dyn DynGenerator, setup: Setup<'_>) {
+    let failures = run_checks_with(generator, setup);
     assert!(
         failures.is_empty(),
         "generator conformance failed:\n  {}",
@@ -122,6 +154,7 @@ fn check_fixture(
     generator: &dyn DynGenerator,
     role: Role,
     fixture: &Fixture,
+    setup: Setup<'_>,
 ) -> Result<(), String> {
     let ir = compile(fixture.name, fixture.source);
     if let Some(feature) = fixture.feature {
@@ -139,7 +172,7 @@ fn check_fixture(
         role,
         services: services.clone(),
         consumes: vec![],
-        framework: None,
+        framework: setup.framework.map(str::to_string),
     };
     let caps = generator.capabilities(role);
     let gate = check_capabilities(&ir, &req, &caps);
@@ -156,6 +189,9 @@ fn check_fixture(
     if !unsupported.is_empty() {
         return Ok(());
     }
+    if services_use_rejected(&ir, &services, setup) {
+        return check_rejected(generator, &req);
+    }
     let first = generate(generator, &req)?;
     check_signatures(&ir, &services, &first)?;
     let second = generate(generator, &req)?;
@@ -163,6 +199,24 @@ fn check_fixture(
         return Err("two runs on the same IR produced different files".to_string());
     }
     Ok(())
+}
+
+/// Whether the contract uses a feature that the framework of `setup` must reject.
+fn services_use_rejected(ir: &Ir, services: &[ServiceId], setup: Setup<'_>) -> bool {
+    ir.features_used(services)
+        .iter()
+        .any(|f| setup.rejected.contains(f))
+}
+
+/// The generator must refuse the request, with `E0801` only, and write nothing.
+fn check_rejected(generator: &dyn DynGenerator, req: &GenRequest<'_>) -> Result<(), String> {
+    match generator.generate_dyn(req, &serde_json::Value::Null) {
+        Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => Ok(()),
+        Err(d) => Err(format!(
+            "expected only E0801 for a rejected feature, got {d:?}"
+        )),
+        Ok(_) => Err("generated a feature that the framework must reject with E0801".to_string()),
+    }
 }
 
 fn all_services(ir: &Ir) -> Vec<ServiceId> {
@@ -278,5 +332,78 @@ mod tests {
             caps: Capabilities::all_except(&[]),
         });
         assert!(failures.len() >= FIXTURES.len(), "{failures:?}");
+    }
+    /// A server that declares everything and, for one framework, refuses `streaming_ws`.
+    struct Framed {
+        refuse_ws: bool,
+    }
+
+    impl DynGenerator for Framed {
+        fn id(&self) -> &'static str {
+            "framed"
+        }
+        fn roles(&self) -> &'static [Role] {
+            &[Role::Server]
+        }
+        fn frameworks(&self, _: Role) -> Vec<veld_codegen::FrameworkInfo> {
+            Vec::new()
+        }
+        fn capabilities(&self, _: Role) -> Capabilities {
+            Capabilities::all_except(&[])
+        }
+        fn generate_dyn(
+            &self,
+            req: &GenRequest<'_>,
+            _: &serde_json::Value,
+        ) -> Result<FileSet, Vec<GenDiagnostic>> {
+            if self.refuse_ws
+                && req
+                    .ir
+                    .features_used(&req.services)
+                    .contains(&Feature::StreamingWs)
+            {
+                return Err(vec![GenDiagnostic::new("E0801", "no WebSocket here")]);
+            }
+            let mut files = FileSet::new();
+            files
+                .add(
+                    "all.txt",
+                    expected_signatures(req.ir, &req.services).join("\n"),
+                )
+                .map_err(|e| vec![GenDiagnostic::new("E0899", e.to_string())])?;
+            Ok(files)
+        }
+    }
+
+    #[test]
+    fn a_framework_that_rejects_a_feature_with_e0801_conforms() {
+        let setup = Setup {
+            framework: None,
+            rejected: &[Feature::StreamingWs],
+        };
+        assert_eq!(
+            run_checks_with(&Framed { refuse_ws: true }, setup),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_framework_that_generates_a_feature_it_must_reject_fails() {
+        let setup = Setup {
+            framework: None,
+            rejected: &[Feature::StreamingWs],
+        };
+        let failures = run_checks_with(&Framed { refuse_ws: false }, setup);
+        assert!(
+            failures.iter().any(|f| f.contains("must reject")),
+            "{failures:?}"
+        );
+        // Without the rejection list the same generator generates everything and conforms.
+        assert_eq!(
+            run_checks(&Framed { refuse_ws: false }),
+            Vec::<String>::new()
+        );
+        // A generator that refuses something it was not told to refuse fails too.
+        assert!(!run_checks(&Framed { refuse_ws: true }).is_empty());
     }
 }

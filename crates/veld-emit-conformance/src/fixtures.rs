@@ -98,6 +98,44 @@ service Live at "/live" {
 }
 "#;
 
+const SSE_FULL: &str = r#"model Tick {
+  n: int
+}
+
+error Gone 410 {
+  reason: string
+}
+
+@auth(bearer)
+service Feed at "/feed" {
+  /// Path, query and header parameters, a declared error and auth on a stream.
+  get "/{room}/events" events(room: string, @query since?: int, @header("Last-Event-ID") last?: string) -> stream Tick | Gone
+}
+"#;
+
+const WS_FULL: &str = r#"model In {
+  text: string @length(min: 1, max: 100)
+}
+
+model Out {
+  text: string
+}
+
+error Denied 403 {
+  why: string
+}
+
+@auth(apiKey(header: "X-Key"))
+service Rooms at "/rooms" {
+  /// Both directions, with path and query parameters and a declared error.
+  ws "/{room}" talk(room: string, @query nick?: string, body: stream In) -> stream Out | Denied
+  /// The server only sends.
+  ws "/listen" listen() -> stream Out
+  /// The client only sends.
+  ws "/tell" tell(body: stream In) -> 204
+}
+"#;
+
 const PAGE: &str = r#"model Item {
   id: uuid
 }
@@ -169,6 +207,16 @@ pub const FIXTURES: &[Fixture] = &[
         name: "streaming_ws",
         feature: Some(Feature::StreamingWs),
         source: WS,
+    },
+    Fixture {
+        name: "streaming_sse_full",
+        feature: Some(Feature::StreamingSse),
+        source: SSE_FULL,
+    },
+    Fixture {
+        name: "streaming_ws_full",
+        feature: Some(Feature::StreamingWs),
+        source: WS_FULL,
     },
     Fixture {
         name: "page",
