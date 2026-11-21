@@ -153,7 +153,8 @@ impl Workspace {
             }
         }
         let (input, paths) = builder.finish(project.as_ref());
-        let index = index::index(&input);
+        let prefixes = project.as_ref().map(Project::prefixes).unwrap_or_default();
+        let index = index::index_prefixed(&input, &prefixes);
         let (sigs, stale) = match &index.ir {
             Some(ir) => (Sigs::from_ir(ir), false),
             None => (prev.cloned().unwrap_or_default(), true),

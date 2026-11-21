@@ -520,6 +520,7 @@ fn annotation_snippet(name: &str, shape: ArgShape) -> String {
         ArgShape::OneLiteral => format!("{name}(${{1:value}})"),
         ArgShape::Auth => format!("{name}(${{1|bearer,basic,none|}})"),
         ArgShape::Idents => format!("{name}(${{1:Name}})"),
+
         ArgShape::Length => format!("{name}(min: ${{1:n}}, max: ${{2:n}})"),
         ArgShape::Format => format!("{name}(${{1|email,uri,hostname,ipv4,ipv6|}})"),
     }

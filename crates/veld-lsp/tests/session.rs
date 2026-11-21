@@ -361,3 +361,25 @@ fn unknown_requests_fail_cleanly_and_the_server_keeps_serving() {
     assert_eq!(c.at("textDocument/hover", &missing, 0, 0), Value::Null);
     c.shutdown();
 }
+
+#[test]
+fn hover_shows_the_full_path_with_the_project_and_service_prefix() {
+    let tmp = tempfile::tempdir().unwrap();
+    let toml = "[project]\nname = \"shop\"\nprefix = \"/api\"\n\n[services.app]\ncontracts = \"app\"\nprefix = \"/v1\"\n";
+    let orders = "model Order {\n  id: uuid\n}\n\nservice Orders at \"/orders\" {\n  get \"/{id}\" getOrder(id: uuid) -> Order\n}\n";
+    for (p, t) in [("veld.toml", toml), ("app/orders.veld", orders)] {
+        let path = tmp.path().join(p);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, t).unwrap();
+    }
+    let mut c = Client::start(tmp.path());
+    let file = uri(&tmp.path().join("app/orders.veld"));
+    c.open(&file, orders);
+    let h = c.at("textDocument/hover", &file, 5, 18);
+    let md = h["contents"]["value"].as_str().unwrap();
+    assert!(
+        md.contains("`GET /api/v1/orders/{id}`"),
+        "the hover shows the full route: {md}"
+    );
+    c.shutdown();
+}
