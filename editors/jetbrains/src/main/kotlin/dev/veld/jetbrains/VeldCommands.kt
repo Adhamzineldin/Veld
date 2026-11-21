@@ -24,12 +24,12 @@ object VeldCommands {
     val WATCH = VeldCommand("dev.veld.watch", "Watch (Generate On Change)", listOf("generate", "--watch"), longRunning = true)
     val DOCTOR = VeldCommand("dev.veld.doctor", "Doctor", listOf("doctor"))
 
-    /** `veld export openapi -o FILE` is built by [exportOpenApi] because it needs a target file. */
+    /** `veld export openapi -o FILE --force` is built by [exportOpenApi] because it needs a target file. */
     const val EXPORT_OPENAPI_ACTION_ID = "dev.veld.exportOpenApi"
 
     val ALL: List<VeldCommand> = listOf(VALIDATE, GENERATE, GENERATE_DRY_RUN, GENERATE_CHECK, SETUP, WATCH, DOCTOR)
 
-    fun exportOpenApi(file: String): List<String> = listOf("export", "openapi", "-o", file)
+    fun exportOpenApi(file: String): List<String> = listOf("export", "openapi", "-o", file, "--force")
 
     /** The full argument list, with colour off so the console shows plain text. */
     fun withNoColor(args: List<String>): List<String> = listOf("--no-color") + args

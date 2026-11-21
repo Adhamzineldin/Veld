@@ -76,7 +76,7 @@
       "patterns": [
         {
           "name": "entity.other.attribute-name.annotation.veld",
-          "match": "@(auth|middleware|deprecated|min|max|length|pattern|format|readonly|wire|example|discriminator|query|header|unique|index|primary|autoincrement|relation)\\b"
+          "match": "@(auth|middleware|deprecated|min|max|length|pattern|format|readonly|wire|example|discriminator|query|header)\\b"
         },
         {
           "name": "invalid.illegal.unknown-annotation.veld",

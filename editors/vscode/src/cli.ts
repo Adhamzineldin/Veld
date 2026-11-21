@@ -21,7 +21,7 @@ export const RUN_COMMANDS: readonly VeldCommand[] = [
 ];
 
 /** `veld export <format>` formats offered by "Veld: Export...". */
-export const EXPORT_FORMATS: readonly string[] = ["openapi", "graphql", "schema", "docs"];
+export const EXPORT_FORMATS: readonly string[] = ["openapi", "ir"];
 
 export const WATCH: VeldCommand = {
   id: "veld.watch",
@@ -45,9 +45,10 @@ export function executable(configured: string | undefined): string {
   return value === "" ? "veld" : value;
 }
 
-/** The arguments for `veld export <format> -o <file>`. */
+/** The arguments for `veld export <format> -o <file> --force` (the save dialog already confirmed the overwrite). */
 export function exportArgs(format: string, file: string): string[] {
-  return ["export", format, "-o", file];
+  // `export ir` always overwrites its file; `export openapi` needs `--force` for an existing one.
+  return format === "ir" ? ["export", format, "-o", file] : ["export", format, "-o", file, "--force"];
 }
 
 /** The default file name of an export, by format. */
@@ -55,12 +56,8 @@ export function exportFileName(format: string): string {
   switch (format) {
     case "openapi":
       return "openapi.json";
-    case "graphql":
-      return "schema.graphql";
-    case "schema":
-      return "schema.prisma";
-    case "docs":
-      return "api-docs.html";
+    case "ir":
+      return "veld-ir.json";
     default:
       return `${format}.out`;
   }

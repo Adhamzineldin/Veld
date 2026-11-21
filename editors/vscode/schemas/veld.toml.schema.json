@@ -23,6 +23,10 @@
           "default": "contracts",
           "description": "Package root of the implicit service. Default `contracts`. Mutually exclusive with `[services.*]`."
         },
+        "prefix": {
+          "type": "string",
+          "description": "Route prefix such as `/api`, prepended to every service prefix. Must start with `/`."
+        },
         "package": {
           "type": "string",
           "pattern": "^@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$",
@@ -98,6 +102,10 @@
             "type": "string",
             "description": "Package root: the directory holding the `.veld` files, relative to `veld.toml`."
           },
+          "prefix": {
+            "type": "string",
+            "description": "Route prefix such as `/v1`, prepended to this service's prefixes after `[project].prefix`. Must start with `/`."
+          },
           "base-url": {
             "type": "string",
             "description": "Default base URL of the service for generated clients (lower priority than the constructor argument and `VELD_<SERVICE>_URL`)."
@@ -153,10 +161,9 @@
           "role": {
             "enum": [
               "client",
-              "server",
-              "spec"
+              "server"
             ],
-            "description": "`server`, `client`, or `spec` (an OpenAPI, GraphQL, schema or docs export)."
+            "description": "`server` or `client`."
           },
           "emitter": {
             "anyOf": [
@@ -164,7 +171,8 @@
                 "enum": [
                   "node",
                   "typescript",
-                  "java"
+                  "java",
+                  "rust"
                 ]
               },
               {
@@ -172,11 +180,11 @@
                 "pattern": "^plugin:[A-Za-z0-9_-]+$"
               }
             ],
-            "description": "A built-in emitter (`node`, `typescript`, `java`) or `plugin:<name>` naming a `[plugins.<name>]` entry."
+            "description": "A built-in emitter (`node`, `typescript`, `java`, `rust`) or `plugin:<name>` naming a `[plugins.<name>]` entry."
           },
           "framework": {
             "type": "string",
-            "description": "The framework of the target. Valid values depend on emitter and role (E0803 lists them): node server `express`, `fastify`, `hono`, `node-http`, `nest`; typescript client `react`, `vue`; java server `jdk`, `spring`."
+            "description": "The framework of the target. Valid values depend on emitter and role (E0803 lists them): node server `express`, `fastify`, `hono`, `node-http`, `nest`; typescript client `react`, `vue`; java server `jdk`, `spring`; rust server `axum`, rust client `reqwest`, `ureq`."
           },
           "service": {
             "type": "string",
@@ -236,6 +244,27 @@
               "package-name": {
                 "type": "string",
                 "description": "`node` and `typescript` emitters: the generated `package.json` name (default `@veld/<target-name>`)."
+              },
+              "crate-name": {
+                "type": "string",
+                "description": "`rust` emitter: the generated crate name (default `<package>-<role>`).",
+                "examples": [
+                  "orders-server"
+                ]
+              },
+              "transport": {
+                "enum": [
+                  "reqwest",
+                  "ureq",
+                  "none"
+                ],
+                "default": "reqwest",
+                "description": "`rust` server: the HTTP transport of the clients for consumed services."
+              },
+              "validate": {
+                "type": "boolean",
+                "default": true,
+                "description": "`node`, `typescript`, `java` and `rust` emitters: `false` skips run-time request validation by default and keeps the types."
               }
             },
             "additionalProperties": true
@@ -318,6 +347,57 @@
                   "enum": [
                     "jdk",
                     "spring"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "emitter": {
+                  "const": "rust"
+                },
+                "role": {
+                  "const": "server"
+                }
+              },
+              "required": [
+                "emitter",
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "framework": {
+                  "enum": [
+                    "axum"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "emitter": {
+                  "const": "rust"
+                },
+                "role": {
+                  "const": "client"
+                }
+              },
+              "required": [
+                "emitter",
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "framework": {
+                  "enum": [
+                    "reqwest",
+                    "ureq"
                   ]
                 }
               }
@@ -479,6 +559,32 @@
         }
       },
       "description": "Lint rule levels (`off`, `warn`, `error`). Every rule defaults to `warn`; `veld check` reports them."
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Commands run around `veld generate`.",
+      "properties": {
+        "post-generate": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Shell command(s) run from the project root after a successful, non-dry-run `veld generate` (for example `prettier --write gen`)."
+        },
+        "fail": {
+          "type": "boolean",
+          "default": false,
+          "description": "Make a failing hook fail `veld generate`. By default a failure is only a warning."
+        }
+      }
     }
   },
   "$defs": {

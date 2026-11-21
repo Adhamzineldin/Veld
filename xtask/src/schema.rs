@@ -52,7 +52,8 @@ fn project() -> Value {
             "contracts": {
                 "type": "string", "default": "contracts",
                 "description": "Package root of the implicit service. Default `contracts`. Mutually exclusive with `[services.*]`."
-            }
+            },
+            "prefix": string("Route prefix such as `/api`, prepended to every service prefix. Must start with `/`.")
         }),
     )
 }
@@ -69,6 +70,7 @@ fn service() -> Value {
         "A service of a workspace. Its contracts are one package.",
         json!({
             "contracts": contracts(),
+            "prefix": string("Route prefix such as `/v1`, prepended to this service's prefixes after `[project].prefix`. Must start with `/`."),
             "base-url": string("Default base URL of the service for generated clients (lower priority than the constructor argument and `VELD_<SERVICE>_URL`)."),
             "consumes": {
                 "type": "array", "items": { "type": "string" }, "uniqueItems": true,
@@ -87,6 +89,8 @@ const FRAMEWORKS: &[(&str, &str, &[&str])] = &[
     ),
     ("typescript", "client", &["react", "vue"]),
     ("java", "server", &["jdk", "spring"]),
+    ("rust", "server", &["axum"]),
+    ("rust", "client", &["reqwest", "ureq"]),
 ];
 
 fn emitter_rules() -> Vec<Value> {
@@ -117,7 +121,10 @@ fn options() -> Value {
             "typescript": { "enum": ["es2020", "es2022"], "default": "es2020", "description": "`typescript` and `node` emitters: the TypeScript target." },
             "framework-version": { "type": "string", "description": "The framework version: `spring` `\"3\"`, `nest` `\"10\"`, `react` `\"18\"`, `vue` `\"3\"`. Needs a `framework`; unversioned frameworks reject it (E0803)." },
             "package": { "type": "string", "description": "`java` emitter: the base Java package.", "examples": ["com.acme.payments"] },
-            "package-name": { "type": "string", "description": "`node` and `typescript` emitters: the generated `package.json` name (default `@veld/<target-name>`)." }
+            "package-name": { "type": "string", "description": "`node` and `typescript` emitters: the generated `package.json` name (default `@veld/<target-name>`)." },
+            "crate-name": { "type": "string", "description": "`rust` emitter: the generated crate name (default `<package>-<role>`).", "examples": ["orders-server"] },
+            "transport": { "enum": ["reqwest", "ureq", "none"], "default": "reqwest", "description": "`rust` server: the HTTP transport of the clients for consumed services." },
+            "validate": { "type": "boolean", "default": true, "description": "`node`, `typescript`, `java` and `rust` emitters: `false` skips run-time request validation by default and keeps the types." }
         },
         "additionalProperties": true
     })
@@ -131,15 +138,15 @@ fn target() -> Value {
         "required": ["role", "emitter", "out"],
         "properties": {
             "name": string("Optional name, used by `veld generate <name>` and for the package name `@veld/<name>`."),
-            "role": { "enum": ["client", "server", "spec"], "description": "`server`, `client`, or `spec` (an OpenAPI, GraphQL, schema or docs export)." },
+            "role": { "enum": ["client", "server"], "description": "`server` or `client`." },
             "emitter": {
                 "anyOf": [
-                    { "enum": ["node", "typescript", "java"] },
+                    { "enum": ["node", "typescript", "java", "rust"] },
                     { "type": "string", "pattern": "^plugin:[A-Za-z0-9_-]+$" }
                 ],
-                "description": "A built-in emitter (`node`, `typescript`, `java`) or `plugin:<name>` naming a `[plugins.<name>]` entry."
+                "description": "A built-in emitter (`node`, `typescript`, `java`, `rust`) or `plugin:<name>` naming a `[plugins.<name>]` entry."
             },
-            "framework": { "type": "string", "description": "The framework of the target. Valid values depend on emitter and role (E0803 lists them): node server `express`, `fastify`, `hono`, `node-http`, `nest`; typescript client `react`, `vue`; java server `jdk`, `spring`." },
+            "framework": { "type": "string", "description": "The framework of the target. Valid values depend on emitter and role (E0803 lists them): node server `express`, `fastify`, `hono`, `node-http`, `nest`; typescript client `react`, `vue`; java server `jdk`, `spring`; rust server `axum`, rust client `reqwest`, `ureq`." },
             "service": string("The service a `server` target implements. Required for `role = \"server\"`."),
             "services": { "type": "array", "items": { "type": "string" }, "description": "The services a `client` target covers. Default: all services." },
             "out": string("Output directory, relative to `veld.toml`. Two targets must not share one (E0703); it must not be the project root or a contracts directory (E0704)."),
@@ -180,6 +187,20 @@ fn lint() -> Value {
     })
 }
 
+fn hooks() -> Value {
+    json!({
+        "type": "object", "additionalProperties": false,
+        "description": "Commands run around `veld generate`.",
+        "properties": {
+            "post-generate": {
+                "anyOf": [ { "type": "string" }, { "type": "array", "items": { "type": "string" } } ],
+                "description": "Shell command(s) run from the project root after a successful, non-dry-run `veld generate` (for example `prettier --write gen`)."
+            },
+            "fail": { "type": "boolean", "default": false, "description": "Make a failing hook fail `veld generate`. By default a failure is only a warning." }
+        }
+    })
+}
+
 fn named(description: &str, value: Value) -> Value {
     json!({
         "type": "object", "description": description,
@@ -214,7 +235,8 @@ pub fn veld_toml() -> String {
                 "propertyNames": { "pattern": PACKAGE_PATTERN },
                 "additionalProperties": { "type": "string", "description": "A semver range.", "examples": ["^1.2"] }
             },
-            "lint": lint()
+            "lint": lint(),
+            "hooks": hooks()
         },
         "$defs": { "lintLevel": { "enum": ["off", "warn", "error"] } }
     });
@@ -308,6 +330,7 @@ mod tests {
             "registry",
             "dependencies",
             "lint",
+            "hooks",
         ] {
             assert!(
                 s["properties"].get(key).is_some(),
@@ -319,10 +342,10 @@ mod tests {
     #[test]
     fn targets_have_the_documented_enums() {
         let t = &schema()["properties"]["targets"]["items"]["properties"];
-        assert_eq!(t["role"]["enum"], json!(["client", "server", "spec"]));
+        assert_eq!(t["role"]["enum"], json!(["client", "server"]));
         assert_eq!(
             t["emitter"]["anyOf"][0]["enum"],
-            json!(["node", "typescript", "java"])
+            json!(["node", "typescript", "java", "rust"])
         );
     }
 

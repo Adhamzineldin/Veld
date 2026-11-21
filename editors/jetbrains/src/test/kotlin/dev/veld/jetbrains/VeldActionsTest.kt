@@ -29,7 +29,7 @@ class VeldActionsTest : BasePlatformTestCase() {
         assertEquals(listOf("generate", "--check"), VeldCommands.GENERATE_CHECK.args)
         assertEquals(listOf("generate", "--watch"), VeldCommands.WATCH.args)
         assertTrue(VeldCommands.WATCH.longRunning)
-        assertEquals(listOf("export", "openapi", "-o", "api.json"), VeldCommands.exportOpenApi("api.json"))
+        assertEquals(listOf("export", "openapi", "-o", "api.json", "--force"), VeldCommands.exportOpenApi("api.json"))
         assertEquals(listOf("--no-color", "check"), VeldCommands.withNoColor(listOf("check")))
     }
 

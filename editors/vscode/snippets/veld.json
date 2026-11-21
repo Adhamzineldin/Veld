@@ -235,31 +235,6 @@
     "description": "Documentation and mock data",
     "body": ["@example(${1:\"value\"})"]
   },
-  "Annotation unique": {
-    "prefix": "@unique",
-    "description": "Unique constraint metadata for tools",
-    "body": ["@unique"]
-  },
-  "Annotation index": {
-    "prefix": "@index",
-    "description": "Index metadata for tools",
-    "body": ["@index"]
-  },
-  "Annotation primary": {
-    "prefix": "@primary",
-    "description": "Primary key metadata for tools",
-    "body": ["@primary"]
-  },
-  "Annotation autoincrement": {
-    "prefix": "@autoincrement",
-    "description": "Auto-increment metadata (int and long fields)",
-    "body": ["@autoincrement"]
-  },
-  "Annotation relation": {
-    "prefix": "@relation",
-    "description": "Foreign key to another model",
-    "body": ["@relation(${1:Model})"]
-  },
   "Annotation auth": {
     "prefix": "@auth",
     "description": "Auth requirement",

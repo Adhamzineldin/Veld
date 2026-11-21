@@ -23,7 +23,10 @@ test("commands run the planned CLI names", () => {
   assert.strictEqual(args["veld.setup"], "setup");
   assert.strictEqual(args["veld.doctor"], "doctor");
   assert.strictEqual(cli.WATCH.args.join(" "), "generate --watch");
-  assert.deepStrictEqual(cli.exportArgs("openapi", "out.json"), ["export", "openapi", "-o", "out.json"]);
+  assert.deepStrictEqual(cli.exportArgs("openapi", "out.json"), ["export", "openapi", "-o", "out.json", "--force"]);
+  assert.deepStrictEqual(cli.exportArgs("ir", "ir.json"), ["export", "ir", "-o", "ir.json"]);
+  assert.deepStrictEqual([...cli.EXPORT_FORMATS], ["openapi", "ir"]);
+  assert.strictEqual(cli.exportFileName("ir"), "veld-ir.json");
 });
 
 test("the veld.path setting is honoured, blank means PATH", () => {
@@ -50,7 +53,7 @@ test("snippets cover every v1 purpose in v2 syntax", () => {
   for (const needed of [
     "model", "enum", "error", "union", "service", "get", "post", "put", "patch", "delete",
     "crud", "sse", "ws", "field?", "field[]", "fieldmap", "fielddef", "use", "usepkg", "const",
-    "@unique", "@index", "@relation", "@example", "@deprecated", "@auth",
+    "@example", "@deprecated", "@auth",
   ]) {
     assert.ok(prefixes.has(needed), `missing snippet prefix ${needed}`);
   }
@@ -73,7 +76,7 @@ test("the veld.toml schema is contributed and exists", () => {
   assert.strictEqual(entry.fileMatch, "veld.toml");
   const schema = read(entry.url);
   assert.strictEqual(schema.title, "veld.toml");
-  assert.deepStrictEqual(schema.properties.targets.items.properties.role.enum, ["client", "server", "spec"]);
+  assert.deepStrictEqual(schema.properties.targets.items.properties.role.enum, ["client", "server"]);
 });
 
 test("snippet files are contributed", () => {

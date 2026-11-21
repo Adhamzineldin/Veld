@@ -113,6 +113,35 @@
       "package = \"${2:com.acme.client}\""
     ]
   },
+  "Server target (rust)": {
+    "prefix": "veld-rust",
+    "description": "Rust server target (a Cargo crate with an axum adapter)",
+    "body": [
+      "[[targets]]",
+      "role = \"server\"",
+      "service = \"${1:shop}\"",
+      "emitter = \"rust\"",
+      "framework = \"axum\"",
+      "out = \"${2:generated/shop-server}\"",
+      "",
+      "[targets.options]",
+      "crate-name = \"${3:shop-server}\""
+    ]
+  },
+  "Client target (rust)": {
+    "prefix": "veld-rustclient",
+    "description": "Rust client target (generic over its HTTP transport)",
+    "body": [
+      "[[targets]]",
+      "role = \"client\"",
+      "emitter = \"rust\"",
+      "framework = \"${1|reqwest,ureq|}\"",
+      "out = \"${2:generated/shop-client}\"",
+      "",
+      "[targets.options]",
+      "crate-name = \"${3:shop-client}\""
+    ]
+  },
   "Plugin": {
     "prefix": "veld-plugin",
     "description": "Generator plugin and a target that uses it",
