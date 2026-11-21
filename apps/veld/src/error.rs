@@ -10,6 +10,8 @@ pub enum Exit {
     User,
     /// Not implemented, or an internal failure.
     Internal,
+    /// The user cancelled a prompt (Ctrl-C): 130, like a shell does.
+    Cancelled,
 }
 
 impl From<Exit> for std::process::ExitCode {
@@ -18,6 +20,7 @@ impl From<Exit> for std::process::ExitCode {
             Exit::Ok => 0,
             Exit::User => 1,
             Exit::Internal => 2,
+            Exit::Cancelled => 130,
         })
     }
 }

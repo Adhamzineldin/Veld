@@ -29,12 +29,17 @@ anyhow.workspace = true
 serde_json.workspace = true
 toml.workspace = true
 notify.workspace = true
+cliclack = "=0.5.7"
+console = "=0.16.6"
+ctrlc = "=3.5.3"
+time = { version = "=0.3.55", features = ["local-offset"] }
 
 [dev-dependencies]
 assert_cmd.workspace = true
 predicates.workspace = true
 tempfile.workspace = true
 ureq.workspace = true
+insta.workspace = true
 veld-test-support.workspace = true
 
 [lints]
