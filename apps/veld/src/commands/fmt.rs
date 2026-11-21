@@ -10,9 +10,10 @@ use crate::cli::FmtArgs;
 use crate::error::{Exit, user};
 use crate::fsutil;
 use crate::pipeline;
-use crate::ui::{Style, Ui};
+use crate::ui::Ui;
 
 pub fn run(ui: &Ui, config: Option<&Path>, args: &FmtArgs) -> Result<Exit> {
+    ui.header("fmt", "");
     let files = if args.paths.is_empty() {
         project_files(config)?
     } else {
@@ -79,10 +80,7 @@ fn summarize(ui: &Ui, check: bool, total: usize, changed: &[String], failed: usi
         }
     } else {
         for path in changed {
-            ui.info(&format!(
-                "{} {path}",
-                ui.out_styled(Style::Green, "formatted")
-            ));
+            ui.ok(&format!("formatted {path}"));
         }
         ui.info(&format!(
             "{} checked, {} reformatted",

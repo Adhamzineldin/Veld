@@ -17,6 +17,7 @@ use crate::pipeline;
 use crate::ui::{Style, Ui};
 
 pub fn run(ui: &Ui, config: Option<&Path>, args: &DiffArgs) -> Result<Exit> {
+    ui.header("diff", "");
     let project = pipeline::load_project(config)?;
     let Some(done) = pipeline::compile_or_report(ui, project)? else {
         return Ok(Exit::User);
@@ -130,17 +131,14 @@ fn git(dir: &Path, args: &[&str]) -> Result<String> {
 
 fn print_changes(ui: &Ui, changes: &[Change], label: &str) {
     if changes.is_empty() {
-        ui.info(&format!(
-            "{} no changes against {label}",
-            ui.out_styled(Style::Green, "✓")
-        ));
+        ui.ok(&format!("no changes against {label}"));
         return;
     }
     for (severity, title, mark) in [
         (
             Severity::Breaking,
             "Breaking changes",
-            ui.out_styled(Style::Red, "✗"),
+            ui.out_styled(Style::Red, ui.theme_out().sym().fail),
         ),
         (
             Severity::NonBreaking,

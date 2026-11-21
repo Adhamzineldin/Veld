@@ -17,6 +17,7 @@ use crate::ui::Ui;
 const V1_CONFIG: &str = "veld.config.json";
 
 pub fn run(ui: &Ui, args: &MigrateArgs) -> Result<Exit> {
+    ui.header("migrate", "");
     let (dir, v1) = read_v1_config(args.from.as_deref())?;
     let name = project_name(&dir);
     let cfg = plan::plan(&v1, &name, args.out.trim_matches('/'));
@@ -73,15 +74,18 @@ fn write_outputs(
             ui.info(&format!("{state}: {shown}"));
         } else if fsutil::create_new(path, text.as_bytes())? {
             written += 1;
-            ui.info(&format!("wrote {shown}"));
+            ui.ok(&format!("wrote {shown}"));
         } else {
             skipped += 1;
             warnings.push(format!("`{shown}` already exists and was not overwritten"));
         }
     }
     if !dry_run {
-        ui.info(&format!(
-            "migrated: {written} file(s) written, {skipped} skipped; run `veld check` in {}",
+        ui.ok(&format!(
+            "migrated: {written} file(s) written, {skipped} skipped"
+        ));
+        ui.hint(&format!(
+            "run `veld check` in {}",
             pipeline::display_path(dir)
         ));
     }
