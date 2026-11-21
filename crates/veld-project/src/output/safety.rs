@@ -28,16 +28,18 @@ pub(crate) fn target_path(out: &Path, rel: &str) -> Result<PathBuf, OutputError>
 }
 
 pub(crate) fn is_link(meta: &fs::Metadata) -> bool {
-    if meta.file_type().is_symlink() {
-        return true;
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const REPARSE_POINT: u32 = 0x400;
-        meta.file_attributes() & REPARSE_POINT != 0
-    }
-    #[cfg(not(windows))]
+    meta.file_type().is_symlink() || is_reparse_point(meta)
+}
+
+#[cfg(windows)]
+fn is_reparse_point(meta: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const REPARSE_POINT: u32 = 0x400;
+    meta.file_attributes() & REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn is_reparse_point(_meta: &fs::Metadata) -> bool {
     false
 }
 
