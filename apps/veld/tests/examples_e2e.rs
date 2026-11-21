@@ -12,12 +12,13 @@ use std::fs;
 use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use common::*;
 use serde_json::{Value, json};
 use tempfile::TempDir;
+use veld_test_support::ProcessTree;
 
 // ---------------------------------------------------------------------------
 // Toolchain
@@ -161,7 +162,7 @@ fn free_port() -> u16 {
 /// A child process that is killed when dropped.
 struct Svc {
     name: String,
-    child: Child,
+    tree: ProcessTree,
     log: PathBuf,
     port: u16,
 }
@@ -169,18 +170,12 @@ struct Svc {
 impl Svc {
     fn start(name: &str, mut cmd: Command, port: u16, logs: &Path) -> Self {
         let log = logs.join(format!("{name}.log"));
-        let file = fs::File::create(&log).unwrap();
-        let child = cmd
-            .env("PORT", port.to_string())
-            .env("HOST", "127.0.0.1")
-            .stdin(Stdio::null())
-            .stdout(Stdio::from(file.try_clone().unwrap()))
-            .stderr(Stdio::from(file))
-            .spawn()
+        cmd.env("PORT", port.to_string()).env("HOST", "127.0.0.1");
+        let tree = ProcessTree::spawn_logged(&mut cmd, &log)
             .unwrap_or_else(|e| panic!("cannot start {name}: {e}"));
         let mut svc = Self {
             name: name.to_string(),
-            child,
+            tree,
             log,
             port,
         };
@@ -198,7 +193,7 @@ impl Svc {
             if TcpStream::connect(("127.0.0.1", self.port)).is_ok() {
                 return;
             }
-            if let Ok(Some(status)) = self.child.try_wait() {
+            if let Ok(Some(status)) = self.tree.child_mut().try_wait() {
                 panic!("{} exited early ({status})\n{}", self.name, self.logs());
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -209,13 +204,6 @@ impl Svc {
             self.port,
             self.logs()
         );
-    }
-}
-
-impl Drop for Svc {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
     }
 }
 

@@ -35,6 +35,7 @@ assert_cmd.workspace = true
 predicates.workspace = true
 tempfile.workspace = true
 ureq.workspace = true
+veld-test-support.workspace = true
 
 [lints]
 workspace = true

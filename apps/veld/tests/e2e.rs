@@ -3,7 +3,6 @@
 mod common;
 
 use std::fs;
-use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use common::*;
@@ -459,16 +458,6 @@ fn config_flag_selects_the_project() {
         .success();
 }
 
-/// Kills the watch process when the test ends, however it ends.
-struct Killer(std::process::Child);
-
-impl Drop for Killer {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
 fn wait_until(what: &str, ok: impl Fn() -> bool) {
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(20) {
@@ -487,15 +476,11 @@ fn watch_regenerates_when_a_contract_changes() {
     let program = assert_cmd::cargo::cargo_bin_cmd!("veld")
         .get_program()
         .to_owned();
-    let child = std::process::Command::new(program)
-        .args(["generate", "--watch"])
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(["generate", "--watch"])
         .current_dir(tmp.path())
-        .env("NO_COLOR", "1")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let _guard = Killer(child);
+        .env("NO_COLOR", "1");
+    let _guard = veld_test_support::ProcessTree::spawn_silent(&mut cmd).unwrap();
 
     let models = tmp.path().join("generated/server/models/hello.ts");
     wait_until("first generation", || models.is_file());

@@ -111,13 +111,15 @@ fn generating_twice_from_scratch_gives_the_committed_bytes() {
 /// The README's "Using it in your code" section quotes the hello example verbatim.
 #[test]
 fn readme_quotes_the_hello_example_exactly() {
-    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    // Line endings are not part of the quote (a Windows checkout may convert them).
+    let lf = |t: String| t.replace("\r\n", "\n");
+    let readme = lf(fs::read_to_string(repo_root().join("README.md")).unwrap());
     for file in [
         "server/src/main.ts",
         "web/src/App.tsx",
         "web/src/Greeter.tsx",
     ] {
-        let code = fs::read_to_string(examples_dir().join("hello").join(file)).unwrap();
+        let code = lf(fs::read_to_string(examples_dir().join("hello").join(file)).unwrap());
         assert!(
             readme.contains(code.trim_end()),
             "README.md no longer matches examples/hello/{file}; update its \"Using it in your code\" section"

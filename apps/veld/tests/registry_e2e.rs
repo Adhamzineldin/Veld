@@ -58,15 +58,12 @@ struct Env {
     pg_bin: PathBuf,
     pg_data: PathBuf,
     pg_started: bool,
-    registry: Option<Child>,
+    registry: Option<veld_test_support::ProcessTree>,
 }
 
 impl Drop for Env {
     fn drop(&mut self) {
-        if let Some(mut child) = self.registry.take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
+        drop(self.registry.take());
         if self.pg_started {
             let _ = Command::new(self.pg_bin.join(format!("pg_ctl{EXE}")))
                 .args(["stop", "-m", "immediate", "-D"])
@@ -255,17 +252,13 @@ fn start_stack() -> Option<Stack> {
     let port = free_port();
     let base = format!("http://127.0.0.1:{port}");
     let dsn = format!("postgres://veld@127.0.0.1:{pg_port}/veldtest?sslmode=disable");
-    let mut child = Command::new(&registry_bin)
-        .args(["--addr", &format!("127.0.0.1:{port}"), "--dsn", &dsn])
+    let mut cmd = Command::new(&registry_bin);
+    cmd.args(["--addr", &format!("127.0.0.1:{port}"), "--dsn", &dsn])
         .args(["--secret", "e2e-test-secret-0123456789abcdef", "--storage"])
         .arg(work_path.join("storage"))
-        .current_dir(&work_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    wait_for_registry(&base, &mut child);
+        .current_dir(&work_path);
+    let mut child = veld_test_support::ProcessTree::spawn_silent(&mut cmd).unwrap();
+    wait_for_registry(&base, child.child_mut());
     env.registry = Some(child);
 
     // 4. A user, an org and a write token, through the API.
