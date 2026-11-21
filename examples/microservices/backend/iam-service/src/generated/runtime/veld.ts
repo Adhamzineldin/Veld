@@ -531,6 +531,8 @@ export interface ParamSpec {
   header?: string;
   t: Schema;
   o?: boolean;
+  /** `body: stream T` on a WebSocket endpoint: the client-to-server message type, not an HTTP body. */
+  s?: boolean;
 }
 
 export interface AuthSpec {
@@ -555,6 +557,8 @@ export interface EndpointSpec {
   params: readonly ParamSpec[];
   success: Schema | null;
   errors: readonly ErrorSpec[];
+  /** `-> stream T`: Server-Sent Events on `GET`, server-to-client messages on `WS`. */
+  stream?: boolean;
 }
 
 function paramLoc(p: ParamSpec): string {
@@ -622,10 +626,33 @@ export interface VeldResponse {
   status: number;
   headers: Record<string, string>;
   body: string | null;
+  /**
+   * Server-Sent Events: ready-made frames (`sseFrame`) that the adapter writes as they arrive.
+   * The status and headers are final once this is set. Stop iterating (call `return()`) when the
+   * client goes away.
+   */
+  stream?: AsyncIterable<string>;
 }
 
-/** Resolves to `null` when no route matched. */
-export type VeldHandler = (req: VeldRequest) => Promise<VeldResponse | null>;
+/** The transport of one accepted WebSocket, as the adapter provides it. */
+export interface WsSocket {
+  send(text: string): void;
+  close(code: number, reason: string): void;
+  /** Registers the listener for text frames. */
+  onMessage(listener: (text: string) => void): void;
+  /** Registers the listener for the end of the connection (either side). */
+  onClose(listener: () => void): void;
+}
+
+/**
+ * `handler(req)` serves HTTP and resolves to `null` when no route matched. `handler.ws(req, socket)`
+ * serves an upgraded WebSocket through the same pipeline and resolves to `false` when no `ws`
+ * endpoint matched the path.
+ */
+export interface VeldHandler {
+  (req: VeldRequest): Promise<VeldResponse | null>;
+  ws(req: VeldRequest, socket: WsSocket): Promise<boolean>;
+}
 
 export interface RequestContext {
   method: string;
@@ -650,7 +677,8 @@ export interface HandlerHooks {
 
 export interface ServerEndpoint extends EndpointSpec {
   middleware: readonly string[];
-  call(req: object, ctx: RequestContext): Promise<unknown>;
+  /** `session` is set for `ws` endpoints. SSE endpoints resolve to an `AsyncIterable`. */
+  call(req: object, ctx: RequestContext, session?: WsSession): unknown;
 }
 
 /** Signatures of the prelude errors the router itself raises. */
@@ -787,10 +815,11 @@ async function bindBody(p: ParamSpec, req: VeldRequest, b: Bound): Promise<void>
   if (issues.length === 0) b.value[p.name] = fromWire(p.t, raw, { request: true });
 }
 
-async function bind(r: Route, m: RegExpExecArray, req: VeldRequest, headers: Headers): Promise<Bound> {
+async function bind(r: Route, m: RegExpExecArray, req: VeldRequest, headers: Headers, ws: boolean): Promise<Bound> {
   const b: Bound = { value: {}, issues: [] };
   const query = parseQuery(req.query);
   for (const p of r.ep.params) {
+    if (p.s) continue;
     switch (p.binding) {
       case 'path': {
         const seg = m[r.names.indexOf(p.name) + 1];
@@ -805,7 +834,8 @@ async function bind(r: Route, m: RegExpExecArray, req: VeldRequest, headers: Hea
         bindQueryObject(p, query, b);
         break;
       case 'header': {
-        const h = firstHeader(headers, p.header ?? p.name);
+        // Browsers cannot set headers on a WebSocket, so `ws` endpoints also read the query string.
+        const h = firstHeader(headers, p.header ?? p.name) ?? (ws ? query.get(p.header ?? p.name)?.[0] : undefined);
         bindSimple(p, h === undefined ? undefined : [h], b);
         break;
       }
@@ -924,6 +954,37 @@ function failure(err: unknown, ep: ServerEndpoint, ctx: RequestContext, std: Std
   return problem(std.internal, 'Internal', 500, ep.sig, {});
 }
 
+function contextOf(ep: ServerEndpoint, req: VeldRequest, headers: Headers): RequestContext {
+  return { method: ep.method, path: normalizePath(req.path), headers, principal: undefined, raw: req.raw };
+}
+
+/** Auth, middleware, binding and validation: the part of the pipeline every transport shares. */
+async function guard(
+  r: Route,
+  m: RegExpExecArray,
+  req: VeldRequest,
+  ctx: RequestContext,
+  std: StdSigs,
+  hooks: HandlerHooks,
+  ws: boolean,
+): Promise<Bound | VeldResponse> {
+  const ep = r.ep;
+  if (ep.auth) {
+    ctx.principal = await authenticate(ep.auth, ctx, hooks.auth ?? {});
+    if (ctx.principal === null) return problem(std.unauthorized, 'Unauthorized', 401, ep.sig, {});
+  }
+  for (const name of ep.middleware) await hooks.middleware?.[name]?.(ctx);
+  const bound = await bind(r, m, req, ctx.headers, ws);
+  if (bound.issues.length > 0) {
+    return problem(std.validation, 'ValidationError', 422, ep.sig, { issues: bound.issues });
+  }
+  return bound;
+}
+
+function isResponse(x: Bound | VeldResponse): x is VeldResponse {
+  return 'status' in x;
+}
+
 async function run(
   r: Route,
   m: RegExpExecArray,
@@ -932,26 +993,288 @@ async function run(
   hooks: HandlerHooks,
 ): Promise<VeldResponse> {
   const ep = r.ep;
-  const ctx: RequestContext = {
-    method: ep.method,
-    path: normalizePath(req.path),
-    headers: lowerHeaders(req.headers),
-    principal: undefined,
-    raw: req.raw,
-  };
+  const ctx = contextOf(ep, req, lowerHeaders(req.headers));
   try {
-    if (ep.auth) {
-      ctx.principal = await authenticate(ep.auth, ctx, hooks.auth ?? {});
-      if (ctx.principal === null) return problem(std.unauthorized, 'Unauthorized', 401, ep.sig, {});
-    }
-    for (const name of ep.middleware) await hooks.middleware?.[name]?.(ctx);
-    const bound = await bind(r, m, req, ctx.headers);
-    if (bound.issues.length > 0) {
-      return problem(std.validation, 'ValidationError', 422, ep.sig, { issues: bound.issues });
-    }
-    return success(ep, await ep.call(bound.value, ctx), hooks);
+    const bound = await guard(r, m, req, ctx, std, hooks, false);
+    if (isResponse(bound)) return bound;
+    const result = await ep.call(bound.value, ctx);
+    if (ep.stream === true) return await startSse(ep, result as AsyncIterable<unknown>, ctx, std, hooks);
+    return success(ep, result, hooks);
   } catch (err) {
     return failure(err, ep, ctx, std, hooks);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Server: Server-Sent Events
+// ---------------------------------------------------------------------------
+
+export interface SseOptions {
+  /** The `event:` name. Omit it for the default `message` event. */
+  event?: string;
+  /** The `id:` of the event. A reconnecting client sends the last one as `Last-Event-ID`. */
+  id?: string;
+  /** The `retry:` reconnection delay in milliseconds. */
+  retry?: number;
+}
+
+/** What a stream implementation yields when it wants to set the event name or id. */
+export class SseEvent<T = unknown> {
+  readonly veldSse = 1 as const;
+  readonly data: T;
+  readonly options: SseOptions;
+
+  constructor(data: T, options: SseOptions = {}) {
+    this.data = data;
+    this.options = options;
+  }
+}
+
+export function sseEvent<T>(data: T, options: SseOptions = {}): SseEvent<T> {
+  return new SseEvent(data, options);
+}
+
+function isSseEvent(v: unknown): v is SseEvent {
+  return isObject(v) && v['veldSse'] === 1 && 'data' in v;
+}
+
+function oneLine(field: string, v: string): string {
+  if (/[\r\n]/.test(v)) throw new Error(`SSE ${field} must not contain a line break`);
+  return v;
+}
+
+/**
+ * One Server-Sent Event: the optional `id`, `event` and `retry` fields in that order, then one
+ * `data` line, then a blank line. `data` is canonical JSON, which never contains a line break.
+ */
+export function sseFrame(data: string, o: SseOptions = {}): string {
+  let out = '';
+  if (o.id !== undefined) out += `id: ${oneLine('id', o.id)}\n`;
+  if (o.event !== undefined) out += `event: ${oneLine('event', o.event)}\n`;
+  if (o.retry !== undefined) out += `retry: ${Math.trunc(o.retry)}\n`;
+  return `${out}data: ${oneLine('data', data)}\n\n`;
+}
+
+function sseItem(ep: ServerEndpoint, item: unknown, hooks: HandlerHooks): string {
+  const ev = isSseEvent(item) ? item : null;
+  const value = ev === null ? item : ev.data;
+  if (ep.success === null) throw new Error(`${ep.name}: a stream needs an item type`);
+  if (hooks.validateResponses) {
+    const issues = validate(ep.success, value);
+    if (issues.length > 0) throw new Error(`${ep.name}: stream item failed validation: ${JSON.stringify(issues)}`);
+  }
+  return sseFrame(canonicalOf(ep.success, value), ev === null ? {} : ev.options);
+}
+
+async function* noFrames(): AsyncGenerator<string> {
+  // An empty stream: the headers go out and the response ends.
+}
+
+async function closeIterator(it: AsyncIterator<unknown>): Promise<void> {
+  try {
+    await it.return?.();
+  } catch {
+    // Closing is best effort.
+  }
+}
+
+async function* sseBody(
+  ep: ServerEndpoint,
+  it: AsyncIterator<unknown>,
+  firstFrame: string,
+  ctx: RequestContext,
+  std: StdSigs,
+  hooks: HandlerHooks,
+): AsyncGenerator<string> {
+  try {
+    yield firstFrame;
+    for (;;) {
+      const step = await it.next();
+      if (step.done === true) return;
+      yield sseItem(ep, step.value, hooks);
+    }
+  } catch (err) {
+    // The status line is long gone: the error travels as a final `event: error`.
+    yield sseFrame(failure(err, ep, ctx, std, hooks).body ?? 'null', { event: 'error' });
+  } finally {
+    await closeIterator(it);
+  }
+}
+
+/**
+ * Pulls the first item before answering, so that an error raised before any event is a normal
+ * problem+json response. After that the status is 200 and errors become the final `error` event.
+ */
+async function startSse(
+  ep: ServerEndpoint,
+  source: AsyncIterable<unknown>,
+  ctx: RequestContext,
+  std: StdSigs,
+  hooks: HandlerHooks,
+): Promise<VeldResponse> {
+  const it = source[Symbol.asyncIterator]();
+  let firstFrame: string | null = null;
+  try {
+    const first = await it.next();
+    if (first.done !== true) firstFrame = sseItem(ep, first.value, hooks);
+  } catch (err) {
+    await closeIterator(it);
+    throw err;
+  }
+  const headers = { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-accel-buffering': 'no' };
+  const frames = firstFrame === null ? noFrames() : sseBody(ep, it, firstFrame, ctx, std, hooks);
+  return { status: ep.status, headers, body: null, stream: frames };
+}
+
+// ---------------------------------------------------------------------------
+// Server: WebSocket
+// ---------------------------------------------------------------------------
+
+/** An unbounded async queue: `push` never blocks, iteration waits for the next item or `end()`. */
+class Queue<T> {
+  private readonly items: T[] = [];
+  private readonly waiting: ((r: IteratorResult<T>) => void)[] = [];
+  private ended = false;
+
+  push(value: T): void {
+    if (this.ended) return;
+    const w = this.waiting.shift();
+    if (w) w({ done: false, value });
+    else this.items.push(value);
+  }
+
+  end(): void {
+    this.ended = true;
+    for (const w of this.waiting.splice(0)) w({ done: true, value: undefined });
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<T> {
+    return {
+      next: () => {
+        if (this.items.length > 0) return Promise.resolve({ done: false, value: this.items.shift() as T });
+        if (this.ended) return Promise.resolve({ done: true, value: undefined });
+        return new Promise((resolve) => this.waiting.push(resolve));
+      },
+    };
+  }
+}
+
+/** What a `ws` endpoint implementation gets: the validated messages of the client and a way to answer. */
+export interface WsSession<In = unknown, Out = unknown> {
+  /** Messages from the client, validated and decoded. Ends when the socket closes. */
+  readonly incoming: AsyncIterable<In>;
+  /** Sends one message (canonical JSON). Throws when the socket is closed. */
+  send(message: Out): void;
+  /** Closes the socket normally. Returning from the implementation does the same. */
+  close(): void;
+  readonly closed: boolean;
+}
+
+/** `Authorization` from `?access_token=` and the API key header from `?api_key=`, when absent. */
+function wsHeaders(ep: ServerEndpoint, req: VeldRequest): Headers {
+  const h = lowerHeaders(req.headers);
+  const q = parseQuery(req.query);
+  if (ep.auth?.kind === 'bearer' && h['authorization'] === undefined) {
+    const t = q.get('access_token')?.[0];
+    if (t !== undefined) h['authorization'] = `Bearer ${t}`;
+  }
+  const keyHeader = (ep.auth?.header ?? 'X-API-Key').toLowerCase();
+  if (ep.auth?.kind === 'api_key' && h[keyHeader] === undefined) {
+    const k = q.get('api_key')?.[0];
+    if (k !== undefined) h[keyHeader] = k;
+  }
+  return h;
+}
+
+interface WsState {
+  closed: boolean;
+}
+
+function wsSession(
+  ep: ServerEndpoint,
+  sock: WsSocket,
+  inbox: Queue<unknown>,
+  state: WsState,
+  hooks: HandlerHooks,
+  finish: (code: number, reason: string) => void,
+): WsSession {
+  return {
+    incoming: inbox,
+    get closed() {
+      return state.closed;
+    },
+    send(message) {
+      if (state.closed) throw new Error(`${ep.name}: the WebSocket is closed`);
+      if (ep.success === null) throw new Error(`${ep.name}: this endpoint sends no messages`);
+      if (hooks.validateResponses) {
+        const issues = validate(ep.success, message);
+        if (issues.length > 0) throw new Error(`${ep.name}: message failed validation: ${JSON.stringify(issues)}`);
+      }
+      sock.send(`{"data":${canonicalOf(ep.success, message)}}`);
+    },
+    close: () => finish(1000, 'closed'),
+  };
+}
+
+async function runWs(
+  r: Route,
+  m: RegExpExecArray,
+  req: VeldRequest,
+  sock: WsSocket,
+  std: StdSigs,
+  hooks: HandlerHooks,
+): Promise<void> {
+  const ep = r.ep;
+  const ctx = contextOf(ep, req, wsHeaders(ep, req));
+  const incomingSchema = ep.params.find((p) => p.s === true)?.t;
+  const inbox = new Queue<unknown>();
+  const state: WsState = { closed: false };
+  const finish = (code: number, reason: string): void => {
+    if (state.closed) return;
+    state.closed = true;
+    inbox.end();
+    sock.close(code, reason);
+  };
+  const fail = (res: VeldResponse): void => {
+    if (state.closed) return;
+    sock.send(`{"error":${res.body ?? 'null'}}`);
+    finish(res.status >= 500 ? 1011 : 1008, `problem ${res.status}`);
+  };
+  const invalid = (issues: Issue[]): void => {
+    fail(problem(std.validation, 'ValidationError', 422, ep.sig, { issues }));
+  };
+  const accept = (text: string): void => {
+    if (incomingSchema === undefined) {
+      return invalid([{ path: 'message', code: 'unexpected', message: 'this endpoint does not accept messages' }]);
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(text) as unknown;
+    } catch {
+      return invalid([{ path: 'message', code: 'json', message: 'message is not valid JSON' }]);
+    }
+    const issues = validate(incomingSchema, raw, 'message', { wire: true, request: true });
+    if (issues.length > 0) return invalid(issues);
+    inbox.push(fromWire(incomingSchema, raw, { request: true }));
+  };
+  // Frames that arrive while auth and middleware run are held back, so they are never read by an
+  // unauthenticated session and never lost.
+  const early: string[] = [];
+  let ready = false;
+  sock.onMessage((text) => (ready ? accept(text) : early.push(text)));
+  sock.onClose(() => {
+    state.closed = true;
+    inbox.end();
+  });
+  try {
+    const bound = await guard(r, m, req, ctx, std, hooks, true);
+    if (isResponse(bound)) return fail(bound);
+    ready = true;
+    for (const text of early.splice(0)) accept(text);
+    await ep.call(bound.value, ctx, wsSession(ep, sock, inbox, state, hooks, finish));
+    finish(1000, 'done');
+  } catch (err) {
+    fail(failure(err, ep, ctx, std, hooks));
   }
 }
 
@@ -971,16 +1294,26 @@ function assertHooks(endpoints: readonly ServerEndpoint[], hooks: HandlerHooks):
 export function createHandler(endpoints: readonly ServerEndpoint[], std: StdSigs, hooks: HandlerHooks): VeldHandler {
   assertHooks(endpoints, hooks);
   const routes = endpoints.map(compileRoute).sort((a, b) => a.names.length - b.names.length);
-  return async (req) => {
-    const method = req.method.toUpperCase();
-    const path = normalizePath(req.path);
+  const find = (method: string, rawPath: string): { r: Route; m: RegExpExecArray } | null => {
+    const path = normalizePath(rawPath);
     for (const r of routes) {
       if (r.ep.method !== method) continue;
       const m = r.re.exec(path);
-      if (m) return run(r, m, req, std, hooks);
+      if (m) return { r, m };
     }
     return null;
   };
+  const handler = async (req: VeldRequest): Promise<VeldResponse | null> => {
+    const hit = find(req.method.toUpperCase(), req.path);
+    return hit === null ? null : run(hit.r, hit.m, req, std, hooks);
+  };
+  const ws = async (req: VeldRequest, socket: WsSocket): Promise<boolean> => {
+    const hit = find('WS', req.path);
+    if (hit === null) return false;
+    await runWs(hit.r, hit.m, req, socket, std, hooks);
+    return true;
+  };
+  return Object.assign(handler, { ws });
 }
 
 // ---------------------------------------------------------------------------
@@ -994,17 +1327,38 @@ export interface FetchInit {
   signal?: AbortSignalLike;
 }
 
+export interface StreamReaderLike {
+  read(): Promise<{ done: boolean; value?: Uint8Array }>;
+  cancel(reason?: unknown): Promise<void>;
+}
+
 export interface FetchResponse {
   status: number;
   text(): Promise<string>;
+  /** The response body as a byte stream (`fetch` in browsers and Node 18+). Needed for SSE. */
+  body?: { getReader(): StreamReaderLike } | null;
 }
 
 export interface AbortSignalLike {
   readonly aborted: boolean;
+  addEventListener?(type: 'abort', listener: () => void): void;
 }
 
 /** Structural `fetch`: the global `fetch` is assignable to it. */
 export type FetchLike = { bivarianceHack(url: string, init: FetchInit): Promise<FetchResponse> }['bivarianceHack'];
+
+/** The part of the WebSocket API the client uses: the global `WebSocket` of browsers and Node 22 fits. */
+export interface WsClientLike {
+  readonly readyState: number;
+  send(data: string): void;
+  close(code?: number, reason?: string): void;
+  onopen: ((ev: unknown) => void) | null;
+  onmessage: ((ev: { data: unknown }) => void) | null;
+  onclose: ((ev: { code: number; reason: string }) => void) | null;
+  onerror: ((ev: unknown) => void) | null;
+}
+
+export type WsConstructor = new (url: string) => WsClientLike;
 
 export interface BasicCredentials {
   username: string;
@@ -1016,18 +1370,41 @@ type Headers_ = Record<string, string>;
 export interface ClientOptions {
   baseUrl?: string;
   fetch?: FetchLike;
+  /** The WebSocket constructor for `ws` endpoints. Default: the global `WebSocket`. */
+  webSocket?: WsConstructor;
   headers?: Headers_ | (() => Headers_ | Promise<Headers_>);
   auth?: {
     bearer?: () => string | Promise<string>;
     basic?: () => BasicCredentials | Promise<BasicCredentials>;
     apiKey?: () => string | Promise<string>;
   };
-  /** Validate requests before sending them. Default: true. */
+  /** Validate requests (and outgoing WebSocket messages) before sending them. Default: true. */
   validate?: boolean;
 }
 
 export interface CallInit {
   signal?: AbortSignalLike;
+}
+
+/** Options of a Server-Sent Events call. */
+export interface StreamInit extends CallInit {
+  /** Sent as `Last-Event-ID`, to resume after the last event a previous call delivered. */
+  lastEventId?: string;
+  /** Called with the `id` of every event that has one. */
+  onEventId?: (id: string) => void;
+}
+
+/** Options of a WebSocket call. Aborting the signal closes the socket. */
+export type WsInit = CallInit;
+
+/**
+ * A WebSocket endpoint seen from the client. Iterate it for the server's messages: it ends when
+ * the server closes normally and throws the typed error of an error frame. `send` validates and
+ * queues until the socket is open.
+ */
+export interface WsChannel<In, Out> extends AsyncIterable<In> {
+  send(message: Out): void;
+  close(): void;
 }
 
 export interface ClientDefaults {
@@ -1051,6 +1428,7 @@ function scalarString(v: unknown): string {
 function requestIssues(ep: EndpointSpec, req: Record<string, unknown>): Issue[] {
   const out: Issue[] = [];
   for (const p of ep.params) {
+    if (p.s) continue;
     const v = req[p.name];
     if (v === undefined) {
       if (!p.o) push(out, paramLoc(p), 'required', 'is required');
@@ -1078,6 +1456,90 @@ function queryPairs(ep: EndpointSpec, req: Record<string, unknown>): [string, st
   return pairs.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 }
 
+// -- Server-Sent Events parsing ------------------------------------------------
+
+export interface SseMessage {
+  /** The `event:` name, `message` when the event had none. */
+  event: string;
+  /** The `data:` lines joined with `\n`. */
+  data: string;
+  /** The last `id:` seen so far, if any. */
+  id: string | undefined;
+}
+
+/**
+ * Incremental parser of a `text/event-stream` body (WHATWG HTML section 9.2): lines end in `\n`,
+ * `\r\n` or `\r`, `:` lines are comments, a blank line dispatches the event, an event without
+ * `data` is dropped, and an event cut off by the end of the stream is discarded.
+ */
+export class SseParser {
+  private buf = '';
+  private data: string[] = [];
+  private event = '';
+  private id: string | undefined;
+  private first = true;
+
+  push(chunk: string): SseMessage[] {
+    this.buf += chunk;
+    if (this.first && this.buf.length > 0) {
+      this.first = false;
+      if (this.buf.charCodeAt(0) === 0xfeff) this.buf = this.buf.slice(1);
+    }
+    const out: SseMessage[] = [];
+    let start = 0;
+    for (;;) {
+      let end = start;
+      while (end < this.buf.length && this.buf[end] !== '\n' && this.buf[end] !== '\r') end++;
+      if (end >= this.buf.length) break;
+      // A trailing `\r` may be the first half of `\r\n`: wait for the next chunk.
+      if (this.buf[end] === '\r' && end + 1 >= this.buf.length) break;
+      this.line(this.buf.slice(start, end), out);
+      start = end + (this.buf[end] === '\r' && this.buf[end + 1] === '\n' ? 2 : 1);
+    }
+    this.buf = this.buf.slice(start);
+    return out;
+  }
+
+  private line(line: string, out: SseMessage[]): void {
+    if (line === '') {
+      if (this.data.length > 0) out.push({ event: this.event === '' ? 'message' : this.event, data: this.data.join('\n'), id: this.id });
+      this.data = [];
+      this.event = '';
+      return;
+    }
+    if (line.startsWith(':')) return;
+    const colon = line.indexOf(':');
+    const field = colon < 0 ? line : line.slice(0, colon);
+    let value = colon < 0 ? '' : line.slice(colon + 1);
+    if (value.startsWith(' ')) value = value.slice(1);
+    if (field === 'data') this.data.push(value);
+    else if (field === 'event') this.event = value;
+    else if (field === 'id' && !value.includes('\u0000')) this.id = value;
+  }
+}
+
+interface Linked {
+  signal: AbortSignalLike;
+  abort(): void;
+}
+
+/** A signal that aborts when `user` does and when `abort()` is called. */
+function linkAbort(user: AbortSignalLike | undefined): Linked {
+  type Ctor = new () => { signal: AbortSignalLike; abort(): void };
+  const Controller = (globalThis as { AbortController?: Ctor }).AbortController;
+  if (!Controller) return { signal: user ?? { aborted: false }, abort: () => undefined };
+  const c = new Controller();
+  if (user?.aborted === true) c.abort();
+  else user?.addEventListener?.('abort', () => c.abort());
+  return c;
+}
+
+interface TextDecoderLike {
+  decode(input?: Uint8Array, options?: { stream?: boolean }): string;
+}
+
+type WsEvent = { ok: unknown } | { err: unknown };
+
 export class ClientCore {
   private readonly baseUrl: string;
   private readonly doFetch: FetchLike;
@@ -1096,23 +1558,197 @@ export class ClientCore {
     this.doFetch = f;
   }
 
+  private check(ep: EndpointSpec, req: Record<string, unknown>): void {
+    if (this.opts.validate === false) return;
+    const issues = requestIssues(ep, req);
+    if (issues.length > 0) {
+      const err = this.defaults.validation(issues);
+      err.op = ep.sig;
+      throw err;
+    }
+  }
+
   async call(ep: EndpointSpec, input: object, init: CallInit = {}): Promise<unknown> {
     const req = input as Record<string, unknown>;
-    if (this.opts.validate !== false) {
-      const issues = requestIssues(ep, req);
-      if (issues.length > 0) {
-        const err = this.defaults.validation(issues);
-        err.op = ep.sig;
-        throw err;
-      }
-    }
-    const res = await this.send(ep, req, init);
+    this.check(ep, req);
+    const res = await this.send(ep, req, init, {});
     return this.decode(ep, res);
   }
 
-  private async headers(ep: EndpointSpec, req: Record<string, unknown>): Promise<Headers_> {
-    const extra = this.opts.headers;
-    const out: Headers_ = { accept: 'application/json', ...(typeof extra === 'function' ? await extra() : extra) };
+  /**
+   * Server-Sent Events: an `AsyncIterable` that opens the request when iteration starts. It ends
+   * when the server ends the stream or the signal aborts, and throws the typed error of a failed
+   * response or of a final `error` event. There is no automatic reconnect: call again with
+   * `lastEventId` to resume.
+   */
+  stream(ep: EndpointSpec, input: object, init: StreamInit = {}): AsyncIterable<unknown> {
+    const req = input as Record<string, unknown>;
+    return { [Symbol.asyncIterator]: () => this.events(ep, req, init) };
+  }
+
+  private async *events(ep: EndpointSpec, req: Record<string, unknown>, init: StreamInit): AsyncGenerator<unknown> {
+    this.check(ep, req);
+    const link = linkAbort(init.signal);
+    let reader: StreamReaderLike | undefined;
+    try {
+      const extra: Headers_ = init.lastEventId === undefined ? {} : { 'last-event-id': init.lastEventId };
+      const res = await this.send(ep, req, { signal: link.signal }, { accept: 'text/event-stream', extra });
+      if (res.status < 200 || res.status >= 300) await this.decode(ep, res);
+      if (!res.body) throw new VeldTransportError(`${ep.method} ${ep.path}: the response has no body stream`);
+      reader = res.body.getReader();
+      const Decoder = (globalThis as { TextDecoder?: new () => TextDecoderLike }).TextDecoder;
+      if (!Decoder) throw new VeldTransportError('no TextDecoder: streaming needs a modern runtime');
+      const decoder = new Decoder();
+      const parser = new SseParser();
+      for (;;) {
+        let chunk: { done: boolean; value?: Uint8Array };
+        try {
+          chunk = await reader.read();
+        } catch (cause) {
+          if (link.signal.aborted) return;
+          throw new VeldTransportError(`${ep.method} ${ep.path}: the stream broke`, cause);
+        }
+        if (chunk.done) return;
+        for (const message of parser.push(decoder.decode(chunk.value, { stream: true }))) {
+          if (message.id !== undefined) init.onEventId?.(message.id);
+          yield this.eventValue(ep, message);
+        }
+      }
+    } catch (err) {
+      if (link.signal.aborted) return;
+      throw err;
+    } finally {
+      link.abort();
+      await reader?.cancel().catch(() => undefined);
+    }
+  }
+
+  private eventValue(ep: EndpointSpec, message: SseMessage): unknown {
+    let body: unknown;
+    try {
+      body = JSON.parse(message.data) as unknown;
+    } catch (cause) {
+      throw new VeldTransportError(`${ep.method} ${ep.path}: an event is not valid JSON`, cause);
+    }
+    if (message.event === 'error') throw this.errorFor(ep, decodeProblem(body)?.status ?? 0, body);
+    if (ep.success === null) throw new VeldTransportError(`${ep.method} ${ep.path}: the stream has no item type`);
+    return fromWire(ep.success, body);
+  }
+
+  /**
+   * WebSocket: opens the socket straight away and returns the channel. Auth goes in the query
+   * string (`access_token` for bearer, `api_key` for an API key) because browsers cannot set
+   * headers on a WebSocket; `@header` parameters travel as query parameters too.
+   */
+  connect(ep: EndpointSpec, input: object, init: WsInit = {}): WsChannel<unknown, unknown> {
+    const req = input as Record<string, unknown>;
+    this.check(ep, req);
+    const Socket = this.opts.webSocket ?? (globalThis as { WebSocket?: WsConstructor }).WebSocket;
+    if (!Socket) throw new VeldTransportError('no WebSocket implementation: pass options.webSocket');
+    const outgoing = ep.params.find((p) => p.s === true)?.t;
+    const events = new Queue<WsEvent>();
+    const outbox: string[] = [];
+    let socket: WsClientLike | undefined;
+    let ended = false;
+    const end = (): void => {
+      if (ended) return;
+      ended = true;
+      events.end();
+    };
+    const fail = (err: unknown): void => {
+      events.push({ err });
+      end();
+    };
+    const link = linkAbort(init.signal);
+    const close = (): void => {
+      end();
+      link.abort();
+      socket?.close(1000, 'client closed');
+    };
+    let sawError = false;
+    const onFrame = (text: string): void => {
+      try {
+        const frame = JSON.parse(text) as unknown;
+        if (isObject(frame) && 'error' in frame) {
+          const body = frame['error'];
+          events.push({ err: this.errorFor(ep, decodeProblem(body)?.status ?? 0, body) });
+          sawError = true;
+        } else if (isObject(frame) && 'data' in frame && ep.success !== null) {
+          events.push({ ok: fromWire(ep.success, frame['data']) });
+        } else {
+          fail(new VeldTransportError(`${ep.method} ${ep.path}: unrecognised frame`));
+        }
+      } catch (cause) {
+        fail(new VeldTransportError(`${ep.method} ${ep.path}: a frame is not valid JSON`, cause));
+      }
+    };
+    const open = async (): Promise<void> => {
+      const url = await this.wsUrl(ep, req);
+      if (ended) return;
+      const s = new Socket(url);
+      socket = s;
+      let connected = false;
+      s.onopen = () => {
+        connected = true;
+        for (const text of outbox.splice(0)) s.send(text);
+      };
+      s.onmessage = (ev) => onFrame(typeof ev.data === 'string' ? ev.data : String(ev.data));
+      // Some runtimes report a refused connection as `error` alone, with no `close` after it.
+      s.onerror = () => {
+        if (!connected) fail(new VeldTransportError(`${ep.method} ${ep.path}: could not connect`));
+      };
+      s.onclose = (ev) => {
+        if (ended) return;
+        if (sawError || ev.code === 1000 || ev.code === 1005) return end();
+        fail(new VeldTransportError(`${ep.method} ${ep.path}: the WebSocket closed (code ${ev.code})`));
+      };
+    };
+    open().catch(fail);
+    if (init.signal) {
+      if (init.signal.aborted) close();
+      else init.signal.addEventListener?.('abort', close);
+    }
+    return {
+      send: (message) => {
+        if (ended) throw new VeldTransportError(`${ep.method} ${ep.path}: the WebSocket is closed`);
+        if (outgoing === undefined) throw new VeldTransportError(`${ep.method} ${ep.path}: this endpoint takes no messages`);
+        if (this.opts.validate !== false) {
+          const issues = validate(outgoing, message, 'message');
+          if (issues.length > 0) {
+            const err = this.defaults.validation(issues);
+            err.op = ep.sig;
+            throw err;
+          }
+        }
+        const text = canonicalOf(outgoing, message);
+        if (socket !== undefined && socket.readyState === 1) socket.send(text);
+        else outbox.push(text);
+      },
+      close,
+      [Symbol.asyncIterator]: () => drain(events),
+    };
+  }
+
+  private async wsUrl(ep: EndpointSpec, req: Record<string, unknown>): Promise<string> {
+    const path = ep.path.replace(/\{([^}]+)\}/g, (_, name: string) => encodeURIComponent(scalarString(req[name])));
+    const pairs = queryPairs(ep, req);
+    for (const p of ep.params) {
+      const v = req[p.name];
+      if (p.binding === 'header' && v !== undefined) pairs.push([p.header ?? p.name, scalarString(v)]);
+    }
+    const auth = this.opts.auth;
+    if (ep.auth?.kind === 'bearer' && auth?.bearer) pairs.push(['access_token', await auth.bearer()]);
+    if (ep.auth?.kind === 'api_key' && auth?.apiKey) pairs.push(['api_key', await auth.apiKey()]);
+    if (ep.auth?.kind === 'basic') {
+      throw new VeldTransportError(`${ep.name}: basic auth cannot be sent on a WebSocket; use bearer or an API key`);
+    }
+    const qs = pairs.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+    return `${this.baseUrl.replace(/^http/, 'ws')}${path}${qs === '' ? '' : `?${qs}`}`;
+  }
+
+  private async headers(ep: EndpointSpec, req: Record<string, unknown>, accept: string, extra: Headers_): Promise<Headers_> {
+    const configured = this.opts.headers;
+    const out: Headers_ = { accept, ...(typeof configured === 'function' ? await configured() : configured), ...extra };
     for (const p of ep.params) {
       const v = req[p.name];
       if (p.binding === 'header' && v !== undefined) out[p.header ?? p.name] = scalarString(v);
@@ -1127,13 +1763,18 @@ export class ClientCore {
     return out;
   }
 
-  private async send(ep: EndpointSpec, req: Record<string, unknown>, init: CallInit): Promise<FetchResponse> {
+  private async send(
+    ep: EndpointSpec,
+    req: Record<string, unknown>,
+    init: CallInit,
+    more: { accept?: string; extra?: Headers_ },
+  ): Promise<FetchResponse> {
     const path = ep.path.replace(/\{([^}]+)\}/g, (_, name: string) => encodeURIComponent(scalarString(req[name])));
     const qs = queryPairs(ep, req)
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
       .join('&');
-    const headers = await this.headers(ep, req);
-    const bodyParam = ep.params.find((p) => p.binding === 'body');
+    const headers = await this.headers(ep, req, more.accept ?? 'application/json', more.extra ?? {});
+    const bodyParam = ep.params.find((p) => p.binding === 'body' && p.s !== true);
     const bodyValue = bodyParam ? req[bodyParam.name] : undefined;
     const fetchInit: FetchInit = { method: ep.method, headers };
     if (bodyParam && bodyValue !== undefined) {
@@ -1146,6 +1787,16 @@ export class ClientCore {
     } catch (cause) {
       throw new VeldTransportError(`${ep.method} ${path} failed`, cause);
     }
+  }
+
+  private errorFor(ep: EndpointSpec, status: number, body: unknown): Error {
+    const known = decodeProblem(body);
+    const declared = known ? ep.errors.find((d) => d.sig === known.type) : undefined;
+    if (known && declared) {
+      const data = fromWire(declared.schema, known.data ?? {});
+      return declared.create(data, { status: known.status || status, op: known.operation ?? ep.sig });
+    }
+    return new VeldHttpError(status, body ?? null);
   }
 
   private async decode(ep: EndpointSpec, res: FetchResponse): Promise<unknown> {
@@ -1168,12 +1819,13 @@ export class ClientCore {
       if (body === undefined) throw new VeldTransportError(`${ep.method} ${ep.path}: empty response body`);
       return fromWire(ep.success, body);
     }
-    const known = decodeProblem(body);
-    const declared = known ? ep.errors.find((d) => d.sig === known.type) : undefined;
-    if (known && declared) {
-      const data = fromWire(declared.schema, known.data ?? {});
-      throw declared.create(data, { status: known.status || res.status, op: known.operation ?? ep.sig });
-    }
-    throw new VeldHttpError(res.status, body ?? null);
+    throw this.errorFor(ep, res.status, body);
+  }
+}
+
+async function* drain(events: Queue<WsEvent>): AsyncGenerator<unknown> {
+  for await (const e of events) {
+    if ('err' in e) throw e.err;
+    yield e.ok;
   }
 }

@@ -22,6 +22,10 @@ export interface NodeResponseLike {
   statusCode: number;
   setHeader(name: string, value: string): unknown;
   end(chunk?: string): unknown;
+  /** Needed for Server-Sent Events. */
+  write?(chunk: string): unknown;
+  flushHeaders?(): void;
+  on?(event: 'close', listener: () => void): unknown;
 }
 
 interface TextDecoderLike {
@@ -58,10 +62,31 @@ function readText(req: NodeRequestLike): Promise<string> {
   });
 }
 
-function writeNode(res: NodeResponseLike, out: VeldResponse): void {
+async function writeNode(res: NodeResponseLike, out: VeldResponse): Promise<void> {
   res.statusCode = out.status;
   for (const name of Object.keys(out.headers)) res.setHeader(name, out.headers[name] ?? '');
-  res.end(out.body ?? '');
+  if (out.stream === undefined) {
+    res.end(out.body ?? '');
+    return;
+  }
+  // Server-Sent Events: write each frame as it arrives, and stop when the client goes away.
+  res.flushHeaders?.();
+  const it = out.stream[Symbol.asyncIterator]();
+  let onGone: () => void = () => undefined;
+  const gone = new Promise<null>((resolve) => {
+    onGone = () => resolve(null);
+  });
+  res.on?.('close', () => onGone());
+  try {
+    for (;;) {
+      const step = await Promise.race([it.next(), gone]);
+      if (step === null || step.done === true) break;
+      res.write?.(step.value);
+    }
+  } finally {
+    void Promise.resolve(it.return?.()).catch(() => undefined);
+    res.end();
+  }
 }
 
 async function dispatchNode(handler: VeldHandler, req: NodeRequestLike): Promise<VeldResponse | null> {
@@ -86,10 +111,12 @@ export type NodeHttpListener = (req: NodeRequestLike, res: NodeResponseLike) => 
 /** A `http.createServer` listener. Unmatched requests get a 404 problem. */
 export function toNodeHttp(handler: VeldHandler): NodeHttpListener {
   return (req, res) => {
-    dispatchNode(handler, req).then(
-      (out) => writeNode(res, out ?? NOT_FOUND),
-      () => writeNode(res, FAILED),
-    );
+    dispatchNode(handler, req)
+      .then(
+        (out) => writeNode(res, out ?? NOT_FOUND),
+        () => writeNode(res, FAILED),
+      )
+      .catch(() => res.end());
   };
 }
 
@@ -106,10 +133,9 @@ export type ExpressMiddleware = (req: NodeRequestLike, res: NodeResponseLike, ne
  */
 export function toExpress(handler: VeldHandler): ExpressMiddleware {
   return (req, res, next) => {
-    dispatchNode(handler, req).then(
-      (out) => (out === null ? next() : writeNode(res, out)),
-      (err: unknown) => next(err),
-    );
+    dispatchNode(handler, req)
+      .then((out) => (out === null ? next() : writeNode(res, out)))
+      .catch((err: unknown) => next(err));
   };
 }
 
@@ -129,6 +155,9 @@ export interface FastifyReplyLike {
   code(statusCode: number): unknown;
   header(name: string, value: string): unknown;
   send(payload?: unknown): unknown;
+  /** Needed for Server-Sent Events: takes the response over from Fastify. */
+  hijack?(): unknown;
+  raw?: NodeResponseLike;
 }
 
 export type FastifyRouteHandler = (request: FastifyRequestLike, reply: FastifyReplyLike) => Promise<unknown>;
@@ -146,6 +175,11 @@ export function toFastify(handler: VeldHandler): FastifyRouteHandler {
         body: request.body ?? undefined,
         raw: request,
       })) ?? NOT_FOUND;
+    if (out.stream !== undefined && reply.raw !== undefined) {
+      reply.hijack?.();
+      await writeNode(reply.raw, out);
+      return undefined;
+    }
     reply.code(out.status);
     for (const name of Object.keys(out.headers)) reply.header(name, out.headers[name] ?? '');
     return reply.send(out.body ?? '');
@@ -165,7 +199,38 @@ export interface HonoContextLike {
   };
 }
 
-type ResponseCtor = new (body: string | null, init: { status: number; headers: Record<string, string> }) => unknown;
+type ResponseBody = string | null | object;
+type ResponseCtor = new (body: ResponseBody, init: { status: number; headers: Record<string, string> }) => unknown;
+
+interface StreamControllerLike {
+  enqueue(chunk: unknown): void;
+  close(): void;
+}
+
+type StreamCtor = new (source: {
+  pull(controller: StreamControllerLike): Promise<void>;
+  cancel(): void;
+}) => object;
+
+/** The frames of a Server-Sent Events response as a byte stream, for `new Response(stream)`. */
+function sseStream(frames: AsyncIterable<string>): object {
+  const g = globalThis as unknown as {
+    ReadableStream: StreamCtor;
+    TextEncoder: new () => { encode(s: string): unknown };
+  };
+  const encoder = new g.TextEncoder();
+  const it = frames[Symbol.asyncIterator]();
+  return new g.ReadableStream({
+    async pull(controller) {
+      const step = await it.next();
+      if (step.done === true) controller.close();
+      else controller.enqueue(encoder.encode(step.value));
+    },
+    cancel() {
+      void Promise.resolve(it.return?.()).catch(() => undefined);
+    },
+  });
+}
 
 export type HonoHandler = (c: HonoContextLike, next?: () => Promise<void>) => Promise<unknown>;
 
@@ -184,6 +249,9 @@ export function toHono(handler: VeldHandler): HonoHandler {
     if (out === null && next) return next();
     const { Response } = globalThis as unknown as { Response: ResponseCtor };
     const res = out ?? NOT_FOUND;
-    return new Response(res.body, { status: res.status, headers: res.headers });
+    return new Response(res.stream === undefined ? res.body : sseStream(res.stream), {
+      status: res.status,
+      headers: res.headers,
+    });
   };
 }

@@ -8,9 +8,16 @@ import java.util.List;
  *
  * @param spec the endpoint description
  * @param middleware the middleware names, in declared order
- * @param call decodes the bound parameters, calls the implementation and encodes the result
+ * @param call decodes the bound parameters, calls the implementation and encodes the result;
+ *     {@code null} for a streaming endpoint
+ * @param sse the call of a Server-Sent Events endpoint, or {@code null}
+ * @param ws the call of a {@code ws} endpoint, or {@code null}
  */
-public record ServerEndpoint(EndpointSpec spec, List<String> middleware, Invoker call) {
+public record ServerEndpoint(
+    EndpointSpec spec,
+    List<String> middleware,
+    Invoker call
+    ) {
 
   /** Creates an endpoint (the middleware list is copied). */
   public ServerEndpoint {
@@ -29,4 +36,5 @@ public record ServerEndpoint(EndpointSpec spec, List<String> middleware, Invoker
      */
     Json call(Json.Obj params, RequestContext ctx) throws Exception;
   }
+
 }

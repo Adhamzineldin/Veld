@@ -43,7 +43,16 @@ public final class ClientCore {
       throw new VeldTransportError("no base URL: pass baseUrl or set " + defaults.envVar());
     }
     this.baseUrl = base.replaceAll("/+$", "");
-    this.http = options.httpClient() != null ? options.httpClient() : HttpClient.newHttpClient();
+    this.http = options.httpClient() != null ? options.httpClient() : defaultClient();
+  }
+
+  /**
+   * HTTP/1.1: over cleartext the JDK would otherwise offer an {@code Upgrade: h2c} on every request,
+   * which servers that also host WebSocket upgrades answer with a 400. Pass your own client for
+   * HTTP/2.
+   */
+  private static HttpClient defaultClient() {
+    return HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
   }
 
   /**
@@ -54,6 +63,12 @@ public final class ClientCore {
    * @return the response in wire form, or {@code null} when the endpoint has no response body
    */
   public Json call(EndpointSpec ep, Json.Obj params) {
+    check(ep, params);
+    HttpRequest request = buildRequest(ep, params, "application/json", Map.of());
+    return decode(ep, send(ep, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)));
+  }
+
+  private void check(EndpointSpec ep, Json.Obj params) {
     if (options.validate()) {
       List<Issue> issues = requestIssues(ep, params);
       if (!issues.isEmpty()) {
@@ -62,12 +77,15 @@ public final class ClientCore {
         throw err;
       }
     }
-    return decode(ep, send(ep, params));
   }
+
 
   private static List<Issue> requestIssues(EndpointSpec ep, Json.Obj params) {
     List<Issue> out = new ArrayList<>();
     for (EndpointSpec.Param p : ep.params()) {
+      if (p.stream()) {
+        continue;
+      }
       Json v = params.get(p.name());
       if (v == null) {
         if (!p.optional()) {
@@ -82,14 +100,15 @@ public final class ClientCore {
 
   // -- request -------------------------------------------------------------------------------
 
-  private HttpResponse<String> send(EndpointSpec ep, Json.Obj params) {
+  private HttpRequest buildRequest(EndpointSpec ep, Json.Obj params, String accept, Map<String, String> extra) {
     String path = expandPath(ep, params);
     String qs = queryString(ep, params);
     HttpRequest.Builder builder = HttpRequest.newBuilder(uri(path + (qs.isEmpty() ? "" : "?" + qs)))
         .timeout(options.timeout());
     EndpointSpec.Param body = bodyParam(ep);
     HttpRequest.BodyPublisher publisher = HttpRequest.BodyPublishers.noBody();
-    Map<String, String> headers = headers(ep, params);
+    Map<String, String> headers = headers(ep, params, accept);
+    headers.putAll(extra);
     if (body != null && params.get(body.name()) != null) {
       headers.put("content-type", "application/json");
       Json wire = Wire.prepare(body.type(), params.get(body.name()), Wire.Mode.RESPONSE);
@@ -97,21 +116,29 @@ public final class ClientCore {
     }
     headers.forEach(builder::header);
     builder.method(ep.method(), publisher);
+    return builder.build();
+  }
+
+  private <T> HttpResponse<T> send(EndpointSpec ep, HttpRequest request, HttpResponse.BodyHandler<T> handler) {
     try {
-      return http.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+      return http.send(request, handler);
     } catch (IOException e) {
-      throw new VeldTransportError(ep.method() + " " + path + " failed", e);
+      throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " failed", e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new VeldTransportError(ep.method() + " " + path + " was interrupted", e);
+      throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " was interrupted", e);
     }
   }
 
   private URI uri(String pathAndQuery) {
+    return uri(baseUrl, pathAndQuery);
+  }
+
+  private static URI uri(String base, String pathAndQuery) {
     try {
-      return URI.create(baseUrl + pathAndQuery);
+      return URI.create(base + pathAndQuery);
     } catch (IllegalArgumentException e) {
-      throw new VeldTransportError("invalid request URL " + baseUrl + pathAndQuery, e);
+      throw new VeldTransportError("invalid request URL " + base + pathAndQuery, e);
     }
   }
 
@@ -144,6 +171,10 @@ public final class ClientCore {
   }
 
   private static String queryString(EndpointSpec ep, Json.Obj params) {
+    return joinQuery(queryPairs(ep, params));
+  }
+
+  private static List<String[]> queryPairs(EndpointSpec ep, Json.Obj params) {
     List<String[]> pairs = new ArrayList<>();
     for (EndpointSpec.Param p : ep.params()) {
       Json v = params.get(p.name());
@@ -157,6 +188,10 @@ public final class ClientCore {
       }
     }
     pairs.sort((a, b) -> a[0].compareTo(b[0]));
+    return pairs;
+  }
+
+  private static String joinQuery(List<String[]> pairs) {
     StringBuilder out = new StringBuilder();
     for (String[] pair : pairs) {
       if (out.length() > 0) {
@@ -209,9 +244,9 @@ public final class ClientCore {
     return out.toString();
   }
 
-  private Map<String, String> headers(EndpointSpec ep, Json.Obj params) {
+  private Map<String, String> headers(EndpointSpec ep, Json.Obj params, String accept) {
     Map<String, String> out = new LinkedHashMap<>();
-    out.put("accept", "application/json");
+    out.put("accept", accept);
     out.putAll(options.headers().get());
     for (EndpointSpec.Param p : ep.params()) {
       Json v = params.get(p.name());
@@ -251,17 +286,19 @@ public final class ClientCore {
   // -- response ------------------------------------------------------------------------------
 
   private static Json decode(EndpointSpec ep, HttpResponse<String> res) {
-    String text = res.body();
+    return decodeText(ep, res.statusCode(), res.body());
+  }
+
+  private static Json decodeText(EndpointSpec ep, int status, String text) {
     Json body = null;
     if (text != null && !text.isBlank()) {
       try {
         body = Json.parse(text);
       } catch (Json.ParseException e) {
         throw new VeldTransportError(
-            ep.method() + " " + ep.path() + ": response body is not valid JSON (HTTP " + res.statusCode() + ")", e);
+            ep.method() + " " + ep.path() + ": response body is not valid JSON (HTTP " + status + ")", e);
       }
     }
-    int status = res.statusCode();
     if (status >= 200 && status < 300) {
       return decodeSuccess(ep, body);
     }
@@ -278,7 +315,7 @@ public final class ClientCore {
     return Wire.prepare(ep.success(), body, Wire.Mode.RESPONSE);
   }
 
-  private static RuntimeException decodeFailure(EndpointSpec ep, int status, Json body) {
+  static RuntimeException decodeFailure(EndpointSpec ep, int status, Json body) {
     if (body instanceof Json.Obj obj && obj.get("type") instanceof Json.Str type) {
       for (EndpointSpec.Declared d : ep.errors()) {
         if (d.sig().equals(type.value())) {

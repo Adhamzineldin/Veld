@@ -17,7 +17,6 @@ import com.nexusbank.transactions.runtime.ClientDefaults;
 import com.nexusbank.transactions.runtime.ClientOptions;
 import com.nexusbank.transactions.runtime.EndpointSpec;
 import com.nexusbank.transactions.runtime.Router;
-import com.nexusbank.transactions.runtime.Schema;
 import java.util.List;
 
 /**

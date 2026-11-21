@@ -18,8 +18,8 @@
     "models/cards.ts": "193403aea6a07d34c3c5e9373be39a75d2325fd9e474c79ea6c61d041cf73db5",
     "package.json": "b0c8afd32c12ba3015000d7675639aa4db6cd648142543decbd823a6b7768e74",
     "prelude.ts": "6b517ab7ce5828a32b3de12531ee5eea8a121e952b855a1d23f590c3486ea53f",
-    "runtime/veld.ts": "07f44091699e2e2e65587c2bdbe3e3e6f40d9c07dbbd81aca984e0e5a712ee32",
-    "server/adapters.ts": "82ca2086f71edf5253ac5645091669e00017a2fed4032a096fb0d6f33af06799",
+    "runtime/veld.ts": "95021208f07c0cb56f95ae0b24db23bf8d5678e3aa76c85c8be283b00a80ffbd",
+    "server/adapters.ts": "f182d6e48b7a1f38fb3b4de6b1669ed8a7b8fca01f7625d556b9fdf1712ca2f9",
     "server/cards.ts": "8002bdd4130445569d7ea9d903373676179bda7ec2611ef103c408073d8df68a"
   }
 }

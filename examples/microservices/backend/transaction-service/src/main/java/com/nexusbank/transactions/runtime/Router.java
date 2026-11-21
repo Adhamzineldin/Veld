@@ -143,24 +143,45 @@ public final class Router implements VeldHandler {
     EndpointSpec spec = ep.spec();
     RequestContext ctx = new RequestContext(spec.method(), normalizePath(request.path()), lowerHeaders(request.headers()), request.raw());
     try {
-      if (spec.auth() != null) {
-        ctx.setPrincipal(authenticate(spec.auth(), ctx));
-        if (ctx.principal() == null) {
-          return problem(std.unauthorized(), "Unauthorized", 401, spec.sig(), Json.object().build());
-        }
+      Guarded guarded = guard(route, match, request, ctx, false);
+      if (guarded.failure != null) {
+        return guarded.failure;
       }
-      for (String name : ep.middleware()) {
-        hooks.middleware(name).run(ctx);
-      }
-      Bound bound = bind(route, match, request, ctx);
-      if (!bound.issues.isEmpty()) {
-        return problem(std.validation(), "ValidationError", 422, spec.sig(), issuesData(bound.issues));
-      }
-      return success(ep, ep.call().call(new Json.Obj(bound.values), ctx));
+      Json.Obj params = new Json.Obj(guarded.bound.values);
+      return success(ep, ep.call().call(params, ctx));
     } catch (Exception | StackOverflowError err) {
       return failure(err, spec, ctx);
     }
   }
+
+  /** The outcome of the part of the pipeline every transport shares: a response, or the bound values. */
+  private static final class Guarded {
+    VeldResponse failure;
+    Bound bound;
+  }
+
+  /** Authentication, middleware, binding and validation. */
+  private Guarded guard(Route route, Matcher match, VeldRequest request, RequestContext ctx, boolean ws)
+      throws Exception {
+    EndpointSpec spec = route.endpoint().spec();
+    Guarded out = new Guarded();
+    if (spec.auth() != null) {
+      ctx.setPrincipal(authenticate(spec.auth(), ctx));
+      if (ctx.principal() == null) {
+        out.failure = problem(std.unauthorized(), "Unauthorized", 401, spec.sig(), Json.object().build());
+        return out;
+      }
+    }
+    for (String name : route.endpoint().middleware()) {
+      hooks.middleware(name).run(ctx);
+    }
+    out.bound = bind(route, match, request, ctx, ws);
+    if (!out.bound.issues.isEmpty()) {
+      out.failure = problem(std.validation(), "ValidationError", 422, spec.sig(), issuesData(out.bound.issues));
+    }
+    return out;
+  }
+
 
   private static Json issuesData(List<Issue> issues) {
     List<Json> items = new ArrayList<>();
@@ -268,7 +289,7 @@ public final class Router implements VeldHandler {
     return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
   }
 
-  private static VeldResponse problem(String sig, String title, int status, String op, Json data) {
+  static VeldResponse problem(String sig, String title, int status, String op, Json data) {
     Json body = Json.object()
         .put("type", Json.of(sig))
         .put("title", Json.of(title))
@@ -286,10 +307,13 @@ public final class Router implements VeldHandler {
     final List<Issue> issues = new ArrayList<>();
   }
 
-  private static Bound bind(Route r, Matcher m, VeldRequest req, RequestContext ctx) {
+  private static Bound bind(Route r, Matcher m, VeldRequest req, RequestContext ctx, boolean ws) {
     Bound b = new Bound();
     Map<String, List<String>> query = parseQuery(req.query());
     for (EndpointSpec.Param p : r.endpoint().spec().params()) {
+      if (p.stream()) {
+        continue;
+      }
       switch (p.binding()) {
         case PATH -> {
           int i = r.names().indexOf(p.name());
@@ -299,7 +323,11 @@ public final class Router implements VeldHandler {
         case QUERY -> bindSimple(p, query.get(p.name()), b);
         case QUERY_OBJECT -> bindQueryObject(p, query, b);
         case HEADER -> {
-          String h = ctx.header(p.header() == null ? p.name() : p.header());
+          String name = p.header() == null ? p.name() : p.header();
+          String h = ctx.header(name);
+          if (h == null && ws && query.get(name) != null && !query.get(name).isEmpty()) {
+            h = query.get(name).get(0);
+          }
           bindSimple(p, h == null ? null : List.of(h), b);
         }
         case BODY -> bindBody(p, req, b);

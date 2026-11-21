@@ -9,10 +9,18 @@ import java.util.Map;
  * @param status the HTTP status
  * @param headers the response headers
  * @param body the body as UTF-8 text, or {@code null} for none
+ * @param frames Server-Sent Events: the ready-made frames, pulled as the adapter writes them; the
+ *     status and headers are final once this is set, and the adapter closes the stream when the
+ *     client goes away. {@code null} for an ordinary response.
  */
-public record VeldResponse(int status, Map<String, String> headers, String body) {
+public record VeldResponse(
+    int status,
+    Map<String, String> headers,
+    String body
+    ) {
   /** Creates a response (the headers are copied). */
   public VeldResponse {
     headers = Map.copyOf(headers);
   }
+
 }
