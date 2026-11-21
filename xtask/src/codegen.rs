@@ -2,6 +2,8 @@
 //!
 //! - `editors/veld-language.json`: the language table, for editor grammars
 //! - `editors/vscode/syntaxes/veld.tmLanguage.json`: the TextMate grammar, from the table above
+//! - `editors/jetbrains/src/main/resources/textmate/veld/syntaxes/veld.tmLanguage.json`: the same grammar,
+//!   bundled into the JetBrains plugin
 //! - `spec/diagnostics.md`: every diagnostic code, from `veld_compiler::codes`
 //! - `spec/ir.d.ts`: the TypeScript types of the IR and the plugin messages
 
@@ -18,7 +20,11 @@ pub fn outputs() -> Result<Vec<(&'static str, String)>> {
     let grammar = crate::grammar::tm_language(&language)?;
     Ok(vec![
         ("editors/veld-language.json", language),
-        ("editors/vscode/syntaxes/veld.tmLanguage.json", grammar),
+        ("editors/vscode/syntaxes/veld.tmLanguage.json", grammar.clone()),
+        (
+            "editors/jetbrains/src/main/resources/textmate/veld/syntaxes/veld.tmLanguage.json",
+            grammar,
+        ),
         ("spec/diagnostics.md", veld_compiler::codes::markdown()),
         ("spec/ir.d.ts", veld_ir::schema::typescript()),
     ])
