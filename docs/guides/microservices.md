@@ -40,7 +40,8 @@ consumes = ["iam", "accounts"]
 - `base-url` is the default address of the service for generated clients.
 
 Start a workspace with `veld init --workspace iam,accounts,transactions`, which writes the folders,
-the contracts, a `package.json` per service and the `veld.toml`.
+the contracts, a `package.json` per service and the `veld.toml`. It asks which services call which
+(`--consumes orders=iam`), so the `consumes` lists start out as you intend them.
 
 ## 2. One server target per service
 

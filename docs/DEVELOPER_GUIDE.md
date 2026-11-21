@@ -43,7 +43,7 @@ Three ideas carry the design:
 | `crates/veld-compiler` | `language.rs` (the language table), `syntax/` (lexer, parser, AST with comments), `semantic/` (passes), `lower.rs`, `signature.rs`, `codes.rs` (every diagnostic code) |
 | `crates/veld-codegen` | `Generator` and `DynGenerator`, `Capabilities` and `Feature`, `FileSet`, `CodeWriter`, `naming`, `Profile`, RFC 8785 canonical JSON, the lint level type |
 | `crates/veld-project` | `config/` (`veld.toml`: raw shape, resolution, `E07xx`), `output/` (staging, manifest, plan), `packages.rs`, the registry lock |
-| `crates/veld-tools` | `fmt`, `openapi`, `diff` (breaking changes), `migrate` (v1 to v2), `lint`, and the exporters (`graphql`, `schema`, `docs`, `agents`) |
+| `crates/veld-tools` | `fmt`, `openapi`, `diff` (breaking changes), `lint`, and the dependency graph |
 | `crates/emitters/{typescript,node,java}` | The built-in generators, each with a `frameworks/` registry |
 | `crates/veld-lsp` | `veld lsp` (diagnostics, hover, definition, completion, rename, formatting, semantic tokens) |
 | `crates/veld-plugin-host` | Runs an external emitter over the plugin protocol ([`spec/plugin-protocol.md`](../spec/plugin-protocol.md)) |
@@ -85,7 +85,7 @@ The input is a set of packages, each with its source files; the compiler never t
    contextual keywords come from `language.rs`, the single source of truth (see section 8).
 2. **Parser** (`syntax/parser.rs`, AST in `syntax/ast.rs`). Error tolerant: it reports and
    recovers, so one mistake does not hide the rest. The AST keeps comments, so the formatter in
-   `veld-tools::fmt` can print it back. v1 syntax is recognised only to say `E0001` with the hint to run `veld migrate`.
+   `veld-tools::fmt` can print it back. v1 syntax is recognised only to say `E0001`.
 3. **Semantic passes** (`semantic/`), skipped for files with syntax errors so a bad parse does not
    cascade:
    - `collect.rs` registers every declaration in every module (so import cycles are never an error);

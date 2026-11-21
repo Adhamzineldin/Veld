@@ -147,6 +147,34 @@ const greeting = useGreet(name === '' ? null : { name });  // null holds the req
 `framework = "vue"` gives composables from `@veld/web/hello/vue` that run in a Vue 3.3+ effect scope.
 Both abort the request on unmount.
 
+### Query options (`query-options = true`)
+
+```toml
+[targets.options]
+query-options = true
+```
+
+adds `hello/queries.ts`: plain query-key, query-options and mutation-options objects (no import of any
+package). They have the shape TanStack Query's `useQuery`, `useMutation` and `invalidateQueries` take,
+and work with SWR or your own hook too:
+
+```ts
+import { helloQueries, helloMutations } from '@veld/web';
+
+const greeting = useQuery(helloQueries.greet({ name }));        // GET endpoints are queries
+helloQueries.keys.all;                                          // ['veld', 'hello'], for invalidation
+helloQueries.greet({ name }, myClient);                         // or pass the client explicitly
+```
+
+Keys are built from the canonical request bytes, so equal requests share a key. Streams have no query
+form.
+
+### Skipping request validation (`validate = false`)
+
+`validate = false` in `[targets.options]` of a `node`, `typescript`, `java` or `rust` target skips run-time
+request validation by default; the types stay. The TypeScript client option `validate: true` and the
+Java `ClientOptions.builder().validate(true)` (Rust `ClientOptions::new().validate(true)`) switch the client check back on.
+
 ## Java (`emitter = "java"`, server and client)
 
 ```toml
@@ -207,6 +235,66 @@ Declared errors are unchecked exceptions. Inside one generated package `catch (O
 works; across packages use `OutOfStock.matches(e)` or `Veld.same(a, b)`, which compare signature,
 operation and canonical bytes.
 
+## Rust (`emitter = "rust"`, server and client)
+
+Rust output is a complete Cargo crate. Point `out` at an empty folder and add it to your workspace
+(`veld setup` is not needed: `members = ["generated/orders-server"]` or a `path` dependency is enough).
+
+```toml
+[[targets]]
+name = "orders-api"
+role = "server"
+emitter = "rust"
+service = "orders"
+out = "services/orders/generated"
+
+[targets.options]
+crate-name = "orders-api"    # default: <package>-<role>
+```
+
+```
+Cargo.toml                         serde + serde_json, and the framework you chose, nothing else
+src/veld/                          the runtime: schemas, validation, canonical bytes, same(), the server and client cores
+src/prelude.rs                     prelude errors
+src/<package>/<module>.rs          models (structs), enums, unions (enums), errors, constants
+src/<package>/<service>_server.rs  <Service>Service, <Service>Hooks, <Service>Handler   (server)
+src/<package>/<service>_client.rs  <Service>Client<T> and its request structs           (client)
+src/adapters/axum.rs               router(handler)                                      (server, framework = "axum")
+src/clients/<service>/...          a client tree for each consumed service              (server)
+```
+
+The server implements the generated trait and mounts one route per endpoint with axum:
+
+```rust
+use orders_api::adapters::axum::router;
+use orders_api::orders::orders_server::{OrdersHandler, OrdersService};
+
+impl OrdersService for Orders {
+    async fn get_order(&self, request: GetOrderRequest, ctx: &RequestContext) -> Result<Order, veld::Error> {
+        self.find(&request.id).ok_or_else(|| NotFound { resource: Some("order".into()) }.into())
+    }
+}
+let app = axum::Router::new().merge(router(OrdersHandler::create(Orders::new(), Hooks)));
+```
+
+A declared error is returned as `Err(NotFound { .. }.into())`; anything else becomes `Internal` without
+its message. The client is generic over its HTTP stack, so you bring your own, or take an adapter
+(`framework = "reqwest"`, the default, or `"ureq"`, blocking):
+
+```rust
+let client = OrdersClient::reqwest(ClientOptions::new().base_url("https://api.example.com").bearer(|| token()))?;
+let order = client.get_order(GetOrderRequest { id }).await?;
+match client.cancel_order(CancelOrderRequest { id }).await {
+    Err(e) if NotFound::matches(&e) => { /* e.op() is the operation, NotFound::from_error(&e) the typed value */ }
+    other => other?,
+}
+```
+
+`veld::same(&a, &b)` compares signature, operation and canonical bytes; across two generated crates
+build `veld::Identity::of(&a)` in each and compare with `veld::same_parts`. `datetime`, `uuid` and
+`decimal` are `String`s in the generated types, so the crate needs no `chrono`, `uuid` or decimal
+dependency. See [`spec/targets/rust.md`](../../spec/targets/rust.md).
+
 ## Consumed services
 
 For every service in `consumes`, a server target also generates a client for it, in the same
@@ -220,11 +308,11 @@ const profile = await new iam.IamClient({ auth: { bearer: () => token } }).getPr
 
 Set `clients = false` on the target to opt out. See [microservices.md](microservices.md).
 
-## Spec targets (`role = "spec"`)
+## Exports
 
 `veld export openapi -o openapi.json` writes OpenAPI 3.1 for the whole project (add `--service S` for one
-service). The other export formats, `graphql`, `schema` (Prisma or SQL), `docs` and `ir`, work the same
-way (`veld export <format>`); `ir` is the compiled IR with signatures, for plugin authors.
+service). `veld export ir` prints the compiled IR with signatures, for plugin authors. Both print to
+stdout without `-o`.
 
 ## The manifest and your files
 

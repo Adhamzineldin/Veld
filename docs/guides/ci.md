@@ -14,11 +14,11 @@ Run them in that order, cheapest first. `veld check` includes the lint rules, th
 lint command. `veld generate --check` and `veld diff --strict` need the output and snapshot you
 committed, which is why the examples commit them.
 
-> **Command names.** `veld check`, `veld fmt --check`, `veld diff --strict` and `veld generate
-> --dry-run` exist in `2.0.0-beta.1`. `veld generate --check`, `generate --watch` and
-> `veld doctor` are the names this guide uses for the staleness check, watching and diagnostics, as
-> planned in [`docs/v1-parity.md`](../v1-parity.md). In a build that predates them, `veld generate
-> --dry-run` lists what would change (read its output), and `veld --help` tells you what you have.
+> **Never prompts.** On a terminal, `veld generate` asks before it writes over a breaking change.
+> In CI there is no terminal, so it fails instead; `veld generate --strict` makes that explicit and
+> `--accept-breaking` continues. `veld generate --check` and `--dry-run` only report the breaking
+> list (on stderr) and never block. `veld doctor` diagnoses a
+> runner that behaves differently from your machine.
 
 ## 1. `veld check`: contracts and lint
 
@@ -46,6 +46,11 @@ The rules are `unused-model`, `empty-service`, `empty-model`, `empty-constants`,
 `file-naming-convention`, `type-name-case`, `field-name-case`, `endpoint-name-case` and
 `variant-name-case`. The case rules implement the naming conventions of `spec/language.md` section 8.
 Only your own services and libraries are linted, never the prelude or registry packages.
+
+Flags: `--strict` makes every warning (lint findings and compiler warnings) fail the run,
+`--no-lint` skips the lint rules, `veld check PATH...` limits what is reported to those `.veld`
+files or folders (the project still compiles as a whole, so a typo in a path is an error), and
+`veld check --graph [text|dot|json]` prints the service dependency graph instead of the summary.
 
 ## 2. `veld fmt --check`: formatting
 
@@ -154,9 +159,9 @@ compiles under `tsc --strict`, and generated Java under `javac --release 17 -Xli
 
 ## Watching locally, doctor on a new machine
 
-`veld generate --watch` regenerates on every change while you work. `veld doctor` checks that
+`veld generate --watch` regenerates on every change while you work (`veld watch` is a hidden alias). `veld doctor` checks that
 `veld.toml` loads, every emitter and plugin resolves with the right hash, output folders are
-writable and allowed, and that the tools your targets need (`node`, `javac`) are present. Run it
+writable and allowed, that `veld.lock` is consistent, and that the tools your targets need (`node`, `npm`, `javac`, `mvn` or `gradle`) are present; each problem comes with a fix. Run it
 first when a CI job behaves differently from your machine.
 
 ## Registry and plugins in CI

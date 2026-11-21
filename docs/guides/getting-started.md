@@ -45,7 +45,9 @@ Next steps
 
 Without `--yes`, `veld init` asks what you want (server and client targets, frameworks, a
 workspace). Flags answer the questions up front: `--server node:express`, `--client typescript:react`,
-`--workspace users,orders`. `veld init` never overwrites an existing file.
+`--workspace users,orders`. A workspace also asks, per service, for its base URL and which of the other
+services it calls (`--base-url users=http://localhost:3001`, `--consumes orders=users`); nothing is
+consumed unless you say so. `veld init` never overwrites an existing file.
 
 You now have a config and one contract:
 
@@ -208,15 +210,12 @@ reported and the last good output stays in place, so a dev server keeps running.
 | `veld generate --check` | Fail if the generated files on disk are stale (for CI) |
 | `veld fmt [--check]` | Format `.veld` files canonically; comments are preserved |
 | `veld diff [--strict]` | Show breaking and non-breaking contract changes since the last generate |
-| `veld export openapi -o FILE` | OpenAPI 3.1 for the whole project (also `graphql`, `schema`, `docs`, `ir`) |
+| `veld export openapi -o FILE` | OpenAPI 3.1 for the whole project (also `ir`) |
 | `veld setup` | Wire the generated packages into your apps |
 | `veld clean` | Remove generated files you have not edited |
 | `veld doctor` | Check that the config, the tools and the output folders are in order |
 
-`veld --help` lists everything your build has. A few of the commands above (`generate --check`,
-`doctor` and the other `export` formats) are the planned names from
-[`docs/v1-parity.md`](../v1-parity.md); a build that predates them reports an unknown command or
-option.
+`veld --help` lists everything your build has.
 
 ## 9. Editors
 
@@ -230,5 +229,4 @@ snippets, and completion for `veld.toml`. See [`editors/vscode`](../../editors/v
 - [generated-output.md](generated-output.md): what each target generates and how to import it
 - [microservices.md](microservices.md): several services that call each other
 - [ci.md](ci.md): keep contracts, generated code and the wire format honest in CI
-- [migrating-from-v1.md](migrating-from-v1.md): if you have a v1 project
 - [`examples/`](../../examples): complete projects with committed output
