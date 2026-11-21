@@ -10,6 +10,8 @@
 pub enum Kind {
     Error,
     Warning,
+    /// A lint rule finding (`L####`): legal but suspicious. Never blocks generation by itself.
+    Lint,
 }
 
 /// One diagnostic code.
@@ -41,11 +43,21 @@ const fn w(code: &'static str, source: &'static str, meaning: &'static str) -> C
     }
 }
 
+const fn l(code: &'static str, source: &'static str, meaning: &'static str) -> CodeInfo {
+    CodeInfo {
+        code,
+        kind: Kind::Lint,
+        source,
+        meaning,
+    }
+}
+
 const C: &str = "veld-compiler";
 const P: &str = "veld-project";
 const H: &str = "veld-plugin-host";
 const G: &str = "veld-codegen";
 const GEN: &str = "generators";
+const T: &str = "veld-tools";
 
 /// Every diagnostic code: errors first, then warnings, each sorted by code. Codes are never
 /// reused.
@@ -236,6 +248,64 @@ pub const CODES: &[CodeInfo] = &[
     w("W0201", C, "Unused import"),
     w("W0202", C, "Declaration shadows a prelude declaration"),
     w("W0701", C, "Service consumes itself"),
+    l(
+        "L0001",
+        T,
+        "`unused-model`: declaration is never used by any endpoint, model or constant",
+    ),
+    l("L0002", T, "`empty-service`: service has no endpoints"),
+    l("L0003", T, "`empty-model`: model has no fields"),
+    l("L0004", T, "`empty-constants`: constant has an empty value"),
+    l(
+        "L0005",
+        T,
+        "`missing-description`: service or endpoint has no doc comment",
+    ),
+    l("L0006", T, "`deprecated-endpoint`: endpoint is deprecated"),
+    l("L0007", T, "`deprecated-field`: field is deprecated"),
+    l(
+        "L0008",
+        T,
+        "`file-naming-convention`: file name suffix does not match its contents",
+    ),
+    l(
+        "L0009",
+        T,
+        "`type-name-case`: type or service name is not PascalCase",
+    ),
+    l("L0010", T, "`field-name-case`: field name is not camelCase"),
+    l(
+        "L0011",
+        T,
+        "`endpoint-name-case`: endpoint name is not camelCase",
+    ),
+    l(
+        "L0012",
+        T,
+        "`variant-name-case`: enum variant is neither camelCase nor snake_case",
+    ),
+    l(
+        "L0013",
+        T,
+        "`deprecated-declaration`: declaration or enum variant is deprecated",
+    ),
+];
+
+/// Lint rule names by code, in code order. The names are what `[lint]` in `veld.toml` uses.
+pub const LINT_RULES: [(&str, &str); 13] = [
+    ("L0001", "unused-model"),
+    ("L0002", "empty-service"),
+    ("L0003", "empty-model"),
+    ("L0004", "empty-constants"),
+    ("L0005", "missing-description"),
+    ("L0006", "deprecated-endpoint"),
+    ("L0007", "deprecated-field"),
+    ("L0008", "file-naming-convention"),
+    ("L0009", "type-name-case"),
+    ("L0010", "field-name-case"),
+    ("L0011", "endpoint-name-case"),
+    ("L0012", "variant-name-case"),
+    ("L0013", "deprecated-declaration"),
 ];
 
 /// The entry for `code`, if it is documented.
@@ -258,6 +328,7 @@ pub fn markdown() -> String {
         let kind = match c.kind {
             Kind::Error => "error",
             Kind::Warning => "warning",
+            Kind::Lint => "lint",
         };
         out.push_str(&format!(
             "| `{}` | {kind} | {} | {} |\n",
@@ -273,7 +344,7 @@ mod tests {
 
     #[test]
     fn table_is_sorted_and_unique_and_kinds_match_prefixes() {
-        let key = |c: &CodeInfo| (c.kind == Kind::Warning, c.code);
+        let key = |c: &CodeInfo| (c.kind as u8, c.code);
         for pair in CODES.windows(2) {
             assert!(
                 key(&pair[0]) < key(&pair[1]),
@@ -283,13 +354,30 @@ mod tests {
             );
         }
         for c in CODES {
-            let prefix = if c.kind == Kind::Error { 'E' } else { 'W' };
+            let prefix = match c.kind {
+                Kind::Error => 'E',
+                Kind::Warning => 'W',
+                Kind::Lint => 'L',
+            };
             assert!(
                 c.code.starts_with(prefix) && c.code.len() == 5,
                 "{}",
                 c.code
             );
             assert!(!c.meaning.is_empty());
+        }
+    }
+
+    #[test]
+    fn every_lint_rule_has_a_lint_code_naming_it() {
+        let lints: Vec<_> = CODES.iter().filter(|c| c.kind == Kind::Lint).collect();
+        assert_eq!(lints.len(), LINT_RULES.len());
+        for (code, name) in LINT_RULES {
+            let info = lookup(code).map(|c| c.meaning);
+            assert!(
+                info.is_some_and(|m| m.starts_with(&format!("`{name}`"))),
+                "{code}"
+            );
         }
     }
 

@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use super::annotations::{self, Anns};
-use super::{DKind, Entry, ImportRec, Program, RArm, RField, RVariant, Resolved};
+use super::{DKind, DeclInfo, Entry, ImportRec, Program, RArm, RField, RVariant, Resolved};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language::Target;
 use crate::syntax::ast::{self, DeclKind, LitKind, TypeExpr, TypeExprKind, doc_text};
@@ -86,7 +86,11 @@ fn import_use(
                     .collect();
                 diags.push(
                     Diagnostic::error("E0203", format!("unknown package `{}`", id.name), id.span)
-                        .with_help(format!("known packages: {}", known.join(", "))),
+                        .did_you_mean(
+                            &id.name,
+                            known.iter().copied(),
+                            Some(format!("known packages: {}", known.join(", "))),
+                        ),
                 );
             }
             found
@@ -126,11 +130,15 @@ fn import_use(
                 ),
                 span,
             )
-            .with_help(format!(
-                "modules in `{}`: {}",
-                prog.packages[pkg].name,
-                mods.join(", ")
-            )),
+            .did_you_mean(
+                &path,
+                mods.iter().copied(),
+                Some(format!(
+                    "modules in `{}`: {}",
+                    prog.packages[pkg].name,
+                    mods.join(", ")
+                )),
+            ),
         );
         return;
     };
@@ -145,7 +153,14 @@ fn import_use(
                     format!("module `{path}` has no declaration `{}`", imp.name.name),
                     imp.name.span,
                 )
-                .with_help(declared_in(prog, target_mod)),
+                .did_you_mean(
+                    &imp.name.name,
+                    prog.decls
+                        .iter()
+                        .filter(|d| d.module == target_mod)
+                        .map(|d| d.name.as_str()),
+                    Some(declared_in(prog, target_mod)),
+                ),
             );
             continue;
         };
@@ -230,6 +245,19 @@ impl Program<'_> {
         }
     }
 
+    /// Every name a type position can mention here, for suggestions.
+    fn visible_type_names(&self, module: usize) -> Vec<&str> {
+        let mut v: Vec<&str> = self.scopes[module]
+            .names
+            .keys()
+            .map(String::as_str)
+            .collect();
+        v.extend(self.prelude.keys().map(String::as_str));
+        v.extend(crate::language::SCALARS);
+        v.extend(crate::language::GENERICS);
+        v
+    }
+
     fn suggest_import(&self, module: usize, name: &str) -> Option<String> {
         let here = self.modules[module].pkg;
         let hit = self
@@ -237,13 +265,40 @@ impl Program<'_> {
             .iter()
             .filter(|d| d.name == name && d.pkg != self.prelude_pkg)
             .min_by_key(|d| (d.pkg != here, d.qualified.clone()))?;
+        Some(self.import_line(here, hit))
+    }
+
+    /// `add `use pkg:module.{Name}``, for a declaration of some other module.
+    fn import_line(&self, here: usize, hit: &DeclInfo<'_>) -> String {
         let m = &self.modules[hit.module];
         let pkg = if hit.pkg == here {
             String::new()
         } else {
             format!("{}:", self.packages[hit.pkg].name)
         };
-        Some(format!("add `use {pkg}{}.{{{name}}}`", m.path))
+        format!("add `use {pkg}{}.{{{}}}`", m.path, hit.name)
+    }
+
+    /// A declaration of another module whose name is a near miss of `name` (`Usr` for `User`):
+    /// `did you mean `User`? add `use ...``.
+    fn suggest_near_import(&self, module: usize, name: &str) -> Option<String> {
+        let here = self.modules[module].pkg;
+        let near = veld_ir::suggest::closest(
+            name,
+            self.decls
+                .iter()
+                .filter(|d| d.pkg != self.prelude_pkg)
+                .map(|d| d.name.as_str()),
+        )?;
+        let hit = self
+            .decls
+            .iter()
+            .filter(|d| d.name == near && d.pkg != self.prelude_pkg)
+            .min_by_key(|d| (d.pkg != here, d.qualified.clone()))?;
+        Some(format!(
+            "did you mean `{near}`? {}",
+            self.import_line(here, hit)
+        ))
     }
 
     /// Resolves a syntactic type. `allow_error` permits error declarations.
@@ -311,9 +366,18 @@ impl Program<'_> {
             }
             let mut d =
                 Diagnostic::error("E0205", format!("unknown type `{}`", name.name), name.span);
-            if let Some(h) = self.suggest_import(module, &name.name) {
-                d = d.with_help(h);
-            }
+            d = match self.suggest_import(module, &name.name) {
+                Some(h) => d.with_help(h),
+                None => {
+                    match veld_ir::suggest::closest(&name.name, self.visible_type_names(module)) {
+                        Some(s) => d.with_help(format!("did you mean `{s}`?")),
+                        None => match self.suggest_near_import(module, &name.name) {
+                            Some(h) => d.with_help(h),
+                            None => d,
+                        },
+                    }
+                }
+            };
             diags.push(d);
             return None;
         };
@@ -418,10 +482,12 @@ impl Program<'_> {
             Some((name, wire)) => Ok(Literal::EnumVariant { name, wire }),
             None => {
                 let all: Vec<String> = self.enum_variants(d).into_iter().map(|v| v.0).collect();
+                let hint = veld_ir::suggest::closest(name, all.iter().map(String::as_str))
+                    .map_or_else(String::new, |s| format!("; did you mean `{s}`?"));
                 Err((
                     "E0304",
                     format!(
-                        "enum `{}` has no variant `{name}` (variants: {})",
+                        "enum `{}` has no variant `{name}` (variants: {}){hint}",
                         self.decls[d].name,
                         all.join(", ")
                     ),
@@ -673,7 +739,6 @@ fn build_field(
         readonly: a.readonly,
         inherited_from: None,
         constraints: a.constraints.clone(),
-        meta: a.meta.clone(),
         example,
         docs: doc_text(&f.docs),
         deprecated: a.deprecated.clone(),

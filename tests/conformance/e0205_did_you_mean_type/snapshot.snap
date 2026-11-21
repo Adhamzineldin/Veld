@@ -1,0 +1,27 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 196
+---
+== diagnostics ==
+error[E0205]: unknown type `Strng`
+ --> app/app.veld:3:9
+  |
+3 |   name: Strng
+  |         ^^^^^
+  = help: did you mean `string`?
+
+error[E0205]: unknown type `Usr`
+ --> app/app.veld:4:11
+  |
+4 |   friend: Usr
+  |           ^^^
+  = help: did you mean `User`?
+
+error[E0205]: unknown type `Lisst`
+ --> app/app.veld:5:9
+  |
+5 |   tags: Lisst
+  |         ^^^^^
+
+== ir ==
+(no IR: compilation failed)

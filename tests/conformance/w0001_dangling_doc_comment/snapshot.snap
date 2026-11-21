@@ -54,7 +54,6 @@ warning[W0001]: doc comment is not attached to anything
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": null,

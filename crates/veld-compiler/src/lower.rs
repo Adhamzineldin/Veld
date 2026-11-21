@@ -182,7 +182,6 @@ impl Lowerer<'_, '_> {
             readonly: f.readonly,
             inherited_from: f.inherited_from.map(|d| self.decl_id(d)),
             constraints: f.constraints.clone(),
-            meta: f.meta.clone(),
             example: f.example.clone(),
             docs: f.docs.clone(),
             deprecated: f.deprecated.clone(),

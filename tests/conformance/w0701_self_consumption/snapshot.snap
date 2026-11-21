@@ -51,7 +51,6 @@ warning[W0701]: service `orders` consumes itself
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": null,

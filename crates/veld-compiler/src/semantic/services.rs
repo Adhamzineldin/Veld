@@ -39,7 +39,11 @@ fn analyze_service(
     diags: &mut Vec<Diagnostic>,
 ) -> ServiceInfo {
     let anns = annotations::parse(&decl.annotations, Target::Service, None, diags);
-    let prefix = service_prefix(&s.prefix, diags);
+    let prefix = service_prefix(
+        &prog.packages[prog.modules[module].pkg].prefix,
+        &s.prefix,
+        diags,
+    );
     let auth = anns.auth.clone().unwrap_or_else(Auth::none);
     let middleware = anns.middleware.clone().unwrap_or_default();
     let ctx = Ctx { prog, module };
@@ -78,7 +82,7 @@ fn analyze_service(
     }
 }
 
-fn service_prefix(p: &ast::StrLit, diags: &mut Vec<Diagnostic>) -> String {
+fn service_prefix(base: &str, p: &ast::StrLit, diags: &mut Vec<Diagnostic>) -> String {
     if !p.value.starts_with('/') {
         diags.push(
             Diagnostic::error(
@@ -90,7 +94,7 @@ fn service_prefix(p: &ast::StrLit, diags: &mut Vec<Diagnostic>) -> String {
         );
         return "/".to_string();
     }
-    normalize_path(&p.value)
+    normalize_path(&format!("{base}{}", p.value))
 }
 
 /// Collapses repeated slashes and drops a trailing slash (except on the root).

@@ -1,0 +1,6 @@
+model User {
+  id: uuid
+  name: Strng
+  friend: Usr
+  tags: Lisst
+}

@@ -98,6 +98,7 @@ fn register_package(
         name: pkg.name.clone(),
         kind: pkg.kind,
         base_url: pkg.base_url.clone(),
+        prefix: pkg.prefix.clone(),
     });
 }
 
@@ -195,7 +196,14 @@ pub fn check_consumes(
                         format!("service `{svc}` consumes unknown service `{target}`"),
                         Span::none(),
                     )
-                    .with_help(known_list(prog)),
+                    .did_you_mean(
+                        target,
+                        prog.packages
+                            .iter()
+                            .filter(|p| p.kind != PackageKind::Prelude)
+                            .map(|p| p.name.as_str()),
+                        Some(known_list(prog)),
+                    ),
                 );
             }
         }

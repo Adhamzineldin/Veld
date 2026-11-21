@@ -69,3 +69,16 @@ never reused. The ranges are listed in `language.md` section 9.
 | `W0201` | warning | veld-compiler | Unused import |
 | `W0202` | warning | veld-compiler | Declaration shadows a prelude declaration |
 | `W0701` | warning | veld-compiler | Service consumes itself |
+| `L0001` | lint | veld-tools | `unused-model`: declaration is never used by any endpoint, model or constant |
+| `L0002` | lint | veld-tools | `empty-service`: service has no endpoints |
+| `L0003` | lint | veld-tools | `empty-model`: model has no fields |
+| `L0004` | lint | veld-tools | `empty-constants`: constant has an empty value |
+| `L0005` | lint | veld-tools | `missing-description`: service or endpoint has no doc comment |
+| `L0006` | lint | veld-tools | `deprecated-endpoint`: endpoint is deprecated |
+| `L0007` | lint | veld-tools | `deprecated-field`: field is deprecated |
+| `L0008` | lint | veld-tools | `file-naming-convention`: file name suffix does not match its contents |
+| `L0009` | lint | veld-tools | `type-name-case`: type or service name is not PascalCase |
+| `L0010` | lint | veld-tools | `field-name-case`: field name is not camelCase |
+| `L0011` | lint | veld-tools | `endpoint-name-case`: endpoint name is not camelCase |
+| `L0012` | lint | veld-tools | `variant-name-case`: enum variant is neither camelCase nor snake_case |
+| `L0013` | lint | veld-tools | `deprecated-declaration`: declaration or enum variant is deprecated |

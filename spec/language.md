@@ -63,7 +63,7 @@ use @acme/billing:invoices.{Invoice}     // registry package (must be in veld.lo
 - An import that is never used is a warning (`W0201`).
 - Imports MAY form cycles, between modules and between packages. Resolution has two phases: first every declaration in every reachable module is collected, then references are resolved. A cycle is never an error.
 - Unknown package: `E0203`. Unknown module: `E0204`. Unknown name: `E0205`.
-- v1 forms such as `import @alias/x` and `import "./x.veld"` are syntax errors (`E0001`), and the hint says to run `veld migrate`.
+- v1 forms such as `import @alias/x` and `import "./x.veld"` are syntax errors (`E0001`), and the hint says "this is v1 syntax; see spec/language.md".
 
 ## 3. Lexical structure
 
@@ -244,7 +244,6 @@ An unknown annotation is `E0601`. Annotations with the wrong arguments or the wr
 | `@example(literal)` | field, param | Documentation and mock data. |
 | `@discriminator("prop")` | union | Discriminator property. |
 | `@query` / `@header("Name")` | param | Binding (§6). |
-| `@unique`, `@index`, `@primary` | field | Metadata that the IR passes through for tools. No validation semantics. |
 
 ### 7.1 Regex subset
 The allowed syntax is literal characters, `.`, classes `[...]`, `\d \w \s`, the quantifiers `* + ? {n,m}`, groups `( )`, alternation `|`, and the anchors `^ $`. Lookaround and backreferences are `E0603`, because every target must enforce the same pattern.

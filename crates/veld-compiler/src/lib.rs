@@ -80,9 +80,21 @@ pub fn compile(input: &CompileInput) -> CompileOutput {
 /// registry package is allowed (`E0206`).
 #[must_use]
 pub fn compile_with(input: &CompileInput, rules: Option<&AccessRules>) -> CompileOutput {
+    compile_prefixed(input, rules, &BTreeMap::new())
+}
+
+/// Like [`compile_with`], with a route prefix per package name (`[project] prefix` joined with
+/// `[services.x] prefix`), prepended to every service prefix of that package so that all targets
+/// agree on the full route. Prefixes must be absolute (`/api`); the project config validates them.
+#[must_use]
+pub fn compile_prefixed(
+    input: &CompileInput,
+    rules: Option<&AccessRules>,
+    prefixes: &BTreeMap<String, String>,
+) -> CompileOutput {
     let mut sources = SourceMap::default();
     let mut diags = Vec::new();
-    let mut parsed = parse_packages(input, &mut sources, &mut diags);
+    let mut parsed = parse_packages(input, prefixes, &mut sources, &mut diags);
     parsed.push(parse_prelude(&mut sources, &mut diags));
     if let Some(rules) = rules {
         diags.extend(access::check(rules, &parsed));
@@ -110,6 +122,7 @@ pub(crate) fn finish(
 
 pub(crate) fn parse_packages(
     input: &CompileInput,
+    prefixes: &BTreeMap<String, String>,
     sources: &mut SourceMap,
     diags: &mut Vec<Diagnostic>,
 ) -> Vec<ParsedPackage> {
@@ -137,6 +150,7 @@ pub(crate) fn parse_packages(
                 name: pkg.name.clone(),
                 kind: pkg.kind,
                 base_url: pkg.base_url.clone(),
+                prefix: prefixes.get(&pkg.name).cloned().unwrap_or_default(),
                 files,
             }
         })
@@ -154,6 +168,7 @@ pub(crate) fn parse_prelude(sources: &mut SourceMap, diags: &mut Vec<Diagnostic>
         name: language::PRELUDE_PACKAGE.to_string(),
         kind: PackageKind::Prelude,
         base_url: None,
+        prefix: String::new(),
         files: vec![ParsedFile {
             file: id,
             rel_path: language::PRELUDE_FILE.to_string(),

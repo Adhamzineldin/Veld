@@ -171,9 +171,19 @@ impl Index {
 /// Analyses `input` as [`crate::compile`] does, but also returns the resolution table.
 #[must_use]
 pub fn index(input: &CompileInput) -> Index {
+    index_prefixed(input, &std::collections::BTreeMap::new())
+}
+
+/// Like [`index`], with the route prefix per package name that
+/// [`crate::compile_prefixed`] takes, so that tools show the same full routes as the generators.
+#[must_use]
+pub fn index_prefixed(
+    input: &CompileInput,
+    prefixes: &std::collections::BTreeMap<String, String>,
+) -> Index {
     let mut sources = SourceMap::default();
     let mut diags = Vec::new();
-    let mut parsed = crate::parse_packages(input, &mut sources, &mut diags);
+    let mut parsed = crate::parse_packages(input, prefixes, &mut sources, &mut diags);
     parsed.push(crate::parse_prelude(&mut sources, &mut diags));
     let syntax_errors = has_errors(&diags);
     let mut semantic_diags = Vec::new();

@@ -532,14 +532,11 @@ mod annotations {
     }
 
     #[test]
-    fn deprecated_example_and_meta_pass_through() {
-        let ir = ir(
-            "@deprecated(\"old\")\nmodel A { a: int @example(3) @unique @index @primary @deprecated(\"x\") }",
-        );
+    fn deprecated_and_example_pass_through() {
+        let ir = ir("@deprecated(\"old\")\nmodel A { a: int @example(3) @deprecated(\"x\") }");
         assert_eq!(ir.decls[0].deprecated.as_deref(), Some("old"));
         let f = &ir.decls[0].fields()[0];
         assert_eq!(f.example, Some(veld_ir::Literal::Int(3)));
-        assert_eq!(f.meta, vec!["unique", "index", "primary"]);
         assert_eq!(f.deprecated.as_deref(), Some("x"));
     }
 
@@ -717,7 +714,7 @@ mod signatures {
         assert_eq!(
             base,
             sig_of(
-                "/// doc\nmodel A { /// f\n a: int @min(1) @deprecated(\"x\") @readonly @unique }",
+                "/// doc\nmodel A { /// f\n a: int @min(1) @deprecated(\"x\") @readonly }",
                 "A"
             )
         );

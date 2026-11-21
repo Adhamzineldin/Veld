@@ -54,7 +54,6 @@ warning[W0201]: unused import `Role`
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": null,
@@ -101,7 +100,6 @@ warning[W0201]: unused import `Role`
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": null,
@@ -148,7 +146,6 @@ warning[W0201]: unused import `Role`
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": null,

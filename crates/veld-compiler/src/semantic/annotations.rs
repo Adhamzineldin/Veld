@@ -15,7 +15,6 @@ pub struct Anns<'a> {
     pub wire: Option<String>,
     pub example: Option<&'a Literal>,
     pub constraints: Constraints,
-    pub meta: Vec<String>,
     pub auth: Option<Auth>,
     pub middleware: Option<Vec<String>>,
     pub discriminator: Option<String>,
@@ -88,7 +87,11 @@ fn unknown(a: &Annotation) -> Diagnostic {
         format!("unknown annotation `@{}`", a.name.name),
         a.name.span,
     )
-    .with_help(format!("known annotations: {}", known.join(", ")))
+    .did_you_mean(
+        &a.name.name,
+        language::ANNOTATIONS.iter().map(|s| s.name),
+        Some(format!("known annotations: {}", known.join(", "))),
+    )
 }
 
 fn wrong_target(a: &Annotation, allowed: &[Target], got: Target) -> Diagnostic {
@@ -179,7 +182,6 @@ fn apply<'a>(
     match spec.name {
         "readonly" => out.readonly = true,
         "query" => out.query = Some(a.span),
-        "unique" | "index" | "primary" => out.meta.push(spec.name.to_string()),
         _ => {}
     }
     Ok(())
@@ -377,7 +379,6 @@ mod tests {
         if let Some(n) = a.constraints.max {
             facts.push(format!("max={n}"));
         }
-        facts.extend(a.meta.iter().cloned());
         (facts, diags.iter().map(|d| d.code).collect())
     }
 
@@ -387,15 +388,12 @@ mod tests {
     #[test]
     fn valid_annotations_are_applied() {
         let (f, d) = run(
-            "a: string @readonly @wire(\"b\") @length(min: 2) @unique @primary",
+            "a: string @readonly @wire(\"b\") @length(min: 2)",
             Target::Field,
             S,
         );
         assert!(d.is_empty());
-        assert_eq!(
-            f,
-            vec!["readonly", "wire=b", "min_len=2", "unique", "primary"]
-        );
+        assert_eq!(f, vec!["readonly", "wire=b", "min_len=2"]);
         assert_eq!(run("a: int @max(5)", Target::Field, I).0, vec!["max=5"]);
     }
 

@@ -56,7 +56,6 @@ source: crates/veld-compiler/tests/conformance.rs
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": "Why.",
           "deprecated": null,
@@ -103,7 +102,6 @@ source: crates/veld-compiler/tests/conformance.rs
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": "The identifier.",
           "deprecated": null,
@@ -131,7 +129,6 @@ source: crates/veld-compiler/tests/conformance.rs
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": "use id",
@@ -179,7 +176,6 @@ source: crates/veld-compiler/tests/conformance.rs
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": null,
@@ -229,7 +225,6 @@ source: crates/veld-compiler/tests/conformance.rs
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": null,
@@ -276,7 +271,6 @@ source: crates/veld-compiler/tests/conformance.rs
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": null,
@@ -304,7 +298,6 @@ source: crates/veld-compiler/tests/conformance.rs
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": null,
@@ -332,7 +325,6 @@ source: crates/veld-compiler/tests/conformance.rs
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": null,

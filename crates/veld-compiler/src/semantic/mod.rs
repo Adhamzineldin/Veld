@@ -34,6 +34,8 @@ pub struct ParsedPackage {
     pub name: String,
     pub kind: PackageKind,
     pub base_url: Option<String>,
+    /// Route prefix prepended to every service prefix of the package (`/` or empty: none).
+    pub prefix: String,
     pub files: Vec<ParsedFile>,
 }
 
@@ -42,6 +44,7 @@ pub struct PkgInfo {
     pub name: String,
     pub kind: PackageKind,
     pub base_url: Option<String>,
+    pub prefix: String,
 }
 
 #[derive(Debug)]
@@ -73,7 +76,6 @@ pub struct RField {
     pub readonly: bool,
     pub inherited_from: Option<usize>,
     pub constraints: Constraints,
-    pub meta: Vec<String>,
     pub example: Option<Literal>,
     pub docs: Option<String>,
     pub deprecated: Option<String>,

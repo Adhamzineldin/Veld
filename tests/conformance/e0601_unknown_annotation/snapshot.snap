@@ -7,14 +7,14 @@ error[E0601]: unknown annotation `@bogus`
   |
 1 | @bogus
   |  ^^^^^
-  = help: known annotations: @auth, @middleware, @deprecated, @min, @max, @length, @pattern, @format, @readonly, @wire, @example, @discriminator, @query, @header, @unique, @index, @primary
+  = help: known annotations: @auth, @middleware, @deprecated, @min, @max, @length, @pattern, @format, @readonly, @wire, @example, @discriminator, @query, @header
 
 error[E0601]: unknown annotation `@nope`
  --> app/app.veld:3:11
   |
 3 |   a: int @nope(1)
   |           ^^^^
-  = help: known annotations: @auth, @middleware, @deprecated, @min, @max, @length, @pattern, @format, @readonly, @wire, @example, @discriminator, @query, @header, @unique, @index, @primary
+  = help: known annotations: @auth, @middleware, @deprecated, @min, @max, @length, @pattern, @format, @readonly, @wire, @example, @discriminator, @query, @header
 
 == ir ==
 (no IR: compilation failed)

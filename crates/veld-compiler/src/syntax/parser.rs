@@ -61,7 +61,7 @@ struct Parser<'a> {
 /// stack bounded for any input.
 pub const MAX_NESTING: usize = 64;
 
-const V1_HELP: &str = "run `veld migrate` to convert v1 contracts";
+const V1_HELP: &str = "this is v1 syntax; see spec/language.md";
 
 impl Parser<'_> {
     // ---- token helpers -------------------------------------------------

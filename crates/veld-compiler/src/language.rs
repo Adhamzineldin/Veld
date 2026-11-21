@@ -101,7 +101,7 @@ const DEPRECATABLE: [Target; 9] = [
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 17] = [
+pub const ANNOTATIONS: [AnnotationSpec; 14] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -185,24 +185,6 @@ pub const ANNOTATIONS: [AnnotationSpec; 17] = [
         targets: &[Param],
         args: ArgShape::OneString,
         usage: "@header(\"Name\")",
-    },
-    AnnotationSpec {
-        name: "unique",
-        targets: &[Field],
-        args: ArgShape::None,
-        usage: "@unique",
-    },
-    AnnotationSpec {
-        name: "index",
-        targets: &[Field],
-        args: ArgShape::None,
-        usage: "@index",
-    },
-    AnnotationSpec {
-        name: "primary",
-        targets: &[Field],
-        args: ArgShape::None,
-        usage: "@primary",
     },
 ];
 
@@ -302,12 +284,12 @@ mod tests {
     #[test]
     fn spec_serializes_and_lists_every_annotation() {
         let json = serde_json::to_value(spec()).map(|v| v["annotations"].as_array().map(Vec::len));
-        assert_eq!(json.ok().flatten(), Some(17));
+        assert_eq!(json.ok().flatten(), Some(14));
     }
 
     #[test]
-    fn annotation_lookup_finds_primary() {
-        assert!(annotation("primary").is_some());
+    fn annotation_lookup_finds_readonly() {
+        assert!(annotation("readonly").is_some());
         assert!(annotation("nope").is_none());
     }
 }

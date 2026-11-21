@@ -1,0 +1,20 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0205]: unknown type `Usr`
+ --> accounts/orders_in_accounts.veld:2:10
+  |
+2 |   owner: Usr
+  |          ^^^
+  = help: did you mean `User`? add `use users.{User}`
+
+error[E0205]: unknown type `Usr`
+ --> shop/carts.veld:2:10
+  |
+2 |   owner: Usr
+  |          ^^^
+  = help: did you mean `User`? add `use accounts:users.{User}`
+
+== ir ==
+(no IR: compilation failed)

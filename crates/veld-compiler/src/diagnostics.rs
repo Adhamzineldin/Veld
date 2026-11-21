@@ -118,6 +118,23 @@ impl Diagnostic {
         self.help = Some(text.into());
         self
     }
+    /// Help text `did you mean `x`?` when `word` is close to one of `candidates`;
+    /// otherwise `fallback` (when given) is the help text.
+    #[must_use]
+    pub fn did_you_mean<'a>(
+        self,
+        word: &str,
+        candidates: impl IntoIterator<Item = &'a str>,
+        fallback: Option<String>,
+    ) -> Diagnostic {
+        match veld_ir::suggest::closest(word, candidates) {
+            Some(s) => self.with_help(format!("did you mean `{s}`?")),
+            None => match fallback {
+                Some(f) => self.with_help(f),
+                None => self,
+            },
+        }
+    }
     #[must_use]
     pub fn is_error(&self) -> bool {
         self.severity == Severity::Error

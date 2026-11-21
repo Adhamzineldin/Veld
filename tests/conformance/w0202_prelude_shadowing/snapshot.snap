@@ -60,7 +60,6 @@ warning[W0202]: `NotFound` shadows the prelude declaration of the same name
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": null,
@@ -108,7 +107,6 @@ warning[W0202]: `NotFound` shadows the prelude declaration of the same name
             "pattern": null,
             "format": null
           },
-          "meta": [],
           "example": null,
           "docs": null,
           "deprecated": null,

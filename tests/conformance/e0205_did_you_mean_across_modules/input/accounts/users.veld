@@ -1,0 +1,8 @@
+model User {
+  id: uuid
+  name: string
+}
+
+service Accounts at "/accounts" {
+  get "/{id}" getUser(id: uuid) -> User
+}

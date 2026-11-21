@@ -4,7 +4,7 @@
 //! - `input/*.veld`: a single package named `app`; or
 //! - `input/<pkg>/**.veld`: one package per directory (`@org+name` is the
 //!   registry package `@org/name`);
-//! - `case.toml` (optional): `[consumes]`, `[base_url]` and `[kinds]` tables.
+//! - `case.toml` (optional): `[consumes]`, `[base_url]` and `[kinds]` and `[prefix]` tables.
 //!
 //! The snapshot (`snapshot.snap`, stored in the case directory) holds the
 //! rendered diagnostics followed by the IR as pretty JSON.
@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use veld_compiler::{CompileInput, CompileOutput, PackageInput, SourceFile, compile};
+use veld_compiler::{CompileInput, CompileOutput, PackageInput, SourceFile, compile_prefixed};
 use veld_ir::PackageKind;
 
 fn root() -> PathBuf {
@@ -57,6 +57,7 @@ struct CaseConfig {
     consumes: BTreeMap<String, Vec<String>>,
     base_url: BTreeMap<String, String>,
     kinds: BTreeMap<String, String>,
+    prefix: BTreeMap<String, String>,
 }
 
 /// Minimal parser for the three `case.toml` tables used by the suite.
@@ -92,6 +93,9 @@ fn parse_case_toml(text: &str) -> CaseConfig {
             }
             "kinds" => {
                 cfg.kinds.insert(key, value.trim_matches('"').to_string());
+            }
+            "prefix" => {
+                cfg.prefix.insert(key, value.trim_matches('"').to_string());
             }
             _ => {}
         }
@@ -145,6 +149,14 @@ fn load_case(dir: &Path) -> CompileInput {
     }
 }
 
+/// Compiles a case with the `[prefix]` table of its `case.toml` (package name to route prefix).
+fn compile_case(dir: &Path) -> CompileOutput {
+    let cfg = fs::read_to_string(dir.join("case.toml"))
+        .map(|t| parse_case_toml(&t))
+        .unwrap_or_default();
+    compile_prefixed(&load_case(dir), None, &cfg.prefix)
+}
+
 fn render_case(out: &CompileOutput) -> String {
     let diags = if out.diagnostics.is_empty() {
         "(none)\n".to_string()
@@ -174,7 +186,7 @@ fn conformance_snapshots() {
         cases.len()
     );
     for dir in cases {
-        let out = compile(&load_case(&dir));
+        let out = compile_case(&dir);
         let content = render_case(&out);
         let mut settings = insta::Settings::clone_current();
         settings.set_snapshot_path(&dir);
@@ -188,7 +200,7 @@ fn conformance_snapshots() {
 fn case_names_state_what_they_expect() {
     for dir in case_dirs() {
         let name = case_name(&dir);
-        let out = compile(&load_case(&dir));
+        let out = compile_case(&dir);
         let has_errors = out
             .diagnostics
             .iter()
@@ -245,8 +257,8 @@ fn every_diagnostic_code_has_an_invalid_case() {
 #[test]
 fn compilation_is_deterministic() {
     for dir in case_dirs() {
-        let a = render_case(&compile(&load_case(&dir)));
-        let b = render_case(&compile(&load_case(&dir)));
+        let a = render_case(&compile_case(&dir));
+        let b = render_case(&compile_case(&dir));
         assert_eq!(a, b, "{} is not deterministic", case_name(&dir));
     }
 }
@@ -257,7 +269,7 @@ fn valid_cases_have_unique_signatures_and_dense_ids() {
         .into_iter()
         .filter(|d| case_name(d).starts_with("ok_"))
     {
-        let Some(ir) = compile(&load_case(&dir)).ir else {
+        let Some(ir) = compile_case(&dir).ir else {
             continue;
         };
         assert!(
