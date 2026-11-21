@@ -8,9 +8,13 @@ The generated code has no runtime dependencies, is deterministic (same contract,
 never overwrites files you wrote.
 
 Version 2.0 is a rewrite in Rust with a new language. The v1 Go implementation is frozen in
-[`archive/v1/`](archive/v1) (git tag `v1-final`). Existing v1 projects are converted with `veld migrate`.
+[`archive/v1/`](archive/v1) (git tag `v1-final`).
 
 > Status: `2.0.0-beta.1`. The specs in [`spec/`](spec) are normative.
+
+## Try it in the browser
+
+The website playground (`/playground`, source in `website/`) runs the real compiler and generators, compiled to WebAssembly (`crates/veld-wasm`), with no install. Its output is byte-identical to the CLI; a parity test enforces that.
 
 ## Install
 
@@ -29,6 +33,15 @@ for your platform and verify its SHA256 (they work once a release is published):
 npm install -g @maayn/veld
 pip install maayn-veld
 brew install maayn-veld/tap/maayn-veld
+```
+
+Shell completions (bash, zsh, fish, powershell, elvish) are printed by a hidden command:
+
+```bash
+veld completions bash > ~/.local/share/bash-completion/completions/veld
+veld completions zsh  > "${fpath[1]}/_veld"
+veld completions fish > ~/.config/fish/completions/veld.fish
+veld completions powershell | Out-String | Invoke-Expression   # add to $PROFILE
 ```
 
 ## A 60-second tour
@@ -198,13 +211,45 @@ server also gets the clients of the services it consumes, through the same packa
 | `node` | server | TypeScript: handler, service interface, adapters for `express`, `fastify`, `hono` or plain `node:http` (structural types, no imports) | [`spec/targets/typescript.md`](spec/targets/typescript.md) |
 | `typescript` | client | typed client classes, models, errors, validators | [`spec/targets/typescript.md`](spec/targets/typescript.md) |
 | `java` | server and client | Java 17 records, sealed interfaces, `java.net.http` client; JDK HTTP server adapter or Spring Boot 3 adapter | [`spec/targets/java.md`](spec/targets/java.md) |
+| `rust` | server and client | a Cargo crate: serde models, typed errors, an axum server (framework-agnostic core, axum adapter), a client generic over its HTTP transport (`reqwest` or blocking `ureq` adapters) | [`spec/targets/rust.md`](spec/targets/rust.md) |
 | `plugin:<name>` | any | whatever an external emitter plugin produces | [`spec/plugin-protocol.md`](spec/plugin-protocol.md) |
 
-Streaming is supported: Server-Sent Events (`get ... -> stream T`) and WebSockets (`ws`) in the `node` server, the `typescript` client (with React hooks and Vue composables), and `java` (WebSockets on the JDK server are `E0801`, they need `framework = "spring"`). The only generated-code dependency exception is WebSocket: the `ws` package for a Node server that hosts `ws` endpoints (the adapter is typed structurally and imports nothing), `spring-boot-starter-websocket` for Spring; clients use the platform `WebSocket` and `java.net.http.WebSocket`.
+Streaming is supported: Server-Sent Events (`get ... -> stream T`) and WebSockets (`ws`) in the `node` server, the `typescript` client (with React hooks and Vue composables), and `java` (WebSockets on the JDK server are `E0801`, they need `framework = "spring"`) and `rust` (an axum server, a `reqwest` client; a `ureq` client reports `E0801` for `ws`). The only generated-code dependency exception is WebSocket: the `ws` package for a Node server that hosts `ws` endpoints (the adapter is typed structurally and imports nothing), `spring-boot-starter-websocket` for Spring; clients use the platform `WebSocket` and `java.net.http.WebSocket`.
 
 If a target cannot represent a feature, generation fails with
 `E0801`. It never emits wrong code. The `typescript` client can add React hooks or Vue composables (`framework = "react" | "vue"`), and
 the `node` server also supports `nest`. `veld export openapi` produces an OpenAPI 3.1 document.
+
+### Query options, without a query library
+
+With `query-options = true` on a `typescript` client target, Veld also writes `queries.ts` next to each package's client: query keys, query options and mutation options as plain objects. The generated code imports no package, so you decide what to use them with:
+
+```toml
+[[targets]]
+role = "client"
+emitter = "typescript"
+out = "web/src/generated"
+[targets.options]
+query-options = true
+```
+
+```ts
+import { ordersQueries, ordersMutations } from '@veld/web';
+
+// TanStack Query (your dependency, not Veld's)
+const order = useQuery(ordersQueries.getOrder({ id }));
+const create = useMutation({
+  ...ordersMutations.createOrder(),
+  onSuccess: () => queryClient.invalidateQueries({ queryKey: ordersQueries.keys.all }),
+});
+// SWR or your own hook: key = ordersQueries.keys.getOrder({ id }), fetcher = the queryFn
+```
+
+Keys are built from the canonical bytes of the request, so equal requests share a key. Pass a client as the last argument (`ordersQueries.getOrder(req, client)`) or build a set with your own default: `createOrdersQueries(() => myClient)`. Errors keep their generated classes (`NotFound.matches(e)`); `OrdersGetOrderError` is the union a call can fail with. See [`spec/targets/typescript.md`](spec/targets/typescript.md) section 4a.1.
+
+### Skipping run-time request validation
+
+`validate = false` in `[targets.options]` of a `node`, `typescript`, `java` or `rust` target skips run-time request validation by default and keeps the types. The client option `validate: true` (TypeScript) or `ClientOptions.validate(true)` (Java) switches it back on.
 
 ## Microservices and mutual consumes
 
@@ -242,17 +287,21 @@ repository tests this with generated TypeScript and Java that call each other
 
 | Command | What it does |
 |---|---|
-| `veld init` | Create `veld.toml` and starter contracts. On a terminal with no flags it asks (project, single service or workspace, servers, client, output folders); flags `--name`, `--workspace a,b`, `--server node:express`, `--client typescript:react`, `--yes` answer the same questions without a TTY |
-| `veld check` | Compile all contracts and report diagnostics |
+| `veld init` | Create `veld.toml`, starter contracts and a `README.md`. On a terminal with no flags it asks (project, single service or workspace, servers, client, output folders) and ends by offering to run `generate` and `setup`; it starts from an existing `package.json` or `pom.xml`. Flags `--name`, `--workspace a,b`, `--server node:express`, `--client typescript:react`, `--template crud` (users, auth and pagination), `--base-url SERVICE=URL` and `--consumes SERVICE=a,b` (a workspace asks per service for its base URL and which services it calls; nothing is consumed unless you say so), `--yes` answer the same questions without a TTY |
+| `veld check [PATH...]` | Compile all contracts, lint them (`[lint]` in `veld.toml` sets each rule to `off`, `warn` or `error`) and report diagnostics. `PATH...` limits the report to those files or folders, `--no-lint` skips lint, `--strict` makes warnings fail, `--graph [text\|dot\|json]` prints the service dependency graph |
+| `veld generate [target]` | Generate code for every target, or one by name. `--dry-run` writes nothing; `--check` writes nothing and exits 1 when any output is stale (CI), `--diff` adds unified diffs to either. Before it writes over a breaking change it asks on a terminal, fails with `--strict` or off a terminal, and continues with `--accept-breaking`. `--setup` runs `veld setup` afterwards, `--watch` regenerates on every change (`veld watch` is a hidden alias). `--force` overwrites files you edited. `[hooks] post-generate` in `veld.toml` runs after a successful write. |
 | `veld setup [target]` | Wire generated targets into your apps: `@veld/<target>` `file:` dependencies in `package.json`, a source root in `pom.xml` or `build.gradle(.kts)`. `--dry-run` shows the edits; idempotent and format preserving |
-| `veld generate [target]` | Generate code for every target, or one by name. `--dry-run` writes nothing. Refuses to overwrite or delete a generated file you edited (`--force` overrides) |
-| `veld clean` | Remove generated files that you have not modified |
+| `veld clean` | Remove generated files that you have not modified; `--lock` also removes `veld.lock.ir.json`, the breaking-change baseline |
+| `veld doctor` | Check that the config loads, packages and the registry lock resolve, emitters and plugins resolve with matching hashes, output folders are writable, and that `git`, `node`, `npm`, `javac` exist for the wired targets, plus `mvn` or `gradle` for Java server targets that build with them. A fix is printed under every problem; exit 1 on failure |
 | `veld fmt` | Format `.veld` files canonically |
 | `veld diff` | Show breaking and non-breaking contract changes (`--strict` exits 1 on a breaking one) |
-| `veld export openapi` / `export ir` | OpenAPI 3.1, or the compiled IR as JSON |
-| `veld migrate` | Convert a v1 project to v2 |
+| `veld export <what>` | `openapi` prints OpenAPI 3.1 JSON to stdout or `-o FILE` (`--service S`, repeatable, limits it); `ir` prints the compiled IR for plugin authors. A file you own is written without a manifest and is never overwritten without `--force` |
 | `veld plugin new` / `plugin test` | Scaffold an emitter plugin, run the protocol conformance suite |
 | `veld add` / `install` / `publish` / `login` / `logout` | Registry packages (`veld.lock` pins versions and checksums) |
+| `veld registry info\|search\|versions\|token create` | Look things up in the registry and create API tokens (the commands that change a project stay top-level) |
+
+Global flags: `-v` / `-vv` show phases, write-plan entries and timings on stderr, `-q` prints only
+errors and warnings, `--config PATH` names the `veld.toml`, `--no-color` turns colour off.
 
 Generation only ever writes inside a target's `out` directory, through a staged writer with a
 manifest. Files that Veld did not write are never touched.
@@ -281,14 +330,3 @@ manifest. Files that Veld did not write are never touched.
 - [`docs/`](docs/README.md): index of guides and specs
 - [`docs/emitter-guide.md`](docs/emitter-guide.md): writing an emitter
 - [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CHANGELOG.md`](CHANGELOG.md), [`CLAUDE.md`](CLAUDE.md)
-
-## Migrating from v1
-
-```bash
-veld migrate --from path/to/v1/project   # writes veld.toml and contracts/ (v1 files are not touched)
-veld check
-veld generate
-```
-
-Constructs without a v2 equivalent are reported as warnings, and unsupported v1 backends are written
-as commented-out targets. See [`CHANGELOG.md`](CHANGELOG.md).

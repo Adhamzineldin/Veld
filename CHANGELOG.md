@@ -2,6 +2,39 @@
 
 All notable changes to Veld are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+Restores the v1 features that 2.0.0-beta.1 dropped and the owner kept (see [`docs/v1-parity.md`](docs/v1-parity.md)).
+
+### Added
+
+- **Website playground** (`/playground`): the real engine compiled to WebAssembly (`crates/veld-wasm`: compile, generate, format, OpenAPI export). Editor with live diagnostics, example presets, target picker, file tree, copy and zip download, offline after first load. `cargo test -p veld-wasm` proves every example and preset is byte-identical to the CLI, and `npm run test:wasm` replays that through the built `.wasm`.
+- **Lint** inside `veld check`: every v1 rule (unused model, empty service, empty model, empty constant, missing description, deprecated endpoint and field, file naming) plus the case rules of `spec/language.md` section 8. Codes `L0001` to `L0013`, levels `off`, `warn` or `error` under `[lint]` in `veld.toml`.
+- **"Did you mean" suggestions** on unknown types, modules, packages, annotations, imports and enum variants, also across modules and packages (`Usr` suggests `User` of another module together with the `use` line).
+- **`prefix`** in `[project]` and `[services.<name>]`, prepended to every service prefix in the IR.
+- **`consumes = ["*"]`** (every other service).
+- **Dependency graph** (`veld check --graph text|dot|json`) with cycles reported.
+- **Breaking-change gate** on `generate` (`--strict`, `--accept-breaking`) and a **stale-output check** (`generate --check`, with `--diff`).
+- **`veld doctor`** checks the project, its contracts, targets, plugins, registry and the tools the targets need (`mvn` or `gradle` only for Java server targets that build with them).
+- **Registry commands** `veld registry info`, `search`, `versions` and `token create`.
+- **Post-generate hooks** (`[hooks] post-generate`).
+- **Reconnect with exponential backoff** for WebSocket and SSE (`reconnect: { initialMs, maxMs, retries }`, `Last-Event-ID` for SSE) in the TypeScript and Java clients: off by default in the plain clients, on by default in the React and Vue stream hooks.
+- **`validate = false`** target option for `node`, `typescript` and `java`: skips run-time request validation, keeps the types.
+- **Query options without a dependency**: the target option `query-options = true` of the `typescript` client writes `<package>/queries.ts` with query keys, query options and mutation options as plain objects for TanStack Query, SWR or your own hooks. The generated code imports no query library.
+- **Workspace `veld init`** asks per service for a base URL and which services it calls (`consumes`), with the flags `--base-url SERVICE=URL` and `--consumes SERVICE=a,b`. Nothing is consumed unless asked for.
+- **`createClients(opts)`** in the TypeScript client barrel, and a deterministic **`README.md`** in the output of every target.
+- apt/rpm (nfpm), Chocolatey and Scoop packages are built from the release archives.
+
+### Fixed
+
+- **`same()` no longer compares by data alone.** The TypeScript `same(a, b)` fell back to canonical bytes for ordinary values, so two different models with identical fields compared equal, against `spec/ir.md` 5.4. Values now carry their declaration signature in non-enumerable symbols (client decode, server binding, `Model.of`); `same` needs it on both sides and throws a `TypeError` naming the fix when one is missing. `Model.same(a, b)` still accepts plain objects. The Java `Veld.same` compares lists and maps element by element and never equals a value without a signature.
+- The language server shows the full route (project and service prefix) in hover.
+- The "Use it:" block printed after `generate` aligns its columns for any target name length.
+
+### Decisions
+
+- The lint rule `file-naming-convention` uses `user_model.veld` where v1 used `user.model.veld`, because a dot is not valid in a module path.
+
 ## 2.0.0-beta.1
 
 Veld 2.0 is a rewrite in Rust with a new contract language. It is a beta: the language is specified
@@ -12,15 +45,15 @@ in [`spec/language.md`](spec/language.md) and may still change before 2.0.0.
 - **New language.** v1 `module`, `action`, `import`, `description:` and `method:` blocks are replaced by
   `model`, `enum`, `error`, `union`, `service ... at "/prefix"`, endpoints such as
   `get "/{id}" getOrder(id: uuid) -> Order | NotFound`, and `use pkg:module.{Name}`. v1 syntax is
-  error `E0001`, with a hint to run `veld migrate`.
+  error `E0001`.
 - **New config.** `veld.config.json` is replaced by `veld.toml` ([`spec/config.md`](spec/config.md)).
   `[[targets]]` have a `role` (`server` or `client`), an `emitter` and an `out`.
 - **Rust binary.** `veld` is a single self-contained binary. The Go toolchain is no longer needed.
 - **Generators.** Built in: `node` (server), `typescript` (client), `java` (server and client). The v1
   backends for Python, Go, C#, PHP and Rust, and the Dart, Kotlin, Swift, Svelte, Vue and Angular
-  clients are not part of 2.0. They can be written as emitter plugins. React hooks are not available yet.
-- **Commands.** `validate` is now `check`. `ast`, `watch`, `ci`, `docs`, `graphql`, `schema` and the
-  v1 `openapi` command are gone. `veld export openapi` replaces `openapi`. The lock file is
+  clients are not part of 2.0. They can be written as emitter plugins.
+- **Commands.** `validate` is now `check`. `ast` is gone. `veld export openapi` replaces the v1
+  `openapi` command. The lock file is
   `veld.lock.ir.json`, and `.veld.lock.json` and `.veld-cache.json` are no longer used.
 - **Errors are declarations.** An error is `error Name STATUS { fields }` and is listed in the response
   position of an endpoint. `NotFound`, `Unauthorized`, `ValidationError` and the other prelude errors
@@ -28,7 +61,7 @@ in [`spec/language.md`](spec/language.md) and may still change before 2.0.0.
 - **Wire format.** `long` is a decimal string on the wire, and every error response is
   `application/problem+json`.
 - **Archived.** The v1 Go code, its docs and its examples moved to [`archive/v1/`](archive/v1). The
-  Go, NuGet, Chocolatey, apt and Composer distribution channels are not maintained for 2.0.
+  Go, NuGet and Composer distribution channels are not maintained for 2.0; apt/rpm, Chocolatey and Scoop packages are built from the release archives.
 
 ### Highlights
 
@@ -46,21 +79,6 @@ in [`spec/language.md`](spec/language.md) and may still change before 2.0.0.
   a package registry (`add`, `install`, `publish`).
 - **Examples** under [`examples/`](examples) with committed, test-checked output.
 - **Releases** for Linux (x64, arm64), macOS (x64, arm64) and Windows (x64), with `SHA256SUMS`.
-
-### Migrating from v1
-
-1. Tag or keep your v1 project in git. `veld migrate` never modifies v1 files.
-2. Run `veld migrate` in the v1 project (`--from <dir>` if `veld.config.json` is elsewhere, `--out <dir>`
-   for the contracts directory, `--dry-run` to preview). It writes `veld.toml` and v2 contracts.
-3. Read the warnings. Backends and frameworks without a v2 emitter are written as commented-out
-   targets. Middleware that looks like authentication becomes `@auth(bearer)`. Errors that are not in
-   the prelude are declared with a status guessed from the name.
-4. Run `veld check`, fix what it reports, run `veld fmt`, then `veld generate`.
-5. Replace the generated code in your application. The generated API is different: see
-   [`spec/targets/typescript.md`](spec/targets/typescript.md) and [`spec/targets/java.md`](spec/targets/java.md).
-
-An example of the result is [`examples/microservices`](examples/microservices), migrated from
-`archive/v1/examples/microservices`.
 
 
 ## v1 (archived, frozen at tag `v1-final`)

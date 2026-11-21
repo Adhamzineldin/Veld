@@ -11,7 +11,7 @@ Veld is a contract-first API code generator. A developer writes `.veld` contract
 | `crates/veld-compiler` | language table, lexer, parser (AST and comments), semantic passes, lowering, **signatures** |
 | `crates/veld-codegen` | Generator traits, Capabilities, `FileSet`, CodeWriter, naming, RFC 8785 canonical JSON |
 | `crates/veld-project` | `veld.toml` loading and the staged, manifest-based output writer (the only code that writes files) |
-| `crates/veld-tools` | fmt, openapi, diff (breaking changes), migrate (v1 to v2) |
+| `crates/veld-tools` | fmt, openapi, diff (breaking changes) |
 | `crates/emitters/*` | Built-in generators: `typescript` (client), `node` (server), `java` |
 | `apps/veld` | The CLI binary (`veld`). `veld lsp` and `veld debug` are hidden. |
 | `tests/` | `conformance/` (compiler snapshots), `toolchain/` (real tsc/javac round trips), `wire/` (canonical byte goldens) |

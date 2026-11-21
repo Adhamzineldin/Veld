@@ -12,7 +12,7 @@ change the spec in the same commit as the behaviour.
 | `crates/veld-compiler` | Language table, lexer, parser, semantic passes, lowering and **signatures** |
 | `crates/veld-codegen` | Generator traits, capabilities, `FileSet`, `CodeWriter`, naming, canonical JSON |
 | `crates/veld-project` | `veld.toml` loading and the staged, manifest-based output writer |
-| `crates/veld-tools` | `fmt`, `export openapi`, `diff`, `migrate` |
+| `crates/veld-tools` | `fmt`, `export openapi`, `diff` |
 | `crates/emitters/*` | Built-in generators: `typescript`, `node`, `java` |
 | `crates/veld-lsp`, `veld-plugin-host`, `veld-registry-client` | Language server, plugin host, registry client |
 | `apps/veld` | The CLI binary |
