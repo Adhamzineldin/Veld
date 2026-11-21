@@ -26,7 +26,10 @@ pub fn run(cli: &Cli, ui: &Ui) -> Result<Exit> {
     match &cli.command {
         Command::Init(args) => init::run(ui, args),
         Command::Check => check::run(ui, config),
-        Command::Generate(args) if args.watch => watch::run(ui, config, args),
+        Command::Watch(args) => watch::run(ui, config, &watch::Options::from(args)),
+        Command::Generate(args) if args.watch => {
+            watch::run(ui, config, &watch::Options::from(args))
+        }
         Command::Generate(args) => generate::run(ui, config, args),
         Command::Clean(args) => clean::run(ui, config, args),
         Command::Setup(args) => setup::run(ui, config, args),

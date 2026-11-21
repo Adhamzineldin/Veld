@@ -37,6 +37,8 @@ pub enum Command {
     Check,
     /// Generate code for every target (or one, by name)
     Generate(GenerateArgs),
+    /// Regenerate whenever a contract, veld.toml or veld.lock changes (same as `generate --watch`)
+    Watch(WatchArgs),
     /// Remove generated files that you have not modified
     Clean(CleanArgs),
     /// Wire generated targets into your apps (package.json, pom.xml, build.gradle)
@@ -86,12 +88,21 @@ pub struct InitArgs {
     /// Prefix with `service=` to set one service of a workspace
     #[arg(long, value_name = "KIND[:FRAMEWORK]")]
     pub server: Vec<String>,
-    /// Client target: typescript[:react|vue], java or none
-    #[arg(long, value_name = "KIND[:FRAMEWORK]")]
-    pub client: Option<String>,
+    /// Client targets (repeat or comma-separate): typescript[:react|vue], java or none
+    #[arg(long, value_name = "KIND[:FRAMEWORK]", value_delimiter = ',')]
+    pub client: Vec<String>,
+    /// Change the output folder of a target, as TARGET=DIR (repeatable)
+    #[arg(long, value_name = "TARGET=DIR")]
+    pub out: Vec<String>,
+    /// A one-line project description, written to veld.toml
+    #[arg(long, value_name = "TEXT")]
+    pub description: Option<String>,
     /// Use the defaults for everything not given as a flag; never prompt
     #[arg(long, short = 'y')]
     pub yes: bool,
+    /// List the files that would be written, and write nothing
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 impl InitArgs {
@@ -101,8 +112,11 @@ impl InitArgs {
         self.name.is_none()
             && self.workspace.is_none()
             && self.server.is_empty()
-            && self.client.is_none()
+            && self.client.is_empty()
+            && self.out.is_empty()
+            && self.description.is_none()
             && !self.yes
+            && !self.dry_run
     }
 }
 
@@ -119,6 +133,22 @@ pub struct GenerateArgs {
     /// Regenerate whenever a .veld file or veld.toml changes
     #[arg(long)]
     pub watch: bool,
+}
+
+/// `veld watch`.
+#[derive(Debug, Args)]
+pub struct WatchArgs {
+    /// Watch and regenerate only the target with this name
+    pub target: Option<String>,
+    /// Overwrite existing files that Veld did not create
+    #[arg(long)]
+    pub force: bool,
+    /// Show what would change on each run without writing anything
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Quiet period in milliseconds after the last change before regenerating
+    #[arg(long, default_value_t = 300, value_name = "MS")]
+    pub debounce: u64,
 }
 
 #[derive(Debug, Args)]
@@ -295,8 +325,8 @@ mod tests {
             );
         }
         for shown in [
-            "init", "check", "generate", "setup", "clean", "fmt", "diff", "export", "migrate",
-            "plugin", "add", "install", "publish", "login", "logout",
+            "init", "check", "generate", "watch", "setup", "clean", "fmt", "diff", "export",
+            "migrate", "plugin", "add", "install", "publish", "login", "logout",
         ] {
             assert!(help.contains(shown));
         }
