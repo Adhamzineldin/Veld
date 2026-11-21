@@ -222,3 +222,34 @@ pub fn equality_ir() -> Ir {
     );
     out.ir.unwrap_or_else(|| unreachable!())
 }
+
+/// The streaming fixture: SSE and WebSocket endpoints, open and behind bearer auth
+/// (`tests/toolchain/contract/streaming`).
+pub fn streaming_ir() -> Ir {
+    let path = repo_root().join("tests/toolchain/contract/streaming/live.veld");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "live".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: "live.veld".into(),
+                text,
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    assert!(
+        out.ir.is_some(),
+        "streaming fixture failed to compile:\n{}",
+        out.render()
+    );
+    out.ir.unwrap_or_else(|| unreachable!())
+}
+
+/// Server files for several services of one package.
+pub fn gen_server_services(ir: &Ir, services: &[&str], options: &serde_json::Value) -> FileSet {
+    let ids = services.iter().map(|n| service_id(ir, n)).collect();
+    run(&Node, ir, Role::Server, ids, vec![], options, None)
+}

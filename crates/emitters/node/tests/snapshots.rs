@@ -5,7 +5,7 @@ mod common;
 use std::collections::BTreeSet;
 
 use common::*;
-use veld_codegen::{DynGenerator, FileSet, GenRequest, Role, check_capabilities};
+use veld_codegen::{Capabilities, DynGenerator, FileSet, GenRequest, Role, check_capabilities};
 use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
 use veld_emit_node::Node;
 use veld_emit_typescript::{TypeScript, runtime};
@@ -195,7 +195,7 @@ fn sse_ir() -> Ir {
 }
 
 #[test]
-fn streaming_reports_e0801_through_check_capabilities_and_generate() {
+fn streaming_is_supported_and_the_gate_still_reports_e0801_for_a_generator_without_it() {
     let ir = sse_ir();
     let svc = ir.services[0].id;
     assert!(ir.features_used(&[svc]).contains(&Feature::StreamingSse));
@@ -210,14 +210,19 @@ fn streaming_reports_e0801_through_check_capabilities_and_generate() {
             consumes: vec![],
             framework: None,
         };
-        let diags = check_capabilities(&ir, &req, &generator.capabilities(role));
+        let caps = generator.capabilities(role);
+        assert!(caps.supports(Feature::StreamingSse) && caps.supports(Feature::StreamingWs));
+        assert!(check_capabilities(&ir, &req, &caps).is_empty());
+        let files = generator
+            .generate_dyn(&req, &serde_json::Value::Null)
+            .unwrap();
+        assert!(files.paths().any(|p| p == "runtime/veld.ts"));
+        // A generator that does not declare the capability is still stopped by the gate.
+        let without = Capabilities::all_except(&[Feature::StreamingSse]);
+        let diags = check_capabilities(&ir, &req, &without);
         assert_eq!(diags.len(), 1, "{diags:?}");
         assert_eq!(diags[0].code, "E0801");
         assert!(diags[0].origin.is_some());
-        let err = generator
-            .generate_dyn(&req, &serde_json::Value::Null)
-            .unwrap_err();
-        assert_eq!(err[0].code, "E0801");
     }
 }
 
