@@ -130,7 +130,7 @@ public final class ClientCore {
       extra.put("last-event-id", lastEventId);
     }
     HttpRequest request = buildRequest(ep, params, "text/event-stream", extra);
-    HttpResponse<InputStream> res = send(ep, request, HttpResponse.BodyHandlers.ofInputStream());
+    HttpResponse<InputStream> res = send(ep, request, SseStream.bodyHandler());
     int status = res.statusCode();
     if (status < 200 || status >= 300) {
       decodeText(ep, status, readAll(ep, res.body()));
