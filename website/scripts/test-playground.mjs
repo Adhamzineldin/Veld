@@ -113,7 +113,12 @@ try {
   assert(await editor.evaluate((el) => el === document.activeElement));
   await editor.fill(original.replaceAll('Greeting', 'RevisedGreeting'));
   await download.click({ trial: true });
-  await page.locator('summary', { hasText: 'Node.js server guide' }).waitFor();
+  const guide = page.locator('details').filter({ has: page.locator('summary', { hasText: 'Node.js server guide' }) });
+  await guide.locator('summary').click();
+  // The generated README is rendered: fenced code becomes code blocks, never literal backticks.
+  assert((await guide.locator('pre code').count()) > 0, 'guide code blocks');
+  assert.doesNotMatch(await guide.innerText(), /```/);
+  await guide.locator('summary').click();
   await editor.fill(original.replace('message: string', 'message:     string'));
   await button('Format').click();
   await page.waitForFunction((text) => document.querySelector('textarea:not([readonly])')?.value === text, original);

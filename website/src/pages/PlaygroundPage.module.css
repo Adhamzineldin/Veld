@@ -541,8 +541,51 @@
 .usageBody pre {
   overflow: auto;
   max-height: 25rem;
-  margin: 8px 0 0;
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
   font-size: 0.85rem;
+  line-height: 1.55;
+  white-space: pre;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.usageBody pre code {
+  font-family: inherit;
+  background: none;
+  padding: 0;
+}
+
+.guide {
+  margin-top: 6px;
+  color: var(--fg2);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.guide h4,
+.guide h5 {
+  margin: 16px 0 6px;
+  color: var(--fg);
+}
+
+.guide h4:first-child {
+  margin-top: 4px;
+}
+
+.guide p,
+.guide ul {
+  margin: 6px 0;
+}
+
+.guide :not(pre) > code {
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.85em;
+  padding: 1px 5px;
+  background: var(--bg3);
+  border-radius: 4px;
 }
 
 .count {

@@ -18,6 +18,7 @@ import { Engine } from '../playground/engine';
 import Editor, { type EditorHandle } from '../playground/Editor';
 import FileTree from '../playground/FileTree';
 import { highlight, langOf } from '../playground/highlight';
+import { Markdown } from '../playground/Markdown';
 import { defaultPreset, presets, type Preset } from '../playground/presets';
 import {
   OPENAPI_KEY,
@@ -519,7 +520,11 @@ export default function PlaygroundPage() {
             <button type="button" className={styles.btn} onClick={() => void copyText(usage.text, 'usage')}>
               <Copy size={14} aria-hidden="true" /> {copied === 'usage' ? 'Example copied' : 'Copy example'}
             </button>
-            <pre><code>{highlight(usage.text, usage.lang)}</code></pre>
+            {usage.lang === 'md' ? (
+              <Markdown source={usage.text} className={styles.guide} />
+            ) : (
+              <pre><code>{highlight(usage.text, usage.lang)}</code></pre>
+            )}
           </div>
         </details>
       )}
