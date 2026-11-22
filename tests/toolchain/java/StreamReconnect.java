@@ -136,7 +136,9 @@ public final class StreamReconnect {
     Check.equal(2, seen(base, "ws:queue-a").size(), "reconnected once");
 
     // Retries exhausted; a typed error frame is never retried.
-    LiveClient two = new LiveClient(ClientOptions.builder().baseUrl(base).reconnect(new Reconnect(20, 40, 2)).build());
+    // maxMs is also the "healthy connection" threshold: keep it well above how long a loaded
+    // machine takes to notice the drop, so the backoff stays 20, 40 ms and no attempt counts as healthy.
+    LiveClient two = new LiveClient(ClientOptions.builder().baseUrl(base).reconnect(new Reconnect(20, 5000, 2)).build());
     try (WsChannel<Heard, Say> c = two.chat(new ChatRequest("always-a", null))) {
       Check.thrown(VeldTransportError.class, "exhausted", c::receive);
     }

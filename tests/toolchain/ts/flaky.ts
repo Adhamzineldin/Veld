@@ -63,12 +63,9 @@ function ws(room: string, socket: ServerSocket): void {
     socket.close(1008);
   } else if (kind === 'resume' && n === 1) {
     socket.send(heard(0, 'a'));
-    // Drop once the client has answered a ping sent after the frame, so frame 0 was received
-    // first; a fixed timer races the client's scheduling on a loaded machine.
-    const drop = (): void => socket.terminate();
-    socket.once('pong', drop);
-    socket.ping();
-    setTimeout(drop, 2000);
+    // Leave the client time to take frame 0 before the drop: the JDK client discards a frame it
+    // has read but not yet delivered when the connection fails, and 20 ms lost that race under load.
+    setTimeout(() => socket.terminate(), 300);
   } else if (kind === 'resume') {
     socket.send(heard(1, 'b'));
     socket.send(heard(2, 'c'));

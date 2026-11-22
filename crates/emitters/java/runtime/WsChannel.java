@@ -172,16 +172,20 @@ public final class WsChannel<In, Out> implements AutoCloseable {
       }
     }
     String text = Wire.canonicalOf(outgoing, wire);
-    try {
-      synchronized (sendLock) {
-        if (!connected) {
-          outbox.add(text);
-          return;
-        }
-        socket.sendText(text, true).join();
+    synchronized (sendLock) {
+      if (!connected) {
+        outbox.add(text);
+        return;
       }
-    } catch (CompletionException e) {
-      throw new VeldTransportError(ep.method() + " " + ep.path() + ": sending failed", e.getCause());
+      try {
+        socket.sendText(text, true).join();
+      } catch (CompletionException e) {
+        // The connection died before its close was noticed: with a policy the reconnect sends it.
+        if (reconnect == null || ended) {
+          throw new VeldTransportError(ep.method() + " " + ep.path() + ": sending failed", e.getCause());
+        }
+        outbox.add(text);
+      }
     }
   }
 

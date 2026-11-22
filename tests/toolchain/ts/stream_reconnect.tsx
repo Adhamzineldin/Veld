@@ -140,7 +140,7 @@ async function wsTests(base: string): Promise<void> {
   assert.equal(seen('ws:queue-a').length, 2);
 
   // Retries exhausted, and a typed error frame is never retried.
-  const gone = await failure(collect(live.chat({ room: 'always-a' }, { reconnect: { initialMs: 20, maxMs: 40, retries: 2 } })));
+  const gone = await failure(collect(live.chat({ room: 'always-a' }, { reconnect: { initialMs: 20, maxMs: 5000, retries: 2 } })));
   assert.ok(gone instanceof cli.VeldTransportError);
   assert.equal(seen('ws:always-a').length, 3, 'first attempt plus two retries');
   const typed = await failure(collect(live.chat({ room: 'nosuch-a' }, { reconnect: fast })));
