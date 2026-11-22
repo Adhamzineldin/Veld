@@ -1,7 +1,10 @@
 name: ci
 
 on:
-  # No push trigger, to save Actions minutes: CI runs on pull requests and by hand.
+  # Work happens on master, so CI runs on every push there (the repository is public: Actions
+  # minutes are free), on pull requests and by hand.
+  push:
+    branches: [master]
   pull_request:
     branches: [master]
   workflow_dispatch:
