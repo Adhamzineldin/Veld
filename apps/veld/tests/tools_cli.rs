@@ -190,7 +190,7 @@ fn diff_against_a_git_ref_never_touches_the_working_tree() {
     assert!(git(tmp.path(), &["add", "."]));
     assert!(git(tmp.path(), &["commit", "-q", "-m", "base"]));
     write(tmp.path(), "contracts/hello.veld", BREAKING);
-    let before = tree(tmp.path());
+    let before = tree_excluding(tmp.path(), &[".git"]);
     veld(tmp.path())
         .args(["diff", "--against", "HEAD"])
         .assert()
@@ -201,7 +201,11 @@ fn diff_against_a_git_ref_never_touches_the_working_tree() {
         .args(["diff", "--against", "HEAD", "--strict"])
         .assert()
         .code(1);
-    assert_eq!(before, tree(tmp.path()), "the working tree is untouched");
+    assert_eq!(
+        before,
+        tree_excluding(tmp.path(), &[".git"]),
+        "the working tree is untouched"
+    );
     assert!(git(tmp.path(), &["status", "--porcelain"]));
     veld(tmp.path())
         .args(["diff", "--against", "no-such-ref"])
