@@ -23,6 +23,36 @@ const contributors = [
       github: 'https://github.com/redoxxa21',
     },
   },
+  {
+    name: 'Menna Walid',
+    role: 'Team Member',
+    avatar: 'https://github.com/Mennawalid255.png',
+    bio: 'Member of the Veld graduation project team.',
+    badge: 'contributor',
+    links: {
+      github: 'https://github.com/Mennawalid255',
+    },
+  },
+  {
+    name: 'Mohamed Elkot',
+    role: 'Team Member',
+    avatar: 'https://github.com/MohamedElkot1.png',
+    bio: 'Member of the Veld graduation project team.',
+    badge: 'contributor',
+    links: {
+      github: 'https://github.com/MohamedElkot1',
+    },
+  },
+  {
+    name: 'Ahmed Magdy',
+    role: 'Team Member',
+    avatar: 'https://github.com/AhmedMagdy-GH.png',
+    bio: 'Member of the Veld graduation project team.',
+    badge: 'contributor',
+    links: {
+      github: 'https://github.com/AhmedMagdy-GH',
+    },
+  },
 ];
 
 function BadgeIcon({ type }: { type: string }) {
