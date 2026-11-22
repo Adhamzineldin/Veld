@@ -600,11 +600,11 @@ framework = "react"
 | Only what changed | `veld generate --affected --since origin/master` regenerates members whose contracts, or whose consumed contracts, changed. CI time stays flat as the repo grows. |
 | Ownership | `owners` feeds the PR summary and `veld impact`, so a breaking change names the teams it affects. |
 | Small projects stay small | A single `veld.toml` with `[service]` and `[server]` at the root is a one-member workspace. Hello world stays six lines. |
-| Today's format | Still read during the 2.0 betas, with a warning that shows the equivalent new files. |
+| Today's format | Replaced during the beta: only the workspace layout is accepted. The examples, docs and `veld init` switch in the same change. |
 
 ### Runtime config: typed, from any source
 
-Generated code should not force env var names on anyone. Each target generates a **typed runtime config** and takes it as an argument; where the values come from is the app's choice. Today's fallback to `VELD_<SERVICE>_URL` becomes an opt-in helper instead of built-in behaviour.
+Generated code should not force env var names on anyone. Each target generates a **typed runtime config** and takes it as an argument; where the values come from is the app's choice. Today's automatic fallback to `VELD_<SERVICE>_URL` is removed; the `fromEnv()` helper replaces it for anyone who wants env vars, with names they choose.
 
 ```ts
 // generated/runtime.ts
@@ -629,11 +629,12 @@ export interface BookingsRuntime {
 
 In 2026 much of the code in a Veld project will be written by agents such as Claude Code, Cursor or Codex. Veld already suits them: a contract is a small, exact spec, output is deterministic, and the rules give a checkable definition of done. This section makes that explicit.
 
-### CLI and a skill, not a local MCP server
+### CLI and a skill first, a thin MCP server second
 
 Practitioner write-ups and the one measured comparison we found agree on a split. For a *local* coding agent, a CLI with structured output plus an Agent Skill (a `SKILL.md` the agent loads only when relevant) is cheaper and more reliable, because an MCP server puts all its tool definitions into every request. MCP still wins for remote, shared or authenticated access by end users. So:
 
-- **No `veld mcp` server for coding agents.** The agent runs `veld` directly, and the existing LSP gives it go-to-definition and hover.
+- **The CLI comes first.** Agents with a terminal run `veld` directly, and the existing LSP gives them go-to-definition and hover.
+- **A thin, optional `veld mcp`** for agents without a terminal: chat assistants, hosted agents, locked-down IDEs. It exposes four tools (`check`, `context`, `impact`, `generate`), each a wrapper over the `--format json` output, so it costs little context and adds no logic of its own.
 - **One official Veld skill** ships with Veld (in the repo and the npm/pip packages, not generated into projects). It teaches the loop below in about a page.
 - **MCP stays where it wins:** `veld export mcp` (P4) turns *your product's* API into tools for end-user agents.
 
@@ -655,16 +656,33 @@ flowchart LR
 | **`veld guard`** | A pre-commit or agent hook. It uses the existing output manifest to reject edits to generated files, and tells the agent to change the contract and regenerate instead. | accepted |
 | **PR summary** | `veld diff --format markdown`: contract changes for a PR comment, breaking ones first, with the owning teams of affected consumers. | accepted |
 | **`veld check --impl`** | Runs the target's compiler (`tsc`, `javac`, `cargo check`) against the generated interfaces and reports, in Veld's words, operations with no handler and facts with no loader. | accepted |
-| **`--format json` everywhere** | Every command gets machine-readable output and stable exit codes. Diagnostics carry **fix-its**: the exact replacement text, so an agent or the editor applies the fix without guessing. | to confirm |
-| **Example-driven loop** | `veld generate --stubs` writes empty handler files that fail; the `example` blocks in the contract (§2) are the acceptance tests. The agent fills handlers until `veld test` passes. | to confirm |
-| **`veld impact`** | Before a change, lists what it touches: generated files and consuming members in this workspace, and consumers in other repos that depend on the published package in the Veld registry. | to confirm |
+| **`--format json` everywhere** | Every command gets machine-readable output and stable exit codes. Diagnostics carry **fix-its**: the exact replacement text, so an agent or the editor applies the fix without guessing. | accepted |
+| **Example-driven loop** | `veld generate --stubs` writes empty handler files that fail; the `example` blocks in the contract (§2) are the acceptance tests. The agent fills handlers until `veld test` passes. | accepted |
+| **`veld impact`** | Before a change, lists what it touches: generated files and consuming members in this workspace, and consumers in other repos that depend on the published package in the Veld registry. | accepted |
+| **`veld mcp`** (thin) | Four tools over the JSON output, for agents that cannot run a CLI. | accepted, optional |
+
+### How `veld impact` works
+
+It needs no GitHub access. Like `veld diff`, it compares your contracts with a git ref (default `HEAD`), so you never describe the change in words. Then it looks up who depends on what changed, from two places Veld already has:
+
+1. **The workspace.** Every member's `veld.toml` says what it `consumes`, `uses` or `subscribes` to, so Veld knows every service and app in this repo that touches the changed endpoint, type or event, and which generated files will change.
+2. **The registry, for other repos.** When a team elsewhere runs `veld add @shop/bookings` and publishes its own package, the registry records that dependency, like the "dependents" list on npm. `veld impact` asks the registry for dependents of the changed declarations. Without a registry, it reports the workspace only and says so.
+
+```
+$ veld impact --against origin/master
+breaking  bookings: Booking.guestPhone removed
+  workspace  apps/web                  uses getBooking            team-web
+  workspace  services/notifications    subscribes BookingEvents   team-notify
+  registry   @acme/partner-portal 1.4  uses getBooking            acme
+  files      12 generated files in 3 members
+```
 
 ### Agents roadmap
 
 | Phase | Size | Work | Gate |
 |---|---|---|---|
 | **A1. Agent-ready CLI** | 1 week | `--format json` and fix-its, `veld context`, `veld guard`, the markdown PR summary. | An agent fixes a broken contract from JSON diagnostics alone. |
-| **A2. The loop** | 1 week | The Veld skill, `check --impl`, stubs and `veld impact` if confirmed. | Starting from the booking contract and empty stubs, an agent reaches green `veld test` without human edits. |
+| **A2. The loop** | 1 week | The Veld skill, `check --impl`, `--stubs`, `veld impact` with the registry dependents index, and the thin `veld mcp`. | Starting from the booking contract and empty stubs, an agent reaches green `veld test` without human edits. |
 
 ## 15. Non-goals and risks
 
@@ -698,9 +716,9 @@ flowchart LR
 | Events | Track E1 to E3. First brokers: Kafka and RabbitMQ, plus the built-in memory broker; NATS, SQS and Redis Streams in E3 |
 | Platform features | All eleven accepted as track P1 to P4 (§12) |
 | `veld events replay` | Dropped: replaying a dead-letter queue is the broker's job |
-| Config layout | Workspace root plus one small `veld.toml` per member (§13). Proposed; owner to confirm details |
-| Runtime settings | Typed runtime config from any source; no forced env names (§13). Proposed |
-| AI agents | CLI plus an official skill, no local MCP server. Accepted: `veld context`, `veld guard`, PR summary, `check --impl`. To confirm: JSON output with fix-its, stubs, `veld impact` |
+| Config layout | Workspace root plus one small `veld.toml` per member (§13). The single-file format is replaced during the beta, not kept alongside |
+| Runtime settings | Typed runtime config from any source (§13). The automatic `VELD_<SERVICE>_URL` fallback is removed; `fromEnv()` is opt-in |
+| AI agents | CLI and an official skill first, a thin optional `veld mcp` second. All accepted: `veld context`, `veld guard`, PR summary, `check --impl`, JSON output with fix-its, `--stubs`, `veld impact` |
 | Overall size | Rules 0–5 (about 6 weeks), events E1–E3 (3 weeks), platform P1–P4 (5 weeks), agents A1–A2 (2 weeks), plus the config change (1 week). With the tracks overlapping, about 12 to 14 weeks for the team. Cut order if needed: Phase 6, then P4, then sagas (P3), then E3. |
 
 **Next step:** Phase 0, `spec/rules.md` and the first 40 rule vectors, for the owner to freeze.
