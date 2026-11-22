@@ -19,8 +19,9 @@ Today a Veld contract says what data looks like. This plan makes it say what is 
 12. [Platform features](#12-platform-features)
 13. [Configuration for big projects](#13-configuration-for-big-projects)
 14. [AI coding agents](#14-ai-coding-agents)
-15. [Non-goals and risks](#15-non-goals-and-risks)
-16. [Decisions](#16-decisions)
+15. [Beyond web: mobile and desktop](#15-beyond-web-mobile-and-desktop)
+16. [Non-goals and risks](#16-non-goals-and-risks)
+17. [Decisions](#17-decisions)
 
 ## 1. The pitch
 
@@ -684,7 +685,45 @@ breaking  bookings: Booking.guestPhone removed
 | **A1. Agent-ready CLI** | 1 week | `--format json` and fix-its, `veld context`, `veld guard`, the markdown PR summary. | An agent fixes a broken contract from JSON diagnostics alone. |
 | **A2. The loop** | 1 week | The Veld skill, `check --impl`, `--stubs`, `veld impact` with the registry dependents index, and the thin `veld mcp`. | Starting from the booking contract and empty stubs, an agent reaches green `veld test` without human edits. |
 
-## 15. Non-goals and risks
+## 15. Beyond web: mobile and desktop
+
+### What Veld is
+
+**Veld writes the contracts between services and the apps that call them:** web, mobile and desktop apps talking to a backend, and services talking to each other over HTTP, streams and events. Every addition is measured against that sentence. Mobile and desktop fit it, because they are the same thing with a different client.
+
+### Mobile track: Kotlin and Swift clients
+
+The Java client cannot run on Android, which has no `java.net.http`, and iOS needs Swift. Two new client-only emitters close that gap. They follow the same rules as every target: no runtime dependencies, the shared signatures and wire goldens, `E0801` for anything unsupported.
+
+| | Kotlin (Android, JVM) | Swift (iOS, macOS) |
+|---|---|---|
+| HTTP | `HttpURLConnection`, on Android and every JVM | `URLSession` |
+| API style | `suspend` functions using only the Kotlin standard library; blocking variants for Java callers | `async`/`await`, `Sendable` types |
+| JSON | The embedded canonical codec, like the Java target | `Codable` with generated canonical encoding |
+| SSE | Streaming over `HttpURLConnection`, exposed as a `Flow`-like iterator | `URLSession.bytes` as an `AsyncSequence` |
+| WebSocket | Optional OkHttp adapter (Android's standard client; the one allowed framework dependency) | `URLSessionWebSocketTask`, built in |
+| UI helpers | Optional Jetpack Compose state helpers, like the React and Vue ones | Optional SwiftUI `@Observable` helpers |
+| Rules | Model invariants run before sending, and the `can<Operation>()` and `nextStates()` helpers come along. An offline app shows the server's exact message without a connection. | Same, through the shared `ExprPrinter` hooks and rule vectors. |
+
+**Tests:** the generated Kotlin client compiles with `kotlinc` and calls the Node test server on the JVM, plus an Android compile check with the Android SDK in CI. The Swift client builds with `swift build` and runs the same round trip on the macOS runner. Both run the signature, wire and rule-vector suites.
+
+| Phase | Size | Work | Gate |
+|---|---|---|---|
+| **M1. Kotlin and Swift clients** | 2 days | One agent per emitter: `cargo xtask new-emitter`, models, errors with `same()`, HTTP client, SSE, WebSocket, snapshots and toolchain round trips. | Both clients pass the signature, wire and round-trip suites against the Node server. |
+| **M2. Rules and UI helpers on mobile** | 1–2 days | `ExprPrinter` hooks, rule vectors, allowed-action helpers, Compose and SwiftUI helpers; starts once rules Phase 1 has landed. Kotlin and Swift appear as client targets in the playground and on the website. | All rule vectors identical in six targets plus the reference evaluator. |
+
+### Desktop: a guide, using the clients we already have
+
+Desktop apps need no new emitter. A new guide, `docs/guides/desktop.md`, shows the setups end to end, each with a small example in `examples/` and a test that builds it:
+
+- **Tauri:** the TypeScript client in the UI, the Rust client (`ureq` or `reqwest` transport) in the Rust backend, and which side should own the calls.
+- **Electron:** the TypeScript client in the main process, and how the renderer reaches it safely through the preload script.
+- **JVM desktop** (JavaFX, Swing, Compose Desktop): the Java or Kotlin client.
+- **Offline rules:** generated rule checks and allowed-action helpers working without a network.
+
+Size: half a day, done alongside M1.
+
+## 16. Non-goals and risks
 
 ### What belongs in the contract, and what stays in code
 
@@ -704,7 +743,7 @@ breaking  bookings: Booking.guestPhone removed
 - **Broker adapters multiply the test matrix.** Every adapter is tested against the same event vectors on the memory broker first; only E2/E3 toolchain tests need real brokers.
 - **Adoption.** Everything is optional and incremental. A contract with no rules or events generates exactly what it does today, byte for byte.
 
-## 16. Decisions
+## 17. Decisions
 
 | Question | Decision (2026-11-22) |
 |---|---|
@@ -715,10 +754,11 @@ breaking  bookings: Booking.guestPhone removed
 | Scope | Phases 0 to 5; Phase 6 if time allows |
 | Events | Track E1 to E3. First brokers: Kafka and RabbitMQ, plus the built-in memory broker; NATS, SQS and Redis Streams in E3 |
 | Platform features | All eleven accepted as track P1 to P4 (§12) |
+| Beyond web | Veld stays "contracts between services and the apps that call them". Added: Kotlin and Swift client emitters (track M1–M2) and a desktop guide for Tauri, Electron and JVM apps (§15) |
 | `veld events replay` | Dropped: replaying a dead-letter queue is the broker's job |
 | Config layout | Workspace root plus one small `veld.toml` per member (§13). The single-file format is replaced during the beta, not kept alongside |
 | Runtime settings | Typed runtime config from any source (§13). The automatic `VELD_<SERVICE>_URL` fallback is removed; `fromEnv()` is opt-in |
 | AI agents | CLI and an official skill first, a thin optional `veld mcp` second. All accepted: `veld context`, `veld guard`, PR summary, `check --impl`, JSON output with fix-its, `--stubs`, `veld impact` |
-| Overall size | Rules 0–5 (about 6 weeks), events E1–E3 (3 weeks), platform P1–P4 (5 weeks), agents A1–A2 (2 weeks), plus the config change (1 week). With the tracks overlapping, about 12 to 14 weeks for the team. Cut order if needed: Phase 6, then P4, then sagas (P3), then E3. |
+| Overall size | Rules 0–5 (about 6 weeks), events E1–E3 (3 weeks), platform P1–P4 (5 weeks), agents A1–A2 (2 weeks), plus the config change (1 week) and mobile M1–M2 (1 week). With the tracks overlapping, about 12 to 14 weeks for a human team. With three agents in parallel and a daily snapshot sign-off from the owner, about 10 to 12 working days. Cut order if needed: Phase 6, then P4, then sagas (P3), then E3. |
 
 **Next step:** Phase 0, `spec/rules.md` and the first 40 rule vectors, for the owner to freeze.
