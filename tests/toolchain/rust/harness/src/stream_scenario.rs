@@ -224,7 +224,7 @@ async fn ws_reconnect(base: &str, plain: &LiveClient<Rt>, live: &LiveClient<Rt>)
     equal(2, seen(base, "ws:resume-a").await.len(), "two connections");
 
     // Retries exhausted; a typed error frame is never retried.
-    let two = LiveClient::reqwest(ClientOptions::new().base_url(base).reconnect(Reconnect { initial_ms: 20, max_ms: 40, retries: 2 })).unwrap_or_else(|e| panic!("{e}"));
+    let two = LiveClient::reqwest(ClientOptions::new().base_url(base).reconnect(Reconnect { initial_ms: 20, max_ms: 5000, retries: 2 })).unwrap_or_else(|e| panic!("{e}"));
     let mut c = two.chat(room("always-a")).await.unwrap_or_else(|e| panic!("{e}"));
     that(matches!(c.recv().await, Some(Err(Error::Transport(_)))), "exhausted");
     equal(3, seen(base, "ws:always-a").await.len(), "first attempt and two retries");
