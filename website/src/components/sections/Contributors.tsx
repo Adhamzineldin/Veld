@@ -53,6 +53,16 @@ const contributors = [
       github: 'https://github.com/AhmedMagdy-GH',
     },
   },
+  {
+    name: 'Shad El Damardaly',
+    role: 'Core Contributor',
+    avatar: '',
+    bio: 'Core member of the Veld team, building Veld 2.0.',
+    badge: 'core',
+    links: {
+      github: '',
+    },
+  },
 ];
 
 function BadgeIcon({ type }: { type: string }) {
@@ -94,12 +104,13 @@ export default function Contributors() {
               transition={{ duration: 0.5, delay: i * 0.1 }}
             >
               <div className={styles.cardHeader}>
-                <img
-                  src={c.avatar}
-                  alt={c.name}
-                  className={styles.avatar}
-                  loading="lazy"
-                />
+                {c.avatar ? (
+                  <img src={c.avatar} alt={c.name} className={styles.avatar} loading="lazy" />
+                ) : (
+                  <span className={`${styles.avatar} ${styles.initials}`} aria-hidden="true">
+                    {c.name.split(' ').map((w) => w[0]).slice(0, 2).join('')}
+                  </span>
+                )}
                 <div>
                   <h3 className={styles.name}>{c.name}</h3>
                   <p className={styles.role}>{c.role}</p>
