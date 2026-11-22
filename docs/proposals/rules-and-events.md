@@ -1,4 +1,4 @@
-# Veld Rules, Events and Platform: one contract for the API, its events and the business rules they must keep
+# Veld Rules, Events, Platform and Agents: one contract for the API, its events and the business rules they must keep
 
 > **Status:** proposal, approved in direction on 2026-11-22. Not normative. Phase 0 turns it into `spec/rules.md`.
 
@@ -17,8 +17,10 @@ Today a Veld contract says what data looks like. This plan makes it say what is 
 10. [Testing](#10-testing)
 11. [Events and messaging](#11-events-and-messaging-kafka-rabbitmq-nats-sqs)
 12. [Platform features](#12-platform-features)
-13. [Non-goals and risks](#13-non-goals-and-risks)
-14. [Decisions](#14-decisions)
+13. [Configuration for big projects](#13-configuration-for-big-projects)
+14. [AI coding agents](#14-ai-coding-agents)
+15. [Non-goals and risks](#15-non-goals-and-risks)
+16. [Decisions](#16-decisions)
 
 ## 1. The pitch
 
@@ -147,7 +149,7 @@ export const handlers: BookingsHandlers = {
 | **Precondition** | `require expr else Error` in an endpoint | Server, after facts load, before the handler | The named declared error, or 422 |
 | **State transition** | `flow a -> b` in an enum, `transition x: a -> b` on an endpoint | Server, before the handler, and the returned value after it | `409 InvalidTransition` (implicit, like ValidationError today) |
 | **Policy** | `policy` with `permit`/`forbid`, used by `allow` | Server, after auth and facts | `403 Forbidden` (implicit) |
-| **Postcondition** | `ensure expr` in an endpoint | Server, on the handler's result | Set in `veld.toml` per environment (§4): `strict` returns `500 Internal`, `audit` logs a violation event, `off` skips the check |
+| **Postcondition** | `ensure expr` in an endpoint | Server, on the handler's result | Set in the runtime config (§4, §13): `strict` returns `500 Internal`, `audit` logs a violation event, `off` skips the check |
 
 Plus **examples**, which are not enforced at runtime but become tests (§7).
 
@@ -190,26 +192,22 @@ flowchart LR
 - **Observability:** each server exposes one `onRuleViolation(event)` hook with rule id, operation, outcome and timing, so teams can graph which rules fire in production.
 - **Rollout:** `@rollout(audit)` on a rule makes the server log would-be violations without rejecting. You dark-launch a new rule, watch the hook for a week, then remove the annotation.
 
-### Enforcement is the developer's choice, in `veld.toml`
+### Enforcement is the developer's choice, through the runtime config
 
-Checks on the server's own output (`ensure`, output invariants, the target state of a transition) can be tuned per environment. Checks on what callers send (input invariants, `require`, policies, transition guards) are always enforced: they protect the server, so no config can turn them off.
+Checks on the server's own output (`ensure`, output invariants, the target state of a transition) can be tuned per deployment. Checks on what callers send (input invariants, `require`, policies, transition guards) are always enforced: they protect the server, so no setting can turn them off.
 
-```toml
-[rules]
-ensure  = "strict"        # strict | audit | off. The default when no environment matches.
-sample  = 1.0             # share of responses checked in audit mode
+The setting is part of the typed runtime config (§13), not `veld.toml`, because it changes per deployment, not per generation. You fill it from wherever your app keeps settings:
 
-[rules.env.production]
-ensure  = "audit"         # log the violation event, still send the response
-sample  = 0.1
-
-[rules.env.test]
-ensure  = "strict"        # fail loudly in CI and in veld test --live
+```ts
+// src/main.ts
+createServer(handlers, facts, {
+  rules: { ensure: settings.prod ? "audit" : "strict", sample: 0.1 },  // strict | audit | off
+  // ...service URLs, broker settings
+});
 ```
 
-- The generated server picks the environment from `VELD_ENV`, or from an option passed to the generated `createServer`, so one build runs strict in staging and audit in production.
-- Precedence: `@rollout(...)` on a single rule, then the matching `[rules.env.*]` table, then `[rules]`. With no `[rules]` table at all, the default is strict.
-- `veld check` warns when `production` is set to `off`, and the setting is printed in the startup log so nobody runs unchecked by accident.
+- Precedence: `@rollout(...)` on a single rule, then the runtime config. With nothing set, the default is strict.
+- The generated server logs the active mode at startup, so nobody runs unchecked by accident.
 
 ## 5. Semantics engineers will check first
 
@@ -281,7 +279,7 @@ No new architecture. Rules travel the same path as types: source, AST, semantic 
 | `veld-codegen` | One shared lowering: `trait ExprPrinter` with per-language hooks for precedence, null guards, code-point length, checked arithmetic and decimal. Emitters only supply the hooks. |
 | `emitters/*` | Generated `check<Model>` functions, the fact-loader interface, the endpoint pipeline, the violation hook, event publishers and subscribers. Capability flags `rules.invariants`, `rules.preconditions`, `rules.transitions`, `rules.policies`, `rules.postconditions`, `events`; missing support is `E0801`, as always. |
 | `veld-tools` | `diff` rule and event classification, OpenAPI `x-veld-rules`, AsyncAPI export, SMT-LIB encoding for `--prove`, `fmt` for the new syntax. |
-| `apps/veld` | `veld test [--live URL]`, `check --prove`, `veld events replay`, LSP hover and completion inside expressions. |
+| `apps/veld` | `veld test [--live URL]`, `check --prove`, `veld context`, `veld guard`, `--format json` everywhere, LSP hover and completion inside expressions. |
 
 ### IR sketch
 
@@ -362,8 +360,9 @@ event BookingPaid {
 
 event BookingCancelled { bookingId: uuid  reason?: string }
 
-/// One logical stream. veld.toml decides whether it is a Kafka topic,
-/// a RabbitMQ exchange, a NATS subject or an SQS queue.
+/// One logical stream: a Kafka topic, a RabbitMQ exchange, a NATS subject
+/// or an SQS queue, depending on the broker the service uses.
+@topic("shop.bookings.v1")               // producer and consumer must agree, so it lives here
 channel BookingEvents {
   carries BookingPaid, BookingCancelled
   key bookingId                          // partition / routing key: ordering per booking
@@ -390,22 +389,17 @@ example "a paid booking sends one receipt" {
 }
 ```
 
-### In `veld.toml`: the broker binding
+### Choosing the broker: one line
 
 ```toml
-[brokers.main]
-kind = "kafka"                 # kafka | rabbitmq | nats | sqs | redis-streams | memory
-url  = "env:KAFKA_BROKERS"     # read from the environment, never committed
-
-[channels.BookingEvents]
-broker = "main"
-name   = "shop.bookings.v1"    # topic / exchange / subject / queue
-
-[brokers.test]
-kind = "memory"                # built in, zero dependencies, used by veld test
+# services/bookings/veld.toml
+[service]
+messaging = "kafka"     # kafka | rabbitmq | nats | sqs | redis-streams: picks the generated adapter
 ```
 
-Changing broker means editing the config and regenerating. No handler code changes.
+- The **topic name** is in the contract (`@topic`), because producer and consumer must agree on it.
+- **Broker addresses and credentials** are runtime config (§13), filled from wherever your app keeps settings.
+- Switching from Kafka to RabbitMQ is one line and a regenerate; handler code does not change. `veld test` always uses the built-in memory broker.
 
 ### What gets generated
 
@@ -416,7 +410,7 @@ Changing broker means editing the config and regenerating. No handler code chang
 | **Envelope** | CloudEvents 1.0: `type` is the event signature (`veld:bookings/BookingPaid@7ab31c90`), `id` a UUID, `subject` the key, `data` canonical JSON. Any CloudEvents tool can read Veld events. |
 | **Transactional outbox** | For `emits`, the event is written through a generated `Outbox` interface in the same database transaction as the state change, and a generated relay publishes it. No lost or phantom events when the service crashes mid-request. |
 | **Inbox (deduplication)** | Delivery is at-least-once on every broker. A generated `Inbox` interface records handled event ids, so a redelivered event does not send two receipts. |
-| **Retry and dead letter** | From `@retry` and `@deadLetter`. A message that fails the contract goes to the dead-letter channel with the violation attached, so it can be read and replayed with `veld events replay`. |
+| **Retry and dead letter** | From `@retry` and `@deadLetter`. A message that fails the contract goes to the dead-letter channel with the violation attached, so it can be inspected and replayed with the broker's own tools. |
 | **Broker adapters** | The generated core depends only on a small `Transport` interface. Each broker is a framework adapter, the one allowed dependency under rule 3, using the standard client per language, such as `kafka-clients` and Spring Kafka/AMQP for Java, `amqplib` for Node, `rdkafka` and `lapin` for Rust. |
 
 ```mermaid
@@ -450,7 +444,7 @@ sequenceDiagram
 |---|---|---|---|
 | **E1. Events, channels, memory broker** | 1 week | Syntax, IR and signatures for `event`, `channel`, `publishes`, `subscribes`. CloudEvents envelope. Typed publisher and subscriber in every target; built-in `memory` transport; event examples in `veld test`. | The same event round-trips byte-identically between Node, Java and Rust services. |
 | **E2. Kafka and RabbitMQ** | 1 week | Adapters per language, retry and dead letter, inbox deduplication. Toolchain tests against Kafka and RabbitMQ in Docker, run in CI like the registry e2e. | A Node producer and a Java consumer talk over both brokers with only `veld.toml` changed. |
-| **E3. Outbox, tools, more brokers** | 1 week | Outbox and relay for `emits`, `veld events replay`, event-aware `diff`, AsyncAPI export. NATS, SQS and Redis Streams adapters. | Crash-test e2e: killing the producer mid-request loses no event and duplicates none. |
+| **E3. Outbox, tools, more brokers** | 1 week | Outbox and relay for `emits`, event-aware `diff`, AsyncAPI export. NATS, SQS and Redis Streams adapters. | Crash-test e2e: killing the producer mid-request loses no event and duplicates none. |
 
 E1 can start in parallel with rules Phase 2, since it reuses the same invariants. Events plus rules give the strongest demo: one contract, an HTTP service and a Kafka consumer in two languages, and `veld diff` blocking a change that would break the consumer.
 
@@ -535,7 +529,144 @@ saga Checkout(body: CheckoutRequest) -> Booking {
 | **P3. Sagas** | 2 weeks | Syntax, the idempotency check, the orchestrator and `SagaStore`, steps over HTTP and channels. | Killing the orchestrator at every step still ends in either a confirmed booking or a fully compensated one. |
 | **P4. Reach** | 1 week | `veld export mcp` and the MCP proxy, message catalogs, `@retain` and the retention export. | An AI agent books a room through the MCP tools and is stopped by the same rules as the React client. |
 
-## 13. Non-goals and risks
+## 13. Configuration for big projects
+
+Today one `veld.toml` holds every service, and each service's targets sit in separate, repeated `[[targets]]` blocks. With rules, events and the platform features it would also collect broker URLs and per-environment settings. Three changes fix that.
+
+1. **`veld.toml` only describes generation:** which contracts, which emitter, which folder. Anything that changes per deployment (URLs, credentials, enforcement modes) moves to the typed runtime config below.
+2. **One small file per member, next to its code,** like Cargo workspaces and Nx projects. The root file only lists members and shared defaults.
+3. **Conventions over keys.** Contracts live in `./contracts` and output goes to the emitter's usual folder unless a member says otherwise.
+
+### Layout
+
+```
+shop/
+  veld.toml                 # workspace: members and shared defaults
+  veld.lock
+  services/
+    bookings/   veld.toml   contracts/   src/
+    payments/   veld.toml   contracts/   src/main/java/
+  apps/
+    web/        veld.toml   src/
+  libs/
+    money/      veld.toml   contracts/
+```
+
+```toml
+# veld.toml (root)
+[workspace]
+name = "shop"
+members = ["services/*", "apps/*", "libs/*"]
+
+[workspace.defaults]       # inherited, overridable
+node = { framework = "express" }
+java = { framework = "spring", version = "21" }
+typescript = { query-options = true }
+
+[registry]
+url = "https://registry.shop.dev"
+```
+
+```toml
+# services/bookings/veld.toml
+[service]
+consumes = ["iam", "payments"]
+messaging = "kafka"
+owners = ["team-bookings"]
+
+[server]
+emitter = "node"   # framework from the defaults
+# contracts = "contracts" and out = "src/generated" are the defaults
+```
+
+```toml
+# apps/web/veld.toml
+[app]                  # client only: web, mobile
+uses = ["bookings", "iam"]
+
+[client]
+emitter = "typescript"
+framework = "react"
+```
+
+```toml
+# libs/money/veld.toml
+[library]              # shared contracts only; other members: use money:types.{Money}
+```
+
+| For big projects | How |
+|---|---|
+| Work on one member | `veld generate -p bookings`, or run `veld generate` inside its folder. |
+| Only what changed | `veld generate --affected --since origin/master` regenerates members whose contracts, or whose consumed contracts, changed. CI time stays flat as the repo grows. |
+| Ownership | `owners` feeds the PR summary and `veld impact`, so a breaking change names the teams it affects. |
+| Small projects stay small | A single `veld.toml` with `[service]` and `[server]` at the root is a one-member workspace. Hello world stays six lines. |
+| Today's format | Still read during the 2.0 betas, with a warning that shows the equivalent new files. |
+
+### Runtime config: typed, from any source
+
+Generated code should not force env var names on anyone. Each target generates a **typed runtime config** and takes it as an argument; where the values come from is the app's choice. Today's fallback to `VELD_<SERVICE>_URL` becomes an opt-in helper instead of built-in behaviour.
+
+```ts
+// generated/runtime.ts
+export interface BookingsRuntime {
+  services: { iam: { url: string }; payments: { url: string } };
+  messaging: { brokers: string[]; clientId?: string; auth?: KafkaAuth };
+  rules?: { ensure?: "strict" | "audit" | "off"; sample?: number };
+}
+```
+
+| Stack | How you fill it |
+|---|---|
+| Node / TypeScript | Any object: your own settings module, a JSON or YAML file, a secrets manager. Optional helper with your own names: `fromEnv({ "services.iam.url": "IAM_URL" })`. |
+| Java + Spring | A generated `@ConfigurationProperties` class, so it binds from `application.yml`, profiles or Spring Cloud Config. The prefix is yours (default `veld`). |
+| Plain Java | A generated builder: `BookingsRuntime.builder().iamUrl(...).build()`. |
+| Rust | A generated `serde::Deserialize` struct, so figment, config-rs, envy or a TOML file all work. |
+
+- `veld export runtime-schema` writes a JSON Schema of the runtime config, so Helm values, Kubernetes ConfigMaps or CI can validate settings before a deploy.
+- Missing settings fail at startup with one message listing every missing key, never at the first request.
+
+## 14. AI coding agents
+
+In 2026 much of the code in a Veld project will be written by agents such as Claude Code, Cursor or Codex. Veld already suits them: a contract is a small, exact spec, output is deterministic, and the rules give a checkable definition of done. This section makes that explicit.
+
+### CLI and a skill, not a local MCP server
+
+Practitioner write-ups and the one measured comparison we found agree on a split. For a *local* coding agent, a CLI with structured output plus an Agent Skill (a `SKILL.md` the agent loads only when relevant) is cheaper and more reliable, because an MCP server puts all its tool definitions into every request. MCP still wins for remote, shared or authenticated access by end users. So:
+
+- **No `veld mcp` server for coding agents.** The agent runs `veld` directly, and the existing LSP gives it go-to-definition and hover.
+- **One official Veld skill** ships with Veld (in the repo and the npm/pip packages, not generated into projects). It teaches the loop below in about a page.
+- **MCP stays where it wins:** `veld export mcp` (P4) turns *your product's* API into tools for end-user agents.
+
+```mermaid
+flowchart LR
+  A[Agent edits contract] --> B[veld check --format json]
+  B -- fix-its --> A
+  B --> C[veld generate]
+  C --> D[Agent writes handlers]
+  D --> E[veld test]
+  E -- failing example --> D
+  E --> F[commit: veld guard]
+  F --> G[PR: veld diff --format markdown]
+```
+
+| Feature | What it does | Status |
+|---|---|---|
+| **`veld context`** | Prints a compact summary of the contract (types, endpoints, rules, events) sized for an agent's context window. `-p bookings` for one member, `--format json` for tools. Prints only; writes no files. | accepted |
+| **`veld guard`** | A pre-commit or agent hook. It uses the existing output manifest to reject edits to generated files, and tells the agent to change the contract and regenerate instead. | accepted |
+| **PR summary** | `veld diff --format markdown`: contract changes for a PR comment, breaking ones first, with the owning teams of affected consumers. | accepted |
+| **`veld check --impl`** | Runs the target's compiler (`tsc`, `javac`, `cargo check`) against the generated interfaces and reports, in Veld's words, operations with no handler and facts with no loader. | accepted |
+| **`--format json` everywhere** | Every command gets machine-readable output and stable exit codes. Diagnostics carry **fix-its**: the exact replacement text, so an agent or the editor applies the fix without guessing. | to confirm |
+| **Example-driven loop** | `veld generate --stubs` writes empty handler files that fail; the `example` blocks in the contract (§2) are the acceptance tests. The agent fills handlers until `veld test` passes. | to confirm |
+| **`veld impact`** | Before a change, lists what it touches: generated files and consuming members in this workspace, and consumers in other repos that depend on the published package in the Veld registry. | to confirm |
+
+### Agents roadmap
+
+| Phase | Size | Work | Gate |
+|---|---|---|---|
+| **A1. Agent-ready CLI** | 1 week | `--format json` and fix-its, `veld context`, `veld guard`, the markdown PR summary. | An agent fixes a broken contract from JSON diagnostics alone. |
+| **A2. The loop** | 1 week | The Veld skill, `check --impl`, stubs and `veld impact` if confirmed. | Starting from the booking contract and empty stubs, an agent reaches green `veld test` without human edits. |
+
+## 15. Non-goals and risks
 
 ### What belongs in the contract, and what stays in code
 
@@ -555,17 +686,21 @@ saga Checkout(body: CheckoutRequest) -> Booking {
 - **Broker adapters multiply the test matrix.** Every adapter is tested against the same event vectors on the memory broker first; only E2/E3 toolchain tests need real brokers.
 - **Adoption.** Everything is optional and incremental. A contract with no rules or events generates exactly what it does today, byte for byte.
 
-## 14. Decisions
+## 16. Decisions
 
 | Question | Decision (2026-11-22) |
 |---|---|
 | Rule language | Veld's own syntax: CEL-style expressions, Cedar-style policies, OCL cited as the foundation |
 | Keywords | `rule` / `require` / `ensure` |
-| Output checks in production | The developer chooses in `veld.toml`, per environment (§4) |
+| Output checks in production | The developer chooses, through the runtime config (§4) |
 | Solver | Optional external Z3, called like a plugin; `veld` stays one binary |
 | Scope | Phases 0 to 5; Phase 6 if time allows |
 | Events | Track E1 to E3. First brokers: Kafka and RabbitMQ, plus the built-in memory broker; NATS, SQS and Redis Streams in E3 |
 | Platform features | All eleven accepted as track P1 to P4 (§12) |
-| Overall size | Rules 0–5 (about 6 weeks), events E1–E3 (3 weeks), platform P1–P4 (5 weeks). With the three tracks overlapping, about 10 to 12 weeks for the team. Cut order if needed: Phase 6, then P4, then sagas (P3), then E3. |
+| `veld events replay` | Dropped: replaying a dead-letter queue is the broker's job |
+| Config layout | Workspace root plus one small `veld.toml` per member (§13). Proposed; owner to confirm details |
+| Runtime settings | Typed runtime config from any source; no forced env names (§13). Proposed |
+| AI agents | CLI plus an official skill, no local MCP server. Accepted: `veld context`, `veld guard`, PR summary, `check --impl`. To confirm: JSON output with fix-its, stubs, `veld impact` |
+| Overall size | Rules 0–5 (about 6 weeks), events E1–E3 (3 weeks), platform P1–P4 (5 weeks), agents A1–A2 (2 weeks), plus the config change (1 week). With the tracks overlapping, about 12 to 14 weeks for the team. Cut order if needed: Phase 6, then P4, then sagas (P3), then E3. |
 
 **Next step:** Phase 0, `spec/rules.md` and the first 40 rule vectors, for the owner to freeze.

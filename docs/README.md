@@ -21,7 +21,7 @@
 - [`spec/targets/`](../spec/targets): one document per built-in target.
 
 ## Proposals
-- [Rules and events](proposals/rules-and-events.md): business rules (invariants, state machines, policies, guarantees) and event-driven messaging (Kafka, RabbitMQ, NATS, SQS) in the contract. Not normative.
+- [Rules and events](proposals/rules-and-events.md): business rules (invariants, state machines, policies, guarantees) and event-driven messaging (Kafka, RabbitMQ, NATS, SQS), platform features, a workspace config layout and AI agent support. Not normative.
 
 ## Other
 - [`CLAUDE.md`](../CLAUDE.md): repository map, commands and the non-negotiable rules.
