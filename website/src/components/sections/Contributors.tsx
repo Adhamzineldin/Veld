@@ -54,7 +54,7 @@ const contributors = [
     },
   },
   {
-    name: 'Shahd',
+    name: 'Shahd Ahmed',
     role: 'Core Contributor',
     avatar: '',
     bio: 'Core member of the Veld team, building Veld 2.0.',
