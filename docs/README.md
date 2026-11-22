@@ -20,6 +20,9 @@
 - [`spec/plugin-protocol.md`](../spec/plugin-protocol.md): how Veld talks to emitter plugins.
 - [`spec/targets/`](../spec/targets): one document per built-in target.
 
+## Proposals
+- [Rules and events](proposals/rules-and-events.md): business rules (invariants, state machines, policies, guarantees) and event-driven messaging (Kafka, RabbitMQ, NATS, SQS) in the contract. Not normative.
+
 ## Other
 - [`CLAUDE.md`](../CLAUDE.md): repository map, commands and the non-negotiable rules.
 - [`archive/v1/`](../archive/v1): the old Go implementation, its docs and examples. Reference only (see its README).
