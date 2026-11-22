@@ -35,15 +35,18 @@ pub struct Session {
 }
 
 impl Session {
-    /// Starts `exe` with a fresh empty working directory and an environment holding only `PATH`.
+    /// Starts `exe` with a fresh empty working directory and an environment holding only `PATH`
+    /// (and the Windows essentials, see [`passed_env`]).
     pub fn spawn(name: &str, exe: &Path, cmd: &CommandLine) -> Result<Self, PluginError> {
         let cwd = tempfile::tempdir().map_err(|e| {
             PluginError::process(name, format!("cannot create a work directory: {e}"))
         })?;
         let mut command = Command::new(exe);
         command.args(&cmd.args).current_dir(cwd.path()).env_clear();
-        if let Some(path) = std::env::var_os("PATH") {
-            command.env("PATH", path);
+        for key in passed_env() {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
         }
         command
             .stdin(Stdio::piped())
@@ -152,6 +155,25 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         self.kill();
+    }
+}
+
+/// The variables a plugin inherits: `PATH`, plus on Windows the few a process cannot start
+/// without (Node aborts in its CSPRNG without `SystemRoot`, for example). Nothing else.
+fn passed_env() -> &'static [&'static str] {
+    if cfg!(windows) {
+        &[
+            "PATH",
+            "SystemRoot",
+            "SystemDrive",
+            "windir",
+            "TEMP",
+            "TMP",
+            "PATHEXT",
+            "ComSpec",
+        ]
+    } else {
+        &["PATH"]
     }
 }
 

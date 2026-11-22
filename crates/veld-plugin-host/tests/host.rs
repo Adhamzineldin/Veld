@@ -124,6 +124,17 @@ fn capability_check_applies_to_plugins_like_built_ins() {
     let _ = none;
 }
 
+/// What a Windows process cannot start without (Node aborts without `SystemRoot`), upper-cased.
+const WINDOWS_ESSENTIALS: &[&str] = &[
+    "SYSTEMROOT",
+    "SYSTEMDRIVE",
+    "WINDIR",
+    "TEMP",
+    "TMP",
+    "PATHEXT",
+    "COMSPEC",
+];
+
 #[test]
 fn plugin_runs_in_an_empty_directory_with_only_path_in_its_environment() {
     let ir = ir();
@@ -148,7 +159,7 @@ fn plugin_runs_in_an_empty_directory_with_only_path_in_its_environment() {
     assert!(
         names
             .iter()
-            .all(|k| k == "PATH" || (cfg!(windows) && k == "SYSTEMROOT")),
+            .all(|k| k == "PATH" || (cfg!(windows) && WINDOWS_ESSENTIALS.contains(&k.as_str()))),
         "{names:?}"
     );
     assert!(names.iter().any(|k| k == "PATH"), "{names:?}");

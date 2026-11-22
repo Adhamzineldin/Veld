@@ -59,6 +59,17 @@
   object-fit: cover;
 }
 
+.initials {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.3rem;
+  color: var(--accent2);
+  background: rgba(63, 185, 80, 0.15);
+}
+
 .name {
   font-size: 1.1rem;
   font-weight: 700;
