@@ -51,7 +51,7 @@ fn sha256_of_file(path: &std::path::Path) -> String {
 
 fn compile(dir: &std::path::Path) {
     let harness = harness().canonicalize().unwrap();
-    let clean = |p: PathBuf| p.to_string_lossy().trim_start_matches(r"\?\").to_string();
+    let clean = |p: PathBuf| p.to_string_lossy().trim_start_matches(r"\\?\").to_string();
     let tsc = clean(harness.join("typescript/bin/tsc"));
     let types = clean(harness.join("@types"));
     let out = Command::new("node")
