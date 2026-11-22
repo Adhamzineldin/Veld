@@ -1,0 +1,23 @@
+import { LiveClient } from '@veld/client-typescript';
+
+// Pass the URL of a running implementation of the Live contract.
+export async function streamingDemo(baseUrl: string) {
+  const live = new LiveClient({ baseUrl });
+
+  // SSE: the finite feed yields three typed Tick values.
+  for await (const tick of live.ticks({ count: 3 })) {
+    console.log(tick.n, tick.label);
+  }
+
+  // WebSocket: send a Say value and read a Heard reply.
+  const chat = live.chat({ room: 'lobby', nick: 'ada' });
+  try {
+    chat.send({ text: 'Hello!' });
+    for await (const reply of chat) {
+      console.log(reply.from, reply.text);
+      break;
+    }
+  } finally {
+    chat.close();
+  }
+}

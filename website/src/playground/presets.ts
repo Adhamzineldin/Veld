@@ -1,15 +1,13 @@
 import type { ProjectSpec, SourceFile, TargetSpec } from './types';
 
-export interface Preset {
+export interface Preset extends PresetMeta {
   id: string;
-  title: string;
-  blurb: string;
-  project: ProjectSpec;
-  target: TargetSpec;
+  usage: string;
   files: SourceFile[];
 }
 
 interface PresetMeta {
+  usageTitle: string;
   title: string;
   blurb: string;
   project: ProjectSpec;
@@ -22,6 +20,7 @@ const sources = import.meta.glob('./presets/*/*/**/*.veld', { query: '?raw', imp
   string,
   string
 >;
+const usages = import.meta.glob<string>('./presets/*/usage.ts.txt', { query: '?raw', import: 'default', eager: true });
 const metas = import.meta.glob('./presets/*/preset.json', { import: 'default', eager: true }) as Record<
   string,
   PresetMeta
@@ -38,7 +37,7 @@ function load(): Preset[] {
       .filter(([p]) => p.startsWith(prefix))
       .map(([p, text]) => ({ path: p.slice(prefix.length), text }))
       .sort((a, b) => a.path.localeCompare(b.path));
-    presets.push({ id, ...meta, files });
+    presets.push({ id, ...meta, files, usage: usages[prefix + 'usage.ts.txt'] });
   }
   const rank = (id: string) => {
     const i = ORDER.indexOf(id);

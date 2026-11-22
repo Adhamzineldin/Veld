@@ -1,5 +1,6 @@
 {
   "title": "Errors",
+  "usageTitle": "Handle a declared API error",
   "blurb": "Declared errors, status codes and the prelude errors.",
   "project": { "packages": [{ "name": "support" }] },
   "target": { "emitter": "typescript", "role": "client", "framework": "react" }

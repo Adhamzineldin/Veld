@@ -1,0 +1,11 @@
+import { createHelloHandler, NotFound, toExpress } from '@veld/server-node';
+
+// Mount this middleware with app.use(hello) on an Express application.
+export const hello = toExpress(createHelloHandler({
+  async greet({ name }) {
+    if (name.toLowerCase() === 'nobody') {
+      throw new NotFound({ resource: name });
+    }
+    return { message: `Hello, ${name}!` };
+  },
+}));

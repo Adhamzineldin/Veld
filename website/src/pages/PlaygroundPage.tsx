@@ -17,7 +17,7 @@ import {
 import { Engine } from '../playground/engine';
 import Editor, { type EditorHandle } from '../playground/Editor';
 import FileTree from '../playground/FileTree';
-import { langOf } from '../playground/highlight';
+import { highlight, langOf } from '../playground/highlight';
 import { defaultPreset, presets, type Preset } from '../playground/presets';
 import {
   OPENAPI_KEY,
@@ -178,7 +178,7 @@ export default function PlaygroundPage() {
   const [selected, setSelected] = useState<string | null>(null);
 
   const [newFile, setNewFile] = useState<string | null>(null);
-  const [copied, setCopied] = useState<'output' | 'link' | null>(null);
+  const [copied, setCopied] = useState<'output' | 'link' | 'usage' | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const editor = useRef<EditorHandle>(null);
 
@@ -255,6 +255,15 @@ export default function PlaygroundPage() {
 
   const stale = output !== null && (output.sources !== files || output.project !== project || output.targetKey !== specKey);
   const outFiles = useMemo(() => output?.files ?? [], [output]);
+  const preset = presets.find((p) => p.id === presetId);
+  const presetMatches = preset && choice.key === `${preset.target.emitter}:${preset.target.role}`
+    && choice.framework === (preset.target.framework ?? '') && choice.service === (preset.target.service ?? '')
+    && JSON.stringify(project) === JSON.stringify(preset.project) && files.length === preset.files.length
+    && files.every((f, i) => f.path === preset.files[i].path && f.text === preset.files[i].text);
+  const readme = outFiles.find((f) => f.path === 'README.md');
+  const usage = !output?.ok || stale ? null : presetMatches
+    ? { title: preset.usageTitle, text: preset.usage, lang: 'ts' as const }
+    : readme ? { title: `${kind?.label ?? 'Target'} guide`, text: readme.text, lang: 'md' as const } : null;
   const shown = outFiles.find((f) => f.path === selected) ?? outFiles.find((f) => f.path === pickDefault(outFiles)) ?? null;
   const diagnostics = useMemo(() => {
     const seen = new Set<string>();
@@ -307,9 +316,9 @@ export default function PlaygroundPage() {
     }
   }
 
-  async function copyOutput() {
-    if (shown && (await writeClipboard(shown.text))) {
-      setCopied('output');
+  async function copyText(text: string, source: 'output' | 'usage') {
+    if (await writeClipboard(text)) {
+      setCopied(source);
       setTimeout(() => setCopied(null), 1500);
     }
   }
@@ -442,8 +451,8 @@ export default function PlaygroundPage() {
           <div className={styles.options}>
             {frameworks.length > 0 && (
               <label className={styles.field}>
-                <span>Framework</span>
-                <select value={choice.framework} onChange={(e) => setChoice({ ...choice, framework: e.target.value })}>
+                <span id="playground-framework">Framework</span>
+                <select aria-labelledby="playground-framework" value={choice.framework} onChange={(e) => setChoice({ ...choice, framework: e.target.value })}>
                   {kind.role === 'client' && <option value="">none</option>}
                   {frameworks.map((f) => (
                     <option key={f} value={f}>
@@ -502,6 +511,18 @@ export default function PlaygroundPage() {
           </div>
         )}
       </div>
+
+      {usage && (
+        <details className={styles.usage}>
+          <summary>Usage example <span>{usage.title}</span></summary>
+          <div className={styles.usageBody}>
+            <button type="button" className={styles.btn} onClick={() => void copyText(usage.text, 'usage')}>
+              <Copy size={14} aria-hidden="true" /> {copied === 'usage' ? 'Example copied' : 'Copy example'}
+            </button>
+            <pre><code>{highlight(usage.text, usage.lang)}</code></pre>
+          </div>
+        </details>
+      )}
 
       <div className={styles.paneTabs} role="tablist" aria-label="Panes">
         <button type="button" role="tab" aria-selected={pane === 'contract'} onClick={() => setPane('contract')}>
@@ -634,7 +655,7 @@ export default function PlaygroundPage() {
               {stale && <span className={styles.stale}>last good output</span>}
             </div>
             <div className={styles.actions}>
-              <button type="button" className={styles.btn} onClick={() => void copyOutput()} disabled={!shown}>
+              <button type="button" className={styles.btn} onClick={() => shown && void copyText(shown.text, 'output')} disabled={!shown}>
                 {copied === 'output' ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
                 {copied === 'output' ? 'Copied' : 'Copy'}
               </button>

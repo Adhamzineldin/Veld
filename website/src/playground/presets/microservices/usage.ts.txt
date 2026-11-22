@@ -1,0 +1,13 @@
+import { transactions, type Account } from '@veld/server-node';
+
+// The Accounts server exports the client for the service it consumes.
+export async function statementFor(account: Account, token: string) {
+  const client = new transactions.TransactionsClient({
+    auth: { bearer: () => token },
+  });
+  const history = await client.getHistory({
+    accountId: account.id,
+    query: { page: 1, size: 5 },
+  });
+  return { account, recent: history.items };
+}

@@ -1,5 +1,6 @@
 {
   "title": "Shared library",
+  "usageTitle": "Use the shared Money type in an Orders handler",
   "blurb": "A library package that two services import from.",
   "project": {
     "packages": [
