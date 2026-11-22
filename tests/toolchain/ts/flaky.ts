@@ -63,7 +63,12 @@ function ws(room: string, socket: ServerSocket): void {
     socket.close(1008);
   } else if (kind === 'resume' && n === 1) {
     socket.send(heard(0, 'a'));
-    setTimeout(() => socket.terminate(), 20);
+    // Drop once the client has answered a ping sent after the frame, so frame 0 was received
+    // first; a fixed timer races the client's scheduling on a loaded machine.
+    const drop = (): void => socket.terminate();
+    socket.once('pong', drop);
+    socket.ping();
+    setTimeout(drop, 2000);
   } else if (kind === 'resume') {
     socket.send(heard(1, 'b'));
     socket.send(heard(2, 'c'));

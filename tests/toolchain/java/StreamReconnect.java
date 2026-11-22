@@ -57,6 +57,9 @@ public final class StreamReconnect {
     List<Integer> got = new ArrayList<>();
     Check.thrown(VeldTransportError.class, "a broken stream", () -> {
       try (Stream<Tick> s = plain.roomEvents(new RoomEventsRequest("resume-plain"))) {
+        // The server drops the connection 10 ms after the two events: read only after the break,
+        // so the events that arrived before it must still be delivered.
+        sleep(200);
         s.forEach(t -> got.add(t.n()));
       }
     });

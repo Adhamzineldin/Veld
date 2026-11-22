@@ -157,7 +157,11 @@ final class StreamScenario {
 
     // WebSocket auth: the same hook, a problem frame, close 1008; the token travels in the query.
     WsChannel<Heard, Say> rejected = anonymous.echo();
-    rejected.send(new Say("hi", null));
+    try {
+      rejected.send(new Say("hi", null));
+    } catch (VeldTransportError e) {
+      // The rejection may already have closed the socket; the error frame must still be received.
+    }
     Check.equal("Unauthorized", Check.thrown(VeldError.class, "ws no token", rejected::receive).title(), "ws title");
     WsChannel<Heard, Say> bad = wrong.echo();
     Check.equal("Unauthorized", Check.thrown(VeldError.class, "ws bad token", bad::receive).title(), "ws bad token");
