@@ -1,0 +1,71 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+warning[W0001]: doc comment is not attached to anything
+ --> app/app.veld:3:1
+  |
+3 | /// This documents nothing.
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+== ir ==
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "A",
+      "qualified": "app:app.A",
+      "sig": "veld:app/A@92ede72f7fbd96ce",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "a",
+          "wire": "a",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 1,
+            "col": 11
+          }
+        }
+      ]
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

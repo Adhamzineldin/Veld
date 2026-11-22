@@ -1,0 +1,801 @@
+---
+source: crates/veld-tools/tests/openapi_snapshots.rs
+expression: "export(\"ok_spec_example\")"
+---
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Orders",
+    "version": "1.0.0",
+    "description": "Order management."
+  },
+  "servers": [
+    {
+      "url": "http://orders:3002"
+    }
+  ],
+  "paths": {
+    "/orders": {
+      "get": {
+        "operationId": "Orders.listOrders",
+        "tags": [
+          "Orders"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/orders.Status"
+            }
+          },
+          {
+            "name": "customer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/orders.Order"
+                      }
+                    },
+                    "total": {
+                      "type": "string",
+                      "format": "int64"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "format": "int32"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "format": "int32"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "size"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Unauthorized@ee241dccf5c82e14"
+                    },
+                    "title": {
+                      "const": "Unauthorized"
+                    },
+                    "status": {
+                      "const": 401
+                    },
+                    "operation": {
+                      "const": "veld:orders/Orders.listOrders@ef059c89613c7f54"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Unauthorized"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/ValidationError@7836aff24d914bea"
+                    },
+                    "title": {
+                      "const": "ValidationError"
+                    },
+                    "status": {
+                      "const": 422
+                    },
+                    "operation": {
+                      "const": "veld:orders/Orders.listOrders@ef059c89613c7f54"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.ValidationError"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:orders/Orders.listOrders@ef059c89613c7f54"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-veld-op-sig": "veld:orders/Orders.listOrders@ef059c89613c7f54"
+      },
+      "post": {
+        "operationId": "Orders.createOrder",
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/orders.CreateOrder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/orders.Order"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Unauthorized@ee241dccf5c82e14"
+                    },
+                    "title": {
+                      "const": "Unauthorized"
+                    },
+                    "status": {
+                      "const": 401
+                    },
+                    "operation": {
+                      "const": "veld:orders/Orders.createOrder@b98e19393450fc10"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Unauthorized"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "OutOfStock",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:orders/OutOfStock@a530338d0d4c48f9"
+                    },
+                    "title": {
+                      "const": "OutOfStock"
+                    },
+                    "status": {
+                      "const": 409
+                    },
+                    "operation": {
+                      "const": "veld:orders/Orders.createOrder@b98e19393450fc10"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/orders.OutOfStock"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/ValidationError@7836aff24d914bea"
+                    },
+                    "title": {
+                      "const": "ValidationError"
+                    },
+                    "status": {
+                      "const": 422
+                    },
+                    "operation": {
+                      "const": "veld:orders/Orders.createOrder@b98e19393450fc10"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.ValidationError"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:orders/Orders.createOrder@b98e19393450fc10"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-veld-op-sig": "veld:orders/Orders.createOrder@b98e19393450fc10"
+      }
+    },
+    "/orders/health": {
+      "get": {
+        "operationId": "Orders.health",
+        "tags": [
+          "Orders"
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:orders/Orders.health@4e6d5e894df71e8b"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-op-sig": "veld:orders/Orders.health@4e6d5e894df71e8b"
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "operationId": "Orders.getOrder",
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Fetch one order.",
+        "description": "Fetch one order.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/orders.Order"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Unauthorized@ee241dccf5c82e14"
+                    },
+                    "title": {
+                      "const": "Unauthorized"
+                    },
+                    "status": {
+                      "const": 401
+                    },
+                    "operation": {
+                      "const": "veld:orders/Orders.getOrder@48e9882b53747a6d"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Unauthorized"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/NotFound@a0eaf7a3323dce7c"
+                    },
+                    "title": {
+                      "const": "NotFound"
+                    },
+                    "status": {
+                      "const": 404
+                    },
+                    "operation": {
+                      "const": "veld:orders/Orders.getOrder@48e9882b53747a6d"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.NotFound"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/ValidationError@7836aff24d914bea"
+                    },
+                    "title": {
+                      "const": "ValidationError"
+                    },
+                    "status": {
+                      "const": 422
+                    },
+                    "operation": {
+                      "const": "veld:orders/Orders.getOrder@48e9882b53747a6d"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.ValidationError"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:orders/Orders.getOrder@48e9882b53747a6d"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-veld-op-sig": "veld:orders/Orders.getOrder@48e9882b53747a6d"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "iam.User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "description": "A platform user.",
+        "x-veld-sig": "veld:iam/User@98280e83c0377c54"
+      },
+      "orders.CreateOrder": {
+        "type": "object",
+        "properties": {
+          "customer": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/orders.OrderItem"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "customer",
+          "items"
+        ],
+        "x-veld-sig": "veld:orders/CreateOrder@f515f80f8406c979"
+      },
+      "orders.Order": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "customer": {
+            "$ref": "#/components/schemas/iam.User"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/orders.OrderItem"
+            },
+            "minItems": 1
+          },
+          "status": {
+            "$ref": "#/components/schemas/orders.Status",
+            "default": "pending"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "id",
+          "customer",
+          "items"
+        ],
+        "description": "A customer order.",
+        "x-veld-sig": "veld:orders/Order@2206a128bf3c3fe3"
+      },
+      "orders.OrderFilter": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/orders.Status"
+          },
+          "customer": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "x-veld-sig": "veld:orders/OrderFilter@ee351b9b3cfd286a"
+      },
+      "orders.OrderItem": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "sku",
+          "quantity"
+        ],
+        "x-veld-sig": "veld:orders/OrderItem@ed09a732f1c50576"
+      },
+      "orders.OutOfStock": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku"
+        ],
+        "x-veld-sig": "veld:orders/OutOfStock@a530338d0d4c48f9"
+      },
+      "orders.Status": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "paid",
+          "shipped"
+        ],
+        "x-veld-sig": "veld:orders/Status@25be8907dd2bc1d3"
+      },
+      "veld.Internal": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "x-veld-sig": "veld:veld/Internal@c2b1f6bb355266e7"
+      },
+      "veld.NotFound": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string"
+          }
+        },
+        "x-veld-sig": "veld:veld/NotFound@a0eaf7a3323dce7c"
+      },
+      "veld.Unauthorized": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "x-veld-sig": "veld:veld/Unauthorized@ee241dccf5c82e14"
+      },
+      "veld.ValidationError": {
+        "type": "object",
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/veld.ValidationIssue"
+            }
+          }
+        },
+        "required": [
+          "issues"
+        ],
+        "x-veld-sig": "veld:veld/ValidationError@7836aff24d914bea"
+      },
+      "veld.ValidationIssue": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "code",
+          "message"
+        ],
+        "x-veld-sig": "veld:veld/ValidationIssue@253beeea259ebf75"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "x-veld-ir-version": "1.0"
+}

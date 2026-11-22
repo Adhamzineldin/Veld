@@ -1,0 +1,18 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0406]: error `Gone` has default status 200, which is not 4xx or 5xx
+ --> app/app.veld:1:12
+  |
+1 | error Gone 200 { reason: string }
+  |            ^^^
+
+error[E0406]: error `Weird` has default status 700, which is not 4xx or 5xx
+ --> app/app.veld:2:13
+  |
+2 | error Weird 700 { reason: string }
+  |             ^^^
+
+== ir ==
+(no IR: compilation failed)

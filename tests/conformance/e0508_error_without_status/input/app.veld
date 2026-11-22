@@ -1,0 +1,5 @@
+error Odd { a: int }
+
+service S at "/s" {
+  get "/" f() -> Odd
+}

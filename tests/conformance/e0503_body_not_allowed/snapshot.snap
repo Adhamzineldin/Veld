@@ -1,0 +1,18 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0503]: `body` is not allowed on `get` endpoints
+ --> app/app.veld:4:13
+  |
+4 |   get "/" f(body: M)
+  |             ^^^^
+
+error[E0503]: `body` is not allowed on `head` endpoints
+ --> app/app.veld:5:15
+  |
+5 |   head "/h" g(body: M)
+  |               ^^^^
+
+== ir ==
+(no IR: compilation failed)

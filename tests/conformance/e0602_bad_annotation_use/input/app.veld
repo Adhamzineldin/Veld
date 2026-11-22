@@ -1,0 +1,10 @@
+@readonly
+model A {
+  a: int @auth(bearer)
+  b: int @wire
+  c: string @min(1)
+  d: int @length(min: 1)
+  e: int @min(5) @max(1)
+  f: string @format(nope)
+  g: int @readonly @readonly
+}

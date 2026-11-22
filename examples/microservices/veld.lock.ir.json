@@ -1,0 +1,5113 @@
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "accounts",
+      "kind": "service"
+    },
+    {
+      "id": 1,
+      "name": "cards",
+      "kind": "service"
+    },
+    {
+      "id": 2,
+      "name": "iam",
+      "kind": "service"
+    },
+    {
+      "id": 3,
+      "name": "notifications",
+      "kind": "service"
+    },
+    {
+      "id": 4,
+      "name": "transactions",
+      "kind": "service"
+    },
+    {
+      "id": 5,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "accounts",
+      "name": "Account",
+      "qualified": "accounts:accounts.Account",
+      "sig": "veld:accounts/Account@71e45bbb1ef3ac3b",
+      "docs": "A NexusBank financial account.",
+      "deprecated": null,
+      "origin": {
+        "file": "accounts.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 9,
+            "col": 3
+          }
+        },
+        {
+          "name": "userId",
+          "wire": "userId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 10,
+            "col": 3
+          }
+        },
+        {
+          "name": "type",
+          "wire": "type",
+          "type": {
+            "decl": 4
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 11,
+            "col": 3
+          }
+        },
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 2
+          },
+          "optional": false,
+          "default": {
+            "lit": "enum_variant",
+            "value": {
+              "name": "active",
+              "wire": "active"
+            }
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 12,
+            "col": 3
+          }
+        },
+        {
+          "name": "name",
+          "wire": "name",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": 80,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 13,
+            "col": 3
+          }
+        },
+        {
+          "name": "currency",
+          "wire": "currency",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": "^[A-Z]{3}$",
+            "format": null
+          },
+          "example": null,
+          "docs": "ISO 4217 currency code.",
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 15,
+            "col": 3
+          }
+        },
+        {
+          "name": "balance",
+          "wire": "balance",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 16,
+            "col": 3
+          }
+        },
+        {
+          "name": "iban",
+          "wire": "iban",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 17,
+            "col": 3
+          }
+        },
+        {
+          "name": "createdAt",
+          "wire": "createdAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 18,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "accounts",
+      "name": "AccountNotActive",
+      "qualified": "accounts:accounts.AccountNotActive",
+      "sig": "veld:accounts/AccountNotActive@2889f017c11f3e34",
+      "docs": "The account is frozen or closed and cannot be changed.",
+      "deprecated": null,
+      "origin": {
+        "file": "accounts.veld",
+        "line": 43,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": [
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 2
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 44,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "accounts",
+      "name": "AccountStatus",
+      "qualified": "accounts:accounts.AccountStatus",
+      "sig": "veld:accounts/AccountStatus@f997f83409e0a926",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "accounts.veld",
+        "line": 5,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "active",
+          "wire": "active",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "frozen",
+          "wire": "frozen",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "closed",
+          "wire": "closed",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "package": 0,
+      "module": "accounts",
+      "name": "AccountSummary",
+      "qualified": "accounts:accounts.AccountSummary",
+      "sig": "veld:accounts/AccountSummary@0b9d2b0ee5392464",
+      "docs": "Portfolio overview across all accounts of a user.",
+      "deprecated": null,
+      "origin": {
+        "file": "accounts.veld",
+        "line": 29,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "totalBalance",
+          "wire": "totalBalance",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 30,
+            "col": 3
+          }
+        },
+        {
+          "name": "accountCount",
+          "wire": "accountCount",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 31,
+            "col": 3
+          }
+        },
+        {
+          "name": "primaryAccount",
+          "wire": "primaryAccount",
+          "type": {
+            "decl": 0
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 32,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "package": 0,
+      "module": "accounts",
+      "name": "AccountType",
+      "qualified": "accounts:accounts.AccountType",
+      "sig": "veld:accounts/AccountType@1f24703cbe8471a5",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "accounts.veld",
+        "line": 3,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "checking",
+          "wire": "checking",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "savings",
+          "wire": "savings",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "investment",
+          "wire": "investment",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "package": 0,
+      "module": "accounts",
+      "name": "CreateAccountInput",
+      "qualified": "accounts:accounts.CreateAccountInput",
+      "sig": "veld:accounts/CreateAccountInput@9b7126fc6fad73ed",
+      "docs": "Payload to open a new account.",
+      "deprecated": null,
+      "origin": {
+        "file": "accounts.veld",
+        "line": 22,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "type",
+          "wire": "type",
+          "type": {
+            "decl": 4
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 23,
+            "col": 3
+          }
+        },
+        {
+          "name": "name",
+          "wire": "name",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": 80,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 24,
+            "col": 3
+          }
+        },
+        {
+          "name": "currency",
+          "wire": "currency",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": "^[A-Z]{3}$",
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 25,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "package": 0,
+      "module": "accounts",
+      "name": "Statement",
+      "qualified": "accounts:accounts.Statement",
+      "sig": "veld:accounts/Statement@45ea18d775a03310",
+      "docs": "An account together with its latest transactions.\n`Transaction` comes from the `transactions` service, which in turn imports `Account`.",
+      "deprecated": null,
+      "origin": {
+        "file": "accounts.veld",
+        "line": 37,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "account",
+          "wire": "account",
+          "type": {
+            "decl": 0
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 38,
+            "col": 3
+          }
+        },
+        {
+          "name": "recent",
+          "wire": "recent",
+          "type": {
+            "list": {
+              "decl": 26
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "accounts.veld",
+            "line": 39,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "package": 1,
+      "module": "cards",
+      "name": "Card",
+      "qualified": "cards:cards.Card",
+      "sig": "veld:cards/Card@f3ee7a4d26531719",
+      "docs": "A payment card linked to an account.",
+      "deprecated": null,
+      "origin": {
+        "file": "cards.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 9,
+            "col": 3
+          }
+        },
+        {
+          "name": "accountId",
+          "wire": "accountId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 10,
+            "col": 3
+          }
+        },
+        {
+          "name": "userId",
+          "wire": "userId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 11,
+            "col": 3
+          }
+        },
+        {
+          "name": "type",
+          "wire": "type",
+          "type": {
+            "decl": 11
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 12,
+            "col": 3
+          }
+        },
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 10
+          },
+          "optional": false,
+          "default": {
+            "lit": "enum_variant",
+            "value": {
+              "name": "active",
+              "wire": "active"
+            }
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 13,
+            "col": 3
+          }
+        },
+        {
+          "name": "network",
+          "wire": "network",
+          "type": {
+            "decl": 9
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 14,
+            "col": 3
+          }
+        },
+        {
+          "name": "last4",
+          "wire": "last4",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": "^[0-9]{4}$",
+            "format": null
+          },
+          "example": null,
+          "docs": "The last four digits. The full number is never exposed.",
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 16,
+            "col": 3
+          }
+        },
+        {
+          "name": "expiresAt",
+          "wire": "expiresAt",
+          "type": {
+            "scalar": "date"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 17,
+            "col": 3
+          }
+        },
+        {
+          "name": "createdAt",
+          "wire": "createdAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 18,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "package": 1,
+      "module": "cards",
+      "name": "CardCancelled",
+      "qualified": "cards:cards.CardCancelled",
+      "sig": "veld:cards/CardCancelled@2b033be9caf9c0dc",
+      "docs": "The card is cancelled and cannot be changed.",
+      "deprecated": null,
+      "origin": {
+        "file": "cards.veld",
+        "line": 29,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": [
+        {
+          "name": "cancelledAt",
+          "wire": "cancelledAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 30,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "package": 1,
+      "module": "cards",
+      "name": "CardNetwork",
+      "qualified": "cards:cards.CardNetwork",
+      "sig": "veld:cards/CardNetwork@f11fc6fdf2c81a4a",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "cards.veld",
+        "line": 5,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "visa",
+          "wire": "visa",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "mastercard",
+          "wire": "mastercard",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "package": 1,
+      "module": "cards",
+      "name": "CardStatus",
+      "qualified": "cards:cards.CardStatus",
+      "sig": "veld:cards/CardStatus@ca4c8035b5a8b26a",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "cards.veld",
+        "line": 3,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "active",
+          "wire": "active",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "frozen",
+          "wire": "frozen",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "cancelled",
+          "wire": "cancelled",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "package": 1,
+      "module": "cards",
+      "name": "CardType",
+      "qualified": "cards:cards.CardType",
+      "sig": "veld:cards/CardType@37ce00b92be74e86",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "cards.veld",
+        "line": 1,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "debit",
+          "wire": "debit",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "credit",
+          "wire": "credit",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "package": 1,
+      "module": "cards",
+      "name": "RequestCardInput",
+      "qualified": "cards:cards.RequestCardInput",
+      "sig": "veld:cards/RequestCardInput@086c3751da2be93b",
+      "docs": "Requests a new card for an account.",
+      "deprecated": null,
+      "origin": {
+        "file": "cards.veld",
+        "line": 22,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "accountId",
+          "wire": "accountId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 23,
+            "col": 3
+          }
+        },
+        {
+          "name": "type",
+          "wire": "type",
+          "type": {
+            "decl": 11
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 24,
+            "col": 3
+          }
+        },
+        {
+          "name": "network",
+          "wire": "network",
+          "type": {
+            "decl": 9
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "cards.veld",
+            "line": 25,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "package": 2,
+      "module": "users",
+      "name": "EmailTaken",
+      "qualified": "iam:users.EmailTaken",
+      "sig": "veld:iam/EmailTaken@bff3f1f2f3722f17",
+      "docs": "The email address is already registered.",
+      "deprecated": null,
+      "origin": {
+        "file": "users.veld",
+        "line": 47,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": [
+        {
+          "name": "email",
+          "wire": "email",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 48,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "package": 2,
+      "module": "users",
+      "name": "LoginInput",
+      "qualified": "iam:users.LoginInput",
+      "sig": "veld:iam/LoginInput@1badf1b236db7da8",
+      "docs": "Credentials for email and password authentication.",
+      "deprecated": null,
+      "origin": {
+        "file": "users.veld",
+        "line": 21,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "email",
+          "wire": "email",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": "email"
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 22,
+            "col": 3
+          }
+        },
+        {
+          "name": "password",
+          "wire": "password",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 23,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "package": 2,
+      "module": "users",
+      "name": "RefreshInput",
+      "qualified": "iam:users.RefreshInput",
+      "sig": "veld:iam/RefreshInput@becdae2ef28a2fcd",
+      "docs": "Exchanges a refresh token for a new token pair.",
+      "deprecated": null,
+      "origin": {
+        "file": "users.veld",
+        "line": 35,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "refreshToken",
+          "wire": "refreshToken",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 36,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "package": 2,
+      "module": "users",
+      "name": "RegisterInput",
+      "qualified": "iam:users.RegisterInput",
+      "sig": "veld:iam/RegisterInput@ef17c4b1f4152087",
+      "docs": "New user registration payload.",
+      "deprecated": null,
+      "origin": {
+        "file": "users.veld",
+        "line": 12,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "email",
+          "wire": "email",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": "email"
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 13,
+            "col": 3
+          }
+        },
+        {
+          "name": "password",
+          "wire": "password",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 12,
+            "max_len": 128,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 14,
+            "col": 3
+          }
+        },
+        {
+          "name": "firstName",
+          "wire": "firstName",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": 80,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 15,
+            "col": 3
+          }
+        },
+        {
+          "name": "lastName",
+          "wire": "lastName",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": 80,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 16,
+            "col": 3
+          }
+        },
+        {
+          "name": "phone",
+          "wire": "phone",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": "^\\+?[0-9]{7,15}$",
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 17,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "package": 2,
+      "module": "users",
+      "name": "TokenPair",
+      "qualified": "iam:users.TokenPair",
+      "sig": "veld:iam/TokenPair@9ad53a329126ce06",
+      "docs": "A JWT access token and its refresh token.",
+      "deprecated": null,
+      "origin": {
+        "file": "users.veld",
+        "line": 27,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "accessToken",
+          "wire": "accessToken",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 28,
+            "col": 3
+          }
+        },
+        {
+          "name": "refreshToken",
+          "wire": "refreshToken",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 29,
+            "col": 3
+          }
+        },
+        {
+          "name": "expiresIn",
+          "wire": "expiresIn",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": "Seconds until the access token expires.",
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 31,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "package": 2,
+      "module": "users",
+      "name": "UpdateProfileInput",
+      "qualified": "iam:users.UpdateProfileInput",
+      "sig": "veld:iam/UpdateProfileInput@3ae8db75c9cdfc1e",
+      "docs": "Fields a user may change on their own profile.",
+      "deprecated": null,
+      "origin": {
+        "file": "users.veld",
+        "line": 40,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "firstName",
+          "wire": "firstName",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": 80,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 41,
+            "col": 3
+          }
+        },
+        {
+          "name": "lastName",
+          "wire": "lastName",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": 80,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 42,
+            "col": 3
+          }
+        },
+        {
+          "name": "phone",
+          "wire": "phone",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": "^\\+?[0-9]{7,15}$",
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 43,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "package": 2,
+      "module": "users",
+      "name": "User",
+      "qualified": "iam:users.User",
+      "sig": "veld:iam/User@758e029ac98fef80",
+      "docs": "A registered NexusBank user.",
+      "deprecated": null,
+      "origin": {
+        "file": "users.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 3,
+            "col": 3
+          }
+        },
+        {
+          "name": "email",
+          "wire": "email",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": "email"
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 4,
+            "col": 3
+          }
+        },
+        {
+          "name": "firstName",
+          "wire": "firstName",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": 80,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 5,
+            "col": 3
+          }
+        },
+        {
+          "name": "lastName",
+          "wire": "lastName",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": 80,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 6,
+            "col": 3
+          }
+        },
+        {
+          "name": "phone",
+          "wire": "phone",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": "^\\+?[0-9]{7,15}$",
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 7,
+            "col": 3
+          }
+        },
+        {
+          "name": "createdAt",
+          "wire": "createdAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 8,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "package": 3,
+      "module": "notifications",
+      "name": "Notification",
+      "qualified": "notifications:notifications.Notification",
+      "sig": "veld:notifications/Notification@4467e2ef13d60005",
+      "docs": "A user-facing notification.",
+      "deprecated": null,
+      "origin": {
+        "file": "notifications.veld",
+        "line": 4,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 5,
+            "col": 3
+          }
+        },
+        {
+          "name": "userId",
+          "wire": "userId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 6,
+            "col": 3
+          }
+        },
+        {
+          "name": "type",
+          "wire": "type",
+          "type": {
+            "decl": 22
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 7,
+            "col": 3
+          }
+        },
+        {
+          "name": "title",
+          "wire": "title",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 8,
+            "col": 3
+          }
+        },
+        {
+          "name": "body",
+          "wire": "body",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 9,
+            "col": 3
+          }
+        },
+        {
+          "name": "read",
+          "wire": "read",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": {
+            "lit": "bool",
+            "value": false
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 10,
+            "col": 3
+          }
+        },
+        {
+          "name": "createdAt",
+          "wire": "createdAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 11,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "package": 3,
+      "module": "notifications",
+      "name": "NotificationPreferences",
+      "qualified": "notifications:notifications.NotificationPreferences",
+      "sig": "veld:notifications/NotificationPreferences@43044058cc5a3074",
+      "docs": "Per-category opt-in settings.",
+      "deprecated": null,
+      "origin": {
+        "file": "notifications.veld",
+        "line": 15,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "userId",
+          "wire": "userId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 16,
+            "col": 3
+          }
+        },
+        {
+          "name": "transaction",
+          "wire": "transaction",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": {
+            "lit": "bool",
+            "value": true
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 17,
+            "col": 3
+          }
+        },
+        {
+          "name": "security",
+          "wire": "security",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": {
+            "lit": "bool",
+            "value": true
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 18,
+            "col": 3
+          }
+        },
+        {
+          "name": "marketing",
+          "wire": "marketing",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": {
+            "lit": "bool",
+            "value": false
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 19,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "package": 3,
+      "module": "notifications",
+      "name": "NotificationType",
+      "qualified": "notifications:notifications.NotificationType",
+      "sig": "veld:notifications/NotificationType@e2b38e05670a0740",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "notifications.veld",
+        "line": 1,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "transaction",
+          "wire": "transaction",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "security",
+          "wire": "security",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "marketing",
+          "wire": "marketing",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "system",
+          "wire": "system",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "package": 3,
+      "module": "notifications",
+      "name": "UpdatePreferencesInput",
+      "qualified": "notifications:notifications.UpdatePreferencesInput",
+      "sig": "veld:notifications/UpdatePreferencesInput@07e1d52f031e5b5e",
+      "docs": "Partial update of the preferences.",
+      "deprecated": null,
+      "origin": {
+        "file": "notifications.veld",
+        "line": 23,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "transaction",
+          "wire": "transaction",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 24,
+            "col": 3
+          }
+        },
+        {
+          "name": "security",
+          "wire": "security",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 25,
+            "col": 3
+          }
+        },
+        {
+          "name": "marketing",
+          "wire": "marketing",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "notifications.veld",
+            "line": 26,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "package": 4,
+      "module": "transactions",
+      "name": "HistoryFilter",
+      "qualified": "transactions:transactions.HistoryFilter",
+      "sig": "veld:transactions/HistoryFilter@e3d190bb423b7315",
+      "docs": "Filters for the transaction history.",
+      "deprecated": null,
+      "origin": {
+        "file": "transactions.veld",
+        "line": 30,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 27
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 31,
+            "col": 3
+          }
+        },
+        {
+          "name": "type",
+          "wire": "type",
+          "type": {
+            "decl": 28
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 32,
+            "col": 3
+          }
+        },
+        {
+          "name": "page",
+          "wire": "page",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": {
+            "lit": "int",
+            "value": 1
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": 1.0,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 33,
+            "col": 3
+          }
+        },
+        {
+          "name": "size",
+          "wire": "size",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": {
+            "lit": "int",
+            "value": 20
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": 1.0,
+            "max": 100.0,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 34,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "package": 4,
+      "module": "transactions",
+      "name": "InsufficientFunds",
+      "qualified": "transactions:transactions.InsufficientFunds",
+      "sig": "veld:transactions/InsufficientFunds@b7ad6bdcaeb16e82",
+      "docs": "The source account does not hold enough money.",
+      "deprecated": null,
+      "origin": {
+        "file": "transactions.veld",
+        "line": 45,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "available",
+          "wire": "available",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 46,
+            "col": 3
+          }
+        },
+        {
+          "name": "required",
+          "wire": "required",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 47,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "package": 4,
+      "module": "transactions",
+      "name": "Transaction",
+      "qualified": "transactions:transactions.Transaction",
+      "sig": "veld:transactions/Transaction@e4638b1d86cb6696",
+      "docs": "A single financial transaction.",
+      "deprecated": null,
+      "origin": {
+        "file": "transactions.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 9,
+            "col": 3
+          }
+        },
+        {
+          "name": "accountId",
+          "wire": "accountId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 10,
+            "col": 3
+          }
+        },
+        {
+          "name": "type",
+          "wire": "type",
+          "type": {
+            "decl": 28
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 11,
+            "col": 3
+          }
+        },
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 27
+          },
+          "optional": false,
+          "default": {
+            "lit": "enum_variant",
+            "value": {
+              "name": "pending",
+              "wire": "pending"
+            }
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 12,
+            "col": 3
+          }
+        },
+        {
+          "name": "amount",
+          "wire": "amount",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 13,
+            "col": 3
+          }
+        },
+        {
+          "name": "currency",
+          "wire": "currency",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": "^[A-Z]{3}$",
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 14,
+            "col": 3
+          }
+        },
+        {
+          "name": "description",
+          "wire": "description",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": 140,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 15,
+            "col": 3
+          }
+        },
+        {
+          "name": "reference",
+          "wire": "reference",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 16,
+            "col": 3
+          }
+        },
+        {
+          "name": "createdAt",
+          "wire": "createdAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 17,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "package": 4,
+      "module": "transactions",
+      "name": "TransactionStatus",
+      "qualified": "transactions:transactions.TransactionStatus",
+      "sig": "veld:transactions/TransactionStatus@18cde2b34c692988",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "transactions.veld",
+        "line": 5,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "pending",
+          "wire": "pending",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "completed",
+          "wire": "completed",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "failed",
+          "wire": "failed",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "reversed",
+          "wire": "reversed",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "package": 4,
+      "module": "transactions",
+      "name": "TransactionType",
+      "qualified": "transactions:transactions.TransactionType",
+      "sig": "veld:transactions/TransactionType@fa481995bf0b8d2e",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "transactions.veld",
+        "line": 3,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "credit",
+          "wire": "credit",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "debit",
+          "wire": "debit",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "transfer",
+          "wire": "transfer",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "package": 4,
+      "module": "transactions",
+      "name": "TransferInput",
+      "qualified": "transactions:transactions.TransferInput",
+      "sig": "veld:transactions/TransferInput@a3ffcc5c11a87946",
+      "docs": "Initiates a transfer to another IBAN.",
+      "deprecated": null,
+      "origin": {
+        "file": "transactions.veld",
+        "line": 21,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "fromAccountId",
+          "wire": "fromAccountId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 22,
+            "col": 3
+          }
+        },
+        {
+          "name": "toIban",
+          "wire": "toIban",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 15,
+            "max_len": 34,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 23,
+            "col": 3
+          }
+        },
+        {
+          "name": "amount",
+          "wire": "amount",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 24,
+            "col": 3
+          }
+        },
+        {
+          "name": "currency",
+          "wire": "currency",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": "^[A-Z]{3}$",
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 25,
+            "col": 3
+          }
+        },
+        {
+          "name": "description",
+          "wire": "description",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": 140,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 26,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "package": 4,
+      "module": "transactions",
+      "name": "TransferReceipt",
+      "qualified": "transactions:transactions.TransferReceipt",
+      "sig": "veld:transactions/TransferReceipt@a769650e5bd1474e",
+      "docs": "The result of a transfer: the new transaction and the debited account.\n`Account` comes from the `accounts` service, which in turn imports `Transaction`.",
+      "deprecated": null,
+      "origin": {
+        "file": "transactions.veld",
+        "line": 39,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "transaction",
+          "wire": "transaction",
+          "type": {
+            "decl": 26
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 40,
+            "col": 3
+          }
+        },
+        {
+          "name": "source",
+          "wire": "source",
+          "type": {
+            "decl": 0
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "transactions.veld",
+            "line": 41,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "package": 5,
+      "module": "prelude",
+      "name": "Forbidden",
+      "qualified": "veld:prelude.Forbidden",
+      "sig": "veld:veld/Forbidden@95d9a9217df05eac",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 3,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 403,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 3,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "package": 5,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "package": 5,
+      "module": "prelude",
+      "name": "NotFound",
+      "qualified": "veld:prelude.NotFound",
+      "sig": "veld:veld/NotFound@a0eaf7a3323dce7c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 4,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 404,
+      "parent": null,
+      "fields": [
+        {
+          "name": "resource",
+          "wire": "resource",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 4,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "package": 5,
+      "module": "prelude",
+      "name": "Unauthorized",
+      "qualified": "veld:prelude.Unauthorized",
+      "sig": "veld:veld/Unauthorized@ee241dccf5c82e14",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 401,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 2,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "package": 5,
+      "module": "prelude",
+      "name": "ValidationError",
+      "qualified": "veld:prelude.ValidationError",
+      "sig": "veld:veld/ValidationError@7836aff24d914bea",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "issues",
+          "wire": "issues",
+          "type": {
+            "list": {
+              "decl": 36
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 6,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "package": 5,
+      "module": "prelude",
+      "name": "ValidationIssue",
+      "qualified": "veld:prelude.ValidationIssue",
+      "sig": "veld:veld/ValidationIssue@253beeea259ebf75",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 9,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "path",
+          "wire": "path",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 29
+          }
+        },
+        {
+          "name": "code",
+          "wire": "code",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 43
+          }
+        },
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 57
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "Accounts",
+      "prefix": "/api/accounts",
+      "base_url": "http://account-service:3002",
+      "docs": "Bank account management: open, view, freeze and close accounts.",
+      "auth": {
+        "kind": "bearer",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "listAccounts",
+          "method": "GET",
+          "path": "/api/accounts",
+          "sig": "veld:accounts/Accounts.listAccounts@d9de17064a0aac54",
+          "docs": "Lists the accounts of the authenticated user.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "list": {
+                "decl": 0
+              }
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 7,
+            "col": 11
+          }
+        },
+        {
+          "name": "getAccount",
+          "method": "GET",
+          "path": "/api/accounts/{id}",
+          "sig": "veld:accounts/Accounts.getAccount@12a5226b66268961",
+          "docs": "Fetches one account.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 10,
+            "col": 15
+          }
+        },
+        {
+          "name": "createAccount",
+          "method": "POST",
+          "path": "/api/accounts",
+          "sig": "veld:accounts/Accounts.createAccount@49955c542afacdcf",
+          "docs": "Opens a new account.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 5
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 13,
+            "col": 12
+          }
+        },
+        {
+          "name": "getSummary",
+          "method": "GET",
+          "path": "/api/accounts/summary",
+          "sig": "veld:accounts/Accounts.getSummary@1572b6f634685908",
+          "docs": "Total balance and primary account.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 3
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 16,
+            "col": 18
+          }
+        },
+        {
+          "name": "getStatement",
+          "method": "GET",
+          "path": "/api/accounts/{id}/statement",
+          "sig": "veld:accounts/Accounts.getStatement@1d4636002f107828",
+          "docs": "The account with its latest transactions, fetched from the transactions service.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 6
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 19,
+            "col": 25
+          }
+        },
+        {
+          "name": "freezeAccount",
+          "method": "POST",
+          "path": "/api/accounts/{id}/freeze",
+          "sig": "veld:accounts/Accounts.freezeAccount@af1ab7be3870ab50",
+          "docs": "Blocks all future transactions on an account.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 409,
+              "decl": 1
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 22,
+            "col": 23
+          }
+        },
+        {
+          "name": "closeAccount",
+          "method": "DELETE",
+          "path": "/api/accounts/{id}",
+          "sig": "veld:accounts/Accounts.closeAccount@190b1e4a26ab01fe",
+          "docs": "Permanently closes an account.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 204,
+            "type": null,
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 409,
+              "decl": 1
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 25,
+            "col": 18
+          }
+        },
+        {
+          "name": "banAccount",
+          "method": "POST",
+          "path": "/api/accounts/{id}/ban",
+          "sig": "veld:accounts/Accounts.banAccount@5270206649cd50ea",
+          "docs": "Staff only: bans an account.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 403,
+              "decl": 31
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 28,
+            "col": 20
+          }
+        }
+      ],
+      "origin": {
+        "file": "api.veld",
+        "line": 5,
+        "col": 9
+      }
+    },
+    {
+      "id": 1,
+      "package": 1,
+      "name": "Cards",
+      "prefix": "/api/cards",
+      "base_url": "http://card-service:3004",
+      "docs": "Payment card management: request, view, freeze and cancel.",
+      "auth": {
+        "kind": "bearer",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "listCards",
+          "method": "GET",
+          "path": "/api/cards",
+          "sig": "veld:cards/Cards.listCards@9a2a5fe25cb9e12e",
+          "docs": "Lists the cards of the authenticated user.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "list": {
+                "decl": 7
+              }
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 7,
+            "col": 11
+          }
+        },
+        {
+          "name": "getCard",
+          "method": "GET",
+          "path": "/api/cards/{id}",
+          "sig": "veld:cards/Cards.getCard@b993c8d2961d5cb2",
+          "docs": "Fetches one card.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 7
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 10,
+            "col": 15
+          }
+        },
+        {
+          "name": "requestCard",
+          "method": "POST",
+          "path": "/api/cards",
+          "sig": "veld:cards/Cards.requestCard@a66644333c8a28c9",
+          "docs": "Requests a new card linked to an account.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 12
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 7
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 13,
+            "col": 12
+          }
+        },
+        {
+          "name": "freezeCard",
+          "method": "POST",
+          "path": "/api/cards/{id}/freeze",
+          "sig": "veld:cards/Cards.freezeCard@9b03c0322b123119",
+          "docs": "Temporarily blocks all usage of a card.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 7
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 409,
+              "decl": 8
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 16,
+            "col": 23
+          }
+        },
+        {
+          "name": "cancelCard",
+          "method": "DELETE",
+          "path": "/api/cards/{id}",
+          "sig": "veld:cards/Cards.cancelCard@f05661d5dcc8351e",
+          "docs": "Permanently cancels a card.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 204,
+            "type": null,
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 409,
+              "decl": 8
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 19,
+            "col": 18
+          }
+        }
+      ],
+      "origin": {
+        "file": "api.veld",
+        "line": 5,
+        "col": 9
+      }
+    },
+    {
+      "id": 2,
+      "package": 2,
+      "name": "Iam",
+      "prefix": "/api/iam",
+      "base_url": "http://iam-service:3001",
+      "docs": "Identity and access management: authentication and user profiles.",
+      "auth": {
+        "kind": "bearer",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "register",
+          "method": "POST",
+          "path": "/api/iam/register",
+          "sig": "veld:iam/Iam.register@cd198902511140c0",
+          "docs": "Creates a new user account.",
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 16
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 19
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 409,
+              "decl": 13
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "iam.veld",
+            "line": 8,
+            "col": 20
+          }
+        },
+        {
+          "name": "login",
+          "method": "POST",
+          "path": "/api/iam/login",
+          "sig": "veld:iam/Iam.login@a9cc4a6297648ec8",
+          "docs": "Authenticates and returns a token pair.",
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 14
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 17
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "iam.veld",
+            "line": 12,
+            "col": 17
+          }
+        },
+        {
+          "name": "refreshToken",
+          "method": "POST",
+          "path": "/api/iam/refresh",
+          "sig": "veld:iam/Iam.refreshToken@88e379ceb490f513",
+          "docs": "Exchanges a refresh token for a new token pair.",
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 15
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 17
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "iam.veld",
+            "line": 16,
+            "col": 19
+          }
+        },
+        {
+          "name": "getProfile",
+          "method": "GET",
+          "path": "/api/iam/me",
+          "sig": "veld:iam/Iam.getProfile@063982d311839a1e",
+          "docs": "Returns the authenticated user.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 19
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "iam.veld",
+            "line": 19,
+            "col": 13
+          }
+        },
+        {
+          "name": "updateProfile",
+          "method": "PATCH",
+          "path": "/api/iam/me",
+          "sig": "veld:iam/Iam.updateProfile@9653c721eb0ef14e",
+          "docs": "Updates the name or phone of the authenticated user.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 18
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 19
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "iam.veld",
+            "line": 22,
+            "col": 15
+          }
+        },
+        {
+          "name": "logout",
+          "method": "POST",
+          "path": "/api/iam/logout",
+          "sig": "veld:iam/Iam.logout@3e237c0dda34a0c0",
+          "docs": "Invalidates the current session.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 204,
+            "type": null,
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "iam.veld",
+            "line": 25,
+            "col": 18
+          }
+        }
+      ],
+      "origin": {
+        "file": "iam.veld",
+        "line": 5,
+        "col": 9
+      }
+    },
+    {
+      "id": 3,
+      "package": 3,
+      "name": "Notifications",
+      "prefix": "/api/notifications",
+      "base_url": "http://notification-service:3005",
+      "docs": "User notifications and preferences.",
+      "auth": {
+        "kind": "bearer",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "listNotifications",
+          "method": "GET",
+          "path": "/api/notifications",
+          "sig": "veld:notifications/Notifications.listNotifications@4ba73a40f942fab0",
+          "docs": "Lists the notifications of the authenticated user.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "list": {
+                "decl": 20
+              }
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 7,
+            "col": 11
+          }
+        },
+        {
+          "name": "markAsRead",
+          "method": "PATCH",
+          "path": "/api/notifications/{id}/read",
+          "sig": "veld:notifications/Notifications.markAsRead@6eac7324001ca168",
+          "docs": "Marks a notification as read.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 20
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 10,
+            "col": 22
+          }
+        },
+        {
+          "name": "getPreferences",
+          "method": "GET",
+          "path": "/api/notifications/preferences",
+          "sig": "veld:notifications/Notifications.getPreferences@2f18dea1f77038aa",
+          "docs": "Returns the notification preferences.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 21
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 13,
+            "col": 22
+          }
+        },
+        {
+          "name": "updatePreferences",
+          "method": "PATCH",
+          "path": "/api/notifications/preferences",
+          "sig": "veld:notifications/Notifications.updatePreferences@7c907d68ebfcb31a",
+          "docs": "Updates one or more categories.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 23
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 21
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 16,
+            "col": 24
+          }
+        }
+      ],
+      "origin": {
+        "file": "api.veld",
+        "line": 5,
+        "col": 9
+      }
+    },
+    {
+      "id": 4,
+      "package": 4,
+      "name": "Transactions",
+      "prefix": "/api/transactions",
+      "base_url": "http://transaction-service:3003",
+      "docs": "Transaction history and transfers.",
+      "auth": {
+        "kind": "bearer",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "getHistory",
+          "method": "GET",
+          "path": "/api/transactions/account/{accountId}",
+          "sig": "veld:transactions/Transactions.getHistory@cffb95ec222856b7",
+          "docs": "Paginated transaction history of an account.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "accountId",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            },
+            {
+              "name": "query",
+              "binding": "query_object",
+              "header": null,
+              "type": {
+                "decl": 24
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "page": {
+                "decl": 26
+              }
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 7,
+            "col": 30
+          }
+        },
+        {
+          "name": "getTransaction",
+          "method": "GET",
+          "path": "/api/transactions/{id}",
+          "sig": "veld:transactions/Transactions.getTransaction@fea766d8bbfb6e67",
+          "docs": "Fetches one transaction.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 26
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 10,
+            "col": 15
+          }
+        },
+        {
+          "name": "transfer",
+          "method": "POST",
+          "path": "/api/transactions/transfer",
+          "sig": "veld:transactions/Transactions.transfer@78f79f923c5102c0",
+          "docs": "Moves money to another IBAN. The accounts service is asked to check the source account.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 29
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 30
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 34
+            },
+            {
+              "status": 404,
+              "decl": 33
+            },
+            {
+              "status": 422,
+              "decl": 25
+            },
+            {
+              "status": 422,
+              "decl": 35
+            },
+            {
+              "status": 500,
+              "decl": 32
+            }
+          ],
+          "origin": {
+            "file": "api.veld",
+            "line": 13,
+            "col": 20
+          }
+        }
+      ],
+      "origin": {
+        "file": "api.veld",
+        "line": 5,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {
+    "accounts": [
+      "iam",
+      "transactions"
+    ],
+    "cards": [
+      "accounts",
+      "iam"
+    ],
+    "notifications": [
+      "iam"
+    ],
+    "transactions": [
+      "accounts",
+      "iam"
+    ]
+  }
+}

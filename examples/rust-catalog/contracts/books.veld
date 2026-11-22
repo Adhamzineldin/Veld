@@ -1,0 +1,11 @@
+/// A book available in the catalog.
+model Book {
+  isbn: string
+  title: string
+}
+
+/// Read-only book catalog.
+service Catalog at "/books" {
+  /// Looks up a book by ISBN.
+  get "/{isbn}" lookup(isbn: string) -> Book | NotFound
+}

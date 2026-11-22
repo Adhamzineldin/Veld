@@ -1,0 +1,21 @@
+{
+  "name": "library-package-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A typed client script for both services",
+  "scripts": {
+    "start": "tsx src/report.ts",
+    "dev": "tsx src/report.ts",
+    "build": "tsc --noEmit && esbuild src/report.ts --bundle --platform=node --outfile=dist/main.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "@veld/web": "file:src/generated"
+  }
+}

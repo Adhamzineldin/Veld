@@ -48,6 +48,13 @@ export default function Navbar() {
             </Link>
           )}
           <Link
+            to="/playground"
+            className={`${styles.link} ${location.pathname === '/playground' ? styles.activeLink : ''}`}
+            onClick={() => setMobileOpen(false)}
+          >
+            Playground
+          </Link>
+          <Link
             to="/docs"
             className={`${styles.link} ${location.pathname === '/docs' ? styles.activeLink : ''}`}
             onClick={() => setMobileOpen(false)}

@@ -1,0 +1,41 @@
+{
+  "name": "@maayn/veld",
+  "version": "2.0.0-beta.1",
+  "description": "Contract-first API code generator. Write .veld contracts once, generate typed servers and clients.",
+  "keywords": [
+    "veld",
+    "api",
+    "code-generation",
+    "contract-first",
+    "typescript",
+    "sdk",
+    "schema"
+  ],
+  "homepage": "https://github.com/Adhamzineldin/Veld",
+  "bugs": {
+    "url": "https://github.com/Adhamzineldin/Veld/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Adhamzineldin/Veld.git"
+  },
+  "license": "MIT",
+  "bin": {
+    "veld": "./bin/veld.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "files": [
+    "package.json",
+    "bin/",
+    "binaries/",
+    "install.js",
+    "README.md",
+    "LICENSE"
+  ]
+}
+

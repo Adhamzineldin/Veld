@@ -1,0 +1,147 @@
+package dev.veld.runtime;
+
+import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Identity by signature, never by class (spec/ir.md section 5.4).
+ *
+ * <p>Two copies of a generated type in different packages are different classes. Every generated
+ * model, enum, union and error therefore exposes a {@code public static final String VELD_SIG}
+ * field and a {@code veldCanonical()} method (errors also {@code veldOp()}); this class reads
+ * them reflectively, so comparisons work across packages and across copies of the runtime.
+ */
+public final class Veld {
+  private Veld() {}
+
+  /** The declaration signature of a generated value or class, or {@code null}. */
+  public static String sigOf(Object value) {
+    if (value == null) {
+      return null;
+    }
+    if (value instanceof VeldError error) {
+      return error.sig();
+    }
+    try {
+      Object sig = value.getClass().getField("VELD_SIG").get(null);
+      return sig instanceof String s ? s : null;
+    } catch (ReflectiveOperationException | RuntimeException e) {
+      return null;
+    }
+  }
+
+  private static boolean isError(Object value) {
+    if (value instanceof VeldError) {
+      return true;
+    }
+    try {
+      value.getClass().getMethod("veldOp");
+      return true;
+    } catch (NoSuchMethodException | RuntimeException e) {
+      return false;
+    }
+  }
+
+  private static String call(Object value, String method) {
+    try {
+      Method m = value.getClass().getMethod(method);
+      Object out = m.invoke(value);
+      return out instanceof String s ? s : null;
+    } catch (ReflectiveOperationException | RuntimeException e) {
+      return null;
+    }
+  }
+
+  /**
+   * Whether {@code a} and {@code b} are the same value: the same declaration signature, the same
+   * operation (for errors) and the same canonical bytes. Lists and maps are compared element by
+   * element with this method, so lists of generated values from different packages compare too.
+   * A generated value never equals a value that is not generated (no signature), whatever its
+   * data. Two values that are both not generated are compared with
+   * {@link Objects#equals(Object, Object)}.
+   */
+  public static boolean same(Object a, Object b) {
+    if (a == null || b == null) {
+      return a == b;
+    }
+    if (a instanceof List<?> la && b instanceof List<?> lb) {
+      return sameList(la, lb);
+    }
+    if (a instanceof Map<?, ?> ma && b instanceof Map<?, ?> mb) {
+      return sameMap(ma, mb);
+    }
+    String sigA = sigOf(a);
+    String sigB = sigOf(b);
+    if (sigA == null || sigB == null) {
+      return sigA == null && sigB == null && Objects.equals(a, b);
+    }
+    if (!sigA.equals(sigB)) {
+      return false;
+    }
+    if (isError(a) != isError(b)) {
+      return false;
+    }
+    if (isError(a) && !Objects.equals(call(a, "veldOp"), call(b, "veldOp"))) {
+      return false;
+    }
+    String canonicalA = call(a, "veldCanonical");
+    return canonicalA != null && canonicalA.equals(call(b, "veldCanonical"));
+  }
+
+  private static boolean sameList(List<?> a, List<?> b) {
+    if (a.size() != b.size()) {
+      return false;
+    }
+    for (int i = 0; i < a.size(); i++) {
+      if (!same(a.get(i), b.get(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static boolean sameMap(Map<?, ?> a, Map<?, ?> b) {
+    if (!a.keySet().equals(b.keySet())) {
+      return false;
+    }
+    for (Map.Entry<?, ?> e : a.entrySet()) {
+      if (!same(e.getValue(), b.get(e.getKey()))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** {@code veld:pkg/Service.endpoint@hash} to {@code pkg/Service}. */
+  public static String serviceOfOp(String op) {
+    int colon = op.indexOf(':');
+    int dot = op.lastIndexOf('.');
+    return op.substring(colon + 1, dot < 0 ? op.length() : dot);
+  }
+
+  private static String packageOf(String sig) {
+    return sig.substring(sig.indexOf(':') + 1, sig.lastIndexOf('/'));
+  }
+
+  /**
+   * Whether {@code e} is the error declaration {@code sig}. When the error was raised from an
+   * endpoint it must also come from the declaring service: for a prelude error any service
+   * matches unless {@code service} ({@code pkg/Service}) is given.
+   */
+  public static boolean matches(Object e, String sig, String service) {
+    if (e == null || !sig.equals(sigOf(e)) || !isError(e)) {
+      return false;
+    }
+    String op = call(e, "veldOp");
+    if (op == null) {
+      return true;
+    }
+    if (service != null) {
+      return serviceOfOp(op).equals(service);
+    }
+    String pkg = packageOf(sig);
+    return pkg.equals("veld") || packageOf(op).equals(pkg);
+  }
+}

@@ -1,0 +1,18 @@
+use tickets.{OpenTicket, QueueUnavailable, Ticket, TicketClosed, TooManyOpen}
+
+/// Every endpoint lists the errors it can return. Veld turns them into typed results on the
+/// client and typed throws on the server, all as application/problem+json on the wire.
+@auth(bearer)
+service Support at "/support" {
+  /// Fetches a ticket. `NotFound` comes from the prelude.
+  get "/tickets/{id}" getTicket(id: uuid) -> Ticket | NotFound
+
+  /// Opens a ticket; the customer may be over quota or the queue may be down.
+  post "/tickets" openTicket(body: OpenTicket) -> Ticket | TooManyOpen | QueueUnavailable
+
+  /// Closes a ticket for good.
+  post "/tickets/{id}/close" closeTicket(id: uuid) -> 200 Ticket | NotFound | TicketClosed
+
+  /// Only staff may delete tickets.
+  delete "/tickets/{id}" deleteTicket(id: uuid) -> 204 | Forbidden | NotFound
+}

@@ -1,0 +1,7 @@
+model Cart {
+  owner: Usr
+}
+
+service Shop at "/shop" {
+  get "/cart" cart() -> Cart
+}

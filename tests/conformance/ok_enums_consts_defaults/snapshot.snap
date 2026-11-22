@@ -1,0 +1,443 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Config",
+      "qualified": "app:app.Config",
+      "sig": "veld:app/Config@6358ba3aaa022187",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 16,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "level",
+          "wire": "level",
+          "type": {
+            "decl": 4
+          },
+          "optional": false,
+          "default": {
+            "lit": "enum_variant",
+            "value": {
+              "name": "low",
+              "wire": "LOW"
+            }
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 17,
+            "col": 3
+          }
+        },
+        {
+          "name": "retries",
+          "wire": "retries",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": {
+            "lit": "int",
+            "value": 3
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 18,
+            "col": 3
+          }
+        },
+        {
+          "name": "ratio",
+          "wire": "ratio",
+          "type": {
+            "scalar": "float"
+          },
+          "optional": false,
+          "default": {
+            "lit": "float",
+            "value": 1.0
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 19,
+            "col": 3
+          }
+        },
+        {
+          "name": "price",
+          "wire": "price",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": {
+            "lit": "string",
+            "value": "9.99"
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 20,
+            "col": 3
+          }
+        },
+        {
+          "name": "name",
+          "wire": "name",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": {
+            "lit": "string",
+            "value": "x"
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 21,
+            "col": 3
+          }
+        },
+        {
+          "name": "flags",
+          "wire": "flags",
+          "type": {
+            "list": {
+              "scalar": "string"
+            }
+          },
+          "optional": false,
+          "default": {
+            "lit": "empty_list"
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 22,
+            "col": 3
+          }
+        },
+        {
+          "name": "on",
+          "wire": "on",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": {
+            "lit": "bool",
+            "value": false
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 23,
+            "col": 3
+          }
+        },
+        {
+          "name": "extra",
+          "wire": "extra",
+          "type": {
+            "scalar": "json"
+          },
+          "optional": false,
+          "default": {
+            "lit": "null"
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 24,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "DEFAULT_LEVEL",
+      "qualified": "app:app.DEFAULT_LEVEL",
+      "sig": "veld:app/DEFAULT_LEVEL@dcffb03b0377fd1b",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 12,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "decl": 4
+      },
+      "value": {
+        "lit": "enum_variant",
+        "value": {
+          "name": "mid",
+          "wire": "mid"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "app",
+      "name": "ENABLED",
+      "qualified": "app:app.ENABLED",
+      "sig": "veld:app/ENABLED@1443417b45220369",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 14,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "scalar": "bool"
+      },
+      "value": {
+        "lit": "bool",
+        "value": true
+      }
+    },
+    {
+      "id": 3,
+      "package": 0,
+      "module": "app",
+      "name": "GREETING",
+      "qualified": "app:app.GREETING",
+      "sig": "veld:app/GREETING@df088a4514b4586e",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 11,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "scalar": "string"
+      },
+      "value": {
+        "lit": "string",
+        "value": "hello"
+      }
+    },
+    {
+      "id": 4,
+      "package": 0,
+      "module": "app",
+      "name": "Level",
+      "qualified": "app:app.Level",
+      "sig": "veld:app/Level@62fdfa079fa87451",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "low",
+          "wire": "LOW",
+          "docs": "Lowest.",
+          "deprecated": null
+        },
+        {
+          "name": "mid",
+          "wire": "mid",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "hi",
+          "wire": "hi",
+          "docs": null,
+          "deprecated": "use high"
+        },
+        {
+          "name": "high",
+          "wire": "high",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "package": 0,
+      "module": "app",
+      "name": "MAX_ITEMS",
+      "qualified": "app:app.MAX_ITEMS",
+      "sig": "veld:app/MAX_ITEMS@b0bd9601795036e0",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 10,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "scalar": "int"
+      },
+      "value": {
+        "lit": "int",
+        "value": 100
+      }
+    },
+    {
+      "id": 6,
+      "package": 0,
+      "module": "app",
+      "name": "RATIO",
+      "qualified": "app:app.RATIO",
+      "sig": "veld:app/RATIO@7cd304dab3d0bd10",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 13,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "scalar": "float"
+      },
+      "value": {
+        "lit": "float",
+        "value": 0.5
+      }
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

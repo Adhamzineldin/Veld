@@ -1,0 +1,22 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0407]: type `A` contains itself through required fields: A -> A
+ --> app/app.veld:1:11
+  |
+1 | model A { a: A }
+  |           ^
+  = note: no finite value of this type can exist
+  = help: break the cycle with an optional field (`x?: T`), a list (`T[]`), a map or a union arm
+
+error[E0407]: type `B` contains itself through required fields: B -> C -> B
+ --> app/app.veld:3:11
+  |
+3 | model B { c: C }
+  |           ^
+  = note: no finite value of this type can exist
+  = help: break the cycle with an optional field (`x?: T`), a list (`T[]`), a map or a union arm
+
+== ir ==
+(no IR: compilation failed)

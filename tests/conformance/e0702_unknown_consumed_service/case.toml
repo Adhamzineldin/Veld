@@ -1,0 +1,3 @@
+[consumes]
+orders = ["payments"]
+ghost = ["orders"]

@@ -1,0 +1,21 @@
+.comment { color: #7d8aa8; font-style: italic; }
+.doc { color: #8a9bc4; font-style: italic; }
+.string { color: #3fd68a; }
+.keyword { color: #c58bff; }
+.annotation { color: #f0a45d; }
+.type { color: #6aa5ff; }
+.builtin { color: #4dd2f0; }
+.verb { color: #3fd68a; font-weight: 600; }
+.number { color: #8fc2ff; }
+.key { color: #6aa5ff; }
+
+.squiggleError,
+.squiggleWarn {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+.squiggleError { text-decoration-color: #ff5d6c; }
+.squiggleWarn { text-decoration-color: #f5b14a; }

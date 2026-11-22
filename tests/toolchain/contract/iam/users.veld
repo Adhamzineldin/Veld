@@ -1,0 +1,16 @@
+/// A registered user.
+model User {
+  id: uuid @readonly
+  email: string @format(email)
+  displayName: string @wire("display_name") @length(min: 1, max: 80)
+}
+
+error UserBanned 403 {
+  reason: string
+}
+
+/// Identity and access management.
+service Iam at "/iam" {
+  /// Fetch one user.
+  get "/users/{id}" getUser(id: uuid) -> User | NotFound | UserBanned
+}

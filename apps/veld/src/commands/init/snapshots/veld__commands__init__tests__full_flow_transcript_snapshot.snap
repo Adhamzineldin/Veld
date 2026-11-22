@@ -1,0 +1,162 @@
+---
+source: apps/veld/src/commands/init/mod.rs
+expression: out
+---
+┌  veld 2.0  contract-first API code generator
+│
+◆  Project name
+│  > [my_shop] 
+◇  Project name  my_shop
+│
+◆  Project kind
+│  ✓ 1) Single service  one API, one contracts folder
+│    2) Microservices workspace  several services that can call each other
+│  choose [1] 2
+◇  Project kind  Microservices workspace
+│
+◆  Service names (comma-separated)
+│  > [users,orders] users,billing
+◇  Service names (comma-separated)  users,billing
+│
+◆  Use the same server stack for all 2 services?
+│  [Y/n] n
+◇  Use the same server stack for all 2 services?  no
+│
+◆  Server stack for `users`
+│  ✓ 1) Node  TypeScript server
+│    2) Java  Java 17+ server
+│    3) Rust  Rust server (axum)
+│    4) None  contracts and clients only
+│  choose [1] 1
+◇  Server stack for `users`  Node
+│
+◆  Node framework
+│  ✓ 1) express  the classic; widest middleware ecosystem
+│    2) fastify  fast, schema friendly
+│    3) hono  tiny, runs anywhere
+│    4) nest  NestJS controllers and modules
+│    5) node-http  no framework: node:http only
+│  choose [1] 2
+◇  Node framework  fastify
+│
+◆  Server stack for `billing`
+│  ✓ 1) Node  TypeScript server
+│    2) Java  Java 17+ server
+│    3) Rust  Rust server (axum)
+│    4) None  contracts and clients only
+│  choose [1] 2
+◇  Server stack for `billing`  Java
+│
+◆  Java framework
+│  ✓ 1) jdk  no framework: the JDK's built-in HttpServer
+│    2) spring  Spring Boot controllers
+│  choose [1] 2
+◇  Java framework  spring
+│
+◆  Base URL of `users`
+│  > [http://localhost:3001] 
+◇  Base URL of `users`  http://localhost:3001
+│
+◆  Base URL of `billing`
+│  > [http://localhost:3002] 
+◇  Base URL of `billing`  http://localhost:3002
+│
+◆  Which services does `users` call? (space selects, none is fine)
+│    1) billing  gets a generated client
+│  numbers, comma-separated, `-` for none [] 1
+◇  Which services does `users` call? (space selects, none is fine)  billing
+│
+◆  Which services does `billing` call? (space selects, none is fine)
+│    1) users  gets a generated client
+│  numbers, comma-separated, `-` for none [] -
+◇  Which services does `billing` call? (space selects, none is fine)  none
+│
+◆  Client stacks (space selects)
+│  ✓ 1) TypeScript  typed fetch client
+│    2) Java  typed client for JVM apps
+│    3) Rust  typed client, bring your own HTTP stack
+│  numbers, comma-separated, `-` for none [1] 1,2
+◇  Client stacks (space selects)  TypeScript, Java
+│
+◆  TypeScript UI framework
+│  ✓ 1) None  plain client, no UI framework
+│    2) react  hooks on top of the client
+│    3) vue  composables on top of the client
+│  choose [1] 3
+◇  TypeScript UI framework  vue
+│
+◇  Output folders (defaults) ──────────────────
+│
+│  users-api    services/users/generated
+│  billing-api  services/billing/src/main/java
+│  web          web/generated
+│  java-client  clients/java/src/main/java
+│
+└──────────────────────────────────────────────
+◆  Change any output folder?
+│  [y/N] y
+◇  Change any output folder?  yes
+│
+◆  Output folder of `users-api`
+│  > [services/users/generated] svc/users/gen
+◇  Output folder of `users-api`  svc/users/gen
+│
+◆  Output folder of `billing-api`
+│  > [services/billing/src/main/java] 
+◇  Output folder of `billing-api`  services/billing/src/main/java
+│
+◆  Output folder of `web`
+│  > [web/generated] web/src/generated
+◇  Output folder of `web`  web/src/generated
+│
+◆  Output folder of `java-client`
+│  > [clients/java/src/main/java] 
+◇  Output folder of `java-client`  clients/java/src/main/java
+│
+◆  Description (optional)
+│  > (what does this API do?) Shop APIs
+◇  Description (optional)  Shop APIs
+│
+◇  Summary ───────────────────────────────────────────────
+│
+│  project  my_shop
+│  layout   microservices workspace (2 services)
+│  servers  users: Node + fastify
+│           billing: Java + spring
+│  calls    users -> billing
+│  clients  TypeScript + vue, Java
+│  output   users-api -> svc/users/gen
+│           billing-api -> services/billing/src/main/java
+│           web -> web/src/generated
+│           java-client -> clients/java/src/main/java
+│  about    Shop APIs
+│  files    6 to create
+│
+└─────────────────────────────────────────────────────────
+◆  Create this project?
+│  [Y/n] 
+◇  Create this project?  yes
+│
+◆  Writing files...
+✓  Created 6 files
+│
+◇  Files ──────────────────────────────────────────────────
+│
+│  + veld.toml
+│  + contracts/users/users.veld
+│  + contracts/billing/billing.veld
+│  + svc/users/package.json
+│  + web/package.json
+│  + README.md
+│  + created .gitignore (ignores .veld/ and node_modules/)
+│
+└──────────────────────────────────────────────────────────
+◇  Next steps ─────────────────────────────────────────────────────────────────────────────────────────
+│
+│  edit contracts/<service>/  describe your API
+│  veld generate              write the generated code
+│  veld setup                 make it importable: @veld/<target> (npm) or a source root (Maven/Gradle)
+│  npm install                in each app, after `veld setup`
+│
+└──────────────────────────────────────────────────────────────────────────────────────────────────────
+└  You are all set. Happy contracting!

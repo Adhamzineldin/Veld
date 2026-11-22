@@ -1,0 +1,163 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+warning[W0201]: unused import `Role`
+ --> app/app.veld:1:18
+  |
+1 | use users.{User, Role}
+  |                  ^^^^
+
+== ir ==
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "A",
+      "qualified": "app:app.A",
+      "sig": "veld:app/A@91ee2847a07be735",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 3,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "u",
+          "wire": "u",
+          "type": {
+            "decl": 2
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 3,
+            "col": 11
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "users",
+      "name": "Role",
+      "qualified": "app:users.Role",
+      "sig": "veld:app/Role@de9cf8680d1d9b05",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "users.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "name",
+          "wire": "name",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 2,
+            "col": 14
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "users",
+      "name": "User",
+      "qualified": "app:users.User",
+      "sig": "veld:app/User@6fab0b0b80a59c41",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "users.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 1,
+            "col": 14
+          }
+        }
+      ]
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

@@ -1,295 +1,106 @@
-# NexusBank — Veld in a Microservices Architecture
+# microservices (NexusBank)
 
-A production-shaped banking platform demonstrating Veld's workspace feature
-across 6 polyglot microservices and a React frontend.
+A banking platform with five services and a React app, written by hand against Veld's generated
+code. The contracts are the v1 NexusBank example, rewritten in
+idiomatic v2. The v1 original is in `archive/v1/examples/microservices`.
 
----
+| Service | Server | Consumes | What the hand-written code does |
+|---|---|---|---|
+| `iam` | Node, Express | | registration, login (scrypt), token pairs, profiles |
+| `accounts` | Node, Express | `iam`, `transactions` | accounts per user; a statement asks the Java service for the history |
+| `transactions` | **Java**, JDK HTTP server | `iam`, `accounts` | an in-memory ledger; a transfer asks `accounts` to check the source account |
+| `cards` | Node, Fastify | `iam`, `accounts` | cards; a card is only issued for an account that `accounts` confirms |
+| `notifications` | Node, Hono | `iam` | notifications and preferences |
+| `web` | React 18, Vite | all of them | sign in, accounts with statement, transfer |
 
-## Repository Layout
-
-```
-NexusBank-System/
-│
-├── veld/                              ← ONE Veld workspace, all 6 services + frontend
-│   ├── veld.config.json               ← workspace array: 7 entries
-│   ├── app.veld                       ← frontend entry: import @services/**
-│   └── services/                      ← @services alias maps here by default
-│       ├── iam/
-│       │   ├── models/
-│       │   │   └── user.veld          ← User, RegisterInput, LoginInput, TokenPair…
-│       │   └── modules/
-│       │       └── iam.veld           ← module IAM { prefix:/api/iam … }
-│       ├── accounts/
-│       │   ├── models/
-│       │   │   └── account.veld       ← Account, CreateAccountInput, AccountSummary
-│       │   └── modules/
-│       │       └── accounts.veld      ← module Accounts { prefix:/api/accounts … }
-│       ├── transactions/
-│       │   ├── models/
-│       │   │   └── transaction.veld   ← Transaction, TransferInput, TransactionListResult
-│       │   └── modules/
-│       │       └── transactions.veld  ← module Transactions { prefix:/api/transactions … }
-│       ├── cards/
-│       │   ├── models/
-│       │   │   └── card.veld          ← Card, RequestCardInput
-│       │   └── modules/
-│       │       └── cards.veld         ← module Cards { prefix:/api/cards … }
-│       ├── lending/
-│       │   ├── models/
-│       │   │   └── loan.veld          ← Loan, LoanApplicationInput, LoanPaymentInput
-│       │   └── modules/
-│       │       └── lending.veld       ← module Lending { prefix:/api/lending … }
-│       └── notifications/
-│           ├── models/
-│           │   └── notification.veld  ← Notification, NotificationPreferences
-│           └── modules/
-│               └── notifications.veld ← module Notifications { prefix:/api/notifications … }
-│
-├── backend/
-│   ├── iam-service/           Node.js   ← JWT auth, bcrypt, stateful sessions
-│   ├── account-service/       Node.js   ← simple account CRUD, same language as IAM
-│   ├── transaction-service/   Python    ← financial calculations, future ML/risk models
-│   ├── card-service/          Go        ← high-throughput card authorisation, low latency
-│   ├── lending-service/       Node.js   ← business logic, loan underwriting rules
-│   └── notification-service/  Node.js   ← event-driven, fits Node.js async model
-│
-├── frontend/                  React + TanStack Query
-│   └── src/
-│       ├── generated/         ← veld generate --workspace frontend
-│       │   ├── client/        ← iamApi.ts, accountsApi.ts, transactionsApi.ts…
-│       │   ├── hooks/         ← useListAccounts, useTransfer, useMarkAsRead…
-│       │   └── types/         ← User, Account, Transaction, Card, Loan…
-│       └── pages/
-│           ├── LoginPage.tsx
-│           ├── Dashboard.tsx
-│           └── TransferPage.tsx
-│
-├── api-gateway/
-│   └── nginx.conf             ← routes /api/<service> → correct container
-└── docker-compose.yml
-```
-
----
-
-## How the Workspace Works
-
-### 1 — One config, many services, different languages
-
-`veld/veld.config.json` lists every workspace entry. Each entry can specify its
-own `backend`, `out`, and `baseUrl`:
-
-```json
-{
-  "workspace": [
-    {
-      "name": "iam",
-      "input": "services/iam/modules/iam.veld",
-      "backendConfig": { "target": "node-ts", "framework": "express" },
-      "out": "../backend/iam-service/generated",
-      "baseUrl": "http://iam-service:3001"
-    },
-    {
-      "name": "transactions",
-      "input": "services/transactions/modules/transactions.veld",
-      "backendConfig": { "target": "python", "framework": "flask" },
-      "out": "../backend/transaction-service/generated",
-      "baseUrl": "http://transaction-service:3003",
-      "consumes": ["iam", "accounts"]
-    },
-    {
-      "name": "cards",
-      "input": "services/cards/modules/cards.veld",
-      "backendConfig": { "target": "go" },
-      "out": "../backend/card-service/generated",
-      "baseUrl": "http://card-service:3004",
-      "consumes": ["iam", "accounts"]
-    },
-    {
-      "name": "frontend",
-      "input": "app.veld",
-      "frontendConfig": { "target": "react" },
-      "out": "../frontend/src/generated",
-      "baseUrl": "http://localhost:3000",
-      "consumes": ["*"]
-    }
-  ]
-}
-```
-
-`veld generate` in the `veld/` folder runs all 7 entries sequentially.
-
-### 2 — models/ + modules/ per service
-
-Every service is self-contained inside `veld/services/<name>/`:
+`accounts` and `transactions` consume each other, in two languages. Cycles are legal in Veld. A typed
+error crosses every hop: `transfer` on the Java service from an unknown account calls the Node
+`accounts` service, which raises `NotFound`; Java turns it into its own `NotFound`; the React app
+receives the typed class.
 
 ```
-services/iam/
-├── models/
-│   └── user.veld       ← data types only
-└── modules/
-    └── iam.veld        ← imports "../models/user.veld" + defines module IAM { … }
+contracts/<service>/*.veld              the contracts
+veld.toml                               targets: five servers (4 Node, 1 Java) and the web client
+backend/<svc>-service/src/main.ts       hand-written Node implementations
+backend/<svc>-service/src/generated/    generated  ->  package @veld/<svc>-api
+backend/transaction-service/            Maven project; hand-written Java in src/main/java/.../app,
+                                        generated Java in the rest of src/main/java
+web/src/*.tsx                           hand-written React app; web/src/generated -> @veld/web
+docker-compose.yml, Dockerfile*         build and run everything
 ```
 
-The module file's workspace entry sets rootDir to `modules/`, so the relative
-import `"../models/user.veld"` works naturally — no aliases needed.
-
-### 3 — `import @services/**` for the frontend
-
-`app.veld` (the frontend entry) uses Veld's built-in `@services` alias which
-resolves to `veld/services/`. The `**` glob loads every `.veld` file recursively,
-giving the React SDK types and hooks for all 6 services in one generation pass.
-
-### 4 — Generated output per service
-
-Each backend service gets its own `generated/` directory:
-
-```
-backend/iam-service/
-├── src/
-│   ├── index.ts                         ← you write: wire routes, middleware
-│   ├── middleware/AuthMiddleware.ts      ← you write: implements IMiddleware
-│   └── services/IamService.ts           ← you write: implements IIAMService
-└── generated/                           ← veld writes this
-    ├── types/iam.ts                      ← User, TokenPair, RegisterInput…
-    ├── interfaces/IIAMService.ts         ← interface you must implement
-    ├── routes/iam.routes.ts              ← iamRouter(router, service, middleware)
-    ├── errors/iam.errors.ts              ← iamErrors.login.unauthorized(msg)
-    └── middleware/IMiddleware.ts         ← AuthGuard method contract
-```
-
-### 5 — Typed errors from the contract
-
-Actions with `errors: [NotFound, Unauthorized]` generate typed error factories.
-Throw them in your service — the route handler returns the correct HTTP status.
-
-```ts
-// In iam.veld:
-//   action Login { errors: [Unauthorized] … }
-
-// In IamService.ts — generated error, not a magic string:
-throw iamErrors.login.unauthorized('Invalid credentials');
-//    └─ sets res.status(401) in the generated route handler
-```
-
-### 6 — Inter-Service SDK (consumes)
-
-When a service declares `"consumes": ["iam", "accounts"]` in the config, Veld
-generates typed HTTP client SDKs in that service's language. No manual REST
-calls, no guessing the API shape — it's all derived from the consumed service's
-`.veld` contract.
-
-**TypeScript** (accounts → iam):
-```ts
-import { IamClient } from '@veld/generated/sdk/iam';
-
-// Forward the caller's auth token for service-to-service auth
-const iam = new IamClient(undefined, { Authorization: req.headers.authorization });
-const user = await iam.getProfile();       // fully typed return: User
-```
-
-**Python** (transactions → accounts):
-```python
-from generated.sdk.accounts.client import AccountsClient
-
-accounts = AccountsClient()                # defaults to VELD_ACCOUNTS_URL
-account = accounts.get_account(account_id) # typed: Account
-```
-
-**Go** (cards → iam, accounts):
-```go
-import iamsdk "example.com/veld-generated/sdk/iam"
-
-client := iamsdk.NewClient("")  // defaults to VELD_IAM_URL env var
-user, err := client.GetProfile(ctx)  // typed: *iam.User
-```
-
-**Base URL resolution** (all languages, in priority order):
-1. Constructor argument: `IamClient("http://custom:3001")`
-2. Environment variable: `VELD_IAM_URL` (convention: `VELD_<UPPER_NAME>_URL`)
-3. Baked-in default from the consumed service's `baseUrl` in config
-
-**Dependency graph:**
-```
-veld deps
-
-  iam → (none)
-  accounts → iam
-  transactions → iam, accounts
-  cards → iam, accounts
-  lending → iam, accounts
-  notifications → (none)
-  frontend → iam, accounts, transactions, cards, lending, notifications
-```
-
-### 7 — API Gateway = single frontend baseUrl
-
-All services run on different ports (3001–3006). nginx maps each module's
-prefix to the right container. The frontend SDK uses one `baseUrl: http://localhost:3000`:
-
-```
-nginx :3000
-  /api/iam           → iam-service:3001
-  /api/accounts      → account-service:3002
-  /api/transactions  → transaction-service:3003
-  /api/cards         → card-service:3004
-  /api/lending       → lending-service:3005
-  /api/notifications → notification-service:3006
-```
-
-Because each module's `prefix` matches the nginx location, the generated hooks
-hit the right service without any extra configuration in the frontend.
-
-### 8 — Why each language was chosen
-
-| Service             | Language | Why                                                                 |
-|---------------------|----------|---------------------------------------------------------------------|
-| iam-service         | Node.js  | Rich JWT/bcrypt ecosystem; session management is I/O-bound          |
-| account-service     | Node.js  | Simple CRUD; same language as IAM reduces operational overhead      |
-| transaction-service | Python   | Financial calculations; extensible to pandas/numpy risk models      |
-| card-service        | Go       | Card authorisation is latency-critical; Go's goroutines handle burst |
-| lending-service     | Node.js  | Business rule DSL fits well in TypeScript; team knows Node.js       |
-| notification-service| Node.js  | Event-driven, async fan-out; Node.js event loop is a natural fit    |
-
----
-
-## Generating Code
+## Generate and wire
 
 ```bash
-cd veld
-
-veld generate                          # all 7 workspace entries at once
-veld generate --workspace iam          # only iam-service/generated/
-veld generate --workspace transactions # only transaction-service/generated/
-veld generate --workspace frontend     # only frontend/src/generated/
-veld watch                             # regenerate on every .veld file save
+veld generate
+veld setup                                  # @veld/<target> into each package.json
+for d in backend/*-service web; do [ -f $d/package.json ] && (cd $d && npm install); done
 ```
 
-## Running Locally
+### How the code imports the generated code
+
+**Node backends and the web app** import `@veld/<target>` (see `veld setup`), never a relative
+path into `src/generated`. The clients of the consumed services come through the same package,
+as namespaces (re-exported by the generated barrel): in `accounts`,
+
+```ts
+import { createAccountsHandler, iam, transactions } from '@veld/accounts-api';
+
+const profile = await new iam.IamClient({ auth: { bearer: () => token } }).getProfile({});
+const page = await new transactions.TransactionsClient({ auth: { bearer: () => token } })
+  .getHistory({ accountId, query: { page: 1, size: 5 } });
+```
+
+The web app imports `@veld/web` and the per-service hooks, `@veld/web/accounts/react` and so on.
+
+**Java** cannot use npm-style names. There `veld setup` adds the generated sources to the Maven or
+Gradle build (here the output is already Maven's standard `src/main/java`, so it has nothing to
+add; for another folder it adds a `build-helper-maven-plugin` `add-source` execution, or a
+`sourceSets.main.java.srcDir(...)` line for Gradle), and the hand-written Java imports the generated
+packages like any other:
+
+```java
+import com.nexusbank.transactions.clients.accounts.accounts.client.AccountsClient;
+import com.nexusbank.transactions.transactions.server.TransactionsService;
+```
+
+`TransactionsServiceImpl` implements the generated `TransactionsService` and `TransactionServiceMain`
+starts it with the generated `JdkHttpServerAdapter`.
+
+## Run it
+
+With Docker (builds everything; the web app is at http://localhost:8080):
 
 ```bash
-# Generate first
-cd veld && veld generate
-
-# Option A — Docker (recommended)
 docker compose up --build
-
-# Option B — individual terminals
-cd backend/iam-service         && npm install && npm run dev   # :3001
-cd backend/account-service     && npm install && npm run dev   # :3002
-cd backend/transaction-service && pip install -r requirements.txt && python src/app.py  # :3003
-cd backend/card-service        && go run ./cmd/main.go         # :3004
-cd backend/lending-service     && npm install && npm run dev   # :3005
-cd backend/notification-service&& npm install && npm run dev   # :3006
-cd frontend                    && npm install && npm run dev   # :5173
 ```
 
-## Adding a New Microservice
+Without Docker, one terminal each (every service reads `PORT` and the `VELD_<SERVICE>_URL`
+variables for the services it calls):
 
-1. `mkdir -p veld/services/payments/models veld/services/payments/modules`
-2. Write `models/payment.veld` and `modules/payments.veld`
-3. Add a workspace entry to `veld.config.json`
-4. Add an nginx `location` block
-5. Add a `docker-compose.yml` service entry
-6. `veld generate --workspace payments`
+```bash
+export VELD_IAM_URL=http://127.0.0.1:3001 VELD_ACCOUNTS_URL=http://127.0.0.1:3002 \
+       VELD_TRANSACTIONS_URL=http://127.0.0.1:3003 VELD_CARDS_URL=http://127.0.0.1:3004 \
+       VELD_NOTIFICATIONS_URL=http://127.0.0.1:3005
+(cd backend/iam-service          && PORT=3001 npm start)
+(cd backend/account-service      && PORT=3002 npm start)
+(cd backend/card-service         && PORT=3004 npm start)
+(cd backend/notification-service && PORT=3005 npm start)
+(cd backend/transaction-service  && mvn -q package && PORT=3003 java -jar target/transaction-service.jar)
+(cd web && npm run dev)                     # http://localhost:5173, proxies /api/<service>
+```
 
-No shared library to update, no code duplication, no drift between teams.
+New accounts get 1000.00 of demo money; the Java service keeps a ledger and answers
+`InsufficientFunds` when a transfer exceeds it. Accounts whose email ends in `@nexusbank.example`
+are staff and may call `banAccount`.
+
+## Tests
+
+`cargo test -p veld --test examples_e2e` regenerates (nothing may change), runs `npm ci` and
+`tsc --noEmit` on every app, compiles the Java service with `javac`, boots all five services on free
+ports, drives them over HTTP (sign up, open an account, statement, transfer, typed errors across
+services and languages, cards, notifications, logout) and renders the React app with
+`react-test-renderer` against them. `npm test` in `web/` does the render step by hand.
+
+Other commands: `veld generate --dry-run`, `veld generate transactions-api` (one target),
+`veld export openapi` (OpenAPI 3.1 for the whole workspace).

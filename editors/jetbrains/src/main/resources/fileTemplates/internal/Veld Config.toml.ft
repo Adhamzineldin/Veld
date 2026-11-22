@@ -1,0 +1,15 @@
+[project]
+name = "app"
+contracts = "contracts"
+
+[[targets]]
+role = "server"
+service = "app"
+emitter = "node"
+framework = "express"
+out = "api/src/generated"
+
+[[targets]]
+role = "client"
+emitter = "typescript"
+out = "web/src/generated"

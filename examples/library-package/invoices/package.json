@@ -1,0 +1,22 @@
+{
+  "name": "library-package-invoices",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The invoices service (Fastify)",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc --noEmit && esbuild src/main.ts --bundle --platform=node --outfile=dist/main.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@veld/invoices-api": "file:src/generated",
+    "fastify": "5.12.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

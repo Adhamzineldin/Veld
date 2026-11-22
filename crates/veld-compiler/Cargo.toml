@@ -1,0 +1,20 @@
+[package]
+name = "veld-compiler"
+description = "Veld compiler: lexer, parser, semantic analysis and lowering to the Veld IR"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+veld-ir.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+
+[lints]
+workspace = true

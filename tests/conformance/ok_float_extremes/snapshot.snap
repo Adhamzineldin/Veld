@@ -1,0 +1,270 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "A",
+      "qualified": "app:app.A",
+      "sig": "veld:app/A@4dd05165be8a78b9",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "a",
+          "wire": "a",
+          "type": {
+            "scalar": "float"
+          },
+          "optional": false,
+          "default": {
+            "lit": "float",
+            "value": 1.7976931348623157e+308
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 3,
+            "col": 3
+          }
+        },
+        {
+          "name": "b",
+          "wire": "b",
+          "type": {
+            "scalar": "float"
+          },
+          "optional": false,
+          "default": {
+            "lit": "float",
+            "value": -1.7976931348623157e+308
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 4,
+            "col": 3
+          }
+        },
+        {
+          "name": "c",
+          "wire": "c",
+          "type": {
+            "scalar": "float"
+          },
+          "optional": false,
+          "default": {
+            "lit": "float",
+            "value": 5e-324
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 5,
+            "col": 3
+          }
+        },
+        {
+          "name": "d",
+          "wire": "d",
+          "type": {
+            "scalar": "float"
+          },
+          "optional": false,
+          "default": {
+            "lit": "float",
+            "value": -0.0
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 6,
+            "col": 3
+          }
+        },
+        {
+          "name": "e",
+          "wire": "e",
+          "type": {
+            "scalar": "float"
+          },
+          "optional": false,
+          "default": {
+            "lit": "float",
+            "value": 0.0
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 7,
+            "col": 3
+          }
+        },
+        {
+          "name": "f",
+          "wire": "f",
+          "type": {
+            "scalar": "float"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": -1.7976931348623157e+308,
+            "max": 1.7976931348623157e+308,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 8,
+            "col": 3
+          }
+        },
+        {
+          "name": "g",
+          "wire": "g",
+          "type": {
+            "scalar": "json"
+          },
+          "optional": false,
+          "default": {
+            "lit": "float",
+            "value": 2.5
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 9,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "BIG",
+      "qualified": "app:app.BIG",
+      "sig": "veld:app/BIG@039bf13ed3427fce",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "scalar": "float"
+      },
+      "value": {
+        "lit": "float",
+        "value": 1.7976931348623157e+308
+      }
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

@@ -1,0 +1,5 @@
+model Item { id: int }
+
+service Items at "/items" {
+  get "/{id}" getItem(id: int) -> Item
+}

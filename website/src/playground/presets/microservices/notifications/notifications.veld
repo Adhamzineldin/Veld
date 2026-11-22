@@ -1,0 +1,27 @@
+enum NotificationType { transaction, security, marketing, system }
+
+/// A user-facing notification.
+model Notification {
+  id: uuid @readonly
+  userId: uuid @readonly
+  type: NotificationType
+  title: string
+  body: string
+  read: bool = false
+  createdAt: datetime @readonly
+}
+
+/// Per-category opt-in settings.
+model NotificationPreferences {
+  userId: uuid @readonly
+  transaction: bool = true
+  security: bool = true
+  marketing: bool = false
+}
+
+/// Partial update of the preferences.
+model UpdatePreferencesInput {
+  transaction?: bool
+  security?: bool
+  marketing?: bool
+}

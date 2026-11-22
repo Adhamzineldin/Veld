@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "generator": "veld 2.0",
+  "files": {
+    "README.md": "afdbb3e4971831423c15c3f04ff7382571843a005f8a3a9b52ab2ad16b328d1b",
+    "index.ts": "ec619edcd0cdc677cf3bb3169b2521f87f852a35659cf764baa1fa09aafb0572",
+    "models/hello.ts": "baff4018be44f744d3f90ca62e032ff773d2c3f91a1b016d569d1bff6e9f2268",
+    "package.json": "d375af0877a84beb41edf41a0cac765837bc9efd431a1e89726ad69a5e0aa443",
+    "prelude.ts": "4f80c54907a04295cab1f98da4ed4a34b1e7a1945a5b7f004f8c7ab5b638b283",
+    "runtime/veld.ts": "626c161cfd99d1311c22ff9027ca106c8c8d9ed33101708e4ee9e3740e952464",
+    "server/adapters.ts": "f182d6e48b7a1f38fb3b4de6b1669ed8a7b8fca01f7625d556b9fdf1712ca2f9",
+    "server/hello.ts": "68b4a434dbf8d1c9505efa0d75ba1da763f4379fbdae161d9eccc90d1f21b26d"
+  }
+}

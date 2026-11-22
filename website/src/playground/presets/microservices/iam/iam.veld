@@ -1,0 +1,26 @@
+use users.{EmailTaken, LoginInput, RefreshInput, RegisterInput, TokenPair, UpdateProfileInput, User}
+
+/// Identity and access management: authentication and user profiles.
+@auth(bearer)
+service Iam at "/api/iam" {
+  /// Creates a new user account.
+  @auth(none)
+  post "/register" register(body: RegisterInput) -> User | EmailTaken
+
+  /// Authenticates and returns a token pair.
+  @auth(none)
+  post "/login" login(body: LoginInput) -> 200 TokenPair | Unauthorized
+
+  /// Exchanges a refresh token for a new token pair.
+  @auth(none)
+  post "/refresh" refreshToken(body: RefreshInput) -> 200 TokenPair | Unauthorized
+
+  /// Returns the authenticated user.
+  get "/me" getProfile() -> User | NotFound
+
+  /// Updates the name or phone of the authenticated user.
+  patch "/me" updateProfile(body: UpdateProfileInput) -> User | NotFound
+
+  /// Invalidates the current session.
+  post "/logout" logout() -> 204
+}

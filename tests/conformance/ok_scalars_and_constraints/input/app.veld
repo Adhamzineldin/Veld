@@ -1,0 +1,26 @@
+model Everything {
+  s: string
+  i: int
+  l: long
+  f: float
+  d: decimal
+  b: bool
+  day: date
+  moment: datetime
+  t: time
+  id: uuid
+  raw: bytes
+  any: json
+  email: string @format(email)
+  site: string @format(uri)
+  host: string @format(hostname)
+  v4: string @format(ipv4)
+  v6: string @format(ipv6)
+  code: string @pattern("^[A-Z]{3}-\\d{2,4}$") @length(min: 6, max: 8)
+  score: float @min(0) @max(1.5)
+  count: int @min(-5)
+  tags: string[] @length(max: 10)
+  grid: int[][]
+  attrs: Map<string, string[]> @length(max: 3)
+  note?: json
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Shared library",
+  "usageTitle": "Use the shared Money type in an Orders handler",
+  "blurb": "A library package that two services import from.",
+  "project": {
+    "packages": [
+      { "name": "common", "kind": "library" },
+      { "name": "orders", "baseUrl": "http://orders:3001" },
+      { "name": "invoices", "baseUrl": "http://invoices:3002" }
+    ]
+  },
+  "target": { "emitter": "node", "role": "server", "framework": "fastify", "service": "orders" }
+}

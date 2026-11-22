@@ -1,0 +1,18 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0408]: `Color` is not a model; `extends` takes exactly one model
+ --> app/app.veld:4:17
+  |
+4 | model A extends Color { a: int }
+  |                 ^^^^^
+
+error[E0408]: `Oops` is an error; `extends` takes exactly one model
+ --> app/app.veld:5:17
+  |
+5 | model B extends Oops { b: int }
+  |                 ^^^^
+
+== ir ==
+(no IR: compilation failed)

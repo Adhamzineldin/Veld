@@ -84,3 +84,34 @@
   }
 }
 
+
+.tryRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 14px 20px;
+  margin-top: 32px;
+}
+
+.tryLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 22px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--grad);
+  border-radius: 10px;
+  box-shadow: 0 0 28px var(--glow-blue);
+}
+
+.tryLink:hover {
+  text-decoration: none;
+  filter: brightness(1.12);
+}
+
+.tryNote {
+  color: var(--fg2);
+  font-size: 0.9rem;
+}

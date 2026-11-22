@@ -28,6 +28,7 @@ export default function Footer() {
             </div>
             <div className={styles.column}>
               <h4>Resources</h4>
+              <Link to="/playground">Playground</Link>
               <Link to="/docs">Documentation</Link>
               <Link to="/docs#installation">Installation</Link>
               <Link to="/docs#cli-overview">CLI Reference</Link>

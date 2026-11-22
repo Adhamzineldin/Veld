@@ -1,0 +1,25 @@
+enum Level {
+  /// Lowest.
+  low = "LOW",
+  mid,
+  @deprecated("use high")
+  hi,
+  high
+}
+
+const MAX_ITEMS: int = 100
+const GREETING: string = "hello"
+const DEFAULT_LEVEL: Level = .mid
+const RATIO: float = 0.5
+const ENABLED: bool = true
+
+model Config {
+  level: Level = .low
+  retries: int = 3
+  ratio: float = 1
+  price: decimal = "9.99"
+  name: string = "x"
+  flags: string[] = []
+  on: bool = false
+  extra: json = null
+}

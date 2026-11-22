@@ -1,0 +1,337 @@
+package dev.veld.runtime;
+
+import java.net.http.WebSocket;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.Spliterator;
+import java.util.Spliterators;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.function.Function;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
+
+/**
+ * A WebSocket endpoint seen from the client, on {@link java.net.http.WebSocket}. The connection is
+ * open when the method that returned the channel returns. Read the server's messages with
+ * {@link #receive()} or {@link #messages()}; send with {@link #send(Object)}. Frames are text:
+ * the server sends {@code {"data":...}} or a final {@code {"error":...}}, the client sends the
+ * bare canonical JSON of the message. {@code Void} marks a side that has no messages.
+ *
+ * @param <In> the message type the server sends
+ * @param <Out> the message type the client sends
+ */
+public final class WsChannel<In, Out> implements AutoCloseable {
+  private static final Object END = new Object();
+
+  private final EndpointSpec ep;
+  private final Schema outgoing;
+  private final Codec<In> in;
+  private final Codec<Out> out;
+  private final boolean validate;
+  private final Function<List<Issue>, VeldError> validation;
+  private final BlockingQueue<Object> events = new LinkedBlockingQueue<>();
+  private final Object sendLock = new Object();
+  private volatile WebSocket socket;
+  private volatile boolean ended;
+  private volatile boolean sawError;
+  private final ConcurrentLinkedQueue<String> outbox = new ConcurrentLinkedQueue<>();
+  private Function<WebSocket.Listener, WebSocket> opener;
+  private Reconnect reconnect;
+  private volatile int generation;
+  private volatile boolean connected;
+  private volatile int failures;
+  private volatile long openedAt;
+
+  WsChannel(
+      EndpointSpec ep,
+      Codec<In> in,
+      Codec<Out> out,
+      boolean validate,
+      Function<List<Issue>, VeldError> validation) {
+    this.ep = ep;
+    this.in = in;
+    this.out = out;
+    this.validate = validate;
+    this.validation = validation;
+    Schema message = null;
+    for (EndpointSpec.Param p : ep.params()) {
+      if (p.stream()) {
+        message = p.type();
+      }
+    }
+    this.outgoing = message;
+  }
+
+  /**
+   * Opens the first connection (blocking) and remembers how to open it again. With a {@code
+   * reconnect} policy an abnormal close, a failed connection and an error reopen the socket with
+   * exponential backoff; messages sent in between are queued and delivered after the reconnect.
+   */
+  void open(Function<WebSocket.Listener, WebSocket> opener, Reconnect reconnect) {
+    this.opener = opener;
+    this.reconnect = reconnect;
+    int attempt = 0;
+    while (true) {
+      try {
+        connect();
+        return;
+      } catch (VeldTransportError e) {
+        if (reconnect == null || attempt >= reconnect.retries()) {
+          throw e;
+        }
+        Reconnect.sleep(reconnect.backoffMs(attempt++));
+      }
+    }
+  }
+
+  private void connect() {
+    int mine = ++generation;
+    WebSocket opened = opener.apply(new Listener(mine));
+    synchronized (sendLock) {
+      this.socket = opened;
+      this.connected = true;
+      this.openedAt = System.nanoTime();
+      String queued;
+      while ((queued = outbox.poll()) != null) {
+        opened.sendText(queued, true).join();
+      }
+    }
+  }
+
+  /** The connection failed or closed abnormally: reconnect on a background thread, or fail. */
+  private void lost(int from, Throwable cause, String what) {
+    if (ended || from != generation) {
+      return;
+    }
+    Reconnect policy = reconnect;
+    // A connection that lived at least maxMs (or delivered a frame) was a healthy one: count afresh.
+    if (policy != null && connected && (System.nanoTime() - openedAt) / 1_000_000 >= policy.maxMs()) {
+      failures = 0;
+    }
+    if (policy == null || failures >= policy.retries()) {
+      fail(cause, what);
+      return;
+    }
+    connected = false;
+    generation++;
+    Thread t = new Thread(() -> redial(policy, cause, what), "veld-ws-reconnect");
+    t.setDaemon(true);
+    t.start();
+  }
+
+  private void redial(Reconnect policy, Throwable cause, String what) {
+    while (!ended) {
+      if (failures >= policy.retries()) {
+        fail(cause, what);
+        return;
+      }
+      try {
+        Reconnect.sleep(policy.backoffMs(failures));
+      } catch (VeldTransportError e) {
+        fail(e, what);
+        return;
+      }
+      failures++;
+      if (ended) {
+        return;
+      }
+      try {
+        connect();
+        return;
+      } catch (VeldTransportError e) {
+        // Try again after the next, longer delay.
+      }
+    }
+  }
+
+  /**
+   * Sends one message; it is validated first unless validation is switched off.
+   *
+   * @throws VeldError the local {@code ValidationError}, with its operation set
+   * @throws VeldTransportError when the channel is closed or the endpoint takes no messages
+   */
+  public void send(Out message) {
+    if (ended) {
+      throw new VeldTransportError(ep.method() + " " + ep.path() + ": the WebSocket is closed");
+    }
+    if (outgoing == null || out == null) {
+      throw new VeldTransportError(ep.method() + " " + ep.path() + ": this endpoint takes no messages");
+    }
+    Json wire = out.encode(message);
+    if (validate) {
+      List<Issue> issues = Wire.validate(outgoing, wire, "message", true);
+      if (!issues.isEmpty()) {
+        VeldError err = validation.apply(issues);
+        err.setOp(ep.sig());
+        throw err;
+      }
+    }
+    String text = Wire.canonicalOf(outgoing, wire);
+    try {
+      synchronized (sendLock) {
+        if (!connected) {
+          outbox.add(text);
+          return;
+        }
+        socket.sendText(text, true).join();
+      }
+    } catch (CompletionException e) {
+      throw new VeldTransportError(ep.method() + " " + ep.path() + ": sending failed", e.getCause());
+    }
+  }
+
+  /**
+   * Blocks for the next message.
+   *
+   * @return the message, or {@code null} once the server has ended the conversation normally
+   * @throws VeldError the typed error of an error frame
+   * @throws VeldTransportError when the connection breaks
+   */
+  public In receive() {
+    Object event;
+    try {
+      event = events.take();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeldTransportError(ep.method() + " " + ep.path() + ": interrupted", e);
+    }
+    if (event == END) {
+      events.add(END);
+      return null;
+    }
+    if (event instanceof RuntimeException failure) {
+      throw failure;
+    }
+    return in.decode((Json) event);
+  }
+
+  /** The messages of the server as a stream; it ends with the conversation. Closing closes the channel. */
+  public Stream<In> messages() {
+    Iterator<In> it = new Iterator<>() {
+      private In pending;
+
+      @Override
+      public boolean hasNext() {
+        if (pending == null) {
+          pending = receive();
+        }
+        return pending != null;
+      }
+
+      @Override
+      public In next() {
+        if (!hasNext()) {
+          throw new NoSuchElementException();
+        }
+        In value = pending;
+        pending = null;
+        return value;
+      }
+    };
+    return StreamSupport.stream(
+            Spliterators.spliteratorUnknownSize(it, Spliterator.ORDERED | Spliterator.NONNULL), false)
+        .onClose(this::close);
+  }
+
+  /** Closes the connection normally. */
+  @Override
+  public void close() {
+    end();
+    WebSocket s = socket;
+    if (s != null) {
+      s.sendClose(WebSocket.NORMAL_CLOSURE, "client closed").whenComplete((w, e) -> s.abort());
+    }
+  }
+
+  private void end() {
+    synchronized (events) {
+      if (!ended) {
+        ended = true;
+        events.add(END);
+      }
+    }
+  }
+
+  private void fail(Throwable cause, String what) {
+    if (ended) {
+      return;
+    }
+    events.add(cause instanceof RuntimeException r ? r : new VeldTransportError(what, cause));
+    end();
+  }
+
+  private void frame(String text) {
+    if (ended) {
+      return;
+    }
+    Json parsed;
+    try {
+      parsed = Json.parse(text);
+    } catch (Json.ParseException e) {
+      fail(e, ep.method() + " " + ep.path() + ": a frame is not valid JSON");
+      return;
+    }
+    if (parsed instanceof Json.Obj obj && obj.get("error") != null) {
+      Json body = obj.get("error");
+      int status = body instanceof Json.Obj b && b.get("status") instanceof Json.Num n ? (int) n.value() : 0;
+      events.add(ClientCore.decodeFailure(ep, status, body));
+      sawError = true;
+    } else if (parsed instanceof Json.Obj obj && obj.get("data") != null && ep.success() != null) {
+      events.add(Wire.prepare(ep.success(), obj.get("data"), Wire.Mode.RESPONSE));
+    } else {
+      fail(null, ep.method() + " " + ep.path() + ": unrecognised frame");
+    }
+  }
+
+  private final class Listener implements WebSocket.Listener {
+    private final StringBuilder partial = new StringBuilder();
+    private final int mine;
+
+    private Listener(int mine) {
+      this.mine = mine;
+    }
+
+    @Override
+    public void onOpen(WebSocket webSocket) {
+      webSocket.request(1);
+    }
+
+    @Override
+    public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+      partial.append(data);
+      if (last) {
+        String text = partial.toString();
+        partial.setLength(0);
+        if (mine == generation) {
+          failures = 0;
+          frame(text);
+        }
+      }
+      webSocket.request(1);
+      return null;
+    }
+
+    @Override
+    public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
+      if (mine != generation) {
+        return null;
+      }
+      if (sawError || statusCode == WebSocket.NORMAL_CLOSURE || statusCode == 1005) {
+        end();
+      } else {
+        lost(mine, null, ep.method() + " " + ep.path() + ": the WebSocket closed (code " + statusCode + ")");
+      }
+      return null;
+    }
+
+    @Override
+    public void onError(WebSocket webSocket, Throwable error) {
+      lost(mine, error, ep.method() + " " + ep.path() + ": the WebSocket failed");
+    }
+  }
+}

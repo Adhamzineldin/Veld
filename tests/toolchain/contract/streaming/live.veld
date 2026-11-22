@@ -1,0 +1,51 @@
+/// One item of the SSE feeds.
+model Tick {
+  n: int
+  label: string
+  when: datetime
+}
+
+/// A message a client sends over a WebSocket.
+model Say {
+  text: string @length(min: 1, max: 200)
+  loud?: bool
+}
+
+/// A message the server sends back.
+model Heard {
+  from: string
+  text: string
+  seq: int
+}
+
+error QuotaExceeded 429 {
+  limit: int
+}
+
+error NoSuchRoom 404 {
+  room: string
+}
+
+/// Server-Sent Events and a chat WebSocket, open to everyone.
+service Live at "/live" {
+  /// `count` ticks. `failAt` raises a declared error after that many. A negative count raises it
+  /// before the first event.
+  get "/ticks" ticks(@query count: int, @query failAt?: int) -> stream Tick | QuotaExceeded
+  /// Ticks without end, one every 20 ms, until the client goes away.
+  get "/forever" forever() -> stream Tick
+  /// Ticks with explicit event names and ids; resumes after `Last-Event-ID`.
+  get "/rooms/{room}/events" roomEvents(room: string) -> stream Tick | NoSuchRoom
+  /// Echo chat: every message comes back as `Heard`.
+  ws "/chat/{room}" chat(room: string, @query nick?: string, body: stream Say) -> stream Heard | NoSuchRoom
+  /// The server only talks.
+  ws "/announce" announce() -> stream Tick
+  /// The client only talks; the server stops listening after `limit` messages.
+  ws "/sink" sink(body: stream Say) -> 204
+}
+
+/// The same shapes behind bearer auth.
+@auth(bearer)
+service Vault at "/vault" {
+  get "/feed" feed() -> stream Tick
+  ws "/echo" echo(body: stream Say) -> stream Heard
+}

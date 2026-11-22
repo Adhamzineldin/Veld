@@ -1,0 +1,13 @@
+import "./models/user.veld"
+
+module Users {
+  description: "v1 module"
+  prefix: /api
+
+  action GetUser {
+    method: GET
+    path: /:id
+  }
+}
+
+model StillParsed { a: int }

@@ -1,0 +1,9 @@
+/// A downstream dependency is unavailable. Retry later.
+error Unavailable 503 {
+  retryAfter?: int
+}
+
+/// The caller's plan does not allow this operation.
+error PlanLimitReached 402 {
+  limit: string
+}

@@ -1,0 +1,20 @@
+use cards.{Card, CardCancelled, RequestCardInput}
+
+/// Payment card management: request, view, freeze and cancel.
+@auth(bearer)
+service Cards at "/api/cards" {
+  /// Lists the cards of the authenticated user.
+  get "/" listCards() -> Card[]
+
+  /// Fetches one card.
+  get "/{id}" getCard(id: uuid) -> Card | NotFound
+
+  /// Requests a new card linked to an account.
+  post "/" requestCard(body: RequestCardInput) -> Card | NotFound
+
+  /// Temporarily blocks all usage of a card.
+  post "/{id}/freeze" freezeCard(id: uuid) -> 200 Card | NotFound | CardCancelled
+
+  /// Permanently cancels a card.
+  delete "/{id}" cancelCard(id: uuid) -> 204 | NotFound | CardCancelled
+}

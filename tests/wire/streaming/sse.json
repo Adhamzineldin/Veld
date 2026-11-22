@@ -1,0 +1,21 @@
+{
+  "frames": [
+    { "name": "data only", "data": "{\"n\":1}", "options": {}, "frame": "data: {\"n\":1}\n\n" },
+    { "name": "id, event and retry in that order", "data": "{\"n\":2}", "options": { "id": "7", "event": "tick", "retry": 1500 }, "frame": "id: 7\nevent: tick\nretry: 1500\ndata: {\"n\":2}\n\n" },
+    { "name": "named event only", "data": "{}", "options": { "event": "tick" }, "frame": "event: tick\ndata: {}\n\n" },
+    { "name": "the final error event", "data": "{\"status\":429,\"title\":\"QuotaExceeded\",\"type\":\"veld:live/QuotaExceeded@0\"}", "options": { "event": "error" }, "frame": "event: error\ndata: {\"status\":429,\"title\":\"QuotaExceeded\",\"type\":\"veld:live/QuotaExceeded@0\"}\n\n" },
+    { "name": "retry is an integer", "data": "1", "options": { "retry": 250 }, "frame": "retry: 250\ndata: 1\n\n" }
+  ],
+  "parse": [
+    { "name": "two events", "chunks": ["data: {\"a\":1}\n\n", "data: 2\n\n"], "events": [{ "event": "message", "data": "{\"a\":1}" }, { "event": "message", "data": "2" }] },
+    { "name": "split anywhere, including inside CRLF", "chunks": ["da", "ta: x\r", "\n\r\n"], "events": [{ "event": "message", "data": "x" }] },
+    { "name": "comments, event names and a persistent id", "chunks": [": keep-alive\n\n", "event: ping\n\n", "id: 5\ndata: y\n\n", "data: z\n\n"], "events": [{ "event": "message", "data": "y", "id": "5" }, { "event": "message", "data": "z", "id": "5" }] },
+    { "name": "several data lines join with a line feed", "chunks": ["data: a\ndata: b\n\n"], "events": [{ "event": "message", "data": "a\nb" }] },
+    { "name": "named event", "chunks": ["event: error\ndata: {}\n\n"], "events": [{ "event": "error", "data": "{}" }] },
+    { "name": "bare CR line ends and one space after the colon", "chunks": ["data:  q\r\r", "data: n\n\n"], "events": [{ "event": "message", "data": " q" }, { "event": "message", "data": "n" }] },
+    { "name": "byte order mark", "chunks": ["\ufeffdata: q\n\n"], "events": [{ "event": "message", "data": "q" }] },
+    { "name": "an event cut off by the end of the stream is dropped", "chunks": ["data: one\n\n", "data: lost"], "events": [{ "event": "message", "data": "one" }] },
+    { "name": "an id without data dispatches nothing", "chunks": ["id: 9\n\n"], "events": [] },
+    { "name": "a field without a colon", "chunks": ["data\n\n"], "events": [{ "event": "message", "data": "" }] }
+  ]
+}

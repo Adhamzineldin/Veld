@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "generator": "veld 2.0",
+  "files": {
+    "README.md": "1f1dab951d6f426564a5247858117e2c9484471d0c75781161544bf58ab9c4e9",
+    "clients.ts": "79ddffa405b2a17df4bfd20dad1c251e1f1395b6e10b437f208fb4b38984d841",
+    "common/errors/errors.ts": "cda423342e764fb087fbc7da9a0dc142ecdabd47ffbd24f39ee0d91783d37c6e",
+    "common/models/money.ts": "bce5f47d3cc57b07d0c25b0a7bc57118ae8067f9791362cbab77f3a3ca43fc8e",
+    "index.ts": "fa43d1954adcb6f007b54bb524d7a7ce6c1ceb7caa6d7536bd294c702d3614d0",
+    "invoices/client.ts": "5525ddebfd5716fbc3bcdef10b9372abbe134615d338995ef4bb0b94be81a6e4",
+    "invoices/models/invoices.ts": "db33ee62844d41807cd1e2994ff563a41f436d3bf10443d4a579d1be142ce9cf",
+    "orders/client.ts": "85f778d12ebaca1c84622258899264ea9fac82bdbb2834b72853860f57ab756f",
+    "orders/models/orders.ts": "e99cedc968e91c572580695b7a91baef567d3f98614f96a233764c79b5899fac",
+    "package.json": "2a3fd5d7f7e85e1e70f7a13a63104adffd260cd9d0985755ea550f5438ec3a2e",
+    "prelude.ts": "e8110d3c264ee63643b440a24507e66e06d80189b9ca49c5960a17f067ec7938",
+    "runtime/veld.ts": "626c161cfd99d1311c22ff9027ca106c8c8d9ed33101708e4ee9e3740e952464"
+  }
+}

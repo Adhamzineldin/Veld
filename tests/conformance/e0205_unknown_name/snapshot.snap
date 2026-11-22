@@ -1,0 +1,26 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0205]: module `users` has no declaration `Missing`
+ --> app/app.veld:1:12
+  |
+1 | use users.{Missing}
+  |            ^^^^^^^
+  = help: declared there: User
+
+error[E0205]: unknown type `Nope`
+ --> app/app.veld:3:14
+  |
+3 | model A { u: Nope, v: User }
+  |              ^^^^
+
+error[E0205]: unknown type `User`
+ --> app/app.veld:3:23
+  |
+3 | model A { u: Nope, v: User }
+  |                       ^^^^
+  = help: add `use users.{User}`
+
+== ir ==
+(no IR: compilation failed)

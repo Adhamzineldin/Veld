@@ -1,0 +1,22 @@
+/// A widget.
+///
+/// Second paragraph with `code`.
+@deprecated("use Gadget")
+model Widget {
+  /// The identifier.
+  id: uuid
+  old: string @deprecated("use id")
+}
+
+/// Things go wrong.
+error Broken 500 {
+  /// Why.
+  why: string
+}
+
+/// Widget API.
+service Widgets at "/widgets" {
+  /// Make one.
+  @deprecated("use v2")
+  post "/" make(body: Widget) -> Widget | Broken
+}

@@ -5,25 +5,25 @@ const steps = [
   {
     num: '1',
     label: 'Define',
-    desc: 'Write models & endpoints in .veld contract files',
+    desc: 'Write models, errors and services in .veld contract files',
     color: 'var(--accent)',
   },
   {
     num: '2',
     label: 'Generate',
-    desc: 'Run veld generate from your terminal',
+    desc: 'Run veld generate, then veld setup to make it importable as @veld/<target>',
     color: 'var(--accent2)',
   },
   {
     num: '3',
     label: 'Implement',
-    desc: 'Write business logic against typed interfaces',
+    desc: 'Implement the generated service interface and mount an adapter',
     color: 'var(--accent3)',
   },
   {
     num: '4',
     label: 'Ship',
-    desc: 'Frontend SDK is ready to call your API',
+    desc: 'The typed client, hooks and composables are ready to call your API',
     color: '#f0883e',
   },
 ];

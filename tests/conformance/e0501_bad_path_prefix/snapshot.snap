@@ -1,0 +1,20 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0501]: service prefix `orders` must start with `/`
+ --> app/app.veld:1:14
+  |
+1 | service S at "orders" {
+  |              ^^^^^^^^
+  = help: write "/orders"
+
+error[E0501]: endpoint path `list` must start with `/`
+ --> app/app.veld:2:7
+  |
+2 |   get "list" f()
+  |       ^^^^^^
+  = help: write "/list"
+
+== ir ==
+(no IR: compilation failed)

@@ -1,0 +1,14 @@
+import { SupportClient, TooManyOpen } from '@veld/client-typescript';
+
+export async function openTicket(baseUrl: string, token: string) {
+  const support = new SupportClient({ baseUrl, auth: { bearer: () => token } });
+  try {
+    const ticket = await support.openTicket({
+      body: { title: 'Unable to sign in', priority: 'high' },
+    });
+    console.log(ticket.id);
+  } catch (error) {
+    if (!TooManyOpen.matches(error)) throw error;
+    console.log(`Already open: ${error.data.open} of ${error.data.limit}`);
+  }
+}

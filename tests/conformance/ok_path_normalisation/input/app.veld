@@ -1,0 +1,9 @@
+service Root at "/" {
+  get "/" index()
+  get "/about/" about()
+}
+
+service Api at "/api//v1/" {
+  get "/" list()
+  get "//x/" x()
+}

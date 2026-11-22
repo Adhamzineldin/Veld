@@ -1,0 +1,17 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0404]: arm model `Card` already has a field named `kind`, which is the discriminator of union `Payment`
+ --> app/app.veld:4:17
+  |
+4 | union Payment { card: Card, bank: Bank }
+  |                 ^^^^^^^^^^
+ --> app/app.veld:1:14
+  |
+1 | model Card { kind: string }
+  |              ---- conflicting field
+  = help: rename the field or choose another discriminator with `@discriminator("prop")`
+
+== ir ==
+(no IR: compilation failed)

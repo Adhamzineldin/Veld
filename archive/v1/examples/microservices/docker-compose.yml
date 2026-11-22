@@ -1,0 +1,57 @@
+version: '3.9'
+
+services:
+  api-gateway:
+    image: nginx:alpine
+    ports: ['3000:3000']
+    volumes:
+      - ./api-gateway/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - iam-service
+      - account-service
+      - transaction-service
+      - card-service
+      - lending-service
+      - notification-service
+
+  iam-service:
+    build: ./backend/iam-service
+    expose: ['3001']
+    environment:
+      PORT: 3001
+      JWT_SECRET: change-me-in-production
+
+  account-service:
+    build: ./backend/account-service
+    expose: ['3002']
+    environment:
+      PORT: 3002
+
+  transaction-service:
+    build: ./backend/transaction-service
+    expose: ['3003']
+    environment:
+      PORT: 3003
+
+  card-service:
+    build: ./backend/card-service
+    expose: ['3004']
+    environment:
+      PORT: 3004
+
+  lending-service:
+    build: ./backend/lending-service
+    expose: ['3005']
+    environment:
+      PORT: 3005
+
+  notification-service:
+    build: ./backend/notification-service
+    expose: ['3006']
+    environment:
+      PORT: 3006
+
+  frontend:
+    build: ./frontend
+    ports: ['5173:5173']
+    depends_on: [api-gateway]

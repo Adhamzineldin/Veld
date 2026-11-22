@@ -1,132 +1,216 @@
-name: CI
-
-# ─── RUNS ON ────────────────────────────────────────────────────────────────
-# Every push to master/main and every pull request.
-# No secrets needed — this is read-only (build + test + vet).
-# ─────────────────────────────────────────────────────────────────────────────
+name: ci
 
 on:
-  push:
-    branches: [master, main]
+  # No push trigger, to save Actions minutes: CI runs on pull requests and by hand.
   pull_request:
-    branches: [master, main]
+    branches: [master]
+  workflow_dispatch:
 
-permissions:
-  contents: read
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      - uses: dtolnay/rust-toolchain@1.100.0
         with:
-          go-version: "1.22"
-          cache: true
-
-      - name: Build
-        run: go build ./...
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test
-        run: go test ./... -race -count=1
-
-  drift:
-    name: Generated files up to date
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-          cache: true
-
-      # The plugin language specs are generated from internal/language/constants.go.
-      # Editing them by hand silently desyncs the two editors from the lexer.
-      - name: Regenerate plugin language specs
-        run: go run ./cmd/generate-language
-
-      # The canonical config schema is copied into both plugins by this script.
-      - name: Resync editor config schemas
-        run: bash scripts/sync-schema.sh
-
-      - name: Fail if anything changed
-        run: |
-          if ! git diff --quiet; then
-            echo "::error::Generated files are out of date. Run these locally and commit the result:"
-            echo "  go run ./cmd/generate-language"
-            echo "  bash scripts/sync-schema.sh"
-            git --no-pager diff --stat
-            exit 1
-          fi
-          echo "✓ All generated files are up to date"
-
-  # B-015 / F-NODE-19: compile the generated node-ts, TypeScript client and
-  # React hooks output with `tsc --strict`, and run the Express + typed client
-  # round trip (cmd/veld/node_toolchain_test.go). The toolchain is pinned in
-  # cmd/veld/testdata/node/package-lock.json; VELD_REQUIRE_TOOLCHAINS turns
-  # the test's "toolchain missing" skip into a failure.
-  node-toolchain:
-    name: Generated TypeScript compiles and round-trips
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-          cache: true
-
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: cmd/veld/testdata/node/package-lock.json
-
+      # Both JDKs are installed; the last one (21) is the default on PATH. javac 21 compiles the
+      # generated code for `--release 17` and `--release 21` (the version matrix of the toolchain tests).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
       - name: Install the pinned TypeScript toolchain
-        run: npm ci --prefix cmd/veld/testdata/node
-
-      - name: tsc --strict and Express round trip
+        run: npm ci --prefix tests/toolchain/ts
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test (the toolchain tests must run, not skip)
+        run: cargo test --workspace
         env:
           VELD_REQUIRE_TOOLCHAINS: "1"
-        run: go test ./cmd/veld/ -run TestNodeToolchain -count=1 -v
 
-  build-check:
-    name: Build (${{ matrix.goos }}-${{ matrix.goarch }})
+  java17:
+    name: generated Java runs on a JDK 17 JVM
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: darwin
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
-          - goos: windows
-            goarch: amd64
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.100.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install the pinned TypeScript toolchain
+        run: npm ci --prefix tests/toolchain/ts
+      - name: Java toolchain tests with javac and java 17 (release 17 only)
+        run: cargo test -p veld-emit-java --test toolchain
+        env:
+          VELD_REQUIRE_TOOLCHAINS: "1"
+          VELD_JAVA_RELEASES: "17"
 
+  spring:
+    name: generated Spring adapter runs in Spring Boot 3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.100.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: tests/toolchain/java/spring/pom.xml
+      - name: Install the pinned TypeScript toolchain
+        run: npm ci --prefix tests/toolchain/ts
+      - name: Build the Spring Boot application with the Maven Wrapper and call it from the generated clients
+        run: cargo test -p veld-emit-java --test toolchain spring_adapter_serves_the_round_trip
+        env:
+          VELD_REQUIRE_TOOLCHAINS: "1"
+          VELD_JAVA_RELEASES: "17"
+
+  determinism:
+    name: determinism (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.100.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Build veld
+        run: cargo build -p veld
+      - name: Generate the same workspace twice, in two directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          veld="$PWD/target/debug/veld"
+          for run in a b; do
+            dir="$RUNNER_TEMP/determinism-$run"
+            rm -rf "$dir"
+            mkdir -p "$dir"
+            cp -R tests/toolchain/contract "$dir/contracts"
+            cat > "$dir/veld.toml" <<'TOML'
+          [project]
+          name = "contract"
+
+          [services.iam]
+          contracts = "contracts/iam"
+
+          [services.orders]
+          contracts = "contracts/orders"
+
+          [[targets]]
+          name = "orders-api"
+          role = "server"
+          emitter = "node"
+          service = "orders"
+          out = "out/orders"
+
+          [[targets]]
+          name = "web"
+          role = "client"
+          emitter = "typescript"
+          out = "out/web"
+          TOML
+            (cd "$dir" && "$veld" generate)
+          done
+          diff -r "$RUNNER_TEMP/determinism-a/out" "$RUNNER_TEMP/determinism-b/out"
+          diff "$RUNNER_TEMP/determinism-a/veld.lock.ir.json" "$RUNNER_TEMP/determinism-b/veld.lock.ir.json"
+
+  codegen:
+    name: generated files are current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.100.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo xtask codegen --check
+
+  registry:
+    name: registry (Go server and e2e)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: veld
+          POSTGRES_PASSWORD: veld
+          POSTGRES_DB: veld
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U veld"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CARGO_TERM_COLOR: always
+      VELD_REQUIRE_TOOLCHAINS: "1"
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
-          cache: true
-
-      - name: Cross-compile
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+          go-version-file: registry/go.mod
+          cache-dependency-path: registry/go.sum
+      - uses: dtolnay/rust-toolchain@1.100.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Go vet and tests
+        working-directory: registry
         run: |
-          EXT=""
-          if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
-          go build -o "veld${EXT}" ./cmd/veld
-          echo "✓ Built veld for ${GOOS}/${GOARCH}"
+          go vet ./...
+          go test ./...
+      - name: Registry client unit tests
+        run: cargo test -p veld-registry-client
+      - name: Registry end-to-end test (real registry and PostgreSQL)
+        run: |
+          # The test starts its own throwaway cluster with the runner's newest server binaries.
+          VELD_PG_BIN="$(ls -d /usr/lib/postgresql/*/bin | sort -V | tail -n 1)"
+          export VELD_PG_BIN
+          test -x "$VELD_PG_BIN/initdb" || { echo "no PostgreSQL server binaries in $VELD_PG_BIN"; ls /usr/lib/postgresql; exit 1; }
+          cargo test -p veld --test registry_e2e -- --nocapture
 
+  jetbrains:
+    name: JetBrains plugin builds and its tests pass
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/jetbrains
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+      - name: Build the plugin zip
+        run: ./gradlew buildPlugin --no-daemon
+      - name: Test
+        run: ./gradlew test --no-daemon

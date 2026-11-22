@@ -1,0 +1,49 @@
+/// A registered NexusBank user.
+model User {
+  id: uuid @readonly
+  email: string @format(email)
+  firstName: string @length(min: 1, max: 80)
+  lastName: string @length(min: 1, max: 80)
+  phone?: string @pattern("^\\+?[0-9]{7,15}$")
+  createdAt: datetime @readonly
+}
+
+/// New user registration payload.
+model RegisterInput {
+  email: string @format(email)
+  password: string @length(min: 12, max: 128)
+  firstName: string @length(min: 1, max: 80)
+  lastName: string @length(min: 1, max: 80)
+  phone?: string @pattern("^\\+?[0-9]{7,15}$")
+}
+
+/// Credentials for email and password authentication.
+model LoginInput {
+  email: string @format(email)
+  password: string
+}
+
+/// A JWT access token and its refresh token.
+model TokenPair {
+  accessToken: string
+  refreshToken: string
+  /// Seconds until the access token expires.
+  expiresIn: int
+}
+
+/// Exchanges a refresh token for a new token pair.
+model RefreshInput {
+  refreshToken: string
+}
+
+/// Fields a user may change on their own profile.
+model UpdateProfileInput {
+  firstName?: string @length(min: 1, max: 80)
+  lastName?: string @length(min: 1, max: 80)
+  phone?: string @pattern("^\\+?[0-9]{7,15}$")
+}
+
+/// The email address is already registered.
+error EmailTaken 409 {
+  email: string
+}

@@ -1,0 +1,25 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0405]: error `OutOfStock` can only be used in the response position of an endpoint
+ --> app/app.veld:3:19
+  |
+3 | model Holder { e: OutOfStock }
+  |                   ^^^^^^^^^^
+
+error[E0405]: error `OutOfStock` can only be used in the response position of an endpoint
+ --> app/app.veld:6:16
+  |
+6 |   get "/" f(x: OutOfStock) -> Holder | OutOfStock | Holder
+  |                ^^^^^^^^^^
+
+error[E0405]: only `error` declarations may follow the success response
+ --> app/app.veld:6:53
+  |
+6 |   get "/" f(x: OutOfStock) -> Holder | OutOfStock | Holder
+  |                                                     ^^^^^^
+  = help: write the success response first: `-> Success | ErrorA | ErrorB`
+
+== ir ==
+(no IR: compilation failed)

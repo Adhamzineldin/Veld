@@ -1,0 +1,19 @@
+package dev.veld.runtime;
+
+import java.util.List;
+
+/**
+ * One page of results ({@code Page<T>} in a contract).
+ *
+ * @param items the items of this page
+ * @param total the total number of items (a string on the wire)
+ * @param page the page number
+ * @param size the page size
+ * @param <T> the item type
+ */
+public record Page<T>(List<T> items, long total, int page, int size) {
+  /** Creates a page (the list is copied). */
+  public Page {
+    items = List.copyOf(items);
+  }
+}

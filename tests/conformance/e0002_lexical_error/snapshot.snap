@@ -1,0 +1,24 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0002]: unexpected character `#`
+ --> app/app.veld:2:10
+  |
+2 |   a: int # not a token
+  |          ^
+
+error[E0003]: expected `:` after the field name, found `a`
+ --> app/app.veld:2:16
+  |
+2 |   a: int # not a token
+  |                ^
+
+error[E0002]: unterminated string
+ --> app/app.veld:3:15
+  |
+3 |   b: string = "unterminated
+  |               ^
+
+== ir ==
+(no IR: compilation failed)

@@ -1,0 +1,7 @@
+model M { a: int }
+
+service S at "/s" {
+  get "/{a}" fa(a: M)
+  get "/x/{b}" fb(b?: string)
+  get "/y/{c}" fc(c: string[])
+}

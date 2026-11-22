@@ -17,55 +17,55 @@ const features = [
     icon: <Zap size={22} />,
     title: 'Zero Runtime Dependencies',
     description:
-      'Generated code has no runtime dependencies by default. Types, routes, and SDK work out of the box — no npm install needed.',
+      'Generated code imports no package. Only the adapter for the framework you chose (React, Vue, NestJS, Spring) imports that framework.',
   },
   {
     icon: <Layers size={22} />,
-    title: 'Framework Agnostic',
+    title: 'Your Framework',
     description:
-      'Works with Express, Fastify, Hono, Flask, Chi, Actix — any router with .get() and .post(). No lock-in, ever.',
+      'Server adapters for Express, Fastify, Hono, node:http, NestJS, the JDK HTTP server and Spring Boot 3. The Node adapters use structural types, so there is no lock-in.',
   },
   {
     icon: <ShieldCheck size={22} />,
-    title: 'Runtime Validation',
+    title: 'Validation Everywhere',
     description:
-      'Opt-in zero-dep validators. 400 on bad input, 500 on contract violation. Zod and Pydantic schemas generated automatically.',
+      'Constraints from the contract are enforced on the server (422 with issues) and in the client before the request is sent.',
   },
   {
     icon: <AlertTriangle size={22} />,
     title: 'Typed Errors',
     description:
-      'Define error codes per action. Generated error factories on the backend, typed error matchers on the frontend SDK.',
+      'Errors are declarations. They travel as RFC 9457 problem+json and arrive as typed classes, in TypeScript and in Java.',
   },
   {
     icon: <GitBranch size={22} />,
-    title: 'Deterministic Output',
+    title: 'Same Error, Everywhere',
     description:
-      'Same input always produces identical output. Safe for CI/CD pipelines, code review, and version control.',
+      'Signatures and same() recognise an error across packages and languages: a Node NotFound is the same NotFound in the Java service that calls it.',
   },
   {
     icon: <Globe size={22} />,
-    title: 'Multi-Stack',
+    title: 'Microservices and Streaming',
     description:
-      '8 backend languages, 10 frontend targets, plus OpenAPI, database schemas, Docker, and CI/CD generation.',
+      'Workspaces with consumes (cycles allowed), a generated client per consumed service, plus Server-Sent Events and WebSockets.',
   },
   {
     icon: <FileCode size={22} />,
-    title: 'OpenAPI & Docs',
+    title: 'Safe, Deterministic Output',
     description:
-      'Auto-generate OpenAPI 3.0 specs and API documentation from the same contract. Always in sync, never stale.',
+      'Same contract, same bytes. Veld writes through a staged manifest and never overwrites a file you edited.',
   },
   {
     icon: <Eye size={22} />,
-    title: 'Watch Mode',
+    title: 'Breaking-Change Diff',
     description:
-      'Run veld watch for auto-regeneration on every file save with 500ms debounce. Instant feedback loop.',
+      'veld diff compares against veld.lock.ir.json or a git ref and, with --strict, fails CI on a breaking change. veld export openapi gives OpenAPI 3.1.',
   },
   {
     icon: <Terminal size={22} />,
     title: 'IDE Support',
     description:
-      'VS Code extension, JetBrains plugin, and built-in LSP server. Syntax highlighting, diagnostics, and completions.',
+      'VS Code and JetBrains plugins, both on one language server (veld lsp): diagnostics, hover, completion, rename, formatting.',
   },
 ];
 

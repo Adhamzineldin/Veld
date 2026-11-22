@@ -21,7 +21,7 @@ const GLYPHS = [
 const STRIP = [
   { icon: Layers, label: 'Typed interfaces' },
   { icon: ShieldCheck, label: 'Validated routes' },
-  { icon: Boxes, label: '13+ target stacks' },
+  { icon: Boxes, label: 'Node, Java and TypeScript targets' },
   { icon: Zap, label: 'Zero runtime deps' },
 ];
 
@@ -67,9 +67,9 @@ export default function Hero() {
           </h1>
 
           <p className={styles.subtitle}>
-            Define your API once in <code>.veld</code> files. Veld generates the typed backend,
-            the frontend SDK, validation, OpenAPI specs and more — for any stack, with zero
-            runtime dependencies.
+            Define your API once in <code>.veld</code> files. Veld generates a typed server and a
+            typed client, with validation and typed errors, with zero runtime dependencies.
+            Veld 2.0 is a rewrite in Rust.
           </p>
 
           <div className={styles.actions}>
@@ -90,15 +90,14 @@ export default function Hero() {
 
           <div className={styles.installBar}>
             <span className={styles.prompt}>$</span>
-            <code className={styles.installCode}>npm install @maayn/veld</code>
+            <code className={styles.installCode}>cargo build -p veld --release</code>
           </div>
 
           <div className={styles.installOptions}>
-            <span>Also available via</span>
+            <span>Wrappers</span>
+            <code>npm</code>
             <code>pip</code>
             <code>brew</code>
-            <code>go install</code>
-            <code>composer</code>
           </div>
 
           <div className={styles.tagline}>Backend · Contract · Frontend</div>

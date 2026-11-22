@@ -1,0 +1,71 @@
+package dev.veld.runtime;
+
+import java.util.function.Function;
+import java.util.stream.Stream;
+
+/**
+ * One Server-Sent Event an implementation yields: the item and, optionally, the {@code event}
+ * name, the {@code id} (a reconnecting client sends the last one as {@code Last-Event-ID}) and the
+ * {@code retry} delay in milliseconds.
+ *
+ * @param <T> the item type
+ * @param data the item
+ * @param event the event name, or {@code null} for the default {@code message} event
+ * @param id the event id, or {@code null}
+ * @param retry the reconnection delay in milliseconds, or {@code null}
+ */
+public record SseEvent<T>(T data, String event, String id, Integer retry) {
+
+  /** An event with only data. */
+  public static <T> SseEvent<T> of(T data) {
+    return new SseEvent<>(data, null, null, null);
+  }
+
+  /** An event with an event name and an id; either may be {@code null}. */
+  public static <T> SseEvent<T> of(T data, String event, String id) {
+    return new SseEvent<>(data, event, id, null);
+  }
+
+  /** The same event with a {@code retry} delay in milliseconds. */
+  public SseEvent<T> withRetry(int millis) {
+    return new SseEvent<>(data, event, id, millis);
+  }
+
+  /** The same event around another item. */
+  public <R> SseEvent<R> map(Function<? super T, ? extends R> mapper) {
+    return new SseEvent<>(mapper.apply(data), event, id, retry);
+  }
+
+  /** Encodes the items of a stream; closing the result closes the source. */
+  public static <T> Stream<SseEvent<Json>> encode(Stream<SseEvent<T>> source, Codec<T> codec) {
+    return source.map(e -> e.map(codec::encode));
+  }
+
+  /**
+   * One frame on the wire: the optional {@code id}, {@code event} and {@code retry} fields in that
+   * order, then one {@code data} line and a blank line. {@code data} is canonical JSON, which
+   * never contains a line break.
+   *
+   * @throws IllegalArgumentException when a field contains a line break
+   */
+  public static String frame(String data, String id, String event, Integer retry) {
+    StringBuilder out = new StringBuilder();
+    if (id != null) {
+      out.append("id: ").append(oneLine("id", id)).append('\n');
+    }
+    if (event != null) {
+      out.append("event: ").append(oneLine("event", event)).append('\n');
+    }
+    if (retry != null) {
+      out.append("retry: ").append(retry.intValue()).append('\n');
+    }
+    return out.append("data: ").append(oneLine("data", data)).append("\n\n").toString();
+  }
+
+  private static String oneLine(String field, String value) {
+    if (value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) {
+      throw new IllegalArgumentException("SSE " + field + " must not contain a line break");
+    }
+    return value;
+  }
+}

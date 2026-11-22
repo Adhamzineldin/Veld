@@ -1,0 +1,22 @@
+{
+  "name": "veld",
+  "displayName": "Veld",
+  "version": "2.0.0",
+  "contributes": {
+    "languages": [
+      {
+        "id": "veld",
+        "aliases": ["Veld"],
+        "extensions": [".veld"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "veld",
+        "scopeName": "source.veld",
+        "path": "./syntaxes/veld.tmLanguage.json"
+      }
+    ]
+  }
+}

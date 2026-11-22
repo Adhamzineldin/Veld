@@ -1,0 +1,4 @@
+/// TODO: describe when ${NAME} is raised.
+error ${NAME} 409 {
+  message: string
+}

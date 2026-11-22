@@ -1,0 +1,6 @@
+model M { a: int }
+
+service S at "/s" {
+  get "/a" fa() -> 404 M
+  get "/b" fb() -> 301
+}

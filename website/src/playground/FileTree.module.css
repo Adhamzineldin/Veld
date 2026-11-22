@@ -1,0 +1,48 @@
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 10px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--fg2);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.row svg {
+  flex: none;
+  opacity: 0.8;
+}
+
+.row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row:hover {
+  background: rgba(77, 141, 255, 0.08);
+  color: var(--fg);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.active {
+  color: var(--fg);
+  background: rgba(77, 141, 255, 0.16);
+  border-left-color: var(--accent);
+}

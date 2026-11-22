@@ -1,0 +1,18 @@
+[project]
+name = "catalog"
+contracts = "contracts"
+
+[[targets]]
+name = "api"
+role = "server"
+emitter = "rust"
+framework = "axum"
+service = "catalog"
+out = "generated/server"
+
+[[targets]]
+name = "client"
+role = "client"
+emitter = "rust"
+framework = "ureq"
+out = "generated/client"

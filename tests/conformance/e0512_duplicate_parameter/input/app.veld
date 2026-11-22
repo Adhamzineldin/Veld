@@ -1,0 +1,5 @@
+model M { a: int }
+
+service S at "/s" {
+  post "/" f(body: M, body: M)
+}

@@ -1,0 +1,2 @@
+error Gone 200 { reason: string }
+error Weird 700 { reason: string }

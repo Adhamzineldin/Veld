@@ -1,47 +1,37 @@
-# Veld Examples
+# Veld examples
 
-Reference examples showing how to wire Veld-generated code with real backends and frontends.
+Each example includes its contracts, `veld.toml`, generated packages and handwritten application
+code. End-to-end tests call the servers over HTTP and exercise the clients.
 
-Each example uses the same `.veld` contract (a simple Todo + Users API) but targets a different backend + frontend combination.
+| Example | Shows |
+|---|---|
+| [`hello/`](hello) | The minimum, end to end: an Express server implementing `HelloService`, and a Vite + React app using the generated hooks, with a README walk-through |
+| [`microservices/`](microservices) | Five services (four Node, one Java), mutual `consumes` between Node and Java, typed errors across both, a React app, Docker compose |
+| [`rust-catalog/`](rust-catalog) | An Axum book catalog and a blocking Rust CLI that looks up books and handles typed 404 responses |
+| [`library-package/`](library-package) | A shared `[libraries.common]` package whose types and errors are used by two services (Express and Fastify) and a typed client script |
 
-## Examples
+For the Rust example, follow its Cargo commands. For the Node examples, build the CLI once with `cargo build -p veld --release`, then run
 
-| Example | Backend | Frontend | Stack |
-|---------|---------|----------|-------|
-| [node-react](./node-react/) | Node (Express) | React (TanStack Query) | TypeScript full-stack |
-| [node-typescript](./node-typescript/) | Node (Express) | TypeScript (fetch SDK) | TypeScript full-stack |
-| [python-vue](./python-vue/) | Python (Flask) | Vue 3 (composables) | Python + TypeScript |
-| [go-svelte](./go-svelte/) | Go (Chi) | Svelte 5 (stores) | Go + TypeScript |
-| [java-angular](./java-angular/) | Java (Spring Boot) | Angular (services) | Java + TypeScript |
-| [node-flutter](./node-flutter/) | Node (Express) | Dart (Flutter) | TypeScript + Dart |
-| [rust-swift](./rust-swift/) | Rust (Axum) | Swift (iOS) | Rust + Swift |
-| [csharp-kotlin](./csharp-kotlin/) | C# (ASP.NET) | Kotlin (Android) | C# + Kotlin |
-| [php-typescript](./php-typescript/) | PHP (Laravel) | TypeScript (fetch SDK) | PHP + TypeScript |
+```bash
+veld generate            # write the generated code
+veld setup               # add @veld/<target> to the package.json files (Maven/Gradle for Java)
+npm install              # in each app folder
+```
 
-## Contract
+Follow the example's README to start the apps. Each Node app has `start`, `dev` and `build` scripts and a committed
+`package-lock.json`; `node_modules` and build output are ignored (`examples/.gitignore`).
 
-All examples share the same Veld contract defining a simple Todo + Users API:
+## Tests
 
-- **Models**: `User`, `CreateUserInput`, `UpdateUserInput`, `Todo`, `CreateTodoInput`, `UpdateTodoInput`
-- **Modules**: `Users` (List, Get, Create, Delete), `Todos` (List, Get, Create, Update, Delete)
+- `cargo test -p veld --test examples`: every example compiles, its committed output is up to date,
+  and regenerating from scratch gives the same bytes.
+- `cargo test -p veld --test examples_e2e`: copies each example to a temporary directory,
+  regenerates it (nothing may change), runs `npm ci`, `tsc --noEmit` on the hand-written code (which
+  proves the `@veld/...` imports), boots the servers on free ports (Node through `tsx`, Java through
+  `javac` and `java`) and runs a scripted flow over HTTP, then renders the React app with
+  `react-test-renderer`. It needs Node with npm (and a JDK for `microservices`) and skips with a
+  message when they are missing; `VELD_REQUIRE_TOOLCHAINS=1` makes that a failure.
 
-## Quick Start
+After you change a contract in an example, run `veld generate` and commit the result.
 
-1. Build the Veld CLI (from repo root):
-   ```bash
-   go build -o veld ./cmd/veld
-   ```
-
-2. Pick an example and generate the code:
-   ```bash
-   cd examples/node-react
-   ../../veld generate
-   ```
-
-3. Follow the example's README for setup and running instructions.
-
-## What Each Example Shows
-
-- **Backend**: How to implement the generated service interfaces and register routes
-- **Frontend**: How to use the generated client SDK in framework-specific patterns
-- **Veld config**: The `veld.config.json` for each backend/frontend combination
+The older v1 examples are in [`archive/v1/examples`](../archive/v1/examples). They are reference only.

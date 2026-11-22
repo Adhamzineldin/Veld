@@ -1,0 +1,16 @@
+model Tick { n: int }
+model Cmd { text: string }
+
+@auth(apiKey(header: "X-API-Key"))
+@middleware(RateLimit, Audit)
+service Live at "/live" {
+  /// Server-sent events.
+  get "/ticks" ticks() -> stream Tick
+  /// Bidirectional channel.
+  ws "/chat" chat(body: stream Cmd) -> stream Tick
+  @auth(basic)
+  @middleware(Extra)
+  get "/status" status() -> Tick | Unauthorized | Forbidden | TooManyRequests | Internal
+  @auth(none)
+  get "/ping" ping() -> 204
+}

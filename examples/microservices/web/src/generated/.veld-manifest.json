@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "generator": "veld 2.0",
+  "files": {
+    "README.md": "67031eb9a2d4de9b6865d134192fb59c8e039eac2733306076abac934a102229",
+    "accounts/client.ts": "579c96f8e1b1a47de5e3b1b29a7f164323f007a192a722eac256ba9d1bd6707f",
+    "accounts/errors/accounts.ts": "6780ff5fb23935bbdeca6367ba679176b611c7f4fd17f7bcfe5a9b0cffccd220",
+    "accounts/models/accounts.ts": "35c572933bfc3842cf8e50b9d112a7705b002b686db78e05b8f97c4abdf27602",
+    "accounts/react.ts": "26bd048be01826a08e8bf6c36d5e12b9e76f71644e585fc216a58ec7b87f5218",
+    "cards/client.ts": "d5653175b0e537f13cdad2cc46750490e26dd6b3cdbfbb4ec9392f238eeb90e6",
+    "cards/errors/cards.ts": "842c62bac6a5220f68c289ecf4b466a78235ffc22da2fd082bfc7399e2e90d40",
+    "cards/models/cards.ts": "cc257d1941f778df5cb4dd3583c0cce1c43df912983267bdad1554179f0b5a41",
+    "cards/react.ts": "4a6688af900247d7b72e4d9ed51ff6b4026a298af710d7dac739680c9f3f67ec",
+    "clients.ts": "758ee14a726b9fe46583c166e132a7b40be298b8995ba19d56d5ad98d19137c3",
+    "iam/client.ts": "1a183d3ef69fd4afc4b2f2d9bbf60dde880cdf53d8ba14efa0a3dde9217c8c21",
+    "iam/errors/users.ts": "1d6a250203aea96a96a8a3b855e40c8ac5351740e5c629ae8100d8412443c389",
+    "iam/models/users.ts": "a94fe54634f14071695fa91c21c6dec7aedb556ba4c832c32b41a938cc4f2003",
+    "iam/react.ts": "d6dc4110c56e19233859d3126c818317fe5454c8a43570575aad58bf23fb26ee",
+    "index.ts": "6baf0ede61d551e193fc978658453a1403545bbb9589fa05168476b0e9298fc1",
+    "notifications/client.ts": "2e84918e508b2ffec38a98835b6febc5a19405b9b6ad418c9f45b6d1148b7175",
+    "notifications/models/notifications.ts": "39ec24957d5035f4469ffbfc84adc198e91430d07f8a0aad022b4f2d27cfd620",
+    "notifications/react.ts": "81210ff299083f9cf69a7ed024b0893c3700c7a561626b1b12d7f828fa1ec490",
+    "package.json": "0bf1e401087ae0c84db2a4b8d72141c13e199f210200825c83f07d09cae98d35",
+    "prelude.ts": "6b517ab7ce5828a32b3de12531ee5eea8a121e952b855a1d23f590c3486ea53f",
+    "runtime/react.ts": "329bd077398e7713035cf2871bfeeaa6c30111a5d69b2ff16a8b1c340b47a05b",
+    "runtime/veld.ts": "626c161cfd99d1311c22ff9027ca106c8c8d9ed33101708e4ee9e3740e952464",
+    "transactions/client.ts": "ce9293627fea83c632cb1605b575011619cbedc99eddab902afff2446d7c120e",
+    "transactions/errors/transactions.ts": "79ebf2cc821ec9f20c96c2cd13ac3a0f91039165e59e0305d5434172167f0cd6",
+    "transactions/models/transactions.ts": "33faf71e39d63157e2f152118701619dd6fcddc3e06c86499e40ef6f4047637d",
+    "transactions/react.ts": "9cee70643d762ca4c82dde9356ba0d8e3f328757a7e19b8a4f99bc6ecfc51db9"
+  }
+}

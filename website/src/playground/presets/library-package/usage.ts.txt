@@ -1,0 +1,15 @@
+import { PlanLimitReached, type OrdersService } from '@veld/server-node';
+
+// Orders and Invoices both use Money from the common library.
+export const createOrder: OrdersService['createOrder'] = async ({ body }) => {
+  if (Number(body.total.amount) <= 0) {
+    throw new PlanLimitReached({ limit: 'orders must have a positive total' });
+  }
+  return {
+    id: crypto.randomUUID(),
+    status: 'pending',
+    total: body.total,
+    note: body.note,
+    createdAt: new Date().toISOString(),
+  };
+};

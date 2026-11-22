@@ -1,0 +1,7 @@
+model B { x: int }
+model A {
+  a: B<int>
+  b: Map<string>
+  c: string<int>
+  d: Page
+}

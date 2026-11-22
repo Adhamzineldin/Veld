@@ -1,0 +1,320 @@
+//! Errors, identity (`VeldValue`, `same`) and problem+json.
+
+use std::fmt;
+
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+
+use super::schema::Schema;
+
+/// One validation failure. `path` is the location (`body.items[0].sku`), `code` a stable
+/// machine-readable reason (`required`, `type`, `min`, `max`, `min_length`, `max_length`,
+/// `pattern`, `format`, `enum`, `discriminator`, `json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Issue {
+    pub path: String,
+    pub code: String,
+    pub message: String,
+}
+
+/// An RFC 9457 `application/problem+json` body of a declared error.
+#[derive(Debug, Clone)]
+pub struct Problem {
+    /// The declaration signature (`type` on the wire).
+    pub sig: String,
+    /// The declaration name (`title` on the wire).
+    pub title: String,
+    pub status: u16,
+    /// The operation signature, or `None` until the error is raised from an endpoint.
+    pub op: Option<String>,
+    /// The error payload in wire form, schema defaults applied.
+    pub data: Value,
+    /// The payload's schema, when known: it gives `data` its canonical form.
+    pub schema: Option<&'static Schema>,
+}
+
+impl Problem {
+    /// The problem as its JSON wire form.
+    #[must_use]
+    pub fn to_json(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("type".into(), Value::String(self.sig.clone()));
+        m.insert("title".into(), Value::String(self.title.clone()));
+        m.insert("status".into(), Value::from(self.status));
+        m.insert(
+            "operation".into(),
+            self.op.clone().map_or(Value::Null, Value::String),
+        );
+        m.insert("data".into(), self.data.clone());
+        Value::Object(m)
+    }
+
+    /// The problem as JSON text, with its members in the documented order (`type`, `title`,
+    /// `status`, `operation`, `data`): the body of an error response and of a WebSocket error
+    /// frame.
+    #[must_use]
+    pub fn to_text(&self) -> String {
+        let text = |s: &str| serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into());
+        format!(
+            "{{\"type\":{},\"title\":{},\"status\":{},\"operation\":{},\"data\":{}}}",
+            text(&self.sig),
+            text(&self.title),
+            self.status,
+            self.op.as_deref().map_or_else(|| "null".to_string(), text),
+            self.data
+        )
+    }
+
+    /// Reads a problem+json body; `None` when it has no string `type`.
+    #[must_use]
+    pub fn from_json(body: &Value) -> Option<Problem> {
+        let obj = body.as_object()?;
+        let sig = obj.get("type")?.as_str()?.to_string();
+        Some(Problem {
+            sig,
+            title: obj.get("title").and_then(Value::as_str).unwrap_or("").to_string(),
+            status: obj
+                .get("status")
+                .and_then(Value::as_u64)
+                .and_then(|s| u16::try_from(s).ok())
+                .unwrap_or(0),
+            op: obj.get("operation").and_then(Value::as_str).map(str::to_string),
+            data: obj.get("data").cloned().unwrap_or(Value::Null),
+            schema: None,
+        })
+    }
+}
+
+/// Everything that can go wrong in a generated client or server.
+#[derive(Debug, Clone)]
+pub enum Error {
+    /// A declared error (`NotFound`, `OutOfStock`, `ValidationError`, ...). Recover the typed
+    /// value with `OutOfStock::from_error(&err)`.
+    Problem(Problem),
+    /// A request that could not be decoded; only possible with request validation switched off.
+    /// A server answers it as `ValidationError`.
+    Invalid(Vec<Issue>),
+    /// A non-2xx response that is not a declared problem.
+    Http { status: u16, body: String },
+    /// The network failed, or a body could not be read.
+    Transport(String),
+    /// Anything else an implementation reports. On a server it becomes `Internal` without its
+    /// message; `on_error` sees the original.
+    Other(String),
+}
+
+impl Error {
+    /// A declared error value as an [`Error`], with the declaration's default status.
+    #[must_use]
+    pub fn declared<E: DeclaredError>(value: &E) -> Error {
+        Error::Problem(Problem {
+            sig: E::VELD_SIG.to_string(),
+            title: E::NAME.to_string(),
+            status: E::DEFAULT_STATUS.unwrap_or(500),
+            op: None,
+            data: value.to_wire(),
+            schema: Some(E::schema()),
+        })
+    }
+
+    /// An error that is not part of the contract.
+    #[must_use]
+    pub fn other(message: impl fmt::Display) -> Error {
+        Error::Other(message.to_string())
+    }
+
+    /// The declared problem, if this is one.
+    #[must_use]
+    pub fn problem(&self) -> Option<&Problem> {
+        match self {
+            Error::Problem(p) => Some(p),
+            Error::Invalid(_) | Error::Http { .. } | Error::Transport(_) | Error::Other(_) => None,
+        }
+    }
+
+    /// The HTTP status: of the problem or of the unexpected response.
+    #[must_use]
+    pub fn status(&self) -> Option<u16> {
+        match self {
+            Error::Problem(p) => Some(p.status),
+            Error::Http { status, .. } => Some(*status),
+            Error::Invalid(_) | Error::Transport(_) | Error::Other(_) => None,
+        }
+    }
+
+    /// The operation signature a declared error was raised from.
+    #[must_use]
+    pub fn op(&self) -> Option<&str> {
+        self.problem().and_then(|p| p.op.as_deref())
+    }
+
+    /// The service of the operation (`orders/Orders`), when known.
+    #[must_use]
+    pub fn service(&self) -> Option<&str> {
+        let op = self.op()?;
+        let body = op.strip_prefix("veld:")?.split('@').next()?;
+        body.rsplit_once('.').map(|(service, _)| service)
+    }
+
+    /// Whether this is the declared error `E` (from any operation).
+    #[must_use]
+    pub fn is<E: DeclaredError>(&self) -> bool {
+        E::matches(self)
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Problem(p) => write!(f, "{} ({})", p.title, p.status),
+            Error::Invalid(issues) => write!(f, "{} validation issue(s)", issues.len()),
+            Error::Http { status, .. } => write!(f, "unexpected HTTP status {status}"),
+            Error::Transport(m) => write!(f, "transport error: {m}"),
+            Error::Other(m) => write!(f, "{m}"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+/// A generated declaration: model, enum, union or error.
+pub trait VeldDecl: Serialize + DeserializeOwned + Sized {
+    /// The declaration signature, verbatim from the contract.
+    const VELD_SIG: &'static str;
+
+    fn schema() -> &'static Schema;
+
+    /// The wire form: wire names, `long` as a string, `bytes` as base64.
+    fn to_wire(&self) -> Value {
+        Self::schema().to_wire(&serde_json::to_value(self).unwrap_or(Value::Null), false, false)
+    }
+
+    /// Reads the wire form: applies schema defaults, then decodes.
+    ///
+    /// # Errors
+    /// [`Error::Transport`] when `wire` does not fit the declaration.
+    fn from_wire(wire: &Value) -> Result<Self, Error> {
+        let typed = Self::schema().from_wire(wire, false);
+        serde_json::from_value(typed)
+            .map_err(|e| Error::Transport(format!("unreadable value of {}: {e}", Self::VELD_SIG)))
+    }
+
+    /// The issues of `wire` against this declaration (empty when valid).
+    fn validate(wire: &Value) -> Vec<Issue> {
+        Self::schema().validate(wire, "$", false)
+    }
+}
+
+/// A generated error declaration.
+pub trait DeclaredError: VeldDecl {
+    /// The declaration name (`title` of the problem).
+    const NAME: &'static str;
+    /// The status declared on the error itself, if any.
+    const DEFAULT_STATUS: Option<u16>;
+
+    /// This declaration, raised by any operation.
+    fn matches(e: &Error) -> bool {
+        matches!(e, Error::Problem(p) if p.sig == Self::VELD_SIG)
+    }
+
+    /// This declaration, raised by one service (`orders/Orders`).
+    fn matches_service(e: &Error, service: &str) -> bool {
+        Self::matches(e) && e.service() == Some(service)
+    }
+
+    /// The typed value of a declared error, or `None` when `e` is something else.
+    fn from_error(e: &Error) -> Option<Self> {
+        match e {
+            Error::Problem(p) if p.sig == Self::VELD_SIG => Self::from_wire(&p.data).ok(),
+            Error::Problem(_) | Error::Invalid(_) | Error::Http { .. } | Error::Transport(_) | Error::Other(_) => None,
+        }
+    }
+
+    /// This value as an [`Error`] to return from a service method.
+    fn into_error(self) -> Error {
+        Error::declared(&self)
+    }
+}
+
+/// Identity of a value, for [`same`]: the declaration signature, the operation signature (errors)
+/// and the canonical bytes (RFC 8785, schema defaults applied).
+pub trait VeldValue {
+    fn veld_sig(&self) -> &str;
+
+    fn veld_op(&self) -> Option<&str> {
+        None
+    }
+
+    fn canonical(&self) -> Vec<u8>;
+}
+
+impl<T: VeldDecl> VeldValue for T {
+    fn veld_sig(&self) -> &str {
+        T::VELD_SIG
+    }
+
+    fn canonical(&self) -> Vec<u8> {
+        T::schema().canonical_typed(&serde_json::to_value(self).unwrap_or(Value::Null))
+    }
+}
+
+impl VeldValue for Error {
+    fn veld_sig(&self) -> &str {
+        self.problem().map_or("", |p| p.sig.as_str())
+    }
+
+    fn veld_op(&self) -> Option<&str> {
+        self.op()
+    }
+
+    fn canonical(&self) -> Vec<u8> {
+        match self.problem() {
+            Some(Problem { schema: Some(s), data, .. }) => s.canonical_wire(data),
+            Some(p) => super::canonical::canonical_bytes(&p.data),
+            None => Vec::new(),
+        }
+    }
+}
+
+/// The identity triple of a value, as plain data: compare values of different generated crates
+/// with [`same_parts`], whose arguments have no crate-specific types.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Identity {
+    pub sig: String,
+    pub op: Option<String>,
+    pub canonical: Vec<u8>,
+}
+
+impl Identity {
+    /// The identity of `v`.
+    #[must_use]
+    pub fn of(v: &dyn VeldValue) -> Identity {
+        Identity {
+            sig: v.veld_sig().to_string(),
+            op: v.veld_op().map(str::to_string),
+            canonical: v.canonical(),
+        }
+    }
+}
+
+/// `same(a, b)`: equal declaration signatures, equal operation signatures and equal canonical
+/// bytes. Never class identity: two different declarations with identical fields are not the
+/// same, and a value without a signature is never the same as anything.
+#[must_use]
+pub fn same(a: &dyn VeldValue, b: &dyn VeldValue) -> bool {
+    same_parts(&Identity::of(a), &Identity::of(b))
+}
+
+/// [`same`] on two identities. Use it across crates: each generated crate has its own
+/// `VeldValue`, so build both identities (`Identity::of`) and compare the plain data.
+#[must_use]
+pub fn same_parts(a: &Identity, b: &Identity) -> bool {
+    !a.sig.is_empty() && a.sig == b.sig && a.op == b.op && a.canonical == b.canonical
+}
+
+/// [`same`] on two slices, element by element.
+#[must_use]
+pub fn same_all<A: VeldValue, B: VeldValue>(a: &[A], b: &[B]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| same(x, y))
+}

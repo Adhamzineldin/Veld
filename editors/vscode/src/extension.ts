@@ -1,1676 +1,274 @@
-import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import { KEYWORDS, HTTP_METHODS, BUILTIN_TYPES, DIRECTIVES, SPECIAL_TYPES } from './veld-language-spec';
+// Language features live in `veld lsp`. This client also adds the CLI commands (validate, generate,
+// dry run, setup, export, watch), an output channel, a status-bar item and a problem matcher.
+import { spawn } from "child_process";
+import * as path from "path";
+import * as vscode from "vscode";
+import {
+  LanguageClient,
+  LanguageClientOptions,
+  ServerOptions,
+} from "vscode-languageclient/node";
+import {
+  EXPORT_FORMATS,
+  RUN_COMMANDS,
+  VeldCommand,
+  WATCH,
+  executable,
+  exportArgs,
+  exportFileName,
+  parseSummary,
+  shellQuote,
+} from "./cli";
 
-// ── Interfaces ────────────────────────────────────
+let client: LanguageClient | undefined;
+let output: vscode.OutputChannel;
+let status: vscode.StatusBarItem;
+let running = false;
 
-interface FieldDef {
-    name: string;
-    type: string;
-    line: number;
+function veldPath(): string {
+  return executable(vscode.workspace.getConfiguration("veld").get<string>("path"));
 }
 
-interface ModelDef {
-    name: string;
-    line: number;
-    file: string;
-    fields: FieldDef[];
+function serverOptions(): ServerOptions {
+  return { command: veldPath(), args: ["lsp"] };
 }
 
-interface EnumDef {
-    name: string;
-    line: number;
-    file: string;
-    values: string[];
+function startClient(context: vscode.ExtensionContext): void {
+  const clientOptions: LanguageClientOptions = {
+    documentSelector: [{ scheme: "file", language: "veld" }],
+    synchronize: {
+      fileEvents: [
+        vscode.workspace.createFileSystemWatcher("**/*.veld"),
+        vscode.workspace.createFileSystemWatcher("**/veld.toml"),
+      ],
+    },
+  };
+  client = new LanguageClient("veld", "Veld Language Server", serverOptions(), clientOptions);
+  context.subscriptions.push(client);
+  client.start().catch((err: unknown) => {
+    const detail = err instanceof Error ? err.message : String(err);
+    void vscode.window.showErrorMessage(
+      `Could not start \`veld lsp\` (${detail}). Install Veld or set "veld.path".`,
+    );
+  });
 }
 
-interface ActionDef {
-    name: string;
-    line: number;
-    method?: string;
-    path?: string;
-    input?: string;
-    output?: string;
+async function restartClient(context: vscode.ExtensionContext): Promise<void> {
+  if (client) {
+    const old = client;
+    client = undefined;
+    await old.stop().catch(() => undefined);
+  }
+  startClient(context);
 }
 
-interface ModuleDef {
-    name: string;
-    line: number;
-    file: string;
-    description?: string;
-    prefix?: string;
-    actions: ActionDef[];
+/**
+ * The directory to run `veld` in: the folder of the active file when it is a Veld file, else the
+ * only (or a picked) folder that holds a `veld.toml`, else the first workspace folder.
+ * `veld` itself searches upward for `veld.toml`.
+ */
+async function projectDir(): Promise<string | undefined> {
+  const active = vscode.window.activeTextEditor?.document;
+  if (active && active.uri.scheme === "file" && /\.veld$|veld\.toml$/.test(active.fileName)) {
+    return path.dirname(active.fileName);
+  }
+  const configs = await vscode.workspace.findFiles("**/veld.toml", "**/node_modules/**", 20);
+  if (configs.length === 1) {
+    return path.dirname(configs[0].fsPath);
+  }
+  if (configs.length > 1) {
+    const picked = await vscode.window.showQuickPick(
+      configs.map((c) => ({ label: vscode.workspace.asRelativePath(c), dir: path.dirname(c.fsPath) })),
+      { placeHolder: "Which Veld project?" },
+    );
+    return picked?.dir;
+  }
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder) {
+    void vscode.window.showErrorMessage("Open a folder that contains a veld.toml first.");
+  }
+  return folder?.uri.fsPath;
 }
 
-interface ImportDef {
-    raw: string;
-    alias: string;
-    name: string;
-    line: number;
-    resolvedPath?: string;
+/** Runs `veld <args>` and streams its output into the channel. Resolves with the exit code and text. */
+function runVeld(args: string[], cwd: string): Promise<{ code: number; text: string }> {
+  const exe = veldPath();
+  const all = ["--no-color", ...args];
+  output.appendLine(`$ ${[exe, ...all].map(shellQuote).join(" ")}`);
+  return new Promise((resolve) => {
+    let text = "";
+    const child = spawn(exe, all, { cwd, shell: false });
+    const sink = (chunk: Buffer): void => {
+      const s = chunk.toString();
+      text += s;
+      output.append(s);
+    };
+    child.stdout.on("data", sink);
+    child.stderr.on("data", sink);
+    child.on("error", (err) => {
+      const message = `Could not run \`${exe}\` (${err.message}). Install Veld or set "veld.path".`;
+      output.appendLine(message);
+      void vscode.window.showErrorMessage(message);
+      resolve({ code: 127, text });
+    });
+    child.on("close", (code) => {
+      output.appendLine("");
+      resolve({ code: code ?? 1, text });
+    });
+  });
 }
 
-interface ConstantFieldDef {
-    name: string;
-    type: string;
-    value: string;
-    line: number;
+function setStatus(text: string, tooltip: string, failed = false): void {
+  status.text = text;
+  status.tooltip = tooltip;
+  status.backgroundColor = failed
+    ? new vscode.ThemeColor("statusBarItem.errorBackground")
+    : undefined;
+  status.show();
 }
 
-interface ConstantGroupDef {
-    name: string;
-    line: number;
-    file: string;
-    description?: string;
-    fields: ConstantFieldDef[];
+async function runCommand(command: VeldCommand, quietOnSuccess = false): Promise<number | undefined> {
+  if (running) {
+    void vscode.window.showInformationMessage("Veld is already running a command.");
+    return undefined;
+  }
+  const cwd = await projectDir();
+  if (!cwd) {
+    return undefined;
+  }
+  running = true;
+  setStatus("$(sync~spin) Veld", `Running veld ${command.args.join(" ")}`);
+  if (!quietOnSuccess) {
+    output.show(true);
+  }
+  try {
+    const { code, text } = await runVeld(command.args, cwd);
+    const summary = parseSummary(text);
+    if (code === 0) {
+      setStatus("$(check) Veld", `veld ${command.args.join(" ")} succeeded`);
+      if (!quietOnSuccess) {
+        void vscode.window.showInformationMessage(`veld ${command.args.join(" ")} succeeded.`);
+      }
+    } else {
+      const detail = summary ? `${summary.errors} error(s), ${summary.warnings} warning(s)` : `exit code ${code}`;
+      setStatus(`$(error) Veld`, `veld ${command.args.join(" ")} failed: ${detail}`, true);
+      if (!quietOnSuccess) {
+        void vscode.window.showErrorMessage(`veld ${command.args.join(" ")} failed (${detail}). See the Veld output.`);
+      }
+    }
+    return code;
+  } finally {
+    running = false;
+  }
 }
 
-interface VeldDocument {
-    uri: string;
-    filePath: string;
-    content: string;
-    models: Map<string, ModelDef>;
-    enums: Map<string, EnumDef>;
-    constants: Map<string, ConstantGroupDef>;
-    modules: Map<string, ModuleDef>;
-    imports: ImportDef[];
+async function exportCommand(format: string | undefined): Promise<void> {
+  const chosen =
+    format ?? (await vscode.window.showQuickPick([...EXPORT_FORMATS], { placeHolder: "Export format" }));
+  if (!chosen) {
+    return;
+  }
+  const cwd = await projectDir();
+  if (!cwd) {
+    return;
+  }
+  const target = await vscode.window.showSaveDialog({
+    defaultUri: vscode.Uri.file(path.join(cwd, exportFileName(chosen))),
+    saveLabel: `Export ${chosen}`,
+  });
+  if (!target) {
+    return;
+  }
+  output.show(true);
+  const { code } = await runVeld(exportArgs(chosen, target.fsPath), cwd);
+  if (code === 0) {
+    await vscode.window.showTextDocument(target);
+  } else {
+    void vscode.window.showErrorMessage(`veld export ${chosen} failed. See the Veld output.`);
+  }
 }
 
-// ── Language Server ──────────────────────────────────
-
-class VeldLanguageServer {
-    private documents: Map<string, VeldDocument> = new Map();
-    private diagnosticCollection: vscode.DiagnosticCollection;
-
-    constructor() {
-        this.diagnosticCollection = vscode.languages.createDiagnosticCollection('veld');
-    }
-
-    private findProjectRoot(filePath: string): string | null {
-        let dir = path.dirname(filePath);
-        for (let i = 0; i < 15; i++) {
-            // Direct config at this level
-            if (fs.existsSync(path.join(dir, 'veld.config.json'))) return dir;
-            // Config inside veld/ subfolder — return the veld/ dir as root
-            // (that's where .veld files and alias folders live)
-            if (fs.existsSync(path.join(dir, 'veld', 'veld.config.json'))) return path.join(dir, 'veld');
-            if (fs.existsSync(path.join(dir, 'app.veld'))) return dir;
-            const parent = path.dirname(dir);
-            if (parent === dir) break;
-            dir = parent;
-        }
-        return null;
-    }
-
-    /** Read aliases from veld.config.json — falls back to alias=folder convention. */
-    private readAliases(projectRoot: string): Record<string, string> {
-        const defaults: Record<string, string> = {
-            models: 'models', modules: 'modules', types: 'types', enums: 'enums',
-            schemas: 'schemas', services: 'services', lib: 'lib', common: 'common', shared: 'shared',
-        };
-        for (const candidate of [
-            path.join(projectRoot, 'veld.config.json'),
-            path.join(projectRoot, 'veld', 'veld.config.json'),
-        ]) {
-            try {
-                if (fs.existsSync(candidate)) {
-                    const raw = JSON.parse(fs.readFileSync(candidate, 'utf8'));
-                    if (raw.aliases && typeof raw.aliases === 'object') {
-                        return { ...defaults, ...raw.aliases };
-                    }
-                }
-            } catch { /* ignore parse errors */ }
-        }
-        return defaults;
-    }
-
-    /**
-     * For workspace (microservices) configs, find the service root that owns the given file.
-     * e.g. veld/services/iam/modules/iam.veld → veld/services/iam/
-     * Returns null if the file is not inside a workspace service directory.
-     */
-    private findServiceRoot(filePath: string, projectRoot: string): string | null {
-        for (const configCandidate of [
-            path.join(projectRoot, 'veld.config.json'),
-            path.join(projectRoot, 'veld', 'veld.config.json'),
-        ]) {
-            try {
-                if (!fs.existsSync(configCandidate)) continue;
-                const raw = JSON.parse(fs.readFileSync(configCandidate, 'utf8'));
-                const cfgDir = path.dirname(configCandidate);
-                const workspace: Array<{ input?: string }> = raw.workspace ?? [];
-                for (const entry of workspace) {
-                    if (!entry.input) continue;
-                    // The service root is the directory two levels up from the input file
-                    // e.g. "services/iam/modules/iam.veld" → "services/iam"
-                    const inputAbs = path.resolve(cfgDir, entry.input);
-                    const serviceDir = path.dirname(path.dirname(inputAbs));
-                    const normalized = filePath.replace(/\\/g, '/');
-                    const normalizedSvc = serviceDir.replace(/\\/g, '/');
-                    if (normalized.startsWith(normalizedSvc + '/')) {
-                        return serviceDir;
-                    }
-                }
-            } catch { /* ignore */ }
-        }
-        return null;
-    }
-
-    /** Build a map of service-name → absolute service source directory from workspace config. */
-    private readWorkspaceServicePaths(projectRoot: string): Record<string, string> {
-        const result: Record<string, string> = {};
-        for (const candidate of [
-            path.join(projectRoot, 'veld.config.json'),
-            path.join(projectRoot, 'veld', 'veld.config.json'),
-        ]) {
-            try {
-                if (!fs.existsSync(candidate)) continue;
-                const raw = JSON.parse(fs.readFileSync(candidate, 'utf8'));
-                const cfgDir = path.dirname(candidate);
-                const workspace: Array<{ name?: string; input?: string }> = raw.workspace ?? [];
-                for (const entry of workspace) {
-                    if (!entry.name || !entry.input) continue;
-                    const inputAbs = path.resolve(cfgDir, entry.input);
-                    // service root = two dirs up from input (services/iam/modules/iam.veld → services/iam)
-                    result[entry.name] = path.dirname(path.dirname(inputAbs));
-                }
-                if (Object.keys(result).length > 0) return result;
-            } catch { /* ignore */ }
-        }
-        return result;
-    }
-
-    /** Resolve an alias name to a folder path.
-     *  In workspace mode, checks service-local folders and cross-service aliases first. */
-    private resolveAliasFolder(projectRoot: string, alias: string, filePath?: string): string {
-        // Check cross-service alias: @iam → another service's source directory.
-        const servicePaths = this.readWorkspaceServicePaths(projectRoot);
-        if (servicePaths[alias]) {
-            return servicePaths[alias];
-        }
-
-        // In workspace mode, prefer service-local alias resolution.
-        if (filePath) {
-            const serviceRoot = this.findServiceRoot(filePath, projectRoot);
-            if (serviceRoot) {
-                const localFolder = path.join(serviceRoot, alias);
-                if (fs.existsSync(localFolder)) {
-                    return localFolder;
-                }
-            }
-        }
-        const aliases = this.readAliases(projectRoot);
-        const folder = aliases[alias] ?? alias;
-        return path.resolve(projectRoot, folder);
-    }
-
-    private parseFile(filePath: string, content: string): VeldDocument {
-        const doc: VeldDocument = {
-            uri: vscode.Uri.file(filePath).toString(),
-            filePath,
-            content,
-            models: new Map(),
-            enums: new Map(),
-            constants: new Map(),
-            modules: new Map(),
-            imports: [],
-        };
-
-        const lines = content.split('\n');
-
-        for (let i = 0; i < lines.length; i++) {
-            const trimmed = lines[i].trim();
-
-            if (trimmed.startsWith('import') || trimmed.startsWith('from')) {
-                const projectRoot = this.findProjectRoot(filePath);
-
-                // Style 1: import @alias/name  OR  import @alias/*
-                const aliasMatch = trimmed.match(/import\s+@(\w+)\/([\w.*]+)/);
-                if (aliasMatch) {
-                    const alias = aliasMatch[1];
-                    const name = aliasMatch[2];
-                    if (name === '*' && projectRoot) {
-                        // Wildcard: resolve all .veld files in the alias folder
-                        const folder = this.resolveAliasFolder(projectRoot, alias, filePath);
-                        try {
-                            const files = fs.readdirSync(folder).filter(f => f.endsWith('.veld'));
-                            for (const f of files) {
-                                const baseName = path.basename(f, '.veld');
-                                doc.imports.push({ raw: `@${alias}/*`, alias, name: baseName, line: i, resolvedPath: path.join(folder, f) });
-                            }
-                        } catch { /* folder doesn't exist — will be caught by validation */ }
-                        if (!doc.imports.some(im => im.line === i)) {
-                            doc.imports.push({ raw: `@${alias}/*`, alias, name: '*', line: i });
-                        }
-                    } else {
-                        const raw = `@${alias}/${name}`;
-                        let resolvedPath: string | undefined;
-                        if (projectRoot) {
-                            const folder = this.resolveAliasFolder(projectRoot, alias, filePath);
-                            // Try exact match first, then compound extensions
-                            const candidates = [
-                                path.join(folder, `${name}.veld`),
-                                path.join(folder, `${name}.model.veld`),
-                                path.join(folder, `${name}.module.veld`),
-                                path.join(folder, `${name}.enum.veld`),
-                                path.join(folder, `${name}.types.veld`),
-                                path.join(folder, `${name}.schema.veld`),
-                            ];
-                            for (const candidate of candidates) {
-                                if (fs.existsSync(candidate)) {
-                                    resolvedPath = candidate;
-                                    break;
-                                }
-                            }
-                        }
-                        doc.imports.push({ raw, alias, name, line: i, resolvedPath });
-                    }
-                }
-
-                // Style 2: import "./path/to/file.veld" or import "path/to/file.veld"
-                const quotedMatch = trimmed.match(/import\s+"([^"]+)"/);
-                if (quotedMatch && !aliasMatch) {
-                    const importStr = quotedMatch[1];
-                    const name = path.basename(importStr, '.veld');
-                    const alias = path.dirname(importStr).replace(/^\.\//, '');
-                    const raw = importStr;
-                    let resolvedPath: string | undefined;
-                    if (projectRoot) {
-                        // Try relative to current file first
-                        const relCandidate = path.resolve(path.dirname(filePath), importStr);
-                        if (fs.existsSync(relCandidate)) {
-                            resolvedPath = relCandidate;
-                        } else {
-                            // Try relative to project root
-                            const rootCandidate = path.resolve(projectRoot, importStr);
-                            if (fs.existsSync(rootCandidate)) {
-                                resolvedPath = rootCandidate;
-                            }
-                        }
-                    }
-                    doc.imports.push({ raw, alias, name, line: i, resolvedPath });
-                }
-
-                // Style 3: from @alias import *  OR  from @alias import Name1, Name2
-                const fromMatch = trimmed.match(/from\s+@(\w+)\s+import\s+(.+)/);
-                if (fromMatch && !aliasMatch && !quotedMatch) {
-                    const alias = fromMatch[1];
-                    const importList = fromMatch[2].trim();
-                    if (importList === '*' && projectRoot) {
-                        // Wildcard: import all .veld files from alias folder
-                        const folder = this.resolveAliasFolder(projectRoot, alias, filePath);
-                        try {
-                            const files = fs.readdirSync(folder).filter(f => f.endsWith('.veld'));
-                            for (const f of files) {
-                                const baseName = path.basename(f, '.veld');
-                                doc.imports.push({ raw: `from @${alias} import *`, alias, name: baseName, line: i, resolvedPath: path.join(folder, f) });
-                            }
-                        } catch { /* folder doesn't exist */ }
-                        if (!doc.imports.some(im => im.line === i)) {
-                            doc.imports.push({ raw: `from @${alias} import *`, alias, name: '*', line: i });
-                        }
-                    } else {
-                        // Named imports: from @models import User, Role
-                        const names = importList.split(',').map(n => n.trim()).filter(n => n.length > 0);
-                        for (const name of names) {
-                            let resolvedPath: string | undefined;
-                            if (projectRoot) {
-                                const folder = this.resolveAliasFolder(projectRoot, alias, filePath);
-                                // Try exact name as file
-                                const candidate = path.join(folder, `${name}.veld`);
-                                if (fs.existsSync(candidate)) {
-                                    resolvedPath = candidate;
-                                } else {
-                                    // Try lowercase version
-                                    const lowerCandidate = path.join(folder, `${name.toLowerCase()}.veld`);
-                                    if (fs.existsSync(lowerCandidate)) {
-                                        resolvedPath = lowerCandidate;
-                                    } else {
-                                        // Named imports may reference types inside files — mark as resolved
-                                        // if any .veld file in the folder defines this type
-                                        const folder2 = this.resolveAliasFolder(projectRoot, alias, filePath); // service-local aware
-                                        try {
-                                            const files = fs.readdirSync(folder2).filter(f => f.endsWith('.veld'));
-                                            for (const f of files) {
-                                                const content = fs.readFileSync(path.join(folder2, f), 'utf8');
-                                                if (content.match(new RegExp(`(model|enum)\\s+${name}\\s*[{(]|\\bextends\\b`))) {
-                                                    resolvedPath = path.join(folder2, f);
-                                                    break;
-                                                }
-                                            }
-                                        } catch { /* ignore */ }
-                                    }
-                                }
-                            }
-                            doc.imports.push({ raw: `from @${alias} import ${importList}`, alias, name, line: i, resolvedPath });
-                        }
-                    }
-                }
-            }
-
-            if (trimmed.startsWith('model ')) {
-                const match = trimmed.match(/model\s+([A-Za-z_]\w*)/);
-                if (match) {
-                    const modelName = match[1];
-                    const fields: FieldDef[] = [];
-                    let j = i + 1;
-                    while (j < lines.length && lines[j].trim() !== '}') {
-                        const fieldLine = lines[j].trim();
-                        const fieldMatch = fieldLine.match(/^([a-z_]\w*)\??:\s*(.+?)(?:\s*\/\/.*)?$/);
-                        if (fieldMatch) {
-                            // Strip @annotation(...) and = value so hover shows clean type e.g. "Role" not "Role @default(user)"
-                            const cleanType = fieldMatch[2].trim()
-                                .replace(/\s*=\s*(?:"[^"]*"|\S+)/, '')
-                                .replace(/@\w+(?:\([^)]*\))?/g, '').trim();
-                            fields.push({ name: fieldMatch[1], type: cleanType, line: j });
-                        }
-                        j++;
-                    }
-                    doc.models.set(modelName, { name: modelName, line: i, file: filePath, fields });
-                }
-            }
-
-            if (trimmed.startsWith('enum ')) {
-                const match = trimmed.match(/enum\s+([A-Za-z_]\w*)/);
-                if (match) {
-                    const enumName = match[1];
-                    const values: string[] = [];
-                    let j = i + 1;
-                    while (j < lines.length && lines[j].trim() !== '}') {
-                        const val = lines[j].trim();
-                        if (val && !val.startsWith('//')) {
-                            val.split(/\s+/).forEach(v => { if (v) values.push(v); });
-                        }
-                        j++;
-                    }
-                    doc.enums.set(enumName, { name: enumName, line: i, file: filePath, values });
-                }
-            }
-
-            if (trimmed.startsWith('constants ') || trimmed.startsWith('constant ')) {
-                const match = trimmed.match(/constants?\s+([A-Za-z_]\w*)/);
-                if (match) {
-                    const groupName = match[1];
-                    const fields: ConstantFieldDef[] = [];
-                    let groupDescription: string | undefined;
-                    let j = i + 1;
-                    while (j < lines.length && lines[j].trim() !== '}') {
-                        const constLine = lines[j].trim();
-                        if (constLine.startsWith('description:')) {
-                            const descMatch = constLine.match(/description:\s*"([^"]*)"/);
-                            if (descMatch) groupDescription = descMatch[1];
-                        } else {
-                            const fieldMatch = constLine.match(/^([A-Z_][A-Za-z0-9_]*)\s*:\s*(string|int|float|decimal|bool|date|datetime|uuid)\s*=\s*(.+?)(?:\s*\/\/.*)?$/);
-                            if (fieldMatch) {
-                                fields.push({ name: fieldMatch[1], type: fieldMatch[2], value: fieldMatch[3].trim(), line: j });
-                            }
-                        }
-                        j++;
-                    }
-                    doc.constants.set(groupName, { name: groupName, line: i, file: filePath, description: groupDescription, fields });
-                }
-            }
-
-            if (trimmed.startsWith('module ')) {
-                const match = trimmed.match(/module\s+([A-Za-z_]\w*)/);
-                if (match) {
-                    const moduleName = match[1];
-                    const actions: ActionDef[] = [];
-                    let j = i + 1;
-                    let braceDepth = 1;
-                    let currentAction: Partial<ActionDef> | null = null;
-                    let moduleDescription: string | undefined;
-                    let modulePrefix: string | undefined;
-
-                    while (j < lines.length && braceDepth > 0) {
-                        const actionLine = lines[j].trim();
-
-                        if (actionLine === '}') {
-                            braceDepth--;
-                            if (braceDepth === 1 && currentAction?.name) {
-                                actions.push(currentAction as ActionDef);
-                                currentAction = null;
-                            }
-                        } else if (actionLine.includes('{')) {
-                            braceDepth++;
-                            const actionMatch = actionLine.match(/action\s+([A-Za-z_]\w*)/);
-                            if (actionMatch) {
-                                currentAction = { name: actionMatch[1], line: j };
-                            }
-                        } else if (currentAction) {
-                            const dirMatch = actionLine.match(/^\s*(\w+):\s*(.+)/);
-                            if (dirMatch) {
-                                const [, key, value] = dirMatch;
-                                if (key === 'method') currentAction.method = value.trim();
-                                if (key === 'path') currentAction.path = value.trim();
-                                if (key === 'input') currentAction.input = value.trim();
-                                if (key === 'output') currentAction.output = value.trim();
-                            }
-                        } else if (braceDepth === 1) {
-                            const dirMatch = actionLine.match(/^\s*(\w+):\s*(.+)/);
-                            if (dirMatch) {
-                                if (dirMatch[1] === 'description') moduleDescription = dirMatch[2].replace(/"/g, '').trim();
-                                if (dirMatch[1] === 'prefix') modulePrefix = dirMatch[2].trim();
-                            }
-                        }
-                        j++;
-                    }
-
-                    if (currentAction?.name) {
-                        actions.push(currentAction as ActionDef);
-                    }
-
-                    doc.modules.set(moduleName, {
-                        name: moduleName, line: i, file: filePath,
-                        description: moduleDescription, prefix: modulePrefix, actions,
-                    });
-                }
-            }
-        }
-
-        return doc;
-    }
-
-    parseDocument(uri: vscode.Uri, content: string): VeldDocument {
-        const filePath = uri.fsPath;
-        const doc = this.parseFile(filePath, content);
-
-        for (const imp of doc.imports) {
-            if (!imp.resolvedPath || !fs.existsSync(imp.resolvedPath)) continue;
-            try {
-                const importedContent = fs.readFileSync(imp.resolvedPath, 'utf-8');
-                const importedDoc = this.parseFile(imp.resolvedPath, importedContent);
-
-                for (const [name, model] of importedDoc.models) {
-                    if (!doc.models.has(name)) doc.models.set(name, model);
-                }
-                for (const [name, enumDef] of importedDoc.enums) {
-                    if (!doc.enums.has(name)) doc.enums.set(name, enumDef);
-                }
-                for (const [name, constGroup] of importedDoc.constants) {
-                    if (!doc.constants.has(name)) doc.constants.set(name, constGroup);
-                }
-                for (const [name, moduleDef] of importedDoc.modules) {
-                    if (!doc.modules.has(name)) doc.modules.set(name, moduleDef);
-                }
-            } catch {
-                // import failed silently
-            }
-        }
-
-        this.documents.set(uri.toString(), doc);
-        return doc;
-    }
-
-    private static readonly ACTION_KEYS = new Set([
-        'method', 'path', 'input', 'output', 'query', 'stream',
-        'middleware', 'errors', 'description',
-    ]);
-    private static readonly MODULE_KEYS = new Set(['description', 'prefix']);
-
-    validateDocument(uri: vscode.Uri, content: string): vscode.Diagnostic[] {
-        const doc = this.parseDocument(uri, content);
-        const diagnostics: vscode.Diagnostic[] = [];
-        const lines = content.split('\n');
-
-        // Track block context for key validation
-        type BlockKind = 'none' | 'model' | 'enum' | 'module' | 'action';
-        const blockStack: BlockKind[] = [];
-        // bracketDepth tracks multi-line [...] lists (e.g. errors: [name:status, ...])
-        // Key validation is suppressed inside these lists.
-        let bracketDepth = 0;
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const trimmed = line.trim();
-            const openBraces = (trimmed.match(/{/g) || []).length;
-            const closeBraces = (trimmed.match(/}/g) || []).length;
-            const openBrackets = (trimmed.match(/\[/g) || []).length;
-            const closeBrackets = (trimmed.match(/\]/g) || []).length;
-            const currentBlock: BlockKind = blockStack.length > 0 ? blockStack[blockStack.length - 1] : 'none';
-
-            // Track block entries
-            if (trimmed.startsWith('model ') && openBraces > closeBraces) blockStack.push('model');
-            else if (trimmed.startsWith('enum ') && openBraces > closeBraces) blockStack.push('enum');
-            else if (trimmed.startsWith('module ') && openBraces > closeBraces) blockStack.push('module');
-            else if (trimmed.startsWith('action ') && openBraces > closeBraces) blockStack.push('action');
-
-            // ── Key validation based on block context ────────────────────────
-            // Suppressed inside [...] lists (e.g. multi-line errors: [name:status] items)
-            if ((currentBlock === 'action' || currentBlock === 'module') && bracketDepth === 0) {
-                const keyMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*:/);
-                if (keyMatch && !trimmed.startsWith('//')) {
-                    const key = keyMatch[1];
-                    if (currentBlock === 'action' && !VeldLanguageServer.ACTION_KEYS.has(key)) {
-                        const keyStart = line.indexOf(key);
-                        diagnostics.push(new vscode.Diagnostic(
-                            new vscode.Range(i, keyStart, i, keyStart + key.length),
-                            `Unknown action directive '${key}'. Valid: ${[...VeldLanguageServer.ACTION_KEYS].sort().join(', ')}`,
-                            vscode.DiagnosticSeverity.Error
-                        ));
-                    } else if (currentBlock === 'module' && !VeldLanguageServer.MODULE_KEYS.has(key)) {
-                        const keyStart = line.indexOf(key);
-                        diagnostics.push(new vscode.Diagnostic(
-                            new vscode.Range(i, keyStart, i, keyStart + key.length),
-                            `Unexpected key '${key}' inside module. Did you mean to put this inside an action?`,
-                            vscode.DiagnosticSeverity.Warning
-                        ));
-                    }
-                }
-            }
-            bracketDepth = Math.max(0, bracketDepth + openBrackets - closeBrackets);
-
-            // ── Import validation ────────────────────────────────────────────
-            if (trimmed.startsWith('import') || trimmed.startsWith('from')) {
-                const aliasImport = trimmed.match(/import\s+@(\w+)\/([\w.*]+)/);
-                const quotedImport = trimmed.match(/import\s+"([^"]+)"/);
-                const fromImport = trimmed.match(/from\s+@(\w+)\s+import\s+(.+)/);
-
-                if (aliasImport) {
-                    const name = aliasImport[2];
-                    if (name !== '*') {
-                        const imp = doc.imports.find(im => im.line === i);
-                        if (imp && !imp.resolvedPath) {
-                            const atIdx = line.indexOf('@');
-                            diagnostics.push(new vscode.Diagnostic(
-                                new vscode.Range(i, atIdx >= 0 ? atIdx : 0, i, line.length),
-                                `Cannot resolve import '@${aliasImport[1]}/${name}'. File not found.`,
-                                vscode.DiagnosticSeverity.Error
-                            ));
-                        }
-                    } else {
-                        // Wildcard: check if any files were resolved
-                        const hasResolved = doc.imports.some(im => im.line === i && im.resolvedPath);
-                        if (!hasResolved) {
-                            const atIdx = line.indexOf('@');
-                            diagnostics.push(new vscode.Diagnostic(
-                                new vscode.Range(i, atIdx >= 0 ? atIdx : 0, i, line.length),
-                                `No .veld files found in '@${aliasImport[1]}/'. Check that the folder exists.`,
-                                vscode.DiagnosticSeverity.Warning
-                            ));
-                        }
-                    }
-                } else if (quotedImport) {
-                    const imp = doc.imports.find(im => im.line === i);
-                    if (imp && !imp.resolvedPath) {
-                        const quoteIdx = line.indexOf('"');
-                        diagnostics.push(new vscode.Diagnostic(
-                            new vscode.Range(i, quoteIdx >= 0 ? quoteIdx : 0, i, line.length),
-                            `Cannot resolve import "${quotedImport[1]}". File not found.`,
-                            vscode.DiagnosticSeverity.Error
-                        ));
-                    }
-                } else if (fromImport) {
-                    // from @alias import * | from @alias import Name1, Name2
-                    const importList = fromImport[2].trim();
-                    if (importList === '*') {
-                        const hasResolved = doc.imports.some(im => im.line === i && im.resolvedPath);
-                        if (!hasResolved) {
-                            const atIdx = line.indexOf('@');
-                            diagnostics.push(new vscode.Diagnostic(
-                                new vscode.Range(i, atIdx >= 0 ? atIdx : 0, i, line.length),
-                                `No .veld files found in '@${fromImport[1]}/'. Check that the folder exists.`,
-                                vscode.DiagnosticSeverity.Warning
-                            ));
-                        }
-                    } else {
-                        // Named imports — check each one
-                        const unresolvedImps = doc.imports.filter(im => im.line === i && !im.resolvedPath);
-                        for (const imp of unresolvedImps) {
-                            const nameIdx = line.indexOf(imp.name);
-                            diagnostics.push(new vscode.Diagnostic(
-                                new vscode.Range(i, nameIdx >= 0 ? nameIdx : 0, i, nameIdx >= 0 ? nameIdx + imp.name.length : line.length),
-                                `Cannot resolve '${imp.name}' from '@${fromImport[1]}'. Type or file not found.`,
-                                vscode.DiagnosticSeverity.Error
-                            ));
-                        }
-                    }
-                } else if (trimmed.startsWith('import') && trimmed.match(/import\s+/)) {
-                    diagnostics.push(new vscode.Diagnostic(
-                        new vscode.Range(i, 0, i, line.length),
-                        `Invalid import syntax. Use: import @alias/name, import @alias/*, from @alias import *, or import "./path"`,
-                        vscode.DiagnosticSeverity.Error
-                    ));
-                }
-            }
-
-            if (trimmed.startsWith('method:')) {
-                const methodMatch = trimmed.match(/method:\s*(\w+)/);
-                if (methodMatch && !HTTP_METHODS.has(methodMatch[1])) {
-                    const methodStart = line.indexOf(methodMatch[1]);
-                    diagnostics.push(new vscode.Diagnostic(
-                        new vscode.Range(i, methodStart, i, methodStart + methodMatch[1].length),
-                        `Invalid HTTP method '${methodMatch[1]}'. Valid: ${Array.from(HTTP_METHODS).join(', ')}`,
-                        vscode.DiagnosticSeverity.Error
-                    ));
-                }
-            }
-
-            if (trimmed.startsWith('input:') || trimmed.startsWith('output:') ||
-                trimmed.startsWith('query:')) {
-                const colonIdx = trimmed.indexOf(':');
-                const typeExpr = trimmed.substring(colonIdx + 1).trim();
-                this.validateTypeExpr(typeExpr, line, i, doc, diagnostics);
-            }
-            // middleware: values are just label names, not type references — skip type validation
-
-            if (!trimmed.startsWith('method:') &&
-                !trimmed.startsWith('path:') &&
-                !trimmed.startsWith('description:') &&
-                !trimmed.startsWith('prefix:') &&
-                !trimmed.startsWith('input:') &&
-                !trimmed.startsWith('output:') &&
-                !trimmed.startsWith('query:') &&
-                !trimmed.startsWith('middleware:') &&
-                !trimmed.startsWith('default:') &&
-                !trimmed.startsWith('import') &&
-                !trimmed.startsWith('//') &&
-                !trimmed.startsWith('model ') &&
-                !trimmed.startsWith('module ') &&
-                !trimmed.startsWith('enum ') &&
-                !trimmed.startsWith('action ') &&
-                trimmed !== '{' && trimmed !== '}' && trimmed.length > 0) {
-
-                // Field definition: fieldName: Type  or  fieldName?: Type @default(val)
-                const fieldMatch = trimmed.match(/^([a-z_]\w*)\??:\s*(.+?)(?:\s*\/\/.*)?$/);
-                if (fieldMatch) {
-                    const typeExpr = fieldMatch[2].trim();
-                    // validateTypeExpr strips @annotations internally
-                    this.validateTypeExpr(typeExpr, line, i, doc, diagnostics);
-                }
-            }
-
-            // Track brace closes
-            for (let c = 0; c < closeBraces; c++) {
-                if (blockStack.length > 0) blockStack.pop();
-            }
-        }
-
-        let braceDepth = 0;
-        for (let i = 0; i < lines.length; i++) {
-            for (const ch of lines[i]) {
-                if (ch === '{') braceDepth++;
-                if (ch === '}') braceDepth--;
-            }
-        }
-        if (braceDepth > 0) {
-            const lastLine = lines.length - 1;
-            diagnostics.push(new vscode.Diagnostic(
-                new vscode.Range(lastLine, 0, lastLine, lines[lastLine].length),
-                `Unclosed brace: ${braceDepth} opening brace(s) without matching close`,
-                vscode.DiagnosticSeverity.Error
-            ));
-        } else if (braceDepth < 0) {
-            diagnostics.push(new vscode.Diagnostic(
-                new vscode.Range(0, 0, 0, 1),
-                `Extra closing brace(s): ${-braceDepth} without matching open`,
-                vscode.DiagnosticSeverity.Error
-            ));
-        }
-
-        this.diagnosticCollection.set(uri, diagnostics);
-        return diagnostics;
-    }
-
-    private static readonly KNOWN_ANNOTATIONS = new Set([
-        'default', 'unique', 'required', 'optional', 'index', 'primary',
-        'autoincrement', 'readonly', 'min', 'max', 'minLength', 'maxLength',
-        'regex', 'deprecated', 'nullable', 'primaryKey',
-    ]);
-
-    private validateTypeExpr(typeExpr: string, line: string, lineNum: number, doc: VeldDocument, diagnostics: vscode.Diagnostic[]): void {
-        // Validate @annotation names
-        for (const annMatch of typeExpr.matchAll(/@(\w+)/g)) {
-            const annName = annMatch[1];
-            if (!VeldLanguageServer.KNOWN_ANNOTATIONS.has(annName)) {
-                const annStart = line.indexOf('@' + annName);
-                if (annStart >= 0) {
-                    diagnostics.push(new vscode.Diagnostic(
-                        new vscode.Range(lineNum, annStart, lineNum, annStart + annName.length + 1),
-                        `Unknown annotation '@${annName}'. Known annotations: ${[...VeldLanguageServer.KNOWN_ANNOTATIONS].map(n => '@' + n).join(', ')}`,
-                        vscode.DiagnosticSeverity.Warning
-                    ));
-                }
-            }
-        }
-
-        // Strip @annotation(...) clauses and = value (e.g. @default(user), = 0) before type validation
-        const clean = typeExpr
-            .replace(/\s*=\s*(?:"[^"]*"|\S+)/, '')
-            .replace(/@\w+(?:\([^)]*\))?/g, '').trim();
-        const typeNames = clean.matchAll(/[A-Za-z_]\w*/g);
-        for (const match of typeNames) {
-            const typeName = match[0];
-            if (BUILTIN_TYPES.has(typeName)) continue;
-            if (SPECIAL_TYPES.has(typeName)) continue;
-            if (doc.models.has(typeName)) continue;
-            if (doc.enums.has(typeName)) continue;
-
-            const colonIdx = line.indexOf(':');
-            const typeStart = line.indexOf(typeName, colonIdx >= 0 ? colonIdx : 0);
-            if (typeStart < 0) continue;
-
-            const suggestions = [...doc.models.keys(), ...doc.enums.keys()];
-            let msg = `Type '${typeName}' not found.`;
-            if (suggestions.length > 0) {
-                msg += ` Available types: ${suggestions.join(', ')}`;
-            }
-
-            diagnostics.push(new vscode.Diagnostic(
-                new vscode.Range(lineNum, typeStart, lineNum, typeStart + typeName.length),
-                msg,
-                vscode.DiagnosticSeverity.Error
-            ));
-        }
-    }
-
-    getCompletions(uri: vscode.Uri, position: vscode.Position, content: string): vscode.CompletionItem[] {
-        const doc = this.parseDocument(uri, content);
-        const lines = content.split('\n');
-        const lineText = lines[position.line];
-        const beforeCursor = lineText.substring(0, position.character);
-        const trimmedBefore = beforeCursor.trimStart();
-
-        const completions: vscode.CompletionItem[] = [];
-
-        if (trimmedBefore.startsWith('import ') || trimmedBefore === 'import') {
-            const projectRoot = this.findProjectRoot(uri.fsPath);
-            // Detect if the user already typed "@" — if so, don't prepend it again
-            const alreadyHasAt = trimmedBefore.includes('@');
-            // Detect if the user is typing a quoted relative path
-            const hasQuote = trimmedBefore.includes('"');
-            if (projectRoot) {
-                const aliases = this.readAliases(projectRoot);
-                for (const [aliasName, folder] of Object.entries(aliases)) {
-                    const dirPath = path.resolve(projectRoot, folder);
-                    if (fs.existsSync(dirPath)) {
-                        try {
-                            const files = fs.readdirSync(dirPath);
-                            for (const file of files) {
-                                if (file.endsWith('.veld')) {
-                                    const name = file.replace('.veld', '');
-                                    // @alias/name style
-                                    const aliasLabel = `@${aliasName}/${name}`;
-                                    const aliasItem = new vscode.CompletionItem(aliasLabel, vscode.CompletionItemKind.Module);
-                                    aliasItem.detail = `${folder}/${file}`;
-                                    aliasItem.documentation = new vscode.MarkdownString(`Import from \`${folder}/${file}\` via @${aliasName}`);
-                                    aliasItem.filterText = aliasLabel;
-                                    if (alreadyHasAt) {
-                                        aliasItem.insertText = `${aliasName}/${name}`;
-                                    }
-                                    completions.push(aliasItem);
-
-                                    // ./relative style
-                                    if (!alreadyHasAt) {
-                                        const relLabel = `"${folder}/${file}"`;
-                                        const relItem = new vscode.CompletionItem(relLabel, vscode.CompletionItemKind.File);
-                                        relItem.detail = `${folder}/${file} (relative)`;
-                                        relItem.documentation = new vscode.MarkdownString(`Import from \`${folder}/${file}\` (relative path style)`);
-                                        relItem.filterText = relLabel;
-                                        if (hasQuote) {
-                                            relItem.insertText = `${folder}/${file}"`;
-                                        }
-                                        completions.push(relItem);
-                                    }
-                                }
-                            }
-                        } catch { /* ignore */ }
-                    }
-                }
-            }
-            return completions;
-        }
-
-        if (trimmedBefore.match(/method:\s*\w*$/)) {
-            for (const method of HTTP_METHODS) {
-                const item = new vscode.CompletionItem(method, vscode.CompletionItemKind.Constant);
-                item.detail = 'HTTP method';
-                completions.push(item);
-            }
-            return completions;
-        }
-
-        if (trimmedBefore.match(/(input|output|query):\s*\w*$/)) {
-            return this.getTypeCompletions(doc);
-        }
-
-        // middleware: values are label names — no type completions
-        if (trimmedBefore.match(/middleware:\s*\w*$/)) {
-            return completions;
-        }
-
-        // Annotation completion: field has a type and user typed "@"
-        // Matches: "fieldName: Type @" or "fieldName?: Type @word"
-        // Must NOT match on import lines (those are handled above)
-        if (trimmedBefore.match(/^[a-z_]\w*\??\s*:\s*\w+.*@\w*$/)) {
-            return this.getAnnotationCompletions();
-        }
-
-        // Catch standalone "@" typed inside a model block (annotation trigger)
-        if (trimmedBefore.endsWith('@') && !trimmedBefore.startsWith('import')) {
-            const ctx = this.detectContext(lines, position.line);
-            if (ctx === 'model') {
-                return this.getAnnotationCompletions();
-            }
-        }
-
-        if (trimmedBefore.match(/^[a-z_]\w*:\s*\w*$/)) {
-            return this.getTypeCompletions(doc);
-        }
-
-        const ctx = this.detectContext(lines, position.line);
-
-        if (ctx === 'top') {
-            for (const kw of KEYWORDS) {
-                const item = new vscode.CompletionItem(kw, vscode.CompletionItemKind.Keyword);
-                item.detail = 'Veld keyword';
-                completions.push(item);
-            }
-            const importSnippet = new vscode.CompletionItem('import', vscode.CompletionItemKind.Snippet);
-            importSnippet.insertText = new vscode.SnippetString('import @${1|models,modules|}/${2:name}');
-            importSnippet.detail = 'Import a model or module file';
-            completions.push(importSnippet);
-            const modelSnippet = new vscode.CompletionItem('model', vscode.CompletionItemKind.Snippet);
-            modelSnippet.insertText = new vscode.SnippetString('model ${1:Name} {\n  ${2:field}: ${3:string}\n}');
-            modelSnippet.detail = 'Define a new model';
-            completions.push(modelSnippet);
-            const moduleSnippet = new vscode.CompletionItem('module', vscode.CompletionItemKind.Snippet);
-            moduleSnippet.insertText = new vscode.SnippetString('module ${1:Name} {\n  description: "${2:description}"\n  prefix: /${3:path}\n\n  action ${4:ActionName} {\n    method: ${5|GET,POST,PUT,DELETE,PATCH|}\n    path: /${6:path}\n  }\n}');
-            moduleSnippet.detail = 'Define a new module';
-            completions.push(moduleSnippet);
-            const constantsSnippet = new vscode.CompletionItem('constants', vscode.CompletionItemKind.Snippet);
-            constantsSnippet.insertText = new vscode.SnippetString('constants ${1:GroupName} {\n  ${2:CONSTANT_NAME}: ${3|string,int,float,bool,date,datetime,uuid,decimal|} = ${4:value}\n}');
-            constantsSnippet.detail = 'Define a constants group';
-            completions.push(constantsSnippet);
-        } else if (ctx === 'module') {
-            for (const d of ['description', 'prefix']) {
-                const item = new vscode.CompletionItem(`${d}: `, vscode.CompletionItemKind.Property);
-                item.detail = 'Module directive';
-                completions.push(item);
-            }
-            const actionSnippet = new vscode.CompletionItem('action', vscode.CompletionItemKind.Snippet);
-            actionSnippet.insertText = new vscode.SnippetString('action ${1:Name} {\n    method: ${2|GET,POST,PUT,DELETE,PATCH|}\n    path: /${3:path}\n    ${4:input: ${5:InputType}\n    }output: ${6:OutputType}\n  }');
-            actionSnippet.detail = 'Define a new action';
-            completions.push(actionSnippet);
-        } else if (ctx === 'action') {
-            const actionDirectives = [
-                { name: 'method', insert: 'method: ', detail: 'HTTP method (GET, POST, ...)' },
-                { name: 'path', insert: 'path: /', detail: 'Route path' },
-                { name: 'input', insert: 'input: ', detail: 'Request body type' },
-                { name: 'output', insert: 'output: ', detail: 'Response body type' },
-                { name: 'query', insert: 'query: ', detail: 'Query parameters type' },
-                { name: 'middleware', insert: 'middleware: ', detail: 'Single middleware' },
-                { name: 'middleware []', insert: 'middleware: [$1]', detail: 'Middleware list', snippet: true },
-                { name: 'stream', insert: 'stream: ', detail: 'Stream output type' },
-                { name: 'errors', insert: 'errors: [$1]', detail: 'Error codes list', snippet: true },
-                { name: 'description', insert: 'description: "$1"', detail: 'Action description', snippet: true },
-            ];
-            for (const d of actionDirectives) {
-                const item = new vscode.CompletionItem(`${d.name}:`, vscode.CompletionItemKind.Property);
-                item.detail = d.detail;
-                if ((d as any).snippet) {
-                    item.insertText = new vscode.SnippetString(d.insert);
-                } else {
-                    item.insertText = d.insert;
-                }
-                completions.push(item);
-            }
-        } else if (ctx === 'model') {
-            return this.getTypeCompletions(doc);
-        }
-
-        return completions;
-    }
-
-    private getTypeCompletions(doc: VeldDocument): vscode.CompletionItem[] {
-        const completions: vscode.CompletionItem[] = [];
-
-        for (const t of BUILTIN_TYPES) {
-            const item = new vscode.CompletionItem(t, vscode.CompletionItemKind.TypeParameter);
-            item.detail = 'Built-in type';
-            completions.push(item);
-        }
-
-        for (const t of SPECIAL_TYPES) {
-            const item = new vscode.CompletionItem(t, vscode.CompletionItemKind.TypeParameter);
-            item.detail = 'Generic type';
-            item.insertText = new vscode.SnippetString(`${t}<\${1:Type}>`);
-            completions.push(item);
-        }
-
-        for (const [, model] of doc.models) {
-            const item = new vscode.CompletionItem(model.name, vscode.CompletionItemKind.Class);
-            const fieldsSummary = model.fields.map(f => `  ${f.name}: ${f.type}`).join('\n');
-            const sourceFile = path.basename(model.file);
-            item.detail = `model (from ${sourceFile})`;
-            item.documentation = new vscode.MarkdownString(
-                `**Model** \`${model.name}\`\n\n` +
-                `**Source:** \`${sourceFile}\`\n\n` +
-                '```veld\nmodel ' + model.name + ' {\n' + fieldsSummary + '\n}\n```'
-            );
-            completions.push(item);
-        }
-
-        for (const [, enumDef] of doc.enums) {
-            const item = new vscode.CompletionItem(enumDef.name, vscode.CompletionItemKind.Enum);
-            const sourceFile = path.basename(enumDef.file);
-            item.detail = `enum (from ${sourceFile})`;
-            item.documentation = new vscode.MarkdownString(
-                `**Enum** \`${enumDef.name}\`\n\n` +
-                `**Source:** \`${sourceFile}\`\n\n` +
-                `**Values:** ${enumDef.values.map(v => `\`${v}\``).join(', ')}`
-            );
-            completions.push(item);
-        }
-
-        return completions;
-    }
-
-    private getAnnotationCompletions(): vscode.CompletionItem[] {
-        // Label includes "@" for display; insertText omits it because "@" is the trigger
-        // character already typed by the user. filterText includes "@" for correct filtering.
-        const annotations = [
-            { label: '@default',    insert: 'default(${1:value})',    detail: 'Set a default value for this field' },
-            { label: '@required',   insert: 'required',               detail: 'Mark this field as required' },
-            { label: '@min',        insert: 'min(${1:value})',         detail: 'Minimum value constraint (int/float)' },
-            { label: '@max',        insert: 'max(${1:value})',         detail: 'Maximum value constraint (int/float)' },
-            { label: '@minLength',  insert: 'minLength(${1:length})',  detail: 'Minimum string length' },
-            { label: '@maxLength',  insert: 'maxLength(${1:length})',  detail: 'Maximum string length' },
-            { label: '@regex',      insert: 'regex(${1:pattern})',     detail: 'Regex pattern constraint for strings' },
-            { label: '@unique',     insert: 'unique',                  detail: 'Mark this field as unique' },
-            { label: '@deprecated', insert: 'deprecated',              detail: 'Mark this field as deprecated' },
-        ];
-        return annotations.map(ann => {
-            const item = new vscode.CompletionItem(ann.label, vscode.CompletionItemKind.Event);
-            item.detail = ann.detail;
-            item.insertText = new vscode.SnippetString(ann.insert);
-            item.filterText = ann.label; // allow filtering by "@default" even though label is same
-            return item;
-        });
-    }
-
-    private detectContext(lines: string[], cursorLine: number): 'top' | 'module' | 'action' | 'model' | 'enum' | 'constants' {
-        let depth = 0;
-        let inModule = false;
-        let inAction = false;
-        let inModel = false;
-        let inEnum = false;
-        let inConstants = false;
-
-        for (let i = 0; i <= cursorLine; i++) {
-            const trimmed = lines[i].trim();
-
-            if (trimmed.startsWith('module ') && trimmed.includes('{')) { inModule = true; }
-            if (trimmed.startsWith('model ') && trimmed.includes('{')) { inModel = true; }
-            if (trimmed.startsWith('enum ') && trimmed.includes('{')) { inEnum = true; }
-            if ((trimmed.startsWith('constants ') || trimmed.startsWith('constant ')) && trimmed.includes('{')) { inConstants = true; }
-            if (trimmed.startsWith('action ') && trimmed.includes('{')) { inAction = true; }
-
-            for (const ch of trimmed) {
-                if (ch === '{') depth++;
-                if (ch === '}') {
-                    depth--;
-                    if (depth <= 0) { inModule = false; inModel = false; inEnum = false; inConstants = false; inAction = false; depth = 0; }
-                    if (depth <= 1) inAction = false;
-                }
-            }
-        }
-
-        if (inAction) return 'action';
-        if (inModule) return 'module';
-        if (inModel) return 'model';
-        if (inEnum) return 'enum';
-        if (inConstants) return 'constants';
-        return 'top';
-    }
-
-    getHoverInfo(uri: vscode.Uri, position: vscode.Position, content: string): vscode.Hover | null {
-        const doc = this.parseDocument(uri, content);
-        const lines = content.split('\n');
-        const line = lines[position.line];
-        const trimmed = line.trim();
-
-        // Import path hover
-        if (trimmed.startsWith('import')) {
-            const importMatch = trimmed.match(/import\s+@(\w+)\/(\w+)/);
-            const quotedMatch = trimmed.match(/import\s+"([^"]+)"/);
-            if (importMatch || quotedMatch) {
-                const imp = doc.imports.find(im => im.line === position.line);
-                if (imp) {
-                    const md = new vscode.MarkdownString();
-                    md.appendMarkdown(`**Import** \`${imp.raw}\`\n\n`);
-                    if (imp.resolvedPath) {
-                        md.appendMarkdown(`**Resolves to:** \`${path.basename(imp.resolvedPath)}\`\n\n`);
-                        const importedModels = [...doc.models.values()].filter(m => m.file === imp.resolvedPath);
-                        const importedEnums = [...doc.enums.values()].filter(e => e.file === imp.resolvedPath);
-                        if (importedModels.length > 0) {
-                            md.appendMarkdown(`**Models:** ${importedModels.map(m => `\`${m.name}\``).join(', ')}\n\n`);
-                        }
-                        if (importedEnums.length > 0) {
-                            md.appendMarkdown(`**Enums:** ${importedEnums.map(e => `\`${e.name}\``).join(', ')}\n\n`);
-                        }
-                    } else {
-                        md.appendMarkdown(`*File not found*\n`);
-                    }
-                    return new vscode.Hover(md);
-                }
-            }
-        }
-
-        const word = this.getWordAt(line, position.character);
-        if (!word) return null;
-
-        if (doc.models.has(word)) {
-            const model = doc.models.get(word)!;
-            const sourceFile = path.basename(model.file);
-            const fieldsSummary = model.fields.map(f => `  ${f.name}: ${f.type}`).join('\n');
-            const md = new vscode.MarkdownString();
-            md.appendMarkdown(`**Model** \`${model.name}\`\n\n`);
-            md.appendMarkdown(`**Defined in:** \`${sourceFile}\` (line ${model.line + 1})\n\n`);
-            md.appendMarkdown(`**Fields:** ${model.fields.length}\n\n`);
-            md.appendCodeblock(`model ${model.name} {\n${fieldsSummary}\n}`, 'veld');
-            return new vscode.Hover(md);
-        }
-
-        if (doc.enums.has(word)) {
-            const enumDef = doc.enums.get(word)!;
-            const sourceFile = path.basename(enumDef.file);
-            const md = new vscode.MarkdownString();
-            md.appendMarkdown(`**Enum** \`${enumDef.name}\`\n\n`);
-            md.appendMarkdown(`**Defined in:** \`${sourceFile}\` (line ${enumDef.line + 1})\n\n`);
-            md.appendMarkdown(`**Values:** ${enumDef.values.map(v => `\`${v}\``).join(', ')}\n\n`);
-            md.appendCodeblock(`enum ${enumDef.name} {\n  ${enumDef.values.join('\n  ')}\n}`, 'veld');
-            return new vscode.Hover(md);
-        }
-
-        if (doc.constants.has(word)) {
-            const cg = doc.constants.get(word)!;
-            const sourceFile = path.basename(cg.file);
-            const fieldsSummary = cg.fields.map(f => `  ${f.name}: ${f.type} = ${f.value}`).join('\n');
-            const md = new vscode.MarkdownString();
-            md.appendMarkdown(`**Constants** \`${cg.name}\`\n\n`);
-            if (cg.description) md.appendMarkdown(`*${cg.description}*\n\n`);
-            md.appendMarkdown(`**Defined in:** \`${sourceFile}\` (line ${cg.line + 1})\n\n`);
-            md.appendMarkdown(`**Fields:** ${cg.fields.length}\n\n`);
-            md.appendCodeblock(`constants ${cg.name} {\n${fieldsSummary}\n}`, 'veld');
-            return new vscode.Hover(md);
-        }
-
-        if (doc.modules.has(word)) {
-            const mod = doc.modules.get(word)!;
-            const sourceFile = path.basename(mod.file);
-            const md = new vscode.MarkdownString();
-            md.appendMarkdown(`**Module** \`${mod.name}\`\n\n`);
-            if (mod.description) md.appendMarkdown(`*${mod.description}*\n\n`);
-            md.appendMarkdown(`**Defined in:** \`${sourceFile}\` (line ${mod.line + 1})\n\n`);
-            if (mod.prefix) md.appendMarkdown(`**Prefix:** \`${mod.prefix}\`\n\n`);
-            md.appendMarkdown(`**Actions:** ${mod.actions.length}\n\n`);
-            for (const action of mod.actions) {
-                md.appendMarkdown(`- **${action.name}** \`${action.method || '?'} ${action.path || '?'}\``);
-                if (action.input) md.appendMarkdown(` | input: \`${action.input}\``);
-                if (action.output) md.appendMarkdown(` | output: \`${action.output}\``);
-                md.appendMarkdown('\n');
-            }
-            return new vscode.Hover(md);
-        }
-
-        if (BUILTIN_TYPES.has(word)) {
-            return new vscode.Hover(new vscode.MarkdownString(`**Built-in Type** \`${word}\``));
-        }
-
-        if (HTTP_METHODS.has(word)) {
-            return new vscode.Hover(new vscode.MarkdownString(`**HTTP Method** \`${word}\``));
-        }
-
-        if (SPECIAL_TYPES.has(word)) {
-            return new vscode.Hover(new vscode.MarkdownString(`**Generic Type** \`${word}<T>\``));
-        }
-
-        if (KEYWORDS.has(word)) {
-            const descriptions: Record<string, string> = {
-                model: 'Defines a data model with typed fields',
-                module: 'Groups related API actions under a common prefix',
-                action: 'Defines an API endpoint with method, path, input, and output',
-                enum: 'Defines an enumeration of named values',
-                import: 'Imports models or modules from other .veld files',
-                extends: 'Inherits fields from a parent model',
-            };
-            return new vscode.Hover(new vscode.MarkdownString(
-                `**Keyword** \`${word}\`\n\n${descriptions[word] || ''}`
-            ));
-        }
-
-        if (DIRECTIVES.has(word)) {
-            const descriptions: Record<string, string> = {
-                description: 'A human-readable description of the model, module, or action',
-                prefix: 'The URL prefix for all actions in a module',
-                method: 'The HTTP method (GET, POST, PUT, DELETE, PATCH)',
-                path: 'The URL path for this action (relative to module prefix)',
-                input: 'The input/request body type for this action',
-                output: 'The output/response body type for this action',
-                default: 'The default value for a field or enum',
-            };
-            return new vscode.Hover(new vscode.MarkdownString(
-                `**Directive** \`${word}\`\n\n${descriptions[word] || ''}`
-            ));
-        }
-
-        return null;
-    }
-
-    getDefinition(uri: vscode.Uri, position: vscode.Position, content: string): vscode.Location | vscode.Location[] | null {
-        const doc = this.parseDocument(uri, content);
-        const lines = content.split('\n');
-        const line = lines[position.line];
-        const trimmed = line.trim();
-
-        // Import line: click anywhere on the line navigates to the imported file
-        if (trimmed.startsWith('import')) {
-            const imp = doc.imports.find(im => im.line === position.line);
-            if (imp?.resolvedPath && fs.existsSync(imp.resolvedPath)) {
-                return new vscode.Location(
-                    vscode.Uri.file(imp.resolvedPath),
-                    new vscode.Position(0, 0)
-                );
-            }
-            return null;
-        }
-
-        // Try to get import path at cursor position (for @models/auth style)
-        const importPathAtCursor = this.getImportPathAt(line, position.character);
-        if (importPathAtCursor) {
-            const projectRoot = this.findProjectRoot(uri.fsPath);
-            if (projectRoot) {
-                const match = importPathAtCursor.match(/@(\w+)\/(\w+)/);
-                if (match) {
-                    const candidate = path.resolve(projectRoot, match[1], `${match[2]}.veld`);
-                    if (fs.existsSync(candidate)) {
-                        return new vscode.Location(
-                            vscode.Uri.file(candidate),
-                            new vscode.Position(0, 0)
-                        );
-                    }
-                }
-            }
-        }
-
-        const word = this.getWordAt(line, position.character);
-        if (!word) return null;
-
-        // Model definition
-        if (doc.models.has(word)) {
-            const model = doc.models.get(word)!;
-            return new vscode.Location(
-                vscode.Uri.file(model.file),
-                new vscode.Position(model.line, 0)
-            );
-        }
-
-        // Enum definition
-        if (doc.enums.has(word)) {
-            const enumDef = doc.enums.get(word)!;
-            return new vscode.Location(
-                vscode.Uri.file(enumDef.file),
-                new vscode.Position(enumDef.line, 0)
-            );
-        }
-
-        // Module definition
-        if (doc.modules.has(word)) {
-            const mod = doc.modules.get(word)!;
-            return new vscode.Location(
-                vscode.Uri.file(mod.file),
-                new vscode.Position(mod.line, 0)
-            );
-        }
-
-        return null;
-    }
-
-    private getImportPathAt(line: string, position: number): string | null {
-        // Check if cursor is within an @alias/name token
-        const importMatch = line.match(/@\w+\/\w+/);
-        if (!importMatch || importMatch.index === undefined) return null;
-        const start = importMatch.index;
-        const end = start + importMatch[0].length;
-        if (position >= start && position <= end) {
-            return importMatch[0];
-        }
-        return null;
-    }
-
-    getReferences(uri: vscode.Uri, position: vscode.Position, content: string): vscode.Location[] {
-        const lines = content.split('\n');
-        const line = lines[position.line];
-        const word = this.getWordAt(line, position.character);
-
-        if (!word) return [];
-
-        const references: vscode.Location[] = [];
-
-        for (let i = 0; i < lines.length; i++) {
-            const regex = new RegExp(`\\b${word}\\b`, 'g');
-            let match;
-            while ((match = regex.exec(lines[i])) !== null) {
-                references.push(new vscode.Location(uri, new vscode.Position(i, match.index)));
-            }
-        }
-
-        const projectRoot = this.findProjectRoot(uri.fsPath);
-        if (projectRoot) {
-            this.searchVeldFilesForRefs(projectRoot, word, uri.fsPath, references);
-        }
-
-        return references;
-    }
-
-    private searchVeldFilesForRefs(dir: string, word: string, excludePath: string, references: vscode.Location[]): void {
-        try {
-            const entries = fs.readdirSync(dir, { withFileTypes: true });
-            for (const entry of entries) {
-                const fullPath = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                    this.searchVeldFilesForRefs(fullPath, word, excludePath, references);
-                } else if (entry.name.endsWith('.veld') && fullPath !== excludePath) {
-                    try {
-                        const content = fs.readFileSync(fullPath, 'utf-8');
-                        const lines = content.split('\n');
-                        for (let i = 0; i < lines.length; i++) {
-                            const regex = new RegExp(`\\b${word}\\b`, 'g');
-                            let match;
-                            while ((match = regex.exec(lines[i])) !== null) {
-                                references.push(new vscode.Location(
-                                    vscode.Uri.file(fullPath),
-                                    new vscode.Position(i, match.index)
-                                ));
-                            }
-                        }
-                    } catch { /* ignore */ }
-                }
-            }
-        } catch { /* ignore */ }
-    }
-
-    private getWordAt(line: string, position: number): string | null {
-        const before = line.substring(0, position).match(/([A-Za-z_]\w*)$/);
-        if (!before) return null;
-
-        const wordStart = position - before[1].length;
-        const after = line.substring(position).match(/^(\w*)/);
-        const wordEnd = position + (after ? after[1].length : 0);
-        const word = line.substring(wordStart, wordEnd);
-
-        return word.length > 0 ? word : null;
-    }
+/** The "Veld: Watch" command is a task, so it runs in the terminal panel and can be stopped there. */
+function watchTask(): vscode.Task {
+  const definition = { type: "veld", command: "watch" };
+  const exe = veldPath();
+  const task = new vscode.Task(
+    definition,
+    vscode.TaskScope.Workspace,
+    "watch",
+    "veld",
+    new vscode.ShellExecution([shellQuote(exe), ...WATCH.args].join(" ")),
+    "$veld",
+  );
+  task.isBackground = true;
+  task.group = vscode.TaskGroup.Build;
+  return task;
 }
 
-// ── Semantic Tokens ──────────────────────────────────
-
-const SEMANTIC_TOKEN_TYPES = [
-    'type',       // 0: model/enum type references
-    'class',      // 1: model declarations
-    'enum',       // 2: enum declarations
-    'namespace',  // 3: module declarations
-    'function',   // 4: action declarations
-    'property',   // 5: field names
-    'keyword',    // 6: keywords (model, module, action, enum, import, extends)
-    'parameter',  // 7: directives (method, path, input, output, etc.)
-    'string',     // 8: strings, paths
-    'number',     // 9: numbers
-    'comment',    // 10: comments
-    'variable',   // 11: import path parts
-    'decorator',  // 12: annotations
-    'enumMember', // 13: enum values, HTTP methods
-];
-
-const SEMANTIC_TOKEN_MODIFIERS = [
-    'declaration',
-    'definition',
-    'readonly',
-    'defaultLibrary',
-];
-
-const semanticTokensLegend = new vscode.SemanticTokensLegend(SEMANTIC_TOKEN_TYPES, SEMANTIC_TOKEN_MODIFIERS);
-
-class VeldSemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
-    private server: VeldLanguageServer;
-
-    constructor(server: VeldLanguageServer) {
-        this.server = server;
-    }
-
-    provideDocumentSemanticTokens(document: vscode.TextDocument): vscode.SemanticTokens {
-        const builder = new vscode.SemanticTokensBuilder(semanticTokensLegend);
-        const content = document.getText();
-        const lines = content.split('\n');
-        const doc = this.server.parseDocument(document.uri, content);
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const trimmed = line.trim();
-
-            // Comments
-            if (trimmed.startsWith('//')) {
-                const start = line.indexOf('//');
-                builder.push(i, start, line.length - start, 10, 0);
-                continue;
-            }
-
-            // Import statements
-            if (trimmed.startsWith('import')) {
-                const importIdx = line.indexOf('import');
-                builder.push(i, importIdx, 6, 6, 0); // keyword
-
-                const pathMatch = line.match(/@(\w+)\/(\w+)/);
-                if (pathMatch && pathMatch.index !== undefined) {
-                    const fullStart = line.indexOf('@', importIdx);
-                    builder.push(i, fullStart, 1, 12, 0); // @ decorator
-                    builder.push(i, fullStart + 1, pathMatch[1].length, 3, 0); // namespace
-                    builder.push(i, fullStart + 1 + pathMatch[1].length, 1, 8, 0); // / separator
-                    builder.push(i, fullStart + 1 + pathMatch[1].length + 1, pathMatch[2].length, 11, 0); // name
-                }
-
-                // Quoted import: import "path/to/file.veld"
-                const quotedMatch = line.match(/"([^"]+)"/);
-                if (quotedMatch && quotedMatch.index !== undefined && !pathMatch) {
-                    builder.push(i, quotedMatch.index, quotedMatch[0].length, 8, 0); // string
-                }
-                continue;
-            }
-
-            // Model declaration
-            const modelMatch = trimmed.match(/^model\s+([A-Za-z_]\w*)(?:\s+(extends)\s+([A-Za-z_]\w*))?/);
-            if (modelMatch) {
-                const kwIdx = line.indexOf('model');
-                builder.push(i, kwIdx, 5, 6, 1); // keyword + declaration
-                const nameIdx = line.indexOf(modelMatch[1], kwIdx + 5);
-                builder.push(i, nameIdx, modelMatch[1].length, 1, 3); // class + declaration + definition
-                if (modelMatch[2] && modelMatch[3]) {
-                    const extIdx = line.indexOf('extends', nameIdx);
-                    builder.push(i, extIdx, 7, 6, 0); // keyword
-                    const parentIdx = line.indexOf(modelMatch[3], extIdx + 7);
-                    builder.push(i, parentIdx, modelMatch[3].length, 0, 0); // type
-                }
-                continue;
-            }
-
-            // Enum declaration
-            const enumMatch = trimmed.match(/^enum\s+([A-Za-z_]\w*)/);
-            if (enumMatch) {
-                const kwIdx = line.indexOf('enum');
-                builder.push(i, kwIdx, 4, 6, 1);
-                const nameIdx = line.indexOf(enumMatch[1], kwIdx + 4);
-                builder.push(i, nameIdx, enumMatch[1].length, 2, 3);
-                continue;
-            }
-
-            // Module declaration
-            const moduleMatch = trimmed.match(/^module\s+([A-Za-z_]\w*)/);
-            if (moduleMatch) {
-                const kwIdx = line.indexOf('module');
-                builder.push(i, kwIdx, 6, 6, 1);
-                const nameIdx = line.indexOf(moduleMatch[1], kwIdx + 6);
-                builder.push(i, nameIdx, moduleMatch[1].length, 3, 3);
-                continue;
-            }
-
-            // Action declaration
-            const actionMatch = trimmed.match(/^action\s+([A-Za-z_]\w*)/);
-            if (actionMatch) {
-                const kwIdx = line.indexOf('action');
-                builder.push(i, kwIdx, 6, 6, 1);
-                const nameIdx = line.indexOf(actionMatch[1], kwIdx + 6);
-                builder.push(i, nameIdx, actionMatch[1].length, 4, 3);
-                continue;
-            }
-
-            // method: GET
-            const methodDirective = trimmed.match(/^method:\s*(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\b/);
-            if (methodDirective) {
-                const dirIdx = line.indexOf('method');
-                builder.push(i, dirIdx, 6, 7, 0); // directive
-                const valIdx = line.indexOf(methodDirective[1], dirIdx + 6);
-                builder.push(i, valIdx, methodDirective[1].length, 13, 2); // enumMember + readonly
-                continue;
-            }
-
-            // path: /... or prefix: /...
-            const pathDirective = trimmed.match(/^(path|prefix):\s*(\/\S*)/);
-            if (pathDirective) {
-                const dirIdx = line.indexOf(pathDirective[1]);
-                builder.push(i, dirIdx, pathDirective[1].length, 7, 0);
-                const valIdx = line.indexOf(pathDirective[2], dirIdx + pathDirective[1].length);
-                builder.push(i, valIdx, pathDirective[2].length, 8, 0);
-                continue;
-            }
-
-            // description: "..."
-            const descDirective = trimmed.match(/^description:\s*(".*")/);
-            if (descDirective) {
-                const dirIdx = line.indexOf('description');
-                builder.push(i, dirIdx, 11, 7, 0);
-                const valIdx = line.indexOf(descDirective[1], dirIdx + 11);
-                builder.push(i, valIdx, descDirective[1].length, 8, 0);
-                continue;
-            }
-
-            // input: Type or output: Type
-            const ioDirective = trimmed.match(/^(input|output):\s*(.+?)\s*$/);
-            if (ioDirective) {
-                const dirIdx = line.indexOf(ioDirective[1]);
-                builder.push(i, dirIdx, ioDirective[1].length, 7, 0);
-                this.pushTypeTokens(builder, i, line, ioDirective[2], dirIdx + ioDirective[1].length + 1, doc);
-                continue;
-            }
-
-            // default: value
-            const defaultDirective = trimmed.match(/^default:\s*(.+?)\s*$/);
-            if (defaultDirective) {
-                const dirIdx = line.indexOf('default');
-                builder.push(i, dirIdx, 7, 7, 0);
-                continue;
-            }
-
-            // Field definitions: fieldName: Type
-            const fieldMatch = trimmed.match(/^([a-z_]\w*)(\??):\s*(.+?)(?:\s*\/\/.*)?$/);
-            if (fieldMatch) {
-                const fieldIdx = line.indexOf(fieldMatch[1]);
-                builder.push(i, fieldIdx, fieldMatch[1].length, 5, 0); // property
-                this.pushTypeTokens(builder, i, line, fieldMatch[3], fieldIdx + fieldMatch[1].length + (fieldMatch[2].length) + 1, doc);
-                continue;
-            }
-
-            // Enum values (inside an enum block - plain identifiers)
-            if (trimmed !== '{' && trimmed !== '}' && trimmed.length > 0) {
-                const words = trimmed.split(/\s+/);
-                let searchFrom = line.indexOf(trimmed);
-                for (const w of words) {
-                    if (!w) continue;
-                    const wIdx = line.indexOf(w, searchFrom);
-                    if (wIdx >= 0) {
-                        builder.push(i, wIdx, w.length, 13, 0); // enumMember
-                        searchFrom = wIdx + w.length;
-                    }
-                }
-            }
-        }
-
-        return builder.build();
-    }
-
-    private pushTypeTokens(
-        builder: vscode.SemanticTokensBuilder,
-        lineNum: number,
-        line: string,
-        typeExpr: string,
-        searchFrom: number,
-        doc: VeldDocument
-    ): void {
-        const typeTokens = typeExpr.matchAll(/[A-Za-z_]\w*/g);
-        for (const match of typeTokens) {
-            const typeName = match[0];
-            const colonIdx = line.indexOf(':', searchFrom - typeExpr.length);
-            const typeIdx = line.indexOf(typeName, colonIdx >= 0 ? colonIdx : searchFrom);
-            if (typeIdx < 0) continue;
-
-            if (BUILTIN_TYPES.has(typeName)) {
-                builder.push(lineNum, typeIdx, typeName.length, 0, 3); // type + defaultLibrary
-            } else if (SPECIAL_TYPES.has(typeName)) {
-                builder.push(lineNum, typeIdx, typeName.length, 1, 3); // class + defaultLibrary
-            } else if (doc.models.has(typeName)) {
-                builder.push(lineNum, typeIdx, typeName.length, 1, 0); // class (user model)
-            } else if (doc.enums.has(typeName)) {
-                builder.push(lineNum, typeIdx, typeName.length, 2, 0); // enum
-            } else {
-                builder.push(lineNum, typeIdx, typeName.length, 0, 0); // type (unknown)
-            }
-        }
-    }
+function taskFor(definition: { command?: string }): vscode.Task | undefined {
+  const exe = veldPath();
+  if (definition.command === "watch") {
+    return watchTask();
+  }
+  const found = RUN_COMMANDS.find((c) => c.args.join(" ") === definition.command);
+  if (!found) {
+    return undefined;
+  }
+  return new vscode.Task(
+    { type: "veld", command: definition.command },
+    vscode.TaskScope.Workspace,
+    found.args.join(" "),
+    "veld",
+    new vscode.ShellExecution([shellQuote(exe), "--no-color", ...found.args].join(" ")),
+    "$veld",
+  );
 }
 
-// ── VS Code Extension Activation ────────────────────
+function registerCommands(context: vscode.ExtensionContext): void {
+  const sub = context.subscriptions;
+  for (const command of RUN_COMMANDS) {
+    sub.push(vscode.commands.registerCommand(command.id, () => runCommand(command)));
+  }
+  sub.push(
+    vscode.commands.registerCommand("veld.exportOpenapi", () => exportCommand("openapi")),
+    vscode.commands.registerCommand("veld.export", () => exportCommand(undefined)),
+    vscode.commands.registerCommand("veld.watch", () => vscode.tasks.executeTask(watchTask())),
+    vscode.commands.registerCommand("veld.restartServer", () => restartClient(context)),
+    vscode.commands.registerCommand("veld.showOutput", () => output.show()),
+    vscode.tasks.registerTaskProvider("veld", {
+      provideTasks: () => [watchTask(), ...RUN_COMMANDS.map((c) => taskFor({ command: c.args.join(" ") }))].filter(
+        (t): t is vscode.Task => t !== undefined,
+      ),
+      resolveTask: (task) => taskFor(task.definition as { command?: string }),
+    }),
+  );
+}
 
 export function activate(context: vscode.ExtensionContext): void {
-    const server = new VeldLanguageServer();
+  output = vscode.window.createOutputChannel("Veld");
+  status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+  status.command = "veld.validate";
+  setStatus("$(symbol-structure) Veld", "Validate the contracts (veld check)");
+  context.subscriptions.push(output, status);
 
-    const validateDoc = (doc: vscode.TextDocument) => {
-        if (doc.languageId === 'veld') {
-            server.validateDocument(doc.uri, doc.getText());
-        }
-    };
+  registerCommands(context);
+  startClient(context);
 
-    vscode.workspace.onDidChangeTextDocument((event: vscode.TextDocumentChangeEvent) => validateDoc(event.document), null, context.subscriptions);
-    vscode.workspace.onDidOpenTextDocument(validateDoc, null, context.subscriptions);
-    vscode.workspace.onDidSaveTextDocument(validateDoc, null, context.subscriptions);
-
-    vscode.workspace.textDocuments.forEach(validateDoc);
-
-    context.subscriptions.push(
-        vscode.languages.registerCompletionItemProvider('veld', {
-            provideCompletionItems(doc: vscode.TextDocument, pos: vscode.Position) {
-                return server.getCompletions(doc.uri, pos, doc.getText());
-            }
-        }, ':', ' ', '@', '/')
-    );
-
-    context.subscriptions.push(
-        vscode.languages.registerHoverProvider('veld', {
-            provideHover(doc: vscode.TextDocument, pos: vscode.Position) {
-                return server.getHoverInfo(doc.uri, pos, doc.getText());
-            }
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.languages.registerDefinitionProvider('veld', {
-            provideDefinition(doc: vscode.TextDocument, pos: vscode.Position) {
-                return server.getDefinition(doc.uri, pos, doc.getText());
-            }
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.languages.registerReferenceProvider('veld', {
-            provideReferences(doc: vscode.TextDocument, pos: vscode.Position) {
-                return server.getReferences(doc.uri, pos, doc.getText());
-            }
-        })
-    );
-
-    // Semantic Tokens Provider for rich coloring
-    context.subscriptions.push(
-        vscode.languages.registerDocumentSemanticTokensProvider(
-            'veld',
-            new VeldSemanticTokensProvider(server),
-            semanticTokensLegend
-        )
-    );
-
-    context.subscriptions.push(
-        vscode.languages.registerDocumentSymbolProvider('veld', {
-            provideDocumentSymbols(doc: vscode.TextDocument) {
-                const content = doc.getText();
-                const symbols: vscode.DocumentSymbol[] = [];
-                const lines = content.split('\n');
-
-                for (let i = 0; i < lines.length; i++) {
-                    const trimmed = lines[i].trim();
-
-                    const modelMatch = trimmed.match(/^model\s+([A-Za-z_]\w*)/);
-                    if (modelMatch) {
-                        let endLine = i;
-                        let depth = 0;
-                        for (let j = i; j < lines.length; j++) {
-                            for (const ch of lines[j]) {
-                                if (ch === '{') depth++;
-                                if (ch === '}') depth--;
-                            }
-                            if (depth <= 0) { endLine = j; break; }
-                        }
-                        const range = new vscode.Range(i, 0, endLine, lines[endLine].length);
-                        symbols.push(new vscode.DocumentSymbol(
-                            modelMatch[1], 'model', vscode.SymbolKind.Class, range, range
-                        ));
-                    }
-
-                    const moduleMatch = trimmed.match(/^module\s+([A-Za-z_]\w*)/);
-                    if (moduleMatch) {
-                        let endLine = i;
-                        let depth = 0;
-                        for (let j = i; j < lines.length; j++) {
-                            for (const ch of lines[j]) {
-                                if (ch === '{') depth++;
-                                if (ch === '}') depth--;
-                            }
-                            if (depth <= 0) { endLine = j; break; }
-                        }
-                        const range = new vscode.Range(i, 0, endLine, lines[endLine].length);
-                        symbols.push(new vscode.DocumentSymbol(
-                            moduleMatch[1], 'module', vscode.SymbolKind.Module, range, range
-                        ));
-                    }
-
-                    const enumMatch = trimmed.match(/^enum\s+([A-Za-z_]\w*)/);
-                    if (enumMatch) {
-                        let endLine = i;
-                        let depth = 0;
-                        for (let j = i; j < lines.length; j++) {
-                            for (const ch of lines[j]) {
-                                if (ch === '{') depth++;
-                                if (ch === '}') depth--;
-                            }
-                            if (depth <= 0) { endLine = j; break; }
-                        }
-                        const range = new vscode.Range(i, 0, endLine, lines[endLine].length);
-                        symbols.push(new vscode.DocumentSymbol(
-                            enumMatch[1], 'enum', vscode.SymbolKind.Enum, range, range
-                        ));
-                    }
-
-                    const actionMatch = trimmed.match(/^action\s+([A-Za-z_]\w*)/);
-                    if (actionMatch) {
-                        let endLine = i;
-                        let depth = 0;
-                        for (let j = i; j < lines.length; j++) {
-                            for (const ch of lines[j]) {
-                                if (ch === '{') depth++;
-                                if (ch === '}') depth--;
-                            }
-                            if (depth <= 0) { endLine = j; break; }
-                        }
-                        const range = new vscode.Range(i, 0, endLine, lines[endLine].length);
-                        symbols.push(new vscode.DocumentSymbol(
-                            actionMatch[1], 'action', vscode.SymbolKind.Function, range, range
-                        ));
-                    }
-                }
-
-                return symbols;
-            }
-        })
-    );
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("veld.path")) {
+        void restartClient(context);
+      }
+    }),
+    vscode.workspace.onDidSaveTextDocument((doc) => {
+      const enabled = vscode.workspace.getConfiguration("veld").get<boolean>("validateOnSave", true);
+      if (enabled && doc.languageId === "veld") {
+        void runCommand(RUN_COMMANDS[0], true);
+      }
+    }),
+  );
 }
 
-export function deactivate(): void {}
-
+export async function deactivate(): Promise<void> {
+  await client?.stop();
+}

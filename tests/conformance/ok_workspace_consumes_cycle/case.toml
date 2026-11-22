@@ -1,0 +1,7 @@
+[consumes]
+orders = ["payments"]
+payments = ["orders"]
+
+[base_url]
+orders = "http://orders:3002"
+payments = "http://payments:3003"

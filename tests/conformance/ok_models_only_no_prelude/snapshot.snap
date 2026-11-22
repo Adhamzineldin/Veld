@@ -1,0 +1,97 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "A",
+      "qualified": "app:app.A",
+      "sig": "veld:app/A@92ede72f7fbd96ce",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "a",
+          "wire": "a",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 1,
+            "col": 11
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "E",
+      "qualified": "app:app.E",
+      "sig": "veld:app/E@081f442b018fc740",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 2,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "x",
+          "wire": "x",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "y",
+          "wire": "y",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

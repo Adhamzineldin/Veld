@@ -1,0 +1,27 @@
+[package]
+name = "veld-emit-java"
+description = "Veld Java generator (server and client): records, sealed unions, a zero-dependency runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+veld-ir.workspace = true
+veld-codegen.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+veld-compiler.workspace = true
+veld-project.workspace = true
+veld-emit-node.workspace = true
+veld-emit-typescript.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+insta.workspace = true
+veld-emit-conformance.workspace = true
+veld-test-support.workspace = true
+
+[lints]
+workspace = true

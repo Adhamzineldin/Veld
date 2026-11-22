@@ -1,0 +1,3 @@
+use users.{Missing}
+
+model A { u: Nope, v: User }

@@ -1,0 +1,196 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.0",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "teams",
+      "name": "Team",
+      "qualified": "app:teams.Team",
+      "sig": "veld:app/Team@2dc99d506b69f4a4",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "teams.veld",
+        "line": 3,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "teams.veld",
+            "line": 4,
+            "col": 3
+          }
+        },
+        {
+          "name": "members",
+          "wire": "members",
+          "type": {
+            "list": {
+              "decl": 1
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "teams.veld",
+            "line": 5,
+            "col": 3
+          }
+        },
+        {
+          "name": "lead",
+          "wire": "lead",
+          "type": {
+            "decl": 1
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "teams.veld",
+            "line": 6,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "users",
+      "name": "User",
+      "qualified": "app:users.User",
+      "sig": "veld:app/User@87df9b694003819c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "users.veld",
+        "line": 3,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 4,
+            "col": 3
+          }
+        },
+        {
+          "name": "team",
+          "wire": "team",
+          "type": {
+            "decl": 0
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "users.veld",
+            "line": 5,
+            "col": 3
+          }
+        }
+      ]
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

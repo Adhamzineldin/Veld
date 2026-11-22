@@ -1,0 +1,3 @@
+enum Status { pending, paid }
+
+model A { s: Status = .shipped }

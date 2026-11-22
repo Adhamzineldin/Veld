@@ -1,0 +1,90 @@
+/// Order lifecycle.
+enum OrderStatus {
+  pending,
+  /// Money received.
+  paid,
+  @deprecated("use cancelled")
+  void_ = "VOID",
+  cancelled
+}
+
+/// A registered customer.
+model User {
+  id: int
+  email: string @length(max: 120)
+  name: string
+  createdAt: datetime
+  bio?: string
+}
+
+/// Products for sale.
+model Product {
+  id: uuid
+  sku: string
+  title: string
+  price: decimal
+  tags: string[] = []
+  attributes: Map<string, string>
+  photo?: bytes
+}
+
+/// A purchase.
+model Order {
+  id: long
+  userId: int
+  status: OrderStatus = .pending
+  note?: string
+  total: decimal
+  @deprecated("use total")
+  amount?: float
+}
+
+model OrderLine {
+  orderId: long
+  productId: uuid
+  quantity: int @min(1)
+}
+
+model OrderFilter {
+  status?: OrderStatus
+  userId?: int
+}
+
+model CreateOrder {
+  userId: int
+  lines: OrderLine[]
+}
+
+model Tick { n: int }
+model Cmd { text: string }
+
+model Card { number: string }
+model Transfer { iban: string }
+
+union Payment { card: Card, transfer: Transfer }
+
+model Receipt {
+  orderId: long
+  payment: Payment
+}
+
+/// Order handling.
+@auth(bearer)
+service Orders at "/orders" {
+  /// Lists orders.
+  get "/" listOrders(query: OrderFilter) -> Page<Order>
+  /// One order.
+  get "/{id}" getOrder(id: long) -> Order | NotFound
+  post "/" createOrder(body: CreateOrder) -> 201 Order | ValidationError
+  put "/{id}" updateOrder(id: long, body: CreateOrder, @header("X-Trace") trace?: string) -> Order
+  @deprecated("use cancel")
+  delete "/{id}" removeOrder(id: long) -> 204
+  get "/{id}/receipt" receipt(id: long) -> Receipt
+  get "/ticks" ticks() -> stream Tick
+  ws "/chat" chat(body: stream Cmd) -> stream Tick
+}
+
+service Users at "/users" {
+  get "/{id}" getUser(id: int) -> User | NotFound
+  get "/" listUsers() -> User[]
+}

@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "generator": "veld 2.0",
+  "files": {
+    "Cargo.toml": "2d476140b4f2ba44352306bdd9e0adbe2ffccf05822f1f296bc8e7fc4e59113b",
+    "README.md": "6ccca103a2e0ba9328088dfdf409e6cd1336fa94a43032b56244f4ec74344a20",
+    "src/adapters/axum.rs": "b0714d0192ed1947fd9b2ebfcd087ed8af8ecbf7b4912b233dff025c608b6ee2",
+    "src/adapters/mod.rs": "64bb625f91c076b0dbcd9997983690cdc06c3e6a67005aa5a25c9b3c6e514784",
+    "src/catalog/books.rs": "3fcac99984176587ead5b7f09aa75580f9cd5caa4945dc6549933f603a5b899b",
+    "src/catalog/catalog_server.rs": "0ec4a63a1fed3cd360641ad2cf758adead5d659431f0bd486b5ccab38de1e319",
+    "src/catalog/mod.rs": "bd5ab85b779256da56410d0276fe8895b808a3e6cbbe53529bef968deb7f8e29",
+    "src/lib.rs": "19151fd8cf6063e01c7e8b7b5a1f51132b2bf3b707594e38743043f02c4e47fb",
+    "src/prelude.rs": "7c1ee4c56f5a45dfbf7d31c32d23dda6498cb165981fcb46f38ca340cb378480",
+    "src/veld/canonical.rs": "24827f216bac55ccddee7362f9e7fd48ee6fcf9006be9b3efd384ad1bb791418",
+    "src/veld/error.rs": "04eb3dd44960574a87a7c2a5040fb97dc99ae2869d971091caa397662471765f",
+    "src/veld/mod.rs": "cd6648aae8aab01399e628317eb356645583409b9b282e6cad0185b098a95997",
+    "src/veld/page.rs": "5d7bae17bf895770162173f6a05cd97dd1aa03b2c95342a331a8ac81a494b4a9",
+    "src/veld/regex.rs": "667f8c31c9be9d576a6e17a6c6a3ac9a65cf433cd8550bf3d8acdac6ff9e79e5",
+    "src/veld/schema.rs": "e52e95ddd32ef48662796fb4a6890f00c29db7e8cddb7385855679d3277395c7",
+    "src/veld/server.rs": "0c7abb85a5a05cf859b08f362953b7f4b8cf19066ccc2c469ee5f9948d64f6e1",
+    "src/veld/spec.rs": "9aeaf717885a2dc7e94b5d32705243a00b3e1b882debcc9c8ceb3eb15cf08174",
+    "src/veld/util.rs": "6b2e652607f68fdd5228fc3c9f8c84d8a92e00ccc9b84f4f5110f2d7322edf3e"
+  }
+}

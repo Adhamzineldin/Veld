@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "generator": "veld 2.0",
+  "files": {
+    "README.md": "6400bda7bab06c5171a94d76332b5f0ac1cf1520e023e3306e823bd9a8bf3e7c",
+    "deps/common/errors/errors.ts": "5674cdfb0dbf22526b4d499eb6d8105761ec565978e75c60ef30f9970f3070c5",
+    "deps/common/models/money.ts": "bd881860f686de63c51b097c49bba7819faf7ea519980fd3de2c1667bb627fef",
+    "index.ts": "99dfa77aef968667b3fe1c2338ad77df8ec8206f6c24b74693566d740b9863e1",
+    "models/invoices.ts": "5097b7a3cf1c246ecaf900b743bb65af16b12619d590e5a9c0118d5f8b0f1141",
+    "package.json": "a8785a575cb06f1e71e45a7999d911b6d6f239c6c412d0063adeb3790e5a4ddd",
+    "prelude.ts": "e8110d3c264ee63643b440a24507e66e06d80189b9ca49c5960a17f067ec7938",
+    "runtime/veld.ts": "626c161cfd99d1311c22ff9027ca106c8c8d9ed33101708e4ee9e3740e952464",
+    "server/adapters.ts": "f182d6e48b7a1f38fb3b4de6b1669ed8a7b8fca01f7625d556b9fdf1712ca2f9",
+    "server/invoices.ts": "a70fd753ba0ada876a1ba85550587c7b64a37925ccb20bfe74fab4a778a1201b"
+  }
+}

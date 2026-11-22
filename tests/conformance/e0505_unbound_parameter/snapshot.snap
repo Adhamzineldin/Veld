@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0505]: parameter `limit` has no binding
+ --> app/app.veld:2:13
+  |
+2 |   get "/" f(limit: int)
+  |             ^^^^^
+  = help: a parameter is bound by (1) appearing as `{name}` in the path, (2) being named `body`, (3) being named `query` (a model), (4) `@query`, or (5) `@header("Name")`
+
+== ir ==
+(no IR: compilation failed)

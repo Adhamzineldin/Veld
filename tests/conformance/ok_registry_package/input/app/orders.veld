@@ -1,0 +1,10 @@
+use @acme/billing:invoices.{Invoice}
+
+model Order {
+  id: uuid
+  invoice?: Invoice
+}
+
+service Orders at "/orders" {
+  get "/{id}" getOrder(id: uuid) -> Order | NotFound
+}

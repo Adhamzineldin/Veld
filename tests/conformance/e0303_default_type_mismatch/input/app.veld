@@ -1,0 +1,8 @@
+model B { x: int }
+model A {
+  a: int = "text"
+  b: int = 99999999999
+  c: B = 1
+  d?: int = 1
+  e: string = null
+}

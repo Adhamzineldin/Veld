@@ -1,0 +1,14 @@
+model Entity {
+  id: uuid @readonly
+  createdAt: datetime @readonly
+}
+
+model Named extends Entity {
+  name: string @length(min: 1, max: 80)
+}
+
+model Person extends Named {
+  email: string @format(email)
+  age?: int @min(0) @max(150)
+}
+

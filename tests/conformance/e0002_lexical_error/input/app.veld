@@ -1,0 +1,4 @@
+model A {
+  a: int # not a token
+  b: string = "unterminated
+}

@@ -1,0 +1,48 @@
+use accounts:accounts.{Account}
+
+enum TransactionType { credit, debit, transfer }
+
+enum TransactionStatus { pending, completed, failed, reversed }
+
+/// A single financial transaction.
+model Transaction {
+  id: uuid @readonly
+  accountId: uuid
+  type: TransactionType
+  status: TransactionStatus = .pending
+  amount: decimal
+  currency: string @pattern("^[A-Z]{3}$")
+  description?: string @length(max: 140)
+  reference: string @readonly
+  createdAt: datetime @readonly
+}
+
+/// Initiates a transfer to another IBAN.
+model TransferInput {
+  fromAccountId: uuid
+  toIban: string @length(min: 15, max: 34)
+  amount: decimal
+  currency: string @pattern("^[A-Z]{3}$")
+  description?: string @length(max: 140)
+}
+
+/// Filters for the transaction history.
+model HistoryFilter {
+  status?: TransactionStatus
+  type?: TransactionType
+  page: int = 1 @min(1)
+  size: int = 20 @min(1) @max(100)
+}
+
+/// The result of a transfer: the new transaction and the debited account.
+/// `Account` comes from the `accounts` service, which in turn imports `Transaction`.
+model TransferReceipt {
+  transaction: Transaction
+  source: Account
+}
+
+/// The source account does not hold enough money.
+error InsufficientFunds 422 {
+  available: decimal
+  required: decimal
+}

@@ -1,0 +1,22 @@
+[project]
+name = "hello"
+contracts = "contracts"
+
+# A Node.js server. Framework adapters use structural types, so the generated code has no
+# dependencies. Choose express, fastify, hono, nest, node-http or none.
+# After `veld generate`, `veld setup` makes it importable as `@veld/api`.
+[[targets]]
+name = "api"
+role = "server"
+emitter = "node"
+framework = "express"
+service = "hello"
+out = "server/src/generated"
+
+# A typed TypeScript client with React hooks, importable as `@veld/web`.
+[[targets]]
+name = "web"
+role = "client"
+emitter = "typescript"
+framework = "react"
+out = "web/src/generated"

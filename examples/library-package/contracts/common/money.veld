@@ -1,0 +1,14 @@
+/// Currencies the shop trades in.
+enum Currency { USD, EUR, GBP }
+
+/// An amount of money. `amount` is a decimal string, so no precision is lost.
+model Money {
+  amount: decimal
+  currency: Currency
+}
+
+/// Standard paging parameters for list endpoints.
+model PageQuery {
+  page: int = 1 @min(1)
+  size: int = 20 @min(1) @max(100)
+}

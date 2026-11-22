@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0702]: `consumes` is declared for unknown service `ghost`
+ --> <workspace>
+
+error[E0702]: service `orders` consumes unknown service `payments`
+ --> <workspace>
+  = help: known services: orders
+
+== ir ==
+(no IR: compilation failed)

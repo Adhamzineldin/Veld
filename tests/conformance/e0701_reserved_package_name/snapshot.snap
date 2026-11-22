@@ -1,0 +1,9 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0701]: package name `veld` is reserved for the prelude
+ --> <workspace>
+
+== ir ==
+(no IR: compilation failed)

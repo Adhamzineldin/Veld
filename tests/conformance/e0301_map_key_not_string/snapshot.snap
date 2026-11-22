@@ -1,0 +1,12 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0301]: map keys must be `string`, found `int`
+ --> app/app.veld:1:18
+  |
+1 | model A { m: Map<int, string> }
+  |                  ^^^
+
+== ir ==
+(no IR: compilation failed)

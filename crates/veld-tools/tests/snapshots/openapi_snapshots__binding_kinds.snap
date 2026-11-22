@@ -1,0 +1,1079 @@
+---
+source: crates/veld-tools/tests/openapi_snapshots.rs
+expression: "export(\"ok_binding_kinds\")"
+---
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Items",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/items": {
+      "get": {
+        "operationId": "Items.list",
+        "tags": [
+          "Items"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/app.Sort",
+              "default": "asc"
+            }
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "X-Trace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/app.Item"
+                      }
+                    },
+                    "total": {
+                      "type": "string",
+                      "format": "int64"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "format": "int32"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "format": "int32"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "size"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/ValidationError@7836aff24d914bea"
+                    },
+                    "title": {
+                      "const": "ValidationError"
+                    },
+                    "status": {
+                      "const": 422
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.list@62e636bc8d8d21d9"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.ValidationError"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.list@62e636bc8d8d21d9"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-op-sig": "veld:app/Items.list@62e636bc8d8d21d9"
+      },
+      "options": {
+        "operationId": "Items.probe",
+        "tags": [
+          "Items"
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.probe@5144bb6cf85f835e"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-op-sig": "veld:app/Items.probe@5144bb6cf85f835e"
+      }
+    },
+    "/items/search": {
+      "get": {
+        "operationId": "Items.search",
+        "tags": [
+          "Items"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "kinds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/app.Sort"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/app.Item"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/ValidationError@7836aff24d914bea"
+                    },
+                    "title": {
+                      "const": "ValidationError"
+                    },
+                    "status": {
+                      "const": 422
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.search@81c9098f5861224d"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.ValidationError"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.search@81c9098f5861224d"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-op-sig": "veld:app/Items.search@81c9098f5861224d"
+      }
+    },
+    "/items/{id}": {
+      "get": {
+        "operationId": "Items.get",
+        "tags": [
+          "Items"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app.Item"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/NotFound@a0eaf7a3323dce7c"
+                    },
+                    "title": {
+                      "const": "NotFound"
+                    },
+                    "status": {
+                      "const": 404
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.get@5814387ef09a268f"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.NotFound"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/ValidationError@7836aff24d914bea"
+                    },
+                    "title": {
+                      "const": "ValidationError"
+                    },
+                    "status": {
+                      "const": 422
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.get@5814387ef09a268f"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.ValidationError"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.get@5814387ef09a268f"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-op-sig": "veld:app/Items.get@5814387ef09a268f"
+      },
+      "patch": {
+        "operationId": "Items.update",
+        "tags": [
+          "Items"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app.ItemPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app.Item"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/NotFound@a0eaf7a3323dce7c"
+                    },
+                    "title": {
+                      "const": "NotFound"
+                    },
+                    "status": {
+                      "const": 404
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.update@a246a474d33b0b9f"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.NotFound"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Conflict@d9a1130c6f183c45"
+                    },
+                    "title": {
+                      "const": "Conflict"
+                    },
+                    "status": {
+                      "const": 409
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.update@a246a474d33b0b9f"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Conflict"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/ValidationError@7836aff24d914bea"
+                    },
+                    "title": {
+                      "const": "ValidationError"
+                    },
+                    "status": {
+                      "const": 422
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.update@a246a474d33b0b9f"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.ValidationError"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.update@a246a474d33b0b9f"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-op-sig": "veld:app/Items.update@a246a474d33b0b9f"
+      },
+      "delete": {
+        "operationId": "Items.remove",
+        "tags": [
+          "Items"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "422": {
+            "description": "ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/ValidationError@7836aff24d914bea"
+                    },
+                    "title": {
+                      "const": "ValidationError"
+                    },
+                    "status": {
+                      "const": 422
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.remove@24a062d0cce73865"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.ValidationError"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.remove@24a062d0cce73865"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-op-sig": "veld:app/Items.remove@24a062d0cce73865"
+      },
+      "head": {
+        "operationId": "Items.exists",
+        "tags": [
+          "Items"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No content"
+          },
+          "422": {
+            "description": "ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/ValidationError@7836aff24d914bea"
+                    },
+                    "title": {
+                      "const": "ValidationError"
+                    },
+                    "status": {
+                      "const": 422
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.exists@016aa33410537466"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.ValidationError"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.exists@016aa33410537466"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-op-sig": "veld:app/Items.exists@016aa33410537466"
+      }
+    },
+    "/items/{id}/tags/{tag}": {
+      "put": {
+        "operationId": "Items.tag",
+        "tags": [
+          "Items"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No content"
+          },
+          "422": {
+            "description": "ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/ValidationError@7836aff24d914bea"
+                    },
+                    "title": {
+                      "const": "ValidationError"
+                    },
+                    "status": {
+                      "const": 422
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.tag@009b8bd0ff612f4a"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.ValidationError"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Items.tag@009b8bd0ff612f4a"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-op-sig": "veld:app/Items.tag@009b8bd0ff612f4a"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "app.Item": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "x-veld-sig": "veld:app/Item@31d0f42de90c7b6c"
+      },
+      "app.ItemFilter": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string"
+          },
+          "sort": {
+            "$ref": "#/components/schemas/app.Sort",
+            "default": "asc"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "x-veld-sig": "veld:app/ItemFilter@59a2b623dae39d18"
+      },
+      "app.ItemPatch": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "x-veld-sig": "veld:app/ItemPatch@0b09e2f3fc54fe74"
+      },
+      "app.Sort": {
+        "type": "string",
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "x-veld-sig": "veld:app/Sort@aeb7f729c506d9f5"
+      },
+      "veld.Conflict": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "x-veld-sig": "veld:veld/Conflict@d9a1130c6f183c45"
+      },
+      "veld.Internal": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "x-veld-sig": "veld:veld/Internal@c2b1f6bb355266e7"
+      },
+      "veld.NotFound": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string"
+          }
+        },
+        "x-veld-sig": "veld:veld/NotFound@a0eaf7a3323dce7c"
+      },
+      "veld.ValidationError": {
+        "type": "object",
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/veld.ValidationIssue"
+            }
+          }
+        },
+        "required": [
+          "issues"
+        ],
+        "x-veld-sig": "veld:veld/ValidationError@7836aff24d914bea"
+      },
+      "veld.ValidationIssue": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "code",
+          "message"
+        ],
+        "x-veld-sig": "veld:veld/ValidationIssue@253beeea259ebf75"
+      }
+    }
+  },
+  "x-veld-ir-version": "1.0"
+}

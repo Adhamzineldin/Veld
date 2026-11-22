@@ -1,0 +1,16 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0509]: endpoint `f` is declared twice in service `S`
+ --> app/app.veld:3:12
+  |
+3 |   get "/b" f()
+  |            ^
+ --> app/app.veld:2:12
+  |
+2 |   get "/a" f()
+  |            - first declared here
+
+== ir ==
+(no IR: compilation failed)

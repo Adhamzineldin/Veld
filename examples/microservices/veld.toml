@@ -1,0 +1,84 @@
+# NexusBank: a contract-first banking platform with five services.
+# Run `veld check` and `veld generate` in this directory.
+
+[project]
+name = "nexusbank"
+
+[services.iam]
+contracts = "contracts/iam"
+base-url = "http://iam-service:3001"
+
+# accounts and transactions consume each other. Cycles are legal.
+[services.accounts]
+contracts = "contracts/accounts"
+base-url = "http://account-service:3002"
+consumes = ["iam", "transactions"]
+
+[services.transactions]
+contracts = "contracts/transactions"
+base-url = "http://transaction-service:3003"
+consumes = ["iam", "accounts"]
+
+[services.cards]
+contracts = "contracts/cards"
+base-url = "http://card-service:3004"
+consumes = ["iam", "accounts"]
+
+[services.notifications]
+contracts = "contracts/notifications"
+base-url = "http://notification-service:3005"
+consumes = ["iam"]
+
+# Node servers. Each one also gets a typed client per consumed service under <out>/clients/.
+[[targets]]
+name = "iam-api"
+service = "iam"
+role = "server"
+emitter = "node"
+framework = "express"
+out = "backend/iam-service/src/generated"
+
+[[targets]]
+name = "accounts-api"
+service = "accounts"
+role = "server"
+emitter = "node"
+framework = "express"
+out = "backend/account-service/src/generated"
+
+# The transactions service is a Java server (JDK HTTP server adapter, no dependencies).
+[[targets]]
+name = "transactions-api"
+service = "transactions"
+role = "server"
+emitter = "java"
+framework = "jdk"
+out = "backend/transaction-service/src/main/java"
+
+[targets.options]
+package = "com.nexusbank.transactions"
+
+[[targets]]
+name = "cards-api"
+service = "cards"
+role = "server"
+emitter = "node"
+framework = "fastify"
+out = "backend/card-service/src/generated"
+
+[[targets]]
+name = "notifications-api"
+service = "notifications"
+role = "server"
+emitter = "node"
+framework = "hono"
+out = "backend/notification-service/src/generated"
+
+# One TypeScript client with React hooks for the web app, covering every service.
+# Importable as `@veld/web` after `veld setup`.
+[[targets]]
+name = "web"
+role = "client"
+emitter = "typescript"
+framework = "react"
+out = "web/src/generated"

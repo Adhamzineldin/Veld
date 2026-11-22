@@ -1,0 +1,3 @@
+service S at "/s" {
+  get "/{id}/items/{sku}" f(id: uuid)
+}

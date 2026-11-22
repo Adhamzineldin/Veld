@@ -1,0 +1,47 @@
+use iam:users.{User}
+
+/// A customer order.
+model Order {
+  id: uuid @readonly
+  customer: User
+  items: OrderItem[] @length(min: 1)
+  status: Status = .pending
+  note?: string @length(max: 500)
+}
+
+enum Status { pending, paid, shipped }
+
+error OutOfStock 409 {
+  sku: string
+}
+
+/// Order management.
+@auth(bearer)
+service Orders at "/orders" {
+  /// Fetch one order.
+  get "/{id}" getOrder(id: uuid) -> Order | NotFound
+
+  post "/" createOrder(body: CreateOrder) -> 201 Order | OutOfStock
+
+  get "/" listOrders(query: OrderFilter) -> Page<Order>
+
+  @auth(none)
+  get "/health" health() -> 204
+}
+
+// Declarations the spec example leaves implicit.
+model OrderItem {
+  sku: string
+  quantity: int @min(1)
+}
+
+model CreateOrder {
+  customer: uuid
+  items: OrderItem[] @length(min: 1)
+}
+
+model OrderFilter {
+  status?: Status
+  customer?: uuid
+  tags?: string[]
+}

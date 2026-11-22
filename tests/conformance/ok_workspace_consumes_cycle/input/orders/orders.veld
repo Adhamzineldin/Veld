@@ -1,0 +1,14 @@
+use payments:billing.{Invoice, PaymentMethod}
+
+model Order {
+  id: uuid
+  total: decimal
+  invoice?: Invoice
+  method: PaymentMethod = .card
+}
+
+@auth(bearer)
+service Orders at "/orders" {
+  get "/{id}" getOrder(id: uuid) -> Order | NotFound
+  post "/" placeOrder(body: Order) -> Order | Conflict
+}

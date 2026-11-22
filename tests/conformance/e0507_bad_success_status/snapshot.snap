@@ -1,0 +1,20 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0507]: success status must be 2xx, found 404
+ --> app/app.veld:4:20
+  |
+4 |   get "/a" fa() -> 404 M
+  |                    ^^^
+  = help: error responses are listed after the success response and must be `error` declarations
+
+error[E0507]: success status must be 2xx, found 301
+ --> app/app.veld:5:20
+  |
+5 |   get "/b" fb() -> 301
+  |                    ^^^
+  = help: error responses are listed after the success response and must be `error` declarations
+
+== ir ==
+(no IR: compilation failed)

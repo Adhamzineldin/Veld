@@ -1,0 +1,17 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0510]: GET /a/{y} collides with A.one in package `app`
+ --> app/app.veld:6:14
+  |
+6 |   get "/{y}" two(y: int)
+  |              ^^^
+ --> app/app.veld:2:14
+  |
+2 |   get "/{x}" one(x: int)
+  |              --- same method and path declared here
+  = note: paths are compared with parameter names erased: `/a/{x}` and `/a/{y}` collide
+
+== ir ==
+(no IR: compilation failed)

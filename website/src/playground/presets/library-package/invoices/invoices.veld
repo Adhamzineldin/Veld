@@ -1,0 +1,24 @@
+use common:errors.{Unavailable}
+use common:money.{Money, PageQuery}
+
+/// An invoice for an order.
+model Invoice {
+  id: uuid @readonly
+  orderId: uuid
+  due: Money
+  paid: bool = false
+  issuedAt: date @readonly
+}
+
+/// Invoice management.
+@auth(bearer)
+service Invoices at "/invoices" {
+  /// Fetches one invoice.
+  get "/{id}" getInvoice(id: uuid) -> Invoice | NotFound
+
+  /// Lists invoices, newest first.
+  get "/" listInvoices(query: PageQuery) -> Page<Invoice>
+
+  /// Marks an invoice as paid.
+  post "/{id}/pay" payInvoice(id: uuid) -> 200 Invoice | NotFound | Unavailable
+}

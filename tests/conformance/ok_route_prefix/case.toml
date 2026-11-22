@@ -1,0 +1,5 @@
+[consumes]
+app = []
+
+[prefix]
+app = "/api/v1"

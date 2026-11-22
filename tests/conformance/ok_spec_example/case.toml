@@ -1,0 +1,9 @@
+[consumes]
+orders = ["iam"]
+
+[base_url]
+iam = "http://iam:3001"
+orders = "http://orders:3002"
+
+[kinds]
+iam = "library"

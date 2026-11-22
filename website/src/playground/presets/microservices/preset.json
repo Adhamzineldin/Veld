@@ -1,0 +1,15 @@
+{
+  "title": "Microservices",
+  "usageTitle": "Call Transactions from Accounts",
+  "blurb": "NexusBank: five services that consume each other.",
+  "project": {
+    "packages": [
+      { "name": "iam", "baseUrl": "http://iam-service:3001" },
+      { "name": "accounts", "baseUrl": "http://account-service:3002", "consumes": ["iam", "transactions"] },
+      { "name": "transactions", "baseUrl": "http://transaction-service:3003", "consumes": ["iam", "accounts"] },
+      { "name": "cards", "baseUrl": "http://card-service:3004", "consumes": ["iam", "accounts"] },
+      { "name": "notifications", "baseUrl": "http://notification-service:3005", "consumes": ["iam"] }
+    ]
+  },
+  "target": { "emitter": "node", "role": "server", "framework": "express", "service": "accounts" }
+}

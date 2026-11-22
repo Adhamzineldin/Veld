@@ -1,0 +1,20 @@
+/// Two services in one package whose `fetch` endpoints have the same name, relative path and
+/// errors. They differ only in the service, which is what the HTTP equality tests rely on.
+model Item { id: string }
+
+/// Declared exactly like `Item`: same fields, so the same canonical bytes, but another declaration.
+/// `same(item, thing)` must be false.
+model Thing { id: string }
+
+error Gone 410 { id: string }
+
+service Alpha at "/a" {
+  get "/{id}" fetch(id: string) -> Item | Gone
+  get "/item/{id}" item(id: string) -> Item
+  get "/thing/{id}" thing(id: string) -> Thing
+  post "/echo" echo(body: Item) -> Thing
+}
+
+service Beta at "/b" {
+  get "/{id}" fetch(id: string) -> Item | Gone
+}

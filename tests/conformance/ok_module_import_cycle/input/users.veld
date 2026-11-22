@@ -1,0 +1,6 @@
+use teams.{Team}
+
+model User {
+  id: uuid
+  team?: Team
+}

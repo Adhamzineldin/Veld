@@ -1,0 +1,18 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0409]: union arm `c` must be a model, but `Color` is not
+ --> app/app.veld:4:14
+  |
+4 | union U { c: Color }
+  |              ^^^^^
+
+error[E0409]: union `Empty` has no arms
+ --> app/app.veld:5:7
+  |
+5 | union Empty { }
+  |       ^^^^^
+
+== ir ==
+(no IR: compilation failed)

@@ -1,6 +1,5 @@
-// ${NAME} model
-
+/// TODO: describe ${NAME}.
 model ${NAME} {
-  id: string
+  id: uuid @readonly
+  name: string @length(min: 1)
 }
-

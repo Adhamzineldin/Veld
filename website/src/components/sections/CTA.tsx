@@ -20,13 +20,13 @@ export default function CTA() {
           <p className={styles.subtitle}>
             Define your API contract once. Let Veld handle the rest.
             <br />
-            Typed backends, frontend SDKs, validation — in seconds.
+            Typed servers, typed clients and validation, from one contract.
           </p>
           <div className={styles.actions}>
             <Link to="/docs" className={styles.btnPrimary}>
               Get Started <ArrowRight size={18} />
             </Link>
-            <Link to="/docs#quickstart" className={styles.btnSecondary}>
+            <Link to="/docs#first-contract" className={styles.btnSecondary}>
               Read the Guide
             </Link>
             <a

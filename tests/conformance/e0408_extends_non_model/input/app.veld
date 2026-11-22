@@ -1,0 +1,5 @@
+enum Color { red, green }
+error Oops 500 { m: string }
+
+model A extends Color { a: int }
+model B extends Oops { b: int }

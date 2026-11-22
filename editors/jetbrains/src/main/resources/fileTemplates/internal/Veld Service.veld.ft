@@ -1,0 +1,4 @@
+/// TODO: describe the ${NAME} service.
+service ${NAME} at "/${NAME}" {
+  get "/health" health() -> 204
+}

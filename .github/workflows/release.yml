@@ -1,689 +1,279 @@
-name: Release
+name: release
 
-# ─── HOW THIS WORKS ─────────────────────────────────────────────────────────
+# Pushing a tag such as v2.0.0-beta.1 builds the `veld` CLI and `veld-registry`
+# for every supported platform and attaches the archives plus SHA256SUMS to the
+# GitHub release, plus .deb/.rpm (nfpm), a Chocolatey .nupkg and the filled Scoop manifest
+# veld.json. The distribution wrappers (npm, pip, Homebrew, Scoop, Chocolatey) download these
+# exact asset names:
 #
-# Triggers:
-#   1. Push a version tag:  git tag v0.2.0 && git push origin v0.2.0
-#      → Auto-detects what changed since the last tag and only publishes
-#        affected targets.
-#
-#   2. Manual dispatch (Actions → Release → Run workflow):
-#      → Pick exactly which targets to publish via checkboxes.
-#
-# Auto-detection rules (tag push):
-#   cmd/ or internal/ or go.mod changed  →  binary + npm + pip + homebrew + choco + apt
-#   packages/npm/ changed                →  npm
-#   packages/pip/ changed                →  pip
-#   packages/homebrew/ changed           →  homebrew
-#   packages/composer/ changed           →  composer
-#   packages/chocolatey/ changed         →  choco
-#   packages/apt/ changed                →  apt
-#   packages/nuget/ changed              →  nuget
-#   editors/vscode/ changed              →  vscode
-#   editors/jetbrains/ changed           →  jetbrains
-#
-# If NOTHING is detected as changed (e.g. docs-only commit), only the
-# GitHub Release is created (with binaries) but no packages are published.
-#
-# Secrets needed (set in GitHub repo → Settings → Secrets → Actions):
-#   GITHUB_TOKEN           — automatic, no setup needed
-#   NPM_TOKEN              — from npmjs.com (for npm publish)
-#   PYPI_TOKEN             — from pypi.org (for pip publish)
-#   VSCE_PAT               — Azure DevOps token (for VS Code Marketplace)
-#   JETBRAINS_PUBLISH_TOKEN — JetBrains Marketplace token
-#   CHOCO_API_KEY          — from chocolatey.org (for choco push)
-#   PACKAGECLOUD_TOKEN     — from packagecloud.io (for apt repo)
-#   NUGET_API_KEY          — from nuget.org (for dotnet nuget push)
-#
-# Pre-release tags (e.g. v0.2.0-beta.1) create a GitHub Release but skip
-# all package/plugin publishing (unless manually overridden via dispatch).
-# ─────────────────────────────────────────────────────────────────────────────
+#   veld-<target-triple>.tar.gz            (veld.zip on Windows)
+#   veld-registry-linux-<amd64|arm64>.tar.gz
+#   SHA256SUMS
 
 on:
   push:
-    tags:
-      - "v*"
-
+    tags: ["v*"]
+  # A dry run builds every artifact and uploads it as a workflow artifact. It creates no release
+  # and pushes no image.
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version tag (e.g. v0.3.0) — required for manual runs"
-        required: true
-        type: string
-      all:
-        description: "Publish everything"
-        required: false
-        type: boolean
-        default: false
-      binary:
-        description: "Build & release binary"
-        required: false
+      dry-run:
+        description: "Build and upload artifacts only: no release, no image push"
         type: boolean
         default: true
-      npm:
-        description: "Publish npm package"
-        required: false
-        type: boolean
-        default: false
-      pip:
-        description: "Publish pip package"
-        required: false
-        type: boolean
-        default: false
-      homebrew:
-        description: "Update Homebrew formula"
-        required: false
-        type: boolean
-        default: false
-      vscode:
-        description: "Publish VS Code extension"
-        required: false
-        type: boolean
-        default: false
-      jetbrains:
-        description: "Publish JetBrains plugin"
-        required: false
-        type: boolean
-        default: false
-      choco:
-        description: "Publish Chocolatey package"
-        required: false
-        type: boolean
-        default: false
-      apt:
-        description: "Publish apt package (Packagecloud)"
-        required: false
-        type: boolean
-        default: false
-      nuget:
-        description: "Publish NuGet package (nuget.org)"
-        required: false
-        type: boolean
-        default: false
+
+env:
+  CARGO_TERM_COLOR: always
 
 permissions:
   contents: write
 
-env:
-  GO_VERSION: "1.22"
-
 jobs:
-  # ─── Resolve version & detect what to publish ───────────────────────────────
-  resolve:
-    name: Resolve targets
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.ctx.outputs.version }}
-      is_prerelease: ${{ steps.ctx.outputs.is_prerelease }}
-      publish_binary: ${{ steps.targets.outputs.binary }}
-      publish_npm: ${{ steps.targets.outputs.npm }}
-      publish_pip: ${{ steps.targets.outputs.pip }}
-      publish_homebrew: ${{ steps.targets.outputs.homebrew }}
-      publish_composer: ${{ steps.targets.outputs.composer }}
-      publish_vscode: ${{ steps.targets.outputs.vscode }}
-      publish_jetbrains: ${{ steps.targets.outputs.jetbrains }}
-      publish_choco: ${{ steps.targets.outputs.choco }}
-      publish_apt: ${{ steps.targets.outputs.apt }}
-      publish_nuget: ${{ steps.targets.outputs.nuget }}
-
+  veld:
+    name: veld (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-musl,  os: ubuntu-latest,  cross: true }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-latest,  cross: true }
+          - { target: x86_64-apple-darwin,        os: macos-15-intel, cross: false }
+          - { target: aarch64-apple-darwin,       os: macos-latest,   cross: false }
+          - { target: x86_64-pc-windows-msvc,     os: windows-latest, cross: false }
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.100.0
         with:
-          fetch-depth: 0  # full history for tag comparison
-
-      - name: Resolve version
-        id: ctx
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-          else
-            VERSION="${GITHUB_REF#refs/tags/}"
-          fi
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
-          if [[ "$VERSION" == *-* ]]; then
-            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
-          echo "📦 Version: ${VERSION}"
-
-      - name: Detect changed paths
-        id: changes
-        run: |
-          VERSION="${{ steps.ctx.outputs.version }}"
-
-          # Find the previous tag
-          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${VERSION}$" | head -1)
-
-          if [ -z "$PREV_TAG" ]; then
-            echo "No previous tag found — treating everything as changed"
-            echo "binary=true" >> "$GITHUB_OUTPUT"
-            echo "npm=true" >> "$GITHUB_OUTPUT"
-            echo "pip=true" >> "$GITHUB_OUTPUT"
-            echo "homebrew=true" >> "$GITHUB_OUTPUT"
-            echo "composer=true" >> "$GITHUB_OUTPUT"
-            echo "vscode=true" >> "$GITHUB_OUTPUT"
-            echo "jetbrains=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "Comparing ${PREV_TAG}..HEAD"
-          CHANGED=$(git diff --name-only "${PREV_TAG}..HEAD" || echo "")
-          echo "$CHANGED"
-
-          # Map paths to targets
-          has() { echo "$CHANGED" | grep -qE "$1" && echo "true" || echo "false"; }
-
-          echo "binary=$(has '^(cmd/|internal/|go\.(mod|sum))')" >> "$GITHUB_OUTPUT"
-          echo "npm=$(has '^packages/npm/')" >> "$GITHUB_OUTPUT"
-          echo "pip=$(has '^packages/pip/')" >> "$GITHUB_OUTPUT"
-          echo "homebrew=$(has '^packages/homebrew/')" >> "$GITHUB_OUTPUT"
-          echo "composer=$(has '^packages/composer/')" >> "$GITHUB_OUTPUT"
-          echo "choco=$(has '^packages/chocolatey/')" >> "$GITHUB_OUTPUT"
-          echo "apt=$(has '^packages/apt/')" >> "$GITHUB_OUTPUT"
-          echo "nuget=$(has '^packages/nuget/')" >> "$GITHUB_OUTPUT"
-          echo "vscode=$(has '^editors/vscode/')" >> "$GITHUB_OUTPUT"
-          echo "jetbrains=$(has '^editors/jetbrains/')" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve final targets
-        id: targets
-        run: |
-          IS_DISPATCH="${{ github.event_name == 'workflow_dispatch' }}"
-          IS_PRERELEASE="${{ steps.ctx.outputs.is_prerelease }}"
-          ALL="${{ inputs.all }}"
-
-          resolve() {
-            local name=$1
-            local auto=$2     # auto-detected from git diff
-            local manual=$3   # manual dispatch checkbox
-
-            if [ "$IS_DISPATCH" = "true" ]; then
-              # Manual dispatch: use checkboxes (or "all" override)
-              if [ "$ALL" = "true" ] || [ "$manual" = "true" ]; then
-                echo "true"
-              else
-                echo "false"
-              fi
-            else
-              # Tag push: use auto-detection, but skip packages on pre-release
-              if [ "$IS_PRERELEASE" = "true" ] && [ "$name" != "binary" ]; then
-                echo "false"
-              else
-                # Binary changes cascade to npm/pip/homebrew/choco/apt
-                if [ "$name" = "npm" ] || [ "$name" = "pip" ] || [ "$name" = "homebrew" ] || [ "$name" = "choco" ] || [ "$name" = "apt" ] || [ "$name" = "nuget" ]; then
-                  if [ "${{ steps.changes.outputs.binary }}" = "true" ] || [ "$auto" = "true" ]; then
-                    echo "true"
-                  else
-                    echo "false"
-                  fi
-                else
-                  echo "$auto"
-                fi
-              fi
-            fi
-          }
-
-          echo "binary=$(resolve binary ${{ steps.changes.outputs.binary }} ${{ inputs.binary }})" >> "$GITHUB_OUTPUT"
-          echo "npm=$(resolve npm ${{ steps.changes.outputs.npm }} ${{ inputs.npm }})" >> "$GITHUB_OUTPUT"
-          echo "pip=$(resolve pip ${{ steps.changes.outputs.pip }} ${{ inputs.pip }})" >> "$GITHUB_OUTPUT"
-          echo "homebrew=$(resolve homebrew ${{ steps.changes.outputs.homebrew }} ${{ inputs.homebrew }})" >> "$GITHUB_OUTPUT"
-          echo "composer=$(resolve composer ${{ steps.changes.outputs.composer }} false)" >> "$GITHUB_OUTPUT"
-          echo "choco=$(resolve choco ${{ steps.changes.outputs.choco }} ${{ inputs.choco }})" >> "$GITHUB_OUTPUT"
-          echo "apt=$(resolve apt ${{ steps.changes.outputs.apt }} ${{ inputs.apt }})" >> "$GITHUB_OUTPUT"
-          echo "nuget=$(resolve nuget ${{ steps.changes.outputs.nuget }} ${{ inputs.nuget }})" >> "$GITHUB_OUTPUT"
-          echo "vscode=$(resolve vscode ${{ steps.changes.outputs.vscode }} ${{ inputs.vscode }})" >> "$GITHUB_OUTPUT"
-          echo "jetbrains=$(resolve jetbrains ${{ steps.changes.outputs.jetbrains }} ${{ inputs.jetbrains }})" >> "$GITHUB_OUTPUT"
-
-      - name: Summary
-        run: |
-          echo "### 🎯 Publish targets" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Target | Publish |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|--------|---------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Binary / GitHub Release | \`${{ steps.targets.outputs.binary }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| npm | \`${{ steps.targets.outputs.npm }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| pip | \`${{ steps.targets.outputs.pip }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Homebrew | \`${{ steps.targets.outputs.homebrew }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Composer | \`${{ steps.targets.outputs.composer }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Chocolatey | \`${{ steps.targets.outputs.choco }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| apt (Packagecloud) | \`${{ steps.targets.outputs.apt }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| NuGet | \`${{ steps.targets.outputs.nuget }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| VS Code | \`${{ steps.targets.outputs.vscode }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| JetBrains | \`${{ steps.targets.outputs.jetbrains }}\` |" >> "$GITHUB_STEP_SUMMARY"
-
-  # ─── Test ───────────────────────────────────────────────────────────────────
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
         with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-      - run: go test ./... -race -count=1
-      - run: go vet ./...
+          key: ${{ matrix.target }}
+      - name: Install cross
+        if: matrix.cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build -p veld --release --locked --target ${{ matrix.target }}
+      - name: Build (native)
+        if: ${{ !matrix.cross }}
+        run: cargo build -p veld --release --locked --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=veld; if [ "$RUNNER_OS" = Windows ]; then exe=veld.exe; fi
+          bash distribution/package.sh veld "${{ matrix.target }}" "target/${{ matrix.target }}/release/$exe" dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: veld-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
 
-  # ─── Build binaries ────────────────────────────────────────────────────────
-  build:
-    name: Build (${{ matrix.goos }}-${{ matrix.goarch }})
-    needs: [test, resolve]
-    if: needs.resolve.outputs.publish_binary == 'true'
+  registry:
+    name: veld-registry (linux-${{ matrix.goarch }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: darwin
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
-          - goos: windows
-            goarch: amd64
+        goarch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: Build binary
+          go-version-file: registry/go.mod
+      - name: Build
+        working-directory: registry
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
         run: |
-          VERSION="${{ needs.resolve.outputs.version }}"
-          EXT=""
-          if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
-          go build \
-            -ldflags "-s -w -X main.Version=${VERSION}" \
-            -trimpath \
-            -o "veld${EXT}" \
-            ./cmd/veld
-
-      - name: Package archive
-        run: |
-          PLATFORM="${{ matrix.goos }}-${{ matrix.goarch }}"
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            zip "veld-${PLATFORM}.zip" veld.exe
-            echo "ASSET=veld-${PLATFORM}.zip" >> "$GITHUB_ENV"
-          else
-            tar -czf "veld-${PLATFORM}.tar.gz" veld
-            echo "ASSET=veld-${PLATFORM}.tar.gz" >> "$GITHUB_ENV"
-          fi
-
+          set -euo pipefail
+          mkdir -p ../dist/stage
+          go build -trimpath -ldflags="-s -w" -o ../dist/stage/veld-registry ./cmd/veld-registry
+          bash ../distribution/package.sh registry "${{ matrix.goarch }}" ../dist/stage/veld-registry ../dist
       - uses: actions/upload-artifact@v4
         with:
-          name: veld-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: ${{ env.ASSET }}
-          retention-days: 1
+          name: veld-registry-linux-${{ matrix.goarch }}
+          path: dist/*.tar.gz
 
-  # ─── Create GitHub Release ─────────────────────────────────────────────────
-  release:
-    name: Create Release
-    needs: [build, resolve]
-    if: needs.resolve.outputs.publish_binary == 'true'
+  docker:
+    name: registry docker image
+    runs-on: ubuntu-latest
+    env:
+      # Secrets cannot be used in `if:` directly, so they are mirrored here.
+      # Only a tag push may push an image; a dry run never sees the credentials.
+      DOCKERHUB_USERNAME: ${{ startsWith(github.ref, 'refs/tags/') && secrets.DOCKERHUB_USERNAME || '' }}
+      DOCKERHUB_TOKEN: ${{ startsWith(github.ref, 'refs/tags/') && secrets.DOCKERHUB_TOKEN || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image (no push without credentials)
+        if: env.DOCKERHUB_TOKEN == ''
+        run: docker build -t veld-registry registry/
+      - uses: docker/setup-buildx-action@v3
+        if: env.DOCKERHUB_TOKEN != ''
+      - uses: docker/login-action@v3
+        if: env.DOCKERHUB_TOKEN != ''
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Image tags
+        if: env.DOCKERHUB_TOKEN != ''
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/veld-registry
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+      - name: Build and push
+        if: env.DOCKERHUB_TOKEN != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: registry
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+
+  checksums:
+    name: SHA256SUMS
+    needs: [veld, registry]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts/
-
-      - name: Collect assets
+          path: artifacts
+          merge-multiple: true
+      - name: Checksums
+        working-directory: artifacts
         run: |
-          mkdir -p release/
-          find artifacts/ -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release/ \;
-          cd release && sha256sum * > checksums.txt && cat checksums.txt
-
-      - name: Generate changelog
-        run: |
-          VERSION="${{ needs.resolve.outputs.version }}"
-          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${VERSION}$" | head -1)
-
-          echo "## What's Changed" > changelog.md
-          echo "" >> changelog.md
-          if [ -n "$PREV_TAG" ]; then
-            echo "Changes since \`${PREV_TAG}\`:" >> changelog.md
-            echo "" >> changelog.md
-            git log "${PREV_TAG}..${VERSION}" --pretty=format:"- %s (%h)" --no-merges >> changelog.md 2>/dev/null || \
-            git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges >> changelog.md
-          else
-            echo "Initial release 🎉" >> changelog.md
-          fi
-
-          echo "" >> changelog.md
-          echo "" >> changelog.md
-          echo "## Installation" >> changelog.md
-          echo '```bash' >> changelog.md
-          echo "npm install -g @maayn/veld          # npm" >> changelog.md
-          echo "pip install maayn-veld              # pip" >> changelog.md
-          echo "brew install veld-dev/tap/veld      # Homebrew (macOS/Linux)" >> changelog.md
-          echo "choco install veld                  # Chocolatey (Windows)" >> changelog.md
-          echo "sudo apt install veld               # apt (after adding repo)" >> changelog.md
-          echo "dotnet tool install -g Maayn.Veld   # .NET / NuGet" >> changelog.md
-          echo '```' >> changelog.md
-          echo "" >> changelog.md
-          echo "## Checksums (SHA256)" >> changelog.md
-          echo '```' >> changelog.md
-          cat release/checksums.txt >> changelog.md
-          echo '```' >> changelog.md
-
-      - uses: softprops/action-gh-release@v2
+          set -euo pipefail
+          ls -l
+          bash ../distribution/package.sh sums .
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ needs.resolve.outputs.version }}
-          name: Veld ${{ needs.resolve.outputs.version }}
-          body_path: changelog.md
-          draft: false
-          prerelease: ${{ needs.resolve.outputs.is_prerelease == 'true' }}
-          files: |
-            release/*.tar.gz
-            release/*.zip
-            release/checksums.txt
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: SHA256SUMS
+          path: artifacts/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/SHA256SUMS
 
-  # ─── Publish npm ───────────────────────────────────────────────────────────
-  publish-npm:
-    name: Publish npm
-    needs: [release, resolve]
-    if: needs.resolve.outputs.publish_npm == 'true'
+  packages:
+    name: deb, rpm and scoop manifest
+    needs: [checksums]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/download-artifact@v4
         with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Download and bundle binaries
-        working-directory: packages/npm
+          name: release-assets
+          path: artifacts
+      - name: Install nfpm (pinned, checksum verified)
         run: |
-          VERSION="${{ needs.resolve.outputs.version }}"
-          VERSION="${VERSION#v}"
-          npm version "${VERSION}" --no-git-tag-version --allow-same-version
-
-          BASE="https://github.com/Adhamzineldin/Veld/releases/download/${{ needs.resolve.outputs.version }}"
-          mkdir -p binaries
-          for PLATFORM in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64; do
-            EXT=".tar.gz"
-            [[ "$PLATFORM" == *"windows"* ]] && EXT=".zip"
-            curl -sL "${BASE}/veld-${PLATFORM}${EXT}" -o "/tmp/veld-${PLATFORM}${EXT}"
-            mkdir -p "binaries/${PLATFORM}"
-            if [[ "$EXT" == ".zip" ]]; then
-              unzip -q "/tmp/veld-${PLATFORM}${EXT}" -d "binaries/${PLATFORM}"
-            else
-              tar -xzf "/tmp/veld-${PLATFORM}${EXT}" -C "binaries/${PLATFORM}"
-            fi
+          set -euo pipefail
+          v=2.41.3
+          curl -sSfL -o nfpm.tar.gz "https://github.com/goreleaser/nfpm/releases/download/v${v}/nfpm_${v}_Linux_x86_64.tar.gz"
+          echo "22aa6d3bc2ec239d62d3d190bcb036a47f2b24e0c3c6edfccebb6a55fbb2078e  nfpm.tar.gz" | sha256sum -c -
+          sudo tar -xzf nfpm.tar.gz -C /usr/local/bin nfpm
+      - name: Build packages
+        run: |
+          set -euo pipefail
+          version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          mkdir -p packages bin-amd64 bin-arm64
+          tar -xzf artifacts/veld-x86_64-unknown-linux-musl.tar.gz -C bin-amd64
+          tar -xzf artifacts/veld-aarch64-unknown-linux-musl.tar.gz -C bin-arm64
+          for fmt in deb rpm; do
+            bash distribution/package.sh "$fmt" amd64 "$version" bin-amd64/veld packages
+            bash distribution/package.sh "$fmt" arm64 "$version" bin-arm64/veld packages
           done
-          chmod +x binaries/*/veld 2>/dev/null || true
-
-      - name: Publish
-        working-directory: packages/npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  # ─── Publish pip ───────────────────────────────────────────────────────────
-  publish-pip:
-    name: Publish pip
-    needs: [release, resolve]
-    if: needs.resolve.outputs.publish_pip == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+          bash distribution/package.sh scoop "$version" artifacts/SHA256SUMS packages
+          ls -l packages
+      - uses: actions/upload-artifact@v4
         with:
-          python-version: "3.12"
+          name: linux-packages
+          path: packages/*
 
-      - name: Download and bundle binaries
-        working-directory: packages/pip
-        run: |
-          VERSION="${{ needs.resolve.outputs.version }}"
-          VERSION="${VERSION#v}"
-          sed -i "s/^version = .*/version = \"${VERSION}\"/" pyproject.toml
-          sed -i "s/__version__ = .*/__version__ = \"${VERSION}\"/" veld/__init__.py
-
-          BASE="https://github.com/Adhamzineldin/Veld/releases/download/${{ needs.resolve.outputs.version }}"
-          mkdir -p veld/binaries
-          for PLATFORM in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64; do
-            EXT=".tar.gz"
-            [[ "$PLATFORM" == *"windows"* ]] && EXT=".zip"
-            curl -sL "${BASE}/veld-${PLATFORM}${EXT}" -o "/tmp/veld-${PLATFORM}${EXT}"
-            mkdir -p "veld/binaries/${PLATFORM}"
-            if [[ "$EXT" == ".zip" ]]; then
-              unzip -q "/tmp/veld-${PLATFORM}${EXT}" -d "veld/binaries/${PLATFORM}"
-            else
-              tar -xzf "/tmp/veld-${PLATFORM}${EXT}" -C "veld/binaries/${PLATFORM}"
-            fi
-          done
-          chmod +x veld/binaries/*/veld 2>/dev/null || true
-
-      - name: Build and publish
-        working-directory: packages/pip
-        run: |
-          pip install build twine
-          python -m build
-          twine upload dist/*
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-
-  # ─── Update Homebrew ───────────────────────────────────────────────────────
-  update-homebrew:
-    name: Update Homebrew
-    needs: [release, resolve]
-    if: needs.resolve.outputs.publish_homebrew == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download and hash
-        id: hashes
-        run: |
-          VERSION="${{ needs.resolve.outputs.version }}"
-          BASE="https://github.com/Adhamzineldin/Veld/releases/download/${VERSION}"
-          mkdir -p /tmp/hashes
-          for P in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do
-            curl -sL "${BASE}/veld-${P}.tar.gz" -o "/tmp/hashes/veld-${P}.tar.gz"
-          done
-          echo "DARWIN_AMD64=$(sha256sum /tmp/hashes/veld-darwin-amd64.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "DARWIN_ARM64=$(sha256sum /tmp/hashes/veld-darwin-arm64.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "LINUX_AMD64=$(sha256sum /tmp/hashes/veld-linux-amd64.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "LINUX_ARM64=$(sha256sum /tmp/hashes/veld-linux-arm64.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-
-      - name: Update formula
-        run: |
-          VERSION="${{ needs.resolve.outputs.version }}"
-          VERSION="${VERSION#v}"
-          FORMULA="packages/homebrew/Formula/maayn-veld.rb"
-          sed -i "s/version \".*\"/version \"${VERSION}\"/" "$FORMULA"
-          sed -i "s/PLACEHOLDER_SHA256_DARWIN_ARM64/${{ steps.hashes.outputs.DARWIN_ARM64 }}/" "$FORMULA"
-          sed -i "s/PLACEHOLDER_SHA256_DARWIN_AMD64/${{ steps.hashes.outputs.DARWIN_AMD64 }}/" "$FORMULA"
-          sed -i "s/PLACEHOLDER_SHA256_LINUX_ARM64/${{ steps.hashes.outputs.LINUX_ARM64 }}/" "$FORMULA"
-          sed -i "s/PLACEHOLDER_SHA256_LINUX_AMD64/${{ steps.hashes.outputs.LINUX_AMD64 }}/" "$FORMULA"
-          cat "$FORMULA"
-
-  # ─── Publish VS Code Extension ─────────────────────────────────────────────
-  publish-vscode:
-    name: Publish VS Code
-    needs: [test, resolve]
-    if: needs.resolve.outputs.publish_vscode == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Build and publish
-        working-directory: editors/vscode
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: |
-          VERSION="${{ needs.resolve.outputs.version }}"
-          VERSION="${VERSION#v}"
-          npm install
-          npm version "${VERSION}" --no-git-tag-version --allow-same-version
-          npm run compile
-          npm run package
-          npx @vscode/vsce publish -p "$VSCE_PAT" --no-yarn
-
-  # ─── Publish JetBrains Plugin ──────────────────────────────────────────────
-  publish-jetbrains:
-    name: Publish JetBrains
-    needs: [test, resolve]
-    if: needs.resolve.outputs.publish_jetbrains == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          java-version: "17"
-          distribution: "temurin"
-
-      - name: Build and publish
-        working-directory: editors/jetbrains
-        env:
-          JETBRAINS_PUBLISH_TOKEN: ${{ secrets.JETBRAINS_PUBLISH_TOKEN }}
-          CERTIFICATE_CHAIN: ${{ secrets.JETBRAINS_CERT_CHAIN }}
-          PRIVATE_KEY: ${{ secrets.JETBRAINS_PRIVATE_KEY }}
-          PRIVATE_KEY_PASSWORD: ${{ secrets.JETBRAINS_KEY_PASSWORD }}
-        run: |
-          VERSION="${{ needs.resolve.outputs.version }}"
-          VERSION="${VERSION#v}"
-          chmod +x gradlew
-          sed -i "s/^version = .*/version = '${VERSION}'/" build.gradle
-          ./gradlew buildPlugin --no-daemon
-          ./gradlew verifyPlugin --no-daemon
-          ./gradlew publishPlugin --no-daemon
-
-  # ─── Publish Chocolatey ────────────────────────────────────────────────────
-  publish-choco:
-    name: Publish Chocolatey
-    needs: [release, resolve]
-    if: needs.resolve.outputs.publish_choco == 'true'
+  chocolatey:
+    name: chocolatey package
+    needs: [checksums]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download binary and compute checksum
-        id: checksum
-        shell: pwsh
-        run: |
-          $VERSION = "${{ needs.resolve.outputs.version }}"
-          $url = "https://github.com/Adhamzineldin/Veld/releases/download/${VERSION}/veld-windows-amd64.zip"
-          Invoke-WebRequest -Uri $url -OutFile veld-windows-amd64.zip
-          $hash = (Get-FileHash veld-windows-amd64.zip -Algorithm SHA256).Hash.ToLower()
-          echo "WINDOWS_AMD64=${hash}" >> $env:GITHUB_OUTPUT
-
-      - name: Update nuspec and install script
-        shell: pwsh
-        run: |
-          $VERSION = "${{ needs.resolve.outputs.version }}".TrimStart('v')
-          $HASH    = "${{ steps.checksum.outputs.WINDOWS_AMD64 }}"
-
-          # nuspec version
-          (Get-Content packages\chocolatey\veld.nuspec) `
-            -replace '<version>.*</version>', "<version>${VERSION}</version>" |
-            Set-Content packages\chocolatey\veld.nuspec
-
-          # install script version + checksum
-          (Get-Content packages\chocolatey\tools\chocolateyInstall.ps1) `
-            -replace "\`$version\s*=\s*'.*'", "`$version  = '${VERSION}'" `
-            -replace 'PLACEHOLDER_SHA256_WINDOWS_AMD64', $HASH |
-            Set-Content packages\chocolatey\tools\chocolateyInstall.ps1
-
-      - name: Pack and push
-        shell: pwsh
-        working-directory: packages/chocolatey
-        run: |
-          choco pack veld.nuspec
-          choco push veld.$("${{ needs.resolve.outputs.version }}".TrimStart('v')).nupkg `
-            --source https://push.chocolatey.org `
-            --api-key ${{ secrets.CHOCO_API_KEY }}
-
-  # ─── Publish apt (Packagecloud) ────────────────────────────────────────────
-  publish-apt:
-    name: Publish apt
-    needs: [release, resolve]
-    if: needs.resolve.outputs.publish_apt == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install nfpm
-        run: |
-          curl -sL "https://github.com/goreleaser/nfpm/releases/download/v2.38.0/nfpm_2.38.0_Linux_x86_64.tar.gz" \
-            | tar -xz nfpm
-          sudo mv nfpm /usr/local/bin/nfpm
-
-      - name: Build .deb packages
-        run: |
-          VERSION="${{ needs.resolve.outputs.version }}"
-          VERSION="${VERSION#v}"
-          BASE="https://github.com/Adhamzineldin/Veld/releases/download/${{ needs.resolve.outputs.version }}"
-          mkdir -p /tmp/debs
-
-          for ARCH in amd64 arm64; do
-            curl -sL "${BASE}/veld-linux-${ARCH}.tar.gz" | tar -xz veld
-            chmod +x veld
-            ARCH=${ARCH} VERSION=${VERSION} nfpm pkg \
-              --config packages/apt/nfpm.yaml \
-              --packager deb \
-              --target "/tmp/debs/veld_${VERSION}_${ARCH}.deb"
-            rm -f veld
-          done
-
-      - name: Push to Packagecloud
-        run: |
-          VERSION="${{ needs.resolve.outputs.version }}"
-          VERSION="${VERSION#v}"
-          gem install package_cloud --no-document
-
-          for ARCH in amd64 arm64; do
-            DEB="/tmp/debs/veld_${VERSION}_${ARCH}.deb"
-            # Push to Ubuntu LTS releases + Debian stable
-            for DISTRO in ubuntu/focal ubuntu/jammy ubuntu/noble debian/bookworm; do
-              package_cloud push veld-dev/veld/${DISTRO} "$DEB" \
-                --url https://packagecloud.io
-            done
-          done
-        env:
-          PACKAGECLOUD_TOKEN: ${{ secrets.PACKAGECLOUD_TOKEN }}
-
-  # ─── Publish NuGet ─────────────────────────────────────────────────────────
-  publish-nuget:
-    name: Publish NuGet
-    needs: [release, resolve]
-    if: needs.resolve.outputs.publish_nuget == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/download-artifact@v4
         with:
-          dotnet-version: "8.0"
-
-      - name: Update version
+          name: release-assets
+          path: artifacts
+      - name: Pack
+        shell: bash
         run: |
-          VERSION="${{ needs.resolve.outputs.version }}"
-          VERSION="${VERSION#v}"
-          sed -i "s|<Version>.*</Version>|<Version>${VERSION}</Version>|" packages/nuget/VeldCli.csproj
-          sed -i "s|const string Version = \".*\";|const string Version = \"${VERSION}\";|" packages/nuget/Program.cs
+          set -euo pipefail
+          version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          bash distribution/package.sh choco "$version" artifacts/SHA256SUMS packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chocolatey-package
+          path: packages/*.nupkg
 
-      - name: Pack and push
-        working-directory: packages/nuget
-        run: |
-          dotnet pack -c Release
-          dotnet nuget push bin/Release/Maayn.Veld.*.nupkg \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
+  publish:
+    name: github release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [checksums, packages, chocolatey]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-packages
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: chocolatey-package
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/*.deb
+            artifacts/*.rpm
+            artifacts/*.nupkg
+            artifacts/veld.json
+            artifacts/SHA256SUMS
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+  wrappers:
+    name: wrapper tests (npm, pip, homebrew)
+    needs: [checksums]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: artifacts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: npm wrapper
+        run: node distribution/tests/npm-wrapper.test.js artifacts
+      - name: pip wrapper
+        run: python distribution/tests/pip_wrapper_test.py artifacts
+      - name: homebrew formula
+        run: bash distribution/tests/homebrew-formula.test.sh artifacts/SHA256SUMS
+      - name: scoop manifest
+        run: bash distribution/tests/packages.test.sh artifacts/SHA256SUMS

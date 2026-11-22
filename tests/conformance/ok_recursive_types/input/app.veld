@@ -1,0 +1,21 @@
+model TreeNode {
+  name: string
+  parent?: TreeNode
+  children: TreeNode[]
+  attributes: Map<string, TreeNode>
+}
+
+model Comment {
+  id: uuid
+  replies: Comment[]
+  thread?: Thread
+}
+
+model Thread {
+  id: uuid
+  first: Comment[]
+}
+
+union Json2 { leaf: Leaf, branch: Branch }
+model Leaf { value: string }
+model Branch { items: Json2[] }

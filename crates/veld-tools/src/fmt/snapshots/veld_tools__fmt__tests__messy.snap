@@ -1,0 +1,77 @@
+---
+source: crates/veld-tools/src/fmt/tests.rs
+expression: out
+---
+// file header
+
+use a.b.{X}
+// about users
+use users.{Role as R, User}
+use @acme/billing:invoices.{Invoice}
+use iam:users.{Alpha, Zed} // trailing on use
+
+/// A thing.
+@deprecated("old")
+model Thing extends Base { // header note
+  id: uuid @readonly // trailing id
+  // leading name
+  name?: string @length(min: 1, max: 5) @pattern("^a$")
+  tag: string[] @wire("t")
+  m: Map<string, int[]> = .x /* inline */
+  /* tail before close */
+} // after model
+
+enum Status { pending, paid = "PAID", shipped }
+
+enum Long {
+  aaaaaaaaaaaaaaaaaaaa,
+  bbbbbbbbbbbbbbbbbbbb,
+  cccccccccccccccccccc,
+  dddddddddddddddddddd,
+  eeeeeeeeeeeeeeeeee,
+}
+
+enum Noted {
+  a, // first
+  /// documented
+  b,
+}
+
+enum Empty {}
+
+union Pay { card: Card, bank: Bank }
+
+error Oops 409 {
+  sku: string
+}
+
+error Bare {}
+
+const MAX: int = 3 // limit
+
+const RATE: float = 2
+
+const NAME: string = "a\"b\n"
+
+service Orders at "/orders" {
+  get "/{id}" getOrder(id: uuid) -> Order | NotFound
+
+  post "/" createOrder(@header("X-Key") key?: string, body: CreateOrder) -> 201 Order
+      | OutOfStock
+      | Conflict
+      | BadRequest
+      | Forbidden
+      | Unauthorized
+
+  /// Health.
+  @auth(none)
+  get "/health" health() -> 204
+
+  ws "/chat" chat(body: stream Cmd) -> stream Tick
+  delete "/{id}" remove(id: uuid)
+  // nothing more
+}
+
+service Empty at "/e" {}
+
+// the end

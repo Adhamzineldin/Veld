@@ -1,0 +1,9 @@
+---
+source: apps/veld/src/ui/render.rs
+assertion_line: 256
+expression: "lines.join(\"\\n\")"
+---
+✓ api -> gen/server: 6 created, 1 updated, 0 deleted, 2 unchanged
+✓ sdk -> gen/client: 0 created, 0 updated, 0 deleted, 9 unchanged
+
+2 targets, 7 files changed in 340ms

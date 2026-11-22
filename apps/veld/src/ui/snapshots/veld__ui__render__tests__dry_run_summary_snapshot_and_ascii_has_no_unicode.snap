@@ -1,0 +1,9 @@
+---
+source: apps/veld/src/ui/render.rs
+assertion_line: 262
+expression: "lines.join(\"\\n\")"
+---
+~ api -> gen/server: would create 6, update 1, delete 0 (2 unchanged)
+~ sdk -> gen/client: would create 0, update 0, delete 0 (9 unchanged)
+
+2 targets, 7 files would change

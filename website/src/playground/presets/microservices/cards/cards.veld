@@ -1,0 +1,31 @@
+enum CardType { debit, credit }
+
+enum CardStatus { active, frozen, cancelled }
+
+enum CardNetwork { visa, mastercard }
+
+/// A payment card linked to an account.
+model Card {
+  id: uuid @readonly
+  accountId: uuid
+  userId: uuid @readonly
+  type: CardType
+  status: CardStatus = .active
+  network: CardNetwork
+  /// The last four digits. The full number is never exposed.
+  last4: string @readonly @pattern("^[0-9]{4}$")
+  expiresAt: date @readonly
+  createdAt: datetime @readonly
+}
+
+/// Requests a new card for an account.
+model RequestCardInput {
+  accountId: uuid
+  type: CardType
+  network: CardNetwork
+}
+
+/// The card is cancelled and cannot be changed.
+error CardCancelled 409 {
+  cancelledAt?: datetime
+}

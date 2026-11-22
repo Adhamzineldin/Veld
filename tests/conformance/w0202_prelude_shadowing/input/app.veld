@@ -1,0 +1,5 @@
+error NotFound 404 { what: string }
+
+service S at "/s" {
+  get "/" f() -> NotFound
+}

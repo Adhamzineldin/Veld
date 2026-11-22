@@ -1,0 +1,15 @@
+---
+source: crates/emitters/node/tests/streaming.rs
+expression: "server.paths().collect::<Vec<_>>().join(\"\\n\")"
+---
+README.md
+errors/live.ts
+index.ts
+models/live.ts
+package.json
+prelude.ts
+runtime/veld.ts
+server/adapters.ts
+server/live.ts
+server/vault.ts
+server/ws.ts

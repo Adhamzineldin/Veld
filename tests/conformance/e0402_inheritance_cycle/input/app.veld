@@ -1,0 +1,3 @@
+model A extends B { a: int }
+model B extends C { b: int }
+model C extends A { c: int }

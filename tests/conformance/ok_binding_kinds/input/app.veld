@@ -1,0 +1,21 @@
+enum Sort { asc, desc }
+
+model Item { id: uuid, name: string }
+model ItemPatch { name?: string }
+model ItemFilter {
+  q?: string
+  sort: Sort = .asc
+  tags?: string[]
+  limit?: int
+}
+
+service Items at "/items/" {
+  get "/" list(query: ItemFilter, @header("X-Trace-Id") trace?: string) -> Page<Item>
+  get "/{id}" get(id: uuid) -> Item | NotFound
+  patch "/{id}" update(id: uuid, body: ItemPatch, @header("If-Match") etag: string) -> Item | NotFound | Conflict
+  delete "/{id}" remove(id: uuid, @query force?: bool)
+  put "/{id}/tags/{tag}" tag(id: uuid, tag: string) -> 200
+  get "/search" search(@query q: string, @query page?: int, @query kinds?: Sort[]) -> Item[]
+  options "/" probe()
+  head "/{id}" exists(id: uuid) -> 200
+}

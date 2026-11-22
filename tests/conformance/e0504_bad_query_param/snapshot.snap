@@ -1,0 +1,26 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0504]: `query` must be a model, found `string`
+ --> app/app.veld:5:22
+  |
+5 |   get "/a" fa(query: string)
+  |                      ^^^^^^
+  = help: `query` must be a model whose fields are scalars, enums or lists of them
+
+error[E0504]: field `n` of `Nested` has type `Inner`, which cannot be a query parameter
+ --> app/app.veld:6:22
+  |
+6 |   get "/b" fb(query: Nested)
+  |                      ^^^^^^
+  = help: `query` must be a model whose fields are scalars, enums or lists of them
+
+error[E0504]: `@query` parameter `q` must be a scalar, enum or list of them, found `Inner`
+ --> app/app.veld:7:25
+  |
+7 |   get "/c" fc(@query q: Inner)
+  |                         ^^^^^
+
+== ir ==
+(no IR: compilation failed)

@@ -1,0 +1,39 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0401]: field `id` is already inherited from `Base`
+ --> app/app.veld:4:3
+  |
+4 |   id: string
+  |   ^^
+ --> app/app.veld:1:14
+  |
+1 | model Base { id: uuid }
+  |              -- inherited field declared here
+  = help: inherited fields cannot be redeclared
+
+error[E0401]: field `other` is already inherited from `Base`
+ --> app/app.veld:8:3
+  |
+8 |   other: int @wire("id")
+  |   ^^^^^
+ --> app/app.veld:1:14
+  |
+1 | model Base { id: uuid }
+  |              -- inherited field declared here
+  = help: inherited fields cannot be redeclared
+
+error[E0401]: field `id` is already inherited from `Base`
+ --> app/app.veld:12:3
+   |
+12 |   id: int
+   |   ^^
+ --> app/app.veld:1:14
+  |
+1 | model Base { id: uuid }
+  |              -- inherited field declared here
+  = help: inherited fields cannot be redeclared
+
+== ir ==
+(no IR: compilation failed)

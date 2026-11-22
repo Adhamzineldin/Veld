@@ -1,0 +1,37 @@
+/// Lifecycle of an order.
+enum Status {
+  pending,
+  paid,
+  shipped = "SHIPPED",
+}
+
+/// An amount of money.
+model Money {
+  amount: decimal
+  currency: string @length(min: 3, max: 3)
+}
+
+model Timestamps {
+  createdAt: datetime @wire("created_at")
+}
+
+model OrderItem {
+  sku: string @pattern("^[A-Z]{3}-[0-9]+$")
+  quantity: int @min(1) @max(100)
+}
+
+model Card {
+  last4: string @length(min: 4, max: 4)
+}
+
+model BankTransfer {
+  iban: string
+}
+
+/// How an order is paid.
+union Payment {
+  card: Card,
+  bank: BankTransfer,
+}
+
+const MaxItems: int = 50

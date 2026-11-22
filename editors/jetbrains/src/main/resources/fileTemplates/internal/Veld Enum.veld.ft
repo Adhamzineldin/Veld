@@ -1,7 +1,5 @@
-// ${NAME} enum
-
+/// TODO: describe ${NAME}.
 enum ${NAME} {
-  value1
-  value2
+  first,
+  second,
 }
-

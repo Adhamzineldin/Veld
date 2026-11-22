@@ -1,0 +1,10 @@
+model A {
+  a: int
+  a: string
+  b: int @wire("x")
+  c: int @wire("x")
+}
+
+enum E { one, one = "ONE" }
+
+union U { x: A, x: A }

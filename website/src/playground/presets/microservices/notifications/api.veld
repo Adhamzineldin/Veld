@@ -1,0 +1,17 @@
+use notifications.{Notification, NotificationPreferences, UpdatePreferencesInput}
+
+/// User notifications and preferences.
+@auth(bearer)
+service Notifications at "/api/notifications" {
+  /// Lists the notifications of the authenticated user.
+  get "/" listNotifications() -> Notification[]
+
+  /// Marks a notification as read.
+  patch "/{id}/read" markAsRead(id: uuid) -> 200 Notification | NotFound
+
+  /// Returns the notification preferences.
+  get "/preferences" getPreferences() -> NotificationPreferences
+
+  /// Updates one or more categories.
+  patch "/preferences" updatePreferences(body: UpdatePreferencesInput) -> 200 NotificationPreferences
+}

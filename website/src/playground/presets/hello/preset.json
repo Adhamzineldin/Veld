@@ -1,0 +1,7 @@
+{
+  "title": "Hello",
+  "usageTitle": "Serve a greeting",
+  "blurb": "One model, one endpoint: the smallest contract.",
+  "project": { "packages": [{ "name": "hello" }] },
+  "target": { "emitter": "node", "role": "server", "framework": "express" }
+}
