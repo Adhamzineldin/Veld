@@ -1,4 +1,4 @@
-# Veld Rules and Events: one contract for the API, its events and the business rules they must keep
+# Veld Rules, Events and Platform: one contract for the API, its events and the business rules they must keep
 
 > **Status:** proposal, approved in direction on 2026-11-22. Not normative. Phase 0 turns it into `spec/rules.md`.
 
@@ -16,8 +16,9 @@ Today a Veld contract says what data looks like. This plan makes it say what is 
 9. [Roadmap](#9-roadmap)
 10. [Testing](#10-testing)
 11. [Events and messaging](#11-events-and-messaging-kafka-rabbitmq-nats-sqs)
-12. [Non-goals and risks](#12-non-goals-and-risks)
-13. [Decisions](#13-decisions)
+12. [Platform features](#12-platform-features)
+13. [Non-goals and risks](#13-non-goals-and-risks)
+14. [Decisions](#14-decisions)
 
 ## 1. The pitch
 
@@ -453,7 +454,88 @@ sequenceDiagram
 
 E1 can start in parallel with rules Phase 2, since it reuses the same invariants. Events plus rules give the strongest demo: one contract, an HTTP service and a Kafka consumer in two languages, and `veld diff` blocking a change that would break the consumer.
 
-## 12. Non-goals and risks
+## 12. Platform features
+
+The rule kinds are the engine. These features are built on it and cover what production teams otherwise hand-write in every service: security, data handling, time, workflows and reach. Each one is optional, has its own capability flag, and follows the same pattern: declared in the contract, enforced by generated code, with a small interface for the part only your system can do.
+
+### Security and data
+
+```veld
+principal User { id: uuid  tenantId: uuid  roles: string[] }
+
+model Booking {
+  tenantId: uuid @tenant                       // every read and write is scoped to the caller's tenant
+  guestPhone?: string @pii
+    @visible(when: user.id == guestId || "support" in user.roles)
+  // ...
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  @audited
+  @limit(10 per minute by user)
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking | AmountMismatch { ... }
+}
+```
+
+| Feature | What is generated | Details |
+|---|---|---|
+| **Field visibility** `@visible(when: ...)` | The response encoder drops the field for callers the expression rejects. | The field must be optional on the wire, so clients already handle its absence (compile error otherwise). On an `@audited` endpoint, the audit event records which fields were hidden. |
+| **Multi-tenancy** `@tenant` | Fact loaders receive the caller's tenant; every loaded fact and every response is checked against it. | A fact from another tenant becomes `404`, not `403`, so other tenants' records are not even confirmed to exist. Events carry the tenant in the envelope. A tenant-scoped endpoint without auth is a compile error. |
+| **Audit log** `@audited` | An `AuditEvent` per call: operation, principal, time, outcome, and before/after values from `old()` facts and the result. | Sent to a generated `AuditSink` interface, or straight to a channel (§11). `@pii` and `@secret` values are redacted. |
+| **Rate limits** `@limit(n per window by user\|tenant\|ip)` | A `Limiter` interface with a built-in memory implementation; back it with Redis in production. | Uses the existing prelude `TooManyRequests 429` with `retryAfter`. Generated clients honour `retryAfter` automatically. |
+
+### Workflow and time
+
+```veld
+enum BookingStatus {
+  pending, paid, checkedIn, cancelled, refunded
+  flow pending -> paid -> checkedIn
+  flow pending -> cancelled after hours(24)     // unpaid bookings expire on their own
+  // ...
+}
+
+model Booking {
+  rule maxStay: end - start <= days(14) when flag("shortStays")
+}
+
+@timeout(seconds(2))
+@slo(p99: ms(300), errors: 0.1%)
+get "/{id}" getBooking(id: uuid) -> Booking
+
+saga Checkout(body: CheckoutRequest) -> Booking {
+  step hold:    Rooms.hold(body.roomId)         compensate Rooms.release(hold.id)
+  step charge:  Payments.charge(body.payment)   compensate Payments.refund(charge.id)
+  step confirm: Bookings.confirm(hold.id)
+  timeout minutes(5)
+}
+```
+
+| Feature | What is generated | Details |
+|---|---|---|
+| **Timed transitions** `after duration` | A `Scheduler` interface: entering `pending` schedules the timeout; when it fires, the transition runs through the normal pipeline. | The state is re-checked when the timer fires, so a booking paid at hour 23 is not cancelled. A generated `runDueTransitions()` also works from a plain cron job. `emits` events fire as usual. |
+| **Sagas** `saga` with `step` and `compensate` | An orchestrator per saga, its state saved through a `SagaStore` interface, with retries and compensation in reverse order. | `veld check` requires every step and compensation to be `@idempotent`, because they are retried. Steps call other services through the generated clients (`consumes`) or through channels. The saga itself is an endpoint with a typed result. This is the largest feature in the plan. |
+| **Feature flags** `when flag("name")` | A `FlagProvider` interface (config file, LaunchDarkly, Unleash), evaluated with the principal and tenant. | Works on `rule`, `require`, `permit` and `flow`. `veld check` lists every flag the contract uses. `veld diff` reports a flag-gated tightening as "breaking once the flag is on". |
+| **Timeouts and SLOs** `@timeout`, `@slo` | Client default timeouts and a server-side deadline in the request context; latency and error metrics through one metrics hook with stable names. | Metric names follow OpenTelemetry conventions, so any exporter can read them without adding a dependency to the generated code. `veld export slo` writes OpenSLO files for alerting. |
+
+### Reach and adoption
+
+| Feature | What is generated | Details |
+|---|---|---|
+| **AI agent tools** `veld export mcp` | MCP tool definitions from the contract: names, `///` docs as descriptions, JSON Schema inputs, and rules described in plain text. An optional generated MCP server proxies calls through the generated client. | Agents get the same rule checks and the same policies as any caller; the agent acts as its user's principal. Non-`get` endpoints are marked destructive. `@agent(hidden)` keeps an endpoint out of the tool list. |
+| **Translated messages** | A message catalog per language, `messages/ar.toml`, `messages/fr.toml`, keyed by rule id; the English text stays inline in the contract. | The server picks the language from `Accept-Language`; each violation carries both `message` and a stable `messageKey`, so clients can translate themselves. `veld check` warns about missing translations. Arabic is the first catalog in the example project. |
+| **Data retention** `@retain(days(30), then: delete\|anonymize)` | A `RetentionJobs` hook listing what to delete or anonymize and when, and `veld export retention`: a data inventory of every `@pii` field and how long it is kept. | Together with `@pii` this answers the GDPR questions "what personal data do you store, and for how long" straight from the contract. |
+
+### Platform roadmap
+
+| Phase | Size | Work | Gate |
+|---|---|---|---|
+| **P1. Security and data** | 1 week | `@visible`, `@tenant`, `@audited`, `@limit` in every target. | Cross-tenant and hidden-field vectors pass on all four servers. |
+| **P2. Time, flags and SLOs** | 1 week | Timed transitions and the scheduler hook, `flag()` and the flag provider, `@timeout`, `@slo`, the metrics hook and the OpenSLO export. | An expiring booking is cancelled exactly once, also when paid just before the deadline. |
+| **P3. Sagas** | 2 weeks | Syntax, the idempotency check, the orchestrator and `SagaStore`, steps over HTTP and channels. | Killing the orchestrator at every step still ends in either a confirmed booking or a fully compensated one. |
+| **P4. Reach** | 1 week | `veld export mcp` and the MCP proxy, message catalogs, `@retain` and the retention export. | An AI agent books a room through the MCP tools and is stopped by the same rules as the React client. |
+
+## 13. Non-goals and risks
 
 ### What belongs in the contract, and what stays in code
 
@@ -473,7 +555,7 @@ E1 can start in parallel with rules Phase 2, since it reuses the same invariants
 - **Broker adapters multiply the test matrix.** Every adapter is tested against the same event vectors on the memory broker first; only E2/E3 toolchain tests need real brokers.
 - **Adoption.** Everything is optional and incremental. A contract with no rules or events generates exactly what it does today, byte for byte.
 
-## 13. Decisions
+## 14. Decisions
 
 | Question | Decision (2026-11-22) |
 |---|---|
@@ -482,6 +564,8 @@ E1 can start in parallel with rules Phase 2, since it reuses the same invariants
 | Output checks in production | The developer chooses in `veld.toml`, per environment (§4) |
 | Solver | Optional external Z3, called like a plugin; `veld` stays one binary |
 | Scope | Phases 0 to 5; Phase 6 if time allows |
-| Events | Added as track E1 to E3. Proposed first brokers: Kafka and RabbitMQ, plus the built-in memory broker; NATS, SQS and Redis Streams in E3. Open for the owner to confirm. |
+| Events | Track E1 to E3. First brokers: Kafka and RabbitMQ, plus the built-in memory broker; NATS, SQS and Redis Streams in E3 |
+| Platform features | All eleven accepted as track P1 to P4 (§12) |
+| Overall size | Rules 0–5 (about 6 weeks), events E1–E3 (3 weeks), platform P1–P4 (5 weeks). With the three tracks overlapping, about 10 to 12 weeks for the team. Cut order if needed: Phase 6, then P4, then sagas (P3), then E3. |
 
 **Next step:** Phase 0, `spec/rules.md` and the first 40 rule vectors, for the owner to freeze.
