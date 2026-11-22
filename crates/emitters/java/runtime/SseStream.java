@@ -53,8 +53,14 @@ final class SseStream implements Iterator<Json> {
   private boolean done;
 
   private SseStream(
-      EndpointSpec ep, InputStream body, SseOptions options, Reconnect reconnect, Reopen reopen) {
+      EndpointSpec ep,
+      InputStream body,
+      SseOptions options,
+      Reconnect reconnect,
+      int failures,
+      Reopen reopen) {
     this.ep = ep;
+    this.failures = failures;
     this.body = body;
     this.reader = new InputStreamReader(body, StandardCharsets.UTF_8);
     this.options = options;
@@ -63,10 +69,18 @@ final class SseStream implements Iterator<Json> {
     this.lastId = options.lastEventId();
   }
 
-  /** The events of {@code body} as a stream of wire values; closing it closes {@code body}. */
+  /**
+   * The events of {@code body} as a stream of wire values; closing it closes {@code body}.
+   * {@code failures} is how many attempts already failed before {@code body} connected.
+   */
   static Stream<Json> open(
-      EndpointSpec ep, InputStream body, SseOptions options, Reconnect reconnect, Reopen reopen) {
-    SseStream events = new SseStream(ep, body, options, reconnect, reopen);
+      EndpointSpec ep,
+      InputStream body,
+      SseOptions options,
+      Reconnect reconnect,
+      int failures,
+      Reopen reopen) {
+    SseStream events = new SseStream(ep, body, options, reconnect, failures, reopen);
     return StreamSupport.stream(
             Spliterators.spliteratorUnknownSize(events, Spliterator.ORDERED | Spliterator.NONNULL),
             false)
