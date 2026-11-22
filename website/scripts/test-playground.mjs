@@ -1,12 +1,39 @@
 // Exercise the shipped website and its WASM worker. The native parity test produces the CLI hashes.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { unzipSync } from 'fflate';
 import { chromium } from 'playwright-core';
 import { preview } from 'vite';
+import ts from 'typescript';
+
+async function typecheckUsage(files, prefix, example) {
+  const work = await mkdtemp(join(tmpdir(), 'veld-playground-'));
+  try {
+    for (const [path, bytes] of Object.entries(files)) {
+      const output = join(work, path.slice(prefix.length + 1));
+      await mkdir(dirname(output), { recursive: true });
+      await writeFile(output, bytes);
+    }
+    const main = join(work, 'example.ts');
+    await writeFile(main, example);
+    const pkg = JSON.parse(await readFile(join(work, 'package.json'), 'utf8'));
+    const program = ts.createProgram([main], {
+      target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler, strict: true, noEmit: true, skipLibCheck: true,
+      paths: { [pkg.name]: [join(work, 'index.ts')] }, types: [],
+    });
+    const errors = ts.getPreEmitDiagnostics(program);
+    assert.equal(errors.length, 0, prefix + ': ' + ts.formatDiagnostics(errors, {
+      getCanonicalFileName: (name) => name, getCurrentDirectory: () => work, getNewLine: () => '\n',
+    }));
+  } finally {
+    await rm(work, { force: true, recursive: true });
+  }
+}
 
 const site = fileURLToPath(new URL('../', import.meta.url));
 const targetDir = process.env.CARGO_TARGET_DIR ?? resolve(site, '../target');
@@ -49,6 +76,15 @@ try {
       hashes[path.slice(prefix.length + 1)] = createHash('sha256').update(bytes).digest('hex');
     }
     assert.deepEqual(hashes, entry.expected, title + ' ZIP differs from CLI output');
+    const usage = page.locator('details').filter({ has: page.locator('summary', { hasText: 'Usage example' }) });
+    await usage.locator('summary').click();
+    const example = await usage.locator('code').innerText();
+    if (id === 'streaming') {
+      assert.match(example, /live\.ticks\(/);
+      assert.match(example, /chat\.send\(/);
+    }
+    await typecheckUsage(files, prefix, example);
+    await usage.locator('summary').click();
   }
 
   const streaming = cases.filter((c) => c.name.startsWith('preset:streaming / t'));
@@ -72,8 +108,12 @@ try {
   const original = await editor.inputValue();
   await editor.fill(original.replace('message: string', 'message: UnknownType'));
   await page.locator('a[href="/docs#E0205"]').first().waitFor();
+  assert.equal(await page.locator('summary', { hasText: 'Usage example' }).count(), 0);
   await page.getByRole('button', { name: /^hello\/hello\.veld:3:/ }).click();
   assert(await editor.evaluate((el) => el === document.activeElement));
+  await editor.fill(original.replaceAll('Greeting', 'RevisedGreeting'));
+  await download.click({ trial: true });
+  await page.locator('summary', { hasText: 'Node.js server guide' }).waitFor();
   await editor.fill(original.replace('message: string', 'message:     string'));
   await button('Format').click();
   await page.waitForFunction((text) => document.querySelector('textarea:not([readonly])')?.value === text, original);
@@ -83,7 +123,9 @@ try {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(url).origin });
   await button('Copy').click();
   await button('Copied').waitFor();
-  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), await output.inputValue());
+  // The Windows clipboard turns \n into \r\n; compare the text, not the platform's line endings.
+  const pasted = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, '\n');
+  assert.equal(pasted, await output.inputValue());
   // Older share links saved the label "none" as the streaming framework.
   const legacy = cases.find((c) => c.name === 'preset:streaming / client-typescript');
   const snapshot = {
@@ -102,7 +144,7 @@ try {
   await page.getByText('20 files', { exact: true }).waitFor();
   await download.click({ trial: true });
   assert.deepEqual(errors, []);
-  console.log('Chromium: five preset ZIPs match the CLI; ' + streaming.length + ' streaming targets, editor, diagnostics, format, clipboard, legacy links and offline generation passed.');
+  console.log('Chromium: five preset ZIPs match the CLI and all five usage examples typecheck; ' + streaming.length + ' streaming targets, editor, diagnostics, format, clipboard, legacy links and offline generation passed.');
 } finally {
   await browser?.close();
   await server.close();
