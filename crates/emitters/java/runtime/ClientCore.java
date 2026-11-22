@@ -105,16 +105,13 @@ public final class ClientCore {
   public Stream<Json> stream(EndpointSpec ep, Json.Obj params, SseOptions sse) {
     check(ep, params);
     Reconnect policy = sse.reconnect() != null ? sse.reconnect() : options.reconnect();
-    InputStream first = retrying(policy, () -> openEvents(ep, params, sse.lastEventId()));
-    return SseStream.open(ep, first, sse, policy, last -> openEvents(ep, params, last));
-  }
-
-  /** Runs {@code attempt}, retrying connection failures with backoff when a policy is set. */
-  private static <T> T retrying(Reconnect policy, java.util.function.Supplier<T> attempt) {
+    // Failed first attempts count against the same budget as later breaks: the counter starts
+    // again only after an event is delivered.
     int failures = 0;
     while (true) {
       try {
-        return attempt.get();
+        InputStream first = openEvents(ep, params, sse.lastEventId());
+        return SseStream.open(ep, first, sse, policy, failures, last -> openEvents(ep, params, last));
       } catch (VeldTransportError e) {
         if (policy == null || failures >= policy.retries()) {
           throw e;
