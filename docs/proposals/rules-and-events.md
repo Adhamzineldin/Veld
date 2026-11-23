@@ -400,7 +400,7 @@ messaging = "kafka"     # kafka | rabbitmq | nats | sqs | redis-streams: picks t
 
 - The **topic name** is in the contract (`@topic`), because producer and consumer must agree on it.
 - **Broker addresses and credentials** are runtime config (§13), filled from wherever your app keeps settings.
-- Switching from Kafka to RabbitMQ is one line and a regenerate; handler code does not change. `veld test` always uses the built-in memory broker.
+- Switching the broker can be one config change only for the explicitly supported portable subset. The broker capability matrix must reject or require adaptation for different acknowledgement, ordering, retry, retention, replay and delivery semantics; handlers stay unchanged only where those semantics are preserved. `veld test` uses the built-in memory broker for portable behavior, with real-broker conformance tests for adapter-specific behavior.
 
 ### What gets generated
 
@@ -409,7 +409,7 @@ messaging = "kafka"     # kafka | rabbitmq | nats | sqs | redis-streams: picks t
 | **Typed publisher** | `bookingEvents.publish(BookingPaid{...})`. Invariants run first; an invalid event never leaves the service. |
 | **Typed subscriber** | An interface with one method per `on` line. The generated consumer decodes, checks the signature and rules, deduplicates, calls your handler, and acks only after it returns. |
 | **Envelope** | CloudEvents 1.0: `type` is the event signature (`veld:bookings/BookingPaid@7ab31c90`), `id` a UUID, `subject` the key, `data` canonical JSON. Any CloudEvents tool can read Veld events. |
-| **Transactional outbox** | For `emits`, the event is written through a generated `Outbox` interface in the same database transaction as the state change, and a generated relay publishes it. No lost or phantom events when the service crashes mid-request. |
+| **Transactional outbox** | For `emits`, the event must be saved through a generated `Outbox` interface in the **same committed database transaction** as the state change, and a relay publishes it. Publishing is **at least once**: retries can duplicate an event, so event IDs, durable idempotent consumers and acknowledgements are essential. An outbox prevents the specific state-change/publish gap only when the application actually supplies a transactional implementation. |
 | **Inbox (deduplication)** | Delivery is at-least-once on every broker. A generated `Inbox` interface records handled event ids, so a redelivered event does not send two receipts. |
 | **Retry and dead letter** | From `@retry` and `@deadLetter`. A message that fails the contract goes to the dead-letter channel with the violation attached, so it can be inspected and replayed with the broker's own tools. |
 | **Broker adapters** | The generated core depends only on a small `Transport` interface. Each broker is a framework adapter, the one allowed dependency under rule 3, using the standard client per language, such as `kafka-clients` and Spring Kafka/AMQP for Java, `amqplib` for Node, `rdkafka` and `lapin` for Rust. |
@@ -445,7 +445,7 @@ sequenceDiagram
 |---|---|---|---|
 | **E1. Events, channels, memory broker** | 1 week | Syntax, IR and signatures for `event`, `channel`, `publishes`, `subscribes`. CloudEvents envelope. Typed publisher and subscriber in every target; built-in `memory` transport; event examples in `veld test`. | The same event round-trips byte-identically between Node, Java and Rust services. |
 | **E2. Kafka and RabbitMQ** | 1 week | Adapters per language, retry and dead letter, inbox deduplication. Toolchain tests against Kafka and RabbitMQ in Docker, run in CI like the registry e2e. | A Node producer and a Java consumer talk over both brokers with only `veld.toml` changed. |
-| **E3. Outbox, tools, more brokers** | 1 week | Outbox and relay for `emits`, event-aware `diff`, AsyncAPI export. NATS, SQS and Redis Streams adapters. | Crash-test e2e: killing the producer mid-request loses no event and duplicates none. |
+| **E3. Outbox, tools, more brokers** | 1 week | Outbox and relay for `emits`, event-aware `diff`, AsyncAPI export. NATS, SQS and Redis Streams adapters. | Crash-test e2e across transaction commit, relay publish, consumer side effect and acknowledgement: no committed event is lost; duplicate delivery is tolerated, and a transactional or idempotent inbox prevents duplicate business effects. |
 
 E1 can start in parallel with rules Phase 2, since it reuses the same invariants. Events plus rules give the strongest demo: one contract, an HTTP service and a Kafka consumer in two languages, and `veld diff` blocking a change that would break the consumer.
 
@@ -526,7 +526,7 @@ saga Checkout(body: CheckoutRequest) -> Booking {
 | Phase | Size | Work | Gate |
 |---|---|---|---|
 | **P1. Security and data** | 1 week | `@visible`, `@tenant`, `@audited`, `@limit` in every target. | Cross-tenant and hidden-field vectors pass on all four servers. |
-| **P2. Time, flags and SLOs** | 1 week | Timed transitions and the scheduler hook, `flag()` and the flag provider, `@timeout`, `@slo`, the metrics hook and the OpenSLO export. | An expiring booking is cancelled exactly once, also when paid just before the deadline. |
+| **P2. Time, flags and SLOs** | 1 week | Timed transitions and the scheduler hook, `flag()` and the flag provider, `@timeout`, `@slo`, the metrics hook and the OpenSLO export. | An expiring booking reaches one durable terminal transition even if timers fire twice or compete with a payment; concurrent payment-vs-expiry tests prove the database precondition is atomic. |
 | **P3. Sagas** | 2 weeks | Syntax, the idempotency check, the orchestrator and `SagaStore`, steps over HTTP and channels. | Killing the orchestrator at every step still ends in either a confirmed booking or a fully compensated one. |
 | **P4. Reach** | 1 week | `veld export mcp` and the MCP proxy, message catalogs, `@retain` and the retention export. | An AI agent books a room through the MCP tools and is stopped by the same rules as the React client. |
 
@@ -742,6 +742,36 @@ Size: half a day, done alongside M1.
 - **Performance.** Rules compile to straight-line code with a cost bound; a CI benchmark fails if the overhead per request passes a fixed budget.
 - **Broker adapters multiply the test matrix.** Every adapter is tested against the same event vectors on the memory broker first; only E2/E3 toolchain tests need real brokers.
 - **Adoption.** Everything is optional and incremental. A contract with no rules or events generates exactly what it does today, byte for byte.
+
+### Correctness guardrails before production claims
+
+These are acceptance conditions, not extra syntax features. Veld can generate **boundary enforcement**, but it must distinguish that from guarantees involving persistent state, external side effects, infrastructure and application code. Documentation and diagnostic wording must state the boundary precisely.
+
+| Area | Failure mode / limit | Required design and acceptance gate |
+|---|---|---|
+| **Atomic transitions and optimistic concurrency** | Checking `pending -> paid` before a handler does not stop a second request from changing the same row after the check (TOCTOU). | Generated guards must pass expected version/transition metadata to a developer-owned transactional persistence operation (row lock or compare-and-swap); recheck and commit atomically. Concurrent requests, retries and stale versions must not perform two paid transitions or duplicate irreversible side effects. A pre-handler check alone is never described as an atomic state-machine guarantee. |
+| **Tenant isolation and field visibility** | Validating a returned fact or hiding an output field cannot prove that every handwritten SQL query, background job or log was tenant-scoped or that no secret leaked earlier. | Bind authenticated tenant/principal to fact loaders and response encoders; expose scoped repository interfaces or explicit integration contracts; require production integration tests for cross-tenant reads, writes, enumeration, events, caches and logs. A compiler can enforce the contract boundary, not certify arbitrary data access. |
+| **Outbox/inbox and delivery semantics** | An outbox does not guarantee exactly-once delivery; relays may publish twice, and the consumer may crash between its side effect and acknowledgement. | Require the outbox write and state mutation to share a transaction. Define at-least-once delivery, stable event IDs, idempotency keys, and an inbox whose deduplication participates in the consumer effect's transaction where possible. Crash-inject at every handoff and prove **no lost committed events and no duplicated business effects**, not “no duplicate messages.” |
+| **Broker portability** | Kafka, RabbitMQ, NATS, SQS and Redis Streams do not share identical ordering, acknowledgement, retention, fan-out, retry or replay guarantees. | Publish a broker capability/semantic matrix. Define a deliberately small portable contract and use explicit capability errors for unsupported properties; broker-specific settings remain visible. Demonstrate unchanged handlers across two brokers **only for the supported subset**, with real-broker tests for ordering, redelivery, DLQ and recovery. |
+| **Solver soundness and completeness** | Z3/cvc5 cannot prove arbitrary database consistency, distributed behavior or handwritten handler correctness. Encoding a rule incorrectly may produce a misleading “proof.” | Define precisely which expression types, bounds and theories are modeled. Surface four distinct results: **proved**, **counterexample**, **unknown**, **unsupported**. Report assumptions and solver version, fail conservatively on unmodeled behavior, and cross-check solver conclusions against a reference evaluator and generated-language test vectors. Never market `check --prove` as end-to-end application verification. |
+| **Timed transitions and sagas** | A durable timer may fire more than once, a scheduled action can race a payment, and compensation may fail or be impossible after an external effect. | Store schedules and saga progress durably; condition transitions on the current database state; make effects and compensations idempotent. Support retries, timeouts and an explicit **needs-manual-intervention** state. Crash-inject at every saga step and compensation. Do not promise automatic “fully compensated” outcomes for irreversible actions. |
+| **Privacy, audit and retention** | An `@pii` declaration or retention job is not, by itself, regulatory compliance; redaction must cover more than serialized API responses. | Validate audit sinks, event envelopes, errors, tracing and debug logs for leakage. Treat `veld export retention` as an inventory and implementation aid, not a GDPR certification. Test deletion/anonymization against the actual stores and backups in integration environments. |
+| **CLI, WASM and target parity** | The browser API and CLI currently repeat parts of service resolution, default package naming, options preparation and target execution. Tests detect drift only after it happens. | Move target normalization, service selection, default options and capability checks into a host-independent shared function/structure; keep filesystem writes, process plugins and browser JSON glue at the edges. Preserve byte-for-byte CLI/browser parity and add tests for default inference, error cases and service-consumption graphs. |
+
+**Rule of thumb:** If a guarantee depends on a database transaction, scheduler, broker, external API or user-supplied implementation, the generated contract should specify the required integration and test it; it must not claim to provide that guarantee on its own.
+
+### Product differentiation and release-confidence gates
+
+The strongest product story is **behavior-aware API contracts**: generated implementations plus runnable examples, multi-language parity and detection of breaking **rules**, not merely generated types. New generators, brokers and platform features should reinforce this story instead of turning Veld into an undifferentiated application framework.
+
+- **Core proof of value:** Demonstrate a previously valid request rejected by a tightened rule; `veld diff` classifies it as breaking, shows a counterexample and identifies affected consumers; `veld test` checks real generated servers. Compare this workflow honestly against existing schema/codegen tools such as TypeSpec, OpenAPI tooling and Buf rather than asserting uniqueness without an evaluated baseline.
+- **Release gate A — contracts and tests:** Rules, reference evaluator, generated-language parity, executable examples and rule-aware diff must work together on a realistic application. A clean source-only contract must preserve today's behavior and bytes.
+- **Release gate B — adoption ergonomics:** Reliable install, meaningful diagnostics/fix-its, agent-ready CLI, migration guidance, workspaces and `--affected` must make a real repo maintainable without Veld contributors assisting each change.
+- **Release gate C — state and events:** Ship the portable event model, schema compatibility and state/policy semantics only with concurrency vectors, actual network round trips and an explicit limitations matrix.
+- **Release gate D — infrastructure-dependent integrations:** Promote outbox, tenant enforcement, timers and broker adapters to production-supported only after crash, race and failure-injection tests with real persistence/brokers. Sagas remain optional/experimental until durable recovery and compensation failure handling are demonstrated.
+- **Real-user adoption gate:** At least one independent team integrates Veld into an existing service, changes a contract, handles a breaking change and deploys successfully. Track setup friction, reproducible code generation, escape hatches, issue resolution and willingness to retain Veld; don't use the number of proposed features as the success metric.
+
+These gates express **ship-readiness and confidence**, not delivery dates or a revised schedule. The proposal's feature tracks remain possible, but “implemented,” “tested,” and “production-supported” must be distinct statuses.
 
 ## 17. Decisions
 
