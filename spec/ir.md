@@ -14,7 +14,7 @@ The Rust types live in `crates/veld-ir`. Their JSON form, `veld debug ir` and th
 
 ```jsonc
 {
-  "ir_version": "1.0",
+  "ir_version": "1.1",
   "packages": [ { "id": 0, "name": "orders", "kind": "service" | "library" | "registry" | "prelude" } ],
   "decls":    [ Decl, ... ],          // arena; DeclId = index
   "services": [ Service, ... ],       // arena; ServiceId = index
@@ -74,7 +74,7 @@ Auth = { "kind": "none|bearer|basic|api_key", "header": "X-API-Key"|null }
 
 ## 4. Capabilities
 
-The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, …). Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.
+The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`, …). Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.
 
 ## 5. Identity signatures (normative)
 

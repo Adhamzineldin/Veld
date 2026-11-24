@@ -797,5 +797,5 @@ expression: "export(\"ok_spec_example\")"
       }
     }
   },
-  "x-veld-ir-version": "1.0"
+  "x-veld-ir-version": "1.1"
 }

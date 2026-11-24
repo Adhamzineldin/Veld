@@ -162,5 +162,5 @@ expression: "export(\"ok_union\")"
       }
     }
   },
-  "x-veld-ir-version": "1.0"
+  "x-veld-ir-version": "1.1"
 }

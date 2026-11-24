@@ -17,7 +17,7 @@ pub use rules::{
     QuantExpr, Quantifier, Root, Rule, Step,
 };
 
-pub const IR_VERSION: &str = "1.0";
+pub const IR_VERSION: &str = "1.1";
 
 macro_rules! id_type {
     ($name:ident) => {
