@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/veld-ir",
+  "crates/veld-rules",
   "crates/veld-project",
   "crates/veld-compiler",
   "crates/veld-tools",
@@ -29,6 +30,7 @@ rust-version = "1.90"
 
 [workspace.dependencies]
 veld-ir = { path = "crates/veld-ir" }
+veld-rules = { path = "crates/veld-rules" }
 veld-compiler = { path = "crates/veld-compiler" }
 veld-codegen = { path = "crates/veld-codegen" }
 veld-project = { path = "crates/veld-project" }

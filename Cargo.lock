@@ -1710,6 +1710,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "veld-rules"
+version = "2.0.0-beta.1"
+dependencies = [
+ "serde_json",
+ "veld-ir",
+]
+
+[[package]]
 name = "veld-test-support"
 version = "2.0.0-beta.1"
 
