@@ -267,8 +267,7 @@ Many tools validate input. No mainstream API tool does all of this from one file
 - **Architecture as contract:** the `consumes` graph already limits who may call whom. Lint rules in `veld.toml` add house rules, such as every endpoint has auth.
 - **Live fuzzing:** `veld test --live --fuzz 1000` builds random valid and invalid requests from the types and rules, sends them to your running server, and fails when the server's verdict differs from the reference evaluator. It finds handler bugs that no example covers.
 - **Incidents become tests:** `veld test --from-violation event.json` turns a violation captured by the production hook into an `example` block, so a real incident becomes a permanent regression test.
-- **The database copy of a rule:** `veld export sql-checks` prints SQL `CHECK` constraints for the invariants that read one record's own fields, for example `CHECK (end_at > start_at)`. You paste them into a migration, and then even a script that writes straight to the database cannot store a row the contract forbids. Veld only prints the lines; it never touches the database.
-- **A measured cost:** a CI benchmark times the generated checks and fails the build when they cost more than a fixed budget per request.
+- **A measured cost:** a benchmark in Veld's own CI times the generated checks and fails the build when they cost more than a fixed budget per request. It is a test of Veld, not a command for users.
 
 ### The demo that sells it (5 minutes)
 1. Show the booking contract. Generate a Node server and a React client.
@@ -338,9 +337,9 @@ Each phase ships on its own and is useful alone.
 | **3. State machines** | 4 days | `flow`, `final`, `transition`, implicit `InvalidTransition`, `emits`. Client `nextStates()` helpers. Unreachable and stuck states in `veld check`. Diagrams in docs and the playground. | Illegal transitions rejected identically by every server. |
 | **4. Policies** | 1 week | `principal`, `policy`, `permit`/`forbid`, `allow`, implicit `Forbidden`, client `can<Operation>()` helpers. `@version` optimistic concurrency and `@idempotent`. Lint: every endpoint has auth or `@auth(none)` on purpose. | Policy vectors pass; handler signatures require the principal. |
 | **5. Proof and lifecycle** | 1–2 weeks | `check --prove` through an optional external Z3 (cvc5 also accepted), SMT-LIB over stdin like a plugin; without a solver installed, `--prove` says so and the normal checks still run. Rule-aware `diff`, `@rollout(audit)`, violation hook, derived fields. OpenAPI `x-veld-rules`, LSP support, live evaluation in the playground. | The 5-minute demo runs end to end. |
-| **6. Extras** | 3 days | `veld test --coverage`; `veld export rules` (a readable rule book for product people); `@pii`/`@secret` fields redacted in logs and violation events, with a lint for `@pii` returned without auth; `veld export sql-checks`. | None; each item ships on its own. |
+| **6. Extras** | 3 days | `veld test --coverage`; `veld export rules` (a readable rule book for product people); `@pii`/`@secret` fields redacted in logs and violation events, with a lint for `@pii` returned without auth. | None; each item ships on its own. |
 
-Additions accepted on 2026-11-24 and where they land: form (partial) validation in Phase 1; stale-client safety and live fuzzing (`veld test --live --fuzz`) in Phase 2; violations to examples (`veld test --from-violation`) and the rule benchmark gate in Phase 5; the SQL `CHECK` export in Phase 6.
+Additions accepted on 2026-11-24 and where they land: form (partial) validation in Phase 1; stale-client safety and live fuzzing (`veld test --live --fuzz`) in Phase 2; violations to examples (`veld test --from-violation`) and the rule benchmark gate in Phase 5.
 
 **Chosen scope: phases 0 to 6**, plus the events track (§11). After Phase 0, work splits by layer so phases overlap:
 - **Compiler and IR** (one person): parser, typing, state-machine pass, signatures. Stays one phase ahead of the emitters.
@@ -751,6 +750,8 @@ Size: half a day, done alongside M1.
 | Which events exist and who publishes and consumes them | What a consumer does with an event |
 | | Rules across many records (uniqueness, quotas): enforce in the database, and declare the error in the contract |
 
+Veld does not reach into the database. A proposed `veld export sql-checks`, which would print SQL `CHECK` constraints from invariants, was dropped on 2026-11-25: printing correct SQL needs column names and a dialect, and that is the database knowledge Veld already chose not to carry.
+
 ### Risks
 - **Scope creep into a programming language.** Every request for user functions, loops or I/O gets the same answer: load it as a fact. This is written into the spec.
 - **Semantic drift between languages.** Covered by vectors and differential fuzzing, run in CI on every push.
@@ -801,7 +802,7 @@ These gates express **ship-readiness and confidence**, not delivery dates or a r
 | Platform features | All eleven accepted as track P1 to P4 (§12). `veld export mcp` moves to the agents track (§18) |
 | Rule identity | Rules get their own signed ids and do not change a declaration's signature (2026-11-24, §5) |
 | Pipeline order | Auth and middleware first, then decode and rules, as servers already do (2026-11-24, §4) |
-| Additions | Accepted on 2026-11-24: stale-client safety, form (partial) validation, live fuzzing, SQL `CHECK` export, violations to examples, the rule benchmark gate (§3, §7, §9) |
+| Additions | Accepted on 2026-11-24: stale-client safety, form (partial) validation, live fuzzing, violations to examples, the rule benchmark gate (§3, §7, §9). Considered and dropped: a SQL `CHECK` export (§16) |
 | Snapshots on the branch | New snapshots for new features may be accepted on `feat/rules-and-events`. A change to an existing snapshot is listed for the owner and never accepted silently |
 | Beyond web | Veld stays "contracts between services and the apps that call them". Added: Kotlin and Swift client emitters (track M1–M2) and a desktop guide for Tauri, Electron and JVM apps (§15) |
 | `veld events replay` | Dropped: replaying a dead-letter queue is the broker's job |
