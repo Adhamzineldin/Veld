@@ -16,7 +16,7 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 
 ## Existing snapshots that changed (owner: please look)
 
-Nothing yet. The one planned change is the plumbing commit: `ir_version` 1.0 to 1.1 and the new prelude error `InvalidTransition`, which shift stored IR only.
+- Commit `be05daf` (`ir_version` 1.0 to 1.1): 20 conformance snapshots, 5 OpenAPI snapshots (`x-veld-ir-version`) and the 4 example `veld.lock.ir.json` files each changed by exactly their version line. No generated source file changed. The new prelude error `InvalidTransition` changed no stored file, because a declaration appears in the IR only when a contract reaches it.
 
 ## Phase 0: spec
 - [i] `spec/rules.md`: expressions and invariants complete; endpoint rules, state machines, policies and examples have syntax and decisions
@@ -28,22 +28,22 @@ Nothing yet. The one planned change is the plumbing commit: `ir_version` 1.0 to 
 - [ ] `spec/config.md` rewrite before the config series
 
 ## Plumbing (one commit series, before any fan-out)
-- [ ] IR types for rules (`Rule`, `Expr`, ...), omitted from JSON when empty
-- [ ] `Feature`: `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`
-- [ ] No emitter claims a feature by default: `Capabilities::all_except` replaced or the new features listed as unsupported in all four emitters, the plugin host and the `new-emitter` template
-- [ ] `ir_version` 1.1 and prelude `InvalidTransition`, the single churn commit
-- [ ] Empty `crates/veld-rules` crate in the workspace
+- [t] IR types for rules (`Rule`, `Expr`, ...), omitted from JSON when empty
+- [t] `Feature`: `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`
+- [t] No emitter claims a feature by default: `Capabilities::all_except` replaced or the new features listed as unsupported in all four emitters, the plugin host and the `new-emitter` template
+- [t] `ir_version` 1.1 and prelude `InvalidTransition`, the single churn commit
+- [t] Empty `crates/veld-rules` crate in the workspace
 
 ## Phase 1: invariants (the thin slice; nothing else starts before it is `[t]`)
-- [ ] Lexer: new operators, the minus rule
+- [~] Lexer: new operators, the minus rule
 - [ ] Parser and AST: expressions, `rule` in model and error bodies, contextual words
 - [ ] Typing pass: types, widening, guards for optional values, `E0901` to `E0908`, `W0901` to `W0903`
 - [ ] Lowering to IR, `reads`, inherited rules
 - [ ] Rule ids in `veld-compiler::signature`
 - [ ] Conformance cases: every new code, every contextual word used as a field, variant and parameter name
 - [ ] `fmt` for rules and expressions; fmt properties still hold
-- [ ] `crates/veld-rules`: reference evaluator and value helpers (decimal, instant, code points, checked arithmetic)
-- [ ] `tests/rules/`: starter vectors (40 or more) covering the list in `spec/rules.md` §15
+- [~] `crates/veld-rules`: reference evaluator and value helpers (decimal, instant, code points, checked arithmetic)
+- [i] `tests/rules/`: 104 starter vectors in `tests/rules/core` covering the list in `spec/rules.md` §15
 - [ ] `veld-codegen`: `ExprPrinter`
 - [ ] TypeScript client: check functions, helpers, local check before send, `violations` on `ValidationError`, `.partial(draft)`
 - [ ] Node server: pipeline steps 5 and 8, output mode, `onRuleViolation`
