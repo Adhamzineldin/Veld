@@ -1,0 +1,36 @@
+// Comprehensions and constants (spec/rules.md 3.2, 3.5).
+
+const MAX_GUESTS: int = 4
+const VIP: string = "vip"
+
+model Item {
+  sku: string
+  qty: int
+  price: decimal
+}
+
+model Order {
+  items: Item[]
+  total: decimal
+  rule allPositive: all(items, i => i.qty > 0)
+  rule someBig: any(items, i => i.qty >= 10) || len(items) < 2
+  rule fewFree: count(items, i => i.price == 0) <= 1
+  rule totalMatches: sum(items, i => i.price * i.qty) == total
+}
+
+model Totals {
+  parts: int[]
+  rule capped: sum(parts, p => p) <= 2147483647
+  rule few: count(parts, p => p > 0) < 3
+}
+
+model Matrix {
+  rows: Totals[] @length(max: 10)
+  rule noZero: all(rows, r => all(r.parts, p => p != 0))
+}
+
+model Party {
+  guests: int
+  tier: string
+  rule fits: guests <= MAX_GUESTS || tier == VIP
+}

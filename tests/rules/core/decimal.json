@@ -1,0 +1,29 @@
+{ "cases": [
+  { "name": "different scales are the same number", "type": "DecEq", "value": { "a": "1.50", "b": "1.5" }, "expect": [] },
+  { "name": "negative zero equals zero", "type": "DecEq", "value": { "a": "-0", "b": "0.00" }, "expect": [] },
+  { "name": "a difference in the twentieth place counts", "type": "DecEq",
+    "value": { "a": "0.1", "b": "0.10000000000000000001" },
+    "expect": [ { "rule": "same", "path": "$", "fields": ["a", "b"] } ] },
+
+  { "name": "0.1 + 0.2 is exactly 0.3", "type": "DecMath", "value": { "a": "0.1", "b": "0.2", "c": "0.3" }, "expect": [] },
+  { "name": "thirty digits stay exact", "type": "DecMath",
+    "value": { "a": "123456789012345678901234567890.123456789", "b": "0.000000001",
+               "c": "123456789012345678901234567890.123456790" }, "expect": [] },
+  { "name": "subtracting a negative", "type": "DecMath", "value": { "a": "1", "b": "-1", "c": "0" },
+    "expect": [ { "rule": "ordered", "path": "$", "fields": ["a", "b", "c"] } ] },
+
+  { "name": "price times quantity", "type": "DecMul", "value": { "price": "19.99", "qty": 3, "total": "59.97" }, "expect": [] },
+  { "name": "product compared across scales", "type": "DecMul", "value": { "price": "1.005", "qty": 2, "total": "2.01" }, "expect": [] },
+  { "name": "no rounding to cents", "type": "DecMul", "value": { "price": "1.005", "qty": 1, "total": "1.01" },
+    "expect": [ { "rule": "exact", "path": "$", "fields": ["price", "qty", "total"] } ] },
+  { "name": "negative product", "type": "DecMul", "value": { "price": "2.5", "qty": -2, "total": "-5" },
+    "expect": [ { "rule": "positive", "path": "$", "fields": ["total"] } ] },
+
+  { "name": "ordinary doubles", "type": "FloatMath", "value": { "a": 1.5, "b": 2.0 }, "expect": [] },
+  { "name": "a product that is not finite", "type": "FloatMath", "value": { "a": 1e200, "b": 1e200 },
+    "expect": [ { "rule": "finite", "path": "$", "fields": ["a", "b"], "error": "non_finite" } ] },
+  { "name": "float division by zero", "type": "FloatMath", "value": { "a": 1.0, "b": 0.0 },
+    "expect": [ { "rule": "ratio", "path": "$", "fields": ["a", "b"], "error": "division_by_zero" } ] },
+  { "name": "negative ratio", "type": "FloatMath", "value": { "a": -1.0, "b": 2.0 },
+    "expect": [ { "rule": "ratio", "path": "$", "fields": ["a", "b"] } ] }
+] }

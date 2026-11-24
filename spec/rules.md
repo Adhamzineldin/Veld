@@ -107,7 +107,7 @@ Every expression has a static type: a Veld type (`language.md` §5) or `duration
 | `<` `<=` `>` `>=` | numeric, `date`, `datetime`, `time`, `duration` | `bool` | By value. Strings cannot be ordered (`E0905`). |
 | `in` | `x in list` where `list` is a `T[]` and `x` a `T` that supports `==`; or `key in map` with a `string` key | `bool` | True if some element equals `x`; true if the map has the key. |
 | `+` `-` `*` | `int`, `long`, `float`, `decimal` | same | `int` and `long` are checked: overflow is an evaluation error (§3.7). `decimal` is exact. |
-| `/` `%` | `int`, `long`, `float` | same | Integer division truncates toward zero; `%` takes the sign of the dividend (`-7 / 2 == -3`, `-7 % 2 == -1`). Division by zero is an evaluation error. On `decimal` both are `E0905`: write `a <= b * 2`, not `a / 2 <= b`. |
+| `/` `%` | `int`, `long`, `float` | same | Integer division truncates toward zero; `%` takes the sign of the dividend (`-7 / 2 == -3`, `-7 % 2 == -1`). A zero divisor is the evaluation error `division_by_zero`, for floats too (it is checked before dividing). `%` never overflows: the smallest `int` `% -1` is `0`, while the same division overflows. On `decimal` both are `E0905`: write `a <= b * 2`, not `a / 2 <= b`. |
 | unary `-` | numeric, `duration` | same | Checked. |
 | `-` | `datetime - datetime`, `date - date` | `duration` | |
 | `+` `-` | `datetime` and `duration`; `duration` and `duration` | `datetime`; `duration` | Checked. |
@@ -240,7 +240,7 @@ Every generated server has one `onRuleViolation(event)` hook. The event has the 
 
 A generated client checks the invariants of a request body and of a `query` object **before sending**. On a violation it does not send; it fails with the same typed `ValidationError` the server would return, with the same `violations`, marked as local. A client option turns the local check off.
 
-**Partial check (TypeScript only).** Each model with rules also gets a partial check for forms, `<Model>.partial(draft)`. It evaluates a rule only if the evaluation reads no absent required field; otherwise the rule is skipped, not failed. It returns the same violation objects.
+**Partial check (TypeScript only).** Each model with rules also gets a partial check for forms, `<Model>.partial(draft)`. A draft may lack required fields and is not shape-validated; the fields it has are assumed well formed, and defaults are applied. A rule is **skipped, not failed**, when evaluating it would read a required field that is absent; a rule that reads only optional fields under their guards always runs. Nested values are checked the same way. It returns the same violation objects.
 
 ## 6. Rule identity
 
@@ -274,7 +274,7 @@ A rejected request is the existing `422 ValidationError` problem document (`spec
 - `violations` is a new top-level member of the problem document. Each entry has:
   - `rule`: the rule id
   - `path`: the path of the **value that carries the rule**, in the same syntax as issue paths (`body`, `body.items[2]`, `query`, `$` for a standalone check)
-  - `fields`: the wire names of the fields of that value which the rule reads, in order of first use, without duplicates. For `a.b.c` the entry is `a`.
+  - `fields`: the wire names of the fields of that value which the rule reads, in order of first use in the source text, without duplicates. For `a.b.c` the entry is `a`. A field named in `has(...)` counts as read, and so does one that was not evaluated because of a short circuit: the list is a property of the rule, not of the request.
   - `message`
   - `error`: only for an evaluation error (§3.7)
 - The generated typed `ValidationError` exposes `violations` in every target. A problem document without the member decodes to an empty list.

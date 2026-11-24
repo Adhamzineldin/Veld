@@ -1,0 +1,31 @@
+// Enums, uuids, missing values and guards (spec/rules.md 3.4, 3.6).
+
+enum Status { pending, paid, checkedIn = "CHECKED_IN", cancelled }
+
+model Ticket {
+  id: uuid
+  owner: uuid
+  status: Status
+  previous?: Status
+  paidAt?: datetime
+  rule own: id != owner
+  rule paidHasTime: status in [.paid, .checkedIn] implies has(paidAt)
+  rule notCancelled: status != .cancelled
+  rule moved: has(previous) implies previous != status
+}
+
+model Address {
+  city: string
+  zip?: string
+}
+
+model Profile {
+  name: string
+  nick?: string
+  age?: int
+  address?: Address
+  rule nickShort: has(nick) implies len(nick) <= 5
+  rule adult: !has(age) || age >= 18
+  rule zipped: has(address.zip) && len(address.zip) == 5 || !has(address)
+  rule both: has(nick) && has(age) && len(nick) < age || !has(nick)
+}
