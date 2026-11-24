@@ -240,7 +240,7 @@ Every generated server has one `onRuleViolation(event)` hook. The event has the 
 
 A generated client checks the invariants of a request body and of a `query` object **before sending**. On a violation it does not send; it fails with the same typed `ValidationError` the server would return, with the same `violations`, marked as local. A client option turns the local check off.
 
-**Partial check (TypeScript only).** Each model with rules also gets a partial check for forms, `<Model>.partial(draft)`. A draft may lack required fields and is not shape-validated; the fields it has are assumed well formed, and defaults are applied. A rule is **skipped, not failed**, when evaluating it would read a required field that is absent; a rule that reads only optional fields under their guards always runs. Nested values are checked the same way. It returns the same violation objects.
+**Partial check (TypeScript only).** Each model with rules also gets a partial check for forms, `<Model>.partial(draft)`. A draft may lack required fields and is not shape-validated; the fields it has are assumed well formed, and defaults are applied. A rule is **skipped, not failed**, when evaluating it reads a required field that is absent; a rule that reads only optional fields under their guards always runs. This is decided while evaluating, not from the list of fields the rule mentions: with only `b: 0` present, `b != 0 && a / b > 1` is a violation, because the short circuit never reads `a`. Nested values are checked the same way. It returns the same violation objects.
 
 ## 6. Rule identity
 
@@ -286,10 +286,18 @@ A rejected request is the existing `422 ValidationError` problem document (`spec
 
 ## 8. Generated code
 
-- For every model or error with at least one rule, each target generates a **check function** as plain code in the target language. There is no interpreter and no rule data structure at run time.
-- The check function calls **runtime helpers** for the value semantics of §3.4 (`cmpDecimal`, `addInt`, `instantMs`, `lenCodePoints`, ...). The helpers live in the embedded runtime, have the same names in every target (adjusted to the target's naming style) and are tested by the same vectors. A helper file is emitted only when the contract has rules.
-- Expressions are printed through `veld_codegen::expr::ExprPrinter`. A generator supplies only the leaf hooks (field access, literal, helper call, operator and precedence).
-- Capability flags, all `E0801` when unsupported: `rules_invariants` (Phase 1), `rules_endpoint`, `rules_transitions`, `rules_policies`.
+The same structure in every target, so the three implementations can be compared line by line:
+
+- **Check functions.** For every model or error with at least one rule, a target generates one check function as plain code in the target language: it evaluates that declaration's rules, in list order, on one value and appends violations to a list. There is no expression interpreter and no rule data structure at run time.
+- **Nesting belongs to the runtime, not to generated code.** The declaration's schema node refers to its check function. The embedded runtime already walks a value by its schema (for validation and canonical bytes); the same walk calls the check function of every object it visits, the object's own rules before its fields. This gives the order and the paths of §5.2 once per target instead of once per model.
+- **Modes.** A check runs in one of three modes: *full*; *request* (rules with `reads_readonly` are skipped); *partial* (§5.4, TypeScript only).
+- **Runtime helpers** carry the value semantics of §3.4 (checked arithmetic, decimals, instants, code points, the regex subset). They live in the embedded runtime, in a file that is emitted only when the contract has rules, have the same names in every target adjusted to its naming style, and are tested by the vectors. The reference list of names is in `spec/targets/typescript.md`.
+- **Evaluation errors** are raised by the helpers in the target's own way (an exception in TypeScript and Java, a `Result` in Rust). The check function catches them per rule and records the violation with its `error` (§3.7). Nothing else may escape a check function.
+- **Printing.** Expressions are printed through `veld_codegen::expr::ExprPrinter`: one shared traversal, and per-target hooks for field access, literals, operators by operand type, helper calls and comprehension forms. The IR already contains every conversion (`widen`), so a hook never decides a type.
+- **Public surface per declaration with rules:** a full check that returns the violations of a value; the rule ids as named constants; in TypeScript also `partial(draft)`.
+- **Client.** The local check before sending is on by default and has one option to turn it off. A local failure is the target's typed `ValidationError`, with `violations` filled and a flag that says it was raised locally.
+- **Server.** Step 5 always runs. Steps 8 and 9 follow the output mode; when the mode is not `off`, the server first validates the shape of the result (as its response validation option does), so output rules only ever see well-formed values. The options object of the server gains `rules: { output }` and `onRuleViolation`. The server reports a mode other than `strict` once, when the handler is created.
+- **Capability flags**, all `E0801` when unsupported: `rules_invariants` (Phase 1), `rules_endpoint`, `rules_transitions`, `rules_policies`.
 
 ## 9. Endpoint rules (Phase 2)
 
