@@ -132,7 +132,8 @@ impl Generator for Java {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        Capabilities::all_except(&[])
+        // The rules features are not implemented yet: `E0801` (`spec/rules.md` section 8).
+        Capabilities::all_except(&Feature::RULES)
     }
 
     fn generate(

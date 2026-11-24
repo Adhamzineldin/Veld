@@ -8,8 +8,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
 
+pub mod rules;
 pub mod schema;
 pub mod suggest;
+
+pub use rules::{
+    Always, BinExpr, Builtin, CallExpr, EnumLit, Expr, ExprKind, ExprLit, ExprType, Op, PathRef,
+    QuantExpr, Quantifier, Root, Rule, Step,
+};
 
 pub const IR_VERSION: &str = "1.0";
 
@@ -121,6 +127,9 @@ impl Ir {
                     f.insert(Feature::Unions);
                 }
                 DeclKind::Model(m) | DeclKind::Error(ErrorDecl { fields: m, .. }) => {
+                    if !m.rules.is_empty() {
+                        f.insert(Feature::RulesInvariants);
+                    }
                     for fld in &m.fields {
                         fld.ty.features(&mut f);
                         if !fld.constraints.is_empty() {
@@ -240,6 +249,16 @@ impl Decl {
         }
     }
 
+    /// Rules for models and errors; empty for anything else.
+    #[must_use]
+    pub fn rules(&self) -> &[Rule] {
+        match &self.kind {
+            DeclKind::Model(m) => &m.rules,
+            DeclKind::Error(e) => &e.fields.rules,
+            DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => &[],
+        }
+    }
+
     /// Fields for models and errors; empty for anything else.
     #[must_use]
     pub fn fields(&self) -> &[Field] {
@@ -271,6 +290,10 @@ pub struct Model {
     pub parent: Option<DeclId>,
     /// Own and inherited fields; inherited (parent-first) come first.
     pub fields: Vec<Field>,
+    /// Invariants, inherited first. Omitted from the JSON when empty, so the IR of a contract
+    /// without rules is unchanged (`spec/rules.md` section 13).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<Rule>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -688,10 +711,21 @@ pub enum Feature {
     Page,
     Consts,
     Bytes,
+    RulesInvariants,
+    RulesEndpoint,
+    RulesTransitions,
+    RulesPolicies,
 }
 
 impl Feature {
-    pub const ALL: [Feature; 10] = [
+    /// The rules features (`spec/rules.md` section 8).
+    pub const RULES: [Feature; 4] = [
+        Feature::RulesInvariants,
+        Feature::RulesEndpoint,
+        Feature::RulesTransitions,
+        Feature::RulesPolicies,
+    ];
+    pub const ALL: [Feature; 14] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -702,6 +736,10 @@ impl Feature {
         Feature::Page,
         Feature::Consts,
         Feature::Bytes,
+        Feature::RulesInvariants,
+        Feature::RulesEndpoint,
+        Feature::RulesTransitions,
+        Feature::RulesPolicies,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -716,6 +754,10 @@ impl Feature {
             Feature::Page => "page",
             Feature::Consts => "consts",
             Feature::Bytes => "bytes",
+            Feature::RulesInvariants => "rules_invariants",
+            Feature::RulesEndpoint => "rules_endpoint",
+            Feature::RulesTransitions => "rules_transitions",
+            Feature::RulesPolicies => "rules_policies",
         }
     }
     #[must_use]

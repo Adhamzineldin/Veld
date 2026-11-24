@@ -48,6 +48,100 @@ pub fn compile(name: &str, source: &str) -> Ir {
     }
 }
 
+/// Where the invariant of [`ir_with_rule`] is declared.
+pub const RULE_ORIGIN_LINE: u32 = 4;
+
+/// The plain fixture with one invariant attached to its first model, built by hand (the language
+/// has no rule syntax in this crate's dependencies yet). `rules_invariants` is the feature it uses.
+///
+/// # Panics
+/// When the plain fixture no longer has a model.
+#[must_use]
+pub fn ir_with_rule() -> Ir {
+    use veld_ir::{DeclKind, Expr, ExprKind, ExprLit, ExprType, Origin, Rule, Scalar, Type};
+    let plain = FIXTURES
+        .iter()
+        .find(|f| f.feature.is_none())
+        .map(|f| compile(f.name, f.source));
+    let Some(mut ir) = plain else {
+        panic!("veld-emit-conformance has no plain fixture");
+    };
+    let rule = Rule {
+        name: "alwaysTrue".into(),
+        id: "veld:app/Greeting.alwaysTrue@0".into(),
+        expr: Expr {
+            t: ExprType::Type(Type::Scalar(Scalar::Bool)),
+            e: ExprKind::Lit(ExprLit::Bool(true)),
+        },
+        message: None,
+        reads: vec![],
+        reads_readonly: false,
+        inherited_from: None,
+        docs: None,
+        deprecated: None,
+        origin: Origin {
+            file: "rules.veld".into(),
+            line: RULE_ORIGIN_LINE,
+            col: 3,
+        },
+    };
+    let model = ir.decls.iter_mut().find_map(|d| match &mut d.kind {
+        DeclKind::Model(m) if d.name == "Greeting" => Some(m),
+        DeclKind::Model(_)
+        | DeclKind::Error(_)
+        | DeclKind::Enum(_)
+        | DeclKind::Union(_)
+        | DeclKind::Const(_) => None,
+    });
+    match model {
+        Some(m) => m.rules.push(rule),
+        None => panic!("the plain fixture has no `Greeting` model"),
+    }
+    ir
+}
+
+/// The generator must neither declare a rules feature nor generate a contract with a rule: the
+/// capability gate reports `E0801` at the rule's origin, and `generate` refuses with `E0801`.
+///
+/// # Errors
+/// A description of the first role for which the generator does not refuse.
+pub fn check_rules_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    let ir = ir_with_rule();
+    let services = all_services(&ir);
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        if let Some(f) = Feature::RULES.into_iter().find(|f| caps.supports(*f)) {
+            return Err(format!("{}: declares `{}`", role.name(), f.name()));
+        }
+        let req = GenRequest {
+            ir: &ir,
+            role: *role,
+            services: services.clone(),
+            consumes: vec![],
+            framework: None,
+        };
+        let gate = check_capabilities(&ir, &req, &caps);
+        let at_rule = |d: &veld_codegen::GenDiagnostic| {
+            d.code == "E0801"
+                && d.message.contains("rules_invariants")
+                && d.origin.as_ref().map(|o| o.line) == Some(RULE_ORIGIN_LINE)
+        };
+        if gate.len() != 1 || !gate.iter().all(at_rule) {
+            return Err(format!("{}: the gate reported {gate:?}", role.name()));
+        }
+        match generator.generate_dyn(&req, &serde_json::Value::Null) {
+            Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
+            other => {
+                return Err(format!(
+                    "{}: generate did not answer E0801: {other:?}",
+                    role.name()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Every declaration signature and operation signature of `services` and what they reach.
 #[must_use]
 pub fn expected_signatures(ir: &Ir, services: &[ServiceId]) -> Vec<String> {
@@ -293,13 +387,34 @@ mod tests {
         }
         let covered: Vec<Feature> = FIXTURES.iter().filter_map(|f| f.feature).collect();
         // `consts` is never reported by `features_used` (see fixtures.rs), so it has no fixture.
-        for feature in Feature::ALL.into_iter().filter(|f| *f != Feature::Consts) {
+        // The rules features have no fixture until the language has rule syntax; `ir_with_rule`
+        // covers `rules_invariants` by hand.
+        for feature in Feature::ALL
+            .into_iter()
+            .filter(|f| *f != Feature::Consts && !Feature::RULES.contains(f))
+        {
             assert!(
                 covered.contains(&feature),
                 "no fixture for `{}`",
                 feature.name()
             );
         }
+    }
+
+    #[test]
+    fn the_hand_built_rule_uses_the_invariants_feature() {
+        let ir = ir_with_rule();
+        let used = ir.features_used(&all_services(&ir));
+        assert!(used.contains(&Feature::RulesInvariants), "{used:?}");
+    }
+
+    #[test]
+    fn a_generator_that_claims_rules_is_caught() {
+        let claims = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]),
+        };
+        assert!(check_rules_are_refused(&claims).is_err());
     }
 
     #[test]

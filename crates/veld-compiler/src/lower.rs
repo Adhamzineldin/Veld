@@ -202,12 +202,14 @@ impl Lowerer<'_, '_> {
             DKind::Model => DeclKind::Model(Model {
                 parent: d.res.parent.map(|p| self.decl_id(p)),
                 fields: fields(),
+                rules: Vec::new(),
             }),
             DKind::Error => DeclKind::Error(ErrorDecl {
                 default_status: d.res.default_status,
                 fields: Model {
                     parent: None,
                     fields: fields(),
+                    rules: Vec::new(),
                 },
             }),
             DKind::Enum => DeclKind::Enum(Enum {

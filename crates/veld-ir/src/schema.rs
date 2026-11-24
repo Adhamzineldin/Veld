@@ -23,6 +23,10 @@ pub enum T {
     Nullable(&'static T),
     /// The key may be absent.
     Optional(&'static T),
+    /// Any one of these types.
+    Union(&'static [T]),
+    /// Exactly this string.
+    Lit(&'static str),
 }
 
 pub type Fields = &'static [(&'static str, T)];
@@ -66,9 +70,13 @@ impl Def {
 const ORIGIN: T = T::Ref("Origin");
 const DECL_ID: T = T::Ref("DeclId");
 const OPT_STR: T = T::Nullable(&T::Str);
+/// Omitted from the JSON when empty (`spec/rules.md` section 13).
+const RULES: T = T::Optional(&T::List(&T::Ref("Rule")));
+const EXPR: T = T::Ref("Expr");
 const MODEL_FIELDS: Fields = &[
     ("parent", T::Nullable(&DECL_ID)),
     ("fields", T::List(&T::Ref("Field"))),
+    ("rules", RULES),
 ];
 
 const DECL_COMMON: Fields = &[
@@ -91,6 +99,7 @@ const DECL_KINDS: &[(&str, Fields)] = &[
             ("default_status", T::Nullable(&T::Num)),
             ("parent", T::Nullable(&DECL_ID)),
             ("fields", T::List(&T::Ref("Field"))),
+            ("rules", RULES),
         ],
     ),
     ("enum", &[("variants", T::List(&T::Ref("Variant")))]),
@@ -245,6 +254,121 @@ pub const DEFS: &[Def] = &[
         ],
     },
     Def::Object("EnumVariantLiteral", &[("name", T::Str), ("wire", T::Str)]),
+    // --- rules (spec/rules.md section 13) ---
+    Def::Object(
+        "Rule",
+        &[
+            ("name", T::Str),
+            ("id", T::Str),
+            ("expr", EXPR),
+            ("message", OPT_STR),
+            ("reads", T::List(&T::Str)),
+            ("reads_readonly", T::Bool),
+            ("inherited_from", T::Nullable(&DECL_ID)),
+            ("docs", OPT_STR),
+            ("deprecated", OPT_STR),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "Expr",
+        &[("t", T::Ref("ExprType")), ("e", T::Ref("ExprKind"))],
+    ),
+    Def::Alias("ExprType", T::Union(&[T::Ref("Type"), T::Lit("duration")])),
+    Def::External(
+        "ExprKind",
+        &[
+            ("lit", T::Ref("ExprLit")),
+            ("path", T::Ref("PathRef")),
+            ("now", T::Bool),
+            ("not", EXPR),
+            ("neg", EXPR),
+            ("bin", T::Ref("BinExpr")),
+            ("has", T::Ref("PathRef")),
+            ("call", T::Ref("CallExpr")),
+            ("quant", T::Ref("QuantExpr")),
+            ("list", T::List(&EXPR)),
+            ("widen", EXPR),
+            ("old", EXPR),
+        ],
+    ),
+    Def::External(
+        "ExprLit",
+        &[
+            ("bool", T::Bool),
+            ("int", T::Num),
+            ("long", T::Str),
+            ("float", T::Num),
+            ("decimal", T::Str),
+            ("string", T::Str),
+            ("enum", T::Ref("EnumLit")),
+        ],
+    ),
+    Def::Object(
+        "EnumLit",
+        &[("decl", DECL_ID), ("name", T::Str), ("wire", T::Str)],
+    ),
+    Def::Object(
+        "PathRef",
+        &[
+            ("root", T::Ref("Root")),
+            ("steps", T::List(&T::Ref("Step"))),
+        ],
+    ),
+    Def::Object(
+        "Step",
+        &[("name", T::Str), ("wire", T::Str), ("optional", T::Bool)],
+    ),
+    Def::Alias(
+        "Root",
+        T::Union(&[
+            T::Lit("self"),
+            T::Lit("principal"),
+            T::Lit("result"),
+            T::Ref("RootRef"),
+        ]),
+    ),
+    Def::External(
+        "RootRef",
+        &[("var", T::Str), ("param", T::Str), ("fact", T::Str)],
+    ),
+    Def::Object("BinExpr", &[("op", T::Ref("Op")), ("l", EXPR), ("r", EXPR)]),
+    Def::Strings(
+        "Op",
+        &[
+            "and", "or", "implies", "eq", "ne", "lt", "le", "gt", "ge", "in", "add", "sub", "mul",
+            "div", "rem",
+        ],
+    ),
+    Def::Object(
+        "CallExpr",
+        &[("f", T::Ref("Builtin")), ("args", T::List(&EXPR))],
+    ),
+    Def::Strings(
+        "Builtin",
+        &[
+            "len",
+            "matches",
+            "starts_with",
+            "ends_with",
+            "contains",
+            "days",
+            "hours",
+            "minutes",
+            "seconds",
+            "ms",
+        ],
+    ),
+    Def::Object(
+        "QuantExpr",
+        &[
+            ("q", T::Ref("Quantifier")),
+            ("list", EXPR),
+            ("var", T::Str),
+            ("body", EXPR),
+        ],
+    ),
+    Def::Strings("Quantifier", &["all", "any", "count", "sum"]),
     Def::Object("Service", SERVICE),
     Def::Strings(
         "Method",
@@ -294,6 +418,10 @@ pub const DEFS: &[Def] = &[
             "page",
             "consts",
             "bytes",
+            "rules_invariants",
+            "rules_endpoint",
+            "rules_transitions",
+            "rules_policies",
         ],
     ),
     Def::Strings("Role", &["server", "client"]),
@@ -413,13 +541,16 @@ fn ts_type(t: &T) -> String {
         T::Ref(n) => (*n).to_string(),
         T::List(i) => match **i {
             T::Nullable(_) | T::Optional(_) => format!("({})[]", ts_type(i)),
-            T::Str | T::Num | T::Bool | T::Any | T::Ref(_) | T::List(_) | T::Map(_) => {
+            T::Union(_) => format!("({})[]", ts_type(i)),
+            T::Str | T::Num | T::Bool | T::Any | T::Lit(_) | T::Ref(_) | T::List(_) | T::Map(_) => {
                 format!("{}[]", ts_type(i))
             }
         },
         T::Map(i) => format!("Record<string, {}>", ts_type(i)),
         T::Nullable(i) => format!("{} | null", ts_type(i)),
         T::Optional(i) => ts_type(i),
+        T::Union(items) => items.iter().map(ts_type).collect::<Vec<_>>().join(" | "),
+        T::Lit(s) => format!("\"{s}\""),
     }
 }
 
@@ -635,6 +766,15 @@ fn check_ty(t: &T, v: &Value, path: &str) -> Result<(), String> {
         T::Str => wrong("a string"),
         T::Num => wrong("a number"),
         T::Bool => wrong("a boolean"),
+        T::Lit(s) if v.as_str() == Some(*s) => Ok(()),
+        T::Lit(s) => wrong(&format!("the string \"{s}\"")),
+        T::Union(items) => {
+            if items.iter().any(|t| check_ty(t, v, path).is_ok()) {
+                Ok(())
+            } else {
+                wrong("one of the union's types")
+            }
+        }
         T::Ref(n) => check_ref(n, v, path),
         T::Nullable(_) if v.is_null() => Ok(()),
         T::Nullable(i) | T::Optional(i) => check_ty(i, v, path),

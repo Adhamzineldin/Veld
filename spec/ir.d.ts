@@ -43,6 +43,7 @@ export type Decl =
       origin: Origin;
       parent: DeclId | null;
       fields: Field[];
+      rules?: Rule[];
     }
   | {
       kind: "error";
@@ -58,6 +59,7 @@ export type Decl =
       default_status: number | null;
       parent: DeclId | null;
       fields: Field[];
+      rules?: Rule[];
     }
   | {
       kind: "enum";
@@ -162,6 +164,97 @@ export interface EnumVariantLiteral {
   wire: string;
 }
 
+export interface Rule {
+  name: string;
+  id: string;
+  expr: Expr;
+  message: string | null;
+  reads: string[];
+  reads_readonly: boolean;
+  inherited_from: DeclId | null;
+  docs: string | null;
+  deprecated: string | null;
+  origin: Origin;
+}
+
+export interface Expr {
+  t: ExprType;
+  e: ExprKind;
+}
+
+export type ExprType = Type | "duration";
+
+export type ExprKind =
+  | { lit: ExprLit }
+  | { path: PathRef }
+  | { now: boolean }
+  | { not: Expr }
+  | { neg: Expr }
+  | { bin: BinExpr }
+  | { has: PathRef }
+  | { call: CallExpr }
+  | { quant: QuantExpr }
+  | { list: Expr[] }
+  | { widen: Expr }
+  | { old: Expr }
+
+export type ExprLit =
+  | { bool: boolean }
+  | { int: number }
+  | { long: string }
+  | { float: number }
+  | { decimal: string }
+  | { string: string }
+  | { enum: EnumLit }
+
+export interface EnumLit {
+  decl: DeclId;
+  name: string;
+  wire: string;
+}
+
+export interface PathRef {
+  root: Root;
+  steps: Step[];
+}
+
+export interface Step {
+  name: string;
+  wire: string;
+  optional: boolean;
+}
+
+export type Root = "self" | "principal" | "result" | RootRef;
+
+export type RootRef =
+  | { var: string }
+  | { param: string }
+  | { fact: string }
+
+export interface BinExpr {
+  op: Op;
+  l: Expr;
+  r: Expr;
+}
+
+export type Op = "and" | "or" | "implies" | "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "in" | "add" | "sub" | "mul" | "div" | "rem";
+
+export interface CallExpr {
+  f: Builtin;
+  args: Expr[];
+}
+
+export type Builtin = "len" | "matches" | "starts_with" | "ends_with" | "contains" | "days" | "hours" | "minutes" | "seconds" | "ms";
+
+export interface QuantExpr {
+  q: Quantifier;
+  list: Expr;
+  var: string;
+  body: Expr;
+}
+
+export type Quantifier = "all" | "any" | "count" | "sum";
+
 export interface Service {
   id: ServiceId;
   package: PackageId;
@@ -222,7 +315,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies";
 
 export type Role = "server" | "client";
 

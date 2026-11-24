@@ -262,12 +262,19 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
                 | Feature::Constraints
                 | Feature::Consts
                 | Feature::Page
-                | Feature::Bytes => false,
+                | Feature::Bytes
+                | Feature::RulesInvariants
+                | Feature::RulesEndpoint
+                | Feature::RulesTransitions
+                | Feature::RulesPolicies => false,
             };
             if hit {
                 return Some(ep.origin.clone());
             }
         }
+    }
+    if feature == Feature::RulesInvariants {
+        return first_rule_origin(ir, services);
     }
     let wanted_union = feature == Feature::Unions;
     let wanted_const = feature == Feature::Consts;
@@ -279,6 +286,13 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
                 || (wanted_const && matches!(d.kind, DeclKind::Const(_)))
         })
         .map(|d| d.origin.clone())
+}
+
+/// The origin of the first invariant of the first reachable declaration that has one.
+fn first_rule_origin(ir: &Ir, services: &[ServiceId]) -> Option<Origin> {
+    ir.reachable_decls(services)
+        .into_iter()
+        .find_map(|id| ir.decl(id).rules().first().map(|r| r.origin.clone()))
 }
 
 #[cfg(test)]

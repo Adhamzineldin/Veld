@@ -186,9 +186,9 @@ impl Generator for Rust {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        // Everything is supported. The one limit is framework dependent and reported as `E0801` by
-        // `generate`: the blocking `ureq` transport cannot open WebSockets.
-        Capabilities::all_except(&[])
+        // Everything except the rules features (not implemented yet, `E0801`). The one limit is
+        // framework dependent and reported as `E0801` by `generate`: the blocking `ureq` transport cannot open WebSockets.
+        Capabilities::all_except(&Feature::RULES)
     }
 
     fn generate(

@@ -45,6 +45,195 @@ fn all_types() -> Vec<Type> {
     v
 }
 
+fn expr(t: ExprType, e: ExprKind) -> Expr {
+    Expr { t, e }
+}
+
+fn int_lit(n: i64) -> Expr {
+    expr(
+        ExprType::Type(Type::Scalar(Scalar::Int)),
+        ExprKind::Lit(ExprLit::Int(n)),
+    )
+}
+
+fn path_expr(root: Root) -> Expr {
+    expr(
+        ExprType::Type(Type::Scalar(Scalar::Int)),
+        ExprKind::Path(PathRef {
+            root,
+            steps: vec![Step {
+                name: "a".into(),
+                wire: "a".into(),
+                optional: true,
+            }],
+        }),
+    )
+}
+
+/// Every literal, root, operator, builtin and quantifier, so a new variant must be added to the
+/// schema before this sample (and the test that validates it) passes.
+fn rule_exprs() -> Vec<Expr> {
+    // Adding a variant breaks these matches, which points here.
+    match ExprKind::Now(Always) {
+        ExprKind::Lit(_)
+        | ExprKind::Path(_)
+        | ExprKind::Now(_)
+        | ExprKind::Not(_)
+        | ExprKind::Neg(_)
+        | ExprKind::Bin(_)
+        | ExprKind::Has(_)
+        | ExprKind::Call(_)
+        | ExprKind::Quant(_)
+        | ExprKind::List(_)
+        | ExprKind::Widen(_)
+        | ExprKind::Old(_) => {}
+    }
+    match ExprLit::Bool(true) {
+        ExprLit::Bool(_)
+        | ExprLit::Int(_)
+        | ExprLit::Long(_)
+        | ExprLit::Float(_)
+        | ExprLit::Decimal(_)
+        | ExprLit::String(_)
+        | ExprLit::Enum(_) => {}
+    }
+    match Root::Principal {
+        Root::SelfValue
+        | Root::Principal
+        | Root::Result
+        | Root::Var(_)
+        | Root::Param(_)
+        | Root::Fact(_) => {}
+    }
+    let boolean = || ExprType::Type(Type::Scalar(Scalar::Bool));
+    let lits = [
+        ExprLit::Bool(true),
+        ExprLit::Int(5),
+        ExprLit::Long(9_007_199_254_740_993),
+        ExprLit::Float(0.5),
+        ExprLit::Decimal("120.00".into()),
+        ExprLit::String("x".into()),
+        ExprLit::Enum(EnumLit {
+            decl: DeclId(3),
+            name: "A".into(),
+            wire: "a".into(),
+        }),
+    ]
+    .into_iter()
+    .map(|l| expr(boolean(), ExprKind::Lit(l)));
+    let roots = [
+        Root::SelfValue,
+        Root::Principal,
+        Root::Result,
+        Root::Var("i".into()),
+        Root::Param("body".into()),
+        Root::Fact("room".into()),
+    ]
+    .into_iter()
+    .map(path_expr);
+    let ops = [
+        Op::And,
+        Op::Or,
+        Op::Implies,
+        Op::Eq,
+        Op::Ne,
+        Op::Lt,
+        Op::Le,
+        Op::Gt,
+        Op::Ge,
+        Op::In,
+        Op::Add,
+        Op::Sub,
+        Op::Mul,
+        Op::Div,
+        Op::Rem,
+    ]
+    .into_iter()
+    .map(|op| {
+        let node = BinExpr {
+            op,
+            l: int_lit(1),
+            r: int_lit(2),
+        };
+        expr(boolean(), ExprKind::Bin(Box::new(node)))
+    });
+    let calls = [
+        Builtin::Len,
+        Builtin::Matches,
+        Builtin::StartsWith,
+        Builtin::EndsWith,
+        Builtin::Contains,
+        Builtin::Days,
+        Builtin::Hours,
+        Builtin::Minutes,
+        Builtin::Seconds,
+        Builtin::Ms,
+    ]
+    .into_iter()
+    .map(|f| {
+        let call = CallExpr {
+            f,
+            args: vec![int_lit(1)],
+        };
+        expr(ExprType::Duration, ExprKind::Call(call))
+    });
+    let quants = [
+        Quantifier::All,
+        Quantifier::Any,
+        Quantifier::Count,
+        Quantifier::Sum,
+    ]
+    .into_iter()
+    .map(|q| {
+        let node = QuantExpr {
+            q,
+            list: expr(boolean(), ExprKind::List(vec![int_lit(1)])),
+            var: "i".into(),
+            body: int_lit(1),
+        };
+        expr(boolean(), ExprKind::Quant(Box::new(node)))
+    });
+    let rest = [
+        expr(boolean(), ExprKind::Now(Always)),
+        expr(boolean(), ExprKind::Not(Box::new(int_lit(1)))),
+        expr(boolean(), ExprKind::Neg(Box::new(int_lit(1)))),
+        expr(
+            boolean(),
+            ExprKind::Has(PathRef {
+                root: Root::SelfValue,
+                steps: vec![],
+            }),
+        ),
+        expr(boolean(), ExprKind::Widen(Box::new(int_lit(1)))),
+        expr(boolean(), ExprKind::Old(Box::new(int_lit(1)))),
+    ];
+    lits.chain(roots)
+        .chain(ops)
+        .chain(calls)
+        .chain(quants)
+        .chain(rest)
+        .collect()
+}
+
+fn sample_rule() -> Rule {
+    let all = expr(
+        ExprType::Type(Type::Scalar(Scalar::Bool)),
+        ExprKind::List(rule_exprs()),
+    );
+    Rule {
+        name: "r".into(),
+        id: "veld:p/m.B.r@0".into(),
+        expr: all,
+        message: Some("m".into()),
+        reads: vec!["f0".into()],
+        reads_readonly: true,
+        inherited_from: Some(DeclId(0)),
+        docs: Some("d".into()),
+        deprecated: Some("x".into()),
+        origin: origin(),
+    }
+}
+
 fn field(name: &str, ty: Type, lit: Literal) -> Field {
     Field {
         name: name.into(),
@@ -102,6 +291,7 @@ fn decls() -> Vec<Decl> {
     let model = Model {
         parent: Some(DeclId(0)),
         fields,
+        rules: vec![sample_rule()],
     };
     let variant = Variant {
         name: "A".into(),
@@ -116,6 +306,7 @@ fn decls() -> Vec<Decl> {
             DeclKind::Model(Model {
                 parent: None,
                 fields: vec![],
+                rules: vec![],
             }),
         ),
         decl(1, "B", DeclKind::Model(model.clone())),
@@ -346,6 +537,16 @@ fn the_schema_lists_every_string_variant_of_the_rust_enums() {
 }
 
 #[test]
+fn rules_are_described_by_the_schema_and_checked() {
+    let v = serde_json::to_value(full_ir()).unwrap();
+    assert!(v["decls"][1]["rules"][0]["expr"]["e"]["list"].is_array());
+    let mut bad = v;
+    bad["decls"][1]["rules"][0]["expr"]["e"] = json!({"nope": 1});
+    let err = check("Ir", &bad).unwrap_err();
+    assert!(err.contains("unknown variant `nope`"), "{err}");
+}
+
+#[test]
 fn drift_is_reported_with_the_path_of_the_mismatch() {
     let good = serde_json::to_value(full_ir()).unwrap();
     let mut extra = good.clone();
@@ -413,6 +614,10 @@ fn typescript_is_deterministic_and_complete() {
         "      kind: \"model\";",
         "      sig: string;",
         "  options_schema?: unknown;",
+        "export type ExprType = Type | \"duration\";",
+        "export type Root = \"self\" | \"principal\" | \"result\" | RootRef;",
+        "  rules?: Rule[];",
+        "  | { now: boolean }",
         "  consumes: Record<string, string[]>;",
         "  default_status: number | null;",
         "export interface GenerateRequest {",

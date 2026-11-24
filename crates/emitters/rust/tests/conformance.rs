@@ -148,3 +148,15 @@ fn unknown_frameworks_and_options_are_reported() {
     assert_eq!(err[0].code, "E0803");
     assert!(err[0].message.contains("axum"), "{}", err[0].message);
 }
+
+/// Flip one feature at a time when the emitter learns to enforce it (`spec/rules.md` section 8).
+#[test]
+fn rust_declares_no_rules_feature_and_refuses_a_rule_with_e0801() {
+    for role in Rust.roles() {
+        let caps = Rust.capabilities(*role);
+        for f in veld_ir::Feature::RULES {
+            assert!(!caps.supports(f), "rust declares `{}`", f.name());
+        }
+    }
+    veld_emit_conformance::check_rules_are_refused(&Rust).unwrap();
+}
