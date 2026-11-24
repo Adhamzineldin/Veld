@@ -194,6 +194,7 @@ error ValidationError 422 { issues: ValidationIssue[] }
 error TooManyRequests 429 { retryAfter?: int }
 error Internal 500        { message?: string }
 model ValidationIssue     { path: string, code: string, message: string }
+error InvalidTransition 409 { field: string, from: string, to: string }
 ```
 
 Prelude errors belong to the reserved package `veld`. Their identity at runtime still includes the service and operation that raised them (see `spec/ir.md` §5). A `NotFound` raised by `orders.getOrder` therefore never compares equal to a `NotFound` raised by `payments.getPayment`.

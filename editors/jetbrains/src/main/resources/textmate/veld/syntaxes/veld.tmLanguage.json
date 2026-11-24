@@ -167,7 +167,7 @@
         },
         {
           "name": "support.class.error.veld",
-          "match": "\\b(BadRequest|Unauthorized|Forbidden|NotFound|Conflict|ValidationError|TooManyRequests|Internal)\\b"
+          "match": "\\b(BadRequest|Unauthorized|Forbidden|NotFound|Conflict|ValidationError|TooManyRequests|Internal|InvalidTransition)\\b"
         },
         {
           "name": "entity.name.type.reference.veld",

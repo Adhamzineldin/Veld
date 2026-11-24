@@ -211,6 +211,7 @@ error ValidationError 422 { issues: ValidationIssue[] }
 error TooManyRequests 429 { retryAfter?: int }
 error Internal 500        { message?: string }
 model ValidationIssue     { path: string, code: string, message: string }
+error InvalidTransition 409 { field: string, from: string, to: string }
 ";
 
 /// Name of the reserved prelude package.
