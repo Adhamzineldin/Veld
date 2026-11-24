@@ -1,6 +1,7 @@
 # Veld Rules, Events, Platform and Agents: one contract for the API, its events and the business rules they must keep
 
 > **Status:** proposal, approved in direction on 2026-11-22. Not normative. Phase 0 turns it into `spec/rules.md`.
+> Implementation started on 2026-11-24 on the branch `feat/rules-and-events`. Who builds what is in [§18](#18-who-builds-what); progress is tracked in `docs/proposals/rules-and-events-status.md` on that branch.
 
 Today a Veld contract says what data looks like. This plan makes it say what is *allowed to happen*: invariants, state transitions, permissions, guarantees and the events services exchange. Veld compiles those rules into native code for every target, checks them for contradictions before anything runs, and tests your real server against them.
 
@@ -22,6 +23,7 @@ Today a Veld contract says what data looks like. This plan makes it say what is 
 15. [Beyond web: mobile and desktop](#15-beyond-web-mobile-and-desktop)
 16. [Non-goals and risks](#16-non-goals-and-risks)
 17. [Decisions](#17-decisions)
+18. [Who builds what](#18-who-builds-what)
 
 ## 1. The pitch
 
@@ -164,6 +166,8 @@ Plus **examples**, which are not enforced at runtime but become tests (§7).
 | **Idempotency** | `@idempotent(header: "Idempotency-Key")` on an endpoint | A generated key store interface you implement (Redis, a table). A retried payment returns the first result instead of charging twice. |
 | **Derived fields** | `total: decimal = sum(items, i => i.price * i.qty)` | Client and server compute the value with the same generated code, so the cart and the checkout never disagree. The server ignores a client-sent value. |
 | **Transition events** | `flow pending -> paid emits BookingPaid` | A typed publisher (§11); the event is part of the contract and can also feed the existing SSE and WebSocket streams. |
+| **Form (partial) validation** | generated: `checkBooking.partial(draft)` | Real forms are half-filled. The partial check runs only the rules whose fields are present, so a form shows errors as the user types without flagging fields they have not reached. React and Vue get per-field helpers. |
+| **Stale-client safety** | generated, no syntax | Client-side checks add a risk: an old app keeps blocking a request the server now allows. Every response carries the server's rules digest in a `Veld-Rules` header. A client generated from different rules notices, stops rejecting locally, lets the server decide, and calls `onContractMismatch`. |
 
 ## 4. Where rules run
 
@@ -171,8 +175,8 @@ Every generated server runs the same pipeline. The order is part of the spec, so
 
 ```mermaid
 flowchart LR
-  A[Decode and shape checks] --> B[Invariants on input]
-  B --> C[Auth: principal]
+  A[Auth: principal] --> B[Decode and shape checks]
+  B --> C[Invariants on input]
   C --> D[Load facts: your code]
   D --> E[Policies: allow]
   E --> F[Transition guard]
@@ -183,7 +187,8 @@ flowchart LR
   J --> K[Encode]
 ```
 
-- **Clients** run step B before sending, so users see the same message the server would give, without a round trip. Steps that need facts or a principal run on the server only.
+- **Auth runs first**, then middleware, as generated servers already do today. An unauthenticated caller gets `401` and learns nothing about the rules.
+- **Clients** run the invariants step before sending, so users see the same message the server would give, without a round trip. Steps that need facts or a principal run on the server only.
 - **Violations** use the existing problem+json error with a new `violations` array. Each entry carries a stable rule id built like today's signatures, a JSON pointer and the message:
   ```json
   { "type": "veld:bookings/ValidationError@5e1d0c42", "status": 422,
@@ -224,7 +229,7 @@ A rule language is only trustworthy if it means the same thing everywhere. These
 | Time | `now` exists only in endpoint blocks and comes from an injected clock. Model invariants cannot use it. | Data valid yesterday stays valid today, and tests are reproducible. |
 | Regex | The existing §7.1 subset (`matches(s, "...")`). | Already enforced identically in every target. |
 | Reporting | All invariants are evaluated and all violations returned. `require` lines run in written order and the first failure wins. | Forms show every problem at once; preconditions map to one clear error. |
-| Identity | Rules are part of a declaration's structural shape, so they feed its signature. | Two copies of `Booking` with different rules are different contracts, and `Veld.same` says so. |
+| Identity | Every rule has its own signed id, `veld:bookings/Booking.maxStay@…`, a hash of its canonical expression. A declaration's own signature stays about wire shape only, exactly like `@min` and `@max` today. | Tightening a rule must not break typed error matching in apps that are already deployed. `veld diff` still reports the change, and the rules digest tells a client that its rules are stale. (Changed on 2026-11-24; the first draft put rules into the declaration signature.) |
 
 Expression syntax is a deliberate subset of CEL (Google's Common Expression Language): `&& || !`, comparisons, `in`, `has()`, field paths, list and map literals, arithmetic, and the comprehension functions above. We add `implies`, enum literals (`.paid`), `days()`/`hours()` durations and `not` as a readable alias.
 
@@ -260,6 +265,10 @@ Many tools validate input. No mainstream API tool does all of this from one file
 - **Safe rollout:** `@rollout(audit)` dark-launches a rule; the violation hook feeds dashboards.
 - **Living documentation:** OpenAPI export keeps simple rules as JSON Schema and the rest as `x-veld-rules` with CEL text; docs show each state machine as a diagram.
 - **Architecture as contract:** the `consumes` graph already limits who may call whom. Lint rules in `veld.toml` add house rules, such as every endpoint has auth.
+- **Live fuzzing:** `veld test --live --fuzz 1000` builds random valid and invalid requests from the types and rules, sends them to your running server, and fails when the server's verdict differs from the reference evaluator. It finds handler bugs that no example covers.
+- **Incidents become tests:** `veld test --from-violation event.json` turns a violation captured by the production hook into an `example` block, so a real incident becomes a permanent regression test.
+- **The database copy of a rule:** `veld export sql-checks` prints SQL `CHECK` constraints for the invariants that read one record's own fields, for example `CHECK (end_at > start_at)`. You paste them into a migration, and then even a script that writes straight to the database cannot store a row the contract forbids. Veld only prints the lines; it never touches the database.
+- **A measured cost:** a CI benchmark times the generated checks and fails the build when they cost more than a fixed budget per request.
 
 ### The demo that sells it (5 minutes)
 1. Show the booking contract. Generate a Node server and a React client.
@@ -307,13 +316,15 @@ pub struct StateMachine { pub enum_id: TypeId, pub edges: Vec<(VariantId, Varian
 export const BOOKING_END_AFTER_START = "veld:bookings/Booking.endAfterStart@91c0d2aa";
 
 export function checkBooking(v: Booking, out: Violation[], path = ""): void {
-  if (!(v.end.getTime() > v.start.getTime()))
+  if (!(rules.cmpInstant(v.end, v.start) > 0))
     out.push({ rule: BOOKING_END_AFTER_START, path: path + "/end",
                message: "A booking must end after it starts" });
   if ((v.status === "paid" || v.status === "checkedIn") && v.paidAt === undefined)
     out.push({ rule: BOOKING_PAID_HAS_TIME, path: path + "/paidAt", message: "..." });
 }
 ```
+
+In TypeScript and Rust a `datetime`, `decimal` or `long` is a string, so comparisons and arithmetic on them go through small helpers in the embedded runtime (`rules.cmpInstant`, `rules.decAdd`, ...). The helpers have the same names and the same test vectors in every target; the rule itself is still plain generated code.
 
 ## 9. Roadmap
 
@@ -327,14 +338,18 @@ Each phase ships on its own and is useful alone.
 | **3. State machines** | 4 days | `flow`, `final`, `transition`, implicit `InvalidTransition`, `emits`. Client `nextStates()` helpers. Unreachable and stuck states in `veld check`. Diagrams in docs and the playground. | Illegal transitions rejected identically by every server. |
 | **4. Policies** | 1 week | `principal`, `policy`, `permit`/`forbid`, `allow`, implicit `Forbidden`, client `can<Operation>()` helpers. `@version` optimistic concurrency and `@idempotent`. Lint: every endpoint has auth or `@auth(none)` on purpose. | Policy vectors pass; handler signatures require the principal. |
 | **5. Proof and lifecycle** | 1–2 weeks | `check --prove` through an optional external Z3 (cvc5 also accepted), SMT-LIB over stdin like a plugin; without a solver installed, `--prove` says so and the normal checks still run. Rule-aware `diff`, `@rollout(audit)`, violation hook, derived fields. OpenAPI `x-veld-rules`, LSP support, live evaluation in the playground. | The 5-minute demo runs end to end. |
-| **6. Extras** | if time | `veld test --coverage`; `veld export rules` (a readable rule book for product people); `@pii`/`@secret` fields redacted in logs and violation events, with a lint for `@pii` returned without auth. | None; each item ships on its own. |
+| **6. Extras** | 3 days | `veld test --coverage`; `veld export rules` (a readable rule book for product people); `@pii`/`@secret` fields redacted in logs and violation events, with a lint for `@pii` returned without auth; `veld export sql-checks`. | None; each item ships on its own. |
 
-**Chosen scope: phases 0 to 5**, about six weeks for the team, plus the events track (§11). After Phase 0, work splits by layer so phases overlap:
+Additions accepted on 2026-11-24 and where they land: form (partial) validation in Phase 1; stale-client safety and live fuzzing (`veld test --live --fuzz`) in Phase 2; violations to examples (`veld test --from-violation`) and the rule benchmark gate in Phase 5; the SQL `CHECK` export in Phase 6.
+
+**Chosen scope: phases 0 to 6**, plus the events track (§11). After Phase 0, work splits by layer so phases overlap:
 - **Compiler and IR** (one person): parser, typing, state-machine pass, signatures. Stays one phase ahead of the emitters.
 - **One person per emitter:** TS client, Node, Java, Rust. Each implements the shared `ExprPrinter` hooks and passes the same vectors.
 - **Tools** (one person): the reference evaluator, `veld test`, the SMT encoder, diff, the playground.
 
 If the schedule slips, cut from the end: Phase 6 first, then derived fields and LSP support from Phase 5. The solver and the rule-aware diff stay, because they make the demo.
+
+**Build order on the branch.** First one thin slice, end to end: invariants only, through the compiler, the reference evaluator and all four targets, until the shared vectors agree. Nothing else starts before that passes. Two gates hold for the whole branch: a contract with no rules generates the same bytes as before, and a target that cannot enforce a rule reports `E0801` instead of generating a server that ignores it.
 
 ## 10. Testing
 
@@ -445,7 +460,7 @@ sequenceDiagram
 |---|---|---|---|
 | **E1. Events, channels, memory broker** | 1 week | Syntax, IR and signatures for `event`, `channel`, `publishes`, `subscribes`. CloudEvents envelope. Typed publisher and subscriber in every target; built-in `memory` transport; event examples in `veld test`. | The same event round-trips byte-identically between Node, Java and Rust services. |
 | **E2. Kafka and RabbitMQ** | 1 week | Adapters per language, retry and dead letter, inbox deduplication. Toolchain tests against Kafka and RabbitMQ in Docker, run in CI like the registry e2e. | A Node producer and a Java consumer talk over both brokers with only `veld.toml` changed. |
-| **E3. Outbox, tools, more brokers** | 1 week | Outbox and relay for `emits`, event-aware `diff`, AsyncAPI export. NATS, SQS and Redis Streams adapters. | Crash-test e2e across transaction commit, relay publish, consumer side effect and acknowledgement: no committed event is lost; duplicate delivery is tolerated, and a transactional or idempotent inbox prevents duplicate business effects. |
+| **E3. Outbox and tools** | 1 week | Outbox and relay for `emits`, event-aware `diff`, AsyncAPI export. NATS, SQS and Redis Streams adapters come later and are not part of the current branch. | Crash-test e2e across transaction commit, relay publish, consumer side effect and acknowledgement: no committed event is lost; duplicate delivery is tolerated, and a transactional or idempotent inbox prevents duplicate business effects. |
 
 E1 can start in parallel with rules Phase 2, since it reuses the same invariants. Events plus rules give the strongest demo: one contract, an HTTP service and a Kafka consumer in two languages, and `veld diff` blocking a change that would break the consumer.
 
@@ -781,9 +796,13 @@ These gates express **ship-readiness and confidence**, not delivery dates or a r
 | Keywords | `rule` / `require` / `ensure` |
 | Output checks in production | The developer chooses, through the runtime config (§4) |
 | Solver | Optional external Z3, called like a plugin; `veld` stays one binary |
-| Scope | Phases 0 to 5; Phase 6 if time allows |
-| Events | Track E1 to E3. First brokers: Kafka and RabbitMQ, plus the built-in memory broker; NATS, SQS and Redis Streams in E3 |
-| Platform features | All eleven accepted as track P1 to P4 (§12) |
+| Scope | Phases 0 to 6 (Phase 6 confirmed on 2026-11-24) |
+| Events | Track E1 to E3 with Kafka and RabbitMQ, plus the built-in memory broker. NATS, SQS and Redis Streams come later |
+| Platform features | All eleven accepted as track P1 to P4 (§12). `veld export mcp` moves to the agents track (§18) |
+| Rule identity | Rules get their own signed ids and do not change a declaration's signature (2026-11-24, §5) |
+| Pipeline order | Auth and middleware first, then decode and rules, as servers already do (2026-11-24, §4) |
+| Additions | Accepted on 2026-11-24: stale-client safety, form (partial) validation, live fuzzing, SQL `CHECK` export, violations to examples, the rule benchmark gate (§3, §7, §9) |
+| Snapshots on the branch | New snapshots for new features may be accepted on `feat/rules-and-events`. A change to an existing snapshot is listed for the owner and never accepted silently |
 | Beyond web | Veld stays "contracts between services and the apps that call them". Added: Kotlin and Swift client emitters (track M1–M2) and a desktop guide for Tauri, Electron and JVM apps (§15) |
 | `veld events replay` | Dropped: replaying a dead-letter queue is the broker's job |
 | Config layout | Workspace root plus one small `veld.toml` per member (§13). The single-file format is replaced during the beta, not kept alongside |
@@ -792,3 +811,21 @@ These gates express **ship-readiness and confidence**, not delivery dates or a r
 | Overall size | Rules 0–5 (about 6 weeks), events E1–E3 (3 weeks), platform P1–P4 (5 weeks), agents A1–A2 (2 weeks), plus the config change (1 week) and mobile M1–M2 (1 week). With the tracks overlapping, about 12 to 14 weeks for a human team. With three agents in parallel and a daily snapshot sign-off from the owner, about 10 to 12 working days. Cut order if needed: Phase 6, then P4, then sagas (P3), then E3. |
 
 **Next step:** Phase 0, `spec/rules.md` and the first 40 rule vectors, for the owner to freeze.
+
+## 18. Who builds what
+
+Decided on 2026-11-24. Statuses are kept apart on purpose: *implemented* (code and unit tests), *tested* (shared vectors and toolchain round trips green on every target) and *production-supported* (the release gates in §16).
+
+| Track | Owner | Where |
+|---|---|---|
+| Business rules, phases 0 to 6 (§3 to §10) | Adham, with coding agents | branch `feat/rules-and-events` |
+| `veld test`, including `--live`, `--fuzz`, `--coverage`, `--from-violation` | Adham | same branch |
+| Events E1 to E3 with Kafka and RabbitMQ (§11) | Adham | same branch |
+| Platform P1, P2, P3 and P4 without MCP (§12) | Adham | same branch |
+| Workspace config and typed runtime config (§13) | Adham | same branch |
+| Examples, guides, specs and the website examples | Adham | same branch |
+| AI coding agents (§14): `veld context`, `veld guard`, PR summary, `check --impl`, JSON output with fix-its, `--stubs`, `veld impact`, the skill, `veld mcp`, and `veld export mcp` from P4 | teammates | their own branches |
+| Beyond web (§15): Kotlin and Swift clients, the desktop guide | teammates | their own branches |
+| More brokers: NATS, SQS, Redis Streams | later | not started |
+
+What teammates can rely on from the rules branch: the IR additions for rules and events land first and are versioned by `ir_version`; a new emitter gets rule support by implementing the `ExprPrinter` hooks and passing the vectors in `tests/rules/`.
