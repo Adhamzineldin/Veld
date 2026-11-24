@@ -250,7 +250,12 @@ rule_bytes = RFC 8785 JSON of { "d": "<qualified decl name>", "n": ruleName, "e"
 ```
 
 - `hex16` is the first 16 lowercase hex characters, as in `spec/ir.md` §5.1.
-- `ExprShape` is the expression of §13 with source names replaced by wire names and types kept, and without spans. The message, docs and annotations are not part of it. Changing a message keeps the id; changing the expression changes it.
+- `ExprShape` is the `Expr` JSON of §13, made independent of anything that may change without changing the rule's meaning:
+  - a declaration id is never written: a type `{ "decl": id }` becomes `{ "ref": "<qualified name>" }` (as in `spec/ir.md` §5.1), and an enum literal becomes `{ "enum": { "ref": "<qualified name>", "wire": "PAID" } }`
+  - a path step is `{ "w": "<wire name>" }` only, so renaming a field in source while keeping its wire name keeps the id
+  - lambda variables are renamed `v0`, `v1`, … by nesting depth
+  - every numeric literal is a string, so no number formatting is involved: `int` and `long` as decimal digits, `decimal` as its source text, `float` as the 16 lowercase hex digits of its IEEE 754 bits
+- The message, docs, annotations and spans are not part of the id. Changing a message keeps the id; changing the expression changes it.
 - An inherited rule has the id it has in the declaration that wrote it.
 - **A rule does not change the signature of its declaration.** `Decl.sig` stays exactly as `spec/ir.md` §5.1 defines it, like `@min` and `@max` today. Tightening a rule therefore never breaks typed error matching in a client that is already deployed.
 - Rule ids are computed only in `veld-compiler::signature`. Generators embed them verbatim.
