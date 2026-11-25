@@ -30,6 +30,8 @@ New punctuation: `&&` `||` `!` `==` `!=` `<=` `>=` `+` `-` `/` `%` `=>`. The tok
 
 **Minus.** A `-` that is immediately followed by a digit is part of a numeric literal, as today, **unless** the previous token is an identifier, a numeric or string literal, `)` or `]`. In that case it is the minus operator. So `@min(-5)`, `= -1` and `[-1, -2]` are literals, and `x -1`, `end - start` and `days(30) -1` are subtractions.
 
+Inside an expression the result does not depend on that choice: **a unary minus applied directly to a numeric literal is part of the literal.** `x implies -2147483648 < n` and `not -1 == n` therefore contain the literals `-2147483648` and `-1`, although the lexer saw an operator after the word, and the smallest `int` and `long` can be written anywhere.
+
 ### 2.2 Words
 
 Every new word is **contextual**: it is a keyword only where the grammar below expects it, and an ordinary identifier everywhere else. A field, variant, parameter, endpoint or declaration MAY be named after any of them. The reserved list of `language.md` §3.2 does not grow.
@@ -75,11 +77,12 @@ arg         = IDENT "=>" expr | expr ;
 literal     = STRING | INT | FLOAT | "true" | "false" ;
 ```
 
-- `not` means exactly `!`, with the same precedence: `not a == b` is `(not a) == b`.
+- `not` means exactly `!`, with the same precedence: `not a == b` is `(not a) == b`. `not` is the operator only when an operand follows it; `not in xs` and `not implies y` read a field named `not`.
+- A chained comparison is reported by the parser, so no later check runs on that file.
 - `.name` as a primary is an enum literal. Its enum is taken from the other operand or the expected type (`status == .paid`, `status in [.paid, .checkedIn]`); if no enum can be inferred it is `E0902`.
 - `IDENT => expr` is a lambda. It is allowed only as the second argument of `all`, `any`, `count` and `sum` (§3.5).
 - There is no `null`, no ternary, no indexing (`a[0]`, `m["k"]`), no `?.` and no user-defined function.
-- Expressions nest at most 64 levels deep (`E0005`).
+- An expression tree is at most **32 levels** deep (`E0005`). Every operator, call and list adds a level, also in a chain: `a && b && c` is two levels deep, so one rule can join at most 33 terms with the same operator. The limit keeps the IR JSON of any rule within the nesting limit of common JSON readers (128 in `serde_json`); a rule at the limit MUST read back from its IR JSON. Split a longer rule into several rules: each then reports its own message.
 
 ### 3.2 Names
 
@@ -93,7 +96,7 @@ A `const` used in an expression is inlined as a literal. It MUST be a `bool`, `s
 
 Every expression has a static type: a Veld type (`language.md` §5) or `duration`, which exists only inside expressions. A rule's expression MUST have type `bool` (`E0902`).
 
-**Numeric literals** take their type from the other operand: `amount > 0` compares decimals when `amount` is a decimal. With no context an `INT` literal is an `int` (a `long` if it does not fit 32 bits) and a `FLOAT` literal is a `decimal`. A literal that does not fit its type is `E0908`.
+**Numeric literals** take their type from the other operand: `amount > 0` compares decimals when `amount` is a decimal. With no context an `INT` literal is an `int` (a `long` if it does not fit 32 bits) and a `FLOAT` literal is a `decimal`; when both operands are literals and one is a `FLOAT`, both are decimals. A literal that does not fit its type is `E0908`. So is an integer literal beyond 2^53 used as a `float`, and a literal with an exponent used as a `decimal`.
 
 **Widening** is implicit only where it is exact: `int` to `long`, `int` to `float`, `int` or `long` to `decimal`. Nothing else converts: `long` with `float` and `decimal` with `float` are `E0902`. The compiler makes every conversion explicit in the IR (§13), so a generator never applies a promotion rule itself.
 
@@ -105,7 +108,7 @@ Every expression has a static type: a Veld type (`language.md` §5) or `duration
 | `!` `not` | `bool` | `bool` | |
 | `==` `!=` | two values of the same type: `bool`, numeric, `string`, `uuid`, `date`, `datetime`, `time`, `duration`, or the same enum | `bool` | By value, see below. Models, unions, lists, maps, `bytes` and `json` cannot be compared (`E0905`). |
 | `<` `<=` `>` `>=` | numeric, `date`, `datetime`, `time`, `duration` | `bool` | By value. Strings cannot be ordered (`E0905`). |
-| `in` | `x in list` where `list` is a `T[]` and `x` a `T` that supports `==`; or `key in map` with a `string` key | `bool` | True if some element equals `x`; true if the map has the key. |
+| `in` | `x in list` where `list` is a `T[]` and `x` a `T` that supports `==`; or `key in map` with a `string` key | `bool` | True if some element equals `x`; true if the map has the key. A `duration` cannot be used with `in` (`E0902`): no Veld list holds durations. `in` is the only operator whose operand types differ; the element side is widened when that is exact. |
 | `+` `-` `*` | `int`, `long`, `float`, `decimal` | same | `int` and `long` are checked: overflow is an evaluation error (§3.7). `decimal` is exact. |
 | `/` `%` | `int`, `long`, `float` | same | Integer division truncates toward zero; `%` takes the sign of the dividend (`-7 / 2 == -3`, `-7 % 2 == -1`). A zero divisor is the evaluation error `division_by_zero`, for floats too (it is checked before dividing). `%` never overflows: the smallest `int` `% -1` is `0`, while the same division overflows. On `decimal` both are `E0905`: write `a <= b * 2`, not `a / 2 <= b`. |
 | unary `-` | numeric, `duration` | same | Checked. |
@@ -128,7 +131,7 @@ Every expression has a static type: a Veld type (`language.md` §5) or `duration
 
 | Function | Types | Result | Notes |
 |---|---|---|---|
-| `has(path)` | a path that ends in an optional field or passes through one | `bool` | True when every optional step of the path is present. §3.6. |
+| `has(path)` | a path that ends in an optional field or passes through one | `bool` | True when every optional step of the path is present. §3.6. A path that can never be absent is `E0906`. |
 | `len(x)` | `string`, list, map, `bytes` | `int` | A string's length is its number of Unicode code points, the same as `@length`. `bytes` counts bytes. |
 | `matches(s, "re")` | `string`, a string **literal** | `bool` | The regex subset of `language.md` §7.1 (`E0603` otherwise), with the same semantics as `@pattern`: it matches anywhere unless anchored. |
 | `startsWith(s, p)` `endsWith(s, p)` `contains(s, p)` | `string`, `string` | `bool` | By code points. |
@@ -150,8 +153,13 @@ Rules use two-valued logic. A value is never "unknown".
   - the right operand of `has(p) && …`
   - the right operand of `has(p) implies …`
   - the right operand of `!has(p) || …`
+- The analysis follows the logic, not three fixed shapes. For an expression `x`, let `when_true(x)` be the paths known present if `x` is true, and `when_false(x)` those known present if it is false:
+  - `when_true(has(p))` is `p` and its prefixes
+  - `when_true(a && b)` is `when_true(a)` joined with `when_true(b)`; `when_false(a || b)` is `when_false(a)` joined with `when_false(b)`
+  - `when_true(!a)` is `when_false(a)`, and `when_false(!a)` is `when_true(a)`
+  - the right operand of `&&` and of `implies` is checked with `when_true(left)`; the right operand of `||` with `when_false(left)`
   
-  The left operand may be a conjunction: in `has(a) && has(a.b) && e`, both are known inside `e`.
+  So `has(a) && has(a.b) && e`, `!has(a) || !has(b) || e` and `!(has(a) && has(b)) || e` all make both paths known inside `e`.
 - `has` is the only way to ask about presence. There is no comparison with `null`.
 
 ### 3.7 Evaluation errors
@@ -256,6 +264,10 @@ rule_bytes = RFC 8785 JSON of { "d": "<qualified decl name>", "n": ruleName, "e"
   - lambda variables are renamed `v0`, `v1`, … by nesting depth
   - every numeric literal is a string, so no number formatting is involved: `int` and `long` as decimal digits, `decimal` as its source text, `float` as the 16 lowercase hex digits of its IEEE 754 bits
 - The message, docs, annotations and spans are not part of the id. Changing a message keeps the id; changing the expression changes it.
+- Types (`t`) stay in the shape, and `d` is the qualified name while the id text uses the plain declaration name. For `rule r: a > 0` on `model M { a: int @wire("A") }` in package `app`, module `app`, the hashed bytes are exactly:
+  ```json
+  {"d":"app:app.M","e":{"e":{"bin":{"l":{"e":{"path":{"root":"self","steps":[{"w":"A"}]}},"t":"int"},"op":"gt","r":{"e":{"lit":{"int":"0"}},"t":"int"}}},"t":"bool"},"n":"r"}
+  ```
 - An inherited rule has the id it has in the declaration that wrote it.
 - **A rule does not change the signature of its declaration.** `Decl.sig` stays exactly as `spec/ir.md` §5.1 defines it, like `@min` and `@max` today. Tightening a rule therefore never breaks typed error matching in a client that is already deployed.
 - Rule ids are computed only in `veld-compiler::signature`. Generators embed them verbatim.
@@ -442,7 +454,7 @@ Range `E09xx` (errors) and `W09xx` (warnings). Codes are never reused.
 | `E0903` | An optional value is read where it is not known present (§3.6) |
 | `E0904` | `now`, `result` or `old` used where it is not available |
 | `E0905` | Operation not supported on this type: `/` or `%` on decimal, ordering strings, comparing models, lists, maps, bytes or json, a `const` of an unsupported type |
-| `E0906` | Unknown function, wrong number or type of arguments, lambda where none is allowed |
+| `E0906` | Unknown function, wrong number or type of arguments, lambda where none is allowed, `has` on a path that can never be absent |
 | `E0907` | Duplicate rule name in a declaration, counting inherited rules |
 | `E0908` | Numeric literal out of range for its type |
 | `W0901` | `==` or `!=` on `float` |
