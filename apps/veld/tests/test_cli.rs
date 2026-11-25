@@ -546,7 +546,7 @@ fn an_audited_rule_is_listed_under_the_example_that_violates_it_and_does_not_fai
         .iter()
         .position(|l| l.contains("an audited rule that holds changes nothing"))
         .unwrap();
-    assert!(!lines[at + 1].contains("audited"), "{stdout}");
+    assert!(lines[at + 1].starts_with("ok "), "{stdout}");
 }
 
 #[test]
