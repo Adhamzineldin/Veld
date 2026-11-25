@@ -3,7 +3,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use veld_compiler::codes::LINT_RULES;
-use veld_ir::{Decl, DeclId, DeclKind, Ir, Literal, Origin, PackageKind, Service, ServiceId};
+use veld_ir::{
+    AuthKind, Decl, DeclId, DeclKind, Ir, Literal, Origin, PackageKind, Service, ServiceId,
+};
 
 use super::naming::{is_camel, is_pascal, is_variant_name, to_camel, to_pascal};
 use super::{LintIssue, LintLevel, is_linted};
@@ -57,6 +59,7 @@ pub(super) fn run(ir: &Ir, out: &mut Vec<Raw>) {
     empty_model(&user, out);
     empty_constants(&user, out);
     missing_description(&services, out);
+    auth_required(&services, out);
     deprecations(&user, &services, out);
     naming(&user, &services, out);
     file_naming(ir, &user, &services, out);
@@ -180,6 +183,27 @@ fn empty_constants(user: &[&Decl], out: &mut Vec<Raw>) {
                 format!("constant `{}` has an empty value", d.name),
                 &d.origin,
             );
+        }
+    }
+}
+
+/// `auth-required` (`spec/rules.md` section 11.6): an endpoint whose auth comes from neither its
+/// own `@auth` nor its service's should say `@auth(none)` if it is meant to be public.
+fn auth_required(services: &[&Service], out: &mut Vec<Raw>) {
+    for s in services {
+        for e in &s.endpoints {
+            if e.auth.kind == AuthKind::None && !e.auth.declared {
+                push(
+                    out,
+                    "auth-required",
+                    format!("{}.{}", s.name, e.name),
+                    format!(
+                        "endpoint `{}` has no `@auth` of its own or on service `{}`: write `@auth(none)` if it is meant to be public",
+                        e.name, s.name
+                    ),
+                    &e.origin,
+                );
+            }
         }
     }
 }

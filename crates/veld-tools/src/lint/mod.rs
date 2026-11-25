@@ -9,6 +9,8 @@
 //! packages are not the author's to fix. `unused-model` skips libraries, whose declarations are
 //! there to be imported.
 
+#[cfg(test)]
+mod auth_tests;
 mod config;
 mod naming;
 mod rules;

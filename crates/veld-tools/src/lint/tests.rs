@@ -45,6 +45,7 @@ model User {
 }
 
 /// Users.
+@auth(none)
 service Users at \"/users\" {
   /// Fetch one.
   get \"/{id}\" getUser(id: uuid) -> User
