@@ -279,6 +279,48 @@ fn unsupported_feature_is_a_loud_error_and_writes_nothing() {
 }
 
 #[test]
+fn generate_warns_w0904_when_validation_is_off_and_the_contract_has_rules() {
+    let tmp = tempdir().unwrap();
+    init(tmp.path());
+    write(
+        tmp.path(),
+        "contracts/rules.veld",
+        "model Span {\n  from: int\n  to: int\n  rule ordered: from <= to\n}\n\nservice Spans at \"/spans\" {\n  post \"/\" make(body: Span) -> 204\n}\n",
+    );
+    let toml = |options: &str| {
+        format!(
+            "[project]\nname = \"demo\"\n\n[[targets]]\nname = \"api\"\nrole = \"server\"\nemitter = \"node\"\nout = \"generated/server\"\n{options}\n"
+        )
+    };
+    // Validation on: no warning.
+    write(tmp.path(), "veld.toml", &toml(""));
+    veld(tmp.path())
+        .arg("generate")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("W0904").not());
+    // Off: generation still succeeds, and says the rules of `Span` are not enforced.
+    write(
+        tmp.path(),
+        "veld.toml",
+        &toml("\n[targets.options]\nvalidate = false"),
+    );
+    veld(tmp.path())
+        .arg("generate")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("warning[W0904]"))
+        .stderr(predicate::str::contains("target `api`"))
+        .stderr(predicate::str::contains("Span"));
+    // `--quiet` hides warnings like every other warning.
+    veld(tmp.path())
+        .args(["--quiet", "generate"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("W0904").not());
+}
+
+#[test]
 fn mutually_consuming_services_generate() {
     let tmp = tempdir().unwrap();
     write_mutual_workspace(tmp.path());

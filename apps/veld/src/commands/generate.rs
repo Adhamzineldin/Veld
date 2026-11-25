@@ -67,11 +67,14 @@ fn build_outputs<'a>(
     for &target in targets {
         let t0 = Instant::now();
         let spin = ui.spinner(&format!("Generating {}", target.name));
-        let result = pipeline::build_job(&done.project, &done.ir, target)
-            .and_then(|job| pipeline::run_job(&done.ir, &job));
+        let result = pipeline::build_job(&done.project, &done.ir, target).and_then(|job| {
+            let files = pipeline::run_job(&done.ir, &job)?;
+            Ok((files, pipeline::job_warnings(&done.ir, &job)))
+        });
         spin.finish();
         match result {
-            Ok(files) => {
+            Ok((files, warnings)) => {
+                warnings.iter().for_each(|w| ui.warn(w));
                 ui.debug(
                     1,
                     &format!(

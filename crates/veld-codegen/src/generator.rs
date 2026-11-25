@@ -98,6 +98,13 @@ pub trait Generator {
         opts: &Self::Options,
         profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>>;
+
+    /// Warnings for a request that generates successfully (`W....` codes, for example `W0904`).
+    /// The core reports them after a successful `generate`; they never stop generation. Most
+    /// generators have none.
+    fn warnings(&self, _req: &GenRequest<'_>, _opts: &Self::Options) -> Vec<GenDiagnostic> {
+        Vec::new()
+    }
 }
 
 /// Object-safe form of [`Generator`]: options arrive as JSON.
@@ -114,6 +121,11 @@ pub trait DynGenerator {
         req: &GenRequest<'_>,
         opts: &serde_json::Value,
     ) -> Result<FileSet, Vec<GenDiagnostic>>;
+    /// The warnings of [`Generator::warnings`]. Empty for a generator that has none, and for
+    /// options that do not parse (`generate_dyn` reports those as `E0802`).
+    fn warnings_dyn(&self, _req: &GenRequest<'_>, _opts: &serde_json::Value) -> Vec<GenDiagnostic> {
+        Vec::new()
+    }
 }
 
 /// `E0803` when `req.framework` is not one of the generator's `frameworks(role)`. Every role is
@@ -200,22 +212,35 @@ impl<T: Generator> DynGenerator for T {
         opts: &serde_json::Value,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         let profile = resolve_profile(self, req, opts).map_err(|d| vec![d])?;
-        let own = strip_profile_keys(opts, Generator::language(self).as_ref());
-        let parsed = if own.is_null() {
-            T::Options::default()
-        } else {
-            serde_json::from_value(own).map_err(|e| {
-                vec![GenDiagnostic::new(
-                    "E0802",
-                    format!(
-                        "invalid options for generator `{}`: {e}",
-                        Generator::id(self)
-                    ),
-                )]
-            })?
-        };
+        let parsed = parse_options(self, opts)?;
         Generator::generate(self, req, &parsed, &profile)
     }
+    fn warnings_dyn(&self, req: &GenRequest<'_>, opts: &serde_json::Value) -> Vec<GenDiagnostic> {
+        match parse_options(self, opts) {
+            Ok(parsed) => Generator::warnings(self, req, &parsed),
+            Err(_) => Vec::new(),
+        }
+    }
+}
+
+/// The generator's own options: `opts` without the keys the core resolves into the profile.
+fn parse_options<T: Generator>(
+    generator: &T,
+    opts: &serde_json::Value,
+) -> Result<T::Options, Vec<GenDiagnostic>> {
+    let own = strip_profile_keys(opts, Generator::language(generator).as_ref());
+    if own.is_null() {
+        return Ok(T::Options::default());
+    }
+    serde_json::from_value(own).map_err(|e| {
+        vec![GenDiagnostic::new(
+            "E0802",
+            format!(
+                "invalid options for generator `{}`: {e}",
+                Generator::id(generator)
+            ),
+        )]
+    })
 }
 
 /// `E0801` for every used feature `caps` does not support. The core calls this before `generate`.
@@ -411,6 +436,35 @@ mod tests {
                 .map_err(|e| vec![GenDiagnostic::new("E0899", e.to_string())])?;
             Ok(fs)
         }
+        fn warnings(&self, _: &GenRequest<'_>, opts: &Opts) -> Vec<GenDiagnostic> {
+            if opts.flag {
+                vec![GenDiagnostic::new("W9999", "the flag is set")]
+            } else {
+                Vec::new()
+            }
+        }
+    }
+
+    #[test]
+    fn warnings_reach_the_core_through_the_dyn_generator() {
+        let ir = ir_with_sse();
+        let req = GenRequest {
+            ir: &ir,
+            role: Role::Client,
+            services: vec![],
+            consumes: vec![],
+            framework: None,
+        };
+        let g: Box<dyn DynGenerator> = Box::new(Dummy);
+        let on = g.warnings_dyn(&req, &serde_json::json!({ "flag": true }));
+        assert_eq!(on.len(), 1);
+        assert_eq!(on[0].code, "W9999");
+        assert!(g.warnings_dyn(&req, &serde_json::Value::Null).is_empty());
+        // Options that do not parse are `generate_dyn`'s `E0802`, not a warning.
+        assert!(
+            g.warnings_dyn(&req, &serde_json::json!({ "nope": 1 }))
+                .is_empty()
+        );
     }
 
     #[test]

@@ -60,6 +60,10 @@ impl Generator for Node {
         Capabilities::all_except(&UNSUPPORTED)
     }
 
+    fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
+        veld_emit_typescript::validation_off_warnings(req, opts.validate)
+    }
+
     fn generate(
         &self,
         req: &GenRequest<'_>,

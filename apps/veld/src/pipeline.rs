@@ -518,12 +518,35 @@ fn job_options(target: &TargetSpec) -> Result<serde_json::Value, serde_json::Err
 }
 
 fn format_gen(d: &GenDiagnostic, target: &str) -> String {
+    format_diag("error", d, target)
+}
+
+fn format_diag(level: &str, d: &GenDiagnostic, target: &str) -> String {
     let at = d
         .origin
         .as_ref()
         .map(|o| format!("\n --> {}:{}:{}", o.file, o.line, o.col))
         .unwrap_or_default();
-    format!("target `{target}`: error[{}]: {}{at}", d.code, d.message)
+    format!("target `{target}`: {level}[{}]: {}{at}", d.code, d.message)
+}
+
+/// The generator's warnings for a job that generated (`Generator::warnings`), one printable
+/// line each, such as `W0904` for a target with request validation off that reaches rules.
+pub fn job_warnings(ir: &Ir, job: &Job<'_>) -> Vec<String> {
+    let req = GenRequest {
+        ir,
+        role: job.role,
+        services: job.services.clone(),
+        consumes: job.consumes.clone(),
+        framework: job.target.framework.clone(),
+    };
+    let name = &job.target.name;
+    job.generator
+        .get()
+        .warnings_dyn(&req, &job.options)
+        .iter()
+        .map(|d| format_diag("warning", d, name))
+        .collect()
 }
 
 /// Checks capabilities, then generates the target's files.
