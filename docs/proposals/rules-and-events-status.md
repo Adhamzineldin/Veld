@@ -21,6 +21,7 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 ## Decisions waiting for the owner
 
 - **Spring and a trailing slash.** The JDK router treats `/bookings` and `/bookings/` as the same path; the generated Spring controller maps only the first, so `POST /bookings/` is a 404 on Spring. For contracts with rules the controller now maps both. Fixing it for every contract changes Spring snapshots from before this branch, so it was left alone.
+- **A Rust generator bug from before this branch.** A generated crate that uses SSE, in which one service has no SSE endpoint, does not compile (`call_sse` is missing for that service). Found while testing; not fixed here.
 - **Two Java helper names.** See the Phase 1 list: finishing the rename changes three lines of a snapshot.
 
 ## Phase 0: spec
@@ -56,10 +57,10 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [t] Java: check functions, helpers, client and server (JDK and Spring); 103 of 103 vectors that apply; HTTP round trip
 - [t] Rust: check functions (the reference evaluator's own helper files, embedded), client and server; 101 of 101 vectors that apply; HTTP round trip
 - [t] Vector runner per target, and the reference cross-check that compiles every vector contract
-- [~] One golden 422 answer (`tests/wire/rules`): the Node server, the JDK server and the Spring adapter all answer with the same canonical bytes; Rust in progress
-- [~] Invariants on SSE and WebSocket items: TypeScript, Node and Java done; Rust in progress
-- [~] Invariants of `error` declarations on encode: TypeScript and Java done; Rust in progress
-- [~] `validate = false`: the one-time report and `W0904`: TypeScript, Node and Java done; Rust in progress
+- [i] One golden 422 answer (`tests/wire/rules`): the Node server, the JDK server, the Spring adapter and the Rust server all answer with the same canonical bytes
+- [i] Invariants on SSE and WebSocket items, in every target (TypeScript, Node and Java verified by CI; Rust implemented)
+- [i] Invariants of `error` declarations on encode, in every target
+- [i] `validate = false`: the one-time report and `W0904`, in every target
 - [t] `in` over lists of dates and times: shared vectors in `tests/rules/core/calendar.*`, passing in every target and the reference
 - [~] Java helper names follow the TypeScript reference list, except two (`instantMs`, `len`) that the printer still uses: finishing them changes three lines of a snapshot, and that edit was blocked in the agent's session, so it waits for the owner
 - [i] React and Vue form helpers (`useFormRules`) on top of `.partial(draft)`
@@ -68,20 +69,20 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [i] Target specs updated (`spec/targets/*.md`); `spec/ir.md`, `spec/language.md` cross-references still to do
 
 ## Phase 2: endpoint rules, examples, `veld test`
-- [~] `fact`, `require ... else`, `ensure`, `old()`, `now`: IR, compiler, reference evaluator, TypeScript and Node are tested (`[t]`, CI green on three systems); Java implemented (`[i]`); Rust in progress
-- [~] Fact-loader interfaces and the pipeline: Node (`[t]`) and Java (`[i]`) done; Rust in progress
+- [~] `fact`, `require ... else`, `ensure`, `old()`, `now`: IR, compiler, reference evaluator, TypeScript, Node and Java are tested (`[t]`, CI green on three systems); Rust implemented (`[i]`)
+- [i] Fact-loader interfaces and the pipeline in Node, Java and Rust
 - [ ] Output mode and sampling in the runtime config (the mode is a handler option today; sampling and the typed runtime config come with the config series)
-- [ ] WebSocket endpoints with endpoint rules: TypeScript and Node refuse them with `E0801` for now
-- [~] Stale-client safety: Java has it for every service with a digest; TypeScript and Node have it for contracts with endpoint rules and still need it for a contract with only invariants; Rust in progress
+- [ ] WebSocket endpoints with endpoint rules: every server target refuses them with `E0801` for now (Java refuses SSE endpoints with rules too)
+- [~] Stale-client safety: Java and Rust have it for every service with a digest; TypeScript and Node have it for contracts with endpoint rules and still need it for a contract with only invariants
 - [i] `example` blocks: IR, compiler, and filling in and running examples in the reference evaluator
 - [t] Endpoint rule vectors: `tests/rules/endpoints/bookings.veld`, 20 examples, all passing through the compiler and the reference evaluator
 - [t] `veld test` offline, the shared runner (`crates/veld-testing`), `E0953` in `veld check`, and `docs/guides/testing.md`
-- [~] `veld test --live` and `--dry-run`: all 20 examples pass against the generated Node server (`[t]`), the JDK server and the Spring adapter (`[i]`); Rust test handler in progress
+- [i] `veld test --live` and `--dry-run`: all 20 examples pass against the generated Node server, the JDK server, the Spring adapter and the Rust server
 - [ ] Boundary cases generated from rules
 - [ ] `veld test --live --fuzz`
 
 ## Phase 3: state machines
-- [ ] `flow`, `final`, `transition`; reachability and stuck-state checks
+- [~] `flow`, `final`, `transition`: spec section 10 complete, 14 examples written (held back as `transitions.veld.pending`); IR, compiler and reference evaluator in progress; generators to do
 - [ ] `InvalidTransition`; the transition passed to the handler for a conditional write (a guard, not an atomic guarantee)
 - [ ] Client `nextStates()`
 - [ ] `emits` (with E3)
