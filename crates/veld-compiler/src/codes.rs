@@ -332,6 +332,11 @@ pub const CODES: &[CodeInfo] = &[
         "Nested comprehension over a list without `@length(max: n)`",
     ),
     w("W0903", C, "A rule that reads no field"),
+    w(
+        "W0904",
+        "generators",
+        "A target with request validation turned off reaches rules, which it will not enforce",
+    ),
     l(
         "L0001",
         T,

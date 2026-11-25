@@ -89,6 +89,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `W0901` | warning | veld-compiler | `==` or `!=` on `float` |
 | `W0902` | warning | veld-compiler | Nested comprehension over a list without `@length(max: n)` |
 | `W0903` | warning | veld-compiler | A rule that reads no field |
+| `W0904` | warning | generators | A target with request validation turned off reaches rules, which it will not enforce |
 | `L0001` | lint | veld-tools | `unused-model`: declaration is never used by any endpoint, model or constant |
 | `L0002` | lint | veld-tools | `empty-service`: service has no endpoints |
 | `L0003` | lint | veld-tools | `empty-model`: model has no fields |
