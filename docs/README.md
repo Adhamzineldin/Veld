@@ -2,12 +2,12 @@
 
 ## Start here
 - [`README.md`](../README.md): what Veld is, install, a 60-second tour, targets, commands.
-- [`examples/`](../examples): `hello`, `microservices` and `library-package`, with committed generated output.
+- [`examples/`](../examples): `hello`, `bookings` (business rules), `microservices` and `library-package`, with committed generated output.
 - [`CHANGELOG.md`](../CHANGELOG.md): what changed in 2.0.0-beta.1, with the breaking changes.
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md): workspace layout, commands, the definition of done, the commit convention.
 
 ## Guides
-- [Getting started](guides/getting-started.md), [generated output](guides/generated-output.md), [microservices](guides/microservices.md), [CI](guides/ci.md), [testing with examples](guides/testing.md)
+- [Getting started](guides/getting-started.md), [generated output](guides/generated-output.md), [microservices](guides/microservices.md), [CI](guides/ci.md), [testing with examples](guides/testing.md), [business rules](guides/rules.md)
 - [Developer guide](DEVELOPER_GUIDE.md): the compiler, generators and tests, for contributors
 - [Writing an emitter](emitter-guide.md): built-in Rust emitters and plugins, and the tests they need.
 - [`distribution/`](../distribution): how the npm, pip, Homebrew, apt/rpm, Chocolatey and Scoop packages and the release workflow fit together.

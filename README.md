@@ -111,8 +111,8 @@ Prelude errors (`NotFound`, `Unauthorized`, `ValidationError`, ...) and `Page<T>
 declaration. Veld validates requests on the server and in the client, and maps errors to RFC 9457
 `application/problem+json`.
 
-More complete projects are in [`examples/`](examples): `hello`, `microservices` and
-`library-package`. Each has hand-written servers and frontends that import the generated code, and
+More complete projects are in [`examples/`](examples): `hello`, `bookings` (business rules),
+`microservices` and `library-package`. Each has hand-written servers and frontends that import the generated code, and
 end-to-end tests run them (the generated output is committed and checked to be up to date).
 
 ## Using it in your code
@@ -329,5 +329,7 @@ manifest. Files that Veld did not write are never touched.
 ## Documentation
 
 - [`docs/`](docs/README.md): index of guides and specs
+- [`docs/guides/rules.md`](docs/guides/rules.md): business rules in the contract, with the [`bookings` example](examples/bookings)
+- [`docs/guides/testing.md`](docs/guides/testing.md): `example` blocks and `veld test`
 - [`docs/emitter-guide.md`](docs/emitter-guide.md): writing an emitter
 - [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CHANGELOG.md`](CHANGELOG.md), [`CLAUDE.md`](CLAUDE.md)
