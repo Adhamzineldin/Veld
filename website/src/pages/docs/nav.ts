@@ -27,6 +27,7 @@ export const nav: NavGroup[] = [
       { id: 'lang-errors', label: 'Errors' },
       { id: 'lang-services', label: 'Services and endpoints' },
       { id: 'lang-streaming', label: 'Streaming' },
+      { id: 'lang-rules', label: 'Rules and states' },
       { id: 'lang-imports', label: 'Imports and packages' },
       { id: 'lang-annotations', label: 'Annotations and constraints' },
       { id: 'lang-prelude', label: 'Prelude errors' },
@@ -51,6 +52,7 @@ export const nav: NavGroup[] = [
     items: [
       { id: 'using', label: 'Overview' },
       { id: 'using-server', label: 'The server' },
+      { id: 'using-rules', label: 'Handlers with rules' },
       { id: 'using-adapters', label: 'Server adapters' },
       { id: 'using-client', label: 'The TypeScript client' },
       { id: 'using-react', label: 'React hooks' },

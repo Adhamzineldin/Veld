@@ -201,6 +201,7 @@ service Accounts at "/api/accounts" {
           <li><strong>Success</strong>: at most one, status 2xx. The default is <code>201</code> for <code>post</code> and <code>200</code> otherwise. With no <code>-&gt;</code> or a bare status (<code>-&gt; 204</code>) there is no body, and the default is <code>204</code>.</li>
           <li><strong>Errors</strong>: each is an <code>error</code> declaration. The status is the one written at the use site (<code>409 OutOfStock</code>), else the error's default, else <code>E0508</code>.</li>
           <li><strong>Implicit errors</strong>: every endpoint with parameters declares <code>| ValidationError</code> (422), every endpoint with auth other than <code>none</code> declares <code>| Unauthorized</code> (401), and every endpoint declares <code>| Internal</code> (500), unless you listed them. Every response the server can produce has a declared signature.</li>
+          <li><strong>Implicit errors from rules</strong>: an endpoint with a required <code>fact</code> declares <code>| NotFound</code> (404), one with an <code>allow</code> declares <code>| Forbidden</code> (403) and one with a <code>transition</code> declares <code>| InvalidTransition</code> (409). See <a href="#rules">Business rules</a>.</li>
           <li>Endpoint names are unique per service (<code>E0509</code>). Method plus path is unique per package, with parameter names erased (<code>E0510</code>).</li>
         </List>
       </Section>
@@ -223,6 +224,47 @@ service Accounts at "/api/accounts" {
           Streaming goes through the same pipeline as every other endpoint: routing, auth, middleware,
           validation and declared-error mapping. See <a href="#using-streaming">Using generated code</a> for
           the generated API and the wire format.
+        </P>
+      </Section>
+
+      <Section id="lang-rules" title="Rules, states, policies and examples">
+        <P>
+          A contract can also state business rules. The words below are <strong>contextual</strong>: each is a
+          keyword only where the grammar expects it, so a field, a parameter or an endpoint may still be called{' '}
+          <code>rule</code> or <code>message</code>, and the reserved words above do not change. Each form is
+          explained on its own page under <a href="#rules">Business rules</a>.
+        </P>
+        <Table
+          head={['Where', 'Form', 'Page']}
+          rows={[
+            ['In a model or an error', <><code>rule name: expr</code>, then an optional <code>message "text"</code></>, <a href="#rules-invariants">Invariants</a>],
+            ['In an endpoint block, after the response', <><code>fact</code>, <code>require ... else Error</code>, <code>ensure</code>, <code>allow</code>, <code>transition</code></>, <a href="#rules-endpoint">Endpoint rules</a>],
+            ['In an enum', <><code>flow a -&gt; b</code> and <code>final a, b</code></>, <a href="#rules-states">State machines</a>],
+            ['At the top level', <><code>principal Model</code> and <code>policy Name(params) {'{ permit when ... forbid when ... }'}</code></>, <a href="#rules-policies">Policies</a>],
+            ['At the top level', <><code>example "name" {'{ given ... call -> outcome }'}</code></>, <a href="#rules-testing">Examples and veld test</a>],
+          ]}
+        />
+        <CodeBlock title="One of each" lang="veld">{`model NewBooking {
+  guests: int @min(1)
+  start: datetime
+  end: datetime
+
+  rule endAfterStart: end > start
+    message "The stay must end after it starts"
+}
+
+enum Status {
+  pending, paid, cancelled,
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}`}</CodeBlock>
+        <P>
+          An endpoint block is in braces after the response:{' '}
+          <code>post "/{'{id}'}/pay" payBooking(id: uuid, body: Payment) -&gt; 200 Booking {'{ ... }'}</code>. Rule
+          expressions have their own small grammar: operators, <code>has</code>, <code>len</code>, <code>days</code>,{' '}
+          <code>all</code>, <code>sum</code> and a few more. The diagnostics are <code>E09xx</code>, <code>W09xx</code> and the lint{' '}
+          <code>L0014</code>; see <a href="#diagnostics">Diagnostics</a>.
         </P>
       </Section>
 
@@ -283,7 +325,8 @@ error Conflict 409        { message: string }
 error ValidationError 422 { issues: ValidationIssue[] }
 error TooManyRequests 429 { retryAfter?: int }
 error Internal 500        { message?: string }
-model ValidationIssue     { path: string, code: string, message: string }`}</CodeBlock>
+model ValidationIssue     { path: string, code: string, message: string }
+error InvalidTransition 409 { field: string, from: string, to: string }`}</CodeBlock>
         <Info>
           Prelude errors belong to the reserved package <code>veld</code>, but their runtime identity still
           includes the service and operation that raised them. A <code>NotFound</code> from{' '}

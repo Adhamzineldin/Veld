@@ -93,9 +93,9 @@ url = "https://registry.example.com"
       <Table
         head={['Emitter', 'Role', 'framework values (versions)', 'Options']}
         rows={[
-          [c('node'), 'server', <>{c('express')}, {c('fastify')}, {c('hono')}, {c('node-http')} (unversioned), {c('nest')} ({c('"10"')})</>, <><code>typescript</code>, <code>framework-version</code>, <code>package-name</code></>],
+          [c('node'), 'server', <>{c('express')}, {c('fastify')}, {c('hono')}, {c('node-http')} (unversioned), {c('nest')} ({c('"10"')})</>, <><code>typescript</code>, <code>framework-version</code>, <code>package-name</code>, <code>testing</code></>],
           [c('typescript'), 'client', <>none (plain client), {c('react')} ({c('"18"')}), {c('vue')} ({c('"3"')})</>, <><code>typescript</code>, <code>framework-version</code>, <code>package-name</code></>],
-          [c('java'), 'server', <>{c('jdk')} (unversioned), {c('spring')} ({c('"3"')})</>, <><code>package</code>, <code>java</code>, <code>framework-version</code></>],
+          [c('java'), 'server', <>{c('jdk')} (unversioned), {c('spring')} ({c('"3"')})</>, <><code>package</code>, <code>java</code>, <code>framework-version</code>, <code>testing</code></>],
           [c('java'), 'client', 'none', <><code>package</code>, <code>java</code></>],
         ]}
       />
@@ -108,6 +108,7 @@ url = "https://registry.example.com"
           [c('package'), 'java', 'a valid Java package name', <code>dev.veld.generated.&lt;package&gt;</code>],
           [c('package-name'), 'node, typescript', <>the npm package name</>, <code>@veld/&lt;target name&gt;</code>],
           [c('validate'), 'node, typescript, java', <><code>true</code>, <code>false</code> (skip run-time request validation, keep the types)</>, <code>true</code>],
+          [c('testing'), 'node, java, rust (servers)', <><code>true</code> also writes a test handler for each service with endpoint rules, for <code>veld test --live</code>. It must never be mounted in production (see <a href="#rules-testing">Examples and veld test</a>)</>, <code>false</code>],
           [c('query-options'), 'typescript', <><code>true</code> writes <code>queries.ts</code>: query keys and query options as plain objects, no dependency</>, <code>false</code>],
         ]}
       />

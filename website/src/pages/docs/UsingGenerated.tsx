@@ -76,6 +76,58 @@ interface OrdersHooks {
   onError?: (err: unknown, ctx: RequestContext) => void;
   validateResponses?: boolean; // default false; true turns an invalid response into a 500
 }`}</CodeBlock>
+        <Sub id="using-rules">Handlers with rules</Sub>
+        <P>
+          When a service has <a href="#rules-endpoint">endpoint rules</a>, the generated code adds three things to what you
+          implement. The facts an endpoint loads are handed to your handler next to its parameters. The state
+          change of a <code>transition</code> is handed over as data. And the handler options gain the loaders, the
+          output mode and the violation hook. This is the generated code for the bookings contract (
+          <code>createBooking</code> has the fact <code>room</code>, <code>payBooking</code> has the fact <code>booking</code> and a
+          transition).
+        </P>
+        <CodeBlock title="Generated server/bookings.ts (excerpt)" lang="ts">{`export interface PayBookingRequest {
+  id: string;
+  body: Payment;
+}
+
+/** The facts the loaders found, handed to the handler with the parameters. */
+export interface PayBookingFacts {
+  booking: Booking;
+}
+
+export interface BookingsService<Ctx = veld.RequestContext> {
+  createBooking(req: CreateBookingRequest & CreateBookingFacts, ctx: Ctx): Promise<Booking>;
+  payBooking(req: PayBookingRequest & PayBookingFacts & PayBookingTransition, ctx: Ctx): Promise<Booking>;
+}
+
+/** One loader per fact of \`Bookings\`. A loader resolves to \`null\` or \`undefined\` when it finds nothing. */
+export interface BookingsFactLoaders {
+  booking(key: string, ctx: veld.RequestContext): Promise<Booking | null | undefined>;
+  room(key: string, ctx: veld.RequestContext): Promise<Room | null | undefined>;
+}
+
+export interface BookingsHooks {
+  facts: BookingsFactLoaders;
+  clock?: (ctx: veld.RequestContext) => Date;
+  auth: { bearer: (token: string, ctx: veld.RequestContext) => Promise<User | null> };
+  onError?: (err: unknown, ctx: veld.RequestContext) => void;
+  validateResponses?: boolean;
+  rules?: { output?: veld.RuleOutputMode };               // 'strict' (default), 'audit' or 'off'
+  onRuleViolation?: (event: veld.RuleViolationEvent) => void;
+}`}</CodeBlock>
+        <List>
+          <li><strong>Facts.</strong> <code>facts</code> is required by the type system when the service has facts. The handler gets the loaded value, so it does not load it again. A fact that is not found is a <code>404</code> before the handler runs.</li>
+          <li><strong>The principal.</strong> The auth hook returns the generated type of the contract's <code>principal</code> (<code>User</code> here), or <code>null</code> for a <code>401</code>. A handler reads it as <code>ctx.principal</code>, typed <code>unknown</code>, so narrow it once: <code>ctx.principal as User</code>.</li>
+          <li><strong>The transition.</strong> <code>transition</code> is <code>{"{ field, from, to }"}</code>, typed with the enum. Write the change only while the row still holds <code>from</code>, and throw <code>InvalidTransition</code> if it does not. See <a href="#rules-states">State machines</a>.</li>
+          <li><strong>The clock.</strong> <code>now</code> in a rule is read once per request from <code>clock</code>. The default is the system clock.</li>
+          <li><strong>The hooks.</strong> <code>rules.output</code> and <code>onRuleViolation</code> are described under <a href="#rules-output">Output mode and hook</a>.</li>
+        </List>
+        <P>
+          With <code>testing = true</code> on the target (<a href="#config">veld.toml</a>), a second file{' '}
+          <code>server/&lt;service&gt;-test-handler.ts</code> exports <code>create&lt;Service&gt;TestHandler</code>, which
+          <code>veld test --live</code> talks to. It is never exported from <code>index.ts</code> and must never be mounted in
+          production. See <a href="#rules-testing">Examples and veld test</a>.
+        </P>
       </Section>
 
       <Section id="using-adapters" title="Server adapters">
