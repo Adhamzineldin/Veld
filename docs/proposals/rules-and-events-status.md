@@ -51,26 +51,26 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [t] Java: check functions, helpers, client and server (JDK and Spring); 103 of 103 vectors that apply; HTTP round trip
 - [t] Rust: check functions (the reference evaluator's own helper files, embedded), client and server; 101 of 101 vectors that apply; HTTP round trip
 - [t] Vector runner per target, and the reference cross-check that compiles every vector contract
-- [~] Toolchain round trip: each target passes its own; one shared contract and a test that the three servers answer with the same problem document are still to do
-- [~] Invariants on SSE and WebSocket items: TypeScript and Node in progress; Java and Rust to do
-- [~] Invariants of `error` declarations on encode: TypeScript in progress; Rust to do (Java has it)
-- [ ] `validate = false`: the one-time report and `W0904`, the same in all three
-- [ ] `in` over lists of dates and times: shared vectors (found by the Java work)
+- [~] Toolchain round trip: each target passes its own; a golden 422 answer is in `tests/wire/rules` and the Node server is held to it; Java and Rust to be held to the same file
+- [~] Invariants on SSE and WebSocket items: TypeScript and Node done (`[i]`); Java and Rust to do
+- [~] Invariants of `error` declarations on encode: TypeScript and Java done; Rust to do
+- [~] `validate = false`: the one-time report and `W0904`: TypeScript and Node done, with a warning channel for generators; Java and Rust to do
+- [t] `in` over lists of dates and times: shared vectors in `tests/rules/core/calendar.*`, passing in every target and the reference
 - [ ] Java helper names aligned with the TypeScript reference list
-- [~] React and Vue per-field helpers on top of `.partial(draft)`
+- [i] React and Vue form helpers (`useFormRules`) on top of `.partial(draft)`
 - [t] Full verification of the merged branch: draft PR #8, CI green on Linux, macOS and Windows (the local run was stopped for lack of memory, so CI is the check)
 - [t] OpenAPI export does not break on rules (full `x-veld-rules` is Phase 5)
 - [i] Target specs updated (`spec/targets/*.md`); `spec/ir.md`, `spec/language.md` cross-references still to do
 
 ## Phase 2: endpoint rules, examples, `veld test`
-- [~] `fact`, `require ... else`, `ensure`, `old()`, `now`: IR types and the reference evaluator's pipeline are in (`[i]`); the compiler front-end is in progress; generators to do
+- [~] `fact`, `require ... else`, `ensure`, `old()`, `now`: IR, compiler (19 conformance cases) and the reference evaluator's pipeline are in (`[i]`); TypeScript and Node generators in progress; Java and Rust to do
 - [ ] Fact-loader interfaces and the pipeline in Node, Java and Rust
 - [ ] Output mode and sampling in the runtime config
-- [ ] Stale-client safety: `Veld-Rules` digest, `onContractMismatch`
-- [~] `example` blocks: IR, filling in and running examples in the reference evaluator are in (`[i]`); the compiler front-end is in progress
-- [i] Endpoint rule vectors: `tests/rules/endpoints/bookings.veld.pending`, 20 examples; renamed to `.veld` when the compiler parses them
-- [ ] `veld test` offline (reference evaluator, given facts)
-- [ ] `veld test --live` with server test mode
+- [~] Stale-client safety: the digest is computed by the compiler; TypeScript and Node in progress
+- [i] `example` blocks: IR, compiler, and filling in and running examples in the reference evaluator
+- [t] Endpoint rule vectors: `tests/rules/endpoints/bookings.veld`, 20 examples, all passing through the compiler and the reference evaluator
+- [~] `veld test` offline, and the shared runner
+- [~] `veld test --live` with the test handler (TypeScript and Node first), and `--dry-run`
 - [ ] Boundary cases generated from rules
 - [ ] `veld test --live --fuzz`
 
