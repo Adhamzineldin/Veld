@@ -501,3 +501,134 @@ fn a_value_that_needs_escaping_is_written_so_that_it_compiles() {
     let with = compile_text(&format!("{text}\n{block}\n"));
     assert_eq!(with.examples.len(), 1);
 }
+
+#[test]
+fn a_service_without_endpoint_rules_has_no_test_handler_and_is_skipped() {
+    let ir = compile_text(MEASURES);
+    let fake = AlwaysPass::start();
+    let live = Live::connect(&fake.url(), true).unwrap();
+    let report = fuzz(&ir, &live, &FuzzOptions { count: 20, seed: 1 }).unwrap();
+    assert!(report.passed());
+    let e = &report.endpoints[0];
+    assert_eq!(e.sent, 0);
+    assert!(e.skipped.as_ref().unwrap().contains("no test handler"));
+    assert_eq!(report.skipped().len(), 1);
+}
+
+#[test]
+fn nothing_empty_goes_in_the_path_the_query_string_or_a_header() {
+    let ir = compile_text(
+        "model Filter { tags: string[], word: string, note?: string }\n\
+         service S at \"/s\" {\n\
+           get \"/{id}\" find(id: string, query: Filter, @header(\"X-Trace\") trace: string, \
+             @query names: string[]) -> Filter\n\
+         }\n",
+    );
+    let (s, e) = endpoint(&ir, "find");
+    for req in generate(&ir, s, e, 8, 300).unwrap().requests {
+        assert!(!req.params["id"].as_str().unwrap().is_empty());
+        assert!(!req.params["trace"].as_str().unwrap().is_empty());
+        assert!(!req.params["names"].as_array().unwrap().is_empty());
+        assert!(!req.params["query"]["tags"].as_array().unwrap().is_empty());
+        assert!(!req.params["query"]["word"].as_str().unwrap().is_empty());
+        if let Some(note) = req.params["query"].get("note") {
+            assert!(!note.as_str().unwrap().is_empty());
+        }
+    }
+}
+
+// --- every kind of boundary ----------------------------------------------------------------------
+
+const MEASURES: &str = "model Item {\n\
+  tag: string\n\
+  notes: string[]\n\
+  price: decimal\n\
+  ratio: float\n\
+  day: date\n\
+  due: date\n\
+  rule tagShort: len(tag) <= 5\n\
+  rule needNotes: len(notes) >= 2\n\
+  rule cheap: price < 99.50\n\
+  rule smallRatio: ratio <= 2.5\n\
+  rule nonNegative: ratio >= 0\n\
+  rule dueSoon: due - day <= days(7)\n\
+}\n\
+service Shop at \"/shop\" { post \"/\" make(body: Item) -> Item }\n";
+
+fn field<'a>(r: &'a veld_rules::Request, name: &str) -> &'a serde_json::Value {
+    &r.params["body"][name]
+}
+
+#[test]
+fn lengths_decimals_floats_and_dates_get_their_boundaries() {
+    let ir = compile_text(MEASURES);
+    let (s, e) = endpoint(&ir, "make");
+    let g = generate(&ir, s, e, 3, 300).unwrap();
+    let first = &g.requests[..g.boundaries];
+    let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
+    let tags: BTreeSet<usize> = first
+        .iter()
+        .map(|r| field(r, "tag").as_str().unwrap().len())
+        .collect();
+    let notes: BTreeSet<usize> = first
+        .iter()
+        .map(|r| field(r, "notes").as_array().unwrap().len())
+        .collect();
+    assert!([4, 5, 6].iter().all(|n| tags.contains(n)), "{tags:?}");
+    assert!([1, 2, 3].iter().all(|n| notes.contains(n)), "{notes:?}");
+    let prices: Vec<f64> = first
+        .iter()
+        .map(|r| field(r, "price").as_str().unwrap().parse().unwrap())
+        .collect();
+    for want in [99.49, 99.50, 99.51] {
+        assert!(
+            prices.iter().any(|p| close(*p, want)),
+            "{want} in {prices:?}"
+        );
+    }
+    let ratios: Vec<f64> = first
+        .iter()
+        .map(|r| field(r, "ratio").as_f64().unwrap())
+        .collect();
+    assert!(ratios.contains(&2.5));
+    assert!(ratios.contains(&2.5_f64.next_up()));
+    assert!(ratios.contains(&2.5_f64.next_down()));
+    assert!(ratios.contains(&0.0));
+    assert!(
+        ratios.contains(&0.0_f64.next_down()),
+        "a float just below zero"
+    );
+    let days: BTreeSet<i64> = first
+        .iter()
+        .map(|r| {
+            let at = |k: &str| {
+                veld_rules::helpers::instant::parse_date(field(r, k).as_str().unwrap()).unwrap()
+            };
+            at("due") - at("day")
+        })
+        .collect();
+    assert!([6, 7, 8].iter().all(|n| days.contains(n)), "{days:?}");
+}
+
+#[test]
+fn the_blocks_of_those_boundaries_compile_and_give_the_requests_back() {
+    let ir = compile_text(MEASURES);
+    let (s, e) = endpoint(&ir, "make");
+    let pipeline = Pipeline::new(&ir, s, "make").unwrap();
+    let requests = generate(&ir, s, e, 3, 120).unwrap().requests;
+    let mut blocks = Vec::new();
+    for (i, req) in requests.iter().enumerate() {
+        let outcome = pipeline.run(req).unwrap();
+        let block = render_example(&ir, s, e, req, &outcome, &format!("m {i}"));
+        blocks.push(block.unwrap_or_else(|| panic!("request {i} cannot be written: {req:?}")));
+    }
+    let with = compile_text(&format!("{MEASURES}\n{}\n", blocks.join("\n")));
+    for (i, req) in requests.iter().enumerate() {
+        let ex = with
+            .examples
+            .iter()
+            .find(|x| x.name == format!("m {i}"))
+            .unwrap();
+        assert_eq!(&fill_example(&with, ex).unwrap().request, req, "m {i}");
+    }
+}

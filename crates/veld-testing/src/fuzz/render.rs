@@ -2,8 +2,7 @@
 //! paste a failing request into the contract.
 //!
 //! Every value is written out, including the ones a filled-in example would supply, so that
-//! filling the block in gives back the request. The one exception is a `@readonly` field of a
-//! request body: the generator leaves it out (it is absent in a request), and the filler adds it.
+//! filling the block in gives back the request.
 
 use serde_json::Value as Json;
 use veld_ir::{Decl, DeclKind, Endpoint, Field, Ir, Scalar, Service, Type};
@@ -164,11 +163,26 @@ fn scalar(s: Scalar, j: &Json) -> Option<String> {
     match (s, j) {
         (Scalar::Json, _) => json_text(j),
         (Scalar::Bool, Json::Bool(b)) => Some(b.to_string()),
-        (Scalar::Int | Scalar::Float, Json::Number(n)) => Some(n.to_string()),
+        (Scalar::Float, Json::Number(n)) => Some(plain_float(n)),
+        (Scalar::Int, Json::Number(n)) => Some(n.to_string()),
         (Scalar::Long, Json::String(t)) => Some(t.clone()),
         (_, Json::String(t)) => quote(t),
         _ => None,
     }
+}
+
+/// A float without an exponent, which the lexer of an example does not read: the exact decimal
+/// expansion of the double, so it reads back as the same number (`5e-324` is `0.000...5`).
+fn plain_float(n: &serde_json::Number) -> String {
+    let short = n.to_string();
+    let Some(x) = n.as_f64().filter(|_| short.contains(['e', 'E'])) else {
+        return short;
+    };
+    let long = format!("{x:.350}");
+    let trimmed = long.trim_end_matches('0');
+    trimmed
+        .strip_suffix('.')
+        .map_or_else(|| trimmed.to_owned(), |whole| format!("{whole}.0"))
 }
 
 fn json_text(j: &Json) -> Option<String> {

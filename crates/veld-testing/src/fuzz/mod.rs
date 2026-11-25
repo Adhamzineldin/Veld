@@ -106,6 +106,27 @@ pub struct EndpointReport {
     pub mismatch: Option<FuzzMismatch>,
 }
 
+impl EndpointReport {
+    fn new(service: &Service, ep: &Endpoint) -> EndpointReport {
+        EndpointReport {
+            service: service.name.clone(),
+            endpoint: ep.name.clone(),
+            sent: 0,
+            boundaries: 0,
+            outcomes: BTreeMap::new(),
+            skipped: None,
+            mismatch: None,
+        }
+    }
+
+    fn skipped(service: &Service, ep: &Endpoint, why: &str) -> EndpointReport {
+        EndpointReport {
+            skipped: Some(why.to_owned()),
+            ..EndpointReport::new(service, ep)
+        }
+    }
+}
+
 /// The result of a fuzz run.
 #[derive(Debug, Clone)]
 pub struct FuzzReport {
@@ -138,8 +159,19 @@ impl FuzzReport {
 pub fn fuzz(ir: &Ir, live: &Live, opts: &FuzzOptions) -> Result<FuzzReport, FuzzError> {
     let mut endpoints = Vec::new();
     for service in &ir.services {
+        // A server target generates a test handler only for a service with endpoint rules
+        // (`spec/rules.md` section 12.4); another service has nothing to answer a dry run.
+        let handled = service.endpoints.iter().any(|e| !e.rules.is_empty());
         for ep in &service.endpoints {
-            endpoints.push(fuzz_endpoint(ir, live, service, ep, opts)?);
+            if handled {
+                endpoints.push(fuzz_endpoint(ir, live, service, ep, opts)?);
+            } else {
+                endpoints.push(EndpointReport::skipped(
+                    service,
+                    ep,
+                    "the service has no endpoint rules, so it has no test handler",
+                ));
+            }
         }
     }
     Ok(FuzzReport {
@@ -167,15 +199,7 @@ fn fuzz_endpoint(
         endpoint: name.clone(),
         source,
     };
-    let mut report = EndpointReport {
-        service: service.name.clone(),
-        endpoint: ep.name.clone(),
-        sent: 0,
-        boundaries: 0,
-        outcomes: BTreeMap::new(),
-        skipped: None,
-        mismatch: None,
-    };
+    let mut report = EndpointReport::new(service, ep);
     let generated = match generate(ir, service, ep, opts.seed, opts.count) {
         Ok(g) => g,
         Err(GenerateError::Skipped(why)) => {
@@ -339,12 +363,18 @@ pub fn generate(
             if out.requests.len() >= count {
                 break;
             }
-            let mut req = baseline(&mut g, ep, Facts::Present)?;
-            let done = rules::prepare(&mut g, ep, &mut req, &task).is_some()
-                && settle(&mut g, ep, &mut req, &pipeline, &index)?
-                && rules::apply(&mut g, ep, &mut req, &task, delta).is_some();
-            if done {
-                out.push(req);
+            // A baseline that cannot be made to pass (the generator may not know how to satisfy
+            // a rule) is tried again a few times with other values.
+            for _ in 0..BASELINES {
+                let mut req = baseline(&mut g, ep, Facts::Present)?;
+                let ready = rules::prepare(&mut g, ep, &mut req, &task).is_some()
+                    && settle(&mut g, ep, &mut req, &pipeline, &index)?;
+                if ready {
+                    if rules::apply(&mut g, ep, &mut req, &task, delta).is_some() {
+                        out.push(req);
+                    }
+                    break;
+                }
             }
         }
     }
@@ -420,7 +450,8 @@ fn baseline(g: &mut Gen<'_>, ep: &Endpoint, facts: Facts) -> Result<Request, Gen
     Ok(req)
 }
 
-const ROUNDS: usize = 8;
+/// How many baselines are tried for one boundary request.
+const BASELINES: usize = 4;
 
 /// Runs the reference pipeline and repairs the rules it reports, until the request passes or
 /// nothing more can be repaired. True when the request passes.
@@ -431,7 +462,8 @@ fn settle(
     pipeline: &Pipeline<'_>,
     index: &RuleIndex<'_>,
 ) -> Result<bool, GenerateError> {
-    for _ in 0..ROUNDS {
+    // Each round repairs the rules the pipeline reports; more rules need more rounds.
+    for _ in 0..(8 + index.len().min(56)) {
         match pipeline.run(req).map_err(GenerateError::Rejected)? {
             Outcome::Passes => return Ok(true),
             Outcome::Error(a) => {

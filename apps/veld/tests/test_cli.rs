@@ -256,13 +256,27 @@ impl Drop for AlwaysPass {
 }
 
 /// Runs `veld test --live <fake> --dry-run <extra>` and returns stdout; the run must exit 1.
+///
+/// Only one example runs, `a valid booking passes every check`, and the fake passes it in a dry
+/// run: the exit code 1 can only come from the fuzz.
 fn fuzz_stdout(tmp: &Path, extra: &[&str]) -> String {
     let fake = AlwaysPass::start();
     let url = fake.url();
-    let mut args = vec!["test", "--live", url.as_str(), "--dry-run"];
+    let filter = "a valid booking passes every check";
+    let mut args = vec![
+        "test",
+        "--live",
+        url.as_str(),
+        "--dry-run",
+        "--filter",
+        filter,
+    ];
     args.extend_from_slice(extra);
     let out = veld(tmp).args(&args).assert().code(1).get_output().clone();
-    String::from_utf8(out.stdout).unwrap()
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("1 passed"), "the example passes: {stdout}");
+    assert!(!stdout.contains("FAIL a "), "no example fails: {stdout}");
+    stdout
 }
 
 /// What a run prints, without the line that names the port of the fake.

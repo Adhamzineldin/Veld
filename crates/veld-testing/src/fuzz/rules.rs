@@ -22,7 +22,7 @@ use veld_rules::helpers::decimal::Decimal;
 use veld_rules::helpers::instant::MS_PER_DAY;
 use veld_rules::{Env, Request, Value, Violation, eval, format_date, format_datetime};
 
-use super::loc::{Loc, Step, get, slot};
+use super::loc::{Loc, Step, get, is_body, slot};
 use super::values::{Gen, needs_example};
 
 /// Where the `self` of a rule is.
@@ -589,6 +589,10 @@ fn set_len(
     let want = whole(&shift(&num_of(other)?, delta, Scalar::Int)?)?;
     let n = usize::try_from(want).ok()?;
     let loc = loc_of(p, &task.scope)?;
+    let flat = !loc.fact && ep.params.iter().any(|q| q.name == loc.root && !is_body(q));
+    if n == 0 && flat {
+        return None;
+    }
     let s = slot(g, ep, req, &loc)?;
     let (ty, c) = (s.ty.clone(), s.constraints.clone());
     if c.min_len.is_some_and(|m| (n as u64) < m) || c.max_len.is_some_and(|m| n as u64 > m) {

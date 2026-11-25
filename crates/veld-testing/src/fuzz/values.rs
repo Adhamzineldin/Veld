@@ -23,6 +23,9 @@ pub(crate) struct Gen<'a> {
     pub rng: Rng,
     /// The default clock, in milliseconds: datetimes are drawn around it.
     pub clock: i64,
+    /// True while a value is made for the path, the query string or a header: no string, list or
+    /// map is empty there, because an empty value cannot be told from a missing one.
+    pub flat: bool,
     depth: usize,
 }
 
@@ -32,6 +35,7 @@ impl<'a> Gen<'a> {
             ir,
             rng: Rng::new(seed),
             clock: parse_datetime(DEFAULT_CLOCK).unwrap_or(0),
+            flat: false,
             depth: 0,
         }
     }
@@ -40,19 +44,19 @@ impl<'a> Gen<'a> {
         self.ir.decls.get(id.index())
     }
 
-    /// A value of type `ty` under the constraints `c`. In a request body (`request`) a
-    /// `@readonly` field is left out, as section 5.2 of `spec/rules.md` says it is absent there.
-    pub fn value(&mut self, ty: &Type, c: &Constraints, request: bool) -> Result<Json, Skip> {
+    /// A value of type `ty` under the constraints `c`. A `@readonly` field is generated too: the
+    /// filler of an `example` adds a required one, and the live examples send it.
+    pub fn value(&mut self, ty: &Type, c: &Constraints) -> Result<Json, Skip> {
         if self.depth >= MAX_DEPTH {
             return Err(Skip("the type nests too deeply to generate".to_owned()));
         }
         self.depth += 1;
         let out = match ty {
             Type::Scalar(s) => self.scalar(*s, c),
-            Type::List(t) => self.list(t, c, request),
-            Type::Map(t) => self.map(t, c, request),
-            Type::Page(t) => self.page(t, request),
-            Type::Decl(id) => self.of_decl(*id, request),
+            Type::List(t) => self.list(t, c),
+            Type::Map(t) => self.map(t, c),
+            Type::Page(t) => self.page(t),
+            Type::Decl(id) => self.of_decl(*id),
         };
         self.depth -= 1;
         out
@@ -60,9 +64,9 @@ impl<'a> Gen<'a> {
 
     /// A field's value when the field is present: its `@example` or default (sometimes), or a
     /// random value.
-    pub fn field_present(&mut self, f: &Field, request: bool) -> Result<Json, Skip> {
+    pub fn field_present(&mut self, f: &Field) -> Result<Json, Skip> {
         let preset = preset(f);
-        let random = self.value(&f.ty, &f.constraints, request);
+        let random = self.value(&f.ty, &f.constraints);
         match (preset, random) {
             (Some(p), Ok(v)) => Ok(if self.rng.chance(60) { p } else { v }),
             (Some(p), Err(_)) => Ok(p),
@@ -72,19 +76,19 @@ impl<'a> Gen<'a> {
     }
 
     /// `None` when the field is left out of the value.
-    fn field(&mut self, f: &Field, request: bool) -> Result<Option<Json>, Skip> {
+    fn field(&mut self, f: &Field) -> Result<Option<Json>, Skip> {
         // A field with `@example` or a default is never left out: an `example` block fills it in
         // again, so a request without it could not be written as one.
         if preset(f).is_some() {
-            return self.field_present(f, request).map(Some);
+            return self.field_present(f).map(Some);
         }
         if f.optional && (needs_example(&f.constraints) || !self.rng.chance(50)) {
             return Ok(None);
         }
-        self.field_present(f, request).map(Some)
+        self.field_present(f).map(Some)
     }
 
-    fn of_decl(&mut self, id: DeclId, request: bool) -> Result<Json, Skip> {
+    fn of_decl(&mut self, id: DeclId) -> Result<Json, Skip> {
         let decl = self
             .decl(id)
             .ok_or_else(|| Skip("a type refers to a missing declaration".to_owned()))?;
@@ -94,14 +98,14 @@ impl<'a> Gen<'a> {
                 v.map(|v| Json::String(v.wire.clone()))
                     .ok_or_else(|| Skip(format!("enum `{}` has no variant", decl.name)))
             }
-            DeclKind::Model(_) | DeclKind::Error(_) => self.model(decl, request),
+            DeclKind::Model(_) | DeclKind::Error(_) => self.model(decl),
             DeclKind::Union(u) => {
                 let arm = u.arms.get(self.rng.index(u.arms.len()));
                 let arm = arm.ok_or_else(|| Skip(format!("union `{}` has no arm", decl.name)))?;
                 let arm_decl = self
                     .decl(arm.decl)
                     .ok_or_else(|| Skip("a union arm is missing".to_owned()))?;
-                let mut obj = self.model(arm_decl, request)?;
+                let mut obj = self.model(arm_decl)?;
                 if let Json::Object(map) = &mut obj {
                     map.insert(u.discriminator.clone(), Json::String(arm.label.clone()));
                 }
@@ -111,13 +115,10 @@ impl<'a> Gen<'a> {
         }
     }
 
-    fn model(&mut self, decl: &Decl, request: bool) -> Result<Json, Skip> {
+    fn model(&mut self, decl: &Decl) -> Result<Json, Skip> {
         let mut out = Map::new();
         for f in decl.fields() {
-            if request && f.readonly {
-                continue;
-            }
-            if let Some(v) = self.field(f, request)? {
+            if let Some(v) = self.field(f)? {
                 out.insert(f.wire.clone(), v);
             }
         }
@@ -126,35 +127,36 @@ impl<'a> Gen<'a> {
 
     /// A length in the bounds of `@length`, small unless the bounds ask for more.
     pub fn length(&mut self, c: &Constraints, spread: u64) -> usize {
-        let lo = c.min_len.unwrap_or(0).min(64);
+        let floor = u64::from(self.flat);
+        let lo = c.min_len.unwrap_or(0).max(floor).min(64);
         let hi = c.max_len.unwrap_or(lo + spread).min(lo + spread).max(lo);
         usize::try_from(lo + self.rng.below(hi - lo + 1)).unwrap_or(0)
     }
 
-    fn list(&mut self, t: &Type, c: &Constraints, request: bool) -> Result<Json, Skip> {
+    fn list(&mut self, t: &Type, c: &Constraints) -> Result<Json, Skip> {
         let n = self.length(c, 3);
         let items: Result<Vec<Json>, Skip> = (0..n)
-            .map(|_| self.value(t, &Constraints::default(), request))
+            .map(|_| self.value(t, &Constraints::default()))
             .collect();
         items.map(Json::Array)
     }
 
-    fn map(&mut self, t: &Type, c: &Constraints, request: bool) -> Result<Json, Skip> {
+    fn map(&mut self, t: &Type, c: &Constraints) -> Result<Json, Skip> {
         let n = self.length(c, 3);
         let mut out = Map::new();
         for i in 0..n {
             out.insert(
                 format!("k{}", i + 1),
-                self.value(t, &Constraints::default(), request)?,
+                self.value(t, &Constraints::default())?,
             );
         }
         Ok(Json::Object(out))
     }
 
-    fn page(&mut self, t: &Type, request: bool) -> Result<Json, Skip> {
+    fn page(&mut self, t: &Type) -> Result<Json, Skip> {
         let n = self.length(&Constraints::default(), 2);
         let items: Result<Vec<Json>, Skip> = (0..n)
-            .map(|_| self.value(t, &Constraints::default(), request))
+            .map(|_| self.value(t, &Constraints::default()))
             .collect();
         Ok(json!({ "items": items?, "total": n.to_string(), "page": 1, "size": n }))
     }
@@ -176,13 +178,13 @@ impl<'a> Gen<'a> {
                 Ok(Json::String(base64(&bytes)))
             }
             Type::List(t) => (0..n)
-                .map(|_| self.value(t, &none, true))
+                .map(|_| self.value(t, &none))
                 .collect::<Result<Vec<Json>, Skip>>()
                 .map(Json::Array),
             Type::Map(t) => {
                 let mut out = Map::new();
                 for i in 0..n {
-                    out.insert(format!("k{}", i + 1), self.value(t, &none, true)?);
+                    out.insert(format!("k{}", i + 1), self.value(t, &none)?);
                 }
                 Ok(Json::Object(out))
             }
@@ -236,7 +238,7 @@ impl<'a> Gen<'a> {
     fn bounds(&self, c: &Constraints, floor: i64, ceil: i64) -> (i64, i64) {
         let lo = match (c.min, c.max) {
             (Some(m), _) => m.ceil() as i64,
-            (None, Some(m)) => m.floor() as i64 - 1000,
+            (None, Some(m)) => (m.floor() as i64).saturating_sub(1000),
             (None, None) => -50,
         };
         let lo = lo.clamp(floor, ceil);

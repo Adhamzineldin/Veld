@@ -1,7 +1,7 @@
 //! Places inside a request: a parameter or a fact, then fields and list items below it.
 
 use serde_json::Value as Json;
-use veld_ir::{Binding, Constraints, DeclKind, Endpoint, EndpointFact, Param, Scalar, Type};
+use veld_ir::{Binding, Constraints, DeclKind, Endpoint, EndpointFact, Param, Type};
 use veld_rules::Request;
 
 use super::values::{Gen, Skip};
@@ -71,19 +71,22 @@ pub(crate) fn get<'r>(req: &'r Request, loc: &Loc) -> Option<&'r Json> {
     Some(cur)
 }
 
-/// A value for a parameter. One that travels in the path, the query string or a header is never
-/// empty, because an empty value there is indistinguishable from a missing one.
+/// A value for a parameter. One that travels in the path, the query string or a header holds no
+/// empty string, list or map, because an empty value there cannot be told from a missing one.
 pub(crate) fn param_value(g: &mut Gen<'_>, p: &Param) -> Result<Json, Skip> {
-    let mut c = p.constraints.clone();
-    let flat = !matches!(p.binding, Binding::Body | Binding::QueryObject);
-    if flat && matches!(p.ty, Type::Scalar(Scalar::String) | Type::List(_)) {
-        c.min_len = Some(c.min_len.unwrap_or(0).max(1));
-    }
-    g.value(&p.ty, &c, true)
+    g.flat = !is_body(p);
+    let out = g.value(&p.ty, &p.constraints);
+    g.flat = false;
+    out
+}
+
+/// True for the parameter that is the request body.
+pub(crate) fn is_body(p: &Param) -> bool {
+    p.binding == Binding::Body
 }
 
 pub(crate) fn fact_value(g: &mut Gen<'_>, f: &EndpointFact) -> Result<Json, Skip> {
-    g.value(&f.ty, &Constraints::default(), false)
+    g.value(&f.ty, &Constraints::default())
 }
 
 /// A value inside a request, with its type and constraints.
@@ -116,7 +119,10 @@ pub(crate) fn slot<'r>(
         req.params.insert(p.name.clone(), v);
     }
     let json = req.params.get_mut(&p.name)?;
-    descend(g, p.ty.clone(), p.constraints.clone(), json, &loc.steps)
+    g.flat = !is_body(p);
+    let found = descend(g, p.ty.clone(), p.constraints.clone(), json, &loc.steps);
+    g.flat = false;
+    found
 }
 
 fn descend<'r>(
@@ -137,7 +143,7 @@ fn descend<'r>(
         (Step::Item(i), Type::List(inner)) => {
             let items = json.as_array_mut()?;
             if items.is_empty() {
-                items.push(g.value(inner, &Constraints::default(), true).ok()?);
+                items.push(g.value(inner, &Constraints::default()).ok()?);
             }
             let item = items.get_mut(*i)?;
             descend(g, (**inner).clone(), Constraints::default(), item, rest)
@@ -150,7 +156,7 @@ fn descend<'r>(
             let field = decl.fields().iter().find(|f| &f.wire == wire)?;
             let obj = json.as_object_mut()?;
             if !obj.contains_key(wire) {
-                obj.insert(wire.clone(), g.field_present(field, true).ok()?);
+                obj.insert(wire.clone(), g.field_present(field).ok()?);
             }
             let child = obj.get_mut(wire)?;
             descend(g, field.ty.clone(), field.constraints.clone(), child, rest)
