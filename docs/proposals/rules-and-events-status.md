@@ -88,21 +88,21 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [t] `veld test` offline, the shared runner (`crates/veld-testing`), `E0953` in `veld check`, and `docs/guides/testing.md`
 - [t] `veld test --live` and `--dry-run`: all 20 examples pass against the generated Node server, the JDK server, the Spring adapter and the Rust server
 - [ ] Boundary cases generated from rules
-- [ ] `veld test --live --fuzz`
+- [~] `veld test --live --fuzz`, with boundary requests first
 
 ## Phase 3: state machines
-- [~] `flow`, `final`, `transition`: IR, compiler (12 conformance cases) and reference evaluator implemented (`[i]`); all 14 hand-written examples pass in the evaluator (the file stays `transitions.veld.pending` until the generators support transitions); generators to do, together with policies
+- [~] `flow`, `final`, `transition`: IR, compiler and reference evaluator tested (`[t]`, CI green); all 14 hand-written examples pass in the evaluator; generators: Java in progress, TypeScript/Node and Rust next
 - [ ] `InvalidTransition`; the transition passed to the handler for a conditional write (a guard, not an atomic guarantee)
-- [ ] Client `nextStates()`
+- [~] Next-state and final-state helpers: in the reference evaluator; with the generators
 - [ ] `emits` (with E3)
 - [ ] State diagrams in docs and the playground
 
 ## Phase 4: policies
-- [~] `principal`, `policy`, `permit`, `forbid`, `allow`; implicit `Forbidden`: spec section 11 complete, 10 examples written (`policies.veld.pending`); IR, compiler and reference evaluator in progress; generators to do
-- [ ] Client `can<Operation>()` helpers
+- [~] `principal`, `policy`, `permit`, `forbid`, `allow`; implicit `Forbidden`: IR, compiler (13 conformance cases) and reference evaluator implemented (`[i]`); all 10 hand-written examples pass in the evaluator; generators: Java in progress, TypeScript/Node and Rust next
+- [~] Client `can<Endpoint>()` helpers and policy functions: with the generators
 - [ ] `@version` optimistic concurrency (`ETag`, `If-Match`)
 - [ ] `@idempotent` and the key store interface
-- [ ] Lint: every endpoint has auth or `@auth(none)`
+- [i] Lint `auth-required` (`L0014`; `L0005` was taken): every endpoint has auth or `@auth(none)`
 
 ## Phase 5: proof and lifecycle
 - [ ] `check --prove`: SMT-LIB encoding, external Z3 or cvc5, four results (proved, counterexample, unknown, unsupported), assumptions and solver version reported
