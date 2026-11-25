@@ -359,11 +359,7 @@ fn check_lints_and_the_levels_come_from_veld_toml() {
     let tmp = tempdir().unwrap();
     let dir = tmp.path();
     project(dir);
-    // The scaffold has no `@auth`, which `auth-required` reports: say the hello service is public
-    // so that the unused model is the one finding this test is about.
-    let hello =
-        read(dir, "contracts/hello.veld").replace("service Hello", "@auth(none)\nservice Hello");
-    fs::write(dir.join("contracts/hello.veld"), hello).unwrap();
+    // The scaffold says `@auth(none)`, so the unused model is the only finding.
     append(dir, "contracts/hello.veld", UNUSED);
     veld(dir)
         .arg("check")
