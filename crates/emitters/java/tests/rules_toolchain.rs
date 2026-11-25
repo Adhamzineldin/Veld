@@ -16,12 +16,9 @@ use veld_emit_java::util::type_name;
 use veld_ir::{DeclKind, Ir, PackageKind};
 use veld_rules::vectors::{Produced, compare_produced, load_cases};
 
-/// The shared vectors, and the Java-specific ones next to this test.
+/// The shared vectors. Every target runs the same files.
 fn vector_dirs() -> Vec<PathBuf> {
-    vec![
-        repo_root().join("tests/rules/core"),
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/vectors"),
-    ]
+    vec![repo_root().join("tests/rules/core")]
 }
 
 fn vector_files(ext: &str) -> Vec<PathBuf> {
