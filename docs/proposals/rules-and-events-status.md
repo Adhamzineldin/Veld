@@ -104,15 +104,18 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [i] `veld test --live` sends a service's examples and fuzz requests only to a test handler that names that service in its probe; the rest are skipped. A workspace with several services runs it once per handler
 
 ## Phase 3: state machines
-- [~] `flow`, `final`, `transition`: IR, compiler and reference evaluator tested (`[t]`, CI green); all 14 hand-written examples pass in the evaluator; generators: **Java done** (`[i]`: client, JDK server and Spring; the 14 examples pass on both adapters under the whole-error comparison), TypeScript/Node and Rust next
-- [~] `InvalidTransition`; the transition passed to the handler for a conditional write (a guard, not an atomic guarantee): in Java, as a typed `Transition<State>` argument after the facts, with the "guard, not guarantee" wording in the Javadoc
-- [~] Next-state and final-state helpers: in the reference evaluator and in Java (`nextStates()`, `isFinal()` on the enum, client and server)
+- [i] `flow`, `final`, `transition`: IR, compiler, reference evaluator and **all three generators** (Java client, JDK server and Spring; TypeScript client and Node server; Rust client and axum server). The 14 hand-written examples pass through the generated test handler of each, under the whole-error comparison. For Node, the behaviour over HTTP and the examples run on the `node-http` adapter only; the other adapters wrap the same handler, the typed auth hooks are asserted in the output of all five, and the Nest server is compiled, but none of the four was started for these two features
+- [i] `InvalidTransition`; the transition passed to the handler for a conditional write (a guard, not an atomic guarantee): a typed value after the facts in every target (`Transition<Status>` in Java and Rust, `veld.Transition<Status>` in TypeScript), with the "guard, not guarantee" wording in its doc comment
+- [i] Next-state and final-state helpers, client and server: `nextStates()` and `isFinal()` on the enum in Java, `Status.nextStates(state)` and `Status.isFinal(state)` in TypeScript, `next_states()` and `is_final()` in Rust
 - [ ] `emits` (with E3)
 - [ ] State diagrams in docs and the playground
 
 ## Phase 4: policies
-- [~] `principal`, `policy`, `permit`, `forbid`, `allow`; implicit `Forbidden`: IR, compiler (13 conformance cases) and reference evaluator implemented (`[i]`); all 10 hand-written examples pass in the evaluator; generators: **Java done** (`[i]`: typed principal from the auth hook, `allow` before the transition guard, `403` with the forbid's message; the 10 examples pass on both adapters), TypeScript/Node and Rust next
-- [~] Client `can<Endpoint>()` helpers and policy functions: in Java (`Policies.<policy>(…)`, `canPayBooking(booking, user)`); the argument order and what a policy function reads for `now` are now fixed in `spec/rules.md` 11.4 for the other generators
+- [i] `principal`, `policy`, `permit`, `forbid`, `allow`; implicit `Forbidden`: IR, compiler (13 conformance cases), reference evaluator and **all three generators**: the auth hook returns the generated type of the principal's model, `allow` runs after the facts and before the transition guard, a denial is `403` with the forbid's message. The 10 hand-written examples pass through the generated test handler of each
+- [i] Client `can<Endpoint>()` helpers and policy functions in every target: `Policies.manageBooking(user, booking)` and `BookingsClient.canPayBooking(booking, user)` in Java, `manageBooking(user, booking)` and `BookingsClient.canPayBooking(booking, user)` in TypeScript, `manage_booking(&user, &booking)` and `can_pay_booking(&booking, &user)` in Rust. The argument order is fixed in `spec/rules.md` 11.4
+- [i] The vector files `tests/rules/endpoints/transitions.veld` and `policies.veld` are no longer held back as `.pending`: every generator supports them
+- [ ] Not yet: the fuzzer does not generate a principal, so endpoints with an `allow` are not fuzzed; `examples/bookings` does not use a state machine or a policy yet
+- [ ] Not yet, and required by "every item ships with" above: the language server has no hover or completion for `policy`, `principal` and `allow` (reported by the agent that built them; whether it handles `flow` and `transition` has not been checked), and there is no record of the playground WASM being rebuilt since rules were added
 - [i] With `validate = false`, policies and the transition guard still run (`spec/rules.md` 5.3 corrected: it used to say everything in step 6 but the facts is switched off, which would have let a validation option switch authorization off)
 - [ ] `@version` optimistic concurrency (`ETag`, `If-Match`)
 - [ ] `@idempotent` and the key store interface
@@ -163,4 +166,4 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [ ] Editor grammars (VS Code, JetBrains) regenerated; README and `docs/README.md` index
 
 ## Not on this branch (teammates)
-AI coding agents (§14 of the plan, including `veld export mcp`) and beyond web (§15: Kotlin and Swift clients, the desktop guide).
+AI coding agents (§14 of the plan, including `veld export mcp`), beyond web (§15: Kotlin and Swift clients, the desktop guide), and every emitter other than Rust, Java and Node with its TypeScript client (owner, 25 Nov 2026). A new emitter gets rule support by implementing the `ExprPrinter` hooks and passing the vectors under `tests/rules/`; until it does, it refuses a contract with rules with `E0801`.
