@@ -149,14 +149,40 @@ fn unknown_frameworks_and_options_are_reported() {
     assert!(err[0].message.contains("axum"), "{}", err[0].message);
 }
 
-/// Flip one feature at a time when the emitter learns to enforce it (`spec/rules.md` section 8).
+/// Invariants are enforced; the endpoint, state-machine and policy rules are still refused
+/// (`spec/rules.md` section 8).
 #[test]
-fn rust_declares_no_rules_feature_and_refuses_a_rule_with_e0801() {
+fn rust_supports_invariants_and_still_refuses_the_other_rules_features() {
+    use veld_ir::Feature;
     for role in Rust.roles() {
         let caps = Rust.capabilities(*role);
-        for f in veld_ir::Feature::RULES {
+        assert!(caps.supports(Feature::RulesInvariants));
+        for f in [
+            Feature::RulesEndpoint,
+            Feature::RulesTransitions,
+            Feature::RulesPolicies,
+        ] {
             assert!(!caps.supports(f), "rust declares `{}`", f.name());
         }
     }
-    veld_emit_conformance::check_rules_are_refused(&Rust).unwrap();
+    // A contract whose only rule is an invariant generates, for both roles.
+    let ir = veld_emit_conformance::ir_with_rule();
+    for role in Rust.roles() {
+        let req = GenRequest {
+            ir: &ir,
+            role: *role,
+            services: ir.services.iter().map(|s| s.id).collect(),
+            consumes: vec![],
+            framework: None,
+        };
+        let files = Rust.generate_dyn(&req, &serde_json::Value::Null).unwrap();
+        assert!(files.contains("src/veld/rules/mod.rs"));
+        for (path, bytes) in files.iter() {
+            let text = String::from_utf8_lossy(bytes);
+            assert!(
+                !text.contains("// #if") && !text.contains("// #endif"),
+                "{path}"
+            );
+        }
+    }
 }
