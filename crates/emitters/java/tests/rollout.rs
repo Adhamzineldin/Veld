@@ -185,6 +185,59 @@ fn audited_rules_report_and_never_reject_over_http_and_sse() {
     run_driver("RolloutHttp.java", "veldtest.RolloutHttp", None);
 }
 
+/// With `validate = false` an audited rule is off exactly where the enforced one would be: the
+/// invariants of the body, `require` and `ensure` are not evaluated, those of the result are.
+#[test]
+fn with_validation_off_the_audited_rules_that_validation_switches_off_are_off() {
+    if !require_javac("with_validation_off_the_audited_rules_are_off") {
+        return;
+    }
+    let ir = contract_ir();
+    let work = tempfile::tempdir().unwrap();
+    let mut o = options("gen.n", Some("17"));
+    o["validate"] = serde_json::json!(false);
+    let all = ir.services.iter().map(|s| s.id).collect();
+    let mut sources = write_files(work.path(), &run(&ir, Role::Server, all, vec![], None, o));
+    sources.push(
+        repo_root()
+            .join("tests/toolchain/java/rules")
+            .join("RolloutNoValidate.java"),
+    );
+    javac_ok(work.path(), &sources, "17");
+    let out = java_main(work.path(), "veldtest.RolloutNoValidate", &[]);
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("OK"),
+        "RolloutNoValidate failed:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// An audited invariant of a declaration that no endpoint reaches: the output has the declaration
+/// all the same, and it calls `Audit`, so the class is emitted whether or not anything reaches the
+/// rule, in both roles.
+#[test]
+fn an_audited_model_that_no_endpoint_reaches_still_gets_the_audit_class() {
+    if !require_javac("an_audited_model_that_no_endpoint_reaches") {
+        return;
+    }
+    let ir = compile_source(
+        "model Unused {\n  n: int\n\n  @rollout(audit)\n  rule small: n < 10\n}\n\nmodel Pong {\n  ok: bool\n}\n\nservice Ping at \"/ping\" {\n  get \"/\" ping() -> Pong\n}\n"
+            .to_owned(),
+        "unreached",
+        "unreached",
+    );
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = Vec::new();
+    for (base, role) in [("gen.s", Role::Server), ("gen.c", Role::Client)] {
+        let files = generate(&ir, role, None, base, false);
+        let path = format!("{}/runtime/Audit.java", base.replace('.', "/"));
+        assert!(files.get(&path).is_some(), "{path} is missing");
+        sources.extend(write_files(work.path(), &files));
+    }
+    javac_ok(work.path(), &sources, "17");
+}
+
 /// Sends every example of a contract to its generated test handler on the JDK server.
 fn live_examples(path: &str, base: &str, driver: &str, class: &str, expected: usize) {
     let ir = compile_path(path, "bk");

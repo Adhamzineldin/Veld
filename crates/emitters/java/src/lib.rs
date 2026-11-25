@@ -191,7 +191,14 @@ impl Generator for Java {
                     declares_rules(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
                 }));
         let policies = features.contains(&Feature::RulesPolicies);
-        let rollout = features.contains(&Feature::RulesRollout);
+        // A declaration that no endpoint reaches is emitted too, and it calls `Audit` for its audited
+        // rules: the class is emitted for every audited rule the output has, reached or not.
+        let rollout = features.contains(&Feature::RulesRollout)
+            || declares_audited(&tree)
+            || (req.role == Role::Server
+                && req.consumes.iter().any(|sid| {
+                    declares_audited(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
+                }));
         let flags = runtime::Flags {
             rules: rules || policies || rollout,
             endpoint,
@@ -291,6 +298,18 @@ fn declares_rules(tree: &Tree<'_>) -> bool {
     tree.decls()
         .iter()
         .any(|id| rules::has_rules(tree.ir.decl(*id)))
+}
+
+/// Whether a declaration the tree emits has an audited invariant (`@rollout(audit)`), reachable from a
+/// service or not.
+fn declares_audited(tree: &Tree<'_>) -> bool {
+    tree.decls().iter().any(|id| {
+        tree.ir
+            .decl(*id)
+            .rules()
+            .iter()
+            .any(veld_ir::Rule::is_audited)
+    })
 }
 
 /// Emits a client tree under `<base>.clients.<service>` for each consumed service.
