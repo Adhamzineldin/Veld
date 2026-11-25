@@ -12,6 +12,7 @@ members = [
   "crates/veld-plugin-host",
   "crates/veld-emit-conformance",
   "crates/veld-test-support",
+  "crates/veld-testing",
   "crates/emitters/typescript",
   "crates/emitters/node",
   "crates/emitters/java",
@@ -39,6 +40,7 @@ veld-plugin-host = { path = "crates/veld-plugin-host" }
 veld-registry-client = { path = "crates/veld-registry-client" }
 veld-emit-conformance = { path = "crates/veld-emit-conformance" }
 veld-test-support = { path = "crates/veld-test-support" }
+veld-testing = { path = "crates/veld-testing" }
 veld-emit-node = { path = "crates/emitters/node" }
 veld-emit-typescript = { path = "crates/emitters/typescript" }
 veld-emit-java = { path = "crates/emitters/java" }

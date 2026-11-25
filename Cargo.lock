@@ -1728,6 +1728,18 @@ name = "veld-test-support"
 version = "2.0.0-beta.1"
 
 [[package]]
+name = "veld-testing"
+version = "2.0.0-beta.1"
+dependencies = [
+ "serde_json",
+ "thiserror",
+ "ureq",
+ "veld-compiler",
+ "veld-ir",
+ "veld-rules",
+]
+
+[[package]]
 name = "veld-tools"
 version = "2.0.0-beta.1"
 dependencies = [
