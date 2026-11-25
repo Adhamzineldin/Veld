@@ -46,7 +46,7 @@ event_example = "given" "event" typeref record [ "on" typeref ] expectation { ex
 expectation   = "expect" ( typeref "." IDENT [ "not" ] "called" | "rejected" ) ;
 ```
 
-Disambiguation needs one token of lookahead. At declaration level `event` and `channel` start a declaration when an identifier follows. In a service body an endpoint starts with a method word followed by a string; `publishes` and `subscribes` are followed by an identifier. `rule` in an event body is the `rule` of `spec/rules.md` §4.
+Disambiguation needs one token of lookahead. At declaration level `event` and `channel` start a declaration when an identifier follows. In a service body an endpoint starts with a method word followed by a string; `publishes` and `subscribes` are followed by an identifier. The same lookahead ends a response: after a response that is only a status (`-> 204`), `publishes` or `subscribes` followed by an identifier starts a new line of the service and is not the type of the response. `rule` in an event body is the `rule` of `spec/rules.md` §4.
 
 ## 3. Events
 
@@ -78,7 +78,7 @@ channel BookingEvents {
 
 - A channel is one logical stream of events. It is a top-level declaration, named and imported like any other.
 - **`carries`** lists the events of the channel. There MUST be at least one, each MUST be an event, and none may appear twice (`E1002`). An event MAY be carried by several channels.
-- **`@topic("name")`** is the name producer and consumer agree on, so it lives in the contract. Without it the topic is `<package>.<Channel>`. A topic MUST match `[A-Za-z0-9._-]{1,200}`, MUST NOT be `.` or `..`, and MUST NOT end in `.dlq`, which is kept for dead letters (`E1003`). Two channels of one workspace MUST NOT have the same topic (`E1004`).
+- **`@topic("name")`** is the name producer and consumer agree on, so it lives in the contract. Without it the topic is `<package>.<Channel>`; for a registry package the leading `@` is dropped and `/` becomes `.` (`@acme/billing` gives `acme.billing.<Channel>`). A topic MUST match `[A-Za-z0-9._-]{1,200}`, MUST NOT be `.` or `..`, and MUST NOT end in `.dlq`, which is kept for dead letters (`E1003`). Two channels of one workspace MUST NOT have the same topic (`E1004`).
 - **`key f`** names the field that orders the stream. Every carried event MUST have a required field named `f`, with the same type in all of them, and that type MUST be `string`, `uuid`, `int` or `long` (`E1005`). The **key text** of an event is that field's value: a `string` as it is, a `uuid` in lowercase, an `int` or `long` in decimal digits. An empty `string` key is a violation at publish time (§7). A channel has at most one `key` (`E1005`).
 - A channel without `key` makes no promise about order.
 - `@retry`, `@deadLetter` and `@ordered` on a channel belong to §10.2. Until they are built they are unknown annotations (`E0601`).
@@ -103,6 +103,7 @@ service Notifications {
 - **`subscribes C as "group" { … }`** says the service consumes the channel `C` under the consumer group `group`. All running copies of the service share that group, so each event is handled by one of them. The group MUST match `[A-Za-z0-9._-]{1,200}` (`E1007`). A service subscribes to a channel at most once (`E1006`).
 - **`on E -> handler`** binds an event of the channel to a handler the application implements. `E` MUST be carried by the channel; an event has at most one `on` line in a subscription; a subscription has at least one `on` line (`E1008`). A subscription need not handle every event of its channel: the others are ignored (§8).
 - Handler names share the namespace of the service's endpoint names: they MUST be unique within the service (`E0509`).
+- A name that does not exist is `E0205`, as everywhere. The codes above are for a name that exists and is the wrong kind of thing.
 - A service MAY publish and subscribe to the same channel. The graph of `publishes` and `subscribes` MAY contain cycles, like `consumes`.
 - **A service without `at`.** `at "/prefix"` is required only when the service has endpoints (`E0501` otherwise). A service that only publishes or subscribes has no HTTP surface: no paths in the OpenAPI export, nothing for the `auth-required` lint to report, and the `empty-service` lint counts a `publishes` or `subscribes` line as content.
 
@@ -112,14 +113,19 @@ service Notifications {
 
 - `E1009`: a service subscribes to a channel that is declared in a **service package of the workspace** and that no service of the workspace publishes. A channel from a library or a registry package is exempt, because its publisher may live in another repository.
 - `W1001`: a channel of a workspace service package is published and nobody in the workspace subscribes to it.
-- `W1002`: an event of a published channel has no `on` line in any subscription of the workspace.
+- `W1002`: an event of a published channel has no `on` line in any subscription of the workspace. It is reported only when the channel has at least one subscription; a channel with none is `W1001` and nothing more.
+
+The three checks run after every other check, and only when none of those reported an error: a service that another error removed would make a channel look unpublished.
 
 ## 6. Identity and the envelope
 
 ### 6.1 Signatures
 
 - An event has a declaration signature, computed like every other (`spec/ir.md` §5.1), with the local shape `{ "k": "event", "f": [ … ] }`. An event and a model with the same fields therefore have different signatures.
+- A rule is not part of the signature, as on a model (`spec/rules.md` §6): adding or changing a rule of an event changes its rules digest and leaves its signature alone.
 - The **rules digest of an event** is `hex16( sha256( RFC 8785 JSON array of the sorted, distinct rule ids of every invariant the event reaches ) )`, the formula of `spec/rules.md` §9.7 applied to one event. An event that reaches no invariant has none.
+- An event **reaches** its own rules and those of every declaration its fields refer to, through optional types, lists, maps and the arms of a union, and through the parents of a model, to any depth.
+- The rules digest of a **service** (`spec/rules.md` §9.7) does not change: it does not include the rules of events, because a client of the service never checks an event.
 - Both are computed only in `veld-compiler::signature` and embedded verbatim by generators.
 
 ### 6.2 The envelope
@@ -181,6 +187,7 @@ For every message of a subscription the generated consumer runs, in order:
 6. **The handler**, with the typed event and its metadata (`id`, `source`, `type`, `subject`, `time`, and the delivery attempt when the transport knows it).
 7. **Acknowledge**, only after the handler has returned normally.
 
+- **The key is not checked.** A consumer does not compare `subject` with the event's key field, and does not reject an empty key: the key is the publisher's promise (§7).
 - **A handler that fails** (throws, or returns an error) leaves the message unacknowledged. The transport delivers it again by its own policy (§9, §10.2).
 - **A rejected message can never succeed for this consumer.** It is acknowledged, so that it does not block the stream, and reported to the hook `onEventRejected` with the reason (`malformed`, `shape` or `rule`), the violations and the raw bytes. With `@deadLetter` (§10.2) it is also copied to the dead-letter topic. Without a dead letter and without a hook that stores it, a rejected message is gone: the documentation says so.
 - **Contract skew.** A consumer and a publisher are often generated from different versions of a contract. The consumer does not require `type` to equal its own signature: it decodes with its own type (step 3), so a message from a publisher that added an optional field is handled, and one that lacks a field the consumer requires is rejected as `shape`. When the hash of `type` or the value of `veldrules` differs from the consumer's own, the consumer calls `onContractMismatch` once per distinct pair it had not seen, with the event's name, its own signature and digest and the message's. A differing digest also switches off step 4 for that message, as a stale client stops its local checks (`spec/rules.md` §9.7): the publisher has already checked the event against the rules it was generated with.
@@ -266,8 +273,10 @@ example "an event that breaks its rule reaches no handler" {
 
 - An event example describes **one delivery of one event** on one channel. The record is filled in like a parameter (`spec/rules.md` §12.2).
 - `on Channel` names the channel. It MAY be left out when exactly one channel visible in the module carries the event; otherwise it is required (`E1010`).
-- `expect S.handler called` and `expect S.handler not called` name a handler of a subscription of service `S` to that channel; a name that is no such handler is `E1010`. `expect rejected` says no handler is called because the event is rejected. `rejected` MUST NOT be combined with a `called` line (`E1010`).
+- `expect S.handler called` and `expect S.handler not called` name a handler of a subscription of service `S` to that channel; a name that is no such handler is `E1010`. `S` is looked up in the example's own package first, and then among the services of the workspace that subscribe to the channel; a name that fits more than one of those is `E1010`. `expect rejected` says no handler is called because the event is rejected. `rejected` MUST NOT be combined with a `called` line (`E1010`).
+- An example constrains only the handlers it names. A handler it does not name may or may not be called.
 - **`veld test`** runs event examples in the reference evaluator: it applies steps 3 and 4 of §8 to the filled-in event with matching digests and works out which handlers of which subscriptions are called. It does not run handlers.
+- **The reference evaluator checks types and required fields in step 3, not constraints** (`@min`, `@length`, `@pattern`), as it does not for the parameters of a call (`spec/rules.md` §12.3). A written value that breaks a constraint is therefore not rejected offline, while a generated consumer rejects it as `shape`. Such an example belongs to the live run of E2.
 - Running event examples against live services (`--live`), and `called once` with a second delivery of the same event, arrive with the inbox in E2.
 
 ## 13. In the IR
@@ -293,8 +302,10 @@ Example += { "event": { "decl": DeclId, "channel": <index>, "value": ExampleValu
 ```
 
 - `Service.prefix` is the empty string for a service without `at`.
-- `Feature::Events` (`events`) is used by a service that has `publishes` or `subscriptions`. A generator that cannot represent it reports `E0801` at the first such line.
-- An event declaration is reached from a service only through its channels.
+- An event example has `event` and `expect` and omits `service`, `endpoint` and `outcome`, which a call example always has.
+- `Feature::Events` (`events`) is used by a service that has `publishes` or `subscriptions`. A generator that cannot represent it reports `E0801`: at the `service` line when the service publishes, because the IR records no origin for a `publishes` line, and otherwise at its first `subscribes` line.
+- Only the services a target generates count. A server that calls a publishing service over HTTP (`consumes`) does not use the feature, and neither does its client for that service.
+- An event declaration is reached from a service only through its channels. The declarations a service reaches through its endpoints (`spec/ir.md`) do not include events or what only events refer to.
 
 ## 14. Generated code
 
@@ -312,7 +323,7 @@ The same structure in every target, so the three implementations can be compared
 ## 15. `fmt`, lint, the language server
 
 - `veld fmt` prints `carries` and `key` one per line in that order, `publishes` before the endpoints of a service and `subscribes` after them, and one `on` line per event with the arrows aligned.
-- The `unused-model` lint counts an event as used when a channel carries it, and a channel as used when a service publishes or subscribes to it.
+- The `unused-model` lint counts an event as used when a channel carries it, and a channel as used when a service publishes or subscribes to it. It reports an unused channel only in a service package: a library's channel is there for others to use.
 - The language server completes event names after `carries`, `on` and `given event`, and channel names after `publishes` and `subscribes`; hover shows the topic, the key and the signature.
 
 ## 16. `veld diff` and AsyncAPI (phase E3)
