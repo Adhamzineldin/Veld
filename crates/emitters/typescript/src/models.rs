@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{Const, Decl, DeclId, DeclKind, Enum, ErrorDecl, Model, Union};
 
+use crate::checks;
 use crate::tree::{FileCtx, Tree};
 use crate::types::ts_type;
 use crate::util::{add_file, doc_comment, literal, prop_key, ts_str, type_name};
@@ -86,6 +87,10 @@ fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model
         w.close();
     }
     w.blank();
+    if checks::has_rules(d) {
+        write_ruled_companion(w, fc, d, m);
+        return;
+    }
     let companion = fc.rt("Companion");
     let make = fc.rt("companion");
     w.open_with(
@@ -97,6 +102,27 @@ fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model
     );
     write_object_schema(w, fc, &m.fields);
     w.close_with("});");
+}
+
+/// The companion of a model with invariants: the plain companion plus `ruleIds`, and a schema
+/// that carries the check function.
+fn write_ruled_companion(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model) {
+    let name = type_name(d);
+    checks::write_check_fn(w, fc, d, &name);
+    w.blank();
+    let companion = fc.rt("Companion");
+    let make = fc.rt("companion");
+    let ids = checks::ids_type(d);
+    w.open_with(
+        format!("export const {name}: {companion}<{name}> & {{ readonly ruleIds: {ids} }} ="),
+        " {",
+    );
+    w.open_with(format!("...{make}<{name}>({},", ts_str(&d.sig)), " {");
+    write_object_schema(w, fc, &m.fields);
+    w.line(format!("rules: {},", checks::fn_name(d)));
+    w.close_with("}),");
+    w.line(format!("ruleIds: {},", checks::ids_value(d)));
+    w.close_with("};");
 }
 
 fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) {
@@ -194,6 +220,10 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
         w.close();
     }
     w.blank();
+    if checks::has_rules(d) {
+        checks::write_check_fn(w, fc, d, &data);
+        w.blank();
+    }
     doc_comment(w, d.docs.as_deref(), d.deprecated.as_deref());
     let base = fc.rt("VeldError");
     let init = fc.rt("ErrorInit");
@@ -206,6 +236,9 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
     }
     w.open_with(format!("static readonly schema: {schema} ="), " {");
     write_object_schema(w, fc, &e.fields.fields);
+    if checks::has_rules(d) {
+        w.line(format!("rules: {},", checks::fn_name(d)));
+    }
     w.close_with("};");
     w.blank();
     w.open(format!("constructor(data: {data}, init: {init} = {{}})"));
@@ -224,6 +257,26 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
     ));
     w.line(format!("return {matches}(e, {name}.sig, service);"));
     w.close();
+    if checks::has_rules(d) {
+        write_error_rules_members(w, fc, d, &name, &data);
+    }
+    w.close();
+}
+
+fn write_error_rules_members(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    d: &Decl,
+    name: &str,
+    data: &str,
+) {
+    let violation = fc.rt("Violation");
+    let check = fc.rt("checkValue");
+    w.blank();
+    w.line(format!("static readonly ruleIds: {} = {};", checks::ids_type(d), checks::ids_value(d)));
+    w.blank();
+    w.open(format!("static check(data: {data}): {violation}[]"));
+    w.line(format!("return {check}({name}.schema, data);"));
     w.close();
 }
 

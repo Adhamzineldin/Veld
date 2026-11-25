@@ -162,6 +162,13 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     }
     w.line(format!("onError?: (err: unknown, ctx: {ctx}) => void;"));
     w.line("validateResponses?: boolean;");
+    if fc.tree.uses_rules() {
+        let mode = fc.rt("RuleOutputMode");
+        let event = fc.rt("RuleViolationEvent");
+        w.line("/** How rules on this server's own output are enforced (default `strict`). */");
+        w.line(format!("rules?: {{ output?: {mode} }};"));
+        w.line(format!("onRuleViolation?: (event: {event}) => void;"));
+    }
     if !fc.tree.validate {
         w.line("/** This target was generated with `validate = false`: requests are not validated unless this is true. */");
         w.line("validateRequests?: boolean;");

@@ -32,9 +32,14 @@ use crate::util::add_file;
 
 pub use tree::Tree;
 
-/// Features no TypeScript generator supports yet: the rules features (`spec/rules.md` section 8),
-/// reported as `E0801` until each is implemented. Streaming (SSE and WebSocket) is supported.
-pub const UNSUPPORTED: [Feature; 4] = Feature::RULES;
+/// Features no TypeScript generator supports yet: the rules features other than invariants
+/// (`spec/rules.md` section 8), reported as `E0801` until each is implemented. Streaming (SSE and
+/// WebSocket) and invariants are supported.
+pub const UNSUPPORTED: [Feature; 3] = [
+    Feature::RulesEndpoint,
+    Feature::RulesTransitions,
+    Feature::RulesPolicies,
+];
 
 /// The TypeScript language versions: ECMAScript editions, the oldest first (the default).
 /// Selected with the target option `typescript = "es2022"`.
