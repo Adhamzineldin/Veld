@@ -147,4 +147,15 @@ fn state_machines_build_behave_over_http_and_pass_every_example() {
         "state machines ok",
     );
     run_every_example(&ir, "machine-serve", 14);
+    // The same handler, fuzzed: the state of the booking is put in every state of the machine.
+    let tally = fuzz_every_endpoint(&ir, "machine-serve");
+    for endpoint in [
+        "Bookings.payBooking",
+        "Bookings.cancelBooking",
+        "Bookings.checkIn",
+    ] {
+        assert!(outcome_count(&tally, endpoint, "ok") > 10, "{endpoint}");
+        let refused = outcome_count(&tally, endpoint, "InvalidTransition");
+        assert!(refused > 10, "{endpoint}");
+    }
 }

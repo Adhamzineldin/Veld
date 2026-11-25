@@ -193,6 +193,27 @@ fn every_policy_example_passes_through_the_generated_test_handler() {
     let ws = harness_workspace("policy-examples-ws", &server, &client, "policy-examples");
     build_and_lint(&ws, EXAMPLES_SERVER, EXAMPLES_CLIENT);
     run_every_example(&ir, "policy-serve", 10);
+    // The same handler, fuzzed: a principal on every request, permits and denials from both
+    // sides, and both kinds of denial message.
+    let tally = fuzz_every_endpoint(&ir, "policy-serve");
+    for endpoint in ["Bookings.payBooking", "Bookings.getBooking"] {
+        assert!(outcome_count(&tally, endpoint, "ok") > 10, "{endpoint}");
+        assert!(
+            outcome_count(&tally, endpoint, "Forbidden") > 10,
+            "{endpoint}"
+        );
+        let name = endpoint.rsplit('.').next().unwrap();
+        let messages = denial_messages(&ir, name, FUZZ_COUNT, FUZZ_SEED);
+        let forbid = "A suspended account cannot manage bookings";
+        assert!(
+            messages.get(forbid).copied().unwrap_or(0) > 0,
+            "{messages:?}"
+        );
+        assert!(
+            messages.get("not permitted").copied().unwrap_or(0) > 0,
+            "{messages:?}"
+        );
+    }
 }
 
 /// The production handler over HTTP, and `can_<endpoint>` against it.

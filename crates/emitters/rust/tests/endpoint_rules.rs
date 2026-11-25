@@ -325,6 +325,23 @@ fn run_examples(ir: &Ir) {
     assert_eq!(passed, 20, "every example of tests/rules/endpoints");
 }
 
+/// The same handler, fuzzed: generated requests, boundaries first, must get the answer the
+/// reference evaluator works out.
+fn fuzz_examples(ir: &Ir) {
+    let server = Running::start();
+    let tally = fuzz_agrees(&server.url, ir, FUZZ_COUNT, FUZZ_SEED);
+    let seen = |kind: &str| -> usize { tally.values().filter_map(|t| t.get(kind)).sum() };
+    for kind in [
+        "ok",
+        "ValidationError",
+        "NotFound",
+        "RoomFull",
+        "RoomClosed",
+    ] {
+        assert!(seen(kind) > 0, "no {kind} in {tally:?}");
+    }
+}
+
 /// The shapes of block that the bookings contract does not have (`tests/toolchain/contract/
 /// rules_edges`): ensure only, require only, a keyless and a scalar fact, a computed key and a
 /// computed payload, an optional query parameter in a rule, an SSE endpoint with a fact, an
@@ -388,4 +405,5 @@ fn endpoint_rules_build_behave_over_http_and_pass_every_example() {
         "endpoint rules ok",
     );
     run_examples(&ir);
+    fuzz_examples(&ir);
 }

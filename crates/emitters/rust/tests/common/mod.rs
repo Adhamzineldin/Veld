@@ -462,3 +462,98 @@ pub fn run_every_example(ir: &Ir, binary: &str, expected: usize) {
     assert_eq!(passed, expected, "every example of the contract");
     eprintln!("examples passed through the generated test handler: {passed}");
 }
+
+/// Requests per endpoint and the seed of the fuzz runs of the three contracts of
+/// `tests/rules/endpoints`. Fixed, so a failure repeats.
+pub const FUZZ_COUNT: usize = 300;
+pub const FUZZ_SEED: u64 = 20_260_201;
+
+/// The tally of one fuzz run: the outcomes of every endpoint, by `Service.endpoint`.
+pub type Tally = std::collections::BTreeMap<String, std::collections::BTreeMap<String, usize>>;
+
+/// Fuzzes the test handler at `url` (`veld test --live <url> --fuzz <count> --seed <seed>`) and
+/// fails on the first thing that makes a green run mean nothing: a run that did not finish, an
+/// endpoint that was skipped, a disagreement with the reference evaluator (printed with its
+/// seed, both answers and the request as an `example` block) and an endpoint whose every request
+/// ended the same way.
+pub fn fuzz_agrees(url: &str, ir: &Ir, count: usize, seed: u64) -> Tally {
+    let live = veld_testing::Live::connect(url, true).unwrap();
+    let report = veld_testing::fuzz(ir, &live, &veld_testing::FuzzOptions { count, seed }).unwrap();
+    let mut tally = Tally::new();
+    for e in &report.endpoints {
+        if let Some(m) = &e.mismatch {
+            let diffs: Vec<String> = m.differences.iter().map(ToString::to_string).collect();
+            panic!(
+                "seed {seed}: {}.{} request {} disagrees with the reference evaluator\n\
+                 expected: {}\nactual:   {}\n{}\n{}",
+                e.service,
+                e.endpoint,
+                m.index,
+                m.expected,
+                m.actual,
+                diffs.join("\n"),
+                m.example.as_deref().unwrap_or("(no example)")
+            );
+        }
+        assert_eq!(e.sent, count, "{}.{}", e.service, e.endpoint);
+        eprintln!(
+            "fuzz seed {seed} {}.{}: {} sent ({} boundary): {:?}",
+            e.service, e.endpoint, e.sent, e.boundaries, e.outcomes
+        );
+        tally.insert(format!("{}.{}", e.service, e.endpoint), e.outcomes.clone());
+    }
+    assert_eq!(report.stopped, None, "the run stopped early");
+    assert!(report.skipped().is_empty(), "{:?}", report.skipped());
+    assert!(report.one_sided().is_empty(), "{:?}", report.one_sided());
+    tally
+}
+
+/// Starts the test handler `binary` and fuzzes it (see [`fuzz_agrees`]).
+pub fn fuzz_every_endpoint(ir: &Ir, binary: &str) -> Tally {
+    let server = Running::start(binary);
+    fuzz_agrees(&server.url, ir, FUZZ_COUNT, FUZZ_SEED)
+}
+
+/// The `message` of every `Forbidden` the reference evaluator gives for the requests that
+/// [`fuzz_agrees`] sends to `endpoint` (the same seed gives the same requests). The fuzz compared
+/// each of these with the server's answer, so a message in this tally was compared.
+pub fn denial_messages(
+    ir: &Ir,
+    endpoint: &str,
+    count: usize,
+    seed: u64,
+) -> std::collections::BTreeMap<String, usize> {
+    let service = ir
+        .services
+        .iter()
+        .find(|s| s.endpoints.iter().any(|e| e.name == endpoint))
+        .unwrap();
+    let ep = service
+        .endpoints
+        .iter()
+        .find(|e| e.name == endpoint)
+        .unwrap();
+    let pipeline = veld_rules::Pipeline::new(ir, service, endpoint).unwrap();
+    let mut seen = std::collections::BTreeMap::new();
+    for req in veld_testing::generate(ir, service, ep, seed, count)
+        .unwrap()
+        .requests
+    {
+        if let veld_rules::Outcome::Error(a) = pipeline.run(&req).unwrap()
+            && a.name == "Forbidden"
+        {
+            let message = a.data["message"].as_str().unwrap().to_owned();
+            *seen.entry(message).or_default() += 1;
+        }
+    }
+    seen
+}
+
+/// How many requests of `endpoint` ended in `outcome`.
+pub fn outcome_count(tally: &Tally, endpoint: &str, outcome: &str) -> usize {
+    tally
+        .get(endpoint)
+        .and_then(|t| t.get(outcome))
+        .copied()
+        .unwrap_or(0)
+}
