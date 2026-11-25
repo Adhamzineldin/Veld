@@ -22,6 +22,7 @@ pub mod machine;
 mod old;
 mod ops;
 mod pipeline;
+pub mod policy;
 mod value;
 pub mod vectors;
 mod wire;
@@ -40,6 +41,7 @@ pub use helpers::num::EvalError;
 pub use machine::{is_final, next_states};
 pub use old::save_old;
 pub use pipeline::{Before, ErrorAnswer, Outcome, Pipeline, Prepared, Request, RunError};
+pub use policy::{NOT_PERMITTED, PolicyVerdict, eval_policy};
 pub use value::Value;
 pub use wire::{format_date, format_datetime, format_time};
 

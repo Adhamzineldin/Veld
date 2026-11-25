@@ -3,8 +3,8 @@
 //! Step 5 (invariants on the bound parameters), step 6 (facts, `require`, the saved `old(...)`
 //! values) and, once the handler has answered, steps 8 and 9 (invariants on the result, then
 //! every `ensure`, then the target state of a `transition`) in `strict` mode. The transition guard
-//! (section 10, [`crate::machine`]) runs between the facts and the `require` statements; policies
-//! (section 11) will go before it, see [`Pipeline::before`].
+//! (section 10, [`crate::machine`]) runs between the policies and the `require` statements; the
+//! policies (section 11, `allow`) run right after the facts, see [`Pipeline::before`].
 //!
 //! Nothing here reads a clock, a loader or a handler: the caller hands in everything by value,
 //! so the same input always gives the same [`Outcome`].
@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use std::ops::ControlFlow;
 
 use serde_json::{Map, Value as Json, json};
-use veld_ir::{DeclId, DeclKind, ElseError, Endpoint, EndpointFact, Expr, Ir, Service};
+use veld_ir::{DeclId, DeclKind, ElseError, Endpoint, EndpointFact, Expr, Ir, Policy, Service};
 
 use crate::check::{Options, Violation, check_decl_full, check_type};
 use crate::error::{Failure, InputError};
@@ -21,6 +21,7 @@ use crate::eval::{Env, SavedOld, eval};
 use crate::helpers::num::EvalError;
 use crate::machine;
 use crate::old::save_old;
+use crate::policy::{NOT_PERMITTED, eval_policy};
 use crate::value::Value;
 
 /// Everything the pipeline needs to know about one request.
@@ -87,13 +88,14 @@ pub enum Before<'a> {
 }
 
 /// The state saved at the end of step 6: the parameters with their defaults applied, the
-/// clock and every `old(...)` value.
+/// principal, the clock and every `old(...)` value.
 #[derive(Debug, Clone)]
 pub struct Prepared<'a> {
     pipeline: Pipeline<'a>,
     params: BTreeMap<String, Json>,
     now: i64,
     old: Vec<SavedOld>,
+    principal: Option<Json>,
 }
 
 /// One endpoint, ready to process requests.
@@ -156,7 +158,9 @@ impl<'a> Pipeline<'a> {
         if let Some(answer) = self.load_facts(&mut env, request)? {
             return Ok(Before::Rejected(answer));
         }
-        // Policies (section 11, `403`) go here, between the facts and the guard.
+        if let Some(answer) = self.policies(&env, request.now)? {
+            return Ok(Before::Rejected(answer));
+        }
         if let Some(answer) = self.guard(&env)? {
             return Ok(Before::Rejected(answer));
         }
@@ -175,6 +179,7 @@ impl<'a> Pipeline<'a> {
             pipeline: *self,
             params: env.params,
             now: request.now,
+            principal: request.principal.clone(),
             old,
         }))
     }
@@ -258,6 +263,48 @@ impl<'a> Pipeline<'a> {
             }
         }
         Ok(None)
+    }
+
+    /// Every `allow` in source order (section 11.3): the first denial is `403 Forbidden`.
+    fn policies(&self, env: &Env<'_>, now: i64) -> Result<Option<ErrorAnswer>, RunError> {
+        for a in &self.endpoint.rules.allows {
+            let policy =
+                self.ir.policies.get(a.policy.index()).ok_or_else(|| {
+                    InputError::Ir("an `allow` names a missing policy".to_owned())
+                })?;
+            let args = match allow_args(env, &a.args)? {
+                Some(args) => args,
+                // An argument that cannot be evaluated fails closed.
+                None => {
+                    return self.forbidden(policy, &a.reads, NOT_PERMITTED).map(Some);
+                }
+            };
+            let verdict = eval_policy(self.ir, policy, &args, now)?;
+            if !verdict.permitted {
+                let text = verdict.denial_message();
+                return self.forbidden(policy, &a.reads, text).map(Some);
+            }
+        }
+        Ok(None)
+    }
+
+    /// `403 Forbidden`: its `message` and the message of its one violation are `text`.
+    fn forbidden(
+        &self,
+        policy: &Policy,
+        reads: &[String],
+        text: &str,
+    ) -> Result<ErrorAnswer, RunError> {
+        let violation = Violation {
+            rule_name: policy.name.clone(),
+            rule_id: policy.id.clone(),
+            path: "request".to_owned(),
+            fields: reads.to_vec(),
+            message: text.to_owned(),
+            error: None,
+        };
+        let data = json!({ "message": text });
+        self.answer("Forbidden", 403, data, vec![violation], Vec::new())
     }
 
     /// The transition guard (section 10.2): `409 InvalidTransition` when the current state of the
@@ -422,6 +469,7 @@ impl Prepared<'_> {
         let mut env = Env::new(p.ir);
         env.params.clone_from(&self.params);
         env.now = Some(self.now);
+        env.principal.clone_from(&self.principal);
         env.old.clone_from(&self.old);
         // Facts are deliberately not in scope here: outside `old(...)` they are an error.
         if let Some(ty) = p
@@ -498,6 +546,19 @@ fn key_is_absent(env: &Env<'_>, fact: &EndpointFact) -> Result<bool, RunError> {
             Err(InputError::Ir(what).into())
         }
     }
+}
+
+/// The arguments of an `allow` in wire form; `None` when one cannot be evaluated (section 3.7).
+fn allow_args(env: &Env<'_>, args: &[Expr]) -> Result<Option<Vec<Json>>, RunError> {
+    let mut out = Vec::with_capacity(args.len());
+    for arg in args {
+        match eval(env, arg) {
+            Ok(v) => out.push(v.to_json()?),
+            Err(Failure::Eval(_)) => return Ok(None),
+            Err(Failure::Input(e)) => return Err(e.into()),
+        }
+    }
+    Ok(Some(out))
 }
 
 fn verdict(env: &Env<'_>, expr: &Expr) -> Result<Verdict, RunError> {

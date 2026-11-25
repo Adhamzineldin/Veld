@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value as Json;
 use veld_ir::{
-    DeclId, Endpoint, Example, ExampleOutcome, ExampleValue, Ir, Service, ServiceId, Type,
+    AuthKind, DeclId, Endpoint, Example, ExampleOutcome, ExampleValue, Ir, Service, ServiceId, Type,
 };
 
 use self::fill::Filler;
@@ -140,6 +140,7 @@ fn locate<'a>(ir: &'a Ir, ex: &Example) -> Result<(&'a Service, &'a Endpoint), E
 struct Build<'a> {
     ir: &'a Ir,
     ex: &'a Example,
+    service: &'a Service,
     endpoint: &'a Endpoint,
     filler: Filler<'a>,
     /// The filled-in givens that are present, for `ref` values.
@@ -152,7 +153,7 @@ struct Build<'a> {
 /// [`ExampleError`]: `E0953` when a value cannot be filled in or breaks an invariant, and the
 /// errors of an example that does not fit the IR.
 pub fn fill_example(ir: &Ir, ex: &Example) -> Result<FilledExample, ExampleError> {
-    let (_, endpoint) = locate(ir, ex)?;
+    let (service, endpoint) = locate(ir, ex)?;
     let clock = ex.now.clone().unwrap_or_else(|| DEFAULT_CLOCK.to_owned());
     let clock_ms = parse_datetime(&clock).ok_or_else(|| ExampleError::BadClock {
         example: ex.name.clone(),
@@ -161,15 +162,13 @@ pub fn fill_example(ir: &Ir, ex: &Example) -> Result<FilledExample, ExampleError
     let mut b = Build {
         ir,
         ex,
+        service,
         endpoint,
         filler: Filler::new(ir, &ex.name, clock_ms),
         givens: BTreeMap::new(),
     };
     let facts = b.facts()?;
-    let principal = match &ex.principal {
-        Some(v) => Some(b.resolve(v)?),
-        None => None,
-    };
+    let principal = b.principal()?;
     let params = b.params()?;
     let result = b.returns()?;
     let expected = b.expected()?;
@@ -272,6 +271,28 @@ impl Build<'_> {
             facts.insert(fact.name.clone(), Some(full));
         }
         Ok(facts)
+    }
+
+    /// The principal (section 11.1): `as` as written, completed like any value of the principal's
+    /// model; without `as`, a filled-in one when the endpoint has auth (section 12.2). It comes after
+    /// the facts and before the arguments, so the counters of the filled-in values run in that order.
+    fn principal(&mut self) -> Result<Option<Json>, ExampleError> {
+        let given = match &self.ex.principal {
+            Some(v) => Some(self.resolve(v)?),
+            None => None,
+        };
+        let Some(p) = &self.service.principal else {
+            return Ok(given);
+        };
+        if given.is_none() && self.endpoint.auth.kind == AuthKind::None {
+            return Ok(None);
+        }
+        self.filler.begin();
+        let ty = Type::Decl(p.decl);
+        let full = self
+            .filler
+            .fill(&ty, &veld_ir::Constraints::default(), given.as_ref(), "$")?;
+        Ok(Some(full))
     }
 
     /// The arguments, in the order of the endpoint's parameters.

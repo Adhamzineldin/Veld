@@ -215,6 +215,7 @@ fn create_rules(
         transition: None,
         requires,
         ensures,
+        allows: Vec::new(),
     }
 }
 

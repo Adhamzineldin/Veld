@@ -102,3 +102,40 @@ fn the_reference_evaluator_passes_the_pending_state_machine_vectors() {
         .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// The policy vectors (`spec/rules.md` section 11) are held back as `policies.veld.pending`, like
+/// the state machine ones: the generators refuse an `allow` with `E0801` until they learn it. The
+/// reference evaluator runs all ten from here. When the file is renamed to `policies.veld`, the
+/// first test covers it and this one goes.
+#[test]
+fn the_reference_evaluator_passes_the_pending_policy_vectors() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/rules/endpoints/policies.veld.pending");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "t".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: "policies.veld".into(),
+                text,
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    let Some(ir) = out.ir else {
+        panic!("does not compile:\n{}", out.render());
+    };
+    assert_eq!(ir.examples.len(), 10);
+    let failures: Vec<String> = ir
+        .examples
+        .iter()
+        .filter_map(|e| match run_example(&ir, e) {
+            Ok(r) if r.passed() => None,
+            Ok(r) => Some(r.to_string()),
+            Err(err) => Some(format!("example `{}`: {err}", e.name)),
+        })
+        .collect();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

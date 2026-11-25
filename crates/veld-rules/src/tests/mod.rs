@@ -5,6 +5,7 @@ mod examples;
 mod helpers;
 mod kit;
 mod models;
+mod policy;
 mod service_kit;
 mod vector_files;
 

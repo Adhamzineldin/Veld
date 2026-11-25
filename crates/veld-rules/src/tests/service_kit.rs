@@ -146,6 +146,7 @@ pub fn service(endpoints: Vec<Endpoint>) -> Service {
         endpoints,
         facts: Vec::new(),
         rules_digest: None,
+        principal: None,
         origin: Origin::default(),
     }
 }
