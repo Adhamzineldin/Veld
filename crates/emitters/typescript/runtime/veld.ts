@@ -689,6 +689,19 @@ function ruleEvent(
   }
 }
 
+/** The `422 ValidationError` problem document of rule violations: `data.issues` and `violations`. */
+function rulesProblem(ep: EndpointSpec, violations: readonly Violation[], std: StdSigs): VeldResponse {
+  const body = {
+    type: std.validation,
+    title: 'ValidationError',
+    status: 422,
+    operation: ep.sig,
+    data: { issues: ruleIssues(violations) },
+    violations,
+  };
+  return { status: 422, headers: { 'content-type': PROBLEM_CONTENT_TYPE }, body: JSON.stringify(body) };
+}
+
 /** Step 5: the invariants of the bound body and query object. */
 function checkInputRules(ep: EndpointSpec, bound: Bound, std: StdSigs, hooks: HandlerHooks): VeldResponse | null {
   if (hooks.validateRequests === false) return null;
@@ -701,15 +714,23 @@ function checkInputRules(ep: EndpointSpec, bound: Bound, std: StdSigs, hooks: Ha
   }
   if (violations.length === 0) return null;
   ruleEvent(hooks, ep, 'input', 'rejected', violations, started);
-  const body = {
-    type: std.validation,
-    title: 'ValidationError',
-    status: 422,
-    operation: ep.sig,
-    data: { issues: ruleIssues(violations) },
-    violations,
-  };
-  return { status: 422, headers: { 'content-type': PROBLEM_CONTENT_TYPE }, body: JSON.stringify(body) };
+  return rulesProblem(ep, violations, std);
+}
+
+/** A message a client sends on a WebSocket is an input: the invariants of its decoded value. */
+function checkMessageRules(
+  ep: EndpointSpec,
+  schema: Schema,
+  raw: unknown,
+  std: StdSigs,
+  hooks: HandlerHooks,
+): VeldResponse | null {
+  if (hooks.validateRequests === false || !reachesRules(schema)) return null;
+  const started = nowMicros();
+  const violations = checkValue(schema, fromWire(schema, raw, { request: true }), 'message', 'request');
+  if (violations.length === 0) return null;
+  ruleEvent(hooks, ep, 'input', 'rejected', violations, started);
+  return rulesProblem(ep, violations, std);
 }
 
 const REACHES_RULES = new WeakMap<object, boolean>();
@@ -741,26 +762,79 @@ function reachesRules(schema: Schema): boolean {
   return known;
 }
 
-/** Step 8: the invariants of the result, by output mode. */
-function checkOutputRules(ep: EndpointSpec, result: unknown, std: StdSigs, hooks: HandlerHooks): VeldResponse | null {
-  const mode = hooks.rules?.output ?? 'strict';
-  if (mode === 'off' || ep.success === null || result === undefined || !reachesRules(ep.success)) return null;
-  const issues = validate(ep.success, result);
-  if (issues.length > 0) {
-    if (mode === 'strict') throw new Error(`${ep.name}: response failed validation: ${JSON.stringify(issues)}`);
-    return null;
-  }
-  const started = nowMicros();
-  const violations = checkValue(ep.success, result);
-  if (violations.length === 0) return null;
-  ruleEvent(hooks, ep, 'output', mode === 'strict' ? 'rejected' : 'audited', violations, started);
-  return mode === 'strict' ? problem(std.internal, 'Internal', 500, ep.sig, {}) : null;
+/** What checking one output value found. `malformed` is set in `strict` mode when its shape is invalid. */
+interface OutputScan {
+  mode: 'strict' | 'audit';
+  violations: Violation[];
+  started: number;
+  malformed?: Issue[];
 }
 
-function reportRuleMode(hooks: HandlerHooks): void {
+/**
+ * The invariants of one value the server sends (a result, a declared error, a stream item), by
+ * output mode. The shape is validated first, so rules only see well-formed values. `null`: nothing
+ * to report (mode `off`, no rules reached, nothing violated, or a bad shape in `audit`).
+ */
+function scanOutput(schema: Schema, value: unknown, hooks: HandlerHooks): OutputScan | null {
+  const mode = hooks.rules?.output ?? 'strict';
+  if (mode === 'off' || value === undefined || !reachesRules(schema)) return null;
+  const issues = validate(schema, value);
+  if (issues.length > 0) return mode === 'strict' ? { mode, violations: [], started: 0, malformed: issues } : null;
+  const started = nowMicros();
+  const violations = checkValue(schema, value);
+  return violations.length === 0 ? null : { mode, violations, started };
+}
+
+/** Reports a scan to the hook. True when the value must not be sent (`strict`). */
+function refuseOutput(ep: EndpointSpec, scan: OutputScan, hooks: HandlerHooks): boolean {
+  if (scan.malformed !== undefined) return true;
+  ruleEvent(hooks, ep, 'output', scan.mode === 'strict' ? 'rejected' : 'audited', scan.violations, scan.started);
+  return scan.mode === 'strict';
+}
+
+/** Step 8: the invariants of the result, by output mode. */
+function checkOutputRules(ep: EndpointSpec, result: unknown, std: StdSigs, hooks: HandlerHooks): VeldResponse | null {
+  const scan = ep.success === null ? null : scanOutput(ep.success, result, hooks);
+  if (scan === null) return null;
+  if (scan.malformed !== undefined) {
+    throw new Error(`${ep.name}: response failed validation: ${JSON.stringify(scan.malformed)}`);
+  }
+  return refuseOutput(ep, scan, hooks) ? problem(std.internal, 'Internal', 500, ep.sig, {}) : null;
+}
+
+/** A declared error is an output: in `strict` the caller gets `500 Internal`, never the malformed error. */
+function checkErrorRules(ep: EndpointSpec, declared: ErrorSpec, data: unknown, std: StdSigs, hooks: HandlerHooks): VeldResponse | null {
+  const scan = scanOutput(declared.schema, data, hooks);
+  if (scan === null || !refuseOutput(ep, scan, hooks)) return null;
+  return problem(std.internal, 'Internal', 500, ep.sig, {});
+}
+
+/**
+ * A stream item is an output. In `strict` a violating item is not sent: this throws, and the
+ * stream ends the way it ends on any server failure.
+ */
+function checkItemRules(ep: EndpointSpec, what: string, item: unknown, hooks: HandlerHooks): void {
+  const scan = ep.success === null ? null : scanOutput(ep.success, item, hooks);
+  if (scan === null) return;
+  if (scan.malformed !== undefined) {
+    throw new Error(`${ep.name}: ${what} failed validation: ${JSON.stringify(scan.malformed)}`);
+  }
+  if (refuseOutput(ep, scan, hooks)) {
+    throw new Error(`${ep.name}: ${what} violates rules: ${scan.violations.map((v) => v.rule).join(', ')}`);
+  }
+}
+
+function inputReachesRules(ep: EndpointSpec): boolean {
+  return ep.params.some((p) => (p.s === true || p.binding === 'body' || p.binding === 'query_object') && reachesRules(p.t));
+}
+
+function reportRuleMode(hooks: HandlerHooks, endpoints: readonly EndpointSpec[]): void {
+  const log = (globalThis as { console?: { warn?: (message: string) => void } }).console;
+  if (hooks.validateRequests === false && endpoints.some(inputReachesRules)) {
+    log?.warn?.('veld: request validation is off: the rules of request bodies, query objects and WebSocket messages are not enforced');
+  }
   const mode = hooks.rules?.output ?? 'strict';
   if (mode === 'strict') return;
-  const log = (globalThis as { console?: { warn?: (message: string) => void } }).console;
   const effect = mode === 'audit' ? 'are reported to onRuleViolation and sent unchanged' : 'are not evaluated';
   log?.warn?.(`veld: rules.output is '${mode}': rule violations in responses ${effect}`);
 }
@@ -1253,6 +1327,10 @@ function failure(err: unknown, ep: ServerEndpoint, ctx: RequestContext, std: Std
   const declared = isVeldError(err) ? ep.errors.find((d) => d.sig === err.sig) : undefined;
   if (isVeldError(err) && declared) {
     err.op = ep.sig;
+    // #if rules
+    const refused = checkErrorRules(ep, declared, err.data, std, hooks);
+    if (refused !== null) return refused;
+    // #endif
     return problem(declared.sig, err.title, declared.status, ep.sig, toWire(declared.schema, err.data));
   }
   try {
@@ -1380,6 +1458,9 @@ function sseItem(ep: ServerEndpoint, item: unknown, hooks: HandlerHooks): string
     const issues = validate(ep.success, value);
     if (issues.length > 0) throw new Error(`${ep.name}: stream item failed validation: ${JSON.stringify(issues)}`);
   }
+  // #if rules
+  checkItemRules(ep, 'stream item', value, hooks);
+  // #endif
   return sseFrame(canonicalOf(ep.success, value), ev === null ? {} : ev.options);
 }
 
@@ -1527,6 +1608,9 @@ function wsSession(
         const issues = validate(ep.success, message);
         if (issues.length > 0) throw new Error(`${ep.name}: message failed validation: ${JSON.stringify(issues)}`);
       }
+      // #if rules
+      checkItemRules(ep, 'message', message, hooks);
+      // #endif
       sock.send(`{"data":${canonicalOf(ep.success, message)}}`);
     },
     close: () => finish(1000, 'closed'),
@@ -1573,6 +1657,10 @@ async function runWs(
     const issues =
       hooks.validateRequests === false ? [] : validate(incomingSchema, raw, 'message', { wire: true, request: true });
     if (issues.length > 0) return invalid(issues);
+    // #if rules
+    const refused = checkMessageRules(ep, incomingSchema, raw, std, hooks);
+    if (refused !== null) return fail(refused);
+    // #endif
     inbox.push(fromWire(incomingSchema, raw, { request: true }));
   };
   // Frames that arrive while auth and middleware run are held back, so they are never read by an
@@ -1612,7 +1700,7 @@ function assertHooks(endpoints: readonly ServerEndpoint[], hooks: HandlerHooks):
 export function createHandler(endpoints: readonly ServerEndpoint[], std: StdSigs, hooks: HandlerHooks): VeldHandler {
   assertHooks(endpoints, hooks);
   // #if rules
-  reportRuleMode(hooks);
+  reportRuleMode(hooks, endpoints);
   // #endif
   const routes = endpoints.map(compileRoute).sort((a, b) => a.names.length - b.names.length);
   const find = (method: string, rawPath: string): { r: Route; m: RegExpExecArray } | null => {
@@ -1967,6 +2055,18 @@ export class ClientCore {
       const v = req[p.name];
       if (v !== undefined) walkRules(p.t, withDefaults(p.t, v), paramLoc(p), 'request', out);
     }
+    this.rejectLocally(ep, out);
+  }
+
+  /** A message the client is about to send on a WebSocket is an input: checked like a request body. */
+  private checkMessageRules(ep: EndpointSpec, schema: Schema, message: unknown): void {
+    if (this.opts.rules === false) return;
+    const out: Violation[] = [];
+    walkRules(schema, withDefaults(schema, message), 'message', 'request', out);
+    this.rejectLocally(ep, out);
+  }
+
+  private rejectLocally(ep: EndpointSpec, out: Violation[]): void {
     if (out.length === 0) return;
     const err = this.defaults.validation(ruleIssues(out));
     err.violations = out;
@@ -2190,6 +2290,9 @@ export class ClientCore {
             err.op = ep.sig;
             throw err;
           }
+          // #if rules
+          this.checkMessageRules(ep, outgoing, message);
+          // #endif
         }
         const text = canonicalOf(outgoing, message);
         if (socket !== undefined && socket.readyState === 1) socket.send(text);
