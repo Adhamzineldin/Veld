@@ -82,7 +82,7 @@ literal     = STRING | INT | FLOAT | "true" | "false" ;
 - `.name` as a primary is an enum literal. Its enum is taken from the other operand or the expected type (`status == .paid`, `status in [.paid, .checkedIn]`); if no enum can be inferred it is `E0902`.
 - `IDENT => expr` is a lambda. It is allowed only as the second argument of `all`, `any`, `count` and `sum` (§3.5).
 - There is no `null`, no ternary, no indexing (`a[0]`, `m["k"]`), no `?.` and no user-defined function.
-- An expression tree is at most **32 levels** deep (`E0005`). Every operator, call and list adds a level, also in a chain: `a && b && c` is two levels deep, so one rule can join at most 33 terms with the same operator. The limit keeps the IR JSON of any rule within the nesting limit of common JSON readers (128 in `serde_json`); a rule at the limit MUST read back from its IR JSON. Split a longer rule into several rules: each then reports its own message.
+- An expression tree is at most **32 levels** deep (`E0005`). Every operator, call and list adds a level, also in a chain: `a && b && c` is two levels deep, so one rule can join at most 33 terms with the same operator. The limit keeps the IR JSON of any rule within the nesting limit of common JSON readers (128 in `serde_json`); a rule at the limit MUST read back from its IR JSON. The compiler also reports `E0005` for a rule whose IR would nest too deep for another reason, which takes a very deeply nested list type. Split a longer rule into several rules: each then reports its own message.
 
 ### 3.2 Names
 

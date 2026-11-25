@@ -35,20 +35,21 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [t] Empty `crates/veld-rules` crate in the workspace
 
 ## Phase 1: invariants (the thin slice; nothing else starts before it is `[t]`)
-- [~] Lexer: new operators, the minus rule
-- [ ] Parser and AST: expressions, `rule` in model and error bodies, contextual words
-- [ ] Typing pass: types, widening, guards for optional values, `E0901` to `E0908`, `W0901` to `W0903`
-- [ ] Lowering to IR, `reads`, inherited rules
-- [ ] Rule ids in `veld-compiler::signature`
-- [ ] Conformance cases: every new code, every contextual word used as a field, variant and parameter name
-- [ ] `fmt` for rules and expressions; fmt properties still hold
-- [~] `crates/veld-rules`: reference evaluator and value helpers (decimal, instant, code points, checked arithmetic)
-- [i] `tests/rules/`: 104 starter vectors in `tests/rules/core` covering the list in `spec/rules.md` §15
-- [ ] `veld-codegen`: `ExprPrinter`
-- [ ] TypeScript client: check functions, helpers, local check before send, `violations` on `ValidationError`, `.partial(draft)`
-- [ ] Node server: pipeline steps 5 and 8, output mode, `onRuleViolation`
-- [ ] Java: check functions, helpers, client and server (JDK and Spring)
-- [ ] Rust: check functions, helpers, client and server
+- [t] Lexer: new operators, the minus rule
+- [t] Parser and AST: expressions, `rule` in model and error bodies, contextual words
+- [t] Typing pass: types, widening, guards for optional values, `E0901` to `E0908`, `W0901` to `W0903`
+- [t] Lowering to IR, `reads`, inherited rules
+- [t] Rule ids in `veld-compiler::signature`
+- [t] Conformance cases: 19 new (every new code, every contextual word used as a name, every guard form)
+- [~] Follow-ups: expression depth limit 32 with an IR read-back test; a unary minus on a literal is part of the literal
+- [t] `fmt` for rules and expressions; fmt properties still hold (long rule lines are not wrapped yet)
+- [t] `crates/veld-rules`: reference evaluator and value helpers; all 104 vectors pass
+- [t] `tests/rules/`: 104 starter vectors in `tests/rules/core` covering the list in `spec/rules.md` §15
+- [t] `veld-codegen`: `ExprPrinter`, plus `gate_regions` for runtime files
+- [~] TypeScript client: check functions, helpers, local check before send, `violations` on `ValidationError`, `.partial(draft)`
+- [~] Node server: pipeline steps 5 and 8, output mode, `onRuleViolation`
+- [~] Java: check functions, helpers, client and server (JDK and Spring)
+- [~] Rust: check functions, helpers, client and server
 - [ ] Vector runner per target: all vectors identical in TypeScript, Java, Rust and the reference
 - [ ] Toolchain round trip: a rule violation over real HTTP, same `violations` from the Node, Java and Rust servers
 - [ ] OpenAPI export does not break on rules (full `x-veld-rules` is Phase 5)
