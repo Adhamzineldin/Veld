@@ -41,7 +41,7 @@ rule message implies not in has
 fact require else ensure old now result
 flow final emits transition
 policy permit forbid when allow principal
-example given absent returns ok
+example given absent returns ok expect
 ```
 
 Disambiguation, with at most three tokens of lookahead:
@@ -338,7 +338,7 @@ payload    = "{" { IDENT ":" expr [","] } "}" ;
 ensure     = { doc } "ensure" [ IDENT ":" ] expr [ "message" STRING ] ;
 ```
 
-A statement starts with one of the five words; nothing else may appear in the block. `allow` is §11 and `transition` is §10. The formatter prints the statements in this order: facts, `allow`, `transition`, `require`, `ensure`, each group in source order.
+A statement starts with one of the five words; nothing else may appear in the block. Until their phases land, `allow` and `transition` are rejected with `E0003` and a message that names the phase. `allow` is §11 and `transition` is §10. The formatter prints the statements in this order: facts, `allow`, `transition`, `require`, `ensure`, each group in source order.
 
 ### 9.1 Scope
 
@@ -352,7 +352,9 @@ Inside the block these names are in scope:
 | `now` | a `datetime`: one reading of the server's clock, taken once per request before the facts load |
 | `result` | in `ensure` only: the success value. An endpoint with no success body, or with a `stream` success, has no `result` (`E0904`) |
 
-A fact named like a parameter, another fact, the principal, `now` or `result` is `E0920`. Statement names (`require notInPast: …`) are unique in an endpoint (`E0907`).
+A fact named like a parameter, another fact, the principal, `now` or `result` is `E0920`. A parameter named `now` or `result` hides the built-in name in that block. Statement names (`require notInPast: …`) are unique in an endpoint (`E0907`); two unnamed statements with the same expression share an id.
+
+A fact's key sees the parameters and the facts declared before it. `require` and `ensure` see every fact of the endpoint, wherever they are written, because all facts load first. `now` may be used in a fact's key, in `require`, in an `else` payload and in `ensure`.
 
 ### 9.2 Facts
 
@@ -369,7 +371,7 @@ A fact is a value the rules need and only the application can load: the room bei
 
 - `require` lines are evaluated in source order after the facts, the policies and the transition guard. **The first failure ends the request.**
 - With `else E`, the answer is the error `E`, which MUST be one of the endpoint's declared errors (`E0921`). The payload block gives its fields: every field of `E` that is neither optional nor defaulted MUST be given, an unknown field is `E0922`, and a value of the wrong type is `E0902`. Payload expressions are evaluated only on failure, in the same scope.
-- Without `else`, the answer is `422 ValidationError` with one issue of code `rule`.
+- Without `else`, the answer is `422 ValidationError` with one issue of code `rule`. An endpoint with such a `require` declares `ValidationError` even if it has no parameters.
 - Either way the problem document carries one entry in `violations` (§7), so a caller and the hook can tell which rule fired. For an endpoint rule, `path` is `request` and `fields` are the names of the **parameters** the expression reads, in order of first use.
 - A `require` whose evaluation fails with an evaluation error (§3.7) has failed: the same answer, with `error` in the violation.
 - The default message is `violates rule <name>`, or `precondition failed` for an unnamed `require`.
@@ -402,7 +404,7 @@ rule_bytes = RFC 8785 JSON of { "d": "<qualified service name>.<endpoint>", "k":
 
 A client checks invariants locally (§5.4). If the server's rules have been loosened since the client was generated, that check would reject requests the server now accepts. The **rules digest** prevents it.
 
-- `digest = hex16( sha256( RFC 8785 JSON array of the sorted, distinct rule ids of every invariant of every declaration the service's endpoints reach ) )`. It is computed by the compiler, stored on the service in the IR, and embedded in the generated client and server. A service that reaches no invariant has none.
+- `digest = hex16( sha256( RFC 8785 JSON array of the sorted, distinct rule ids of every invariant of every declaration the service's endpoints reach ) )`. It is computed by the compiler, stored on the service in the IR, and embedded in the generated client and server. Facts do not count: a client never checks them. A service that reaches no invariant has none.
 - The server sends `Veld-Rules: <digest>` on every response of that service, errors included.
 - The client remembers the digest of the last response. **It rejects locally only while that digest equals its own.** Before the first response, or when the header is missing, a request that fails the local check is sent anyway and the server decides.
 - When a response carries a different digest, the client stops its local checks for that service and calls `onContractMismatch` once per digest it had not seen, with the service name, its own digest and the server's.
@@ -494,10 +496,10 @@ The words `returns`, `ok` and `absent` are contextual, like every other word of 
 - An example is a top-level declaration. Its name is unique in its package (`E0950`).
 - The call names an endpoint of the package, as `endpoint` or as `Service.endpoint` when two services share the name. Unknown or ambiguous is `E0950`. Arguments are given by parameter name.
 - `given name = value` sets the fact `name` of that endpoint (`E0951` if the endpoint has no such fact). `given name = absent` makes the loader find nothing.
-- `as value` is the principal. `at "…"` is the clock; without it the clock is `2026-01-01T00:00:00Z`.
+- `as value` is the principal (`E0952` until §11 gives it a type). `at "…"` is the clock; without it the clock is `2026-01-01T00:00:00Z`.
 - A value is checked against the type it is used at (`E0952`). `a.b` reads a field of a given.
 - `returns value` states what the handler returns. Without it, an offline run stops before the handler.
-- The **outcome** is `ok`, or the name of an error the endpoint can answer with, including the implicit ones (`ValidationError`, `NotFound`, `Forbidden`, `InvalidTransition`, `Internal`). A value after it is a **pattern**: every field it names must equal the actual one by the value semantics of §3.4, fields it does not name are ignored, objects match recursively, and lists match in length and order.
+- The **outcome** is `ok`, or the name of an error the endpoint can answer with, including the implicit ones (`ValidationError`, `NotFound`, `Unauthorized`, `Forbidden`, `InvalidTransition`, `Internal`). An error the endpoint cannot answer with, an unknown argument and a clock that is not a datetime are `E0952`. A value after it is a **pattern**: every field it names must equal the actual one by the value semantics of §3.4, fields it does not name are ignored, objects match recursively, and lists match in length and order.
 
 ### 12.2 Values an example leaves out
 
