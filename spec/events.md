@@ -161,6 +161,18 @@ A message is one CloudEvents 1.0 event in the JSON format, structured mode:
 - `type` does not start with a reverse-DNS name, which CloudEvents recommends and does not require. It is the signature, so that identity survives every hop.
 - A consumer ignores attributes it does not know. A message with `data_base64` is malformed for Veld (§8).
 
+### 6.3 Where the reference chose
+
+`veld_rules::envelope` is the reference, and `tests/wire/events` holds its goldens. Where sections 6 and 8 are silent it does this, and every generator does the same:
+
+- **`time`** is written like every `datetime`: the fraction `.fff` only when the milliseconds are not zero (`2026-06-10T12:00:00Z`, `2026-06-10T12:00:02.007Z`). "Millisecond precision" means no finer than that.
+- **Step 1 is complete before step 2.** A message whose `data` is not an object is `malformed` even when its `type` names no event of the subscription. The same holds for an attribute this section names (`subject`, `time`, `datacontenttype`, `veldrules`) that is present and not a string, and for a `datacontenttype` other than `application/json`. A missing `datacontenttype` is fine.
+- **The key text of a `long`** is its wire form, the decimal digits as a string. An `int` key is its decimal digits, also when negative.
+- **Canonical scalars are the caller's job.** The envelope writes `data` as it is given, after the defaults: a typed publisher produces lowercase uuids, `Z` datetimes and strings for decimals and longs when it builds the wire value (`spec/ir.md` §5.3). Only the key text of a `uuid` is lowercased by the envelope, as §4 says.
+- **A violation of an audited rule** (`spec/rules.md` §17.1) never stops a publish or rejects a message, and an event whose invariants are all audited has no `veldrules` (§6.1).
+- **Unknown fields** of `data` are left in the decoded value; a typed consumer ignores them.
+- **The reference checks structure, not scalar text.** As for the examples of §12, it checks that required fields are there and that objects, lists and maps have the right shape, and it applies defaults and invariants. A `string` where a `uuid` is expected is not a shape failure there, and is one in a generated consumer.
+
 ## 7. Publishing
 
 The generated publisher of a channel has one operation per carried event. It runs, in order:
