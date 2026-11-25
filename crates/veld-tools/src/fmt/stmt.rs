@@ -4,7 +4,7 @@
 //! call is one line; with `returns` the call, `returns` and the outcome take a line each.
 
 use veld_compiler::syntax::ast::{
-    Else, Example, ExampleCall, Given, Outcome, Stmt, Value, ValueKind,
+    Else, Example, ExampleCall, Given, Outcome, Stmt, TransitionStmt, Value, ValueKind,
 };
 
 use super::expr::expr_text;
@@ -65,6 +65,7 @@ pub(super) fn stmt_lines(s: &Stmt, ind: usize) -> Vec<String> {
             let line = format!("{p}ensure {name}{}", expr_text(&e.expr));
             with_message(line, e.message.as_ref().map(|m| m.value.as_str()), &p)
         }
+        Stmt::Transition(t) => vec![format!("{p}{}", transition_text(t))],
     }
 }
 
@@ -76,18 +77,32 @@ fn with_message(line: String, message: Option<&str>, p: &str) -> Vec<String> {
     lines
 }
 
-/// The printing group of a statement: facts, then `require`, then `ensure` (`spec/rules.md` 9).
+/// `transition booking.status: a, b -> c`.
+fn transition_text(t: &TransitionStmt) -> String {
+    let path: Vec<&str> = t.path.iter().map(|i| i.name.as_str()).collect();
+    let from: Vec<&str> = t.from.iter().map(|i| i.name.as_str()).collect();
+    format!(
+        "transition {}: {} -> {}",
+        path.join("."),
+        from.join(", "),
+        t.to.name
+    )
+}
+
+/// The printing group of a statement: facts, `transition`, then `require`, then `ensure`
+/// (`spec/rules.md` 9). Group 1 is kept for `allow`.
 pub(super) fn stmt_group(s: &Stmt) -> u8 {
     match s {
         Stmt::Fact(_) => 0,
-        Stmt::Require(_) => 1,
-        Stmt::Ensure(_) => 2,
+        Stmt::Transition(_) => 2,
+        Stmt::Require(_) => 3,
+        Stmt::Ensure(_) => 4,
     }
 }
 
 pub(super) fn stmt_docs(s: &Stmt) -> &[veld_compiler::syntax::ast::Doc] {
     match s {
-        Stmt::Fact(_) => &[],
+        Stmt::Fact(_) | Stmt::Transition(_) => &[],
         Stmt::Require(r) => &r.docs,
         Stmt::Ensure(e) => &e.docs,
     }

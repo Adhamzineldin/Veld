@@ -347,7 +347,9 @@ impl Printer<'_> {
         } else {
             format!("enum {} {{ {} }}", e.name.name, items.join(", "))
         };
+        let machine = !e.flows.is_empty() || !e.finals.is_empty();
         if plain
+            && !machine
             && self.node_quiet(key)
             && !self.has_comments(&keys)
             && one.chars().count() <= WIDTH
@@ -361,7 +363,30 @@ impl Printer<'_> {
             for (v, k) in e.variants.iter().zip(&keys) {
                 p.list_item(*k, &v.docs, &v.annotations, &variant_text(v), 2);
             }
+            p.machine(e);
         });
+    }
+
+    /// The flows, then the finals of an enum, each in source order, after a blank line.
+    fn machine(&mut self, e: &EnumDecl) {
+        if e.variants.is_empty() || (e.flows.is_empty() && e.finals.is_empty()) {
+            return;
+        }
+        self.out.push('\n');
+        let flows = e
+            .flows
+            .iter()
+            .map(|f| (f.span.start, "flow", " -> ", &f.states));
+        let finals = e
+            .finals
+            .iter()
+            .map(|f| (f.span.start, "final", ", ", &f.states));
+        for (key, word, sep, states) in flows.chain(finals) {
+            let names: Vec<&str> = states.iter().map(|s| s.name.as_str()).collect();
+            self.leading(key, 2);
+            self.out.push_str(&format!("  {word} {}", names.join(sep)));
+            self.end_line(key, 2);
+        }
     }
 
     fn list_item(&mut self, key: u32, docs: &[Doc], anns: &[Annotation], text: &str, ind: usize) {
@@ -450,9 +475,9 @@ impl Printer<'_> {
         });
     }
 
-    /// Facts, then `require`, then `ensure`, each group in source order (`spec/rules.md` 9).
+    /// Facts, `transition`, `require`, then `ensure`, each group in source order (`spec/rules.md` 9).
     fn statements(&mut self, stmts: &[Stmt], ind: usize) {
-        for group in 0..3 {
+        for group in 0..5 {
             for s in stmts.iter().filter(|s| stmt::stmt_group(s) == group) {
                 let key = s.start();
                 self.leading(key, ind);

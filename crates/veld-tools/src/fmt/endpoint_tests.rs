@@ -223,3 +223,70 @@ fn an_endpoint_called_given_and_a_given_called_given_are_stable() {
         "{out}"
     );
 }
+
+// ---- state machines (`spec/rules.md` section 10) ---------------------------------------------------
+
+#[test]
+fn an_enum_prints_variants_then_flows_then_finals() {
+    let out = stable(
+        "enum S {\n  flow a   ->  b->c\n  a, b, c\n  final   c\n  flow a -> c\n  final b,  a\n}\n",
+    );
+    assert_eq!(
+        out,
+        "enum S {\n  a,\n  b,\n  c,\n\n  flow a -> b -> c\n  flow a -> c\n  final c\n  final b, a\n}\n"
+    );
+}
+
+#[test]
+fn a_plain_enum_keeps_its_one_line_form() {
+    assert_eq!(stable("enum S { a,b ,c }"), "enum S { a, b, c }\n");
+    assert_eq!(
+        stable("enum S { flow, final, x }"),
+        "enum S { flow, final, x }\n"
+    );
+}
+
+#[test]
+fn variants_named_flow_and_final_survive_in_a_machine() {
+    let src = "enum S {\n  start,\n  flow,\n  final,\n\n  flow start -> flow -> final\n  final final\n}\n";
+    assert_eq!(stable(src), src);
+}
+
+#[test]
+fn comments_stay_with_their_flow_and_final_statements() {
+    let src = "enum S { // header\n  a,\n  b, // about b\n\n  // the only way\n  flow a -> b // trailing flow\n  // b is the end\n  final b // trailing final\n  // tail\n}\n";
+    let out = stable(src);
+    for c in [
+        "// header",
+        "// about b",
+        "// the only way",
+        "// trailing flow",
+        "// b is the end",
+        "// trailing final",
+        "// tail",
+    ] {
+        assert!(out.contains(c), "lost {c}:\n{out}");
+    }
+}
+
+#[test]
+fn a_transition_sits_between_facts_and_requires() {
+    let out = stable(
+        "service S at \"/\" {\n  post \"/\" f() -> 204 {\n    ensure true\n    require true\n    transition  b.status :pending,paid->cancelled\n    fact b: B = id\n  }\n}\n",
+    );
+    assert_eq!(
+        out,
+        "service S at \"/\" {\n  post \"/\" f() -> 204 {\n    fact b: B = id\n    transition b.status: pending, paid -> cancelled\n    require true\n    ensure true\n  }\n}\n"
+    );
+}
+
+#[test]
+fn comments_move_with_a_transition() {
+    let out = stable(
+        "service S at \"/\" {\n  post \"/\" f() {\n    require true\n    // the move\n    transition b.s: a -> b // trailing\n    fact b: B\n  }\n}\n",
+    );
+    assert!(
+        out.contains("    // the move\n    transition b.s: a -> b // trailing\n    require true"),
+        "{out}"
+    );
+}

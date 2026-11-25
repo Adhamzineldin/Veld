@@ -208,19 +208,7 @@ fn decl_kids(d: &ast::Decl) -> (bool, Vec<Node>) {
     match &d.kind {
         DeclKind::Model(m) => (true, member_nodes(&m.fields, &m.rules)),
         DeclKind::Error(e) => (true, member_nodes(&e.fields, &e.rules)),
-        DeclKind::Enum(e) => (
-            true,
-            e.variants
-                .iter()
-                .map(|v| {
-                    leaf(
-                        first_start(v.span.start, &v.docs, &v.annotations),
-                        v.span.start,
-                        v.span.end,
-                    )
-                })
-                .collect(),
-        ),
+        DeclKind::Enum(e) => (true, enum_nodes(e)),
         DeclKind::Union(u) => (
             true,
             u.arms
@@ -231,6 +219,33 @@ fn decl_kids(d: &ast::Decl) -> (bool, Vec<Node>) {
         DeclKind::Service(s) => (true, s.endpoints.iter().map(endpoint_node).collect()),
         DeclKind::Const(_) => (false, vec![]),
     }
+}
+
+/// Variants, flows and finals of an enum body, in source order (the printer regroups them).
+fn enum_nodes(e: &ast::EnumDecl) -> Vec<Node> {
+    let mut nodes: Vec<Node> = e
+        .variants
+        .iter()
+        .map(|v| {
+            leaf(
+                first_start(v.span.start, &v.docs, &v.annotations),
+                v.span.start,
+                v.span.end,
+            )
+        })
+        .collect();
+    nodes.extend(
+        e.flows
+            .iter()
+            .map(|f| leaf(f.span.start, f.span.start, f.span.end)),
+    );
+    nodes.extend(
+        e.finals
+            .iter()
+            .map(|f| leaf(f.span.start, f.span.start, f.span.end)),
+    );
+    nodes.sort_by_key(|n| n.start);
+    nodes
 }
 
 /// An endpoint is a leaf, or a braced node holding the statements of its block. The header
@@ -259,6 +274,7 @@ fn stmt_kw(s: &ast::Stmt) -> u32 {
         ast::Stmt::Fact(f) => f.span.start,
         ast::Stmt::Require(r) => r.span.start,
         ast::Stmt::Ensure(e) => e.span.start,
+        ast::Stmt::Transition(t) => t.span.start,
     }
 }
 
@@ -267,6 +283,7 @@ fn stmt_end(s: &ast::Stmt) -> u32 {
         ast::Stmt::Fact(f) => f.span.end,
         ast::Stmt::Require(r) => r.span.end,
         ast::Stmt::Ensure(e) => e.span.end,
+        ast::Stmt::Transition(t) => t.span.end,
     }
 }
 
