@@ -938,35 +938,8 @@ fn build_spring_app(j: &Java) -> PathBuf {
         )
         .unwrap();
     }
-    let mut mvn = if cfg!(windows) {
-        let mut c = Command::new("cmd");
-        c.args(["/c", r".\mvnw.cmd"]);
-        c
-    } else {
-        let mut c = Command::new("sh");
-        c.arg("./mvnw");
-        c
-    };
-    mvn.args(["-q", "-B", "package", "-DskipTests"])
-        .arg(format!("-Djava.version={}", j.release))
-        .current_dir(&work);
-    run_logged(&mut mvn, "mvnw package", &work.join("mvnw.log"));
+    mvnw_package(&work, j.release);
     work.join("target/app.jar")
-}
-
-/// Runs a build tool as a process tree (a launcher such as `cmd` or `sh` that starts the real
-/// process), killed as a whole on drop, with its output in `log`.
-fn run_logged(cmd: &mut Command, what: &str, log: &Path) {
-    let mut tree = veld_test_support::ProcessTree::spawn_logged(cmd, log)
-        .unwrap_or_else(|e| panic!("{what}: cannot start: {e}"));
-    let status = tree.child_mut().wait().unwrap();
-    let output = std::fs::read_to_string(log).unwrap_or_default();
-    print!("{output}");
-    assert!(
-        status.success(),
-        "{what} failed ({status})
-{output}"
-    );
 }
 
 /// The executable jar of the Spring application for `j`, built once per release.

@@ -367,3 +367,59 @@ pub fn gen_unvalidated(ir: &Ir, role: Role, package: &str, release: Option<&str>
         options_no_validate(package, release),
     )
 }
+
+/// Whether a Maven log shows a download that failed, and not a build that failed.
+fn is_download_failure(log: &str) -> bool {
+    [
+        "Failed to fetch",
+        "Could not transfer artifact",
+        "Connection reset",
+        "Connection timed out",
+        "Read timed out",
+        "Temporary failure in name resolution",
+        "502 Bad Gateway",
+        "503 Service",
+    ]
+    .iter()
+    .any(|sign| log.contains(sign))
+}
+
+/// Runs `mvnw -q -B package -DskipTests -Djava.version=<release>` in `work`, where the Maven
+/// wrapper of `tests/toolchain/java/spring` has been copied, logging to `work/mvnw.log`. It panics
+/// with the log when the build fails.
+///
+/// The wrapper downloads Maven, and Maven downloads Spring, from Maven Central. A download that
+/// fails for a moment is not a finding about generated code (it failed a CI run once:
+/// `wget: Failed to fetch .../apache-maven-3.9.9-bin.zip`), so a run whose log shows a failed
+/// download is tried again, three times in all. Any other failure fails at once.
+pub fn mvnw_package(work: &std::path::Path, release: &str) {
+    const ATTEMPTS: u64 = 3;
+    let log = work.join("mvnw.log");
+    for attempt in 1..=ATTEMPTS {
+        let mut mvn = if cfg!(windows) {
+            let mut c = std::process::Command::new("cmd");
+            c.args(["/c", r".\mvnw.cmd"]);
+            c
+        } else {
+            let mut c = std::process::Command::new("sh");
+            c.arg("./mvnw");
+            c
+        };
+        mvn.args(["-q", "-B", "package", "-DskipTests"])
+            .arg(format!("-Djava.version={release}"))
+            .current_dir(work);
+        let mut build = veld_test_support::ProcessTree::spawn_logged(&mut mvn, &log)
+            .unwrap_or_else(|e| panic!("mvnw package: cannot start: {e}"));
+        let status = build.child_mut().wait().unwrap();
+        if status.success() {
+            return;
+        }
+        let output = std::fs::read_to_string(&log).unwrap_or_default();
+        assert!(
+            is_download_failure(&output) && attempt < ATTEMPTS,
+            "mvnw package failed ({status}):\n{output}"
+        );
+        eprintln!("mvnw package: a download failed, trying again ({attempt} of {ATTEMPTS})");
+        std::thread::sleep(std::time::Duration::from_secs(5 * attempt));
+    }
+}

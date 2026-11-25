@@ -452,25 +452,7 @@ fn invariants_are_enforced_through_the_spring_adapter() {
         std::fs::copy(java.join("spring").join(name), work.join(name)).unwrap();
     }
     copy_dir(&java.join("spring/.mvn"), &work.join(".mvn"));
-    let mut mvn = if cfg!(windows) {
-        let mut c = Command::new("cmd");
-        c.args(["/c", r".\mvnw.cmd"]);
-        c
-    } else {
-        let mut c = Command::new("sh");
-        c.arg("./mvnw");
-        c
-    };
-    mvn.args(["-q", "-B", "package", "-DskipTests", "-Djava.version=17"])
-        .current_dir(&work);
-    let mut build =
-        veld_test_support::ProcessTree::spawn_logged(&mut mvn, &work.join("mvnw.log")).unwrap();
-    let status = build.child_mut().wait().unwrap();
-    assert!(
-        status.success(),
-        "mvnw package failed:\n{}",
-        std::fs::read_to_string(work.join("mvnw.log")).unwrap_or_default()
-    );
+    mvnw_package(&work, "17");
 
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
