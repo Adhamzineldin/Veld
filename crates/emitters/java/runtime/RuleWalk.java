@@ -433,8 +433,12 @@ public final class RuleWalk {
         String op = obj.get("operation") instanceof Json.Str s ? s.value() : ep.sig();
         VeldError err = d.factory().create(Wire.prepare(d.schema(), data, Wire.Mode.RESPONSE), declared, op);
         List<Violation> violations = new ArrayList<>();
-        for (Json item : listed.items()) {
-          violations.add(Violation.fromWire(item));
+        try {
+          for (Json item : listed.items()) {
+            violations.add(Violation.fromWire(item));
+          }
+        } catch (IllegalArgumentException e) {
+          return null;
         }
         err.setViolations(violations);
         return err;

@@ -458,7 +458,9 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
                 At::Page | At::Nothing => false,
             };
             if step.optional || declared_optional {
-                checks.push(format!("{} != null", prefixes[i + 1]));
+                if let Some(prefix) = prefixes.get(i + 1) {
+                    checks.push(format!("{prefix} != null"));
+                }
             }
             at = next;
         }
