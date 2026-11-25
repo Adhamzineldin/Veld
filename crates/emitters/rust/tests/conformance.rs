@@ -206,3 +206,8 @@ fn a_crate_with_endpoint_rules_has_no_gate_markers() {
         }
     }
 }
+
+#[test]
+fn rust_refuses_state_machines_with_e0801() {
+    veld_emit_conformance::check_state_machines_are_refused(&Rust).unwrap();
+}

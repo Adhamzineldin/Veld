@@ -21,3 +21,9 @@ fn typescript_and_node_declare_invariants_and_endpoint_rules_only() {
     veld_emit_conformance::check_invariants_and_endpoint_rules_supported(&Node).unwrap();
     veld_emit_conformance::check_invariants_and_endpoint_rules_supported(&TypeScript).unwrap();
 }
+
+#[test]
+fn typescript_and_node_refuse_state_machines_with_e0801() {
+    veld_emit_conformance::check_state_machines_are_refused(&Node).unwrap();
+    veld_emit_conformance::check_state_machines_are_refused(&TypeScript).unwrap();
+}

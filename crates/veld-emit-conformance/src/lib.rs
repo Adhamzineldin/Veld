@@ -268,6 +268,120 @@ fn refuses_endpoint_rules(
     Ok(())
 }
 
+const STATE_MACHINE_SOURCE: &str = "enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model Booking { id: uuid, status: Status }
+
+service Bookings at \"/bookings\" {
+  get \"/{id}\" get(id: uuid) -> Booking
+}
+";
+
+const TRANSITION_SOURCE: &str = "enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model Booking { id: uuid, status: Status }
+
+service Bookings at \"/bookings\" {
+  post \"/{id}/pay\" pay(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+  }
+}
+";
+
+/// The contract of a state machine (an enum with flows) without any endpoint rule, and the line
+/// where the machine is declared.
+#[must_use]
+pub fn compiled_state_machine_contract() -> (Ir, u32) {
+    let ir = compile("compiled_state_machine", STATE_MACHINE_SOURCE);
+    (ir, line_of(STATE_MACHINE_SOURCE, "enum Status"))
+}
+
+/// The contract of an endpoint with a `transition` (and a machine), and the line of the statement.
+#[must_use]
+pub fn compiled_transition_contract() -> (Ir, u32) {
+    let ir = compile("compiled_transition", TRANSITION_SOURCE);
+    (ir, line_of(TRANSITION_SOURCE, "transition booking"))
+}
+
+fn line_of(source: &str, needle: &str) -> u32 {
+    let at = source.lines().position(|l| l.contains(needle));
+    match at.and_then(|i| u32::try_from(i + 1).ok()) {
+        Some(line) => line,
+        None => panic!("`{needle}` is not in the fixture"),
+    }
+}
+
+/// The generator must not declare `rules_transitions` and must refuse a compiled contract with a
+/// state machine, and one with a `transition`: the gate reports `E0801` for `rules_transitions`
+/// at the first flow or transition, and `generate` answers `E0801` only. (A generator that does
+/// not support endpoint rules reports those too: the contract with a transition has a fact.)
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not refuse.
+pub fn check_state_machines_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    for (ir, line) in [
+        compiled_state_machine_contract(),
+        compiled_transition_contract(),
+    ] {
+        refuses_state_machines(generator, &ir, line)?;
+    }
+    Ok(())
+}
+
+fn refuses_state_machines(
+    generator: &dyn DynGenerator,
+    ir: &Ir,
+    origin_line: u32,
+) -> Result<(), String> {
+    let services = all_services(ir);
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        if caps.supports(Feature::RulesTransitions) {
+            return Err(format!("{}: declares `rules_transitions`", role.name()));
+        }
+        let req = GenRequest {
+            ir,
+            role: *role,
+            services: services.clone(),
+            consumes: vec![],
+            framework: None,
+        };
+        let gate = check_capabilities(ir, &req, &caps);
+        let mine: Vec<_> = gate
+            .iter()
+            .filter(|d| d.message.contains("rules_transitions"))
+            .collect();
+        let at_the_machine = mine.len() == 1
+            && mine.iter().all(|d| {
+                d.code == "E0801" && d.origin.as_ref().map(|o| o.line) == Some(origin_line)
+            });
+        if !at_the_machine || gate.iter().any(|d| d.code != "E0801") {
+            return Err(format!("{}: the gate reported {gate:?}", role.name()));
+        }
+        match generator.generate_dyn(&req, &serde_json::Value::Null) {
+            Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
+            other => {
+                return Err(format!(
+                    "{}: generate did not answer E0801: {other:?}",
+                    role.name()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// A generator that supports invariants and endpoint rules and nothing else of the rules: it
 /// declares `rules_invariants` and `rules_endpoint`, the gate lets both a hand-built block and one
 /// the compiler made through, and `generate` produces files for them (transitions and policies stay
@@ -644,6 +758,43 @@ mod tests {
             caps: Capabilities::all_except(&[]),
         };
         assert!(check_compiled_endpoint_rules_are_refused(&claims).is_err());
+    }
+
+    #[test]
+    fn the_state_machine_contracts_use_the_transitions_feature() {
+        for (ir, line) in [
+            compiled_state_machine_contract(),
+            compiled_transition_contract(),
+        ] {
+            let used = ir.features_used(&all_services(&ir));
+            assert!(used.contains(&Feature::RulesTransitions), "{used:?}");
+            assert!(line >= 1);
+        }
+        let (ir, _) = compiled_state_machine_contract();
+        let used = ir.features_used(&all_services(&ir));
+        assert!(!used.contains(&Feature::RulesEndpoint), "{used:?}");
+        let (ir, _) = compiled_transition_contract();
+        assert!(ir.services[0].endpoints[0].rules.transition.is_some());
+    }
+
+    #[test]
+    fn a_generator_that_claims_state_machines_is_caught() {
+        let claims = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]),
+        };
+        assert!(check_state_machines_are_refused(&claims).is_err());
+    }
+
+    #[test]
+    fn a_generator_that_does_not_gate_state_machines_is_caught() {
+        // It declares nothing, so the gate fires, but `generate` happily produces files.
+        let ungated = Minimal {
+            embed: true,
+            caps: Capabilities::default(),
+        };
+        let err = check_state_machines_are_refused(&ungated).unwrap_err();
+        assert!(err.contains("did not answer E0801"), "{err}");
     }
 
     #[test]
