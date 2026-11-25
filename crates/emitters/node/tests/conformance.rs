@@ -15,20 +15,9 @@ fn typescript_passes_the_conformance_kit() {
 }
 
 /// Flip one feature at a time when an emitter learns to enforce it (`spec/rules.md` section 8).
+/// Invariants and endpoint rules are enforced; transitions and policies are refused.
 #[test]
-fn typescript_and_node_declare_only_the_invariants_feature() {
-    veld_emit_conformance::check_only_invariants_supported(&Node).unwrap();
-    veld_emit_conformance::check_only_invariants_supported(&TypeScript).unwrap();
-}
-
-#[test]
-fn typescript_and_node_refuse_endpoint_rules_with_e0801() {
-    veld_emit_conformance::check_endpoint_rules_are_refused(&Node).unwrap();
-    veld_emit_conformance::check_endpoint_rules_are_refused(&TypeScript).unwrap();
-}
-
-#[test]
-fn typescript_and_node_refuse_a_compiled_contract_with_endpoint_rules_with_e0801() {
-    veld_emit_conformance::check_compiled_endpoint_rules_are_refused(&Node).unwrap();
-    veld_emit_conformance::check_compiled_endpoint_rules_are_refused(&TypeScript).unwrap();
+fn typescript_and_node_declare_invariants_and_endpoint_rules_only() {
+    veld_emit_conformance::check_invariants_and_endpoint_rules_supported(&Node).unwrap();
+    veld_emit_conformance::check_invariants_and_endpoint_rules_supported(&TypeScript).unwrap();
 }
