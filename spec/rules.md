@@ -235,7 +235,7 @@ The existing order of `spec/targets/typescript.md` §5 is kept; rule steps are a
 9. `ensure` and the target state (§9, §10)
 10. serialise
 
-**Request validation turned off.** Rules need well-formed values. A target option that turns request validation off (`validate = false`) therefore turns steps 5 and 6 off too, and the client's local check with it. A server built that way says so once, when its handler is created, so nobody runs unchecked by accident. `veld generate` warns (`W0904`) when such a target reaches a declaration or endpoint with rules.
+**Request validation turned off.** Rules need well-formed values. A target option that turns request validation off (`validate = false`) therefore turns step 5 off, and in step 6 everything but loading the facts (the handler still receives them), and the client's local check with it. A server built that way says so once, when its handler is created, so nobody runs unchecked by accident. `veld generate` warns (`W0904`) when such a target reaches a declaration or endpoint with rules.
 
 **Output mode.** Checks on what callers send are always on. Checks on the server's own output (steps 8 and 9) have a mode, set per server instance:
 
@@ -404,7 +404,7 @@ rule_bytes = RFC 8785 JSON of { "d": "<qualified service name>.<endpoint>", "k":
 
 A client checks invariants locally (§5.4). If the server's rules have been loosened since the client was generated, that check would reject requests the server now accepts. The **rules digest** prevents it.
 
-- `digest = hex16( sha256( RFC 8785 JSON array of the sorted, distinct rule ids of every invariant of every declaration the service's endpoints reach ) )`. It is computed by the compiler, stored on the service in the IR, and embedded in the generated client and server. Facts do not count: a client never checks them. A service that reaches no invariant has none.
+- `digest = hex16( sha256( RFC 8785 JSON array of the sorted, distinct rule ids of every invariant of every declaration the service's endpoints reach ) )`. It is computed by the compiler, stored on the service in the IR, and embedded in the generated client and server. Facts do not count: a client never checks them. A service that reaches no invariant has none. The digest does not depend on endpoint rules: a contract whose only rules are invariants has one, and its clients need it just the same.
 - The server sends `Veld-Rules: <digest>` on every response of that service, errors included.
 - The client remembers the digest of the last response. **It rejects locally only while that digest equals its own.** Before the first response, or when the header is missing, a request that fails the local check is sent anyway and the server decides.
 - When a response carries a different digest, the client stops its local checks for that service and calls `onContractMismatch` once per digest it had not seen, with the service name, its own digest and the server's.

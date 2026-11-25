@@ -425,7 +425,7 @@ impl Prepared<'_> {
                 id: &e.id,
                 reads: &e.reads,
                 message: e.message.as_deref(),
-                unnamed_default: "violates rule ensure",
+                unnamed_default: "postcondition failed",
             };
             hook.push(rule.violation(&verdict));
         }
