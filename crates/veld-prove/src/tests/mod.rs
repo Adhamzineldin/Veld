@@ -34,7 +34,6 @@ pub fn compile_text(text: &str) -> Ir {
 }
 
 /// A solver for a test, or `None` after saying why the test is skipped.
-#[allow(dead_code)]
 pub fn solver(test: &str) -> Option<Solver> {
     match find_in_environment(None) {
         Ok(s) => Some(s),
@@ -50,4 +49,6 @@ pub fn solver(test: &str) -> Option<Solver> {
 }
 mod canned;
 mod encoder;
+mod pin;
+mod soundness;
 mod units;
