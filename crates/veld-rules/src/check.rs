@@ -49,6 +49,16 @@ fn serialize_error<S: Serializer>(e: &Option<EvalError>, s: S) -> Result<S::Ok, 
     }
 }
 
+/// What checking one value found: the violations of the rules that reject, and those of the audited
+/// rules (`@rollout(audit)`, section 17.1), which never reject and are only reported.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Checked {
+    /// Violations of enforced rules.
+    pub violations: Vec<Violation>,
+    /// Violations (and evaluation errors) of audited rules, in the order of evaluation.
+    pub audited: Vec<Violation>,
+}
+
 /// Checks `value` (wire form) against `decl` and everything it contains. Defaults are applied
 /// first; every rule of every nested value is evaluated; the result lists every violation.
 ///
@@ -63,6 +73,20 @@ pub fn check_value(
     check_decl_full(ir, decl, value, options).map(|(_, violations)| violations)
 }
 
+/// Like [`check_value`], and also returns the violations of the audited rules, which are not
+/// among the violations that reject.
+///
+/// # Errors
+/// [`InputError`] when the value does not have the shape of its declaration.
+pub fn check_value_audited(
+    ir: &Ir,
+    decl: &Decl,
+    value: &Json,
+    options: Options,
+) -> Result<Checked, InputError> {
+    check_decl_audited(ir, decl, value, options).map(|(_, found)| found)
+}
+
 /// Like [`check_value`], and also returns the value with its defaults applied.
 pub(crate) fn check_decl_full(
     ir: &Ir,
@@ -70,9 +94,19 @@ pub(crate) fn check_decl_full(
     value: &Json,
     options: Options,
 ) -> Result<(Json, Vec<Violation>), InputError> {
+    check_decl_audited(ir, decl, value, options).map(|(full, found)| (full, found.violations))
+}
+
+/// Like [`check_decl_full`], with the audited violations as well.
+pub(crate) fn check_decl_audited(
+    ir: &Ir,
+    decl: &Decl,
+    value: &Json,
+    options: Options,
+) -> Result<(Json, Checked), InputError> {
     let cx = Cx { ir, opts: options };
     let full = cx.normalize_decl(decl, value, "$")?;
-    let mut out = Vec::new();
+    let mut out = Checked::default();
     cx.walk_decl(decl, &full, "$", &mut out)?;
     Ok((full, out))
 }
@@ -86,9 +120,19 @@ pub(crate) fn check_type(
     value: &Json,
     options: Options,
 ) -> Result<(Json, Vec<Violation>), InputError> {
+    check_type_audited(ir, ty, value, options).map(|(full, found)| (full, found.violations))
+}
+
+/// Like [`check_type`], with the audited violations as well.
+pub(crate) fn check_type_audited(
+    ir: &Ir,
+    ty: &Type,
+    value: &Json,
+    options: Options,
+) -> Result<(Json, Checked), InputError> {
     let cx = Cx { ir, opts: options };
     let full = cx.normalize_type(ty, value, "$")?;
-    let mut out = Vec::new();
+    let mut out = Checked::default();
     cx.walk_type(ty, &full, "$", &mut out)?;
     Ok((full, out))
 }
@@ -260,7 +304,7 @@ impl Cx<'_> {
         decl: &Decl,
         v: &Json,
         path: &str,
-        out: &mut Vec<Violation>,
+        out: &mut Checked,
     ) -> Result<(), InputError> {
         match &decl.kind {
             DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Event(_) => {
@@ -285,7 +329,7 @@ impl Cx<'_> {
         ty: &Type,
         v: &Json,
         path: &str,
-        out: &mut Vec<Violation>,
+        out: &mut Checked,
     ) -> Result<(), InputError> {
         match ty {
             Type::Scalar(_) => Ok(()),
@@ -309,7 +353,7 @@ impl Cx<'_> {
         item: &Type,
         v: &Json,
         path: &str,
-        out: &mut Vec<Violation>,
+        out: &mut Checked,
     ) -> Result<(), InputError> {
         for (i, e) in v.as_array().into_iter().flatten().enumerate() {
             self.walk_type(item, e, &format!("{path}[{i}]"), out)?;
@@ -323,21 +367,30 @@ impl Cx<'_> {
         decl: &Decl,
         v: &Json,
         path: &str,
-        out: &mut Vec<Violation>,
+        out: &mut Checked,
     ) -> Result<(), InputError> {
         for rule in decl.rules() {
             if self.opts.request && rule.reads_readonly {
                 continue;
             }
+            // The partial check is the client's, and a client skips audited rules (section 17.1).
+            if self.opts.partial && rule.is_audited() {
+                continue;
+            }
             let verdict = eval(&Env::for_value(self.ir, v), &rule.expr);
+            let sink = if rule.is_audited() {
+                &mut out.audited
+            } else {
+                &mut out.violations
+            };
             match verdict {
                 Ok(Value::Bool(true)) => {}
-                Ok(Value::Bool(false)) => out.push(violation(decl, rule, path, None)),
+                Ok(Value::Bool(false)) => sink.push(violation(decl, rule, path, None)),
                 Ok(other) => {
                     let what = format!("rule `{}` is {}, not bool", rule.name, other.kind());
                     return Err(InputError::Ir(what));
                 }
-                Err(Failure::Eval(e)) => out.push(violation(decl, rule, path, Some(e))),
+                Err(Failure::Eval(e)) => sink.push(violation(decl, rule, path, Some(e))),
                 Err(Failure::Input(InputError::MissingField { .. })) if self.opts.partial => {}
                 Err(Failure::Input(e)) => return Err(e.at_path(path)),
             }

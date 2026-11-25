@@ -195,3 +195,16 @@ fn an_illegal_move_is_409_invalid_transition_with_the_transition_as_the_rule() {
     assert_eq!(v.error, None);
     assert!(a.hook.is_empty());
 }
+
+/// The contract of `@rollout(audit)` (`spec/rules.md` section 17.1) waits under a `.pending`
+/// suffix until a generator supports it, so the walker above does not see it. Its count is
+/// pinned here; the counts of the three contracts above are unchanged.
+#[test]
+fn the_pending_rollout_contract_holds_its_eleven_examples() {
+    let ir = compile_vectors("rollout.veld.pending");
+    assert_eq!(ir.examples.len(), 11);
+    for example in &ir.examples {
+        let report = run_example(&ir, example).unwrap();
+        assert!(report.passed(), "{report}");
+    }
+}

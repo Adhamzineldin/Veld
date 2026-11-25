@@ -30,7 +30,7 @@ mod wire;
 #[cfg(test)]
 mod tests;
 
-pub use check::{Options, Violation, check_value};
+pub use check::{Checked, Options, Violation, check_value, check_value_audited};
 pub use error::{Failure, InputError};
 pub use eval::{Env, SavedOld, eval};
 pub use example::{
@@ -42,7 +42,9 @@ pub use example::{
 pub use helpers::num::EvalError;
 pub use machine::{is_final, next_states};
 pub use old::save_old;
-pub use pipeline::{Before, ErrorAnswer, Outcome, Pipeline, Prepared, Request, RunError};
+pub use pipeline::{
+    Before, ErrorAnswer, Outcome, OutputMode, Pipeline, Prepared, Reported, Request, RunError,
+};
 pub use policy::{NOT_PERMITTED, PolicyVerdict, eval_policy};
 pub use value::Value;
 pub use wire::{format_date, format_datetime, format_time};

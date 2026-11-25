@@ -1,0 +1,27 @@
+// `@rollout(audit)` on invariants (spec/rules.md section 17.1). An audited rule is evaluated and
+// reported, and never rejects: its violation, or its evaluation error, is in `audited` in the
+// vector file and never in `expect`. The enforced rule `positive` is in the same models so that
+// the contrast is in one place.
+
+model Party {
+  guests: int
+  size: int
+
+  @rollout(audit)
+  rule smallParty: guests <= 6
+  rule positive: guests > 0
+  @rollout(audit)
+  rule fits: guests <= size
+  @rollout(audit)
+  rule divisible: size / guests > 0
+  @rollout(audit)
+  rule headroom: size + 1 > size
+}
+
+model Group {
+  parties: Party[]
+}
+
+model Big extends Party {
+  extra: int
+}

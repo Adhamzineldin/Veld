@@ -170,6 +170,7 @@ pub fn run_event_example(ir: &Ir, ex: &Example) -> Result<ExampleReport, Example
         name: ex.name.clone(),
         verdict: compare(ir, expect, &delivery),
         outcome: None,
+        audited: Vec::new(),
     })
 }
 

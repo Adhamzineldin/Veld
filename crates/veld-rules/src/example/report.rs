@@ -46,6 +46,10 @@ pub struct ExampleReport {
     /// What the pipeline answered. A live run has none when the answer is not one the IR
     /// describes (an unknown error type).
     pub outcome: Option<Outcome>,
+    /// The audited rules (`@rollout(audit)`, `spec/rules.md` section 17.1) the example would
+    /// violate. They never fail an example; `veld test` lists them under it. A live run has none:
+    /// the server reports them to its own hook.
+    pub audited: Vec<Violation>,
 }
 
 impl ExampleReport {

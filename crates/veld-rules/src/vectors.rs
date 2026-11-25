@@ -11,7 +11,7 @@ use serde::Deserialize;
 use serde_json::Value as Json;
 use veld_ir::Ir;
 
-use crate::check::{Options, check_value};
+use crate::check::{Options, check_value_audited};
 use crate::error::InputError;
 
 /// One expected violation. Messages and rule ids are covered by snapshots, not by vectors.
@@ -40,7 +40,12 @@ pub struct Case {
     /// Run the partial check (TypeScript and the reference evaluator only).
     #[serde(default)]
     pub partial: bool,
+    /// The violations of enforced rules, which reject.
     pub expect: Vec<Expected>,
+    /// The violations of audited rules (`@rollout(audit)`, section 17.1): reported to the hook
+    /// and never in `expect`. Absent means none. A client does not check audited rules at all.
+    #[serde(default)]
+    pub audited: Vec<Expected>,
 }
 
 #[derive(Deserialize)]
@@ -105,6 +110,18 @@ pub enum Mismatch {
         missing: Vec<Key>,
         unexpected: Vec<Key>,
     },
+    #[error(
+        "case `{case}`: audited violations differ
+  expected but not reported:{}
+  reported but not expected:{}",
+        list(.missing),
+        list(.unexpected)
+    )]
+    AuditedDiffers {
+        case: String,
+        missing: Vec<Key>,
+        unexpected: Vec<Key>,
+    },
 }
 
 /// Runs one case: finds the model by name, checks the value with the case's flags and compares
@@ -125,20 +142,23 @@ pub fn run_case(ir: &Ir, case: &Case) -> Result<(), Mismatch> {
         request: case.request,
         partial: case.partial,
     };
-    let found = check_value(ir, decl, &case.value, options).map_err(|error| Mismatch::Input {
-        case: case.name.clone(),
-        error,
-    })?;
-    let got: BTreeSet<Key> = found
-        .into_iter()
-        .map(|v| Key {
-            rule: v.rule_name,
-            path: v.path,
-            fields: v.fields,
-            error: v.error.map(|e| e.as_str().to_owned()),
-        })
-        .collect();
-    diff(case, got)
+    let found =
+        check_value_audited(ir, decl, &case.value, options).map_err(|error| Mismatch::Input {
+            case: case.name.clone(),
+            error,
+        })?;
+    let keys = |vs: Vec<crate::check::Violation>| -> BTreeSet<Key> {
+        vs.into_iter()
+            .map(|v| Key {
+                rule: v.rule_name,
+                path: v.path,
+                fields: v.fields,
+                error: v.error.map(|e| e.as_str().to_owned()),
+            })
+            .collect()
+    };
+    diff(case, keys(found.violations))?;
+    diff_audited(case, keys(found.audited))
 }
 
 /// A violation as generated code reported it: the JSON object of `spec/rules.md` section 7.
@@ -168,7 +188,20 @@ pub fn rule_name_of(id: &str) -> Option<&str> {
 /// A [`Mismatch`] that says what differs. A rule id that has no name in it is reported as an
 /// unexpected violation under the whole id.
 pub fn compare_produced(case: &Case, produced: &[Produced]) -> Result<(), Mismatch> {
-    let got: BTreeSet<Key> = produced
+    diff(case, produced_keys(produced))
+}
+
+/// Compares the audited violations generated code reported for `case` with the case's `audited`,
+/// as a set (`spec/rules.md` section 17.1).
+///
+/// # Errors
+/// A [`Mismatch::AuditedDiffers`] that says what differs.
+pub fn compare_produced_audited(case: &Case, produced: &[Produced]) -> Result<(), Mismatch> {
+    diff_audited(case, produced_keys(produced))
+}
+
+fn produced_keys(produced: &[Produced]) -> BTreeSet<Key> {
+    produced
         .iter()
         .map(|p| Key {
             rule: rule_name_of(&p.rule).unwrap_or(&p.rule).to_owned(),
@@ -176,25 +209,38 @@ pub fn compare_produced(case: &Case, produced: &[Produced]) -> Result<(), Mismat
             fields: p.fields.clone(),
             error: p.error.clone(),
         })
-        .collect();
-    diff(case, got)
+        .collect()
 }
 
-fn diff(case: &Case, got: BTreeSet<Key>) -> Result<(), Mismatch> {
-    let want: BTreeSet<Key> = case
-        .expect
-        .iter()
+fn expected_keys(list: &[Expected]) -> BTreeSet<Key> {
+    list.iter()
         .map(|e| Key {
             rule: e.rule.clone(),
             path: e.path.clone(),
             fields: e.fields.clone(),
             error: e.error.clone(),
         })
-        .collect();
+        .collect()
+}
+
+fn diff(case: &Case, got: BTreeSet<Key>) -> Result<(), Mismatch> {
+    let want = expected_keys(&case.expect);
     if got == want {
         return Ok(());
     }
     Err(Mismatch::Differs {
+        case: case.name.clone(),
+        missing: want.difference(&got).cloned().collect(),
+        unexpected: got.difference(&want).cloned().collect(),
+    })
+}
+
+fn diff_audited(case: &Case, got: BTreeSet<Key>) -> Result<(), Mismatch> {
+    let want = expected_keys(&case.audited);
+    if got == want {
+        return Ok(());
+    }
+    Err(Mismatch::AuditedDiffers {
         case: case.name.clone(),
         missing: want.difference(&got).cloned().collect(),
         unexpected: got.difference(&want).cloned().collect(),

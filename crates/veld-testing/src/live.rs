@@ -142,6 +142,7 @@ impl Live {
                     "live event examples arrive with a later phase".to_owned(),
                 ),
                 outcome: None,
+                audited: Vec::new(),
             });
         }
         let filled = fill_example(ir, ex)?;
@@ -156,6 +157,7 @@ impl Live {
                 name: filled.name,
                 verdict: Verdict::Skipped(why),
                 outcome: None,
+                audited: Vec::new(),
             });
         }
         let req = build_request(ir, &filled, self.dry_run)?;

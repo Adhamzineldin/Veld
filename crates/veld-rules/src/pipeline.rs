@@ -15,7 +15,7 @@ use std::ops::ControlFlow;
 use serde_json::{Map, Value as Json, json};
 use veld_ir::{DeclId, DeclKind, ElseError, Endpoint, EndpointFact, Expr, Ir, Policy, Service};
 
-use crate::check::{Options, Violation, check_decl_full, check_type};
+use crate::check::{Options, Violation, check_decl_audited, check_type_audited};
 use crate::error::{Failure, InputError};
 use crate::eval::{Env, SavedOld, eval};
 use crate::helpers::num::EvalError;
@@ -65,6 +65,30 @@ pub enum Outcome {
     Passes,
     /// The server answers with this error.
     Error(ErrorAnswer),
+}
+
+/// What the server does with the checks on its own output (steps 8 and 9, `spec/rules.md`
+/// section 5.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutputMode {
+    /// A violated output rule becomes `500 Internal`.
+    #[default]
+    Strict,
+    /// The response is sent unchanged; the violation goes to the hook.
+    Audit,
+    /// Output rules are not evaluated, audited ones included.
+    Off,
+}
+
+/// Everything one request came to: the outcome, and what went to the hook besides it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reported {
+    pub outcome: Outcome,
+    /// Violations of audited rules (`@rollout(audit)`, section 17.1), in the order of
+    /// evaluation. They never reject and are never in a response.
+    pub audited: Vec<Violation>,
+    /// Violations of enforced output rules that did not reject because the mode is `audit`.
+    pub hook: Vec<Violation>,
 }
 
 /// Why the pipeline could not give an outcome: the input is not what the IR describes.
@@ -132,13 +156,36 @@ impl<'a> Pipeline<'a> {
     /// # Errors
     /// [`RunError`] when the parameters, facts or result do not have the shape the IR says.
     pub fn run(&self, request: &Request) -> Result<Outcome, RunError> {
-        match self.before(request)? {
-            Before::Rejected(answer) => Ok(Outcome::Error(answer)),
+        self.run_reported(request, OutputMode::Strict)
+            .map(|r| r.outcome)
+    }
+
+    /// Like [`Pipeline::run`] with the output `mode`, and with what the hook is told on top of
+    /// the outcome: the audited violations (`@rollout(audit)`) of every step that ran.
+    ///
+    /// # Errors
+    /// [`RunError`] when the parameters, facts or result do not have the shape the IR says.
+    pub fn run_reported(&self, request: &Request, mode: OutputMode) -> Result<Reported, RunError> {
+        let mut audited = Vec::new();
+        let outcome = match self.before_audited(request, &mut audited)? {
+            Before::Rejected(answer) => Outcome::Error(answer),
             Before::Ready(prepared) => match &request.result {
-                Some(result) => prepared.after(result),
-                None => Ok(Outcome::Passes),
+                Some(result) => {
+                    let after = prepared.after_into(result, mode, &mut audited)?;
+                    return Ok(Reported {
+                        outcome: after.0,
+                        audited,
+                        hook: after.1,
+                    });
+                }
+                None => Outcome::Passes,
             },
-        }
+        };
+        Ok(Reported {
+            outcome,
+            audited,
+            hook: Vec::new(),
+        })
     }
 
     /// Steps 5 and 6: invariants on the parameters, the facts, the `require` statements, and
@@ -147,7 +194,19 @@ impl<'a> Pipeline<'a> {
     /// # Errors
     /// [`RunError`] when the input is malformed.
     pub fn before(&self, request: &Request) -> Result<Before<'a>, RunError> {
-        let params = match self.bind(request)? {
+        self.before_audited(request, &mut Vec::new())
+    }
+
+    /// Like [`Pipeline::before`]; the violations of audited rules are appended to `audited`.
+    ///
+    /// # Errors
+    /// [`RunError`] when the input is malformed.
+    pub fn before_audited(
+        &self,
+        request: &Request,
+        audited: &mut Vec<Violation>,
+    ) -> Result<Before<'a>, RunError> {
+        let params = match self.bind(request, audited)? {
             ControlFlow::Continue(params) => params,
             ControlFlow::Break(answer) => return Ok(Before::Rejected(answer)),
         };
@@ -164,7 +223,7 @@ impl<'a> Pipeline<'a> {
         if let Some(answer) = self.guard(&env)? {
             return Ok(Before::Rejected(answer));
         }
-        if let Some(answer) = self.requires(&env)? {
+        if let Some(answer) = self.requires(&env, audited)? {
             return Ok(Before::Rejected(answer));
         }
         let ensures: Vec<&Expr> = self
@@ -189,6 +248,7 @@ impl<'a> Pipeline<'a> {
     fn bind(
         &self,
         request: &Request,
+        audited: &mut Vec<Violation>,
     ) -> Result<ControlFlow<ErrorAnswer, BTreeMap<String, Json>>, RunError> {
         let opts = Options {
             request: true,
@@ -207,9 +267,10 @@ impl<'a> Pipeline<'a> {
                 };
                 return Err(missing.into());
             };
-            let (full, violations) =
-                check_type(self.ir, &p.ty, value, opts).map_err(|e| e.at_path(&p.name))?;
-            found.extend(violations.into_iter().map(|v| reroot(v, &p.name)));
+            let (full, checked) =
+                check_type_audited(self.ir, &p.ty, value, opts).map_err(|e| e.at_path(&p.name))?;
+            found.extend(checked.violations.into_iter().map(|v| reroot(v, &p.name)));
+            audited.extend(checked.audited.into_iter().map(|v| reroot(v, &p.name)));
             params.insert(p.name.clone(), full);
         }
         if found.is_empty() {
@@ -332,7 +393,11 @@ impl<'a> Pipeline<'a> {
         }
     }
 
-    fn requires(&self, env: &Env<'_>) -> Result<Option<ErrorAnswer>, RunError> {
+    fn requires(
+        &self,
+        env: &Env<'_>,
+        audited: &mut Vec<Violation>,
+    ) -> Result<Option<ErrorAnswer>, RunError> {
         for r in &self.endpoint.rules.requires {
             let verdict = verdict(env, &r.expr)?;
             if matches!(verdict, Verdict::Holds) {
@@ -347,9 +412,14 @@ impl<'a> Pipeline<'a> {
                 unnamed_default: "precondition failed",
             };
             let violation = rule.violation(&verdict);
+            if r.rollout.is_some() {
+                // An audited `require` never answers, with `else E` or without: it is reported.
+                audited.push(violation);
+                continue;
+            }
             let answer = match &r.else_error {
                 None => self.validation_error(vec![violation])?,
-                Some(e) => self.else_answer(env, e, violation)?,
+                Some(e) => self.else_answer(env, e, violation, audited)?,
             };
             return Ok(Some(answer));
         }
@@ -363,6 +433,7 @@ impl<'a> Pipeline<'a> {
         env: &Env<'_>,
         e: &ElseError,
         violation: Violation,
+        audited: &mut Vec<Violation>,
     ) -> Result<ErrorAnswer, RunError> {
         let decl = self
             .ir
@@ -385,10 +456,13 @@ impl<'a> Pipeline<'a> {
                 Err(Failure::Input(err)) => return Err(err.into()),
             }
         }
-        let (data, invariants) =
-            check_decl_full(self.ir, decl, &Json::Object(data), Options::default())?;
-        if !invariants.is_empty() {
-            let hook = invariants.into_iter().map(|v| reroot(v, "error")).collect();
+        let (data, checked) =
+            check_decl_audited(self.ir, decl, &Json::Object(data), Options::default())?;
+        audited.extend(checked.audited.into_iter().map(|v| reroot(v, "error")));
+        if !checked.violations.is_empty() {
+            let hook = (checked.violations.into_iter())
+                .map(|v| reroot(v, "error"))
+                .collect();
             return self.answer("Internal", 500, json!({}), Vec::new(), hook);
         }
         Ok(ErrorAnswer {
@@ -466,13 +540,33 @@ impl Prepared<'_> {
     /// # Errors
     /// [`RunError`] when the result does not have the shape of the success type.
     pub fn after(&self, result: &Json) -> Result<Outcome, RunError> {
+        self.after_into(result, OutputMode::Strict, &mut Vec::new())
+            .map(|(outcome, _)| outcome)
+    }
+
+    /// Steps 8 and 9 in the output `mode`. Returns the outcome and the violations of enforced
+    /// rules that were reported without rejecting (mode `audit`); the violations of audited
+    /// rules (`@rollout(audit)`) are appended to `audited` in every mode but `off`.
+    ///
+    /// # Errors
+    /// [`RunError`] when the result does not have the shape of the success type.
+    pub fn after_into(
+        &self,
+        result: &Json,
+        mode: OutputMode,
+        audited: &mut Vec<Violation>,
+    ) -> Result<(Outcome, Vec<Violation>), RunError> {
         let p = &self.pipeline;
+        if mode == OutputMode::Off {
+            return Ok((Outcome::Passes, Vec::new()));
+        }
         let mut env = Env::new(p.ir);
         env.params.clone_from(&self.params);
         env.now = Some(self.now);
         env.principal.clone_from(&self.principal);
         env.old.clone_from(&self.old);
         // Facts are deliberately not in scope here: outside `old(...)` they are an error.
+        let mut hook = Vec::new();
         if let Some(ty) = p
             .endpoint
             .success
@@ -480,20 +574,35 @@ impl Prepared<'_> {
             .as_ref()
             .filter(|_| !p.endpoint.success.stream)
         {
-            let (full, violations) = check_type(p.ir, ty, result, Options::default())
+            let (full, checked) = check_type_audited(p.ir, ty, result, Options::default())
                 .map_err(|e| e.at_path("result"))?;
-            if !violations.is_empty() {
-                let hook = violations
-                    .into_iter()
-                    .map(|v| reroot(v, "result"))
-                    .collect();
-                return internal(p, hook);
+            audited.extend(checked.audited.into_iter().map(|v| reroot(v, "result")));
+            hook.extend(checked.violations.into_iter().map(|v| reroot(v, "result")));
+            if !hook.is_empty() && mode == OutputMode::Strict {
+                return internal(p, hook).map(|o| (o, Vec::new()));
             }
             env.result = Some(full);
         }
+        hook.extend(self.ensures(&env, result, audited)?);
+        if hook.is_empty() || mode == OutputMode::Audit {
+            let outcome = Outcome::Passes;
+            return Ok((outcome, hook));
+        }
+        internal(p, hook).map(|o| (o, Vec::new()))
+    }
+
+    /// Step 9: every `ensure` in source order, then the target state. The violations of enforced
+    /// ones are returned; those of audited ones go to `audited`.
+    fn ensures(
+        &self,
+        env: &Env<'_>,
+        result: &Json,
+        audited: &mut Vec<Violation>,
+    ) -> Result<Vec<Violation>, RunError> {
+        let p = &self.pipeline;
         let mut hook = Vec::new();
         for e in &p.endpoint.rules.ensures {
-            let verdict = verdict(&env, &e.expr)?;
+            let verdict = verdict(env, &e.expr)?;
             if matches!(verdict, Verdict::Holds) {
                 continue;
             }
@@ -505,16 +614,17 @@ impl Prepared<'_> {
                 message: e.message.as_deref(),
                 unnamed_default: "postcondition failed",
             };
-            hook.push(rule.violation(&verdict));
+            let sink = if e.rollout.is_some() {
+                &mut *audited
+            } else {
+                &mut hook
+            };
+            sink.push(rule.violation(&verdict));
         }
         // The checked result, with the defaults of its fields applied, like the `ensure` statements see it.
         let checked = env.result.as_ref().unwrap_or(result);
         hook.extend(machine::target(p.ir, p.endpoint, checked)?);
-        if hook.is_empty() {
-            Ok(Outcome::Passes)
-        } else {
-            internal(p, hook)
-        }
+        Ok(hook)
     }
 }
 

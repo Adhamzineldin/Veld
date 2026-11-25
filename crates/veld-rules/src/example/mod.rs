@@ -28,7 +28,7 @@ pub use self::report::{ExampleReport, Mismatch, Verdict, describe_actual, descri
 use crate::check::{Options, check_type};
 use crate::error::InputError;
 use crate::helpers::instant::parse_datetime;
-use crate::pipeline::{Pipeline, Request, RunError};
+use crate::pipeline::{OutputMode, Pipeline, Request, RunError};
 
 /// The clock of an example without `at`.
 pub const DEFAULT_CLOCK: &str = "2026-01-01T00:00:00Z";
@@ -440,17 +440,19 @@ pub fn run_example(ir: &Ir, ex: &Example) -> Result<ExampleReport, ExampleError>
     }
     let filled = fill_example(ir, ex)?;
     let (service, endpoint) = locate(ir, ex)?;
-    let outcome = Pipeline::new(ir, service, &ex.endpoint)?.run(&filled.request)?;
+    let reported = Pipeline::new(ir, service, &ex.endpoint)?
+        .run_reported(&filled.request, OutputMode::Strict)?;
     let verdict = report::compare(
         ir,
         endpoint,
         &filled.expected,
-        &outcome,
+        &reported.outcome,
         filled.request.result.as_ref(),
     );
     Ok(ExampleReport {
         name: ex.name.clone(),
         verdict,
-        outcome: Some(outcome),
+        outcome: Some(reported.outcome),
+        audited: reported.audited,
     })
 }

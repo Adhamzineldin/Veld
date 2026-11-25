@@ -253,5 +253,6 @@ pub fn judge(ir: &Ir, filled: &FilledExample, dry_run: bool, answer: &Answer) ->
         name: filled.name.clone(),
         verdict,
         outcome,
+        audited: Vec::new(),
     }
 }
