@@ -107,7 +107,7 @@ fn write_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     w.blank();
     helpers(w, !svc.facts.is_empty());
     loaders(w, ctx, svc);
-    dispatch(w, svc, &name);
+    dispatch(w, ctx, svc, &name);
     handler(w, svc, &name);
     probe(w, svc, &name);
 }
@@ -182,7 +182,7 @@ fn loaders(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     w.close().blank();
 }
 
-fn dispatch(w: &mut CodeWriter, svc: &Service, name: &str) {
+fn dispatch(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, name: &str) {
     let loaders = !svc.facts.is_empty();
     let inner = if loaders {
         format!("{name}Dispatch<S, H, HeaderFacts>")
@@ -198,7 +198,7 @@ fn dispatch(w: &mut CodeWriter, svc: &Service, name: &str) {
     ));
     delegates(w);
     prepare(w, svc);
-    trusted(w);
+    trusted(w, ctx, svc);
     call(w, svc);
     w.close().blank();
 }
@@ -264,9 +264,28 @@ fn prepare(w: &mut CodeWriter, svc: &Service) {
     w.close().blank();
 }
 
-fn trusted(w: &mut CodeWriter) {
+fn trusted(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     w.open("fn trusted_principal(&self, ctx: &RequestContext) -> Option<Principal>");
-    w.line("Some(Principal::new(header_json(ctx, \"veld-test-principal\").ok().flatten().unwrap_or(serde_json::Value::Null)))");
+    match crate::server::typed_principal(ctx, svc) {
+        // The hooks of this service return the model: the header is its wire JSON, decoded the
+        // way a fact is. Without the header there is no caller, and a statement that reads it
+        // answers `500`.
+        Some(ty) => {
+            let schema = svc
+                .principal
+                .as_ref()
+                .map(|p| schema_ref(ctx, &veld_ir::Type::Decl(p.decl), &Constraints::default()))
+                .unwrap_or_default();
+            w.line("let wire = header_json(ctx, \"veld-test-principal\").ok().flatten()?;");
+            w.line(format!(
+                "let principal: {ty} = serde_json::from_value({schema}.from_wire(&wire, false)).ok()?;"
+            ));
+            w.line("Some(Principal::new(principal))");
+        }
+        None => {
+            w.line("Some(Principal::new(header_json(ctx, \"veld-test-principal\").ok().flatten().unwrap_or(serde_json::Value::Null)))");
+        }
+    }
     w.close().blank();
 }
 

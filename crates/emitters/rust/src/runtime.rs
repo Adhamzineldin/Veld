@@ -26,6 +26,12 @@ pub struct Features {
     /// A served service has endpoint rules (`spec/rules.md` section 9): the server core runs
     /// steps 6 and 9. Implies `rules`.
     pub endpoint_rules: bool,
+    /// A served service has an `allow` or a `transition` (`spec/rules.md` sections 10 and 11):
+    /// step 6 runs the guards. Implies `endpoint_rules`.
+    pub guards: bool,
+    /// A policy is generated (an `allow` of a generated service names one), in either role: the
+    /// system clock reading of the policy functions. Implies `rules`.
+    pub policies: bool,
 }
 
 impl Features {
@@ -36,6 +42,8 @@ impl Features {
             "rules" => self.rules,
             "!rules" => !self.rules,
             "endpoint_rules" => self.endpoint_rules,
+            "guards" => self.guards,
+            "policies" => self.policies,
             _ => false,
         }
     }

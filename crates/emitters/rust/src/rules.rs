@@ -43,6 +43,20 @@ pub struct Scope {
     pub params: std::collections::BTreeMap<String, bool>,
     pub facts: std::collections::BTreeMap<String, bool>,
     pub result: bool,
+    /// The local that holds the principal (a reference to its model), when the caller is in scope
+    /// (`spec/rules.md` section 11.1).
+    pub principal: Option<String>,
+    /// Parameters and facts are locals of the generated function that hold a reference to the
+    /// value, named by [`local_ident`] (policy functions and `can_<endpoint>`), instead of members
+    /// of the typed request and `fact_` locals (step 6 and step 9).
+    pub locals: bool,
+}
+
+/// The local that holds a parameter or fact in a [`Scope`] with `locals`. `now` is the clock.
+#[must_use]
+pub fn local_ident(name: &str) -> String {
+    let id = snake(name);
+    if id == "now" { "now_".to_string() } else { id }
 }
 
 /// The prefix that marks a name read inside `old(...)`: the value before the handler ran.
@@ -198,6 +212,14 @@ impl<'p, 't, 'a> RustPrinter<'p, 't, 'a> {
     fn block_root(&self, root: &Root) -> Option<(String, bool)> {
         let scope = self.scope.as_ref()?;
         match root {
+            Root::Param(n) if scope.locals => {
+                let optional = *scope.params.get(n)?;
+                Some((format!("(*{})", local_ident(n)), optional))
+            }
+            Root::Fact(n) if scope.locals => {
+                let optional = *scope.facts.get(n)?;
+                Some((format!("(*{})", local_ident(n)), optional))
+            }
             Root::Param(n) => {
                 let (n, old) = split_old(n);
                 let optional = *scope.params.get(&n)?;
@@ -210,8 +232,12 @@ impl<'p, 't, 'a> RustPrinter<'p, 't, 'a> {
                 let from = if old { "old_fact_" } else { "fact_" };
                 Some((format!("(*{from}{})", fact_ident(&n)), optional))
             }
+            Root::Principal => scope
+                .principal
+                .as_ref()
+                .map(|local| (format!("(*{local})"), false)),
             Root::Result => scope.result.then(|| ("(*r)".to_string(), false)),
-            Root::SelfValue | Root::Var(_) | Root::Principal => None,
+            Root::SelfValue | Root::Var(_) => None,
         }
     }
 
@@ -233,7 +259,7 @@ impl<'p, 't, 'a> RustPrinter<'p, 't, 'a> {
         let ExprKind::Path(path) = &expr.e else {
             return None;
         };
-        if !matches!(path.root, Root::Param(_) | Root::Fact(_)) {
+        if !matches!(path.root, Root::Param(_) | Root::Fact(_) | Root::Principal) {
             return None;
         }
         let (code, last_optional) = self.block_chain(path)?;
@@ -547,14 +573,15 @@ impl ExprPrinter for RustPrinter<'_, '_, '_> {
                 let place = if optional { format!("(*{expr})") } else { expr };
                 self.read(t, &place)
             }
-            Root::Result | Root::Param(_) | Root::Fact(_) => match self.block_chain(path) {
-                Some((expr, optional)) => {
-                    let place = if optional { format!("(*{expr})") } else { expr };
-                    self.read(t, &place)
+            Root::Result | Root::Param(_) | Root::Fact(_) | Root::Principal => {
+                match self.block_chain(path) {
+                    Some((expr, optional)) => {
+                        let place = if optional { format!("(*{expr})") } else { expr };
+                        self.read(t, &place)
+                    }
+                    None => self.no("a name that is not in scope"),
                 }
-                None => self.no("a name that is not in scope"),
-            },
-            Root::Principal => self.no("the principal"),
+            }
         }
     }
 
@@ -562,14 +589,14 @@ impl ExprPrinter for RustPrinter<'_, '_, '_> {
         let base = match &path.root {
             Root::SelfValue => "self".to_string(),
             Root::Var(name) => var_ident(name),
-            Root::Param(_) | Root::Fact(_) => {
+            Root::Param(_) | Root::Fact(_) | Root::Principal => {
                 let Some((base, optional)) = self.block_root(&path.root) else {
                     return self.no("`has` on a name that is not in scope");
                 };
                 return Printed::atom(self.has_root(&base, optional, &path.steps));
             }
-            Root::Principal | Root::Result => {
-                return self.no("`has` on the principal or the result");
+            Root::Result => {
+                return self.no("`has` on the result");
             }
         };
         Printed::atom(self.has_chain(&base, &path.steps, 0))

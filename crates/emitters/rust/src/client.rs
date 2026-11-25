@@ -39,7 +39,7 @@ pub fn emit(
         );
         let ctx = Ctx { tree, here: &here };
         let mut w = CodeWriter::with_unit("    ");
-        service_file(&mut w, &ctx, svc, transports);
+        service_file(&mut w, &ctx, svc, transports)?;
         let path = format!(
             "{}/{}/{}.rs",
             tree.dir,
@@ -51,7 +51,12 @@ pub fn emit(
     Ok(())
 }
 
-fn service_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, transports: Transports) {
+fn service_file(
+    w: &mut CodeWriter,
+    ctx: &Ctx<'_, '_>,
+    svc: &Service,
+    transports: Transports,
+) -> Result<(), Vec<GenDiagnostic>> {
     w.line(format!("//! The client of the `{}` service.", svc.name))
         .blank();
     for ep in &svc.endpoints {
@@ -72,6 +77,7 @@ fn service_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, transports
     }
     w.close().blank();
     transport_constructors(w, &name, transports);
+    crate::policies::write_can_functions(w, ctx, svc)
 }
 
 fn client_type(w: &mut CodeWriter, svc: &Service, name: &str) {

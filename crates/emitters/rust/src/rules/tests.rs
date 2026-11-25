@@ -444,6 +444,7 @@ fn block_scope() -> super::Scope {
             .into_iter()
             .collect(),
         result: true,
+        ..super::Scope::default()
     }
 }
 

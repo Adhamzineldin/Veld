@@ -12,6 +12,8 @@ use veld_ir::{
 };
 
 use crate::endpoints::{self, Kind};
+use crate::guards;
+use crate::policies::Plan;
 use crate::rules::{RustPrinter, Scope, fact_ident, mark_old};
 use crate::types::{Ctx, rust_type};
 use crate::util::{bare, doc, lit, method, snake, type_name, unsupported};
@@ -92,8 +94,23 @@ fn state_has_facts(ep: &Endpoint) -> bool {
     has_facts(ep) && has_old(ep)
 }
 
-fn scope(ep: &Endpoint, result: bool) -> Scope {
+/// Whether step 9 runs for the endpoint: it has an `ensure`, or the success value must hold the
+/// target state of a transition.
+#[must_use]
+pub fn has_step9(ep: &Endpoint) -> bool {
+    !ep.rules.ensures.is_empty() || guards::has_target(ep)
+}
+
+/// The local that holds a fact in step 6: `fact_room`.
+#[must_use]
+pub fn fact_local(name: &str) -> String {
+    format!("fact_{}", fact_ident(name))
+}
+
+fn scope(svc: &Service, ep: &Endpoint, result: bool) -> Scope {
     Scope {
+        principal: svc.principal.as_ref().map(|_| "principal".to_string()),
+        locals: false,
         params: ep
             .params
             .iter()
@@ -114,7 +131,7 @@ fn has_result(ep: &Endpoint) -> bool {
     ep.success.ty.is_some() && !ep.success.stream
 }
 
-fn first_problem(p: &RustPrinter<'_, '_, '_>) -> Result<(), String> {
+pub(crate) fn first_problem(p: &RustPrinter<'_, '_, '_>) -> Result<(), String> {
     match p.unsupported.first() {
         Some(what) => Err(what.clone()),
         None => Ok(()),
@@ -131,7 +148,7 @@ fn print(ctx: &Ctx<'_, '_>, scope: &Scope, expr: &Expr) -> Result<Printed, Strin
 
 /// The value of an expression in the form the developer sees (a field's Rust type), for a fact's
 /// key. A bare path is the field itself; anything computed is turned back from its rule form.
-fn dev_value(
+pub(crate) fn dev_value(
     ctx: &Ctx<'_, '_>,
     scope: &Scope,
     expr: &Expr,
@@ -306,19 +323,18 @@ pub fn steps(
                 "endpoint rules on a `ws` endpoint are not supported",
             ));
         }
-        if !ep.rules.ensures.is_empty() {
-            state_struct(w, ctx, ep);
+        if has_step9(ep) {
+            state_struct(w, ctx, svc, ep);
         }
         step6(w, ctx, svc, i, ep).map_err(|e| fail(svc, ep, &e))?;
-        if !ep.rules.ensures.is_empty() {
+        if has_step9(ep) {
             step9(w, ctx, svc, ep).map_err(|e| fail(svc, ep, &e))?;
         }
     }
     Ok(())
 }
 
-fn state_struct(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint) {
-    let _ = ctx;
+fn state_struct(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, ep: &Endpoint) {
     w.line(format!(
         "/// What step 6 of `{}` keeps for step 9: the typed request, the facts when an `ensure`",
         ep.name
@@ -329,8 +345,20 @@ fn state_struct(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint) {
     if state_has_facts(ep) {
         w.line(format!("facts: {},", facts_name(ep)));
     }
+    if let Some(ty) = state_principal(ctx, svc, ep) {
+        w.line(format!("principal: {ty},"));
+    }
     w.line("now: i64,");
     w.close().blank();
+}
+
+/// The type of the principal that step 9 keeps: an `ensure` reads the caller.
+fn state_principal(ctx: &Ctx<'_, '_>, svc: &Service, ep: &Endpoint) -> Option<String> {
+    if guards::reads_principal_in_ensure(ep) {
+        guards::principal_type(ctx, svc)
+    } else {
+        None
+    }
 }
 
 const ALLOW: &str = "#[allow(clippy::all, unused_imports, unused_variables, unused_mut, unused_parens, unused_braces, unused_comparisons)]";
@@ -366,16 +394,28 @@ fn step6(
         endpoints::request_name(ep)
     ));
     w.line("let p = &request;");
-    let sc = scope(ep, false);
+    let sc = scope(svc, ep, false);
+    if guards::reads_principal(ep) {
+        let ty = guards::principal_type(ctx, svc)
+            .ok_or("the endpoint reads the principal, which the package does not declare")?;
+        guards::bind_principal(w, &ty);
+    }
     for f in &ep.rules.facts {
         load_fact(w, ctx, svc, f, &sc)?;
     }
+    // The policies and the transition guard run whether or not requests are validated: who may
+    // call an endpoint and which move is legal must not depend on a validation option.
+    let plan = Plan::new(ctx.tree);
+    for a in &ep.rules.allows {
+        guards::allow(w, ctx, &plan, index, a, &sc)?;
+    }
+    guards::transition_guard(w, ctx, index, ep)?;
     w.open("if enforce");
     for r in &ep.rules.requires {
         require(w, ctx, index, ep, r, &sc)?;
     }
     w.close();
-    finish6(w, index, ep);
+    finish6(w, ctx, svc, index, ep);
     w.close().blank();
     Ok(())
 }
@@ -625,7 +665,10 @@ fn else_answer(
     Ok(())
 }
 
-fn finish6(w: &mut CodeWriter, index: usize, ep: &Endpoint) {
+fn finish6(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, index: usize, ep: &Endpoint) {
+    let principal = state_principal(ctx, svc, ep).map_or(String::new(), |_| {
+        ", principal: principal.clone()".to_string()
+    });
     if has_facts(ep) {
         let names: Vec<String> = ep
             .rules
@@ -641,28 +684,29 @@ fn finish6(w: &mut CodeWriter, index: usize, ep: &Endpoint) {
             facts_name(ep),
             names.join(", ")
         ));
-        let saved = state_has_facts(ep) && !ep.rules.ensures.is_empty();
+        let saved = state_has_facts(ep) && has_step9(ep);
         if saved {
             w.line("let saved = facts.clone();");
         }
         w.open("if let Ok(serde_json::Value::Object(m)) = serde_json::to_value(&facts)");
         w.line("args.extend(m);");
         w.close();
+        guards::hand_over_transition(w, ep);
         if saved {
             w.line("if !enforce { return Ok(veld::server::Prepared::none()); }");
             w.line(format!(
-                "Ok(veld::server::Prepared::new({index}, {} {{ request, facts: saved, now }}))",
+                "Ok(veld::server::Prepared::new({index}, {} {{ request, facts: saved{principal}, now }}))",
                 state_name(ep)
             ));
             return;
         }
     }
-    if ep.rules.ensures.is_empty() {
+    if !has_step9(ep) {
         w.line("Ok(veld::server::Prepared::none())");
     } else {
         w.line("if !enforce { return Ok(veld::server::Prepared::none()); }");
         w.line(format!(
-            "Ok(veld::server::Prepared::new({index}, {} {{ request, now }}))",
+            "Ok(veld::server::Prepared::new({index}, {} {{ request{principal}, now }}))",
             state_name(ep)
         ));
     }
@@ -678,9 +722,8 @@ fn step9(
     svc: &Service,
     ep: &Endpoint,
 ) -> Result<(), String> {
-    let _ = svc;
     let result = has_result(ep);
-    let sc = scope(ep, result);
+    let sc = scope(svc, ep, result);
     w.line(format!(
         "/// Step 9 of `{}`: every `ensure`, in source order, on the success value.",
         ep.name
@@ -706,6 +749,9 @@ fn step9(
     w.line("let p = &state.request;");
     w.line("let old_p = &state.request;");
     w.line("let now = state.now;");
+    if state_principal(ctx, svc, ep).is_some() {
+        w.line("let principal = &state.principal;");
+    }
     if state_has_facts(ep) {
         for f in &ep.rules.facts {
             w.line(format!(
@@ -718,6 +764,7 @@ fn step9(
     for e in &ep.rules.ensures {
         ensure_line(w, ctx, e, &sc)?;
     }
+    guards::target_check(w, ctx, ep)?;
     w.line("out");
     w.close().blank();
     Ok(())
@@ -757,6 +804,36 @@ pub fn facts_param(ep: &Endpoint) -> String {
     } else {
         String::new()
     }
+}
+
+/// `, transition: veld::rules::Transition<Status>` for the service method of an endpoint with a
+/// transition: it follows the facts (`spec/rules.md` section 10.2).
+pub fn transition_param(ctx: &Ctx<'_, '_>, ep: &Endpoint) -> String {
+    ep.rules
+        .transition
+        .as_ref()
+        .and_then(|t| guards::transition_type(ctx, t).ok())
+        .map_or(String::new(), |ty| format!(", transition: {ty}"))
+}
+
+/// The doc lines of the service method of an endpoint with a transition: it is a guard, not an
+/// atomic guarantee.
+pub fn transition_docs(w: &mut CodeWriter, ep: &Endpoint) {
+    let Some(t) = &ep.rules.transition else {
+        return;
+    };
+    if ep.docs.is_some() || ep.deprecated.is_some() {
+        w.line("///");
+    }
+    w.line(format!(
+        "/// `transition` is the guard of `{}` (`spec/rules.md` section 10.2): the field `{}` had the state",
+        t.fact,
+        t.steps.iter().map(|s| s.wire.as_str()).collect::<Vec<_>>().join(".")
+    ));
+    w.line("/// `transition.from` when it was checked, and this endpoint moves it to `transition.to`. **This is");
+    w.line("/// a guard, not an atomic guarantee:** another request can change the row after the check. Apply");
+    w.line("/// the change with a conditional write (compare-and-swap, or a row lock) in your own");
+    w.line("/// transaction, and answer `InvalidTransition` yourself when that write finds another value.");
 }
 
 /// The type of a fact for documentation and the test handler.

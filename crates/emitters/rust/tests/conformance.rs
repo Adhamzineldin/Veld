@@ -173,11 +173,60 @@ fn a_crate_with_a_rule_has_no_gate_markers() {
     }
 }
 
-/// Endpoint rules are enforced, in a hand-built block and in one the compiler made; the
-/// state-machine and policy rules are still refused.
+/// Every contract of the kit that uses a rules feature: a hand-built invariant and block, and the
+/// ones the compiler made for endpoint rules, a state machine, a transition, a policy, a read of
+/// the principal and a policy that no endpoint uses.
+fn rules_contracts() -> Vec<veld_ir::Ir> {
+    vec![
+        veld_emit_conformance::ir_with_rule(),
+        veld_emit_conformance::ir_with_endpoint_rules(),
+        veld_emit_conformance::compiled_endpoint_rules_contract(),
+        veld_emit_conformance::compiled_state_machine_contract().0,
+        veld_emit_conformance::compiled_transition_contract().0,
+        veld_emit_conformance::compiled_policy_contract().0,
+        veld_emit_conformance::compiled_principal_read_contract().0,
+        veld_emit_conformance::compiled_unused_policy_contract(),
+    ]
+}
+
+/// Invariants, endpoint rules, state machines and policies are all enforced, in both roles, with a
+/// hand-built and a compiled contract: the capabilities declare them, the gate lets them through,
+/// generation succeeds, every signature is embedded and no region marker is left in the output.
+/// (This is the local, stricter form of the shared `check_*_supported` helpers, which still hold
+/// the other generators to refusing the last two.)
 #[test]
-fn rust_supports_invariants_and_endpoint_rules() {
-    veld_emit_conformance::check_invariants_and_endpoint_rules_supported(&Rust).unwrap();
+fn rust_enforces_every_rules_feature() {
+    use veld_codegen::check_capabilities;
+    for role in Rust.roles() {
+        let caps = Rust.capabilities(*role);
+        for f in veld_ir::Feature::RULES {
+            assert!(caps.supports(f), "{}: `{}` is not declared", role.name(), f.name());
+        }
+        for ir in rules_contracts() {
+            let services: Vec<_> = ir.services.iter().map(|s| s.id).collect();
+            let req = GenRequest {
+                ir: &ir,
+                role: *role,
+                services: services.clone(),
+                consumes: vec![],
+                framework: None,
+            };
+            let gate = check_capabilities(&ir, &req, &caps);
+            assert!(gate.is_empty(), "{}: the gate reported {gate:?}", role.name());
+            let files = match Rust.generate_dyn(&req, &serde_json::Value::Null) {
+                Ok(files) => files,
+                Err(d) => panic!("{}: generate failed: {d:?}", role.name()),
+            };
+            check_signatures(&ir, &services, &files).unwrap();
+            for (path, bytes) in files.iter() {
+                let text = String::from_utf8_lossy(bytes);
+                assert!(
+                    !text.contains("// #if") && !text.contains("// #endif"),
+                    "{path}"
+                );
+            }
+        }
+    }
 }
 
 /// A crate with endpoint rules carries no unresolved region marker either.
@@ -207,12 +256,18 @@ fn a_crate_with_endpoint_rules_has_no_gate_markers() {
     }
 }
 
+/// The shared checks hold a generator that does not support state machines and policies to
+/// `E0801`. Rust supports them, so both checks must now notice that it does.
 #[test]
-fn rust_refuses_state_machines_with_e0801() {
-    veld_emit_conformance::check_state_machines_are_refused(&Rust).unwrap();
-}
-
-#[test]
-fn rust_refuses_policies_with_e0801() {
-    veld_emit_conformance::check_policies_are_refused(&Rust).unwrap();
+fn rust_supports_state_machines_and_policies_so_the_refusal_checks_fail() {
+    let sm = veld_emit_conformance::check_state_machines_are_refused(&Rust);
+    assert!(
+        sm.is_err_and(|e| e.contains("declares `rules_transitions`")),
+        "Rust must declare `rules_transitions`"
+    );
+    let pol = veld_emit_conformance::check_policies_are_refused(&Rust);
+    assert!(
+        pol.is_err_and(|e| e.contains("declares `rules_policies`")),
+        "Rust must declare `rules_policies`"
+    );
 }

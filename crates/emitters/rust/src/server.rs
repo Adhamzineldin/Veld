@@ -102,12 +102,13 @@ fn service_file(
     std_sigs(w, ctx.tree);
     service_trait(w, ctx, svc);
     let n = needs(svc);
-    hooks_trait(w, svc, &n, ctx.tree.validate, ctx.tree.rules);
+    let typed = typed_principal(ctx, svc);
+    hooks_trait(w, svc, &n, ctx.tree.validate, ctx.tree.rules, typed.as_deref());
     if !svc.facts.is_empty() {
         block::loader_trait(w, ctx, svc);
     }
     block::steps(w, ctx, svc)?;
-    dispatch(w, ctx.tree, svc, &n);
+    dispatch(w, ctx.tree, svc, &n, typed.as_deref());
     handler(w, svc, &n);
     Ok(())
 }
@@ -136,18 +137,26 @@ fn service_trait(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     w.open(format!("pub trait {name}Service: Send + Sync + 'static"));
     for ep in &svc.endpoints {
         endpoints::method_docs(w, ep);
+        block::transition_docs(w, ep);
         if endpoints::kind(ep) == Kind::Ws {
             let (incoming, outgoing) = endpoints::ws_types(ctx, ep);
             w.line(format!("fn {}(&self, request: {}, ctx: {}, ws: veld::server::WsSession<{incoming}, {outgoing}>) -> impl std::future::Future<Output = Result<(), veld::Error>> + Send;", method(&ep.name), request_name(ep), context_type()));
         } else {
-            w.line(format!("fn {}(&self, request: {}{}, ctx: {}) -> impl std::future::Future<Output = Result<{}, veld::Error>> + Send;", method(&ep.name), request_name(ep), block::facts_param(ep), context_type(), success_type(ctx, ep)));
+            w.line(format!("fn {}(&self, request: {}{}{}, ctx: {}) -> impl std::future::Future<Output = Result<{}, veld::Error>> + Send;", method(&ep.name), request_name(ep), block::facts_param(ep), block::transition_param(ctx, ep), context_type(), success_type(ctx, ep)));
         }
         w.blank();
     }
     w.close().blank();
 }
 
-fn hooks_trait(w: &mut CodeWriter, svc: &Service, n: &Needs, validate: bool, rules: bool) {
+fn hooks_trait(
+    w: &mut CodeWriter,
+    svc: &Service,
+    n: &Needs,
+    validate: bool,
+    rules: bool,
+    typed: Option<&str>,
+) {
     let name = service_type(svc);
     w.line(format!(
         "/// The hooks of the `{}` service: the authentication and middleware its endpoints need,",
@@ -156,7 +165,11 @@ fn hooks_trait(w: &mut CodeWriter, svc: &Service, n: &Needs, validate: bool, rul
     w.line("/// which have no default, and optional observers.");
     w.open(format!("pub trait {name}Hooks: Send + Sync + 'static"));
     let future = |out: &str| format!("impl std::future::Future<Output = {out}> + Send + 'a");
-    let principal = future("Option<veld::server::Principal>");
+    // A service with a principal that the rules read: the hooks return the model itself.
+    let principal = future(&typed.map_or_else(
+        || "Option<veld::server::Principal>".to_string(),
+        |ty| format!("Option<{ty}>"),
+    ));
     if n.bearer {
         w.line("/// Authenticates a bearer token; `None` answers `401 Unauthorized`.");
         w.line(format!("fn auth_bearer<'a>(&'a self, token: &'a str, ctx: &'a veld::server::RequestContext) -> {principal};"));
@@ -235,7 +248,7 @@ fn input_reaches_rules(tree: &Tree<'_>, svc: &Service) -> bool {
     })
 }
 
-fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs) {
+fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed: Option<&str>) {
     let rules = tree.rules;
     let name = service_type(svc);
     w.line(format!(
@@ -293,7 +306,7 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs) {
     if block::has_block(svc) {
         block_methods(w, svc);
     }
-    auth_forwards(w, n);
+    auth_forwards(w, n, typed);
     call_methods(w, svc);
     w.close().blank();
 }
@@ -334,13 +347,13 @@ fn block_methods(w: &mut CodeWriter, svc: &Service) {
     }
     w.line("_ => Ok(veld::server::Prepared::none()),");
     w.close().close().blank();
-    if svc.endpoints.iter().all(|e| e.rules.ensures.is_empty()) {
+    if !svc.endpoints.iter().any(block::has_step9) {
         return;
     }
     w.open("fn ensure(&self, prepared: &veld::server::Prepared, result: &serde_json::Value) -> Vec<veld::rules::Violation>");
     w.open("match prepared.index()");
     for (i, ep) in svc.endpoints.iter().enumerate() {
-        if !ep.rules.ensures.is_empty() {
+        if block::has_step9(ep) {
             w.line(format!(
                 "{i} => {}(prepared, result),",
                 block::step9_name(ep)
@@ -351,22 +364,46 @@ fn block_methods(w: &mut CodeWriter, svc: &Service) {
     w.close().close().blank();
 }
 
-fn auth_forwards(w: &mut CodeWriter, n: &Needs) {
+/// The principal type of a service whose hooks are typed: it has a principal and some endpoint
+/// reads it or calls a policy (`spec/rules.md` section 11.1). A principal that nothing reads
+/// changes no bytes.
+pub(crate) fn typed_principal(ctx: &Ctx<'_, '_>, svc: &Service) -> Option<String> {
+    if svc
+        .endpoints
+        .iter()
+        .any(|e| e.rules.first_policy_origin().is_some())
+    {
+        crate::guards::principal_type(ctx, svc)
+    } else {
+        None
+    }
+}
+
+/// The call of a hook of the service: as it is, or wrapped into the untyped principal of the core.
+fn forward(call: &str, typed: Option<&str>) -> String {
+    if typed.is_some() {
+        format!("async move {{ self.hooks.{call}.await.map(veld::server::Principal::new) }}")
+    } else {
+        format!("self.hooks.{call}")
+    }
+}
+
+fn auth_forwards(w: &mut CodeWriter, n: &Needs, typed: Option<&str>) {
     let future = |out: &str| format!("impl std::future::Future<Output = {out}> + Send + 'a");
     let principal = future("Option<veld::server::Principal>");
     if n.bearer {
         w.open(format!("fn auth_bearer<'a>(&'a self, token: &'a str, ctx: &'a veld::server::RequestContext) -> {principal}"));
-        w.line("self.hooks.auth_bearer(token, ctx)");
+        w.line(forward("auth_bearer(token, ctx)", typed));
         w.close().blank();
     }
     if n.basic {
         w.open(format!("fn auth_basic<'a>(&'a self, user: &'a str, password: &'a str, ctx: &'a veld::server::RequestContext) -> {principal}"));
-        w.line("self.hooks.auth_basic(user, password, ctx)");
+        w.line(forward("auth_basic(user, password, ctx)", typed));
         w.close().blank();
     }
     if n.api_key {
         w.open(format!("fn auth_api_key<'a>(&'a self, key: &'a str, ctx: &'a veld::server::RequestContext) -> {principal}"));
-        w.line("self.hooks.auth_api_key(key, ctx)");
+        w.line(forward("auth_api_key(key, ctx)", typed));
         w.close().blank();
     }
     if !n.middleware.is_empty() {
@@ -387,7 +424,12 @@ fn auth_forwards(w: &mut CodeWriter, n: &Needs) {
 /// Decodes the request, and the facts that step 6 added to `args`; returns the arguments the
 /// service method takes before `ctx`.
 fn decode_request(w: &mut CodeWriter, ep: &Endpoint) -> &'static str {
-    if block::has_facts(ep) {
+    if ep.rules.transition.is_some() {
+        w.line("let request = veld::server::decode_args(args.clone())?;");
+        w.line("let facts = veld::server::decode_args(args.clone())?;");
+        w.line("let transition = veld::server::decode_key(&args, \"transition\")?;");
+        "request, facts, transition"
+    } else if block::has_facts(ep) {
         w.line("let request = veld::server::decode_args(args.clone())?;");
         w.line("let facts = veld::server::decode_args(args)?;");
         "request, facts"

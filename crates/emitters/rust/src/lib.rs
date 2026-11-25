@@ -8,8 +8,10 @@
 pub mod block;
 pub mod client;
 pub mod endpoints;
+pub mod guards;
 pub mod models;
 pub mod package;
+pub mod policies;
 pub mod rules;
 pub mod runtime;
 pub mod server;
@@ -194,12 +196,11 @@ impl Generator for Rust {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        // Everything except the state-machine and policy rules (not implemented, `E0801`);
-        // invariants and endpoint rules are enforced (`spec/targets/rust.md` section 10). The
-        // limits that depend on the framework or the endpoint are reported as `E0801` by
-        // `generate`: the blocking `ureq` transport cannot open WebSockets, and an endpoint rule
-        // on a `ws` endpoint is not supported.
-        Capabilities::all_except(&[Feature::RulesTransitions, Feature::RulesPolicies])
+        // Everything: invariants, endpoint rules, state machines and policies are enforced
+        // (`spec/targets/rust.md` section 10). The limits that depend on the framework or the
+        // endpoint are reported as `E0801` by `generate`: the blocking `ureq` transport cannot
+        // open WebSockets, and an endpoint rule on a `ws` endpoint is not supported.
+        Capabilities::all_except(&[])
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
@@ -246,10 +247,26 @@ impl Generator for Rust {
             )]);
         }
         let endpoint_rules = server && block::served_has_blocks(req.ir, &req.services);
-        let rules = crate_has_rules(req) || endpoint_rules;
+        // A policy is generated, in either role, for an `allow` of a generated service: its
+        // functions use the rules runtime.
+        let policies = used.iter().any(|s| {
+            req.ir
+                .service(*s)
+                .endpoints
+                .iter()
+                .any(|e| !e.rules.allows.is_empty())
+        });
+        let guards = server
+            && req
+                .services
+                .iter()
+                .any(|s| guards::svc_has_guards(req.ir.service(*s)));
+        let rules = crate_has_rules(req) || endpoint_rules || policies;
         let f = Features {
             rules,
             endpoint_rules,
+            guards,
+            policies,
             server,
             client: !server || !req.consumes.is_empty(),
             sse: streaming,
@@ -272,6 +289,7 @@ impl Generator for Rust {
             .with_validate(validate)
             .with_rules(rules);
         models::emit(&mut files, &main)?;
+        policies::emit(&mut files, &main)?;
         if !files.contains("src/prelude.rs") {
             util::add_file(&mut files, "src/prelude.rs", format!("{}\n", util::HEADER))?;
         }
@@ -361,6 +379,7 @@ fn emit_consumed(
             .with_validate(validate)
             .with_rules(rules);
         models::emit(files, &tree)?;
+        policies::emit(files, &tree)?;
         client::emit(files, &tree, tr)?;
         let mods = BTreeMap::from([(*sid, vec![client::client_mod(svc)])]);
         let packages = package::emit_modules(files, &tree, &mods)?;

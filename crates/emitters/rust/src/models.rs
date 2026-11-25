@@ -123,7 +123,11 @@ fn emit_enum(w: &mut CodeWriter, d: &Decl, e: &Enum) {
     for v in &e.variants {
         w.line(format!("{name}::{} => {},", variant(&v.name), lit(&v.wire)));
     }
-    w.close().close().close().blank();
+    w.close().close();
+    if !e.flows.is_empty() {
+        machine_helpers(w, &name, e);
+    }
+    w.close().blank();
     let wires: Vec<String> = e.variants.iter().map(|v| lit(&v.wire)).collect();
     w.line(format!(
         "pub static {}: vs::Schema = vs::Schema::Enum(&[{}]);",
@@ -132,6 +136,46 @@ fn emit_enum(w: &mut CodeWriter, d: &Decl, e: &Enum) {
     ));
     w.blank();
     decl_impl(w, d, &name);
+}
+
+/// The helpers of a state machine (`spec/rules.md` section 10.3): the states that can follow a
+/// state, and whether a state is final. The server still decides.
+fn machine_helpers(w: &mut CodeWriter, name: &str, e: &Enum) {
+    w.blank();
+    w.line("/// The states that can follow this one, in declaration order of the edges (`flow`). A final");
+    w.line("/// state has none.");
+    w.open(format!(
+        "pub const fn next_states(self) -> &'static [{name}]"
+    ));
+    w.open("match self");
+    for v in &e.variants {
+        let next: Vec<String> = e
+            .flows
+            .iter()
+            .filter(|f| f.from == v.name)
+            .map(|f| format!("{name}::{}", variant(&f.to)))
+            .collect();
+        w.line(format!(
+            "{name}::{} => &[{}],",
+            variant(&v.name),
+            next.join(", ")
+        ));
+    }
+    w.close().close().blank();
+    w.line("/// Whether this state is final: no state follows it.");
+    w.open("pub const fn is_final(self) -> bool");
+    let finals: Vec<String> = e
+        .finals
+        .iter()
+        .map(|f| format!("{name}::{}", variant(f)))
+        .collect();
+    if finals.is_empty() {
+        w.line("let _ = self;");
+        w.line("false");
+    } else {
+        w.line(format!("matches!(self, {})", finals.join(" | ")));
+    }
+    w.close();
 }
 
 fn decl_impl(w: &mut CodeWriter, d: &Decl, name: &str) {

@@ -328,6 +328,19 @@ pub fn decode_args<T: DeserializeOwned>(args: Map<String, Value>) -> Result<T, E
         Error::Invalid(vec![Issue { path: "request".into(), code: "type".into(), message: e.to_string() }])
     })
 }
+// #if guards
+
+/// Decodes one member of the bound arguments: the `transition` that step 6 added for the handler.
+///
+/// # Errors
+/// [`Error::Invalid`] when it is missing or does not fit.
+pub fn decode_key<T: DeserializeOwned>(args: &Map<String, Value>, key: &str) -> Result<T, Error> {
+    let value = args.get(key).cloned().unwrap_or(Value::Null);
+    serde_json::from_value(value).map_err(|e| {
+        Error::Invalid(vec![Issue { path: "request".into(), code: "type".into(), message: format!("{key}: {e}") }])
+    })
+}
+// #endif
 
 /// Encodes a success value as typed JSON.
 ///

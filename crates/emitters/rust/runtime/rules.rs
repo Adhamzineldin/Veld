@@ -449,6 +449,81 @@ pub fn else_rejection(
 }
 
 // #endif
+// #if guards
+
+/// A state change that the endpoint's guard checked (`spec/rules.md` section 10.2): the wire path
+/// of the field inside the fact, the state it had when it was checked and the target. The states
+/// are values of the state machine's generated enum.
+///
+/// **This is a guard, not an atomic guarantee.** A second request can change the row after the
+/// check. Write the change conditionally (compare-and-swap, or a row lock) in your own
+/// transaction, and answer `InvalidTransition` yourself when that write finds another value.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Transition<S> {
+    /// The wire path of the state field inside the fact: `status`.
+    pub field: String,
+    /// The state the field had when the guard checked it.
+    pub from: S,
+    /// The state the endpoint moves the field to.
+    pub to: S,
+}
+
+/// The violation of a guard (a policy or a transition): `path` is `request`, and there is no
+/// evaluation error to report.
+#[must_use]
+pub fn guard_violation(rule: &str, fields: &[&str], message: &str) -> Violation {
+    Violation {
+        rule: rule.to_string(),
+        path: "request".to_string(),
+        fields: fields.iter().map(|f| (*f).to_string()).collect(),
+        message: message.to_string(),
+        error: None,
+    }
+}
+
+/// What step 6 answers when a guard refuses: the declared error `sig` of `ep`, built from the
+/// string members `data`, carrying the one violation. An error that the endpoint does not declare,
+/// or that breaks its own invariants, is `500 Internal`.
+#[must_use]
+pub fn refusal(
+    ep: &'static super::spec::EndpointSpec,
+    sig: &str,
+    data: &[(&str, &str)],
+    violation: Violation,
+) -> super::server::Halt {
+    let payload: Map<String, Value> = data
+        .iter()
+        .map(|(k, v)| ((*k).to_string(), Value::String((*v).to_string())))
+        .collect();
+    match else_rejection(ep, sig, payload, violation) {
+        Ok(err) => super::server::Halt::Error(err),
+        Err(broken) => super::server::Halt::Broken(broken),
+    }
+}
+
+/// The text of a denial: `None` when the policy permits. A policy whose arguments could not be
+/// evaluated denies (it fails closed) with `not permitted`.
+#[must_use]
+pub fn denial(verdict: Res<Result<(), String>>) -> Option<String> {
+    match verdict {
+        Ok(Ok(())) => None,
+        Ok(Err(text)) => Some(text),
+        Err(_) => Some("not permitted".to_string()),
+    }
+}
+// #endif
+// #if policies
+
+/// The system clock as milliseconds since the epoch: what `now` is for a policy called outside a
+/// request.
+#[must_use]
+pub fn system_now_ms() -> i64 {
+    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(d) => i64::try_from(d.as_millis()).unwrap_or(i64::MAX),
+        Err(e) => i64::try_from(e.duration().as_millis()).map_or(i64::MIN, |n| -n),
+    }
+}
+// #endif
 /// A `decimal` field or literal.
 pub fn dec(text: &str) -> Res<Decimal> {
     Decimal::parse(text).ok_or(Fail::Input)

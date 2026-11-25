@@ -30,6 +30,9 @@ fn module_map(
             entry.insert(m.clone());
         }
     }
+    for (pkg, file) in crate::policies::Plan::new(tree).modules() {
+        map.entry(pkg).or_default().insert(file);
+    }
     map
 }
 
