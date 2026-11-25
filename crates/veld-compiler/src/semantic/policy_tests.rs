@@ -229,6 +229,29 @@ fn e0920_a_parameter_or_fact_named_like_the_principal() {
 }
 
 #[test]
+fn the_name_clash_is_a_rule_of_the_endpoint_block_only() {
+    // E0920 is about the names of an endpoint block. An endpoint without one reads nothing, so
+    // a parameter called like the principal is harmless there.
+    let src = format!(
+        "{MODELS}\n@auth(bearer)\nservice S at \"/s\" {{\n  get \"/\" f(@query user: int) -> Booking\n}}\n"
+    );
+    assert!(codes(&src).is_empty(), "{}", first_error(&src));
+}
+
+#[test]
+fn reading_the_principal_in_a_require_uses_the_policies_feature() {
+    // Reading the caller in a plain `require` uses the policies feature as well, so that a
+    // generator that cannot read the caller refuses it (E0801) instead of emitting wrong code.
+    let src = authed("    require not user.suspended");
+    let ir = ir(&src);
+    let used = ir.features_used(&[ir.services[0].id]);
+    assert!(used.contains(&veld_ir::Feature::RulesPolicies), "{used:?}");
+    let plain = self::ir(&authed("    require true"));
+    let used = plain.features_used(&[plain.services[0].id]);
+    assert!(!used.contains(&veld_ir::Feature::RulesPolicies), "{used:?}");
+}
+
+#[test]
 fn the_principal_cannot_be_named_now() {
     let src = "model U { x: int }\nprincipal U as now";
     assert_eq!(codes(src), ["E0920"]);
