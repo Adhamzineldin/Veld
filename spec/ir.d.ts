@@ -265,9 +265,9 @@ export type Quantifier = "all" | "any" | "count" | "sum";
 
 export interface EndpointRules {
   facts: EndpointFact[];
-  transition?: EndpointTransition;
   requires: EndpointRequire[];
   ensures: EndpointEnsure[];
+  transition?: EndpointTransition;
 }
 
 export interface EndpointTransition {

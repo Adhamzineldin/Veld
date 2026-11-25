@@ -15,14 +15,14 @@ use crate::{DeclId, Origin, PackageId, ServiceId, Type};
 pub struct EndpointRules {
     /// In load order.
     pub facts: Vec<EndpointFact>,
-    /// The state transition guard (`spec/rules.md` section 10.2). Omitted from the JSON when
-    /// absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub transition: Option<EndpointTransition>,
     /// In source order.
     pub requires: Vec<EndpointRequire>,
     /// In source order.
     pub ensures: Vec<EndpointEnsure>,
+    /// The state transition guard (`spec/rules.md` section 10.2), last as in section 10.4. Omitted
+    /// from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transition: Option<EndpointTransition>,
 }
 
 impl EndpointRules {

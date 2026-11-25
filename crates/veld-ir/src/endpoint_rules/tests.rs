@@ -571,3 +571,38 @@ fn a_reachable_state_machine_uses_the_transitions_feature() {
     ir.decls = vec![enum_decl(machine(vec![], vec![]))];
     assert!(ir.features_used(&[ServiceId(0)]).is_empty());
 }
+
+#[test]
+fn the_exact_json_text_of_a_machine_and_a_transition() {
+    let e = Enum {
+        variants: vec![variant("pending"), variant("paid")],
+        flows: vec![flow("pending", "paid")],
+        finals: vec!["paid".into()],
+    };
+    assert_eq!(
+        serde_json::to_string(&e).unwrap(),
+        concat!(
+            r#"{"variants":[{"name":"pending","wire":"pending","docs":null,"deprecated":null},"#,
+            r#"{"name":"paid","wire":"paid","docs":null,"deprecated":null}],"#,
+            r#""flows":[{"from":"pending","to":"paid"}],"finals":["paid"]}"#
+        )
+    );
+    let rules = EndpointRules {
+        transition: Some(sample_transition()),
+        ..EndpointRules::default()
+    };
+    assert_eq!(
+        serde_json::to_string(&rules).unwrap(),
+        concat!(
+            r#"{"facts":[],"requires":[],"ensures":[],"transition":{"#,
+            r#""id":"veld:bookings/Bookings.book.transition@0123456789abcdef","#,
+            r#""fact":"booking","steps":[{"name":"status","wire":"status","optional":false}],"#,
+            r#""decl":0,"from":["pending","paid"],"to":"cancelled","#,
+            r#""origin":{"file":"bookings.veld","line":12,"col":3}}}"#
+        )
+    );
+    assert_eq!(
+        serde_json::to_string(&EndpointRules::default()).unwrap(),
+        r#"{"facts":[],"requires":[],"ensures":[]}"#
+    );
+}

@@ -966,27 +966,6 @@ source: crates/veld-compiler/tests/conformance.rs
                 }
               }
             ],
-            "transition": {
-              "id": "veld:app/Bookings.payBooking.transition@9d2b993c7d14a996",
-              "fact": "booking",
-              "steps": [
-                {
-                  "name": "status",
-                  "wire": "status",
-                  "optional": false
-                }
-              ],
-              "decl": 4,
-              "from": [
-                "pending"
-              ],
-              "to": "paid",
-              "origin": {
-                "file": "app.veld",
-                "line": 48,
-                "col": 5
-              }
-            },
             "requires": [
               {
                 "name": null,
@@ -1080,7 +1059,28 @@ source: crates/veld-compiler/tests/conformance.rs
                 }
               }
             ],
-            "ensures": []
+            "ensures": [],
+            "transition": {
+              "id": "veld:app/Bookings.payBooking.transition@9d2b993c7d14a996",
+              "fact": "booking",
+              "steps": [
+                {
+                  "name": "status",
+                  "wire": "status",
+                  "optional": false
+                }
+              ],
+              "decl": 4,
+              "from": [
+                "pending"
+              ],
+              "to": "paid",
+              "origin": {
+                "file": "app.veld",
+                "line": 48,
+                "col": 5
+              }
+            }
           },
           "origin": {
             "file": "app.veld",
@@ -1173,6 +1173,8 @@ source: crates/veld-compiler/tests/conformance.rs
                 }
               }
             ],
+            "requires": [],
+            "ensures": [],
             "transition": {
               "id": "veld:app/Bookings.cancelBooking.transition@cd04ace5a919c806",
               "fact": "booking",
@@ -1194,9 +1196,7 @@ source: crates/veld-compiler/tests/conformance.rs
                 "line": 54,
                 "col": 5
               }
-            },
-            "requires": [],
-            "ensures": []
+            }
           },
           "origin": {
             "file": "app.veld",
@@ -1287,6 +1287,8 @@ source: crates/veld-compiler/tests/conformance.rs
                 }
               }
             ],
+            "requires": [],
+            "ensures": [],
             "transition": {
               "id": "veld:app/Bookings.checkIn.transition@ee64708757c034a3",
               "fact": "booking",
@@ -1307,9 +1309,7 @@ source: crates/veld-compiler/tests/conformance.rs
                 "line": 59,
                 "col": 5
               }
-            },
-            "requires": [],
-            "ensures": []
+            }
           },
           "origin": {
             "file": "app.veld",
@@ -1402,6 +1402,8 @@ source: crates/veld-compiler/tests/conformance.rs
                 }
               }
             ],
+            "requires": [],
+            "ensures": [],
             "transition": {
               "id": "veld:app/Bookings.touch.transition@542e3a3d2a421c24",
               "fact": "booking",
@@ -1422,9 +1424,7 @@ source: crates/veld-compiler/tests/conformance.rs
                 "line": 64,
                 "col": 5
               }
-            },
-            "requires": [],
-            "ensures": []
+            }
           },
           "origin": {
             "file": "app.veld",

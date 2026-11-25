@@ -269,7 +269,7 @@ impl<'a> Pipeline<'a> {
         let Some(fact) = env.facts.get(&t.fact) else {
             return Err(InputError::NotAvailable("the fact of a transition").into());
         };
-        match machine::guard(self.ir, t, fact)? {
+        match machine::guard(self.ir, self.endpoint, t, fact)? {
             None => Ok(None),
             Some(refusal) => {
                 let violations = vec![refusal.violation];
@@ -458,7 +458,9 @@ impl Prepared<'_> {
             };
             hook.push(rule.violation(&verdict));
         }
-        hook.extend(machine::target(p.ir, p.endpoint, result)?);
+        // The checked result, with the defaults of its fields applied, like the `ensure` statements see it.
+        let checked = env.result.as_ref().unwrap_or(result);
+        hook.extend(machine::target(p.ir, p.endpoint, checked)?);
         if hook.is_empty() {
             Ok(Outcome::Passes)
         } else {

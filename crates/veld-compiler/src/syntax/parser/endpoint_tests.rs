@@ -390,3 +390,9 @@ fn docs_and_annotations_do_not_belong_to_a_flow() {
         ["E0003"]
     );
 }
+
+#[test]
+fn a_doc_comment_cannot_be_attached_to_a_transition() {
+    let src = "service S at \"/\" { post \"/\" f() {\n /// nope\n transition b.s: a -> b\n ensure true } }";
+    assert_eq!(codes(src), ["E0003"]);
+}

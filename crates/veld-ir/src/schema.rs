@@ -386,9 +386,9 @@ pub const DEFS: &[Def] = &[
         "EndpointRules",
         &[
             ("facts", T::List(&T::Ref("EndpointFact"))),
-            ("transition", T::Optional(&T::Ref("EndpointTransition"))),
             ("requires", T::List(&T::Ref("EndpointRequire"))),
             ("ensures", T::List(&T::Ref("EndpointEnsure"))),
+            ("transition", T::Optional(&T::Ref("EndpointTransition"))),
         ],
     ),
     Def::Object(

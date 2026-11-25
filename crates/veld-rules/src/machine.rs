@@ -7,7 +7,7 @@
 use serde_json::{Value as Json, json};
 use veld_ir::{DeclKind, Endpoint, EndpointTransition, Enum, Ir, Type};
 
-use crate::check::Violation;
+use crate::check::{Options, Violation, check_type};
 use crate::error::InputError;
 
 /// The states that can follow `state`, in declaration order of the edges (`nextStates`).
@@ -102,10 +102,26 @@ fn violation(t: &EndpointTransition, message: String) -> Violation {
 /// [`InputError`] when the fact has no such field or the IR is not well formed.
 pub(crate) fn guard(
     ir: &Ir,
+    endpoint: &Endpoint,
     t: &EndpointTransition,
     fact: &Json,
 ) -> Result<Option<Refusal>, InputError> {
-    let current = read_state(t, fact, &t.fact)?;
+    // A fact is a value of its type: a field it leaves out has its default.
+    let ty = endpoint
+        .rules
+        .facts
+        .iter()
+        .find(|f| f.name == t.fact)
+        .map(|f| &f.ty);
+    let full = match ty {
+        Some(ty) => {
+            check_type(ir, ty, fact, Options::default())
+                .map_err(|e| e.at_path(&t.fact))?
+                .0
+        }
+        None => fact.clone(),
+    };
+    let current = read_state(t, &full, &t.fact)?;
     let mut sources = Vec::with_capacity(t.from.len());
     for s in &t.from {
         sources.push(wire_of(ir, t, s)?);

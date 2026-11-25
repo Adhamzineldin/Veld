@@ -359,7 +359,7 @@ impl Printer<'_> {
             return;
         }
         let head = format!("enum {}", e.name.name);
-        self.block(key, &head, 0, items.is_empty(), |p| {
+        self.block(key, &head, 0, items.is_empty() && !machine, |p| {
             for (v, k) in e.variants.iter().zip(&keys) {
                 p.list_item(*k, &v.docs, &v.annotations, &variant_text(v), 2);
             }
@@ -369,10 +369,12 @@ impl Printer<'_> {
 
     /// The flows, then the finals of an enum, each in source order, after a blank line.
     fn machine(&mut self, e: &EnumDecl) {
-        if e.variants.is_empty() || (e.flows.is_empty() && e.finals.is_empty()) {
+        if e.flows.is_empty() && e.finals.is_empty() {
             return;
         }
-        self.out.push('\n');
+        if !e.variants.is_empty() {
+            self.out.push('\n');
+        }
         let flows = e
             .flows
             .iter()

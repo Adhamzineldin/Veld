@@ -51,7 +51,7 @@ impl Parser<'_> {
             "require" => self.require_stmt(docs),
             "ensure" => self.ensure_stmt(docs),
             "allow" => return self.later_phase("allow", "policies (phase 4)"),
-            "transition" => self.transition_stmt(),
+            "transition" => self.transition_stmt(&docs),
             _ => {
                 self.unexpected("a statement (`fact`, `transition`, `require` or `ensure`)");
                 None

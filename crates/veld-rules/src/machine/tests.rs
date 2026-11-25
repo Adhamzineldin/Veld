@@ -376,3 +376,32 @@ fn invalid_transition_works_as_an_outcome() {
     }
     assert_eq!(passed.len(), 4);
 }
+
+// ---- defaults: the fact and the result are values of their types --------------------------------------
+
+#[test]
+fn a_fact_that_leaves_out_the_state_has_the_default_state() {
+    let ir = ir();
+    let mut req = request("pending", "50.00");
+    req.facts.insert(
+        "booking".to_owned(),
+        Some(json!({ "id": ID, "total": "50.00" })),
+    );
+    // `status` defaults to `.pending`, which is a source of `pay`.
+    assert_eq!(run(&ir, "pay", &req), Outcome::Passes);
+}
+
+#[test]
+fn a_result_that_leaves_out_the_state_is_judged_by_its_default() {
+    let ir = ir();
+    // The default is `pending`, the target of `pay` is `paid`: a verdict, not a run error.
+    let req = with_result("pending", json!({ "id": ID, "total": "50.00" }));
+    let e = error(run(&ir, "pay", &req));
+    assert_eq!((e.name.as_str(), e.status), ("Internal", 500));
+    assert_eq!(e.hook.len(), 1);
+    assert!(
+        e.hook[0].message.contains("found `pending`"),
+        "{}",
+        e.hook[0].message
+    );
+}

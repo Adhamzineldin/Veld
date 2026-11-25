@@ -5,7 +5,7 @@
 //! they are variant names.
 
 use super::Parser;
-use crate::syntax::ast::{FinalStmt, FlowStmt, Ident, Stmt, TransitionStmt};
+use crate::syntax::ast::{Doc, FinalStmt, FlowStmt, Ident, Stmt, TransitionStmt};
 use crate::syntax::lexer::Tok;
 
 impl Parser<'_> {
@@ -74,8 +74,15 @@ impl Parser<'_> {
     }
 
     /// `transition fact.path: a, b -> c`, with the cursor on `transition`.
-    pub(super) fn transition_stmt(&mut self) -> Option<Stmt> {
+    pub(super) fn transition_stmt(&mut self, docs: &[Doc]) -> Option<Stmt> {
         let kw = self.advance().span;
+        if let Some(d) = docs.first() {
+            self.err(
+                "E0003",
+                "a doc comment can be attached to `require` and `ensure`, not to `transition`",
+                d.span,
+            );
+        }
         let mut path = vec![self.expect_ident("the name of a fact")?];
         while self.eat(&Tok::Dot) {
             path.push(self.expect_ident("a field name")?);

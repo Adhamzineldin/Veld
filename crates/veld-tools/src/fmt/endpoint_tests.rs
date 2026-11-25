@@ -290,3 +290,16 @@ fn comments_move_with_a_transition() {
         "{out}"
     );
 }
+
+#[test]
+fn an_enum_with_flows_and_no_variants_keeps_its_statements() {
+    let out = stable("enum S {\n flow a -> b\n final b\n}");
+    assert_eq!(out, "enum S {\n  flow a -> b\n  final b\n}\n");
+}
+
+#[test]
+fn a_doc_comment_before_a_transition_is_an_error_not_a_loss() {
+    let src = "service S at \"/\" {\n  post \"/\" f() {\n    /// lost?\n    transition b.s: a -> b\n  }\n}\n";
+    let err = format(src).unwrap_err();
+    assert_eq!(err.iter().map(|d| d.code).collect::<Vec<_>>(), ["E0003"]);
+}
