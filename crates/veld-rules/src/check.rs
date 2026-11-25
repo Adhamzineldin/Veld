@@ -87,6 +87,20 @@ pub fn check_value_audited(
     check_decl_audited(ir, decl, value, options).map(|(_, found)| found)
 }
 
+/// The value with the defaults of its declaration applied, as the rules see it. The value must
+/// have the shape of its declaration.
+///
+/// # Errors
+/// [`InputError`] when the value does not have the shape of its declaration.
+pub fn with_defaults(
+    ir: &Ir,
+    decl: &Decl,
+    value: &Json,
+    options: Options,
+) -> Result<Json, InputError> {
+    Cx { ir, opts: options }.normalize_decl(decl, value, "$")
+}
+
 /// Like [`check_value`], and also returns the value with its defaults applied.
 pub(crate) fn check_decl_full(
     ir: &Ir,

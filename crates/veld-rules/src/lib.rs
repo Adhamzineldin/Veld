@@ -31,7 +31,7 @@ mod wire;
 #[cfg(test)]
 mod tests;
 
-pub use check::{Checked, Options, Violation, check_value, check_value_audited};
+pub use check::{Checked, Options, Violation, check_value, check_value_audited, with_defaults};
 pub use error::{Failure, InputError};
 pub use eval::{Env, SavedOld, eval};
 pub use example::{

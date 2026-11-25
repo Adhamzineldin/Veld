@@ -1,0 +1,20 @@
+[package]
+name = "veld-prove"
+description = "SMT questions about the rules of a contract (spec/rules.md section 18)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+veld-ir.workspace = true
+veld-rules.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+veld-compiler.workspace = true
