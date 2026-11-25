@@ -212,14 +212,14 @@ fn against_reference(
         return None;
     }
     let called = Called { service, endpoint };
-    let differences = judge_outcome(ir, called, &outcome, answer);
+    let differences = judge_outcome(ir, called, outcome, answer);
     if differences.is_empty() {
         return None;
     }
     Some(Mismatch {
         expected: format!(
             "what the reference evaluator answers: {}",
-            describe_actual(&outcome, None)
+            describe_actual(outcome, None)
         ),
         actual: describe_answer(ir, answer),
         differences,
