@@ -1,0 +1,12 @@
+# accounts and transactions consume each other. Cycles are legal.
+[service]
+name = "accounts"
+contracts = "../../contracts/accounts"
+base-url = "http://account-service:3002"
+consumes = ["iam", "transactions"]
+owners = ["team-accounts"]
+
+[server]
+name = "accounts-api"
+emitter = "node"
+out = "src/generated"

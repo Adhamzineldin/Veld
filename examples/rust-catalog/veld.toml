@@ -1,18 +1,14 @@
-[project]
+[service]
 name = "catalog"
-contracts = "contracts"
 
-[[targets]]
+[server]
 name = "api"
-role = "server"
 emitter = "rust"
 framework = "axum"
-service = "catalog"
 out = "generated/server"
 
-[[targets]]
+[client]
 name = "client"
-role = "client"
 emitter = "rust"
 framework = "ureq"
 out = "generated/client"

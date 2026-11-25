@@ -1,0 +1,16 @@
+[service]
+name = "transactions"
+contracts = "../../contracts/transactions"
+base-url = "http://transaction-service:3003"
+consumes = ["iam", "accounts"]
+owners = ["team-accounts"]
+
+# The transactions service is a Java server (JDK HTTP server adapter, no dependencies).
+[server]
+name = "transactions-api"
+emitter = "java"
+framework = "jdk"
+out = "src/main/java"
+
+[server.options]
+package = "com.nexusbank.transactions"

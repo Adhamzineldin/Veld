@@ -1,0 +1,7 @@
+# An app uses services (by default every service of the workspace) and holds client targets.
+[app]
+
+[client]
+name = "web"
+emitter = "typescript"
+out = "src/generated"

@@ -1,0 +1,12 @@
+[service]
+name = "notifications"
+contracts = "../../contracts/notifications"
+base-url = "http://notification-service:3005"
+consumes = ["iam"]
+owners = ["team-cards"]
+
+[server]
+name = "notifications-api"
+emitter = "node"
+framework = "hono"
+out = "src/generated"

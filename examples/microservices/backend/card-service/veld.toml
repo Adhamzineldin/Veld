@@ -1,0 +1,12 @@
+[service]
+name = "cards"
+contracts = "../../contracts/cards"
+base-url = "http://card-service:3004"
+consumes = ["iam", "accounts"]
+owners = ["team-cards"]
+
+[server]
+name = "cards-api"
+emitter = "node"
+framework = "fastify"
+out = "src/generated"

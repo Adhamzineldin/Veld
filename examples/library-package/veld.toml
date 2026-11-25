@@ -1,40 +1,11 @@
 # Two services share one library of contracts: `common`.
 # Services import from it with `use common:<module>.{Name}`.
-
-[project]
+#
+# This file is the workspace root. Each member has its own veld.toml in its directory:
+#   contracts/common/veld.toml   the library
+#   orders/veld.toml             a service and its server
+#   invoices/veld.toml           a service and its server
+#   web/veld.toml                an app: a client of every service
+[workspace]
 name = "shop"
-
-# A library has no endpoints of its own and no target. Its declarations are generated into
-# every target that uses them.
-[libraries.common]
-contracts = "contracts/common"
-
-[services.orders]
-contracts = "contracts/orders"
-base-url = "http://orders:3001"
-
-[services.invoices]
-contracts = "contracts/invoices"
-base-url = "http://invoices:3002"
-
-[[targets]]
-name = "orders-api"
-service = "orders"
-role = "server"
-emitter = "node"
-framework = "express"
-out = "orders/src/generated"
-
-[[targets]]
-name = "invoices-api"
-service = "invoices"
-role = "server"
-emitter = "node"
-framework = "fastify"
-out = "invoices/src/generated"
-
-[[targets]]
-name = "web"
-role = "client"
-emitter = "typescript"
-out = "web/src/generated"
+members = ["contracts/common", "orders", "invoices", "web"]

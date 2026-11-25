@@ -1,0 +1,9 @@
+[service]
+contracts = "../contracts/orders"
+base-url = "http://orders:3001"
+
+[server]
+name = "orders-api"
+emitter = "node"
+framework = "express"
+out = "src/generated"

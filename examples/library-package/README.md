@@ -4,16 +4,21 @@ A shared contracts package, `common`, used by two services and by hand-written c
 types and errors.
 
 ```
+veld.toml                        the workspace root: the name and the members
+contracts/common/veld.toml       the library, `[library]`
 contracts/common/money.veld      Money, Currency, PageQuery
 contracts/common/errors.veld     Unavailable, PlanLimitReached
 contracts/orders/                the orders service
 contracts/invoices/              the invoices service
+orders/veld.toml                 `[service]` and the Express server target
 orders/src/main.ts               orders server (Express), hand-written; orders/src/generated -> @veld/orders-api
+invoices/veld.toml               `[service]` and the Fastify server target
 invoices/src/main.ts             invoices server (Fastify), hand-written; -> @veld/invoices-api
+web/veld.toml                    `[app]` and the client target
 web/src/report.ts                a typed client script;                   -> @veld/web
 ```
 
-`veld.toml` declares the library with `[libraries.common]`. The services import from it with
+The library is the member in `contracts/common`, whose `veld.toml` holds `[library]`. The services import from it with
 `use common:money.{Money, PageQuery}` and `use common:errors.{Unavailable}`.
 
 Because `Unavailable` is declared once, in `common`, it has one signature

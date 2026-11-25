@@ -1,0 +1,9 @@
+[service]
+contracts = "../contracts/invoices"
+base-url = "http://invoices:3002"
+
+[server]
+name = "invoices-api"
+emitter = "node"
+framework = "fastify"
+out = "src/generated"
