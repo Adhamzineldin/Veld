@@ -18,6 +18,7 @@ use crate::check::{Options, Violation, check_decl_full, check_type};
 use crate::error::{Failure, InputError};
 use crate::eval::{Env, SavedOld, eval};
 use crate::helpers::num::EvalError;
+use crate::machine;
 use crate::old::save_old;
 use crate::value::Value;
 
@@ -154,8 +155,10 @@ impl<'a> Pipeline<'a> {
         if let Some(answer) = self.load_facts(&mut env, request)? {
             return Ok(Before::Rejected(answer));
         }
-        // Policies (section 11, `403`) and the transition guard (section 10, `409`) run here,
-        // after the facts and before the first `require`.
+        // Policies (section 11, `403`) go here, between the facts and the guard.
+        if let Some(answer) = self.guard(&env)? {
+            return Ok(Before::Rejected(answer));
+        }
         if let Some(answer) = self.requires(&env)? {
             return Ok(Before::Rejected(answer));
         }
@@ -254,6 +257,31 @@ impl<'a> Pipeline<'a> {
             }
         }
         Ok(None)
+    }
+
+    /// The transition guard (section 10.2): `409 InvalidTransition` when the current state of the
+    /// fact is not one of the sources.
+    fn guard(&self, env: &Env<'_>) -> Result<Option<ErrorAnswer>, RunError> {
+        let Some(t) = &self.endpoint.rules.transition else {
+            return Ok(None);
+        };
+        let Some(fact) = env.facts.get(&t.fact) else {
+            return Err(InputError::NotAvailable("the fact of a transition").into());
+        };
+        match machine::guard(self.ir, t, fact)? {
+            None => Ok(None),
+            Some(refusal) => {
+                let violations = vec![refusal.violation];
+                let answer = self.answer(
+                    "InvalidTransition",
+                    409,
+                    refusal.data,
+                    violations,
+                    Vec::new(),
+                );
+                answer.map(Some)
+            }
+        }
     }
 
     fn requires(&self, env: &Env<'_>) -> Result<Option<ErrorAnswer>, RunError> {
@@ -429,6 +457,7 @@ impl Prepared<'_> {
             };
             hook.push(rule.violation(&verdict));
         }
+        hook.extend(machine::target(p.ir, p.endpoint, result)?);
         if hook.is_empty() {
             Ok(Outcome::Passes)
         } else {

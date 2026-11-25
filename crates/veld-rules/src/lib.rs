@@ -18,6 +18,7 @@ mod error;
 mod eval;
 pub mod example;
 pub mod helpers;
+pub mod machine;
 mod old;
 mod ops;
 mod pipeline;
@@ -36,6 +37,7 @@ pub use example::{
     Verdict, describe_actual, describe_expected, diff_pattern, fill_example, run_example,
 };
 pub use helpers::num::EvalError;
+pub use machine::{is_final, next_states};
 pub use old::save_old;
 pub use pipeline::{Before, ErrorAnswer, Outcome, Pipeline, Prepared, Request, RunError};
 pub use value::Value;
