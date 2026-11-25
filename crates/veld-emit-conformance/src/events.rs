@@ -46,6 +46,8 @@ const NO_EVENTS_SOURCE: &str = "model Greeting {
 service Hello at \"/hello\" {
   get \"/{name}\" greet(name: string) -> Greeting | NotFound
 }
+
+service Audit {}
 ";
 
 /// The source of the fixture that uses the feature `events`.
@@ -194,14 +196,19 @@ pub fn check_events_are_ignored_by_clients(generator: &dyn DynGenerator) -> Resu
         if !generator.capabilities(*role).supports(Feature::Events) {
             return Err(format!("{}: does not declare `events`", role.name()));
         }
-        let hello = |ir: &Ir| service_id(ir, "Hello").map(|s| vec![s]);
-        let before = generate(generator, &plain, *role, hello(&plain)?)?;
-        let after = generate(generator, &with, *role, hello(&with)?)?;
-        if let Some(d) = first_difference(&before, &after) {
-            return Err(format!(
-                "{}: events changed the client output: {d}",
-                role.name()
-            ));
+        // The publisher alone, and every service (what the CLI selects by default).
+        for names in [&["Hello"][..], &["Hello", "Audit"][..]] {
+            let select = |ir: &Ir| -> Result<Vec<ServiceId>, String> {
+                names.iter().map(|n| service_id(ir, n)).collect()
+            };
+            let before = generate(generator, &plain, *role, select(&plain)?)?;
+            let after = generate(generator, &with, *role, select(&with)?)?;
+            if let Some(d) = first_difference(&before, &after) {
+                return Err(format!(
+                    "{}: events changed the client output for {names:?}: {d}",
+                    role.name()
+                ));
+            }
         }
         let audit = vec![service_id(&with, "Audit")?];
         generate(generator, &with, *role, audit)

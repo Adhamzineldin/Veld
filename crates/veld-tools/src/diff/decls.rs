@@ -66,7 +66,23 @@ fn diff_decl(ctx: &Ctx<'_>, o: &Decl, n: &Decl, role: Role, out: &mut Vec<Change
         (DeclKind::Const(a), DeclKind::Const(b)) => diff_const(ctx, q, a, b, out),
         (DeclKind::Enum(_), DeclKind::Enum(_)) | (DeclKind::Union(_), DeclKind::Union(_)) => {}
         // `by_name` never yields an event: they are compared in `events.rs`.
-        (DeclKind::Event(_), _) | (_, DeclKind::Event(_)) => {}
+        (
+            DeclKind::Event(_),
+            DeclKind::Model(_)
+            | DeclKind::Error(_)
+            | DeclKind::Enum(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_)
+            | DeclKind::Event(_),
+        )
+        | (
+            DeclKind::Model(_)
+            | DeclKind::Error(_)
+            | DeclKind::Enum(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_),
+            DeclKind::Event(_),
+        ) => {}
         (
             DeclKind::Model(_) | DeclKind::Error(_),
             DeclKind::Model(_)
