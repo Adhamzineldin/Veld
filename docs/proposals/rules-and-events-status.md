@@ -63,14 +63,15 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [i] Target specs updated (`spec/targets/*.md`); `spec/ir.md`, `spec/language.md` cross-references still to do
 
 ## Phase 2: endpoint rules, examples, `veld test`
-- [~] `fact`, `require ... else`, `ensure`, `old()`, `now`: IR, compiler (19 conformance cases) and the reference evaluator's pipeline are in (`[i]`); TypeScript and Node generators in progress; Java and Rust to do
-- [ ] Fact-loader interfaces and the pipeline in Node, Java and Rust
-- [ ] Output mode and sampling in the runtime config
-- [~] Stale-client safety: the digest is computed by the compiler; TypeScript and Node in progress
+- [~] `fact`, `require ... else`, `ensure`, `old()`, `now`: IR, compiler and the reference evaluator are tested (`[t]`, CI green); TypeScript and Node generators implemented (`[i]`); Java and Rust in progress
+- [~] Fact-loader interfaces and the pipeline: Node done (`[i]`); Java and Rust in progress
+- [ ] Output mode and sampling in the runtime config (the mode is a handler option today; sampling and the typed runtime config come with the config series)
+- [ ] WebSocket endpoints with endpoint rules: TypeScript and Node refuse them with `E0801` for now
+- [~] Stale-client safety: digest in the compiler; `Veld-Rules` header and client behaviour in TypeScript and Node for contracts with endpoint rules (`[i]`); still to do there for a contract with only invariants; Java and Rust in progress
 - [i] `example` blocks: IR, compiler, and filling in and running examples in the reference evaluator
 - [t] Endpoint rule vectors: `tests/rules/endpoints/bookings.veld`, 20 examples, all passing through the compiler and the reference evaluator
-- [~] `veld test` offline, and the shared runner
-- [~] `veld test --live` with the test handler (TypeScript and Node first), and `--dry-run`
+- [t] `veld test` offline, the shared runner (`crates/veld-testing`), `E0953` in `veld check`, and `docs/guides/testing.md`
+- [~] `veld test --live` and `--dry-run`: the runner and the Node test handler are in, all 20 examples pass against the generated Node server (`[i]`); Java and Rust test handlers in progress
 - [ ] Boundary cases generated from rules
 - [ ] `veld test --live --fuzz`
 
