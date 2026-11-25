@@ -1,0 +1,9 @@
+{
+  "contract": "tests/toolchain/contract/rules/bookings.veld",
+  "method": "POST",
+  "path": "/bookings/",
+  "headers": { "content-type": "application/json" },
+  "body": { "start": "2026-01-02T00:00:00Z", "end": "2026-01-01T00:00:00Z", "guests": 11 },
+  "status": 422,
+  "contentType": "application/problem+json"
+}
