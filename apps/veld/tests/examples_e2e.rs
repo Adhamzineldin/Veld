@@ -393,6 +393,85 @@ fn hello_server_and_react_app_run() {
 }
 
 // ---------------------------------------------------------------------------
+// bookings (business rules)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn bookings_server_enforces_the_contract_rules() {
+    let Some(npm) = tools(false) else { return };
+    let (guard, root) = copy_example("bookings");
+    assert_up_to_date(&root);
+    let (server, web) = (root.join("server"), root.join("web"));
+    install_and_typecheck(&npm, &[server.clone(), web.clone()]);
+
+    let logs = guard.path();
+    let (port, test_port) = (free_port(), free_port());
+    let _api = Svc::start("bookings", node_ts(&server, "src/main.ts"), port, logs);
+    let _test = Svc::start(
+        "bookings-test",
+        node_ts(&server, "src/test-server.ts"),
+        test_port,
+        logs,
+    );
+    let base = url(port);
+
+    // A rule violation over plain HTTP: the 422 problem with `violations`.
+    let room = "00000000-0000-4000-8000-0000000000a1";
+    let body = |guests: u32, start: &str, end: &str| json!({ "roomId": room, "guests": guests, "start": start, "end": end });
+    let (start, end) = ("2030-06-10T00:00:00Z", "2030-06-12T00:00:00Z");
+    let post = |b: &Value| call("POST", &format!("{base}/bookings"), None, Some(b));
+    let backwards = post(&body(2, end, start));
+    assert_error(&backwards, 422, "ValidationError");
+    assert_eq!(backwards.1["violations"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        backwards.1["violations"][0]["message"],
+        "The stay must end after it starts"
+    );
+    assert_eq!(
+        backwards.1["violations"][0]["fields"],
+        json!(["end", "start"])
+    );
+    assert_eq!(backwards.1["violations"][0]["path"], "body");
+    // A `require ... else` answers its declared error with the payload.
+    let full = post(&body(3, start, end));
+    assert_error(&full, 409, "RoomFull");
+    assert_eq!(full.1["data"]["capacity"], 2);
+    // A valid booking is priced by the handler: two nights at 89.50.
+    let created = post(&body(2, start, end));
+    assert_eq!(
+        (created.0, created.1["total"].clone()),
+        (201, json!("179.00"))
+    );
+
+    // The same through the generated client, including the local check.
+    let out = node_ts(&web, "test/client.ts")
+        .env("VELD_BOOKINGS_URL", &base)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && text.contains("client ok"),
+        "{text}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // The examples of the contract, run against the test server.
+    let live = url(test_port);
+    for extra in [&[][..], &["--dry-run"][..]] {
+        let out = veld(&root)
+            .args(["test", "--live", &live])
+            .args(extra)
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("8 passed"), "{extra:?}: {text}");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // library-package
 // ---------------------------------------------------------------------------
 
