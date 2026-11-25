@@ -5,6 +5,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 pub mod canonical;
+pub mod expr;
 pub mod fileset;
 pub mod generator;
 pub mod lint;
@@ -12,6 +13,7 @@ pub mod naming;
 pub mod profile;
 pub mod writer;
 
+pub use expr::{ExprPrinter, Printed, ValueKind, element_type, print_expr};
 pub use fileset::{FileSet, FileSetError, PathError};
 pub use generator::resolve_profile;
 pub use generator::{
