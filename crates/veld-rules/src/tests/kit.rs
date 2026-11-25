@@ -140,7 +140,7 @@ fn step(name: &str, optional: bool) -> Step {
         optional,
     }
 }
-fn path_ref(root: Root, steps: &[(&str, bool)]) -> PathRef {
+pub fn path_ref(root: Root, steps: &[(&str, bool)]) -> PathRef {
     PathRef {
         root,
         steps: steps.iter().map(|(n, o)| step(n, *o)).collect(),
@@ -321,7 +321,7 @@ pub fn rule(name: &str, expr: Expr) -> (String, Expr) {
 
 #[derive(Default)]
 pub struct Kit {
-    decls: Vec<Decl>,
+    pub(super) decls: Vec<Decl>,
 }
 
 impl Kit {

@@ -1,7 +1,11 @@
 mod behaviour;
+mod bookings;
+mod endpoint;
+mod examples;
 mod helpers;
 mod kit;
 mod models;
+mod service_kit;
 mod vector_files;
 
 #[test]
