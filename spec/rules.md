@@ -539,7 +539,7 @@ allow      = "allow" IDENT "(" [ expr { "," expr } [","] ] ")" ;
 
 - `allow P(args)` calls the policy `P` with the given arguments (`E0942` for an unknown policy, the wrong number of arguments or an argument of the wrong type).
 - It runs in step 6, after the facts and before the transition guard. Several `allow` lines run in source order and all must permit; the first denial ends the request.
-- A denial is **`403 Forbidden`**, which the endpoint then declares implicitly. Its `violations` has one entry: `rule` is the policy's id, `path` is `request`, `fields` are the parameters the arguments read, and `message` is the message of the first `forbid` that was true if it has one, otherwise `not permitted`.
+- A denial is **`403 Forbidden`**, which the endpoint then declares implicitly. Its `violations` has one entry: `rule` is the policy's id, `path` is `request`, `fields` are the parameters the arguments read, and `message` is the message of the first `forbid` that was true if it has one, otherwise `not permitted`. The error's own `message` field carries the same text.
 - Facts load before policies, because a policy usually needs them. A caller without permission can therefore tell a missing record (`404`) from a forbidden one (`403`); `@tenant` (platform features) is the tool that hides records.
 
 ### 11.4 Generated code

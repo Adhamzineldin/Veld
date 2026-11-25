@@ -1,0 +1,112 @@
+// Policies and the principal (spec/rules.md 11). The examples are the vectors: every server
+// target and the reference evaluator must give exactly the stated outcome.
+
+model User {
+  id: uuid
+  roles: string[]
+  suspended: bool
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  guestId: uuid
+  total: decimal
+}
+
+model Payment {
+  amount: decimal
+}
+
+policy ManageBooking(user: User, booking: Booking) {
+  permit when booking.guestId == user.id
+  permit when "support" in user.roles
+  forbid when user.suspended
+    message "A suspended account cannot manage bookings"
+}
+
+policy AnyRole(user: User) {
+  permit when len(user.roles) > 0
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+    require body.amount == booking.total
+  }
+
+  get "/{id}" getBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+    allow AnyRole(user)
+  }
+}
+
+// --- permit and forbid ---
+
+example "the guest may pay for their own booking" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 10.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 10.00 }) -> ok
+}
+
+example "another caller may not" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 10.00 }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 10.00 }) -> Forbidden { message: "not permitted" }
+}
+
+example "support may pay for anyone" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 10.00 }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: ["support"], suspended: false }
+  payBooking(id: booking.id, body: { amount: 10.00 }) -> ok
+}
+
+example "forbid beats permit" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 10.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: ["support"], suspended: true }
+  payBooking(id: booking.id, body: { amount: 10.00 }) -> Forbidden { message: "A suspended account cannot manage bookings" }
+}
+
+// --- the order of the checks ---
+
+example "the policy is checked before require" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 10.00 }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 1.00 }) -> Forbidden
+}
+
+example "a permitted caller with the wrong amount is refused by require" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 10.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 1.00 }) -> ValidationError
+}
+
+example "a missing booking is not found before the policy is asked" {
+  given booking = absent
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [], suspended: false }
+  payBooking(body: { amount: 1.00 }) -> NotFound { resource: "booking" }
+}
+
+// --- several policies ---
+
+example "every allow must permit" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa" }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  getBooking(id: booking.id) -> Forbidden
+}
+
+example "a guest with a role passes both policies" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa" }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: ["member"], suspended: false }
+  getBooking(id: booking.id) -> ok
+}
+
+example "the first allow that denies ends the request" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa" }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: ["member"], suspended: true }
+  getBooking(id: booking.id) -> Forbidden { message: "A suspended account cannot manage bookings" }
+}
