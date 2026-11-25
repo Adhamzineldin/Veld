@@ -148,7 +148,64 @@ fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) 
         doc_comment(w, v.docs.as_deref(), v.deprecated.as_deref());
         w.line(format!("{}: {},", prop_key(&v.name), ts_str(&v.wire)));
     }
+    if e.is_state_machine() {
+        write_machine_helpers(w, &name, e);
+    }
     w.close_with("} as const;");
+}
+
+/// The wire value of the variant `name` of `e`.
+fn wire_of<'e>(e: &'e Enum, name: &'e str) -> &'e str {
+    e.variants
+        .iter()
+        .find(|v| v.name == name)
+        .map_or(name, |v| v.wire.as_str())
+}
+
+/// `nextStates` and `isFinal` of a state machine (`spec/rules.md` section 10.3): a client shows
+/// only the buttons the server would accept. The states are the enum's wire values.
+fn write_machine_helpers(w: &mut CodeWriter, name: &str, e: &Enum) {
+    w.line("/** The states that can follow `state`, in declaration order of the edges (`flow`). */");
+    w.open(format!("nextStates(state: {name}): readonly {name}[]"));
+    w.open("switch (state)");
+    for v in &e.variants {
+        let next: Vec<String> = e
+            .flows
+            .iter()
+            .filter(|f| f.from == v.name)
+            .map(|f| ts_str(wire_of(e, &f.to)))
+            .collect();
+        if !next.is_empty() {
+            w.line(format!(
+                "case {}: return [{}];",
+                ts_str(&v.wire),
+                next.join(", ")
+            ));
+        }
+    }
+    w.line("default: return [];");
+    w.close();
+    w.close_with("},");
+    w.line("/** Whether `state` is final: no state follows it. */");
+    w.open(format!("isFinal(state: {name}): boolean"));
+    let finals: Vec<String> = e
+        .variants
+        .iter()
+        .filter(|v| e.finals.contains(&v.name))
+        .map(|v| format!("case {}:", ts_str(&v.wire)))
+        .collect();
+    if finals.is_empty() {
+        w.line("return false;");
+    } else {
+        w.open("switch (state)");
+        w.line(finals.join(" "));
+        w.indent();
+        w.line("return true;");
+        w.dedent();
+        w.line("default: return false;");
+        w.close();
+    }
+    w.close_with("},");
 }
 
 fn write_union(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, u: &Union) {

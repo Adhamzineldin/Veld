@@ -114,14 +114,32 @@ impl TsExpr<'_> {
             Root::Var(name) => Some((var_ident(name), false)),
             Root::Param(name) => {
                 let scope = self.scope.as_ref()?;
-                Some((member("p", name), scope.optional_params.contains(name)))
+                let code = scope
+                    .local(root)
+                    .map_or_else(|| member("p", name), str::to_owned);
+                Some((code, scope.optional_params.contains(name)))
             }
             Root::Fact(name) => {
                 let scope = self.scope.as_ref()?;
-                Some((member("f", name), scope.optional_facts.contains(name)))
+                let code = scope
+                    .local(root)
+                    .map_or_else(|| member("f", name), str::to_owned);
+                Some((code, scope.optional_facts.contains(name)))
             }
             Root::Result => self.scope.as_ref().map(|_| ("result".to_owned(), false)),
-            Root::Principal => None,
+            Root::Principal => {
+                let scope = self.scope.as_ref()?;
+                let principal = scope.principal.as_ref()?;
+                if let Some(code) = scope.local(root) {
+                    return Some((code.to_owned(), false));
+                }
+                // An `ensure` runs after the handler, and the caller does not change while it
+                // runs: it reads the caller as a saved value (`EndpointPrinter::print`).
+                if scope.ensure {
+                    return Some((CALLER.to_owned(), false));
+                }
+                Some((member("f", &principal.name), false))
+            }
         }
     }
 
@@ -489,9 +507,17 @@ impl ExprPrinter for TsExpr<'_> {
     }
 
     fn old(&mut self, operand: Printed, ty: &ExprType) -> Printed {
-        if self.scope.is_none() {
+        let Some(scope) = &self.scope else {
             return Printed::atom(self.unavailable("old"));
-        }
+        };
+        // The operand runs before the handler, where the caller is part of the scope `f`.
+        let operand = match &scope.principal {
+            Some(principal) => Printed {
+                code: operand.code.replace(CALLER, &member("f", &principal.name)),
+                ..operand
+            },
+            None => operand,
+        };
         let slot = match self.olds.iter().position(|(code, _)| *code == operand.code) {
             Some(slot) => slot,
             None => {
@@ -503,6 +529,16 @@ impl ExprPrinter for TsExpr<'_> {
     }
 }
 
+/// What stands for the caller in an `ensure` until `EndpointPrinter::print` has saved it.
+const CALLER: &str = "\u{1}caller\u{1}";
+
+/// The caller of an endpoint: the name it has in the rules (`user`) and its type.
+#[derive(Debug, Clone)]
+pub struct Principal {
+    pub name: String,
+    pub ty: Type,
+}
+
 /// What the rules of an endpoint block can read besides the parameters' types: which parameters
 /// and facts may be absent. A root that may be absent is asserted present where the compiler
 /// proved it (`coupon!`), and `has(coupon)` tests it.
@@ -510,6 +546,24 @@ impl ExprPrinter for TsExpr<'_> {
 pub struct EndpointScope {
     pub optional_params: BTreeSet<String>,
     pub optional_facts: BTreeSet<String>,
+    /// The caller, when the rules of the block may read it (`spec/rules.md` section 11.1). Its
+    /// value is in the scope `f` under its name, put there by the server before the facts load.
+    pub principal: Option<Principal>,
+    /// Roots that are read from a local of the generated function instead of `p.<name>`,
+    /// `f.<name>` or the caller in `f`: the arguments of a policy function and of
+    /// `can<Endpoint>`.
+    pub locals: Vec<(Root, String)>,
+    /// The expressions printed are those of an `ensure`: a read of the caller is a saved value.
+    pub ensure: bool,
+}
+
+impl EndpointScope {
+    fn local(&self, root: &Root) -> Option<&str> {
+        self.locals
+            .iter()
+            .find(|(r, _)| r == root)
+            .map(|(_, code)| code.as_str())
+    }
 }
 
 /// The printer of the expressions of one endpoint block (`spec/rules.md` section 9).
@@ -538,7 +592,41 @@ impl<'a> EndpointPrinter<'a> {
 
     /// Prints `expr`; the value is in the rule representation.
     pub fn print(&mut self, expr: &Expr) -> String {
-        print_expr(&mut self.inner, expr).code
+        let code = print_expr(&mut self.inner, expr).code;
+        self.save_caller(code)
+    }
+
+    /// A read of the caller outside `old(...)` in an `ensure` becomes a slot of the saved
+    /// values: the operand `f.user` is evaluated with the rest at the end of step 6.
+    fn save_caller(&mut self, code: String) -> String {
+        let Some(principal) = self.inner.scope.as_ref().and_then(|s| s.principal.clone()) else {
+            return code;
+        };
+        if !code.contains(CALLER) {
+            return code;
+        }
+        let operand = member("f", &principal.name);
+        let slot = match self.inner.olds.iter().position(|(c, _)| *c == operand) {
+            Some(slot) => slot,
+            None => {
+                self.inner
+                    .olds
+                    .push((operand, ExprType::Type(principal.ty)));
+                self.inner.olds.len() - 1
+            }
+        };
+        code.replace(CALLER, &format!("o[{slot}]"))
+    }
+
+    /// The raw code of the field the `steps` reach below `root`, in the developer-facing
+    /// representation: `f.booking.status`. `None` when the scope has no such root.
+    #[must_use]
+    pub fn field_code(&self, root: &Root, steps: &[veld_ir::Step]) -> Option<String> {
+        let (mut code, _) = self.inner.root_code(root)?;
+        for step in steps {
+            code = member(&code, &step.name);
+        }
+        Some(code)
     }
 
     /// The value of a plain path in the developer-facing representation, `undefined` when an

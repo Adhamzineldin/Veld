@@ -788,6 +788,7 @@ fn scope() -> EndpointScope {
     EndpointScope {
         optional_params: ["note".to_owned()].into(),
         optional_facts: ["coupon".to_owned()].into(),
+        ..EndpointScope::default()
     }
 }
 
@@ -939,4 +940,162 @@ fn raw_paths_keep_the_developer_facing_value_and_stop_at_an_absent_step() {
 fn the_principal_stays_unavailable_in_an_endpoint() {
     let e = path(Root::Principal, &[("id", false)], sc(Scalar::Int));
     assert_eq!(endpoint(&e), "r.unavailable('a root other than `self`')");
+}
+
+// ---- the principal and policy parameters (`spec/rules.md` section 11) --------------------
+
+fn caller() -> Principal {
+    Principal {
+        name: "user".to_owned(),
+        ty: Type::Decl(DeclId(1)),
+    }
+}
+
+fn with_principal() -> EndpointScope {
+    EndpointScope {
+        principal: Some(caller()),
+        ..scope()
+    }
+}
+
+fn user_id() -> Expr {
+    path(Root::Principal, &[("id", false)], sc(Scalar::Uuid))
+}
+
+fn user_roles() -> Expr {
+    path(Root::Principal, &[("roles", false)], list_of(Scalar::String))
+}
+
+#[test]
+fn the_principal_is_read_from_f_under_its_name() {
+    let ir = ir();
+    let mut printer = EndpointPrinter::new(&ir, NS, with_principal());
+    assert_eq!(printer.print(&user_id()), "r.toUuid(r.required(f.user.id))");
+    let admin = bin(
+        Op::In,
+        lit(sc(Scalar::String), ExprLit::String("admin".into())),
+        user_roles(),
+        sc(Scalar::Bool),
+    );
+    assert_eq!(
+        printer.print(&admin),
+        "r.required(f.user.roles).includes('admin')"
+    );
+    assert!(printer.olds().is_empty());
+}
+
+#[test]
+fn a_caller_with_an_unusual_name_is_read_with_brackets() {
+    let ir = ir();
+    let scope = EndpointScope {
+        principal: Some(Principal {
+            name: "the-user".to_owned(),
+            ty: Type::Decl(DeclId(1)),
+        }),
+        ..scope()
+    };
+    let mut printer = EndpointPrinter::new(&ir, NS, scope);
+    assert_eq!(
+        printer.print(&user_id()),
+        "r.toUuid(r.required(f['the-user'].id))"
+    );
+}
+
+#[test]
+fn an_ensure_reads_the_caller_as_a_saved_value() {
+    let ir = ir();
+    let scope = EndpointScope {
+        ensure: true,
+        ..with_principal()
+    };
+    let mut printer = EndpointPrinter::new(&ir, NS, scope);
+    let same = logic(
+        Op::Eq,
+        path(Root::Result, &[("owner", false)], sc(Scalar::Uuid)),
+        user_id(),
+    );
+    assert_eq!(
+        printer.print(&same),
+        "r.toUuid(r.required(result.owner)) === r.toUuid(r.required(o[0].id))"
+    );
+    // The same caller shares its slot, and the operand is the caller in the scope of step 6.
+    assert_eq!(printer.print(&user_id()), "r.toUuid(r.required(o[0].id))");
+    let slots: Vec<&str> = printer.olds().iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(slots, ["f.user"]);
+}
+
+#[test]
+fn a_caller_read_inside_old_is_evaluated_before_the_handler() {
+    let ir = ir();
+    let scope = EndpointScope {
+        ensure: true,
+        ..with_principal()
+    };
+    let mut printer = EndpointPrinter::new(&ir, NS, scope);
+    let old = ex(sc(Scalar::Uuid), ExprKind::Old(Box::new(user_id())));
+    assert_eq!(printer.print(&old), "o[0]");
+    let slots: Vec<&str> = printer.olds().iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(slots, ["r.toUuid(r.required(f.user.id))"]);
+}
+
+#[test]
+fn policy_parameters_and_arguments_are_read_from_locals() {
+    let ir = ir();
+    let scope = EndpointScope {
+        locals: vec![
+            (Root::Param("user".into()), "user".to_owned()),
+            (Root::Param("booking".into()), "booking_".to_owned()),
+        ],
+        ..EndpointScope::default()
+    };
+    let mut printer = EndpointPrinter::new(&ir, NS, scope);
+    let owner = logic(
+        Op::Eq,
+        path(
+            Root::Param("booking".into()),
+            &[("ownerId", false)],
+            sc(Scalar::Uuid),
+        ),
+        path(
+            Root::Param("user".into()),
+            &[("id", false)],
+            sc(Scalar::Uuid),
+        ),
+    );
+    assert_eq!(
+        printer.print(&owner),
+        "r.toUuid(r.required(booking_.ownerId)) === r.toUuid(r.required(user.id))"
+    );
+    // `now` is the clock of the call, whatever the roots are.
+    let now = ex(sc(Scalar::Datetime), ExprKind::Now(veld_ir::Always));
+    assert_eq!(printer.print(&now), "now");
+}
+
+#[test]
+fn locals_also_replace_a_fact_and_the_caller_of_can() {
+    let ir = ir();
+    let scope = EndpointScope {
+        principal: Some(caller()),
+        locals: vec![
+            (Root::Fact("booking".into()), "booking".to_owned()),
+            (Root::Principal, "user".to_owned()),
+        ],
+        ..EndpointScope::default()
+    };
+    let printer = EndpointPrinter::new(&ir, NS, scope);
+    let who = path(
+        Root::Principal,
+        &[],
+        ExprType::Type(Type::Decl(DeclId(1))),
+    );
+    assert_eq!(printer.raw_path(&who).as_deref(), Some("user"));
+    let fact = path(Root::Fact("booking".into()), &[("status", false)], status());
+    assert_eq!(printer.raw_path(&fact).as_deref(), Some("booking.status"));
+    let steps = mk_steps(&[("status", false)]);
+    assert_eq!(
+        printer
+            .field_code(&Root::Fact("booking".into()), &steps)
+            .as_deref(),
+        Some("booking.status")
+    );
 }
