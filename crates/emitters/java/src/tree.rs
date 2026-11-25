@@ -45,7 +45,10 @@ impl<'a> Tree<'a> {
         let mut set: BTreeSet<DeclId> = ir.reachable_decls(&services).into_iter().collect();
         let own: BTreeSet<PackageId> = services.iter().map(|s| ir.service(*s).package).collect();
         for d in &ir.decls {
-            if ir.package(d.package).kind == PackageKind::Prelude || own.contains(&d.package) {
+            let in_scope =
+                ir.package(d.package).kind == PackageKind::Prelude || own.contains(&d.package);
+            // An event is never emitted: a client generates nothing for events (`spec/events.md` 14).
+            if in_scope && !d.is_event() {
                 set.insert(d.id);
             }
         }

@@ -18,6 +18,7 @@ const EVENTS_SOURCE: &str = "model Greeting {
 /// Published when a greeting is sent.
 event Greeted {
   name: string
+  rule named: len(name) > 0
 }
 
 channel GreetingEvents {
@@ -163,10 +164,14 @@ fn first_difference(a: &FileSet, b: &FileSet) -> Option<String> {
     }
     let paths = |v: &[(String, Vec<u8>)]| v.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>();
     if paths(&left) != paths(&right) {
+        let (l, r) = (paths(&left), paths(&right));
+        let only = |a: &[String], b: &[String]| -> Vec<String> {
+            a.iter().filter(|p| !b.contains(p)).cloned().collect()
+        };
         return Some(format!(
-            "the file lists differ: {:?} against {:?}",
-            paths(&left),
-            paths(&right)
+            "the file lists differ: only without events {:?}, only with events {:?}",
+            only(&l, &r),
+            only(&r, &l)
         ));
     }
     left.iter()
