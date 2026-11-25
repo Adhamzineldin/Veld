@@ -395,13 +395,24 @@ fn raw_http(port: u16, method: &str, path: &str, body: &str) -> Option<(u16, Str
 /// same name.
 #[test]
 fn invariants_are_enforced_through_the_spring_adapter() {
+    // The same gate as `spring_adapter_serves_the_round_trip`: Spring already in `~/.m2`, or a
+    // route to Maven Central so the Maven Wrapper can fetch it (a fresh CI machine).
     let have_maven = {
+        use std::net::{TcpStream, ToSocketAddrs};
         let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
-        home.is_some_and(|h| {
+        let cached = home.is_some_and(|h| {
             PathBuf::from(h)
                 .join(".m2/repository/org/springframework/boot/spring-boot-starter-web")
                 .is_dir()
-        })
+        });
+        cached
+            || "repo.maven.apache.org:443"
+                .to_socket_addrs()
+                .ok()
+                .and_then(|mut a| a.next())
+                .is_some_and(|addr| {
+                    TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(10)).is_ok()
+                })
     };
     if !require_javac("invariants_are_enforced_through_the_spring_adapter") {
         return;
@@ -409,9 +420,11 @@ fn invariants_are_enforced_through_the_spring_adapter() {
     if !have_maven {
         assert!(
             std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"),
-            "toolchain required but Spring is not in ~/.m2"
+            "toolchain required but Spring is not in ~/.m2 and Maven Central is not reachable"
         );
-        eprintln!("SKIPPED the Spring rules test: no Spring in ~/.m2");
+        eprintln!(
+            "SKIPPED the Spring rules test: no Spring in ~/.m2 and no route to Maven Central"
+        );
         return;
     }
     let ir = bookings_ir();
