@@ -1,0 +1,123 @@
+// State machines and transitions (spec/rules.md 10). The examples are the vectors: every server
+// target and the reference evaluator must give exactly the stated outcome.
+
+enum Status {
+  pending, paid, checkedIn, cancelled, refunded
+  flow pending -> paid -> checkedIn
+  flow pending -> cancelled
+  flow paid -> cancelled
+  flow paid -> refunded
+  final checkedIn, cancelled, refunded
+}
+
+model Booking {
+  id: uuid
+  status: Status = .pending
+  total: decimal
+}
+
+model Payment {
+  amount: decimal
+}
+
+error AmountMismatch 422 { expected: decimal }
+
+service Bookings at "/bookings" {
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking | AmountMismatch {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+    require body.amount == booking.total else AmountMismatch { expected: booking.total }
+  }
+
+  post "/{id}/cancel" cancelBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending, paid -> cancelled
+  }
+
+  post "/{id}/check-in" checkIn(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: paid -> checkedIn
+  }
+}
+
+// --- the guard before the handler ---
+
+example "a pending booking can be paid" {
+  given booking = { status: .pending, total: 50.00 }
+  payBooking(id: booking.id, body: { amount: 50.00 }) -> ok
+}
+
+example "a booking with the default status can be paid" {
+  given booking = { total: 50.00 }
+  payBooking(id: booking.id, body: { amount: 50.00 }) -> ok
+}
+
+example "a paid booking cannot be paid again" {
+  given booking = { status: .paid, total: 50.00 }
+  payBooking(id: booking.id, body: { amount: 50.00 }) -> InvalidTransition { field: "status", from: "paid", to: "paid" }
+}
+
+example "the transition is checked before require" {
+  given booking = { status: .cancelled, total: 50.00 }
+  payBooking(id: booking.id, body: { amount: 1.00 }) -> InvalidTransition { from: "cancelled" }
+}
+
+example "a legal move with the wrong amount is refused by require" {
+  given booking = { status: .pending, total: 50.00 }
+  payBooking(id: booking.id, body: { amount: 1.00 }) -> AmountMismatch { expected: 50 }
+}
+
+example "a missing booking is not found before the transition is looked at" {
+  given booking = absent
+  payBooking(body: { amount: 1.00 }) -> NotFound { resource: "booking" }
+}
+
+// --- several source states ---
+
+example "a pending booking can be cancelled" {
+  given booking = { status: .pending }
+  cancelBooking(id: booking.id) -> ok
+}
+
+example "a paid booking can be cancelled" {
+  given booking = { status: .paid }
+  cancelBooking(id: booking.id) -> ok
+}
+
+example "a checked-in booking cannot be cancelled" {
+  given booking = { status: .checkedIn }
+  cancelBooking(id: booking.id) -> InvalidTransition { field: "status", from: "checkedIn", to: "cancelled" }
+}
+
+example "a final state has no way out" {
+  given booking = { status: .refunded }
+  cancelBooking(id: booking.id) -> InvalidTransition { from: "refunded", to: "cancelled" }
+}
+
+// --- an endpoint without a result ---
+
+example "a paid booking can check in" {
+  given booking = { status: .paid }
+  checkIn(id: booking.id) -> ok
+}
+
+example "a pending booking cannot check in" {
+  given booking = { status: .pending }
+  checkIn(id: booking.id) -> InvalidTransition { from: "pending", to: "checkedIn" }
+}
+
+// --- the target state after the handler ---
+
+example "the handler must move the booking to the target state" {
+  given booking = { status: .pending, total: 50.00 }
+  payBooking(id: booking.id, body: { amount: 50.00 })
+    returns { status: .pending, total: 50.00 }
+    -> Internal
+}
+
+example "a result in the target state passes" {
+  given booking = { status: .pending, total: 50.00 }
+  payBooking(id: booking.id, body: { amount: 50.00 })
+    returns { status: .paid, total: 50.00 }
+    -> ok
+}

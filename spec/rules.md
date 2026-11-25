@@ -420,18 +420,74 @@ enum BookingStatus {
   flow paid -> refunded
   final checkedIn, cancelled, refunded
 }
+
+service Bookings at "/bookings" {
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking | AmountMismatch {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+    require body.amount == booking.total else AmountMismatch { expected: booking.total }
+  }
+
+  post "/{id}/cancel" cancelBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending, paid -> cancelled
+  }
+}
 ```
 
 ```ebnf
-flow        = "flow" IDENT "->" IDENT { "->" IDENT } [ "emits" typeref ] ;
+enum        = "enum" IDENT "{" { variant [","] | flow | final } "}" ;
+flow        = "flow" IDENT "->" IDENT { "->" IDENT } ;
 final       = "final" IDENT { "," IDENT } ;
 transition  = "transition" path ":" IDENT { "," IDENT } "->" IDENT ;
 ```
 
-- `transition booking.status: pending -> paid` in an endpoint block names an enum field of a fact. Every listed edge MUST exist in the enum's flows.
-- Before the handler, a current value outside the listed source states is `409 InvalidTransition` (a new prelude error, §13). After the handler, if the result has the fact's type, its field MUST equal the target state (output mode).
-- **This is a guard, not an atomic guarantee.** A second request can change the row after the check. The handler therefore receives the transition as data (field, expected source state, target state) and MUST apply it with a conditional write (compare-and-swap or a row lock) in its own transaction. The documentation and every diagnostic say "guard", never "guarantee".
-- `veld check` reports a state that no flow reaches and a non-final state with no way out.
+`flow` and `final` are recognised by the lookahead of §2.2, so an enum may still have variants named `flow` and `final`. `flow a -> b emits Event` belongs to events and is rejected with `E0003` until they exist.
+
+### 10.1 The machine
+
+- An enum with at least one `flow` is a **state machine**. `flow a -> b -> c` declares the edges `a -> b` and `b -> c`. An edge may be declared once; a second declaration is `W0930`. `a -> a` is a legal edge.
+- Every name in a `flow` or `final` MUST be a variant of the enum (`E0930`).
+- A **final** state has no way out: a `final` state with an outgoing edge is `E0931`. `final` without any `flow` in the enum is `E0931` too.
+- `veld check` warns about a state that is not final and has no outgoing edge (`W0931`, a stuck state) and about a variant of a state machine that takes part in no flow and is not final (`W0932`).
+- Flows do not change the enum's signature, like rules.
+
+### 10.2 `transition`
+
+- `transition booking.status: pending, paid -> cancelled` names a field of a **fact**. The path MUST start at a fact, end in a field whose type is a state machine, and pass through no optional step (`E0932`).
+- Every pair of a listed source and the target MUST be an edge of the machine (`E0933`). An endpoint has at most one `transition` (`E0934`).
+- **Guard, before the handler** (step 6, after the policies, before `require`): if the field's current value is not one of the sources, the answer is `409 InvalidTransition` with `field` set to the wire path of the field inside the fact (`status`), `from` to the current wire value and `to` to the target's wire value, and one entry in `violations` (`path` is `request`, `fields` is empty). An endpoint with a `transition` implicitly declares `InvalidTransition`.
+- **Target, after the handler** (step 9, after `ensure`): when the success type is the same declaration as the fact's type, the same field of the result MUST hold the target state. This is an output check under the output mode.
+- **This is a guard, not an atomic guarantee.** A second request can change the row after the check. The handler therefore receives the transition as data, next to the parameters and the facts, under the name `transition`: the field's wire path, the value it had when it was checked, and the target. It MUST apply the change with a conditional write (compare-and-swap or a row lock) in its own transaction, and answer `InvalidTransition` itself when that write finds another value. Documentation and diagnostics say "guard", never "guarantee". A parameter or fact named `transition` on such an endpoint is `E0920`.
+- Identity: `veld:<package>/<Service>.<endpoint>.transition@<hex16>` over the RFC 8785 JSON of `{ "d": "<qualified service name>.<endpoint>", "k": "transition", "f": "<fact>", "p": [<wire names of the path>], "s": [<source wire values, sorted>], "t": "<target wire value>" }`.
+
+### 10.3 Generated helpers
+
+Every target, clients included, gets for each state machine:
+
+- the states that can follow a state (`nextStates(.pending)` gives `paid` and `cancelled`, in declaration order of the edges), and
+- whether a state is final.
+
+A client uses them to show only the buttons the server would accept. The server still decides.
+
+### 10.4 In the IR
+
+```jsonc
+Enum = { "kind": "enum", "variants": [..],
+         "flows":  [ { "from": "pending", "to": "paid" } ],     // variant names; first declaration order, no duplicates
+         "finals": [ "checkedIn", "cancelled", "refunded" ] }   // declaration order
+EndpointRules = { …, "transition": { "id": "veld:…transition@…", "fact": "booking",
+                   "steps": [ { "name": "status", "wire": "status", "optional": false } ],
+                   "decl": DeclId,                               // the state machine
+                   "from": [ "pending", "paid" ], "to": "cancelled",       // variant names, sources in source order
+                   "origin": Origin } | null }
+```
+
+`flows`, `finals` and `transition` are omitted from the JSON when empty or absent. `Feature::RulesTransitions` is used when a reachable enum has flows or an endpoint has a `transition`.
+
+### 10.5 In examples
+
+An example states an illegal move like any other outcome: `given booking = { status: .paid }` and `payBooking(id: booking.id, body: { … }) -> InvalidTransition { from: "paid", to: "paid" }`. A left-out field whose type is a state machine is filled in with the enum's first variant, as for any enum.
 
 ## 11. Policies (Phase 4)
 
@@ -654,7 +710,7 @@ Range `E09xx` (errors) and `W09xx` (warnings). Codes are never reused.
 | `W0902` | Nested comprehension over a list without `@length(max:)` |
 | `W0903` | A rule that reads no field |
 | `W0904` | A target with request validation turned off reaches rules, which it will not enforce (§5.3) |
-| `E0920` | A fact named like a parameter, another fact, the principal, `now` or `result` |
+| `E0920` | A fact named like a parameter, another fact, the principal, `now` or `result`; a parameter or fact named `transition` on an endpoint that has one |
 | `E0921` | The error after `else` is not one of the endpoint's declared errors |
 | `E0922` | Two facts with one name but different types, key types or optionality in a service; an unknown or missing field in an `else` payload |
 | `E0923` | A fact read in `ensure` outside `old(...)` |
@@ -664,7 +720,16 @@ Range `E09xx` (errors) and `W09xx` (warnings). Codes are never reused.
 | `E0952` | A value in an example does not fit the type it is used at |
 | `E0953` | A value the example leaves out cannot be filled in, or the filled-in value breaks an invariant |
 
-`E0930` to `E0939` are reserved for state machines and `E0940` to `E0949` for policies.
+| `E0930` | A `flow` or `final` names something that is not a variant of the enum |
+| `E0931` | A `final` state with an outgoing flow, or `final` in an enum with no flow |
+| `E0932` | The path of a `transition` does not start at a fact, does not end in a state machine, or passes through an optional step |
+| `E0933` | A `transition` lists a move that is not a flow of the machine |
+| `E0934` | More than one `transition` in an endpoint |
+| `W0930` | The same flow declared twice |
+| `W0931` | A state that is not final and has no way out |
+| `W0932` | A variant of a state machine that takes part in no flow and is not final |
+
+`E0940` to `E0949` are reserved for policies.
 
 ## 15. Test vectors
 
