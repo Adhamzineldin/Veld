@@ -1,0 +1,10 @@
+// An edge may be declared once; the second declaration is a warning, also inside a chain.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> paid -> cancelled
+  final cancelled
+}
+
+model Booking { id: uuid, status: Status }

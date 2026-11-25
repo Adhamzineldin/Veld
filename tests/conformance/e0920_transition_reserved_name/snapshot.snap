@@ -1,0 +1,20 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0920]: a parameter is called `transition`, the name the handler gets the transition under
+ --> app/app.veld:13:46
+   |
+13 |   post "/{id}/a" paramNamed(id: uuid, @query transition: int) -> 204 {
+   |                                              ^^^^^^^^^^
+  = help: rename it: an endpoint with a `transition` reserves the name
+
+error[E0920]: a fact is called `transition`, the name the handler gets the transition under
+ --> app/app.veld:19:10
+   |
+19 |     fact transition: Booking = id
+   |          ^^^^^^^^^^
+  = help: rename it: an endpoint with a `transition` reserves the name
+
+== ir ==
+(no IR: compilation failed)

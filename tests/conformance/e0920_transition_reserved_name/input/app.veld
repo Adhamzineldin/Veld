@@ -1,0 +1,26 @@
+// The handler receives the transition under the name `transition`: on an endpoint that has one,
+// a parameter or a fact cannot have that name. Without a `transition` the name is free.
+
+enum Status {
+  pending, paid
+  flow pending -> paid
+  final paid
+}
+
+model Booking { id: uuid, status: Status }
+
+service Bookings at "/bookings" {
+  post "/{id}/a" paramNamed(id: uuid, @query transition: int) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+  }
+
+  post "/{id}/b" factNamed(id: uuid) -> 204 {
+    fact transition: Booking = id
+    transition transition.status: pending -> paid
+  }
+
+  post "/{id}/c" free(id: uuid, @query transition: int) -> 204 {
+    fact booking: Booking = id
+  }
+}

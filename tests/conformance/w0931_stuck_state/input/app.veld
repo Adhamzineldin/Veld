@@ -1,0 +1,10 @@
+// `paid` is entered, is not final and has no way out: a stuck state.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final cancelled
+}
+
+model Booking { id: uuid, status: Status }

@@ -1,0 +1,1511 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    },
+    {
+      "id": 1,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "AmountMismatch",
+      "qualified": "app:app.AmountMismatch",
+      "sig": "veld:app/AmountMismatch@1f1e767064e78b2f",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 43,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "expected",
+          "wire": "expected",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 43,
+            "col": 28
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "Booking",
+      "qualified": "app:app.Booking",
+      "sig": "veld:app/Booking@66f965438cf20480",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 32,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 33,
+            "col": 3
+          }
+        },
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 4
+          },
+          "optional": false,
+          "default": {
+            "lit": "enum_variant",
+            "value": {
+              "name": "pending",
+              "wire": "pending"
+            }
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 34,
+            "col": 3
+          }
+        },
+        {
+          "name": "total",
+          "wire": "total",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 35,
+            "col": 3
+          }
+        },
+        {
+          "name": "words",
+          "wire": "words",
+          "type": {
+            "decl": 5
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 36,
+            "col": 3
+          }
+        },
+        {
+          "name": "words2",
+          "wire": "words2",
+          "type": {
+            "decl": 6
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 37,
+            "col": 3
+          }
+        },
+        {
+          "name": "odd",
+          "wire": "odd",
+          "type": {
+            "decl": 2
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 38,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "app",
+      "name": "Odd",
+      "qualified": "app:app.Odd",
+      "sig": "veld:app/Odd@4fb411f0170e5f06",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 26,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "start",
+          "wire": "start",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "flow",
+          "wire": "flow",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "final",
+          "wire": "final",
+          "docs": null,
+          "deprecated": null
+        }
+      ],
+      "flows": [
+        {
+          "from": "start",
+          "to": "flow"
+        },
+        {
+          "from": "flow",
+          "to": "final"
+        }
+      ],
+      "finals": [
+        "final"
+      ]
+    },
+    {
+      "id": 3,
+      "package": 0,
+      "module": "app",
+      "name": "Payment",
+      "qualified": "app:app.Payment",
+      "sig": "veld:app/Payment@7153e978945ad7fd",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 41,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "amount",
+          "wire": "amount",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 41,
+            "col": 17
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "package": 0,
+      "module": "app",
+      "name": "Status",
+      "qualified": "app:app.Status",
+      "sig": "veld:app/Status@36fd4688c7c31e4d",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 5,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "pending",
+          "wire": "pending",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "paid",
+          "wire": "paid",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "checkedIn",
+          "wire": "checkedIn",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "cancelled",
+          "wire": "cancelled",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "refunded",
+          "wire": "refunded",
+          "docs": null,
+          "deprecated": null
+        }
+      ],
+      "flows": [
+        {
+          "from": "pending",
+          "to": "paid"
+        },
+        {
+          "from": "paid",
+          "to": "checkedIn"
+        },
+        {
+          "from": "pending",
+          "to": "cancelled"
+        },
+        {
+          "from": "paid",
+          "to": "cancelled"
+        },
+        {
+          "from": "paid",
+          "to": "paid"
+        },
+        {
+          "from": "paid",
+          "to": "refunded"
+        }
+      ],
+      "finals": [
+        "checkedIn",
+        "cancelled",
+        "refunded"
+      ]
+    },
+    {
+      "id": 5,
+      "package": 0,
+      "module": "app",
+      "name": "Words",
+      "qualified": "app:app.Words",
+      "sig": "veld:app/Words@0b5fb2dbe5aaad2f",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 17,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "flow",
+          "wire": "flow",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "final",
+          "wire": "final",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "other",
+          "wire": "other",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "package": 0,
+      "module": "app",
+      "name": "Words2",
+      "qualified": "app:app.Words2",
+      "sig": "veld:app/Words2@3fde0652b4980329",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 19,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "flow",
+          "wire": "flow",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "final",
+          "wire": "final",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "other",
+          "wire": "OTHER",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "package": 1,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "package": 1,
+      "module": "prelude",
+      "name": "InvalidTransition",
+      "qualified": "veld:prelude.InvalidTransition",
+      "sig": "veld:veld/InvalidTransition@29c70142526d0750",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 10,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": [
+        {
+          "name": "field",
+          "wire": "field",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 10,
+            "col": 31
+          }
+        },
+        {
+          "name": "from",
+          "wire": "from",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 10,
+            "col": 46
+          }
+        },
+        {
+          "name": "to",
+          "wire": "to",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 10,
+            "col": 60
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "package": 1,
+      "module": "prelude",
+      "name": "NotFound",
+      "qualified": "veld:prelude.NotFound",
+      "sig": "veld:veld/NotFound@a0eaf7a3323dce7c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 4,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 404,
+      "parent": null,
+      "fields": [
+        {
+          "name": "resource",
+          "wire": "resource",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 4,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "package": 1,
+      "module": "prelude",
+      "name": "ValidationError",
+      "qualified": "veld:prelude.ValidationError",
+      "sig": "veld:veld/ValidationError@7836aff24d914bea",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "issues",
+          "wire": "issues",
+          "type": {
+            "list": {
+              "decl": 11
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 6,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "package": 1,
+      "module": "prelude",
+      "name": "ValidationIssue",
+      "qualified": "veld:prelude.ValidationIssue",
+      "sig": "veld:veld/ValidationIssue@253beeea259ebf75",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 9,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "path",
+          "wire": "path",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 29
+          }
+        },
+        {
+          "name": "code",
+          "wire": "code",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 43
+          }
+        },
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 57
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "Bookings",
+      "prefix": "/bookings",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "payBooking",
+          "method": "POST",
+          "path": "/bookings/{id}/pay",
+          "sig": "veld:app/Bookings.payBooking@13a1fe6a454db92f",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            },
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 3
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 1
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 404,
+              "decl": 9
+            },
+            {
+              "status": 409,
+              "decl": 8
+            },
+            {
+              "status": 422,
+              "decl": 0
+            },
+            {
+              "status": 422,
+              "decl": 10
+            },
+            {
+              "status": 500,
+              "decl": 7
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "booking",
+                "type": {
+                  "decl": 1
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "app.veld",
+                  "line": 47,
+                  "col": 10
+                }
+              }
+            ],
+            "transition": {
+              "id": "veld:app/Bookings.payBooking.transition@9d2b993c7d14a996",
+              "fact": "booking",
+              "steps": [
+                {
+                  "name": "status",
+                  "wire": "status",
+                  "optional": false
+                }
+              ],
+              "decl": 4,
+              "from": [
+                "pending"
+              ],
+              "to": "paid",
+              "origin": {
+                "file": "app.veld",
+                "line": 48,
+                "col": 5
+              }
+            },
+            "requires": [
+              {
+                "name": null,
+                "id": "veld:app/Bookings.payBooking.require@baa7f3ddef907313",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "amount",
+                                "wire": "amount",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "fact": "booking"
+                            },
+                            "steps": [
+                              {
+                                "name": "total",
+                                "wire": "total",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "body"
+                ],
+                "else": {
+                  "decl": 0,
+                  "status": 422,
+                  "fields": [
+                    {
+                      "name": "expected",
+                      "wire": "expected",
+                      "value": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "fact": "booking"
+                            },
+                            "steps": [
+                              {
+                                "name": "total",
+                                "wire": "total",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "docs": null,
+                "origin": {
+                  "file": "app.veld",
+                  "line": 49,
+                  "col": 5
+                }
+              }
+            ],
+            "ensures": []
+          },
+          "origin": {
+            "file": "app.veld",
+            "line": 46,
+            "col": 20
+          }
+        },
+        {
+          "name": "cancelBooking",
+          "method": "POST",
+          "path": "/bookings/{id}/cancel",
+          "sig": "veld:app/Bookings.cancelBooking@5ac58a20c1116a7e",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 1
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 404,
+              "decl": 9
+            },
+            {
+              "status": 409,
+              "decl": 8
+            },
+            {
+              "status": 422,
+              "decl": 10
+            },
+            {
+              "status": 500,
+              "decl": 7
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "booking",
+                "type": {
+                  "decl": 1
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "app.veld",
+                  "line": 53,
+                  "col": 10
+                }
+              }
+            ],
+            "transition": {
+              "id": "veld:app/Bookings.cancelBooking.transition@cd04ace5a919c806",
+              "fact": "booking",
+              "steps": [
+                {
+                  "name": "status",
+                  "wire": "status",
+                  "optional": false
+                }
+              ],
+              "decl": 4,
+              "from": [
+                "pending",
+                "paid"
+              ],
+              "to": "cancelled",
+              "origin": {
+                "file": "app.veld",
+                "line": 54,
+                "col": 5
+              }
+            },
+            "requires": [],
+            "ensures": []
+          },
+          "origin": {
+            "file": "app.veld",
+            "line": 52,
+            "col": 23
+          }
+        },
+        {
+          "name": "checkIn",
+          "method": "POST",
+          "path": "/bookings/{id}/check-in",
+          "sig": "veld:app/Bookings.checkIn@0b7eec98e5f13f0c",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 204,
+            "type": null,
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 404,
+              "decl": 9
+            },
+            {
+              "status": 409,
+              "decl": 8
+            },
+            {
+              "status": 422,
+              "decl": 10
+            },
+            {
+              "status": 500,
+              "decl": 7
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "booking",
+                "type": {
+                  "decl": 1
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "app.veld",
+                  "line": 58,
+                  "col": 10
+                }
+              }
+            ],
+            "transition": {
+              "id": "veld:app/Bookings.checkIn.transition@ee64708757c034a3",
+              "fact": "booking",
+              "steps": [
+                {
+                  "name": "status",
+                  "wire": "status",
+                  "optional": false
+                }
+              ],
+              "decl": 4,
+              "from": [
+                "paid"
+              ],
+              "to": "checkedIn",
+              "origin": {
+                "file": "app.veld",
+                "line": 59,
+                "col": 5
+              }
+            },
+            "requires": [],
+            "ensures": []
+          },
+          "origin": {
+            "file": "app.veld",
+            "line": 57,
+            "col": 25
+          }
+        },
+        {
+          "name": "touch",
+          "method": "POST",
+          "path": "/bookings/{id}/touch",
+          "sig": "veld:app/Bookings.touch@bd3785e61a29b303",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 1
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 404,
+              "decl": 9
+            },
+            {
+              "status": 409,
+              "decl": 8
+            },
+            {
+              "status": 422,
+              "decl": 10
+            },
+            {
+              "status": 500,
+              "decl": 7
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "booking",
+                "type": {
+                  "decl": 1
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "app.veld",
+                  "line": 63,
+                  "col": 10
+                }
+              }
+            ],
+            "transition": {
+              "id": "veld:app/Bookings.touch.transition@542e3a3d2a421c24",
+              "fact": "booking",
+              "steps": [
+                {
+                  "name": "status",
+                  "wire": "status",
+                  "optional": false
+                }
+              ],
+              "decl": 4,
+              "from": [
+                "paid"
+              ],
+              "to": "paid",
+              "origin": {
+                "file": "app.veld",
+                "line": 64,
+                "col": 5
+              }
+            },
+            "requires": [],
+            "ensures": []
+          },
+          "origin": {
+            "file": "app.veld",
+            "line": 62,
+            "col": 22
+          }
+        },
+        {
+          "name": "getBooking",
+          "method": "GET",
+          "path": "/bookings/{id}",
+          "sig": "veld:app/Bookings.getBooking@ece8c67556b3abf4",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 1
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 422,
+              "decl": 10
+            },
+            {
+              "status": 500,
+              "decl": 7
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 67,
+            "col": 15
+          }
+        }
+      ],
+      "facts": [
+        {
+          "name": "booking",
+          "type": {
+            "decl": 1
+          },
+          "key": {
+            "scalar": "uuid"
+          },
+          "optional": false
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 45,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {}
+}

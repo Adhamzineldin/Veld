@@ -1,0 +1,65 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0932]: `id` is not a fact of this endpoint
+ --> app/app.veld:31:16
+   |
+31 |     transition id.status: pending -> paid
+   |                ^^
+  = help: the path of a `transition` starts at a `fact`
+
+error[E0932]: `count` has type `int`, which is not a state machine
+ --> app/app.veld:36:24
+   |
+36 |     transition booking.count: pending -> paid
+   |                        ^^^^^
+  = help: a state machine is an enum with at least one `flow`
+
+error[E0932]: `plain` has type `Plain`, which is not a state machine
+ --> app/app.veld:41:24
+   |
+41 |     transition booking.plain: a -> b
+   |                        ^^^^^
+  = help: a state machine is an enum with at least one `flow`
+
+error[E0932]: field `note` is optional and may be absent
+ --> app/app.veld:46:24
+   |
+46 |     transition booking.note: pending -> paid
+   |                        ^^^^
+
+error[E0932]: field `maybe` is optional and may be absent
+ --> app/app.veld:51:24
+   |
+51 |     transition booking.maybe.status: pending -> paid
+   |                        ^^^^^
+
+error[E0932]: field `later` is optional and may be absent
+ --> app/app.veld:56:30
+   |
+56 |     transition booking.inner.later: pending -> paid
+   |                              ^^^^^
+
+error[E0932]: fact `maybeBooking` is optional and may be absent
+ --> app/app.veld:61:16
+   |
+61 |     transition maybeBooking.status: pending -> paid
+   |                ^^^^^^^^^^^^
+
+error[E0932]: `booking` names a fact, not the field that holds the state
+ --> app/app.veld:66:16
+   |
+66 |     transition booking: pending -> paid
+   |                ^^^^^^^
+  = help: write `booking.<field>`
+
+error[E0901]: `Booking` has no field `stauts`
+ --> app/app.veld:71:24
+   |
+71 |     transition booking.stauts: pending -> paid
+   |                        ^^^^^^
+  = help: did you mean `status`?
+
+== ir ==
+(no IR: compilation failed)

@@ -1,0 +1,148 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+warning[W0931]: state `paid` of `Status` is not final and has no way out
+ --> app/app.veld:4:12
+  |
+4 |   pending, paid, cancelled
+  |            ^^^^
+  = help: add a flow from `paid`, or write `final paid`
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Booking",
+      "qualified": "app:app.Booking",
+      "sig": "veld:app/Booking@52da9cd64a0e4138",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 10,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 10,
+            "col": 17
+          }
+        },
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 1
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 10,
+            "col": 27
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "Status",
+      "qualified": "app:app.Status",
+      "sig": "veld:app/Status@02ec67cd95fd210b",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 3,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "pending",
+          "wire": "pending",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "paid",
+          "wire": "paid",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "cancelled",
+          "wire": "cancelled",
+          "docs": null,
+          "deprecated": null
+        }
+      ],
+      "flows": [
+        {
+          "from": "pending",
+          "to": "paid"
+        },
+        {
+          "from": "pending",
+          "to": "cancelled"
+        }
+      ],
+      "finals": [
+        "cancelled"
+      ]
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

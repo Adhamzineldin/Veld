@@ -1,0 +1,11 @@
+// `emits` attaches an event to a flow. Events do not exist yet: it is rejected and the message
+// names events. The statements after it still parse.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid emits BookingPaid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model Booking { id: uuid, status: Status }

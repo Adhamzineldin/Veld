@@ -1,0 +1,8 @@
+// `final` in an enum without any `flow`: it is not a state machine.
+
+enum Status {
+  pending, paid, cancelled
+  final cancelled
+}
+
+model Booking { id: uuid, status: Status }

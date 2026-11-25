@@ -1,0 +1,27 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0930]: enum `Status` has no variant `shipped`
+ --> app/app.veld:5:27
+  |
+5 |   flow pending -> paid -> shipped
+  |                           ^^^^^^^
+  = help: variants: pending, paid, cancelled
+
+error[E0930]: enum `Status` has no variant `pendin`
+ --> app/app.veld:6:8
+  |
+6 |   flow pendin -> cancelled
+  |        ^^^^^^
+  = help: did you mean `pending`?
+
+error[E0930]: enum `Status` has no variant `refunded`
+ --> app/app.veld:7:20
+  |
+7 |   final cancelled, refunded
+  |                    ^^^^^^^^
+  = help: variants: pending, paid, cancelled
+
+== ir ==
+(no IR: compilation failed)

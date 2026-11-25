@@ -1,0 +1,68 @@
+// State machines (spec/rules.md 10): chains, a self edge, final states, a transition with one and
+// with several sources, the implicit InvalidTransition, and variants named `flow` and `final`
+// both in an enum that is not a state machine and in one that is.
+
+enum Status {
+  pending, paid, checkedIn, cancelled, refunded
+  flow pending -> paid -> checkedIn
+  flow pending -> cancelled
+  flow paid -> cancelled
+  flow paid -> paid
+  flow paid -> refunded
+  final checkedIn, cancelled
+  final refunded
+}
+
+// Not a state machine: `flow` and `final` are variants here.
+enum Words { flow, final, other }
+
+enum Words2 {
+  flow
+  final
+  other = "OTHER"
+}
+
+// A state machine that also has variants named `flow` and `final`.
+enum Odd {
+  start, flow, final
+  flow start -> flow -> final
+  final final
+}
+
+model Booking {
+  id: uuid
+  status: Status = .pending
+  total: decimal
+  words?: Words
+  words2?: Words2
+  odd?: Odd
+}
+
+model Payment { amount: decimal }
+
+error AmountMismatch 422 { expected: decimal }
+
+service Bookings at "/bookings" {
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking | AmountMismatch {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+    require body.amount == booking.total else AmountMismatch { expected: booking.total }
+  }
+
+  post "/{id}/cancel" cancelBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending, paid -> cancelled
+  }
+
+  post "/{id}/check-in" checkIn(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: paid -> checkedIn
+  }
+
+  post "/{id}/touch" touch(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: paid -> paid
+  }
+
+  get "/{id}" getBooking(id: uuid) -> Booking
+}

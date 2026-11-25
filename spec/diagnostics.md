@@ -73,11 +73,16 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0906` | error | veld-compiler | Unknown function, wrong number or type of arguments, lambda where none is allowed |
 | `E0907` | error | veld-compiler | Duplicate rule name in a declaration, counting inherited rules |
 | `E0908` | error | veld-compiler | Numeric literal out of range for its type |
-| `E0920` | error | veld-compiler | A fact named like a parameter, another fact, the principal, `now` or `result` |
+| `E0920` | error | veld-compiler | A fact named like a parameter, another fact, the principal, `now` or `result`; a parameter or fact named `transition` on an endpoint that has one |
 | `E0921` | error | veld-compiler | The error after `else` is not one of the endpoint's declared errors |
 | `E0922` | error | veld-compiler | Two facts with one name but different types, key types or optionality in a service; an unknown or missing field in an `else` payload |
 | `E0923` | error | veld-compiler | A fact read in `ensure` outside `old(...)` |
 | `E0924` | error | veld-compiler | `ensure` on an endpoint whose success is a stream |
+| `E0930` | error | veld-compiler | A `flow` or `final` names something that is not a variant of the enum |
+| `E0931` | error | veld-compiler | A `final` state with an outgoing flow, or `final` in an enum with no flow |
+| `E0932` | error | veld-compiler | The path of a `transition` does not start at a fact, does not end in a state machine, or passes through an optional step |
+| `E0933` | error | veld-compiler | A `transition` lists a move that is not a flow of the machine |
+| `E0934` | error | veld-compiler | More than one `transition` in an endpoint |
 | `E0950` | error | veld-compiler | Duplicate example name; unknown or ambiguous endpoint in an example |
 | `E0951` | error | veld-compiler | `given` names something that is not a fact of the called endpoint |
 | `E0952` | error | veld-compiler | A value in an example does not fit the type it is used at |
@@ -90,6 +95,9 @@ never reused. The ranges are listed in `language.md` section 9.
 | `W0902` | warning | veld-compiler | Nested comprehension over a list without `@length(max: n)` |
 | `W0903` | warning | veld-compiler | A rule that reads no field |
 | `W0904` | warning | generators | A target with request validation turned off reaches rules, which it will not enforce |
+| `W0930` | warning | veld-compiler | The same flow declared twice |
+| `W0931` | warning | veld-compiler | A state that is not final and has no way out |
+| `W0932` | warning | veld-compiler | A variant of a state machine that takes part in no flow and is not final |
 | `L0001` | lint | veld-tools | `unused-model`: declaration is never used by any endpoint, model or constant |
 | `L0002` | lint | veld-tools | `empty-service`: service has no endpoints |
 | `L0003` | lint | veld-tools | `empty-model`: model has no fields |

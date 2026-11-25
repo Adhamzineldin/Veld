@@ -1,0 +1,10 @@
+// Every name in a `flow` or `final` must be a variant of the enum.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid -> shipped
+  flow pendin -> cancelled
+  final cancelled, refunded
+}
+
+model Booking { id: uuid, status: Status }

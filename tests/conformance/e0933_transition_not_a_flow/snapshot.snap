@@ -1,0 +1,27 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0933]: `paid -> pending` is not a flow of `Status`
+ --> app/app.veld:15:32
+   |
+15 |     transition booking.status: paid -> pending
+   |                                ^^^^^^^^^^^^^^^
+  = help: `paid` has no way out in `Status`
+
+error[E0933]: `paid -> cancelled` is not a flow of `Status`
+ --> app/app.veld:20:41
+   |
+20 |     transition booking.status: pending, paid -> cancelled
+   |                                         ^^^^^^^^^^^^^^^^^
+  = help: `paid` has no way out in `Status`
+
+error[E0933]: `shiped` is not a state of `Status`
+ --> app/app.veld:25:43
+   |
+25 |     transition booking.status: pending -> shiped
+   |                                           ^^^^^^
+  = help: states: pending, paid, cancelled
+
+== ir ==
+(no IR: compilation failed)
