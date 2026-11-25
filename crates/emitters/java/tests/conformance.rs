@@ -1,6 +1,7 @@
 //! The shared generator conformance kit, for every framework of the Java server.
 #![allow(clippy::unwrap_used)]
 use veld_emit_conformance::{Setup, check_generator_with};
+use veld_codegen::DynGenerator;
 use veld_emit_java::Java;
 use veld_ir::Feature;
 
@@ -41,43 +42,19 @@ fn spring_passes_the_conformance_kit_with_everything() {
     );
 }
 
-/// Flip one feature at a time when the emitter learns to enforce it (`spec/rules.md` section 8).
-/// Invariants are enforced; endpoint rules, transitions and policies are still `E0801`.
+/// Invariants and endpoint rules are enforced, in both roles and with a hand-built and a compiled
+/// contract. Transitions and policies are still `E0801` (`spec/rules.md` section 8).
 #[test]
-fn java_enforces_invariants_and_declares_no_other_rules_feature() {
-    use veld_codegen::{DynGenerator, GenRequest, check_capabilities};
-    let ir = veld_emit_conformance::ir_with_rule();
+fn java_enforces_invariants_and_endpoint_rules() {
+    veld_emit_conformance::check_invariants_and_endpoint_rules_supported(&Java).unwrap();
+}
+
+#[test]
+fn java_declares_no_transition_or_policy_feature() {
     for role in Java.roles() {
         let caps = Java.capabilities(*role);
-        assert!(caps.supports(Feature::RulesInvariants), "{role:?}");
-        for f in [
-            Feature::RulesEndpoint,
-            Feature::RulesTransitions,
-            Feature::RulesPolicies,
-        ] {
+        for f in [Feature::RulesTransitions, Feature::RulesPolicies] {
             assert!(!caps.supports(f), "java declares `{}`", f.name());
         }
-        let req = GenRequest {
-            ir: &ir,
-            role: *role,
-            services: ir.services.iter().map(|s| s.id).collect(),
-            consumes: vec![],
-            framework: None,
-        };
-        assert!(check_capabilities(&ir, &req, &caps).is_empty());
-        Java.generate_dyn(&req, &serde_json::Value::Null)
-            .unwrap_or_else(|d| {
-                panic!("{role:?}: a contract with an invariant must generate: {d:?}")
-            });
     }
-}
-
-#[test]
-fn java_refuses_endpoint_rules_with_e0801() {
-    veld_emit_conformance::check_endpoint_rules_are_refused(&Java).unwrap();
-}
-
-#[test]
-fn java_refuses_a_compiled_contract_with_endpoint_rules_with_e0801() {
-    veld_emit_conformance::check_compiled_endpoint_rules_are_refused(&Java).unwrap();
 }

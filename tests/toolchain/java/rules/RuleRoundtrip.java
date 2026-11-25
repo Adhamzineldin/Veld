@@ -137,10 +137,22 @@ public final class RuleRoundtrip {
     return v;
   }
 
+  /**
+   * A client that has seen one response: the rules digest it carries is the client's own, so the
+   * local check is on (spec/rules.md section 9.7: before the first response a request is sent anyway).
+   */
+  private static BookingsClient warmClient(String base) {
+    BookingsClient c = client(base, true);
+    Booking ok = new Booking(T1, T0);
+    Check.equal(ok, c.create(new CreateRequest(ok)), "the first call goes through");
+    return c;
+  }
+
   private static void localViolation(String base, Violation remote) {
+    BookingsClient warm = warmClient(base);
     int before = CREATED.get();
     VeldError e = Check.thrown(VeldError.class, "the client refuses", () ->
-        client(base, true).create(new CreateRequest(new Booking(T0, T1))));
+        warm.create(new CreateRequest(new Booking(T0, T1))));
     Check.equal("ValidationError", e.title(), "typed ValidationError");
     Check.that(e.raisedLocally(), "raised locally");
     Check.equal(List.of(remote), e.violations(), "the same violations as the server");
@@ -192,9 +204,10 @@ public final class RuleRoundtrip {
 
   /** The rules of a {@code query} object: path {@code query}, locally and on the server. */
   private static void queryObject(String base) {
+    BookingsClient warm = warmClient(base);
     int before = CREATED.get();
     gen.rc.bk.client.SearchRequest bad = new gen.rc.bk.client.SearchRequest(new gen.rc.bk.bk.Window(5, 1));
-    VeldError local = Check.thrown(VeldError.class, "the client refuses a bad query", () -> client(base, true).search(bad));
+    VeldError local = Check.thrown(VeldError.class, "the client refuses a bad query", () -> warm.search(bad));
     Check.that(local.raisedLocally(), "local");
     Check.equal("query", local.violations().get(0).path(), "local path");
     Check.equal(List.of("lo", "hi"), local.violations().get(0).fields(), "fields");

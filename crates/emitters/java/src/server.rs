@@ -1,10 +1,13 @@
 //! `<package>.server`: request records, the `<Service>Service` interface, `<Service>Hooks` and
 //! `<Service>Handler`.
 
+use std::cell::RefCell;
+
 use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{AuthKind, Endpoint, Service};
 
+use crate::endpoint;
 use crate::frameworks::{EndpointKind, EndpointModel, ServiceModel};
 use crate::spec::{
     RequestNames, emit_requests, endpoint_docs, is_sse, is_ws, method_name, spec_const,
@@ -25,8 +28,14 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
             .filter(|s| tree.ir.service(**s).package == pkg)
         {
             let svc = tree.ir.service(*sid);
+            let refused = endpoint::refusals(svc);
+            if !refused.is_empty() {
+                return Err(refused);
+            }
             emit_requests(files, tree, &package, &names, svc)?;
+            emit_facts(files, tree, &package, &names, svc)?;
             let base = naming::pascal(&svc.name);
+            let problems = RefCell::new(Vec::new());
             let mut put =
                 |suffix: &str, write: &dyn Fn(&mut CodeWriter, &mut FileCtx<'_, '_>, &str)| {
                     let class = format!("{base}{suffix}");
@@ -40,9 +49,44 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
             })?;
             put("Hooks", &|w, fc, class| write_hooks(w, fc, svc, class))?;
             put("Handler", &|w, fc, class| {
-                write_handler(w, fc, &names, svc, class, &base)
+                let found = write_handler(w, fc, &names, svc, class, &base);
+                problems.borrow_mut().extend(found);
             })?;
+            if crate::testing::wanted(tree.testing, svc) {
+                put("TestHandler", &|w, fc, class| {
+                    let found = crate::testing::write_test_handler(w, fc, &names, svc, class, &base);
+                    problems.borrow_mut().extend(found);
+                })?;
+            }
+            if !svc.facts.is_empty() {
+                put("FactLoaders", &|w, fc, class| {
+                    endpoint::write_loaders(w, fc, svc, class);
+                })?;
+            }
+            let problems = problems.into_inner();
+            if !problems.is_empty() {
+                return Err(problems);
+            }
         }
+    }
+    Ok(())
+}
+
+/// One record of loaded facts per endpoint that has facts.
+fn emit_facts(
+    files: &mut FileSet,
+    tree: &Tree<'_>,
+    package: &str,
+    names: &RequestNames,
+    svc: &Service,
+) -> Result<(), Vec<GenDiagnostic>> {
+    for ep in svc.endpoints.iter().filter(|e| !e.rules.facts.is_empty()) {
+        let request = names.get(svc.id, &ep.name);
+        let class = endpoint::facts_name(&request);
+        let mut fc = FileCtx::new(tree, package, &class);
+        let mut w = CodeWriter::new();
+        endpoint::write_facts_record(&mut w, &mut fc, &request, ep);
+        add_file(files, &java_path(package, &class), fc.finish(&w.finish()))?;
     }
     Ok(())
 }
@@ -78,6 +122,19 @@ fn write_interface(
         w.line(signature(fc, ep, &request, &ctx));
     }
     w.close();
+}
+
+/// The request parameter list of a handler method: the request record, then the facts record
+/// when the endpoint has facts, then the context.
+fn request_params(ep: &Endpoint, request: &str, ctx: &str) -> String {
+    if ep.rules.facts.is_empty() {
+        format!("{request} request, {ctx} ctx")
+    } else {
+        format!(
+            "{request} request, {} facts, {ctx} ctx",
+            endpoint::facts_name(request)
+        )
+    }
 }
 
 /// One required hook of a service.
@@ -167,6 +224,14 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     w.line(format!(
         "private final {hooks}.Builder builder = {hooks}.builder(){off};"
     ));
+    let clock = if endpoint::service_has_rules(svc) {
+        Some(fc.name("java.time.Clock"))
+    } else {
+        None
+    };
+    if let Some(clock) = &clock {
+        w.line(format!("private {clock} clock = {clock}.systemUTC();"));
+    }
     w.blank();
     let params: Vec<(String, String)> = required
         .iter()
@@ -200,6 +265,18 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     if fc.tree.rules {
         write_rule_hooks(w, fc, class);
     }
+    if let Some(clock) = &clock {
+        w.line("/** The clock `now` reads in endpoint rules, once per request (default: the system clock). */");
+        w.open(format!("public {class} clock({clock} value)"));
+        w.line("this.clock = value;");
+        w.line("return this;");
+        w.close();
+        w.blank();
+        w.open(format!("{clock} clock()"));
+        w.line("return clock;");
+        w.close();
+        w.blank();
+    }
     w.open(format!("{hooks} build()"));
     w.line("return builder.build();");
     w.close();
@@ -232,11 +309,12 @@ fn write_handler(
     svc: &Service,
     class: &str,
     base: &str,
-) {
+) -> Vec<GenDiagnostic> {
     let handler = fc.rt("VeldHandler");
     let router = fc.rt("Router");
     let endpoint = fc.rt("ServerEndpoint");
     let list = fc.name("java.util.List");
+    let mut problems = Vec::new();
     doc_comment(
         w,
         Some(&format!(
@@ -257,27 +335,118 @@ fn write_handler(
     let needs_hooks = needs_hooks(svc);
     let hooks_class = format!("{base}Hooks");
     let service = format!("{base}Service");
+    let rules = endpoint::service_has_rules(svc);
+    let loaders = (!svc.facts.is_empty()).then(|| endpoint::loaders_name(base));
+    let (given, pass) = match &loaders {
+        Some(l) => (format!("{service} impl, {l} loaders"), "impl, loaders"),
+        None => (format!("{service} impl"), "impl"),
+    };
     if !needs_hooks {
         w.line("/** Builds the handler with default hooks. */");
-        w.open(format!("public static {handler} create({service} impl)"));
-        w.line(format!("return create(impl, new {hooks_class}());"));
+        w.open(format!("public static {handler} create({given})"));
+        w.line(format!("return create({pass}, new {hooks_class}());"));
         w.close();
         w.blank();
     }
     w.line("/** Builds the handler. */");
     w.open(format!(
-        "public static {handler} create({service} impl, {hooks_class} hooks)"
+        "public static {handler} create({given}, {hooks_class} hooks)"
     ));
-    open_call(w, format!("{list}<{endpoint}> endpoints = {list}.of"));
+    let site = EndpointsSite {
+        names,
+        svc,
+        endpoint: &endpoint,
+        list: &list,
+    };
+    if rules {
+        let (built, clock) = (fc.rt("HandlerHooks"), fc.name("java.time.Clock"));
+        w.line(format!("{built} built = hooks.build();"));
+        w.line(format!("{clock} clock = hooks.clock();"));
+        w.line(format!(
+            "{list}<{endpoint}> endpoints = endpoints({pass}, built, ctx -> clock.millis());"
+        ));
+        let std = std_sigs(fc);
+        w.line(format!(
+            "return {};",
+            wrap_digest(fc, svc, &format!("{router}.create(endpoints, {std}, built)"))
+        ));
+        w.close();
+        w.blank();
+        write_endpoints_method(w, fc, &site, (&given, loaders.is_some()), &mut problems);
+    } else {
+        open_call(w, format!("{list}<{endpoint}> endpoints = {list}.of"));
+        for (i, ep) in svc.endpoints.iter().enumerate() {
+            problems.extend(write_endpoint(
+                w,
+                fc,
+                names,
+                svc,
+                ep,
+                i + 1 == svc.endpoints.len(),
+            ));
+        }
+        end_call(w);
+        let std = std_sigs(fc);
+        let create = format!("{router}.create(endpoints, {std}, hooks.build())");
+        w.line(format!("return {};", wrap_digest(fc, svc, &create)));
+        w.close();
+    }
+    w.close();
+    problems
+}
+
+/// What the method that lists the endpoints of a service needs.
+struct EndpointsSite<'a> {
+    names: &'a RequestNames,
+    svc: &'a Service,
+    endpoint: &'a str,
+    list: &'a str,
+}
+
+/// `return DigestHandler.wrap(create, "digest")` for a service that has a rules digest.
+fn wrap_digest(fc: &mut FileCtx<'_, '_>, svc: &Service, create: &str) -> String {
+    match (&svc.rules_digest, fc.tree.rules) {
+        (Some(digest), true) => {
+            let wrapper = fc.rt("DigestHandler");
+            format!("{wrapper}.wrap({create}, {})", java_str(digest))
+        }
+        (Some(_) | None, _) => create.to_string(),
+    }
+}
+
+/// `static List<ServerEndpoint> endpoints(impl, loaders, hooks, clock)`: the endpoints of a
+/// service with rules. Package-private: the test handler builds the same endpoints with loaders
+/// and a clock that read the request.
+fn write_endpoints_method(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    site: &EndpointsSite<'_>,
+    (given, _has_loaders): (&str, bool),
+    problems: &mut Vec<GenDiagnostic>,
+) {
+    let (hooks, ctx, to_long) = (
+        fc.rt("HandlerHooks"),
+        fc.rt("RequestContext"),
+        fc.name("java.util.function.ToLongFunction"),
+    );
+    w.line("/** The endpoints of the service; the test handler reuses them. */");
+    w.open(format!(
+        "static {}<{}> endpoints({given}, {hooks} hooks, {to_long}<{ctx}> clock)",
+        site.list, site.endpoint
+    ));
+    open_call(w, format!("return {}.of", site.list));
+    let svc = site.svc;
     for (i, ep) in svc.endpoints.iter().enumerate() {
-        write_endpoint(w, fc, names, svc, ep, i + 1 == svc.endpoints.len());
+        problems.extend(write_endpoint(
+            w,
+            fc,
+            site.names,
+            svc,
+            ep,
+            i + 1 == svc.endpoints.len(),
+        ));
     }
     end_call(w);
-    let std = std_sigs(fc);
-    w.line(format!(
-        "return {router}.create(endpoints, {std}, hooks.build());"
-    ));
-    w.close();
     w.close();
 }
 
@@ -288,7 +457,8 @@ fn write_endpoint(
     svc: &Service,
     ep: &Endpoint,
     last: bool,
-) {
+) -> Vec<GenDiagnostic> {
+    let mut problems = Vec::new();
     let endpoint = fc.rt("ServerEndpoint");
     let list = fc.name("java.util.List");
     let request = names.get(svc.id, &ep.name);
@@ -323,6 +493,32 @@ fn write_endpoint(
         w.line(format!(
             "(params, ctx) -> {encode}.encode({call}, {codec})){end}"
         ));
+    } else if endpoint::endpoint_has_rules(ep) {
+        let site = endpoint::Site {
+            svc,
+            ep,
+            request: &request,
+        };
+        let facts = if ep.rules.facts.is_empty() {
+            ""
+        } else {
+            "facts, "
+        };
+        let call = format!("impl.{method}(request, {facts}ctx)");
+        let encode = ep
+            .success
+            .ty
+            .as_ref()
+            .map(|t| format!("{}.encode(result)", codec_expr(fc, t)));
+        w.open_with("(params, ctx) ->", " {");
+        problems.extend(endpoint::write_call_body(
+            w,
+            fc,
+            &site,
+            &call,
+            encode.as_deref(),
+        ));
+        w.close_with(format!("}}){end}"));
     } else {
         match &ep.success.ty {
             Some(t) => {
@@ -338,6 +534,7 @@ fn write_endpoint(
         }
     }
     end_call(w);
+    problems
 }
 
 /// The lambda of a `ws` endpoint: the router's raw session is wrapped with the message codecs.
@@ -363,7 +560,7 @@ fn write_ws_call(
     ));
 }
 
-fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
+pub(crate) fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
     let router = fc.rt("Router");
     let mut sig = |name: &str| match fc.tree.prelude_decl(name) {
         Some(id) => format!("{}.VELD_SIG", fc.decl(id)),
@@ -374,7 +571,7 @@ fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
 }
 
 /// Whether any endpoint of the service needs an auth or middleware hook.
-fn needs_hooks(svc: &Service) -> bool {
+pub(crate) fn needs_hooks(svc: &Service) -> bool {
     svc.endpoints
         .iter()
         .any(|e| auth_kind_name(e.auth.kind).is_some() || !e.middleware.is_empty())
@@ -398,6 +595,7 @@ pub fn service_models(tree: &Tree<'_>) -> Vec<ServiceModel> {
             adapter_package: format!("{}.adapters.{dir}", tree.base),
             needs_hooks: needs_hooks(svc),
             rules: tree.rules,
+            loaders: (!svc.facts.is_empty()).then(|| endpoint::loaders_name(&naming::pascal(&svc.name))),
             endpoints: svc
                 .endpoints
                 .iter()
@@ -435,7 +633,7 @@ fn ws_types(fc: &mut FileCtx<'_, '_>, ep: &Endpoint) -> (String, String) {
 }
 
 /// The declaration of an endpoint's method in the `<Service>Service` interface.
-fn signature(fc: &mut FileCtx<'_, '_>, ep: &Endpoint, request: &str, ctx: &str) -> String {
+pub(crate) fn signature(fc: &mut FileCtx<'_, '_>, ep: &Endpoint, request: &str, ctx: &str) -> String {
     let method = method_name(ep);
     if is_ws(ep) {
         let (incoming, outgoing) = ws_types(fc, ep);
@@ -452,5 +650,6 @@ fn signature(fc: &mut FileCtx<'_, '_>, ep: &Endpoint, request: &str, ctx: &str) 
         Some(t) => java_type(fc, t, true),
         None => "void".to_string(),
     };
-    format!("{ret} {method}({request} request, {ctx} ctx) throws Exception;")
+    let params = request_params(ep, request, ctx);
+    format!("{ret} {method}({params}) throws Exception;")
 }

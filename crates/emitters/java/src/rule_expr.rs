@@ -30,12 +30,37 @@ enum At<'a> {
     Nothing,
 }
 
-/// Prints the expressions of one declaration's rules. `v` is the value being checked.
+/// A name an endpoint rule can read: a parameter or a fact.
+#[derive(Debug, Clone)]
+pub struct ScopeVar {
+    /// The name in the contract.
+    pub name: String,
+    /// The Java expression that reads it (`request.body()`, `fact_room`).
+    pub code: String,
+    /// Its type.
+    pub ty: Type,
+    /// Whether it may be `null`.
+    pub optional: bool,
+}
+
+/// The names in scope in the statements of an endpoint block (`spec/rules.md` section 9.1).
+#[derive(Debug, Clone, Default)]
+pub struct EndpointScope {
+    pub params: Vec<ScopeVar>,
+    pub facts: Vec<ScopeVar>,
+    /// The success type, when `result` is in scope.
+    pub result: Option<Type>,
+}
+
+/// Prints the expressions of one declaration's rules (`v` is the value being checked) or of an
+/// endpoint block (`request`, `fact_<name>`, `now`, `result` and the saved `old` values).
 #[derive(Debug)]
 pub struct JavaExpr<'f, 't, 'a> {
     fc: &'f mut FileCtx<'t, 'a>,
     ir: &'a Ir,
-    this: DeclId,
+    this: Option<DeclId>,
+    scope: Option<EndpointScope>,
+    olds: Vec<(String, ExprType)>,
     vars: Vec<(String, ExprType)>,
     unsupported: Vec<String>,
 }
@@ -47,10 +72,89 @@ impl<'f, 't, 'a> JavaExpr<'f, 't, 'a> {
         Self {
             fc,
             ir,
-            this,
+            this: Some(this),
+            scope: None,
+            olds: Vec::new(),
             vars: Vec::new(),
             unsupported: Vec::new(),
         }
+    }
+
+    /// A printer for the statements of an endpoint block.
+    pub fn for_endpoint(fc: &'f mut FileCtx<'t, 'a>, scope: EndpointScope) -> Self {
+        let ir = fc.tree.ir;
+        Self {
+            fc,
+            ir,
+            this: None,
+            scope: Some(scope),
+            olds: Vec::new(),
+            vars: Vec::new(),
+            unsupported: Vec::new(),
+        }
+    }
+
+    /// The file the printer writes imports into.
+    pub fn file(&mut self) -> &mut FileCtx<'t, 'a> {
+        self.fc
+    }
+
+    /// The operands of the `old(...)` expressions printed so far, one slot each, in order.
+    #[must_use]
+    pub fn olds(&self) -> &[(String, ExprType)] {
+        &self.olds
+    }
+
+    /// The value of a plain path as the developer sees it (`java.time.Instant` for a datetime),
+    /// when `expr` is one; `None` for anything computed.
+    pub fn raw_path(&mut self, expr: &veld_ir::Expr) -> Option<String> {
+        match &expr.e {
+            veld_ir::ExprKind::Path(path) => {
+                let (prefixes, _) = self.walk(path);
+                prefixes.last().cloned()
+            }
+            veld_ir::ExprKind::Lit(_)
+            | veld_ir::ExprKind::Now(_)
+            | veld_ir::ExprKind::Not(_)
+            | veld_ir::ExprKind::Neg(_)
+            | veld_ir::ExprKind::Widen(_)
+            | veld_ir::ExprKind::Bin(_)
+            | veld_ir::ExprKind::Has(_)
+            | veld_ir::ExprKind::Call(_)
+            | veld_ir::ExprKind::Quant(_)
+            | veld_ir::ExprKind::List(_)
+            | veld_ir::ExprKind::Old(_) => None,
+        }
+    }
+
+    /// The code, the thing it reads from and whether it may be boxed, for a root of an endpoint
+    /// block; `None` (with a note) for anything else.
+    fn endpoint_root(&mut self, root: &Root) -> Option<(String, At<'a>, bool)> {
+        let found = match (&self.scope, root) {
+            (Some(s), Root::Param(n)) => s.params.iter().find(|v| &v.name == n).cloned(),
+            (Some(s), Root::Fact(n)) => s.facts.iter().find(|v| &v.name == n).cloned(),
+            (Some(s), Root::Result) => s.result.clone().map(|ty| ScopeVar {
+                name: "result".into(),
+                code: "result".into(),
+                ty,
+                optional: false,
+            }),
+            (Some(_) | None, _) => None,
+        };
+        match found {
+            Some(v) => Some((v.code, self.at_of_type(&v.ty), v.optional)),
+            None => {
+                self.unsupported.push(
+                    "a rule that reads a parameter, a fact, the principal or the result here"
+                        .to_string(),
+                );
+                None
+            }
+        }
+    }
+
+    fn this_at(&self) -> At<'a> {
+        self.this.map_or(At::Nothing, |id| self.at_of_decl(id))
     }
 
     /// What the generator cannot express. A non-empty list is an `E0801`.
@@ -105,7 +209,7 @@ impl<'f, 't, 'a> JavaExpr<'f, 't, 'a> {
     /// third value says whether the last step may be a boxed type.
     fn walk(&mut self, path: &PathRef) -> (Vec<String>, bool) {
         let (mut code, mut at, mut boxed) = match &path.root {
-            Root::SelfValue => ("v".to_string(), self.at_of_decl(self.this), false),
+            Root::SelfValue => ("v".to_string(), self.this_at(), false),
             Root::Var(name) => {
                 let ty = self
                     .vars
@@ -117,11 +221,10 @@ impl<'f, 't, 'a> JavaExpr<'f, 't, 'a> {
                 (format!("it_{name}"), at, true)
             }
             Root::Param(_) | Root::Fact(_) | Root::Principal | Root::Result => {
-                self.unsupported.push(
-                    "a rule that reads a parameter, a fact, the principal or the result"
-                        .to_string(),
-                );
-                return (vec!["null".to_string()], false);
+                match self.endpoint_root(&path.root) {
+                    Some(root) => root,
+                    None => return (vec!["null".to_string()], false),
+                }
             }
         };
         let mut prefixes = vec![code.clone()];
@@ -439,7 +542,7 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
         let (prefixes, _) = self.walk(path);
         let mut checks: Vec<String> = Vec::new();
         let mut at = match &path.root {
-            Root::SelfValue => self.at_of_decl(self.this),
+            Root::SelfValue => self.this_at(),
             Root::Var(name) => {
                 let ty = self
                     .vars
@@ -449,7 +552,17 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
                     .map(|(_, t)| t.clone());
                 ty.as_ref().map_or(At::Nothing, |t| self.at_of_expr_type(t))
             }
-            Root::Param(_) | Root::Fact(_) | Root::Principal | Root::Result => At::Nothing,
+            Root::Param(_) | Root::Fact(_) | Root::Principal | Root::Result => {
+                match self.endpoint_root(&path.root) {
+                    Some((code, at, optional)) => {
+                        if optional {
+                            checks.push(format!("{code} != null"));
+                        }
+                        at
+                    }
+                    None => At::Nothing,
+                }
+            }
         };
         for (i, step) in path.steps.iter().enumerate() {
             let (_, next, _) = self.step(at, &step.name);
@@ -473,7 +586,11 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
     }
 
     fn now(&mut self) -> Printed {
-        self.refuse("`now`")
+        if self.scope.is_some() {
+            Printed::atom("now")
+        } else {
+            self.refuse("`now`")
+        }
     }
 
     fn not(&mut self, operand: Printed) -> Printed {
@@ -649,8 +766,175 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
         }
     }
 
-    fn old(&mut self, _operand: Printed, _ty: &ExprType) -> Printed {
-        self.refuse("`old`")
+    fn old(&mut self, operand: Printed, ty: &ExprType) -> Printed {
+        if self.scope.is_none() {
+            return self.refuse("`old`");
+        }
+        let slot = match self.olds.iter().position(|(code, _)| *code == operand.code) {
+            Some(i) => i,
+            None => {
+                self.olds.push((operand.code.clone(), ty.clone()));
+                self.olds.len() - 1
+            }
+        };
+        let read = format!("o{slot}.get()");
+        match self.kind(ty) {
+            ValueKind::Int => Printed::new(format!("(int) {read}"), UNARY),
+            ValueKind::Long
+            | ValueKind::Datetime
+            | ValueKind::Date
+            | ValueKind::Time
+            | ValueKind::Duration => Printed::new(format!("(long) {read}"), UNARY),
+            ValueKind::Float => Printed::new(format!("(double) {read}"), UNARY),
+            ValueKind::Bool => Printed::new(format!("(boolean) {read}"), UNARY),
+            ValueKind::Decimal
+            | ValueKind::String
+            | ValueKind::Uuid
+            | ValueKind::Bytes
+            | ValueKind::Json
+            | ValueKind::Enum
+            | ValueKind::Model
+            | ValueKind::List
+            | ValueKind::Map
+            | ValueKind::Page => Printed::atom(read),
+        }
+    }
+}
+
+/// The Java type of a value in the rule representation, boxed, for the slot of an `old(...)`.
+pub fn rule_value_type(fc: &mut FileCtx<'_, '_>, ty: &ExprType) -> String {
+    match ValueKind::of(ty, fc.tree.ir) {
+        ValueKind::Int => "Integer".to_string(),
+        ValueKind::Long
+        | ValueKind::Datetime
+        | ValueKind::Date
+        | ValueKind::Time
+        | ValueKind::Duration => "Long".to_string(),
+        ValueKind::Float => "Double".to_string(),
+        ValueKind::Bool => "Boolean".to_string(),
+        ValueKind::Decimal
+        | ValueKind::String
+        | ValueKind::Uuid
+        | ValueKind::Bytes
+        | ValueKind::Json
+        | ValueKind::Enum
+        | ValueKind::Model
+        | ValueKind::List
+        | ValueKind::Map
+        | ValueKind::Page => match ty {
+            ExprType::Type(t) => crate::types::java_type(fc, t, true),
+            ExprType::Duration => "Long".to_string(),
+        },
+    }
+}
+
+/// The value of an expression as the developer sees it: a plain path as it is, anything else
+/// computed in the rule representation and converted back. `None` for a duration.
+impl JavaExpr<'_, '_, '_> {
+    /// The value of an expression as the developer sees it: a plain path as it is, anything else
+    /// computed in the rule representation and converted back. `None` for a duration, which has
+    /// no developer-facing type.
+    pub fn app_value(&mut self, expr: &veld_ir::Expr) -> Option<String> {
+        if let Some(raw) = self.raw_path(expr) {
+            return Some(raw);
+        }
+        let code = veld_codegen::print_expr(self, expr).code;
+        let ExprType::Type(Type::Scalar(scalar)) = &expr.t else {
+            return match &expr.t {
+                ExprType::Duration => None,
+                ExprType::Type(_) => Some(code),
+            };
+        };
+        match scalar {
+            veld_ir::Scalar::Datetime => {
+                let class = self.fc.name("java.time.Instant");
+                Some(format!("{class}.ofEpochMilli({code})"))
+            }
+            veld_ir::Scalar::Date => {
+                let class = self.fc.name("java.time.LocalDate");
+                Some(format!("{class}.ofEpochDay({code})"))
+            }
+            veld_ir::Scalar::Time => {
+                let class = self.fc.name("java.time.LocalTime");
+                Some(format!("{class}.ofNanoOfDay(({code}) * 1_000_000L)"))
+            }
+            veld_ir::Scalar::String
+            | veld_ir::Scalar::Int
+            | veld_ir::Scalar::Long
+            | veld_ir::Scalar::Float
+            | veld_ir::Scalar::Bool
+            | veld_ir::Scalar::Decimal
+            | veld_ir::Scalar::Uuid
+            | veld_ir::Scalar::Bytes
+            | veld_ir::Scalar::Json => Some(code),
+        }
+    }
+
+    /// The condition that is true when every optional step of every path in `expr` is present:
+    /// the loader of an optional fact is called only then. `None` when nothing is optional.
+    pub fn presence(&mut self, expr: &veld_ir::Expr) -> Option<String> {
+        let mut paths = Vec::new();
+        collect_paths(expr, &mut paths);
+        let mut checks: Vec<String> = Vec::new();
+        for path in paths {
+            let (prefixes, _) = self.walk(path);
+            let mut at = match &path.root {
+                Root::SelfValue | Root::Var(_) | Root::Principal => At::Nothing,
+                Root::Param(_) | Root::Fact(_) | Root::Result => {
+                    match self.endpoint_root(&path.root) {
+                        Some((code, at, optional)) => {
+                            if optional {
+                                checks.push(format!("{code} != null"));
+                            }
+                            at
+                        }
+                        None => At::Nothing,
+                    }
+                }
+            };
+            for (i, step) in path.steps.iter().enumerate() {
+                let (_, next, _) = self.step(at, &step.name);
+                let declared = match at {
+                    At::Decl(d) => d.fields().iter().any(|f| f.name == step.name && f.optional),
+                    At::Page | At::Nothing => false,
+                };
+                if let Some(prefix) = prefixes.get(i + 1).filter(|_| step.optional || declared) {
+                    checks.push(format!("{prefix} != null"));
+                }
+                at = next;
+            }
+        }
+        checks.dedup();
+        match checks.len() {
+            0 => None,
+            _ => Some(checks.join(" && ")),
+        }
+    }
+}
+
+/// Every path read by `expr` outside a `has(...)` and outside a comprehension variable.
+fn collect_paths<'e>(expr: &'e veld_ir::Expr, out: &mut Vec<&'e PathRef>) {
+    use veld_ir::ExprKind;
+    match &expr.e {
+        ExprKind::Path(p) => {
+            if !matches!(p.root, Root::Var(_)) {
+                out.push(p);
+            }
+        }
+        ExprKind::Lit(_) | ExprKind::Now(_) | ExprKind::Has(_) => {}
+        ExprKind::Not(x) | ExprKind::Neg(x) | ExprKind::Widen(x) | ExprKind::Old(x) => {
+            collect_paths(x, out);
+        }
+        ExprKind::Bin(b) => {
+            collect_paths(&b.l, out);
+            collect_paths(&b.r, out);
+        }
+        ExprKind::Call(c) => c.args.iter().for_each(|a| collect_paths(a, out)),
+        ExprKind::List(items) => items.iter().for_each(|a| collect_paths(a, out)),
+        ExprKind::Quant(q) => {
+            collect_paths(&q.list, out);
+            collect_paths(&q.body, out);
+        }
     }
 }
 

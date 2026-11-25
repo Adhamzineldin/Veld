@@ -449,7 +449,7 @@ public final class RuleWalk {
     }
   }
 
-  private static void report(
+  static void report(
       HandlerHooks hooks, EndpointSpec spec, Position position, Outcome outcome, List<Violation> found, long started) {
     Hook hook = hooks.ruleHook();
     if (hook == null) {

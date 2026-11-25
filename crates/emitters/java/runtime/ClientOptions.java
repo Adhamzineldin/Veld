@@ -16,6 +16,17 @@ public final class ClientOptions {
    */
   public record Basic(String username, String password) {}
 
+  // #if rules
+  /**
+   * A server answered with another rules digest than this client was generated with.
+   *
+   * @param service the service name
+   * @param clientDigest the digest of the client
+   * @param serverDigest the digest the server sent
+   */
+  public record ContractMismatch(String service, String clientDigest, String serverDigest) {}
+
+  // #endif
   private final String baseUrl;
   private final HttpClient httpClient;
   private final Supplier<Map<String, String>> headers;
@@ -26,6 +37,7 @@ public final class ClientOptions {
   private final Duration timeout;
   // #if rules
   private final boolean localRules;
+  private final java.util.function.Consumer<ContractMismatch> onContractMismatch;
   // #endif
   // veld:streaming
   private final Reconnect reconnect;
@@ -42,6 +54,7 @@ public final class ClientOptions {
     this.timeout = b.timeout;
     // #if rules
     this.localRules = b.localRules;
+    this.onContractMismatch = b.onContractMismatch;
     // #endif
     // veld:streaming
     this.reconnect = b.reconnect;
@@ -91,6 +104,10 @@ public final class ClientOptions {
   }
   // #if rules
 
+  java.util.function.Consumer<ContractMismatch> onContractMismatch() {
+    return onContractMismatch;
+  }
+
   boolean localRules() {
     return localRules;
   }
@@ -114,6 +131,7 @@ public final class ClientOptions {
     private Duration timeout = Duration.ofSeconds(30);
     // #if rules
     private boolean localRules = true;
+    private java.util.function.Consumer<ContractMismatch> onContractMismatch;
     // #endif
     // veld:streaming
     private Reconnect reconnect;
@@ -184,6 +202,16 @@ public final class ClientOptions {
      */
     public Builder localRules(boolean value) {
       this.localRules = value;
+      return this;
+    }
+
+    /**
+     * Called once for every rules digest a server answers with that differs from the one this
+     * client was generated with: the server's rules changed, so the local check is switched off
+     * (spec/rules.md section 9.7).
+     */
+    public Builder onContractMismatch(java.util.function.Consumer<ContractMismatch> callback) {
+      this.onContractMismatch = callback;
       return this;
     }
 

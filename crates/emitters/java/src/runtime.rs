@@ -12,7 +12,11 @@ use crate::util::{HEADER, add_file};
 /// The package the embedded sources declare. It is replaced by `<base>.runtime`.
 const SOURCE_PACKAGE: &str = "dev.veld.runtime";
 /// The runtime classes that exist only for a contract with rules (`spec/targets/java.md` section 8).
-const RULE_FILES: &[&str] = &["RuleError", "RuleWalk", "Rules", "Violation"];
+const RULE_FILES: &[&str] = &["DigestHandler", "RuleError", "RuleWalk", "Rules", "Violation"];
+/// The runtime classes that exist only for a contract with endpoint rules (`spec/targets/java.md` section 9).
+const ENDPOINT_FILES: &[&str] = &["EndpointRules"];
+/// The runtime classes of the test handler, emitted only with the target option `testing`.
+const TESTING_FILES: &[&str] = &["TestSupport"];
 
 /// The package the embedded adapter sources declare. It is replaced by `<base>.adapters`.
 const ADAPTER_PACKAGE: &str = "dev.veld.adapters";
@@ -29,6 +33,8 @@ runtime_files!(
     "ClientDefaults",
     "ClientOptions",
     "Codec",
+    "DigestHandler",
+    "EndpointRules",
     "EndpointSpec",
     "HandlerHooks",
     "Issue",
@@ -49,6 +55,7 @@ runtime_files!(
     "SseOptions",
     "SseParser",
     "SseStream",
+    "TestSupport",
     "UntypedError",
     "Veld",
     "VeldError",
@@ -164,10 +171,50 @@ pub fn emit(
     streaming: Streaming,
     rules: bool,
 ) -> Result<(), Vec<GenDiagnostic>> {
+    emit_with(
+        files,
+        base,
+        streaming,
+        Flags {
+            rules,
+            ..Flags::default()
+        },
+    )
+}
+
+/// Which optional parts of the runtime a target carries. `endpoint` and `testing` need `rules`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Flags {
+    /// Invariants (`// #if rules` regions and the rule classes).
+    pub rules: bool,
+    /// Endpoint rules (`// #if endpoint` regions and `EndpointRules`).
+    pub endpoint: bool,
+    /// The test handler support (`// #if testing` regions and `TestSupport`).
+    pub testing: bool,
+}
+
+/// Like [`emit`], with the endpoint rules and test handler parts switched by `flags`.
+pub fn emit_with(
+    files: &mut FileSet,
+    base: &str,
+    streaming: Streaming,
+    flags: Flags,
+) -> Result<(), Vec<GenDiagnostic>> {
     let package = package(base);
-    let wanted = |name: &str| !streaming.omits(name) && (rules || !RULE_FILES.contains(&name));
+    let wanted = |name: &str| {
+        !streaming.omits(name)
+            && (flags.rules || !RULE_FILES.contains(&name))
+            && (flags.endpoint || !ENDPOINT_FILES.contains(&name))
+            && (flags.testing || !TESTING_FILES.contains(&name))
+    };
+    let enabled = |region: &str| match region {
+        "rules" => flags.rules,
+        "endpoint" => flags.endpoint,
+        "testing" => flags.testing,
+        _ => false,
+    };
     for (name, source) in RUNTIME.iter().filter(|(name, _)| wanted(name)) {
-        let gated = gate_regions(source, &|region| region == "rules" && rules).map_err(|e| {
+        let gated = gate_regions(source, &enabled).map_err(|e| {
             vec![GenDiagnostic::new(
                 "E0805",
                 format!("runtime class `{name}`: {e}"),

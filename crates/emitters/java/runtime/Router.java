@@ -390,6 +390,12 @@ public final class Router implements VeldHandler {
       return broken;
     }
     // #endif
+    // #if endpoint
+    VeldResponse unmet = EndpointRules.ensureFailure(spec, hooks, wire, std);
+    if (unmet != null) {
+      return unmet;
+    }
+    // #endif
     if (hooks.validateResponses()) {
       List<Issue> issues = Wire.validate(spec.success(), wire, "$", false);
       if (!issues.isEmpty()) {
@@ -400,6 +406,12 @@ public final class Router implements VeldHandler {
   }
 
   private VeldResponse failure(Throwable err, EndpointSpec spec, RequestContext ctx) {
+    // #if endpoint
+    EndpointRules.discard();
+    if (err instanceof EndpointRules.Early early) {
+      return early.response();
+    }
+    // #endif
     // #if rules
     if (err instanceof RuleWalk.Rejected) {
       return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());

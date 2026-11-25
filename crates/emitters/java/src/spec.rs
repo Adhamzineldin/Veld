@@ -64,6 +64,15 @@ pub fn method_name(ep: &Endpoint) -> String {
     member_ident(&ep.name)
 }
 
+/// The parameters a request record has (every one but a `stream` message) with the names of their
+/// record components.
+#[must_use]
+pub fn param_idents(ep: &Endpoint) -> Vec<(&Param, String)> {
+    let shown: Vec<&Param> = ep.params.iter().filter(|p| !p.stream).collect();
+    let idents = unique(shown.iter().map(|p| member_ident(&p.name)).collect());
+    shown.into_iter().zip(idents).collect()
+}
+
 /// The constant holding an endpoint's description.
 #[must_use]
 pub fn spec_const(ep: &Endpoint) -> String {

@@ -78,19 +78,22 @@ fn write_ctor(
     svc: &ServiceModel,
     class: &str,
     (service, hooks, handler_factory): (&str, &str, &str),
+    loaders: Option<&str>,
 ) {
+    let (given, pass) = match loaders {
+        Some(l) => (format!("{service} service, {l} loaders, "), "service, loaders"),
+        None => (format!("{service} service, "), "service"),
+    };
     if svc.needs_hooks {
-        w.open(format!("public {class}({service} service, {hooks} hooks)"));
+        w.open(format!("public {class}({given}{hooks} hooks)"));
         w.line(format!(
-            "this.handler = {handler_factory}.create(service, hooks);"
+            "this.handler = {handler_factory}.create({pass}, hooks);"
         ));
     } else {
         let provider = imp.name("org.springframework.beans.factory.ObjectProvider");
-        w.open(format!(
-            "public {class}({service} service, {provider}<{hooks}> hooks)"
-        ));
+        w.open(format!("public {class}({given}{provider}<{hooks}> hooks)"));
         w.line(format!(
-            "this.handler = {handler_factory}.create(service, hooks.getIfAvailable({hooks}::new));"
+            "this.handler = {handler_factory}.create({pass}, hooks.getIfAvailable({hooks}::new));"
         ));
     }
     w.close();
@@ -141,6 +144,7 @@ fn controller(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
     let service = imp.name(&format!("{server}.{name}Service"));
     let hooks = imp.name(&format!("{server}.{name}Hooks"));
     let handler_factory = imp.name(&format!("{server}.{name}Handler"));
+    let loaders = svc.loaders.as_ref().map(|l| imp.name(&format!("{server}.{l}")));
     let veld = imp.name(&format!("{}.VeldHandler", runtime::package(&model.base)));
     let rest_controller = imp.name(&format!("{MVC}.RestController"));
     let mut w = CodeWriter::new();
@@ -167,6 +171,7 @@ fn controller(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
         svc,
         class,
         (&service, &hooks, &handler_factory),
+        loaders.as_deref(),
     );
     for ep in svc.endpoints.iter().filter(|e| e.kind != EndpointKind::Ws) {
         w.blank();
@@ -228,6 +233,7 @@ fn ws_config(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
     let service = imp.name(&format!("{server}.{name}Service"));
     let hooks = imp.name(&format!("{server}.{name}Hooks"));
     let handler_factory = imp.name(&format!("{server}.{name}Handler"));
+    let loaders = svc.loaders.as_ref().map(|l| imp.name(&format!("{server}.{l}")));
     let veld = imp.name(&format!("{}.VeldHandler", runtime::package(&model.base)));
     let bridge = imp.name(&format!(
         "{}.SpringWebSocketAdapter",
@@ -262,6 +268,7 @@ fn ws_config(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
         svc,
         class,
         (&service, &hooks, &handler_factory),
+        loaders.as_deref(),
     );
     w.blank();
     w.line("@Override");
@@ -291,6 +298,7 @@ mod tests {
                 adapter_package: "a.b.adapters.orders".into(),
                 needs_hooks: true,
                 rules: false,
+                loaders: None,
                 endpoints: vec![
                     EndpointModel {
                         name: "getOrder".into(),
@@ -335,6 +343,7 @@ mod tests {
                 adapter_package: "a.b.adapters.live".into(),
                 needs_hooks: false,
                 rules: false,
+                loaders: None,
                 endpoints: vec![
                     endpoint("ticks", "/live/ticks", EndpointKind::Sse),
                     endpoint("chat", "/live/chat/{room}", EndpointKind::Ws),

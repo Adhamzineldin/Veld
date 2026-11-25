@@ -112,6 +112,13 @@ fn write_constructor_body(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Se
         if fc.tree.validate { "" } else { ", false" }
     ));
     end_call(w);
+    if let (Some(digest), true) = (&svc.rules_digest, fc.tree.rules) {
+        w.line(format!(
+            "this.core.digest({}, {});",
+            java_str(&svc.name),
+            java_str(digest)
+        ));
+    }
 }
 
 fn write_method(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, request: &str, ep: &Endpoint) {

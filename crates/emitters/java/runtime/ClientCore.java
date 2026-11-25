@@ -33,6 +33,12 @@ public final class ClientCore {
   private final ClientDefaults defaults;
   private final String baseUrl;
   private final HttpClient http;
+  // #if rules
+  private volatile String ownDigest;
+  private volatile String serverDigest;
+  private volatile String serviceName;
+  private final java.util.Set<String> mismatched = java.util.concurrent.ConcurrentHashMap.newKeySet();
+  // #endif
 
   /**
    * Creates the core. The base URL is the first of: the option, the environment variable, the
@@ -88,12 +94,43 @@ public final class ClientCore {
         throw err;
       }
       // #if rules
-      if (options.localRules()) {
+      if (options.localRules() && localRulesOn()) {
         RuleWalk.localCheck(ep, params, defaults.validation());
       }
       // #endif
     }
   }
+  // #if rules
+
+  /**
+   * Tells the core the rules digest the client was generated with (spec/rules.md section 9.7).
+   * The local check then runs only while the last response carried the same digest.
+   */
+  public void digest(String service, String digest) {
+    this.serviceName = service;
+    this.ownDigest = digest;
+  }
+
+  private boolean localRulesOn() {
+    return ownDigest == null || ownDigest.equals(serverDigest);
+  }
+
+  private <T> HttpResponse<T> observe(HttpResponse<T> response) {
+    String seen = response.headers().firstValue("Veld-Rules").orElse(null);
+    serverDigest = seen;
+    if (seen != null && !seen.equals(ownDigest) && mismatched.add(seen)) {
+      java.util.function.Consumer<ClientOptions.ContractMismatch> callback = options.onContractMismatch();
+      if (callback != null) {
+        try {
+          callback.accept(new ClientOptions.ContractMismatch(serviceName, ownDigest, seen));
+        } catch (RuntimeException ignored) {
+          // A failing callback must not change the call.
+        }
+      }
+    }
+    return response;
+  }
+  // #endif
   // veld:sse
 
   /**
@@ -254,6 +291,11 @@ public final class ClientCore {
 
   private <T> HttpResponse<T> send(EndpointSpec ep, HttpRequest request, HttpResponse.BodyHandler<T> handler) {
     try {
+      // #if rules
+      if (ownDigest != null) {
+        return observe(http.send(request, handler));
+      }
+      // #endif
       return http.send(request, handler);
     } catch (IOException e) {
       throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " failed", e);

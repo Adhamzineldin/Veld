@@ -6,6 +6,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 pub mod client;
+pub mod endpoint;
 pub mod frameworks;
 pub mod models;
 pub mod readme;
@@ -14,6 +15,7 @@ pub mod rules;
 pub mod runtime;
 pub mod server;
 pub mod spec;
+pub mod testing;
 pub mod tree;
 pub mod types;
 pub mod util;
@@ -40,6 +42,10 @@ pub struct Options {
     pub package: Option<String>,
     /// `false` skips runtime request validation by default (the types stay). Default: `true`.
     pub validate: Option<bool>,
+    /// `true` also writes `<Service>TestHandler` for each service with endpoint rules: a handler
+    /// that takes facts, principal, clock and result from request headers. It must never be
+    /// mounted in production. Default: `false`.
+    pub testing: Option<bool>,
 }
 
 /// The Java generator (roles `server` and `client`).
@@ -134,13 +140,9 @@ impl Generator for Java {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        // Invariants are enforced (`spec/targets/java.md` section 8); the other rules features are
-        // not implemented yet: `E0801` (`spec/rules.md` section 8).
-        Capabilities::all_except(&[
-            Feature::RulesEndpoint,
-            Feature::RulesTransitions,
-            Feature::RulesPolicies,
-        ])
+        // Invariants and endpoint rules are enforced (`spec/targets/java.md` sections 8 and 9);
+        // the other rules features are not implemented yet: `E0801` (`spec/rules.md` section 8).
+        Capabilities::all_except(&[Feature::RulesTransitions, Feature::RulesPolicies])
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
@@ -164,14 +166,25 @@ impl Generator for Java {
         let streaming = runtime::Streaming::of(&features);
         let tree = Tree::new(req.ir, &base, &runtime_package, req.services.clone())
             .with_validate(opts.validate != Some(false));
+        let endpoint = req.role == Role::Server
+            && req
+                .ir
+                .features_used(&req.services)
+                .contains(&Feature::RulesEndpoint);
         let rules = features.contains(&Feature::RulesInvariants)
+            || features.contains(&Feature::RulesEndpoint)
             || declares_rules(&tree)
             || (req.role == Role::Server
                 && req.consumes.iter().any(|sid| {
                     declares_rules(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
                 }));
-        runtime::emit(&mut files, &base, streaming, rules)?;
-        let tree = tree.with_rules(rules);
+        let flags = runtime::Flags {
+            rules,
+            endpoint,
+            testing: endpoint && opts.testing == Some(true),
+        };
+        runtime::emit_with(&mut files, &base, streaming, flags)?;
+        let tree = tree.with_rules(rules).with_testing(flags.testing);
         models::emit(&mut files, &tree)?;
         match req.role {
             Role::Client => client::emit(&mut files, &tree)?,
