@@ -29,7 +29,14 @@ pub struct Env<'a> {
     pub result: Option<Json>,
     /// The injected clock, in milliseconds since the epoch.
     pub now: Option<i64>,
+    /// The saved `old(...)` values (`spec/rules.md` section 9.4), found by the structural
+    /// equality of the expression inside `old`. See [`crate::save_old`].
+    pub old: Vec<SavedOld>,
 }
+
+/// One saved `old(e)`: the expression and what it evaluated to before the handler ran, or the
+/// evaluation error it failed with (which then fails every rule that reads it).
+pub type SavedOld = (Expr, Result<Value, num::EvalError>);
 
 impl<'a> Env<'a> {
     /// An environment with nothing in scope.
@@ -43,6 +50,7 @@ impl<'a> Env<'a> {
             principal: None,
             result: None,
             now: None,
+            old: Vec::new(),
         }
     }
 
@@ -107,7 +115,15 @@ impl Evaluator<'_, '_> {
                 Ok(Value::List(values?))
             }
             ExprKind::Widen(x) => Ok(ops::widen(self.eval(x)?, &e.t)?),
-            ExprKind::Old(_) => Err(not_available("old").into()),
+            ExprKind::Old(inner) => self.old(inner),
+        }
+    }
+
+    fn old(&self, inner: &Expr) -> EvalResult<Value> {
+        match self.env.old.iter().find(|(saved, _)| saved == inner) {
+            Some((_, Ok(v))) => Ok(v.clone()),
+            Some((_, Err(e))) => Err((*e).into()),
+            None => Err(not_available("old").into()),
         }
     }
 
@@ -203,7 +219,18 @@ impl Evaluator<'_, '_> {
 
     /// `has(p)`: true when every step of the path is present.
     fn has(&self, p: &PathRef) -> EvalResult<bool> {
-        let json = match self.base(&p.root)? {
+        let base = match self.base(&p.root) {
+            Ok(base) => base,
+            // An optional parameter, optional fact or principal that is absent is simply not
+            // in the environment: `has` of it is false.
+            Err(InputError::NotAvailable(_))
+                if matches!(p.root, Root::Param(_) | Root::Fact(_) | Root::Principal) =>
+            {
+                return Ok(false);
+            }
+            Err(e) => return Err(e.into()),
+        };
+        let json = match base {
             Base::Json(j) => j,
             Base::Val(Value::Raw(j)) => j,
             Base::Val(_) => return Ok(p.steps.is_empty()),

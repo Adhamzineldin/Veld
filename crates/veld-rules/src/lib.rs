@@ -16,19 +16,30 @@ mod builtins;
 mod check;
 mod error;
 mod eval;
+pub mod example;
 pub mod helpers;
+mod old;
 mod ops;
+mod pipeline;
 mod value;
 pub mod vectors;
+mod wire;
 
 #[cfg(test)]
 mod tests;
 
 pub use check::{Options, Violation, check_value};
 pub use error::{Failure, InputError};
-pub use eval::{Env, eval};
+pub use eval::{Env, SavedOld, eval};
+pub use example::{
+    DEFAULT_CLOCK, Difference, ExampleError, ExampleReport, Expected, FilledExample, Mismatch,
+    Verdict, diff_pattern, fill_example, run_example,
+};
 pub use helpers::num::EvalError;
+pub use old::save_old;
+pub use pipeline::{Before, ErrorAnswer, Outcome, Pipeline, Prepared, Request, RunError};
 pub use value::Value;
+pub use wire::{format_date, format_datetime, format_time};
 
 /// The IR version whose rules this crate evaluates.
 pub const IR_VERSION: &str = veld_ir::IR_VERSION;

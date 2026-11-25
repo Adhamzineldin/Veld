@@ -60,11 +60,37 @@ pub fn check_value(
     value: &Json,
     options: Options,
 ) -> Result<Vec<Violation>, InputError> {
+    check_decl_full(ir, decl, value, options).map(|(_, violations)| violations)
+}
+
+/// Like [`check_value`], and also returns the value with its defaults applied.
+pub(crate) fn check_decl_full(
+    ir: &Ir,
+    decl: &Decl,
+    value: &Json,
+    options: Options,
+) -> Result<(Json, Vec<Violation>), InputError> {
     let cx = Cx { ir, opts: options };
     let full = cx.normalize_decl(decl, value, "$")?;
     let mut out = Vec::new();
     cx.walk_decl(decl, &full, "$", &mut out)?;
-    Ok(out)
+    Ok((full, out))
+}
+
+/// Checks a value of any type (a parameter or a result: a model, a list of models, a page, a
+/// scalar). Returns the value with its defaults applied and every violation, with paths
+/// rooted at `$`.
+pub(crate) fn check_type(
+    ir: &Ir,
+    ty: &Type,
+    value: &Json,
+    options: Options,
+) -> Result<(Json, Vec<Violation>), InputError> {
+    let cx = Cx { ir, opts: options };
+    let full = cx.normalize_type(ty, value, "$")?;
+    let mut out = Vec::new();
+    cx.walk_type(ty, &full, "$", &mut out)?;
+    Ok((full, out))
 }
 
 struct Cx<'a> {
@@ -85,7 +111,7 @@ fn shape(expected: &str, found: &Json, path: &str) -> InputError {
 }
 
 /// A field default as wire JSON, typed by the field. `null` means no value.
-fn default_json(lit: &Literal, ty: &Type) -> Option<Json> {
+pub(crate) fn default_json(lit: &Literal, ty: &Type) -> Option<Json> {
     let scalar = match ty {
         Type::Scalar(s) => Some(*s),
         Type::List(_) | Type::Map(_) | Type::Page(_) | Type::Decl(_) => None,
