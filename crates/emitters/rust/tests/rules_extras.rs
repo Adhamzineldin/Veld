@@ -44,6 +44,25 @@ fn w0904_is_reported_for_a_target_with_validation_off_that_reaches_rules() {
     }
 }
 
+/// A declared error with a rule in `strict`, `audit` and `off`; an SSE item and a WebSocket
+/// message that violate, in each direction and mode.
+#[test]
+fn errors_sse_items_and_websocket_messages_are_checked() {
+    if !cargo_or_skip() {
+        return;
+    }
+    let ir = rules_live_ir();
+    let server = gen_server(&ir, "Live", &[], "live-server");
+    let client = gen_client(&ir, "live-client", None);
+    let ws = harness_workspace("rules-live-ws", &server, &client, "rules-live-harness");
+    build_lint_and_run(
+        &ws,
+        ("live-server", "live-client", "rules-live-harness"),
+        &[],
+        "rules live ok",
+    );
+}
+
 #[test]
 fn w0904_is_not_reported_when_the_contract_has_no_rules() {
     let ir = standard_ir();

@@ -315,6 +315,83 @@ struct Inner<E> {
     endpoints: E,
     routes: Vec<Route>,
 }
+// #if rules
+
+impl<E> fmt::Debug for Inner<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Inner({} routes)", self.routes.len())
+    }
+}
+
+/// What a conversation needs of the server to apply the rules to its messages. A WebSocket session
+/// outlives the call that made it, so it holds the server's core behind this trait.
+trait RuleSink: Send + Sync + fmt::Debug {
+    /// An output (a result, a declared error, a stream item or message) under the output mode:
+    /// `Err` says why it must not be sent. The violations go to the hook either way.
+    fn check_output(&self, ep: &EndpointSpec, schema: &Schema, wire: &Value, what: &str) -> Result<(), String>;
+
+    /// The error that rejects an input whose rules are violated: a `ValidationError` with the
+    /// violations. The hook gets them.
+    fn reject_input(&self, ep: &EndpointSpec, violations: Vec<super::rules::Violation>, micros: u64) -> Problem;
+}
+
+impl<E: Endpoints> Inner<E> {
+    fn report(&self, ep: &EndpointSpec, v: &super::rules::Violation, position: super::rules::Position, outcome: super::rules::Outcome, micros: u64) {
+        self.endpoints.on_rule_violation(&super::rules::RuleEvent {
+            rule: v.rule.clone(),
+            operation: ep.sig.to_string(),
+            position,
+            outcome,
+            violation: v.clone(),
+            elapsed_micros: micros,
+        });
+    }
+}
+
+impl<E: Endpoints> RuleSink for Inner<E> {
+    fn check_output(&self, ep: &EndpointSpec, schema: &Schema, wire: &Value, what: &str) -> Result<(), String> {
+        use super::rules::{Mode, Outcome, Position, RuleOutput};
+        let mode = self.endpoints.rules_output();
+        if mode == RuleOutput::Off {
+            return Ok(());
+        }
+        let issues = schema.validate(wire, "$", false);
+        if !issues.is_empty() {
+            // In `audit` a value of the wrong shape is passed on without its rules.
+            return if mode == RuleOutput::Strict { Err(format!("{}: {what} failed validation: {issues:?}", ep.name)) } else { Ok(()) };
+        }
+        let watch = super::rules::Stopwatch::start();
+        let violations = super::rules::check_wire(schema, wire, "$", Mode::Full);
+        let micros = watch.micros();
+        if violations.is_empty() {
+            return Ok(());
+        }
+        let outcome = if mode == RuleOutput::Strict { Outcome::Rejected } else { Outcome::Audited };
+        for v in &violations {
+            self.report(ep, v, Position::Output, outcome, micros);
+        }
+        if mode == RuleOutput::Strict {
+            return Err(format!("{}: the {what} violates {} rule(s)", ep.name, violations.len()));
+        }
+        Ok(())
+    }
+
+    fn reject_input(&self, ep: &EndpointSpec, violations: Vec<super::rules::Violation>, micros: u64) -> Problem {
+        for v in &violations {
+            self.report(ep, v, super::rules::Position::Input, super::rules::Outcome::Rejected, micros);
+        }
+        Problem {
+            sig: self.endpoints.std_sigs().validation.to_string(),
+            title: "ValidationError".to_string(),
+            status: 422,
+            op: Some(ep.sig.to_string()),
+            data: super::rules::rejection_data(&violations),
+            schema: None,
+            rulings: super::rules::Rulings::boxed(violations, false),
+        }
+    }
+}
+// #endif
 
 /// Serves one service: `handle` runs the whole pipeline for a request.
 pub struct Handler<E: Endpoints> {
@@ -569,7 +646,13 @@ impl<E: Endpoints> Handler<E> {
             .filter(|r| r.method == "WS")
             .find_map(|r| matches(r, &req.path).map(|c| (r, c)))?;
         let (incoming, outgoing) = (Chan::new(), Chan::new());
+        // #if !rules
         let io = WsIo { incoming: incoming.clone(), outgoing: outgoing.clone() };
+        // #endif
+        // #if rules
+        let rules: Arc<dyn RuleSink> = self.inner.clone();
+        let io = WsIo { incoming: incoming.clone(), outgoing: outgoing.clone(), rules };
+        // #endif
         let (this, index) = (self.clone(), route.index);
         let conversation = Box::pin(async move { this.run_ws(index, caps, req, io).await });
         let frames = WsFrames { out: outgoing, conversation: Some(conversation) };
@@ -690,7 +773,7 @@ impl<E: Endpoints> Handler<E> {
         let bound = self.bind(ep, caps, req, ctx, ws);
         // #if rules
         if bound.issues.is_empty() && !bound.violations.is_empty() {
-            return Err(self.rejection(ep, std.validation, bound.violations, bound.micros));
+            return Err(self.rejection(ep, bound.violations, bound.micros));
         }
         // #endif
         if bound.issues.is_empty() {
@@ -773,66 +856,22 @@ impl<E: Endpoints> Handler<E> {
 
     // #if rules
     /// Step 5 failed: `422 ValidationError` with one issue and one violation per broken rule.
-    fn rejection(&self, ep: &EndpointSpec, sig: &str, violations: Vec<super::rules::Violation>, micros: u64) -> Response {
-        for v in &violations {
-            self.report(ep, v, super::rules::Position::Input, super::rules::Outcome::Rejected, micros);
-        }
-        let problem = Problem {
-            sig: sig.to_string(),
-            title: "ValidationError".to_string(),
-            status: 422,
-            op: Some(ep.sig.to_string()),
-            data: super::rules::rejection_data(&violations),
-            schema: None,
-            rulings: super::rules::Rulings::boxed(violations, false),
-        };
+    fn rejection(&self, ep: &EndpointSpec, violations: Vec<super::rules::Violation>, micros: u64) -> Response {
+        let problem = self.inner.reject_input(ep, violations, micros);
         Response {
-            status: 422,
+            status: problem.status,
             headers: vec![("content-type".into(), "application/problem+json".into())],
             body: Body::Bytes(problem.to_text().into_bytes()),
         }
     }
 
-    fn report(&self, ep: &EndpointSpec, v: &super::rules::Violation, position: super::rules::Position, outcome: super::rules::Outcome, micros: u64) {
-        self.inner.endpoints.on_rule_violation(&super::rules::RuleEvent {
-            rule: v.rule.clone(),
-            operation: ep.sig.to_string(),
-            position,
-            outcome,
-            violation: v.clone(),
-            elapsed_micros: micros,
-        });
-    }
-
     /// Step 8: the invariants of the result, by output mode. `Some` replaces the response.
     fn output_rules(&self, ep: &EndpointSpec, schema: &'static Schema, wire: &Value, ctx: &RequestContext) -> Option<Response> {
-        use super::rules::{Mode, Outcome, Position, RuleOutput};
-        let mode = self.inner.endpoints.rules_output();
-        if mode == RuleOutput::Off {
-            return None;
+        match self.inner.check_output(ep, schema, wire, "result") {
+            Ok(()) => None,
+            Err(why) => Some(self.failure(&Error::other(why), ep, ctx)),
         }
-        let issues = schema.validate(wire, "$", false);
-        if !issues.is_empty() {
-            let err = Error::other(format!("{}: response failed validation: {issues:?}", ep.name));
-            return Some(self.failure(&err, ep, ctx));
-        }
-        let watch = super::rules::Stopwatch::start();
-        let violations = super::rules::check_wire(schema, wire, "$", Mode::Full);
-        let micros = watch.micros();
-        if violations.is_empty() {
-            return None;
-        }
-        let outcome = if mode == RuleOutput::Strict { Outcome::Rejected } else { Outcome::Audited };
-        for v in &violations {
-            self.report(ep, v, Position::Output, outcome, micros);
-        }
-        if mode == RuleOutput::Strict {
-            let err = Error::other(format!("{}: the result violates {} rule(s)", ep.name, violations.len()));
-            return Some(self.failure(&err, ep, ctx));
-        }
-        None
     }
-
     // #endif
     /// A declared error is answered at its declared status; anything else becomes `Internal`
     /// without a message, and the original goes to `on_error`.
@@ -864,8 +903,28 @@ impl<E: Endpoints> Handler<E> {
         };
         match err {
             Error::Problem(p) => {
+                // #if rules
+                if p.sig == std.validation && p.rulings.is_some() {
+                    // A rejected input carries its violations.
+                    let (status, mut out) = problem(std.validation, "ValidationError", 422, p.data.clone());
+                    out.rulings = p.rulings.clone();
+                    return (status, out);
+                }
+                // #endif
                 if let Some(d) = ep.errors.iter().find(|d| d.sig == p.sig) {
+                    // #if rules
+                    // A declared error is an output: its own rules are checked like a result's.
+                    if let Err(why) = self.inner.check_output(ep, d.schema, &p.data, "declared error") {
+                        e.on_error(&Error::other(why), ctx);
+                        return problem(std.internal, "Internal", 500, serde_json::json!({}));
+                    }
+                    let (status, mut out) = problem(d.sig, d.name, d.status, p.data.clone());
+                    out.rulings = p.rulings.clone();
+                    return (status, out);
+                    // #endif
+                    // #if !rules
                     return problem(d.sig, d.name, d.status, p.data.clone());
+                    // #endif
                 }
             }
             Error::Invalid(issues) => return problem(std.validation, "ValidationError", 422, issues_json(issues)),
@@ -878,6 +937,10 @@ impl<E: Endpoints> Handler<E> {
     // @if sse
     fn frame(&self, ep: &EndpointSpec, ev: &SseEvent<Value>) -> Result<Vec<u8>, Error> {
         let schema = ep.success.ok_or_else(|| Error::other(format!("{}: a stream needs an item type", ep.name)))?;
+        // #if rules
+        // A stream item is an output: in `strict` a violating item is not sent.
+        self.inner.check_output(ep, schema, &schema.to_wire(&ev.data, false, false), "stream item").map_err(Error::other)?;
+        // #endif
         if self.inner.endpoints.validate_responses() {
             let issues = schema.validate(&schema.to_wire(&ev.data, false, false), "$", false);
             if !issues.is_empty() {
@@ -970,6 +1033,9 @@ pub enum WsFrame {
 pub struct WsIo {
     incoming: Chan<String>,
     outgoing: Chan<WsFrame>,
+    // #if rules
+    rules: Arc<dyn RuleSink>,
+    // #endif
 }
 
 /// Feeds a conversation with the text frames that arrive.
@@ -1034,6 +1100,9 @@ pub struct WsSession<In, Out> {
     validate_in: bool,
     validate_out: bool,
     types: PhantomData<fn(Out) -> In>,
+    // #if rules
+    ep: &'static EndpointSpec,
+    // #endif
 }
 
 impl<In, Out> fmt::Debug for WsSession<In, Out> {
@@ -1057,6 +1126,9 @@ impl<In: DeserializeOwned, Out: Serialize> WsSession<In, Out> {
             validate_in,
             validate_out,
             types: PhantomData,
+            // #if rules
+            ep,
+            // #endif
         }
     }
 
@@ -1076,6 +1148,14 @@ impl<In: DeserializeOwned, Out: Serialize> WsSession<In, Out> {
             if !issues.is_empty() {
                 return Some(Err(Error::Invalid(issues)));
             }
+            // #if rules
+            // The rules of a message are checked like those of a request body.
+            let watch = super::rules::Stopwatch::start();
+            let violations = super::rules::check_wire(schema, &wire, "message", super::rules::Mode::Request);
+            if !violations.is_empty() {
+                return Some(Err(Error::Problem(self.io.rules.reject_input(self.ep, violations, watch.micros()))));
+            }
+            // #endif
         }
         Some(serde_json::from_value(schema.from_wire(&wire, true)).map_err(|e| invalid("type", &e.to_string())))
     }
@@ -1095,6 +1175,10 @@ impl<In: DeserializeOwned, Out: Serialize> WsSession<In, Out> {
                         return Err(Error::other(format!("message failed validation: {issues:?}")));
                     }
                 }
+                // #if rules
+                // A message the server sends is an output: in `strict` a violating one is not sent.
+                self.io.rules.check_output(self.ep, schema, &schema.to_wire(&typed, false, false), "message").map_err(Error::other)?;
+                // #endif
                 String::from_utf8_lossy(&schema.canonical_typed(&typed)).into_owned()
             }
             None => "null".to_string(),

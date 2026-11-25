@@ -243,3 +243,131 @@ pub fn write_files(dir: &Path, files: &FileSet) {
         std::fs::write(&target, bytes).unwrap_or_else(|e| panic!("{}: {e}", target.display()));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Scratch workspaces of generated crates (the rules tests)
+// ---------------------------------------------------------------------------
+
+pub fn work_dir() -> PathBuf {
+    std::env::var("VELD_RUST_WORK").map_or_else(
+        |_| repo_root().join("tests/toolchain/rust/.work"),
+        PathBuf::from,
+    )
+}
+
+pub fn target_dir() -> PathBuf {
+    std::env::var("VELD_RUST_TARGET").map_or_else(|_| work_dir().join("target"), PathBuf::from)
+}
+
+pub fn have_cargo() -> bool {
+    std::process::Command::new("cargo")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+/// Without `cargo` a toolchain test is skipped, unless `VELD_REQUIRE_TOOLCHAINS=1`.
+pub fn cargo_or_skip() -> bool {
+    if have_cargo() {
+        return true;
+    }
+    assert!(
+        std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"),
+        "toolchain required but `cargo` is unavailable"
+    );
+    eprintln!("SKIPPED: `cargo` is not on PATH");
+    false
+}
+
+pub fn cargo(ws: &Path, args: &[&str]) -> std::process::Command {
+    let mut cmd = std::process::Command::new("cargo");
+    cmd.args(args)
+        .current_dir(ws)
+        .env("CARGO_TARGET_DIR", target_dir())
+        .env("CARGO_TERM_COLOR", "never");
+    cmd
+}
+
+pub fn run_ok(cmd: &mut std::process::Command, what: &str) -> String {
+    let out = cmd.output().unwrap();
+    assert!(
+        out.status.success(),
+        "{what} failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .take(150)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+pub fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let (src, dst) = (entry.path(), to.join(entry.file_name()));
+        if src.is_dir() {
+            copy_dir(&src, &dst);
+        } else {
+            std::fs::copy(&src, &dst).unwrap();
+        }
+    }
+}
+
+/// A workspace of the generated `server` and `client` crates and a harness crate (a directory of
+/// `tests/toolchain/rust`) at `name` below the scratch directory, with the pinned lock file.
+pub fn harness_workspace(name: &str, server: &FileSet, client: &FileSet, harness: &str) -> PathBuf {
+    let ws = work_dir().join(name);
+    let _ = std::fs::remove_dir_all(&ws);
+    std::fs::create_dir_all(&ws).unwrap();
+    write_files(&ws.join("server"), server);
+    write_files(&ws.join("client"), client);
+    copy_dir(
+        &repo_root().join("tests/toolchain/rust").join(harness),
+        &ws.join(harness),
+    );
+    std::fs::write(
+        ws.join("Cargo.toml"),
+        format!(
+            "[workspace]\nresolver = \"2\"\nmembers = [\"server\", \"client\", \"{harness}\"]\n"
+        ),
+    )
+    .unwrap();
+    let lock = repo_root().join("tests/toolchain/rust/Cargo.lock");
+    if lock.exists() {
+        std::fs::copy(&lock, ws.join("Cargo.lock")).unwrap();
+    }
+    ws
+}
+
+/// Builds the workspace, runs clippy on the generated crates and runs the harness, which must
+/// print `ok_line`. `args` are passed to it.
+pub fn build_lint_and_run(
+    ws: &Path,
+    (server, client, harness): (&str, &str, &str),
+    args: &[&str],
+    ok_line: &str,
+) {
+    run_ok(
+        &mut cargo(ws, &["build", "--workspace", "--bins"]),
+        "cargo build",
+    );
+    let clippy = [
+        "clippy",
+        "--all-targets",
+        "-p",
+        server,
+        "-p",
+        client,
+        "--",
+        "-D",
+        "warnings",
+    ];
+    run_ok(&mut cargo(ws, &clippy), "cargo clippy");
+    let mut run = vec!["run", "-q", "-p", harness, "--"];
+    run.extend_from_slice(args);
+    let out = run_ok(&mut cargo(ws, &run), "the harness");
+    assert!(out.contains(ok_line), "{out}");
+}

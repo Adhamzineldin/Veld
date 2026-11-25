@@ -910,6 +910,16 @@ impl<T: Transport, In: DeserializeOwned, Out: Serialize> WsChannel<T, In, Out> {
                         return Err(self.core.validation_error(self.ep, &issues));
                     }
                 }
+                // #if rules
+                // A message is an input: it is checked like a request body, before anything is written.
+                if self.core.validate && self.core.options.check_rules {
+                    let wire = schema.to_wire(&typed, false, false);
+                    let violations = super::rules::check_wire(schema, &wire, "message", super::rules::Mode::Request);
+                    if !violations.is_empty() {
+                        return Err(self.core.rule_error(self.ep, violations));
+                    }
+                }
+                // #endif
                 String::from_utf8_lossy(&schema.canonical_typed(&typed)).into_owned()
             }
             None => super::canonical::canonical(&typed),
