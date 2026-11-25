@@ -6,8 +6,10 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 pub mod barrel;
+pub mod checks;
 pub mod client;
 pub mod clients;
+pub mod expr;
 pub mod frameworks;
 pub mod models;
 pub mod package;
@@ -143,9 +145,9 @@ impl Generator for TypeScript {
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, Role::Client, &self.capabilities(Role::Client))?;
         let mut files = FileSet::new();
-        runtime::emit(&mut files)?;
         let tree = Tree::new(req.ir, "", None, runtime::MODULE, req.services.clone())
             .with_validate(opts.validate != Some(false));
+        runtime::emit(&mut files, tree.uses_rules())?;
         let mut modules = emit_client_tree(&mut files, &tree)?;
         modules.push(clients::emit(&mut files, &tree)?);
         if opts.query_options == Some(true) {

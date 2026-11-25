@@ -24,6 +24,7 @@ pub struct Tree<'a> {
     /// False when the target option `validate = false` is set: the generated clients and handlers
     /// default to skipping runtime request validation. The types are unchanged.
     pub validate: bool,
+    rules: bool,
     decls: Vec<DeclId>,
 }
 
@@ -45,6 +46,7 @@ impl<'a> Tree<'a> {
                 set.insert(d.id);
             }
         }
+        let rules = set.iter().any(|id| !ir.decl(*id).rules().is_empty());
         Self {
             ir,
             root: root.to_string(),
@@ -52,8 +54,23 @@ impl<'a> Tree<'a> {
             runtime: runtime.to_string(),
             services,
             validate: true,
+            rules,
             decls: set.into_iter().collect(),
         }
+    }
+
+    /// Whether an emitted declaration has an invariant. This one predicate decides whether the
+    /// generated package has `runtime/rules.ts`, whether `runtime/veld.ts` keeps its `rules`
+    /// regions, and whether models, clients and servers get the rule code and members.
+    #[must_use]
+    pub fn uses_rules(&self) -> bool {
+        self.rules
+    }
+
+    /// Module path of the rule helpers: next to the runtime module, without extension.
+    #[must_use]
+    pub fn rules_module(&self) -> String {
+        sibling_rules(&self.runtime)
     }
 
     /// Sets whether the generated code validates requests at run time by default.
@@ -122,12 +139,21 @@ impl<'a> Tree<'a> {
     }
 }
 
+/// The module path of the rule helpers: next to the runtime module.
+fn sibling_rules(runtime_module: &str) -> String {
+    match runtime_module.rsplit_once('/') {
+        Some((dir, _)) => format!("{dir}/rules"),
+        None => "rules".to_string(),
+    }
+}
+
 /// Imports of one generated file.
 #[derive(Debug, Default)]
 pub struct Imports {
     /// module -> name -> is a value import
     named: BTreeMap<String, BTreeMap<String, bool>>,
     runtime: bool,
+    rules: bool,
 }
 
 impl Imports {
@@ -148,6 +174,10 @@ impl Imports {
         if self.runtime {
             let spec = util::rel_import(from_file, runtime_module);
             lines.push((spec.clone(), format!("import * as veld from '{spec}';")));
+        }
+        if self.rules {
+            let spec = util::rel_import(from_file, &sibling_rules(runtime_module));
+            lines.push((spec.clone(), format!("import * as veldRules from '{spec}';")));
         }
         for (module, names) in &self.named {
             let spec = util::rel_import(from_file, module);
@@ -202,6 +232,12 @@ impl<'t, 'a> FileCtx<'t, 'a> {
     pub fn rt(&mut self, name: &str) -> String {
         self.imports.runtime = true;
         format!("veld.{name}")
+    }
+
+    /// The namespace of `runtime/rules.ts` (`veldRules`), recording the import.
+    pub fn rules_ns(&mut self) -> String {
+        self.imports.rules = true;
+        "veldRules".to_string()
     }
 
     /// Name of `id` used as a type; records a type-only import when it lives elsewhere.
