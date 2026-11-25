@@ -314,6 +314,21 @@ Set `clients = false` on the target to opt out. See [microservices.md](microserv
 service). `veld export ir` prints the compiled IR with signatures, for plugin authors. Both print to
 stdout without `-o`.
 
+### Rules in the OpenAPI export
+
+A contract without rules exports exactly as before. Business rules appear as `x-veld-*` extensions,
+so the document doubles as living documentation (all expressions are printed as Veld text):
+
+- a model or error schema with invariants has `x-veld-rules`: a list of `{name, id, message?, fields,
+  expression}`, where `fields` are the wire names the rule reads (a child lists only its own rules);
+- an operation has `x-veld-facts` (`{name, type, optional}`), `x-veld-rules` (`requires`:
+  `{name?, id, expression, else?, message?}` and `ensures`: `{name?, id, expression, message?}`) and,
+  when it has a `transition`, `x-veld-transition` (`{id, field, from, to}`, wire values);
+- an enum that is a state machine has `x-veld-flows` (`{from, to}`, wire values) and `x-veld-finals`.
+
+The implicit `404`, `409` and `422` answers are documented as the other implicit errors are: when the
+compiled contract lists them for the operation.
+
 ## The manifest and your files
 
 Every `out` folder gets a `.veld-manifest.json` that lists the files Veld wrote and the SHA-256 of

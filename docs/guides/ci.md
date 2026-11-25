@@ -110,6 +110,29 @@ and not in another. Additions, loosened constraints, docs and deprecations are r
 non-breaking. A deliberate break is accepted by merging it (the next `generate` rewrites the
 snapshot), usually together with a new service version or a coordinated release of consumers.
 
+### Rules
+
+`veld diff` also compares business rules (`spec/rules.md`). A rule is identified by its declaration
+and its name, and it counts as changed when its id changes, which happens exactly when its
+expression changes. Expressions are printed back as Veld text, old and new, in the report.
+
+| Change | Report |
+|---|---|
+| invariant added | breaking where the type is used in requests; a note where it is used only in responses |
+| invariant removed | breaking where the type is used in responses; non-breaking where it is used only in requests |
+| invariant expression changed | **possibly breaking**, in any position |
+| `require` added | breaking; removed: non-breaking; expression changed: possibly breaking; `else` error or payload changed: breaking |
+| `ensure` removed | breaking; added: a note; expression changed: possibly breaking |
+| fact added, removed or retyped | a note: not a wire change, the server implementation must change |
+| flow removed (also what making a state final does) | breaking; flow added: non-breaking |
+| `transition` with fewer source states, another target or a new guard | breaking; more source states, or the guard removed: non-breaking |
+| message of a rule changed | a note |
+
+Without a solver the tool cannot tell whether a changed expression is tighter or looser, so it
+reports it as **possibly breaking** with both expressions, and never guesses. `--strict` fails on
+possibly breaking changes too: passing a tightened rule silently is the worse error. A declaration
+that no endpoint reaches is treated as used in both requests and responses.
+
 ## A GitHub Actions workflow
 
 ```yaml
