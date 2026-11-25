@@ -333,7 +333,7 @@ fn state_struct(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint) {
     w.close().blank();
 }
 
-const ALLOW: &str = "#[allow(clippy::all, unused_variables, unused_mut, unused_parens, unused_braces, unused_comparisons)]";
+const ALLOW: &str = "#[allow(clippy::all, unused_imports, unused_variables, unused_mut, unused_parens, unused_braces, unused_comparisons)]";
 
 fn step6(
     w: &mut CodeWriter,
@@ -368,7 +368,7 @@ fn step6(
     w.line("let p = &request;");
     let sc = scope(ep, false);
     for f in &ep.rules.facts {
-        load_fact(w, ctx, svc, ep, f, &sc)?;
+        load_fact(w, ctx, svc, f, &sc)?;
     }
     w.open("if enforce");
     for r in &ep.rules.requires {
@@ -380,18 +380,90 @@ fn step6(
     Ok(())
 }
 
+/// What the code that loads one fact is made of.
+struct Load {
+    name: String,
+    ident: String,
+    call: String,
+    type_of: String,
+    not_found: String,
+}
+
+impl Load {
+    fn failed_key(&self) -> String {
+        format!(
+            "veld::Error::other(format!(\"the key of fact `{}` failed: {{}}\", f.as_str()))",
+            self.name
+        )
+    }
+
+    fn required_keyed(&self, w: &mut CodeWriter, key: &str, kt: &str) {
+        w.open_with(format!("let loaded_{} =", self.ident), " {");
+        w.line(format!(
+            "let key: {kt} = (|| -> vr::Res<{kt}> {{ Ok({key}) }})().map_err(|f| Halt::Error({}))?;",
+            self.failed_key()
+        ));
+        w.open(format!(
+            "match loaders.{}(key, ctx).await.map_err(Halt::Error)?",
+            self.call
+        ));
+        w.line("Some(v) => v,");
+        w.line(format!(
+            "None => return Err(Halt::Error({})),",
+            self.not_found
+        ));
+        w.close().close_with("};");
+    }
+
+    fn optional_keyed(&self, w: &mut CodeWriter, key: &str, kt: &str) {
+        w.open_with(
+            format!("let loaded_{}: Option<{}> =", self.ident, self.type_of),
+            &format!(" match (|| -> vr::Res<{kt}> {{ Ok({key}) }})() {{"),
+        );
+        w.line(format!(
+            "Ok(key) => loaders.{}(key, ctx).await.map_err(Halt::Error)?,",
+            self.call
+        ));
+        w.line("Err(vr::Fail::Absent) => None,");
+        w.line(format!(
+            "Err(f) => return Err(Halt::Error({})),",
+            self.failed_key()
+        ));
+        w.close_with("};");
+    }
+
+    fn required_keyless(&self, w: &mut CodeWriter) {
+        w.open_with(
+            format!("let loaded_{} =", self.ident),
+            &format!(
+                " match loaders.{}(ctx).await.map_err(Halt::Error)? {{",
+                self.call
+            ),
+        );
+        w.line("Some(v) => v,");
+        w.line(format!(
+            "None => return Err(Halt::Error({})),",
+            self.not_found
+        ));
+        w.close_with("};");
+    }
+
+    fn optional_keyless(&self, w: &mut CodeWriter) {
+        w.line(format!(
+            "let loaded_{}: Option<{}> = loaders.{}(ctx).await.map_err(Halt::Error)?;",
+            self.ident, self.type_of, self.call
+        ));
+    }
+}
+
 fn load_fact(
     w: &mut CodeWriter,
     ctx: &Ctx<'_, '_>,
     svc: &Service,
-    ep: &Endpoint,
     f: &EndpointFact,
     sc: &Scope,
 ) -> Result<(), String> {
     let name = &f.name;
-    let ident = fact_ident(name);
-    let load = method(name);
-    w.line(format!("// fact {name}"));
     let key = match &f.key {
         Some(k) => Some(dev_value(ctx, sc, k, f.optional)?),
         None => None,
@@ -402,57 +474,21 @@ fn load_fact(
         .find(|s| &s.name == name)
         .and_then(|s| s.key.as_ref())
         .map(|t| rust_type(ctx, t, false));
-    let type_of = rust_type(ctx, &f.ty, false);
-    let _ = ep;
+    let load = Load {
+        name: name.clone(),
+        ident: fact_ident(name),
+        call: method(name),
+        type_of: rust_type(ctx, &f.ty, false),
+        not_found: not_found(ctx, name),
+    };
+    w.line(format!("// fact {name}"));
     match (key.zip(key_type), f.optional) {
-        (Some((key, kt)), false) => {
-            w.open_with(format!("let loaded_{ident} ="), " {");
-            w.line(format!(
-                "let key: {kt} = (|| -> vr::Res<{kt}> {{ Ok({key}) }})().map_err(|f| Halt::Error(veld::Error::other(format!(\"the key of fact `{name}` failed: {{}}\", f.as_str()))))?;"
-            ));
-            w.open(format!(
-                "match loaders.{load}(key, ctx).await.map_err(Halt::Error)?"
-            ));
-            w.line("Some(v) => v,");
-            w.line(format!(
-                "None => return Err(Halt::Error({})),",
-                not_found(ctx, name)
-            ));
-            w.close().close_with("};");
-        }
-        (Some((key, kt)), true) => {
-            w.open_with(
-                format!("let loaded_{ident}: Option<{type_of}> ="),
-                &format!(" match (|| -> vr::Res<{kt}> {{ Ok({key}) }})() {{"),
-            );
-            w.line(format!(
-                "Ok(key) => loaders.{load}(key, ctx).await.map_err(Halt::Error)?,"
-            ));
-            w.line("Err(vr::Fail::Absent) => None,");
-            w.line(format!(
-                "Err(f) => return Err(Halt::Error(veld::Error::other(format!(\"the key of fact `{name}` failed: {{}}\", f.as_str())))),"
-            ));
-            w.close_with("};");
-        }
-        (None, false) => {
-            w.open_with(
-                format!("let loaded_{ident} ="),
-                &format!(" match loaders.{load}(ctx).await.map_err(Halt::Error)? {{"),
-            );
-            w.line("Some(v) => v,");
-            w.line(format!(
-                "None => return Err(Halt::Error({})),",
-                not_found(ctx, name)
-            ));
-            w.close_with("};");
-        }
-        (None, true) => {
-            w.line(format!(
-                "let loaded_{ident}: Option<{type_of}> = loaders.{load}(ctx).await.map_err(Halt::Error)?;"
-            ));
-        }
+        (Some((key, kt)), false) => load.required_keyed(w, &key, &kt),
+        (Some((key, kt)), true) => load.optional_keyed(w, &key, &kt),
+        (None, false) => load.required_keyless(w),
+        (None, true) => load.optional_keyless(w),
     }
-    w.line(format!("let fact_{ident} = &loaded_{ident};"));
+    w.line(format!("let fact_{} = &loaded_{};", load.ident, load.ident));
     Ok(())
 }
 

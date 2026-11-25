@@ -302,10 +302,14 @@ impl Generator for Rust {
     }
 }
 
-/// `E0801` for an endpoint block on a `ws` endpoint: a conversation has no single result and no
-/// request/response pair to apply steps 6 and 9 to.
+/// `E0801` for an endpoint block on a `ws` endpoint that a server serves: a conversation has no
+/// single result and no request/response pair to apply steps 6 and 9 to. A client enforces no
+/// block, so it generates.
 fn refuse_ws_blocks(req: &GenRequest<'_>) -> Result<(), Vec<GenDiagnostic>> {
-    for sid in req.services.iter().chain(&req.consumes) {
+    if req.role != Role::Server {
+        return Ok(());
+    }
+    for sid in &req.services {
         let svc = req.ir.service(*sid);
         for ep in &svc.endpoints {
             if endpoints::kind(ep) == endpoints::Kind::Ws && !ep.rules.is_empty() {

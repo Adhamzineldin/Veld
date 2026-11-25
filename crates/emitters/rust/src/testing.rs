@@ -105,14 +105,14 @@ fn write_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     w.line(format!("use {prod}::{{{}}};", imports.join(", ")));
     w.line("use crate::veld::server::{Body, Endpoints, Halt, Handler, Principal, Prepared, RequestContext, Response};");
     w.blank();
-    helpers(w);
+    helpers(w, !svc.facts.is_empty());
     loaders(w, ctx, svc);
     dispatch(w, svc, &name);
     handler(w, svc, &name);
     probe(w, svc, &name);
 }
 
-fn helpers(w: &mut CodeWriter) {
+fn helpers(w: &mut CodeWriter, facts: bool) {
     w.line("/// Standard or url-safe base64, padded or not.");
     w.open("fn b64(text: &str) -> Option<Vec<u8>>");
     w.line("let (mut out, mut acc, mut bits) = (Vec::new(), 0u32, 0u32);");
@@ -140,13 +140,15 @@ fn helpers(w: &mut CodeWriter) {
     w.line("let bytes = b64(text).ok_or_else(|| veld::Error::other(format!(\"the header {name} is not base64url\")))?;");
     w.line("serde_json::from_slice(&bytes).map(Some).map_err(|e| veld::Error::other(format!(\"the header {name} is not JSON: {e}\")))");
     w.close().blank();
-    w.line("/// A fact of `Veld-Test-Facts`: absent when the object has none or it is `null`.");
-    w.open("fn fact<T: serde::de::DeserializeOwned>(ctx: &RequestContext, name: &str, schema: &'static veld::schema::Schema) -> Result<Option<T>, veld::Error>");
-    w.line("let Some(serde_json::Value::Object(facts)) = header_json(ctx, \"veld-test-facts\")? else { return Ok(None) };");
-    w.open("match facts.get(name)");
-    w.line("None | Some(serde_json::Value::Null) => Ok(None),");
-    w.line("Some(wire) => serde_json::from_value(schema.from_wire(wire, false)).map(Some).map_err(veld::Error::other),");
-    w.close().close().blank();
+    if facts {
+        w.line("/// A fact of `Veld-Test-Facts`: absent when the object has none or it is `null`.");
+        w.open("fn fact<T: serde::de::DeserializeOwned>(ctx: &RequestContext, name: &str, schema: &'static veld::schema::Schema) -> Result<Option<T>, veld::Error>");
+        w.line("let Some(serde_json::Value::Object(facts)) = header_json(ctx, \"veld-test-facts\")? else { return Ok(None) };");
+        w.open("match facts.get(name)");
+        w.line("None | Some(serde_json::Value::Null) => Ok(None),");
+        w.line("Some(wire) => serde_json::from_value(schema.from_wire(wire, false)).map(Some).map_err(veld::Error::other),");
+        w.close().close().blank();
+    }
 }
 
 fn fact_schema(ctx: &Ctx<'_, '_>, f: &ServiceFact) -> String {
@@ -277,6 +279,11 @@ fn call(w: &mut CodeWriter, svc: &Service) {
     w.close();
     w.line("self.inner.call(endpoint, args, ctx).await");
     w.close().blank();
+    if svc.endpoints.iter().any(|e| endpoints::kind(e) == Kind::Ws) {
+        w.open(format!("async fn call_ws(&self, endpoint: usize, {args}, ctx: &RequestContext, io: veld::server::WsIo) -> Result<(), veld::Error>"));
+        w.line("self.inner.call_ws(endpoint, args, ctx, io).await");
+        w.close().blank();
+    }
     if svc
         .endpoints
         .iter()

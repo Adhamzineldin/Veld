@@ -150,6 +150,9 @@ pub fn emit_readme(
             s.push_str("- `src/adapters/axum.rs`: `router(handler)`, one route per endpoint.\n");
         }
         s.push_str("\n## Use\n\nImplement `<Service>Service`, build a handler with `<Service>Handler::create(service, hooks)` (or\n`plain(service)` when no hooks are needed) and mount it with `adapters::axum::router(handler)`.\n");
+        if f.endpoint_rules {
+            s.push_str("\nA service whose endpoints declare facts (`fact` in an endpoint block) also needs its\n`<Service>FactLoaders`: build the handler with `create(service, hooks, loaders)` (or `plain(service, loaders)`).\nThe service methods of such endpoints receive the loaded facts after the request.\n");
+        }
     } else {
         s.push_str("- `src/<package>/<service>_client.rs`: `<Service>Client<T>`, generic over `veld::client::Transport`.\n");
         s.push_str("\n## Use\n\n");
