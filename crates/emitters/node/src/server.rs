@@ -2,9 +2,7 @@
 
 use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
-use veld_emit_typescript::client::{
-    RequestNames, rules_digest, write_request_type, write_spec_fields,
-};
+use veld_emit_typescript::client::{RequestNames, write_request_type, write_spec_fields};
 use veld_emit_typescript::tree::{FileCtx, Tree};
 use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{add_file, doc_comment, method_key, prop_key, ts_str};
@@ -272,7 +270,7 @@ fn write_endpoint(
         };
         rules::write_rules_member(w, out.pre, fc, &site, out.diags);
     }
-    if let Some(digest) = rules_digest(fc, svc) {
+    if let Some(digest) = svc.rules_digest.as_deref() {
         w.line(format!("digest: {},", ts_str(digest)));
     }
     w.close_with("},");

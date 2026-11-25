@@ -165,7 +165,11 @@ async function websocketTests(): Promise<void> {
   const strict = await start();
   // Client to server, checked locally like a request body: nothing is sent.
   const before = received.length;
-  const chan = new LiveClient({ baseUrl: strict.url }).notes();
+  // A WebSocket upgrade shows no headers to the client, so another call of the client primes it with
+  // the rules digest (section 9.7): before the first response it sends anyway.
+  const live = new LiveClient({ baseUrl: strict.url });
+  await assert.rejects(live.seats({ ok: true }), (e: unknown) => cli.Overbooked.matches(e));
+  const chan = live.notes();
   try {
     chan.send({ text: 'x', stars: 9 });
     assert.fail('expected a local ValidationError');

@@ -90,6 +90,10 @@ async function main(): Promise<void> {
     return fetch(url, init as RequestInit) as unknown as ReturnType<rt.FetchLike>;
   };
   const local = new cli.BookingsClient({ baseUrl: strict.url, fetch: counting });
+  // The client trusts its checks only once a response carried its own rules digest (section 9.7).
+  assert.equal(await local.search({ query: { from: 1, to: 5 } }), 1);
+  assert.equal(sent, 1);
+  sent = 0;
   try {
     await local.create({ body: BAD });
     assert.fail('expected a ValidationError');
@@ -144,9 +148,82 @@ async function main(): Promise<void> {
   assert.equal(cli.Booking.partial({ guests: 11 })[0]?.message, 'violates rule party');
   assert.ok(cli.Booking.ruleIds.party.includes('Booking.party@'));
 
+  await digestTests(strict.url);
+
   strict.close();
   audit.close();
   console.log('rules http ok');
+}
+
+/** A fetch that counts the requests and can change the digest the server appears to send. */
+function digestFetch(counter: { n: number }, digest?: string | null): rt.FetchLike {
+  return async (url, init) => {
+    counter.n += 1;
+    const res = await fetch(url, init as RequestInit);
+    if (digest === undefined) return res;
+    return {
+      status: res.status,
+      text: () => res.text(),
+      body: res.body as unknown as undefined,
+      headers: { get: (name: string) => (name.toLowerCase() === 'veld-rules' ? digest : res.headers.get(name)) },
+    };
+  };
+}
+
+async function failure(call: Promise<unknown>): Promise<cli.ValidationError> {
+  const e = await call.then(
+    () => undefined,
+    (err: unknown) => err,
+  );
+  assert.ok(cli.ValidationError.matches(e));
+  return e as cli.ValidationError;
+}
+
+/** The rules digest of a contract with invariants only (spec/rules.md section 9.7). */
+async function digestTests(url: string): Promise<void> {
+  // The server sends it on every response of the service, errors included, and on nothing else.
+  const ok = await fetch(`${url}/bookings/search?from=1&to=5`);
+  const digest = ok.headers.get('veld-rules');
+  assert.match(digest ?? '', /^[0-9a-f]{16}$/);
+  const bad = await fetch(`${url}/bookings/`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(BAD),
+  });
+  assert.equal(bad.status, 422);
+  assert.equal(bad.headers.get('veld-rules'), digest, 'errors carry the digest too');
+  assert.equal((await fetch(`${url}/nowhere`)).headers.get('veld-rules'), null);
+
+  // Same digest: the client rejects locally only after its first response.
+  const same = { n: 0 };
+  const mismatches: rt.ContractMismatch[] = [];
+  const a = new cli.BookingsClient({ baseUrl: url, fetch: digestFetch(same), onContractMismatch: (m) => mismatches.push(m) });
+  assert.equal((await failure(a.create({ body: BAD }))).local, false, 'the server decides before the first response');
+  assert.equal(same.n, 1);
+  assert.equal((await failure(a.create({ body: BAD }))).local, true, 'with the same digest the client rejects locally');
+  assert.equal(same.n, 1, 'a local rejection sends nothing');
+  assert.deepEqual(mismatches, []);
+
+  // A different digest: everything is sent, and onContractMismatch is called once.
+  const other = { n: 0 };
+  const seen: rt.ContractMismatch[] = [];
+  const b = new cli.BookingsClient({ baseUrl: url, fetch: digestFetch(other, 'ffffffffffffffff'), onContractMismatch: (m) => seen.push(m) });
+  await b.create({ body: GOOD });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0]?.service, 'Bookings');
+  assert.equal(seen[0]?.serverDigest, 'ffffffffffffffff');
+  assert.equal(seen[0]?.clientDigest, digest);
+  assert.equal((await failure(b.create({ body: BAD }))).local, false, 'the local check stops when the digest differs');
+  assert.equal(other.n, 2, 'the request was sent');
+  await b.create({ body: GOOD });
+  assert.equal(seen.length, 1, 'once per digest');
+
+  // A response without the header: the client sends anyway.
+  const bare = { n: 0 };
+  const c = new cli.BookingsClient({ baseUrl: url, fetch: digestFetch(bare, null) });
+  await c.create({ body: GOOD });
+  assert.equal((await failure(c.create({ body: BAD }))).local, false);
+  assert.equal(bare.n, 2);
 }
 
 main().catch((e: unknown) => {

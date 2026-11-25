@@ -123,7 +123,7 @@ fn the_test_handler_says_at_its_top_that_it_must_never_be_mounted_in_production(
 }
 
 #[test]
-fn a_contract_with_invariants_only_gets_none_of_it() {
+fn a_contract_with_invariants_only_gets_no_endpoint_machinery_but_the_digest() {
     let ir = rules_ir();
     let server = gen_server_with(&ir, "Bookings", &[], &testing());
     assert!(
@@ -131,20 +131,22 @@ fn a_contract_with_invariants_only_gets_none_of_it() {
         "no endpoint rules, no test handler"
     );
     let runtime = text(&server, "runtime/veld.ts");
-    for word in [
-        "EndpointRuleSet",
-        "onContractMismatch",
-        "veld-rules",
-        "EarlyResponse",
-    ] {
+    for word in ["EndpointRuleSet", "EarlyResponse", "reportEndpointRules"] {
         assert!(
             !runtime.contains(word),
             "`{word}` leaked into an invariants-only runtime"
         );
     }
+    // The rules digest is not an endpoint rule: a service that reaches an invariant has it (section 9.7).
+    for word in ["onContractMismatch", "veld-rules", "withDigest"] {
+        assert!(
+            runtime.contains(word),
+            "`{word}` is missing from the runtime"
+        );
+    }
     let client = gen_client(&ir);
-    assert!(!text(&client, "bookings/client.ts").contains("digest"));
-    assert!(!text(&server, "server/bookings.ts").contains("digest"));
+    assert!(text(&client, "bookings/client.ts").contains("digest: '"));
+    assert!(text(&server, "server/bookings.ts").contains("digest: '"));
 }
 
 #[test]

@@ -88,12 +88,15 @@ async function main(): Promise<void> {
   assert.equal(accepted.length, 3);
   // Asking for validation brings the local check back.
   const strict = new cli.BookingsClient({ baseUrl: off.url, fetch: counting, validate: true });
+  // Prime it: a client rejects locally only after a response carried its own rules digest.
+  assert.equal(await strict.search({ query: { from: 1, to: 5 } }), 1);
+  assert.equal(sent, 2);
   await assert.rejects(strict.create({ body: BAD }), (e: unknown) => {
     assert.ok(cli.ValidationError.matches(e));
     assert.equal(e.local, true);
     return true;
   });
-  assert.equal(sent, 1);
+  assert.equal(sent, 2, 'the violating body was not sent');
 
   off.close();
   on.close();

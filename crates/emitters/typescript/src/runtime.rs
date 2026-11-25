@@ -104,7 +104,9 @@ mod tests {
         let invariants = source(true).unwrap();
         let endpoint = source_with(true, true).unwrap();
         assert!(!invariants.contains("EndpointRuleSet"));
-        assert!(!invariants.contains("onContractMismatch"));
+        // The digest belongs to the invariants: a service that reaches one has it (section 9.7).
+        assert!(invariants.contains("onContractMismatch"));
+        assert!(!source(false).unwrap().contains("onContractMismatch"));
         assert!(endpoint.contains("EndpointRuleSet"));
         assert!(endpoint.contains("onContractMismatch"));
         // Endpoint rules alone switch the invariant machinery on.

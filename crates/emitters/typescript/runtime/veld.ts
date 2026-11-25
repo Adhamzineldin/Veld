@@ -838,6 +838,14 @@ function reportRuleMode(hooks: HandlerHooks, endpoints: readonly EndpointSpec[])
   const effect = mode === 'audit' ? 'are reported to onRuleViolation and sent unchanged' : 'are not evaluated';
   log?.warn?.(`veld: rules.output is '${mode}': rule violations in responses ${effect}`);
 }
+
+/** `Veld-Rules: <digest>` on every response of a service that has one (spec/rules.md section 9.7). */
+function withDigest(ep: ServerEndpoint, res: VeldResponse): VeldResponse {
+  return ep.digest === undefined ? res : { ...res, headers: { ...res.headers, 'veld-rules': ep.digest } };
+}
+
+/** `createHandler` wraps `run` to add the digest; this is the plain one. */
+const runRoute = run;
 // #endif
 // #if endpoint_rules
 import type { EvalErrorKind } from './rules';
@@ -1089,14 +1097,6 @@ function checkEnsures(
   return mode === 'strict' ? problem(std.internal, 'Internal', 500, ep.sig, {}) : null;
 }
 
-/** `Veld-Rules: <digest>` on every response of a service that has one (spec/rules.md section 9.7). */
-function withDigest(ep: ServerEndpoint, res: VeldResponse): VeldResponse {
-  return ep.digest === undefined ? res : { ...res, headers: { ...res.headers, 'veld-rules': ep.digest } };
-}
-
-/** `createHandler` wraps `run` to add the digest; this is the plain one. */
-const runRoute = run;
-
 function reportEndpointRules(hooks: HandlerHooks, endpoints: readonly ServerEndpoint[]): void {
   const log = (globalThis as { console?: { warn?: (message: string) => void } }).console;
   if (hooks.validateRequests === false && endpoints.some((ep) => ep.rules !== undefined)) {
@@ -1332,6 +1332,8 @@ export interface ServerEndpoint extends EndpointSpec {
   // #if endpoint_rules
   /** The facts, `require`, `old` and `ensure` of the endpoint block. */
   rules?: EndpointRuleSet;
+  // #endif
+  // #if rules
   /** The rules digest of the service, sent as `Veld-Rules` on every response (section 9.7). */
   digest?: string;
   // #endif
@@ -1996,11 +1998,11 @@ export function createHandler(endpoints: readonly ServerEndpoint[], std: StdSigs
   assertHooks(endpoints, hooks);
   // #if rules
   reportRuleMode(hooks, endpoints);
+  const run = (r: Route, m: RegExpExecArray, req: VeldRequest, sigs: StdSigs, opts: HandlerHooks): Promise<VeldResponse> =>
+    runRoute(r, m, req, sigs, opts).then((res) => withDigest(r.ep, res));
   // #endif
   // #if endpoint_rules
   reportEndpointRules(hooks, endpoints);
-  const run = (r: Route, m: RegExpExecArray, req: VeldRequest, sigs: StdSigs, opts: HandlerHooks): Promise<VeldResponse> =>
-    runRoute(r, m, req, sigs, opts).then((res) => withDigest(r.ep, res));
   // #endif
   const routes = endpoints.map(compileRoute).sort((a, b) => a.names.length - b.names.length);
   const find = (method: string, rawPath: string): { r: Route; m: RegExpExecArray } | null => {
@@ -2046,7 +2048,7 @@ export interface FetchResponse {
   text(): Promise<string>;
   /** The response body as a byte stream (`fetch` in browsers and Node 18+). Needed for SSE. */
   body?: { getReader(): StreamReaderLike } | null;
-  // #if endpoint_rules
+  // #if rules
   /** The response headers (`fetch` has them). The rules digest is read from here. */
   headers?: { get(name: string): string | null };
   // #endif
@@ -2096,8 +2098,6 @@ export interface ClientOptions {
   // #if rules
   /** Check the invariants of a request body and query object before sending. Default: true. */
   rules?: boolean;
-  // #endif
-  // #if endpoint_rules
   /**
    * Called once per rules digest this client had not seen, when a response carries a digest other
    * than the client's own: the server's rules changed since the client was generated, so the local
@@ -2107,7 +2107,7 @@ export interface ClientOptions {
   // #endif
 }
 
-// #if endpoint_rules
+// #if rules
 export interface ContractMismatch {
   /** The service name. */
   service: string;
@@ -2212,7 +2212,7 @@ export interface ClientDefaults {
   baseUrl: string | null;
   /** Builds the local `ValidationError`. */
   validation(issues: Issue[]): VeldError;
-  // #if endpoint_rules
+  // #if rules
   /** The service name, for `onContractMismatch`. */
   service?: string;
   /** The rules digest of the service this client was generated from (spec/rules.md section 9.7). */
@@ -2396,20 +2396,13 @@ export class ClientCore {
   }
 
   private rejectLocally(ep: EndpointSpec, out: Violation[]): void {
-    if (out.length === 0) return;
-    // #endif
-    // #if endpoint_rules
-    if (!this.rulesTrusted()) return;
-    // #endif
-    // #if rules
+    if (out.length === 0 || !this.rulesTrusted()) return;
     const err = this.defaults.validation(ruleIssues(out));
     err.violations = out;
     err.local = true;
     err.op = ep.sig;
     throw err;
   }
-  // #endif
-  // #if endpoint_rules
 
   /** The digest the last response of this service carried, `undefined` before the first one. */
   private serverDigest: string | undefined;
@@ -2441,7 +2434,7 @@ export class ClientCore {
     const req = input as Record<string, unknown>;
     this.check(ep, req);
     const res = await this.send(ep, req, init, {});
-    // #if endpoint_rules
+    // #if rules
     this.observe(res);
     // #endif
     return this.decode(ep, res);
@@ -2501,7 +2494,7 @@ export class ClientCore {
     try {
       const extra: Headers_ = init.lastEventId === undefined ? {} : { 'last-event-id': init.lastEventId };
       const res = await this.send(ep, req, { signal: link.signal }, { accept: 'text/event-stream', extra });
-      // #if endpoint_rules
+      // #if rules
       this.observe(res);
       // #endif
       if (res.status < 200 || res.status >= 300) await this.decode(ep, res);

@@ -54,6 +54,7 @@ export function createBookingsHandler(impl: BookingsService, hooks: BookingsHook
       ],
       middleware: [],
       call: (req, ctx) => impl.create(req as CreateRequest, ctx),
+      digest: 'eb9c1a30d58dfea6',
     },
     {
       name: 'search',
@@ -71,6 +72,7 @@ export function createBookingsHandler(impl: BookingsService, hooks: BookingsHook
       ],
       middleware: [],
       call: (req, ctx) => impl.search(req as SearchRequest, ctx),
+      digest: 'eb9c1a30d58dfea6',
     },
     {
       name: 'report',
@@ -88,6 +90,7 @@ export function createBookingsHandler(impl: BookingsService, hooks: BookingsHook
       ],
       middleware: [],
       call: (req, ctx) => impl.report(req as ReportRequest, ctx),
+      digest: 'eb9c1a30d58dfea6',
     },
   ];
   return veld.createHandler(endpoints, { unauthorized: 'about:blank', validation: ValidationError.sig, internal: Internal.sig }, hooks);

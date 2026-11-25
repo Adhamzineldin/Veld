@@ -77,8 +77,8 @@ impl<'a> Tree<'a> {
 
     /// Whether an endpoint of the tree's services has endpoint rules (`spec/rules.md` section 9).
     /// It switches `uses_rules` on too, and it adds the `endpoint_rules` regions of the runtime,
-    /// the fact loaders, the rules digest and the test handler. A contract with invariants only
-    /// never sees any of it.
+    /// the fact loaders and the test handler. A contract with invariants only never sees any of it
+    /// (the rules digest is not one of them: every service that reaches an invariant has it).
     #[must_use]
     pub fn uses_endpoint_rules(&self) -> bool {
         self.endpoint_rules
