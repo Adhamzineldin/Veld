@@ -92,9 +92,18 @@ mod tests {
     fn every_earlier_table_is_e0709_and_named() {
         for (text, named) in [
             ("[project]\nname = \"x\"\n", "`[project]`"),
-            ("[services.orders]\ncontracts = \"c\"\n", "`[services.orders]`"),
-            ("[libraries.common]\ncontracts = \"c\"\n", "`[libraries.common]`"),
-            ("[service]\nname = \"x\"\n[[targets]]\nemitter = \"node\"\n", "`[[targets]]`"),
+            (
+                "[services.orders]\ncontracts = \"c\"\n",
+                "`[services.orders]`",
+            ),
+            (
+                "[libraries.common]\ncontracts = \"c\"\n",
+                "`[libraries.common]`",
+            ),
+            (
+                "[service]\nname = \"x\"\n[[targets]]\nemitter = \"node\"\n",
+                "`[[targets]]`",
+            ),
         ] {
             let err = FileConfig::parse(text).unwrap_err();
             assert_eq!(err.code(), Some("E0709"), "{text}");
@@ -111,9 +120,18 @@ mod tests {
         )
         .unwrap_err()
         .to_string();
-        assert!(err.contains("`[project]`") && err.contains("`[services.a]`"), "{err}");
+        assert!(
+            err.contains("`[project]`") && err.contains("`[services.a]`"),
+            "{err}"
+        );
         assert!(err.contains("`[workspace] name`"), "{err}");
-        assert!(err.contains("`[service]` in the `veld.toml` of member `x`"), "{err}");
-        assert!(err.contains("`[server]` in the `veld.toml` of member `x`"), "{err}");
+        assert!(
+            err.contains("`[service]` in the `veld.toml` of member `x`"),
+            "{err}"
+        );
+        assert!(
+            err.contains("`[server]` in the `veld.toml` of member `x`"),
+            "{err}"
+        );
     }
 }

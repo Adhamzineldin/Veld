@@ -275,7 +275,11 @@ fn target_tables(targets: &[&(TargetIn, String)]) -> String {
 /// The `veld.toml` files of a preset as a workspace: a root, a member per package (its contracts
 /// are the member directory) and an app `clients` holding every client target.
 fn toml_for(project: &ProjectIn, targets: &[(TargetIn, String)]) -> Vec<(String, String)> {
-    let mut members: Vec<String> = project.packages.iter().map(|p| format!("\"{}\"", p.name)).collect();
+    let mut members: Vec<String> = project
+        .packages
+        .iter()
+        .map(|p| format!("\"{}\"", p.name))
+        .collect();
     members.push("\"clients\"".into());
     let mut files = vec![(
         "veld.toml".to_string(),
@@ -310,14 +314,14 @@ fn toml_for(project: &ProjectIn, targets: &[(TargetIn, String)]) -> Vec<(String,
         let mine: Vec<&(TargetIn, String)> = targets
             .iter()
             .filter(|(t, _)| {
-                t.role == "server"
-                    && t.service.as_deref().or(only) == Some(p.name.as_str())
+                t.role == "server" && t.service.as_deref().or(only) == Some(p.name.as_str())
             })
             .collect();
         t.push_str(&target_tables(&mine));
         files.push((format!("{}/veld.toml", p.name), t));
     }
-    let clients: Vec<&(TargetIn, String)> = targets.iter().filter(|(t, _)| t.role == "client").collect();
+    let clients: Vec<&(TargetIn, String)> =
+        targets.iter().filter(|(t, _)| t.role == "client").collect();
     files.push((
         "clients/veld.toml".to_string(),
         format!("[app]\n\n{}", target_tables(&clients)),

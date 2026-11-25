@@ -199,11 +199,7 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "Unknown key in `veld.toml`, or a reserved package name",
     ),
-    e(
-        "E0702",
-        C,
-        "`consumes` or `uses` names an unknown service",
-    ),
+    e("E0702", C, "`consumes` or `uses` names an unknown service"),
     e(
         "E0703",
         P,

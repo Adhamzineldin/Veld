@@ -103,7 +103,11 @@ fn client(a: &Answers, client: &Client) -> Option<Planned> {
             "typescript",
             fw.clone(),
             "web",
-            if ws { "web/generated" } else { "generated/client" },
+            if ws {
+                "web/generated"
+            } else {
+                "generated/client"
+            },
             Vec::new(),
         ),
         Client::Rust(fw) => (
@@ -111,7 +115,11 @@ fn client(a: &Answers, client: &Client) -> Option<Planned> {
             "rust",
             Some(fw.clone()),
             "clients/rust",
-            if ws { "clients/rust/generated" } else { "generated/rust-client" },
+            if ws {
+                "clients/rust/generated"
+            } else {
+                "generated/rust-client"
+            },
             vec![("crate-name", format!("{lower}-client"))],
         ),
         Client::Java => (
@@ -178,11 +186,18 @@ fn target_text(t: &Planned, array: bool) -> String {
     } else {
         format!("[{}]", t.role)
     };
-    let mut s = format!("{head}\nname = {}\nemitter = \"{}\"\n", toml_string(&t.name), t.emitter);
+    let mut s = format!(
+        "{head}\nname = {}\nemitter = \"{}\"\n",
+        toml_string(&t.name),
+        t.emitter
+    );
     if let Some(fw) = &t.framework {
         s.push_str(&format!("framework = \"{fw}\"\n"));
     }
-    s.push_str(&format!("out = {}\n", toml_string(&rel_out(&t.dir, &t.out))));
+    s.push_str(&format!(
+        "out = {}\n",
+        toml_string(&rel_out(&t.dir, &t.out))
+    ));
     if !t.options.is_empty() {
         s.push_str(&format!("\n[{}.options]\n", t.role));
         for (k, v) in &t.options {
@@ -264,10 +279,7 @@ fn root(a: &Answers, targets: &[Planned]) -> String {
 }
 
 fn service_file(a: &Answers, svc: &str, targets: &[Planned]) -> File {
-    let mut t = format!(
-        "[service]\nbase-url = {}\n",
-        toml_string(&a.base_url(svc))
-    );
+    let mut t = format!("[service]\nbase-url = {}\n", toml_string(&a.base_url(svc)));
     let consumed = a.consumes_of(svc);
     if !consumed.is_empty() {
         let list: Vec<String> = consumed.iter().map(|c| toml_string(c)).collect();
@@ -302,10 +314,16 @@ mod tests {
     #[test]
     fn out_is_written_relative_to_the_member() {
         assert_eq!(rel_out("", "generated/server"), "generated/server");
-        assert_eq!(rel_out("services/users", "services/users/generated"), "generated");
+        assert_eq!(
+            rel_out("services/users", "services/users/generated"),
+            "generated"
+        );
         assert_eq!(rel_out("web", "web/generated"), "generated");
         assert_eq!(rel_out("web", "ui/gen"), "../ui/gen");
-        assert_eq!(rel_out("services/users", "web/generated"), "../../web/generated");
+        assert_eq!(
+            rel_out("services/users", "web/generated"),
+            "../../web/generated"
+        );
         assert_eq!(rel_out("web", "web"), ".");
     }
 

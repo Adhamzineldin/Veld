@@ -171,7 +171,6 @@ pub struct RegistrySection {
     pub url: Option<String>,
 }
 
-
 const TOP: &[&str] = &[
     "workspace",
     "service",
@@ -392,13 +391,15 @@ url = "https://r"
 
     #[test]
     fn lint_levels_parse_and_reject_unknown_levels() {
-        let cfg =
-            FileConfig::parse("[service]\nname = \"x\"\n[lint]\nunused-model = \"off\"\nempty-model = \"error\"\n")
-                .unwrap();
+        let cfg = FileConfig::parse(
+            "[service]\nname = \"x\"\n[lint]\nunused-model = \"off\"\nempty-model = \"error\"\n",
+        )
+        .unwrap();
         assert_eq!(cfg.lint["unused-model"], veld_codegen::LintLevel::Off);
         assert_eq!(cfg.lint["empty-model"], veld_codegen::LintLevel::Error);
         assert!(
-            FileConfig::parse("[service]\nname = \"x\"\n[lint]\nunused-model = \"loud\"\n").is_err()
+            FileConfig::parse("[service]\nname = \"x\"\n[lint]\nunused-model = \"loud\"\n")
+                .is_err()
         );
     }
 
@@ -407,7 +408,10 @@ url = "https://r"
         let cfg = FileConfig::parse(FULL).unwrap();
         let ws = cfg.workspace.as_ref().unwrap();
         assert_eq!(ws.name.as_deref(), Some("nexusbank"));
-        assert_eq!(ws.defaults["server"]["node"]["framework"].as_str(), Some("express"));
+        assert_eq!(
+            ws.defaults["server"]["node"]["framework"].as_str(),
+            Some("express")
+        );
         let svc = cfg.service.as_ref().unwrap();
         assert_eq!(svc.base_url.as_deref(), Some("http://iam:3001"));
         assert_eq!(svc.owners, ["team-a"]);
@@ -432,8 +436,8 @@ url = "https://r"
 
     #[test]
     fn unknown_target_key_suggests() {
-        let err = FileConfig::parse("[service]\nname=\"x\"\n[server]\nemiter=\"node\"\n")
-            .unwrap_err();
+        let err =
+            FileConfig::parse("[service]\nname=\"x\"\n[server]\nemiter=\"node\"\n").unwrap_err();
         assert_eq!(err.code(), Some("E0701"));
         let msg = err.to_string();
         assert!(
@@ -465,7 +469,10 @@ url = "https://r"
 
     #[test]
     fn syntax_and_type_errors_are_e0700() {
-        assert_eq!(FileConfig::parse("[service").unwrap_err().code(), Some("E0700"));
+        assert_eq!(
+            FileConfig::parse("[service").unwrap_err().code(),
+            Some("E0700")
+        );
         assert_eq!(
             FileConfig::parse("[service]\nname = 3").unwrap_err().code(),
             Some("E0700")

@@ -164,7 +164,9 @@ fn readme(a: &Answers) -> File {
     if a.is_workspace() {
         t.push_str("- `services/<service>/contracts/`: the contracts, one folder per service\n");
         t.push_str("- `veld.toml`: the workspace and its members\n");
-        t.push_str("- `services/<service>/veld.toml`: one service, its base URL and its server target\n");
+        t.push_str(
+            "- `services/<service>/veld.toml`: one service, its base URL and its server target\n",
+        );
     } else {
         t.push_str("- `contracts/`: the API contracts (`.veld` files)\n");
         t.push_str("- `veld.toml`: the service and its generated targets\n");
@@ -305,8 +307,8 @@ service Auth at "/auth" {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::answers::{Client, Server};
+    use super::*;
     use veld_project::config::load_virtual;
 
     fn answers(workspace: &[&str], server: Server, client: Client) -> Answers {
@@ -422,7 +424,8 @@ mod tests {
         let f = files(&a);
         assert!(text_of(&f, "services/orders/veld.toml").contains("consumes = [\"users\"]"));
         assert!(
-            text_of(&f, "services/billing/veld.toml").contains("consumes = [\"users\", \"orders\"]")
+            text_of(&f, "services/billing/veld.toml")
+                .contains("consumes = [\"users\", \"orders\"]")
         );
         assert!(
             text_of(&f, "services/users/veld.toml")
@@ -450,10 +453,13 @@ mod tests {
         assert!(f[0].text.contains("out = \"server/src/generated\""));
         assert!(f.iter().any(|x| x.path == "server/package.json"));
         let mut ws = answers(&["users"], Server::Node("express".into()), Client::None);
-        ws.outs.push(("users-api".into(), "backend/users/gen".into()));
+        ws.outs
+            .push(("users-api".into(), "backend/users/gen".into()));
         let f = files(&ws);
-        assert!(text_of(&f, "services/users/veld.toml").contains("out = \"../../backend/users/gen\""));
-        assert_eq!(valid(&ws).targets[0].out.ends_with("backend/users/gen"), true);
+        assert!(
+            text_of(&f, "services/users/veld.toml").contains("out = \"../../backend/users/gen\"")
+        );
+        assert!(valid(&ws).targets[0].out.ends_with("backend/users/gen"));
     }
 
     #[test]

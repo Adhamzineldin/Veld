@@ -84,7 +84,11 @@ fn one_target_takes_the_member_name_and_default_out_follows_the_emitter() {
     .unwrap();
     assert_eq!(p.targets[0].out, normalize(&root().join("src/main/java")));
     assert_eq!(p.targets[1].out, normalize(&root().join("generated")));
-    let p = load("[service]\nname = \"a\"\n[client]\nemitter = \"typescript\"\n", &[]).unwrap();
+    let p = load(
+        "[service]\nname = \"a\"\n[client]\nemitter = \"typescript\"\n",
+        &[],
+    )
+    .unwrap();
     assert_eq!(p.targets[0].name, "a");
     assert_eq!(p.targets[0].out, normalize(&root().join("src/generated")));
 }
@@ -93,7 +97,8 @@ fn one_target_takes_the_member_name_and_default_out_follows_the_emitter() {
 fn two_targets_of_a_role_need_names_and_a_plugin_needs_out() {
     let two = "[service]\nname = \"a\"\n[[server]]\nemitter = \"node\"\nout = \"x\"\n[[server]]\nemitter = \"java\"\n";
     assert_eq!(load(two, &[]).unwrap_err().code(), Some("E0710"));
-    let plugin = "[service]\nname = \"a\"\n[server]\nemitter = \"plugin:k\"\n[plugins.k]\ncommand = \"x\"\n";
+    let plugin =
+        "[service]\nname = \"a\"\n[server]\nemitter = \"plugin:k\"\n[plugins.k]\ncommand = \"x\"\n";
     assert_eq!(load(plugin, &[]).unwrap_err().code(), Some("E0700"));
     let undeclared = "[service]\nname = \"a\"\n[server]\nemitter = \"plugin:k\"\nout = \"o\"\n";
     assert_eq!(load(undeclared, &[]).unwrap_err().code(), Some("E0700"));
@@ -130,7 +135,10 @@ fn an_app_uses_every_service_by_default_and_checks_the_names() {
     let p = load(BANK, &[COMMON, IAM, ORDERS, PAYMENTS, web]).unwrap();
     let client = p.targets.iter().find(|t| t.member == "web").unwrap();
     assert_eq!(client.services, ["iam", "orders", "payments"]);
-    assert_eq!(p.member("web").unwrap().depends_on, ["iam", "orders", "payments"]);
+    assert_eq!(
+        p.member("web").unwrap().depends_on,
+        ["iam", "orders", "payments"]
+    );
     let bad = ("apps/web", "[app]\nuses = [\"iamm\"]\n");
     let err = load(BANK, &[COMMON, IAM, bad]).unwrap_err();
     assert_eq!(err.code(), Some("E0702"));
@@ -144,7 +152,10 @@ fn unknown_consumed_service_is_e0702_with_suggestion() {
     assert_eq!(err.code(), Some("E0702"));
     assert!(err.to_string().contains("did you mean `iam`"), "{err}");
     let lib = ("services/orders", "[service]\nconsumes = [\"common\"]\n");
-    assert_eq!(load(BANK, &[COMMON, lib]).unwrap_err().code(), Some("E0702"));
+    assert_eq!(
+        load(BANK, &[COMMON, lib]).unwrap_err().code(),
+        Some("E0702")
+    );
 }
 
 #[test]
@@ -152,14 +163,20 @@ fn consumes_wildcard_expands_to_every_other_service() {
     let orders = ("services/orders", "[service]\nconsumes = [\"*\"]\n");
     let p = load(BANK, &[IAM, orders, PAYMENTS]).unwrap();
     assert_eq!(p.package("orders").unwrap().consumes, ["iam", "payments"]);
-    let mixed = ("services/orders", "[service]\nconsumes = [\"payments\", \"*\"]\n");
+    let mixed = (
+        "services/orders",
+        "[service]\nconsumes = [\"payments\", \"*\"]\n",
+    );
     let p = load(BANK, &[IAM, mixed, PAYMENTS]).unwrap();
     assert_eq!(p.package("orders").unwrap().consumes, ["payments", "iam"]);
 }
 
 #[test]
 fn self_consumption_warns() {
-    let orders = ("services/orders", "[service]\nconsumes = [\"orders\", \"iam\"]\n");
+    let orders = (
+        "services/orders",
+        "[service]\nconsumes = [\"orders\", \"iam\"]\n",
+    );
     let p = load(BANK, &[IAM, orders]).unwrap();
     assert_eq!(p.warnings.len(), 1);
     assert_eq!(p.warnings[0].code, "W0701");
@@ -175,11 +192,7 @@ fn prefixes_join_workspace_then_service() {
     assert_eq!(p.package("iam").unwrap().prefix, "/api/v1");
     assert_eq!(p.package("orders").unwrap().prefix, "/api");
     assert_eq!(p.prefixes().len(), 2);
-    let bad = load(
-        "[service]\nname = \"s\"\nprefix = \"api\"\n",
-        &[],
-    )
-    .unwrap_err();
+    let bad = load("[service]\nname = \"s\"\nprefix = \"api\"\n", &[]).unwrap_err();
     assert!(bad.to_string().contains("must start with"), "{bad}");
 }
 
@@ -216,7 +229,11 @@ fn defaults_are_kept_for_the_generators_to_check() {
     assert_eq!(p.defaults.len(), 2);
     let client = &p.defaults[0];
     assert_eq!(
-        (client.role, client.emitter.clone(), client.framework.clone()),
+        (
+            client.role,
+            client.emitter.clone(),
+            client.framework.clone()
+        ),
         (Role::Client, EmitterRef::Builtin("typescript".into()), None)
     );
     assert_eq!(client.options["typescript"].as_str(), Some("es2022"));
@@ -232,7 +249,10 @@ fn structure_errors_are_e0710() {
         ("[registry]\nurl = \"https://r\"\n", vec![]),
         ("[service]\nname = \"a\"\n[app]\n", vec![]),
         ("[service]\n", vec![]),
-        ("[workspace]\nname = \"w\"\nmembers = [\"s/*\"]\n", vec![("s/a", "[registry]\n")]),
+        (
+            "[workspace]\nname = \"w\"\nmembers = [\"s/*\"]\n",
+            vec![("s/a", "[registry]\n")],
+        ),
         (
             "[workspace]\nname = \"w\"\nmembers = [\"s/*\"]\n",
             vec![("s/a", "[workspace]\nname = \"x\"\n")],
@@ -260,14 +280,21 @@ fn a_duplicate_member_name_names_both_files() {
     )
     .unwrap_err();
     let msg = err.to_string();
-    assert!(msg.contains("s/a/veld.toml") && msg.contains("t/a/veld.toml"), "{msg}");
+    assert!(
+        msg.contains("s/a/veld.toml") && msg.contains("t/a/veld.toml"),
+        "{msg}"
+    );
 }
 
 #[test]
 fn the_root_member_must_set_a_name_and_the_workspace_a_name() {
     let err = load("[workspace]\nname = \"w\"\n[service]\n", &[]).unwrap_err();
     assert_eq!(err.code(), Some("E0710"));
-    let p = load("[workspace]\nname = \"w\"\n[service]\nname = \"root\"\n", &[]).unwrap();
+    let p = load(
+        "[workspace]\nname = \"w\"\n[service]\nname = \"root\"\n",
+        &[],
+    )
+    .unwrap();
     assert_eq!(p.members[0].name, "root");
     assert_eq!(p.members[0].dir, root());
     let err = load("[workspace]\nmembers = []\n", &[]).unwrap_err();
@@ -283,8 +310,14 @@ fn a_name_in_the_table_replaces_the_directory_name() {
 
 #[test]
 fn duplicate_target_names_are_e0710() {
-    let a = ("s/a", "[service]\n[server]\nname = \"api\"\nemitter = \"node\"\n");
-    let b = ("s/b", "[service]\n[server]\nname = \"api\"\nemitter = \"node\"\n");
+    let a = (
+        "s/a",
+        "[service]\n[server]\nname = \"api\"\nemitter = \"node\"\n",
+    );
+    let b = (
+        "s/b",
+        "[service]\n[server]\nname = \"api\"\nemitter = \"node\"\n",
+    );
     let err = load("[workspace]\nname = \"w\"\nmembers = [\"s/*\"]\n", &[a, b]).unwrap_err();
     assert_eq!(err.code(), Some("E0710"));
 }
@@ -293,9 +326,18 @@ fn duplicate_target_names_are_e0710() {
 fn tables_in_the_wrong_place_are_e0711() {
     let root_text = "[workspace]\nname = \"w\"\nmembers = [\"s/*\"]\n";
     for (member, needle) in [
-        ("[service]\n[dependencies]\n\"@a/b\" = \"^1\"\n", "workspace root"),
-        ("[app]\n[server]\nemitter = \"node\"\n", "an app has no server"),
-        ("[library]\n[client]\nemitter = \"typescript\"\n", "a library has no targets"),
+        (
+            "[service]\n[dependencies]\n\"@a/b\" = \"^1\"\n",
+            "workspace root",
+        ),
+        (
+            "[app]\n[server]\nemitter = \"node\"\n",
+            "an app has no server",
+        ),
+        (
+            "[library]\n[client]\nemitter = \"typescript\"\n",
+            "a library has no targets",
+        ),
     ] {
         let err = load(root_text, &[("s/a", member)]).unwrap_err();
         assert_eq!(err.code(), Some("E0711"), "{member}");
@@ -309,7 +351,10 @@ fn overlapping_outs_are_e0703_and_name_both_targets_and_the_directory() {
     let err = load(&same, &[]).unwrap_err();
     assert_eq!(err.code(), Some("E0703"));
     let msg = err.to_string();
-    assert!(msg.contains("shop-server") && msg.contains("shop-client"), "{msg}");
+    assert!(
+        msg.contains("shop-server") && msg.contains("shop-client"),
+        "{msg}"
+    );
     assert!(msg.contains("../api/src/generated"), "{msg}");
     let nested = SINGLE.replace("../web/src/generated", "../api/src/generated/web");
     assert_eq!(load(&nested, &[]).unwrap_err().code(), Some("E0703"));
@@ -323,7 +368,13 @@ fn overlapping_outs_are_e0703_and_name_both_targets_and_the_directory() {
 
 #[test]
 fn forbidden_outs_are_e0704() {
-    for out in [".", "contracts", "contracts/sub", "sub/../contracts/x", ".."] {
+    for out in [
+        ".",
+        "contracts",
+        "contracts/sub",
+        "sub/../contracts/x",
+        "..",
+    ] {
         let text = SINGLE.replace("../web/src/generated", out);
         let err = load(&text, &[]).unwrap_err();
         assert_eq!(err.code(), Some("E0704"), "out = {out}: {err}");

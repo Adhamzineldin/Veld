@@ -100,11 +100,18 @@ fn changed_paths(root: &Path, since: &str) -> Result<Vec<PathBuf>, ConfigError> 
     // spellings): go up from the root by the number of components of its prefix in the tree.
     let prefix = text(git(root, &["rev-parse", "--show-prefix"])?);
     let up = prefix.split('/').filter(|c| !c.is_empty()).count();
-    let spelled = root.ancestors().nth(up).map_or_else(|| top.clone(), Path::to_path_buf);
-    let base = text(git(&top, &["merge-base", since, "HEAD"]).map_err(|e| {
-        ConfigError::affected(format!("unknown ref `{since}` ({e})"))
-    })?);
-    let mut paths = names(git(&top, &["diff", "--name-only", "-z", "--no-renames", &base])?);
+    let spelled = root
+        .ancestors()
+        .nth(up)
+        .map_or_else(|| top.clone(), Path::to_path_buf);
+    let base = text(
+        git(&top, &["merge-base", since, "HEAD"])
+            .map_err(|e| ConfigError::affected(format!("unknown ref `{since}` ({e})")))?,
+    );
+    let mut paths = names(git(
+        &top,
+        &["diff", "--name-only", "-z", "--no-renames", &base],
+    )?);
     paths.extend(names(git(
         &top,
         &["ls-files", "--others", "--exclude-standard", "-z"],

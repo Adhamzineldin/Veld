@@ -184,10 +184,14 @@ fn subdirs(root: &Path, base: &str) -> Vec<String> {
 /// every `veld.toml`, the root's included as `veld.toml`. The same two pure functions as
 /// [`load`] decide the members and the targets, so a playground and the CLI agree.
 pub fn load_virtual(root_dir: &Path, files: &[(String, String)]) -> Result<Project, ConfigError> {
-    let text_of = |path: &str| files.iter().find(|(p, _)| p == path).map(|(_, t)| t.as_str());
-    let root_text = text_of(CONFIG_FILE).ok_or_else(|| {
-        ConfigError::workspace("the workspace has no root `veld.toml`")
-    })?;
+    let text_of = |path: &str| {
+        files
+            .iter()
+            .find(|(p, _)| p == path)
+            .map(|(_, t)| t.as_str())
+    };
+    let root_text = text_of(CONFIG_FILE)
+        .ok_or_else(|| ConfigError::workspace("the workspace has no root `veld.toml`"))?;
     let dirs: Vec<String> = files
         .iter()
         .filter_map(|(p, _)| p.strip_suffix("/veld.toml").map(str::to_string))
@@ -219,10 +223,18 @@ mod tests {
             "veld.toml",
             "[workspace]\nname = \"shop\"\nmembers = [\"services/*\", \"apps/*\"]\nexclude = [\"services/legacy\"]\n",
         );
-        write(root, "services/bookings/veld.toml", "[service]\nconsumes = [\"payments\"]\n[server]\nemitter = \"node\"\n");
+        write(
+            root,
+            "services/bookings/veld.toml",
+            "[service]\nconsumes = [\"payments\"]\n[server]\nemitter = \"node\"\n",
+        );
         write(root, "services/payments/veld.toml", "[service]\n");
         write(root, "services/legacy/veld.toml", "[service]\n");
-        write(root, "apps/web/veld.toml", "[app]\n[client]\nemitter = \"typescript\"\n");
+        write(
+            root,
+            "apps/web/veld.toml",
+            "[app]\n[client]\nemitter = \"typescript\"\n",
+        );
     }
 
     #[test]
@@ -246,7 +258,11 @@ mod tests {
     fn an_excluded_member_is_a_workspace_of_its_own() {
         let tmp = tempfile::tempdir().unwrap();
         shop(tmp.path());
-        write(tmp.path(), "services/legacy/veld.toml", "[service]\nname = \"legacy\"\n");
+        write(
+            tmp.path(),
+            "services/legacy/veld.toml",
+            "[service]\nname = \"legacy\"\n",
+        );
         let p = load(&tmp.path().join("services/legacy/veld.toml")).unwrap();
         assert_eq!(p.name, "legacy");
         assert_eq!(p.members.len(), 1);
@@ -256,7 +272,11 @@ mod tests {
     fn a_member_file_no_workspace_claims_is_e0710() {
         let tmp = tempfile::tempdir().unwrap();
         shop(tmp.path());
-        write(tmp.path(), "tools/gen/veld.toml", "[service]\nname = \"gen\"\n");
+        write(
+            tmp.path(),
+            "tools/gen/veld.toml",
+            "[service]\nname = \"gen\"\n",
+        );
         let err = load(&tmp.path().join("tools/gen/veld.toml")).unwrap_err();
         assert_eq!(err.code(), Some("E0710"));
         let msg = err.to_string();
@@ -266,7 +286,11 @@ mod tests {
     #[test]
     fn a_lone_member_file_is_a_single_file_workspace() {
         let tmp = tempfile::tempdir().unwrap();
-        write(tmp.path(), "veld.toml", "[service]\nname = \"hello\"\n[server]\nemitter = \"node\"\n");
+        write(
+            tmp.path(),
+            "veld.toml",
+            "[service]\nname = \"hello\"\n[server]\nemitter = \"node\"\n",
+        );
         let p = load(&tmp.path().join("veld.toml")).unwrap();
         assert_eq!((p.name.as_str(), p.members.len()), ("hello", 1));
         assert_eq!(p.targets[0].name, "hello");
@@ -286,7 +310,10 @@ mod tests {
             "services/legacy/veld.toml",
             "apps/web/veld.toml",
         ] {
-            files.push((rel.to_string(), fs::read_to_string(tmp.path().join(rel)).unwrap()));
+            files.push((
+                rel.to_string(),
+                fs::read_to_string(tmp.path().join(rel)).unwrap(),
+            ));
         }
         let virt = load_virtual(tmp.path(), &files).unwrap();
         assert_eq!(virt, disk);

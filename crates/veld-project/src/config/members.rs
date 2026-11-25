@@ -27,7 +27,9 @@ pub(super) fn segments(pattern: &str) -> Result<Vec<&str>, ConfigError> {
             ".." => return Err(bad("it has a `..` segment")),
             "*" => {}
             p if p.contains(['*', '?', '[', ']']) => {
-                return Err(bad("`**`, `?`, `[...]` and `*` inside a name are not supported"));
+                return Err(bad(
+                    "`**`, `?`, `[...]` and `*` inside a name are not supported",
+                ));
             }
             _ => {}
         }
@@ -127,7 +129,11 @@ mod tests {
     fn a_plain_entry_must_exist_and_a_star_entry_may_match_nothing() {
         let err = expand(&s(&["services/x"]), &[], &s(&["services/a"])).unwrap_err();
         assert_eq!(err.code(), Some("E0710"));
-        assert!(expand(&s(&["libs/*"]), &[], &s(&["services/a"])).unwrap().is_empty());
+        assert!(
+            expand(&s(&["libs/*"]), &[], &s(&["services/a"]))
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -155,6 +161,10 @@ mod tests {
         let dirs = s(&["services/a", "apps/w"]);
         let text = "[workspace]\nname = \"w\"\nmembers = [\"services/*\"]\n";
         assert_eq!(expand_members(text, &dirs).unwrap(), ["services/a"]);
-        assert!(expand_members("[service]\nname = \"a\"\n", &dirs).unwrap().is_empty());
+        assert!(
+            expand_members("[service]\nname = \"a\"\n", &dirs)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

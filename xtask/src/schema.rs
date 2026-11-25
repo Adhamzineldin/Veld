@@ -14,7 +14,6 @@ fn string(description: &str) -> Value {
     json!({ "type": "string", "description": description })
 }
 
-
 fn contracts() -> Value {
     json!({
         "type": "string", "default": "contracts",

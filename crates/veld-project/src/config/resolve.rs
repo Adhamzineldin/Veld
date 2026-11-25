@@ -397,7 +397,9 @@ fn services_of(packages: &[PackageSpec]) -> Vec<String> {
         .collect()
 }
 
-fn build_plugins(plugins: &BTreeMap<String, PluginSection>) -> Result<Vec<PluginSpec>, ConfigError> {
+fn build_plugins(
+    plugins: &BTreeMap<String, PluginSection>,
+) -> Result<Vec<PluginSpec>, ConfigError> {
     plugins
         .iter()
         .map(|(name, p)| {
@@ -761,7 +763,11 @@ fn publish_meta(cfg: &FileConfig) -> PublishMeta {
             l.description.clone(),
         );
     }
-    let owners = cfg.app.as_ref().map(|a| a.owners.clone()).unwrap_or_default();
+    let owners = cfg
+        .app
+        .as_ref()
+        .map(|a| a.owners.clone())
+        .unwrap_or_default();
     (owners, None, None, None)
 }
 
@@ -798,7 +804,11 @@ fn check_outputs(
                 } else {
                     "one is inside the other"
                 };
-                let shared = if a.out.starts_with(&b.out) { &b.out } else { &a.out };
+                let shared = if a.out.starts_with(&b.out) {
+                    &b.out
+                } else {
+                    &a.out
+                };
                 return Err(ConfigError::OutputOverlap {
                     first: a.name.clone(),
                     second: b.name.clone(),
@@ -819,8 +829,16 @@ fn relative_to(root: &Path, path: &Path) -> String {
         return path.to_string_lossy().replace('\\', "/");
     }
     let mut parts: Vec<String> = vec!["..".into(); a.len() - common];
-    parts.extend(b[common..].iter().map(|c| c.as_os_str().to_string_lossy().into_owned()));
-    if parts.is_empty() { ".".into() } else { parts.join("/") }
+    parts.extend(
+        b[common..]
+            .iter()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned()),
+    );
+    if parts.is_empty() {
+        ".".into()
+    } else {
+        parts.join("/")
+    }
 }
 
 fn check_out_allowed(

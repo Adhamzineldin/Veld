@@ -43,9 +43,17 @@ fn a_workspace_is_found_from_a_member_directory() {
         CONFIG_FILE,
         "[workspace]\nname = \"shop\"\nmembers = [\"services/*\"]\n",
     );
-    write(root, "services/a/veld.toml", "[service]\n[server]\nemitter = \"node\"\n");
+    write(
+        root,
+        "services/a/veld.toml",
+        "[service]\n[server]\nemitter = \"node\"\n",
+    );
     write(root, "services/a/contracts/a.veld", "a");
-    write(root, "services/b/veld.toml", "[service]\nconsumes = [\"a\"]\n");
+    write(
+        root,
+        "services/b/veld.toml",
+        "[service]\nconsumes = [\"a\"]\n",
+    );
     fs::create_dir_all(root.join("services/a/src")).unwrap();
 
     let config = find_config(&root.join("services/a/src")).unwrap();
@@ -96,7 +104,10 @@ fn a_file_in_the_earlier_layout_is_e0709() {
     let err = load(&file).unwrap_err();
     assert_eq!(err.code(), Some("E0709"));
     let msg = err.to_string();
-    assert!(msg.contains("[workspace]") && msg.contains("[client]"), "{msg}");
+    assert!(
+        msg.contains("[workspace]") && msg.contains("[client]"),
+        "{msg}"
+    );
 }
 
 #[test]

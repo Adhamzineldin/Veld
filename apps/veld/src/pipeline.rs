@@ -752,9 +752,18 @@ mod tests {
         let only_options = with_defaults("[workspace.defaults.server.java]\njava = \"21\"\n");
         assert!(check_defaults(&only_options).is_ok());
         for (text, code) in [
-            ("[workspace.defaults.server.cobol]\nframework = \"x\"\n", "E0701"),
-            ("[workspace.defaults.server.node]\nframework = \"koa\"\n", "E0803"),
-            ("[workspace.defaults.client.node]\nframework = \"x\"\n", "E0803"),
+            (
+                "[workspace.defaults.server.cobol]\nframework = \"x\"\n",
+                "E0701",
+            ),
+            (
+                "[workspace.defaults.server.node]\nframework = \"koa\"\n",
+                "E0803",
+            ),
+            (
+                "[workspace.defaults.client.node]\nframework = \"x\"\n",
+                "E0803",
+            ),
             ("[workspace.defaults.server.java]\njava = \"8\"\n", "E0802"),
             ("[workspace.defaults.server.java]\nbogus = true\n", "E0802"),
             (
@@ -762,7 +771,9 @@ mod tests {
                 "E0803",
             ),
         ] {
-            let err = check_defaults(&with_defaults(text)).unwrap_err().to_string();
+            let err = check_defaults(&with_defaults(text))
+                .unwrap_err()
+                .to_string();
             assert!(err.contains(code), "{text}: {err}");
             assert!(err.contains("[workspace.defaults."), "{err}");
         }
@@ -815,7 +826,10 @@ mod tests {
         let err = select_targets(&p, &none, Some("web"))
             .unwrap_err()
             .to_string();
-        assert!(err.contains("E0803") && err.contains("not selected"), "{err}");
+        assert!(
+            err.contains("E0803") && err.contains("not selected"),
+            "{err}"
+        );
     }
 
     #[test]

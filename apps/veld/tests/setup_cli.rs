@@ -57,7 +57,9 @@ fn init_flags_describe_a_workspace_without_a_tty() {
     let users = read(tmp.path(), "services/users/veld.toml");
     let billing = read(tmp.path(), "services/billing/veld.toml");
     let web = read(tmp.path(), "web/veld.toml");
-    assert!(users.contains("framework = \"fastify\"") && billing.contains("framework = \"spring\""));
+    assert!(
+        users.contains("framework = \"fastify\"") && billing.contains("framework = \"spring\"")
+    );
     assert!(web.contains("framework = \"react\"") && billing.contains("consumes = [\"users\"]"));
     assert!(users.contains("base-url = \"https://users.example.com\""));
     assert!(
@@ -113,7 +115,10 @@ fn init_yes_and_defaults_match_and_bad_values_are_errors() {
         .assert()
         .success();
     let toml = read(tmp.path(), "veld.toml");
-    assert!(!toml.contains("[server]") && !toml.contains("[client]"), "{toml}");
+    assert!(
+        !toml.contains("[server]") && !toml.contains("[client]"),
+        "{toml}"
+    );
 }
 
 // ---------------------------------------------------------------------------

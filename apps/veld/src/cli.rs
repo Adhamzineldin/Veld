@@ -606,7 +606,13 @@ mod tests {
         ok(&["generate", "-p", "a", "-p", "b"]);
         ok(&["generate", "--package", "a", "api"]);
         ok(&["generate", "--workspace"]);
-        ok(&["generate", "--affected", "--since", "origin/master", "--check"]);
+        ok(&[
+            "generate",
+            "--affected",
+            "--since",
+            "origin/master",
+            "--check",
+        ]);
         for cmd in ["watch", "clean", "setup", "test"] {
             ok(&[cmd, "-p", "a"]);
             ok(&[cmd, "--workspace"]);

@@ -213,12 +213,7 @@ version = \"1.0.0\"
             tmp.path(),
             "[service]\nname = \"lib\"\npackage = \"@acme/lib\"\nversion = \"one\"\n",
         );
-        assert!(
-            plan(&p, None)
-                .unwrap_err()
-                .to_string()
-                .contains("semver")
-        );
+        assert!(plan(&p, None).unwrap_err().to_string().contains("semver"));
     }
 
     fn workspace(dir: &Path, iam_meta: &str) -> std::path::PathBuf {
@@ -232,9 +227,21 @@ version = \"1.0.0\"
             "libs/common/veld.toml",
             "[library]\npackage = \"@acme/common\"\nversion = \"0.1.0\"\n",
         );
-        write(dir, "libs/common/contracts/m.veld", "model M { id: uuid }\n");
-        write(dir, "services/iam/veld.toml", &format!("[service]\n{iam_meta}"));
-        write(dir, "services/iam/contracts/m.veld", "model N { id: uuid }\n");
+        write(
+            dir,
+            "libs/common/contracts/m.veld",
+            "model M { id: uuid }\n",
+        );
+        write(
+            dir,
+            "services/iam/veld.toml",
+            &format!("[service]\n{iam_meta}"),
+        );
+        write(
+            dir,
+            "services/iam/contracts/m.veld",
+            "model N { id: uuid }\n",
+        );
         dir.join("veld.toml")
     }
 

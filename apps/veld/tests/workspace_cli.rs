@@ -3,7 +3,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod common;
 
-use std::fs;
 use std::path::Path;
 use std::process::Command;
 
@@ -13,9 +12,9 @@ use tempfile::tempdir;
 
 const ROOT: &str = "[workspace]\nname = \"shop\"\nmembers = [\"services/*\", \"apps/*\"]\n";
 const ORDERS_TOML: &str = "[service]\nconsumes = [\"payments\"]\nowners = [\"team-orders\"]\n\n[server]\nemitter = \"node\"\n";
-const PAYMENTS_TOML: &str =
-    "[service]\nowners = [\"team-pay\"]\n\n[server]\nemitter = \"node\"\n";
-const WEB_TOML: &str = "[app]\nowners = [\"team-web\"]\nuses = [\"orders\"]\n\n[client]\nemitter = \"typescript\"\n";
+const PAYMENTS_TOML: &str = "[service]\nowners = [\"team-pay\"]\n\n[server]\nemitter = \"node\"\n";
+const WEB_TOML: &str =
+    "[app]\nowners = [\"team-web\"]\nuses = [\"orders\"]\n\n[client]\nemitter = \"typescript\"\n";
 const ORDERS: &str = "model Order {\n  id: uuid\n}\n\n@auth(none)\nservice Orders at \"/orders\" {\n  get \"/{id}\" getOrder(id: uuid) -> Order | NotFound\n}\n";
 const PAYMENTS: &str = "model Payment {\n  id: uuid\n  amount: int\n}\n\n@auth(none)\nservice Payments at \"/payments\" {\n  get \"/{id}\" getPayment(id: uuid) -> Payment | NotFound\n}\n";
 
@@ -185,11 +184,25 @@ fn check_graph_json_carries_owners_only_when_there_are_some() {
         .iter()
         .map(|s| (s["name"].as_str().unwrap().to_string(), s["owners"].clone()))
         .collect();
-    assert_eq!(owners[0], ("orders".to_string(), serde_json::json!(["team-orders"])));
-    assert_eq!(owners[1], ("payments".to_string(), serde_json::json!(["team-pay"])));
+    assert_eq!(
+        owners[0],
+        ("orders".to_string(), serde_json::json!(["team-orders"]))
+    );
+    assert_eq!(
+        owners[1],
+        ("payments".to_string(), serde_json::json!(["team-pay"]))
+    );
     // Without owners the nodes are what they were.
-    write(tmp.path(), "services/orders/veld.toml", &ORDERS_TOML.replace("owners = [\"team-orders\"]\n", ""));
-    write(tmp.path(), "services/payments/veld.toml", &PAYMENTS_TOML.replace("owners = [\"team-pay\"]\n", ""));
+    write(
+        tmp.path(),
+        "services/orders/veld.toml",
+        &ORDERS_TOML.replace("owners = [\"team-orders\"]\n", ""),
+    );
+    write(
+        tmp.path(),
+        "services/payments/veld.toml",
+        &PAYMENTS_TOML.replace("owners = [\"team-pay\"]\n", ""),
+    );
     let v = json(tmp.path());
     assert!(v["services"][0].get("owners").is_none(), "{v}");
 }
@@ -213,9 +226,21 @@ fn diff_names_the_owners_and_who_depends_on_the_changed_package() {
         .stdout(predicate::str::contains("owners: team-pay"))
         .stdout(predicate::str::contains("affects orders (team-orders)"));
     // A workspace with no owners prints the report it always did.
-    write(tmp.path(), "services/orders/veld.toml", &ORDERS_TOML.replace("owners = [\"team-orders\"]\n", ""));
-    write(tmp.path(), "services/payments/veld.toml", &PAYMENTS_TOML.replace("owners = [\"team-pay\"]\n", ""));
-    write(tmp.path(), "apps/web/veld.toml", &WEB_TOML.replace("owners = [\"team-web\"]\n", ""));
+    write(
+        tmp.path(),
+        "services/orders/veld.toml",
+        &ORDERS_TOML.replace("owners = [\"team-orders\"]\n", ""),
+    );
+    write(
+        tmp.path(),
+        "services/payments/veld.toml",
+        &PAYMENTS_TOML.replace("owners = [\"team-pay\"]\n", ""),
+    );
+    write(
+        tmp.path(),
+        "apps/web/veld.toml",
+        &WEB_TOML.replace("owners = [\"team-web\"]\n", ""),
+    );
     veld(tmp.path())
         .arg("diff")
         .assert()
@@ -258,7 +283,13 @@ fn affected_members_come_from_git_and_say_why() {
         &PAYMENTS.replace("amount: int", "amount: int\n  note?: string"),
     );
     let out = veld(dir)
-        .args(["generate", "--affected", "--since", "HEAD", "--accept-breaking"])
+        .args([
+            "generate",
+            "--affected",
+            "--since",
+            "HEAD",
+            "--accept-breaking",
+        ])
         .assert()
         .success()
         .get_output()
@@ -275,10 +306,35 @@ fn affected_members_come_from_git_and_say_why() {
     }
     assert!(generated(dir, "services/payments") && generated(dir, "services/orders"));
     assert!(generated(dir, "apps/web"));
-    assert!(
-        !dir.join("veld.lock.ir.json").exists(),
-        "an --affected run is not a full run"
+    // Every member is affected here, so this run selected every member: a full run.
+    assert!(dir.join("veld.lock.ir.json").is_file());
+}
+
+#[test]
+fn a_partial_affected_run_writes_no_lock() {
+    let tmp = tempdir().unwrap();
+    let dir = tmp.path();
+    shop(dir);
+    if !git(dir, &["init", "-q"]) {
+        eprintln!("skipped: git is not available");
+        return;
+    }
+    assert!(git(dir, &["add", "."]));
+    assert!(git(dir, &["commit", "-q", "-m", "base"]));
+    // Only `web` changes, and nothing depends on an app.
+    write(
+        dir,
+        "apps/web/veld.toml",
+        &format!("{WEB_TOML}\n# touched\n"),
     );
+    veld(dir)
+        .args(["generate", "--affected", "--since", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("web   veld.toml changed"));
+    assert!(generated(dir, "apps/web"));
+    assert!(!generated(dir, "services/orders"));
+    assert!(!dir.join("veld.lock.ir.json").exists());
 }
 
 #[test]
@@ -289,7 +345,13 @@ fn affected_needs_git_and_a_known_ref() {
     // The temporary directory is not inside a git work tree (unless the machine's temp folder is
     // in one, which we cannot rule out): only assert on the shape of the error.
     let out = veld(dir)
-        .args(["generate", "--affected", "--since", "no-such-ref", "--dry-run"])
+        .args([
+            "generate",
+            "--affected",
+            "--since",
+            "no-such-ref",
+            "--dry-run",
+        ])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));

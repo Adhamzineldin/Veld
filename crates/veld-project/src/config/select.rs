@@ -143,7 +143,11 @@ fn dependencies(
     m: &MemberSpec,
     imports: &BTreeMap<String, BTreeSet<String>>,
 ) -> Vec<(&'static str, String)> {
-    let verb = if m.kind == MemberKind::App { "uses" } else { "consumes" };
+    let verb = if m.kind == MemberKind::App {
+        "uses"
+    } else {
+        "consumes"
+    };
     let mut out: Vec<(&'static str, String)> =
         m.depends_on.iter().map(|d| (verb, d.clone())).collect();
     for dep in imports.get(&m.name).into_iter().flatten() {
@@ -228,9 +232,18 @@ mod tests {
 
     fn project() -> Project {
         let files = [
-            ("veld.toml", "[workspace]\nname = \"s\"\nmembers = [\"services/*\", \"apps/*\", \"libs/*\"]\n"),
-            ("services/payments/veld.toml", "[service]\n[server]\nemitter = \"node\"\n"),
-            ("services/bookings/veld.toml", "[service]\nconsumes = [\"payments\"]\n"),
+            (
+                "veld.toml",
+                "[workspace]\nname = \"s\"\nmembers = [\"services/*\", \"apps/*\", \"libs/*\"]\n",
+            ),
+            (
+                "services/payments/veld.toml",
+                "[service]\n[server]\nemitter = \"node\"\n",
+            ),
+            (
+                "services/bookings/veld.toml",
+                "[service]\nconsumes = [\"payments\"]\n",
+            ),
             ("services/audit/veld.toml", "[service]\n"),
             ("apps/web/veld.toml", "[app]\nuses = [\"bookings\"]\n"),
             ("libs/money/veld.toml", "[library]\n"),
@@ -247,7 +260,10 @@ mod tests {
     }
 
     fn imports() -> BTreeMap<String, BTreeSet<String>> {
-        BTreeMap::from([("payments".to_string(), BTreeSet::from(["money".to_string()]))])
+        BTreeMap::from([(
+            "payments".to_string(),
+            BTreeSet::from(["money".to_string()]),
+        )])
     }
 
     fn reasons(p: &Project, changed: &[&str]) -> Vec<(String, String)> {
@@ -278,7 +294,10 @@ mod tests {
         let names = vec!["nope".to_string()];
         let err = select(&p, SelectBy::Packages(&names)).unwrap_err();
         assert_eq!(err.code(), Some("E0803"));
-        assert!(err.to_string().contains("audit") && err.to_string().contains("money"), "{err}");
+        assert!(
+            err.to_string().contains("audit") && err.to_string().contains("money"),
+            "{err}"
+        );
     }
 
     #[test]
