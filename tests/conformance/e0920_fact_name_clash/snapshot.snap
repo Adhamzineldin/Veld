@@ -1,0 +1,41 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0920]: fact `id` has the name of a parameter
+ --> app/app.veld:8:10
+  |
+8 |     fact id: Room
+  |          ^^
+  = help: every name in an endpoint block must be different
+
+error[E0920]: fact `body` has the name of a parameter
+ --> app/app.veld:9:10
+  |
+9 |     fact body: Room
+  |          ^^^^
+  = help: every name in an endpoint block must be different
+
+error[E0920]: fact `room` has the name of another fact
+ --> app/app.veld:11:10
+   |
+11 |     fact room: Room = id
+   |          ^^^^
+  = help: every name in an endpoint block must be different
+
+error[E0920]: fact `now` has the name of the clock
+ --> app/app.veld:12:10
+   |
+12 |     fact now: Room
+   |          ^^^
+  = help: every name in an endpoint block must be different
+
+error[E0920]: fact `result` has the name of the success value
+ --> app/app.veld:13:10
+   |
+13 |     fact result: Room
+   |          ^^^^^^
+  = help: every name in an endpoint block must be different
+
+== ir ==
+(no IR: compilation failed)

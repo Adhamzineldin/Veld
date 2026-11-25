@@ -1,0 +1,34 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0901]: unknown name `bodyy`
+ --> app/app.veld:6:13
+  |
+6 |     require bodyy.guests > 0
+  |             ^^^^^
+  = help: did you mean `body`?
+
+error[E0901]: unknown name `roomm`
+ --> app/app.veld:7:13
+  |
+7 |     require roomm.guests > 0
+  |             ^^^^^
+  = help: did you mean `room`?
+
+error[E0901]: unknown name `zzz`
+ --> app/app.veld:8:13
+  |
+8 |     require zzz > 0
+  |             ^^^
+  = help: names in scope: body, room, now
+
+error[E0901]: `Booking` has no field `nope`
+ --> app/app.veld:9:19
+  |
+9 |     ensure result.nope > 0
+  |                   ^^^^
+  = help: fields: id, guests
+
+== ir ==
+(no IR: compilation failed)

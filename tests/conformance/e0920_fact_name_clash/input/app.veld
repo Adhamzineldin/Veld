@@ -1,0 +1,15 @@
+// A fact cannot be named like a parameter, another fact, `now` or `result` (spec/rules.md 9.1).
+
+model Room { id: uuid }
+model Booking { id: uuid }
+
+service Bookings at "/bookings" {
+  post "/{id}" create(id: uuid, body: Booking) -> 201 Booking {
+    fact id: Room
+    fact body: Room
+    fact room: Room = id
+    fact room: Room = id
+    fact now: Room
+    fact result: Room
+  }
+}

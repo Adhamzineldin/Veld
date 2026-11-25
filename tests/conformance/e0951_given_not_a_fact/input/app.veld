@@ -1,0 +1,27 @@
+// `given` names a fact of the called endpoint (spec/rules.md 12.1).
+
+model Room { id: uuid }
+model Booking { id: uuid }
+
+service Bookings at "/bookings" {
+  post "/" create(body: Booking) -> 201 Booking {
+    fact room: Room = body.id
+  }
+  get "/" list() -> 200 Booking[]
+}
+
+example "misspelled" {
+  given rooom = absent
+  create() -> ok
+}
+
+example "the endpoint has no facts" {
+  given room = absent
+  list() -> ok
+}
+
+example "given twice" {
+  given room = absent
+  given room = absent
+  create() -> ok
+}

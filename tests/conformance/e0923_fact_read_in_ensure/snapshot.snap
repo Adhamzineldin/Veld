@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0923]: fact `room` is read in `ensure` outside `old(...)`
+ --> app/app.veld:10:12
+   |
+10 |     ensure room.capacity >= result.guests
+   |            ^^^^
+  = help: the handler may have changed it: write `old(room...)` for its value before the handler ran
+
+== ir ==
+(no IR: compilation failed)

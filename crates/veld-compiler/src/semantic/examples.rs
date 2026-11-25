@@ -107,6 +107,24 @@ fn resolve_endpoint<'p>(
         .collect();
     match hits.as_slice() {
         [one] => Some(*one),
+        [] if services.is_empty() && call.service.is_some() => {
+            let known: Vec<&str> = prog
+                .services
+                .iter()
+                .filter(|s| s.pkg == pkg)
+                .map(|s| s.name.as_str())
+                .collect();
+            let wanted = call.service.as_ref().map_or("", |s| s.name.as_str());
+            let at = call.service.as_ref().map_or(call.endpoint.span, |s| s.span);
+            let diag = Diagnostic::error(
+                "E0950",
+                format!("no service `{wanted}` in this package"),
+                at,
+            )
+            .did_you_mean(wanted, known.iter().copied(), None);
+            diags.push(diag);
+            None
+        }
         [] => {
             let all: Vec<&str> = services
                 .iter()

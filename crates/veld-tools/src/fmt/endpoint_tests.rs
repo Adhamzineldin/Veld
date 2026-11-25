@@ -10,7 +10,11 @@ fn f(src: &str) -> String {
 /// Formats once, checks the result is a fixed point, and returns it.
 fn stable(src: &str) -> String {
     let once = f(src);
-    assert_eq!(f(&once), once, "not idempotent for:\n{src}\n--- first pass:\n{once}");
+    assert_eq!(
+        f(&once),
+        once,
+        "not idempotent for:\n{src}\n--- first pass:\n{once}"
+    );
     once
 }
 
@@ -73,7 +77,10 @@ fn an_empty_block_stays_empty_and_a_block_without_responses_works() {
 fn a_wrapped_head_keeps_its_block() {
     let src = "service S at \"/\" { post \"/\" createOrder(@header(\"X-Key\") key?: string, body: CreateOrder) -> 201 Order | OutOfStock | Conflict | BadRequest | Forbidden | Unauthorized { require true } }";
     let out = stable(src);
-    assert!(out.contains("| Unauthorized {\n    require true\n  }"), "{out}");
+    assert!(
+        out.contains("| Unauthorized {\n    require true\n  }"),
+        "{out}"
+    );
 }
 
 #[test]
@@ -202,11 +209,17 @@ example "x" { // header
 #[test]
 fn negative_values_after_words_are_stable() {
     let out = stable("example \"x\" { f(a: -1) returns -5 -> ok -2.5 }");
-    assert!(out.contains("returns -5") && out.contains("-> ok -2.5"), "{out}");
+    assert!(
+        out.contains("returns -5") && out.contains("-> ok -2.5"),
+        "{out}"
+    );
 }
 
 #[test]
 fn an_endpoint_called_given_and_a_given_called_given_are_stable() {
     let out = stable("example \"x\" { given given = absent\n given() -> ok }");
-    assert!(out.contains("given given = absent") && out.contains("given() -> ok"), "{out}");
+    assert!(
+        out.contains("given given = absent") && out.contains("given() -> ok"),
+        "{out}"
+    );
 }

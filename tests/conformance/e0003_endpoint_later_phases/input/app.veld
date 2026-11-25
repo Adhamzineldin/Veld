@@ -1,0 +1,12 @@
+// `allow` and `transition` belong to later phases of spec/rules.md (policies, state machines):
+// each is rejected with a diagnostic that names its phase, and the next statement still parses.
+
+model Booking { id: uuid }
+
+service Bookings at "/bookings" {
+  post "/" create(body: Booking) -> 201 Booking {
+    allow ManageBooking(body)
+    transition body.status: pending -> paid
+    require body.id == body.id
+  }
+}

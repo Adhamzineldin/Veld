@@ -526,7 +526,7 @@ impl Values<'_, '_, '_> {
             cur = next;
         }
         if &cur != ty && !matches!(ty, Type::Scalar(Scalar::Json)) {
-            let found = format!("`{}`, a `{}`", join(path), self.prog.type_name(&cur));
+            let found = format!("`{}` (a `{}`)", join(path), self.prog.type_name(&cur));
             self.mismatch(&found, ty, span);
             return None;
         }

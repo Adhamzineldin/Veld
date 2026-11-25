@@ -244,6 +244,8 @@ fn every_diagnostic_code_has_an_invalid_case() {
     // Rules (spec/rules.md section 14) and the expression nesting limit.
     codes.push("E0005".to_string());
     codes.extend((901..=908).map(|n| format!("E0{n}")));
+    codes.extend((920..=924).map(|n| format!("E0{n}")));
+    codes.extend((950..=952).map(|n| format!("E0{n}")));
     codes.extend((901..=903).map(|n| format!("W0{n}")));
     let names: Vec<String> = case_dirs()
         .iter()

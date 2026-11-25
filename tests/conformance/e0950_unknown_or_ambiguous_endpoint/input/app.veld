@@ -1,0 +1,29 @@
+// A call names an endpoint of the package; two services sharing an endpoint name need
+// `Service.endpoint` (spec/rules.md 12.1).
+
+model Booking { id: uuid }
+
+service Bookings at "/bookings" {
+  get "/" list() -> 200 Booking[]
+  get "/one" get() -> 200 Booking
+}
+
+service Rooms at "/rooms" {
+  get "/" list() -> 200 Booking[]
+}
+
+example "unknown" {
+  lst() -> ok
+}
+
+example "ambiguous" {
+  list() -> ok
+}
+
+example "unknown service" {
+  Beds.list() -> ok
+}
+
+example "qualified is fine" {
+  Rooms.list() -> ok
+}

@@ -1,0 +1,63 @@
+// Endpoint rules, every statement form of spec/rules.md section 9: facts (required and
+// optional), named and unnamed `require` with and without `else`, `ensure` with `old`, `now`,
+// the implicit `NotFound`, the facts of the service and the rules digest.
+
+enum Status { pending, paid }
+
+model Room {
+  id: uuid
+  capacity: int
+  closed: bool
+  owner?: string
+  rule positive: capacity > 0
+}
+
+model NewBooking {
+  roomId: uuid
+  guests: int
+  start: datetime
+  note?: string
+  rule atLeastOne: guests >= 1
+}
+
+model Booking {
+  id: uuid
+  status: Status
+}
+
+error RoomClosed 409 {}
+error RoomFull 409 { capacity: int, message?: string }
+error TooEarly 409 { opensAt: datetime }
+
+service Bookings at "/bookings" {
+  post "/" createBooking(body: NewBooking) -> 201 Booking | RoomFull | RoomClosed | TooEarly {
+    ensure result.status == .pending
+    fact room: Room = body.roomId
+    fact previous?: Booking
+    /// A closed room takes no bookings.
+    require not room.closed else RoomClosed
+    require body.guests <= room.capacity else RoomFull { capacity: room.capacity, message: "full" }
+    require notInPast: body.start >= now
+      message "A booking cannot start in the past"
+    require late: body.start >= now + hours(1) else TooEarly { opensAt: now }
+    require has(previous) implies previous.status == .pending
+    require has(body.note) implies len(body.note) < 200
+    ensure keepsRoom: old(room.capacity) > 0 && old(has(previous) implies previous.status == .pending)
+    ensure result.id != body.roomId message "A booking has an id of its own"
+  }
+
+  put "/{id}" updateBooking(id: uuid, body: NewBooking) -> 200 Booking | RoomClosed {
+    fact booking: Booking = id
+    fact room: Room = body.roomId
+    require not room.closed else RoomClosed
+    ensure old(booking.status) == .pending implies result.status == .pending
+  }
+
+  get "/" listBookings(@query limit?: int) -> 200 Booking[] {
+    require has(limit) implies limit <= 100
+  }
+
+  get "/{id}" getBooking(id: uuid) -> 200 Booking {
+    fact booking: Booking = id
+  }
+}

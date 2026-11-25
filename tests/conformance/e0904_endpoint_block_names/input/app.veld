@@ -1,0 +1,18 @@
+// `old` exists only in `ensure`, `result` only in `ensure` and only when the endpoint has a
+// success body to read (spec/rules.md sections 9.1 and 9.4).
+
+model Booking { id: uuid, guests: int }
+
+service Bookings at "/bookings" {
+  post "/" create(body: Booking) -> 201 Booking {
+    fact room: Booking = body.id
+    fact copy: Booking = result.id
+    require old(body.guests) > 0
+    require result.guests > 0
+    ensure old(old(body.guests)) > 0
+  }
+
+  delete "/{id}" remove(id: uuid) -> 204 {
+    ensure result.id == id
+  }
+}

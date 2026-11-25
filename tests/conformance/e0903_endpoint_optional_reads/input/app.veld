@@ -1,0 +1,19 @@
+// Optional parameters, optional keys and optional facts need a `has` guard where they are read
+// (spec/rules.md sections 3.6 and 9.2). The key of a required fact must be known present; the
+// key of an optional fact may read an absent value.
+
+model Room { id: uuid, capacity: int }
+model Search { text?: string, limit: int }
+
+service Rooms at "/rooms" {
+  post "/search" search(body: Search, @query page?: int, @query room?: uuid) -> 200 Room {
+    fact byRoom: Room = room
+    fact lenient?: Room = room
+    require page > 0
+    require body.text == "x"
+    require has(page) implies page > 0
+    require has(body.text) implies body.text == "x"
+    require lenient.capacity > 0
+    require has(lenient) implies lenient.capacity > 0
+  }
+}

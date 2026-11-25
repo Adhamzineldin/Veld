@@ -289,8 +289,10 @@ impl BlockChecker<'_, '_, '_> {
             "a parameter"
         } else if self.facts.iter().any(|x| x.name == name) {
             "another fact"
-        } else if name == "now" || name == "result" {
-            "a name of the block"
+        } else if name == "now" {
+            "the clock"
+        } else if name == "result" {
+            "the success value"
         } else {
             return false;
         };

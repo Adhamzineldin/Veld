@@ -1,0 +1,13 @@
+// Statement names are unique in an endpoint, across `require` and `ensure`.
+
+model Booking { id: uuid, guests: int }
+
+service Bookings at "/bookings" {
+  post "/" create(body: Booking) -> 201 Booking {
+    require positive: body.guests > 0
+    require positive: body.guests > 1
+    ensure positive: result.guests > 0
+    require body.guests > 2
+    require body.guests > 3
+  }
+}

@@ -1,0 +1,18 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0003]: `allow` belongs to policies (phase 4) and is not supported yet
+ --> app/app.veld:8:5
+  |
+8 |     allow ManageBooking(body)
+  |     ^^^^^
+
+error[E0003]: `transition` belongs to state machines (phase 3) and is not supported yet
+ --> app/app.veld:9:5
+  |
+9 |     transition body.status: pending -> paid
+  |     ^^^^^^^^^^
+
+== ir ==
+(no IR: compilation failed)

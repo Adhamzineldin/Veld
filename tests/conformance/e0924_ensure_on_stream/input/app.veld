@@ -1,0 +1,9 @@
+// A stream has no single result for `ensure` to check (spec/rules.md 9.4).
+
+model Tick { n: int }
+
+service Clock at "/clock" {
+  get "/ticks" ticks() -> stream Tick {
+    ensure true
+  }
+}
