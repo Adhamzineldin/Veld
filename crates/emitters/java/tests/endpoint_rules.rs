@@ -120,6 +120,45 @@ fn every_example_passes_through_the_generated_test_handler_on_the_jdk_server() {
     assert_eq!(passed, 20, "every example of tests/rules/endpoints");
 }
 
+/// Compiles the bookings server (`gen.b`) and the given driver and runs it.
+fn run_driver(driver: &str, class: &str, with_client: bool) {
+    let ir = bookings_ir();
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = write_files(work.path(), &generate(&ir, Role::Server, None, false));
+    if with_client {
+        let mut o = options("gen.c", Some("17"));
+        o["testing"] = serde_json::json!(false);
+        let all = ir.services.iter().map(|s| s.id).collect();
+        let client = run(&ir, Role::Client, all, vec![], None, o);
+        sources.extend(write_files(work.path(), &client));
+    }
+    sources.push(repo_root().join("tests/toolchain/java/rules").join(driver));
+    javac_ok(work.path(), &sources, "17");
+    let out = java_main(work.path(), class, &[]);
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("OK"),
+        "{class} failed:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn the_production_handler_runs_facts_requires_ensures_and_old_over_http() {
+    if !require_javac("the_production_handler_runs_facts") {
+        return;
+    }
+    run_driver("EndpointHttp.java", "veldtest.EndpointHttp", false);
+}
+
+#[test]
+fn the_rules_digest_is_sent_and_the_client_follows_it() {
+    if !require_javac("the_rules_digest_is_sent") {
+        return;
+    }
+    run_driver("EndpointDigest.java", "veldtest.EndpointDigest", true);
+}
+
 #[test]
 fn the_bookings_server_and_client_compile_with_every_warning_on() {
     if !require_javac("the_bookings_server_and_client_compile") {
