@@ -251,6 +251,85 @@ fn diff_reports_a_tightened_invariant_with_both_expressions_and_fails_strict() {
         .stdout(predicate::str::contains("`end > start + 1`"));
 }
 
+// --- events in diff ----------------------------------------------------------------------
+
+const STREAM: &str = "event Paid { id: uuid }\nevent Gone { id: uuid }\n\nchannel Payments {\n  carries Paid\n}\n\nservice Billing {\n  publishes Payments\n}\n";
+
+/// Growing a stream (a new event, a channel that carries one more, a new subscriber) is
+/// compatible: `--strict` passes and nothing is listed as possibly breaking. Taking an event
+/// off a channel is not.
+#[test]
+fn diff_calls_additions_to_a_stream_compatible_and_a_removal_possibly_breaking() {
+    if !Command::new("git")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+    {
+        eprintln!("skipped: git is not available");
+        return;
+    }
+    let tmp = tempdir().unwrap();
+    init(tmp.path());
+    write(tmp.path(), "contracts/payments.veld", STREAM);
+    assert!(git(tmp.path(), &["init", "-q"]));
+    assert!(git(tmp.path(), &["add", "."]));
+    assert!(git(tmp.path(), &["commit", "-q", "-m", "base"]));
+
+    let grown = format!(
+        "{}\nevent Refunded {{ id: uuid }}\n\nservice Mailer {{\n  subscribes Payments as \"mail\" {{\n    on Paid -> sendReceipt\n  }}\n}}\n",
+        STREAM.replace("carries Paid", "carries Paid, Gone, Refunded")
+    );
+    write(tmp.path(), "contracts/payments.veld", &grown);
+    veld(tmp.path())
+        .args(["diff", "--against", "HEAD", "--strict"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Non-breaking changes (3)"))
+        .stdout(predicate::str::contains("event `Refunded` was added"))
+        .stdout(predicate::str::contains("now also carries"))
+        .stdout(predicate::str::contains("now subscribes to"))
+        .stdout(predicate::str::contains("Possibly breaking").not());
+
+    assert!(git(tmp.path(), &["commit", "-q", "-am", "grown"]));
+    write(
+        tmp.path(),
+        "contracts/payments.veld",
+        &grown.replace("carries Paid, Gone, Refunded", "carries Paid, Refunded"),
+    );
+    veld(tmp.path())
+        .args(["diff", "--against", "HEAD", "--strict"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "Possibly breaking changes (whether they break a caller or a consumer is not known)",
+        ))
+        .stdout(predicate::str::contains("a rule changed").not());
+}
+
+#[test]
+fn fmt_says_why_it_leaves_a_file_with_a_stray_doc_comment_alone() {
+    let tmp = tempdir().unwrap();
+    init(tmp.path());
+    let stray = STREAM.replace(
+        "  publishes Payments",
+        "  /// Tells the others.\n  publishes Payments",
+    );
+    write(tmp.path(), "contracts/payments.veld", &stray);
+    veld(tmp.path())
+        .arg("fmt")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("W0001"))
+        .stderr(predicate::str::contains(
+            "not formatted: a doc comment is attached to nothing and formatting would drop it",
+        ))
+        .stderr(predicate::str::contains("syntax errors").not());
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("contracts/payments.veld")).unwrap(),
+        stray
+    );
+}
+
 // --- export ------------------------------------------------------------------------------
 
 #[test]
