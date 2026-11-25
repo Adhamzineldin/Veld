@@ -627,3 +627,96 @@ fn a_name_outside_the_block_the_principal_and_old_in_an_invariant_are_reported()
     let _ = print_expr(&mut p, &old);
     assert_eq!(p.unsupported.len(), 1);
 }
+
+// ---- the principal and the parameters of a policy ----------------------------------------------
+
+fn show_scope(scope: super::Scope, e: &Expr) -> String {
+    let ir = veld_emit_conformance::ir_with_rule();
+    let tree = Tree::new(&ir, "crate", "src", vec![], true);
+    let ctx = Ctx {
+        tree: &tree,
+        here: "crate::app::greeter",
+    };
+    let mut p = RustPrinter::for_block(&ctx, scope);
+    let out = print_expr(&mut p, e).code;
+    assert!(p.unsupported.is_empty(), "{:?}", p.unsupported);
+    out
+}
+
+fn principal_scope() -> super::Scope {
+    super::Scope {
+        principal: Some("principal".into()),
+        ..block_scope()
+    }
+}
+
+#[test]
+fn the_principal_is_read_from_its_local_in_every_form() {
+    let id = from_root(
+        Root::Principal,
+        ty(Scalar::Uuid),
+        vec![step("id", false)],
+    );
+    assert_eq!(show_scope(principal_scope(), &id), "(*principal).id.as_str()");
+    let suspended = from_root(
+        Root::Principal,
+        ty(Scalar::Bool),
+        vec![step("suspended", false)],
+    );
+    let denied = x(ty(Scalar::Bool), ExprKind::Not(Box::new(suspended)));
+    assert_eq!(show_scope(principal_scope(), &denied), "!(*principal).suspended");
+    // A bare path of the principal is a place that an argument of a policy borrows.
+    let ir = veld_emit_conformance::ir_with_rule();
+    let tree = Tree::new(&ir, "crate", "src", vec![], true);
+    let ctx = Ctx {
+        tree: &tree,
+        here: "crate::app::greeter",
+    };
+    let mut p = RustPrinter::for_block(&ctx, principal_scope());
+    let whole = from_root(Root::Principal, ty(Scalar::Int), vec![]);
+    assert_eq!(p.raw_place(&whole).as_deref(), Some("(*principal)"));
+    // `has` reads an optional field of the principal.
+    let has = x(
+        boolean(),
+        ExprKind::Has(PathRef {
+            root: Root::Principal,
+            steps: vec![step("nick", true)],
+        }),
+    );
+    assert_eq!(show_scope(principal_scope(), &has), "(*principal).nick.is_some()");
+}
+
+fn policy_scope() -> super::Scope {
+    super::Scope {
+        params: [("user".to_string(), false), ("n".to_string(), false), ("now".to_string(), false)]
+            .into_iter()
+            .collect(),
+        facts: [("booking".to_string(), false)].into_iter().collect(),
+        locals: true,
+        ..super::Scope::default()
+    }
+}
+
+#[test]
+fn a_policy_parameter_is_a_local_that_holds_a_reference() {
+    let name = from_root(
+        Root::Param("user".into()),
+        ty(Scalar::String),
+        vec![step("name", false)],
+    );
+    assert_eq!(show_scope(policy_scope(), &name), "(*user).name.as_str()");
+    let n = from_root(Root::Param("n".into()), ty(Scalar::Int), vec![]);
+    let positive = bin(Op::Gt, boolean(), n, int(0));
+    assert_eq!(show_scope(policy_scope(), &positive), "(*n) > 0_i32");
+    // A parameter called `now` is renamed, so that the clock keeps its name.
+    let late = from_root(Root::Param("now".into()), ty(Scalar::Int), vec![]);
+    assert_eq!(show_scope(policy_scope(), &late), "(*now_)");
+    assert_eq!(show_scope(policy_scope(), &now()), "now");
+    // A fact of `can_<endpoint>` is a local too.
+    let total = from_root(
+        Root::Fact("booking".into()),
+        ty(Scalar::Int),
+        vec![step("total", false)],
+    );
+    assert_eq!(show_scope(policy_scope(), &total), "(*booking).total");
+}

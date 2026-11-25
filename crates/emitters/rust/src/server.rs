@@ -388,20 +388,30 @@ fn forward(call: &str, typed: Option<&str>) -> String {
     }
 }
 
+/// The forward of a typed hook is an `async` block in a function that returns `impl Future`.
+fn allow_async(w: &mut CodeWriter, typed: Option<&str>) {
+    if typed.is_some() {
+        w.line("#[allow(clippy::manual_async_fn)]");
+    }
+}
+
 fn auth_forwards(w: &mut CodeWriter, n: &Needs, typed: Option<&str>) {
     let future = |out: &str| format!("impl std::future::Future<Output = {out}> + Send + 'a");
     let principal = future("Option<veld::server::Principal>");
     if n.bearer {
+        allow_async(w, typed);
         w.open(format!("fn auth_bearer<'a>(&'a self, token: &'a str, ctx: &'a veld::server::RequestContext) -> {principal}"));
         w.line(forward("auth_bearer(token, ctx)", typed));
         w.close().blank();
     }
     if n.basic {
+        allow_async(w, typed);
         w.open(format!("fn auth_basic<'a>(&'a self, user: &'a str, password: &'a str, ctx: &'a veld::server::RequestContext) -> {principal}"));
         w.line(forward("auth_basic(user, password, ctx)", typed));
         w.close().blank();
     }
     if n.api_key {
+        allow_async(w, typed);
         w.open(format!("fn auth_api_key<'a>(&'a self, key: &'a str, ctx: &'a veld::server::RequestContext) -> {principal}"));
         w.line(forward("auth_api_key(key, ctx)", typed));
         w.close().blank();

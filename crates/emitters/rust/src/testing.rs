@@ -278,7 +278,7 @@ fn trusted(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
                 .unwrap_or_default();
             w.line("let wire = header_json(ctx, \"veld-test-principal\").ok().flatten()?;");
             w.line(format!(
-                "let principal: {ty} = serde_json::from_value({schema}.from_wire(&wire, false)).ok()?;"
+                "let principal: {ty} = serde_json::from_value(vs::Schema::from_wire({schema}, &wire, false)).ok()?;"
             ));
             w.line("Some(Principal::new(principal))");
         }

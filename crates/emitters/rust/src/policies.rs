@@ -458,7 +458,8 @@ fn write_can(
     if ep.rules.allows.is_empty() {
         w.line(checks.join(" && "));
     } else {
-        w.line("let now = veld::rules::system_now_ms();");
+        w.line("use veld::rules as vr;");
+        w.line("let now = vr::system_now_ms();");
         w.line(format!(
             "(|| -> veld::rules::Res<bool> {{ Ok({}) }})().unwrap_or(false)",
             checks.join(" && ")
