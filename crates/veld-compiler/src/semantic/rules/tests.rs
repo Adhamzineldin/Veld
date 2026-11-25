@@ -757,7 +757,7 @@ mod negative_literals {
         );
         // `not -2147483648` is a type error (`not` needs a bool) but not a range error.
         let c = first_code(NUMS, "not -2147483648 == i");
-        assert!(!c.contains(&"E0908"), "{c:?}");
+        assert_eq!(c, vec!["E0902"]);
     }
 
     #[test]
@@ -776,7 +776,7 @@ mod negative_literals {
             format!("(lt long:{min} self.l)")
         );
         let c = first_code(NUMS, &format!("not {min} == l"));
-        assert!(!c.contains(&"E0908") && !c.contains(&"E0002"), "{c:?}");
+        assert_eq!(c, vec!["E0902"]);
     }
 
     #[test]
