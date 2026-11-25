@@ -1026,3 +1026,78 @@ Only *proved* (for the first three questions) and a confirmed *counterexample* (
 | `E0961` | A derived field is optional, or has `@readonly` or `@example` |
 | `E0970` | `--prove`: the rules contradict each other, a `require` can never pass, or a policy permits nobody |
 | `W0970` | `--prove`: some questions ended unknown or unsupported |
+
+## 19. Extras (Phase 6)
+
+Three small things that do not depend on each other. None is built yet.
+
+### 19.1 `veld test --coverage`
+
+A rule that no example has seen fail is not tested. `--coverage` says which rules the examples exercise.
+
+- It counts every **enforceable unit** of the workspace: each invariant of a declaration that a service reaches or an event example uses (by rule id), each `require`, each `ensure`, each `allow` line and each `transition` line.
+- While the reference evaluator runs the examples (§12.3), a unit is **held** when some example evaluated it and it held, and **violated** when some example evaluated it and it did not hold or could not be evaluated. A unit an earlier rejection kept from being evaluated counts as neither. For an `allow` line, held is permitted and violated is denied; for a `transition`, held is a legal move and violated is an illegal one.
+- A unit is **covered** when it was both held and violated. An audited rule (§17.1) counts like an enforced one.
+- An `ensure` is evaluated only by an example with `returns`, so an endpoint whose examples never say what the handler returns leaves its `ensure` lines uncovered.
+- The fuzzer does not count: `--coverage` is about what the contract's own examples show.
+
+The report follows the list of examples: one line with the totals, then every unit that is not covered, with what is missing, ordered by package and then by position in the source.
+
+```
+coverage: 31 of 38 rules held and violated (81%)
+  bookings/NewBooking.atMost30Days        never violated
+  bookings/Bookings.cancelBooking require notCheckedIn   never evaluated
+  bookings/Bookings.payBooking allow ManageBooking       never denied
+```
+
+- The percentage is rounded down to a whole number. A workspace with no unit reports `coverage: no rules` and is at 100.
+- `--fail-under N` (0 to 100) makes the run exit 1 when the percentage is below `N`. Without it the exit code is that of the examples.
+- `--coverage` works with and without `--live`: coverage comes from the reference evaluation either way.
+
+### 19.2 `veld export rules`
+
+`veld export rules [-o FILE]` writes the rule book of the workspace as Markdown, for people who do not read contracts. It is written as `veld export openapi` writes its file: the user owns it.
+
+The document is deterministic and has, per service package in name order:
+
+1. **Each declaration with invariants**, in source order: its name and doc comment, and one line per rule with the rule's message (or its name when it has none), its doc comment, and the expression as `veld fmt` prints it.
+2. **Each state machine**: a table of the moves (from, to) and the final states.
+3. **Each policy**: its doc comment, then its `permit` and `forbid` clauses in order, a `forbid` with its message.
+4. **Each endpoint with rules**, in source order: the method and path, the facts it loads, who may call it (`allow`), the move it makes (`transition`), what it requires (each `require` with the error it answers), and what it promises (`ensure`).
+5. **The examples** of the package, by name, each with its outcome.
+
+An audited rule (§17.1) is marked "audited, not enforced". A deprecated rule is marked so. The export of a workspace without rules says that it has none.
+
+### 19.3 `@pii` and `@secret`
+
+```veld
+model Guest {
+  name: string @pii
+  phone?: string @pii
+  password: string @secret
+}
+```
+
+- Both are annotations of a field of a model, an error or an event, and take no argument. Anywhere else, or with an argument, they are `E0602`. A field may have both.
+- `@pii` says the field holds personal data. `@secret` says its value must never be shown: a password, a token, a key.
+- **They change nothing on the wire.** The field's type, its validation, the declaration's signature and the rules are what they would be without the annotation, and a rule may read the field.
+- In the IR a `Field` gains `"pii": true` and `"secret": true`, each omitted when false, so a contract without them keeps its IR. The OpenAPI export marks the property with `x-veld-pii` and `x-veld-secret`.
+
+**What generated code must not do.** Generated code already sends a caller only what the contract's types say. These two annotations are about everything else it emits:
+
+- **Messages.** The message of a validation issue, of a violation or of a generated log line never contains the value of a field, annotated or not. Messages are meant to be fixed texts with paths and names; this makes it a tested rule: each runtime gets a test that feeds a marker value through every failing path and searches every message for it, and a message that repeats a value is changed.
+- **Captures** (§17.3). A capture leaves out the value of every `@pii` and `@secret` field, in the parameters, the facts and the principal, at any depth, and lists the wire paths it left out in `redacted`. `veld test --from-violation` then prints an example in which those values are filled in (§12.2) and says which were: such an example may not reproduce the violation, and the tool says so instead of pretending.
+- **Audit events** (the platform's `@audited`) follow the same rule when they are built.
+
+**Lints.**
+
+| Code | Name | Reports |
+|---|---|---|
+| `L0015` | `pii-without-auth` | A `@pii` field that a response, a declared error or a stream item of an endpoint with `@auth(none)`, or with no auth at all, can contain |
+| `L0016` | `secret-in-output` | A `@secret` field that any response, declared error, stream item or event can contain |
+
+Both are warnings by default (`[lint]` in `veld.toml` changes the level). `secret-in-output` has one usual fix: a separate model for what the server returns.
+
+**What they are not.** The annotations stop generated code from repeating a value where nobody asked for it. They do not encrypt anything, they do not reach the application's own logs or its database, and they are not, by themselves, compliance with any regulation.
+
+Neither annotation is a feature a generator can refuse: a generator that emits captures or audit events must redact, and one that emits neither has nothing to redact.

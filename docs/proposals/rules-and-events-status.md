@@ -160,6 +160,7 @@ Found when the example gained a state machine and policies (25 Nov), most import
 - [ ] Rule benchmark gate in CI
 
 ## Phase 6: extras
+- [~] Spec: `spec/rules.md` section 19 drafted (what `--coverage` counts and prints, `--fail-under`; what the rule book of `veld export rules` contains; `@pii` and `@secret`: no change on the wire, what generated code must leave out, the lints `L0015` `pii-without-auth` and `L0016` `secret-in-output`). No code
 - [ ] `veld test --coverage`
 - [ ] `veld export rules`
 - [ ] `@pii` and `@secret` redaction, lint for `@pii` without auth
