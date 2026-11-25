@@ -849,3 +849,128 @@ tests/rules/<group>/<name>.json      cases for it
 | `final a, b` anywhere in an enum | A statement only when an identifier follows on the same line (§2.2) | `enum X { final }` must keep meaning a variant. An existing enum with a variant named `final` followed on the same line by another variant without a comma is the one program whose meaning changes. |
 | `v.end.getTime()` in the TypeScript sketch | Runtime helpers (§8) | `datetime`, `decimal` and `long` are strings in TypeScript and Rust. |
 | `principal User`, used as `user` | The same, plus `as name` (§11) | A package whose endpoints already have a parameter named `user` needs a way out. |
+
+## 17. Lifecycle (Phase 5)
+
+**Status: draft, not implemented.** Sections 17 and 18 are written before their code, as the rest of this document was.
+
+### 17.1 Rolling a rule out: `@rollout(audit)`
+
+```veld
+model Booking {
+  guests: int
+  @rollout(audit)
+  rule smallParty: guests <= 6
+}
+```
+
+```ebnf
+require = { doc } { annotation } "require" … ;      (* was: { doc } "require" … *)
+ensure  = { doc } { annotation } "ensure" … ;
+```
+
+- `@rollout(audit)` MAY stand on an invariant, a `require` or an `ensure`. Anywhere else, or with another argument, it is `E0602`.
+- An audited rule is evaluated exactly where it would be, and **never rejects**. A violation, or an evaluation error, goes to `onRuleViolation` with the outcome `audited`, and the request continues as if the rule held. A `require … else E` that is audited never answers with `E`. An audited violation never appears in a response.
+- Output mode `off` still skips an audited output rule. In `strict` and `audit` it is evaluated and reported.
+- Clients skip audited rules, in the local check and in `partial`.
+- The annotation is not part of the rule's id (§6), so removing it later keeps the id. **The rules digest (§9.7) covers only enforced invariants**: an audited invariant is left out of its input. Adding or removing the annotation therefore changes the digest, and a deployed client that still enforces the rule locally stops its local checks. A contract with no audited rule has the digest it has today.
+- `veld test` treats an audited rule as not enforced, and lists under each example the audited rules that example would violate, without failing it.
+- `veld diff`: adding the annotation to an existing rule is judged like removing the rule; removing the annotation like adding the rule. A new rule that arrives audited is compatible.
+- In the IR, a rule, a `require` and an `ensure` gain `"rollout": "audit"`, omitted when enforced. The feature is `rules_rollout`: a generator that does not know it would enforce a rule that must not reject, so it reports `E0801`.
+
+### 17.2 Derived fields
+
+```veld
+model Order {
+  items: Item[] @length(max: 100)
+  discount: decimal = 0
+  subtotal: decimal = sum(items, i => i.price * i.qty)
+  total:    decimal = subtotal - discount
+}
+```
+
+- A field whose `=` is followed by a literal has a default, as today. A field whose `=` is followed by any other expression is **derived**: its value is computed from the other fields of the same value.
+- The scope is that of an invariant (§5.1): the fields of the declaration, no `now`, no facts. A derived field MAY read other derived fields; a cycle is `E0960`. Values are computed in dependency order, and in declaration order among fields that do not depend on each other.
+- The expression's type MUST fit the field's type by the widening rules of §3 (`E0902`). A derived field MUST be required, and MUST NOT have `@readonly` or `@example` (`E0961`). Reading an optional field needs a guard (§3.6). Models, errors and events may have derived fields.
+- **Nobody supplies a derived value.**
+  - *A request.* The server ignores a value the caller sent for a derived field and computes it, after defaults and before the invariants (step 5), so rules may read derived fields.
+  - *A response, a declared error, a stream item, a published event.* The handler's value need not contain derived fields: in the type a handler returns they are optional, and a value it does supply is overwritten. The server computes them before the output rules (step 8).
+  - *A fact.* A fact is given its defaults and its derived fields after it is loaded.
+  - *A client* takes a derived value from a response as it is, and never recomputes it: the server's contract may be newer.
+- Every target, clients included, gets one function per declaration with derived fields that computes them for a value, so a form can show `total` while the user types. It is the code the server runs.
+- An evaluation error (§3.7) in a derived field is a violation whose `rule` is the field's id and whose `error` is set: `422 ValidationError` in a request, the output mode in a response.
+- Identity: `veld:<package>/<Decl>.<field>@<hex16>` over the RFC 8785 JSON of `{ "d": "<qualified decl name>", "k": "derived", "n": "<wire name>", "e": ExprShape }`. The expression is not part of the declaration's signature; the field is, like any other.
+- The rules digest (§9.7) also covers the ids of the derived fields a service reaches, because a client's local check reads values it derived itself. A contract with no derived field has the digest it has today.
+- In an example, a derived field is never filled in (§12.2) and MUST NOT be written (`E0952`); it is computed.
+- `veld diff`: a changed derived expression is "possibly breaking". The OpenAPI export marks the field `readOnly` with `x-veld-derived`.
+- In the IR, `Field` gains `"derived": Expr`, omitted when absent. The feature is `rules_derived`.
+
+### 17.3 From a violation to an example: `veld test --from-violation`
+
+- The event of `onRuleViolation` (§5.3) does not contain the request, on purpose. A server option, off by default, adds a **capture** to it: the service and endpoint, the parameters in wire form, the facts, the principal and the clock. The documentation of the option says that a capture contains whatever the caller sent.
+- `veld test --from-violation <file>` reads one such event as JSON, finds the endpoint by its operation signature, and prints an `example` block: the captured request, and the outcome the reference evaluator gives it. The developer pastes it into the contract. It writes nothing.
+- An event without a capture, an operation the contract does not have, and a capture that does not fit the contract's types are each reported as such, with exit code 1.
+
+## 18. `veld check --prove` (Phase 5)
+
+`--prove` asks an SMT solver questions about the rules. It finds contradictions that examples cannot find, because an example needs a value and a contradiction has none.
+
+**What it is not.** It reasons about the rules of the contract, over the fragment below. It says nothing about handlers, databases, facts that are loaded, concurrency or deployed code, and its output never uses the words "verified" or "correct" for an application.
+
+### 18.1 The questions
+
+| Question | A finding |
+|---|---|
+| Can the invariants of a declaration all hold, together with its constraints? | `E0970`: no value of `M` can exist, with the rules of the unsatisfiable core |
+| Can a `require` pass, given the invariants of the parameters and the `require` lines before it? | `E0970`: the `require` can never pass |
+| Does a policy permit anybody? | `E0970`: the policy permits nobody |
+| `veld diff --prove`: is every value the old rule accepted still accepted? | "tightened", with a value that was accepted and is now rejected; or "not tightened", proved |
+
+Whether a state of a state machine can be reached is not asked: the contract does not say where a value starts.
+
+### 18.2 Four results
+
+Every question ends in exactly one of:
+
+- **proved.** The solver answered `unsat`: no value exists (the first three questions), or no value distinguishes the two rules (`diff`).
+- **counterexample.** The solver produced a value. **Veld evaluates it with the reference evaluator before it is shown**; a value the evaluator does not confirm is never printed, and the result becomes *unknown*. For the first three questions a confirmed value means the question has no finding.
+- **unknown.** The solver timed out or answered `unknown`, or its value was not confirmed.
+- **unsupported.** The question needs something outside the fragment in a place where leaving it open would make the answer meaningless.
+
+Only *proved* (for the first three questions) and a confirmed *counterexample* (for `diff`) are findings. *Unknown* and *unsupported* are counted and listed, never turned into a pass or a failure.
+
+### 18.3 The fragment, and why a proof can be trusted
+
+| Veld | Modelled as |
+|---|---|
+| `bool`, `&&`, `\|\|`, `!`, `implies`, `==`, `!=`, `in` over a literal list | Booleans |
+| `int`, `long`, arithmetic, comparisons | Integers with the range of the type; an operation that leaves the range is an evaluation error, which makes the rule violated (§3.7) |
+| `decimal`, `+`, `-`, `*`, comparisons | Exact reals |
+| `datetime`, `date`, `time`, `duration` | Integers: milliseconds, days |
+| An enum | A finite set of its variants |
+| An optional field and `has` | A Boolean beside the value |
+| `len` of a string, list or map | A non-negative integer, bounded by `@length` |
+| `@min`, `@max`, `@length` | Assertions |
+| String equality | Equality over an uninterpreted sort |
+| `float`; the content of strings; `matches`; every comprehension and `sum`; `now` | **Left open**: an unconstrained value of the right sort |
+
+- Leaving a part open makes the problem easier to satisfy, never harder. So `unsat` for the opened problem implies `unsat` for the real one: **a proved contradiction stays sound** however much was left open.
+- A value found for an opened problem may not be a real one, which is why every value is confirmed by the evaluator (§18.2).
+- A `diff` question claims something about all values, where leaving a part open is not sound. If either rule contains an open part, the result is *unsupported*.
+- The encoder is tested against the evaluator: for generated values, the encoding with the value substituted and the evaluator must agree on every rule of the vectors (§15).
+
+### 18.4 The solver
+
+- An external program that reads SMT-LIB 2 on standard input: Z3 (`z3 -in`) or cvc5. `--solver <path>` or `VELD_SOLVER` names it; otherwise `z3` and then `cvc5` are looked up on `PATH`. `veld` stays one binary and links no solver.
+- Without a solver, `--prove` says so in one line and the normal checks still run; the exit code is that of `veld check`.
+- Each question has a time limit (5 seconds by default, `--prove-timeout`). The solver is started with a fixed random seed.
+- The report names the solver and its version, lists the fragment's open parts that the contract uses, and counts the four results. `E0970` findings fail `veld check`; `W0970` reports that some questions ended *unknown* or *unsupported*, with their names.
+
+### 18.5 Codes of sections 17 and 18
+
+| Code | Meaning |
+|---|---|
+| `E0960` | Derived fields depend on each other in a cycle |
+| `E0961` | A derived field is optional, or has `@readonly` or `@example` |
+| `E0970` | `--prove`: the rules contradict each other, a `require` can never pass, or a policy permits nobody |
+| `W0970` | `--prove`: some questions ended unknown or unsupported |
