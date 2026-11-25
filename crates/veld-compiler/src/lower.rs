@@ -16,8 +16,8 @@ use crate::semantic::{Program, ROutcome};
 use crate::signature;
 use crate::syntax::ast::doc_text;
 use veld_ir::{
-    Decl, DeclId, DeclKind, Endpoint, Enum, ErrorDecl, ErrorResponse, Field, Ir, Model, Origin,
-    Package, PackageId, Param, Service, ServiceId, Success, Type, Union, UnionArm, Variant,
+    Decl, DeclId, DeclKind, Endpoint, Enum, ErrorDecl, ErrorResponse, Field, Flow, Ir, Model,
+    Origin, Package, PackageId, Param, Service, ServiceId, Success, Type, Union, UnionArm, Variant,
 };
 
 struct Lowerer<'p, 'a> {
@@ -242,6 +242,17 @@ impl Lowerer<'_, '_> {
                         deprecated: v.deprecated.clone(),
                     })
                     .collect(),
+                flows: d
+                    .res
+                    .machine
+                    .flows
+                    .iter()
+                    .map(|f| Flow {
+                        from: f.from.clone(),
+                        to: f.to.clone(),
+                    })
+                    .collect(),
+                finals: d.res.machine.finals.clone(),
             }),
             DKind::Union => DeclKind::Union(Union {
                 discriminator: d.res.discriminator.clone(),

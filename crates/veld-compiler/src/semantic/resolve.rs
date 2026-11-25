@@ -595,7 +595,10 @@ fn resolve_one(prog: &Program<'_>, i: usize, diags: &mut Vec<Diagnostic>) -> Res
             res.default_status = error_status(e, diags);
             res.own_fields = resolve_fields(prog, module, &e.fields, diags);
         }
-        DeclKind::Enum(e) => res.variants = resolve_variants(e, diags),
+        DeclKind::Enum(e) => {
+            res.variants = resolve_variants(e, diags);
+            res.machine = super::machine::resolve_machine(e, &res.variants, diags);
+        }
         DeclKind::Union(u) => {
             res.discriminator = anns
                 .discriminator

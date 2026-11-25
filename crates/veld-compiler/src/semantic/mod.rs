@@ -6,6 +6,9 @@ mod collect;
 mod examples;
 pub use collect::module_path;
 mod inherit;
+mod machine;
+#[cfg(test)]
+mod machine_tests;
 pub mod regex;
 mod resolve;
 pub mod rules;
@@ -21,7 +24,7 @@ use crate::diagnostics::{Diagnostic, FileId, Span, has_errors};
 use crate::syntax::ast;
 pub use examples::{RExample, ROutcome};
 pub use rules::RRule;
-pub(crate) use rules::{RBlock, RElse, REnsure, RRequire};
+pub(crate) use rules::{RBlock, RElse, REnsure, RRequire, RTransition};
 use veld_ir::{Auth, Constraints, Literal, Method, PackageKind, Type};
 
 /// One parsed `.veld` file of a package.
@@ -96,6 +99,14 @@ pub struct RVariant {
     pub span: Span,
 }
 
+/// One edge of a state machine.
+#[derive(Debug, Clone)]
+pub struct RFlow {
+    pub from: String,
+    pub to: String,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone)]
 pub struct RArm {
     pub label: String,
@@ -112,6 +123,8 @@ pub struct Resolved {
     pub fields: Vec<RField>,
     pub default_status: Option<u16>,
     pub variants: Vec<RVariant>,
+    /// The machine of an enum with flows (`spec/rules.md` section 10).
+    pub machine: machine::RMachine,
     pub discriminator: String,
     pub arms: Vec<RArm>,
     pub const_ty: Option<Type>,

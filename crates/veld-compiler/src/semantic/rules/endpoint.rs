@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::checker::{Checker, EpScope, Phase};
 use super::depth;
+use super::transition::{self, RTransition};
 use super::types::of;
 use crate::diagnostics::{Diagnostic, Span};
 use crate::semantic::{DKind, Program, REndpoint, RField, ServiceInfo};
@@ -31,6 +32,7 @@ const MAX_JSON_DEPTH: usize =
 #[derive(Debug, Clone, Default)]
 pub struct RBlock {
     pub facts: Vec<RFact>,
+    pub transition: Option<RTransition>,
     pub requires: Vec<RRequire>,
     pub ensures: Vec<REnsure>,
 }
@@ -91,6 +93,13 @@ pub(crate) fn has_required_fact(e: &ast::Endpoint) -> bool {
         .any(|s| matches!(s, Stmt::Fact(f) if !f.optional))
 }
 
+/// True when the block has a `transition`: the endpoint then implicitly declares `InvalidTransition`.
+pub(crate) fn has_transition(e: &ast::Endpoint) -> bool {
+    statements(e)
+        .iter()
+        .any(|s| matches!(s, Stmt::Transition(_)))
+}
+
 /// True when a `require` has no `else`: its answer is `ValidationError`.
 pub(crate) fn has_bare_require(e: &ast::Endpoint) -> bool {
     statements(e)
@@ -141,6 +150,7 @@ pub(crate) fn check_block(
     } else {
         ep.success_ty.clone()
     };
+    transition::reserved_name(e, diags);
     let mut bc = BlockChecker {
         prog,
         module,
@@ -176,14 +186,29 @@ impl BlockChecker<'_, '_, '_> {
                 out.facts.extend(self.fact(f));
             }
         }
+        out.transition = self.transitions(stmts);
         for s in stmts {
             match s {
-                Stmt::Fact(_) => {}
+                Stmt::Fact(_) | Stmt::Transition(_) => {}
                 Stmt::Require(r) => out.requires.extend(self.require(r)),
                 Stmt::Ensure(r) => out.ensures.extend(self.ensure(r)),
             }
         }
         out
+    }
+
+    /// The first `transition` is checked; any other is `E0934`.
+    fn transitions(&mut self, stmts: &[Stmt]) -> Option<RTransition> {
+        let all = transition::transitions(stmts);
+        for extra in all.iter().skip(1) {
+            transition::extra_transition(all[0].span, extra, self.diags);
+        }
+        let scope = transition::Scope {
+            prog: self.prog,
+            facts: &self.facts,
+            poisoned: &self.poisoned,
+        };
+        scope.check(all.first()?, self.diags)
     }
 
     /// Runs `f` with a checker for the statement of kind `phase`.

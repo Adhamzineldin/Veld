@@ -655,6 +655,10 @@ impl Ctx<'_, '_> {
         if rules::has_required_fact(e) {
             self.add_implicit(ep, "NotFound", 404);
         }
+        // A `transition` whose guard fails answers `409 InvalidTransition` (`spec/rules.md` 10.2).
+        if rules::has_transition(e) {
+            self.add_implicit(ep, "InvalidTransition", 409);
+        }
         if ep.auth.kind != veld_ir::AuthKind::None {
             self.add_implicit(ep, "Unauthorized", 401);
         }

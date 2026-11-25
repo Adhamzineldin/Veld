@@ -15,6 +15,7 @@ mod ops;
 mod paths;
 #[cfg(test)]
 mod tests;
+mod transition;
 mod types;
 
 use std::collections::BTreeSet;
@@ -26,8 +27,9 @@ use crate::syntax::ast::{self, DeclKind, doc_text};
 use checker::Checker;
 pub(crate) use endpoint::{
     RBlock, RElse, REnsure, RRequire, check_block, check_service_facts, has_bare_require,
-    has_required_fact,
+    has_required_fact, has_transition,
 };
+pub(crate) use transition::RTransition;
 use veld_ir::rules::Expr;
 
 /// A checked rule of one declaration.

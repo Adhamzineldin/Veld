@@ -3,10 +3,11 @@
 use std::collections::BTreeMap;
 
 use super::Lowerer;
-use crate::semantic::{RElse, REndpoint, REnsure, RRequire, ServiceInfo};
-use crate::signature::{self, EndpointRef, StatementKind};
+use crate::semantic::{RElse, REndpoint, REnsure, RRequire, RTransition, ServiceInfo};
+use crate::signature::{self, EndpointRef, StatementKind, TransitionRef};
 use veld_ir::endpoint_rules::{
-    ElseError, ElseField, EndpointEnsure, EndpointFact, EndpointRequire, EndpointRules, ServiceFact,
+    ElseError, ElseField, EndpointEnsure, EndpointFact, EndpointRequire, EndpointRules,
+    EndpointTransition, ServiceFact,
 };
 use veld_ir::{Decl, Type};
 
@@ -43,7 +44,13 @@ impl Lowerer<'_, '_> {
             .ensures
             .iter()
             .map(|r| self.ensure(r, s.module, &at, decls));
+        let transition = e
+            .rules
+            .transition
+            .as_ref()
+            .map(|t| self.transition(t, s.module, &at));
         EndpointRules {
+            transition,
             facts: facts.collect(),
             requires: requires.collect(),
             ensures: ensures.collect(),
@@ -88,6 +95,33 @@ impl Lowerer<'_, '_> {
             reads: r.reads.clone(),
             docs: r.docs.clone(),
             origin: self.origin(r.span, module),
+        }
+    }
+
+    fn transition(
+        &self,
+        t: &RTransition,
+        module: usize,
+        at: &EndpointRef<'_>,
+    ) -> EndpointTransition {
+        let path: Vec<String> = t.steps.iter().map(|s| s.wire.clone()).collect();
+        let id = signature::transition_rule_id(
+            at,
+            &TransitionRef {
+                fact: &t.fact,
+                path: &path,
+                from: &t.from_wire,
+                to: &t.to_wire,
+            },
+        );
+        EndpointTransition {
+            id,
+            fact: t.fact.clone(),
+            steps: t.steps.clone(),
+            decl: self.decl_id(t.decl),
+            from: t.from.clone(),
+            to: t.to.clone(),
+            origin: self.origin(t.span, module),
         }
     }
 

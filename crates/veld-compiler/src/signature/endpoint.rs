@@ -16,7 +16,7 @@ use veld_ir::rules::Expr;
 use veld_ir::{Decl, Ir, ServiceId};
 
 use super::rules::shape;
-use super::{Json, canonical, hex16, obj, text};
+use super::{Json, canonical, cmp_utf16, hex16, obj, text};
 
 /// The endpoint a statement belongs to.
 #[derive(Debug, Clone, Copy)]
@@ -82,6 +82,53 @@ pub fn endpoint_rule_id(
         at.endpoint,
         name.unwrap_or(kind.word()),
         hex16(bytes.as_bytes())
+    )
+}
+
+/// What a `transition` statement is identified by (`spec/rules.md` section 10.2). Every name is a
+/// wire value or a wire name, never a source name.
+#[derive(Debug, Clone, Copy)]
+pub struct TransitionRef<'a> {
+    pub fact: &'a str,
+    /// The wire names of the path below the fact.
+    pub path: &'a [String],
+    /// The wire values of the sources, in any order.
+    pub from: &'a [String],
+    pub to: &'a str,
+}
+
+/// The canonical JSON that the id of a `transition` hashes.
+#[must_use]
+pub fn transition_rule_bytes(at: &EndpointRef<'_>, t: &TransitionRef<'_>) -> String {
+    let qualified = format!(
+        "{}:{}.{}.{}",
+        at.package, at.module, at.service, at.endpoint
+    );
+    let mut sources: Vec<&String> = t.from.iter().collect();
+    sources.sort_by(|a, b| cmp_utf16(a, b));
+    sources.dedup();
+    canonical(&obj(vec![
+        ("d", text(&qualified)),
+        ("k", text("transition")),
+        ("f", text(t.fact)),
+        ("p", Json::Arr(t.path.iter().map(|p| text(p)).collect())),
+        (
+            "s",
+            Json::Arr(sources.into_iter().map(|s| text(s)).collect()),
+        ),
+        ("t", text(t.to)),
+    ]))
+}
+
+/// The id of a `transition`: `veld:<package>/<Service>.<endpoint>.transition@<hex16>`.
+#[must_use]
+pub fn transition_rule_id(at: &EndpointRef<'_>, t: &TransitionRef<'_>) -> String {
+    format!(
+        "veld:{}/{}.{}.transition@{}",
+        at.package,
+        at.service,
+        at.endpoint,
+        hex16(transition_rule_bytes(at, t).as_bytes())
     )
 }
 
