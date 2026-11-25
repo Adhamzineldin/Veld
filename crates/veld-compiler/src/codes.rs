@@ -244,10 +244,53 @@ pub const CODES: &[CodeInfo] = &[
         G,
         "Generator or plugin failure without a more specific code",
     ),
+    e(
+        "E0901",
+        C,
+        "Unknown name in an expression, or a lambda variable that shadows another name",
+    ),
+    e(
+        "E0902",
+        C,
+        "Type error in an expression: operand types do not fit the operator, a rule that is not `bool`, a chained comparison, an enum literal with no enum to infer",
+    ),
+    e(
+        "E0903",
+        C,
+        "An optional value is read where it is not known to be present",
+    ),
+    e(
+        "E0904",
+        C,
+        "`now`, `result` or `old` used where it is not available",
+    ),
+    e(
+        "E0905",
+        C,
+        "Operation not supported on this type: `/` or `%` on decimal, ordering strings, comparing models, lists, maps, bytes or json, a `const` of an unsupported type",
+    ),
+    e(
+        "E0906",
+        C,
+        "Unknown function, wrong number or type of arguments, lambda where none is allowed",
+    ),
+    e(
+        "E0907",
+        C,
+        "Duplicate rule name in a declaration, counting inherited rules",
+    ),
+    e("E0908", C, "Numeric literal out of range for its type"),
     w("W0001", C, "Doc comment is not attached to anything"),
     w("W0201", C, "Unused import"),
     w("W0202", C, "Declaration shadows a prelude declaration"),
     w("W0701", C, "Service consumes itself"),
+    w("W0901", C, "`==` or `!=` on `float`"),
+    w(
+        "W0902",
+        C,
+        "Nested comprehension over a list without `@length(max: n)`",
+    ),
+    w("W0903", C, "A rule that reads no field"),
     l(
         "L0001",
         T,

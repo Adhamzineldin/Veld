@@ -9,10 +9,15 @@
     reason = "token scanning: only a few tokens matter, the rest are skipped"
 )]
 
+mod expr;
+#[cfg(test)]
+mod rule_tests;
+
 use super::ast::{
     Annotation, Arg, ArgValue, ConstDecl, Decl, DeclKind, Doc, Endpoint, EnumDecl, ErrorDecl,
     Field, File, HttpMethod, Ident, Import, LitKind, Literal, ModelDecl, Param, RespItem,
-    Responses, ServiceDecl, StrLit, TypeExpr, TypeExprKind, UnionArm, UnionDecl, Use, Variant,
+    Responses, Rule, ServiceDecl, StrLit, TypeExpr, TypeExprKind, UnionArm, UnionDecl, Use,
+    Variant,
 };
 use super::lexer::{Comment, Tok, Token, lex};
 use crate::diagnostics::{Diagnostic, FileId, Span};
@@ -52,12 +57,13 @@ struct Parser<'a> {
     pos: usize,
     file: FileId,
     diags: Vec<Diagnostic>,
-    /// Current nesting of types and annotation arguments (see [`MAX_NESTING`]).
+    /// Current nesting of types, annotation arguments and expressions (see [`MAX_NESTING`]).
     depth: usize,
 }
 
-/// The deepest nesting of types (`Map<string, Map<...>>`, `int[][]`) and annotation call
-/// arguments the parser accepts. Every later pass recurses over these, so the limit keeps the
+/// The deepest nesting of types (`Map<string, Map<...>>`, `int[][]`), annotation call
+/// arguments and rule expressions the parser accepts. For an expression it is the depth of the
+/// tree, so a left-associative chain such as `a + b + c + ...` counts one level per operator. Every later pass recurses over these, so the limit keeps the
 /// stack bounded for any input.
 pub const MAX_NESTING: usize = 64;
 
@@ -147,6 +153,24 @@ impl Parser<'_> {
         }
         self.unexpected(what);
         None
+    }
+
+    /// Expects `>`. A `>=` token is split, so `Map<string, int>= ...` keeps its old meaning.
+    fn expect_gt(&mut self, what: &str) -> Option<Span> {
+        if self.peek() == &Tok::GtEq {
+            let at = self.span();
+            let i = self.pos.min(self.toks.len() - 1);
+            self.toks[i] = Token {
+                tok: Tok::Eq,
+                span: Span::new(self.file, at.start as usize + 1, at.end as usize),
+            };
+            return Some(Span::new(
+                self.file,
+                at.start as usize,
+                at.start as usize + 1,
+            ));
+        }
+        self.expect(&Tok::Gt, what)
     }
 
     fn expect_ident(&mut self, what: &str) -> Option<Ident> {
@@ -596,7 +620,7 @@ impl Parser<'_> {
             let parsed = self.parse_type_args(&mut args);
             self.depth -= 1;
             parsed?;
-            span = span.to(self.expect(&Tok::Gt, "`>` to close the type arguments")?);
+            span = span.to(self.expect_gt("`>` to close the type arguments")?);
         }
         Some(TypeExpr {
             kind: TypeExprKind::Named { name, args },
@@ -674,11 +698,12 @@ impl Parser<'_> {
             None
         };
         self.expect(&Tok::LBrace, "`{` to open the model body")?;
-        let fields = self.parse_fields();
+        let (fields, rules) = self.parse_members();
         Some(ModelDecl {
             name,
             extends,
             fields,
+            rules,
         })
     }
 
@@ -691,17 +716,19 @@ impl Parser<'_> {
             None
         };
         self.expect(&Tok::LBrace, "`{` to open the error body")?;
-        let fields = self.parse_fields();
+        let (fields, rules) = self.parse_members();
         Some(ErrorDecl {
             name,
             status,
             fields,
+            rules,
         })
     }
 
-    /// Parses fields up to and including the closing brace.
-    fn parse_fields(&mut self) -> Vec<Field> {
+    /// Parses fields and rules up to and including the closing brace.
+    fn parse_members(&mut self) -> (Vec<Field>, Vec<Rule>) {
         let mut fields = Vec::new();
+        let mut rules = Vec::new();
         loop {
             while self.eat(&Tok::Comma) {}
             if self.at_eof() {
@@ -716,8 +743,13 @@ impl Parser<'_> {
                 self.advance();
                 break;
             }
-            match self.parse_field(docs, pre) {
-                Some(f) => fields.push(f),
+            let parsed = if self.is_rule_start_at(0) {
+                self.parse_rule(docs, pre).map(|r| rules.push(r))
+            } else {
+                self.parse_field(docs, pre).map(|f| fields.push(f))
+            };
+            match parsed {
+                Some(()) => {}
                 None => {
                     self.recover_field();
                     if self.pos == before {
@@ -726,7 +758,7 @@ impl Parser<'_> {
                 }
             }
         }
-        fields
+        (fields, rules)
     }
 
     fn parse_field(&mut self, docs: Vec<Doc>, mut annotations: Vec<Annotation>) -> Option<Field> {
@@ -768,7 +800,11 @@ impl Parser<'_> {
                 Tok::LBrace | Tok::LParen | Tok::LBracket => depth += 1,
                 Tok::RBrace | Tok::RParen | Tok::RBracket => depth = (depth - 1).max(0),
                 Tok::Doc(_) | Tok::At if depth == 0 => return,
-                Tok::Ident(_) if depth == 0 && self.is_field_start_at(0) => return,
+                Tok::Ident(_)
+                    if depth == 0 && (self.is_rule_start_at(0) || self.is_field_start_at(0)) =>
+                {
+                    return;
+                }
                 _ => {}
             }
             self.advance();

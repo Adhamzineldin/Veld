@@ -15,6 +15,38 @@ pub const METHOD_WORDS: [&str; 8] = [
     "get", "post", "put", "patch", "delete", "head", "options", "ws",
 ];
 
+/// Contextual words of the rules language (`spec/rules.md` section 2.2). Each is a keyword only
+/// where the grammar expects it and an ordinary identifier everywhere else, so a field, variant,
+/// parameter, endpoint or declaration may carry any of them. The reserved list never grows.
+pub const CONTEXTUAL_RULE_WORDS: [&str; 26] = [
+    "rule",
+    "message",
+    "implies",
+    "not",
+    "in",
+    "has",
+    "fact",
+    "require",
+    "else",
+    "ensure",
+    "old",
+    "now",
+    "result",
+    "flow",
+    "final",
+    "emits",
+    "transition",
+    "policy",
+    "permit",
+    "forbid",
+    "when",
+    "allow",
+    "principal",
+    "example",
+    "given",
+    "expect",
+];
+
 /// Words that start a declaration.
 pub const DECL_KEYWORDS: [&str; 6] = ["model", "enum", "error", "union", "service", "const"];
 
@@ -69,6 +101,7 @@ pub enum Target {
     Field,
     Variant,
     Param,
+    Rule,
 }
 
 /// What arguments an annotation takes.
@@ -93,11 +126,11 @@ pub struct AnnotationSpec {
     pub usage: &'static str,
 }
 
-use Target::{Const, Endpoint, Enum, Error, Field, Model, Param, Service, Union, Variant};
+use Target::{Const, Endpoint, Enum, Error, Field, Model, Param, Rule, Service, Union, Variant};
 
 const ANY_DECL: [Target; 7] = [Service, Model, Error, Enum, Union, Const, Endpoint];
-const DEPRECATABLE: [Target; 9] = [
-    Service, Model, Error, Enum, Union, Const, Endpoint, Field, Variant,
+const DEPRECATABLE: [Target; 10] = [
+    Service, Model, Error, Enum, Union, Const, Endpoint, Field, Variant, Rule,
 ];
 
 /// The annotation table of `spec/language.md` section 7.
@@ -234,6 +267,8 @@ pub struct AnnotationOut {
 pub struct LanguageSpec {
     pub reserved: Vec<&'static str>,
     pub contextual: Vec<&'static str>,
+    /// Contextual words of the rules language (`spec/rules.md` section 2.2).
+    pub rule_words: Vec<&'static str>,
     pub scalars: Vec<&'static str>,
     pub generics: Vec<&'static str>,
     pub annotations: Vec<AnnotationOut>,
@@ -246,6 +281,7 @@ pub fn spec() -> LanguageSpec {
     LanguageSpec {
         reserved: RESERVED.to_vec(),
         contextual: METHOD_WORDS.to_vec(),
+        rule_words: CONTEXTUAL_RULE_WORDS.to_vec(),
         scalars: SCALARS.to_vec(),
         generics: GENERICS.to_vec(),
         annotations,
@@ -286,6 +322,25 @@ mod tests {
     fn spec_serializes_and_lists_every_annotation() {
         let json = serde_json::to_value(spec()).map(|v| v["annotations"].as_array().map(Vec::len));
         assert_eq!(json.ok().flatten(), Some(14));
+    }
+
+    #[test]
+    fn rule_words_are_contextual_never_reserved() {
+        for w in CONTEXTUAL_RULE_WORDS {
+            assert!(!is_reserved(w), "{w}");
+            assert!(is_valid_ident(w), "{w}");
+        }
+        assert_eq!(spec().rule_words.len(), CONTEXTUAL_RULE_WORDS.len());
+    }
+
+    #[test]
+    fn only_deprecated_applies_to_a_rule() {
+        let on_rule: Vec<&str> = ANNOTATIONS
+            .iter()
+            .filter(|a| a.targets.contains(&Target::Rule))
+            .map(|a| a.name)
+            .collect();
+        assert_eq!(on_rule, vec!["deprecated"]);
     }
 
     #[test]

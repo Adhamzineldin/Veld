@@ -7,6 +7,7 @@ pub use collect::module_path;
 mod inherit;
 pub mod regex;
 mod resolve;
+pub mod rules;
 mod services;
 #[cfg(test)]
 mod tests;
@@ -17,6 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagnostics::{Diagnostic, FileId, Span, has_errors};
 use crate::syntax::ast;
+pub use rules::RRule;
 use veld_ir::{Auth, Constraints, Literal, Method, PackageKind, Type};
 
 /// One parsed `.veld` file of a package.
@@ -113,6 +115,8 @@ pub struct Resolved {
     pub const_value: Option<Literal>,
     pub deprecated: Option<String>,
     pub cyclic: bool,
+    /// Checked rules the declaration writes itself, in source order (`spec/rules.md` section 5).
+    pub own_rules: Vec<RRule>,
 }
 
 #[derive(Debug)]
@@ -248,6 +252,7 @@ pub fn analyze_lenient<'a>(
     resolve::resolve_decls(&mut prog, diags);
     inherit::flatten(&mut prog, diags);
     typeck::check(&mut prog, diags);
+    rules::check(&mut prog, diags);
     services::analyze(&mut prog, diags);
     resolve::report_unused_imports(&prog, diags);
     collect::check_consumes(&prog, consumes, diags);

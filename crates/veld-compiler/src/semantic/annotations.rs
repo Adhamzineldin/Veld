@@ -34,6 +34,7 @@ pub fn target_name(t: Target) -> &'static str {
         Target::Const => "const",
         Target::Field => "field",
         Target::Variant => "enum variant",
+        Target::Rule => "rule",
         Target::Param => "parameter",
     }
 }

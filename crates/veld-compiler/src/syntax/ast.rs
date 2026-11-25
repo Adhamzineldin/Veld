@@ -86,6 +86,8 @@ pub struct ModelDecl {
     pub name: Ident,
     pub extends: Option<TypeExpr>,
     pub fields: Vec<Field>,
+    /// Invariants, in source order (`spec/rules.md` section 5).
+    pub rules: Vec<Rule>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -93,6 +95,7 @@ pub struct ErrorDecl {
     pub name: Ident,
     pub status: Option<(i64, Span)>,
     pub fields: Vec<Field>,
+    pub rules: Vec<Rule>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -105,6 +108,132 @@ pub struct Field {
     pub ty: TypeExpr,
     pub default: Option<Literal>,
     pub span: Span,
+}
+
+/// `rule name: expr [message "text"]` inside a model or error (`spec/rules.md` section 4).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Rule {
+    pub docs: Vec<Doc>,
+    pub annotations: Vec<Annotation>,
+    pub name: Ident,
+    pub expr: Expr,
+    pub message: Option<StrLit>,
+    /// From the `rule` keyword to the end of the message or expression.
+    pub span: Span,
+}
+
+/// An expression. Parentheses leave no node: the tree shape carries the grouping.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Expr {
+    pub kind: ExprKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExprKind {
+    Bool(bool),
+    Int(i64),
+    /// A float literal keeps its source text: a `decimal` is that text (`1.50` stays `1.50`).
+    Float {
+        value: f64,
+        text: String,
+    },
+    Str(String),
+    /// `.name`
+    EnumLit(Ident),
+    Name(Ident),
+    /// `base.name`
+    Field {
+        base: Box<Expr>,
+        name: Ident,
+    },
+    Call {
+        name: Ident,
+        args: Vec<CallArg>,
+    },
+    List(Vec<Expr>),
+    Unary {
+        op: UnOp,
+        operand: Box<Expr>,
+    },
+    Binary {
+        op: BinOp,
+        l: Box<Expr>,
+        r: Box<Expr>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CallArg {
+    Expr(Expr),
+    /// `x => body`
+    Lambda {
+        var: Ident,
+        body: Expr,
+        span: Span,
+    },
+}
+
+impl CallArg {
+    #[must_use]
+    pub fn span(&self) -> Span {
+        match self {
+            CallArg::Expr(e) => e.span,
+            CallArg::Lambda { span, .. } => *span,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnOp {
+    /// `!` (`word: false`) or `not` (`word: true`); the formatter keeps the user's choice.
+    Not {
+        word: bool,
+    },
+    Neg,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinOp {
+    And,
+    Or,
+    Implies,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    In,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+}
+
+impl BinOp {
+    /// The operator as written.
+    #[must_use]
+    pub fn text(self) -> &'static str {
+        match self {
+            BinOp::And => "&&",
+            BinOp::Or => "||",
+            BinOp::Implies => "implies",
+            BinOp::Eq => "==",
+            BinOp::Ne => "!=",
+            BinOp::Lt => "<",
+            BinOp::Le => "<=",
+            BinOp::Gt => ">",
+            BinOp::Ge => ">=",
+            BinOp::In => "in",
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Rem => "%",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

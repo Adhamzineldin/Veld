@@ -25,6 +25,34 @@
     "options",
     "ws"
   ],
+  "rule_words": [
+    "rule",
+    "message",
+    "implies",
+    "not",
+    "in",
+    "has",
+    "fact",
+    "require",
+    "else",
+    "ensure",
+    "old",
+    "now",
+    "result",
+    "flow",
+    "final",
+    "emits",
+    "transition",
+    "policy",
+    "permit",
+    "forbid",
+    "when",
+    "allow",
+    "principal",
+    "example",
+    "given",
+    "expect"
+  ],
   "scalars": [
     "string",
     "int",
@@ -73,7 +101,8 @@
         "const",
         "endpoint",
         "field",
-        "variant"
+        "variant",
+        "rule"
       ],
       "args": "one_string",
       "usage": "@deprecated(\"message\")"

@@ -34,6 +34,28 @@ pub enum Tok {
     Arrow,
     Star,
     Slash,
+    /// `&&`
+    AndAnd,
+    /// `||`
+    OrOr,
+    /// `!`
+    Bang,
+    /// `==`
+    EqEq,
+    /// `!=`
+    NotEq,
+    /// `<=`
+    LtEq,
+    /// `>=`
+    GtEq,
+    /// `+`
+    Plus,
+    /// `-` as an operator (`spec/rules.md` section 2.1)
+    Minus,
+    /// `%`
+    Percent,
+    /// `=>`
+    FatArrow,
     Eof,
 }
 
@@ -72,6 +94,17 @@ impl Tok {
             Tok::Arrow => "->",
             Tok::Star => "*",
             Tok::Slash => "/",
+            Tok::AndAnd => "&&",
+            Tok::OrOr => "||",
+            Tok::Bang => "!",
+            Tok::EqEq => "==",
+            Tok::NotEq => "!=",
+            Tok::LtEq => "<=",
+            Tok::GtEq => ">=",
+            Tok::Plus => "+",
+            Tok::Minus => "-",
+            Tok::Percent => "%",
+            Tok::FatArrow => "=>",
             _ => "",
         }
     }
@@ -140,7 +173,9 @@ impl Lexer<'_> {
                 b'/' if self.peek_at(1) == Some(b'*') => self.block_comment(),
                 b'"' => self.string(),
                 b'0'..=b'9' => self.number(self.pos),
-                b'-' if self.peek_at(1).is_some_and(|c| c.is_ascii_digit()) => {
+                b'-' if self.peek_at(1).is_some_and(|c| c.is_ascii_digit())
+                    && !self.after_operand() =>
+                {
                     self.number(self.pos)
                 }
                 b'-' if self.peek_at(1) == Some(b'>') => self.push_n(Tok::Arrow, 2),
@@ -153,6 +188,22 @@ impl Lexer<'_> {
             tok: Tok::Eof,
             span: Span::new(self.file, end, end),
         });
+    }
+
+    /// True when the previous token ends an operand (`spec/rules.md` section 2.1): a `-` that
+    /// follows one is the minus operator, never the sign of a literal.
+    fn after_operand(&self) -> bool {
+        matches!(
+            self.out.tokens.last().map(|t| &t.tok),
+            Some(
+                Tok::Ident(_)
+                    | Tok::Int(_)
+                    | Tok::Float(_)
+                    | Tok::Str(_)
+                    | Tok::RParen
+                    | Tok::RBracket
+            )
+        )
     }
 
     fn peek_at(&self, n: usize) -> Option<u8> {
@@ -176,7 +227,26 @@ impl Lexer<'_> {
             .push(Diagnostic::error("E0002", msg, span));
     }
 
+    /// Two-character punctuation, longest match first.
+    fn punct2(&mut self, b: u8) -> bool {
+        let tok = match (b, self.peek_at(1)) {
+            (b'&', Some(b'&')) => Tok::AndAnd,
+            (b'|', Some(b'|')) => Tok::OrOr,
+            (b'=', Some(b'=')) => Tok::EqEq,
+            (b'=', Some(b'>')) => Tok::FatArrow,
+            (b'!', Some(b'=')) => Tok::NotEq,
+            (b'<', Some(b'=')) => Tok::LtEq,
+            (b'>', Some(b'=')) => Tok::GtEq,
+            _ => return false,
+        };
+        self.push_n(tok, 2);
+        true
+    }
+
     fn punct(&mut self, b: u8) {
+        if self.punct2(b) {
+            return;
+        }
         let tok = match b {
             b'{' => Tok::LBrace,
             b'}' => Tok::RBrace,
@@ -195,6 +265,10 @@ impl Lexer<'_> {
             b'@' => Tok::At,
             b'*' => Tok::Star,
             b'/' => Tok::Slash,
+            b'!' => Tok::Bang,
+            b'+' => Tok::Plus,
+            b'-' => Tok::Minus,
+            b'%' => Tok::Percent,
             _ => return self.invalid_char(),
         };
         self.push_n(tok, 1);
@@ -464,12 +538,15 @@ mod tests {
     #[test]
     fn lexes_numbers() {
         assert_eq!(
+            // A `-` after an operand is the minus operator (`spec/rules.md` section 2.1).
             toks("1 -2 3.5 -0.25 1e3 4.0e-2"),
             vec![
                 Tok::Int(1),
-                Tok::Int(-2),
+                Tok::Minus,
+                Tok::Int(2),
                 Tok::Float(3.5),
-                Tok::Float(-0.25),
+                Tok::Minus,
+                Tok::Float(0.25),
                 Tok::Int(1),
                 Tok::Ident("e3".into()),
                 Tok::Float(0.04),
@@ -541,8 +618,86 @@ mod tests {
     }
 
     #[test]
-    fn lone_minus_is_an_error() {
-        assert_eq!(lex("a - b", FileId(0)).diagnostics.len(), 1);
+    fn lone_minus_is_the_operator() {
+        let l = lex("a - b", FileId(0));
+        assert!(l.diagnostics.is_empty());
+        assert_eq!(l.tokens[1].tok, Tok::Minus);
+    }
+
+    #[test]
+    fn minus_before_a_digit_is_a_sign_unless_an_operand_precedes() {
+        let ident = || Tok::Ident("x".into());
+        // `@min(-5)`, `= -1`, `[-1, -2]`: the previous token cannot end an operand.
+        assert_eq!(toks("(-5)")[1], Tok::Int(-5));
+        assert_eq!(toks("= -1")[1], Tok::Int(-1));
+        assert_eq!(
+            toks("[-1, -2]"),
+            vec![
+                Tok::LBracket,
+                Tok::Int(-1),
+                Tok::Comma,
+                Tok::Int(-2),
+                Tok::RBracket,
+                Tok::Eof
+            ]
+        );
+        assert_eq!(toks("== -3")[1], Tok::Int(-3));
+        assert_eq!(toks("- -1"), vec![Tok::Minus, Tok::Int(-1), Tok::Eof]);
+        // `x -1`, `1 -1`, `"s" -1`, `) -1`, `] -1` are subtractions.
+        assert_eq!(
+            toks("x -1"),
+            vec![ident(), Tok::Minus, Tok::Int(1), Tok::Eof]
+        );
+        assert_eq!(toks("1.5 -1")[1], Tok::Minus);
+        assert_eq!(toks("\"s\" -1")[1], Tok::Minus);
+        assert_eq!(toks("days(30) -1")[4], Tok::Minus);
+        assert_eq!(toks("[1] -1")[3], Tok::Minus);
+        assert_eq!(toks("end - start")[1], Tok::Minus);
+        assert_eq!(toks("-x")[0], Tok::Minus);
+    }
+
+    #[test]
+    fn arrow_wins_over_minus() {
+        assert_eq!(toks("a -> b")[1], Tok::Arrow);
+    }
+
+    #[test]
+    fn expression_operators_are_longest_match() {
+        assert_eq!(
+            toks("&& || ! == != <= >= + - % => < > = *"),
+            vec![
+                Tok::AndAnd,
+                Tok::OrOr,
+                Tok::Bang,
+                Tok::EqEq,
+                Tok::NotEq,
+                Tok::LtEq,
+                Tok::GtEq,
+                Tok::Plus,
+                Tok::Minus,
+                Tok::Percent,
+                Tok::FatArrow,
+                Tok::Lt,
+                Tok::Gt,
+                Tok::Eq,
+                Tok::Star,
+                Tok::Eof
+            ]
+        );
+        assert_eq!(toks("a=>b")[1], Tok::FatArrow);
+        assert_eq!(toks("a!b")[1], Tok::Bang);
+    }
+
+    #[test]
+    fn a_single_ampersand_is_still_invalid() {
+        assert_eq!(lex("a & b", FileId(0)).diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn new_tokens_describe_themselves() {
+        assert_eq!(Tok::GtEq.describe(), "`>=`");
+        assert_eq!(Tok::FatArrow.describe(), "`=>`");
+        assert_eq!(Tok::Minus.describe(), "`-`");
     }
 
     #[test]

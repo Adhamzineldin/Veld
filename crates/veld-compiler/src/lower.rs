@@ -4,6 +4,8 @@
 //! Services are sorted by (package, name). Prelude declarations are included
 //! only when referenced, and package `veld` is listed only when it is used.
 
+mod rules;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagnostics::{FileId, SourceMap, Span};
@@ -48,6 +50,7 @@ pub fn lower(
     for (d, s) in decls.iter_mut().zip(sigs) {
         d.sig = s;
     }
+    signature::rule_ids(&mut decls, &packages);
     let services = lw.services(&decls);
     Ir {
         ir_version: veld_ir::IR_VERSION.to_string(),
@@ -202,14 +205,14 @@ impl Lowerer<'_, '_> {
             DKind::Model => DeclKind::Model(Model {
                 parent: d.res.parent.map(|p| self.decl_id(p)),
                 fields: fields(),
-                rules: Vec::new(),
+                rules: self.rules_of(old),
             }),
             DKind::Error => DeclKind::Error(ErrorDecl {
                 default_status: d.res.default_status,
                 fields: Model {
                     parent: None,
                     fields: fields(),
-                    rules: Vec::new(),
+                    rules: self.rules_of(old),
                 },
             }),
             DKind::Enum => DeclKind::Enum(Enum {

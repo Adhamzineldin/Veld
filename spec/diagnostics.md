@@ -65,10 +65,21 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0804` | error | generators | Constant cannot be represented by the generator |
 | `E0805` | error | generators | Generated file cannot be added (bad or duplicate path) |
 | `E0899` | error | veld-codegen | Generator or plugin failure without a more specific code |
+| `E0901` | error | veld-compiler | Unknown name in an expression, or a lambda variable that shadows another name |
+| `E0902` | error | veld-compiler | Type error in an expression: operand types do not fit the operator, a rule that is not `bool`, a chained comparison, an enum literal with no enum to infer |
+| `E0903` | error | veld-compiler | An optional value is read where it is not known to be present |
+| `E0904` | error | veld-compiler | `now`, `result` or `old` used where it is not available |
+| `E0905` | error | veld-compiler | Operation not supported on this type: `/` or `%` on decimal, ordering strings, comparing models, lists, maps, bytes or json, a `const` of an unsupported type |
+| `E0906` | error | veld-compiler | Unknown function, wrong number or type of arguments, lambda where none is allowed |
+| `E0907` | error | veld-compiler | Duplicate rule name in a declaration, counting inherited rules |
+| `E0908` | error | veld-compiler | Numeric literal out of range for its type |
 | `W0001` | warning | veld-compiler | Doc comment is not attached to anything |
 | `W0201` | warning | veld-compiler | Unused import |
 | `W0202` | warning | veld-compiler | Declaration shadows a prelude declaration |
 | `W0701` | warning | veld-compiler | Service consumes itself |
+| `W0901` | warning | veld-compiler | `==` or `!=` on `float` |
+| `W0902` | warning | veld-compiler | Nested comprehension over a list without `@length(max: n)` |
+| `W0903` | warning | veld-compiler | A rule that reads no field |
 | `L0001` | lint | veld-tools | `unused-model`: declaration is never used by any endpoint, model or constant |
 | `L0002` | lint | veld-tools | `empty-service`: service has no endpoints |
 | `L0003` | lint | veld-tools | `empty-model`: model has no fields |

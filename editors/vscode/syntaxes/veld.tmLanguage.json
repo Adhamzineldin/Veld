@@ -26,6 +26,9 @@
       "include": "#arrow"
     },
     {
+      "include": "#rules"
+    },
+    {
       "include": "#methods"
     },
     {
@@ -130,6 +133,41 @@
     "arrow": {
       "name": "keyword.operator.arrow.veld",
       "match": "->|\\|"
+    },
+    "rules": {
+      "patterns": [
+        {
+          "match": "^\\s*(rule)\\s+([A-Za-z_][A-Za-z0-9_]*)(?=\\s*:)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.rule.veld"
+            },
+            "2": {
+              "name": "entity.name.function.rule.veld"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(message)(?=\\s+\")",
+          "captures": {
+            "1": {
+              "name": "keyword.control.rule.veld"
+            }
+          }
+        },
+        {
+          "name": "keyword.operator.word.veld",
+          "match": "(?<=\\s)(implies|not|in)(?=\\s)"
+        },
+        {
+          "name": "support.function.builtin.veld",
+          "match": "\\b(has)(?=\\()"
+        },
+        {
+          "name": "keyword.operator.logical.veld",
+          "match": "&&|\\|\\||==|!=|<=|>=|=>"
+        }
+      ]
     },
     "methods": {
       "name": "keyword.control.http-method.veld",
