@@ -46,6 +46,7 @@ pub(crate) fn sample_rules() -> EndpointRules {
     let guests = path(Root::Param("body".into()), vec![step("guests")], int_ty());
     let capacity = path(Root::Fact("room".into()), vec![step("capacity")], int_ty());
     EndpointRules {
+        transition: Some(sample_transition()),
         facts: vec![EndpointFact {
             name: "room".into(),
             ty: Type::Decl(DeclId(1)),
@@ -422,6 +423,7 @@ fn the_first_origin_is_the_first_statement() {
     assert_eq!(rules.first_origin().map(|o| o.line), Some(10));
     let no_facts = EndpointRules {
         facts: vec![],
+        transition: None,
         ..rules
     };
     assert_eq!(no_facts.first_origin().map(|o| o.line), Some(11));
@@ -431,4 +433,141 @@ fn the_first_origin_is_the_first_statement() {
     };
     assert_eq!(only_ensure.first_origin().map(|o| o.line), Some(13));
     assert!(EndpointRules::default().first_origin().is_none());
+}
+
+fn sample_transition() -> EndpointTransition {
+    EndpointTransition {
+        id: "veld:bookings/Bookings.book.transition@0123456789abcdef".into(),
+        fact: "booking".into(),
+        steps: vec![step("status")],
+        decl: DeclId(0),
+        from: vec!["pending".into(), "paid".into()],
+        to: "cancelled".into(),
+        origin: origin(12),
+    }
+}
+
+fn variant(name: &str) -> Variant {
+    Variant {
+        name: name.into(),
+        wire: name.into(),
+        docs: None,
+        deprecated: None,
+    }
+}
+
+fn machine(flows: Vec<Flow>, finals: Vec<String>) -> Enum {
+    Enum {
+        variants: vec![variant("pending"), variant("paid"), variant("cancelled")],
+        flows,
+        finals,
+    }
+}
+
+fn flow(from: &str, to: &str) -> Flow {
+    Flow {
+        from: from.into(),
+        to: to.into(),
+    }
+}
+
+fn enum_decl(e: Enum) -> Decl {
+    Decl {
+        id: DeclId(0),
+        package: PackageId(0),
+        module: "bookings".into(),
+        name: "Status".into(),
+        qualified: "bookings.Status".into(),
+        sig: "veld:bookings/Status@0".into(),
+        docs: None,
+        deprecated: None,
+        origin: origin(3),
+        kind: DeclKind::Enum(e),
+    }
+}
+
+#[test]
+fn a_transition_matches_the_spec_json() {
+    let rules = EndpointRules {
+        transition: Some(sample_transition()),
+        ..EndpointRules::default()
+    };
+    let v = round_trip(&rules);
+    assert_eq!(
+        v["transition"],
+        json!({
+            "id": "veld:bookings/Bookings.book.transition@0123456789abcdef",
+            "fact": "booking",
+            "steps": [ { "name": "status", "wire": "status", "optional": false } ],
+            "decl": 0,
+            "from": ["pending", "paid"],
+            "to": "cancelled",
+            "origin": { "file": "bookings.veld", "line": 12, "col": 3 }
+        })
+    );
+    assert!(!rules.is_empty());
+    assert_eq!(rules.first_origin().map(|o| o.line), Some(12));
+}
+
+#[test]
+fn flows_and_finals_match_the_spec_json() {
+    let e = machine(
+        vec![flow("pending", "paid"), flow("pending", "cancelled")],
+        vec!["cancelled".into()],
+    );
+    let v = round_trip(&e);
+    assert_eq!(
+        v["flows"],
+        json!([ { "from": "pending", "to": "paid" }, { "from": "pending", "to": "cancelled" } ])
+    );
+    assert_eq!(v["finals"], json!(["cancelled"]));
+    assert!(e.is_state_machine());
+}
+
+#[test]
+fn nothing_about_state_machines_is_serialised_when_absent() {
+    let v = serde_json::to_value(Enum::plain(vec![variant("a")])).unwrap();
+    assert_eq!(
+        v,
+        json!({ "variants": [ { "name": "a", "wire": "a", "docs": null, "deprecated": null } ] })
+    );
+    let rules = serde_json::to_value(EndpointRules::default()).unwrap();
+    assert!(rules.get("transition").is_none());
+    let back: Enum = serde_json::from_value(v).unwrap();
+    assert!(!back.is_state_machine());
+}
+
+#[test]
+fn a_transition_uses_the_transitions_feature() {
+    let rules = EndpointRules {
+        transition: Some(sample_transition()),
+        ..EndpointRules::default()
+    };
+    let ir = ir_with(vec![service_with(vec![endpoint_with(rules)])], vec![]);
+    let used = ir.features_used(&[ServiceId(0)]);
+    assert!(used.contains(&Feature::RulesTransitions), "{used:?}");
+    let plain = ir_with(
+        vec![service_with(vec![endpoint_with(EndpointRules {
+            transition: None,
+            ..sample_rules()
+        })])],
+        vec![],
+    );
+    let used = plain.features_used(&[ServiceId(0)]);
+    assert!(!used.contains(&Feature::RulesTransitions), "{used:?}");
+}
+
+#[test]
+fn a_reachable_state_machine_uses_the_transitions_feature() {
+    let mut ep = endpoint_with(EndpointRules::default());
+    ep.success.ty = Some(Type::Decl(DeclId(0)));
+    let mut ir = ir_with(vec![service_with(vec![ep])], vec![]);
+    ir.decls = vec![enum_decl(machine(vec![flow("pending", "paid")], vec![]))];
+    let used = ir.features_used(&[ServiceId(0)]);
+    assert_eq!(
+        used.iter().copied().collect::<Vec<_>>(),
+        [Feature::RulesTransitions]
+    );
+    ir.decls = vec![enum_decl(machine(vec![], vec![]))];
+    assert!(ir.features_used(&[ServiceId(0)]).is_empty());
 }

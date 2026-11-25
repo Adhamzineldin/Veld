@@ -212,6 +212,7 @@ fn create_rules(
     ];
     EndpointRules {
         facts,
+        transition: None,
         requires,
         ensures,
     }

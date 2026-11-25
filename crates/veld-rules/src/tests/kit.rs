@@ -356,7 +356,7 @@ impl Kit {
                 deprecated: None,
             })
             .collect();
-        self.push(name, DeclKind::Enum(Enum { variants }))
+        self.push(name, DeclKind::Enum(Enum::plain(variants)))
     }
 
     pub fn union(&mut self, name: &str, disc: &str, arms: &[(&str, &Type)]) -> Type {

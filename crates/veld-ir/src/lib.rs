@@ -14,9 +14,9 @@ pub mod schema;
 pub mod suggest;
 
 pub use endpoint_rules::{
-    ElseError, ElseField, EndpointEnsure, EndpointFact, EndpointRequire, EndpointRules, Example,
-    ExampleArg, ExampleErrorOutcome, ExampleField, ExampleGiven, ExampleOutcome, ExampleRef,
-    ExampleValue, ServiceFact,
+    ElseError, ElseField, EndpointEnsure, EndpointFact, EndpointRequire, EndpointRules,
+    EndpointTransition, Example, ExampleArg, ExampleErrorOutcome, ExampleField, ExampleGiven,
+    ExampleOutcome, ExampleRef, ExampleValue, ServiceFact,
 };
 pub use rules::{
     Always, BinExpr, Builtin, CallExpr, EnumLit, Expr, ExprKind, ExprLit, ExprType, Op, PathRef,
@@ -149,7 +149,11 @@ impl Ir {
                 DeclKind::Const(_) => {
                     f.insert(Feature::Consts);
                 }
-                DeclKind::Enum(_) => {}
+                DeclKind::Enum(e) => {
+                    if e.is_state_machine() {
+                        f.insert(Feature::RulesTransitions);
+                    }
+                }
             }
         }
         for sid in services {
@@ -163,6 +167,9 @@ impl Ir {
                 }
                 if !ep.rules.is_empty() {
                     f.insert(Feature::RulesEndpoint);
+                }
+                if ep.rules.transition.is_some() {
+                    f.insert(Feature::RulesTransitions);
                 }
                 for p in &ep.params {
                     p.ty.features(&mut f);
@@ -318,6 +325,38 @@ pub struct ErrorDecl {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Enum {
     pub variants: Vec<Variant>,
+    /// The edges of a state machine, in first-declaration order, without duplicates
+    /// (`spec/rules.md` section 10.4). Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flows: Vec<Flow>,
+    /// The final states, as variant names in declaration order. Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub finals: Vec<String>,
+}
+
+impl Enum {
+    /// An enum without a state machine.
+    #[must_use]
+    pub fn plain(variants: Vec<Variant>) -> Self {
+        Enum {
+            variants,
+            flows: Vec::new(),
+            finals: Vec::new(),
+        }
+    }
+
+    /// True when the enum declares at least one flow.
+    #[must_use]
+    pub fn is_state_machine(&self) -> bool {
+        !self.flows.is_empty()
+    }
+}
+
+/// One edge of a state machine, by variant names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Flow {
+    pub from: String,
+    pub to: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

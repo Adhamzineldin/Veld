@@ -74,6 +74,8 @@ export type Decl =
       deprecated: string | null;
       origin: Origin;
       variants: Variant[];
+      flows?: Flow[];
+      finals?: string[];
     }
   | {
       kind: "union";
@@ -109,6 +111,11 @@ export interface Variant {
   wire: string;
   docs: string | null;
   deprecated: string | null;
+}
+
+export interface Flow {
+  from: string;
+  to: string;
 }
 
 export interface UnionArm {
@@ -258,8 +265,19 @@ export type Quantifier = "all" | "any" | "count" | "sum";
 
 export interface EndpointRules {
   facts: EndpointFact[];
+  transition?: EndpointTransition;
   requires: EndpointRequire[];
   ensures: EndpointEnsure[];
+}
+
+export interface EndpointTransition {
+  id: string;
+  fact: string;
+  steps: Step[];
+  decl: DeclId;
+  from: string[];
+  to: string;
+  origin: Origin;
 }
 
 export interface EndpointFact {

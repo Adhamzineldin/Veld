@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::rules::Expr;
+use crate::rules::{Expr, Step};
 use crate::{DeclId, Origin, PackageId, ServiceId, Type};
 
 /// The statements of an endpoint block.
@@ -15,6 +15,10 @@ use crate::{DeclId, Origin, PackageId, ServiceId, Type};
 pub struct EndpointRules {
     /// In load order.
     pub facts: Vec<EndpointFact>,
+    /// The state transition guard (`spec/rules.md` section 10.2). Omitted from the JSON when
+    /// absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transition: Option<EndpointTransition>,
     /// In source order.
     pub requires: Vec<EndpointRequire>,
     /// In source order.
@@ -25,7 +29,10 @@ impl EndpointRules {
     /// True when the endpoint has no statement at all.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.facts.is_empty() && self.requires.is_empty() && self.ensures.is_empty()
+        self.facts.is_empty()
+            && self.transition.is_none()
+            && self.requires.is_empty()
+            && self.ensures.is_empty()
     }
 
     /// The origin of the first statement: facts, then requires, then ensures.
@@ -34,9 +41,28 @@ impl EndpointRules {
         self.facts
             .first()
             .map(|f| &f.origin)
+            .or_else(|| self.transition.as_ref().map(|t| &t.origin))
             .or_else(|| self.requires.first().map(|r| &r.origin))
             .or_else(|| self.ensures.first().map(|e| &e.origin))
     }
+}
+
+/// `transition fact.path: a, b -> c` (`spec/rules.md` section 10.2).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EndpointTransition {
+    /// Stable identity (`spec/rules.md` section 10.2).
+    pub id: String,
+    /// The fact the path starts at.
+    pub fact: String,
+    /// The path below the fact; the last step is the state field.
+    pub steps: Vec<Step>,
+    /// The state machine.
+    pub decl: DeclId,
+    /// Variant names of the sources, in source order.
+    pub from: Vec<String>,
+    /// Variant name of the target.
+    pub to: String,
+    pub origin: Origin,
 }
 
 /// `fact name: T = key`.

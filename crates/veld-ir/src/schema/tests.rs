@@ -274,7 +274,7 @@ fn decl(id: u32, name: &str, kind: DeclKind) -> Decl {
 }
 
 fn decls() -> Vec<Decl> {
-    let probe = DeclKind::Enum(Enum { variants: vec![] });
+    let probe = DeclKind::Enum(Enum::plain(vec![]));
     match probe {
         DeclKind::Model(_)
         | DeclKind::Error(_)
@@ -323,6 +323,11 @@ fn decls() -> Vec<Decl> {
             "En",
             DeclKind::Enum(Enum {
                 variants: vec![variant],
+                flows: vec![Flow {
+                    from: "A".into(),
+                    to: "A".into(),
+                }],
+                finals: vec!["A".into()],
             }),
         ),
         decl(

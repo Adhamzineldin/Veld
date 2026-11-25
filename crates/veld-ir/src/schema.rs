@@ -102,7 +102,14 @@ const DECL_KINDS: &[(&str, Fields)] = &[
             ("rules", RULES),
         ],
     ),
-    ("enum", &[("variants", T::List(&T::Ref("Variant")))]),
+    (
+        "enum",
+        &[
+            ("variants", T::List(&T::Ref("Variant"))),
+            ("flows", T::Optional(&T::List(&T::Ref("Flow")))),
+            ("finals", T::Optional(&T::List(&T::Str))),
+        ],
+    ),
     (
         "union",
         &[
@@ -209,6 +216,7 @@ pub const DEFS: &[Def] = &[
             ("deprecated", OPT_STR),
         ],
     ),
+    Def::Object("Flow", &[("from", T::Str), ("to", T::Str)]),
     Def::Object("UnionArm", &[("label", T::Str), ("decl", DECL_ID)]),
     Def::Object("Field", FIELD),
     Def::Strings(
@@ -378,8 +386,21 @@ pub const DEFS: &[Def] = &[
         "EndpointRules",
         &[
             ("facts", T::List(&T::Ref("EndpointFact"))),
+            ("transition", T::Optional(&T::Ref("EndpointTransition"))),
             ("requires", T::List(&T::Ref("EndpointRequire"))),
             ("ensures", T::List(&T::Ref("EndpointEnsure"))),
+        ],
+    ),
+    Def::Object(
+        "EndpointTransition",
+        &[
+            ("id", T::Str),
+            ("fact", T::Str),
+            ("steps", T::List(&T::Ref("Step"))),
+            ("decl", DECL_ID),
+            ("from", T::List(&T::Str)),
+            ("to", T::Str),
+            ("origin", ORIGIN),
         ],
     ),
     Def::Object(

@@ -117,9 +117,7 @@ fn ir() -> Ir {
         decl(
             0,
             "Status",
-            DeclKind::Enum(Enum {
-                variants: vec![variant("paid", "PAID"), variant("checkedIn", "CHECKED_IN")],
-            }),
+            DeclKind::Enum(Enum::plain(vec![variant("paid", "PAID"), variant("checkedIn", "CHECKED_IN")])),
         ),
         decl(1, "Item", DeclKind::Model(model())),
         decl(

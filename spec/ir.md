@@ -37,6 +37,9 @@ Decl = {
 Model  = { "kind": "model", "parent": DeclId|null, "fields": [Field] }  // fields = own + inherited, parent first
 Error  = { "kind": "error", "default_status": 404|null, "fields": [Field] }
 Enum   = { "kind": "enum", "variants": [ { "name": "paid", "wire": "PAID", "docs": .., "deprecated": .. } ] }
+                                                          // state machines (spec/rules.md §10.4); both keys omitted when empty:
+Enum  += { "flows": [ { "from": "pending", "to": "paid" } ],   // variant names, first declaration order, no duplicates
+           "finals": [ "cancelled" ] }                          // variant names, declaration order
 Union  = { "kind": "union", "discriminator": "kind", "arms": [ { "label": "card", "decl": DeclId } ] }
 Const  = { "kind": "const", "type": Type, "value": Literal }
 Field  = { "name": "firstName", "wire": "first_name", "type": Type, "optional": false,
@@ -78,12 +81,13 @@ Three additions carry endpoint rules (`spec/rules.md` §9) and examples (§12). 
 
 ```jsonc
 Endpoint += { "rules": EndpointRules }                    // facts, requires and ensures of the endpoint block
+EndpointRules += { "transition": EndpointTransition }         // omitted when absent; spec/rules.md §10.4
 Service  += { "facts": [ ServiceFact ],                   // one loader method per fact name, sorted by name
               "rules_digest": "3fa9c2e1b7d04a55" }        // spec/rules.md §9.7
 Ir       += { "examples": [ Example ] }                   // spec/rules.md §12
 ```
 
-`EndpointRules`, `ServiceFact`, `Example` and `ExampleValue` (`json`, `ref`, `object`, `list`) are defined in `spec/rules.md` §13.1 and described by `spec/ir.d.ts`. An endpoint with `rules` uses the feature `rules_endpoint`; examples need no feature.
+`EndpointRules`, `ServiceFact`, `Example` and `ExampleValue` (`json`, `ref`, `object`, `list`) are defined in `spec/rules.md` §13.1 and described by `spec/ir.d.ts`. An endpoint with `rules` uses the feature `rules_endpoint`; examples need no feature. An enum with `flows`, or an endpoint with a `transition`, uses the feature `rules_transitions`; a generator that cannot represent it reports `E0801` at the first flow or transition.
 
 ## 4. Capabilities
 

@@ -284,18 +284,21 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
                     .iter()
                     .any(|p| p.binding == veld_ir::Binding::Header),
                 Feature::RulesEndpoint => !ep.rules.is_empty(),
+                Feature::RulesTransitions => ep.rules.transition.is_some(),
                 Feature::Unions
                 | Feature::Constraints
                 | Feature::Consts
                 | Feature::Page
                 | Feature::Bytes
                 | Feature::RulesInvariants
-                | Feature::RulesTransitions
                 | Feature::RulesPolicies => false,
             };
             if hit {
                 if feature == Feature::RulesEndpoint {
                     return ep.rules.first_origin().cloned();
+                }
+                if feature == Feature::RulesTransitions {
+                    return ep.rules.transition.as_ref().map(|t| t.origin.clone());
                 }
                 return Some(ep.origin.clone());
             }
@@ -303,6 +306,9 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
     }
     if feature == Feature::RulesInvariants {
         return first_rule_origin(ir, services);
+    }
+    if feature == Feature::RulesTransitions {
+        return first_machine_origin(ir, services);
     }
     let wanted_union = feature == Feature::Unions;
     let wanted_const = feature == Feature::Consts;
@@ -313,6 +319,15 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
             (wanted_union && matches!(d.kind, DeclKind::Union(_)))
                 || (wanted_const && matches!(d.kind, DeclKind::Const(_)))
         })
+        .map(|d| d.origin.clone())
+}
+
+/// The origin of the first reachable enum that is a state machine.
+fn first_machine_origin(ir: &Ir, services: &[ServiceId]) -> Option<Origin> {
+    ir.reachable_decls(services)
+        .into_iter()
+        .map(|id| ir.decl(id))
+        .find(|d| matches!(&d.kind, DeclKind::Enum(e) if e.is_state_machine()))
         .map(|d| d.origin.clone())
 }
 

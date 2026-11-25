@@ -494,14 +494,12 @@ fn kind_ir() -> Ir {
         decl(
             0,
             "E",
-            DeclKind::Enum(Enum {
-                variants: vec![Variant {
+            DeclKind::Enum(Enum::plain(vec![Variant {
                     name: "A".into(),
                     wire: "a".into(),
                     docs: None,
                     deprecated: None,
-                }],
-            }),
+                }])),
         ),
         decl(1, "M", DeclKind::Model(model())),
         decl(
