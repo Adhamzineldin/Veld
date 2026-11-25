@@ -247,7 +247,7 @@ fn publication(channel: u32, line: u32) -> Publication {
 /// Decls: 0 Base, 1 Money (extends Base), 2 Paid (a Money field, a list of Tag), 3 Left, 4 Other,
 /// 5 Tag, 6 Unused. Channels: 0 carries Paid and Left, 1 carries Other, 2 carries Left.
 fn world() -> Ir {
-    let mut c = |name: &str, events: Vec<u32>| Channel {
+    let c = |name: &str, events: Vec<u32>| Channel {
         events: events.into_iter().map(DeclId).collect(),
         name: name.into(),
         qualified: format!("m.{name}"),
