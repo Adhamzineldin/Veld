@@ -31,6 +31,7 @@ pub fn collect<'a>(packages: &'a [ParsedPackage], diags: &mut Vec<Diagnostic>) -
         modules: Vec::new(),
         decls: Vec::new(),
         services: Vec::new(),
+        examples: Vec::new(),
         scopes: Vec::new(),
         prelude: BTreeMap::new(),
         prelude_pkg: usize::MAX,

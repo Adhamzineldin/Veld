@@ -5,12 +5,13 @@
 //! only when referenced, and package `veld` is listed only when it is used.
 
 mod endpoint;
+mod examples;
 mod rules;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagnostics::{FileId, SourceMap, Span};
-use crate::semantic::Program;
+use crate::semantic::{Program, ROutcome};
 use crate::semantic::{DKind, DeclInfo, REndpoint, RField, ServiceInfo};
 use crate::signature;
 use crate::syntax::ast::doc_text;
@@ -59,7 +60,7 @@ pub fn lower(
         decls,
         services,
         consumes: lw.consumes(consumes),
-        examples: Vec::new(),
+        examples: lw.examples(),
     }
 }
 
@@ -76,6 +77,11 @@ fn included_decls(prog: &Program<'_>) -> Vec<usize> {
     for s in &prog.services {
         for e in &s.endpoints {
             stack.extend(endpoint_refs(e));
+        }
+    }
+    for ex in &prog.examples {
+        if let ROutcome::Error(decl, _) = &ex.outcome {
+            stack.push(*decl);
         }
     }
     while let Some(i) = stack.pop() {
@@ -266,16 +272,22 @@ impl Lowerer<'_, '_> {
         }
     }
 
-    fn services(&self, decls: &[Decl]) -> Vec<Service> {
-        let mut order: Vec<&ServiceInfo> = self.prog.services.iter().collect();
-        order.sort_by(|a, b| {
+    /// Indices into `prog.services`, in IR order: by package name, then service name.
+    fn service_order(&self) -> Vec<usize> {
+        let mut order: Vec<usize> = (0..self.prog.services.len()).collect();
+        order.sort_by(|&a, &b| {
+            let (a, b) = (&self.prog.services[a], &self.prog.services[b]);
             (&self.prog.packages[a.pkg].name, &a.name)
                 .cmp(&(&self.prog.packages[b.pkg].name, &b.name))
         });
         order
+    }
+
+    fn services(&self, decls: &[Decl]) -> Vec<Service> {
+        self.service_order()
             .into_iter()
             .enumerate()
-            .map(|(i, s)| self.service(i, s, decls))
+            .map(|(i, s)| self.service(i, &self.prog.services[s], decls))
             .collect()
     }
 

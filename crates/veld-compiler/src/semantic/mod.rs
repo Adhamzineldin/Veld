@@ -3,6 +3,7 @@
 
 pub mod annotations;
 mod collect;
+mod examples;
 pub use collect::module_path;
 mod inherit;
 pub mod regex;
@@ -18,6 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagnostics::{Diagnostic, FileId, Span, has_errors};
 use crate::syntax::ast;
+pub use examples::{RExample, ROutcome};
 pub use rules::RRule;
 pub(crate) use rules::{RBlock, RElse};
 use veld_ir::{Auth, Constraints, Literal, Method, PackageKind, Type};
@@ -206,6 +208,8 @@ pub struct Program<'a> {
     pub modules: Vec<ModuleInfo<'a>>,
     pub decls: Vec<DeclInfo<'a>>,
     pub services: Vec<ServiceInfo>,
+    /// Checked examples (`spec/rules.md` section 12).
+    pub examples: Vec<RExample>,
     pub scopes: Vec<Scope>,
     /// Prelude name -> declaration index.
     pub prelude: BTreeMap<String, usize>,
@@ -257,6 +261,7 @@ pub fn analyze_lenient<'a>(
     typeck::check(&mut prog, diags);
     rules::check(&mut prog, diags);
     services::analyze(&mut prog, diags);
+    examples::check(&mut prog, diags);
     resolve::report_unused_imports(&prog, diags);
     collect::check_consumes(&prog, consumes, diags);
     prog

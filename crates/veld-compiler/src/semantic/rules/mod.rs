@@ -25,7 +25,7 @@ use crate::language::Target;
 use crate::syntax::ast::{self, DeclKind, doc_text};
 use checker::Checker;
 pub(crate) use endpoint::{
-    RBlock, RElse, RElseField, REnsure, RFact, RRequire, check_block, check_service_facts,
+    RBlock, RElse, check_block, check_service_facts,
     has_bare_require, has_required_fact,
 };
 use veld_ir::rules::Expr;
