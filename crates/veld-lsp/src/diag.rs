@@ -109,7 +109,7 @@ mod tests {
     fn groups_by_file_with_codes_labels_and_clears() {
         let tmp = tempfile::tempdir().unwrap();
         let d = tmp.path();
-        fs::write(d.join("veld.toml"), "[project]\nname = \"p\"\n").unwrap();
+        fs::write(d.join("veld.toml"), "[service]\nname = \"p\"\n").unwrap();
         fs::create_dir_all(d.join("contracts")).unwrap();
         fs::write(
             d.join("contracts/a.veld"),

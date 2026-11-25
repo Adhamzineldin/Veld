@@ -39,6 +39,9 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &TestArgs) -> Result<Exit> {
         None => project.name.clone(),
     };
     ui.header("test", &detail);
+    let Some(selection) = crate::selection::resolve(ui, &project, &args.select)? else {
+        return Ok(Exit::Ok);
+    };
     let scope = match args.paths.is_empty() {
         true => None,
         false => Some(pipeline::scope_of(&project, &args.paths)?),
@@ -48,6 +51,7 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &TestArgs) -> Result<Exit> {
     };
     let examples: Vec<&Example> = veld_testing::select(&done.ir, args.filter.as_deref())
         .into_iter()
+        .filter(|e| selection.has(&done.ir.package(e.package).name))
         .filter(|e| {
             scope
                 .as_ref()

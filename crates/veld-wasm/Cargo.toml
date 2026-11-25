@@ -17,6 +17,7 @@ veld-ir.workspace = true
 veld-compiler.workspace = true
 veld-codegen.workspace = true
 veld-tools.workspace = true
+veld-project.workspace = true
 veld-emit-java.workspace = true
 veld-emit-node.workspace = true
 veld-emit-typescript.workspace = true
@@ -27,7 +28,6 @@ serde_json.workspace = true
 wasm-bindgen = "=0.2.130"
 
 [dev-dependencies]
-veld-project.workspace = true
 sha2.workspace = true
 tempfile.workspace = true
 

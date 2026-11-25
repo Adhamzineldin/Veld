@@ -237,21 +237,7 @@ fn ask_servers(
 
 /// `(target name, default out)` of the config the answers render.
 pub fn default_outs(a: &Answers) -> Vec<(String, String)> {
-    let text = render::config_text(a);
-    let Ok(table) = text.parse::<toml::Table>() else {
-        return Vec::new();
-    };
-    let Some(toml::Value::Array(targets)) = table.get("targets") else {
-        return Vec::new();
-    };
-    targets
-        .iter()
-        .filter_map(|t| {
-            let name = t.get("name")?.as_str()?.to_string();
-            let out = t.get("out")?.as_str()?.to_string();
-            Some((name, out))
-        })
-        .collect()
+    render::target_outs(a)
 }
 
 fn ask_outs(p: &mut dyn Prompter, answers: &mut Answers) -> Result<()> {

@@ -34,6 +34,7 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &DiffArgs) -> Result<Exit> {
     };
     let changes = veld_tools::diff(&old, &done.ir);
     print_changes(ui, &changes, &label);
+    print_owners(ui, &done.project, &changes);
     let breaking = veld_tools::has_breaking(&changes);
     Ok(if breaking && args.strict {
         Exit::User
@@ -129,6 +130,56 @@ fn git(dir: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// The package a change subject belongs to: a declaration is `<package>:<module>.<Name>` and an
+/// operation is `veld:<package>/<Service>.<operation>`.
+fn package_of(subject: &str) -> Option<&str> {
+    let package = match subject.strip_prefix("veld:") {
+        Some(rest) => rest.split('/').next()?,
+        None => subject.split_once(':')?.0,
+    };
+    Some(package).filter(|p| !p.is_empty() && !p.contains(['.', '/']))
+}
+
+/// `(a, b)` of owners, or nothing when there are none.
+fn owners_text(owners: &[String]) -> String {
+    if owners.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", owners.join(", "))
+    }
+}
+
+/// Under each package with a breaking or possibly breaking change: its owners, and the members
+/// that depend on it (`spec/workspace.md`, section 11). Nothing when no member has owners.
+fn print_owners(ui: &Ui, project: &Project, changes: &[Change]) {
+    if project.members.iter().all(|m| m.owners.is_empty()) {
+        return;
+    }
+    let packages: std::collections::BTreeSet<&str> = changes
+        .iter()
+        .filter(|c| c.severity != Severity::NonBreaking)
+        .filter_map(|c| package_of(&c.subject))
+        .collect();
+    let imports = crate::selection::imports_of(project);
+    let mut lines = Vec::new();
+    for package in packages {
+        let Some(member) = project.member(package) else {
+            continue;
+        };
+        lines.push(format!("  {package}"));
+        if !member.owners.is_empty() {
+            lines.push(format!("    owners: {}", member.owners.join(", ")));
+        }
+        for d in veld_project::config::dependents(project, package, &imports) {
+            lines.push(format!("    affects {}{}", d.name, owners_text(&d.owners)));
+        }
+    }
+    if !lines.is_empty() {
+        ui.data("Who is affected:");
+        lines.iter().for_each(|l| ui.data(l));
+    }
+}
+
 fn print_changes(ui: &Ui, changes: &[Change], label: &str) {
     if changes.is_empty() {
         ui.ok(&format!("no changes against {label}"));
@@ -159,5 +210,24 @@ fn print_changes(ui: &Ui, changes: &[Change], label: &str) {
         for c in group {
             ui.data(&format!("  {mark} {}: {}", c.subject, c.message));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_package_comes_from_declarations_and_operations() {
+        assert_eq!(package_of("payments:money.Money"), Some("payments"));
+        assert_eq!(package_of("veld:orders/Orders.getOrder"), Some("orders"));
+        assert_eq!(package_of("nonsense"), None);
+        assert_eq!(package_of(""), None);
+    }
+
+    #[test]
+    fn owners_are_written_in_parentheses_only_when_there_are_some() {
+        assert_eq!(owners_text(&[]), "");
+        assert_eq!(owners_text(&["a".into(), "b".into()]), " (a, b)");
     }
 }

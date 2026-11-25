@@ -305,6 +305,12 @@ pub fn parse_services(text: &str) -> Result<Vec<String>> {
         if out.contains(&name) {
             return Err(user(format!("service `{name}` is listed twice")));
         }
+        // The clients of a workspace are members named `web`, `rust` and `java`.
+        if matches!(name.as_str(), "web" | "rust" | "java") {
+            return Err(user(format!(
+                "`{name}` is the name of a client member of the workspace; call the service something else"
+            )));
+        }
         out.push(name);
     }
     if out.is_empty() {

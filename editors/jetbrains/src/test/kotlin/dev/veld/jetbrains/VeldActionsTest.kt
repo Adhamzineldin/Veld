@@ -50,7 +50,7 @@ class VeldActionsTest : BasePlatformTestCase() {
             val text = manager.getInternalTemplate(name).text
             assertFalse("v1 keyword in $name", Regex("^[ \t]*(module|action)[ \t]", RegexOption.MULTILINE).containsMatchIn(text))
         }
-        assertTrue(manager.getInternalTemplate("Veld Workspace Config").text.contains("[services."))
+        assertTrue(manager.getInternalTemplate("Veld Workspace Config").text.contains("[workspace]"))
     }
 
     fun testTomlSchemaIsBundledAndMappedToVeldToml() {
@@ -62,7 +62,7 @@ class VeldActionsTest : BasePlatformTestCase() {
         val root = Files.createTempDirectory("veld-dir").toFile()
         try {
             val nested = File(root, "contracts/orders").apply { mkdirs() }
-            File(root, "veld.toml").writeText("[project]\nname = \"x\"\n")
+            File(root, "veld.toml").writeText("[service]\nname = \"x\"\n")
             assertEquals(root, VeldProjectDir.find(nested, null))
             assertEquals(root, VeldProjectDir.find(File(nested, "a.veld"), null))
             val other = Files.createTempDirectory("veld-none").toFile()

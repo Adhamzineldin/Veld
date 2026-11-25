@@ -36,7 +36,7 @@ use veld_codegen::{
 };
 
 /// Options of the `{{name}}` generator (none yet).
-// TODO({{name}}): add typed options here; they come from `[targets.options]` in veld.toml.
+// TODO({{name}}): add typed options here; they come from `[server.options]` or `[client.options]` in veld.toml.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Options {}

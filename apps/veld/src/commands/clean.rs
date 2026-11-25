@@ -14,8 +14,16 @@ use crate::ui::Ui;
 pub fn run(ui: &Ui, config: Option<&Path>, args: &CleanArgs) -> Result<Exit> {
     ui.header("clean", "");
     let project = pipeline::load_project(config)?;
+    let Some(selection) = crate::selection::resolve(ui, &project, &args.select)? else {
+        return Ok(Exit::Ok);
+    };
+    if args.lock && !selection.full {
+        return Err(user(
+            "`--lock` removes the baseline of the whole workspace; use it without a member selection",
+        ));
+    }
     let mut seen = BTreeSet::new();
-    for target in &project.targets {
+    for target in selection.targets(&project) {
         if !seen.insert(target.out.clone()) {
             continue;
         }

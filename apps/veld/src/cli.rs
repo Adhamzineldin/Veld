@@ -231,10 +231,30 @@ impl InitArgs {
     }
 }
 
+/// Which members of a workspace a command works on (`spec/workspace.md`, section 9). With no
+/// flag: the member whose directory you are in, else every member.
+#[derive(Debug, Args, Default, Clone)]
+pub struct SelectArgs {
+    /// Work on this member, whatever its kind (repeatable)
+    #[arg(short = 'p', long = "package", value_name = "NAME", conflicts_with_all = ["workspace", "affected"])]
+    pub package: Vec<String>,
+    /// Work on every member, also from inside one
+    #[arg(long, conflicts_with = "affected")]
+    pub workspace: bool,
+    /// Work on the members that a change since `--since` can have affected
+    #[arg(long, requires = "since")]
+    pub affected: bool,
+    /// With --affected: the git ref to compare with, for example origin/master
+    #[arg(long, value_name = "REF", requires = "affected")]
+    pub since: Option<String>,
+}
+
 #[derive(Debug, Args, Default)]
 pub struct GenerateArgs {
     /// Generate only the target with this name
     pub target: Option<String>,
+    #[command(flatten)]
+    pub select: SelectArgs,
     /// Show what would change without writing anything
     #[arg(long)]
     pub dry_run: bool,
@@ -273,6 +293,8 @@ impl GenerateArgs {
 pub struct WatchArgs {
     /// Watch and regenerate only the target with this name
     pub target: Option<String>,
+    #[command(flatten)]
+    pub select: SelectArgs,
     /// Overwrite existing files that Veld did not create
     #[arg(long)]
     pub force: bool,
@@ -288,6 +310,8 @@ pub struct WatchArgs {
 pub struct SetupArgs {
     /// Wire only the target with this name
     pub target: Option<String>,
+    #[command(flatten)]
+    pub select: SelectArgs,
     /// Show the planned edits without writing anything
     #[arg(long)]
     pub dry_run: bool,
@@ -295,6 +319,8 @@ pub struct SetupArgs {
 
 #[derive(Debug, Args)]
 pub struct CleanArgs {
+    #[command(flatten)]
+    pub select: SelectArgs,
     /// Also remove veld.lock.ir.json, the breaking-change baseline
     #[arg(long)]
     pub lock: bool,
@@ -341,6 +367,8 @@ pub struct DiffArgs {
 pub struct TestArgs {
     /// Run only the examples written in these .veld files or directories
     pub paths: Vec<PathBuf>,
+    #[command(flatten)]
+    pub select: SelectArgs,
     /// Run only the examples whose name or `Service.endpoint` contains this text
     #[arg(long, value_name = "TEXT")]
     pub filter: Option<String>,
@@ -571,6 +599,25 @@ mod tests {
         bad(&["generate", "--input", "a.veld"]);
         ok(&["watch", "api"]);
         ok(&["generate", "--watch"]);
+    }
+
+    #[test]
+    fn selection_flags_parse_and_exclude_each_other() {
+        ok(&["generate", "-p", "a", "-p", "b"]);
+        ok(&["generate", "--package", "a", "api"]);
+        ok(&["generate", "--workspace"]);
+        ok(&["generate", "--affected", "--since", "origin/master", "--check"]);
+        for cmd in ["watch", "clean", "setup", "test"] {
+            ok(&[cmd, "-p", "a"]);
+            ok(&[cmd, "--workspace"]);
+        }
+        bad(&["generate", "--affected"]);
+        bad(&["generate", "--since", "main"]);
+        bad(&["generate", "-p", "a", "--workspace"]);
+        bad(&["generate", "-p", "a", "--affected", "--since", "x"]);
+        bad(&["generate", "--workspace", "--affected", "--since", "x"]);
+        bad(&["check", "-p", "a"]);
+        bad(&["diff", "--workspace"]);
     }
 
     #[test]

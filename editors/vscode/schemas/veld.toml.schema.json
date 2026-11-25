@@ -2,30 +2,125 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://veld.dev/schemas/veld.toml.schema.json",
   "title": "veld.toml",
-  "description": "Veld 2 project configuration. Unknown keys are errors (E0701).",
+  "description": "Veld 2 workspace configuration: a root file with `[workspace]`, one file per member with `[service]`, `[app]` or `[library]`, or one file with a single member. Unknown keys are errors (E0701).",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "project"
+  "anyOf": [
+    {
+      "required": [
+        "workspace"
+      ]
+    },
+    {
+      "required": [
+        "service"
+      ]
+    },
+    {
+      "required": [
+        "app"
+      ]
+    },
+    {
+      "required": [
+        "library"
+      ]
+    }
   ],
   "properties": {
-    "project": {
+    "workspace": {
       "type": "object",
-      "description": "The project. With no `[services]` section it is itself a single service named `name`.",
       "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "description": "The workspace root: the project name, its members and what they share.",
       "properties": {
         "name": {
           "type": "string",
-          "description": "Package name of the implicit default service (single service), or the workspace name."
+          "description": "The project name. Required."
         },
-        "contracts": {
+        "description": {
           "type": "string",
-          "default": "contracts",
-          "description": "Package root of the implicit service. Default `contracts`. Mutually exclusive with `[services.*]`."
+          "description": "A one-line description of the project."
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Member directories relative to the root, with `/`. A segment may be `*`. No other pattern syntax exists."
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Directories that are not members, whatever `members` says."
         },
         "prefix": {
           "type": "string",
           "description": "Route prefix such as `/api`, prepended to every service prefix. Must start with `/`."
+        },
+        "defaults": {
+          "type": "object",
+          "description": "`[workspace.defaults.<role>.<emitter>]`: the `framework` and option keys a target of that role and emitter starts from. A key the member writes replaces the default.",
+          "properties": {
+            "server": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object"
+              }
+            },
+            "client": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "description": "A service. Its contracts are one package. It may hold `[server]` and `[client]` targets.",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+          "description": "The name of the service: what `use <name>:...` and `consumes` refer to. Default: the directory name; required in a root file."
+        },
+        "contracts": {
+          "type": "string",
+          "default": "contracts",
+          "description": "The directory holding the `.veld` files, relative to this `veld.toml`. Default `contracts`."
+        },
+        "prefix": {
+          "type": "string",
+          "description": "Route prefix such as `/v1`, prepended to this service's prefixes after `[workspace].prefix`. Must start with `/`."
+        },
+        "base-url": {
+          "type": "string",
+          "description": "Default base URL of the service for generated clients (lower priority than the constructor argument and `VELD_<SERVICE>_URL`)."
+        },
+        "consumes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Services this service calls (`*` is every other service). Each must exist (E0702). Cycles are allowed. A server target generates a client for each one under `<out>/clients/<service>/`."
+        },
+        "owners": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Free-form names (teams, handles, addresses) shown by `veld diff` and `veld check --graph=json`. Never part of the IR or of generated code."
         },
         "package": {
           "type": "string",
@@ -49,404 +144,792 @@
         }
       }
     },
-    "libraries": {
+    "app": {
       "type": "object",
-      "description": "Shared contract packages.",
-      "propertyNames": {
-        "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
-      },
-      "additionalProperties": {
-        "type": "object",
-        "description": "A shared contract package, importable as `use <name>:<module>.{Name}`.",
-        "additionalProperties": false,
-        "properties": {
-          "contracts": {
-            "type": "string",
-            "description": "Package root: the directory holding the `.veld` files, relative to `veld.toml`."
-          },
-          "package": {
-            "type": "string",
-            "pattern": "^@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$",
-            "description": "Registry name `@org/name` used by `veld publish`.",
-            "examples": [
-              "@acme/billing"
-            ]
-          },
-          "version": {
-            "type": "string",
-            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$",
-            "description": "Semantic version published by `veld publish`.",
-            "examples": [
-              "1.0.0"
-            ]
-          },
-          "description": {
-            "type": "string",
-            "description": "Short description shown in the registry."
-          }
-        }
-      }
-    },
-    "services": {
-      "type": "object",
-      "description": "The services of a workspace (microservices). Mutually exclusive with `[project].contracts`.",
-      "propertyNames": {
-        "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
-      },
-      "additionalProperties": {
-        "type": "object",
-        "description": "A service of a workspace. Its contracts are one package.",
-        "additionalProperties": false,
-        "properties": {
-          "contracts": {
-            "type": "string",
-            "description": "Package root: the directory holding the `.veld` files, relative to `veld.toml`."
-          },
-          "prefix": {
-            "type": "string",
-            "description": "Route prefix such as `/v1`, prepended to this service's prefixes after `[project].prefix`. Must start with `/`."
-          },
-          "base-url": {
-            "type": "string",
-            "description": "Default base URL of the service for generated clients (lower priority than the constructor argument and `VELD_<SERVICE>_URL`)."
-          },
-          "consumes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "uniqueItems": true,
-            "description": "Services this service calls. Each must exist (E0702). Cycles are allowed. A server target generates a client for each one under `<out>/clients/<service>/`."
-          },
-          "package": {
-            "type": "string",
-            "pattern": "^@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$",
-            "description": "Registry name `@org/name` used by `veld publish`.",
-            "examples": [
-              "@acme/billing"
-            ]
-          },
-          "version": {
-            "type": "string",
-            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$",
-            "description": "Semantic version published by `veld publish`.",
-            "examples": [
-              "1.0.0"
-            ]
-          },
-          "description": {
-            "type": "string",
-            "description": "Short description shown in the registry."
-          }
-        }
-      }
-    },
-    "targets": {
-      "type": "array",
-      "description": "The generated outputs.",
-      "items": {
-        "type": "object",
-        "description": "One generated output: a role, an emitter and an output directory.",
-        "additionalProperties": false,
-        "required": [
-          "role",
-          "emitter",
-          "out"
-        ],
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Optional name, used by `veld generate <name>` and for the package name `@veld/<name>`."
-          },
-          "role": {
-            "enum": [
-              "client",
-              "server"
-            ],
-            "description": "`server` or `client`."
-          },
-          "emitter": {
-            "anyOf": [
-              {
-                "enum": [
-                  "node",
-                  "typescript",
-                  "java",
-                  "rust"
-                ]
-              },
-              {
-                "type": "string",
-                "pattern": "^plugin:[A-Za-z0-9_-]+$"
-              }
-            ],
-            "description": "A built-in emitter (`node`, `typescript`, `java`, `rust`) or `plugin:<name>` naming a `[plugins.<name>]` entry."
-          },
-          "framework": {
-            "type": "string",
-            "description": "The framework of the target. Valid values depend on emitter and role (E0803 lists them): node server `express`, `fastify`, `hono`, `node-http`, `nest`; typescript client `react`, `vue`; java server `jdk`, `spring`; rust server `axum`, rust client `reqwest`, `ureq`."
-          },
-          "service": {
-            "type": "string",
-            "description": "The service a `server` target implements. Required for `role = \"server\"`."
-          },
-          "services": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "The services a `client` target covers. Default: all services."
-          },
-          "out": {
-            "type": "string",
-            "description": "Output directory, relative to `veld.toml`. Two targets must not share one (E0703); it must not be the project root or a contracts directory (E0704)."
-          },
-          "clients": {
-            "type": "boolean",
-            "default": true,
-            "description": "Server targets only: set `false` to skip the generated clients for consumed services."
-          },
-          "app": {
-            "type": "string",
-            "description": "The directory of the app that consumes the output, for `veld setup`. Default: the nearest ancestor of `out` with a `package.json`, `pom.xml` or `build.gradle[.kts]`."
-          },
-          "options": {
-            "type": "object",
-            "description": "Emitter-specific options, checked against the emitter's typed options. An unknown key is E0802.",
-            "properties": {
-              "java": {
-                "enum": [
-                  "17",
-                  "21"
-                ],
-                "default": "17",
-                "description": "`java` emitter: the language version (default `17`, the oldest supported)."
-              },
-              "typescript": {
-                "enum": [
-                  "es2020",
-                  "es2022"
-                ],
-                "default": "es2020",
-                "description": "`typescript` and `node` emitters: the TypeScript target."
-              },
-              "framework-version": {
-                "type": "string",
-                "description": "The framework version: `spring` `\"3\"`, `nest` `\"10\"`, `react` `\"18\"`, `vue` `\"3\"`. Needs a `framework`; unversioned frameworks reject it (E0803)."
-              },
-              "package": {
-                "type": "string",
-                "description": "`java` emitter: the base Java package.",
-                "examples": [
-                  "com.acme.payments"
-                ]
-              },
-              "package-name": {
-                "type": "string",
-                "description": "`node` and `typescript` emitters: the generated `package.json` name (default `@veld/<target-name>`)."
-              },
-              "crate-name": {
-                "type": "string",
-                "description": "`rust` emitter: the generated crate name (default `<package>-<role>`).",
-                "examples": [
-                  "orders-server"
-                ]
-              },
-              "transport": {
-                "enum": [
-                  "reqwest",
-                  "ureq",
-                  "none"
-                ],
-                "default": "reqwest",
-                "description": "`rust` server: the HTTP transport of the clients for consumed services."
-              },
-              "validate": {
-                "type": "boolean",
-                "default": true,
-                "description": "`node`, `typescript`, `java` and `rust` emitters: `false` skips run-time request validation by default and keeps the types."
-              }
-            },
-            "additionalProperties": true
-          }
+      "additionalProperties": false,
+      "description": "An app: it consumes services and holds `[client]` targets. It has no contracts and no server.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+          "description": "The name of the app: what `use <name>:...` and `consumes` refer to. Default: the directory name; required in a root file."
         },
-        "allOf": [
-          {
-            "if": {
-              "properties": {
-                "emitter": {
-                  "const": "node"
-                },
-                "role": {
-                  "const": "server"
-                }
-              },
-              "required": [
-                "emitter",
-                "role"
-              ]
-            },
-            "then": {
-              "properties": {
-                "framework": {
-                  "enum": [
-                    "express",
-                    "fastify",
-                    "hono",
-                    "node-http",
-                    "nest"
-                  ]
-                }
-              }
-            }
+        "uses": {
+          "type": "array",
+          "items": {
+            "type": "string"
           },
-          {
-            "if": {
-              "properties": {
-                "emitter": {
-                  "const": "typescript"
-                },
-                "role": {
-                  "const": "client"
-                }
-              },
-              "required": [
-                "emitter",
-                "role"
-              ]
-            },
-            "then": {
-              "properties": {
-                "framework": {
-                  "enum": [
-                    "react",
-                    "vue"
-                  ]
-                }
-              }
-            }
+          "uniqueItems": true,
+          "description": "The services the app's clients cover. Each must exist (E0702). Default: every service of the workspace."
+        },
+        "owners": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
           },
-          {
-            "if": {
-              "properties": {
-                "emitter": {
-                  "const": "java"
-                },
-                "role": {
-                  "const": "server"
-                }
-              },
-              "required": [
-                "emitter",
-                "role"
-              ]
-            },
-            "then": {
-              "properties": {
-                "framework": {
-                  "enum": [
-                    "jdk",
-                    "spring"
-                  ]
-                }
-              }
-            }
+          "description": "Free-form names (teams, handles, addresses) shown by `veld diff` and `veld check --graph=json`. Never part of the IR or of generated code."
+        }
+      }
+    },
+    "library": {
+      "type": "object",
+      "description": "A shared contract package, importable as `use <name>:<module>.{Name}`. It has no targets.",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+          "description": "The name of the library: what `use <name>:...` and `consumes` refer to. Default: the directory name; required in a root file."
+        },
+        "contracts": {
+          "type": "string",
+          "default": "contracts",
+          "description": "The directory holding the `.veld` files, relative to this `veld.toml`. Default `contracts`."
+        },
+        "owners": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
           },
-          {
-            "if": {
-              "properties": {
-                "emitter": {
-                  "const": "rust"
-                },
-                "role": {
-                  "const": "server"
-                }
-              },
-              "required": [
-                "emitter",
-                "role"
-              ]
+          "description": "Free-form names (teams, handles, addresses) shown by `veld diff` and `veld check --graph=json`. Never part of the IR or of generated code."
+        },
+        "package": {
+          "type": "string",
+          "pattern": "^@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$",
+          "description": "Registry name `@org/name` used by `veld publish`.",
+          "examples": [
+            "@acme/billing"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$",
+          "description": "Semantic version published by `veld publish`.",
+          "examples": [
+            "1.0.0"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "Short description shown in the registry."
+        }
+      }
+    },
+    "server": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "A server target: an emitter and an output directory. The role is the table name.",
+          "additionalProperties": false,
+          "required": [
+            "emitter"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name used by `veld generate <name>` and for the package name `@veld/<name>`. Default: the member's name, `<member>-server` or `<member>-client` when the member has both; required when a member has several targets of one role."
             },
-            "then": {
-              "properties": {
-                "framework": {
+            "emitter": {
+              "anyOf": [
+                {
                   "enum": [
-                    "axum"
+                    "node",
+                    "typescript",
+                    "java",
+                    "rust"
                   ]
-                }
-              }
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "emitter": {
-                  "const": "rust"
                 },
-                "role": {
-                  "const": "client"
+                {
+                  "type": "string",
+                  "pattern": "^plugin:[A-Za-z0-9_-]+$"
                 }
-              },
-              "required": [
-                "emitter",
-                "role"
-              ]
+              ],
+              "description": "A built-in emitter (`node`, `typescript`, `java`, `rust`) or `plugin:<name>` naming a `[plugins.<name>]` entry."
             },
-            "then": {
+            "framework": {
+              "type": "string",
+              "description": "The framework of the target. Valid values depend on emitter and role (E0803 lists them): node server `express`, `fastify`, `hono`, `node-http`, `nest`; typescript client `react`, `vue`; java server `jdk`, `spring`; rust server `axum`, rust client `reqwest`, `ureq`."
+            },
+            "out": {
+              "type": "string",
+              "description": "Output directory, relative to the member's directory. Default: `src/generated` (node, typescript), `src/main/java` (java), `generated` (rust); a plugin has none. Two targets must not share one (E0703); it must not be the workspace root or a contracts directory (E0704)."
+            },
+            "clients": {
+              "type": "boolean",
+              "default": true,
+              "description": "Server targets only: set `false` to skip the generated clients for consumed services."
+            },
+            "app": {
+              "type": "string",
+              "description": "The directory of the app that consumes the output, relative to the member, for `veld setup`. Default: the nearest ancestor of `out` with a `package.json`, `pom.xml` or `build.gradle[.kts]`."
+            },
+            "options": {
+              "type": "object",
+              "description": "Emitter-specific options, checked against the emitter's typed options. An unknown key is E0802.",
               "properties": {
-                "framework": {
+                "java": {
+                  "enum": [
+                    "17",
+                    "21"
+                  ],
+                  "default": "17",
+                  "description": "`java` emitter: the language version (default `17`, the oldest supported)."
+                },
+                "typescript": {
+                  "enum": [
+                    "es2020",
+                    "es2022"
+                  ],
+                  "default": "es2020",
+                  "description": "`typescript` and `node` emitters: the TypeScript target."
+                },
+                "framework-version": {
+                  "type": "string",
+                  "description": "The framework version: `spring` `\"3\"`, `nest` `\"10\"`, `react` `\"18\"`, `vue` `\"3\"`. Needs a `framework`; unversioned frameworks reject it (E0803)."
+                },
+                "package": {
+                  "type": "string",
+                  "description": "`java` emitter: the base Java package.",
+                  "examples": [
+                    "com.acme.payments"
+                  ]
+                },
+                "package-name": {
+                  "type": "string",
+                  "description": "`node` and `typescript` emitters: the generated `package.json` name (default `@veld/<target-name>`)."
+                },
+                "crate-name": {
+                  "type": "string",
+                  "description": "`rust` emitter: the generated crate name (default `<package>-<role>`).",
+                  "examples": [
+                    "orders-server"
+                  ]
+                },
+                "transport": {
                   "enum": [
                     "reqwest",
-                    "ureq"
-                  ]
-                }
-              }
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "emitter": {
-                  "const": "java"
+                    "ureq",
+                    "none"
+                  ],
+                  "default": "reqwest",
+                  "description": "`rust` server: the HTTP transport of the clients for consumed services."
                 },
-                "role": {
-                  "const": "client"
+                "validate": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "`node`, `typescript`, `java` and `rust` emitters: `false` skips run-time request validation by default and keeps the types."
                 }
               },
-              "required": [
-                "emitter",
-                "role"
-              ]
-            },
-            "then": {
-              "properties": {
-                "framework": false
-              }
+              "additionalProperties": true
             }
           },
-          {
-            "if": {
-              "properties": {
-                "role": {
-                  "const": "server"
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "emitter": {
+                    "const": "node"
+                  }
+                },
+                "required": [
+                  "emitter"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "framework": {
+                    "enum": [
+                      "express",
+                      "fastify",
+                      "hono",
+                      "node-http",
+                      "nest"
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "emitter": {
+                    "const": "java"
+                  }
+                },
+                "required": [
+                  "emitter"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "framework": {
+                    "enum": [
+                      "jdk",
+                      "spring"
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "emitter": {
+                    "const": "rust"
+                  }
+                },
+                "required": [
+                  "emitter"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "framework": {
+                    "enum": [
+                      "axum"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A server target: an emitter and an output directory. The role is the table name.",
+            "additionalProperties": false,
+            "required": [
+              "emitter"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name used by `veld generate <name>` and for the package name `@veld/<name>`. Default: the member's name, `<member>-server` or `<member>-client` when the member has both; required when a member has several targets of one role."
+              },
+              "emitter": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "node",
+                      "typescript",
+                      "java",
+                      "rust"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^plugin:[A-Za-z0-9_-]+$"
+                  }
+                ],
+                "description": "A built-in emitter (`node`, `typescript`, `java`, `rust`) or `plugin:<name>` naming a `[plugins.<name>]` entry."
+              },
+              "framework": {
+                "type": "string",
+                "description": "The framework of the target. Valid values depend on emitter and role (E0803 lists them): node server `express`, `fastify`, `hono`, `node-http`, `nest`; typescript client `react`, `vue`; java server `jdk`, `spring`; rust server `axum`, rust client `reqwest`, `ureq`."
+              },
+              "out": {
+                "type": "string",
+                "description": "Output directory, relative to the member's directory. Default: `src/generated` (node, typescript), `src/main/java` (java), `generated` (rust); a plugin has none. Two targets must not share one (E0703); it must not be the workspace root or a contracts directory (E0704)."
+              },
+              "clients": {
+                "type": "boolean",
+                "default": true,
+                "description": "Server targets only: set `false` to skip the generated clients for consumed services."
+              },
+              "app": {
+                "type": "string",
+                "description": "The directory of the app that consumes the output, relative to the member, for `veld setup`. Default: the nearest ancestor of `out` with a `package.json`, `pom.xml` or `build.gradle[.kts]`."
+              },
+              "options": {
+                "type": "object",
+                "description": "Emitter-specific options, checked against the emitter's typed options. An unknown key is E0802.",
+                "properties": {
+                  "java": {
+                    "enum": [
+                      "17",
+                      "21"
+                    ],
+                    "default": "17",
+                    "description": "`java` emitter: the language version (default `17`, the oldest supported)."
+                  },
+                  "typescript": {
+                    "enum": [
+                      "es2020",
+                      "es2022"
+                    ],
+                    "default": "es2020",
+                    "description": "`typescript` and `node` emitters: the TypeScript target."
+                  },
+                  "framework-version": {
+                    "type": "string",
+                    "description": "The framework version: `spring` `\"3\"`, `nest` `\"10\"`, `react` `\"18\"`, `vue` `\"3\"`. Needs a `framework`; unversioned frameworks reject it (E0803)."
+                  },
+                  "package": {
+                    "type": "string",
+                    "description": "`java` emitter: the base Java package.",
+                    "examples": [
+                      "com.acme.payments"
+                    ]
+                  },
+                  "package-name": {
+                    "type": "string",
+                    "description": "`node` and `typescript` emitters: the generated `package.json` name (default `@veld/<target-name>`)."
+                  },
+                  "crate-name": {
+                    "type": "string",
+                    "description": "`rust` emitter: the generated crate name (default `<package>-<role>`).",
+                    "examples": [
+                      "orders-server"
+                    ]
+                  },
+                  "transport": {
+                    "enum": [
+                      "reqwest",
+                      "ureq",
+                      "none"
+                    ],
+                    "default": "reqwest",
+                    "description": "`rust` server: the HTTP transport of the clients for consumed services."
+                  },
+                  "validate": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "`node`, `typescript`, `java` and `rust` emitters: `false` skips run-time request validation by default and keeps the types."
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "emitter": {
+                      "const": "node"
+                    }
+                  },
+                  "required": [
+                    "emitter"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "framework": {
+                      "enum": [
+                        "express",
+                        "fastify",
+                        "hono",
+                        "node-http",
+                        "nest"
+                      ]
+                    }
+                  }
                 }
               },
-              "required": [
-                "role"
-              ]
+              {
+                "if": {
+                  "properties": {
+                    "emitter": {
+                      "const": "java"
+                    }
+                  },
+                  "required": [
+                    "emitter"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "framework": {
+                      "enum": [
+                        "jdk",
+                        "spring"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "emitter": {
+                      "const": "rust"
+                    }
+                  },
+                  "required": [
+                    "emitter"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "framework": {
+                      "enum": [
+                        "axum"
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        }
+      ]
+    },
+    "client": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "A client target: an emitter and an output directory. The role is the table name.",
+          "additionalProperties": false,
+          "required": [
+            "emitter"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name used by `veld generate <name>` and for the package name `@veld/<name>`. Default: the member's name, `<member>-server` or `<member>-client` when the member has both; required when a member has several targets of one role."
             },
-            "then": {
-              "required": [
-                "service"
-              ]
+            "emitter": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "node",
+                    "typescript",
+                    "java",
+                    "rust"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "pattern": "^plugin:[A-Za-z0-9_-]+$"
+                }
+              ],
+              "description": "A built-in emitter (`node`, `typescript`, `java`, `rust`) or `plugin:<name>` naming a `[plugins.<name>]` entry."
+            },
+            "framework": {
+              "type": "string",
+              "description": "The framework of the target. Valid values depend on emitter and role (E0803 lists them): node server `express`, `fastify`, `hono`, `node-http`, `nest`; typescript client `react`, `vue`; java server `jdk`, `spring`; rust server `axum`, rust client `reqwest`, `ureq`."
+            },
+            "out": {
+              "type": "string",
+              "description": "Output directory, relative to the member's directory. Default: `src/generated` (node, typescript), `src/main/java` (java), `generated` (rust); a plugin has none. Two targets must not share one (E0703); it must not be the workspace root or a contracts directory (E0704)."
+            },
+            "clients": {
+              "type": "boolean",
+              "default": true,
+              "description": "Server targets only: set `false` to skip the generated clients for consumed services."
+            },
+            "app": {
+              "type": "string",
+              "description": "The directory of the app that consumes the output, relative to the member, for `veld setup`. Default: the nearest ancestor of `out` with a `package.json`, `pom.xml` or `build.gradle[.kts]`."
+            },
+            "options": {
+              "type": "object",
+              "description": "Emitter-specific options, checked against the emitter's typed options. An unknown key is E0802.",
+              "properties": {
+                "java": {
+                  "enum": [
+                    "17",
+                    "21"
+                  ],
+                  "default": "17",
+                  "description": "`java` emitter: the language version (default `17`, the oldest supported)."
+                },
+                "typescript": {
+                  "enum": [
+                    "es2020",
+                    "es2022"
+                  ],
+                  "default": "es2020",
+                  "description": "`typescript` and `node` emitters: the TypeScript target."
+                },
+                "framework-version": {
+                  "type": "string",
+                  "description": "The framework version: `spring` `\"3\"`, `nest` `\"10\"`, `react` `\"18\"`, `vue` `\"3\"`. Needs a `framework`; unversioned frameworks reject it (E0803)."
+                },
+                "package": {
+                  "type": "string",
+                  "description": "`java` emitter: the base Java package.",
+                  "examples": [
+                    "com.acme.payments"
+                  ]
+                },
+                "package-name": {
+                  "type": "string",
+                  "description": "`node` and `typescript` emitters: the generated `package.json` name (default `@veld/<target-name>`)."
+                },
+                "crate-name": {
+                  "type": "string",
+                  "description": "`rust` emitter: the generated crate name (default `<package>-<role>`).",
+                  "examples": [
+                    "orders-server"
+                  ]
+                },
+                "transport": {
+                  "enum": [
+                    "reqwest",
+                    "ureq",
+                    "none"
+                  ],
+                  "default": "reqwest",
+                  "description": "`rust` server: the HTTP transport of the clients for consumed services."
+                },
+                "validate": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "`node`, `typescript`, `java` and `rust` emitters: `false` skips run-time request validation by default and keeps the types."
+                }
+              },
+              "additionalProperties": true
             }
-          }
-        ]
-      }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "emitter": {
+                    "const": "typescript"
+                  }
+                },
+                "required": [
+                  "emitter"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "framework": {
+                    "enum": [
+                      "react",
+                      "vue"
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "emitter": {
+                    "const": "rust"
+                  }
+                },
+                "required": [
+                  "emitter"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "framework": {
+                    "enum": [
+                      "reqwest",
+                      "ureq"
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "emitter": {
+                    "const": "java"
+                  }
+                },
+                "required": [
+                  "emitter"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "framework": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A client target: an emitter and an output directory. The role is the table name.",
+            "additionalProperties": false,
+            "required": [
+              "emitter"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name used by `veld generate <name>` and for the package name `@veld/<name>`. Default: the member's name, `<member>-server` or `<member>-client` when the member has both; required when a member has several targets of one role."
+              },
+              "emitter": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "node",
+                      "typescript",
+                      "java",
+                      "rust"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^plugin:[A-Za-z0-9_-]+$"
+                  }
+                ],
+                "description": "A built-in emitter (`node`, `typescript`, `java`, `rust`) or `plugin:<name>` naming a `[plugins.<name>]` entry."
+              },
+              "framework": {
+                "type": "string",
+                "description": "The framework of the target. Valid values depend on emitter and role (E0803 lists them): node server `express`, `fastify`, `hono`, `node-http`, `nest`; typescript client `react`, `vue`; java server `jdk`, `spring`; rust server `axum`, rust client `reqwest`, `ureq`."
+              },
+              "out": {
+                "type": "string",
+                "description": "Output directory, relative to the member's directory. Default: `src/generated` (node, typescript), `src/main/java` (java), `generated` (rust); a plugin has none. Two targets must not share one (E0703); it must not be the workspace root or a contracts directory (E0704)."
+              },
+              "clients": {
+                "type": "boolean",
+                "default": true,
+                "description": "Server targets only: set `false` to skip the generated clients for consumed services."
+              },
+              "app": {
+                "type": "string",
+                "description": "The directory of the app that consumes the output, relative to the member, for `veld setup`. Default: the nearest ancestor of `out` with a `package.json`, `pom.xml` or `build.gradle[.kts]`."
+              },
+              "options": {
+                "type": "object",
+                "description": "Emitter-specific options, checked against the emitter's typed options. An unknown key is E0802.",
+                "properties": {
+                  "java": {
+                    "enum": [
+                      "17",
+                      "21"
+                    ],
+                    "default": "17",
+                    "description": "`java` emitter: the language version (default `17`, the oldest supported)."
+                  },
+                  "typescript": {
+                    "enum": [
+                      "es2020",
+                      "es2022"
+                    ],
+                    "default": "es2020",
+                    "description": "`typescript` and `node` emitters: the TypeScript target."
+                  },
+                  "framework-version": {
+                    "type": "string",
+                    "description": "The framework version: `spring` `\"3\"`, `nest` `\"10\"`, `react` `\"18\"`, `vue` `\"3\"`. Needs a `framework`; unversioned frameworks reject it (E0803)."
+                  },
+                  "package": {
+                    "type": "string",
+                    "description": "`java` emitter: the base Java package.",
+                    "examples": [
+                      "com.acme.payments"
+                    ]
+                  },
+                  "package-name": {
+                    "type": "string",
+                    "description": "`node` and `typescript` emitters: the generated `package.json` name (default `@veld/<target-name>`)."
+                  },
+                  "crate-name": {
+                    "type": "string",
+                    "description": "`rust` emitter: the generated crate name (default `<package>-<role>`).",
+                    "examples": [
+                      "orders-server"
+                    ]
+                  },
+                  "transport": {
+                    "enum": [
+                      "reqwest",
+                      "ureq",
+                      "none"
+                    ],
+                    "default": "reqwest",
+                    "description": "`rust` server: the HTTP transport of the clients for consumed services."
+                  },
+                  "validate": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "`node`, `typescript`, `java` and `rust` emitters: `false` skips run-time request validation by default and keeps the types."
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "emitter": {
+                      "const": "typescript"
+                    }
+                  },
+                  "required": [
+                    "emitter"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "framework": {
+                      "enum": [
+                        "react",
+                        "vue"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "emitter": {
+                      "const": "rust"
+                    }
+                  },
+                  "required": [
+                    "emitter"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "framework": {
+                      "enum": [
+                        "reqwest",
+                        "ureq"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "emitter": {
+                      "const": "java"
+                    }
+                  },
+                  "required": [
+                    "emitter"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "framework": false
+                  }
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        }
+      ]
     },
     "plugins": {
       "type": "object",
-      "description": "Generator plugins.",
+      "description": "Generator plugins. Allowed only in the workspace root.",
       "propertyNames": {
         "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
       },
@@ -478,7 +961,7 @@
     "registry": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The package registry.",
+      "description": "The package registry. Allowed only in the workspace root.",
       "properties": {
         "url": {
           "type": "string",
@@ -489,7 +972,7 @@
     },
     "dependencies": {
       "type": "object",
-      "description": "Registry packages, resolved and pinned in `veld.lock`.",
+      "description": "Registry packages, resolved and pinned in `veld.lock`. Allowed only in the workspace root.",
       "propertyNames": {
         "pattern": "^@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$"
       },

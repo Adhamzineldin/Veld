@@ -194,11 +194,8 @@ impl Workspace {
         let Ok(path) = config::find_config(root) else {
             return (None, None, None);
         };
-        let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
-        let result = match self.buffer_text(&path) {
-            Some(text) => config::load_str(&dir, text),
-            None => config::load(&path),
-        };
+        // An open, unsaved `veld.toml` (the root's or a member's) wins over the disk.
+        let result = config::load_with(&path, &|p| self.buffer_text(p).map(str::to_string));
         match result {
             Ok(p) => (Some(p), Some(path), None),
             Err(e) => (None, Some(path), Some(e.to_string())),
@@ -369,7 +366,13 @@ mod tests {
         write(
             d,
             "veld.toml",
-            "[project]\nname = \"shop\"\n[services.iam]\ncontracts = \"iam\"\n[services.app]\ncontracts = \"app\"\nconsumes = [\"iam\"]\n",
+            "[workspace]\nname = \"shop\"\nmembers = [\"iam\", \"app\"]\n",
+        );
+        write(d, "iam/veld.toml", "[service]\ncontracts = \".\"\n");
+        write(
+            d,
+            "app/veld.toml",
+            "[service]\ncontracts = \".\"\nconsumes = [\"iam\"]\n",
         );
         write(d, "iam/users.veld", "model User { id: uuid }\n");
         write(

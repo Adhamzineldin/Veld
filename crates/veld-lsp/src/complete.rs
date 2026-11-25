@@ -629,12 +629,19 @@ mod tests {
     use crate::workspace::Workspace;
     use std::fs;
 
-    const TOML: &str = "[project]\nname = \"p\"\n[services.iam]\ncontracts = \"iam\"\n[services.app]\ncontracts = \"app\"\nconsumes = [\"iam\"]\n";
+    const TOML: &str = "[workspace]\nname = \"p\"\nmembers = [\"iam\", \"app\"]\n";
+    const IAM_TOML: &str = "[service]\ncontracts = \".\"\n";
+    const APP_TOML: &str = "[service]\ncontracts = \".\"\nconsumes = [\"iam\"]\n";
     const USERS: &str = "/// A user.\nmodel User { id: uuid }\nmodel Team { id: uuid }\nenum Role { admin, guest }\n";
 
     fn run(app: &str, cursor_marker: &str) -> (Vec<CompletionItem>, String) {
         let tmp = tempfile::tempdir().unwrap();
-        for (p, t) in [("veld.toml", TOML), ("iam/users.veld", USERS)] {
+        for (p, t) in [
+            ("veld.toml", TOML),
+            ("iam/veld.toml", IAM_TOML),
+            ("app/veld.toml", APP_TOML),
+            ("iam/users.veld", USERS),
+        ] {
             let path = tmp.path().join(p);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, t).unwrap();

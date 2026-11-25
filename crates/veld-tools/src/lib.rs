@@ -11,7 +11,7 @@ pub mod gate;
 pub mod lint;
 pub mod openapi;
 
-pub use deps::{DepGraph, DepsFormat, deps};
+pub use deps::{DepGraph, DepsFormat, deps, deps_with_owners};
 pub use diff::{Change, ChangeKind, Severity, diff, has_breaking};
 pub use fmt::format;
 pub use gate::{GateDecision, GatePolicy, GateResult, breaking_gate};

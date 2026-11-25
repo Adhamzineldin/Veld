@@ -449,6 +449,101 @@ pub fn generate(files: &[SourceIn], target: &TargetIn, project: &ProjectIn) -> G
     }
 }
 
+// --- the workspace -----------------------------------------------------------------------
+
+/// What a workspace of `veld.toml` files describes: the packages and the targets, resolved by
+/// the same functions `veld` uses (`veld_project::config::load_virtual`).
+#[derive(Debug, Serialize)]
+pub struct WorkspaceResult {
+    pub ok: bool,
+    pub project: ProjectIn,
+    pub targets: Vec<TargetIn>,
+    /// `out` of each target, relative to the workspace root, in the order of `targets`.
+    pub outs: Vec<String>,
+    pub diagnostics: Vec<Diag>,
+}
+
+fn target_in(t: &veld_project::config::TargetSpec) -> Option<TargetIn> {
+    use veld_project::config::{EmitterRef, Role as ConfigRole};
+    let EmitterRef::Builtin(emitter) = &t.emitter else {
+        return None;
+    };
+    let options = serde_json::to_value(&t.options)
+        .ok()
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+    let server = t.role == ConfigRole::Server;
+    Some(TargetIn {
+        name: Some(t.name.clone()),
+        emitter: emitter.clone(),
+        role: if server { "server" } else { "client" }.into(),
+        framework: t.framework.clone(),
+        options,
+        service: t.service.clone(),
+        services: (!server).then(|| t.services.clone()),
+        clients: Some(t.clients),
+    })
+}
+
+/// Resolves a workspace from its `veld.toml` files: `files` hold `(path relative to the root with /,
+/// text)` of the root's `veld.toml` (path `veld.toml`) and of every member's. Plugin targets are
+/// left out (the browser has no plugins).
+pub fn workspace(files: &[SourceIn]) -> WorkspaceResult {
+    let root = std::path::Path::new("/");
+    let pairs: Vec<(String, String)> = files
+        .iter()
+        .map(|f| (f.path.clone(), f.text.clone()))
+        .collect();
+    let project = match veld_project::config::load_virtual(root, &pairs) {
+        Ok(p) => p,
+        Err(e) => {
+            let mut d = input_error(e.to_string());
+            if let Some(code) = e.code() {
+                d.code = code.into();
+                d.rendered = format!("error[{code}]: {}", d.message);
+            }
+            return WorkspaceResult {
+                ok: false,
+                project: ProjectIn::default(),
+                targets: Vec::new(),
+                outs: Vec::new(),
+                diagnostics: vec![d],
+            };
+        }
+    };
+    let packages = project
+        .packages
+        .iter()
+        .map(|p| PackageIn {
+            name: p.name.clone(),
+            kind: if p.kind == PackageKind::Library {
+                "library".into()
+            } else {
+                "service".into()
+            },
+            base_url: p.base_url.clone(),
+            prefix: p.prefix.clone(),
+            consumes: p.consumes.clone(),
+        })
+        .collect();
+    let mut targets = Vec::new();
+    let mut outs = Vec::new();
+    for t in &project.targets {
+        if let Some(target) = target_in(t) {
+            let out = t.out.strip_prefix(&project.root).unwrap_or(&t.out);
+            outs.push(out.to_string_lossy().replace('\\', "/"));
+            targets.push(target);
+        }
+    }
+    WorkspaceResult {
+        ok: true,
+        project: ProjectIn { packages },
+        targets,
+        outs,
+        diagnostics: Vec::new(),
+    }
+}
+
 // --- format and export -------------------------------------------------------------------
 
 /// Formats one contract with the canonical formatter.
@@ -595,6 +690,20 @@ pub fn generate_json(files: &str, target: &str, project: Option<&str>) -> Genera
         (Err(d), _, _) | (_, Err(d), _) | (_, _, Err(d)) => GenerateResult {
             ok: false,
             files: Vec::new(),
+            diagnostics: vec![*d],
+        },
+    }
+}
+
+/// [`workspace`] over JSON text.
+pub fn workspace_json(files: &str) -> WorkspaceResult {
+    match parse::<Vec<SourceIn>>("files", files) {
+        Ok(f) => workspace(&f),
+        Err(d) => WorkspaceResult {
+            ok: false,
+            project: ProjectIn::default(),
+            targets: Vec::new(),
+            outs: Vec::new(),
             diagnostics: vec![*d],
         },
     }

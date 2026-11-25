@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use anyhow::Result;
 use veld_tools::lint::{self, LintConfig, LintIssue, LintLevel};
-use veld_tools::{DepsFormat, deps};
+use veld_tools::{DepsFormat, deps_with_owners};
 
 use crate::cli::{CheckArgs, GraphFormat};
 use crate::error::{Exit, user};
@@ -47,7 +47,12 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &CheckArgs) -> Result<Exit> {
         });
     };
     if let Some(format) = args.graph {
-        print!("{}", deps(&ir, deps_format(format)));
+        let owners = project
+            .members
+            .iter()
+            .map(|m| (m.name.clone(), m.owners.clone()))
+            .collect();
+        print!("{}", deps_with_owners(&ir, deps_format(format), &owners));
         return Ok(Exit::Ok);
     }
     let issues = match args.no_lint {

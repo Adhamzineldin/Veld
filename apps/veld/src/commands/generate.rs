@@ -5,13 +5,14 @@ use std::time::Instant;
 
 use anyhow::Result;
 use veld_codegen::FileSet;
-use veld_project::config::{EmitterRef, TargetSpec};
+use veld_project::config::{EmitterRef, Selection, TargetSpec};
 use veld_project::output::{self, PlanAction, WriteOptions};
 use veld_tools::{GateDecision, GatePolicy};
 
 use crate::cli::GenerateArgs;
 use crate::error::{Exit, user};
 use crate::pipeline::{self, Compiled, Written};
+use crate::selection;
 use crate::ui::Ui;
 use crate::ui::prompt::{self, Clack, Prompter};
 use crate::ui::render::{self, TargetSummary};
@@ -34,14 +35,17 @@ pub fn generate(
     args: &GenerateArgs,
 ) -> Result<Exit> {
     let started = Instant::now();
-    pipeline::select_targets(&project, args.target.as_deref())?;
+    let Some(selection) = selection::resolve(ui, &project, &args.select)? else {
+        return Ok(Exit::Ok);
+    };
+    pipeline::select_targets(&project, &selection, args.target.as_deref())?;
     let Some(done) = pipeline::compile_or_report(ui, project)? else {
         return Ok(Exit::User);
     };
     if let Some(exit) = breaking_gate(ui, &done, args)? {
         return Ok(exit);
     }
-    let targets = pipeline::select_targets(&done.project, args.target.as_deref())?;
+    let targets = pipeline::select_targets(&done.project, &selection, args.target.as_deref())?;
     let outputs = match build_outputs(ui, &done, &targets) {
         Ok(o) => o,
         Err(messages) => {
@@ -52,7 +56,7 @@ pub fn generate(
     if args.check {
         return check_stale(ui, &outputs, args.diff);
     }
-    write_and_finish(ui, &done, &targets, &outputs, args, started)
+    write_and_finish(ui, &done, &targets, &outputs, args, (started, &selection))
 }
 
 type Outputs<'a> = Vec<(&'a TargetSpec, FileSet)>;
@@ -230,7 +234,7 @@ fn write_and_finish(
     targets: &[&TargetSpec],
     outputs: &Outputs<'_>,
     args: &GenerateArgs,
-    started: Instant,
+    (started, selection): (Instant, &Selection),
 ) -> Result<Exit> {
     let opts = WriteOptions {
         dry_run: args.dry_run,
@@ -264,7 +268,8 @@ fn write_and_finish(
     if args.dry_run {
         return Ok(Exit::Ok);
     }
-    if args.target.is_none() {
+    // The IR snapshot is written only by a run that selects every member and every target.
+    if args.target.is_none() && selection.full {
         pipeline::write_lock(&done.project, &done.ir)?;
     }
     if args.setup {
@@ -478,15 +483,15 @@ mod tests {
     fn import_lines_per_emitter() {
         let p = load_str(
             &std::env::temp_dir(),
-            "[project]\nname = \"s\"\n[[targets]]\nname = \"web\"\nrole = \"client\"\nemitter = \"typescript\"\nout = \"web\"\n[[targets]]\nname = \"api\"\nrole = \"server\"\nemitter = \"java\"\nservice = \"s\"\nout = \"srv\"\n[targets.options]\npackage = \"com.acme\"\n",
+            "[service]\nname = \"s\"\n[client]\nname = \"web\"\nemitter = \"typescript\"\nout = \"web\"\n[server]\nname = \"api\"\nemitter = \"java\"\nout = \"srv\"\n[server.options]\npackage = \"com.acme\"\n",
         )
         .unwrap();
         assert_eq!(
-            import_line(&p, &p.targets[0]).as_deref(),
+            import_line(&p, &p.targets[1]).as_deref(),
             Some("import { ... } from '@veld/web'")
         );
         assert_eq!(
-            import_line(&p, &p.targets[1]).as_deref(),
+            import_line(&p, &p.targets[0]).as_deref(),
             Some("import com.acme.*;")
         );
     }

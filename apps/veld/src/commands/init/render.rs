@@ -1,6 +1,7 @@
 //! Renders the files `veld init` writes from its [`Answers`].
 
-use super::answers::{Answers, Client, Server, pascal, sanitize};
+use super::answers::{Answers, pascal, sanitize};
+use super::config;
 use crate::cli::Template;
 
 /// One file to write. An `optional` file is skipped (not an error) when it already exists.
@@ -27,22 +28,25 @@ fn app_of(out: &str) -> String {
 /// Everything `init` writes, in a stable order.
 #[must_use]
 pub fn files(a: &Answers) -> Vec<File> {
-    let (config, outs) = config(a);
-    let mut files = vec![File {
-        path: "veld.toml".to_string(),
-        text: config,
-        optional: false,
-    }];
+    let outs: Vec<String> = config::planned(a)
+        .into_iter()
+        .filter(config::Planned::is_npm)
+        .map(|t| t.out)
+        .collect();
+    let mut files = config::config_files(a);
     files.extend(contracts(a));
     files.extend(package_jsons(a, &outs));
     files.push(readme(a));
     files
 }
 
-/// The `veld.toml` text alone (no other file), for callers that only need the targets.
+/// `(target name, output folder)` of every target the answers render, overrides applied.
 #[must_use]
-pub fn config_text(a: &Answers) -> String {
-    config(a).0
+pub fn target_outs(a: &Answers) -> Vec<(String, String)> {
+    config::planned(a)
+        .into_iter()
+        .map(|t| (t.name, t.out))
+        .collect()
 }
 
 /// The output folders of the TypeScript targets, which sit in apps with a `package.json`.
@@ -74,173 +78,6 @@ fn package_jsons(a: &Answers, ts_outs: &[String]) -> Vec<File> {
         .collect()
 }
 
-/// `veld.toml` text and the output folders of its TypeScript targets.
-fn config(a: &Answers) -> (String, Vec<String>) {
-    let mut t = String::new();
-    let mut ts_outs = Vec::new();
-    t.push_str(&format!("[project]\nname = \"{}\"\n", a.name));
-    if !a.description.is_empty() {
-        t.push_str(&format!("description = {}\n", toml_string(&a.description)));
-    }
-    if a.is_workspace() {
-        t.push('\n');
-        for svc in &a.services {
-            t.push_str(&format!(
-                "[services.{svc}]\ncontracts = \"contracts/{svc}\"\nbase-url = {}\n",
-                toml_string(&a.base_url(svc))
-            ));
-            let consumed = a.consumes_of(svc);
-            if !consumed.is_empty() {
-                let list: Vec<String> = consumed.iter().map(|c| toml_string(c)).collect();
-                t.push_str(&format!(
-                    "consumes = [{}]   # {svc} gets a generated client for each\n",
-                    list.join(", ")
-                ));
-            }
-            t.push('\n');
-        }
-    } else {
-        t.push_str("contracts = \"contracts\"\n\n");
-    }
-    for (svc, server) in &a.servers {
-        server_target(a, &mut t, &mut ts_outs, svc, server);
-    }
-    for client in &a.clients {
-        client_target(a, client, &mut t, &mut ts_outs);
-    }
-    (t, ts_outs)
-}
-
-/// A TOML basic string.
-fn toml_string(text: &str) -> String {
-    let mut s = String::from("\"");
-    for c in text.chars() {
-        match c {
-            '"' => s.push_str("\\\""),
-            '\\' => s.push_str("\\\\"),
-            c if c.is_control() => s.push(' '),
-            c => s.push(c),
-        }
-    }
-    s.push('"');
-    s
-}
-
-fn server_target(a: &Answers, t: &mut String, ts_outs: &mut Vec<String>, svc: &str, s: &Server) {
-    let (name, flat) = if a.is_workspace() {
-        (format!("{svc}-api"), format!("services/{svc}"))
-    } else {
-        ("api".to_string(), String::new())
-    };
-    let (emitter, fw, default_out) = match s {
-        Server::None => return,
-        Server::Node(fw) => (
-            "node",
-            fw,
-            if a.is_workspace() {
-                format!("{flat}/generated")
-            } else {
-                "generated/server".to_string()
-            },
-        ),
-        Server::Rust(fw) => (
-            "rust",
-            fw,
-            if a.is_workspace() {
-                format!("{flat}/generated")
-            } else {
-                "generated/rust-server".to_string()
-            },
-        ),
-        Server::Java(fw) => (
-            "java",
-            fw,
-            if a.is_workspace() {
-                format!("{flat}/src/main/java")
-            } else {
-                "java/src/main/java".to_string()
-            },
-        ),
-    };
-    let out = a.out(&name, &default_out);
-    t.push_str(&format!(
-        "[[targets]]\nname = \"{name}\"\nrole = \"server\"\nemitter = \"{emitter}\"\nframework = \"{fw}\"\nservice = \"{svc}\"\nout = \"{out}\"\n"
-    ));
-    if emitter == "rust" {
-        t.push_str(&format!(
-            "
-[targets.options]
-crate-name = \"{}-server\"
-",
-            sanitize(svc).to_ascii_lowercase()
-        ));
-    } else if emitter == "java" {
-        t.push_str(&format!(
-            "\n[targets.options]\npackage = \"com.example.{}\"\n",
-            sanitize(svc).to_ascii_lowercase()
-        ));
-    } else {
-        ts_outs.push(out);
-    }
-    t.push('\n');
-}
-
-fn client_target(a: &Answers, client: &Client, t: &mut String, ts_outs: &mut Vec<String>) {
-    match client {
-        Client::None => {}
-        Client::Ts(fw) => {
-            let default = if a.is_workspace() {
-                "web/generated"
-            } else {
-                "generated/client"
-            };
-            let out = a.out("web", default);
-            t.push_str(
-                "[[targets]]\nname = \"web\"\nrole = \"client\"\nemitter = \"typescript\"\n",
-            );
-            if let Some(fw) = fw {
-                t.push_str(&format!("framework = \"{fw}\"\n"));
-            }
-            t.push_str(&format!("out = \"{out}\"\n\n"));
-            ts_outs.push(out);
-        }
-        Client::Rust(fw) => {
-            let default = if a.is_workspace() {
-                "clients/rust"
-            } else {
-                "generated/rust-client"
-            };
-            let out = a.out("rust-client", default);
-            t.push_str(&format!(
-                "[[targets]]
-name = \"rust-client\"
-role = \"client\"
-emitter = \"rust\"
-framework = \"{fw}\"
-out = \"{out}\"
-
-[targets.options]
-crate-name = \"{}-client\"
-
-",
-                sanitize(&a.name).to_ascii_lowercase()
-            ));
-        }
-        Client::Java => {
-            let default = if a.is_workspace() {
-                "clients/java/src/main/java"
-            } else {
-                "java-client/src/main/java"
-            };
-            let out = a.out("java-client", default);
-            t.push_str(&format!(
-                "[[targets]]\nname = \"java-client\"\nrole = \"client\"\nemitter = \"java\"\nout = \"{out}\"\n\n[targets.options]\npackage = \"com.example.{}.client\"\n\n",
-                sanitize(&a.name).to_ascii_lowercase()
-            ));
-        }
-    }
-}
-
 fn contracts(a: &Answers) -> Vec<File> {
     let file = |path: String, text: String| File {
         path,
@@ -261,7 +98,7 @@ fn contracts(a: &Answers) -> Vec<File> {
                 "orders" => ORDERS.to_string(),
                 other => generic(other),
             };
-            file(format!("contracts/{svc}/{svc}.veld"), text)
+            file(format!("services/{svc}/contracts/{svc}.veld"), text)
         })
         .collect()
 }
@@ -325,12 +162,14 @@ fn readme(a: &Answers) -> File {
     t.push_str("The `.veld` files are the source of truth; the servers and clients are generated from them.\n\n");
     t.push_str("## Layout\n\n");
     if a.is_workspace() {
-        t.push_str("- `contracts/<service>/`: the contracts, one folder per service\n");
+        t.push_str("- `services/<service>/contracts/`: the contracts, one folder per service\n");
+        t.push_str("- `veld.toml`: the workspace and its members\n");
+        t.push_str("- `services/<service>/veld.toml`: one service, its base URL and its server target\n");
     } else {
         t.push_str("- `contracts/`: the API contracts (`.veld` files)\n");
+        t.push_str("- `veld.toml`: the service and its generated targets\n");
     }
-    t.push_str("- `veld.toml`: the project and its generated targets\n");
-    for (name, out) in super::flow::default_outs(a) {
+    for (name, out) in target_outs(a) {
         t.push_str(&format!(
             "- `{}`: generated output of `{name}` (do not edit; `veld clean` removes it)\n",
             a.out(&name, &out)
@@ -467,7 +306,8 @@ service Auth at "/auth" {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use veld_project::config::load_str;
+    use super::super::answers::{Client, Server};
+    use veld_project::config::load_virtual;
 
     fn answers(workspace: &[&str], server: Server, client: Client) -> Answers {
         let services: Vec<String> = workspace.iter().map(|s| (*s).to_string()).collect();
@@ -497,8 +337,20 @@ mod tests {
 
     fn valid(a: &Answers) -> veld_project::config::Project {
         let dir = std::env::temp_dir().join("veld-init-render");
-        let f = files(a);
-        load_str(&dir, &f[0].text).unwrap_or_else(|e| panic!("{e}\n{}", f[0].text))
+        let tomls: Vec<(String, String)> = files(a)
+            .into_iter()
+            .filter(|f| f.path.ends_with("veld.toml"))
+            .map(|f| (f.path, f.text))
+            .collect();
+        load_virtual(&dir, &tomls).unwrap_or_else(|e| panic!("{e}\n{tomls:#?}"))
+    }
+
+    fn text_of(files: &[File], path: &str) -> String {
+        files
+            .iter()
+            .find(|f| f.path == path)
+            .map(|f| f.text.clone())
+            .unwrap_or_else(|| panic!("{path} not written"))
     }
 
     #[test]
@@ -552,12 +404,11 @@ mod tests {
         );
         let none = files(&a);
         assert!(
-            !none[0].text.contains("consumes"),
+            none.iter().all(|f| !f.text.contains("consumes")),
             "no auto-assigned consumes"
         );
         assert!(
-            none[0]
-                .text
+            text_of(&none, "services/orders/veld.toml")
                 .contains("base-url = \"http://localhost:3002\"")
         );
         a.consumes = vec![
@@ -569,16 +420,21 @@ mod tests {
         ];
         a.base_urls = vec![("users".to_string(), "https://users.example.com".to_string())];
         let f = files(&a);
-        assert!(f[0].text.contains("consumes = [\"users\"]"));
-        assert!(f[0].text.contains("consumes = [\"users\", \"orders\"]"));
+        assert!(text_of(&f, "services/orders/veld.toml").contains("consumes = [\"users\"]"));
         assert!(
-            f[0].text
+            text_of(&f, "services/billing/veld.toml").contains("consumes = [\"users\", \"orders\"]")
+        );
+        assert!(
+            text_of(&f, "services/users/veld.toml")
                 .contains("base-url = \"https://users.example.com\"")
         );
-        assert!(f[0].text.contains("framework = \"react\""));
+        assert!(text_of(&f, "web/veld.toml").contains("framework = \"react\""));
+        assert!(text_of(&f, "veld.toml").contains("members = [\"services/*\", \"web\"]"));
+        let p = valid(&a);
+        assert_eq!(p.package("billing").unwrap().consumes, ["users", "orders"]);
         let paths: Vec<&str> = f.iter().map(|x| x.path.as_str()).collect();
         for want in [
-            "contracts/billing/billing.veld",
+            "services/billing/contracts/billing.veld",
             "services/billing/package.json",
             "web/package.json",
         ] {
@@ -593,6 +449,11 @@ mod tests {
         let f = files(&a);
         assert!(f[0].text.contains("out = \"server/src/generated\""));
         assert!(f.iter().any(|x| x.path == "server/package.json"));
+        let mut ws = answers(&["users"], Server::Node("express".into()), Client::None);
+        ws.outs.push(("users-api".into(), "backend/users/gen".into()));
+        let f = files(&ws);
+        assert!(text_of(&f, "services/users/veld.toml").contains("out = \"../../backend/users/gen\""));
+        assert_eq!(valid(&ws).targets[0].out.ends_with("backend/users/gen"), true);
     }
 
     #[test]

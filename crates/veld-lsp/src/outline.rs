@@ -340,7 +340,7 @@ mod tests {
 
     fn analysis(src: &str) -> (tempfile::TempDir, Analysis, FileId) {
         let tmp = tempfile::tempdir().unwrap();
-        fs::write(tmp.path().join("veld.toml"), "[project]\nname = \"p\"\n").unwrap();
+        fs::write(tmp.path().join("veld.toml"), "[service]\nname = \"p\"\n").unwrap();
         fs::create_dir_all(tmp.path().join("contracts")).unwrap();
         let p = tmp.path().join("contracts/m.veld");
         fs::write(&p, src).unwrap();

@@ -228,7 +228,7 @@ fn the_use_it_block_aligns_its_columns_whatever_the_target_names() {
     append(
         dir,
         "veld.toml",
-        "\n[[targets]]\nname = \"a-rather-long-client-target\"\nrole = \"client\"\nemitter = \"typescript\"\nout = \"generated/client\"\n",
+        "\n[client]\nname = \"a-rather-long-client-target\"\nemitter = \"typescript\"\nout = \"generated/client\"\n",
     );
     let out = veld(dir).arg("generate").output().unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -416,7 +416,7 @@ fn two_module_workspace(dir: &Path) {
     write(
         dir,
         "veld.toml",
-        "[project]\nname = \"p\"\ncontracts = \"contracts\"\n",
+        "[service]\nname = \"p\"\ncontracts = \"contracts\"\n",
     );
     write(
         dir,
@@ -589,7 +589,7 @@ fn client_only_project(dir: &Path) {
     write(
         dir,
         "veld.toml",
-        "[project]\nname = \"p\"\n[[targets]]\nname = \"oas\"\nrole = \"client\"\nemitter = \"typescript\"\nout = \"spec\"\n",
+        "[service]\nname = \"p\"\n[[client]]\nname = \"oas\"\nemitter = \"typescript\"\nout = \"spec\"\n",
     );
     write(
         dir,
@@ -618,7 +618,7 @@ fn doctor_reports_each_problem_with_a_fix_and_exits_1() {
     append(
         dir,
         "veld.toml",
-        "\n[plugins.ghost]\ncommand = \"veld-no-such-plugin-xyz\"\n\n[[targets]]\nname = \"web\"\nrole = \"client\"\nemitter = \"plugin:ghost\"\nout = \"web\"\n\n[lint]\nbogus = \"warn\"\n\n[dependencies]\n\"@acme/billing\" = \"^1\"\n",
+        "\n[plugins.ghost]\ncommand = \"veld-no-such-plugin-xyz\"\n\n[[client]]\nname = \"web\"\nemitter = \"plugin:ghost\"\nout = \"web\"\n\n[lint]\nbogus = \"warn\"\n\n[dependencies]\n\"@acme/billing\" = \"^1\"\n",
     );
     write(dir, "contracts/b.veld", "model B { x: Missing }\n");
     write(dir, "spec", "a file, not a directory");
@@ -648,7 +648,7 @@ fn doctor_reports_a_broken_config_and_a_corrupt_baseline() {
     veld(dir).arg("doctor").assert().code(1).stdout(
         predicate::str::contains("✗ baseline").and(predicate::str::contains("veld clean --lock")),
     );
-    write(dir, "veld.toml", "[project]\nnam = \"x\"\n");
+    write(dir, "veld.toml", "[service]\nnam = \"x\"\n");
     veld(dir)
         .arg("doctor")
         .assert()

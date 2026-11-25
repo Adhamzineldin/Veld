@@ -60,7 +60,7 @@ export interface Plugin {
   roles: Role[];
   /** The IR features this plugin implements. Anything else is reported by Veld as E0801. */
   capabilities: Feature[];
-  /** JSON Schema for `[targets.options]`, optional. */
+  /** JSON Schema for `[client.options]` and `[server.options]`, optional. */
   optionsSchema?: unknown;
   /**
    * The frameworks per role, with their versions and the oldest language they need, for example
@@ -233,11 +233,12 @@ framework (with each of its versions) you declared.
 
 ## Use it in a project
 
-Copy `veld.plugin.toml` into the project's `veld.toml` and add a target with
-`emitter = "plugin:{{name}}"`.
+Copy the `[plugins.{{name}}]` table of `veld.plugin.toml` into the `veld.toml` of the workspace
+root, and add a `[client]` (or `[server]`) target with `emitter = "plugin:{{name}}"` and an `out`
+to the `veld.toml` of the member that should get the generated code.
 "#;
 
-pub const PLUGIN_TOML: &str = r#"# Add this to your project's veld.toml.
+pub const PLUGIN_TOML: &str = r#"# Add the `[plugins.{{name}}]` table to the workspace root's veld.toml.
 [plugins.{{name}}]
 # The executable and its arguments. A relative path is resolved against veld.toml.
 command = "node"
@@ -249,10 +250,11 @@ version = "0.1.0"
 #   node -e "const c=require('crypto'),f=require('fs');console.log(c.createHash('sha256').update(f.readFileSync(process.argv[1])).digest('hex'))" plugins/{{name}}/dist/main.js
 # sha256 = "..."
 
-[[targets]]
-role = "client"
+# Add this to the veld.toml of the member that gets the generated code (a `[service]` or an
+# `[app]`). A plugin has no default `out`, so it is required.
+[client]
 emitter = "plugin:{{name}}"
 out = "generated/{{name}}"
-# [targets.options]
+# [client.options]
 # timeout = 120   # seconds allowed for `generate` (default 60, maximum 600)
 "#;

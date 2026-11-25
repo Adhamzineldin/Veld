@@ -325,7 +325,7 @@ mod tests {
         (tmp, a)
     }
 
-    const TOML: &str = "[project]\nname = \"p\"\n[services.s]\ncontracts = \"c\"\n";
+    const TOML: &str = "[service]\nname = \"s\"\ncontracts = \"c\"\n";
 
     fn hover_at(
         a: &Analysis,

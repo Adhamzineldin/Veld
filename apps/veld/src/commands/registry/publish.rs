@@ -13,9 +13,8 @@ use crate::pipeline;
 use crate::ui::Ui;
 
 pub fn run(ui: &Ui, config: Option<&Path>, args: &PublishArgs) -> Result<Exit> {
-    let config_file = pipeline::config_file(config)?;
-    let project = veld_project::config::load(&config_file)?;
-    let plan = plan(&config_file, &project, args.package.as_deref()).map_err(fail)?;
+    let project = pipeline::load_project(config)?;
+    let plan = plan(&project, args.package.as_deref()).map_err(fail)?;
     let size = plan.packed.bytes.len();
     ui.header("publish", &plan.name);
     ui.info(&format!(

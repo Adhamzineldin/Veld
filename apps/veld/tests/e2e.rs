@@ -268,7 +268,7 @@ fn unsupported_feature_is_a_loud_error_and_writes_nothing() {
     write(
         tmp.path(),
         "veld.toml",
-        "[project]\nname = \"demo\"\n\n[[targets]]\nname = \"api\"\nrole = \"server\"\nemitter = \"java\"\nout = \"generated/server\"\n",
+        "[service]\nname = \"demo\"\n\n[server]\nname = \"api\"\nemitter = \"java\"\nout = \"generated/server\"\n",
     );
     veld(tmp.path())
         .arg("generate")
@@ -289,7 +289,7 @@ fn generate_warns_w0904_when_validation_is_off_and_the_contract_has_rules() {
     );
     let toml = |options: &str| {
         format!(
-            "[project]\nname = \"demo\"\n\n[[targets]]\nname = \"api\"\nrole = \"server\"\nemitter = \"node\"\nout = \"generated/server\"\n{options}\n"
+            "[service]\nname = \"demo\"\n\n[server]\nname = \"api\"\nemitter = \"node\"\nout = \"generated/server\"\n{options}\n"
         )
     };
     // Validation on: no warning.
@@ -303,7 +303,7 @@ fn generate_warns_w0904_when_validation_is_off_and_the_contract_has_rules() {
     write(
         tmp.path(),
         "veld.toml",
-        &toml("\n[targets.options]\nvalidate = false"),
+        &toml("\n[server.options]\nvalidate = false"),
     );
     veld(tmp.path())
         .arg("generate")
@@ -409,7 +409,7 @@ fn unknown_key_in_config_suggests_the_right_one() {
     write(
         tmp.path(),
         "veld.toml",
-        "[project]\nname = \"x\"\n\n[[targets]]\nrole = \"client\"\nemiter = \"typescript\"\nout = \"gen\"\n",
+        "[service]\nname = \"x\"\n\n[client]\nemiter = \"typescript\"\nout = \"gen\"\n",
     );
     veld(tmp.path())
         .arg("check")
@@ -673,11 +673,14 @@ fn init_workspace_assigns_no_consumes_unless_asked() {
         .args(["init", "--name", "ws", "--workspace"])
         .assert()
         .success();
-    assert!(
-        !fs::read_to_string(tmp.path().join("veld.toml"))
-            .unwrap()
-            .contains("consumes")
-    );
+    for (path, bytes) in tree(tmp.path()) {
+        if path.ends_with("veld.toml") {
+            assert!(
+                !String::from_utf8(bytes).unwrap().contains("consumes"),
+                "{path} must not consume anything"
+            );
+        }
+    }
     veld(tmp.path()).arg("generate").assert().success();
     assert!(
         !tree(tmp.path())

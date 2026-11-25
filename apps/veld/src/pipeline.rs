@@ -11,7 +11,7 @@ use veld_codegen::{
 use veld_compiler::{CompileInput, CompileOutput, PackageInput, SourceFile};
 use veld_ir::{Ir, PackageKind, ServiceId};
 use veld_plugin_host::{HostConfig, PluginGenerator};
-use veld_project::config::{self, EmitterRef, PackageSpec, Project, TargetSpec};
+use veld_project::config::{self, EmitterRef, PackageSpec, Project, Selection, TargetSpec};
 use veld_project::output::{self, Plan, PlanAction, WriteOptions};
 
 use crate::error::user;
@@ -33,9 +33,76 @@ pub fn config_file(config: Option<&Path>) -> Result<PathBuf> {
     })
 }
 
-/// Resolves `--config` to a loaded project.
+/// Resolves `--config` to a loaded project. The workspace defaults are checked here, whether or
+/// not a member uses them (`spec/workspace.md`, section 4.2).
 pub fn load_project(config: Option<&Path>) -> Result<Project> {
-    Ok(config::load(&config_file(config)?)?)
+    let project = config::load(&config_file(config)?)?;
+    check_defaults(&project)?;
+    Ok(project)
+}
+
+/// An IR with nothing in it, for checks that need a request but no contracts.
+fn empty_ir() -> Ir {
+    Ir {
+        ir_version: String::new(),
+        packages: Vec::new(),
+        decls: Vec::new(),
+        services: Vec::new(),
+        consumes: BTreeMap::new(),
+        examples: Vec::new(),
+        policies: Vec::new(),
+        channels: Vec::new(),
+    }
+}
+
+/// Checks each `[workspace.defaults.<role>.<emitter>]` with the generator of its emitter: an
+/// unknown emitter is `E0701`, a framework or version the generator does not offer is `E0803`,
+/// an unknown language version `E0802`, and an option it does not know `E0802`.
+fn check_defaults(project: &Project) -> Result<()> {
+    for d in &project.defaults {
+        let EmitterRef::Builtin(id) = &d.emitter else {
+            continue;
+        };
+        let role = role_of(d.role);
+        let at = format!("[workspace.defaults.{}.{id}]", role.name());
+        let generator = registry::find(id).ok_or_else(|| {
+            user(format!(
+                "E0701: unknown emitter `{id}` in `{at}` (built-in: {})",
+                registry::ids().join(", ")
+            ))
+        })?;
+        if !generator.roles().contains(&role) {
+            return Err(user(format!(
+                "E0803: `{at}`: emitter `{id}` cannot produce the `{}` role",
+                role.name()
+            )));
+        }
+        let mut options = d.options.clone();
+        if d.framework.is_none() {
+            // The member brings the framework, so its version cannot be judged here.
+            options.remove("framework-version");
+        }
+        let options = serde_json::to_value(&options)
+            .map_err(|e| user(format!("`{at}`: invalid options: {e}")))?;
+        let ir = empty_ir();
+        let req = GenRequest {
+            ir: &ir,
+            role,
+            services: Vec::new(),
+            consumes: Vec::new(),
+            framework: d.framework.clone(),
+        };
+        let fail = |diags: &[GenDiagnostic]| {
+            let lines: Vec<String> = diags
+                .iter()
+                .map(|g| format!("{}: `{at}`: {}", g.code, g.message))
+                .collect();
+            user(lines.join("\n"))
+        };
+        resolve_profile(generator, &req, &options).map_err(|g| fail(&[g]))?;
+        generator.check_options(&options).map_err(|g| fail(&g))?;
+    }
+    Ok(())
 }
 
 /// A project that compiled without errors.
@@ -396,26 +463,49 @@ fn service_ids(ir: &Ir, packages: &[String]) -> Vec<ServiceId> {
         .collect()
 }
 
-/// The targets to run: all of them, or the one called `only`.
-pub fn select_targets<'a>(project: &'a Project, only: Option<&str>) -> Result<Vec<&'a TargetSpec>> {
-    let targets: Vec<&TargetSpec> = project
-        .targets
-        .iter()
+/// The targets to run: those of the selected members, or the one called `only`. A target that
+/// exists but belongs to a member that is not selected is `E0803`.
+pub fn select_targets<'a>(
+    project: &'a Project,
+    selection: &Selection,
+    only: Option<&str>,
+) -> Result<Vec<&'a TargetSpec>> {
+    let targets: Vec<&TargetSpec> = selection
+        .targets(project)
+        .into_iter()
         .filter(|t| only.is_none_or(|name| t.name == name))
         .collect();
     if !targets.is_empty() {
         return Ok(targets);
     }
     Err(match only {
-        Some(name) => {
-            let known: Vec<&str> = project.targets.iter().map(|t| t.name.as_str()).collect();
-            user(format!(
-                "no target named `{name}` (known targets: {})",
-                known.join(", ")
-            ))
-        }
-        None => user("veld.toml defines no `[[targets]]`; add one (see `veld init`)"),
+        Some(name) => unknown_target(project, selection, name),
+        None if project.targets.is_empty() => user(
+            "no target is defined: add a `[server]` or `[client]` table to a member's veld.toml (see `veld init`)",
+        ),
+        None => user(format!(
+            "the selected members ({}) define no target",
+            selection.members.join(", ")
+        )),
     })
+}
+
+fn unknown_target(project: &Project, selection: &Selection, name: &str) -> anyhow::Error {
+    if let Some(t) = project.targets.iter().find(|t| t.name == name) {
+        return user(format!(
+            "E0803: target `{name}` belongs to member `{}`, which is not selected",
+            t.member
+        ));
+    }
+    let known: Vec<&str> = selection
+        .targets(project)
+        .iter()
+        .map(|t| t.name.as_str())
+        .collect();
+    user(format!(
+        "no target named `{name}` (known targets: {})",
+        known.join(", ")
+    ))
 }
 
 /// Resolves one target: finds its generator and computes its services, consumes and options.
@@ -644,19 +734,37 @@ mod tests {
 
     fn project(extra: &str) -> Project {
         let dir = std::env::temp_dir().join("veld-pipeline-unit");
-        load_str(&dir, &format!("[project]\nname = \"shop\"\n{extra}")).unwrap()
+        load_str(&dir, &format!("[service]\nname = \"shop\"\n{extra}")).unwrap()
     }
 
-    fn empty_ir() -> Ir {
-        Ir {
-            ir_version: String::new(),
-            packages: vec![],
-            decls: vec![],
-            services: vec![],
-            consumes: BTreeMap::new(),
-            examples: vec![],
-            policies: vec![],
-            channels: vec![],
+    fn with_defaults(defaults: &str) -> Project {
+        let dir = std::env::temp_dir().join("veld-pipeline-defaults");
+        let text = format!("[workspace]\nname = \"w\"\n{defaults}\n[service]\nname = \"s\"\n");
+        load_str(&dir, &text).unwrap()
+    }
+
+    #[test]
+    fn workspace_defaults_are_checked_whether_or_not_a_member_uses_them() {
+        let ok = with_defaults(
+            "[workspace.defaults.server.java]\nframework = \"spring\"\nframework-version = \"3\"\njava = \"21\"\n",
+        );
+        assert!(check_defaults(&ok).is_ok());
+        let only_options = with_defaults("[workspace.defaults.server.java]\njava = \"21\"\n");
+        assert!(check_defaults(&only_options).is_ok());
+        for (text, code) in [
+            ("[workspace.defaults.server.cobol]\nframework = \"x\"\n", "E0701"),
+            ("[workspace.defaults.server.node]\nframework = \"koa\"\n", "E0803"),
+            ("[workspace.defaults.client.node]\nframework = \"x\"\n", "E0803"),
+            ("[workspace.defaults.server.java]\njava = \"8\"\n", "E0802"),
+            ("[workspace.defaults.server.java]\nbogus = true\n", "E0802"),
+            (
+                "[workspace.defaults.server.java]\nframework = \"jdk\"\nframework-version = \"9\"\n",
+                "E0803",
+            ),
+        ] {
+            let err = check_defaults(&with_defaults(text)).unwrap_err().to_string();
+            assert!(err.contains(code), "{text}: {err}");
+            assert!(err.contains("[workspace.defaults."), "{err}");
         }
     }
 
@@ -684,26 +792,40 @@ mod tests {
 
     #[test]
     fn unknown_target_name_lists_known_ones() {
-        let p = project(
-            "[[targets]]\nname = \"web\"\nrole = \"client\"\nemitter = \"typescript\"\nout = \"gen\"\n",
-        );
-        let err = select_targets(&p, Some("api")).unwrap_err().to_string();
+        let p = project("[client]\nname = \"web\"\nemitter = \"typescript\"\nout = \"gen\"\n");
+        let all = Selection::all(&p);
+        let err = select_targets(&p, &all, Some("api"))
+            .unwrap_err()
+            .to_string();
         assert!(
             err.contains("no target named `api`") && err.contains("web"),
             "{err}"
         );
-        assert_eq!(select_targets(&p, Some("web")).unwrap().len(), 1);
-        assert_eq!(select_targets(&p, None).unwrap().len(), 1);
+        assert_eq!(select_targets(&p, &all, Some("web")).unwrap().len(), 1);
+        assert_eq!(select_targets(&p, &all, None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_target_of_a_member_that_is_not_selected_is_e0803() {
+        let p = project("[client]\nname = \"web\"\nemitter = \"typescript\"\nout = \"gen\"\n");
+        let none = Selection {
+            members: Vec::new(),
+            full: false,
+        };
+        let err = select_targets(&p, &none, Some("web"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("E0803") && err.contains("not selected"), "{err}");
     }
 
     #[test]
     fn no_targets_is_a_user_error() {
         let p = project("");
         assert!(
-            select_targets(&p, None)
+            select_targets(&p, &Selection::all(&p), None)
                 .unwrap_err()
                 .to_string()
-                .contains("no `[[targets]]`")
+                .contains("no target is defined")
         );
     }
 
@@ -716,15 +838,15 @@ mod tests {
             assert!(err[0].contains(needle), "{err:?}");
         };
         check(
-            "[[targets]]\nrole = \"client\"\nemitter = \"cobol\"\nout = \"gen\"\n",
+            "[client]\nemitter = \"cobol\"\nout = \"gen\"\n",
             "unknown emitter `cobol`",
         );
         check(
-            "[[targets]]\nrole = \"client\"\nemitter = \"node\"\nout = \"gen\"\n",
+            "[client]\nemitter = \"node\"\nout = \"gen\"\n",
             "cannot produce the `client` role",
         );
         check(
-            "[[targets]]\nrole = \"client\"\nemitter = \"plugin:kotlin\"\nout = \"gen\"\n[plugins.kotlin]\ncommand = \"x\"\n",
+            "[client]\nemitter = \"plugin:kotlin\"\nout = \"gen\"\n[plugins.kotlin]\ncommand = \"x\"\n",
             "plugin `kotlin`: executable `x` not found on PATH",
         );
     }
@@ -740,19 +862,18 @@ mod tests {
     fn options_are_converted_to_json() {
         let ir = empty_ir();
         let p = project(
-            "[[targets]]\nrole = \"client\"\nemitter = \"typescript\"\nout = \"gen\"\n[targets.options]\nvalidate = true\n",
+            "[client]\nemitter = \"typescript\"\nout = \"gen\"\n[client.options]\nvalidate = true\n",
         );
         let job = build_job(&p, &ir, &p.targets[0]).ok().unwrap();
         assert_eq!(
             job.options,
-            serde_json::json!({ "validate": true, "package-name": "@veld/client-typescript" })
+            serde_json::json!({ "validate": true, "package-name": "@veld/shop" })
         );
         let p = project(
-            "[[targets]]
-role = \"client\"
+            "[client]
 emitter = \"typescript\"
 out = \"gen\"
-[targets.options]
+[client.options]
 package-name = \"@acme/sdk\"
 ",
         );
@@ -766,8 +887,7 @@ package-name = \"@acme/sdk\"
     #[test]
     fn a_target_with_no_services_is_an_error_not_a_panic() {
         let ir = empty_ir();
-        let p =
-            project("[[targets]]\nrole = \"client\"\nemitter = \"typescript\"\nout = \"gen\"\n");
+        let p = project("[client]\nemitter = \"typescript\"\nout = \"gen\"\n");
         let job = build_job(&p, &ir, &p.targets[0]).ok().unwrap();
         let err = run_job(&ir, &job).err().unwrap();
         assert!(err[0].contains("selects no services"), "{err:?}");

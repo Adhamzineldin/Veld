@@ -79,38 +79,42 @@ pub fn write(dir: &Path, rel: &str, text: &str) {
     fs::write(path, text).unwrap();
 }
 
-/// A workspace where `orders` and `payments` consume each other, with two Node servers and a
-/// TypeScript client for both.
-pub const MUTUAL_TOML: &str = r#"[project]
+/// The root `veld.toml` of the mutual-consumes workspace: a workspace with two services and an
+/// app. The contracts stay in `contracts/<service>`; the outputs are `servers/<service>` and `web`.
+pub const MUTUAL_TOML: &str = r#"[workspace]
 name = "shop"
+members = ["services/*", "apps/*"]
+"#;
 
-[services.orders]
-contracts = "contracts/orders"
+/// `services/orders/veld.toml`.
+pub const ORDERS_TOML: &str = r#"[service]
+contracts = "../../contracts/orders"
 consumes = ["payments"]
 
-[services.payments]
-contracts = "contracts/payments"
+[server]
+name = "orders-api"
+emitter = "node"
+out = "../../servers/orders"
+"#;
+
+/// `services/payments/veld.toml`.
+pub const PAYMENTS_TOML: &str = r#"[service]
+contracts = "../../contracts/payments"
 consumes = ["orders"]
 
-[[targets]]
-name = "orders-api"
-role = "server"
-emitter = "node"
-service = "orders"
-out = "servers/orders"
-
-[[targets]]
+[server]
 name = "payments-api"
-role = "server"
 emitter = "node"
-service = "payments"
-out = "servers/payments"
+out = "../../servers/payments"
+"#;
 
-[[targets]]
+/// `apps/web/veld.toml`: a TypeScript client for both services.
+pub const WEB_TOML: &str = r#"[app]
+
+[client]
 name = "web"
-role = "client"
 emitter = "typescript"
-out = "web"
+out = "../../web"
 "#;
 
 pub const ORDERS_VELD: &str = r#"/// An order and the state of its payment.
@@ -151,6 +155,9 @@ service Payments at "/payments" {
 /// Writes the mutual-consumes workspace into `dir`.
 pub fn write_mutual_workspace(dir: &Path) {
     write(dir, "veld.toml", MUTUAL_TOML);
+    write(dir, "services/orders/veld.toml", ORDERS_TOML);
+    write(dir, "services/payments/veld.toml", PAYMENTS_TOML);
+    write(dir, "apps/web/veld.toml", WEB_TOML);
     write(dir, "contracts/orders/orders.veld", ORDERS_VELD);
     write(dir, "contracts/payments/payments.veld", PAYMENTS_VELD);
 }

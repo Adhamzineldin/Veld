@@ -8,7 +8,7 @@ use lsp_types::SymbolKind;
 use crate::workspace::{Analysis, Workspace};
 use crate::{diag, hover, outline};
 
-const TOML: &str = "[project]\nname = \"p\"\n[services.s]\ncontracts = \"c\"\n";
+const TOML: &str = "[service]\nname = \"s\"\ncontracts = \"c\"\n";
 
 const EVENTS: &str = r#"/// Published when a booking is paid.
 event Paid {

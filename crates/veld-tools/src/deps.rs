@@ -28,6 +28,8 @@ pub struct DepGraph {
     /// Groups of services that consume each other (strongly connected components of at least
     /// two services, or a service that consumes itself), each sorted, in sorted order.
     pub cycles: Vec<Vec<String>>,
+    /// `service -> owners` for the services that declare owners (`[service] owners`); empty when none do.
+    pub owners: BTreeMap<String, Vec<String>>,
 }
 
 impl DepGraph {
@@ -80,6 +82,7 @@ pub fn graph(ir: &Ir) -> DepGraph {
         services: services.into_iter().collect(),
         consumes,
         cycles,
+        owners: BTreeMap::new(),
     }
 }
 
@@ -87,6 +90,24 @@ pub fn graph(ir: &Ir) -> DepGraph {
 #[must_use]
 pub fn deps(ir: &Ir, format: DepsFormat) -> String {
     render(&graph(ir), format)
+}
+
+/// Renders the graph of `ir` with the owners of each service (`spec/workspace.md`, section
+/// 11): the JSON node of a service that has owners carries them as `owners`. Without owners
+/// the output is the same bytes as [`deps`].
+#[must_use]
+pub fn deps_with_owners(
+    ir: &Ir,
+    format: DepsFormat,
+    owners: &BTreeMap<String, Vec<String>>,
+) -> String {
+    let mut g = graph(ir);
+    g.owners = owners
+        .iter()
+        .filter(|(name, list)| !list.is_empty() && g.consumes.contains_key(*name))
+        .map(|(name, list)| (name.clone(), list.clone()))
+        .collect();
+    render(&g, format)
 }
 
 /// Renders a graph.
@@ -138,11 +159,15 @@ fn json_text(g: &DepGraph) -> String {
         .services
         .iter()
         .map(|s| {
-            json!({
+            let mut node = json!({
                 "name": s,
                 "consumes": g.consumes.get(s).cloned().unwrap_or_default(),
                 "consumed_by": g.consumed_by(s),
-            })
+            });
+            if let (Some(owners), Some(map)) = (g.owners.get(s), node.as_object_mut()) {
+                map.insert("owners".to_string(), json!(owners));
+            }
+            node
         })
         .collect();
     let value = json!({ "services": services, "cycles": g.cycles });
@@ -230,6 +255,7 @@ mod tests {
         DepGraph {
             services: consumes.keys().cloned().collect(),
             cycles: cycles(&consumes),
+            owners: BTreeMap::new(),
             consumes,
         }
     }
@@ -259,6 +285,23 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["services"][1]["consumed_by"], json!(["payments"]));
         assert_eq!(v["cycles"], json!([["orders", "payments"]]));
+    }
+
+    #[test]
+    fn owners_appear_only_on_the_nodes_that_have_them() {
+        let ir = crate::testutil::shop();
+        let plain = deps(&ir, DepsFormat::Json);
+        let none = deps_with_owners(&ir, DepsFormat::Json, &BTreeMap::new());
+        assert_eq!(plain, none, "no owners: the same bytes as before");
+        let owners = BTreeMap::from([
+            ("app".to_string(), vec!["team-a".to_string()]),
+            ("other".to_string(), vec!["x".to_string()]),
+        ]);
+        let json = deps_with_owners(&ir, DepsFormat::Json, &owners);
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["services"][0]["owners"], json!(["team-a"]));
+        let text = deps_with_owners(&ir, DepsFormat::Text, &owners);
+        assert_eq!(text, deps(&ir, DepsFormat::Text));
     }
 
     #[test]

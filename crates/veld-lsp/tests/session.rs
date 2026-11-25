@@ -9,7 +9,9 @@ use std::time::Duration;
 use lsp_server::{Connection, Message, Notification, Request, RequestId};
 use serde_json::{Value, json};
 
-const TOML: &str = "[project]\nname = \"shop\"\n\n[services.iam]\ncontracts = \"iam\"\n\n[services.app]\ncontracts = \"app\"\nconsumes = [\"iam\"]\n";
+const TOML: &str = "[workspace]\nname = \"shop\"\nmembers = [\"iam\", \"app\"]\n";
+const IAM_TOML: &str = "[service]\ncontracts = \".\"\n";
+const APP_TOML: &str = "[service]\ncontracts = \".\"\nconsumes = [\"iam\"]\n";
 const USERS: &str = "/// A registered user.\nmodel User {\n  id: uuid\n  name: string\n}\n\nenum Role { admin, guest }\n";
 const ORDERS: &str = "use iam:users.{User}\n\nmodel Order {\n  owner: User\n  note?: string\n}\n\nservice Orders at \"/orders\" {\n  /// Fetch one order.\n  get \"/{id}\" getOrder(id: uuid) -> Order | NotFound\n}\n";
 
@@ -145,6 +147,8 @@ fn project() -> tempfile::TempDir {
     let tmp = tempfile::tempdir().unwrap();
     for (p, t) in [
         ("veld.toml", TOML),
+        ("iam/veld.toml", IAM_TOML),
+        ("app/veld.toml", APP_TOML),
         ("iam/users.veld", USERS),
         ("app/orders.veld", ORDERS),
     ] {
@@ -365,9 +369,14 @@ fn unknown_requests_fail_cleanly_and_the_server_keeps_serving() {
 #[test]
 fn hover_shows_the_full_path_with_the_project_and_service_prefix() {
     let tmp = tempfile::tempdir().unwrap();
-    let toml = "[project]\nname = \"shop\"\nprefix = \"/api\"\n\n[services.app]\ncontracts = \"app\"\nprefix = \"/v1\"\n";
+    let toml = "[workspace]\nname = \"shop\"\nprefix = \"/api\"\nmembers = [\"app\"]\n";
+    let app_toml = "[service]\ncontracts = \".\"\nprefix = \"/v1\"\n";
     let orders = "model Order {\n  id: uuid\n}\n\nservice Orders at \"/orders\" {\n  get \"/{id}\" getOrder(id: uuid) -> Order\n}\n";
-    for (p, t) in [("veld.toml", toml), ("app/orders.veld", orders)] {
+    for (p, t) in [
+        ("veld.toml", toml),
+        ("app/veld.toml", app_toml),
+        ("app/orders.veld", orders),
+    ] {
         let path = tmp.path().join(p);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, t).unwrap();
