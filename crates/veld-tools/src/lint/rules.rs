@@ -65,7 +65,8 @@ pub(super) fn run(ir: &Ir, out: &mut Vec<Raw>) {
     file_naming(ir, &user, &services, out);
 }
 
-/// Declarations used by an endpoint, a constant, an `extends` or another used declaration.
+/// Declarations used by an endpoint, a fact, a policy, the principal, a constant, an `extends` or
+/// another used declaration.
 fn used_decls(ir: &Ir) -> BTreeSet<DeclId> {
     let all: Vec<ServiceId> = ir.services.iter().map(|s| s.id).collect();
     let mut seen: BTreeSet<DeclId> = ir.reachable_decls(&all).into_iter().collect();
@@ -77,6 +78,13 @@ fn used_decls(ir: &Ir) -> BTreeSet<DeclId> {
     );
     for p in ir.policies.iter().flat_map(|p| &p.params) {
         p.ty.collect_decls(&mut stack);
+    }
+    // A fact is a use: the endpoint loads a value of that type and its rules read it.
+    for f in ir.services.iter().flat_map(|s| &s.facts) {
+        f.ty.collect_decls(&mut stack);
+        if let Some(key) = &f.key {
+            key.collect_decls(&mut stack);
+        }
     }
     for d in &ir.decls {
         if let DeclKind::Model(m) = &d.kind {

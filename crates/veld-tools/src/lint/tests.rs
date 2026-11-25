@@ -98,6 +98,31 @@ service S at \"/s\" {
 }
 
 #[test]
+fn a_model_read_only_as_a_fact_counts_as_used() {
+    // `Room` is no parameter and no result: the endpoint only loads it as a fact. `Floor` is
+    // reached through a field of that fact. `Orphan` is still unused.
+    let src = "\
+model Floor { level: int }
+model Room { id: uuid  capacity: int  floor: Floor }
+model Booking { roomId: uuid  guests: int }
+model Orphan { x: int }
+/// S.
+service S at \"/s\" {
+  /// e.
+  post \"/\" e(body: Booking) -> 204 {
+    fact room: Room = body.roomId
+    require body.guests <= room.capacity
+  }
+}
+";
+    let f = rules(src);
+    assert!(!has(&f, "unused-model", "Room"), "{f:?}");
+    assert!(!has(&f, "unused-model", "Floor"), "{f:?}");
+    assert!(!has(&f, "unused-model", "Booking"), "{f:?}");
+    assert!(has(&f, "unused-model", "Orphan"), "{f:?}");
+}
+
+#[test]
 fn libraries_are_not_checked_for_unused_models() {
     let ir = files_ir(
         PackageKind::Library,
