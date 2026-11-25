@@ -214,6 +214,7 @@ fn an_endpoint_rule_on_a_ws_endpoint_is_e0801() {
         message: None,
         reads: vec![],
         docs: None,
+        rollout: None,
         origin: Origin {
             file: "live.veld".into(),
             line: 1,

@@ -285,6 +285,7 @@ pub const DEFS: &[Def] = &[
     },
     Def::Object("EnumVariantLiteral", &[("name", T::Str), ("wire", T::Str)]),
     // --- rules (spec/rules.md section 13) ---
+    Def::Strings("Rollout", &["audit"]),
     Def::Object(
         "Rule",
         &[
@@ -297,6 +298,7 @@ pub const DEFS: &[Def] = &[
             ("inherited_from", T::Nullable(&DECL_ID)),
             ("docs", OPT_STR),
             ("deprecated", OPT_STR),
+            ("rollout", T::Optional(&T::Ref("Rollout"))),
             ("origin", ORIGIN),
         ],
     ),
@@ -476,6 +478,7 @@ pub const DEFS: &[Def] = &[
             ("message", OPT_STR),
             ("reads", T::List(&T::Str)),
             ("else", T::Nullable(&T::Ref("ElseError"))),
+            ("rollout", T::Optional(&T::Ref("Rollout"))),
             ("docs", OPT_STR),
             ("origin", ORIGIN),
         ],
@@ -500,6 +503,7 @@ pub const DEFS: &[Def] = &[
             ("expr", EXPR),
             ("message", OPT_STR),
             ("reads", T::List(&T::Str)),
+            ("rollout", T::Optional(&T::Ref("Rollout"))),
             ("docs", OPT_STR),
             ("origin", ORIGIN),
         ],
@@ -688,6 +692,7 @@ pub const DEFS: &[Def] = &[
             "rules_endpoint",
             "rules_transitions",
             "rules_policies",
+            "rules_rollout",
             "events",
         ],
     ),

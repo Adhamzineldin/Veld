@@ -83,6 +83,7 @@ pub fn ir_with_rule() -> Ir {
         inherited_from: None,
         docs: None,
         deprecated: None,
+        rollout: None,
         origin: Origin {
             file: "rules.veld".into(),
             line: RULE_ORIGIN_LINE,
@@ -175,6 +176,7 @@ pub fn ir_with_endpoint_rules() -> Ir {
         message: None,
         reads: vec![],
         docs: None,
+        rollout: None,
         origin: Origin {
             file: "rules.veld".into(),
             line: ENDPOINT_RULE_ORIGIN_LINE,
@@ -868,11 +870,10 @@ mod tests {
         let covered: Vec<Feature> = FIXTURES.iter().filter_map(|f| f.feature).collect();
         // `consts` is never reported by `features_used` (see fixtures.rs), so it has no fixture.
         // The rules features have no fixture until the language has rule syntax; `ir_with_rule`
-        // covers `rules_invariants` by hand.
-        for feature in Feature::ALL
-            .into_iter()
-            .filter(|f| *f != Feature::Consts && !Feature::RULES.contains(f))
-        {
+        // covers `rules_invariants` by hand. `rules_rollout` has contracts of its own (`rollout.rs`).
+        for feature in Feature::ALL.into_iter().filter(|f| {
+            *f != Feature::Consts && *f != Feature::RulesRollout && !Feature::RULES.contains(f)
+        }) {
             assert!(
                 covered.contains(&feature),
                 "no fixture for `{}`",

@@ -1,0 +1,55 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0602]: unknown rollout `shadow`; the only one is `audit`
+ --> app/app.veld:7:3
+  |
+7 |   @rollout(shadow)
+  |   ^^^^^^^^^^^^^^^^
+  = help: usage: @rollout(audit)
+
+error[E0602]: expected the word `audit`
+ --> app/app.veld:9:3
+  |
+9 |   @rollout("audit")
+  |   ^^^^^^^^^^^^^^^^^
+  = help: usage: @rollout(audit)
+
+error[E0602]: expected the word `audit`
+ --> app/app.veld:11:3
+   |
+11 |   @rollout(1)
+   |   ^^^^^^^^^^^
+  = help: usage: @rollout(audit)
+
+error[E0602]: named arguments are not accepted here
+ --> app/app.veld:13:3
+   |
+13 |   @rollout(mode: audit)
+   |   ^^^^^^^^^^^^^^^^^^^^^
+  = help: usage: @rollout(audit)
+
+error[E0602]: expected exactly one argument
+ --> app/app.veld:15:3
+   |
+15 |   @rollout(audit, audit)
+   |   ^^^^^^^^^^^^^^^^^^^^^^
+  = help: usage: @rollout(audit)
+
+error[E0602]: unknown rollout `enforce`; the only one is `audit`
+ --> app/app.veld:21:5
+   |
+21 |     @rollout(enforce)
+   |     ^^^^^^^^^^^^^^^^^
+  = help: usage: @rollout(audit)
+
+error[E0602]: expected the word `audit`
+ --> app/app.veld:23:5
+   |
+23 |     @rollout("audit")
+   |     ^^^^^^^^^^^^^^^^^
+  = help: usage: @rollout(audit)
+
+== ir ==
+(no IR: compilation failed)

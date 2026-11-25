@@ -34,10 +34,21 @@ impl Parser<'_> {
             || self.is_event_item_start_at(n)
     }
 
+    /// Reports the annotations written before `what`, which takes none: `@rollout` is `E0602`
+    /// (it has a place, and this is not it), and the first other annotation is `E0003`.
     pub(super) fn no_annotations(&mut self, anns: &[Annotation], what: &str) {
-        if let Some(a) = anns.first() {
+        for a in anns.iter().filter(|a| a.name.name == "rollout") {
+            self.rollout_misplaced(a, what);
+        }
+        if let Some(a) = anns.iter().find(|a| a.name.name != "rollout") {
             self.err("E0003", format!("{what} takes no annotations"), a.span);
         }
+    }
+
+    /// `E0602` for `@rollout` where it does not belong.
+    pub(super) fn rollout_misplaced(&mut self, a: &Annotation, what: &str) {
+        let msg = format!("`@rollout` cannot be applied to {what}");
+        self.err("E0602", msg, a.span);
     }
 
     /// `policy Name(a: T, ..) { permit when e [message ".."] | forbid when e .. }`, with the

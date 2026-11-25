@@ -424,3 +424,71 @@ fn a_doc_comment_cannot_be_attached_to_a_transition() {
     let src = "service S at \"/\" { post \"/\" f() {\n /// nope\n transition b.s: a -> b\n ensure true } }";
     assert_eq!(codes(src), ["E0003"]);
 }
+
+// --- `@rollout(audit)` on statements (spec/rules.md section 17.1) -------------------------------
+
+#[test]
+fn require_and_ensure_keep_their_annotations_after_the_docs() {
+    let src = "service S at \"/\" { post \"/\" f() {\n /// Docs.\n @rollout(audit)\n require true\n @rollout(audit) @deprecated(\"x\")\n ensure true\n } }";
+    let e = endpoint(src);
+    let block = e.block.expect("a block");
+    let (Stmt::Require(r), Stmt::Ensure(n)) = (&block.stmts[0], &block.stmts[1]) else {
+        panic!("not a require and an ensure")
+    };
+    assert_eq!(r.docs.len(), 1);
+    assert_eq!(r.annotations.len(), 1);
+    assert_eq!(r.annotations[0].name.name, "rollout");
+    assert_eq!(n.annotations.len(), 2);
+    assert_eq!(n.annotations[1].name.name, "deprecated");
+}
+
+#[test]
+fn a_statement_starts_at_its_first_doc_or_annotation() {
+    let src = "service S at \"/\" { post \"/\" f() {\n /// Docs.\n @rollout(audit)\n require true\n @rollout(audit)\n ensure true\n fact x: X\n } }";
+    let e = endpoint(src);
+    let block = e.block.expect("a block");
+    let starts: Vec<u32> = block.stmts.iter().map(Stmt::start).collect();
+    let at = |needle: &str| u32::try_from(src.find(needle).unwrap_or(0)).unwrap_or(0);
+    assert_eq!(starts[0], at("/// Docs."));
+    assert_eq!(starts[1], at("@rollout(audit)\n ensure"));
+    assert_eq!(starts[2], at("fact x"));
+}
+
+#[test]
+fn an_annotation_with_no_statement_after_it_is_one_error() {
+    let src = "service S at \"/\" { post \"/\" f() {\n require true\n @rollout(audit)\n } }";
+    assert_eq!(codes(src), ["E0003"]);
+}
+
+#[test]
+fn a_bad_statement_after_an_annotation_does_not_swallow_the_next_annotated_one() {
+    // The first statement is broken; parsing goes on at the next annotation and keeps it.
+    let src = "service S at \"/\" { post \"/\" f() {\n @rollout(audit)\n require (\n @rollout(audit)\n ensure true\n } }";
+    let r = p(src);
+    assert!(!r.diagnostics.is_empty());
+    let DeclKind::Service(s) = &r.file.decls[0].kind else {
+        panic!("not a service")
+    };
+    let stmts = &s.endpoints[0].block.as_ref().expect("a block").stmts;
+    let ensures: Vec<_> = stmts
+        .iter()
+        .filter_map(|s| match s {
+            Stmt::Ensure(e) => Some(e.annotations.len()),
+            Stmt::Fact(_) | Stmt::Require(_) | Stmt::Transition(_) | Stmt::Allow(_) => None,
+        })
+        .collect();
+    assert_eq!(ensures, [1]);
+}
+
+#[test]
+fn annotations_on_a_fact_an_allow_or_a_transition_are_reported_by_the_parser() {
+    for stmt in ["fact x: X", "allow P(user)", "transition b.s: a -> b"] {
+        let src =
+            format!("service S at \"/\" {{ post \"/\" f() {{\n @rollout(audit)\n {stmt}\n }} }}");
+        assert_eq!(codes(&src), ["E0602"], "{stmt}");
+        let src = format!(
+            "service S at \"/\" {{ post \"/\" f() {{\n @deprecated(\"x\")\n {stmt}\n }} }}"
+        );
+        assert_eq!(codes(&src), ["E0003"], "{stmt}");
+    }
+}

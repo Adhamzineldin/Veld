@@ -76,6 +76,7 @@ pub(crate) fn sample_rules() -> EndpointRules {
                     }],
                 }),
                 docs: Some("a doc".into()),
+                rollout: None,
                 origin: origin(11),
             },
             EndpointRequire {
@@ -86,6 +87,7 @@ pub(crate) fn sample_rules() -> EndpointRules {
                 reads: vec!["body".into(), "max".into()],
                 else_error: None,
                 docs: None,
+                rollout: None,
                 origin: origin(12),
             },
         ],
@@ -100,6 +102,7 @@ pub(crate) fn sample_rules() -> EndpointRules {
                 message: Some("must be pending".into()),
                 reads: vec![],
                 docs: None,
+                rollout: None,
                 origin: origin(13),
             },
             EndpointEnsure {
@@ -112,6 +115,7 @@ pub(crate) fn sample_rules() -> EndpointRules {
                 message: None,
                 reads: vec![],
                 docs: Some("d".into()),
+                rollout: None,
                 origin: origin(14),
             },
         ],
@@ -734,3 +738,4 @@ fn the_exact_json_text_of_a_machine_and_a_transition() {
 }
 
 mod policies;
+mod rollout;

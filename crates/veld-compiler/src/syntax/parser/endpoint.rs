@@ -4,7 +4,8 @@
 use super::Parser;
 use crate::diagnostics::Span;
 use crate::syntax::ast::{
-    Doc, Else, EndpointBlock, EnsureStmt, FactStmt, Ident, PayloadField, RequireStmt, Stmt, StrLit,
+    Annotation, Doc, Else, EndpointBlock, EnsureStmt, FactStmt, Ident, PayloadField, RequireStmt,
+    Stmt, StrLit,
 };
 use crate::syntax::lexer::Tok;
 
@@ -22,11 +23,13 @@ impl Parser<'_> {
             }
             let before = self.pos;
             let docs = self.docs();
+            let anns = self.annotations_before();
             if matches!(self.peek(), Tok::RBrace) {
                 self.warn_dangling_docs_if_any(&docs, true);
+                self.dangling_annotations(&anns);
                 break self.advance().span;
             }
-            if let Some(s) = self.parse_stmt(docs) {
+            if let Some(s) = self.parse_stmt(docs, anns) {
                 stmts.push(s);
             }
             if self.pos == before {
@@ -39,15 +42,18 @@ impl Parser<'_> {
         })
     }
 
-    fn parse_stmt(&mut self, docs: Vec<Doc>) -> Option<Stmt> {
+    fn parse_stmt(&mut self, docs: Vec<Doc>, anns: Vec<Annotation>) -> Option<Stmt> {
         let word = match self.peek() {
             Tok::Ident(w) => w.clone(),
             _ => String::new(),
         };
+        if matches!(word.as_str(), "fact" | "allow" | "transition") {
+            self.no_annotations(&anns, &format!("`{word}`"));
+        }
         let parsed = match word.as_str() {
             "fact" => self.fact_stmt(&docs),
-            "require" => self.require_stmt(docs),
-            "ensure" => self.ensure_stmt(docs),
+            "require" => self.require_stmt(docs, anns),
+            "ensure" => self.ensure_stmt(docs, anns),
             "allow" => self.allow_stmt(&docs),
             "transition" => self.transition_stmt(&docs),
             _ => {
@@ -61,6 +67,13 @@ impl Parser<'_> {
             self.skip_statement();
         }
         parsed
+    }
+
+    /// Annotations written before the closing `}` of a block, with no statement after them.
+    fn dangling_annotations(&mut self, anns: &[Annotation]) {
+        if let Some(a) = anns.first() {
+            self.err("E0003", "annotation is not followed by a statement", a.span);
+        }
     }
 
     /// Skips to the next statement word at the start of a line, or to the closing `}`.
@@ -79,6 +92,7 @@ impl Parser<'_> {
                     return;
                 }
                 Tok::Doc(_) if depth == 0 => return,
+                Tok::At if depth == 0 => return,
                 _ => {}
             }
             self.advance();
@@ -139,7 +153,7 @@ impl Parser<'_> {
         Some(None)
     }
 
-    fn require_stmt(&mut self, docs: Vec<Doc>) -> Option<Stmt> {
+    fn require_stmt(&mut self, docs: Vec<Doc>, annotations: Vec<Annotation>) -> Option<Stmt> {
         let kw = self.advance().span;
         let name = self.statement_name();
         let expr = self.parse_expr()?;
@@ -152,6 +166,7 @@ impl Parser<'_> {
         let message = self.message()?;
         Some(Stmt::Require(RequireStmt {
             docs,
+            annotations,
             name,
             expr,
             otherwise,
@@ -190,13 +205,14 @@ impl Parser<'_> {
         }
     }
 
-    fn ensure_stmt(&mut self, docs: Vec<Doc>) -> Option<Stmt> {
+    fn ensure_stmt(&mut self, docs: Vec<Doc>, annotations: Vec<Annotation>) -> Option<Stmt> {
         let kw = self.advance().span;
         let name = self.statement_name();
         let expr = self.parse_expr()?;
         let message = self.message()?;
         Some(Stmt::Ensure(EnsureStmt {
             docs,
+            annotations,
             name,
             expr,
             message,

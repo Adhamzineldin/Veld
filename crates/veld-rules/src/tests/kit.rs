@@ -427,6 +427,7 @@ impl Kit {
                 inherited_from: None,
                 docs: None,
                 deprecated: None,
+                rollout: None,
                 origin: Origin::default(),
             });
         }

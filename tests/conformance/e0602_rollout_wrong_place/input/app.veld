@@ -1,0 +1,22 @@
+// `@rollout(audit)` stands on an invariant, a `require` and an `ensure`, and nowhere else
+// (spec/rules.md section 17.1). Here it is on a declaration, a field, an enum variant, a
+// service, an endpoint and a parameter. The statements of an endpoint block and the top-level
+// items that take no annotations are in `e0602_rollout_wrong_statement`.
+
+@rollout(audit)
+model Booking {
+  @rollout(audit)
+  id: uuid
+  @rollout(audit)
+  rule hasId: id == id
+}
+
+@rollout(audit)
+enum Color { red, @rollout(audit) green }
+
+@rollout(audit)
+@auth(bearer)
+service Bookings at "/bookings" {
+  @rollout(audit)
+  get "/{id}" getBooking(@rollout(audit) id: uuid) -> 200 Booking
+}

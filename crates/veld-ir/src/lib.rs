@@ -21,7 +21,7 @@ pub use endpoint_rules::{
 };
 pub use rules::{
     Always, BinExpr, Builtin, CallExpr, EnumLit, Expr, ExprKind, ExprLit, ExprType, Op, PathRef,
-    QuantExpr, Quantifier, Root, Rule, Step,
+    QuantExpr, Quantifier, Rollout, Root, Rule, Step,
 };
 
 pub const IR_VERSION: &str = "1.1";
@@ -159,6 +159,9 @@ impl Ir {
                     if !e.rules.is_empty() {
                         f.insert(Feature::RulesInvariants);
                     }
+                    if e.rules.iter().any(Rule::is_audited) {
+                        f.insert(Feature::RulesRollout);
+                    }
                     for fld in &e.fields {
                         fld.ty.features(&mut f);
                         if !fld.constraints.is_empty() {
@@ -169,6 +172,9 @@ impl Ir {
                 DeclKind::Model(m) | DeclKind::Error(ErrorDecl { fields: m, .. }) => {
                     if !m.rules.is_empty() {
                         f.insert(Feature::RulesInvariants);
+                    }
+                    if m.rules.iter().any(Rule::is_audited) {
+                        f.insert(Feature::RulesRollout);
                     }
                     for fld in &m.fields {
                         fld.ty.features(&mut f);
@@ -207,6 +213,9 @@ impl Ir {
                 }
                 if ep.rules.first_policy_origin().is_some() {
                     f.insert(Feature::RulesPolicies);
+                }
+                if ep.rules.first_audited_origin().is_some() {
+                    f.insert(Feature::RulesRollout);
                 }
                 for p in &ep.params {
                     p.ty.features(&mut f);
@@ -938,6 +947,9 @@ pub enum Feature {
     RulesEndpoint,
     RulesTransitions,
     RulesPolicies,
+    /// `@rollout(audit)` on a rule (`spec/rules.md` section 17.1). A generator that does not
+    /// know it would enforce a rule that must not reject.
+    RulesRollout,
     /// `publishes` or `subscribes` (`spec/events.md` section 13).
     Events,
 }
@@ -950,7 +962,10 @@ impl Feature {
         Feature::RulesTransitions,
         Feature::RulesPolicies,
     ];
-    pub const ALL: [Feature; 15] = [
+    /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
+    /// `all_except` hands out. A feature that changes what a rule means must be opted into.
+    pub const OPT_IN: [Feature; 1] = [Feature::RulesRollout];
+    pub const ALL: [Feature; 16] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -965,6 +980,7 @@ impl Feature {
         Feature::RulesEndpoint,
         Feature::RulesTransitions,
         Feature::RulesPolicies,
+        Feature::RulesRollout,
         Feature::Events,
     ];
     #[must_use]
@@ -984,6 +1000,7 @@ impl Feature {
             Feature::RulesEndpoint => "rules_endpoint",
             Feature::RulesTransitions => "rules_transitions",
             Feature::RulesPolicies => "rules_policies",
+            Feature::RulesRollout => "rules_rollout",
             Feature::Events => "events",
         }
     }

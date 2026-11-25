@@ -230,6 +230,7 @@ fn sample_rule() -> Rule {
         inherited_from: Some(DeclId(0)),
         docs: Some("d".into()),
         deprecated: Some("x".into()),
+        rollout: Some(Rollout::Audit),
         origin: origin(),
     }
 }

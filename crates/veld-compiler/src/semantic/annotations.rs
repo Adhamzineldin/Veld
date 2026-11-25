@@ -5,7 +5,7 @@ use super::regex;
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language::{self, ArgShape, Target};
 use crate::syntax::ast::{Annotation, Arg, ArgValue, LitKind, Literal};
-use veld_ir::{Auth, AuthKind, Constraints, Scalar, StringFormat, Type};
+use veld_ir::{Auth, AuthKind, Constraints, Rollout, Scalar, StringFormat, Type};
 
 /// The meaning of the annotations written on one node.
 #[derive(Debug, Default)]
@@ -21,6 +21,8 @@ pub struct Anns<'a> {
     pub query: Option<Span>,
     pub header: Option<(String, Span)>,
     pub topic: Option<String>,
+    /// `@rollout(audit)` on a rule, a `require` or an `ensure`.
+    pub rollout: Option<Rollout>,
 }
 
 #[must_use]
@@ -36,6 +38,8 @@ pub fn target_name(t: Target) -> &'static str {
         Target::Field => "field",
         Target::Variant => "enum variant",
         Target::Rule => "rule",
+        Target::Require => "require",
+        Target::Ensure => "ensure",
         Target::Param => "parameter",
         Target::Event => "event",
         Target::Channel => "channel",
@@ -81,11 +85,14 @@ pub fn parse<'a>(
     out
 }
 
-/// True when `spec` applies only to channels or events and `target` is neither: such an
-/// annotation is not suggested for a model, a field or an endpoint.
+/// True when `spec` applies only to channels or events and `target` is neither, or only to
+/// rules and `target` is not one: such an annotation is not suggested for a model, a field or
+/// an endpoint.
 fn hidden_from(spec: &language::AnnotationSpec, target: Target) -> bool {
     let events_only = |t: &Target| matches!(t, Target::Channel | Target::Event);
-    !events_only(&target) && spec.targets.iter().all(events_only)
+    let rules_only = |t: &Target| matches!(t, Target::Rule | Target::Require | Target::Ensure);
+    (!events_only(&target) && spec.targets.iter().all(events_only))
+        || (!rules_only(&target) && spec.targets.iter().all(rules_only))
 }
 
 fn unknown(a: &Annotation, target: Target) -> Diagnostic {
@@ -106,13 +113,23 @@ fn unknown(a: &Annotation, target: Target) -> Diagnostic {
     )
 }
 
+/// `an` before a vowel sound, `a` otherwise: `an enum`, `an ensure`, `a rule`.
+fn article(word: &str) -> &'static str {
+    if word.starts_with(['a', 'e', 'i', 'o']) {
+        "an"
+    } else {
+        "a"
+    }
+}
+
 fn wrong_target(a: &Annotation, allowed: &[Target], got: Target) -> Diagnostic {
     let list: Vec<&str> = allowed.iter().map(|t| target_name(*t)).collect();
     Diagnostic::error(
         "E0602",
         format!(
-            "`@{}` cannot be applied to a {}",
+            "`@{}` cannot be applied to {} {}",
             a.name.name,
+            article(target_name(got)),
             target_name(got)
         ),
         a.span,
@@ -188,6 +205,7 @@ fn apply<'a>(
         ("discriminator", _) => out.discriminator = Some(one_string(args)?),
         ("header", _) => out.header = Some((one_string(args)?, a.span)),
         ("topic", _) => out.topic = Some(one_string(args)?),
+        ("rollout", _) => out.rollout = Some(rollout_arg(args)?),
         ("auth", _) => out.auth = Some(auth_arg(args)?.declared()),
         ("middleware", _) => out.middleware = Some(idents(args)?),
         _ => {}
@@ -307,6 +325,20 @@ fn length_args(c: &mut Constraints, args: &[Arg]) -> Result<(), String> {
         return Err(format!("`min: {lo}` is greater than `max: {hi}`"));
     }
     Ok(())
+}
+
+/// `@rollout(audit)`: the one word `audit` (`spec/rules.md` section 17.1).
+fn rollout_arg(args: &[Arg]) -> Result<Rollout, String> {
+    match &one(args)?.value {
+        ArgValue::Ident(i) if i.name == "audit" => Ok(Rollout::Audit),
+        ArgValue::Ident(i) => Err(format!(
+            "unknown rollout `{}`; the only one is `audit`",
+            i.name
+        )),
+        ArgValue::Literal(_) | ArgValue::Call { .. } => {
+            Err("expected the word `audit`".to_string())
+        }
+    }
 }
 
 fn auth_arg(args: &[Arg]) -> Result<Auth, String> {

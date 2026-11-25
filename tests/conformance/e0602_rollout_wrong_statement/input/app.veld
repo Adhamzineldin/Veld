@@ -1,0 +1,46 @@
+// `@rollout(audit)` on a `fact`, an `allow` and a `transition`, and on a policy, a principal and
+// an example, none of which it may stand on (spec/rules.md section 17.1).
+
+model User {
+  id: uuid
+}
+
+@rollout(audit)
+principal User
+
+enum Status {
+  pending
+  paid
+  flow pending -> paid
+  final paid
+}
+
+model Booking {
+  id: uuid
+  status: Status
+}
+
+@rollout(audit)
+policy Anyone(user: User) {
+  permit when user.id == user.id
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  post "/{id}/pay" pay(id: uuid) -> 200 Booking {
+    @rollout(audit)
+    fact booking: Booking = id
+    @rollout(audit)
+    allow Anyone(user)
+    @rollout(audit)
+    transition booking.status: pending -> paid
+    @rollout(audit)
+    require true
+  }
+}
+
+@rollout(audit)
+example "pays" {
+  given booking = { id: "00000000-0000-4000-8000-000000000001", status: .pending }
+  pay(id: "00000000-0000-4000-8000-000000000001") -> ok
+}

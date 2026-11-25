@@ -32,6 +32,7 @@ pub(crate) use endpoint::{
 };
 pub(super) use policy::check_policies;
 pub(crate) use transition::RTransition;
+use veld_ir::Rollout;
 use veld_ir::rules::Expr;
 
 /// A checked rule of one declaration.
@@ -45,6 +46,8 @@ pub struct RRule {
     pub reads_readonly: bool,
     pub docs: Option<String>,
     pub deprecated: Option<String>,
+    /// `@rollout(audit)` (`spec/rules.md` section 17.1).
+    pub rollout: Option<Rollout>,
     pub span: Span,
 }
 
@@ -218,6 +221,7 @@ fn check_rule(
         reads_readonly,
         docs: doc_text(&rule.docs),
         deprecated: anns.deprecated,
+        rollout: anns.rollout,
         span: rule.name.span,
     })
 }

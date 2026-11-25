@@ -81,6 +81,7 @@ pub fn require(
         reads: reads.iter().map(|r| (*r).to_owned()).collect(),
         else_error,
         docs: None,
+        rollout: None,
         origin: Origin::default(),
     }
 }
@@ -94,6 +95,7 @@ pub fn ensure(name: Option<&str>, expr: Expr, reads: &[&str]) -> EndpointEnsure 
         message: None,
         reads: reads.iter().map(|r| (*r).to_owned()).collect(),
         docs: None,
+        rollout: None,
         origin: Origin::default(),
     }
 }

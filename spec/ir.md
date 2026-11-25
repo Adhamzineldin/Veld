@@ -110,9 +110,13 @@ In a policy's expressions a parameter is the root `{ "param": name }`; in an end
 
 Events, channels, `publishes` and `subscribes` are described in `spec/events.md` §13. Every key is **omitted from the JSON when empty or absent**: `Decl.kind` `"event"` (with `fields`, `rules`, `rules_digest`), `Ir.channels`, `Service.publishes`, `Service.subscriptions`, and in an `Example` the keys `event` and `expect`. An example of the event form has no `service`, `endpoint` or `outcome`. `Service.prefix` is `""` for a service without `at`. A service with `publishes` or `subscriptions` uses the feature `events`; a generator that cannot represent it reports `E0801` at the first such line. The IR does not record the origin of a `publishes` line: a gate that needs one uses the origin of the service.
 
+### 3.4 Rolling a rule out
+
+A `Rule` (an invariant of a model, an error or an event), an `EndpointRequire` and an `EndpointEnsure` carry `"rollout": "audit"` when the source has `@rollout(audit)` (`spec/rules.md` §17.1). The key is **omitted from the JSON when the rule is enforced**, so the IR of a contract without the annotation is unchanged. The rule id and the signature of the declaration do not depend on it. A service that reaches an audited invariant (of a model or an error its endpoints reach) or has an audited `require` or `ensure` uses the feature `rules_rollout` (an event is reached by no endpoint: see `spec/rules.md` §17.1); a generator that does not declare it reports `E0801` at the first audited rule. The `rules_digest` of a service and of an event covers only the invariants that are enforced, and a service whose reached invariants are all audited has none.
+
 ## 4. Capabilities
 
-The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`, …). Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.
+The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`, `rules_rollout`, `events`, …). A feature that changes what a rule means (`rules_rollout`) is opt-in: `Capabilities::all_except` does not hand it out, and a generator adds it with `Capabilities::with` once it implements it. Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.
 
 ## 5. Identity signatures (normative)
 

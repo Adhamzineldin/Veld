@@ -224,6 +224,16 @@
       ],
       "args": "one_string",
       "usage": "@topic(\"name\")"
+    },
+    {
+      "name": "rollout",
+      "targets": [
+        "rule",
+        "require",
+        "ensure"
+      ],
+      "args": "rollout",
+      "usage": "@rollout(audit)"
     }
   ],
   "prelude": "error BadRequest 400      { message: string }\nerror Unauthorized 401    { message?: string }\nerror Forbidden 403       { message?: string }\nerror NotFound 404        { resource?: string }\nerror Conflict 409        { message: string }\nerror ValidationError 422 { issues: ValidationIssue[] }\nerror TooManyRequests 429 { retryAfter?: int }\nerror Internal 500        { message?: string }\nmodel ValidationIssue     { path: string, code: string, message: string }\nerror InvalidTransition 409 { field: string, from: string, to: string }\n"

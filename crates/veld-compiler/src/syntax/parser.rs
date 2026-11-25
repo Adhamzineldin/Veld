@@ -275,9 +275,7 @@ impl Parser<'_> {
         match self.peek().clone() {
             Tok::Eof => self.dangling(&docs, &anns),
             Tok::Ident(w) if w == "example" && self.is_example_start_at(0) => {
-                if let Some(a) = anns.first() {
-                    self.err("E0003", "an example takes no annotations", a.span);
-                }
+                self.no_annotations(&anns, "an example");
                 if let Some(e) = self.parse_example(docs) {
                     items.examples.push(e);
                 } else {

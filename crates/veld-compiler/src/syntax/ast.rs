@@ -441,18 +441,19 @@ pub enum Stmt {
 }
 
 impl Stmt {
-    /// The first byte of the statement, docs included.
+    /// The first byte of the statement, docs and annotations included.
     #[must_use]
     pub fn start(&self) -> u32 {
-        let (docs, span) = match self {
-            Stmt::Fact(f) => (&[][..], f.span),
-            Stmt::Require(r) => (&r.docs[..], r.span),
-            Stmt::Ensure(e) => (&e.docs[..], e.span),
-            Stmt::Transition(t) => (&[][..], t.span),
-            Stmt::Allow(a) => (&[][..], a.span),
+        let (docs, anns, span) = match self {
+            Stmt::Fact(f) => (&[][..], &[][..], f.span),
+            Stmt::Require(r) => (&r.docs[..], &r.annotations[..], r.span),
+            Stmt::Ensure(e) => (&e.docs[..], &e.annotations[..], e.span),
+            Stmt::Transition(t) => (&[][..], &[][..], t.span),
+            Stmt::Allow(a) => (&[][..], &[][..], a.span),
         };
-        docs.first()
-            .map_or(span.start, |d| d.span.start.min(span.start))
+        let doc = docs.first().map(|d| d.span.start);
+        let ann = anns.first().map(|a| a.span.start);
+        [doc, ann].into_iter().flatten().fold(span.start, u32::min)
     }
 }
 
@@ -524,6 +525,8 @@ pub struct FactStmt {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RequireStmt {
     pub docs: Vec<Doc>,
+    /// Annotations after the docs and before `require` (`spec/rules.md` section 17.1).
+    pub annotations: Vec<Annotation>,
     pub name: Option<Ident>,
     pub expr: Expr,
     pub otherwise: Option<Else>,
@@ -549,6 +552,8 @@ pub struct PayloadField {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnsureStmt {
     pub docs: Vec<Doc>,
+    /// Annotations after the docs and before `ensure`.
+    pub annotations: Vec<Annotation>,
     pub name: Option<Ident>,
     pub expr: Expr,
     pub message: Option<StrLit>,

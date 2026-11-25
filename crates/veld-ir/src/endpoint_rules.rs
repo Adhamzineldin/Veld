@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::rules::{Expr, Step};
+use crate::rules::{Expr, Rollout, Step};
 use crate::{ChannelId, DeclId, Origin, PackageId, PolicyId, ServiceId, Type};
 
 /// The statements of an endpoint block.
@@ -51,6 +51,25 @@ impl EndpointRules {
             .or_else(|| self.requires.first().map(|r| &r.origin))
             .or_else(|| self.ensures.first().map(|e| &e.origin))
     }
+    /// The origin of the first `require` or `ensure` that is audited (`@rollout(audit)`).
+    #[must_use]
+    pub fn first_audited_origin(&self) -> Option<&Origin> {
+        let require = self.requires.iter().find(|r| r.rollout.is_some());
+        let ensure = self.ensures.iter().find(|e| e.rollout.is_some());
+        match (require, ensure) {
+            (Some(r), Some(e)) => Some(
+                if (r.origin.line, r.origin.col) <= (e.origin.line, e.origin.col) {
+                    &r.origin
+                } else {
+                    &e.origin
+                },
+            ),
+            (Some(r), None) => Some(&r.origin),
+            (None, Some(e)) => Some(&e.origin),
+            (None, None) => None,
+        }
+    }
+
     /// The origin of the first statement that needs `rules_policies`: the first `allow`, else
     /// the first fact key, `require`, payload or `ensure` that reads the principal (a policy is
     /// not needed to read the caller, but a generator that cannot represent the principal must
@@ -181,6 +200,9 @@ pub struct EndpointRequire {
     #[serde(rename = "else")]
     pub else_error: Option<ElseError>,
     pub docs: Option<String>,
+    /// `@rollout(audit)` (`spec/rules.md` section 17.1); omitted from the JSON when enforced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rollout: Option<Rollout>,
     pub origin: Origin,
 }
 
@@ -209,6 +231,9 @@ pub struct EndpointEnsure {
     pub message: Option<String>,
     pub reads: Vec<String>,
     pub docs: Option<String>,
+    /// `@rollout(audit)` (`spec/rules.md` section 17.1); omitted from the JSON when enforced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rollout: Option<Rollout>,
     pub origin: Origin,
 }
 

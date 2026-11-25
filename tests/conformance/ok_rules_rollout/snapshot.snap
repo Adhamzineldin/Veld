@@ -1,0 +1,1355 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+warning[W1001]: channel `Payments` is published and nobody in the workspace subscribes to it
+ --> app/app.veld:40:9
+   |
+40 | channel Payments {
+   |         ^^^^^^^^
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    },
+    {
+      "id": 1,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Booking",
+      "qualified": "app:app.Booking",
+      "sig": "veld:app/Booking@f07dbee9830de9dd",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 9,
+            "col": 3
+          }
+        },
+        {
+          "name": "guests",
+          "wire": "guests",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 10,
+            "col": 3
+          }
+        },
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 4
+          },
+          "optional": false,
+          "default": {
+            "lit": "enum_variant",
+            "value": {
+              "name": "pending",
+              "wire": "pending"
+            }
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 11,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "smallParty",
+          "id": "veld:app/Booking.smallParty@dc41a3773f16602d",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "le",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "guests",
+                          "wire": "guests",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 6
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": "Parties of more than six need a call",
+          "reads": [
+            "guests"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": "A party of more than six is only watched for now.",
+          "deprecated": null,
+          "rollout": "audit",
+          "origin": {
+            "file": "app.veld",
+            "line": 15,
+            "col": 8
+          }
+        },
+        {
+          "name": "atLeastOne",
+          "id": "veld:app/Booking.atLeastOne@f7a4e034934a2d06",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "ge",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "guests",
+                          "wire": "guests",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "guests"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 17,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "BookingPaid",
+      "qualified": "app:app.BookingPaid",
+      "sig": "veld:app/BookingPaid@0990769d7a400001",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 33,
+        "col": 7
+      },
+      "kind": "event",
+      "fields": [
+        {
+          "name": "bookingId",
+          "wire": "bookingId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 34,
+            "col": 3
+          }
+        },
+        {
+          "name": "amount",
+          "wire": "amount",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 35,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "bigPayments",
+          "id": "veld:app/BookingPaid.bigPayments@94a66de5f1b0d27d",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "lt",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "amount",
+                          "wire": "amount",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 100000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "amount"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "rollout": "audit",
+          "origin": {
+            "file": "app.veld",
+            "line": 37,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "app",
+      "name": "Receipt",
+      "qualified": "app:app.Receipt",
+      "sig": "veld:app/Receipt@3457594b68e53889",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 20,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "amount",
+          "wire": "amount",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 21,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "nonNegative",
+          "id": "veld:app/Receipt.nonNegative@93d475007621f2db",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "ge",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "amount",
+                          "wire": "amount",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "amount"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": "use positive",
+          "rollout": "audit",
+          "origin": {
+            "file": "app.veld",
+            "line": 24,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "package": 0,
+      "module": "app",
+      "name": "RoomFull",
+      "qualified": "app:app.RoomFull",
+      "sig": "veld:app/RoomFull@4e1b3a78ef7980a4",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 27,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": [
+        {
+          "name": "capacity",
+          "wire": "capacity",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 28,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "sane",
+          "id": "veld:app/RoomFull.sane@81a7f662ae96299c",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "lt",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "capacity",
+                          "wire": "capacity",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 10000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "capacity"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "rollout": "audit",
+          "origin": {
+            "file": "app.veld",
+            "line": 30,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "package": 0,
+      "module": "app",
+      "name": "Status",
+      "qualified": "app:app.Status",
+      "sig": "veld:app/Status@afaebc04354bd394",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 6,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "pending",
+          "wire": "pending",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "paid",
+          "wire": "paid",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "package": 1,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "package": 1,
+      "module": "prelude",
+      "name": "ValidationError",
+      "qualified": "veld:prelude.ValidationError",
+      "sig": "veld:veld/ValidationError@7836aff24d914bea",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "issues",
+          "wire": "issues",
+          "type": {
+            "list": {
+              "decl": 7
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 6,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "package": 1,
+      "module": "prelude",
+      "name": "ValidationIssue",
+      "qualified": "veld:prelude.ValidationIssue",
+      "sig": "veld:veld/ValidationIssue@253beeea259ebf75",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 9,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "path",
+          "wire": "path",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 29
+          }
+        },
+        {
+          "name": "code",
+          "wire": "code",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 43
+          }
+        },
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 57
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "Bookings",
+      "prefix": "/bookings",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "createBooking",
+          "method": "POST",
+          "path": "/bookings",
+          "sig": "veld:app/Bookings.createBooking@44ec6880646a5a6f",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 0
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 409,
+              "decl": 3
+            },
+            {
+              "status": 422,
+              "decl": 6
+            },
+            {
+              "status": 500,
+              "decl": 5
+            }
+          ],
+          "rules": {
+            "facts": [],
+            "requires": [
+              {
+                "name": null,
+                "id": "veld:app/Bookings.createBooking.require@f2d6ad01d81fd297",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "le",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 4
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "body"
+                ],
+                "else": {
+                  "decl": 3,
+                  "status": 409,
+                  "fields": [
+                    {
+                      "name": "capacity",
+                      "wire": "capacity",
+                      "value": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 4
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "docs": "Watched for a month before it turns on.",
+                "rollout": "audit",
+                "origin": {
+                  "file": "app.veld",
+                  "line": 51,
+                  "col": 5
+                }
+              },
+              {
+                "name": "quiet",
+                "id": "veld:app/Bookings.createBooking.quiet@ce64c06ea04857a5",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "lt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 6
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "body"
+                ],
+                "else": null,
+                "docs": null,
+                "rollout": "audit",
+                "origin": {
+                  "file": "app.veld",
+                  "line": 53,
+                  "col": 13
+                }
+              },
+              {
+                "name": null,
+                "id": "veld:app/Bookings.createBooking.require@75cdeef9ec98e8ef",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "gt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "body"
+                ],
+                "else": null,
+                "docs": null,
+                "origin": {
+                  "file": "app.veld",
+                  "line": 54,
+                  "col": 5
+                }
+              }
+            ],
+            "ensures": [
+              {
+                "name": null,
+                "id": "veld:app/Bookings.createBooking.ensure@9d26506f9f69a048",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "decl": 4
+                        },
+                        "e": {
+                          "path": {
+                            "root": "result",
+                            "steps": [
+                              {
+                                "name": "status",
+                                "wire": "status",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "decl": 4
+                        },
+                        "e": {
+                          "lit": {
+                            "enum": {
+                              "decl": 4,
+                              "name": "pending",
+                              "wire": "pending"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [],
+                "docs": null,
+                "rollout": "audit",
+                "origin": {
+                  "file": "app.veld",
+                  "line": 56,
+                  "col": 5
+                }
+              },
+              {
+                "name": "answered",
+                "id": "veld:app/Bookings.createBooking.answered@a80713e32d44297b",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "result",
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": "The booking changed the party",
+                "reads": [
+                  "body"
+                ],
+                "docs": null,
+                "rollout": "audit",
+                "origin": {
+                  "file": "app.veld",
+                  "line": 58,
+                  "col": 12
+                }
+              },
+              {
+                "name": null,
+                "id": "veld:app/Bookings.createBooking.ensure@54501d369cc7fcf8",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "implies",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "ne",
+                            "l": {
+                              "t": {
+                                "scalar": "uuid"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "result",
+                                  "steps": [
+                                    {
+                                      "name": "id",
+                                      "wire": "id",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "uuid"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "result",
+                                  "steps": [
+                                    {
+                                      "name": "id",
+                                      "wire": "id",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "lit": {
+                            "bool": false
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [],
+                "docs": null,
+                "origin": {
+                  "file": "app.veld",
+                  "line": 60,
+                  "col": 5
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "app.veld",
+            "line": 48,
+            "col": 12
+          }
+        },
+        {
+          "name": "getBooking",
+          "method": "GET",
+          "path": "/bookings/{id}",
+          "sig": "veld:app/Bookings.getBooking@ece8c67556b3abf4",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 422,
+              "decl": 6
+            },
+            {
+              "status": 500,
+              "decl": 5
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 63,
+            "col": 15
+          }
+        }
+      ],
+      "rules_digest": "7d4c7d44646f75a0",
+      "publishes": [
+        0
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 45,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {},
+  "channels": [
+    {
+      "name": "Payments",
+      "package": 0,
+      "module": "app",
+      "qualified": "app:app.Payments",
+      "topic": "app.Payments",
+      "events": [
+        1
+      ],
+      "key": {
+        "name": "bookingId",
+        "wire": "bookingId",
+        "type": {
+          "scalar": "uuid"
+        }
+      },
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 40,
+        "col": 9
+      }
+    }
+  ]
+}

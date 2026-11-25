@@ -127,6 +127,7 @@ fn rule(expr: Expr) -> Rule {
         inherited_from: None,
         docs: None,
         deprecated: None,
+        rollout: None,
         origin: Origin {
             file: "a.veld".into(),
             line: 4,
@@ -281,4 +282,20 @@ fn a_model_with_a_rule_serialises_the_rules_key_and_round_trips() {
     assert_eq!(v["rules"][0]["name"], json!("endAfterStart"));
     let back: Model = serde_json::from_value(v).unwrap();
     assert_eq!(back, m);
+}
+
+#[test]
+fn an_enforced_rule_has_no_rollout_key_and_an_audited_one_writes_audit() {
+    let mut r = rule(int(1));
+    let v = serde_json::to_value(&r).unwrap();
+    assert!(v.get("rollout").is_none(), "{v}");
+    assert!(!r.is_audited());
+    r.rollout = Some(Rollout::Audit);
+    assert!(r.is_audited());
+    let v = serde_json::to_value(&r).unwrap();
+    assert_eq!(v["rollout"], json!("audit"));
+    let back: Rule = serde_json::from_value(v).unwrap();
+    assert_eq!(back, r);
+    let bad: Result<Rollout, _> = serde_json::from_value(json!("shadow"));
+    assert!(bad.is_err());
 }

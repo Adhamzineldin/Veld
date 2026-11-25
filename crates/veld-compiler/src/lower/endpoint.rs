@@ -75,6 +75,7 @@ impl Lowerer<'_, '_> {
             reads: r.reads.clone(),
             else_error: r.otherwise.as_ref().map(|o| self.else_error(o)),
             docs: r.docs.clone(),
+            rollout: r.rollout,
             origin: self.origin(r.span, module),
         }
     }
@@ -95,6 +96,7 @@ impl Lowerer<'_, '_> {
             message: r.message.clone(),
             reads: r.reads.clone(),
             docs: r.docs.clone(),
+            rollout: r.rollout,
             origin: self.origin(r.span, module),
         }
     }

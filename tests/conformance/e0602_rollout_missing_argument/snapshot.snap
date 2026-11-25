@@ -1,0 +1,34 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0602]: expected exactly one argument
+ --> app/app.veld:6:3
+  |
+6 |   @rollout
+  |   ^^^^^^^^
+  = help: usage: @rollout(audit)
+
+error[E0602]: expected exactly one argument
+ --> app/app.veld:8:3
+  |
+8 |   @rollout()
+  |   ^^^^^^^^^^
+  = help: usage: @rollout(audit)
+
+error[E0602]: expected exactly one argument
+ --> app/app.veld:14:5
+   |
+14 |     @rollout
+   |     ^^^^^^^^
+  = help: usage: @rollout(audit)
+
+error[E0602]: expected exactly one argument
+ --> app/app.veld:16:5
+   |
+16 |     @rollout()
+   |     ^^^^^^^^^^
+  = help: usage: @rollout(audit)
+
+== ir ==
+(no IR: compilation failed)

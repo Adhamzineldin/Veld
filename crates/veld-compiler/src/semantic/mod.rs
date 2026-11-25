@@ -17,6 +17,8 @@ mod policy;
 mod policy_tests;
 pub mod regex;
 mod resolve;
+#[cfg(test)]
+mod rollout_tests;
 pub mod rules;
 mod services;
 #[cfg(test)]

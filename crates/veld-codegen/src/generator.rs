@@ -30,15 +30,23 @@ impl Role {
 pub struct Capabilities(pub BTreeSet<Feature>);
 
 impl Capabilities {
-    /// Everything except the listed features.
+    /// Everything except the listed features and the opt-in ones ([`Feature::OPT_IN`]), which a
+    /// generator adds with [`Capabilities::with`] once it implements them.
     #[must_use]
     pub fn all_except(unsupported: &[Feature]) -> Self {
         Self(
             Feature::ALL
                 .into_iter()
-                .filter(|f| !unsupported.contains(f))
+                .filter(|f| !unsupported.contains(f) && !Feature::OPT_IN.contains(f))
                 .collect(),
         )
+    }
+
+    /// These capabilities and `feature` as well.
+    #[must_use]
+    pub fn with(mut self, feature: Feature) -> Self {
+        self.0.insert(feature);
+        self
     }
 
     #[must_use]
@@ -271,6 +279,9 @@ pub fn check_capabilities(
 
 /// Where a feature is first used: an endpoint for endpoint-level features, a declaration otherwise.
 fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin> {
+    if feature == Feature::RulesRollout {
+        return first_audited_origin(ir, services);
+    }
     for sid in services {
         for ep in &ir.service(*sid).endpoints {
             let hit = match feature {
@@ -294,6 +305,7 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
                 | Feature::Page
                 | Feature::Bytes
                 | Feature::Events
+                | Feature::RulesRollout
                 | Feature::RulesInvariants => false,
             };
             if hit {
@@ -347,6 +359,25 @@ fn first_rule_origin(ir: &Ir, services: &[ServiceId]) -> Option<Origin> {
     ir.reachable_decls(services)
         .into_iter()
         .find_map(|id| ir.decl(id).rules().first().map(|r| r.origin.clone()))
+}
+
+/// The origin of the first audited rule in source order: an invariant of a reachable declaration, or
+/// a `require` or an `ensure` of one of the services.
+fn first_audited_origin(ir: &Ir, services: &[ServiceId]) -> Option<Origin> {
+    let invariants = ir
+        .reachable_decls(services)
+        .into_iter()
+        .flat_map(|id| ir.decl(id).rules().iter())
+        .filter(|r| r.is_audited())
+        .map(|r| &r.origin);
+    let statements = services
+        .iter()
+        .flat_map(|s| ir.service(*s).endpoints.iter())
+        .filter_map(|ep| ep.rules.first_audited_origin());
+    invariants
+        .chain(statements)
+        .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+        .cloned()
 }
 
 #[cfg(test)]
@@ -555,5 +586,21 @@ mod tests {
         );
         assert!(g.generate_dyn(&req(Role::Server, None), &null).is_ok());
         assert!(g.generate_dyn(&req(Role::Client, None), &null).is_ok());
+    }
+
+    #[test]
+    fn all_except_leaves_out_the_opt_in_features_and_with_adds_them() {
+        let caps = Capabilities::all_except(&[]);
+        assert!(!caps.supports(Feature::RulesRollout));
+        for f in Feature::ALL
+            .into_iter()
+            .filter(|f| !Feature::OPT_IN.contains(f))
+        {
+            assert!(caps.supports(f), "{}", f.name());
+        }
+        let caps = caps.with(Feature::RulesRollout);
+        assert!(caps.supports(Feature::RulesRollout));
+        // Listing a feature as unsupported still wins over everything else.
+        assert!(!Capabilities::all_except(&[Feature::Auth]).supports(Feature::Auth));
     }
 }

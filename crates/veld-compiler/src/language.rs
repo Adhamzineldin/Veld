@@ -119,6 +119,10 @@ pub enum Target {
     Variant,
     Param,
     Rule,
+    /// A `require` statement of an endpoint block (`spec/rules.md` section 17.1).
+    Require,
+    /// An `ensure` statement of an endpoint block.
+    Ensure,
     Event,
     Channel,
 }
@@ -135,6 +139,8 @@ pub enum ArgShape {
     Idents,
     Length,
     Format,
+    /// The word `audit`.
+    Rollout,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -146,8 +152,8 @@ pub struct AnnotationSpec {
 }
 
 use Target::{
-    Channel, Const, Endpoint, Enum, Error, Event, Field, Model, Param, Rule, Service, Union,
-    Variant,
+    Channel, Const, Endpoint, Ensure, Enum, Error, Event, Field, Model, Param, Require, Rule,
+    Service, Union, Variant,
 };
 
 const ANY_DECL: [Target; 7] = [Service, Model, Error, Enum, Union, Const, Endpoint];
@@ -156,7 +162,7 @@ const DEPRECATABLE: [Target; 12] = [
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 15] = [
+pub const ANNOTATIONS: [AnnotationSpec; 16] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -246,6 +252,12 @@ pub const ANNOTATIONS: [AnnotationSpec; 15] = [
         targets: &[Channel],
         args: ArgShape::OneString,
         usage: "@topic(\"name\")",
+    },
+    AnnotationSpec {
+        name: "rollout",
+        targets: &[Rule, Require, Ensure],
+        args: ArgShape::Rollout,
+        usage: "@rollout(audit)",
     },
 ];
 
@@ -352,7 +364,7 @@ mod tests {
     #[test]
     fn spec_serializes_and_lists_every_annotation() {
         let json = serde_json::to_value(spec()).map(|v| v["annotations"].as_array().map(Vec::len));
-        assert_eq!(json.ok().flatten(), Some(15));
+        assert_eq!(json.ok().flatten(), Some(16));
     }
 
     #[test]
@@ -365,13 +377,13 @@ mod tests {
     }
 
     #[test]
-    fn only_deprecated_applies_to_a_rule() {
+    fn only_deprecated_and_rollout_apply_to_a_rule() {
         let on_rule: Vec<&str> = ANNOTATIONS
             .iter()
             .filter(|a| a.targets.contains(&Target::Rule))
             .map(|a| a.name)
             .collect();
-        assert_eq!(on_rule, vec!["deprecated"]);
+        assert_eq!(on_rule, vec!["deprecated", "rollout"]);
     }
 
     #[test]

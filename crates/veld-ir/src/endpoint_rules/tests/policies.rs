@@ -140,6 +140,7 @@ fn reading_the_principal_without_an_allow_needs_the_policies_feature_too() {
         reads: vec![],
         else_error: None,
         docs: None,
+        rollout: None,
         origin: origin(14),
     };
     assert!(principal.reads_principal());

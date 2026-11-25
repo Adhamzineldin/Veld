@@ -524,6 +524,7 @@ fn annotation_snippet(name: &str, shape: ArgShape) -> String {
 
         ArgShape::Length => format!("{name}(min: ${{1:n}}, max: ${{2:n}})"),
         ArgShape::Format => format!("{name}(${{1|email,uri,hostname,ipv4,ipv6|}})"),
+        ArgShape::Rollout => format!("{name}(audit)"),
     }
 }
 

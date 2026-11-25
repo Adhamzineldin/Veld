@@ -25,7 +25,28 @@ pub struct Rule {
     pub inherited_from: Option<DeclId>,
     pub docs: Option<String>,
     pub deprecated: Option<String>,
+    /// `@rollout(audit)` (`spec/rules.md` section 17.1). Omitted from the JSON when the rule is
+    /// enforced, so the IR of a contract without the annotation is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rollout: Option<Rollout>,
     pub origin: Origin,
+}
+
+/// How far a rule is rolled out (`spec/rules.md` section 17.1). A rule without a rollout is
+/// enforced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Rollout {
+    /// Evaluated and reported, never rejects.
+    Audit,
+}
+
+impl Rule {
+    /// True when the rule is audited and so never rejects.
+    #[must_use]
+    pub fn is_audited(&self) -> bool {
+        self.rollout.is_some()
+    }
 }
 
 /// A typed expression node.

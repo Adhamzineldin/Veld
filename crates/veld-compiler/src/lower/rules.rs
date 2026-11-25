@@ -31,6 +31,7 @@ impl Lowerer<'_, '_> {
                     inherited_from: (decl != old).then(|| self.decl_id(decl)),
                     docs: r.docs.clone(),
                     deprecated: r.deprecated.clone(),
+                    rollout: r.rollout,
                     origin: self.origin(r.span, info.module),
                 });
             }

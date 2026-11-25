@@ -13,10 +13,11 @@ use super::depth;
 use super::transition::{self, RTransition};
 use super::types::of;
 use crate::diagnostics::{Diagnostic, Span};
-use crate::semantic::{DKind, Program, REndpoint, RField, ServiceInfo};
+use crate::language::Target;
+use crate::semantic::{DKind, Program, REndpoint, RField, ServiceInfo, annotations};
 use crate::syntax::ast::{self, Stmt, doc_text};
 use veld_ir::rules::{Expr, ExprType};
-use veld_ir::{Constraints, Type};
+use veld_ir::{Constraints, Rollout, Type};
 
 /// Containers above an expression in the IR of an endpoint rule, counted for the deepest
 /// place an expression can sit (the value of a payload field of an `else`): the document,
@@ -67,6 +68,7 @@ pub struct RRequire {
     pub reads: Vec<String>,
     pub otherwise: Option<RElse>,
     pub docs: Option<String>,
+    pub rollout: Option<Rollout>,
     pub span: Span,
 }
 
@@ -91,6 +93,7 @@ pub struct REnsure {
     pub message: Option<String>,
     pub reads: Vec<String>,
     pub docs: Option<String>,
+    pub rollout: Option<Rollout>,
     pub span: Span,
 }
 
@@ -512,6 +515,7 @@ impl BlockChecker<'_, '_, '_> {
     // ---- require -----------------------------------------------------------------
 
     fn require(&mut self, r: &ast::RequireStmt) -> Option<RRequire> {
+        let anns = annotations::parse(&r.annotations, Target::Require, None, self.diags);
         let fresh = self.name_is_new(r.name.as_ref());
         let (typed, reads) = self.with_checker(Phase::Require, false, |c| {
             let typed = c.bool_expr(&r.expr, "a `require`");
@@ -530,6 +534,7 @@ impl BlockChecker<'_, '_, '_> {
             reads,
             otherwise: clause.flatten(),
             docs: doc_text(&r.docs),
+            rollout: anns.rollout,
             span: r.name.as_ref().map_or(r.span, |n| n.span),
         })
     }
@@ -688,6 +693,7 @@ impl BlockChecker<'_, '_, '_> {
     // ---- ensure ------------------------------------------------------------------
 
     fn ensure(&mut self, r: &ast::EnsureStmt) -> Option<REnsure> {
+        let anns = annotations::parse(&r.annotations, Target::Ensure, None, self.diags);
         let fresh = self.name_is_new(r.name.as_ref());
         if self.ep.success_stream {
             self.diags.push(
@@ -714,6 +720,7 @@ impl BlockChecker<'_, '_, '_> {
             message: r.message.as_ref().map(|m| m.value.clone()),
             reads,
             docs: doc_text(&r.docs),
+            rollout: anns.rollout,
             span: r.name.as_ref().map_or(r.span, |n| n.span),
         })
     }

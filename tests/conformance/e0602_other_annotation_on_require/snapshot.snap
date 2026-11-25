@@ -1,0 +1,27 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0602]: `@deprecated` cannot be applied to a require
+ --> app/app.veld:13:5
+   |
+13 |     @deprecated("not here")
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+  = help: `@deprecated` applies to: service, model, error, enum, union, const, endpoint, field, enum variant, rule, event, channel
+
+error[E0602]: `@wire` cannot be applied to an ensure
+ --> app/app.veld:15:5
+   |
+15 |     @wire("x")
+   |     ^^^^^^^^^^
+  = help: `@wire` applies to: field
+
+error[E0601]: unknown annotation `@bogus`
+ --> app/app.veld:17:6
+   |
+17 |     @bogus
+   |      ^^^^^
+  = help: known annotations: @auth, @middleware, @deprecated, @min, @max, @length, @pattern, @format, @readonly, @wire, @example, @discriminator, @query, @header, @rollout
+
+== ir ==
+(no IR: compilation failed)

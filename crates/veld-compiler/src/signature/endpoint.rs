@@ -134,7 +134,8 @@ pub fn transition_rule_id(at: &EndpointRef<'_>, t: &TransitionRef<'_>) -> String
 
 /// The rules digest of a service (`spec/rules.md` section 9.7): the first 16 hex characters of
 /// the SHA-256 of the RFC 8785 JSON array of the sorted, distinct rule ids of every invariant of
-/// every declaration its endpoints reach. `None` when it reaches no invariant.
+/// every declaration its endpoints reach. `None` when it reaches no invariant. An audited invariant
+/// (`@rollout(audit)`, section 17.1) is left out: the digest covers what a client may enforce.
 ///
 /// What an endpoint reaches is what `Ir::reachable_decls` says: parameters, the success value
 /// and the errors, with their fields, parents and union arms. Facts are values of the
@@ -145,6 +146,7 @@ pub fn rules_digest(ir: &Ir, service: ServiceId) -> Option<String> {
         .reachable_decls(&[service])
         .into_iter()
         .flat_map(|d| ir.decl(d).rules())
+        .filter(|r| !r.is_audited())
         .map(|r| r.id.as_str())
         .collect();
     if ids.is_empty() {
