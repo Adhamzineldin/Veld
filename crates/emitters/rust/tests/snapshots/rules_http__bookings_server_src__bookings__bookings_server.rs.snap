@@ -185,6 +185,10 @@ impl<S: BookingsService, H: BookingsHooks> veld::server::Endpoints for BookingsD
         true
     }
 
+    fn digest(&self) -> Option<&'static str> {
+        Some("6015ae5084eac5d3")
+    }
+
     async fn call(&self, endpoint: usize, args: serde_json::Map<String, serde_json::Value>, ctx: &veld::server::RequestContext) -> Result<serde_json::Value, veld::Error> {
         match endpoint {
             0 => {

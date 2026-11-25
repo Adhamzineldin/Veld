@@ -147,8 +147,13 @@ async fn input_rules() {
     assert_end_after_start(&err, false, "remote");
     assert_eq!(server.hits.load(Ordering::SeqCst), hits + 1, "the request was sent");
 
-    // Local check on (the default): the same error, raised locally, nothing sent.
+    // Local check on (the default): the same error, raised locally, nothing sent. Until a response
+    // has shown the server's rules digest (`spec/rules.md` section 9.7) a client sends anyway and
+    // the server decides: the first call is sent, and answers with the digest it was built from.
     let local = BookingsClient::reqwest(ClientOptions::new().base_url(&server.base)).unwrap();
+    let first = local.create_booking(CreateBookingRequest { body: booking(BAD.0, BAD.1) }).await.unwrap_err();
+    assert!(!first.is_local(), "before the first response the server decides: {first:?}");
+    assert_end_after_start(&first, false, "first call");
     let hits = server.hits.load(Ordering::SeqCst);
     let err = local.create_booking(CreateBookingRequest { body: booking(BAD.0, BAD.1) }).await.unwrap_err();
     assert_end_after_start(&err, true, "local");

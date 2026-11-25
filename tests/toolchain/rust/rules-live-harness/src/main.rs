@@ -227,8 +227,12 @@ fn note(text: &str, stars: i32) -> ClientNote {
 
 async fn websocket_rules() {
     let strict = start(RuleOutput::Strict).await;
-    // Client to server, checked locally like a request body: nothing is written.
-    let mut chan = client(&strict.base).notes().await.unwrap();
+    // Client to server, checked locally like a request body: nothing is written. The client has
+    // not seen the server's rules digest yet (a WebSocket upgrade shows none), so one plain call
+    // brings it: until a response says the rules are the ones it was generated from, it sends.
+    let live = client(&strict.base);
+    live.seats(ClientSeats { ok: true }).await.unwrap_err();
+    let mut chan = live.notes().await.unwrap();
     let err = chan.send(note("x", 9)).await.unwrap_err();
     assert!(ValidationError::matches(&err));
     assert!(err.is_local());

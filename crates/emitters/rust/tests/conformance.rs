@@ -149,13 +149,6 @@ fn unknown_frameworks_and_options_are_reported() {
     assert!(err[0].message.contains("axum"), "{}", err[0].message);
 }
 
-/// Invariants are enforced; the endpoint, state-machine and policy rules are still refused
-/// (`spec/rules.md` section 8).
-#[test]
-fn rust_supports_invariants_and_still_refuses_the_other_rules_features() {
-    veld_emit_conformance::check_only_invariants_supported(&Rust).unwrap();
-}
-
 /// A crate with a rule carries no unresolved region marker.
 #[test]
 fn a_crate_with_a_rule_has_no_gate_markers() {
@@ -180,12 +173,36 @@ fn a_crate_with_a_rule_has_no_gate_markers() {
     }
 }
 
+/// Endpoint rules are enforced, in a hand-built block and in one the compiler made; the
+/// state-machine and policy rules are still refused.
 #[test]
-fn rust_refuses_endpoint_rules_with_e0801() {
-    veld_emit_conformance::check_endpoint_rules_are_refused(&Rust).unwrap();
+fn rust_supports_invariants_and_endpoint_rules() {
+    veld_emit_conformance::check_invariants_and_endpoint_rules_supported(&Rust).unwrap();
 }
 
+/// A crate with endpoint rules carries no unresolved region marker either.
 #[test]
-fn rust_refuses_a_compiled_contract_with_endpoint_rules_with_e0801() {
-    veld_emit_conformance::check_compiled_endpoint_rules_are_refused(&Rust).unwrap();
+fn a_crate_with_endpoint_rules_has_no_gate_markers() {
+    for ir in [
+        veld_emit_conformance::ir_with_endpoint_rules(),
+        veld_emit_conformance::compiled_endpoint_rules_contract(),
+    ] {
+        for role in Rust.roles() {
+            let req = GenRequest {
+                ir: &ir,
+                role: *role,
+                services: ir.services.iter().map(|s| s.id).collect(),
+                consumes: vec![],
+                framework: None,
+            };
+            let files = Rust.generate_dyn(&req, &serde_json::Value::Null).unwrap();
+            for (path, bytes) in files.iter() {
+                let text = String::from_utf8_lossy(bytes);
+                assert!(
+                    !text.contains("// #if") && !text.contains("// #endif"),
+                    "{path}"
+                );
+            }
+        }
+    }
 }
