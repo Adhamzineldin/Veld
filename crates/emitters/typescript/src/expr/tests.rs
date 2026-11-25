@@ -148,6 +148,7 @@ fn ir() -> Ir {
         consumes: Default::default(),
         examples: vec![],
         policies: vec![],
+        channels: vec![],
     }
 }
 
