@@ -142,6 +142,40 @@ pub fn check_rules_are_refused(generator: &dyn DynGenerator) -> Result<(), Strin
     Ok(())
 }
 
+/// A generator that supports invariants and nothing else of the rules: it declares `rules_invariants`
+/// only, and generates a contract with a rule (the other rules features stay refused).
+///
+/// # Errors
+/// A description of the first role that does not match.
+pub fn check_only_invariants_supported(generator: &dyn DynGenerator) -> Result<(), String> {
+    let ir = ir_with_rule();
+    let services = all_services(&ir);
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        for f in Feature::RULES {
+            let want = f == Feature::RulesInvariants;
+            if caps.supports(f) != want {
+                return Err(format!("{}: `{}` should be supported: {want}", role.name(), f.name()));
+            }
+        }
+        let req = GenRequest {
+            ir: &ir,
+            role: *role,
+            services: services.clone(),
+            consumes: vec![],
+            framework: None,
+        };
+        let gate = check_capabilities(&ir, &req, &caps);
+        if !gate.is_empty() {
+            return Err(format!("{}: the gate reported {gate:?}", role.name()));
+        }
+        if let Err(d) = generator.generate_dyn(&req, &serde_json::Value::Null) {
+            return Err(format!("{}: generate failed: {d:?}", role.name()));
+        }
+    }
+    Ok(())
+}
+
 /// Every declaration signature and operation signature of `services` and what they reach.
 #[must_use]
 pub fn expected_signatures(ir: &Ir, services: &[ServiceId]) -> Vec<String> {

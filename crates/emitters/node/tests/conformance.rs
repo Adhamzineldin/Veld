@@ -16,35 +16,7 @@ fn typescript_passes_the_conformance_kit() {
 
 /// Flip one feature at a time when an emitter learns to enforce it (`spec/rules.md` section 8).
 #[test]
-fn typescript_and_node_declare_no_rules_feature() {
-    use veld_codegen::DynGenerator;
-    for (id, caps) in [
-        (
-            "node",
-            Node.roles()
-                .iter()
-                .map(|r| Node.capabilities(*r))
-                .collect::<Vec<_>>(),
-        ),
-        (
-            "typescript",
-            TypeScript
-                .roles()
-                .iter()
-                .map(|r| TypeScript.capabilities(*r))
-                .collect::<Vec<_>>(),
-        ),
-    ] {
-        for c in caps {
-            for f in veld_ir::Feature::RULES {
-                assert!(!c.supports(f), "{id} declares `{}`", f.name());
-            }
-        }
-    }
-}
-
-#[test]
-fn a_contract_with_a_rule_is_refused_with_e0801() {
-    veld_emit_conformance::check_rules_are_refused(&Node).unwrap();
-    veld_emit_conformance::check_rules_are_refused(&TypeScript).unwrap();
+fn typescript_and_node_declare_only_the_invariants_feature() {
+    veld_emit_conformance::check_only_invariants_supported(&Node).unwrap();
+    veld_emit_conformance::check_only_invariants_supported(&TypeScript).unwrap();
 }

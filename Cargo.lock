@@ -1607,6 +1607,7 @@ dependencies = [
  "veld-emit-typescript",
  "veld-ir",
  "veld-project",
+ "veld-rules",
 ]
 
 [[package]]
