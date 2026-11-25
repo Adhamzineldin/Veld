@@ -256,9 +256,9 @@ fn nested_parens(n: usize) -> String {
 }
 
 #[test]
-fn nesting_is_limited_to_64_levels_with_e0005() {
-    assert!(codes(&nested_parens(60)).is_empty());
-    let c = codes(&nested_parens(64));
+fn expression_nesting_is_limited_to_32_levels_with_e0005() {
+    assert!(codes(&nested_parens(32)).is_empty());
+    let c = codes(&nested_parens(33));
     assert!(c.contains(&"E0005"), "{c:?}");
     let c = codes(&nested_parens(10_000));
     assert_eq!(c.iter().filter(|c| **c == "E0005").count(), 1, "{c:?}");
@@ -267,7 +267,8 @@ fn nesting_is_limited_to_64_levels_with_e0005() {
 #[test]
 fn the_links_of_a_left_associative_chain_count_as_levels() {
     let chain = |n: usize, op: &str| format!("model M {{ rule r: {} }}", vec!["a"; n].join(op));
-    assert!(codes(&chain(50, " + ")).is_empty());
+    assert!(codes(&chain(33, " + ")).is_empty());
+    assert!(codes(&chain(34, " + ")).contains(&"E0005"));
     for op in [" + ", " && ", " || ", " * "] {
         assert!(codes(&chain(100, op)).contains(&"E0005"), "{op}");
     }

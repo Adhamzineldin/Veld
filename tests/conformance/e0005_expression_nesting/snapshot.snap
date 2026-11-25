@@ -2,23 +2,23 @@
 source: crates/veld-compiler/tests/conformance.rs
 ---
 == diagnostics ==
-error[E0005]: nesting is too deep (the limit is 64 levels)
- --> app/app.veld:3:80
+error[E0005]: nesting is too deep (the limit is 32 levels)
+ --> app/app.veld:3:49
   |
-3 |   rule parens: ((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-  |                                                                                ^
+3 |   rule parens: (((((((((((((((((((((((((((((((((a)))))))))))))))))))))))))))))))))
+  |                                                 ^
 
-error[E0005]: nesting is too deep (the limit is 64 levels)
- --> app/app.veld:7:335
+error[E0005]: nesting is too deep (the limit is 32 levels)
+ --> app/app.veld:7:180
   |
-7 |   rule chain: a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a
-  |                                                                                                                                                                                                                                                                                                                                               ^
+7 |   rule chain: a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a
+  |                                                                                                                                                                                    ^
 
-error[E0005]: nesting is too deep (the limit is 64 levels)
- --> app/app.veld:12:83
+error[E0005]: nesting is too deep (the limit is 32 levels)
+ --> app/app.veld:12:52
    |
-12 |   rule negations: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!a
-   |                                                                                   ^
+12 |   rule negations: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!a
+   |                                                    ^
 
 == ir ==
 (no IR: compilation failed)

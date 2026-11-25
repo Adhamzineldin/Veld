@@ -133,7 +133,7 @@ fn long_optional_reference_chain_does_not_overflow() {
     compile_ok_or_diag(src);
 }
 
-/// A legal 64-level rule needs more than the 256 KiB above in a debug build; 1 MiB still
+/// A legal 32-level rule needs more than the 256 KiB above in a debug build; 1 MiB still
 /// overflows long before 10,000 unguarded levels would finish.
 const RULE_STACK: usize = 1024 * 1024;
 
@@ -205,11 +205,11 @@ fn long_operator_chains_in_rules_are_a_diagnostic() {
 #[test]
 fn expressions_within_the_limit_compile_on_a_modest_stack() {
     let shapes = [
-        format!("{}a", "!".repeat(60)),
-        format!("{}a{}", "(".repeat(60), ")".repeat(60)),
-        format!("{} > 0", vec!["n"; 60].join(" + ")),
-        vec!["a"; 60].join(" && "),
-        vec!["a"; 60].join(" implies "),
+        format!("{}a", "!".repeat(32)),
+        format!("{}a{}", "(".repeat(32), ")".repeat(32)),
+        format!("{} > 0", vec!["n"; 32].join(" + ")),
+        vec!["a"; 33].join(" && "),
+        vec!["a"; 33].join(" implies "),
     ];
     for s in shapes {
         let (codes, compiled) = rule_outcome(s.clone());

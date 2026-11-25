@@ -61,11 +61,20 @@ struct Parser<'a> {
     depth: usize,
 }
 
-/// The deepest nesting of types (`Map<string, Map<...>>`, `int[][]`), annotation call
-/// arguments and rule expressions the parser accepts. For an expression it is the depth of the
-/// tree, so a left-associative chain such as `a + b + c + ...` counts one level per operator. Every later pass recurses over these, so the limit keeps the
+/// The deepest nesting of types (`Map<string, Map<...>>`, `int[][]`) and annotation call
+/// arguments the parser accepts. Every later pass recurses over these, so the limit keeps the
 /// stack bounded for any input.
 pub const MAX_NESTING: usize = 64;
+
+/// The deepest rule expression (`spec/rules.md` section 3.1): 32 levels above the leaves. The
+/// parser counts the leaf too (a bare `a` is depth 1, `a && b` depth 2, a chain of 33 terms
+/// depth 33), and every operator, call, list and parenthesis adds one, also in a
+/// left-associative chain. The limit keeps the IR JSON of any rule readable by a JSON reader
+/// with the default recursion limit of 128 (see `semantic::rules::depth`).
+pub const MAX_EXPR_LEVELS: usize = 32;
+
+/// [`MAX_EXPR_LEVELS`] plus the leaf, in the unit of the parser's depth counter.
+pub const MAX_EXPR_NESTING: usize = MAX_EXPR_LEVELS + 1;
 
 const V1_HELP: &str = "this is v1 syntax; see spec/language.md";
 
@@ -545,6 +554,21 @@ impl Parser<'_> {
             return false;
         }
         self.depth += levels;
+        true
+    }
+
+    /// Enters one expression level; reports E0005 past [`MAX_EXPR_NESTING`].
+    fn enter_expr(&mut self) -> bool {
+        if self.depth + 1 > MAX_EXPR_NESTING {
+            let span = self.span();
+            self.err(
+                "E0005",
+                format!("nesting is too deep (the limit is {MAX_EXPR_LEVELS} levels)"),
+                span,
+            );
+            return false;
+        }
+        self.depth += 1;
         true
     }
 

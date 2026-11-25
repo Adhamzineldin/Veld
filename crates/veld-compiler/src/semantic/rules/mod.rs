@@ -5,6 +5,9 @@
 
 mod calls;
 mod checker;
+mod depth;
+#[cfg(test)]
+mod depth_tests;
 mod ops;
 mod paths;
 #[cfg(test)]
@@ -160,6 +163,17 @@ fn check_rule(
         }
         return None;
     };
+    if depth::json_depth(&expr) > depth::MAX_EXPR_JSON_DEPTH {
+        c.err(
+            "E0005",
+            format!(
+                "rule `{}` nests too deeply to be written as IR JSON (a type inside it is too deep)",
+                rule.name.name
+            ),
+            rule.expr.span,
+        );
+        return None;
+    }
     let (reads, reads_readonly) = (c.reads, c.reads_readonly);
     if reads.is_empty() {
         diags.push(

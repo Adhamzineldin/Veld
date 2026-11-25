@@ -2,11 +2,11 @@
 //!
 //! Precedence, loosest first: `implies` (right), `||`, `&&`, one comparison (not chainable),
 //! `+ -`, `* / %`, unary `! not -`, postfix `.name`. Every level of the tree counts against
-//! [`MAX_NESTING`](super::MAX_NESTING), also the links of a left-associative chain, so later
+//! [`MAX_EXPR_NESTING`](super::MAX_EXPR_NESTING), also the links of a left-associative chain, so later
 //! passes can recurse over any tree the parser returns.
 //!
 //! The recursion is kept shallow on purpose (about five frames per nested level): a legal
-//! expression 64 levels deep must parse on a small stack, also in a debug build. `self.depth`
+//! expression at the limit must parse on a small stack, also in a debug build. `self.depth`
 //! is restored by [`Parser::parse_expr`] after a failure, so the helpers below only restore it
 //! on success.
 
@@ -72,7 +72,7 @@ impl Parser<'_> {
     /// depth whether or not the parse succeeds.
     pub(super) fn parse_expr(&mut self) -> Option<Expr> {
         let base = self.depth;
-        if !self.enter(1) {
+        if !self.enter_expr() {
             return None;
         }
         let parsed = self.parse_binary(P_IMPLIES);
@@ -132,7 +132,7 @@ impl Parser<'_> {
             }
             after_comparison = prec == P_CMP;
             self.advance();
-            if !self.enter(1) {
+            if !self.enter_expr() {
                 return None;
             }
             // `implies` leans to the right; every other level to the left.
@@ -196,7 +196,7 @@ impl Parser<'_> {
     fn parse_unary(&mut self) -> Option<Expr> {
         if let Some(op) = self.unary_op() {
             let start = self.advance().span;
-            if !self.enter(1) {
+            if !self.enter_expr() {
                 return None;
             }
             let operand = self.parse_unary()?;
@@ -213,7 +213,7 @@ impl Parser<'_> {
         let mut e = self.parse_primary()?;
         while matches!(self.peek(), Tok::Dot) && matches!(self.tok_at(1), Tok::Ident(_)) {
             self.advance();
-            if !self.enter(1) {
+            if !self.enter_expr() {
                 return None;
             }
             let name = self.expect_ident("a field name")?;
@@ -307,7 +307,7 @@ impl Parser<'_> {
 
     fn parse_call(&mut self, name: Ident) -> Option<Expr> {
         let base = self.depth;
-        if !self.enter(1) {
+        if !self.enter_expr() {
             return None;
         }
         let mut args = Vec::new();
@@ -349,7 +349,7 @@ impl Parser<'_> {
     fn parse_list(&mut self) -> Option<Expr> {
         let base = self.depth;
         let open = self.advance().span;
-        if !self.enter(1) {
+        if !self.enter_expr() {
             return None;
         }
         let mut items = Vec::new();

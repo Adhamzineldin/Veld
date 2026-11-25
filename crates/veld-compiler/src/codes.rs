@@ -77,7 +77,7 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E0005",
         C,
-        "Nesting too deep: types and annotation call arguments are limited to 64 levels",
+        "Nesting too deep: types and annotation call arguments are limited to 64 levels, rule expressions to 32",
     ),
     e("E0006", C, "`extends` chain longer than 64 models"),
     e(

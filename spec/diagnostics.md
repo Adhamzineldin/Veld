@@ -11,7 +11,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0002` | error | veld-compiler | Lexical error (bad character, unterminated string, integer literal out of range) |
 | `E0003` | error | veld-compiler | Unexpected token: the parser expected something else |
 | `E0004` | error | veld-compiler | Reserved word used as a name |
-| `E0005` | error | veld-compiler | Nesting too deep: types and annotation call arguments are limited to 64 levels |
+| `E0005` | error | veld-compiler | Nesting too deep: types and annotation call arguments are limited to 64 levels, rule expressions to 32 |
 | `E0006` | error | veld-compiler | `extends` chain longer than 64 models |
 | `E0101` | error | veld-compiler | Module path derived from a file path is invalid |
 | `E0201` | error | veld-compiler | Duplicate declaration in a module |
