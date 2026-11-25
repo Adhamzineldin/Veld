@@ -134,6 +134,16 @@ impl Live {
     /// when no request can be built for its endpoint and [`LiveError::Connect`] when the
     /// connection fails.
     pub fn run_example(&self, ir: &Ir, ex: &Example) -> Result<ExampleReport, LiveError> {
+        if ex.event.is_some() {
+            // Nothing is sent: live event examples need the inbox and a broker (spec/events.md 12).
+            return Ok(ExampleReport {
+                name: ex.name.clone(),
+                verdict: Verdict::Skipped(
+                    "live event examples arrive with a later phase".to_owned(),
+                ),
+                outcome: None,
+            });
+        }
         let filled = fill_example(ir, ex)?;
         if let Some(service) = ir.services.get(filled.service.index())
             && !self.serves(&service.name)

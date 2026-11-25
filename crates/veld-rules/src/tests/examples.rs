@@ -592,7 +592,7 @@ fn malformed_examples_are_errors_and_never_panics() {
     let b = bookings();
     let base = || example("x", "createBooking", expect_ok(None));
     let mut unknown_service = base();
-    unknown_service.service = ServiceId(9);
+    unknown_service.service = Some(ServiceId(9));
     let mut unknown_endpoint = base();
     unknown_endpoint.endpoint = "zzz".to_owned();
     let cases: Vec<(Example, &str)> = vec![

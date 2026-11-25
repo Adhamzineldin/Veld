@@ -51,7 +51,13 @@ fn wire_of(ir: &Ir, t: &EndpointTransition, name: &str) -> Result<String, InputE
 fn machine_of<'a>(ir: &'a Ir, t: &EndpointTransition) -> Result<&'a Enum, InputError> {
     match ir.decls.get(t.decl.index()).map(|d| &d.kind) {
         Some(DeclKind::Enum(e)) => Ok(e),
-        Some(DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Union(_) | DeclKind::Const(_))
+        Some(
+            DeclKind::Model(_)
+            | DeclKind::Error(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_)
+            | DeclKind::Event(_),
+        )
         | None => Err(InputError::Ir(
             "a transition names something that is not an enum".to_owned(),
         )),

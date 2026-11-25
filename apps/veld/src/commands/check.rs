@@ -131,7 +131,12 @@ fn run_examples(
         if scope.is_some_and(|s| !s.has_relative(&ex.origin.file)) {
             continue;
         }
-        let Err(err) = veld_rules::fill_example(ir, ex) else {
+        let filled = if ex.event.is_some() {
+            veld_rules::fill_event_example(ir, ex).map(|_| ())
+        } else {
+            veld_rules::fill_example(ir, ex).map(|_| ())
+        };
+        let Err(err) = filled else {
             continue;
         };
         if err.code() != "E0953" {

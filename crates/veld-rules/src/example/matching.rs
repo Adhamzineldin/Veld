@@ -131,7 +131,7 @@ impl Matcher<'_> {
     fn decl(&self, decl: &Decl, pat: &Json, act: &Json, path: &str, out: &mut Vec<Difference>) {
         match &decl.kind {
             DeclKind::Enum(_) => self.by_value(&Type::Decl(decl.id), pat, act, path, out),
-            DeclKind::Model(_) | DeclKind::Error(_) => {
+            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Event(_) => {
                 let ty_of = |k: &str| decl.fields().iter().find(|f| f.wire == k).map(|f| &f.ty);
                 self.entries(pat, act, path, out, ty_of);
             }

@@ -6,6 +6,7 @@
 //! * [`run_example`] runs it offline (steps 5 and 6 of the pipeline, and steps 8 and 9 when the
 //!   example has `returns`) and compares the outcome with the expected one.
 
+mod event;
 mod fill;
 mod matching;
 mod report;
@@ -17,6 +18,10 @@ use veld_ir::{
     AuthKind, DeclId, Endpoint, Example, ExampleOutcome, ExampleValue, Ir, Service, ServiceId, Type,
 };
 
+pub use self::event::{
+    Delivery, FilledEvent, RejectReason, deliver, describe_delivery, describe_expectation,
+    fill_event_example, run_event_example,
+};
 use self::fill::Filler;
 pub use self::matching::{Difference, diff_pattern};
 pub use self::report::{ExampleReport, Mismatch, Verdict, describe_actual, describe_expected};
@@ -74,6 +79,9 @@ pub enum ExampleError {
         /// The filled-in fields the rule reads, from the root of the value (`body.end`).
         fields: Vec<String>,
     },
+    /// `E0952`: the example has the wrong form for what is asked of it.
+    #[error("example \"{example}\": {reason}")]
+    WrongForm { example: String, reason: String },
     /// A value that does not have the shape of its type.
     #[error("example \"{example}\": {source}")]
     Shape {
@@ -93,6 +101,7 @@ impl ExampleError {
             ExampleError::UnknownEndpoint { .. } => "E0950",
             ExampleError::UnknownFact { .. } => "E0951",
             ExampleError::UnknownParam { .. }
+            | ExampleError::WrongForm { .. }
             | ExampleError::BadClock { .. }
             | ExampleError::BadRef { .. }
             | ExampleError::UnexpectedReturns { .. }
@@ -132,7 +141,10 @@ fn locate<'a>(ir: &'a Ir, ex: &Example) -> Result<(&'a Service, &'a Endpoint), E
         example: ex.name.clone(),
         endpoint: ex.endpoint.clone(),
     };
-    let service = ir.services.get(ex.service.index()).ok_or_else(missing)?;
+    let service = ex
+        .service
+        .and_then(|s| ir.services.get(s.index()))
+        .ok_or_else(missing)?;
     let endpoint = service.endpoints.iter().find(|e| e.name == ex.endpoint);
     Ok((service, endpoint.ok_or_else(missing)?))
 }
@@ -153,6 +165,12 @@ struct Build<'a> {
 /// [`ExampleError`]: `E0953` when a value cannot be filled in or breaks an invariant, and the
 /// errors of an example that does not fit the IR.
 pub fn fill_example(ir: &Ir, ex: &Example) -> Result<FilledExample, ExampleError> {
+    if ex.event.is_some() {
+        return Err(ExampleError::WrongForm {
+            example: ex.name.clone(),
+            reason: "it is an event example, not a call".to_owned(),
+        });
+    }
     let (service, endpoint) = locate(ir, ex)?;
     let clock = ex.now.clone().unwrap_or_else(|| DEFAULT_CLOCK.to_owned());
     let clock_ms = parse_datetime(&clock).ok_or_else(|| ExampleError::BadClock {
@@ -174,7 +192,7 @@ pub fn fill_example(ir: &Ir, ex: &Example) -> Result<FilledExample, ExampleError
     let expected = b.expected()?;
     Ok(FilledExample {
         name: ex.name.clone(),
-        service: ex.service,
+        service: service.id,
         endpoint: ex.endpoint.clone(),
         request: Request {
             params,
@@ -188,6 +206,43 @@ pub fn fill_example(ir: &Ir, ex: &Example) -> Result<FilledExample, ExampleError
     })
 }
 
+/// An example value as wire JSON, with references read from `givens`.
+pub(super) fn resolve_value(
+    example: &str,
+    givens: &BTreeMap<String, Json>,
+    v: &ExampleValue,
+) -> Result<Json, ExampleError> {
+    Ok(match v {
+        ExampleValue::Json(j) => j.clone(),
+        ExampleValue::Ref(r) => {
+            let bad = || ExampleError::BadRef {
+                example: example.to_owned(),
+                given: r.given.clone(),
+                path: r.path.join("."),
+            };
+            let mut cur = givens.get(&r.given).ok_or_else(bad)?;
+            for step in &r.path {
+                cur = cur.get(step).ok_or_else(bad)?;
+            }
+            cur.clone()
+        }
+        ExampleValue::Object(fields) => {
+            let mut out = serde_json::Map::new();
+            for f in fields {
+                out.insert(f.wire.clone(), resolve_value(example, givens, &f.value)?);
+            }
+            Json::Object(out)
+        }
+        ExampleValue::List(items) => {
+            let out: Result<Vec<Json>, ExampleError> = items
+                .iter()
+                .map(|i| resolve_value(example, givens, i))
+                .collect();
+            Json::Array(out?)
+        }
+    })
+}
+
 impl Build<'_> {
     fn shape(&self, source: InputError) -> ExampleError {
         ExampleError::Shape {
@@ -198,33 +253,7 @@ impl Build<'_> {
 
     /// An example value as wire JSON, with references read from the givens filled in so far.
     fn resolve(&self, v: &ExampleValue) -> Result<Json, ExampleError> {
-        Ok(match v {
-            ExampleValue::Json(j) => j.clone(),
-            ExampleValue::Ref(r) => {
-                let bad = || ExampleError::BadRef {
-                    example: self.ex.name.clone(),
-                    given: r.given.clone(),
-                    path: r.path.join("."),
-                };
-                let mut cur = self.givens.get(&r.given).ok_or_else(bad)?;
-                for step in &r.path {
-                    cur = cur.get(step).ok_or_else(bad)?;
-                }
-                cur.clone()
-            }
-            ExampleValue::Object(fields) => {
-                let mut out = serde_json::Map::new();
-                for f in fields {
-                    out.insert(f.wire.clone(), self.resolve(&f.value)?);
-                }
-                Json::Object(out)
-            }
-            ExampleValue::List(items) => {
-                let out: Result<Vec<Json>, ExampleError> =
-                    items.iter().map(|i| self.resolve(i)).collect();
-                Json::Array(out?)
-            }
-        })
+        resolve_value(&self.ex.name, &self.givens, v)
     }
 
     /// The facts: the givens as written, then the facts the example does not mention.
@@ -345,7 +374,15 @@ impl Build<'_> {
 
     fn expected(&self) -> Result<Expected, ExampleError> {
         let pattern = |v: &Option<ExampleValue>| v.as_ref().map(|v| self.resolve(v)).transpose();
-        Ok(match &self.ex.outcome {
+        let outcome = self
+            .ex
+            .outcome
+            .as_ref()
+            .ok_or_else(|| ExampleError::WrongForm {
+                example: self.ex.name.clone(),
+                reason: "a call example has no outcome".to_owned(),
+            })?;
+        Ok(match outcome {
             ExampleOutcome::Ok(v) => Expected::Ok(pattern(v)?),
             ExampleOutcome::Error(e) => Expected::Error {
                 decl: e.decl,
@@ -398,6 +435,9 @@ impl Build<'_> {
 /// [`ExampleError`] when the example cannot be filled in or does not fit the IR. A mismatch is
 /// not an error: it is [`Verdict::Failed`].
 pub fn run_example(ir: &Ir, ex: &Example) -> Result<ExampleReport, ExampleError> {
+    if ex.event.is_some() {
+        return run_event_example(ir, ex);
+    }
     let filled = fill_example(ir, ex)?;
     let (service, endpoint) = locate(ir, ex)?;
     let outcome = Pipeline::new(ir, service, &ex.endpoint)?.run(&filled.request)?;

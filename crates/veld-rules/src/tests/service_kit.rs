@@ -147,6 +147,8 @@ pub fn service(endpoints: Vec<Endpoint>) -> Service {
         facts: Vec::new(),
         rules_digest: None,
         principal: None,
+        publishes: Vec::new(),
+        subscriptions: Vec::new(),
         origin: Origin::default(),
     }
 }
@@ -188,15 +190,17 @@ pub fn example(name: &str, endpoint: &str, outcome: ExampleOutcome) -> Example {
     Example {
         name: name.to_owned(),
         package: PackageId(0),
-        service: ServiceId(0),
+        service: Some(ServiceId(0)),
         endpoint: endpoint.to_owned(),
         givens: Vec::new(),
         principal: None,
         now: None,
         args: Vec::new(),
         returns: None,
-        outcome,
+        outcome: Some(outcome),
         docs: None,
+        event: None,
+        expect: None,
         origin: Origin::default(),
     }
 }

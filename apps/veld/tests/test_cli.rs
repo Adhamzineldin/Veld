@@ -171,6 +171,150 @@ fn check_is_clean_when_every_example_can_be_filled_in() {
         .stderr(predicate::str::contains("E0953").not());
 }
 
+// --- event examples ------------------------------------------------------------------------
+
+const EVENTS: &str = r#"
+event PaymentMade {
+  paymentId: uuid
+  amount: decimal
+  rule positive: amount > 0
+}
+
+channel PaymentEvents {
+  carries PaymentMade
+  key paymentId
+}
+
+service Billing { publishes PaymentEvents }
+
+service Receipts {
+  subscribes PaymentEvents as "receipts" {
+    on PaymentMade -> sendReceipt
+  }
+}
+
+example "a payment reaches the receipt handler" {
+  given event PaymentMade { amount: 5.00 }
+  expect Receipts.sendReceipt called
+}
+
+example "a payment of nothing is rejected" {
+  given event PaymentMade { amount: 0.00 }
+  expect rejected
+}
+"#;
+
+fn with_events(example_fix: impl Fn(&str) -> String) -> tempfile::TempDir {
+    project_with(&format!("{}\n{}", bookings(), example_fix(EVENTS)))
+}
+
+#[test]
+fn event_examples_run_next_to_call_examples_and_print_the_same_way() {
+    let tmp = with_events(str::to_owned);
+    veld(tmp.path())
+        .arg("test")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "a payment reaches the receipt handler",
+        ))
+        .stdout(predicate::str::contains(
+            "a full room is rejected with its capacity",
+        ))
+        .stdout(predicate::str::contains("22 passed"))
+        .stdout(predicate::str::contains("FAIL").not());
+}
+
+#[test]
+fn a_failing_event_example_shows_expected_and_actual_and_exits_one() {
+    let tmp = with_events(|t| {
+        t.replace(
+            "Receipts.sendReceipt called",
+            "Receipts.sendReceipt not called",
+        )
+    });
+    veld(tmp.path())
+        .arg("test")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "FAIL a payment reaches the receipt handler",
+        ))
+        .stdout(predicate::str::contains(
+            "expected: Receipts.sendReceipt not called",
+        ))
+        .stdout(predicate::str::contains(
+            "actual:   called Receipts.sendReceipt",
+        ))
+        .stdout(predicate::str::contains(
+            "at Receipts.sendReceipt: expected not called, actual called",
+        ))
+        .stderr(predicate::str::contains("1 failed"));
+}
+
+#[test]
+fn an_event_example_that_expects_a_rejection_but_is_handled_fails() {
+    let tmp = with_events(|t| t.replace("amount: 0.00", "amount: 3.00"));
+    veld(tmp.path())
+        .arg("test")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "FAIL a payment of nothing is rejected",
+        ))
+        .stdout(predicate::str::contains("expected: rejected"))
+        .stdout(predicate::str::contains(
+            "actual:   called Receipts.sendReceipt",
+        ));
+}
+
+#[test]
+fn a_rejection_is_reported_with_its_reason() {
+    let tmp = with_events(|t| t.replace("amount: 5.00", "amount: 0.00"));
+    veld(tmp.path())
+        .arg("test")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "actual:   rejected (rule: rule positive)",
+        ));
+}
+
+#[test]
+fn live_skips_event_examples_and_sends_nothing_for_them() {
+    let tmp = with_events(str::to_owned);
+    let fake = AlwaysPass::start();
+    let url = fake.url();
+    veld(tmp.path())
+        .args(["test", "--live", url.as_str(), "--dry-run", "--filter", "payment"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "skip a payment reaches the receipt handler (live event examples arrive with a later phase)",
+        ))
+        .stdout(predicate::str::contains("2 skipped"))
+        .stdout(predicate::str::contains("FAIL").not());
+}
+
+#[test]
+fn check_reports_an_event_example_that_cannot_be_filled_in() {
+    let contract = r#"event Code { value: string @pattern("^[A-Z]+$") }
+channel Codes { carries Code }
+service Maker { publishes Codes }
+service Taker { subscribes Codes as "t" { on Code -> take } }
+example "a code with nothing written" {
+  given event Code { }
+  expect Taker.take called
+}
+"#;
+    let tmp = project_with(contract);
+    veld(tmp.path())
+        .arg("check")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("error[E0953]"));
+}
+
 // --- --fuzz ------------------------------------------------------------------------------
 
 /// A test handler that answers every request with a dry-run pass. It stops when dropped.

@@ -117,6 +117,7 @@ impl<'a> Gen<'a> {
                 Ok(obj)
             }
             DeclKind::Const(_) => Err(Skip(format!("`{}` is a constant", decl.name))),
+            DeclKind::Event(_) => Err(Skip(format!("`{}` is an event", decl.name))),
         }
     }
 

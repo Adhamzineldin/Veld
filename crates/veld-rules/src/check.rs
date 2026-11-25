@@ -161,7 +161,9 @@ impl Cx<'_> {
 
     fn normalize_decl(&self, decl: &Decl, v: &Json, path: &str) -> Result<Json, InputError> {
         match &decl.kind {
-            DeclKind::Model(_) | DeclKind::Error(_) => self.normalize_model(decl, v, path),
+            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Event(_) => {
+                self.normalize_model(decl, v, path)
+            }
             DeclKind::Union(u) => {
                 let arm = self.arm(u, v, path)?;
                 self.normalize_decl(arm, v, path)
@@ -261,7 +263,7 @@ impl Cx<'_> {
         out: &mut Vec<Violation>,
     ) -> Result<(), InputError> {
         match &decl.kind {
-            DeclKind::Model(_) | DeclKind::Error(_) => {
+            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Event(_) => {
                 self.check_rules(decl, v, path, out)?;
                 for f in decl.fields() {
                     if let Some(child) = v.get(&f.wire) {

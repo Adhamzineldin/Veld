@@ -173,7 +173,7 @@ fn type_reaches_map(ir: &Ir, ty: &Type, seen: &mut BTreeSet<usize>) -> bool {
                     .arms
                     .iter()
                     .any(|arm| type_reaches_map(ir, &Type::Decl(arm.decl), seen)),
-                DeclKind::Enum(_) | DeclKind::Const(_) => false,
+                DeclKind::Enum(_) | DeclKind::Const(_) | DeclKind::Event(_) => false,
             }
         }
     }

@@ -252,8 +252,10 @@ pub fn check_capabilities(
 ) -> Vec<GenDiagnostic> {
     let mut all = req.services.clone();
     all.extend(req.consumes.iter().copied());
+    let events_of_services = ir.features_used(&req.services).contains(&Feature::Events);
     ir.features_used(&all)
         .into_iter()
+        .filter(|f| *f != Feature::Events || events_of_services)
         .filter(|f| !caps.supports(*f))
         .map(|f| GenDiagnostic {
             code: "E0801",
@@ -291,6 +293,7 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
                 | Feature::Consts
                 | Feature::Page
                 | Feature::Bytes
+                | Feature::Events
                 | Feature::RulesInvariants => false,
             };
             if hit {
@@ -306,6 +309,11 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
                 return Some(ep.origin.clone());
             }
         }
+    }
+    if feature == Feature::Events {
+        return services
+            .iter()
+            .find_map(|s| ir.service(*s).first_event_origin().cloned());
     }
     if feature == Feature::RulesInvariants {
         return first_rule_origin(ir, services);
@@ -391,11 +399,14 @@ mod tests {
                 facts: vec![],
                 rules_digest: None,
                 principal: None,
+                publishes: vec![],
+                subscriptions: vec![],
                 origin: Origin::default(),
             }],
             consumes: Default::default(),
             examples: vec![],
             policies: vec![],
+            channels: vec![],
         }
     }
 

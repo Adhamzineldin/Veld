@@ -448,7 +448,8 @@ impl<'a> Pipeline<'a> {
                     DeclKind::Model(_)
                     | DeclKind::Enum(_)
                     | DeclKind::Union(_)
-                    | DeclKind::Const(_) => fallback,
+                    | DeclKind::Const(_)
+                    | DeclKind::Event(_) => fallback,
                 };
                 Ok((d.id, status))
             }

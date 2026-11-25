@@ -123,7 +123,9 @@ impl<'a> Filler<'a> {
             (Type::Decl(id), Json::Object(obj)) => {
                 let decl = self.decl(id, path)?;
                 match &decl.kind {
-                    DeclKind::Model(_) | DeclKind::Error(_) => self.model(decl, Some(obj), path),
+                    DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Event(_) => {
+                        self.model(decl, Some(obj), path)
+                    }
                     DeclKind::Union(_) => self.complete_union(decl, obj, path),
                     DeclKind::Enum(_) | DeclKind::Const(_) => Ok(v.clone()),
                 }
@@ -218,7 +220,9 @@ impl<'a> Filler<'a> {
                 Some(v) => Ok(Json::String(v.wire.clone())),
                 None => Err(self.cannot(path, "the enum has no variant")),
             },
-            DeclKind::Model(_) | DeclKind::Error(_) => self.model(decl, None, path),
+            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Event(_) => {
+                self.model(decl, None, path)
+            }
             DeclKind::Union(u) => {
                 let arm = u
                     .arms

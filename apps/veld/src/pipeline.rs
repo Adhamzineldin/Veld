@@ -656,6 +656,7 @@ mod tests {
             consumes: BTreeMap::new(),
             examples: vec![],
             policies: vec![],
+            channels: vec![],
         }
     }
 

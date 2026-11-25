@@ -85,9 +85,11 @@ fn machine(ir: &Ir, name: &str) -> Enum {
         .filter(|d| d.name == name)
         .find_map(|d| match &d.kind {
             DeclKind::Enum(e) => Some(e.clone()),
-            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Union(_) | DeclKind::Const(_) => {
-                None
-            }
+            DeclKind::Model(_)
+            | DeclKind::Error(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_)
+            | DeclKind::Event(_) => None,
         })
         .unwrap()
 }

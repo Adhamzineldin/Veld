@@ -199,9 +199,12 @@ impl ValueKind {
             Type::Page(_) => ValueKind::Page,
             Type::Decl(id) => match ir.decls.get(id.index()).map(|d| &d.kind) {
                 Some(DeclKind::Enum(_)) => ValueKind::Enum,
-                Some(DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Union(_)) => {
-                    ValueKind::Model
-                }
+                Some(
+                    DeclKind::Model(_)
+                    | DeclKind::Error(_)
+                    | DeclKind::Union(_)
+                    | DeclKind::Event(_),
+                ) => ValueKind::Model,
                 Some(DeclKind::Const(_)) | None => ValueKind::Json,
             },
         }

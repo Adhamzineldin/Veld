@@ -213,6 +213,7 @@ impl Judge<'_> {
                 DeclKind::Model(_)
                 | DeclKind::Enum(_)
                 | DeclKind::Union(_)
+                | DeclKind::Event(_)
                 | DeclKind::Const(_) => None,
             })
     }

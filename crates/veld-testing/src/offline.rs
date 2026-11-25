@@ -31,11 +31,15 @@ pub fn select<'a>(ir: &'a Ir, filter: Option<&str>) -> Vec<&'a Example> {
 }
 
 fn haystack(ir: &Ir, ex: &Example) -> String {
-    let service = ir
-        .services
-        .get(ex.service.index())
+    let service = ex
+        .service
+        .and_then(|s| ir.services.get(s.index()))
         .map_or("", |s| s.name.as_str());
-    format!("{}\n{service}.{}", ex.name, ex.endpoint).to_lowercase()
+    let event = ex
+        .event
+        .as_ref()
+        .map_or("", |e| ir.decl(e.decl).name.as_str());
+    format!("{}\n{service}.{}\n{event}", ex.name, ex.endpoint).to_lowercase()
 }
 
 fn key(ex: &Example) -> (&str, u32, u32, &str) {

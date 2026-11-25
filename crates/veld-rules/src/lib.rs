@@ -34,8 +34,10 @@ pub use check::{Options, Violation, check_value};
 pub use error::{Failure, InputError};
 pub use eval::{Env, SavedOld, eval};
 pub use example::{
-    DEFAULT_CLOCK, Difference, ExampleError, ExampleReport, Expected, FilledExample, Mismatch,
-    Verdict, describe_actual, describe_expected, diff_pattern, fill_example, run_example,
+    DEFAULT_CLOCK, Delivery, Difference, ExampleError, ExampleReport, Expected, FilledEvent,
+    FilledExample, Mismatch, RejectReason, Verdict, deliver, describe_actual, describe_delivery,
+    describe_expectation, describe_expected, diff_pattern, fill_event_example, fill_example,
+    run_event_example, run_example,
 };
 pub use helpers::num::EvalError;
 pub use machine::{is_final, next_states};

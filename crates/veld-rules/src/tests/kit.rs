@@ -470,6 +470,7 @@ impl Kit {
             services: Vec::new(),
             consumes: std::collections::BTreeMap::new(),
             examples: Vec::new(),
+            channels: Vec::new(),
             policies: Vec::new(),
         }
     }

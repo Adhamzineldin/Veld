@@ -93,9 +93,10 @@ impl Value {
                     .ok_or_else(|| InputError::ir("a type refers to a missing declaration"))?;
                 match &decl.kind {
                     DeclKind::Enum(e) => enum_from_json(&e.variants, json),
-                    DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Union(_) => {
-                        object_raw(json)
-                    }
+                    DeclKind::Model(_)
+                    | DeclKind::Error(_)
+                    | DeclKind::Union(_)
+                    | DeclKind::Event(_) => object_raw(json),
                     DeclKind::Const(_) => Ok(Value::Raw(json.clone())),
                 }
             }

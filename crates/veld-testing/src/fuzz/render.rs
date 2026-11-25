@@ -134,7 +134,7 @@ fn decl_value(ir: &Ir, decl: &Decl, j: &Json) -> Option<String> {
             parts.extend(fields(ir, arm_decl.fields(), j)?);
             Some(braces(&parts))
         }
-        DeclKind::Const(_) => None,
+        DeclKind::Const(_) | DeclKind::Event(_) => None,
     }
 }
 
