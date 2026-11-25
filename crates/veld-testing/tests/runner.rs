@@ -368,19 +368,106 @@ fn query_header_and_body_parameters_are_bound() {
 
 // --- comparing answers ---------------------------------------------------------------------
 
+/// The id of the `require` of `endpoint` that answers with the error `error`.
+fn require_id(ir: &Ir, endpoint: &str, error: &str) -> String {
+    let decl = ir.decls.iter().find(|d| d.name == error).unwrap().id;
+    ir.services
+        .iter()
+        .flat_map(|s| &s.endpoints)
+        .find(|e| e.name == endpoint)
+        .unwrap()
+        .rules
+        .requires
+        .iter()
+        .find(|r| r.else_error.as_ref().is_some_and(|e| e.decl == decl))
+        .unwrap()
+        .id
+        .clone()
+}
+
+/// The whole `RoomFull` answer of section 9.3: the payload and the violation of the `require`.
+fn room_full(ir: &Ir, violation: &Value) -> String {
+    let mut doc: Value =
+        serde_json::from_str(&problem(ir, "RoomFull", 409, &json!({ "capacity": 2 }))).unwrap();
+    doc["violations"] = json!([violation]);
+    doc.to_string()
+}
+
+fn room_full_violation(ir: &Ir) -> Value {
+    json!({
+        "rule": require_id(ir, "createBooking", "RoomFull"),
+        "path": "request",
+        "fields": ["body"],
+        "message": "precondition failed",
+    })
+}
+
+const FULL_ROOM: &str = "a full room is rejected with its capacity";
+
 #[test]
 fn a_matching_error_passes() {
     let ir = bookings();
-    let body = problem(&ir, "RoomFull", 409, &json!({ "capacity": 2 }));
+    let body = room_full(&ir, &room_full_violation(&ir));
     let fake = serve(move |_| reply(409, body.clone()));
-    let report = run_live(
-        &fake,
-        &ir,
-        "a full room is rejected with its capacity",
-        false,
-    );
+    let report = run_live(&fake, &ir, FULL_ROOM, false);
     assert!(report.passed(), "{report}");
     assert!(report.outcome.is_some());
+}
+
+// An example writes down the error and its payload. The violations are not in it, so the answer
+// is also held to what the reference evaluator gives for the same request.
+
+#[test]
+fn an_error_without_its_violations_fails_against_the_reference() {
+    let ir = bookings();
+    let body = problem(&ir, "RoomFull", 409, &json!({ "capacity": 2 }));
+    let fake = serve(move |_| reply(409, body.clone()));
+    let report = run_live(&fake, &ir, FULL_ROOM, false);
+    let Verdict::Failed(m) = &report.verdict else {
+        panic!("{report}")
+    };
+    assert_eq!(m.differences.len(), 1, "{m}");
+    assert_eq!(m.differences[0].path, "violations");
+    assert!(m.expected.contains("reference evaluator"), "{m}");
+    assert!(m.expected.contains("RoomFull 409"), "{m}");
+}
+
+#[test]
+fn a_violation_that_differs_in_any_member_fails_against_the_reference() {
+    let ir = bookings();
+    let changes: [(&str, Value); 5] = [
+        (
+            "rule",
+            json!("veld:t/Bookings.createBooking.require@0000000000000000"),
+        ),
+        ("path", json!("body")),
+        ("fields", json!(["body", "id"])),
+        ("message", json!("the room is full")),
+        ("error", json!("overflow")),
+    ];
+    for (member, value) in changes {
+        let mut violation = room_full_violation(&ir);
+        violation[member] = value;
+        let body = room_full(&ir, &violation);
+        let fake = serve(move |_| reply(409, body.clone()));
+        let report = run_live(&fake, &ir, FULL_ROOM, false);
+        let Verdict::Failed(m) = &report.verdict else {
+            panic!("a changed `{member}` passed: {report}")
+        };
+        assert_eq!(m.differences[0].path, "violations", "{member}: {m}");
+    }
+}
+
+#[test]
+fn an_extra_violation_fails_against_the_reference() {
+    let ir = bookings();
+    let mut doc: Value = serde_json::from_str(&room_full(&ir, &room_full_violation(&ir))).unwrap();
+    let again = doc["violations"][0].clone();
+    doc["violations"].as_array_mut().unwrap().push(again);
+    let body = doc.to_string();
+    let fake = serve(move |_| reply(409, body.clone()));
+    let report = run_live(&fake, &ir, FULL_ROOM, false);
+    assert!(matches!(report.verdict, Verdict::Failed(_)), "{report}");
 }
 
 #[test]

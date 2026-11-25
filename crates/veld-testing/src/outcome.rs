@@ -23,61 +23,92 @@ fn text<'a>(v: &'a Json, key: &str) -> &'a str {
     v.get(key).and_then(Json::as_str).unwrap_or("")
 }
 
-/// The violations of an answer, as sorted text: the rule id, the path and the fields.
+/// One violation as text: the rule id, the path, the fields, the message and, for an evaluation
+/// error, its kind.
+struct ViolationText<'a> {
+    rule: &'a str,
+    path: &'a str,
+    fields: String,
+    message: &'a str,
+    error: Option<&'a str>,
+}
+
+impl ViolationText<'_> {
+    fn text(&self) -> String {
+        let error = self
+            .error
+            .map_or_else(String::new, |e| format!(" (error {e})"));
+        format!(
+            "{} at {} reads {}: {}{error}",
+            self.rule, self.path, self.fields, self.message
+        )
+    }
+}
+
+/// The violations of an answer as text, in the order of the answer (section 7).
 fn answer_violations(body: Option<&Json>) -> Vec<String> {
     let list = body
         .and_then(|b| b.get("violations"))
         .and_then(Json::as_array);
-    let mut keys: Vec<String> = list
-        .map(|vs| {
-            vs.iter()
-                .map(|v| {
-                    let fields = v.get("fields").map_or_else(String::new, Json::to_string);
-                    format!("{} at {} reads {fields}", text(v, "rule"), text(v, "path"))
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    keys.sort();
-    keys
+    let one = |v: &Json| {
+        ViolationText {
+            rule: text(v, "rule"),
+            path: text(v, "path"),
+            fields: v.get("fields").map_or_else(String::new, Json::to_string),
+            message: text(v, "message"),
+            error: v.get("error").and_then(Json::as_str),
+        }
+        .text()
+    };
+    list.map(|vs| vs.iter().map(one).collect())
+        .unwrap_or_default()
 }
 
 fn expected_violations(vs: &[Violation]) -> Vec<String> {
-    let mut keys: Vec<String> = vs
-        .iter()
+    vs.iter()
         .map(|v| {
-            let fields = serde_json::to_string(&v.fields).unwrap_or_default();
-            format!("{} at {} reads {fields}", v.rule_id, v.path)
+            ViolationText {
+                rule: &v.rule_id,
+                path: &v.path,
+                fields: serde_json::to_string(&v.fields).unwrap_or_default(),
+                message: &v.message,
+                error: v.error.map(veld_rules::EvalError::as_str),
+            }
+            .text()
         })
-        .collect();
-    keys.sort();
-    keys
+        .collect()
 }
 
-/// The issues of a `ValidationError`, as sorted text.
+/// The issues of a `ValidationError` as text, in the order of the answer.
 fn issues(data: &Json) -> Vec<String> {
     let list = data.get("issues").and_then(Json::as_array);
-    let mut keys: Vec<String> = list
-        .map(|is| {
-            is.iter()
-                .map(|i| {
-                    format!(
-                        "{} {} {}",
-                        text(i, "path"),
-                        text(i, "code"),
-                        text(i, "message")
-                    )
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    keys.sort();
-    keys
+    let one = |i: &Json| {
+        format!(
+            "{} {} {}",
+            text(i, "path"),
+            text(i, "code"),
+            text(i, "message")
+        )
+    };
+    list.map(|is| is.iter().map(one).collect())
+        .unwrap_or_default()
 }
 
-fn same_set(path: &str, expected: &[String], actual: &[String]) -> Vec<Difference> {
+/// Two lists that must be equal entry by entry: the order of violations and issues is part of
+/// the answer (section 5.2).
+fn same_list(path: &str, expected: &[String], actual: &[String]) -> Vec<Difference> {
     if expected == actual {
         return Vec::new();
+    }
+    let (mut e, mut a) = (expected.to_vec(), actual.to_vec());
+    e.sort();
+    a.sort();
+    if e == a {
+        return vec![diff(
+            path,
+            format!("in this order: [{}]", expected.join("; ")),
+            format!("the same entries in another order: [{}]", actual.join("; ")),
+        )];
     }
     let show = |items: Vec<&String>| {
         let items: Vec<&str> = items.into_iter().map(String::as_str).collect();
@@ -97,7 +128,8 @@ fn same_set(path: &str, expected: &[String], actual: &[String]) -> Vec<Differenc
 ///
 /// A pass is `204` with `Veld-Test-Passed: 1`. An error must have the declared type and status,
 /// the payload of its fields (by the value semantics of section 3.4 of `spec/rules.md`) and the
-/// same set of violations, by rule id, path and fields; a `ValidationError` also the same issues.
+/// same violations in the same order, each by rule id, path, fields, message and evaluation
+/// error; a `ValidationError` also the same issues in the same order.
 #[must_use]
 pub fn judge_outcome(ir: &Ir, expected: &Outcome, answer: &Answer) -> Vec<Difference> {
     match expected {
@@ -144,13 +176,13 @@ fn judge_error(ir: &Ir, a: &ErrorAnswer, answer: &Answer) -> Vec<Difference> {
         out.push(diff("status", a.status, answer.status));
     }
     let body = answer.json();
-    out.extend(same_set(
+    out.extend(same_list(
         "violations",
         &expected_violations(&a.violations),
         &answer_violations(body.as_ref()),
     ));
     if a.name == "ValidationError" {
-        out.extend(same_set(
+        out.extend(same_list(
             "$.data.issues",
             &issues(&a.data),
             &issues(&problem.data),

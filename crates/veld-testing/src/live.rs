@@ -3,10 +3,14 @@
 use std::time::Duration;
 
 use veld_ir::{Example, Ir};
-use veld_rules::{ExampleReport, fill_example};
+use veld_rules::{
+    ExampleReport, FilledExample, Mismatch, Outcome, Pipeline, Verdict, describe_actual,
+    fill_example,
+};
 
 use crate::error::LiveError;
 use crate::judge::{Answer, judge};
+use crate::outcome::{describe_answer, judge_outcome};
 use crate::request::{HttpRequest, PROBE_PATH, build_request};
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -98,6 +102,11 @@ impl Live {
 
     /// Fills in `ex`, sends it and compares the answer with its expected outcome.
     ///
+    /// An example writes down only part of an answer. When the answer agrees with the example
+    /// and the reference evaluator answers the same request with an error, the server must give
+    /// that whole error: its type, its status, its payload and its violations, in order
+    /// (`spec/rules.md` section 12.3).
+    ///
     /// # Errors
     /// [`LiveError::Example`] when the example cannot be filled in, [`LiveError::Unsupported`]
     /// when no request can be built for its endpoint and [`LiveError::Connect`] when the
@@ -106,8 +115,37 @@ impl Live {
         let filled = fill_example(ir, ex)?;
         let req = build_request(ir, &filled, self.dry_run)?;
         let answer = self.send(&req)?;
-        Ok(judge(ir, &filled, self.dry_run, &answer))
+        let mut report = judge(ir, &filled, self.dry_run, &answer);
+        if report.passed()
+            && let Some(mismatch) = against_reference(ir, &filled, &answer)
+        {
+            report.verdict = Verdict::Failed(mismatch);
+        }
+        Ok(report)
     }
+}
+
+/// Where the answer differs from the error the reference evaluator gives for the same request.
+/// `None` when the reference passes the request, cannot run it, or agrees.
+fn against_reference(ir: &Ir, filled: &FilledExample, answer: &Answer) -> Option<Mismatch> {
+    let service = ir.services.get(filled.service.index())?;
+    let pipeline = Pipeline::new(ir, service, &filled.endpoint).ok()?;
+    let outcome = pipeline.run(&filled.request).ok()?;
+    if matches!(outcome, Outcome::Passes) {
+        return None;
+    }
+    let differences = judge_outcome(ir, &outcome, answer);
+    if differences.is_empty() {
+        return None;
+    }
+    Some(Mismatch {
+        expected: format!(
+            "what the reference evaluator answers: {}",
+            describe_actual(&outcome, None)
+        ),
+        actual: describe_answer(ir, answer),
+        differences,
+    })
 }
 
 fn read_answer(resp: ureq::Response) -> Answer {
