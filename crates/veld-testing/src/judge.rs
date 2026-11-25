@@ -46,7 +46,10 @@ fn problem_of(answer: &Answer) -> Option<Problem> {
     Some(Problem {
         ty,
         status: doc.get("status").and_then(Json::as_u64),
-        data: doc.get("data").cloned().unwrap_or_else(|| Json::Object(Default::default())),
+        data: doc
+            .get("data")
+            .cloned()
+            .unwrap_or_else(|| Json::Object(Default::default())),
     })
 }
 
@@ -180,11 +183,14 @@ impl Judge<'_> {
             });
         }
         if let Some(status) = self.expected_status(decl)
-            && u16::try_from(status).ok() != Some(self.answer.status)
+            && status != self.answer.status
         {
             diffs.push(status_difference(status, self.answer.status));
         }
-        if problem.status.is_some_and(|s| s != u64::from(self.answer.status)) {
+        if problem
+            .status
+            .is_some_and(|s| s != u64::from(self.answer.status))
+        {
             diffs.push(Difference {
                 path: "$.status".to_owned(),
                 expected: self.answer.status.to_string(),
@@ -200,15 +206,15 @@ impl Judge<'_> {
     /// The status the endpoint gives the error: its own list first, then the error's default.
     fn expected_status(&self, decl: DeclId) -> Option<u16> {
         let listed = self.endpoint.errors.iter().find(|e| e.decl == decl);
-        listed.map(|e| e.status).or_else(|| {
-            match &self.ir.decls.get(decl.index())?.kind {
+        listed
+            .map(|e| e.status)
+            .or_else(|| match &self.ir.decls.get(decl.index())?.kind {
                 DeclKind::Error(e) => e.default_status,
                 DeclKind::Model(_)
                 | DeclKind::Enum(_)
                 | DeclKind::Union(_)
                 | DeclKind::Const(_) => None,
-            }
-        })
+            })
     }
 }
 

@@ -62,7 +62,15 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &CheckArgs) -> Result<Exit> {
         }
     };
     let example_errors = run_examples(ui, &project, &ir, scope.as_ref());
-    summarize(ui, &ir, counts, &issues, example_errors, args.strict, started)
+    summarize(
+        ui,
+        &ir,
+        counts,
+        &issues,
+        example_errors,
+        args.strict,
+        started,
+    )
 }
 
 fn deps_format(f: GraphFormat) -> DepsFormat {

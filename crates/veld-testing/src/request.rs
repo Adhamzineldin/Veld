@@ -145,7 +145,8 @@ impl Bound {
 
 /// Replaces `{name}` in the path template by the encoded value.
 fn put_in_path(path: &str, p: &Param, v: &Json) -> Result<String, String> {
-    let text = scalar_text(v).ok_or_else(|| format!("path parameter `{}` is not a scalar", p.name))?;
+    let text =
+        scalar_text(v).ok_or_else(|| format!("path parameter `{}` is not a scalar", p.name))?;
     Ok(path.replace(&format!("{{{}}}", p.name), &encode_component(&text)))
 }
 

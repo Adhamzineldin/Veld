@@ -295,6 +295,7 @@ repository tests this with generated TypeScript and Java that call each other
 | `veld doctor` | Check that the config loads, packages and the registry lock resolve, emitters and plugins resolve with matching hashes, output folders are writable, and that `git`, `node`, `npm`, `javac` exist for the wired targets, plus `mvn` or `gradle` for Java server targets that build with them. A fix is printed under every problem; exit 1 on failure |
 | `veld fmt` | Format `.veld` files canonically |
 | `veld diff` | Show breaking and non-breaking contract changes (`--strict` exits 1 on a breaking one) |
+| `veld test [PATH...]` | Run the `example` blocks of the contracts offline (`--filter TEXT`), or against a running test handler (`--live BASE_URL`, `--dry-run`); see [the testing guide](docs/guides/testing.md) |
 | `veld export <what>` | `openapi` prints OpenAPI 3.1 JSON to stdout or `-o FILE` (`--service S`, repeatable, limits it); `ir` prints the compiled IR for plugin authors. A file you own is written without a manifest and is never overwritten without `--force` |
 | `veld plugin new` / `plugin test` | Scaffold an emitter plugin, run the protocol conformance suite |
 | `veld add` / `install` / `publish` / `login` / `logout` | Registry packages (`veld.lock` pins versions and checksums) |

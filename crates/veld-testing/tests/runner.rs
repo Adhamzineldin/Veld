@@ -36,7 +36,8 @@ fn compile_text(text: &str) -> Ir {
 }
 
 fn bookings() -> Ir {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/rules/endpoints/bookings.veld");
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/rules/endpoints/bookings.veld");
     compile_text(&std::fs::read_to_string(path).unwrap())
 }
 
@@ -48,7 +49,12 @@ fn example<'a>(ir: &'a Ir, name: &str) -> &'a Example {
 }
 
 fn sig_of(ir: &Ir, decl: &str) -> String {
-    ir.decls.iter().find(|d| d.name == decl).unwrap().sig.clone()
+    ir.decls
+        .iter()
+        .find(|d| d.name == decl)
+        .unwrap()
+        .sig
+        .clone()
 }
 
 fn problem(ir: &Ir, decl: &str, status: u16, data: &Value) -> String {
@@ -143,7 +149,10 @@ impl Fake {
     /// The requests other than the probe.
     fn requests(&self) -> Vec<Captured> {
         let seen = self.seen.lock().unwrap();
-        seen.iter().filter(|c| c.target != "/__veld/test").cloned().collect()
+        seen.iter()
+            .filter(|c| c.target != "/__veld/test")
+            .cloned()
+            .collect()
     }
 }
 
@@ -178,7 +187,10 @@ fn read_request(stream: &mut TcpStream) -> Option<Captured> {
         .filter_map(|l| l.split_once(':'))
         .map(|(k, v)| (k.trim().to_lowercase(), v.trim().to_owned()))
         .collect();
-    let len: usize = headers.get("content-length").and_then(|v| v.parse().ok()).unwrap_or(0);
+    let len: usize = headers
+        .get("content-length")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
     while buf.len() < head_end + len {
         let n = stream.read(&mut chunk).ok()?;
         if n == 0 {
@@ -187,7 +199,12 @@ fn read_request(stream: &mut TcpStream) -> Option<Captured> {
         buf.extend_from_slice(&chunk[..n]);
     }
     let body = String::from_utf8_lossy(&buf[head_end..]).into_owned();
-    Some(Captured { method, target, headers, body })
+    Some(Captured {
+        method,
+        target,
+        headers,
+        body,
+    })
 }
 
 fn write_reply(stream: &mut TcpStream, r: &Reply) {
@@ -195,7 +212,10 @@ fn write_reply(stream: &mut TcpStream, r: &Reply) {
     for (k, v) in &r.headers {
         out.push_str(&format!("{k}: {v}\r\n"));
     }
-    out.push_str(&format!("Content-Length: {}\r\nConnection: close\r\n\r\n", r.body.len()));
+    out.push_str(&format!(
+        "Content-Length: {}\r\nConnection: close\r\n\r\n",
+        r.body.len()
+    ));
     out.push_str(&r.body);
     let _ = stream.write_all(out.as_bytes());
     let _ = stream.flush();
@@ -230,7 +250,12 @@ fn serve_raw(script: impl Fn(&Captured) -> Reply + Send + 'static) -> Fake {
             }
         }
     });
-    Fake { addr, seen, stop, thread: Some(thread) }
+    Fake {
+        addr,
+        seen,
+        stop,
+        thread: Some(thread),
+    }
 }
 
 fn run_live(fake: &Fake, ir: &Ir, name: &str, dry_run: bool) -> veld_rules::ExampleReport {
@@ -244,22 +269,38 @@ fn run_live(fake: &Fake, ir: &Ir, name: &str, dry_run: bool) -> veld_rules::Exam
 fn the_request_of_create_booking() {
     let ir = bookings();
     let fake = serve(|_| reply(200, "{}"));
-    run_live(&fake, &ir, "a full room is rejected with its capacity", false);
+    run_live(
+        &fake,
+        &ir,
+        "a full room is rejected with its capacity",
+        false,
+    );
     let sent = fake.requests();
     assert_eq!(sent.len(), 1);
     let c = &sent[0];
-    assert_eq!((c.method.as_str(), c.target.as_str()), ("POST", "/bookings"));
+    assert_eq!(
+        (c.method.as_str(), c.target.as_str()),
+        ("POST", "/bookings")
+    );
     assert_eq!(c.headers["content-type"], "application/json");
     let facts = c.decoded("Veld-Test-Facts");
     assert_eq!(facts["room"]["capacity"], 2);
     assert_eq!(facts["room"]["closed"], false);
-    assert_eq!(facts["coupon"], Value::Null, "an absent optional fact is null");
+    assert_eq!(
+        facts["coupon"],
+        Value::Null,
+        "an absent optional fact is null"
+    );
     let body: Value = serde_json::from_str(&c.body).unwrap();
     assert_eq!(body["guests"], 3);
     assert_eq!(body["roomId"], facts["room"]["id"]);
     assert!(body.get("couponCode").is_none());
     assert_eq!(c.headers["veld-test-now"], "2026-01-01T00:00:00Z");
-    for absent in ["veld-test-principal", "veld-test-result", "veld-test-dry-run"] {
+    for absent in [
+        "veld-test-principal",
+        "veld-test-result",
+        "veld-test-dry-run",
+    ] {
         assert!(!c.headers.contains_key(absent), "{absent}");
     }
 }
@@ -268,7 +309,12 @@ fn the_request_of_create_booking() {
 fn the_request_of_pay_booking_binds_the_path_and_sends_the_clock() {
     let ir = bookings();
     let fake = serve(|_| reply(200, "{}"));
-    run_live(&fake, &ir, "paying the wrong amount is refused with the expected one", false);
+    run_live(
+        &fake,
+        &ir,
+        "paying the wrong amount is refused with the expected one",
+        false,
+    );
     let c = &fake.requests()[0];
     let facts = c.decoded("veld-test-facts");
     let id = facts["booking"]["id"].as_str().unwrap();
@@ -324,7 +370,12 @@ fn a_matching_error_passes() {
     let ir = bookings();
     let body = problem(&ir, "RoomFull", 409, &json!({ "capacity": 2 }));
     let fake = serve(move |_| reply(409, body.clone()));
-    let report = run_live(&fake, &ir, "a full room is rejected with its capacity", false);
+    let report = run_live(
+        &fake,
+        &ir,
+        "a full room is rejected with its capacity",
+        false,
+    );
     assert!(report.passed(), "{report}");
     assert!(report.outcome.is_some());
 }
@@ -334,8 +385,15 @@ fn a_wrong_error_type_fails_and_says_so() {
     let ir = bookings();
     let body = problem(&ir, "RoomClosed", 409, &json!({}));
     let fake = serve(move |_| reply(409, body.clone()));
-    let report = run_live(&fake, &ir, "a full room is rejected with its capacity", false);
-    let Verdict::Failed(m) = &report.verdict else { panic!("{report}") };
+    let report = run_live(
+        &fake,
+        &ir,
+        "a full room is rejected with its capacity",
+        false,
+    );
+    let Verdict::Failed(m) = &report.verdict else {
+        panic!("{report}")
+    };
     assert!(m.differences.iter().any(|d| d.path == "$.type"), "{m}");
     assert!(m.expected.starts_with("RoomFull"), "{m}");
     assert!(m.actual.starts_with("RoomClosed"), "{m}");
@@ -346,8 +404,15 @@ fn a_data_mismatch_fails_with_its_path() {
     let ir = bookings();
     let body = problem(&ir, "RoomFull", 409, &json!({ "capacity": 3 }));
     let fake = serve(move |_| reply(409, body.clone()));
-    let report = run_live(&fake, &ir, "a full room is rejected with its capacity", false);
-    let Verdict::Failed(m) = &report.verdict else { panic!("{report}") };
+    let report = run_live(
+        &fake,
+        &ir,
+        "a full room is rejected with its capacity",
+        false,
+    );
+    let Verdict::Failed(m) = &report.verdict else {
+        panic!("{report}")
+    };
     assert_eq!(m.differences.len(), 1, "{m}");
     assert_eq!(m.differences[0].path, "$.capacity");
 }
@@ -357,8 +422,15 @@ fn a_wrong_status_fails() {
     let ir = bookings();
     let body = problem(&ir, "RoomFull", 500, &json!({ "capacity": 2 }));
     let fake = serve(move |_| reply(500, body.clone()));
-    let report = run_live(&fake, &ir, "a full room is rejected with its capacity", false);
-    let Verdict::Failed(m) = &report.verdict else { panic!("{report}") };
+    let report = run_live(
+        &fake,
+        &ir,
+        "a full room is rejected with its capacity",
+        false,
+    );
+    let Verdict::Failed(m) = &report.verdict else {
+        panic!("{report}")
+    };
     assert!(m.differences.iter().any(|d| d.path == "status"), "{m}");
 }
 
@@ -366,8 +438,15 @@ fn a_wrong_status_fails() {
 fn an_answer_that_is_not_a_problem_document_fails() {
     let ir = bookings();
     let fake = serve(|_| reply(502, "<html>bad gateway</html>"));
-    let report = run_live(&fake, &ir, "a full room is rejected with its capacity", false);
-    let Verdict::Failed(m) = &report.verdict else { panic!("{report}") };
+    let report = run_live(
+        &fake,
+        &ir,
+        "a full room is rejected with its capacity",
+        false,
+    );
+    let Verdict::Failed(m) = &report.verdict else {
+        panic!("{report}")
+    };
     assert!(m.actual.starts_with("HTTP 502"), "{m}");
     assert!(report.outcome.is_none());
 }
@@ -405,7 +484,9 @@ fn a_success_body_is_matched_against_the_pattern() {
 
     let fake = serve(|_| reply(200, "{\"message\":\"yo\",\"n\":1}"));
     let report = run_live(&fake, &ir, "says hi", false);
-    let Verdict::Failed(m) = &report.verdict else { panic!("{report}") };
+    let Verdict::Failed(m) = &report.verdict else {
+        panic!("{report}")
+    };
     assert_eq!(m.differences[0].path, "$.message");
 
     let fake = serve(|_| reply(200, "{}"));

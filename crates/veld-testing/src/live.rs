@@ -60,7 +60,10 @@ impl Live {
         };
         let answer = self.send(&probe)?;
         if answer.status != 200 {
-            return Err(not(format!("`GET {PROBE_PATH}` answered HTTP {}", answer.status)));
+            return Err(not(format!(
+                "`GET {PROBE_PATH}` answered HTTP {}",
+                answer.status
+            )));
         }
         match serde_json::from_str::<serde_json::Value>(&answer.body) {
             Ok(serde_json::Value::Object(_)) => Ok(()),

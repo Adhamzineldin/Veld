@@ -18,7 +18,7 @@ use crate::ui::{Style, Ui};
 
 /// What running one example came to.
 enum Done {
-    Report(ExampleReport),
+    Report(Box<ExampleReport>),
     /// The example could not be run: it does not fit the contract, or cannot be filled in.
     Broken(String),
     Skipped(String),
@@ -47,7 +47,11 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &TestArgs) -> Result<Exit> {
     };
     let examples: Vec<&Example> = veld_testing::select(&done.ir, args.filter.as_deref())
         .into_iter()
-        .filter(|e| scope.as_ref().is_none_or(|s| s.has_relative(&e.origin.file)))
+        .filter(|e| {
+            scope
+                .as_ref()
+                .is_none_or(|s| s.has_relative(&e.origin.file))
+        })
         .collect();
     if examples.is_empty() {
         ui.info("no examples to run (write `example \"...\" { ... }` blocks in your contracts)");
@@ -69,12 +73,12 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &TestArgs) -> Result<Exit> {
 fn run_one(ir: &Ir, live: Option<&Live>, ex: &Example) -> Result<Done> {
     let Some(live) = live else {
         return Ok(match veld_rules::run_example(ir, ex) {
-            Ok(report) => Done::Report(report),
+            Ok(report) => Done::Report(Box::new(report)),
             Err(e) => Done::Broken(format!("[{}] {e}", e.code())),
         });
     };
     match live.run_example(ir, ex) {
-        Ok(report) => Ok(Done::Report(report)),
+        Ok(report) => Ok(Done::Report(Box::new(report))),
         Err(LiveError::Example(e)) => Ok(Done::Broken(format!("[{}] {e}", e.code()))),
         Err(LiveError::Unsupported { reason, .. }) => Ok(Done::Skipped(reason)),
         Err(e @ (LiveError::Connect { .. } | LiveError::NotTestHandler { .. })) => {
@@ -103,7 +107,7 @@ fn print_result(ui: &Ui, name: &str, done: &Done) {
     let verdict = match done {
         Done::Report(r) => &r.verdict,
         Done::Skipped(why) => return skip_line(ui, name, why),
-        Done::Broken(why) => return fail_lines(ui, name, &[why.clone()]),
+        Done::Broken(why) => return fail_lines(ui, name, std::slice::from_ref(why)),
     };
     match verdict {
         Verdict::Passed => ui.info(&format!("{} {name}", ui.out_styled(Style::Green, "ok  "))),

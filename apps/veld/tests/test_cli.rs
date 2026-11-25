@@ -49,7 +49,9 @@ fn passing_examples_are_listed_and_exit_zero() {
         .arg("test")
         .assert()
         .success()
-        .stdout(predicate::str::contains("a full room is rejected with its capacity"))
+        .stdout(predicate::str::contains(
+            "a full room is rejected with its capacity",
+        ))
         .stdout(predicate::str::contains("ok  "))
         .stdout(predicate::str::contains("20 passed"))
         .stdout(predicate::str::contains("FAIL").not());
@@ -63,10 +65,18 @@ fn a_failing_example_shows_expected_and_actual_and_exits_one() {
         .arg("test")
         .assert()
         .code(1)
-        .stdout(predicate::str::contains("FAIL a full room is rejected with its capacity"))
-        .stdout(predicate::str::contains("expected: RoomFull {\"capacity\":9}"))
-        .stdout(predicate::str::contains("actual:   RoomFull 409 {\"capacity\":2}"))
-        .stdout(predicate::str::contains("at $.capacity: expected 9, actual 2"))
+        .stdout(predicate::str::contains(
+            "FAIL a full room is rejected with its capacity",
+        ))
+        .stdout(predicate::str::contains(
+            "expected: RoomFull {\"capacity\":9}",
+        ))
+        .stdout(predicate::str::contains(
+            "actual:   RoomFull 409 {\"capacity\":2}",
+        ))
+        .stdout(predicate::str::contains(
+            "at $.capacity: expected 9, actual 2",
+        ))
         .stderr(predicate::str::contains("1 failed"));
 }
 
@@ -122,7 +132,10 @@ fn dry_run_needs_live() {
 #[test]
 fn live_against_nothing_names_the_url_and_exits_one() {
     let tmp = project_with(&bookings());
-    let addr = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
+    let addr = TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
     veld(tmp.path())
         .args(["test", "--live", &format!("http://{addr}")])
         .assert()
