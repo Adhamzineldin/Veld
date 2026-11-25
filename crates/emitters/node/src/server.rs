@@ -9,6 +9,7 @@ use veld_emit_typescript::util::{add_file, doc_comment, method_key, prop_key, ts
 use veld_ir::{AuthKind, Endpoint, Method, Service};
 
 use crate::frameworks::{EndpointModel, ServiceModel};
+use crate::guards;
 use crate::rules::{self, Site};
 
 /// Root-relative module path of a service's server file.
@@ -49,6 +50,7 @@ fn write_service(
         write_request_type(w, fc, &request, ep);
         w.blank();
         rules::write_facts_type(w, fc, &request, ep);
+        guards::write_transition_type(w, fc, &request, ep);
     }
     write_interface(w, fc, names, svc);
     w.blank();
@@ -63,11 +65,14 @@ fn write_service(
 
 /// The request type of an endpoint as the implementation receives it: with its loaded facts.
 fn impl_request(ep: &Endpoint, request: &str) -> String {
-    if ep.rules.facts.is_empty() {
-        request.to_string()
-    } else {
-        format!("{request} & {}", rules::facts_name(request))
+    let mut parts = vec![request.to_string()];
+    if !ep.rules.facts.is_empty() {
+        parts.push(rules::facts_name(request));
     }
+    if ep.rules.transition.is_some() {
+        parts.push(guards::transition_name(request));
+    }
+    parts.join(" & ")
 }
 
 /// Name of the function that builds the endpoint descriptions of a service with endpoint rules.
@@ -127,30 +132,36 @@ fn ws_types(fc: &mut FileCtx<'_, '_>, ep: &Endpoint) -> (String, String) {
     (incoming, outgoing)
 }
 
-fn auth_hook(kind: AuthKind, ctx: &str) -> Option<(&'static str, String)> {
+/// The auth hook of a kind. `who` is what the hook resolves to: `unknown`, or the generated
+/// type of the principal of a service that has one (`spec/rules.md` section 11.1).
+fn auth_hook(kind: AuthKind, ctx: &str, who: &str) -> Option<(&'static str, String)> {
     match kind {
         AuthKind::None => None,
         AuthKind::Bearer => Some((
             "bearer",
-            format!("(token: string, ctx: {ctx}) => Promise<unknown | null>"),
+            format!("(token: string, ctx: {ctx}) => Promise<{who} | null>"),
         )),
         AuthKind::Basic => Some((
             "basic",
-            format!("(username: string, password: string, ctx: {ctx}) => Promise<unknown | null>"),
+            format!("(username: string, password: string, ctx: {ctx}) => Promise<{who} | null>"),
         )),
         AuthKind::ApiKey => Some((
             "apiKey",
-            format!("(key: string, ctx: {ctx}) => Promise<unknown | null>"),
+            format!("(key: string, ctx: {ctx}) => Promise<{who} | null>"),
         )),
     }
 }
 
 /// Auth hooks and middleware names the service's endpoints need, in a stable order.
-fn required_hooks(svc: &Service, ctx: &str) -> (Vec<(&'static str, String)>, Vec<String>) {
+fn required_hooks(
+    svc: &Service,
+    ctx: &str,
+    who: &str,
+) -> (Vec<(&'static str, String)>, Vec<String>) {
     let mut auth: Vec<(&'static str, String)> = Vec::new();
     let mut middleware: Vec<String> = Vec::new();
     for ep in &svc.endpoints {
-        if let Some(h) = auth_hook(ep.auth.kind, ctx)
+        if let Some(h) = auth_hook(ep.auth.kind, ctx, who)
             && !auth.iter().any(|(n, _)| *n == h.0)
         {
             auth.push(h);
@@ -167,7 +178,13 @@ fn required_hooks(svc: &Service, ctx: &str) -> (Vec<(&'static str, String)>, Vec
 
 fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     let ctx = fc.rt("RequestContext");
-    let (auth, middleware) = required_hooks(svc, &ctx);
+    // A service with a principal resolves its auth hooks to the principal's model, when a
+    // statement reads the caller (`spec/rules.md` section 11.1).
+    let who = match (&svc.principal, fc.tree.uses_policies()) {
+        (Some(p), true) => ts_type(fc, &veld_ir::Type::Decl(p.decl)),
+        _ => "unknown".to_string(),
+    };
+    let (auth, middleware) = required_hooks(svc, &ctx, &who);
     w.open(format!(
         "export interface {}Hooks",
         naming::pascal(&svc.name)
@@ -340,7 +357,7 @@ fn write_factory(
 ) {
     let name = naming::pascal(&svc.name);
     let ctx = fc.rt("RequestContext");
-    let (auth, middleware) = required_hooks(svc, &ctx);
+    let (auth, middleware) = required_hooks(svc, &ctx, "unknown");
     let default = if auth.is_empty() && middleware.is_empty() && svc.facts.is_empty() {
         " = {}"
     } else {
@@ -433,7 +450,7 @@ pub fn models(tree: &Tree<'_>) -> Vec<ServiceModel> {
         .iter()
         .map(|sid| {
             let svc = tree.ir.service(*sid);
-            let (auth, middleware) = required_hooks(svc, "");
+            let (auth, middleware) = required_hooks(svc, "", "unknown");
             let prefix = svc.prefix.trim_end_matches('/');
             let mut endpoints: Vec<(usize, EndpointModel)> = svc
                 .endpoints

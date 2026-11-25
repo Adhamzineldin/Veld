@@ -9,6 +9,8 @@ use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{AuthKind, Binding, Endpoint, Ir, Method, Param, Service, ServiceId};
 
+use crate::can;
+use crate::policy::Plan;
 use crate::tree::{FileCtx, Tree};
 use crate::types::ts_type;
 use crate::util::{add_file, doc_comment, method_key, prop_key, ts_str};
@@ -184,7 +186,8 @@ fn write_service(
     w: &mut CodeWriter,
     fc: &mut FileCtx<'_, '_>,
     names: &RequestNames,
-    svc: &Service,
+    (svc, plan): (&Service, &Plan),
+    diags: &mut Vec<GenDiagnostic>,
 ) {
     for ep in &svc.endpoints {
         let name = names.get(svc.id, &ep.name);
@@ -203,6 +206,10 @@ fn write_service(
     for ep in &svc.endpoints {
         w.blank();
         write_method(w, fc, names, svc, ep);
+    }
+    for ep in svc.endpoints.iter().filter(|ep| can::wanted(ep)) {
+        w.blank();
+        can::write_can(w, fc, plan, (svc, ep), diags);
     }
     w.close();
 }
@@ -330,6 +337,8 @@ fn write_ws_method(
 /// Emits `client.ts` for each package of the tree's services; returns the module paths written.
 pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<GenDiagnostic>> {
     let names = RequestNames::new(tree.ir, &tree.services);
+    let plan = Plan::new(tree);
+    let mut diags = Vec::new();
     let mut modules = Vec::new();
     for pkg in tree.packages() {
         let module = tree.client_module(pkg);
@@ -340,11 +349,16 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
             .iter()
             .filter(|s| tree.ir.service(**s).package == pkg)
         {
-            write_service(&mut w, &mut fc, &names, tree.ir.service(*sid));
+            let svc = tree.ir.service(*sid);
+            write_service(&mut w, &mut fc, &names, (svc, &plan), &mut diags);
             w.blank();
         }
         add_file(files, &format!("{module}.ts"), fc.finish(&w.finish()))?;
         modules.push(module);
     }
-    Ok(modules)
+    if diags.is_empty() {
+        Ok(modules)
+    } else {
+        Err(diags)
+    }
 }

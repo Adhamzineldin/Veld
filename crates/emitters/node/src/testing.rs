@@ -11,7 +11,7 @@ use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_emit_typescript::tree::{FileCtx, Tree};
 use veld_emit_typescript::util::{add_file, method_key, ts_str};
 use veld_emit_typescript::validate::schema_expr;
-use veld_ir::{Constraints, Service};
+use veld_ir::{Constraints, Service, Type};
 
 use crate::rules::{loaders_name, service_has_rules};
 use crate::server::{builder_name, module_of, std_sigs};
@@ -57,11 +57,23 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>, testing: bool) -> Result<(), V
     Ok(())
 }
 
-fn write_helpers(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>) {
+/// The principal of a request, from the wire JSON of `Veld-Test-Principal`: of the generated type
+/// of the principal's model when the production hooks are typed that way (`spec/rules.md`
+/// section 11.1), the plain JSON otherwise.
+fn decoded_principal(fc: &mut FileCtx<'_, '_>, svc: &Service) -> String {
+    let Some(p) = svc.principal.as_ref().filter(|_| fc.tree.uses_policies()) else {
+        return "principal".to_string();
+    };
+    let schema = schema_expr(fc, &Type::Decl(p.decl), &Constraints::default());
+    format!("{}({schema}, principal)", fc.rt("fromWire"))
+}
+
+fn write_helpers(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     let ctx = fc.rt("RequestContext");
     let base64 = fc.rt("base64Decode");
     let schema = fc.rt("Schema");
     let from_wire = fc.rt("fromWire");
+    let principal = decoded_principal(fc, svc);
     w.line(format!(
         "function header(ctx: {ctx}, name: string): string | undefined {{
   const v = ctx.headers[name];
@@ -98,7 +110,7 @@ async function testFact<T>(ctx: {ctx}, name: string, schema: {schema}): Promise<
 /** The clock and the principal of the request, as the test sent them. */
 function prime(ctx: {ctx}): Date {{
   const principal = decode(header(ctx, 'veld-test-principal'));
-  if (principal !== undefined) ctx.principal = principal;
+  if (principal !== undefined) ctx.principal = {principal};
   const now = header(ctx, 'veld-test-now');
   return now === undefined ? new Date() : new Date(now);
 }}"
@@ -139,7 +151,7 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     if !svc.facts.is_empty() {
         fc.import(&prod, &loaders_name(&name), false);
     }
-    write_helpers(w, fc);
+    write_helpers(w, fc, svc);
     write_loaders(w, fc, svc, &name);
     let handler = fc.rt("VeldHandler");
     let endpoint = fc.rt("ServerEndpoint");

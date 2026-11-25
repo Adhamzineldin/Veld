@@ -1117,6 +1117,11 @@ function checkEnsures(
     const verdict = verdictOf(() => step.holds(params as never, full as never, prepared.now, prepared.old as never));
     if (verdict !== 'holds') violations.push(stepViolation(step, verdict));
   }
+  // #endif
+  // #if transitions
+  describeTarget(rules, violations, full);
+  // #endif
+  // #if endpoint_rules
   if (violations.length === 0) return null;
   ruleEvent(hooks, ep, 'output', mode === 'strict' ? 'rejected' : 'audited', violations, started);
   return mode === 'strict' ? problem(std.internal, 'Internal', 500, ep.sig, {}) : null;
@@ -1131,6 +1136,16 @@ function reportEndpointRules(hooks: HandlerHooks, endpoints: readonly ServerEndp
 // #endif
 
 // #if guards
+/** The body of a `can<Endpoint>` function: an evaluation error answers `false`. */
+export function guarded(test: () => boolean): boolean {
+  try {
+    return test();
+  } catch (e) {
+    if (evalErrorKind(e) === null) throw e;
+    return false;
+  }
+}
+
 /** The answer of a rule that stops the request before the handler: a declared error with one violation. */
 function refusal(
   ep: ServerEndpoint,
@@ -1178,16 +1193,6 @@ export function forbids(test: () => boolean): boolean {
   } catch (e) {
     if (evalErrorKind(e) === null) throw e;
     return true;
-  }
-}
-
-/** The body of a `can<Endpoint>` function: an evaluation error answers `false`. */
-export function guarded(test: () => boolean): boolean {
-  try {
-    return test();
-  } catch (e) {
-    if (evalErrorKind(e) === null) throw e;
-    return false;
   }
 }
 
@@ -1276,6 +1281,11 @@ export interface TransitionStep {
   to: string;
   /** The state the fact holds, as its wire value (a field the fact leaves out has its default). */
   current: (f: never) => string;
+  /**
+   * The state the result holds, as text for the message of the target check. Present only when
+   * the endpoint's `ensures` end with that check (the result is the fact's own declaration).
+   */
+  found?: (result: never) => string;
   /** The declared error that answers an illegal move: `InvalidTransition`. */
   otherwise: { sig: string };
 }
@@ -1308,6 +1318,17 @@ function checkTransition(
   const violation: Violation = { rule: step.id, path: 'request', fields: [], message: 'violates rule transition' };
   const data = { field: step.field, from, to: step.to };
   return refusal(ep, ctx, std, hooks, { sig: step.otherwise.sig, data, violation, started });
+}
+
+/**
+ * Step 9: the target check is the last `ensure` of the endpoint (it follows the output mode like
+ * the others). When it fails its message says which state the result held instead.
+ */
+function describeTarget(rules: EndpointRuleSet, violations: Violation[], result: unknown): void {
+  const step = rules.transition;
+  if (step === undefined || step.found === undefined) return;
+  const failed = violations.find((v) => v.rule === step.id && v.error === undefined);
+  if (failed !== undefined) failed.message = `${failed.message}, found \`${step.found(result as never)}\``;
 }
 // #endif
 

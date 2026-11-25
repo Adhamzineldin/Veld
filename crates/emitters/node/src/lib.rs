@@ -8,6 +8,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 mod frameworks;
+mod guards;
 mod rules;
 mod server;
 mod testing;
@@ -93,6 +94,7 @@ impl Generator for Node {
         };
         frameworks::emit(&mut files, &model, profile)?;
         let mut modules = models::emit(&mut files, &tree)?;
+        modules.extend(veld_emit_typescript::policy::emit(&mut files, &tree)?);
         modules.extend(server::emit(&mut files, &tree)?);
         modules.push("server/adapters".to_string());
         let ws = req

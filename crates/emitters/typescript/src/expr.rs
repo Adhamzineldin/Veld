@@ -596,6 +596,14 @@ impl<'a> EndpointPrinter<'a> {
         self.save_caller(code)
     }
 
+    /// Switches between printing the expressions of an `ensure` (a read of the caller is a saved
+    /// value) and every other statement (the caller is in the scope `f`).
+    pub fn set_ensure(&mut self, on: bool) {
+        if let Some(scope) = self.inner.scope.as_mut() {
+            scope.ensure = on;
+        }
+    }
+
     /// A read of the caller outside `old(...)` in an `ensure` becomes a slot of the saved
     /// values: the operand `f.user` is evaluated with the rest at the end of step 6.
     fn save_caller(&mut self, code: String) -> String {

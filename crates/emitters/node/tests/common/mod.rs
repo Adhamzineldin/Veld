@@ -1,6 +1,8 @@
 //! Shared helpers: compile the realistic contract and run the generators.
 #![allow(dead_code)]
 
+pub mod toolchain;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 

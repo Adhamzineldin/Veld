@@ -6,13 +6,16 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 pub mod barrel;
+pub mod can;
 pub mod checks;
 pub mod client;
 pub mod clients;
 pub mod expr;
 pub mod frameworks;
+pub mod machine;
 pub mod models;
 pub mod package;
+pub mod policy;
 pub mod query;
 pub mod readme;
 pub mod runtime;
@@ -32,10 +35,9 @@ use crate::util::add_file;
 
 pub use tree::Tree;
 
-/// Features no TypeScript generator supports yet: transitions and policies
-/// (`spec/rules.md` section 8), reported as `E0801` until each is implemented. Streaming (SSE and
-/// WebSocket), invariants and endpoint rules are supported.
-pub const UNSUPPORTED: [Feature; 2] = [Feature::RulesTransitions, Feature::RulesPolicies];
+/// Features no TypeScript generator supports: none. Invariants, endpoint rules, state machines and
+/// policies (`spec/rules.md` section 8) and streaming (SSE and WebSocket) are all supported.
+pub const UNSUPPORTED: [Feature; 0] = [];
 
 /// The TypeScript language versions: ECMAScript editions, the oldest first (the default).
 /// Selected with the target option `typescript = "es2022"`.
@@ -155,6 +157,7 @@ pub fn emit_client_tree(
     tree: &Tree<'_>,
 ) -> Result<Vec<String>, Vec<GenDiagnostic>> {
     let mut modules = models::emit(files, tree)?;
+    modules.extend(policy::emit(files, tree)?);
     modules.extend(client::emit(files, tree)?);
     modules.sort();
     Ok(modules)

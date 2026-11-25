@@ -5,13 +5,17 @@
 
 use std::collections::BTreeSet;
 
+use crate::guards;
 use veld_codegen::{CodeWriter, GenDiagnostic};
-use veld_emit_typescript::expr::{EndpointPrinter, EndpointScope};
+use veld_emit_typescript::expr::{EndpointPrinter, EndpointScope, Principal};
+use veld_emit_typescript::machine::Move;
+use veld_emit_typescript::policy::app_value;
 use veld_emit_typescript::tree::FileCtx;
 use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{method_key, prop_key, ts_str};
 use veld_ir::{
-    Endpoint, EndpointEnsure, EndpointFact, EndpointRequire, ExprType, Scalar, Service, Type,
+    Endpoint, EndpointEnsure, EndpointFact, EndpointRequire, ExprType, Scalar,
+    Service, Type,
 };
 
 /// Whether an endpoint has any statement.
@@ -101,7 +105,38 @@ pub struct Site<'a> {
     pub request: &'a str,
 }
 
-fn scope(ep: &Endpoint) -> EndpointScope {
+/// Whether a statement of the endpoint reads the caller (`spec/rules.md` section 11.1): an
+/// `allow` argument, a fact key, a `require` or its `else` payload, or an `ensure`.
+fn reads_principal(ep: &Endpoint) -> bool {
+    let r = &ep.rules;
+    r.allows
+        .iter()
+        .any(|a| a.args.iter().any(veld_ir::Expr::reads_principal))
+        || r.facts
+            .iter()
+            .any(|f| f.key.as_ref().is_some_and(veld_ir::Expr::reads_principal))
+        || r.requires.iter().any(|q| {
+            q.expr.reads_principal()
+                || q.else_error
+                    .iter()
+                    .flat_map(|e| &e.fields)
+                    .any(|f| f.value.reads_principal())
+        })
+        || r.ensures.iter().any(|e| e.expr.reads_principal())
+}
+
+/// The caller of the service when the rules of `ep` read it: it is part of the scope `f` the
+/// rules of this endpoint see, under the name it has in the rules.
+#[must_use]
+pub fn caller(site: &Site<'_>) -> Option<Principal> {
+    let p = site.svc.principal.as_ref()?;
+    reads_principal(site.ep).then(|| Principal {
+        name: p.name.clone(),
+        ty: Type::Decl(p.decl),
+    })
+}
+
+fn scope(ep: &Endpoint, principal: Option<Principal>) -> EndpointScope {
     let params: BTreeSet<String> = ep
         .params
         .iter()
@@ -118,10 +153,12 @@ fn scope(ep: &Endpoint) -> EndpointScope {
     EndpointScope {
         optional_params: params,
         optional_facts: facts,
+        principal,
+        ..EndpointScope::default()
     }
 }
 
-fn unsupported(site: &Site<'_>, what: &str) -> GenDiagnostic {
+pub(crate) fn unsupported(site: &Site<'_>, what: &str) -> GenDiagnostic {
     let mut d = GenDiagnostic::new(
         "E0801",
         format!(
@@ -157,58 +194,6 @@ fn rule_type(fc: &mut FileCtx<'_, '_>, t: &Type) -> String {
     }
 }
 
-/// Turns a value of the rule representation back into the developer-facing one.
-fn from_rule(fc: &mut FileCtx<'_, '_>, code: &str, ty: &ExprType) -> Option<String> {
-    match ty {
-        ExprType::Duration => None,
-        ExprType::Type(t) => from_rule_type(fc, code, t, 0),
-    }
-}
-
-fn from_rule_type(fc: &mut FileCtx<'_, '_>, code: &str, t: &Type, depth: usize) -> Option<String> {
-    let helper = match t {
-        Type::Scalar(s) => match s {
-            Scalar::Long => return Some(format!("String({code})")),
-            Scalar::Decimal => "decimalText",
-            Scalar::Date => "dateText",
-            Scalar::Datetime => "datetimeText",
-            Scalar::Time => "timeText",
-            Scalar::Int
-            | Scalar::Float
-            | Scalar::Bool
-            | Scalar::Json
-            | Scalar::String
-            | Scalar::Uuid
-            | Scalar::Bytes => return Some(code.to_owned()),
-        },
-        Type::List(inner) => {
-            let name = format!("e{depth}");
-            let item = from_rule_type(fc, &name, inner, depth + 1)?;
-            return Some(if item == name {
-                code.to_owned()
-            } else {
-                format!("{code}.map(({name}) => {item})")
-            });
-        }
-        Type::Map(_) | Type::Page(_) | Type::Decl(_) => return Some(code.to_owned()),
-    };
-    Some(format!("{}({code})", fc.rt(helper)))
-}
-
-/// A value in the developer-facing representation: a plain path as it is, anything else computed
-/// in the rule representation and converted back. `None` when it cannot be converted.
-fn app_value(
-    fc: &mut FileCtx<'_, '_>,
-    printer: &mut EndpointPrinter<'_>,
-    expr: &veld_ir::Expr,
-) -> Option<String> {
-    if let Some(raw) = printer.raw_path(expr) {
-        return Some(raw);
-    }
-    let code = printer.print(expr);
-    from_rule(fc, &code, &expr.t)
-}
-
 fn message(name: Option<&str>, custom: Option<&str>, unnamed: &str) -> String {
     match (custom, name) {
         (Some(m), _) => ts_str(m),
@@ -223,9 +208,9 @@ fn fields_list(reads: &[String]) -> String {
 }
 
 /// The parameter list of a generated rule function.
-struct Sig {
-    p: String,
-    f: String,
+pub(crate) struct Sig {
+    pub p: String,
+    pub f: String,
 }
 
 fn write_fact(
@@ -376,33 +361,44 @@ pub fn write_rules_member(
     diags: &mut Vec<GenDiagnostic>,
 ) {
     let ep = site.ep;
-    let facts = if ep.rules.facts.is_empty() {
-        "Record<string, never>".to_string()
-    } else {
-        facts_name(site.request)
-    };
+    let caller = caller(site);
+    let facts = (!ep.rules.facts.is_empty()).then(|| facts_name(site.request));
     let sig = Sig {
         p: format!("p: {}", site.request),
-        f: format!("f: {facts}"),
+        f: format!("f: {}", guards::scope_type(fc, facts, caller.as_ref())),
     };
     let ns = fc.rules_ns();
-    let mut printer = EndpointPrinter::new(fc.tree.ir, &ns, scope(ep));
+    let mut printer = EndpointPrinter::new(fc.tree.ir, &ns, scope(ep, caller.clone()));
+    let moved = match Move::of(fc.tree.ir, ep) {
+        Ok(moved) => moved,
+        Err(why) => {
+            diags.push(unsupported(site, why));
+            None
+        }
+    };
     let result = match &ep.success.ty {
         Some(t) if !ep.success.stream => ts_type(fc, t),
         Some(_) | None => "undefined".to_string(),
     };
     // The `ensure` expressions come first: they decide the slots of `old(...)`.
+    printer.set_ensure(true);
     let conds: Vec<String> = ep
         .rules
         .ensures
         .iter()
         .map(|e| printer.print(&e.expr))
         .collect();
+    printer.set_ensure(false);
+    // The target check of a transition is the last `ensure`.
+    let found = moved.as_ref().and_then(|m| m.found(&printer, ep));
     let old_ty = old_type(fc, &printer);
     let alias = old_ty.as_ref().map(|_| old_name(site.request));
     let mut ensure_code = CodeWriter::new();
     for (e, cond) in ep.rules.ensures.iter().zip(&conds) {
         write_ensure(&mut ensure_code, &sig, &result, alias.as_deref(), (e, cond));
+    }
+    if let (Some(mv), Some(state)) = (&moved, &found) {
+        guards::write_target(&mut ensure_code, &sig, &result, (mv, state));
     }
     if let Some(ty) = &old_ty {
         pre.line(format!("type {} = {ty};", old_name(site.request)));
@@ -425,6 +421,8 @@ pub fn write_rules_member(
             w.line(line);
         }
     });
+    let members = (caller.as_ref(), moved.as_ref(), found.as_deref());
+    guards::write_members(w, fc, &mut printer, (site, &sig), members, diags);
     w.close_with("},");
 }
 

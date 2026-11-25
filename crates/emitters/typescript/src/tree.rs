@@ -187,6 +187,17 @@ impl<'a> Tree<'a> {
         format!("{}{kind}/{module}", self.pkg_prefix(d.package))
     }
 
+    /// Module path (root-relative, no extension) holding the functions of `policy`.
+    #[must_use]
+    pub fn policy_module(&self, policy: &veld_ir::Policy) -> String {
+        let module = if policy.module.is_empty() {
+            "root".to_string()
+        } else {
+            policy.module.replace('.', "/")
+        };
+        format!("{}policies/{module}", self.pkg_prefix(policy.package))
+    }
+
     /// Module path of a package's `client.ts`.
     #[must_use]
     pub fn client_module(&self, pkg: PackageId) -> String {
