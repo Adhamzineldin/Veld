@@ -124,6 +124,32 @@ fn every_example_passes_through_the_generated_test_handler_on_the_jdk_server() {
     assert_eq!(passed, 20, "every example of tests/rules/endpoints");
 }
 
+/// Generated requests, boundaries first, go to the generated test handler on the JDK server: its
+/// answer must be the one the reference evaluator works out.
+#[test]
+fn fuzzing_the_generated_test_handler_on_the_jdk_server_agrees_with_the_reference() {
+    if !require_javac("fuzzing_the_jdk_test_handler") {
+        return;
+    }
+    let ir = bookings_ir();
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = write_files(work.path(), &generate(&ir, Role::Server, None, true));
+    sources.push(repo_root().join("tests/toolchain/java/rules/EndpointServe.java"));
+    javac_ok(work.path(), &sources, "17");
+    let server = Running::start(work.path(), "veldtest.EndpointServe", &[]);
+    let tally = fuzz_agrees(&server.url, &ir, FUZZ_COUNT, FUZZ_SEED);
+    for kind in [
+        "ok",
+        "ValidationError",
+        "NotFound",
+        "RoomFull",
+        "RoomClosed",
+    ] {
+        let seen: usize = tally.values().filter_map(|t| t.get(kind)).sum();
+        assert!(seen > 0, "no {kind} in {tally:?}");
+    }
+}
+
 /// Compiles the bookings server (`gen.b`) and the given driver and runs it.
 fn run_driver(driver: &str, class: &str, with_client: bool) {
     let ir = bookings_ir();

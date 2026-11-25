@@ -119,6 +119,33 @@ fn every_example_passes_through_the_generated_test_handler_on_the_jdk_server() {
     assert_eq!(passed, 14, "every example of the transition contract");
 }
 
+/// The state of the booking is put in every state of the machine: the guard of the generated JDK
+/// server must refuse each illegal one and let every source through, as the reference does.
+#[test]
+fn fuzzing_the_state_machines_on_the_jdk_server_agrees_with_the_reference() {
+    if !require_javac("fuzzing_the_transition_guard_on_the_jdk_server") {
+        return;
+    }
+    let ir = transitions_ir();
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = write_files(work.path(), &generate(&ir, Role::Server, None, true));
+    sources.push(repo_root().join("tests/toolchain/java/rules/MachineServe.java"));
+    javac_ok(work.path(), &sources, "17");
+    let server = Running::start(work.path(), "veldtest.MachineServe", &[]);
+    let tally = fuzz_agrees(&server.url, &ir, FUZZ_COUNT, FUZZ_SEED);
+    for endpoint in [
+        "Bookings.payBooking",
+        "Bookings.cancelBooking",
+        "Bookings.checkIn",
+    ] {
+        assert!(outcome_count(&tally, endpoint, "ok") > 10, "{endpoint}");
+        assert!(
+            outcome_count(&tally, endpoint, "InvalidTransition") > 10,
+            "{endpoint}"
+        );
+    }
+}
+
 #[test]
 fn every_example_passes_through_the_generated_test_handler_on_spring() {
     let name = "every_transition_example_passes_on_spring";

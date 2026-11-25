@@ -147,6 +147,40 @@ fn every_example_passes_through_the_generated_test_handler_on_the_jdk_server() {
     assert_eq!(passed, 10, "every example of the policy contract");
 }
 
+/// A principal on every request, permits and denials from both sides and both kinds of denial
+/// message, against the generated JDK server.
+#[test]
+fn fuzzing_the_policies_on_the_jdk_server_agrees_with_the_reference() {
+    if !require_javac("fuzzing_the_policies_on_the_jdk_server") {
+        return;
+    }
+    let ir = policies_ir();
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = write_files(work.path(), &generate(&ir, Role::Server, None, true));
+    sources.push(repo_root().join("tests/toolchain/java/rules/PolicyServe.java"));
+    javac_ok(work.path(), &sources, "17");
+    let server = Running::start(work.path(), "veldtest.PolicyServe", &[]);
+    let (count, seed) = (FUZZ_COUNT, FUZZ_SEED);
+    let tally = fuzz_agrees(&server.url, &ir, count, seed);
+    for endpoint in ["Bookings.payBooking", "Bookings.getBooking"] {
+        assert!(outcome_count(&tally, endpoint, "ok") > 10, "{endpoint}");
+        assert!(
+            outcome_count(&tally, endpoint, "Forbidden") > 10,
+            "{endpoint}"
+        );
+        let messages = denial_messages(&ir, endpoint.rsplit('.').next().unwrap(), count, seed);
+        let forbid = "A suspended account cannot manage bookings";
+        assert!(
+            messages.get(forbid).copied().unwrap_or(0) > 0,
+            "{messages:?}"
+        );
+        assert!(
+            messages.get("not permitted").copied().unwrap_or(0) > 0,
+            "{messages:?}"
+        );
+    }
+}
+
 #[test]
 fn every_example_passes_through_the_generated_test_handler_on_spring() {
     let name = "every_policy_example_passes_on_spring";
