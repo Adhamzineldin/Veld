@@ -498,18 +498,90 @@ policy ManageBooking(user: User, booking: Booking) {
   permit when booking.guestId == user.id
   permit when "support" in user.roles
   forbid when user.suspended
+    message "A suspended account cannot manage bookings"
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking | AmountMismatch {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+    transition booking.status: pending -> paid
+    require body.amount == booking.total else AmountMismatch { expected: booking.total }
+  }
 }
 ```
 
 ```ebnf
-principal  = "principal" typeref [ "as" IDENT ] ;
-policy     = "policy" IDENT "(" params ")" "{" { ( "permit" | "forbid" ) "when" expr } "}" ;
-allow      = "allow" IDENT "(" [ expr { "," expr } ] ")" ;
+principal  = { doc } "principal" typeref [ "as" IDENT ] ;
+policy     = { doc } "policy" IDENT "(" pparam { "," pparam } [","] ")" "{" { clause } "}" ;
+pparam     = IDENT ":" type ;
+clause     = ( "permit" | "forbid" ) "when" expr [ "message" STRING ] ;
+allow      = "allow" IDENT "(" [ expr { "," expr } [","] ] ")" ;
 ```
 
-- A package declares at most one principal. Its value is in scope of that package's endpoint blocks under the name `user`, or the name after `as`.
-- A policy permits when at least one `permit` is true **and** no `forbid` is true. `allow` in an endpoint block calls it; a denial is `403 Forbidden`. Several `allow` lines must all permit.
-- Policies are generated for clients too, so a UI can ask before it shows a button. The server always decides.
+### 11.1 The principal
+
+- A package declares at most one principal (`E0941`), and its type MUST be a model (`E0940`).
+- In the endpoint blocks of that package the caller is in scope under the name `user`, or the name after `as`. It is available only where the endpoint's effective auth is not `none` (`E0904` otherwise). A parameter or fact with the principal's name on such an endpoint is `E0920`.
+- Its value is what the application's auth hook returned for the request. In every target the hook's result has the generated type of the principal's model. It is a trusted value, like a fact: it is not validated.
+- In an example, `as { … }` has the principal's type; an example that leaves it out for an endpoint with auth gets a filled-in principal (§12.2).
+
+### 11.2 Policies
+
+- A policy is a top-level declaration, named and imported like any other. Its clauses see only its parameters and `now`; the caller reaches a policy as an argument, never implicitly.
+- **A policy permits when at least one `permit` is true and no `forbid` is true.** The order of the clauses does not matter.
+- A clause that cannot be evaluated (§3.7) fails closed: such a `permit` does not permit, and such a `forbid` forbids.
+- A policy with no `permit` permits nobody (`W0940`).
+- Identity: `veld:<package>/<Policy>@<hex16>` over the RFC 8785 JSON of `{ "d": "<qualified name>", "c": [ { "k": "permit" | "forbid", "e": ExprShape } … ] }`, clauses in source order; a parameter is `{ "param": name }`. Messages are not part of it.
+
+### 11.3 `allow`
+
+- `allow P(args)` calls the policy `P` with the given arguments (`E0942` for an unknown policy, the wrong number of arguments or an argument of the wrong type).
+- It runs in step 6, after the facts and before the transition guard. Several `allow` lines run in source order and all must permit; the first denial ends the request.
+- A denial is **`403 Forbidden`**, which the endpoint then declares implicitly. Its `violations` has one entry: `rule` is the policy's id, `path` is `request`, `fields` are the parameters the arguments read, and `message` is the message of the first `forbid` that was true if it has one, otherwise `not permitted`.
+- Facts load before policies, because a policy usually needs them. A caller without permission can therefore tell a missing record (`404`) from a forbidden one (`403`); `@tenant` (platform features) is the tool that hides records.
+
+### 11.4 Generated code
+
+- Every target, clients included, gets one function per policy with the policy's parameters and a boolean result.
+- For every endpoint with an `allow` or a `transition`, clients get **`can<Endpoint>(…)`**: it takes the facts, the principal and the parameters that the endpoint's `allow` arguments and its `transition` read, and answers whether the server would let the call past the policies and the transition guard. It never rejects a request; it is for showing or hiding a button. The server decides.
+- `Feature::RulesPolicies` is used when an endpoint has an `allow`. A policy that no endpoint uses needs no feature.
+
+### 11.5 In the IR
+
+```jsonc
+Ir      = { …, "policies": [ Policy ] }                                        // sorted by qualified name
+Policy  = { "name": "ManageBooking", "package": PackageId, "module": "…", "qualified": "…",
+            "id": "veld:bookings/ManageBooking@…",
+            "params": [ { "name": "user", "type": Type } ],
+            "clauses": [ { "effect": "permit" | "forbid", "expr": Expr, "message": "…" | null, "origin": Origin } ],
+            "docs": .., "origin": Origin }
+Service = { …, "principal": { "decl": DeclId, "name": "user" } }
+EndpointRules = { …, "allows": [ { "policy": <index into Ir.policies>, "args": [Expr], "reads": ["id"], "origin": Origin } ] }
+```
+
+All three are omitted from the JSON when empty or absent. In a policy's expressions a parameter is the root `{ "param": name }`; in an endpoint block the caller is the root `"principal"`.
+
+### 11.6 A lint for public endpoints
+
+`auth-required` (`L0005`, default `warn`): an endpoint whose effective auth comes from nowhere, neither its own `@auth` nor its service's, should say `@auth(none)` if it is meant to be public.
+
+### 11.7 Optimistic concurrency: `@version`
+
+- `@version` marks one `int` or `long` field of a model as its version (`E0602` on another type or a second field).
+- A response whose success type is such a model carries `ETag: "<version>"`.
+- On an endpoint with a fact of such a model (the first such fact, in declaration order), a request MAY send `If-Match`. If it does and the value is neither `*` nor the fact's current version, the answer is **`412 PreconditionFailed`**, a new prelude error with `expected` and `actual`, which such an endpoint declares implicitly. The check runs after the policies and before the transition guard.
+- Like a transition, this is a guard: the handler receives the version that was checked and MUST write conditionally, answering `PreconditionFailed` itself when the row has moved on.
+- Generated client methods of such endpoints take an optional `ifMatch`.
+
+### 11.8 Idempotency: `@idempotent`
+
+- `@idempotent` on an endpoint, optionally `@idempotent(header: "Idempotency-Key", required: true)`. The default header is `Idempotency-Key` and it is not required.
+- The server gets an `IdempotencyStore` interface to implement, with a memory implementation for tests. When a request carries the header, the store is asked after step 5: a stored answer for the same key is replayed (status, headers that matter and body) without loading facts or calling the handler; otherwise the request runs and its answer is stored. Success answers and declared errors are stored; `5xx` answers are not.
+- The key is scoped to the operation and, when the endpoint has auth, to the caller: one caller's key never replays another caller's answer.
+- The same key with different parameters, or while the first request is still running, is `409 Conflict`.
+- With `required: true`, a request without the header is `422 ValidationError`.
 
 ## 12. Examples and `veld test` (Phase 2)
 
@@ -729,7 +801,11 @@ Range `E09xx` (errors) and `W09xx` (warnings). Codes are never reused.
 | `W0931` | A state that is not final and has no way out |
 | `W0932` | A variant of a state machine that takes part in no flow and is not final |
 
-`E0940` to `E0949` are reserved for policies.
+| `E0940` | The type after `principal` is not a model |
+| `E0941` | More than one `principal` in a package |
+| `E0942` | `allow` names an unknown policy, or its arguments do not fit the policy's parameters |
+| `W0940` | A policy with no `permit` permits nobody |
+| `L0005` | `auth-required`: an endpoint with no `@auth` of its own or its service's |
 
 ## 15. Test vectors
 
@@ -766,6 +842,7 @@ tests/rules/<group>/<name>.json      cases for it
 | `x?.y` as a guard | Not in v1; `has(x.y)` covers it (§3.6) | An optional chain needs a third truth value. |
 | `min`, `max` | Not in v1 (§3.5) | They have no value for an empty list, which breaks totality. `all(items, i => i.qty <= 10)` states a bound. |
 | Strings can be ordered | `==`, `!=`, `in` and the string functions only (§3.4) | JavaScript and Java order strings by UTF-16 units, Rust by code points. |
+| `409 Conflict` when `If-Match` does not match | `412 PreconditionFailed` (§11.7) | It is the status HTTP defines for a failed `If-Match` (RFC 9110), and clients and proxies treat it as such. `409 Conflict` stays for idempotency key conflicts. |
 | Decimal division | Not supported (§3.4) | It needs a rounding rule; multiplication states the same condition exactly. |
 | `final a, b` anywhere in an enum | A statement only when an identifier follows on the same line (§2.2) | `enum X { final }` must keep meaning a variant. An existing enum with a variant named `final` followed on the same line by another variant without a comma is the one program whose meaning changes. |
 | `v.end.getTime()` in the TypeScript sketch | Runtime helpers (§8) | `datetime`, `decimal` and `long` are strings in TypeScript and Rust. |
