@@ -334,6 +334,50 @@ fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) 
     w.open("public String veldCanonical()");
     w.line(format!("return {wire}.canonicalOf(SCHEMA, toWire());"));
     w.close();
+    if e.is_state_machine() {
+        w.blank();
+        write_machine_helpers(w, fc, &name, e);
+    }
+    w.close();
+}
+
+/// `nextStates()` and `isFinal()` of a state machine (`spec/rules.md` section 10.3).
+fn write_machine_helpers(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, e: &Enum) {
+    let list = fc.name("java.util.List");
+    let consts = enum_constants(e);
+    let constant = |variant: &str| {
+        e.variants
+            .iter()
+            .position(|v| v.name == variant)
+            .and_then(|i| consts.get(i).cloned())
+            .unwrap_or_default()
+    };
+    w.line("/** The states that can follow this one, in declaration order of the edges (`flow`). */");
+    w.open(format!("public {list}<{name}> nextStates()"));
+    w.open("return switch (this)");
+    for (v, c) in e.variants.iter().zip(&consts) {
+        let next: Vec<String> = e
+            .flows
+            .iter()
+            .filter(|f| f.from == v.name)
+            .map(|f| constant(&f.to))
+            .collect();
+        w.line(format!("case {c} -> {list}.of({});", next.join(", ")));
+    }
+    w.close_with("};");
+    w.close();
+    w.blank();
+    w.line("/** Whether this state is final: no state follows it. */");
+    w.open("public boolean isFinal()");
+    if e.finals.is_empty() {
+        w.line("return false;");
+    } else {
+        let finals: Vec<String> = e.finals.iter().map(|f| constant(f)).collect();
+        w.line(format!(
+            "return switch (this) {{ case {} -> true; default -> false; }};",
+            finals.join(", ")
+        ));
+    }
     w.close();
 }
 
