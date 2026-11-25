@@ -377,3 +377,72 @@ fn run_examples(work: &Path, contracts: &[Ir]) {
     eprintln!("endpoint examples passed through the generated test handler: {passed}");
     assert_eq!(passed, 20, "every example of tests/rules/endpoints");
 }
+
+// ---- fuzzing the generated test handler ---------------------------------------------------------
+
+/// Generated requests, valid and invalid, boundaries first, go to the generated test handler in
+/// dry-run mode: its answer must be the one the reference evaluator works out, in status, error,
+/// payload and violations. A failure here is a real disagreement between this server and the
+/// reference evaluator; the message carries the seed and the request as an `example` block.
+#[test]
+fn fuzzing_the_generated_test_handler_agrees_with_the_reference_evaluator() {
+    let Some(tsc) = tsc_path() else { return };
+    let (edition, target) = TARGETS[0];
+    std::fs::create_dir_all(toolchain_dir().join(".work")).unwrap();
+    let guard = tempfile::Builder::new()
+        .prefix("endpoint-fuzz-")
+        .tempdir_in(toolchain_dir().join(".work"))
+        .unwrap();
+    let work = guard.path();
+    build(work, &tsc, edition, target);
+    let server = Live::start(work);
+    let live = veld_testing::Live::connect(&server.url, true).unwrap();
+    let ir = endpoints_ir();
+    let opts = veld_testing::FuzzOptions {
+        count: 400,
+        seed: 20_260_101,
+    };
+    let report = veld_testing::fuzz(&ir, &live, &opts).unwrap();
+    let mut seen: BTreeMap<String, usize> = BTreeMap::new();
+    for e in &report.endpoints {
+        assert!(e.skipped.is_none(), "{}: {:?}", e.endpoint, e.skipped);
+        if let Some(m) = &e.mismatch {
+            let diffs: Vec<String> = m.differences.iter().map(ToString::to_string).collect();
+            panic!(
+                "seed {}: {}.{} request {} disagrees with the reference evaluator\n\
+                 expected: {}\nactual:   {}\n{}\n{}",
+                report.seed,
+                e.service,
+                e.endpoint,
+                m.index,
+                m.expected,
+                m.actual,
+                diffs.join("\n"),
+                m.example.as_deref().unwrap_or("(no example)")
+            );
+        }
+        assert_eq!(e.sent, 400, "{}", e.endpoint);
+        for (kind, n) in &e.outcomes {
+            *seen.entry(kind.clone()).or_default() += n;
+        }
+    }
+    eprintln!(
+        "fuzz of the generated test handler, seed {}: {seen:?}",
+        report.seed
+    );
+    // A green run proves nothing unless the fuzz reached the rules. `Internal` cannot be reached
+    // without a handler result, and a dry run has none.
+    for kind in [
+        "ok",
+        "ValidationError",
+        "NotFound",
+        "RoomFull",
+        "RoomClosed",
+        "AmountMismatch",
+    ] {
+        assert!(
+            seen.get(kind).copied().unwrap_or(0) > 0,
+            "no {kind} in {seen:?}"
+        );
+    }
+}
