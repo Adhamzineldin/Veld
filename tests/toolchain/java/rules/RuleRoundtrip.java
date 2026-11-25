@@ -47,6 +47,11 @@ public final class RuleRoundtrip {
     }
 
     @Override
+    public void search(gen.rs.bk.server.SearchRequest request, RequestContext ctx) {
+      CREATED.incrementAndGet();
+    }
+
+    @Override
     public void overOk(gen.rs.bk.server.OverOkRequest request, RequestContext ctx) {
       throw new gen.rs.bk.bk.Overbooked(new gen.rs.bk.bk.Overbooked.Data(2, 5));
     }
@@ -81,6 +86,7 @@ public final class RuleRoundtrip {
       outputAudit(url(audit), auditEvents);
       errors(url(strict), events, url(audit), auditEvents);
       throughInvoke();
+      queryObject(url(strict));
       System.out.println("OK");
     } finally {
       strict.stop(0);
@@ -182,6 +188,23 @@ public final class RuleRoundtrip {
     Check.equal(new gen.rc.bk.bk.Overbooked.Data(9, 5), sent.data(), "audited data");
     Check.equal(2, auditEvents.size(), "audit reported it");
     Check.equal(RuleWalk.Outcome.AUDITED, auditEvents.get(1).outcome(), "audited");
+  }
+
+  /** The rules of a {@code query} object: path {@code query}, locally and on the server. */
+  private static void queryObject(String base) {
+    int before = CREATED.get();
+    gen.rc.bk.client.SearchRequest bad = new gen.rc.bk.client.SearchRequest(new gen.rc.bk.bk.Window(5, 1));
+    VeldError local = Check.thrown(VeldError.class, "the client refuses a bad query", () -> client(base, true).search(bad));
+    Check.that(local.raisedLocally(), "local");
+    Check.equal("query", local.violations().get(0).path(), "local path");
+    Check.equal(List.of("lo", "hi"), local.violations().get(0).fields(), "fields");
+    Check.equal(before, CREATED.get(), "nothing was sent");
+    VeldError remote = Check.thrown(VeldError.class, "the server rejects a bad query", () -> client(base, false).search(bad));
+    Check.that(!remote.raisedLocally(), "remote");
+    Check.equal(local.violations(), remote.violations(), "the same violations");
+    Check.equal(before, CREATED.get(), "the implementation did not run");
+    client(base, true).search(new gen.rc.bk.client.SearchRequest(new gen.rc.bk.bk.Window(1, 5)));
+    Check.equal(before + 1, CREATED.get(), "a good query is served");
   }
 
   /** The entry the Spring adapter uses: {@code VeldHandler.invoke} runs the same pipeline. */

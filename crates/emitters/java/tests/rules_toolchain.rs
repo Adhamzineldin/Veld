@@ -164,9 +164,12 @@ fn the_shared_vectors_pass_on_generated_java() {
     // The cases of every vector file, partial ones left out (TypeScript only).
     let mut cases = Vec::new();
     let mut lines = String::new();
+    let (mut total, mut partial) = (0, 0);
     for path in vector_files("json") {
         for case in load_cases(&std::fs::read_to_string(&path).unwrap()).unwrap() {
+            total += 1;
             if case.partial {
+                partial += 1;
                 continue;
             }
             lines.push_str(
@@ -244,7 +247,10 @@ fn the_shared_vectors_pass_on_generated_java() {
         cases.len(),
         failures.join("\n")
     );
-    eprintln!("{} vector cases pass on Java", cases.len());
+    eprintln!(
+        "vectors: {total} cases, {partial} partial (TypeScript only) skipped, {} run on Java and pass",
+        cases.len()
+    );
 }
 
 const BOOKINGS: &str = r#"model Booking {
@@ -252,6 +258,12 @@ const BOOKINGS: &str = r#"model Booking {
   end: datetime
   rule endAfterStart: end > start
     message "A booking must end after it starts"
+}
+
+model Window {
+  lo: int
+  hi: int
+  rule ordered: lo <= hi
 }
 
 error Overbooked 409 {
@@ -265,6 +277,7 @@ service Bookings at "/bookings" {
   get "/bad" bad() -> Booking
   get "/over/ok" overOk() -> 204 | Overbooked
   get "/over/bad" overBad() -> 204 | Overbooked
+  get "/search" search(query: Window) -> 204
 }
 "#;
 
@@ -357,4 +370,163 @@ fn invariants_round_trip_over_http_on_the_jdk_server() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
+}
+
+/// One HTTP/1.1 exchange on a raw socket: the status and the raw text of the response.
+fn raw_http(port: u16, method: &str, path: &str, body: &str) -> Option<(u16, String)> {
+    use std::io::{Read, Write};
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).ok()?;
+    s.set_read_timeout(Some(std::time::Duration::from_secs(20)))
+        .ok()?;
+    let request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    s.write_all(request.as_bytes()).ok()?;
+    let mut raw = String::new();
+    s.read_to_string(&mut raw).ok()?;
+    let status = raw.split_whitespace().nth(1)?.parse().ok()?;
+    Some((status, raw))
+}
+
+/// The generated Spring adapter in a real Spring Boot 3 application, for a contract with rules:
+/// step 5 (`422` with `violations`, for a body and for a `query` object) and step 8 (`500`).
+/// Needs the Maven Wrapper and Spring from the network or `~/.m2`, like the toolchain test of the
+/// same name.
+#[test]
+fn invariants_are_enforced_through_the_spring_adapter() {
+    let have_maven = {
+        let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
+        home.is_some_and(|h| {
+            PathBuf::from(h)
+                .join(".m2/repository/org/springframework/boot/spring-boot-starter-web")
+                .is_dir()
+        })
+    };
+    if !require_javac("invariants_are_enforced_through_the_spring_adapter") {
+        return;
+    }
+    if !have_maven {
+        assert!(
+            std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"),
+            "toolchain required but Spring is not in ~/.m2"
+        );
+        eprintln!("SKIPPED the Spring rules test: no Spring in ~/.m2");
+        return;
+    }
+    let ir = bookings_ir();
+    let java = repo_root().join("tests/toolchain/java");
+    let work = java.join(".work/spring-rules");
+    let _ = std::fs::remove_dir_all(&work);
+    let sources = work.join("src/main/java");
+    let files = run(
+        &ir,
+        Role::Server,
+        all_services(&ir),
+        vec![],
+        Some("spring"),
+        options("gen.rs", Some("17")),
+    );
+    for (path, bytes) in files.iter().filter(|(p, _)| p.ends_with(".java")) {
+        let target = sources.join(path);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(target, bytes).unwrap();
+    }
+    std::fs::create_dir_all(sources.join("veldtest")).unwrap();
+    std::fs::copy(
+        java.join("rules/spring/App.java"),
+        sources.join("veldtest/App.java"),
+    )
+    .unwrap();
+    for name in ["pom.xml", "mvnw", "mvnw.cmd"] {
+        std::fs::copy(java.join("spring").join(name), work.join(name)).unwrap();
+    }
+    copy_dir(&java.join("spring/.mvn"), &work.join(".mvn"));
+    let mut mvn = if cfg!(windows) {
+        let mut c = Command::new("cmd");
+        c.args(["/c", r".\mvnw.cmd"]);
+        c
+    } else {
+        let mut c = Command::new("sh");
+        c.arg("./mvnw");
+        c
+    };
+    mvn.args(["-q", "-B", "package", "-DskipTests", "-Djava.version=17"])
+        .current_dir(&work);
+    let mut build =
+        veld_test_support::ProcessTree::spawn_logged(&mut mvn, &work.join("mvnw.log")).unwrap();
+    let status = build.child_mut().wait().unwrap();
+    assert!(
+        status.success(),
+        "mvnw package failed:\n{}",
+        std::fs::read_to_string(work.join("mvnw.log")).unwrap_or_default()
+    );
+
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let mut app = Command::new("java");
+    app.arg("-jar")
+        .arg(work.join("target/app.jar"))
+        .arg(format!("--server.port={port}"))
+        .arg("--server.address=127.0.0.1")
+        .current_dir(&work);
+    let mut server =
+        veld_test_support::ProcessTree::spawn_logged(&mut app, &work.join("app.log")).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    while raw_http(port, "GET", "/bookings/over/ok", "").is_none() {
+        assert!(
+            server.child_mut().try_wait().unwrap().is_none(),
+            "the application exited"
+        );
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the application never answered"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+
+    let bad = r#"{"start":"2026-01-02T00:00:00Z","end":"2026-01-01T00:00:00Z"}"#;
+    let (status, text) = raw_http(port, "POST", "/bookings", bad).unwrap();
+    assert_eq!(status, 422, "{text}");
+    assert!(
+        text.contains("\"violations\":[{\"rule\":\"veld:bk/Booking.endAfterStart@"),
+        "{text}"
+    );
+    assert!(text.contains("\"code\":\"rule\""), "{text}");
+    let good = r#"{"start":"2026-01-01T00:00:00Z","end":"2026-01-02T00:00:00Z"}"#;
+    assert_eq!(raw_http(port, "POST", "/bookings", good).unwrap().0, 201);
+    let (status, text) = raw_http(port, "GET", "/bookings/search?lo=5&hi=1", "").unwrap();
+    assert_eq!(status, 422, "{text}");
+    assert!(text.contains("\"path\":\"query\""), "{text}");
+    assert_eq!(
+        raw_http(port, "GET", "/bookings/search?lo=1&hi=5", "")
+            .unwrap()
+            .0,
+        204
+    );
+    assert_eq!(raw_http(port, "GET", "/bookings/bad", "").unwrap().0, 500);
+    assert_eq!(
+        raw_http(port, "GET", "/bookings/over/bad", "").unwrap().0,
+        500
+    );
+    assert_eq!(
+        raw_http(port, "GET", "/bookings/over/ok", "").unwrap().0,
+        409
+    );
+}
+
+fn copy_dir(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let path = entry.unwrap().path();
+        let dest = to.join(path.file_name().unwrap());
+        if path.is_dir() {
+            copy_dir(&path, &dest);
+        } else {
+            std::fs::copy(&path, &dest).unwrap();
+        }
+    }
 }
