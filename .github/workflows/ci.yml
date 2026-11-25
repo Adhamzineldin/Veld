@@ -38,6 +38,15 @@ jobs:
           java-version: |
             17
             21
+          # The Spring tests build with the Maven Wrapper. Without a cache every run downloads
+          # Maven and all of Spring Boot from Maven Central, which answers a busy day with 429.
+          cache: maven
+          cache-dependency-path: tests/toolchain/java/spring/pom.xml
+      - name: Cache the Maven distribution the wrapper downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: maven-wrapper-${{ runner.os }}-${{ hashFiles('tests/toolchain/java/spring/.mvn/wrapper/maven-wrapper.properties') }}
       - name: Install the pinned TypeScript toolchain
         run: npm ci --prefix tests/toolchain/ts
       - name: Format
@@ -65,6 +74,13 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          cache: maven
+          cache-dependency-path: tests/toolchain/java/spring/pom.xml
+      - name: Cache the Maven distribution the wrapper downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: maven-wrapper-${{ runner.os }}-${{ hashFiles('tests/toolchain/java/spring/.mvn/wrapper/maven-wrapper.properties') }}
       - name: Install the pinned TypeScript toolchain
         run: npm ci --prefix tests/toolchain/ts
       - name: Java toolchain tests with javac and java 17 (release 17 only)
@@ -89,6 +105,11 @@ jobs:
           java-version: "17"
           cache: maven
           cache-dependency-path: tests/toolchain/java/spring/pom.xml
+      - name: Cache the Maven distribution the wrapper downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: maven-wrapper-${{ runner.os }}-${{ hashFiles('tests/toolchain/java/spring/.mvn/wrapper/maven-wrapper.properties') }}
       - name: Install the pinned TypeScript toolchain
         run: npm ci --prefix tests/toolchain/ts
       - name: Build the Spring Boot application with the Maven Wrapper and call it from the generated clients
