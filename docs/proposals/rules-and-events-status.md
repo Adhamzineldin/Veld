@@ -102,15 +102,16 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [i] `veld test --live <url> --fuzz N [--seed S]`: seeded generated requests, boundary requests first (numbers, lengths, datetimes, dates, decimals), the reference evaluator's verdict compared with the server's answer including the violations; a mismatch prints the seed and a paste-ready `example` block. The generated Node server agrees on 800 requests in the committed test (8,000 in a one-off run). Not yet: a generated principal (so endpoints with policies are not fuzzed), repair of transition guards, boundaries for `time` values; Java and Rust servers are not fuzzed in their own tests yet
 
 ## Phase 3: state machines
-- [~] `flow`, `final`, `transition`: IR, compiler and reference evaluator tested (`[t]`, CI green); all 14 hand-written examples pass in the evaluator; generators: Java in progress, TypeScript/Node and Rust next
-- [ ] `InvalidTransition`; the transition passed to the handler for a conditional write (a guard, not an atomic guarantee)
-- [~] Next-state and final-state helpers: in the reference evaluator; with the generators
+- [~] `flow`, `final`, `transition`: IR, compiler and reference evaluator tested (`[t]`, CI green); all 14 hand-written examples pass in the evaluator; generators: **Java done** (`[i]`: client, JDK server and Spring; the 14 examples pass on both adapters under the whole-error comparison), TypeScript/Node and Rust next
+- [~] `InvalidTransition`; the transition passed to the handler for a conditional write (a guard, not an atomic guarantee): in Java, as a typed `Transition<State>` argument after the facts, with the "guard, not guarantee" wording in the Javadoc
+- [~] Next-state and final-state helpers: in the reference evaluator and in Java (`nextStates()`, `isFinal()` on the enum, client and server)
 - [ ] `emits` (with E3)
 - [ ] State diagrams in docs and the playground
 
 ## Phase 4: policies
-- [~] `principal`, `policy`, `permit`, `forbid`, `allow`; implicit `Forbidden`: IR, compiler (13 conformance cases) and reference evaluator implemented (`[i]`); all 10 hand-written examples pass in the evaluator; generators: Java in progress, TypeScript/Node and Rust next
-- [~] Client `can<Endpoint>()` helpers and policy functions: with the generators
+- [~] `principal`, `policy`, `permit`, `forbid`, `allow`; implicit `Forbidden`: IR, compiler (13 conformance cases) and reference evaluator implemented (`[i]`); all 10 hand-written examples pass in the evaluator; generators: **Java done** (`[i]`: typed principal from the auth hook, `allow` before the transition guard, `403` with the forbid's message; the 10 examples pass on both adapters), TypeScript/Node and Rust next
+- [~] Client `can<Endpoint>()` helpers and policy functions: in Java (`Policies.<policy>(…)`, `canPayBooking(booking, user)`); the argument order and what a policy function reads for `now` are now fixed in `spec/rules.md` 11.4 for the other generators
+- [i] With `validate = false`, policies and the transition guard still run (`spec/rules.md` 5.3 corrected: it used to say everything in step 6 but the facts is switched off, which would have let a validation option switch authorization off)
 - [ ] `@version` optimistic concurrency (`ETag`, `If-Match`)
 - [ ] `@idempotent` and the key store interface
 - [i] Lint `auth-required` (`L0014`; `L0005` was taken): every endpoint has auth or `@auth(none)`

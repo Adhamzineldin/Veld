@@ -235,7 +235,7 @@ The existing order of `spec/targets/typescript.md` §5 is kept; rule steps are a
 9. `ensure` and the target state (§9, §10)
 10. serialise
 
-**Request validation turned off.** Rules need well-formed values. A target option that turns request validation off (`validate = false`) therefore turns step 5 off, and in step 6 everything but loading the facts (the handler still receives them), and the client's local check with it. A server built that way says so once, when its handler is created, so nobody runs unchecked by accident. `veld generate` warns (`W0904`) when such a target reaches a declaration or endpoint with rules.
+**Request validation turned off.** Rules need well-formed values. A target option that turns request validation off (`validate = false`) therefore turns off step 5, every `require` of step 6, step 9, and the client's local check with them. Three things in step 6 still run: the facts are loaded (the handler still receives them), and **the policies and the transition guard are still applied**, because who may call an endpoint and which move is legal must not depend on a validation option. An `allow` argument that cannot be evaluated denies, as always (§11.3). A server built that way says so once, when its handler is created, so nobody runs unchecked by accident. `veld generate` warns (`W0904`) when such a target reaches a declaration or endpoint with rules.
 
 **Output mode.** Checks on what callers send are always on. Checks on the server's own output (steps 8 and 9) have a mode, set per server instance:
 
@@ -458,7 +458,7 @@ transition  = "transition" path ":" IDENT { "," IDENT } "->" IDENT ;
 - Every pair of a listed source and the target MUST be an edge of the machine (`E0933`). An endpoint has at most one `transition` (`E0934`).
 - **Guard, before the handler** (step 6, after the policies, before `require`): if the field's current value is not one of the sources, the answer is `409 InvalidTransition` with `field` set to the wire path of the field inside the fact (`status`), `from` to the current wire value and `to` to the target's wire value, and one entry in `violations`: `rule` is the transition's id, `path` is `request`, `fields` is empty and `message` is `violates rule transition`. An endpoint with a `transition` implicitly declares `InvalidTransition`.
 - **Target, after the handler** (step 9, after `ensure`): when the success type is the same declaration as the fact's type, the same field of the result MUST hold the target state. This is an output check under the output mode.
-- **This is a guard, not an atomic guarantee.** A second request can change the row after the check. The handler therefore receives the transition as data, next to the parameters and the facts, under the name `transition`: the field's wire path, the value it had when it was checked, and the target. It MUST apply the change with a conditional write (compare-and-swap or a row lock) in its own transaction, and answer `InvalidTransition` itself when that write finds another value. Documentation and diagnostics say "guard", never "guarantee". A parameter or fact named `transition` on such an endpoint is `E0920`.
+- **This is a guard, not an atomic guarantee.** A second request can change the row after the check. The handler therefore receives the transition as data, next to the parameters and the facts, under the name `transition`: the field's wire path, the value it had when it was checked, and the target. The two states are values of the enum's generated type, not wire strings; a fact that leaves the field out has its default. Where a handler takes separate arguments, `transition` follows the facts. It MUST apply the change with a conditional write (compare-and-swap or a row lock) in its own transaction, and answer `InvalidTransition` itself when that write finds another value. Documentation and diagnostics say "guard", never "guarantee". A parameter or fact named `transition` on such an endpoint is `E0920`.
 - Identity: `veld:<package>/<Service>.<endpoint>.transition@<hex16>` over the RFC 8785 JSON of `{ "d": "<qualified service name>.<endpoint>", "k": "transition", "f": "<fact>", "p": [<wire names of the path>], "s": [<source wire values, sorted>], "t": "<target wire value>" }`.
 
 ### 10.3 Generated helpers
@@ -544,8 +544,11 @@ allow      = "allow" IDENT "(" [ expr { "," expr } [","] ] ")" ;
 
 ### 11.4 Generated code
 
-- Every target, clients included, gets one function per policy with the policy's parameters and a boolean result.
+- Every target, clients included, gets one function per policy that an `allow` of the generated services names, with the policy's parameters and a boolean result. A policy that no such endpoint uses generates nothing, so declaring one changes no output. The function reads the system clock for `now`; the server calls a form that takes the request's clock and also gives the message of the denial.
 - For every endpoint with an `allow` or a `transition`, clients get **`can<Endpoint>(…)`**: it takes the facts, the principal and the parameters that the endpoint's `allow` arguments and its `transition` read, and answers whether the server would let the call past the policies and the transition guard. It never rejects a request; it is for showing or hiding a button. The server decides.
+  - Its arguments are only what is read, in this order: the facts in declaration order, then the principal, then the parameters in declaration order.
+  - It reads the system clock, and an evaluation error answers `false`.
+- The target check of a transition (§10.2) is an `ensure` like any other: it runs after the written ones and follows the output mode.
 - `Feature::RulesPolicies` is used when an endpoint has an `allow`. A policy that no endpoint uses needs no feature.
 
 ### 11.5 In the IR
