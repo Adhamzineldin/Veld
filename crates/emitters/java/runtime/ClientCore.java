@@ -87,6 +87,11 @@ public final class ClientCore {
         err.setOp(ep.sig());
         throw err;
       }
+      // #if rules
+      if (options.localRules()) {
+        RuleWalk.localCheck(ep, params, defaults.validation());
+      }
+      // #endif
     }
   }
   // veld:sse
@@ -441,6 +446,12 @@ public final class ClientCore {
   }
 
   static RuntimeException decodeFailure(EndpointSpec ep, int status, Json body) {
+    // #if rules
+    RuntimeException withViolations = RuleWalk.decodeProblem(ep, status, body);
+    if (withViolations != null) {
+      return withViolations;
+    }
+    // #endif
     if (body instanceof Json.Obj obj && obj.get("type") instanceof Json.Str type) {
       for (EndpointSpec.Declared d : ep.errors()) {
         if (d.sig().equals(type.value())) {

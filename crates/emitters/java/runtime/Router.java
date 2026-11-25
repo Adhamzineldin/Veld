@@ -59,6 +59,9 @@ public final class Router implements VeldHandler {
    */
   public static VeldHandler create(List<ServerEndpoint> endpoints, StdSigs std, HandlerHooks hooks) {
     assertHooks(endpoints, hooks);
+    // #if rules
+    RuleWalk.announce(hooks.rulesOutput());
+    // #endif
     List<Route> routes = new ArrayList<>();
     for (ServerEndpoint e : endpoints) {
       routes.add(compile(e));
@@ -186,6 +189,11 @@ public final class Router implements VeldHandler {
     if (!out.bound.issues.isEmpty()) {
       out.failure = problem(std.validation(), "ValidationError", 422, spec.sig(), issuesData(out.bound.issues));
     }
+    // #if rules
+    if (out.failure == null && hooks.validateRequests()) {
+      out.failure = RuleWalk.inputFailure(spec, hooks, out.bound.values, std);
+    }
+    // #endif
     return out;
   }
   // veld:sse
@@ -367,6 +375,12 @@ public final class Router implements VeldHandler {
       throw new IllegalStateException(spec.name() + ": implementation returned no value");
     }
     Json wire = Wire.prepare(spec.success(), result, Wire.Mode.RESPONSE);
+    // #if rules
+    VeldResponse broken = RuleWalk.outputFailure(spec, hooks, spec.success(), wire, true, std);
+    if (broken != null) {
+      return broken;
+    }
+    // #endif
     if (hooks.validateResponses()) {
       List<Issue> issues = Wire.validate(spec.success(), wire, "$", false);
       if (!issues.isEmpty()) {
@@ -382,6 +396,12 @@ public final class Router implements VeldHandler {
         if (d.sig().equals(ve.sig())) {
           ve.setOp(spec.sig());
           Json data = Wire.prepare(d.schema(), ve.dataWire(), Wire.Mode.RESPONSE);
+          // #if rules
+          VeldResponse broken = RuleWalk.outputFailure(spec, hooks, d.schema(), data, false, std);
+          if (broken != null) {
+            return broken;
+          }
+          // #endif
           return problem(d.sig(), ve.title(), d.status(), spec.sig(), data);
         }
       }
@@ -406,6 +426,26 @@ public final class Router implements VeldHandler {
         .build();
     return new VeldResponse(status, Map.of("content-type", "application/problem+json"), body.write());
   }
+  // #if rules
+
+  /** A problem document that also carries the {@code violations} member (spec/rules.md section 7). */
+  static VeldResponse problem(
+      String sig, String title, int status, String op, Json data, List<Violation> violations) {
+    List<Json> listed = new ArrayList<>();
+    for (Violation v : violations) {
+      listed.add(v.toWire());
+    }
+    Json body = Json.object()
+        .put("type", Json.of(sig))
+        .put("title", Json.of(title))
+        .put("status", Json.of((long) status))
+        .put("operation", Json.of(op))
+        .put("data", data)
+        .put("violations", Json.array(listed))
+        .build();
+    return new VeldResponse(status, Map.of("content-type", "application/problem+json"), body.write());
+  }
+  // #endif
 
   // -- binding -------------------------------------------------------------------------------
 

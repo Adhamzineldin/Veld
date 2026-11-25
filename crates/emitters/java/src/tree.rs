@@ -24,6 +24,9 @@ pub struct Tree<'a> {
     pub services: Vec<ServiceId>,
     /// False when the target option `validate = false` is set (the types stay).
     pub validate: bool,
+    /// True when the contract has invariants: the output then carries the rule classes and the
+    /// rule members of the hooks, the options and the schemas (`spec/targets/java.md` section 8).
+    pub rules: bool,
     decls: Vec<DeclId>,
 }
 
@@ -45,6 +48,7 @@ impl<'a> Tree<'a> {
             runtime: runtime.to_string(),
             services,
             validate: true,
+            rules: false,
             decls: set.into_iter().collect(),
         }
     }
@@ -53,6 +57,13 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn with_validate(mut self, validate: bool) -> Self {
         self.validate = validate;
+        self
+    }
+
+    /// Sets whether the output carries the rule classes and members.
+    #[must_use]
+    pub fn with_rules(mut self, rules: bool) -> Self {
+        self.rules = rules;
         self
     }
 

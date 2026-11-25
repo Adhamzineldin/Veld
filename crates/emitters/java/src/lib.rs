@@ -9,6 +9,8 @@ pub mod client;
 pub mod frameworks;
 pub mod models;
 pub mod readme;
+pub mod rule_expr;
+pub mod rules;
 pub mod runtime;
 pub mod server;
 pub mod spec;
@@ -132,8 +134,13 @@ impl Generator for Java {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        // The rules features are not implemented yet: `E0801` (`spec/rules.md` section 8).
-        Capabilities::all_except(&Feature::RULES)
+        // Invariants are enforced (`spec/targets/java.md` section 8); the other rules features are
+        // not implemented yet: `E0801` (`spec/rules.md` section 8).
+        Capabilities::all_except(&[
+            Feature::RulesEndpoint,
+            Feature::RulesTransitions,
+            Feature::RulesPolicies,
+        ])
     }
 
     fn generate(
@@ -149,10 +156,18 @@ impl Generator for Java {
         let mut files = FileSet::new();
         let mut used = req.services.clone();
         used.extend(req.consumes.iter().copied());
-        let streaming = runtime::Streaming::of(&req.ir.features_used(&used));
-        runtime::emit(&mut files, &base, streaming)?;
+        let features = req.ir.features_used(&used);
+        let streaming = runtime::Streaming::of(&features);
         let tree = Tree::new(req.ir, &base, &runtime_package, req.services.clone())
             .with_validate(opts.validate != Some(false));
+        let rules = features.contains(&Feature::RulesInvariants)
+            || declares_rules(&tree)
+            || (req.role == Role::Server
+                && req.consumes.iter().any(|sid| {
+                    declares_rules(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
+                }));
+        runtime::emit(&mut files, &base, streaming, rules)?;
+        let tree = tree.with_rules(rules);
         models::emit(&mut files, &tree)?;
         match req.role {
             Role::Client => client::emit(&mut files, &tree)?,
@@ -169,12 +184,20 @@ impl Generator for Java {
                     &base,
                     &runtime_package,
                     opts.validate != Some(false),
+                    rules,
                 )?;
             }
         }
         readme::emit(&mut files, &base, req)?;
         Ok(files)
     }
+}
+
+/// Whether a declaration the tree emits has invariants, reachable from a service or not.
+fn declares_rules(tree: &Tree<'_>) -> bool {
+    tree.decls()
+        .iter()
+        .any(|id| rules::has_rules(tree.ir.decl(*id)))
 }
 
 /// Emits a client tree under `<base>.clients.<service>` for each consumed service.
@@ -184,6 +207,7 @@ fn emit_consumed(
     base: &str,
     runtime_package: &str,
     validate: bool,
+    rules: bool,
 ) -> Result<(), Vec<GenDiagnostic>> {
     for sid in &req.consumes {
         let svc = req.ir.service(*sid);
@@ -197,7 +221,8 @@ fn emit_consumed(
             runtime_package,
             vec![*sid],
         )
-        .with_validate(validate);
+        .with_validate(validate)
+        .with_rules(rules);
         models::emit(files, &tree)?;
         client::emit(files, &tree)?;
     }

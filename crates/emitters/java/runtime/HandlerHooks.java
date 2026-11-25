@@ -48,6 +48,10 @@ public final class HandlerHooks {
   private final ErrorHook onError;
   private final boolean validateResponses;
   private final boolean validateRequests;
+  // #if rules
+  private final RuleWalk.OutputMode rulesOutput;
+  private final RuleWalk.Hook ruleHook;
+  // #endif
 
   private HandlerHooks(Builder b) {
     this.bearer = b.bearer;
@@ -57,6 +61,10 @@ public final class HandlerHooks {
     this.onError = b.onError;
     this.validateResponses = b.validateResponses;
     this.validateRequests = b.validateRequests;
+    // #if rules
+    this.rulesOutput = b.rulesOutput;
+    this.ruleHook = b.ruleHook;
+    // #endif
   }
 
   /** Starts a builder. */
@@ -91,6 +99,16 @@ public final class HandlerHooks {
   boolean validateRequests() {
     return validateRequests;
   }
+  // #if rules
+
+  RuleWalk.OutputMode rulesOutput() {
+    return rulesOutput;
+  }
+
+  RuleWalk.Hook ruleHook() {
+    return ruleHook;
+  }
+  // #endif
 
   /** Builds {@link HandlerHooks}. */
   public static final class Builder {
@@ -101,6 +119,10 @@ public final class HandlerHooks {
     private ErrorHook onError;
     private boolean validateResponses;
     private boolean validateRequests = true;
+    // #if rules
+    private RuleWalk.OutputMode rulesOutput = RuleWalk.OutputMode.STRICT;
+    private RuleWalk.Hook ruleHook;
+    // #endif
 
     private Builder() {}
 
@@ -146,6 +168,24 @@ public final class HandlerHooks {
       return this;
     }
 
+    // #if rules
+    /**
+     * What happens when a rule is violated by the server's own output: {@code STRICT} (default)
+     * answers {@code 500 Internal}, {@code AUDIT} sends the response and reports, {@code OFF}
+     * does not evaluate output rules.
+     */
+    public Builder rulesOutput(RuleWalk.OutputMode value) {
+      this.rulesOutput = value == null ? RuleWalk.OutputMode.STRICT : value;
+      return this;
+    }
+
+    /** Observes every violated rule; a failing hook never changes the response. */
+    public Builder onRuleViolation(RuleWalk.Hook hook) {
+      this.ruleHook = hook;
+      return this;
+    }
+
+    // #endif
     /** The finished hooks. */
     public HandlerHooks build() {
       return new HandlerHooks(this);

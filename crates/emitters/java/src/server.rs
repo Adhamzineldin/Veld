@@ -197,10 +197,32 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     w.line("return this;");
     w.close();
     w.blank();
+    if fc.tree.rules {
+        write_rule_hooks(w, fc, class);
+    }
     w.open(format!("{hooks} build()"));
     w.line("return builder.build();");
     w.close();
     w.close();
+}
+
+/// The rule options of the hooks: the output mode and the violation hook (`spec/rules.md` 5.3).
+fn write_rule_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, class: &str) {
+    let walk = fc.rt("RuleWalk");
+    w.line("/** What happens when a rule is violated by this server's own output: `STRICT` (default) answers `500 Internal`, `AUDIT` sends the response and reports, `OFF` skips the check. */");
+    w.open(format!(
+        "public {class} rulesOutput({walk}.OutputMode mode)"
+    ));
+    w.line("builder.rulesOutput(mode);");
+    w.line("return this;");
+    w.close();
+    w.blank();
+    w.line("/** Observes every violated rule; a failing hook never changes the response. */");
+    w.open(format!("public {class} onRuleViolation({walk}.Hook hook)"));
+    w.line("builder.onRuleViolation(hook);");
+    w.line("return this;");
+    w.close();
+    w.blank();
 }
 
 fn write_handler(

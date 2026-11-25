@@ -251,7 +251,9 @@ fn build_java(release: &'static str) -> Result<Java, Unavailable> {
     // 2. The test programs against the compiled generated code.
     std::fs::create_dir_all(work.join("tests")).unwrap();
     for f in java_files(&java_dir(), &[]).iter().filter(|p| {
-        !p.starts_with(java_dir().join(".work")) && !p.starts_with(java_dir().join("spring"))
+        !p.starts_with(java_dir().join(".work"))
+            && !p.starts_with(java_dir().join("spring"))
+            && !p.starts_with(java_dir().join("rules"))
     }) {
         std::fs::copy(f, work.join("tests").join(f.file_name().unwrap())).unwrap();
     }

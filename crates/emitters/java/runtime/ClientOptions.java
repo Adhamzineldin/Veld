@@ -24,6 +24,9 @@ public final class ClientOptions {
   private final Supplier<String> apiKey;
   private final Boolean validate;
   private final Duration timeout;
+  // #if rules
+  private final boolean localRules;
+  // #endif
   // veld:streaming
   private final Reconnect reconnect;
   // veld:end
@@ -37,6 +40,9 @@ public final class ClientOptions {
     this.apiKey = b.apiKey;
     this.validate = b.validate;
     this.timeout = b.timeout;
+    // #if rules
+    this.localRules = b.localRules;
+    // #endif
     // veld:streaming
     this.reconnect = b.reconnect;
     // veld:end
@@ -83,6 +89,12 @@ public final class ClientOptions {
   Duration timeout() {
     return timeout;
   }
+  // #if rules
+
+  boolean localRules() {
+    return localRules;
+  }
+  // #endif
 
   // veld:streaming
   Reconnect reconnect() {
@@ -100,6 +112,9 @@ public final class ClientOptions {
     private Supplier<String> apiKey;
     private Boolean validate;
     private Duration timeout = Duration.ofSeconds(30);
+    // #if rules
+    private boolean localRules = true;
+    // #endif
     // veld:streaming
     private Reconnect reconnect;
     // veld:end
@@ -161,6 +176,18 @@ public final class ClientOptions {
       return this;
     }
 
+    // #if rules
+    /**
+     * Checks the rules of a request body and of a query object before sending (default true). A
+     * violation is thrown as the typed {@code ValidationError} without sending anything. Needs
+     * {@link #validate} to be on.
+     */
+    public Builder localRules(boolean value) {
+      this.localRules = value;
+      return this;
+    }
+
+    // #endif
     // veld:streaming
     /**
      * Reconnects Server-Sent Events and WebSocket calls after a connection failure (default: off).

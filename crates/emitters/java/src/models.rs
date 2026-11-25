@@ -10,6 +10,7 @@ use veld_ir::{
     Const, Decl, DeclId, DeclKind, Enum, ErrorDecl, Field, Literal, Model, Scalar, Type, Union,
 };
 
+use crate::rules;
 use crate::tree::{FileCtx, Tree, java_path};
 use crate::types::{codec_expr, java_type, json_literal, nullable, schema_expr};
 use crate::util::{
@@ -33,7 +34,7 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
         add_file(
             files,
             &java_path(&package, &name),
-            render(tree, d, &package, &name),
+            render(tree, d, &package, &name)?,
         )?;
     }
     for (package, ids) in consts {
@@ -43,17 +44,22 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
     Ok(())
 }
 
-fn render(tree: &Tree<'_>, d: &Decl, package: &str, name: &str) -> String {
+fn render(
+    tree: &Tree<'_>,
+    d: &Decl,
+    package: &str,
+    name: &str,
+) -> Result<String, Vec<GenDiagnostic>> {
     let mut fc = FileCtx::new(tree, package, name);
     let mut w = CodeWriter::new();
     match &d.kind {
-        DeclKind::Model(m) => write_model(&mut w, &mut fc, d, m),
+        DeclKind::Model(m) => write_model(&mut w, &mut fc, d, m)?,
         DeclKind::Enum(e) => write_enum(&mut w, &mut fc, d, e),
         DeclKind::Union(u) => write_union(&mut w, &mut fc, d, u),
-        DeclKind::Error(e) => write_error(&mut w, &mut fc, d, e),
+        DeclKind::Error(e) => write_error(&mut w, &mut fc, d, e)?,
         DeclKind::Const(_) => {}
     }
-    fc.finish(&w.finish())
+    Ok(fc.finish(&w.finish()))
 }
 
 fn head_docs(w: &mut CodeWriter, d: &Decl, params: &[(String, String)]) {
@@ -84,7 +90,7 @@ fn field_params(fields: &[Field], idents: &[String]) -> Vec<(String, String)> {
         .collect()
 }
 
-fn field_idents(fields: &[Field]) -> Vec<String> {
+pub(crate) fn field_idents(fields: &[Field]) -> Vec<String> {
     unique(fields.iter().map(|f| member_ident(&f.name)).collect())
 }
 
@@ -173,11 +179,14 @@ fn write_object_schema(
     fc: &mut FileCtx<'_, '_>,
     fields: &[Field],
     modifiers: &str,
+    checked: &str,
 ) {
     let schema = fc.rt("Schema");
     w.line("/** The wire description: validation, defaults and canonical bytes. */");
     if fields.is_empty() {
-        w.line(format!("{modifiers}{schema} SCHEMA = {schema}.object();"));
+        w.line(format!(
+            "{modifiers}{schema} SCHEMA = {schema}.object(){checked};"
+        ));
         return;
     }
     open_call(w, format!("{modifiers}{schema} SCHEMA = {schema}.object"));
@@ -187,7 +196,11 @@ fn write_object_schema(
             .default
             .as_ref()
             .map_or_else(|| "null".to_string(), |l| json_literal(fc, l));
-        let sep = if i + 1 == fields.len() { ");" } else { "," };
+        let sep = match (i + 1 == fields.len(), checked.is_empty()) {
+            (false, _) => ",".to_string(),
+            (true, true) => ");".to_string(),
+            (true, false) => format!("){checked};"),
+        };
         w.line(format!(
             "{schema}.field({}, {}, {ty}, {}, {default}, {}){sep}",
             java_str(&f.name),
@@ -215,7 +228,12 @@ fn write_codec_and_canonical(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name:
     w.close();
 }
 
-fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model) {
+fn write_model(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    d: &Decl,
+    m: &Model,
+) -> Result<(), Vec<GenDiagnostic>> {
     let name = type_name(d);
     let idents = field_idents(&m.fields);
     head_docs(w, d, &field_params(&m.fields, &idents));
@@ -234,12 +252,18 @@ fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model
     open_record(w, "public", &name, &comps, &implements);
     write_sig(w, d, "public static final ");
     w.blank();
-    write_object_schema(w, fc, &m.fields, "public static final ");
+    let checked = rules::schema_suffix(d, &name);
+    write_object_schema(w, fc, &m.fields, "public static final ", &checked);
     w.blank();
     write_wire_methods(w, fc, &name, &m.fields, &idents);
     w.blank();
     write_codec_and_canonical(w, fc, &name);
+    if rules::has_rules(d) {
+        w.blank();
+        rules::write_members(w, fc, d, &name)?;
+    }
     w.close();
+    Ok(())
 }
 
 fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) {
@@ -314,7 +338,7 @@ fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) 
 }
 
 /// Java constant names for the variants of an enum, unique and legal.
-fn enum_constants(e: &Enum) -> Vec<String> {
+pub(crate) fn enum_constants(e: &Enum) -> Vec<String> {
     unique(
         e.variants
             .iter()
@@ -422,7 +446,12 @@ fn write_union_methods(
     w.close();
 }
 
-fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &ErrorDecl) {
+fn write_error(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    d: &Decl,
+    e: &ErrorDecl,
+) -> Result<(), Vec<GenDiagnostic>> {
     let name = type_name(d);
     let base = fc.rt("VeldError");
     let json = fc.rt("Json");
@@ -442,7 +471,8 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
         ));
     }
     w.blank();
-    write_object_schema(w, fc, fields, "public static final ");
+    let checked = rules::schema_suffix(d, &name);
+    write_object_schema(w, fc, fields, "public static final ", &checked);
     w.blank();
     w.line("/** The error payload. */");
     let comps = components(fc, fields, &idents);
@@ -481,7 +511,12 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
     w.close();
     w.blank();
     write_error_accessors(w, &name, &json, &schema, &veld);
+    if rules::has_rules(d) {
+        w.blank();
+        rules::write_members(w, fc, d, "Data")?;
+    }
     w.close();
+    Ok(())
 }
 
 fn write_error_accessors(w: &mut CodeWriter, name: &str, json: &str, schema: &str, veld: &str) {

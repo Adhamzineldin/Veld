@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use veld_codegen::{FileSet, GenDiagnostic};
+use veld_codegen::{FileSet, GenDiagnostic, gate_regions};
 use veld_ir::Feature;
 
 use crate::tree::java_path;
@@ -11,6 +11,9 @@ use crate::util::{HEADER, add_file};
 
 /// The package the embedded sources declare. It is replaced by `<base>.runtime`.
 const SOURCE_PACKAGE: &str = "dev.veld.runtime";
+/// The runtime classes that exist only for a contract with rules (`spec/targets/java.md` section 8).
+const RULE_FILES: &[&str] = &["RuleError", "RuleWalk", "Rules", "Violation"];
+
 /// The package the embedded adapter sources declare. It is replaced by `<base>.adapters`.
 const ADAPTER_PACKAGE: &str = "dev.veld.adapters";
 
@@ -35,7 +38,10 @@ runtime_files!(
     "Page",
     "Reconnect",
     "RequestContext",
+    "RuleError",
+    "RuleWalk",
     "Router",
+    "Rules",
     "Schema",
     "ServerEndpoint",
     "SseEvent",
@@ -51,6 +57,7 @@ runtime_files!(
     "VeldRequest",
     "VeldResponse",
     "VeldTransportError",
+    "Violation",
     "Wire",
     "WsChannel",
     "WsConnection",
@@ -148,18 +155,28 @@ pub(crate) fn substitute(source: &str, base: &str, streaming: Streaming) -> Stri
     format!("{HEADER}\n{text}")
 }
 
-/// Adds the runtime classes the target needs to `files`.
+/// Adds the runtime classes the target needs to `files`. With `rules` the rule classes are added
+/// and the `// #if rules` regions of the other classes are kept (`veld_codegen::gate_regions`);
+/// without it the output is exactly what it was before rules existed.
 pub fn emit(
     files: &mut FileSet,
     base: &str,
     streaming: Streaming,
+    rules: bool,
 ) -> Result<(), Vec<GenDiagnostic>> {
     let package = package(base);
-    for (name, source) in RUNTIME.iter().filter(|(name, _)| !streaming.omits(name)) {
+    let wanted = |name: &str| !streaming.omits(name) && (rules || !RULE_FILES.contains(&name));
+    for (name, source) in RUNTIME.iter().filter(|(name, _)| wanted(name)) {
+        let gated = gate_regions(source, &|region| region == "rules" && rules).map_err(|e| {
+            vec![GenDiagnostic::new(
+                "E0805",
+                format!("runtime class `{name}`: {e}"),
+            )]
+        })?;
         add_file(
             files,
             &java_path(&package, name),
-            substitute(source, base, streaming),
+            substitute(&gated, base, streaming),
         )?;
     }
     Ok(())
@@ -195,7 +212,7 @@ mod tests {
         };
         for streaming in [Streaming::default(), SSE, WS, both] {
             let mut files = FileSet::new();
-            emit(&mut files, "a.b", streaming).unwrap();
+            emit(&mut files, "a.b", streaming, false).unwrap();
             let has = |prefix: &str| {
                 files
                     .paths()

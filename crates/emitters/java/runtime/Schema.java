@@ -49,6 +49,9 @@ public final class Schema {
   final List<Arm> arms;
   final Supplier<Schema> target;
   final Bounds bounds;
+  // #if rules
+  Rules.Check check;
+  // #endif
 
   private Schema(Kind kind, Schema of, List<String> values, List<Field> fields, String discriminator,
       List<Arm> arms, Supplier<Schema> target, Bounds bounds) {
@@ -206,6 +209,15 @@ public final class Schema {
     return withBounds(new Bounds(bounds.min(), bounds.max(), bounds.minLen(), bounds.maxLen(), bounds.pattern(), name));
   }
 
+  // #if rules
+  /** A copy of this object schema that runs {@code check} for every object it describes. */
+  public Schema checked(Rules.Check check) {
+    Schema copy = withBounds(bounds);
+    copy.check = check;
+    return copy;
+  }
+
+  // #endif
   /** Follows references until a concrete node is reached. */
   Schema resolve() {
     Schema cur = this;
