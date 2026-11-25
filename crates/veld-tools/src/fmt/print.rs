@@ -2,8 +2,8 @@
 
 use veld_compiler::Comment;
 use veld_compiler::syntax::ast::{
-    Annotation, Decl, DeclKind, Doc, Endpoint, EnumDecl, Example, Field, File, HttpMethod, Param,
-    PolicyDecl, PrincipalDecl, RespItem, Rule, ServiceDecl, Stmt, UnionDecl, Use, Variant,
+    Annotation, Decl, DeclKind, Doc, Endpoint, EnumDecl, Example, ExampleBody, Field, File,
+    HttpMethod, Param, PolicyDecl, PrincipalDecl, RespItem, Rule, Stmt, UnionDecl, Use, Variant,
 };
 use veld_compiler::syntax::lexer::CommentKind;
 
@@ -12,6 +12,8 @@ use super::expr::rule_lines;
 use super::layout::{self, Attached, Layout, Lead, ROOT};
 use super::stmt;
 use super::text::{annotation, literal, quote, type_expr};
+
+mod events;
 
 pub(super) fn print_file(file: &File, lay: &Layout) -> String {
     let mut p = Printer {
@@ -267,6 +269,19 @@ impl Printer<'_> {
             DeclKind::Enum(e) => self.enum_decl(key, e),
             DeclKind::Union(u) => self.union_decl(key, u),
             DeclKind::Service(s) => self.service(key, s),
+            DeclKind::Event(e) => {
+                let head = format!("event {}", e.name.name);
+                self.block(
+                    key,
+                    &head,
+                    0,
+                    e.fields.is_empty() && e.rules.is_empty(),
+                    |p| {
+                        p.members(&e.fields, &e.rules, 2);
+                    },
+                );
+            }
+            DeclKind::Channel(c) => self.channel(key, c),
             DeclKind::Const(c) => {
                 let text = format!(
                     "const {}: {} = {}",
@@ -447,33 +462,6 @@ impl Printer<'_> {
 
     // ---- services ---------------------------------------------------------
 
-    fn service(&mut self, key: u32, s: &ServiceDecl) {
-        let head = format!("service {} at {}", s.name.name, quote(&s.prefix.value));
-        let rendered: Vec<Vec<String>> = s.endpoints.iter().map(|e| endpoint_lines(e, 2)).collect();
-        let heavy: Vec<bool> = s
-            .endpoints
-            .iter()
-            .zip(&rendered)
-            .map(|(e, r)| {
-                !e.docs.is_empty()
-                    || e.block.is_some()
-                    || !e.annotations.is_empty()
-                    || r.len() > 1
-                    || self
-                        .att(layout::endpoint_key(e))
-                        .is_some_and(|a| !a.leading.is_empty())
-            })
-            .collect();
-        self.block(key, &head, 0, s.endpoints.is_empty(), |p| {
-            for (i, e) in s.endpoints.iter().enumerate() {
-                if i > 0 && (heavy[i] || heavy[i - 1]) {
-                    p.out.push('\n');
-                }
-                p.endpoint(e, &rendered[i], 2);
-            }
-        });
-    }
-
     fn endpoint(&mut self, e: &Endpoint, lines: &[String], ind: usize) {
         let key = layout::endpoint_key(e);
         self.leading(key, ind);
@@ -518,10 +506,15 @@ impl Printer<'_> {
             if let Some(a) = &x.at {
                 p.example_line(a.span.start, &format!("at {}", quote(&a.time.value)));
             }
-            let key = x.call.span.start;
-            p.leading(key, 2);
-            p.out.push_str(&stmt::call_lines(&x.call, 2).join("\n"));
-            p.end_line(key, 2);
+            match &x.body {
+                ExampleBody::Call(c) => {
+                    let key = c.span.start;
+                    p.leading(key, 2);
+                    p.out.push_str(&stmt::call_lines(c, 2).join("\n"));
+                    p.end_line(key, 2);
+                }
+                ExampleBody::Event(e) => p.event_example(e),
+            }
         });
     }
 

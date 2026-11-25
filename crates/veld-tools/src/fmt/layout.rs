@@ -218,9 +218,61 @@ fn decl_kids(d: &ast::Decl) -> (bool, Vec<Node>) {
                 .map(|a| leaf(a.span.start, a.span.start, a.span.end))
                 .collect(),
         ),
-        DeclKind::Service(s) => (true, s.endpoints.iter().map(endpoint_node).collect()),
+        DeclKind::Service(s) => (true, service_nodes(s)),
+        DeclKind::Event(e) => (true, member_nodes(&e.fields, &e.rules)),
+        DeclKind::Channel(c) => (true, channel_nodes(c)),
         DeclKind::Const(_) => (false, vec![]),
     }
+}
+
+/// Endpoints, `publishes` lines and `subscribes` blocks of a service, in source order (the
+/// printer regroups them).
+fn service_nodes(s: &ast::ServiceDecl) -> Vec<Node> {
+    let mut nodes: Vec<Node> = s.endpoints.iter().map(endpoint_node).collect();
+    nodes.extend(
+        s.publishes
+            .iter()
+            .map(|p| leaf(p.span.start, p.span.start, p.span.end)),
+    );
+    nodes.extend(s.subscribes.iter().map(subscribes_node));
+    nodes.sort_by_key(|n| n.start);
+    nodes
+}
+
+/// A subscription is a braced node whose children are its `on` lines.
+fn subscribes_node(s: &ast::Subscribes) -> Node {
+    Node {
+        start: s.span.start,
+        kw: s.span.start,
+        anchor: s.span.start,
+        end: s.span.end,
+        braced: true,
+        kids: s
+            .handlers
+            .iter()
+            .map(|h| leaf(on_key(h), h.span.start, h.span.end))
+            .collect(),
+    }
+}
+
+pub(super) fn on_key(h: &ast::OnLine) -> u32 {
+    first_start(h.span.start, &h.docs, &[])
+}
+
+/// The `carries` and `key` lines of a channel, in source order.
+fn channel_nodes(c: &ast::ChannelDecl) -> Vec<Node> {
+    let mut nodes: Vec<Node> = c
+        .carries
+        .iter()
+        .map(|x| leaf(x.span.start, x.span.start, x.span.end))
+        .collect();
+    nodes.extend(
+        c.keys
+            .iter()
+            .map(|k| leaf(k.span.start, k.span.start, k.span.end)),
+    );
+    nodes.sort_by_key(|n| n.start);
+    nodes
 }
 
 /// Variants, flows and finals of an enum body, in source order (the printer regroups them).
@@ -332,7 +384,21 @@ fn example_node(x: &ast::Example) -> Node {
     if let Some(a) = &x.at {
         kids.push(leaf(a.span.start, a.span.start, a.span.end));
     }
-    kids.push(leaf(x.call.span.start, x.call.span.start, x.call.span.end));
+    match &x.body {
+        ast::ExampleBody::Call(c) => kids.push(leaf(c.span.start, c.span.start, c.span.end)),
+        ast::ExampleBody::Event(e) => {
+            let given_end = e
+                .channel
+                .as_ref()
+                .map_or(e.value.span.end, |c| c.span.end.max(e.value.span.end));
+            kids.push(leaf(e.span.start, e.span.start, given_end));
+            kids.extend(
+                e.expects
+                    .iter()
+                    .map(|x| leaf(x.span.start, x.span.start, x.span.end)),
+            );
+        }
+    }
     Node {
         start: example_key(x),
         kw: x.span.start,

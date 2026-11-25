@@ -4,8 +4,8 @@
 //! call is one line; with `returns` the call, `returns` and the outcome take a line each.
 
 use veld_compiler::syntax::ast::{
-    Else, Example, ExampleCall, Given, Outcome, PolicyClause, PolicyDecl, PrincipalDecl, Stmt,
-    TransitionStmt, Value, ValueKind,
+    Else, EventExample, Example, ExampleCall, ExpectKind, Expectation, Given, Outcome,
+    PolicyClause, PolicyDecl, PrincipalDecl, Stmt, TransitionStmt, Value, ValueKind,
 };
 
 use super::expr::expr_text;
@@ -203,6 +203,36 @@ pub(super) fn call_lines(c: &ExampleCall, ind: usize) -> Vec<String> {
             format!("{p}  returns {}", value_text(r)),
             format!("{p}  -> {outcome}"),
         ],
+    }
+}
+
+/// `given event E { .. } [on C]`, the first line of an event example.
+pub(super) fn given_event_line(e: &EventExample) -> String {
+    let mut s = format!(
+        "given event {} {}",
+        type_expr(&e.event),
+        value_text(&e.value)
+    );
+    if let Some(c) = &e.channel {
+        s.push_str(&format!(" on {}", type_expr(c)));
+    }
+    s
+}
+
+/// `expect S.handler [not] called` or `expect rejected`.
+pub(super) fn expect_line(x: &Expectation) -> String {
+    match &x.kind {
+        ExpectKind::Rejected => "expect rejected".to_string(),
+        ExpectKind::Called {
+            service,
+            handler,
+            not,
+        } => format!(
+            "expect {}.{}{} called",
+            service.name,
+            handler.name,
+            if *not { " not" } else { "" }
+        ),
     }
 }
 
