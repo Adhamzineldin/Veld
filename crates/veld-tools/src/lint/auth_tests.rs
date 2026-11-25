@@ -84,6 +84,13 @@ fn the_level_is_configurable() {
 }
 
 #[test]
+fn the_principal_and_policy_parameters_are_used_models() {
+    let src = "model User { id: uuid }\nprincipal User\nmodel Room { id: uuid }\npolicy P(r: Room) { permit when true }\n@auth(none)\nservice S at \"/s\" {\n  get \"/\" f() -> int\n}";
+    let found = lint(&ir(src), &LintConfig::default());
+    assert!(found.iter().all(|i| i.rule != "unused-model"), "{found:?}");
+}
+
+#[test]
 fn the_rule_is_named_by_the_code_table() {
     let names = rule_names();
     assert!(names.contains(&("auth-required", "L0014")));

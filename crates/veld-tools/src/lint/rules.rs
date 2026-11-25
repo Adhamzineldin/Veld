@@ -70,6 +70,14 @@ fn used_decls(ir: &Ir) -> BTreeSet<DeclId> {
     let all: Vec<ServiceId> = ir.services.iter().map(|s| s.id).collect();
     let mut seen: BTreeSet<DeclId> = ir.reachable_decls(&all).into_iter().collect();
     let mut stack: Vec<DeclId> = Vec::new();
+    stack.extend(
+        ir.services
+            .iter()
+            .filter_map(|s| s.principal.as_ref().map(|p| p.decl)),
+    );
+    for p in ir.policies.iter().flat_map(|p| &p.params) {
+        p.ty.collect_decls(&mut stack);
+    }
     for d in &ir.decls {
         if let DeclKind::Model(m) = &d.kind {
             stack.extend(m.parent);
