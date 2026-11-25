@@ -9,7 +9,8 @@ use veld_codegen::{
     CodeWriter, ExprPrinter, GenDiagnostic, Printed, ValueKind, naming, print_expr,
 };
 use veld_ir::{
-    Builtin, Decl, ExprLit, ExprType, Ir, Model, Op, PathRef, Quantifier, Root, Rule, Type,
+    BinExpr, Builtin, CallExpr, Decl, Expr, ExprKind, ExprLit, ExprType, Ir, Model, Op, PathRef,
+    QuantExpr, Quantifier, Root, Rule, Type,
 };
 
 use crate::types::Ctx;
@@ -28,6 +29,77 @@ pub struct RustPrinter<'p, 't, 'a> {
     vars: Vec<(String, ExprType)>,
     /// What the printer could not express. A non-empty list makes generation fail with `E0801`.
     pub unsupported: Vec<String>,
+    /// The names an endpoint block can read; `None` for the invariants of a declaration.
+    scope: Option<Scope>,
+    /// The helper that reads an optional value known to be present: `some`, or `absent` for the
+    /// key of an optional fact, where an absent value means "no fact" (`spec/rules.md` 9.2).
+    some_fn: &'static str,
+}
+
+/// What an endpoint block reads (`spec/rules.md` section 9.1): the parameters and facts by name
+/// with whether they may be absent, `result` in an `ensure`, and `now`.
+#[derive(Debug, Clone, Default)]
+pub struct Scope {
+    pub params: std::collections::BTreeMap<String, bool>,
+    pub facts: std::collections::BTreeMap<String, bool>,
+    pub result: bool,
+}
+
+/// The prefix that marks a name read inside `old(...)`: the value before the handler ran.
+pub const OLD: &str = "old.";
+
+/// A copy of `expr` in which every parameter and fact inside an `old(...)` is renamed with the
+/// [`OLD`] prefix, so that the printer reads them from the saved copy.
+#[must_use]
+pub fn mark_old(expr: &Expr) -> Expr {
+    walk_old(expr, false)
+}
+
+/// A path whose parameter or fact root carries the [`OLD`] prefix.
+fn old_path(p: &PathRef) -> PathRef {
+    let root = match &p.root {
+        Root::Param(n) => Root::Param(format!("{OLD}{n}")),
+        Root::Fact(n) => Root::Fact(format!("{OLD}{n}")),
+        Root::SelfValue | Root::Principal | Root::Result | Root::Var(_) => p.root.clone(),
+    };
+    PathRef {
+        root,
+        steps: p.steps.clone(),
+    }
+}
+
+fn walk_old(e: &Expr, inside: bool) -> Expr {
+    let kind = match &e.e {
+        ExprKind::Path(p) if inside => ExprKind::Path(old_path(p)),
+        ExprKind::Has(p) if inside => ExprKind::Has(old_path(p)),
+        ExprKind::Lit(_) | ExprKind::Path(_) | ExprKind::Has(_) | ExprKind::Now(_) => e.e.clone(),
+        ExprKind::Not(x) => ExprKind::Not(Box::new(walk_old(x, inside))),
+        ExprKind::Neg(x) => ExprKind::Neg(Box::new(walk_old(x, inside))),
+        ExprKind::Widen(x) => ExprKind::Widen(Box::new(walk_old(x, inside))),
+        ExprKind::Old(x) => ExprKind::Old(Box::new(walk_old(x, true))),
+        ExprKind::Bin(b) => ExprKind::Bin(Box::new(BinExpr {
+            op: b.op,
+            l: walk_old(&b.l, inside),
+            r: walk_old(&b.r, inside),
+        })),
+        ExprKind::Call(c) => ExprKind::Call(CallExpr {
+            f: c.f,
+            args: c.args.iter().map(|a| walk_old(a, inside)).collect(),
+        }),
+        ExprKind::List(items) => {
+            ExprKind::List(items.iter().map(|a| walk_old(a, inside)).collect())
+        }
+        ExprKind::Quant(q) => ExprKind::Quant(Box::new(QuantExpr {
+            q: q.q,
+            list: walk_old(&q.list, inside),
+            var: q.var.clone(),
+            body: walk_old(&q.body, inside),
+        })),
+    };
+    Expr {
+        t: e.t.clone(),
+        e: kind,
+    }
 }
 
 impl<'p, 't, 'a> RustPrinter<'p, 't, 'a> {
@@ -37,7 +109,25 @@ impl<'p, 't, 'a> RustPrinter<'p, 't, 'a> {
             ctx,
             vars: Vec::new(),
             unsupported: Vec::new(),
+            scope: None,
+            some_fn: "some",
         }
+    }
+
+    /// A printer for the expressions of an endpoint block.
+    #[must_use]
+    pub fn for_block(ctx: &'p Ctx<'t, 'a>, scope: Scope) -> Self {
+        Self {
+            scope: Some(scope),
+            ..Self::new(ctx)
+        }
+    }
+
+    /// Reads optional values through `absent`: the key of an optional fact.
+    #[must_use]
+    pub fn reading_absent(mut self) -> Self {
+        self.some_fn = "absent";
+        self
     }
 
     fn ir(&self) -> &'t Ir {
@@ -94,13 +184,64 @@ impl<'p, 't, 'a> RustPrinter<'p, 't, 'a> {
         for step in &path.steps {
             let field = snake(&step.name);
             expr = if step.optional {
-                format!("vr::some(&{expr}.{field})?")
+                format!("vr::{}(&{expr}.{field})?", self.some_fn)
             } else {
                 format!("{expr}.{field}")
             };
             last_optional = step.optional;
         }
         (expr, last_optional)
+    }
+
+    /// The place a block root names, and whether it may be absent: `p.body` (a parameter of the
+    /// request), `(*fact_room)`, `(*r)` (the result), each from the saved copy inside `old(...)`.
+    fn block_root(&self, root: &Root) -> Option<(String, bool)> {
+        let scope = self.scope.as_ref()?;
+        match root {
+            Root::Param(n) => {
+                let (n, old) = split_old(n);
+                let optional = *scope.params.get(&n)?;
+                let from = if old { "old_p" } else { "p" };
+                Some((format!("{from}.{}", snake(&n)), optional))
+            }
+            Root::Fact(n) => {
+                let (n, old) = split_old(n);
+                let optional = *scope.facts.get(&n)?;
+                let from = if old { "old_fact_" } else { "fact_" };
+                Some((format!("(*{from}{})", fact_ident(&n)), optional))
+            }
+            Root::Result => scope.result.then(|| ("(*r)".to_string(), false)),
+            Root::SelfValue | Root::Var(_) | Root::Principal => None,
+        }
+    }
+
+    /// A path from a block root: the expression of its place and whether the last read was
+    /// through `some`.
+    fn block_chain(&self, path: &PathRef) -> Option<(String, bool)> {
+        let (base, root_optional) = self.block_root(&path.root)?;
+        if !root_optional {
+            return Some(self.field_chain(&base, path));
+        }
+        let start = format!("vr::{}(&{base})?", self.some_fn);
+        let (expr, last) = self.field_chain(&start, path);
+        Some((expr, last || path.steps.is_empty()))
+    }
+
+    /// The place a bare path reads, as a value to clone or serialise (not its rule form): the
+    /// raw field. `None` when the expression is not a path from a parameter or a fact.
+    pub fn raw_place(&mut self, expr: &Expr) -> Option<String> {
+        let ExprKind::Path(path) = &expr.e else {
+            return None;
+        };
+        if !matches!(path.root, Root::Param(_) | Root::Fact(_)) {
+            return None;
+        }
+        let (code, last_optional) = self.block_chain(path)?;
+        Some(if last_optional {
+            format!("(*{code})")
+        } else {
+            code
+        })
     }
 
     fn var_value(&self, name: &str) -> Printed {
@@ -297,6 +438,20 @@ impl<'p, 't, 'a> RustPrinter<'p, 't, 'a> {
         }
     }
 
+    /// `has` from a block root that may itself be absent.
+    fn has_root(&self, base: &str, optional: bool, steps: &[veld_ir::Step]) -> String {
+        if !optional {
+            return self.has_chain(base, steps, 0);
+        }
+        if steps.iter().all(|s| !s.optional) {
+            return format!("{base}.is_some()");
+        }
+        format!(
+            "{base}.as_ref().is_some_and(|h0| {})",
+            self.has_chain("h0", steps, 1)
+        )
+    }
+
     fn has_chain(&self, base: &str, steps: &[veld_ir::Step], depth: usize) -> String {
         let Some(first) = steps.iter().position(|s| s.optional) else {
             return "true".to_string();
@@ -318,6 +473,19 @@ impl<'p, 't, 'a> RustPrinter<'p, 't, 'a> {
 
 fn var_ident(name: &str) -> String {
     format!("v_{}", snake(name).trim_start_matches("r#"))
+}
+
+/// The identifier of a fact local: `room` is `fact_room`.
+#[must_use]
+pub fn fact_ident(name: &str) -> String {
+    snake(name).trim_start_matches("r#").to_string()
+}
+
+fn split_old(name: &str) -> (String, bool) {
+    match name.strip_prefix(OLD) {
+        Some(rest) => (rest.to_string(), true),
+        None => (name.to_string(), false),
+    }
 }
 
 impl ExprPrinter for RustPrinter<'_, '_, '_> {
@@ -379,9 +547,14 @@ impl ExprPrinter for RustPrinter<'_, '_, '_> {
                 let place = if optional { format!("(*{expr})") } else { expr };
                 self.read(t, &place)
             }
-            Root::Principal | Root::Result | Root::Param(_) | Root::Fact(_) => {
-                self.no("a rule that reads a parameter, fact, principal or result")
-            }
+            Root::Result | Root::Param(_) | Root::Fact(_) => match self.block_chain(path) {
+                Some((expr, optional)) => {
+                    let place = if optional { format!("(*{expr})") } else { expr };
+                    self.read(t, &place)
+                }
+                None => self.no("a name that is not in scope"),
+            },
+            Root::Principal => self.no("the principal"),
         }
     }
 
@@ -389,15 +562,25 @@ impl ExprPrinter for RustPrinter<'_, '_, '_> {
         let base = match &path.root {
             Root::SelfValue => "self".to_string(),
             Root::Var(name) => var_ident(name),
-            Root::Principal | Root::Result | Root::Param(_) | Root::Fact(_) => {
-                return self.no("`has` on a parameter, fact, principal or result");
+            Root::Param(_) | Root::Fact(_) => {
+                let Some((base, optional)) = self.block_root(&path.root) else {
+                    return self.no("`has` on a name that is not in scope");
+                };
+                return Printed::atom(self.has_root(&base, optional, &path.steps));
+            }
+            Root::Principal | Root::Result => {
+                return self.no("`has` on the principal or the result");
             }
         };
         Printed::atom(self.has_chain(&base, &path.steps, 0))
     }
 
     fn now(&mut self) -> Printed {
-        self.no("`now`")
+        if self.scope.is_some() {
+            Printed::atom("now")
+        } else {
+            self.no("`now`")
+        }
     }
 
     fn not(&mut self, operand: Printed) -> Printed {
@@ -582,8 +765,13 @@ impl ExprPrinter for RustPrinter<'_, '_, '_> {
         }
     }
 
-    fn old(&mut self, _operand: Printed, _ty: &ExprType) -> Printed {
-        self.no("`old`")
+    fn old(&mut self, operand: Printed, _ty: &ExprType) -> Printed {
+        // The operand was marked by `mark_old`, so it already reads the saved copy.
+        if self.scope.is_some() {
+            operand
+        } else {
+            self.no("`old`")
+        }
     }
 }
 

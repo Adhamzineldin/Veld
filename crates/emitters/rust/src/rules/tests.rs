@@ -432,3 +432,197 @@ fn what_it_cannot_express_is_reported_not_printed() {
     let _ = p.now();
     assert_eq!(p.unsupported.len(), 1);
 }
+
+// ---- the roots of an endpoint block ------------------------------------------------------------
+
+fn block_scope() -> super::Scope {
+    super::Scope {
+        params: [("body".to_string(), false), ("limit".to_string(), true)]
+            .into_iter()
+            .collect(),
+        facts: [("room".to_string(), false), ("coupon".to_string(), true)]
+            .into_iter()
+            .collect(),
+        result: true,
+    }
+}
+
+fn from_root(root: Root, t: ExprType, steps: Vec<Step>) -> Expr {
+    x(t, ExprKind::Path(PathRef { root, steps }))
+}
+
+fn show_block(e: &Expr) -> String {
+    let ir = veld_emit_conformance::ir_with_rule();
+    let tree = Tree::new(&ir, "crate", "src", vec![], true);
+    let ctx = Ctx {
+        tree: &tree,
+        here: "crate::app::greeter",
+    };
+    let mut p = RustPrinter::for_block(&ctx, block_scope());
+    let out = print_expr(&mut p, &super::mark_old(e)).code;
+    assert!(p.unsupported.is_empty(), "{:?}", p.unsupported);
+    out
+}
+
+fn now() -> Expr {
+    x(ty(Scalar::Datetime), ExprKind::Now(veld_ir::Always))
+}
+
+#[test]
+fn a_parameter_is_read_from_the_request_and_a_fact_from_its_local() {
+    let guests = from_root(
+        Root::Param("body".into()),
+        ty(Scalar::Int),
+        vec![step("guests", false)],
+    );
+    assert_eq!(show_block(&guests), "p.body.guests");
+    let capacity = from_root(
+        Root::Fact("room".into()),
+        ty(Scalar::Int),
+        vec![step("capacity", false)],
+    );
+    assert_eq!(show_block(&capacity), "(*fact_room).capacity");
+    let both = bin(Op::Le, boolean(), guests, capacity);
+    assert_eq!(show_block(&both), "p.body.guests <= (*fact_room).capacity");
+    // A decimal is parsed where it is read, a datetime too.
+    let amount = from_root(
+        Root::Param("body".into()),
+        ty(Scalar::Decimal),
+        vec![step("amount", false)],
+    );
+    assert_eq!(show_block(&amount), "vr::dec(&p.body.amount)?");
+    let start = from_root(
+        Root::Param("body".into()),
+        ty(Scalar::Datetime),
+        vec![step("start", false)],
+    );
+    let late = bin(Op::Ge, boolean(), start, now());
+    assert_eq!(show_block(&late), "vr::datetime(&p.body.start)? >= now");
+}
+
+#[test]
+fn an_optional_parameter_or_fact_is_read_through_a_helper_and_tested_with_has() {
+    let limit = from_root(Root::Param("limit".into()), ty(Scalar::Int), vec![]);
+    assert_eq!(show_block(&limit), "(*vr::some(&p.limit)?)");
+    let has_limit = x(
+        boolean(),
+        ExprKind::Has(PathRef {
+            root: Root::Param("limit".into()),
+            steps: vec![],
+        }),
+    );
+    assert_eq!(show_block(&has_limit), "p.limit.is_some()");
+    let percent = from_root(
+        Root::Fact("coupon".into()),
+        ty(Scalar::Int),
+        vec![step("percent", false)],
+    );
+    assert_eq!(show_block(&percent), "vr::some(&(*fact_coupon))?.percent");
+    let has_coupon = x(
+        boolean(),
+        ExprKind::Has(PathRef {
+            root: Root::Fact("coupon".into()),
+            steps: vec![],
+        }),
+    );
+    assert_eq!(show_block(&has_coupon), "(*fact_coupon).is_some()");
+    // An optional step under an optional root is checked at both levels.
+    let deep = x(
+        boolean(),
+        ExprKind::Has(PathRef {
+            root: Root::Fact("coupon".into()),
+            steps: vec![step("note", true)],
+        }),
+    );
+    assert_eq!(
+        show_block(&deep),
+        "(*fact_coupon).as_ref().is_some_and(|h0| h0.note.is_some())"
+    );
+}
+
+#[test]
+fn the_result_and_now_are_in_scope_of_an_ensure() {
+    let total = from_root(Root::Result, ty(Scalar::Int), vec![step("total", false)]);
+    assert_eq!(show_block(&total), "(*r).total");
+    let whole = from_root(Root::Result, ty(Scalar::Int), vec![]);
+    assert_eq!(show_block(&whole), "(*r)");
+    assert_eq!(show_block(&now()), "now");
+}
+
+#[test]
+fn old_reads_the_saved_copy_of_the_parameters_and_facts() {
+    let nightly = from_root(
+        Root::Fact("room".into()),
+        ty(Scalar::Decimal),
+        vec![step("nightly", false)],
+    );
+    let old = x(ty(Scalar::Decimal), ExprKind::Old(Box::new(nightly)));
+    assert_eq!(show_block(&old), "vr::dec(&(*old_fact_room).nightly)?");
+    let guests = from_root(
+        Root::Param("body".into()),
+        ty(Scalar::Int),
+        vec![step("guests", false)],
+    );
+    let old_guests = x(ty(Scalar::Int), ExprKind::Old(Box::new(guests.clone())));
+    assert_eq!(show_block(&old_guests), "old_p.body.guests");
+    // Outside `old(...)` the same names read the live values; one expression may hold both.
+    let same = bin(Op::Eq, boolean(), guests.clone(), old_guests);
+    assert_eq!(show_block(&same), "p.body.guests == old_p.body.guests");
+    // The operand of `old` may be a computation.
+    let sum = bin(Op::Add, ty(Scalar::Int), guests, int(1));
+    let old_sum = x(ty(Scalar::Int), ExprKind::Old(Box::new(sum)));
+    assert_eq!(
+        show_block(&old_sum),
+        "vr::num::add_i32(old_p.body.guests, 1_i32)?"
+    );
+}
+
+#[test]
+fn a_key_reads_an_absent_value_through_the_helper_that_means_no_fact() {
+    let ir = veld_emit_conformance::ir_with_rule();
+    let tree = Tree::new(&ir, "crate", "src", vec![], true);
+    let ctx = Ctx {
+        tree: &tree,
+        here: "crate::app::greeter",
+    };
+    let code = from_root(
+        Root::Param("body".into()),
+        ty(Scalar::String),
+        vec![step("couponCode", true)],
+    );
+    let mut p = RustPrinter::for_block(&ctx, block_scope()).reading_absent();
+    assert_eq!(
+        p.raw_place(&code).as_deref(),
+        Some("(*vr::absent(&p.body.coupon_code)?)")
+    );
+    // A bare path of a required value is its place, to be cloned as it is.
+    let id = from_root(
+        Root::Param("body".into()),
+        ty(Scalar::Uuid),
+        vec![step("roomId", false)],
+    );
+    let mut plain = RustPrinter::for_block(&ctx, block_scope());
+    assert_eq!(plain.raw_place(&id).as_deref(), Some("p.body.room_id"));
+    // Anything else is not a place.
+    assert_eq!(plain.raw_place(&int(1)), None);
+}
+
+#[test]
+fn a_name_outside_the_block_the_principal_and_old_in_an_invariant_are_reported() {
+    let ir = veld_emit_conformance::ir_with_rule();
+    let tree = Tree::new(&ir, "crate", "src", vec![], true);
+    let ctx = Ctx {
+        tree: &tree,
+        here: "crate::app::greeter",
+    };
+    for root in [Root::Principal, Root::Param("nobody".into())] {
+        let mut p = RustPrinter::for_block(&ctx, block_scope());
+        let e = from_root(root, ty(Scalar::Int), vec![]);
+        let _ = print_expr(&mut p, &e);
+        assert_eq!(p.unsupported.len(), 1);
+    }
+    let mut p = RustPrinter::new(&ctx);
+    let old = x(ty(Scalar::Int), ExprKind::Old(Box::new(int(1))));
+    let _ = print_expr(&mut p, &old);
+    assert_eq!(p.unsupported.len(), 1);
+}
