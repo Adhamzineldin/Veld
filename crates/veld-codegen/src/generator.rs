@@ -277,7 +277,7 @@ pub fn check_capabilities(
                 f.name(),
                 req.role.name()
             ),
-            origin: first_use(ir, &all, event_services(req), f),
+            origin: first_use(ir, &all, req, f),
         })
         .collect()
 }
@@ -286,11 +286,11 @@ pub fn check_capabilities(
 fn first_use(
     ir: &Ir,
     services: &[ServiceId],
-    event_services: &[ServiceId],
+    req: &GenRequest<'_>,
     feature: Feature,
 ) -> Option<Origin> {
     if feature == Feature::RulesRollout {
-        return first_audited_origin(ir, services, event_services);
+        return first_audited_origin(ir, services, event_services(req));
     }
     for sid in services {
         for ep in &ir.service(*sid).endpoints {
@@ -333,7 +333,8 @@ fn first_use(
         }
     }
     if feature == Feature::Events {
-        return event_services
+        return req
+            .services
             .iter()
             .find_map(|s| ir.service(*s).first_event_origin().cloned());
     }
@@ -610,6 +611,152 @@ mod tests {
         );
         assert!(g.generate_dyn(&req(Role::Server, None), &null).is_ok());
         assert!(g.generate_dyn(&req(Role::Client, None), &null).is_ok());
+    }
+
+    fn at(line: u32) -> Origin {
+        Origin {
+            file: "e.veld".into(),
+            line,
+            col: 1,
+        }
+    }
+
+    fn event_rule(audited: bool, line: u32) -> Rule {
+        Rule {
+            name: "r".into(),
+            id: "veld:a/Paid.r@0".into(),
+            expr: Expr {
+                t: ExprType::Type(Type::Scalar(Scalar::Bool)),
+                e: ExprKind::Lit(ExprLit::Bool(true)),
+            },
+            message: None,
+            reads: vec![],
+            reads_readonly: false,
+            inherited_from: None,
+            docs: None,
+            deprecated: None,
+            rollout: audited.then_some(Rollout::Audit),
+            origin: at(line),
+        }
+    }
+
+    /// An event `Paid` with one rule, a channel that carries it, a publisher `P` (line 7 is its
+    /// `publishes` line) and a subscriber `S`.
+    fn ir_with_event(audited: bool) -> Ir {
+        let mut ir = ir_with_sse();
+        ir.services[0].endpoints.clear();
+        ir.decls.push(Decl {
+            id: DeclId(0),
+            package: PackageId(0),
+            module: "a".into(),
+            name: "Paid".into(),
+            qualified: "a.Paid".into(),
+            sig: "veld:a/Paid@0".into(),
+            docs: None,
+            deprecated: None,
+            origin: at(1),
+            kind: DeclKind::Event(Event {
+                fields: vec![],
+                rules: vec![event_rule(audited, 3)],
+                rules_digest: None,
+            }),
+        });
+        ir.channels.push(Channel {
+            name: "C".into(),
+            package: PackageId(0),
+            module: "a".into(),
+            qualified: "a.C".into(),
+            topic: "a.C".into(),
+            events: vec![DeclId(0)],
+            key: None,
+            docs: None,
+            deprecated: None,
+            origin: at(5),
+        });
+        ir.services[0].name = "P".into();
+        ir.services[0].origin = at(6);
+        ir.services[0].publishes = vec![Publication {
+            channel: ChannelId(0),
+            origin: at(7),
+        }];
+        let mut s = ir.services[0].clone();
+        s.id = ServiceId(1);
+        s.name = "S".into();
+        s.publishes.clear();
+        s.subscriptions = vec![Subscription {
+            channel: ChannelId(0),
+            group: "g".into(),
+            handlers: vec![],
+            origin: at(9),
+        }];
+        ir.services.push(s);
+        ir
+    }
+
+    fn gate(ir: &Ir, role: Role, services: &[u32], caps: &Capabilities) -> Vec<GenDiagnostic> {
+        let req = GenRequest {
+            ir,
+            role,
+            services: services.iter().map(|i| ServiceId(*i)).collect(),
+            consumes: vec![],
+            framework: None,
+        };
+        check_capabilities(ir, &req, caps)
+    }
+
+    #[test]
+    fn events_point_at_the_publishes_line_and_the_subscribes_line() {
+        let ir = ir_with_event(false);
+        let caps = Capabilities::all_except(&[Feature::Events]);
+        let lines = |who: u32| -> Vec<Option<u32>> {
+            gate(&ir, Role::Server, &[who], &caps)
+                .iter()
+                .map(|d| d.origin.as_ref().map(|o| o.line))
+                .collect()
+        };
+        assert_eq!(lines(0), [Some(7)]);
+        assert_eq!(lines(1), [Some(9)]);
+        // A client generates nothing for events and supports the feature.
+        assert!(gate(&ir, Role::Client, &[0, 1], &Capabilities::all_except(&[])).is_empty());
+    }
+
+    #[test]
+    fn an_audited_event_rule_needs_rules_rollout_from_a_publisher_and_a_subscriber() {
+        let ir = ir_with_event(true);
+        let without = Capabilities::all_except(&[]);
+        assert!(without.supports(Feature::Events) && !without.supports(Feature::RulesRollout));
+        for who in [0, 1] {
+            let found = gate(&ir, Role::Server, &[who], &without);
+            assert_eq!(found.len(), 1, "{found:?}");
+            assert_eq!(found[0].code, "E0801");
+            assert!(found[0].message.contains("`rules_rollout`"));
+            assert_eq!(found[0].origin.as_ref().map(|o| o.line), Some(3));
+            let both = without.clone().with(Feature::RulesRollout);
+            assert!(gate(&ir, Role::Server, &[who], &both).is_empty());
+        }
+    }
+
+    #[test]
+    fn an_enforced_event_rule_does_not_use_rules_rollout() {
+        let ir = ir_with_event(false);
+        let used = ir.features_used(&[ServiceId(0), ServiceId(1)]);
+        assert!(!used.contains(&Feature::RulesRollout), "{used:?}");
+        assert!(gate(&ir, Role::Server, &[0, 1], &Capabilities::all_except(&[])).is_empty());
+    }
+
+    #[test]
+    fn a_client_and_a_server_that_only_calls_are_not_concerned_with_event_rules() {
+        let ir = ir_with_event(true);
+        let caps = Capabilities::all_except(&[]);
+        assert!(gate(&ir, Role::Client, &[0, 1], &caps).is_empty());
+        let req = GenRequest {
+            ir: &ir,
+            role: Role::Server,
+            services: vec![],
+            consumes: vec![ServiceId(0)],
+            framework: None,
+        };
+        assert!(check_capabilities(&ir, &req, &caps).is_empty());
     }
 
     #[test]

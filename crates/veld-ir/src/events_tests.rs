@@ -186,3 +186,166 @@ fn the_events_feature_has_a_name() {
     assert_eq!(Feature::Events.name(), "events");
     assert_eq!(Feature::from_name("events"), Some(Feature::Events));
 }
+
+// ---- the helpers the event generators use ----------------------------------------------------
+
+fn field(name: &str, ty: Type) -> Field {
+    Field {
+        name: name.into(),
+        wire: name.into(),
+        ty,
+        optional: false,
+        default: None,
+        readonly: false,
+        inherited_from: None,
+        constraints: Constraints::default(),
+        example: None,
+        docs: None,
+        deprecated: None,
+        origin: origin(1),
+    }
+}
+
+fn decl(id: u32, name: &str, kind: DeclKind) -> Decl {
+    Decl {
+        id: DeclId(id),
+        package: PackageId(0),
+        module: "m".into(),
+        name: name.into(),
+        qualified: format!("m.{name}"),
+        sig: format!("veld:p/{name}@0"),
+        docs: None,
+        deprecated: None,
+        origin: origin(id + 1),
+        kind,
+    }
+}
+
+fn model(parent: Option<DeclId>, fields: Vec<Field>) -> DeclKind {
+    DeclKind::Model(Model {
+        parent,
+        fields,
+        rules: vec![],
+    })
+}
+
+fn event(fields: Vec<Field>) -> DeclKind {
+    DeclKind::Event(Event {
+        fields,
+        rules: vec![],
+        rules_digest: None,
+    })
+}
+
+fn publication(channel: u32, line: u32) -> Publication {
+    Publication {
+        channel: ChannelId(channel),
+        origin: origin(line),
+    }
+}
+
+/// Decls: 0 Base, 1 Money (extends Base), 2 Paid (a Money field, a list of Tag), 3 Left, 4 Other,
+/// 5 Tag, 6 Unused. Channels: 0 carries Paid and Left, 1 carries Other, 2 carries Left.
+fn world() -> Ir {
+    let mut c = |name: &str, events: Vec<u32>| Channel {
+        events: events.into_iter().map(DeclId).collect(),
+        name: name.into(),
+        qualified: format!("m.{name}"),
+        ..channel()
+    };
+    let channels = vec![c("A", vec![2, 3]), c("B", vec![4]), c("C", vec![3])];
+    let svc = |id: u32, publishes: Vec<Publication>, subs: Vec<Subscription>| Service {
+        id: ServiceId(id),
+        ..service(publishes, subs)
+    };
+    let sub = |channel: u32| Subscription {
+        channel: ChannelId(channel),
+        group: "g".into(),
+        handlers: vec![],
+        origin: origin(9),
+    };
+    Ir {
+        ir_version: IR_VERSION.into(),
+        packages: vec![],
+        decls: vec![
+            decl(0, "Base", model(None, vec![])),
+            decl(1, "Money", model(Some(DeclId(0)), vec![])),
+            decl(
+                2,
+                "Paid",
+                event(vec![
+                    field("price", Type::Decl(DeclId(1))),
+                    field("tags", Type::List(Box::new(Type::Decl(DeclId(5))))),
+                ]),
+            ),
+            decl(3, "Left", event(vec![])),
+            decl(4, "Other", event(vec![])),
+            decl(5, "Tag", model(None, vec![])),
+            decl(6, "Unused", model(None, vec![])),
+        ],
+        services: vec![
+            svc(0, vec![publication(0, 4), publication(1, 4)], vec![sub(0)]),
+            svc(1, vec![], vec![sub(2)]),
+            svc(2, vec![], vec![]),
+        ],
+        consumes: Default::default(),
+        examples: vec![],
+        policies: vec![],
+        channels,
+    }
+}
+
+fn ids(v: &[DeclId]) -> Vec<u32> {
+    v.iter().map(|d| d.0).collect()
+}
+
+#[test]
+fn the_channels_of_services_are_listed_once_in_id_order() {
+    let ir = world();
+    let all = |s: &[u32]| -> Vec<u32> {
+        let s: Vec<ServiceId> = s.iter().map(|i| ServiceId(*i)).collect();
+        ir.event_channels(&s).iter().map(|c| c.0).collect()
+    };
+    assert_eq!(all(&[0]), [0, 1]);
+    assert_eq!(all(&[1, 0]), [0, 1, 2]);
+    assert!(all(&[2]).is_empty() && all(&[]).is_empty());
+}
+
+#[test]
+fn the_events_of_services_are_those_of_their_channels_without_duplicates() {
+    let ir = world();
+    assert_eq!(ids(&ir.events_of(&[ServiceId(0)])), [2, 3, 4]);
+    // `Left` is carried by channels A and C: once.
+    assert_eq!(ids(&ir.events_of(&[ServiceId(0), ServiceId(1)])), [2, 3, 4]);
+    assert_eq!(ids(&ir.events_of(&[ServiceId(1)])), [3]);
+    assert!(ir.events_of(&[ServiceId(2)]).is_empty());
+}
+
+#[test]
+fn what_the_events_reach_is_listed_through_fields_lists_and_parents() {
+    let ir = world();
+    // Paid reaches Money, Money's parent Base and Tag; Unused is reached by nothing.
+    assert_eq!(ids(&ir.event_reachable_decls(&[ServiceId(0)])), [0, 1, 5]);
+    assert!(ir.event_reachable_decls(&[ServiceId(1)]).is_empty());
+    assert_eq!(ids(&ir.event_only_decls(&[ServiceId(0)])), [0, 1, 5]);
+}
+
+#[test]
+fn the_publishes_origin_is_the_first_event_origin_and_a_service_lists_its_channels() {
+    let ir = world();
+    let s = ir.service(ServiceId(0));
+    assert_eq!(s.first_event_origin(), Some(&origin(4)));
+    assert_eq!(
+        s.published_channels().map(|c| c.0).collect::<Vec<_>>(),
+        [0, 1]
+    );
+    assert_eq!(
+        s.channels_used().iter().map(|c| c.0).collect::<Vec<_>>(),
+        [0, 1]
+    );
+    assert_eq!(
+        ir.service(ServiceId(1)).first_event_origin(),
+        Some(&origin(9))
+    );
+    assert_eq!(ir.service(ServiceId(2)).first_event_origin(), None);
+}
