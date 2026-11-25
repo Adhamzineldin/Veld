@@ -4533,6 +4533,7 @@ source: crates/veld-compiler/tests/conformance.rs
           }
         }
       ],
+      "rules_digest": "3168af5b25a4ced9",
       "origin": {
         "file": "app.veld",
         "line": 86,
