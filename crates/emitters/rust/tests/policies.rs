@@ -17,6 +17,15 @@ use veld_ir::Ir;
 const POLICIES: &str = "tests/rules/endpoints/policies.veld.pending";
 const GUARDED: &str = "crates/emitters/java/tests/fixtures/guarded.veld";
 
+/// The crates of the examples workspace. All scratch workspaces build into one shared target
+/// directory, where Cargo names an artifact after the crate's name and its path inside its
+/// workspace. Two workspaces that hold a `bookings-client` generated from two different contracts
+/// and are built at the same time (the tests of a file run in parallel) overwrite each other's
+/// artifact, and the harness of one links the client of the other. So the two workspaces of this
+/// file use different crate names, like `edges-server` in `endpoint_rules.rs`.
+const EXAMPLES_SERVER: &str = "policies-server";
+const EXAMPLES_CLIENT: &str = "policies-client";
+
 fn server_with(ir: &Ir, options: serde_json::Value) -> FileSet {
     let mut o = json!({ "crate-name": "bookings-server" });
     o.as_object_mut()
@@ -176,10 +185,13 @@ fn every_policy_example_passes_through_the_generated_test_handler() {
         return;
     }
     let ir = compile_path(POLICIES, "bookings");
-    let server = server_with(&ir, json!({ "testing": true }));
-    let client = gen_client(&ir, "bookings-client", None);
+    let server = server_with(
+        &ir,
+        json!({ "crate-name": EXAMPLES_SERVER, "testing": true }),
+    );
+    let client = gen_client(&ir, EXAMPLES_CLIENT, None);
     let ws = harness_workspace("policy-examples-ws", &server, &client, "policy-examples");
-    build_and_lint(&ws, "bookings-server", "bookings-client");
+    build_and_lint(&ws, EXAMPLES_SERVER, EXAMPLES_CLIENT);
     run_every_example(&ir, "policy-serve", 10);
 }
 

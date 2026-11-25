@@ -10,8 +10,8 @@ name = "policy-serve"
 path = "src/main.rs"
 
 [dependencies]
-bookings-server = { path = "../server" }
-bookings-client = { path = "../client" }
+policies-server = { path = "../server" }
+policies-client = { path = "../client" }
 axum = "0.8"
 reqwest = "0.13"
 serde_json = "1"

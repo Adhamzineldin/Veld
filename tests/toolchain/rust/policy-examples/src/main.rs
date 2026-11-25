@@ -1,14 +1,14 @@
 //! Serves the generated test handler of `tests/rules/endpoints/policies.veld.pending` on a free
 //! port with stub application handlers, and prints `PORT=<n>`. The examples are sent to it.
 
-use bookings_server::bookings::bookings::{Booking, User};
-use bookings_server::bookings::bookings_server::{
+use policies_server::bookings::bookings::{Booking, User};
+use policies_server::bookings::bookings_server::{
     BookingsHooks, BookingsService, GetBookingFacts, GetBookingRequest, PayBookingFacts,
     PayBookingRequest,
 };
-use bookings_server::bookings::bookings_test_server::{BookingsTestHandler, router};
-use bookings_server::veld::Error;
-use bookings_server::veld::server::RequestContext;
+use policies_server::bookings::bookings_test_server::{BookingsTestHandler, router};
+use policies_server::veld::Error;
+use policies_server::veld::server::RequestContext;
 
 /// The application handlers are never reached: an example without `returns` stops after step 6
 /// (the dry run).
