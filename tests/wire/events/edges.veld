@@ -1,7 +1,7 @@
 // The edge cases of the event envelope (spec/events.md section 6): a field with `@wire`, an
 // optional field, a decimal, a datetime with milliseconds, a default inside a nested value, an
 // event with no rules, an event whose rules are all audited (so it has no digest), and the three
-// kinds of channel (a uuid key, an int key, no key). `envelopes.json` holds the goldens.
+// kinds of channel (a uuid, a string, an int and a long key, and no key). `envelopes.json` holds the goldens.
 
 enum Tier { gold, silver }
 
@@ -37,6 +37,21 @@ event Counted {
   label: string
 }
 
+event Tagged {
+  tag: string
+  big: long
+}
+
+channel Tags {
+  carries Tagged
+  key tag
+}
+
+channel Bigs {
+  carries Tagged
+  key big
+}
+
 channel InvoiceEvents {
   carries InvoiceSettled, InvoiceViewed, InvoiceNudged
   key invoiceId
@@ -52,5 +67,5 @@ channel Everything {
 }
 
 service Billing {
-  publishes InvoiceEvents, Counts, Everything
+  publishes InvoiceEvents, Counts, Everything, Tags, Bigs
 }

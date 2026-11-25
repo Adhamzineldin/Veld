@@ -101,7 +101,7 @@ fn the_encoder_produces_every_golden_from_its_inputs() {
         );
         seen += 1;
     }
-    assert!(seen >= 10, "{seen}");
+    assert!(seen >= 13, "{seen}");
 }
 
 #[test]

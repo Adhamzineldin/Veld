@@ -59,7 +59,7 @@ fn key_text(ir: &Ir, channel: ChannelId, data: &Json) -> Result<Option<String>, 
     let value = data.get(&key.wire).ok_or_else(bad)?;
     let text = match (&key.ty, value) {
         (Type::Scalar(Scalar::String), Json::String(s)) => s.clone(),
-        (Type::Scalar(Scalar::Uuid), Json::String(s)) => s.to_lowercase(),
+        (Type::Scalar(Scalar::Uuid), Json::String(s)) => s.clone(),
         (Type::Scalar(Scalar::Int), Json::Number(n)) => n.to_string(),
         (Type::Scalar(Scalar::Long), Json::String(s)) => s.clone(),
         (Type::Scalar(Scalar::Long), Json::Number(n)) => n.to_string(),
@@ -95,8 +95,10 @@ pub fn encode(
         Some((d, DeclKind::Event(e))) if ch.events.contains(&event) => (d, e.rules_digest.clone()),
         _ => return Err(PublishError::NotCarried(event.0.to_string())),
     };
-    let (data, found) =
-        check_decl_full(ir, decl, value, Options::default()).map_err(PublishError::Shape)?;
+    let mut canonical_value = value.clone();
+    super::canon::scalars(ir, &Type::Decl(event), &mut canonical_value);
+    let (data, found) = check_decl_full(ir, decl, &canonical_value, Options::default())
+        .map_err(PublishError::Shape)?;
     if !found.is_empty() {
         return Err(PublishError::Invalid(found));
     }

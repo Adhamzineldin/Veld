@@ -22,11 +22,11 @@ One case per message:
   "canonical": "{\"data\":{…},\"datacontenttype\":…}" }
 ```
 
-A generator's test compiles `contract`, builds a publisher for `service`, fixes the id source to `id` and the clock to `time`, publishes `value` as `event` on `channel` through a transport that keeps the bytes, and requires the bytes to equal `canonical` (UTF-8, compared as bytes, not as parsed JSON). `value` is the event in wire form and already holds canonical scalars (lowercase uuid, `Z` datetimes, decimals and longs as strings); a typed publisher builds the same value from its typed event. Fields with a default may be left out of `value`: the message has them.
+A generator's test compiles `contract`, builds a publisher for `service`, fixes the id source to `id` and the clock to `time`, publishes `value` as `event` on `channel` through a transport that keeps the bytes, and requires the bytes to equal `canonical` (UTF-8, compared as bytes, not as parsed JSON). `value` is the event in wire form, decimals and longs as strings; a typed publisher builds the same value from its typed event. A `uuid` or `datetime` in `value` may be written non-canonically (uppercase, an offset): the message has it canonical (lowercase, UTC with `Z`, `spec/events.md` section 6.3). Fields with a default may be left out of `value`: the message has them.
 
 Then the opposite direction: the consumer of that event, given `canonical`, hands its handler the same event and the metadata `id`, `source`, `type`, `subject` and `time`.
 
-What the cases cover: a default applied (`nights`), a default inside a nested value (`qty`), the key as `subject` for a `uuid`, an `int` and a `long`, a channel without a key (no `subject`), an optional field absent and present, a `@wire` name, a decimal, a datetime with and without milliseconds (the fraction is written only when it is not zero), a non-ASCII string, an event without rules (no `veldrules`), and an event whose rules are all audited (no `veldrules`, and the audited rule, broken by the value, does not stop the message).
+What the cases cover: a default applied (`nights`), a default inside a nested value (`qty`), the key as `subject` for a `uuid`, a `string`, an `int` and a `long`, scalars written non-canonically on input, a channel without a key (no `subject`), an optional field absent and present, a `@wire` name, a decimal, a datetime with and without milliseconds (the fraction is written only when it is not zero), a non-ASCII string, an event without rules (no `veldrules`), and an event whose rules are all audited (no `veldrules`, and the audited rule, broken by the value, does not stop the message).
 
 ## `consume.json`
 
