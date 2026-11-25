@@ -265,6 +265,14 @@ fn a_crate_with_endpoint_rules_has_no_gate_markers() {
     }
 }
 
+/// Events (`spec/events.md`): the server refuses a service that publishes or subscribes with
+/// `E0801`, and the client generates the same files with and without events.
+#[test]
+fn rust_server_refuses_events_and_the_client_ignores_them() {
+    veld_emit_conformance::check_events_are_refused(&Rust).unwrap();
+    veld_emit_conformance::check_events_are_ignored_by_clients(&Rust).unwrap();
+}
+
 /// The shared checks hold a generator that does not support state machines and policies to
 /// `E0801`. Rust supports them, so both checks must now notice that it does.
 #[test]

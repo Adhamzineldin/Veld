@@ -85,9 +85,11 @@ fn machine<'a>(
 ) -> Result<(&'a veld_ir::Enum, String), String> {
     match &ctx.tree.ir.decl(t.decl).kind {
         DeclKind::Enum(e) => Ok((e, ctx.tree.type_path(t.decl, ctx.here))),
-        DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Union(_) | DeclKind::Const(_) => {
-            Err("a `transition` on something that is not an enum".to_string())
-        }
+        DeclKind::Model(_)
+        | DeclKind::Error(_)
+        | DeclKind::Union(_)
+        | DeclKind::Const(_)
+        | DeclKind::Event(_) => Err("a `transition` on something that is not an enum".to_string()),
     }
 }
 

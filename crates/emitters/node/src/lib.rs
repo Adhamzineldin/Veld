@@ -22,9 +22,7 @@ use veld_codegen::{
     Profile, Role,
 };
 use veld_emit_typescript::tree::Tree;
-use veld_emit_typescript::{
-    UNSUPPORTED, barrel, emit_client_tree, models, package, precheck, runtime,
-};
+use veld_emit_typescript::{barrel, emit_client_tree, models, package, precheck, runtime};
 
 /// Options of the `node` generator.
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -64,7 +62,7 @@ impl Generator for Node {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        Capabilities::all_except(&UNSUPPORTED)
+        Capabilities::all_except(&[veld_ir::Feature::Events])
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {

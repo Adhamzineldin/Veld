@@ -213,7 +213,9 @@ impl<'f, 't, 'a> JavaExpr<'f, 't, 'a> {
         let d = self.ir.decl(id);
         match &d.kind {
             DeclKind::Model(_) | DeclKind::Error(_) => At::Decl(d),
-            DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => At::Nothing,
+            DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) | DeclKind::Event(_) => {
+                At::Nothing
+            }
         }
     }
 

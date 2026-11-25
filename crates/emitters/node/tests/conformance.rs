@@ -84,3 +84,11 @@ fn typescript_and_node_enforce_every_rules_feature() {
     assert_generates(&Node, &every_contract());
     assert_generates(&TypeScript, &every_contract());
 }
+
+/// Events (`spec/events.md`): the server refuses a service that publishes or subscribes with
+/// `E0801`, and the TypeScript client generates the same files with and without events.
+#[test]
+fn node_refuses_events_and_typescript_ignores_them() {
+    veld_emit_conformance::check_events_are_refused(&Node).unwrap();
+    veld_emit_conformance::check_events_are_ignored_by_clients(&TypeScript).unwrap();
+}

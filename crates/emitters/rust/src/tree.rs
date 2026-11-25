@@ -244,6 +244,11 @@ fn refs(d: &Decl, out: &mut Vec<DeclId>) {
         }
         DeclKind::Union(u) => out.extend(u.arms.iter().map(|a| a.decl)),
         DeclKind::Const(_) | DeclKind::Enum(_) => {}
+        DeclKind::Event(e) => {
+            for f in &e.fields {
+                f.ty.collect_decls(out);
+            }
+        }
     }
 }
 

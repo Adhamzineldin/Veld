@@ -78,6 +78,8 @@ fn emit_decl(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl) -> Result<(), Vec<
         DeclKind::Error(e) => emit_model(w, ctx, d, &e.fields, Some(e)),
         DeclKind::Union(u) => emit_union(w, ctx, d, u),
         DeclKind::Const(c) => return emit_const(w, d, &c.ty, &c.value),
+        // Events are not emitted in phase E1 (`spec/events.md` section 14).
+        DeclKind::Event(_) => {}
     }
     if ctx.tree.rules && !d.rules().is_empty() {
         if let DeclKind::Model(m) = &d.kind {

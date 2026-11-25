@@ -57,7 +57,8 @@ fn render(
         DeclKind::Enum(e) => write_enum(&mut w, &mut fc, d, e),
         DeclKind::Union(u) => write_union(&mut w, &mut fc, d, u),
         DeclKind::Error(e) => write_error(&mut w, &mut fc, d, e)?,
-        DeclKind::Const(_) => {}
+        // Events are not emitted in phase E1 (`spec/events.md` section 14).
+        DeclKind::Const(_) | DeclKind::Event(_) => {}
     }
     Ok(fc.finish(&w.finish()))
 }

@@ -55,6 +55,16 @@ pub struct Options {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Java;
 
+/// What the generator supports for `role`. A server does not serve events yet (phase E1) and says
+/// so with `E0801`; a client supports the feature by generating nothing for it
+/// (`spec/events.md` section 14).
+fn events_capabilities(role: Role) -> Capabilities {
+    match role {
+        Role::Server => Capabilities::all_except(&[Feature::Events]),
+        Role::Client => Capabilities::all_except(&[]),
+    }
+}
+
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
     if req.services.is_empty() {
         return Err(vec![GenDiagnostic::new(
@@ -142,9 +152,9 @@ impl Generator for Java {
         })
     }
 
-    fn capabilities(&self, _role: Role) -> Capabilities {
+    fn capabilities(&self, role: Role) -> Capabilities {
         // Every rules feature is enforced (`spec/targets/java.md` sections 8 to 11).
-        Capabilities::all_except(&[])
+        events_capabilities(role)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
