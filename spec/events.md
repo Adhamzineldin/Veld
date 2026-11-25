@@ -390,7 +390,7 @@ Decided by the owner on 25 November 2026:
 1. **Contract skew (§8): the tolerant consumer.** A consumer decodes with its own type and ignores unknown fields, and checks rules only when the digests match. The alternative, rejecting every message whose signature differs, would have made every change to an event a coordinated deployment.
 2. **A service without `at` (§5): allowed** for a service that has no endpoints.
 
-Drafted as recommended and not yet confirmed:
+Confirmed by the owner on 25 November 2026, in the evening:
 
 3. **Rejected messages are acknowledged (§8).** Otherwise one bad message blocks a Kafka partition forever. Without `@deadLetter` and without a hook that stores it, the message is gone.
 4. **`@retry` lives on the channel**, one policy for every consumer of it, as in the proposal. The alternative is per subscription.

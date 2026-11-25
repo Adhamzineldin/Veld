@@ -144,7 +144,7 @@ The shared vectors pass on the Node, Java and Rust servers: a fact of another te
 
 ## 9. Open points
 
-Decided in this draft, for the owner to confirm:
+The owner confirmed points 1 to 5 and 7 on 25 November 2026 (asked for 4 and 5: when the audit hook or the limiter itself fails, the service stays up). Point 6 is built as drafted unless the owner says otherwise:
 
 1. **`@limit(10, per: minute, by: user)`** uses the argument form every other annotation has. The proposal wrote `@limit(10 per minute by user)`, which needs its own grammar.
 2. **A `@tenant` field behaves as `@readonly`** (section 3): the caller never sends it. The alternative is to accept it in a request and reject a value that is not the caller's.

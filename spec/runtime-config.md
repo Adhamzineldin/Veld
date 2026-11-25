@@ -146,7 +146,7 @@ Every built-in generator follows this spec. The plugin protocol does not change:
 
 ## 9. Open points
 
-Decided in this draft, for the owner to confirm before it is built:
+The owner confirmed point 1 on 25 November 2026 (the client keeps `baseUrl`, and `createClients` fills it). Points 2 to 6 are built as drafted unless the owner says otherwise:
 
 1. **`baseUrl` stays a client option and becomes required** (section 5), and `createClients` fills it from the runtime config. The alternative, a client constructor that takes the runtime config, would change every place that builds a client today.
 2. **The runtime config is the last argument of the server entry** (section 3.1), after the hooks, as the proposal sketches. The alternative is a field of the hooks object.

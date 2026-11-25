@@ -427,7 +427,7 @@ The implementing change has to move each of these in the same series. The list i
 
 ## 16. Open points
 
-Decided in this draft, for the owner to confirm:
+The owner confirmed points 4 and 5 on 25 November 2026: today's single `veld.toml` is an error with a pointer to what to write instead, with no converter and no second accepted layout, and the workspace keeps one `veld.lock.ir.json`. The other points are built as drafted unless the owner says otherwise:
 
 1. **Defaults are keyed by role and emitter** (section 4.2), one level deeper than the proposal's sketch.
 2. **The member in a root file must set `name`** (section 5). The smallest project is five lines, not four.
