@@ -22,6 +22,7 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 
 - **Spring and a trailing slash.** The JDK router treats `/bookings` and `/bookings/` as the same path; the generated Spring controller maps only the first, so `POST /bookings/` is a 404 on Spring. For contracts with rules the controller now maps both. Fixing it for every contract changes Spring snapshots from before this branch, so it was left alone.
 - **A Rust generator bug from before this branch.** A generated crate that uses SSE, in which one service has no SSE endpoint, does not compile (`call_sse` is missing for that service). Found while testing; not fixed here.
+- **Should `veld generate` stop on a changed rule?** `veld diff --strict` now fails on a "possibly breaking" rule change. The breaking-change gate of `veld generate` (`crates/veld-tools/src/gate.rs`) still looks at breaking changes only, so editing a rule's expression does not prompt or block a generate. Making it count is two lines (`Severity::fails_check`); it would mean a prompt every time a rule is edited until the lock is updated. Recommended: yes, for consistency with other breaking changes.
 - **Two Java helper names.** See the Phase 1 list: finishing the rename changes three lines of a snapshot.
 
 ## Phase 0: spec
@@ -97,10 +98,10 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 
 ## Phase 5: proof and lifecycle
 - [ ] `check --prove`: SMT-LIB encoding, external Z3 or cvc5, four results (proved, counterexample, unknown, unsupported), assumptions and solver version reported
-- [~] Rule-aware `veld diff` (without the solver: a changed expression is "possibly breaking")
+- [i] Rule-aware `veld diff`: invariants, `require`, `ensure`, facts, flows and transitions are classified; with no solver yet, a changed expression is "possibly breaking" and shows the old and the new text; `--strict` fails on it
 - [ ] `@rollout(audit)`
 - [ ] Derived fields
-- [~] OpenAPI `x-veld-rules`, `x-veld-facts`, `x-veld-flows`, `x-veld-transition`
+- [i] OpenAPI `x-veld-rules`, `x-veld-facts`, `x-veld-flows`, `x-veld-finals`, `x-veld-transition`; a contract without rules exports the same bytes as before
 - [ ] LSP: hover and completion inside expressions
 - [ ] Playground: live rule evaluation (WASM)
 - [ ] `veld test --from-violation`
