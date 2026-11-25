@@ -1,0 +1,26 @@
+---
+source: crates/emitters/rust/tests/rules_http.rs
+expression: "client.paths().collect::<Vec<_>>().join(\"\\n\")"
+---
+Cargo.toml
+README.md
+src/bookings/bookings.rs
+src/bookings/bookings_client.rs
+src/bookings/mod.rs
+src/lib.rs
+src/prelude.rs
+src/veld/canonical.rs
+src/veld/client.rs
+src/veld/error.rs
+src/veld/mod.rs
+src/veld/page.rs
+src/veld/regex.rs
+src/veld/rules/decimal.rs
+src/veld/rules/instant.rs
+src/veld/rules/mod.rs
+src/veld/rules/num.rs
+src/veld/rules/text.rs
+src/veld/schema.rs
+src/veld/spec.rs
+src/veld/transport_reqwest.rs
+src/veld/util.rs
