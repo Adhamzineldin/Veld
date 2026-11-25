@@ -81,61 +81,87 @@ Some rules need more than the request. Booking a room depends on the room. An en
 ```veld
 post "/" createBooking(body: NewBooking) -> 201 Booking | RoomFull | RoomClosed {
   fact room: Room = body.roomId
+  allow MayBook(user)
   require not room.closed else RoomClosed
   require body.guests <= room.capacity else RoomFull { capacity: room.capacity }
   require notInPast: body.start >= now
     message "A booking cannot start in the past"
   ensure keepsRoom: result.roomId == body.roomId
   ensure keepsGuests: result.guests == body.guests
+  ensure belongsToCaller: result.guestId == user.id
+  ensure startsPending: result.status == .pending
 }
 ```
+
+(`allow` says who may call. It comes [below](#policies-who-may-call).)
 
 - `fact room: Room = body.roomId` says: load a `Room` using this key. If there is none, the answer is `404 NotFound`.
 - `require ... else Error` is a precondition. If it fails, the server answers the declared error. `RoomFull { capacity: room.capacity }` fills the error's data from the fact. The first failing `require` wins, in the order written.
 - `require` without `else` answers `422 ValidationError` with a violation, like an invariant.
 - `now` is the time of the request, read once, so a rule that uses it is testable.
-- `ensure` is a promise about what your handler returns. If your code breaks it, that is a bug on the server, so the caller gets `500 Internal` with no detail. In the example, your handler may not change the number of guests. `old(x)` in an `ensure` is the value `x` had before the handler ran.
+- `ensure` is a promise about what your handler returns. If your code breaks it, that is a bug on the server, so the caller gets `500 Internal` with no detail. In the example, your handler may not change the number of guests, and the booking it returns must belong to the caller and start `pending`. `old(x)` in an `ensure` is the value `x` had before the handler ran.
 
 ### What you write after generating
 
 Two things, and no checks.
 
-**A loader per fact.** The generated `BookingsFactLoaders` has one method per fact:
+**A loader per fact.** The generated `BookingsFactLoaders` has one method per fact (`room` and `booking`, the second for the sections below):
 
 ```ts
-const loaders: BookingsFactLoaders = {
-  async room(key) {
-    return store.rooms.get(key);   // undefined or null: the server answers 404
-  },
-};
+export function createLoaders(store: Store): BookingsFactLoaders {
+  return {
+    async room(key) {
+      return store.rooms.get(key);   // undefined or null: the server answers 404
+    },
+    async booking(key) {
+      return store.bookings.get(key);
+    },
+  };
+}
 ```
 
 **The handler.** It receives the request and the loaded facts, already checked:
 
 ```ts
-const service: BookingsService = {
-  async createBooking({ body, room }) {
-    const booking = { id: randomUUID(), ...body, total: price(room.nightly, body.start, body.end) };
-    store.bookings.set(booking.id, booking);
-    return booking;
-  },
-  // ...
-};
+async createBooking({ body, room }, ctx) {
+  const booking: Booking = {
+    id: randomUUID(),
+    guestId: caller(ctx).id,
+    roomId: body.roomId,
+    guests: body.guests,
+    start: body.start,
+    end: body.end,
+    total: price(room.nightly, body.start, body.end),
+    status: 'pending',
+  };
+  store.bookings.set(booking.id, booking);
+  return booking;
+},
+```
 
-app.use(toExpress(createBookingsHandler(service, { facts: loaders })));
+and the server mounts it with the loaders (and the auth hook, shown [below](#policies-who-may-call)):
+
+```ts
+createBookingsHandler(createService(store), {
+  facts: createLoaders(store),
+  auth: { bearer: authenticate },
+})
 ```
 
 This handler does not test the dates, the party size or whether the room is closed. The contract already did. If you find yourself writing such a check here, move it into the contract.
 
 ## State machines: which moves are legal
 
-The example project does not use this section or the next one yet. The contracts shown are [`tests/rules/endpoints/transitions.veld`](../../tests/rules/endpoints/transitions.veld) and [`policies.veld`](../../tests/rules/endpoints/policies.veld), which every generator is tested against.
-
 A cancelled booking must not become paid. Say which moves exist on the enum, and which move an endpoint makes:
 
 ```veld
 enum Status {
-  pending, paid, checkedIn, cancelled, refunded
+  pending,
+  paid,
+  checkedIn,
+  cancelled,
+  refunded,
+
   flow pending -> paid -> checkedIn
   flow pending -> cancelled
   flow paid -> cancelled
@@ -143,30 +169,65 @@ enum Status {
   final checkedIn, cancelled, refunded
 }
 
-post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking | AmountMismatch {
+/// Pays for a booking. The amount must be the price.
+post "/{id}/pay" payBooking(id: uuid, body: Payment) -> 200 Booking | AmountMismatch {
   fact booking: Booking = id
+  allow ManageBooking(user, booking)
   transition booking.status: pending -> paid
   require body.amount == booking.total else AmountMismatch { expected: booking.total }
+}
+
+/// Cancels a booking that has not been used.
+post "/{id}/cancel" cancelBooking(id: uuid) -> 200 Booking {
+  fact booking: Booking = id
+  allow ManageBooking(user, booking)
+  transition booking.status: pending, paid -> cancelled
 }
 ```
 
 - `flow` lists the legal moves. A `final` state has no way out. `veld check` warns about a state you can get stuck in.
-- `transition booking.status: pending -> paid` says this endpoint moves the booking from `pending` to `paid`. If the loaded booking is in any other state, the server answers `409 InvalidTransition` with `field`, `from` and `to`, before your handler runs.
+- `transition booking.status: pending -> paid` says this endpoint moves the booking from `pending` to `paid`. A list of sources (`pending, paid -> cancelled`) means any of them. If the loaded booking is in any other state, the server answers `409 InvalidTransition` with `field`, `from` and `to`, before your handler runs.
 - When the endpoint returns the booking, the server also checks that your handler really moved it to `paid`.
+- The check comes after the policies and before every `require`. A cancelled booking that is paid with the wrong amount is `InvalidTransition`, not `AmountMismatch`.
 
-**This is a guard, not a lock.** Two requests can pass the check at the same moment. So the handler receives the move as data, and writes only if the booking is still where the check found it:
+The examples state this. These two are in `examples/bookings/contracts/bookings.veld`:
 
-```ts
-async payBooking({ id, booking, transition }) {
-  // transition is { field: 'status', from: 'pending', to: 'paid' }
-  const moved = await db.bookings.updateWhere(
-    { id, status: transition.from },            // only if it is still pending
-    { status: transition.to },
-  );
-  // If nothing was updated, another request moved it first: answer InvalidTransition yourself.
-  return { ...booking, status: transition.to };
+```veld
+example "a paid booking cannot be paid again" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .paid, total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 179.00 })
+    -> InvalidTransition { field: "status", from: "paid", to: "paid" }
+}
+
+example "the transition is checked before the amount" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .cancelled, total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 1.00 }) -> InvalidTransition { from: "cancelled" }
 }
 ```
+
+**This is a guard, not a lock.** Two requests can pass the check at the same moment. So the handler receives the move as data, and writes only if the booking is still where the check found it. This is `move` in `examples/bookings/server/src/service.ts`; the store is a `Map`, so the compare and the write cannot be separated here, but the shape is the one a database needs (`UPDATE ... WHERE id = $id AND status = $from`):
+
+```ts
+function move(store: Store, id: string, transition: veld.Transition<Status>): Booking {
+  const current = store.bookings.get(id);
+  if (current === undefined) throw new NotFound({ resource: 'booking' });
+  if (current.status !== transition.from) {
+    throw new InvalidTransition({ field: transition.field, from: current.status, to: transition.to });
+  }
+  const moved: Booking = { ...current, status: transition.to };
+  store.bookings.set(id, moved);
+  return moved;
+}
+
+// the handler:
+async payBooking({ id, transition }) {
+  return move(store, id, transition);
+},
+```
+
+`transition` is `{ field: 'status', from: 'pending', to: 'paid' }`, typed with the enum. The handler does not check the amount or who the caller is: the contract did.
 
 Clients get the same machine, to show only the buttons the server would accept:
 
@@ -180,22 +241,32 @@ Status.isFinal('refunded');     // true
 A policy says who may do something. It is written once and used by every endpoint that needs it:
 
 ```veld
-model User { id: uuid  roles: string[]  suspended: bool }
+model User {
+  id: uuid
+  name: string
+  roles: string[]
+  suspended: bool
+}
+
 principal User
 
 policy ManageBooking(user: User, booking: Booking) {
   permit when booking.guestId == user.id
-  permit when "support" in user.roles
+  permit when "staff" in user.roles
   forbid when user.suspended
     message "A suspended account cannot manage bookings"
 }
 
 @auth(bearer)
 service Bookings at "/bookings" {
-  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking {
+  @auth(none)
+  get "/rooms" listRooms() -> Room[]
+
+  get "/{id}" getBooking(id: uuid) -> Booking {
     fact booking: Booking = id
     allow ManageBooking(user, booking)
   }
+  // ...
 }
 ```
 
@@ -203,21 +274,67 @@ service Bookings at "/bookings" {
 - A policy permits when at least one `permit` is true and no `forbid` is. A `forbid` always wins.
 - `allow` runs after the request has been validated and the facts are loaded, and before the state check and every `require`. A denial is `403 Forbidden`, with the message of the `forbid` that was true, or `not permitted`.
 - A record that does not exist is `404` before the policy is asked.
+- The service says `@auth(bearer)`, so every endpoint needs a token. `listRooms` is public, and says so with `@auth(none)`.
 
-Your auth hook returns the caller, with the generated type:
+The examples show the three kinds of answer, and the order:
 
-```ts
-createBookingsHandler(service, {
-  facts: loaders,
-  auth: { bearer: async (token) => sessions.userOf(token) },   // Promise<User | null>
-});
+```veld
+example "another guest does not see it" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa" }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [], suspended: false }
+  getBooking(id: booking.id) -> Forbidden { message: "not permitted" }
+}
+
+example "forbid beats permit: suspended staff is refused too" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa" }
+  as { id: "00000000-0000-4000-8000-0000000000cc", roles: ["staff"], suspended: true }
+  getBooking(id: booking.id) -> Forbidden { message: "A suspended account cannot manage bookings" }
+}
+
+example "the policy is asked before the transition" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .cancelled, total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 179.00 }) -> Forbidden
+}
 ```
 
-The client gets the policy too. `canPayBooking` answers whether the server would let this call past its policies and its state check, so the app can hide a button the server would refuse. It never sends anything, and the server still decides:
+Your auth hook returns the caller, with the generated type (`Promise<User | null>`; `null` is a `401`). In the example it is a lookup in a table of demo tokens:
 
 ```ts
-if (BookingsClient.canPayBooking(booking, me)) showPayButton();
+export async function authenticate(token: string): Promise<User | null> {
+  return USERS[token] ?? null;
+}
+
+// in main.ts
+createBookingsHandler(createService(store), {
+  facts: createLoaders(store),
+  auth: { bearer: authenticate },
+})
 ```
+
+A handler that needs to know the caller reads `ctx.principal`. It is typed `unknown`, so the example narrows it once:
+
+```ts
+function caller(ctx: veld.RequestContext): User {
+  return ctx.principal as User;
+}
+```
+
+The client gets the policy too. `canPayBooking` answers whether the server would let this call past its policies and its state check, so the app can hide a button the server would refuse. It never sends anything, and the server still decides. The booking list of the web app (`examples/bookings/web/src/BookingList.tsx`) shows a button only when the state machine has the move and the helper agrees:
+
+```tsx
+{Status.nextStates(b.status).map((next) => {
+  const move = moves[next];
+  if (move === undefined || !move.can(b)) return null;
+  return (
+    <button key={next} type="button" onClick={() => void act(b, next)}>
+      {move.label}
+    </button>
+  );
+})}
+```
+
+with, for example, `can: (b) => BookingsClient.canPayBooking(b, me)`. When a call is refused anyway (the booking moved in another window), the page shows the server's own words: the `message` of a `Forbidden`, the two states of an `InvalidTransition` (see `web/src/describe.ts`).
 
 Say who may call every endpoint. `veld check` warns about an endpoint with no `@auth` at all; write `@auth(none)` when it is meant to be public.
 
@@ -229,10 +346,14 @@ An `example` states what one call does:
 example "a room that sleeps two refuses three guests" {
   given room = { capacity: 2, closed: false }
   at "2026-06-01T00:00:00Z"
-  createBooking(body: { roomId: room.id, guests: 3,
-    start: "2026-06-10T00:00:00Z", end: "2026-06-12T00:00:00Z" }) -> RoomFull { capacity: 2 }
+  createBooking(body: {
+    roomId: room.id, guests: 3,
+    start: "2026-06-10T00:00:00Z", end: "2026-06-12T00:00:00Z"
+  }) -> RoomFull { capacity: 2 }
 }
 ```
+
+The example does not say who calls, so the principal is filled in too. The examples of the state machine and the policies above name the caller with `as { ... }`.
 
 `veld test` runs every example without a server. It is also documentation that cannot go out of date. Run `veld test --live <url>` against the test server of your project to run them against your real handler. The test server, `--dry-run`, and what an example may leave out are in [testing with examples](testing.md). The test handler is generated only with `testing = true` on the server target, and it must never run in production.
 
