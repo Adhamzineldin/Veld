@@ -984,6 +984,7 @@ function elseAnswer(
   hooks: HandlerHooks,
   step: RequireStep & { otherwise: NonNullable<RequireStep['otherwise']> },
   scope: { p: Record<string, unknown>; f: Record<string, unknown>; now: bigint },
+  verdict: Verdict,
   started: number,
 ): VeldResponse {
   const spec = ep.errors.find((e) => e.sig === step.otherwise.sig);
@@ -998,7 +999,7 @@ function elseAnswer(
     ruleEvent(hooks, ep, 'input', 'rejected', [stepViolation(step, kind)], started);
     return problem(std.internal, 'Internal', 500, ep.sig, {});
   }
-  const violation = stepViolation(step, 'fails');
+  const violation = stepViolation(step, verdict);
   ruleEvent(hooks, ep, 'input', 'rejected', [violation], started);
   const err = spec.create(data, { status: spec.status, op: ep.sig, violations: [violation] });
   return failure(err, ep, ctx, std, hooks);
@@ -1042,7 +1043,7 @@ async function prepare(
     const verdict = verdictOf(() => step.holds(p as never, f as never, now));
     if (verdict === 'holds') continue;
     if (step.otherwise !== undefined) {
-      return elseAnswer(ep, ctx, std, hooks, { ...step, otherwise: step.otherwise }, { p, f, now }, started);
+      return elseAnswer(ep, ctx, std, hooks, { ...step, otherwise: step.otherwise }, { p, f, now }, verdict, started);
     }
     const violation = stepViolation(step, verdict);
     ruleEvent(hooks, ep, 'input', 'rejected', [violation], started);

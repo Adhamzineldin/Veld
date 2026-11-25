@@ -164,6 +164,7 @@ export type {name}TestHooks = Omit<{name}Hooks, 'facts' | 'clock' | 'auth' | 'mi
 /** Takes the endpoint apart from authentication and the application's handler. */
 function open(ep: {endpoint}): {endpoint} {{
   const call: {endpoint}['call'] = (req, ctx, session) => {{
+    prime(ctx);
     if (header(ctx, 'veld-test-dry-run') === '1') {{
       return new {early}({{ status: 204, headers: {{ 'veld-test-passed': '1' }}, body: null }});
     }}

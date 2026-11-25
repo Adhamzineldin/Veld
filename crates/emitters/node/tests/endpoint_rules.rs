@@ -14,11 +14,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use common::*;
-use serde_json::{Value as Json, json};
+use serde_json::json;
 use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
-use veld_ir::{Binding, DeclId, Endpoint, Ir, PackageKind, Service, Type};
+use veld_ir::{Ir, PackageKind};
 use veld_project::output::{WriteOptions, write};
-use veld_rules::{Expected, FilledExample, diff_pattern, fill_example};
 
 fn endpoint_contracts() -> Vec<PathBuf> {
     let dir = repo_root().join("tests/rules/endpoints");
@@ -352,248 +351,18 @@ impl Drop for Live {
     }
 }
 
-/// What came back.
-struct Reply {
-    status: u16,
-    headers: BTreeMap<String, String>,
-    body: Json,
-}
-
-fn base64url(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    let mut out = String::new();
-    for chunk in bytes.chunks(3) {
-        let n = chunk
-            .iter()
-            .enumerate()
-            .fold(0u32, |acc, (i, b)| acc | (u32::from(*b) << (16 - 8 * i)));
-        for i in 0..=chunk.len() {
-            out.push(ALPHABET[((n >> (18 - 6 * i)) & 63) as usize] as char);
-        }
-    }
-    out
-}
-
-fn percent_encode(text: &str) -> String {
-    let mut out = String::new();
-    for b in text.bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
-            out.push(b as char);
-        } else {
-            out.push_str(&format!("%{b:02X}"));
-        }
-    }
-    out
-}
-
-fn scalar_text(v: &Json) -> String {
-    match v {
-        Json::String(s) => s.clone(),
-        other => other.to_string(),
-    }
-}
-
-/// The request an example stands for: the parameters bound the way the generated client binds
-/// them (path, query, header, body), and the `Veld-Test-*` headers.
-struct Call {
-    method: String,
-    path: String,
-    headers: Vec<(String, String)>,
-    body: Option<Json>,
-}
-
-fn bind(svc: &Service, ep: &Endpoint, filled: &FilledExample) -> Call {
-    let mut path = ep.path.clone();
-    let mut query: Vec<(String, String)> = Vec::new();
-    let mut headers: Vec<(String, String)> = Vec::new();
-    let mut body = None;
-    for p in ep.params.iter().filter(|p| !p.stream) {
-        let Some(value) = filled.request.params.get(&p.name) else {
-            continue;
-        };
-        match p.binding {
-            Binding::Path => {
-                path = path.replace(
-                    &format!("{{{}}}", p.name),
-                    &percent_encode(&scalar_text(value)),
-                );
-            }
-            Binding::Query => match value {
-                Json::Array(items) => {
-                    query.extend(items.iter().map(|i| (p.name.clone(), scalar_text(i))));
-                }
-                other => query.push((p.name.clone(), scalar_text(other))),
-            },
-            Binding::QueryObject => {
-                if let Json::Object(map) = value {
-                    query.extend(map.iter().map(|(k, v)| (k.clone(), scalar_text(v))));
-                }
-            }
-            Binding::Header => headers.push((
-                p.header.clone().unwrap_or_else(|| p.name.clone()),
-                scalar_text(value),
-            )),
-            Binding::Body => body = Some(value.clone()),
-        }
-    }
-    query.sort();
-    if !query.is_empty() {
-        let pairs: Vec<String> = query
-            .iter()
-            .map(|(k, v)| format!("{}={}", percent_encode(k), percent_encode(v)))
-            .collect();
-        path = format!("{path}?{}", pairs.join("&"));
-    }
-    let facts: serde_json::Map<String, Json> = filled
-        .request
-        .facts
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone().unwrap_or(Json::Null)))
-        .collect();
-    let test = |h: &str, v: &Json| (h.to_string(), base64url(v.to_string().as_bytes()));
-    headers.push(test("Veld-Test-Facts", &Json::Object(facts)));
-    if let Some(principal) = &filled.request.principal {
-        headers.push(test("Veld-Test-Principal", principal));
-    }
-    headers.push(("Veld-Test-Now".to_string(), filled.clock.clone()));
-    match &filled.request.result {
-        Some(result) => headers.push(test("Veld-Test-Result", result)),
-        None => headers.push(("Veld-Test-Dry-Run".to_string(), "1".to_string())),
-    }
-    let prefix = svc.prefix.trim_end_matches('/');
-    assert!(path.starts_with(prefix), "{path} is outside {prefix}");
-    Call {
-        method: ep.method.as_str().to_string(),
-        path,
-        headers,
-        body,
-    }
-}
-
-fn send(live: &Live, call: &Call) -> Reply {
-    let mut req = ureq::request(&call.method, &format!("{}{}", live.url, call.path));
-    for (k, v) in &call.headers {
-        req = req.set(k, v);
-    }
-    let res = match &call.body {
-        Some(b) => req
-            .set("content-type", "application/json")
-            .send_string(&b.to_string()),
-        None => req.call(),
-    };
-    let res = match res {
-        Ok(r) | Err(ureq::Error::Status(_, r)) => r,
-        Err(e) => panic!("{} {}: {e}", call.method, call.path),
-    };
-    let status = res.status();
-    let headers = res
-        .headers_names()
-        .into_iter()
-        .filter_map(|n| res.header(&n).map(|v| (n.to_lowercase(), v.to_string())))
-        .collect();
-    let text = res.into_string().unwrap();
-    let body = serde_json::from_str(&text).unwrap_or(Json::Null);
-    Reply {
-        status,
-        headers,
-        body,
-    }
-}
-
-fn decl_name(ir: &Ir, decl: DeclId) -> String {
-    ir.decl(decl).name.clone()
-}
-
-/// Checks the reply against what the example states; `Err` describes the difference.
-fn check(ir: &Ir, ep: &Endpoint, filled: &FilledExample, reply: &Reply) -> Result<(), String> {
-    match &filled.expected {
-        Expected::Ok(pattern) => {
-            if filled.request.result.is_none() {
-                if reply.status != 204
-                    || reply.headers.get("veld-test-passed").map(String::as_str) != Some("1")
-                {
-                    return Err(format!(
-                        "expected a passed dry run, got {} {}",
-                        reply.status, reply.body
-                    ));
-                }
-                return Ok(());
-            }
-            if !(200..300).contains(&reply.status) {
-                return Err(format!(
-                    "expected success, got {} {}",
-                    reply.status, reply.body
-                ));
-            }
-            let (Some(pattern), Some(ty)) = (pattern, &ep.success.ty) else {
-                return Ok(());
-            };
-            diff(ir, ty, pattern, &reply.body)
-        }
-        Expected::Error { decl, pattern } => {
-            let name = decl_name(ir, *decl);
-            let status = ep
-                .errors
-                .iter()
-                .find(|e| e.decl == *decl)
-                .map(|e| e.status)
-                .ok_or_else(|| format!("{name} is not an error of the endpoint"))?;
-            if reply.status != status || reply.body["title"] != json!(name) {
-                return Err(format!(
-                    "expected {status} {name}, got {} {}",
-                    reply.status, reply.body
-                ));
-            }
-            match pattern {
-                Some(p) => diff(ir, &Type::Decl(*decl), p, &reply.body["data"]),
-                None => Ok(()),
-            }
-        }
-    }
-}
-
-fn diff(ir: &Ir, ty: &Type, pattern: &Json, actual: &Json) -> Result<(), String> {
-    let found = diff_pattern(ir, ty, pattern, actual);
-    if found.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "the pattern {pattern} does not match {actual}: {found:?}"
-        ))
-    }
-}
-
-/// Sends every example of every contract to the generated test handler.
+/// Sends every example of every contract to the generated test handler, through the shared live
+/// runner (`veld-testing`), in dry-run mode.
 fn run_examples(work: &Path, contracts: &[Ir]) {
-    let live = Live::start(work);
-    // It says what it is, so `veld test --live` can tell it from a production server.
-    let who = ureq::get(&format!("{}/__veld/test", live.url))
-        .call()
-        .unwrap()
-        .into_string()
-        .unwrap();
-    let who: Json = serde_json::from_str(&who).unwrap();
-    assert_eq!(who["veldTestHandler"], json!(1));
+    let server = Live::start(work);
+    let live = veld_testing::Live::connect(&server.url, true).unwrap();
     let (mut passed, mut failures) = (0, Vec::new());
     for ir in contracts {
-        let digests = ir
-            .services
-            .iter()
-            .filter_map(|s| s.rules_digest.as_ref().map(|d| (s.name.clone(), json!(d))))
-            .collect::<serde_json::Map<_, _>>();
-        assert_eq!(who["digests"], Json::Object(digests));
         for ex in &ir.examples {
-            let filled = fill_example(ir, ex).unwrap_or_else(|e| panic!("{}: {e}", ex.name));
-            let svc = ir.service(filled.service);
-            let ep = svc
-                .endpoints
-                .iter()
-                .find(|e| e.name == filled.endpoint)
-                .unwrap();
-            let reply = send(&live, &bind(svc, ep, &filled));
-            match check(ir, ep, &filled, &reply) {
-                Ok(()) => passed += 1,
-                Err(why) => failures.push(format!("\"{}\": {why}", ex.name)),
+            match live.run_example(ir, ex) {
+                Ok(report) if report.passed() => passed += 1,
+                Ok(report) => failures.push(format!("\"{}\": {report}", ex.name)),
+                Err(e) => failures.push(format!("\"{}\": {e}", ex.name)),
             }
         }
     }

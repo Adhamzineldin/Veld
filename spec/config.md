@@ -90,7 +90,7 @@ url = "https://registry.example.com"
 
 | Emitter | Role | `framework` values (versions) | `[targets.options]` keys |
 |---|---|---|---|
-| `node` | server | `express`, `fastify`, `hono`, `node-http` (unversioned), `nest` (`"10"`) | `typescript`, `framework-version`, `package-name` |
+| `node` | server | `express`, `fastify`, `hono`, `node-http` (unversioned), `nest` (`"10"`) | `typescript`, `framework-version`, `package-name`, `testing` |
 | `typescript` | client | `react` (`"18"`), `vue` (`"3"`); none is the plain client | `typescript`, `framework-version`, `package-name` |
 | `java` | server | `jdk` (unversioned), `spring` (`"3"`) | `package`, `java`, `framework-version` |
 | `java` | client | none | `package`, `java` |

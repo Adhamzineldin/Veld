@@ -1604,7 +1604,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "ureq",
  "veld-codegen",
  "veld-compiler",
  "veld-emit-conformance",
@@ -1613,6 +1612,7 @@ dependencies = [
  "veld-project",
  "veld-rules",
  "veld-test-support",
+ "veld-testing",
 ]
 
 [[package]]
