@@ -113,6 +113,10 @@ pub struct ModelSchema {
     pub name: &'static str,
     pub sig: &'static str,
     pub fields: &'static [Field],
+    // #if rules
+    /// Evaluates the invariants of one object of this declaration (typed JSON form), if it has any.
+    pub invariants: Option<fn(&Value, super::rules::Mode, &str, &mut Vec<super::rules::Violation>)>,
+    // #endif
 }
 
 /// A discriminated union.

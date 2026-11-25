@@ -1624,6 +1624,7 @@ dependencies = [
  "veld-emit-node",
  "veld-emit-typescript",
  "veld-ir",
+ "veld-rules",
  "veld-test-support",
 ]
 

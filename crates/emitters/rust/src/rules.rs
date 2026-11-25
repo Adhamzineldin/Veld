@@ -1,0 +1,641 @@
+//! Invariants (`spec/rules.md`, `spec/targets/rust.md` section 10): the Rust `ExprPrinter` and the
+//! generated check functions.
+//!
+//! A rule becomes plain Rust inside one closure that returns `veld::rules::Res<bool>`: helper
+//! calls end in `?`, `&&` and `||` stay lazy, and `veld::rules::record` turns the outcome into a
+//! violation. There is no interpreter and no rule data structure at run time.
+
+use veld_codegen::{
+    CodeWriter, ExprPrinter, GenDiagnostic, Printed, ValueKind, naming, print_expr,
+};
+use veld_ir::{
+    Builtin, Decl, ExprLit, ExprType, Ir, Model, Op, PathRef, Quantifier, Root, Rule, Type,
+};
+
+use crate::types::Ctx;
+use crate::util::{doc, lit, snake, type_name, unsupported, variant};
+
+const OR: u8 = 2;
+const AND: u8 = 3;
+const CMP: u8 = 4;
+const UNARY: u8 = 7;
+
+/// The Rust printer of rule expressions.
+#[derive(Debug)]
+pub struct RustPrinter<'p, 't, 'a> {
+    ctx: &'p Ctx<'t, 'a>,
+    /// The lambda variables in scope, innermost last, with the type of their elements.
+    vars: Vec<(String, ExprType)>,
+    /// What the printer could not express. A non-empty list makes generation fail with `E0801`.
+    pub unsupported: Vec<String>,
+}
+
+impl<'p, 't, 'a> RustPrinter<'p, 't, 'a> {
+    #[must_use]
+    pub fn new(ctx: &'p Ctx<'t, 'a>) -> Self {
+        Self {
+            ctx,
+            vars: Vec::new(),
+            unsupported: Vec::new(),
+        }
+    }
+
+    fn ir(&self) -> &'t Ir {
+        self.ctx.tree.ir
+    }
+
+    fn kind(&self, ty: &ExprType) -> ValueKind {
+        ValueKind::of(ty, self.ir())
+    }
+
+    fn no(&mut self, what: &str) -> Printed {
+        self.unsupported.push(what.to_string());
+        Printed::atom("unreachable_rule_expression()")
+    }
+
+    /// The value of a path end: the raw field `place` converted to the value form of its type.
+    fn read(&self, ty: &Type, place: &str) -> Printed {
+        let kind = self.kind(&ExprType::Type(ty.clone()));
+        let code = match kind {
+            ValueKind::Bool
+            | ValueKind::Int
+            | ValueKind::Long
+            | ValueKind::Float
+            | ValueKind::Enum => place.to_string(),
+            ValueKind::String | ValueKind::Uuid => format!("{place}.as_str()"),
+            ValueKind::Decimal => format!("vr::dec(&{place})?"),
+            ValueKind::Date => format!("vr::date(&{place})?"),
+            ValueKind::Datetime => format!("vr::datetime(&{place})?"),
+            ValueKind::Time => format!("vr::time(&{place})?"),
+            ValueKind::Duration
+            | ValueKind::Bytes
+            | ValueKind::Json
+            | ValueKind::Model
+            | ValueKind::Map
+            | ValueKind::Page => format!("&{place}"),
+            ValueKind::List => match ty {
+                Type::List(inner) => {
+                    let item = self.read(inner, "(*e)").code;
+                    format!("vr::list(&{place}, |e| Ok({item}))?")
+                }
+                Type::Scalar(_) | Type::Map(_) | Type::Page(_) | Type::Decl(_) => {
+                    format!("&{place}")
+                }
+            },
+        };
+        // A borrow or a dereference binds like a unary operator, not like an atom.
+        let prefixed = code.starts_with('&') || code.starts_with('*');
+        Printed::new(code, if prefixed { UNARY } else { Printed::ATOM })
+    }
+
+    fn field_chain(&self, base: &str, path: &PathRef) -> (String, bool) {
+        let mut expr = base.to_string();
+        let mut last_optional = false;
+        for step in &path.steps {
+            let field = snake(&step.name);
+            expr = if step.optional {
+                format!("vr::some(&{expr}.{field})?")
+            } else {
+                format!("{expr}.{field}")
+            };
+            last_optional = step.optional;
+        }
+        (expr, last_optional)
+    }
+
+    fn var_value(&self, name: &str) -> Printed {
+        let kind = self
+            .vars
+            .iter()
+            .rev()
+            .find(|(n, _)| n == name)
+            .map(|(_, t)| self.kind(t));
+        let v = var_ident(name);
+        match kind {
+            Some(ValueKind::Decimal | ValueKind::List) => Printed::atom(format!("(*{v}).clone()")),
+            Some(_) | None => Printed::new(format!("*{v}"), UNARY),
+        }
+    }
+
+    fn equality(&mut self, eq: bool, l: &Printed, r: &Printed, kind: ValueKind) -> Printed {
+        let sym = if eq { "==" } else { "!=" };
+        let native = |l: &Printed, r: &Printed| {
+            Printed::new(format!("{} {sym} {}", l.at(CMP + 1), r.at(CMP + 1)), CMP)
+        };
+        match kind {
+            ValueKind::Bool
+            | ValueKind::Int
+            | ValueKind::Long
+            | ValueKind::Float
+            | ValueKind::String
+            | ValueKind::Date
+            | ValueKind::Datetime
+            | ValueKind::Time
+            | ValueKind::Duration
+            | ValueKind::Enum => native(l, r),
+            ValueKind::Decimal => {
+                let test = if eq { "is_eq" } else { "is_ne" };
+                Printed::atom(format!(
+                    "{}.compare(&{}).{test}()",
+                    l.at(Printed::ATOM),
+                    r.at(UNARY)
+                ))
+            }
+            ValueKind::Uuid => {
+                let call = format!("vr::text::uuid_eq({}, {})", l.code, r.code);
+                if eq {
+                    Printed::atom(call)
+                } else {
+                    Printed::new(format!("!{call}"), UNARY)
+                }
+            }
+            ValueKind::Bytes
+            | ValueKind::Json
+            | ValueKind::Model
+            | ValueKind::List
+            | ValueKind::Map
+            | ValueKind::Page => self.no("`==` on a value that cannot be compared"),
+        }
+    }
+
+    fn ordering(&mut self, op: Op, l: &Printed, r: &Printed, kind: ValueKind) -> Printed {
+        let (sym, test) = match op {
+            Op::Lt => ("<", "is_lt"),
+            Op::Le => ("<=", "is_le"),
+            Op::Gt => (">", "is_gt"),
+            _ => (">=", "is_ge"),
+        };
+        match kind {
+            ValueKind::Int
+            | ValueKind::Long
+            | ValueKind::Float
+            | ValueKind::Date
+            | ValueKind::Datetime
+            | ValueKind::Time
+            | ValueKind::Duration => {
+                Printed::new(format!("{} {sym} {}", l.at(CMP + 1), r.at(CMP + 1)), CMP)
+            }
+            ValueKind::Decimal => Printed::atom(format!(
+                "{}.compare(&{}).{test}()",
+                l.at(Printed::ATOM),
+                r.at(UNARY)
+            )),
+            ValueKind::Bool
+            | ValueKind::String
+            | ValueKind::Uuid
+            | ValueKind::Enum
+            | ValueKind::Bytes
+            | ValueKind::Json
+            | ValueKind::Model
+            | ValueKind::List
+            | ValueKind::Map
+            | ValueKind::Page => self.no("an ordering of a value that cannot be ordered"),
+        }
+    }
+
+    fn membership(
+        &mut self,
+        l: &Printed,
+        r: &Printed,
+        elem: ValueKind,
+        coll: ValueKind,
+    ) -> Printed {
+        if coll == ValueKind::Map {
+            return Printed::atom(format!("{}.contains_key({})", r.at(Printed::ATOM), l.code));
+        }
+        let eq = self.equality(true, &Printed::atom("needle"), &Printed::atom("(*e)"), elem);
+        Printed::atom(format!(
+            "{{ let needle = {}; vr::contains(&{}, |e| {}) }}",
+            l.code, r.code, eq.code
+        ))
+    }
+
+    fn arith(
+        &mut self,
+        op: Op,
+        l: &Printed,
+        r: &Printed,
+        kinds: (ValueKind, ValueKind, ValueKind),
+    ) -> Printed {
+        let (lk, rk, out) = kinds;
+        let name = match op {
+            Op::Add => "add",
+            Op::Sub => "sub",
+            Op::Mul => "mul",
+            Op::Div => "div",
+            _ => "rem",
+        };
+        match out {
+            ValueKind::Int => {
+                Printed::atom(format!("vr::num::{name}_i32({}, {})?", l.code, r.code))
+            }
+            ValueKind::Long => {
+                Printed::atom(format!("vr::num::{name}_i64({}, {})?", l.code, r.code))
+            }
+            ValueKind::Float => {
+                Printed::atom(format!("vr::num::{name}_f64({}, {})?", l.code, r.code))
+            }
+            ValueKind::Decimal if matches!(op, Op::Add | Op::Sub | Op::Mul) => {
+                Printed::atom(format!("{}.{name}(&{})", l.at(Printed::ATOM), r.at(UNARY)))
+            }
+            ValueKind::Datetime | ValueKind::Duration => self.temporal(op, l, r, (lk, rk)),
+            ValueKind::Decimal
+            | ValueKind::Bool
+            | ValueKind::String
+            | ValueKind::Uuid
+            | ValueKind::Date
+            | ValueKind::Time
+            | ValueKind::Bytes
+            | ValueKind::Json
+            | ValueKind::Enum
+            | ValueKind::Model
+            | ValueKind::List
+            | ValueKind::Map
+            | ValueKind::Page => self.no("arithmetic that the language does not define"),
+        }
+    }
+
+    fn temporal(
+        &mut self,
+        op: Op,
+        l: &Printed,
+        r: &Printed,
+        kinds: (ValueKind, ValueKind),
+    ) -> Printed {
+        use ValueKind::{Date, Datetime, Duration};
+        let call = |f: &str| Printed::atom(format!("{f}({}, {})?", l.code, r.code));
+        match (op, kinds) {
+            (Op::Add, (Datetime, Duration) | (Duration, Datetime | Duration)) => {
+                call("vr::num::add_i64")
+            }
+            (Op::Sub, (Datetime, Duration | Datetime) | (Duration, Duration)) => {
+                call("vr::num::sub_i64")
+            }
+            (Op::Sub, (Date, Date)) => call("vr::date_diff"),
+            _ => self.no("arithmetic on dates and durations that the language does not define"),
+        }
+    }
+
+    fn has_chain(&self, base: &str, steps: &[veld_ir::Step], depth: usize) -> String {
+        let Some(first) = steps.iter().position(|s| s.optional) else {
+            return "true".to_string();
+        };
+        let mut place = base.to_string();
+        for s in steps.iter().take(first + 1) {
+            place = format!("{place}.{}", snake(&s.name));
+        }
+        let rest = steps.get(first + 1..).unwrap_or_default();
+        if rest.iter().all(|s| !s.optional) {
+            return format!("{place}.is_some()");
+        }
+        let inner = format!("h{depth}");
+        // The remaining steps start from the unwrapped value.
+        let tail = self.has_chain(&inner, rest, depth + 1);
+        format!("{place}.as_ref().is_some_and(|{inner}| {tail})")
+    }
+}
+
+fn var_ident(name: &str) -> String {
+    format!("v_{}", snake(name).trim_start_matches("r#"))
+}
+
+impl ExprPrinter for RustPrinter<'_, '_, '_> {
+    fn lit(&mut self, l: &ExprLit, ty: &ExprType) -> Printed {
+        let kind = self.kind(ty);
+        let number = |n: i64| -> Printed {
+            let (code, neg) = match kind {
+                ValueKind::Long | ValueKind::Duration => (format!("{n}_i64"), n < 0),
+                ValueKind::Float => (format!("{n}.0_f64"), n < 0),
+                ValueKind::Decimal => {
+                    return Printed::atom(format!("vr::dec({})?", lit(&n.to_string())));
+                }
+                _ => (format!("{n}_i32"), n < 0),
+            };
+            Printed::new(code, if neg { UNARY } else { Printed::ATOM })
+        };
+        match l {
+            ExprLit::Bool(b) => Printed::atom(b.to_string()),
+            ExprLit::Int(n) | ExprLit::Long(n) => number(*n),
+            ExprLit::Float(x) => Printed::new(
+                format!("{x:?}f64"),
+                if *x < 0.0 { UNARY } else { Printed::ATOM },
+            ),
+            ExprLit::Decimal(text) => Printed::atom(format!("vr::dec({})?", lit(text))),
+            ExprLit::String(s) => Printed::atom(lit(s)),
+            ExprLit::Enum(e) => {
+                let path = self.ctx.tree.type_path(e.decl, self.ctx.here);
+                Printed::atom(format!("{path}::{}", variant(&e.name)))
+            }
+        }
+    }
+
+    fn path(&mut self, path: &PathRef, ty: &ExprType) -> Printed {
+        let ExprType::Type(t) = ty else {
+            return self.no("a path of type duration");
+        };
+        match &path.root {
+            Root::SelfValue => {
+                let (expr, optional) = self.field_chain("self", path);
+                let place = if optional { format!("(*{expr})") } else { expr };
+                self.read(t, &place)
+            }
+            Root::Var(name) if path.steps.is_empty() => self.var_value(name),
+            Root::Var(name) => {
+                let (expr, optional) = self.field_chain(&var_ident(name), path);
+                let place = if optional { format!("(*{expr})") } else { expr };
+                self.read(t, &place)
+            }
+            Root::Principal | Root::Result | Root::Param(_) | Root::Fact(_) => {
+                self.no("a rule that reads a parameter, fact, principal or result")
+            }
+        }
+    }
+
+    fn has(&mut self, path: &PathRef) -> Printed {
+        let base = match &path.root {
+            Root::SelfValue => "self".to_string(),
+            Root::Var(name) => var_ident(name),
+            Root::Principal | Root::Result | Root::Param(_) | Root::Fact(_) => {
+                return self.no("`has` on a parameter, fact, principal or result");
+            }
+        };
+        Printed::atom(self.has_chain(&base, &path.steps, 0))
+    }
+
+    fn now(&mut self) -> Printed {
+        self.no("`now`")
+    }
+
+    fn not(&mut self, operand: Printed) -> Printed {
+        Printed::new(format!("!{}", operand.at(UNARY)), UNARY)
+    }
+
+    fn neg(&mut self, operand: Printed, ty: &ExprType) -> Printed {
+        match self.kind(ty) {
+            ValueKind::Int => Printed::atom(format!("vr::num::neg_i32({})?", operand.code)),
+            ValueKind::Long | ValueKind::Duration => {
+                Printed::atom(format!("vr::num::neg_i64({})?", operand.code))
+            }
+            ValueKind::Float => Printed::new(format!("-{}", operand.at(UNARY)), UNARY),
+            ValueKind::Decimal => Printed::atom(format!("{}.negated()", operand.at(Printed::ATOM))),
+            _ => self.no("a negation of a value that is not a number"),
+        }
+    }
+
+    fn bin(
+        &mut self,
+        op: Op,
+        l: Printed,
+        r: Printed,
+        left: &ExprType,
+        right: &ExprType,
+        out: &ExprType,
+    ) -> Printed {
+        let (lk, rk, ok) = (self.kind(left), self.kind(right), self.kind(out));
+        match op {
+            Op::And => Printed::new(format!("{} && {}", l.at(AND), r.at(AND + 1)), AND),
+            Op::Or => Printed::new(format!("{} || {}", l.at(OR), r.at(OR + 1)), OR),
+            Op::Implies => Printed::new(format!("!{} || {}", l.at(UNARY), r.at(OR + 1)), OR),
+            Op::Eq => self.equality(true, &l, &r, lk),
+            Op::Ne => self.equality(false, &l, &r, lk),
+            Op::Lt | Op::Le | Op::Gt | Op::Ge => self.ordering(op, &l, &r, lk),
+            Op::In => self.membership(&l, &r, lk, rk),
+            Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Rem => self.arith(op, &l, &r, (lk, rk, ok)),
+        }
+    }
+
+    fn call(
+        &mut self,
+        f: Builtin,
+        args: Vec<Printed>,
+        arg_types: &[&ExprType],
+        _out: &ExprType,
+    ) -> Printed {
+        let kinds: Vec<ValueKind> = arg_types.iter().map(|t| self.kind(t)).collect();
+        let code = |i: usize| args.get(i).map(|p| p.code.clone()).unwrap_or_default();
+        match f {
+            Builtin::Len => match kinds.first() {
+                Some(ValueKind::String | ValueKind::Uuid) => {
+                    Printed::atom(format!("vr::len_str({})?", code(0)))
+                }
+                Some(ValueKind::List | ValueKind::Map | ValueKind::Bytes) => {
+                    Printed::atom(format!(
+                        "vr::len_n({}.len())?",
+                        args.first()
+                            .map(|p| p.at(Printed::ATOM))
+                            .unwrap_or_default()
+                    ))
+                }
+                _ => self.no("`len` of a value that has no length"),
+            },
+            Builtin::Matches => Printed::atom(format!("vr::matches({}, {})?", code(0), code(1))),
+            Builtin::StartsWith => {
+                Printed::atom(format!("vr::text::starts_with({}, {})", code(0), code(1)))
+            }
+            Builtin::EndsWith => {
+                Printed::atom(format!("vr::text::ends_with({}, {})", code(0), code(1)))
+            }
+            Builtin::Contains => {
+                Printed::atom(format!("vr::text::contains({}, {})", code(0), code(1)))
+            }
+            Builtin::Days | Builtin::Hours | Builtin::Minutes | Builtin::Seconds | Builtin::Ms => {
+                let name = match f {
+                    Builtin::Days => "days_ms",
+                    Builtin::Hours => "hours_ms",
+                    Builtin::Minutes => "minutes_ms",
+                    Builtin::Seconds => "seconds_ms",
+                    _ => "ms_ms",
+                };
+                let n = match kinds.first() {
+                    Some(ValueKind::Long) => code(0),
+                    _ => format!("i64::from({})", code(0)),
+                };
+                Printed::atom(format!("vr::num::{name}({n})?"))
+            }
+        }
+    }
+
+    fn enter_var(&mut self, var: &str, elem: &ExprType) {
+        self.vars.push((var.to_string(), elem.clone()));
+    }
+
+    fn exit_var(&mut self, _var: &str) {
+        self.vars.pop();
+    }
+
+    fn quant(
+        &mut self,
+        q: Quantifier,
+        list: Printed,
+        _elem: &ExprType,
+        var: &str,
+        body: Printed,
+        body_ty: &ExprType,
+    ) -> Printed {
+        let v = var_ident(var);
+        let (func, ret) = match q {
+            Quantifier::All => ("all", "bool"),
+            Quantifier::Any => ("any", "bool"),
+            Quantifier::Count => ("count", "bool"),
+            Quantifier::Sum => match self.kind(body_ty) {
+                ValueKind::Int => ("sum_i32", "i32"),
+                ValueKind::Long => ("sum_i64", "i64"),
+                ValueKind::Float => ("sum_f64", "f64"),
+                ValueKind::Decimal => ("sum_dec", "vr::Decimal"),
+                _ => return self.no("`sum` of something that is not a number"),
+            },
+        };
+        Printed::atom(format!(
+            "vr::{func}(&{}, |{v}| -> vr::Res<{ret}> {{ Ok({}) }})?",
+            list.code, body.code
+        ))
+    }
+
+    fn list(&mut self, items: Vec<Printed>, _elem: Option<&ExprType>) -> Printed {
+        if items.is_empty() {
+            return Printed::atom("Vec::new()");
+        }
+        let codes: Vec<String> = items.into_iter().map(|p| p.code).collect();
+        Printed::atom(format!("vec![{}]", codes.join(", ")))
+    }
+
+    fn widen(&mut self, operand: Printed, from: &ExprType, to: &ExprType) -> Printed {
+        match (self.kind(from), self.kind(to)) {
+            (ValueKind::Int, ValueKind::Long) => {
+                Printed::atom(format!("i64::from({})", operand.code))
+            }
+            (ValueKind::Int, ValueKind::Float) => {
+                Printed::atom(format!("f64::from({})", operand.code))
+            }
+            (ValueKind::Int, ValueKind::Decimal) => Printed::atom(format!(
+                "vr::Decimal::from_i64(i64::from({}))",
+                operand.code
+            )),
+            (ValueKind::Long, ValueKind::Decimal) => {
+                Printed::atom(format!("vr::Decimal::from_i64({})", operand.code))
+            }
+            _ => self.no("a conversion that the language does not define"),
+        }
+    }
+
+    fn old(&mut self, _operand: Printed, _ty: &ExprType) -> Printed {
+        self.no("`old`")
+    }
+}
+
+/// The printed Rust of one rule's expression.
+fn print_rule(ctx: &Ctx<'_, '_>, rule: &Rule) -> Result<String, String> {
+    let mut printer = RustPrinter::new(ctx);
+    let printed = print_expr(&mut printer, &rule.expr);
+    match printer.unsupported.first() {
+        Some(what) => Err(format!("rule `{}`: {what}", rule.name)),
+        None => Ok(printed.code),
+    }
+}
+
+/// The wire names of the fields a rule reads (`Rule.reads` holds source names).
+fn wire_names(m: &Model, rule: &Rule) -> Vec<String> {
+    rule.reads
+        .iter()
+        .map(|name| {
+            m.fields
+                .iter()
+                .find(|f| &f.name == name)
+                .map_or_else(|| name.clone(), |f| f.wire.clone())
+        })
+        .collect()
+}
+
+/// `RULE_END_AFTER_START`, unique within the declaration.
+fn const_names(rules: &[Rule]) -> Vec<String> {
+    let mut seen: Vec<String> = Vec::new();
+    for rule in rules {
+        let base = format!("RULE_{}", naming::screaming_snake(&rule.name));
+        let mut name = base.clone();
+        let mut n = 2;
+        while seen.contains(&name) {
+            name = format!("{base}_{n}");
+            n += 1;
+        }
+        seen.push(name);
+    }
+    seen
+}
+
+/// Emits the public surface and the check function of a declaration with rules.
+///
+/// # Errors
+/// `E0801` when a rule uses something the generator cannot express (never for invariants that
+/// the compiler accepted).
+pub fn emit(
+    w: &mut CodeWriter,
+    ctx: &Ctx<'_, '_>,
+    d: &Decl,
+    m: &Model,
+) -> Result<(), Vec<GenDiagnostic>> {
+    let name = type_name(&d.name);
+    let consts = const_names(&m.rules);
+    let mut bodies = Vec::new();
+    for rule in &m.rules {
+        bodies.push(
+            print_rule(ctx, rule).map_err(|e| unsupported(format!("generator `rust`: {e}")))?,
+        );
+    }
+    w.open(format!("impl {name}"));
+    for (rule, c) in m.rules.iter().zip(&consts) {
+        doc(w, rule.docs.as_deref());
+        w.line(format!("/// The id of the rule `{}`.", rule.name));
+        w.line(format!("pub const {c}: &'static str = {};", lit(&rule.id)));
+    }
+    w.blank();
+    w.line(
+        "/// Checks the invariants of this value and of everything inside it. Every violation is",
+    );
+    w.line("/// reported; none is thrown. Paths start at `$`.");
+    w.open("pub fn check(&self) -> Vec<veld::rules::Violation>");
+    w.line("veld::rules::check_value(self, veld::rules::Mode::Full)");
+    w.close().blank();
+    w.line(
+        "/// Like [`Self::check`], for a value in request position: rules that read a `@readonly`",
+    );
+    w.line("/// field are skipped.");
+    w.open("pub fn check_request(&self) -> Vec<veld::rules::Violation>");
+    w.line("veld::rules::check_value(self, veld::rules::Mode::Request)");
+    w.close();
+    w.close().blank();
+    w.open(format!("impl veld::rules::Invariants for {name}"));
+    w.line(
+        "#[allow(clippy::all, unused_variables, unused_parens, unused_braces, unused_comparisons)]",
+    );
+    w.open("fn check_rules(&self, mode: veld::rules::Mode, path: &str, out: &mut Vec<veld::rules::Violation>)");
+    w.line("use veld::rules as vr;");
+    for ((rule, c), body) in m.rules.iter().zip(&consts).zip(&bodies) {
+        rule_statement(w, m, rule, c, body);
+    }
+    w.close().close().blank();
+    Ok(())
+}
+
+fn rule_statement(w: &mut CodeWriter, m: &Model, rule: &Rule, id_const: &str, body: &str) {
+    let fields: Vec<String> = wire_names(m, rule).iter().map(|f| lit(f)).collect();
+    let message = rule
+        .message
+        .clone()
+        .unwrap_or_else(|| format!("violates rule {}", rule.name));
+    w.line(format!("// {}", rule.name));
+    if rule.reads_readonly {
+        w.open("if mode != vr::Mode::Request");
+    }
+    w.line(format!(
+        "vr::record(out, path, Self::{id_const}, {}, &[{}], {}, (|| -> vr::Res<bool> {{ Ok({body}) }})());",
+        lit(&rule.name),
+        fields.join(", "),
+        lit(&message)
+    ));
+    if rule.reads_readonly {
+        w.close();
+    }
+}
+
+#[cfg(test)]
+mod tests;

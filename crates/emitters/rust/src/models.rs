@@ -79,6 +79,14 @@ fn emit_decl(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl) -> Result<(), Vec<
         DeclKind::Union(u) => emit_union(w, ctx, d, u),
         DeclKind::Const(c) => return emit_const(w, d, &c.ty, &c.value),
     }
+    if ctx.tree.rules && !d.rules().is_empty() {
+        if let DeclKind::Model(m) = &d.kind {
+            return crate::rules::emit(w, ctx, d, m);
+        }
+        if let DeclKind::Error(e) = &d.kind {
+            return crate::rules::emit(w, ctx, d, &e.fields);
+        }
+    }
     Ok(())
 }
 
@@ -216,6 +224,14 @@ fn model_schema(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl, m: &Model) {
         w.close_with("},");
     }
     w.close_with("],");
+    if ctx.tree.rules {
+        let check = if m.rules.is_empty() {
+            "None".to_string()
+        } else {
+            format!("Some(veld::rules::run::<{}>)", type_name(&d.name))
+        };
+        w.line(format!("invariants: {check},"));
+    }
     w.close_with("});");
     w.blank();
 }

@@ -25,6 +25,9 @@ pub struct Tree<'a> {
     /// False when the target option `validate = false` is set: run-time request validation is
     /// off by default (the types stay).
     pub validate: bool,
+    /// True when the crate has declarations with invariants: every schema then carries its
+    /// check function (or `None`), and the declarations with rules get their check functions.
+    pub rules: bool,
 }
 
 impl<'a> Tree<'a> {
@@ -53,7 +56,23 @@ impl<'a> Tree<'a> {
             decls: set.into_iter().collect(),
             owns_prelude,
             validate: true,
+            rules: false,
         }
+    }
+
+    /// Whether any declaration of the tree has invariants.
+    #[must_use]
+    pub fn has_rules(&self) -> bool {
+        self.decls
+            .iter()
+            .any(|id| !self.ir.decl(*id).rules().is_empty())
+    }
+
+    /// Sets whether the crate carries the invariants runtime.
+    #[must_use]
+    pub fn with_rules(mut self, rules: bool) -> Self {
+        self.rules = rules;
+        self
     }
 
     /// Sets whether the generated code validates requests at run time by default.

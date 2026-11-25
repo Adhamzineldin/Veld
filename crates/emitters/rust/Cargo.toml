@@ -18,6 +18,7 @@ veld-emit-node.workspace = true
 veld-emit-typescript.workspace = true
 veld-emit-conformance.workspace = true
 veld-test-support.workspace = true
+veld-rules.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 insta.workspace = true

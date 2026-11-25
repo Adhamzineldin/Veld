@@ -66,6 +66,10 @@ pub fn emit_lib(
     s.push_str(
         "#![allow(\n    clippy::module_inception,\n    clippy::too_many_arguments,\n    clippy::large_enum_variant,\n    clippy::type_complexity,\n    clippy::enum_variant_names\n)]\n\n",
     );
+    if f.rules {
+        // `veld::Error` carries the rule part of a problem and is now 128 bytes.
+        s.push_str("#![allow(clippy::result_large_err)]\n\n");
+    }
     s.push_str("pub mod prelude;\npub mod veld;\n");
     if f.axum {
         s.push_str("pub mod adapters;\n");

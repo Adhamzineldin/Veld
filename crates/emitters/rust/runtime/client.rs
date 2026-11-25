@@ -162,6 +162,11 @@ pub struct ClientOptions {
     pub validate: Option<bool>,
     /// The timeout of one request (default 30 s).
     pub timeout: Duration,
+    // #if rules
+    /// Check the invariants of a request body and of a `query` object before sending (default
+    /// `true`). A violation is a local `ValidationError`; nothing is sent.
+    pub check_rules: bool,
+    // #endif
     // @if sse
     /// Reconnect policy of streams (default: none).
     pub reconnect: Option<Reconnect>,
@@ -179,6 +184,9 @@ impl Default for ClientOptions {
             api_key: None,
             validate: None,
             timeout: Duration::from_secs(30),
+            // #if rules
+            check_rules: true,
+            // #endif
             // @if sse
             reconnect: None,
             // @end
@@ -254,6 +262,15 @@ impl ClientOptions {
         self.timeout = d;
         self
     }
+    // #if rules
+
+    /// Switches the local check of invariants on or off. Off, the server decides alone.
+    #[must_use]
+    pub fn check_rules(mut self, on: bool) -> Self {
+        self.check_rules = on;
+        self
+    }
+    // #endif
 
     // @if sse
     /// Reconnects streams after connection failures.
@@ -360,8 +377,27 @@ impl<T: Transport> Core<T> {
             op: Some(ep.sig.to_string()),
             data,
             schema: spec.map(|s| s.schema),
+            // #if rules
+            rulings: super::rules::Rulings::boxed(Vec::new(), true),
+            // #endif
         })
     }
+    // #if rules
+
+    /// The local `ValidationError` of rule violations: one issue each, plus the violations.
+    fn rule_error(&self, ep: &EndpointSpec, violations: Vec<super::rules::Violation>) -> Error {
+        let spec = ep.errors.iter().find(|e| e.sig == self.std.validation);
+        Error::Problem(Problem {
+            sig: self.std.validation.to_string(),
+            title: spec.map_or("ValidationError", |s| s.name).to_string(),
+            status: 422,
+            op: Some(ep.sig.to_string()),
+            data: super::rules::rejection_data(&violations),
+            schema: spec.map(|s| s.schema),
+            rulings: super::rules::Rulings::boxed(violations, true),
+        })
+    }
+    // #endif
 
     fn auth_headers(&self, ep: &EndpointSpec, out: &mut Vec<(String, String)>) {
         let Some(auth) = &ep.auth else {
@@ -395,6 +431,9 @@ impl<T: Transport> Core<T> {
         let mut headers: Vec<(String, String)> = Vec::new();
         let mut body: Option<Value> = None;
         let mut issues = Vec::new();
+        // #if rules
+        let mut violations = Vec::new();
+        // #endif
         for p in ep.params.iter().filter(|p| !p.stream) {
             let Some(typed) = args.get(p.name).filter(|v| !v.is_null()) else {
                 if !p.optional && self.validate {
@@ -406,6 +445,11 @@ impl<T: Transport> Core<T> {
             if self.validate {
                 issues.extend(p.schema.validate(&wire, &p.location(), true));
             }
+            // #if rules
+            if self.options.check_rules && issues.is_empty() && matches!(p.binding, Binding::Body | Binding::QueryObject) {
+                violations.extend(super::rules::check_wire(p.schema, &wire, &p.location(), super::rules::Mode::Request));
+            }
+            // #endif
             match p.binding {
                 Binding::Path => path = path.replace(&format!("{{{}}}", p.name), &pct_encode(&scalar_text(&wire))),
                 Binding::Query => push_query(&mut query, p.name, &wire),
@@ -421,6 +465,11 @@ impl<T: Transport> Core<T> {
         if !issues.is_empty() {
             return Err(self.validation_error(ep, &issues));
         }
+        // #if rules
+        if !violations.is_empty() {
+            return Err(self.rule_error(ep, violations));
+        }
+        // #endif
         query.sort_by(|a, b| a.0.cmp(&b.0));
         let mut url = format!("{}{path}", self.base);
         if !query.is_empty() {
@@ -461,6 +510,9 @@ impl<T: Transport> Core<T> {
             op: problem.op.or_else(|| Some(ep.sig.to_string())),
             data,
             schema: Some(spec.schema),
+            // #if rules
+            rulings: problem.rulings,
+            // #endif
         })
     }
 

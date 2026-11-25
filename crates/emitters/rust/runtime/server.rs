@@ -143,6 +143,17 @@ pub trait Endpoints: Send + Sync + 'static {
     fn validate_responses(&self) -> bool {
         false
     }
+    // #if rules
+
+    /// What happens to a violated invariant of the server's own output (default `Strict`).
+    fn rules_output(&self) -> super::rules::RuleOutput {
+        super::rules::RuleOutput::Strict
+    }
+
+    /// Observes every violated rule, of the input (rejected) and of the output (rejected or
+    /// audited). It cannot change the response.
+    fn on_rule_violation(&self, _event: &super::rules::RuleEvent) {}
+    // #endif
 
     /// Observes every error that becomes `Internal`. It cannot change the response.
     fn on_error(&self, _err: &Error, _ctx: &RequestContext) {}
@@ -370,7 +381,23 @@ struct Bound {
     value: Map<String, Value>,
     issues: Vec<Issue>,
     check: bool,
+    // #if rules
+    violations: Vec<super::rules::Violation>,
+    micros: u64,
+    // #endif
 }
+// #if rules
+
+impl Bound {
+    /// Step 5: the invariants of a bound body or query object, once its shape is valid.
+    fn rules(&mut self, p: &ParamSpec, wire: &Value) {
+        let watch = super::rules::Stopwatch::start();
+        let found = super::rules::check_wire(p.schema, wire, &p.location(), super::rules::Mode::Request);
+        self.micros += watch.micros();
+        self.violations.extend(found);
+    }
+}
+// #endif
 
 impl Bound {
     fn required(&mut self, p: &ParamSpec) {
@@ -404,6 +431,11 @@ impl Bound {
         }
         let wire = Value::Object(wire);
         let issues = if self.check { p.schema.validate(&wire, &p.location(), true) } else { Vec::new() };
+        // #if rules
+        if issues.is_empty() {
+            self.rules(p, &wire);
+        }
+        // #endif
         if issues.is_empty() {
             self.value.insert(p.name.to_string(), p.schema.from_wire(&wire, true));
         }
@@ -422,6 +454,11 @@ impl Bound {
             return;
         };
         let issues = if self.check { p.schema.validate(&raw, "body", true) } else { Vec::new() };
+        // #if rules
+        if issues.is_empty() {
+            self.rules(p, &raw);
+        }
+        // #endif
         if issues.is_empty() {
             self.value.insert(p.name.to_string(), p.schema.from_wire(&raw, true));
         }
@@ -437,6 +474,9 @@ fn error_response(sig: &str, title: &str, status: u16, op: &str, data: Value) ->
         op: Some(op.to_string()),
         data,
         schema: None,
+        // #if rules
+        rulings: None,
+        // #endif
     };
     Response {
         status,
@@ -469,6 +509,12 @@ impl<E: Endpoints> Handler<E> {
     /// A handler for `endpoints`.
     #[must_use]
     pub fn new(endpoints: E) -> Self {
+        // #if rules
+        let output = endpoints.rules_output();
+        if output != super::rules::RuleOutput::Strict {
+            eprintln!("veld: output rules run in {output:?} mode");
+        }
+        // #endif
         let mut routes: Vec<Route> = endpoints.endpoints().iter().enumerate().map(|(i, ep)| compile(i, ep)).collect();
         // Literal routes before parameterised ones; the declared order breaks ties.
         routes.sort_by_key(|r| (r.params, r.index));
@@ -633,6 +679,11 @@ impl<E: Endpoints> Handler<E> {
             }
         }
         let bound = self.bind(ep, caps, req, ctx, ws);
+        // #if rules
+        if bound.issues.is_empty() && !bound.violations.is_empty() {
+            return Err(self.rejection(ep, std.validation, bound.violations, bound.micros));
+        }
+        // #endif
         if bound.issues.is_empty() {
             Ok(bound.value)
         } else {
@@ -653,7 +704,18 @@ impl<E: Endpoints> Handler<E> {
     }
 
     fn bind(&self, ep: &EndpointSpec, caps: &[(String, String)], req: &Request, ctx: &RequestContext, ws: bool) -> Bound {
+        // #if !rules
         let mut b = Bound { value: Map::new(), issues: Vec::new(), check: self.inner.endpoints.validate_requests() };
+        // #endif
+        // #if rules
+        let mut b = Bound {
+            value: Map::new(),
+            issues: Vec::new(),
+            check: self.inner.endpoints.validate_requests(),
+            violations: Vec::new(),
+            micros: 0,
+        };
+        // #endif
         let query = parse_query(&req.query);
         for p in ep.params.iter().filter(|p| !p.stream) {
             match p.binding {
@@ -681,6 +743,11 @@ impl<E: Endpoints> Handler<E> {
             return Response { status: ep.status, headers: Vec::new(), body: Body::Empty };
         };
         let wire = schema.to_wire(value, false, false);
+        // #if rules
+        if let Some(resp) = self.output_rules(ep, schema, &wire, ctx) {
+            return resp;
+        }
+        // #endif
         if self.inner.endpoints.validate_responses() {
             let issues = schema.validate(&wire, "$", false);
             if !issues.is_empty() {
@@ -695,6 +762,69 @@ impl<E: Endpoints> Handler<E> {
         }
     }
 
+    // #if rules
+    /// Step 5 failed: `422 ValidationError` with one issue and one violation per broken rule.
+    fn rejection(&self, ep: &EndpointSpec, sig: &str, violations: Vec<super::rules::Violation>, micros: u64) -> Response {
+        for v in &violations {
+            self.report(ep, v, super::rules::Position::Input, super::rules::Outcome::Rejected, micros);
+        }
+        let problem = Problem {
+            sig: sig.to_string(),
+            title: "ValidationError".to_string(),
+            status: 422,
+            op: Some(ep.sig.to_string()),
+            data: super::rules::rejection_data(&violations),
+            schema: None,
+            rulings: super::rules::Rulings::boxed(violations, false),
+        };
+        Response {
+            status: 422,
+            headers: vec![("content-type".into(), "application/problem+json".into())],
+            body: Body::Bytes(problem.to_text().into_bytes()),
+        }
+    }
+
+    fn report(&self, ep: &EndpointSpec, v: &super::rules::Violation, position: super::rules::Position, outcome: super::rules::Outcome, micros: u64) {
+        self.inner.endpoints.on_rule_violation(&super::rules::RuleEvent {
+            rule: v.rule.clone(),
+            operation: ep.sig.to_string(),
+            position,
+            outcome,
+            violation: v.clone(),
+            elapsed_micros: micros,
+        });
+    }
+
+    /// Step 8: the invariants of the result, by output mode. `Some` replaces the response.
+    fn output_rules(&self, ep: &EndpointSpec, schema: &'static Schema, wire: &Value, ctx: &RequestContext) -> Option<Response> {
+        use super::rules::{Mode, Outcome, Position, RuleOutput};
+        let mode = self.inner.endpoints.rules_output();
+        if mode == RuleOutput::Off {
+            return None;
+        }
+        let issues = schema.validate(wire, "$", false);
+        if !issues.is_empty() {
+            let err = Error::other(format!("{}: response failed validation: {issues:?}", ep.name));
+            return Some(self.failure(&err, ep, ctx));
+        }
+        let watch = super::rules::Stopwatch::start();
+        let violations = super::rules::check_wire(schema, wire, "$", Mode::Full);
+        let micros = watch.micros();
+        if violations.is_empty() {
+            return None;
+        }
+        let outcome = if mode == RuleOutput::Strict { Outcome::Rejected } else { Outcome::Audited };
+        for v in &violations {
+            self.report(ep, v, Position::Output, outcome, micros);
+        }
+        if mode == RuleOutput::Strict {
+            let err = Error::other(format!("{}: the result violates {} rule(s)", ep.name, violations.len()));
+            return Some(self.failure(&err, ep, ctx));
+        }
+        None
+    }
+
+    // #endif
     /// A declared error is answered at its declared status; anything else becomes `Internal`
     /// without a message, and the original goes to `on_error`.
     fn failure(&self, err: &Error, ep: &EndpointSpec, ctx: &RequestContext) -> Response {
@@ -717,6 +847,9 @@ impl<E: Endpoints> Handler<E> {
                 op: Some(ep.sig.to_string()),
                 data,
                 schema: None,
+                // #if rules
+                rulings: None,
+                // #endif
             };
             (status, p)
         };

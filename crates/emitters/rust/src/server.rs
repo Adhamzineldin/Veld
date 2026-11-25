@@ -93,8 +93,8 @@ fn service_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, _sid: Serv
     std_sigs(w, ctx.tree);
     service_trait(w, ctx, svc);
     let n = needs(svc);
-    hooks_trait(w, svc, &n, ctx.tree.validate);
-    dispatch(w, svc, &n);
+    hooks_trait(w, svc, &n, ctx.tree.validate, ctx.tree.rules);
+    dispatch(w, svc, &n, ctx.tree.rules);
     handler(w, svc, &n);
 }
 
@@ -133,7 +133,7 @@ fn service_trait(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     w.close().blank();
 }
 
-fn hooks_trait(w: &mut CodeWriter, svc: &Service, n: &Needs, validate: bool) {
+fn hooks_trait(w: &mut CodeWriter, svc: &Service, n: &Needs, validate: bool, rules: bool) {
     let name = service_type(svc);
     w.line(format!(
         "/// The hooks of the `{}` service: the authentication and middleware its endpoints need,",
@@ -180,6 +180,19 @@ fn hooks_trait(w: &mut CodeWriter, svc: &Service, n: &Needs, validate: bool) {
     w.open("fn validate_responses(&self) -> bool");
     w.line("false");
     w.close();
+    if rules {
+        w.blank();
+        w.line(
+            "/// What happens when the result of an endpoint violates an invariant: `Strict` (the",
+        );
+        w.line("/// default) answers `500 Internal`, `Audit` sends it and reports, `Off` does not check.");
+        w.open("fn rules_output(&self) -> veld::rules::RuleOutput");
+        w.line("veld::rules::RuleOutput::Strict");
+        w.close().blank();
+        w.line("/// Observes every violated invariant of an input (rejected) or an output (rejected or");
+        w.line("/// audited). It cannot change the response.");
+        w.line("fn on_rule_violation(&self, _event: &veld::rules::RuleEvent) {}");
+    }
     w.close().blank();
     if !n.any() {
         w.line("/// The hooks of a service that needs none.");
@@ -189,7 +202,7 @@ fn hooks_trait(w: &mut CodeWriter, svc: &Service, n: &Needs, validate: bool) {
     }
 }
 
-fn dispatch(w: &mut CodeWriter, svc: &Service, n: &Needs) {
+fn dispatch(w: &mut CodeWriter, svc: &Service, n: &Needs, rules: bool) {
     let name = service_type(svc);
     w.line(format!(
         "/// Connects `{name}Service` and `{name}Hooks` to the server core."
@@ -216,6 +229,14 @@ fn dispatch(w: &mut CodeWriter, svc: &Service, n: &Needs) {
     w.open("fn on_error(&self, err: &veld::Error, ctx: &veld::server::RequestContext)");
     w.line("self.hooks.on_error(err, ctx);");
     w.close().blank();
+    if rules {
+        w.open("fn rules_output(&self) -> veld::rules::RuleOutput");
+        w.line("self.hooks.rules_output()");
+        w.close().blank();
+        w.open("fn on_rule_violation(&self, event: &veld::rules::RuleEvent)");
+        w.line("self.hooks.on_rule_violation(event);");
+        w.close().blank();
+    }
     auth_forwards(w, n);
     call_methods(w, svc);
     w.close().blank();

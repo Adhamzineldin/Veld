@@ -2,7 +2,7 @@
 //! `src/veld/`, gated by `// @if <flag>` ... `// @end` lines so that a crate carries only what it
 //! uses (a client has no server core, a contract without streams has no `futures-core`).
 
-use veld_codegen::{FileSet, GenDiagnostic};
+use veld_codegen::{FileSet, GenDiagnostic, gate_regions};
 
 use crate::util::{HEADER, add_file};
 
@@ -20,9 +20,21 @@ pub struct Features {
     pub axum: bool,
     pub reqwest: bool,
     pub ureq: bool,
+    /// The crate has declarations with invariants (`spec/rules.md`): the rules runtime is emitted
+    /// and the `// #if rules` regions of the runtime files are kept.
+    pub rules: bool,
 }
 
 impl Features {
+    /// Whether the region `name` of a runtime file is kept (`// #if rules`, `// #if !rules`).
+    fn region(&self, name: &str) -> bool {
+        match name {
+            "rules" => self.rules,
+            "!rules" => !self.rules,
+            _ => false,
+        }
+    }
+
     fn flag(&self, name: &str) -> bool {
         match name {
             "server" => self.server,
@@ -62,6 +74,13 @@ pub fn gate(src: &str, f: &Features) -> String {
     out
 }
 
+const RULES: &str = include_str!("../runtime/rules.rs");
+// The helpers of the reference evaluator (`veld-rules`), embedded as they are: generated rule
+// code and the reference evaluator run the same helper source.
+const RULES_DECIMAL: &str = include_str!("../../../veld-rules/src/helpers/decimal.rs");
+const RULES_INSTANT: &str = include_str!("../../../veld-rules/src/helpers/instant.rs");
+const RULES_NUM: &str = include_str!("../../../veld-rules/src/helpers/num.rs");
+const RULES_TEXT: &str = include_str!("../../../veld-rules/src/helpers/text.rs");
 const CANONICAL: &str = include_str!("../runtime/canonical.rs");
 const CLIENT: &str = include_str!("../runtime/client.rs");
 const ERROR: &str = include_str!("../runtime/error.rs");
@@ -90,6 +109,7 @@ pub fn mod_rs(f: &Features) -> String {
         ("error", true),
         ("page", true),
         ("regex", true),
+        ("rules", f.rules),
         ("schema", true),
         ("server", f.server),
         ("spec", true),
@@ -113,17 +133,23 @@ pub fn mod_rs(f: &Features) -> String {
 /// Emits `src/veld/*` and the adapter files the features ask for.
 pub fn emit(files: &mut FileSet, f: &Features) -> Result<(), Vec<GenDiagnostic>> {
     let mut put = |path: &str, src: &str, on: bool| -> Result<(), Vec<GenDiagnostic>> {
-        if on {
-            add_file(files, path, format!("{HEADER}\n\n{}", gate(src, f)))
-        } else {
-            Ok(())
+        if !on {
+            return Ok(());
         }
+        let kept = gate_regions(src, &|name| f.region(name))
+            .map_err(|e| vec![GenDiagnostic::new("E0805", format!("{path}: {e}"))])?;
+        add_file(files, path, format!("{HEADER}\n\n{}", gate(&kept, f)))
     };
     put("src/veld/canonical.rs", CANONICAL, true)?;
     put("src/veld/client.rs", CLIENT, f.client)?;
     put("src/veld/error.rs", ERROR, true)?;
     put("src/veld/page.rs", PAGE, true)?;
     put("src/veld/regex.rs", REGEX, true)?;
+    put("src/veld/rules/mod.rs", RULES, f.rules)?;
+    put("src/veld/rules/decimal.rs", RULES_DECIMAL, f.rules)?;
+    put("src/veld/rules/instant.rs", RULES_INSTANT, f.rules)?;
+    put("src/veld/rules/num.rs", RULES_NUM, f.rules)?;
+    put("src/veld/rules/text.rs", RULES_TEXT, f.rules)?;
     put("src/veld/schema.rs", SCHEMA, true)?;
     put("src/veld/server.rs", SERVER, f.server)?;
     put("src/veld/spec.rs", SPEC, true)?;

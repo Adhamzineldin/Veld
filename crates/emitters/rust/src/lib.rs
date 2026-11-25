@@ -9,6 +9,7 @@ pub mod client;
 pub mod endpoints;
 pub mod models;
 pub mod package;
+pub mod rules;
 pub mod runtime;
 pub mod server;
 pub mod tree;
@@ -186,9 +187,14 @@ impl Generator for Rust {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        // Everything except the rules features (not implemented yet, `E0801`). The one limit is
+        // Everything except the endpoint, state-machine and policy rules (not implemented, `E0801`);
+        // invariants are enforced (`spec/targets/rust.md` section 10). The one limit is
         // framework dependent and reported as `E0801` by `generate`: the blocking `ureq` transport cannot open WebSockets.
-        Capabilities::all_except(&Feature::RULES)
+        Capabilities::all_except(&[
+            Feature::RulesEndpoint,
+            Feature::RulesTransitions,
+            Feature::RulesPolicies,
+        ])
     }
 
     fn generate(
@@ -223,7 +229,9 @@ impl Generator for Rust {
                 "generator `rust` cannot open WebSockets on the `ureq` transport (it is blocking and has no WebSocket client); use the `reqwest` framework, or serve this contract from another generator",
             ));
         }
+        let rules = crate_has_rules(req);
         let f = Features {
+            rules,
             server,
             client: !server || !req.consumes.is_empty(),
             sse: streaming,
@@ -242,8 +250,9 @@ impl Generator for Rust {
         package::emit_cargo(&mut files, &name, &f)?;
         package::emit_readme(&mut files, &name, req.role, &f)?;
         let validate = opts.validate != Some(false);
-        let main =
-            Tree::new(req.ir, "crate", "src", req.services.clone(), true).with_validate(validate);
+        let main = Tree::new(req.ir, "crate", "src", req.services.clone(), true)
+            .with_validate(validate)
+            .with_rules(rules);
         models::emit(&mut files, &main)?;
         if !files.contains("src/prelude.rs") {
             util::add_file(&mut files, "src/prelude.rs", format!("{}\n", util::HEADER))?;
@@ -264,10 +273,27 @@ impl Generator for Rust {
             client::emit(&mut files, &main, tr)?;
         }
         let packages = package::emit_modules(&mut files, &main, &mods)?;
-        let has_clients = emit_consumed(&mut files, req, tr, validate)?;
+        let has_clients = emit_consumed(&mut files, req, tr, validate, rules)?;
         package::emit_lib(&mut files, &packages, has_clients, &f, req.role)?;
         Ok(files)
     }
+}
+
+/// Whether any declaration that the crate emits has invariants. The flag is per crate: with it,
+/// every schema carries its check function and the rules runtime is part of the crate.
+fn crate_has_rules(req: &GenRequest<'_>) -> bool {
+    let main = Tree::new(req.ir, "crate", "src", req.services.clone(), true);
+    main.has_rules()
+        || req.consumes.iter().any(|sid| {
+            Tree::new(
+                req.ir,
+                "crate::clients::x",
+                "src/clients/x",
+                vec![*sid],
+                false,
+            )
+            .has_rules()
+        })
 }
 
 /// A client tree under `src/clients/<service>` for each consumed service of a server.
@@ -276,6 +302,7 @@ fn emit_consumed(
     req: &GenRequest<'_>,
     tr: Transports,
     validate: bool,
+    rules: bool,
 ) -> Result<bool, Vec<GenDiagnostic>> {
     if req.consumes.is_empty() {
         return Ok(false);
@@ -286,7 +313,9 @@ fn emit_consumed(
         let dir_name = util::module(&svc.name);
         let root = format!("crate::clients::{dir_name}");
         let dir = format!("src/clients/{dir_name}");
-        let tree = Tree::new(req.ir, &root, &dir, vec![*sid], false).with_validate(validate);
+        let tree = Tree::new(req.ir, &root, &dir, vec![*sid], false)
+            .with_validate(validate)
+            .with_rules(rules);
         models::emit(files, &tree)?;
         client::emit(files, &tree, tr)?;
         let mods = BTreeMap::from([(*sid, vec![client::client_mod(svc)])]);
