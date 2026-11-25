@@ -177,7 +177,10 @@ impl Imports {
         }
         if self.rules {
             let spec = util::rel_import(from_file, &sibling_rules(runtime_module));
-            lines.push((spec.clone(), format!("import * as veldRules from '{spec}';")));
+            lines.push((
+                spec.clone(),
+                format!("import * as veldRules from '{spec}';"),
+            ));
         }
         for (module, names) in &self.named {
             let spec = util::rel_import(from_file, module);

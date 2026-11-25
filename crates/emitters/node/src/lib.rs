@@ -93,8 +93,7 @@ impl Generator for Node {
             frameworks::emit_ws(&mut files)?;
             modules.push("server/ws".to_string());
         }
-        let (extra, consumed_rules) =
-            emit_consumed(&mut files, req, opts.validate != Some(false))?;
+        let (extra, consumed_rules) = emit_consumed(&mut files, req, opts.validate != Some(false))?;
         runtime::emit(&mut files, tree.uses_rules() || consumed_rules)?;
         modules.sort();
         barrel::write(&mut files, "", &modules, &extra, true)?;

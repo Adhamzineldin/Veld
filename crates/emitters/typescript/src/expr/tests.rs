@@ -178,7 +178,10 @@ fn literals_follow_the_type_of_the_node() {
     assert_eq!(show(&lit(sc(Scalar::Long), ExprLit::Long(-9))), "-9n");
     assert_eq!(show(&lit(sc(Scalar::Float), ExprLit::Int(2))), "2");
     assert_eq!(show(&lit(sc(Scalar::Float), ExprLit::Float(0.5))), "0.5");
-    assert_eq!(show(&lit(sc(Scalar::Float), ExprLit::Float(1.0e308))), "1e+308");
+    assert_eq!(
+        show(&lit(sc(Scalar::Float), ExprLit::Float(1.0e308))),
+        "1e+308"
+    );
     assert_eq!(
         show(&lit(sc(Scalar::Decimal), ExprLit::Int(7))),
         "r.dec('7')"
@@ -220,7 +223,13 @@ fn a_read_converts_at_the_leaf() {
     );
     assert_eq!(read("c", Scalar::Time), "r.toTime(r.required(self.c))");
     assert_eq!(read("u", Scalar::Uuid), "r.toUuid(r.required(self.u))");
-    for plain in [Scalar::Int, Scalar::Float, Scalar::Bool, Scalar::String, Scalar::Bytes] {
+    for plain in [
+        Scalar::Int,
+        Scalar::Float,
+        Scalar::Bool,
+        Scalar::String,
+        Scalar::Bytes,
+    ] {
         assert_eq!(read("x", plain), "r.required(self.x)", "{plain:?}");
     }
     let optional_long = opt_field("n", sc(Scalar::Long));
@@ -234,7 +243,10 @@ fn a_list_read_converts_its_elements_once() {
         show(&longs),
         "r.required(self.ids).map((e0) => r.toLong(e0))"
     );
-    assert_eq!(show(&field("tags", list_of(Scalar::String))), "r.required(self.tags)");
+    assert_eq!(
+        show(&field("tags", list_of(Scalar::String))),
+        "r.required(self.tags)"
+    );
     let nested = field(
         "grid",
         ExprType::Type(Type::List(Box::new(Type::List(Box::new(Type::Scalar(
@@ -339,12 +351,15 @@ fn logic_uses_native_operators_with_the_right_parentheses() {
         show(&right),
         "!r.required(self.a) || (!r.required(self.b) || r.required(self.c))"
     );
-    let not = ex(sc(Scalar::Bool), ExprKind::Not(Box::new(logic(Op::Or, a(), b()))));
-    assert_eq!(show(&not), "!(r.required(self.a) || r.required(self.b))");
-    let double = ex(sc(Scalar::Bool), ExprKind::Not(Box::new(ex(
+    let not = ex(
         sc(Scalar::Bool),
-        ExprKind::Not(Box::new(a())),
-    ))));
+        ExprKind::Not(Box::new(logic(Op::Or, a(), b()))),
+    );
+    assert_eq!(show(&not), "!(r.required(self.a) || r.required(self.b))");
+    let double = ex(
+        sc(Scalar::Bool),
+        ExprKind::Not(Box::new(ex(sc(Scalar::Bool), ExprKind::Not(Box::new(a()))))),
+    );
     assert_eq!(show(&double), "!!r.required(self.a)");
 }
 
@@ -355,10 +370,22 @@ fn comparisons_are_native_except_for_decimals() {
         let r = field("b", sc(s));
         show(&logic(op, l, r))
     };
-    assert_eq!(cmp(Op::Eq, Scalar::Int), "r.required(self.a) === r.required(self.b)");
-    assert_eq!(cmp(Op::Ne, Scalar::String), "r.required(self.a) !== r.required(self.b)");
-    assert_eq!(cmp(Op::Lt, Scalar::Float), "r.required(self.a) < r.required(self.b)");
-    assert_eq!(cmp(Op::Le, Scalar::Bool), "r.required(self.a) <= r.required(self.b)");
+    assert_eq!(
+        cmp(Op::Eq, Scalar::Int),
+        "r.required(self.a) === r.required(self.b)"
+    );
+    assert_eq!(
+        cmp(Op::Ne, Scalar::String),
+        "r.required(self.a) !== r.required(self.b)"
+    );
+    assert_eq!(
+        cmp(Op::Lt, Scalar::Float),
+        "r.required(self.a) < r.required(self.b)"
+    );
+    assert_eq!(
+        cmp(Op::Le, Scalar::Bool),
+        "r.required(self.a) <= r.required(self.b)"
+    );
     assert_eq!(
         cmp(Op::Ge, Scalar::Long),
         "r.toLong(r.required(self.a)) >= r.toLong(r.required(self.b))"
@@ -483,7 +510,10 @@ fn negation_is_checked_where_it_can_overflow() {
         "-r.required(self.n)"
     );
     assert_eq!(
-        neg(lit(sc(Scalar::Float), ExprLit::Float(-1.5)), sc(Scalar::Float)),
+        neg(
+            lit(sc(Scalar::Float), ExprLit::Float(-1.5)),
+            sc(Scalar::Float)
+        ),
         "-(-1.5)"
     );
     assert_eq!(
@@ -563,7 +593,10 @@ fn len_depends_on_the_operand_type() {
         len(field("b", sc(Scalar::Bytes))),
         "r.lenBytes(r.required(self.b))"
     );
-    assert_eq!(len(field("xs", list_of(Scalar::Int))), "r.required(self.xs).length");
+    assert_eq!(
+        len(field("xs", list_of(Scalar::Int))),
+        "r.required(self.xs).length"
+    );
     let map_t = ExprType::Type(Type::Map(Box::new(Type::Scalar(Scalar::Int))));
     assert_eq!(len(field("m", map_t)), "r.lenMap(r.required(self.m))");
 }
@@ -614,19 +647,43 @@ fn comprehensions_use_array_methods_and_checked_helpers() {
     let qty = |v: &str| path(Root::Var(v.into()), &[("qty", false)], sc(Scalar::Int));
     let positive = || bin(Op::Gt, qty("i"), int(0), sc(Scalar::Bool));
     assert_eq!(
-        show(&quant(Quantifier::All, items(), "i", positive(), sc(Scalar::Bool))),
+        show(&quant(
+            Quantifier::All,
+            items(),
+            "i",
+            positive(),
+            sc(Scalar::Bool)
+        )),
         "r.required(self.items).every((l_i) => r.required(l_i.qty) > 0)"
     );
     assert_eq!(
-        show(&quant(Quantifier::Any, items(), "i", positive(), sc(Scalar::Bool))),
+        show(&quant(
+            Quantifier::Any,
+            items(),
+            "i",
+            positive(),
+            sc(Scalar::Bool)
+        )),
         "r.required(self.items).some((l_i) => r.required(l_i.qty) > 0)"
     );
     assert_eq!(
-        show(&quant(Quantifier::Count, items(), "i", positive(), sc(Scalar::Int))),
+        show(&quant(
+            Quantifier::Count,
+            items(),
+            "i",
+            positive(),
+            sc(Scalar::Int)
+        )),
         "r.countWhere(r.required(self.items), (l_i) => r.required(l_i.qty) > 0)"
     );
     assert_eq!(
-        show(&quant(Quantifier::Sum, items(), "i", qty("i"), sc(Scalar::Int))),
+        show(&quant(
+            Quantifier::Sum,
+            items(),
+            "i",
+            qty("i"),
+            sc(Scalar::Int)
+        )),
         "r.sumInt(r.required(self.items), (l_i) => r.required(l_i.qty))"
     );
 }
@@ -635,9 +692,18 @@ fn comprehensions_use_array_methods_and_checked_helpers() {
 fn sum_picks_the_helper_of_its_body_type() {
     let sum = |elem: Scalar| {
         let body = var("p", sc(elem));
-        show(&quant(Quantifier::Sum, field("xs", list_of(elem)), "p", body, sc(elem)))
+        show(&quant(
+            Quantifier::Sum,
+            field("xs", list_of(elem)),
+            "p",
+            body,
+            sc(elem),
+        ))
     };
-    assert_eq!(sum(Scalar::Int), "r.sumInt(r.required(self.xs), (l_p) => l_p)");
+    assert_eq!(
+        sum(Scalar::Int),
+        "r.sumInt(r.required(self.xs), (l_p) => l_p)"
+    );
     assert_eq!(
         sum(Scalar::Long),
         "r.sumLong(r.required(self.xs).map((e0) => r.toLong(e0)), (l_p) => l_p)"

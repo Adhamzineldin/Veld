@@ -122,7 +122,9 @@ impl TsExpr<'_> {
                     format!("{code}.map(({name}) => {item})")
                 };
             }
-            Type::Scalar(_) | Type::Map(_) | Type::Page(_) | Type::Decl(_) => return code.to_owned(),
+            Type::Scalar(_) | Type::Map(_) | Type::Page(_) | Type::Decl(_) => {
+                return code.to_owned();
+            }
         };
         format!("{}.{helper}({code})", self.ns)
     }
@@ -221,7 +223,19 @@ fn capitalise(word: &str) -> String {
 fn prec_of(op: Op) -> u8 {
     match op {
         Op::Eq | Op::Ne => prec::EQ,
-        _ => prec::CMP,
+        Op::And
+        | Op::Or
+        | Op::Implies
+        | Op::Lt
+        | Op::Le
+        | Op::Gt
+        | Op::Ge
+        | Op::In
+        | Op::Add
+        | Op::Sub
+        | Op::Mul
+        | Op::Div
+        | Op::Rem => prec::CMP,
     }
 }
 
@@ -242,10 +256,10 @@ impl ExprPrinter for TsExpr<'_> {
         match lit {
             ExprLit::Bool(b) => Printed::atom(b.to_string()),
             ExprLit::Int(n) if is_scalar(ty, Scalar::Long) => number(format!("{n}n"), *n < 0),
-            ExprLit::Int(n) if is_scalar(ty, Scalar::Float) => {
-                number(es_number(*n as f64), *n < 0)
+            ExprLit::Int(n) if is_scalar(ty, Scalar::Float) => number(es_number(*n as f64), *n < 0),
+            ExprLit::Int(n) if is_scalar(ty, Scalar::Decimal) => {
+                self.helper("dec", &[&ts_str(&n.to_string())])
             }
-            ExprLit::Int(n) if is_scalar(ty, Scalar::Decimal) => self.helper("dec", &[&ts_str(&n.to_string())]),
             ExprLit::Int(n) => number(n.to_string(), *n < 0),
             ExprLit::Long(n) => number(format!("{n}n"), *n < 0),
             ExprLit::Float(x) => number(es_number(*x), *x < 0.0),
@@ -305,7 +319,22 @@ impl ExprPrinter for TsExpr<'_> {
             ValueKind::Int => self.helper("negInt", &[&operand.code]),
             ValueKind::Long | ValueKind::Duration => self.helper("negLong", &[&operand.code]),
             ValueKind::Decimal => self.helper("decNeg", &[&operand.code]),
-            _ => Printed::new(format!("-{}", operand.at(prec::PREFIX + 1)), prec::PREFIX),
+            ValueKind::Float
+            | ValueKind::Bool
+            | ValueKind::String
+            | ValueKind::Uuid
+            | ValueKind::Date
+            | ValueKind::Datetime
+            | ValueKind::Time
+            | ValueKind::Bytes
+            | ValueKind::Json
+            | ValueKind::Enum
+            | ValueKind::Model
+            | ValueKind::List
+            | ValueKind::Map
+            | ValueKind::Page => {
+                Printed::new(format!("-{}", operand.at(prec::PREFIX + 1)), prec::PREFIX)
+            }
         }
     }
 
@@ -350,7 +379,9 @@ impl ExprPrinter for TsExpr<'_> {
         _out: &ExprType,
     ) -> Printed {
         let code: Vec<&str> = args.iter().map(|a| a.code.as_str()).collect();
-        let first = args.first().map_or_else(String::new, |a| a.at(Printed::ATOM));
+        let first = args
+            .first()
+            .map_or_else(String::new, |a| a.at(Printed::ATOM));
         let second = code.get(1).copied().unwrap_or_default();
         match f {
             Builtin::Len => match arg_types.first().map(|t| self.kind(t)) {
@@ -394,7 +425,21 @@ impl ExprPrinter for TsExpr<'_> {
                     ValueKind::Int => "sumInt",
                     ValueKind::Float => "sumFloat",
                     ValueKind::Decimal => "sumDecimal",
-                    _ => "sumLong",
+                    ValueKind::Long
+                    | ValueKind::Bool
+                    | ValueKind::String
+                    | ValueKind::Uuid
+                    | ValueKind::Date
+                    | ValueKind::Datetime
+                    | ValueKind::Time
+                    | ValueKind::Duration
+                    | ValueKind::Bytes
+                    | ValueKind::Json
+                    | ValueKind::Enum
+                    | ValueKind::Model
+                    | ValueKind::List
+                    | ValueKind::Map
+                    | ValueKind::Page => "sumLong",
                 };
                 self.helper(name, &[&list.code, &arrow])
             }
@@ -408,9 +453,7 @@ impl ExprPrinter for TsExpr<'_> {
 
     fn widen(&mut self, operand: Printed, from: &ExprType, to: &ExprType) -> Printed {
         match (self.kind(from), self.kind(to)) {
-            (ValueKind::Int, ValueKind::Long) => {
-                Printed::atom(format!("BigInt({})", operand.code))
-            }
+            (ValueKind::Int, ValueKind::Long) => Printed::atom(format!("BigInt({})", operand.code)),
             (ValueKind::Int, ValueKind::Decimal) => self.helper("decFromInt", &[&operand.code]),
             (ValueKind::Long, ValueKind::Decimal) => self.helper("decFromLong", &[&operand.code]),
             _ => operand,
@@ -430,7 +473,6 @@ pub fn wire_name(fields: &[veld_ir::Field], name: &str) -> String {
         .find(|f| f.name == name)
         .map_or_else(|| name.to_owned(), |f| f.wire.clone())
 }
-
 
 #[cfg(test)]
 mod tests;

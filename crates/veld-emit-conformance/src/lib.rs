@@ -155,7 +155,11 @@ pub fn check_only_invariants_supported(generator: &dyn DynGenerator) -> Result<(
         for f in Feature::RULES {
             let want = f == Feature::RulesInvariants;
             if caps.supports(f) != want {
-                return Err(format!("{}: `{}` should be supported: {want}", role.name(), f.name()));
+                return Err(format!(
+                    "{}: `{}` should be supported: {want}",
+                    role.name(),
+                    f.name()
+                ));
             }
         }
         let req = GenRequest {

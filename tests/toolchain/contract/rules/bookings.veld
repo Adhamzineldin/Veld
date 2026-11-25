@@ -1,0 +1,29 @@
+/// A booking with two invariants.
+model Booking {
+  start: datetime
+  end: datetime
+  guests: int
+  rule endAfterStart: end > start
+    message "A booking must end after it starts"
+  rule party: guests <= 10
+}
+
+/// A query object with an invariant that only reads optional fields.
+model Window {
+  from?: int
+  to?: int
+  rule ordered: !has(from) || !has(to) || from <= to
+}
+
+/// A response whose rule the implementation can break.
+model Report {
+  parts: int[]
+  total: int
+  rule sums: sum(parts, p => p) == total
+}
+
+service Bookings at "/bookings" {
+  post "/" create(body: Booking) -> 201 Booking
+  get "/search" search(query: Window) -> int
+  get "/report" report(@query broken: bool) -> Report
+}

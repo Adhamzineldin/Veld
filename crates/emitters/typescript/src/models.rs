@@ -273,7 +273,11 @@ fn write_error_rules_members(
     let violation = fc.rt("Violation");
     let check = fc.rt("checkValue");
     w.blank();
-    w.line(format!("static readonly ruleIds: {} = {};", checks::ids_type(d), checks::ids_value(d)));
+    w.line(format!(
+        "static readonly ruleIds: {} = {};",
+        checks::ids_type(d),
+        checks::ids_value(d)
+    ));
     w.blank();
     w.open(format!("static check(data: {data}): {violation}[]"));
     w.line(format!("return {check}({name}.schema, data);"));

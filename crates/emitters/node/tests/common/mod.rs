@@ -173,6 +173,31 @@ pub fn text<'a>(files: &'a FileSet, path: &str) -> &'a str {
     .unwrap_or_default()
 }
 
+/// The rules fixture: invariants on a body, a query object and a response
+/// (`tests/toolchain/contract/rules`).
+pub fn rules_ir() -> Ir {
+    let path = repo_root().join("tests/toolchain/contract/rules/bookings.veld");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "bookings".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: "bookings.veld".into(),
+                text,
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    assert!(
+        out.ir.is_some(),
+        "rules fixture failed to compile:\n{}",
+        out.render()
+    );
+    out.ir.unwrap_or_else(|| unreachable!())
+}
+
 /// The hazard fixture: every identifier that is dangerous in TypeScript, JavaScript or Java,
 /// used for endpoints, fields, models and enum variants (`tests/toolchain/contract/hazards`).
 pub fn hazards_ir() -> Ir {

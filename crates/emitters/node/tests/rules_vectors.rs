@@ -62,7 +62,8 @@ fn load_groups() -> Vec<Group> {
             groups.push(Group {
                 name: format!("{group}_{stem}"),
                 source: std::fs::read_to_string(&veld).unwrap(),
-                cases: load_cases(&text).unwrap_or_else(|e| panic!("{}: {e}", cases_path.display())),
+                cases: load_cases(&text)
+                    .unwrap_or_else(|e| panic!("{}: {e}", cases_path.display())),
                 cases_path,
             });
         }
@@ -197,7 +198,10 @@ fn vectors_pass(tsc_path: &Path, edition: &str, target: &str) {
         for (case, line) in group.cases.iter().zip(&lines) {
             assert_eq!(case.name, line.name, "{}: lines out of order", group.name);
             if let Some(e) = &line.error {
-                failures.push(format!("{} / {}: the driver threw {e}", group.name, case.name));
+                failures.push(format!(
+                    "{} / {}: the driver threw {e}",
+                    group.name, case.name
+                ));
             } else if let Err(m) = compare_produced(case, &line.violations) {
                 failures.push(format!("{} / {m}", group.name));
             } else {
@@ -206,7 +210,12 @@ fn vectors_pass(tsc_path: &Path, edition: &str, target: &str) {
         }
     }
     eprintln!("rule vectors ({edition}): {passed} passed");
-    assert!(failures.is_empty(), "{} failed:\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} failed:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 #[test]
