@@ -227,8 +227,24 @@ fn write_constructor(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service
         None => w.line("baseUrl: null,"),
     };
     w.line(format!("validation: {validation},"));
+    if let Some(digest) = rules_digest(fc, svc) {
+        w.line(format!("service: {},", ts_str(&svc.name)));
+        w.line(format!("digest: {},", ts_str(digest)));
+    }
     w.close_with("});");
     w.close();
+}
+
+/// The rules digest a client or server of `svc` embeds (`spec/rules.md` section 9.7): only when
+/// the generated tree has endpoint rules, so a contract with invariants only keeps the output it
+/// had before endpoint rules existed.
+#[must_use]
+pub fn rules_digest<'s>(fc: &FileCtx<'_, '_>, svc: &'s Service) -> Option<&'s str> {
+    if fc.tree.uses_endpoint_rules() {
+        svc.rules_digest.as_deref()
+    } else {
+        None
+    }
 }
 
 /// The arrow function that builds the local `ValidationError`. The compiler only includes prelude

@@ -839,6 +839,270 @@ function reportRuleMode(hooks: HandlerHooks, endpoints: readonly EndpointSpec[])
   log?.warn?.(`veld: rules.output is '${mode}': rule violations in responses ${effect}`);
 }
 // #endif
+// #if endpoint_rules
+import type { EvalErrorKind } from './rules';
+
+// ---------------------------------------------------------------------------
+// Endpoint rules: facts, require, old and ensure (spec/rules.md section 9)
+// ---------------------------------------------------------------------------
+
+/** A response an endpoint's `call` may return in place of a result. It is sent as it is. */
+export class EarlyResponse {
+  readonly response: VeldResponse;
+
+  constructor(response: VeldResponse) {
+    this.response = response;
+  }
+}
+
+/** One fact of an endpoint (`fact room: Room = body.roomId`). */
+export interface FactStep {
+  name: string;
+  optional: boolean;
+  /** The key the loader takes, in its developer-facing form. Absent for a fact without a key. */
+  key?: (p: never, f: never, now: bigint) => unknown;
+  /** Calls the application's loader. It resolves to `null` or `undefined` when nothing is found. */
+  load: (key: never, ctx: RequestContext) => Promise<unknown>;
+}
+
+/** What a failed `require` or `ensure` reports. */
+interface StatementInfo {
+  /** The rule id. */
+  id: string;
+  /** The statement's name, `require` or `ensure` when it has none. */
+  name: string;
+  /** The parameters the expression reads. */
+  fields: readonly string[];
+  message: string;
+}
+
+/** `require [name:] expr [else E { .. }]`. */
+export interface RequireStep extends StatementInfo {
+  holds: (p: never, f: never, now: bigint) => boolean;
+  /** The declared error to answer with and its payload, built only when the rule fails. */
+  otherwise?: { sig: string; data: (p: never, f: never, now: bigint) => unknown };
+}
+
+/** `ensure [name:] expr`, evaluated on the handler's success result. */
+export interface EnsureStep extends StatementInfo {
+  holds: (p: never, result: never, now: bigint, o: never) => boolean;
+}
+
+/** The statements of one endpoint block, in the order they run. */
+export interface EndpointRuleSet {
+  facts: readonly FactStep[];
+  requires: readonly RequireStep[];
+  /** The operands of `old(...)`, evaluated and saved at the end of step 6. */
+  old: readonly ((p: never, f: never, now: bigint) => unknown)[];
+  ensures: readonly EnsureStep[];
+}
+
+/** What step 6 saves for step 9. */
+interface Prepared {
+  now: bigint;
+  old: unknown[];
+}
+
+type Verdict = 'holds' | 'fails' | EvalErrorKind;
+
+function evalErrorKind(e: unknown): EvalErrorKind | null {
+  if (!(e instanceof Error) || e.name !== 'RuleEvalError') return null;
+  const kind = (e as { kind?: unknown }).kind;
+  return kind === 'overflow' || kind === 'division_by_zero' || kind === 'non_finite' ? kind : null;
+}
+
+function verdictOf(test: () => boolean): Verdict {
+  try {
+    return test() ? 'holds' : 'fails';
+  } catch (e) {
+    const kind = evalErrorKind(e);
+    if (kind === null) throw e;
+    return kind;
+  }
+}
+
+function stepViolation(step: StatementInfo, verdict: Verdict): Violation {
+  const v: Violation = { rule: step.id, path: 'request', fields: [...step.fields], message: step.message };
+  if (verdict !== 'holds' && verdict !== 'fails') {
+    v.error = verdict;
+    v.message = `rule ${step.name} could not be evaluated`;
+  }
+  return v;
+}
+
+/** The wire text of a decimal of the rule representation (`n * 10^-s`). */
+export function decimalText(d: { readonly n: bigint; readonly s: number }): string {
+  const digits = (d.n < 0n ? -d.n : d.n).toString().padStart(d.s + 1, '0');
+  const text = d.s === 0 ? digits : `${digits.slice(0, digits.length - d.s)}.${digits.slice(digits.length - d.s)}`;
+  return d.n < 0n ? `-${text}` : text;
+}
+
+/** `YYYY-MM-DD` for a number of days since the epoch. */
+export function dateText(days: bigint): string {
+  return new Date(Number(days) * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** `HH:MM:SS` and `.mmm` when it is not zero, for milliseconds since midnight. */
+export function timeText(ms: bigint): string {
+  const t = Number(ms);
+  const two = (n: number): string => String(n).padStart(2, '0');
+  const base = `${two(Math.floor(t / 3_600_000))}:${two(Math.floor(t / 60_000) % 60)}:${two(Math.floor(t / 1000) % 60)}`;
+  return t % 1000 === 0 ? base : `${base}.${String(t % 1000).padStart(3, '0')}`;
+}
+
+/** RFC 3339 in UTC for milliseconds since the epoch, with `.mmm` only when it is not zero. */
+export function datetimeText(ms: bigint): string {
+  return new Date(Number(ms)).toISOString().replace('.000Z', 'Z');
+}
+
+/** A copy of a saved `old(...)` value that a handler cannot change in place. */
+function snapshot(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(snapshot);
+  if (!isObject(v)) return v;
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(v)) out[k] = snapshot(v[k]);
+  return out;
+}
+
+function problemWithViolations(
+  sig: string,
+  title: string,
+  status: number,
+  op: string,
+  data: unknown,
+  violations: readonly Violation[],
+): VeldResponse {
+  const body: Problem = { type: sig, title, status, operation: op, data, violations: [...violations] };
+  return { status, headers: { 'content-type': PROBLEM_CONTENT_TYPE }, body: JSON.stringify(body) };
+}
+
+/** The answer of `require .. else E { .. }`: the payload is built now, in the scope of the rule. */
+function elseAnswer(
+  ep: ServerEndpoint,
+  ctx: RequestContext,
+  std: StdSigs,
+  hooks: HandlerHooks,
+  step: RequireStep & { otherwise: NonNullable<RequireStep['otherwise']> },
+  scope: { p: Record<string, unknown>; f: Record<string, unknown>; now: bigint },
+  started: number,
+): VeldResponse {
+  const spec = ep.errors.find((e) => e.sig === step.otherwise.sig);
+  if (spec === undefined) throw new Error(`${ep.name}: the else error of ${step.id} is not declared`);
+  let data: unknown;
+  try {
+    data = step.otherwise.data(scope.p as never, scope.f as never, scope.now);
+  } catch (e) {
+    const kind = evalErrorKind(e);
+    if (kind === null) throw e;
+    // The server cannot build the error it promised.
+    ruleEvent(hooks, ep, 'input', 'rejected', [stepViolation(step, kind)], started);
+    return problem(std.internal, 'Internal', 500, ep.sig, {});
+  }
+  const violation = stepViolation(step, 'fails');
+  ruleEvent(hooks, ep, 'input', 'rejected', [violation], started);
+  const err = spec.create(data, { status: spec.status, op: ep.sig, violations: [violation] });
+  return failure(err, ep, ctx, std, hooks);
+}
+
+/**
+ * Step 6: read the clock once, load the facts in order, evaluate every `require` (the first
+ * failure ends the request) and save every `old(...)`. The facts are merged into the parameters
+ * the handler receives. `null` when the endpoint has nothing to do here; with request validation
+ * off the facts are still loaded (the handler's type needs them) and nothing is evaluated.
+ */
+async function prepare(
+  ep: ServerEndpoint,
+  bound: Bound,
+  ctx: RequestContext,
+  std: StdSigs,
+  hooks: HandlerHooks,
+): Promise<VeldResponse | Prepared | null> {
+  const rules = ep.rules;
+  if (rules === undefined) return null;
+  const started = nowMicros();
+  const now = BigInt((hooks.clock?.(ctx) ?? new Date()).getTime());
+  const p = bound.value;
+  const f: Record<string, unknown> = {};
+  for (const step of rules.facts) {
+    const key = step.key?.(p as never, f as never, now);
+    // An optional fact whose key reads an absent value is absent: its loader is not called.
+    if (step.optional && step.key !== undefined && key === undefined) continue;
+    const loaded = await step.load(key as never, ctx);
+    if (loaded !== undefined && loaded !== null) {
+      f[step.name] = loaded;
+    } else if (!step.optional) {
+      return problem(std.notFound ?? 'about:blank', 'NotFound', 404, ep.sig, { resource: step.name });
+    }
+  }
+  if (hooks.validateRequests === false) {
+    Object.assign(p, f);
+    return null;
+  }
+  for (const step of rules.requires) {
+    const verdict = verdictOf(() => step.holds(p as never, f as never, now));
+    if (verdict === 'holds') continue;
+    if (step.otherwise !== undefined) {
+      return elseAnswer(ep, ctx, std, hooks, { ...step, otherwise: step.otherwise }, { p, f, now }, started);
+    }
+    const violation = stepViolation(step, verdict);
+    ruleEvent(hooks, ep, 'input', 'rejected', [violation], started);
+    return rulesProblem(ep, [violation], std);
+  }
+  const old = rules.old.map((operand) => snapshot(operand(p as never, f as never, now)));
+  Object.assign(p, f);
+  return { now, old };
+}
+
+/**
+ * Step 9: every `ensure`, on a success result, according to the output mode. `strict` answers
+ * `500 Internal` and gives the caller no detail; `audit` only reports; `off` skips them. The shape
+ * of the result is validated first, so a rule only sees a well-formed value.
+ */
+function checkEnsures(
+  ep: ServerEndpoint,
+  prepared: Prepared,
+  params: Record<string, unknown>,
+  result: unknown,
+  std: StdSigs,
+  hooks: HandlerHooks,
+): VeldResponse | null {
+  const rules = ep.rules;
+  const mode = hooks.rules?.output ?? 'strict';
+  if (rules === undefined || rules.ensures.length === 0 || mode === 'off') return null;
+  if (ep.success !== null) {
+    const issues = validate(ep.success, result);
+    if (issues.length > 0) {
+      if (mode === 'strict') throw new Error(`${ep.name}: response failed validation: ${JSON.stringify(issues)}`);
+      return null;
+    }
+  }
+  const started = nowMicros();
+  const full = ep.success === null ? undefined : withDefaults(ep.success, result);
+  const violations: Violation[] = [];
+  for (const step of rules.ensures) {
+    const verdict = verdictOf(() => step.holds(params as never, full as never, prepared.now, prepared.old as never));
+    if (verdict !== 'holds') violations.push(stepViolation(step, verdict));
+  }
+  if (violations.length === 0) return null;
+  ruleEvent(hooks, ep, 'output', mode === 'strict' ? 'rejected' : 'audited', violations, started);
+  return mode === 'strict' ? problem(std.internal, 'Internal', 500, ep.sig, {}) : null;
+}
+
+/** `Veld-Rules: <digest>` on every response of a service that has one (spec/rules.md section 9.7). */
+function withDigest(ep: ServerEndpoint, res: VeldResponse): VeldResponse {
+  return ep.digest === undefined ? res : { ...res, headers: { ...res.headers, 'veld-rules': ep.digest } };
+}
+
+/** `createHandler` wraps `run` to add the digest; this is the plain one. */
+const runRoute = run;
+
+function reportEndpointRules(hooks: HandlerHooks, endpoints: readonly ServerEndpoint[]): void {
+  const log = (globalThis as { console?: { warn?: (message: string) => void } }).console;
+  if (hooks.validateRequests === false && endpoints.some((ep) => ep.rules !== undefined)) {
+    log?.warn?.('veld: request validation is off: require, old and ensure are not evaluated');
+  }
+}
+// #endif
 
 // ---------------------------------------------------------------------------
 // Companion objects
@@ -1054,12 +1318,22 @@ export interface HandlerHooks {
   /** Called once per violated rule, on input (rejected) and on output (rejected or audited). */
   onRuleViolation?: (event: RuleViolationEvent) => void;
   // #endif
+  // #if endpoint_rules
+  /** The server's clock, read once per request before the facts load. Default: the system clock. */
+  clock?: (ctx: RequestContext) => Date;
+  // #endif
 }
 
 export interface ServerEndpoint extends EndpointSpec {
   middleware: readonly string[];
   /** `session` is set for `ws` endpoints. SSE endpoints resolve to an `AsyncIterable`. */
   call(req: object, ctx: RequestContext, session?: WsSession): unknown;
+  // #if endpoint_rules
+  /** The facts, `require`, `old` and `ensure` of the endpoint block. */
+  rules?: EndpointRuleSet;
+  /** The rules digest of the service, sent as `Veld-Rules` on every response (section 9.7). */
+  digest?: string;
+  // #endif
 }
 
 /** Signatures of the prelude errors the router itself raises. */
@@ -1067,6 +1341,9 @@ export interface StdSigs {
   unauthorized: string;
   validation: string;
   internal: string;
+  // #if endpoint_rules
+  notFound?: string;
+  // #endif
 }
 
 interface Route {
@@ -1331,6 +1608,12 @@ function failure(err: unknown, ep: ServerEndpoint, ctx: RequestContext, std: Std
     const refused = checkErrorRules(ep, declared, err.data, std, hooks);
     if (refused !== null) return refused;
     // #endif
+    // #if endpoint_rules
+    if (err.violations.length > 0) {
+      const data = toWire(declared.schema, err.data);
+      return problemWithViolations(declared.sig, err.title, declared.status, ep.sig, data, err.violations);
+    }
+    // #endif
     return problem(declared.sig, err.title, declared.status, ep.sig, toWire(declared.schema, err.data));
   }
   try {
@@ -1388,11 +1671,22 @@ async function run(
   try {
     const bound = await guard(r, m, req, ctx, std, hooks, false);
     if (isResponse(bound)) return bound;
+    // #if endpoint_rules
+    const prepared = await prepare(ep, bound, ctx, std, hooks);
+    if (prepared !== null && 'status' in prepared) return prepared;
+    // #endif
     const result = await ep.call(bound.value, ctx);
+    // #if endpoint_rules
+    if (result instanceof EarlyResponse) return result.response;
+    // #endif
     if (ep.stream === true) return await startSse(ep, result as AsyncIterable<unknown>, ctx, std, hooks);
     // #if rules
     const refused = checkOutputRules(ep, result, std, hooks);
     if (refused !== null) return refused;
+    // #endif
+    // #if endpoint_rules
+    const unmet = prepared === null ? null : checkEnsures(ep, prepared, bound.value, result, std, hooks);
+    if (unmet !== null) return unmet;
     // #endif
     return success(ep, result, hooks);
   } catch (err) {
@@ -1702,6 +1996,11 @@ export function createHandler(endpoints: readonly ServerEndpoint[], std: StdSigs
   // #if rules
   reportRuleMode(hooks, endpoints);
   // #endif
+  // #if endpoint_rules
+  reportEndpointRules(hooks, endpoints);
+  const run = (r: Route, m: RegExpExecArray, req: VeldRequest, sigs: StdSigs, opts: HandlerHooks): Promise<VeldResponse> =>
+    runRoute(r, m, req, sigs, opts).then((res) => withDigest(r.ep, res));
+  // #endif
   const routes = endpoints.map(compileRoute).sort((a, b) => a.names.length - b.names.length);
   const find = (method: string, rawPath: string): { r: Route; m: RegExpExecArray } | null => {
     const path = normalizePath(rawPath);
@@ -1746,6 +2045,10 @@ export interface FetchResponse {
   text(): Promise<string>;
   /** The response body as a byte stream (`fetch` in browsers and Node 18+). Needed for SSE. */
   body?: { getReader(): StreamReaderLike } | null;
+  // #if endpoint_rules
+  /** The response headers (`fetch` has them). The rules digest is read from here. */
+  headers?: { get(name: string): string | null };
+  // #endif
 }
 
 export interface AbortSignalLike {
@@ -1793,8 +2096,27 @@ export interface ClientOptions {
   /** Check the invariants of a request body and query object before sending. Default: true. */
   rules?: boolean;
   // #endif
+  // #if endpoint_rules
+  /**
+   * Called once per rules digest this client had not seen, when a response carries a digest other
+   * than the client's own: the server's rules changed since the client was generated, so the local
+   * checks of that service stop.
+   */
+  onContractMismatch?: (info: ContractMismatch) => void;
+  // #endif
 }
 
+// #if endpoint_rules
+export interface ContractMismatch {
+  /** The service name. */
+  service: string;
+  /** The digest this client was generated with. */
+  clientDigest: string;
+  /** The digest the server sent in `Veld-Rules`. */
+  serverDigest: string;
+}
+
+// #endif
 export interface CallInit {
   signal?: AbortSignalLike;
 }
@@ -1889,6 +2211,12 @@ export interface ClientDefaults {
   baseUrl: string | null;
   /** Builds the local `ValidationError`. */
   validation(issues: Issue[]): VeldError;
+  // #if endpoint_rules
+  /** The service name, for `onContractMismatch`. */
+  service?: string;
+  /** The rules digest of the service this client was generated from (spec/rules.md section 9.7). */
+  digest?: string;
+  // #endif
 }
 
 function envValue(name: string): string | undefined {
@@ -2068,6 +2396,11 @@ export class ClientCore {
 
   private rejectLocally(ep: EndpointSpec, out: Violation[]): void {
     if (out.length === 0) return;
+    // #endif
+    // #if endpoint_rules
+    if (!this.rulesTrusted()) return;
+    // #endif
+    // #if rules
     const err = this.defaults.validation(ruleIssues(out));
     err.violations = out;
     err.local = true;
@@ -2075,11 +2408,41 @@ export class ClientCore {
     throw err;
   }
   // #endif
+  // #if endpoint_rules
+
+  /** The digest the last response of this service carried, `undefined` before the first one. */
+  private serverDigest: string | undefined;
+  private readonly seenDigests = new Set<string>();
+
+  /** Local rule checks reject only while the server's digest is ours (spec/rules.md section 9.7). */
+  private rulesTrusted(): boolean {
+    const own = this.defaults.digest;
+    return own === undefined || this.serverDigest === own;
+  }
+
+  /** Remembers the digest of a response, and reports a digest this client has not seen once. */
+  private observe(res: FetchResponse): void {
+    const own = this.defaults.digest;
+    if (own === undefined) return;
+    const seen = res.headers?.get('veld-rules') ?? undefined;
+    this.serverDigest = seen;
+    if (seen === undefined || seen === own || this.seenDigests.has(seen)) return;
+    this.seenDigests.add(seen);
+    try {
+      this.opts.onContractMismatch?.({ service: this.defaults.service ?? '', clientDigest: own, serverDigest: seen });
+    } catch {
+      // A failing hook must not change the outcome of the call.
+    }
+  }
+  // #endif
 
   async call(ep: EndpointSpec, input: object, init: CallInit = {}): Promise<unknown> {
     const req = input as Record<string, unknown>;
     this.check(ep, req);
     const res = await this.send(ep, req, init, {});
+    // #if endpoint_rules
+    this.observe(res);
+    // #endif
     return this.decode(ep, res);
   }
 
@@ -2137,6 +2500,9 @@ export class ClientCore {
     try {
       const extra: Headers_ = init.lastEventId === undefined ? {} : { 'last-event-id': init.lastEventId };
       const res = await this.send(ep, req, { signal: link.signal }, { accept: 'text/event-stream', extra });
+      // #if endpoint_rules
+      this.observe(res);
+      // #endif
       if (res.status < 200 || res.status >= 300) await this.decode(ep, res);
       if (!res.body) throw new VeldTransportError(`${ep.method} ${ep.path}: the response has no body stream`);
       reader = res.body.getReader();

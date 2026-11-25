@@ -268,6 +268,53 @@ fn refuses_endpoint_rules(
     Ok(())
 }
 
+/// A generator that supports invariants and endpoint rules and nothing else of the rules: it
+/// declares `rules_invariants` and `rules_endpoint`, the gate lets both a hand-built block and one
+/// the compiler made through, and `generate` produces files for them (transitions and policies stay
+/// refused).
+///
+/// # Errors
+/// A description of the first role that does not match.
+pub fn check_invariants_and_endpoint_rules_supported(
+    generator: &dyn DynGenerator,
+) -> Result<(), String> {
+    let contracts = [
+        ir_with_rule(),
+        ir_with_endpoint_rules(),
+        compiled_endpoint_rules_contract(),
+    ];
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        for f in Feature::RULES {
+            let want = matches!(f, Feature::RulesInvariants | Feature::RulesEndpoint);
+            if caps.supports(f) != want {
+                return Err(format!(
+                    "{}: `{}` should be supported: {want}",
+                    role.name(),
+                    f.name()
+                ));
+            }
+        }
+        for ir in &contracts {
+            let req = GenRequest {
+                ir,
+                role: *role,
+                services: all_services(ir),
+                consumes: vec![],
+                framework: None,
+            };
+            let gate = check_capabilities(ir, &req, &caps);
+            if !gate.is_empty() {
+                return Err(format!("{}: the gate reported {gate:?}", role.name()));
+            }
+            if let Err(d) = generator.generate_dyn(&req, &serde_json::Value::Null) {
+                return Err(format!("{}: generate failed: {d:?}", role.name()));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// A generator that supports invariants and nothing else of the rules: it declares `rules_invariants`
 /// only, and generates a contract with a rule (the other rules features stay refused).
 ///

@@ -32,14 +32,10 @@ use crate::util::add_file;
 
 pub use tree::Tree;
 
-/// Features no TypeScript generator supports yet: the rules features other than invariants
+/// Features no TypeScript generator supports yet: transitions and policies
 /// (`spec/rules.md` section 8), reported as `E0801` until each is implemented. Streaming (SSE and
-/// WebSocket) and invariants are supported.
-pub const UNSUPPORTED: [Feature; 3] = [
-    Feature::RulesEndpoint,
-    Feature::RulesTransitions,
-    Feature::RulesPolicies,
-];
+/// WebSocket), invariants and endpoint rules are supported.
+pub const UNSUPPORTED: [Feature; 2] = [Feature::RulesTransitions, Feature::RulesPolicies];
 
 /// The TypeScript language versions: ECMAScript editions, the oldest first (the default).
 /// Selected with the target option `typescript = "es2022"`.
@@ -128,6 +124,14 @@ pub fn validation_off_warnings(req: &GenRequest<'_>, validate: Option<bool>) -> 
                 ruled.push((d.qualified.clone(), rule.origin.clone()));
             }
         }
+        for sid in group {
+            let svc = req.ir.service(*sid);
+            for ep in &svc.endpoints {
+                if let Some(origin) = ep.rules.first_origin() {
+                    ruled.push((format!("{}.{}", svc.name, ep.name), origin.clone()));
+                }
+            }
+        }
     }
     let Some((first, origin)) = ruled.first() else {
         return Vec::new();
@@ -196,7 +200,7 @@ impl Generator for TypeScript {
         let mut files = FileSet::new();
         let tree = Tree::new(req.ir, "", None, runtime::MODULE, req.services.clone())
             .with_validate(opts.validate != Some(false));
-        runtime::emit(&mut files, tree.uses_rules())?;
+        runtime::emit_with(&mut files, tree.uses_rules(), tree.uses_endpoint_rules())?;
         let mut modules = emit_client_tree(&mut files, &tree)?;
         modules.push(clients::emit(&mut files, &tree)?);
         if opts.query_options == Some(true) {

@@ -2,16 +2,19 @@
 
 use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
-use veld_emit_typescript::client::{RequestNames, write_request_type, write_spec_fields};
+use veld_emit_typescript::client::{
+    RequestNames, rules_digest, write_request_type, write_spec_fields,
+};
 use veld_emit_typescript::tree::{FileCtx, Tree};
 use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{add_file, doc_comment, method_key, prop_key, ts_str};
 use veld_ir::{AuthKind, Endpoint, Method, Service};
 
 use crate::frameworks::{EndpointModel, ServiceModel};
+use crate::rules::{self, Site};
 
 /// Root-relative module path of a service's server file.
-fn module_of(tree: &Tree<'_>, svc: &Service) -> String {
+pub(crate) fn module_of(tree: &Tree<'_>, svc: &Service) -> String {
     format!("{}server/{}", tree.root, naming::kebab(&svc.name))
 }
 
@@ -19,16 +22,21 @@ fn module_of(tree: &Tree<'_>, svc: &Service) -> String {
 pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<GenDiagnostic>> {
     let names = RequestNames::new(tree.ir, &tree.services);
     let mut modules = Vec::new();
+    let mut diags = Vec::new();
     for sid in &tree.services {
         let svc = tree.ir.service(*sid);
         let module = module_of(tree, svc);
         let mut fc = FileCtx::new(tree, &module);
         let mut w = CodeWriter::new();
-        write_service(&mut w, &mut fc, &names, svc);
+        write_service(&mut w, &mut fc, &names, svc, &mut diags);
         add_file(files, &format!("{module}.ts"), fc.finish(&w.finish()))?;
         modules.push(module);
     }
-    Ok(modules)
+    if diags.is_empty() {
+        Ok(modules)
+    } else {
+        Err(diags)
+    }
 }
 
 fn write_service(
@@ -36,16 +44,37 @@ fn write_service(
     fc: &mut FileCtx<'_, '_>,
     names: &RequestNames,
     svc: &Service,
+    diags: &mut Vec<GenDiagnostic>,
 ) {
     for ep in &svc.endpoints {
-        write_request_type(w, fc, &names.get(svc.id, &ep.name), ep);
+        let request = names.get(svc.id, &ep.name);
+        write_request_type(w, fc, &request, ep);
         w.blank();
+        rules::write_facts_type(w, fc, &request, ep);
     }
     write_interface(w, fc, names, svc);
     w.blank();
+    if !svc.facts.is_empty() {
+        rules::write_loaders(w, fc, svc, &naming::pascal(&svc.name));
+        w.blank();
+    }
     write_hooks(w, fc, svc);
     w.blank();
-    write_factory(w, fc, names, svc);
+    write_factory(w, fc, names, svc, diags);
+}
+
+/// The request type of an endpoint as the implementation receives it: with its loaded facts.
+fn impl_request(ep: &Endpoint, request: &str) -> String {
+    if ep.rules.facts.is_empty() {
+        request.to_string()
+    } else {
+        format!("{request} & {}", rules::facts_name(request))
+    }
+}
+
+/// Name of the function that builds the endpoint descriptions of a service with endpoint rules.
+pub(crate) fn builder_name(svc: &Service) -> String {
+    format!("{}Endpoints", naming::camel(&svc.name))
 }
 
 fn write_interface(
@@ -64,7 +93,9 @@ fn write_interface(
             Some(t) => ts_type(fc, t),
             None => "void".to_string(),
         };
-        let (key, req) = (method_key(&ep.name), names.get(svc.id, &ep.name));
+        let key = method_key(&ep.name);
+        let request = names.get(svc.id, &ep.name);
+        let req = impl_request(ep, &request);
         if ep.method == Method::Ws {
             let (incoming, outgoing) = ws_types(fc, ep);
             let session = fc.rt("WsSession");
@@ -143,6 +174,17 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
         "export interface {}Hooks",
         naming::pascal(&svc.name)
     ));
+    if !svc.facts.is_empty() {
+        w.line("/** The loaders of the facts the endpoint rules need. */");
+        w.line(format!(
+            "facts: {};",
+            rules::loaders_name(&naming::pascal(&svc.name))
+        ));
+    }
+    if rules::service_has_rules(svc) {
+        w.line("/** The server's clock, read once per request before the facts load. Default: the system clock. */");
+        w.line(format!("clock?: (ctx: {ctx}) => Date;"));
+    }
     if !auth.is_empty() {
         w.open("auth:");
         for (name, ty) in &auth {
@@ -176,18 +218,28 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     w.close();
 }
 
+/// Where the writers of one service put their output: the body and the declarations that must
+/// come before it.
+struct Out<'a> {
+    w: &'a mut CodeWriter,
+    pre: &'a mut CodeWriter,
+    diags: &'a mut Vec<GenDiagnostic>,
+}
+
 fn write_endpoint(
-    w: &mut CodeWriter,
+    out: &mut Out<'_>,
     fc: &mut FileCtx<'_, '_>,
     names: &RequestNames,
     svc: &Service,
     ep: &Endpoint,
 ) {
+    let w = &mut *out.w;
     w.open_with("", "{");
     write_spec_fields(w, fc, ep);
     let list: Vec<String> = ep.middleware.iter().map(|m| ts_str(m)).collect();
     w.line(format!("middleware: [{}],", list.join(", ")));
-    let req = names.get(svc.id, &ep.name);
+    let request = names.get(svc.id, &ep.name);
+    let req = impl_request(ep, &request);
     if ep.method == Method::Ws {
         let (incoming, outgoing) = ws_types(fc, ep);
         let session = fc.rt("WsSession");
@@ -201,7 +253,84 @@ fn write_endpoint(
             method_key(&ep.name)
         ));
     }
+    if rules::endpoint_has_rules(ep) {
+        if ep.method == Method::Ws {
+            let mut d = GenDiagnostic::new(
+                "E0801",
+                format!(
+                    "{}.{}: endpoint rules on a `ws` endpoint are not supported by the `node` generator",
+                    svc.name, ep.name
+                ),
+            );
+            d.origin = ep.rules.first_origin().cloned();
+            out.diags.push(d);
+        }
+        let site = Site {
+            svc,
+            ep,
+            request: &request,
+        };
+        rules::write_rules_member(w, out.pre, fc, &site, out.diags);
+    }
+    if let Some(digest) = rules_digest(fc, svc) {
+        w.line(format!("digest: {},", ts_str(digest)));
+    }
     w.close_with("},");
+}
+
+/// `export function bookingsEndpoints(impl, loaders): ServerEndpoint[]`: the endpoint
+/// descriptions of a service with endpoint rules. The handler factory and the test handler build
+/// on it.
+fn write_builder(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    names: &RequestNames,
+    svc: &Service,
+    diags: &mut Vec<GenDiagnostic>,
+) {
+    let name = naming::pascal(&svc.name);
+    let loaders = if svc.facts.is_empty() {
+        String::new()
+    } else {
+        format!(", loaders: {}", rules::loaders_name(&name))
+    };
+    let endpoint = fc.rt("ServerEndpoint");
+    let mut body = CodeWriter::new();
+    doc_comment(
+        &mut body,
+        Some(&format!(
+            "The endpoint descriptions of `{}`, with the facts, `require`, `old` and `ensure` of their blocks.",
+            svc.name
+        )),
+        None,
+    );
+    body.open(format!(
+        "export function {}(impl: {name}Service{loaders}): {endpoint}[]",
+        builder_name(svc)
+    ));
+    body.open_with("return", " [");
+    let mut pre = CodeWriter::new();
+    let mut inner = Out {
+        w: &mut body,
+        pre: &mut pre,
+        diags,
+    };
+    for ep in &svc.endpoints {
+        write_endpoint(&mut inner, fc, names, svc, ep);
+    }
+    body.close_with("];");
+    body.close();
+    let (pre, body) = (pre.finish(), body.finish());
+    for line in pre.lines() {
+        w.line(line);
+    }
+    if !pre.is_empty() {
+        w.blank();
+    }
+    for line in body.lines() {
+        w.line(line);
+    }
+    w.blank();
 }
 
 fn write_factory(
@@ -209,15 +338,20 @@ fn write_factory(
     fc: &mut FileCtx<'_, '_>,
     names: &RequestNames,
     svc: &Service,
+    diags: &mut Vec<GenDiagnostic>,
 ) {
     let name = naming::pascal(&svc.name);
     let ctx = fc.rt("RequestContext");
     let (auth, middleware) = required_hooks(svc, &ctx);
-    let default = if auth.is_empty() && middleware.is_empty() {
+    let default = if auth.is_empty() && middleware.is_empty() && svc.facts.is_empty() {
         " = {}"
     } else {
         ""
     };
+    let ruled = rules::service_has_rules(svc);
+    if ruled {
+        write_builder(w, fc, names, svc, diags);
+    }
     let handler = fc.rt("VeldHandler");
     doc_comment(
         w,
@@ -228,12 +362,30 @@ fn write_factory(
         None,
     );
     w.open(format!("export function create{name}Handler(impl: {name}Service, hooks: {name}Hooks{default}): {handler}"));
-    let endpoint = fc.rt("ServerEndpoint");
-    w.open_with(format!("const endpoints: {endpoint}[] ="), " [");
-    for ep in &svc.endpoints {
-        write_endpoint(w, fc, names, svc, ep);
+    if ruled {
+        let loaders = if svc.facts.is_empty() {
+            ""
+        } else {
+            ", hooks.facts"
+        };
+        w.line(format!(
+            "const endpoints = {}(impl{loaders});",
+            builder_name(svc)
+        ));
+    } else {
+        let endpoint = fc.rt("ServerEndpoint");
+        w.open_with(format!("const endpoints: {endpoint}[] ="), " [");
+        let mut pre = CodeWriter::new();
+        let mut out = Out {
+            w: &mut *w,
+            pre: &mut pre,
+            diags,
+        };
+        for ep in &svc.endpoints {
+            write_endpoint(&mut out, fc, names, svc, ep);
+        }
+        w.close_with("];");
     }
-    w.close_with("];");
     let std = std_sigs(fc);
     let create = fc.rt("createHandler");
     let hooks = if fc.tree.validate {
@@ -245,12 +397,17 @@ fn write_factory(
     w.close();
 }
 
-fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
+pub(crate) fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
+    let endpoint_rules = fc.tree.uses_endpoint_rules();
     let mut sig = |name: &str| match fc.tree.prelude_decl(name) {
         Some(id) => format!("{}.sig", fc.value_ref(id)),
         None => "'about:blank'".to_string(),
     };
     let (u, v, i) = (sig("Unauthorized"), sig("ValidationError"), sig("Internal"));
+    if endpoint_rules {
+        let n = sig("NotFound");
+        return format!("{{ unauthorized: {u}, validation: {v}, internal: {i}, notFound: {n} }}");
+    }
     format!("{{ unauthorized: {u}, validation: {v}, internal: {i} }}")
 }
 
@@ -304,7 +461,7 @@ pub fn models(tree: &Tree<'_>) -> Vec<ServiceModel> {
                 file: naming::kebab(&svc.name),
                 module: module_of(tree, svc),
                 prefix: nest_path(prefix),
-                hooks_required: !auth.is_empty() || !middleware.is_empty(),
+                hooks_required: !auth.is_empty() || !middleware.is_empty() || !svc.facts.is_empty(),
                 endpoints: endpoints.into_iter().map(|(_, e)| e).collect(),
             }
         })

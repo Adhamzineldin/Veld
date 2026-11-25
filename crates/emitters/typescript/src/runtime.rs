@@ -1,9 +1,11 @@
 //! The embedded runtime. One real `.ts` file, byte-identical in every role.
 //!
-//! `runtime/veld.ts` has regions between `// #if rules` and `// #endif` marker lines
+//! `runtime/veld.ts` has regions between `// #if <name>` and `// #endif` marker lines
 //! (`veld_codegen::gate_regions`). A contract without rules gets the file without them, exactly
-//! as it was before rules existed; a contract with rules also gets the regions and
-//! `runtime/rules.ts` (`spec/targets/typescript.md` section 5b).
+//! as it was before rules existed; a contract with invariants also gets the `rules` regions and
+//! `runtime/rules.ts` (`spec/targets/typescript.md` section 5b). A contract with endpoint rules
+//! gets the `endpoint_rules` regions as well (section 5c); a contract with invariants only never
+//! sees them.
 
 use std::sync::LazyLock;
 
@@ -31,12 +33,35 @@ pub const RULES_MODULE: &str = "runtime/rules";
 /// # Errors
 /// The embedded file has markers that do not pair up.
 pub fn source(rules: bool) -> Result<String, GateError> {
-    gate_regions(RAW, &|name| name == "rules" && rules)
+    source_with(rules, false)
+}
+
+/// `runtime/veld.ts` with the `rules` and `endpoint_rules` regions kept or dropped. Endpoint rules
+/// need the invariant machinery, so `endpoint_rules` keeps the `rules` regions too.
+///
+/// # Errors
+/// The embedded file has markers that do not pair up.
+pub fn source_with(rules: bool, endpoint_rules: bool) -> Result<String, GateError> {
+    gate_regions(RAW, &|name| match name {
+        "rules" => rules || endpoint_rules,
+        "endpoint_rules" => endpoint_rules,
+        _ => false,
+    })
 }
 
 /// Adds `runtime/veld.ts` to `files`, and `runtime/rules.ts` when the contract has rules.
 pub fn emit(files: &mut FileSet, rules: bool) -> Result<(), Vec<GenDiagnostic>> {
-    let text = source(rules)
+    emit_with(files, rules, false)
+}
+
+/// Like [`emit`], with the regions of endpoint rules when `endpoint_rules` is set.
+pub fn emit_with(
+    files: &mut FileSet,
+    rules: bool,
+    endpoint_rules: bool,
+) -> Result<(), Vec<GenDiagnostic>> {
+    let rules = rules || endpoint_rules;
+    let text = source_with(rules, endpoint_rules)
         .map_err(|e| vec![GenDiagnostic::new("E0805", format!("runtime/veld.ts: {e}"))])?;
     add_file(files, "runtime/veld.ts", text)?;
     if rules {
@@ -50,9 +75,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_embedded_markers_pair_up_in_both_modes() {
+    fn the_embedded_markers_pair_up_in_every_mode() {
         assert!(source(false).is_ok());
         assert!(source(true).is_ok());
+        assert!(source_with(true, true).is_ok());
     }
 
     #[test]
@@ -71,5 +97,20 @@ mod tests {
         emit(&mut on, true).unwrap();
         assert_eq!(on.len(), 2);
         assert!(on.get("runtime/rules.ts").is_some());
+    }
+
+    #[test]
+    fn endpoint_rules_add_regions_and_invariants_only_never_see_them() {
+        let invariants = source(true).unwrap();
+        let endpoint = source_with(true, true).unwrap();
+        assert!(!invariants.contains("EndpointRuleSet"));
+        assert!(!invariants.contains("onContractMismatch"));
+        assert!(endpoint.contains("EndpointRuleSet"));
+        assert!(endpoint.contains("onContractMismatch"));
+        // Endpoint rules alone switch the invariant machinery on.
+        assert_eq!(source_with(false, true).unwrap(), endpoint);
+        let mut files = FileSet::new();
+        emit_with(&mut files, false, true).unwrap();
+        assert!(files.get("runtime/rules.ts").is_some());
     }
 }

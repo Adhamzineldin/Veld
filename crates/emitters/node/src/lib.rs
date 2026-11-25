@@ -8,7 +8,9 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 mod frameworks;
+mod rules;
 mod server;
+mod testing;
 
 pub use frameworks::{ADAPTERS, EndpointModel, ServerModel, ServiceModel};
 
@@ -31,6 +33,10 @@ pub struct Options {
     pub package_name: Option<String>,
     /// `false` skips runtime request validation by default (the types stay). Default: `true`.
     pub validate: Option<bool>,
+    /// `true` also writes `server/<service>-test-handler.ts` for each service with endpoint rules: a
+    /// second entry point that takes its facts, principal, clock and result from request headers
+    /// (`spec/rules.md` section 12.4). It must never be mounted in production. Default: `false`.
+    pub testing: Option<bool>,
 }
 
 /// The Node.js server generator.
@@ -97,8 +103,14 @@ impl Generator for Node {
             frameworks::emit_ws(&mut files)?;
             modules.push("server/ws".to_string());
         }
-        let (extra, consumed_rules) = emit_consumed(&mut files, req, opts.validate != Some(false))?;
-        runtime::emit(&mut files, tree.uses_rules() || consumed_rules)?;
+        let (extra, consumed_rules, consumed_endpoint) =
+            emit_consumed(&mut files, req, opts.validate != Some(false))?;
+        runtime::emit_with(
+            &mut files,
+            tree.uses_rules() || consumed_rules,
+            tree.uses_endpoint_rules() || consumed_endpoint,
+        )?;
+        testing::emit(&mut files, &tree, opts.testing == Some(true))?;
         modules.sort();
         barrel::write(&mut files, "", &modules, &extra, true)?;
         // The `ws` package is a peer dependency of a server that hosts `ws` endpoints.
@@ -139,9 +151,10 @@ fn emit_consumed(
     files: &mut FileSet,
     req: &GenRequest<'_>,
     validate: bool,
-) -> Result<(Vec<String>, bool), Vec<GenDiagnostic>> {
+) -> Result<(Vec<String>, bool, bool), Vec<GenDiagnostic>> {
     let mut lines = Vec::new();
     let mut rules = false;
+    let mut endpoint_rules = false;
     for sid in &req.consumes {
         let svc = req.ir.service(*sid);
         let dir = naming::kebab(&svc.name);
@@ -149,11 +162,12 @@ fn emit_consumed(
         let tree =
             Tree::new(req.ir, &root, None, runtime::MODULE, vec![*sid]).with_validate(validate);
         rules |= tree.uses_rules();
+        endpoint_rules |= tree.uses_endpoint_rules();
         let modules = emit_client_tree(files, &tree)?;
         barrel::write(files, &root, &modules, &[], false)?;
         let ns = naming::escape(Lang::Ts, &naming::camel(&svc.name));
         lines.push(format!("export * as {ns} from './clients/{dir}/index';"));
     }
     lines.sort();
-    Ok((lines, rules))
+    Ok((lines, rules, endpoint_rules))
 }
