@@ -41,33 +41,34 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [t] Lowering to IR, `reads`, inherited rules
 - [t] Rule ids in `veld-compiler::signature`
 - [t] Conformance cases: 19 new (every new code, every contextual word used as a name, every guard form)
-- [i] Follow-ups: expression depth limit 32 with an IR read-back test; a unary minus on a literal is part of the literal
+- [t] Follow-ups: expression depth limit 32 with an IR read-back test; a unary minus on a literal is part of the literal
 - [t] `fmt` for rules and expressions; fmt properties still hold (long rule lines are not wrapped yet)
 - [t] `crates/veld-rules`: reference evaluator and value helpers; all 104 vectors pass
 - [t] `tests/rules/`: 104 starter vectors in `tests/rules/core` covering the list in `spec/rules.md` §15
 - [t] `veld-codegen`: `ExprPrinter`, plus `gate_regions` for runtime files
-- [i] TypeScript client: check functions, helpers, local check before send, `violations` on `ValidationError`, `.partial(draft)`; 104 of 104 vectors
-- [i] Node server: pipeline steps 5 and 8, output mode, `onRuleViolation`; HTTP round trip
-- [i] Java: check functions, helpers, client and server (JDK and Spring); 103 of 103 vectors that apply; HTTP round trip
-- [i] Rust: check functions (the reference evaluator's own helper files, embedded), client and server; 101 of 101 vectors that apply; HTTP round trip
-- [i] Vector runner per target, and the reference cross-check that compiles every vector contract
+- [t] TypeScript client: check functions, helpers, local check before send, `violations` on `ValidationError`, `.partial(draft)`; 104 of 104 vectors
+- [t] Node server: pipeline steps 5 and 8, output mode, `onRuleViolation`; HTTP round trip
+- [t] Java: check functions, helpers, client and server (JDK and Spring); 103 of 103 vectors that apply; HTTP round trip
+- [t] Rust: check functions (the reference evaluator's own helper files, embedded), client and server; 101 of 101 vectors that apply; HTTP round trip
+- [t] Vector runner per target, and the reference cross-check that compiles every vector contract
 - [~] Toolchain round trip: each target passes its own; one shared contract and a test that the three servers answer with the same problem document are still to do
-- [ ] Invariants on SSE and WebSocket items, in all three targets
-- [ ] Invariants of `error` declarations on encode in TypeScript and Rust (Java has it)
+- [~] Invariants on SSE and WebSocket items: TypeScript and Node in progress; Java and Rust to do
+- [~] Invariants of `error` declarations on encode: TypeScript in progress; Rust to do (Java has it)
 - [ ] `validate = false`: the one-time report and `W0904`, the same in all three
 - [ ] `in` over lists of dates and times: shared vectors (found by the Java work)
 - [ ] Java helper names aligned with the TypeScript reference list
-- [ ] React and Vue per-field helpers on top of `.partial(draft)`
-- [ ] Full verification of the merged branch: the local run was stopped for lack of memory; the draft PR's CI is the check
+- [~] React and Vue per-field helpers on top of `.partial(draft)`
+- [t] Full verification of the merged branch: draft PR #8, CI green on Linux, macOS and Windows (the local run was stopped for lack of memory, so CI is the check)
 - [t] OpenAPI export does not break on rules (full `x-veld-rules` is Phase 5)
 - [i] Target specs updated (`spec/targets/*.md`); `spec/ir.md`, `spec/language.md` cross-references still to do
 
 ## Phase 2: endpoint rules, examples, `veld test`
-- [ ] `fact`, `require ... else`, `ensure`, `old()`, `now`, the injected clock
+- [~] `fact`, `require ... else`, `ensure`, `old()`, `now`: IR types and the reference evaluator's pipeline are in (`[i]`); the compiler front-end is in progress; generators to do
 - [ ] Fact-loader interfaces and the pipeline in Node, Java and Rust
 - [ ] Output mode and sampling in the runtime config
 - [ ] Stale-client safety: `Veld-Rules` digest, `onContractMismatch`
-- [ ] `example` blocks: grammar, IR, value synthesis for partial literals
+- [~] `example` blocks: IR, filling in and running examples in the reference evaluator are in (`[i]`); the compiler front-end is in progress
+- [i] Endpoint rule vectors: `tests/rules/endpoints/bookings.veld.pending`, 20 examples; renamed to `.veld` when the compiler parses them
 - [ ] `veld test` offline (reference evaluator, given facts)
 - [ ] `veld test --live` with server test mode
 - [ ] Boundary cases generated from rules
