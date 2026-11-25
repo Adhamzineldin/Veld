@@ -70,7 +70,13 @@ skip Bookings.upload (a string with @pattern or @format and no @example)
 
 The count per outcome tells you whether the fuzz reached your rules. An endpoint is **skipped**, with the reason, when it takes a string with `@pattern` or `@format` and no `@example` (the generator cannot make a value for it; give the field an `@example` and the endpoint is fuzzed), when it is a stream, and when its service has no endpoint rules, because a server target generates a test handler only for a service that has some. An optional field with `@pattern` and no `@example` is simply left out.
 
-Fuzzing covers every endpoint of the services the test handler serves: `--filter` and the file arguments choose the examples that run first, not the endpoints that are fuzzed. Requests are made from the parameters; the principal is not generated. `N` is from 1 to 100000.
+Fuzzing covers every endpoint of the services the test handler serves: `--filter` and the file arguments choose the examples that run first, not the endpoints that are fuzzed. Requests are made from the parameters and the facts. `N` is from 1 to 100000.
+
+**The principal.** When the package declares a `principal`, every endpoint with auth gets a generated caller of the principal's model, sent in `Veld-Test-Principal` and printed as `as { ... }` in the example block of a failing request. A random caller is denied by almost every `allow`, so the generator repairs a request the reference evaluator denies: it makes one `permit` clause of the policy true, chosen at random so that every `permit` is reached (for a comparison of two paths it copies one side into the other, for `x in list` it puts `x` into the list), and it makes a `forbid` that holds false. Some requests are left unrepaired on purpose, so the run sees permits, denials by "not permitted" and denials by a `forbid` with its own message. A clause the generator cannot write (a call such as `matches(...)`, or an argument of the `allow` that is not a plain path) is left to chance.
+
+**State machines.** For an endpoint with a `transition`, the first requests include one boundary request for every state of the machine: each source state, which must get past the guard, and each state that is not a source, which must answer `InvalidTransition`. The rest of the run repairs an illegal state by writing one of the sources.
+
+**The order of the checks.** A request often fails more than one check (a denied caller on a booking in an illegal state, an illegal state with a wrong amount). The generator leaves a failing request unrepaired one time in eight at each check, so such requests are common, and the server must answer with the check that comes first in `spec/rules.md` section 9.5: invalid parameters, then a missing fact, then a denied `allow`, then the transition guard, then a failed `require`.
 
 Two things a green run does not hide:
 
