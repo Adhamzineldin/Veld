@@ -243,6 +243,24 @@ impl BinOp {
 pub struct EnumDecl {
     pub name: Ident,
     pub variants: Vec<Variant>,
+    /// `flow a -> b -> c` statements, in source order (`spec/rules.md` section 10).
+    pub flows: Vec<FlowStmt>,
+    /// `final a, b` statements, in source order.
+    pub finals: Vec<FinalStmt>,
+}
+
+/// `flow a -> b -> c`: a chain of at least two states.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlowStmt {
+    pub states: Vec<Ident>,
+    pub span: Span,
+}
+
+/// `final a, b`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FinalStmt {
+    pub states: Vec<Ident>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -344,6 +362,7 @@ pub enum Stmt {
     Fact(FactStmt),
     Require(RequireStmt),
     Ensure(EnsureStmt),
+    Transition(TransitionStmt),
 }
 
 impl Stmt {
@@ -354,10 +373,21 @@ impl Stmt {
             Stmt::Fact(f) => (&[][..], f.span),
             Stmt::Require(r) => (&r.docs[..], r.span),
             Stmt::Ensure(e) => (&e.docs[..], e.span),
+            Stmt::Transition(t) => (&[][..], t.span),
         };
         docs.first()
             .map_or(span.start, |d| d.span.start.min(span.start))
     }
+}
+
+/// `transition fact.path: a, b -> c` (`spec/rules.md` section 10.2).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TransitionStmt {
+    /// The path: the fact first, then the fields down to the state field.
+    pub path: Vec<Ident>,
+    pub from: Vec<Ident>,
+    pub to: Ident,
+    pub span: Span,
 }
 
 /// `fact name[?]: T [= key]`

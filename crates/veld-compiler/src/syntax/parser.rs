@@ -14,14 +14,15 @@ mod endpoint;
 mod endpoint_tests;
 mod example;
 mod expr;
+mod machine;
 #[cfg(test)]
 mod rule_tests;
 
 use super::ast::{
     Annotation, Arg, ArgValue, ConstDecl, Decl, DeclKind, Doc, Endpoint, EnumDecl, ErrorDecl,
-    Example, Field, File, HttpMethod, Ident, Import, LitKind, Literal, ModelDecl, Param, RespItem,
-    Responses, Rule, ServiceDecl, StrLit, TypeExpr, TypeExprKind, UnionArm, UnionDecl, Use,
-    Variant,
+    Example, Field, File, FinalStmt, FlowStmt, HttpMethod, Ident, Import, LitKind, Literal,
+    ModelDecl, Param, RespItem, Responses, Rule, ServiceDecl, StrLit, TypeExpr, TypeExprKind,
+    UnionArm, UnionDecl, Use, Variant,
 };
 use super::lexer::{Comment, Tok, Token, lex};
 use crate::diagnostics::{Diagnostic, FileId, Span};
@@ -863,6 +864,8 @@ impl Parser<'_> {
         let name = self.expect_ident("an enum name")?;
         self.expect(&Tok::LBrace, "`{` to open the enum body")?;
         let mut variants = Vec::new();
+        let mut flows = Vec::new();
+        let mut finals = Vec::new();
         loop {
             while self.eat(&Tok::Comma) {}
             if self.at_eof() {
@@ -876,6 +879,10 @@ impl Parser<'_> {
                 self.advance();
                 break;
             }
+            if self.at_flow_stmt() || self.at_final_stmt() {
+                self.enum_statement(&docs, &annotations, &mut flows, &mut finals);
+                continue;
+            }
             match self.parse_variant(docs, annotations) {
                 Some(v) => variants.push(v),
                 None => {
@@ -886,7 +893,45 @@ impl Parser<'_> {
                 }
             }
         }
-        Some(EnumDecl { name, variants })
+        Some(EnumDecl {
+            name,
+            variants,
+            flows,
+            finals,
+        })
+    }
+
+    /// A `flow` or `final` statement of an enum body; docs and annotations do not belong to it.
+    fn enum_statement(
+        &mut self,
+        docs: &[Doc],
+        annotations: &[Annotation],
+        flows: &mut Vec<FlowStmt>,
+        finals: &mut Vec<FinalStmt>,
+    ) {
+        if let Some(d) = docs.first() {
+            self.err(
+                "E0003",
+                "a doc comment documents a variant, not a `flow` or `final` statement",
+                d.span,
+            );
+        }
+        if let Some(a) = annotations.first() {
+            self.err(
+                "E0003",
+                "an annotation belongs to a variant, not to a `flow` or `final` statement",
+                a.span,
+            );
+        }
+        let before = self.pos;
+        if self.at_flow_stmt() {
+            flows.extend(self.parse_flow());
+        } else {
+            finals.extend(self.parse_final());
+        }
+        if self.pos == before {
+            self.advance();
+        }
     }
 
     fn parse_variant(&mut self, docs: Vec<Doc>, annotations: Vec<Annotation>) -> Option<Variant> {

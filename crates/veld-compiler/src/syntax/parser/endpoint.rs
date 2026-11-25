@@ -1,7 +1,7 @@
-//! The block of endpoint rules (`spec/rules.md` section 9): `fact`, `require` and `ensure`.
+//! The block of endpoint rules (`spec/rules.md` section 9): `fact`, `transition`, `require` and `ensure`.
 //!
-//! `allow` and `transition` belong to later phases. They are recognised only to say so, and
-//! the rest of the statement is skipped.
+//! `allow` belongs to a later phase. It is recognised only to say so, and the rest of the
+//! statement is skipped. `transition` is parsed in `machine.rs`.
 
 use super::Parser;
 use crate::diagnostics::Span;
@@ -51,9 +51,9 @@ impl Parser<'_> {
             "require" => self.require_stmt(docs),
             "ensure" => self.ensure_stmt(docs),
             "allow" => return self.later_phase("allow", "policies (phase 4)"),
-            "transition" => return self.later_phase("transition", "state machines (phase 3)"),
+            "transition" => self.transition_stmt(),
             _ => {
-                self.unexpected("a statement (`fact`, `require` or `ensure`)");
+                self.unexpected("a statement (`fact`, `transition`, `require` or `ensure`)");
                 None
             }
         };

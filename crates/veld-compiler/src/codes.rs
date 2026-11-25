@@ -283,7 +283,7 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E0920",
         C,
-        "A fact named like a parameter, another fact, the principal, `now` or `result`",
+        "A fact named like a parameter, another fact, the principal, `now` or `result`; a parameter or fact named `transition` on an endpoint that has one",
     ),
     e(
         "E0921",
@@ -301,6 +301,27 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "`ensure` on an endpoint whose success is a stream",
     ),
+    e(
+        "E0930",
+        C,
+        "A `flow` or `final` names something that is not a variant of the enum",
+    ),
+    e(
+        "E0931",
+        C,
+        "A `final` state with an outgoing flow, or `final` in an enum with no flow",
+    ),
+    e(
+        "E0932",
+        C,
+        "The path of a `transition` does not start at a fact, does not end in a state machine, or passes through an optional step",
+    ),
+    e(
+        "E0933",
+        C,
+        "A `transition` lists a move that is not a flow of the machine",
+    ),
+    e("E0934", C, "More than one `transition` in an endpoint"),
     e(
         "E0950",
         C,
@@ -336,6 +357,13 @@ pub const CODES: &[CodeInfo] = &[
         "W0904",
         "generators",
         "A target with request validation turned off reaches rules, which it will not enforce",
+    ),
+    w("W0930", C, "The same flow declared twice"),
+    w("W0931", C, "A state that is not final and has no way out"),
+    w(
+        "W0932",
+        C,
+        "A variant of a state machine that takes part in no flow and is not final",
     ),
     l(
         "L0001",

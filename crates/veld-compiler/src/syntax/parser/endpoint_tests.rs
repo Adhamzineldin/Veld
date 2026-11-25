@@ -47,6 +47,7 @@ fn parses_every_statement_form() {
             Stmt::Fact(_) => "fact",
             Stmt::Require(_) => "require",
             Stmt::Ensure(_) => "ensure",
+            Stmt::Transition(_) => "transition",
         })
         .collect();
     assert_eq!(
@@ -103,8 +104,8 @@ fn an_endpoint_without_a_block_has_none() {
 }
 
 #[test]
-fn allow_and_transition_name_their_phase() {
-    for (word, phase) in [("allow", "phase 4"), ("transition", "phase 3")] {
+fn allow_names_its_phase() {
+    for (word, phase) in [("allow", "phase 4")] {
         let src = format!("service S at \"/\" {{ get \"/\" f() {{ {word} x(y)\n ensure true }} }}");
         let r = p(&src);
         assert_eq!(codes(&src), ["E0003"], "{word}");
@@ -270,4 +271,124 @@ fn value_nesting_is_bounded() {
 fn use_after_an_example_is_still_an_error() {
     let src = "example \"x\" { f() -> ok }\nuse a.{B}";
     assert!(codes(src).contains(&"E0003"));
+}
+
+fn block_of(src: &str) -> Vec<Stmt> {
+    let r = p(src);
+    assert!(r.diagnostics.is_empty(), "{src}: {:?}", r.diagnostics);
+    let DeclKind::Service(s) = &r.file.decls[0].kind else {
+        panic!("not a service")
+    };
+    s.endpoints[0].block.clone().expect("a block").stmts
+}
+
+#[test]
+fn a_transition_has_a_path_sources_and_a_target() {
+    let stmts = block_of(
+        "service S at \"/\" { post \"/\" f() { fact b: B = id\n transition b.status: pending, paid -> cancelled\n require true } }",
+    );
+    let Stmt::Transition(t) = &stmts[1] else {
+        panic!("not a transition");
+    };
+    let path: Vec<&str> = t.path.iter().map(|i| i.name.as_str()).collect();
+    let from: Vec<&str> = t.from.iter().map(|i| i.name.as_str()).collect();
+    assert_eq!((path, from), (vec!["b", "status"], vec!["pending", "paid"]));
+    assert_eq!(t.to.name, "cancelled");
+    assert_eq!(stmts.len(), 3, "the statement after it is still parsed");
+}
+
+#[test]
+fn a_nested_path_in_a_transition_parses() {
+    let stmts = block_of("service S at \"/\" { post \"/\" f() { transition a.b.c: x -> y } }");
+    let Stmt::Transition(t) = &stmts[0] else {
+        panic!("not a transition");
+    };
+    assert_eq!(t.path.len(), 3);
+}
+
+#[test]
+fn a_broken_transition_is_one_diagnostic_and_the_block_goes_on() {
+    for src in [
+        "service S at \"/\" { post \"/\" f() { transition b.s pending -> paid\n ensure true } }",
+        "service S at \"/\" { post \"/\" f() { transition b.s: pending paid\n ensure true } }",
+        "service S at \"/\" { post \"/\" f() { transition b.s: -> paid\n ensure true } }",
+    ] {
+        assert_eq!(codes(src), ["E0003"], "{src}");
+    }
+}
+
+fn enum_of(src: &str) -> crate::syntax::ast::EnumDecl {
+    let r = p(src);
+    assert!(r.diagnostics.is_empty(), "{src}: {:?}", r.diagnostics);
+    let DeclKind::Enum(e) = &r.file.decls[0].kind else {
+        panic!("not an enum")
+    };
+    e.clone()
+}
+
+fn names(ids: &[crate::syntax::ast::Ident]) -> Vec<&str> {
+    ids.iter().map(|i| i.name.as_str()).collect()
+}
+
+#[test]
+fn flows_and_finals_are_statements_of_an_enum_body() {
+    let e =
+        enum_of("enum S {\n a, b, c\n flow a -> b -> c\n flow a -> c\n final c\n final a2, b2\n}");
+    assert_eq!(
+        names(
+            &e.variants
+                .iter()
+                .map(|v| v.name.clone())
+                .collect::<Vec<_>>()
+        ),
+        ["a", "b", "c"]
+    );
+    assert_eq!(e.flows.len(), 2);
+    assert_eq!(names(&e.flows[0].states), ["a", "b", "c"]);
+    assert_eq!(names(&e.finals[1].states), ["a2", "b2"]);
+}
+
+#[test]
+fn flow_and_final_stay_variants_without_the_lookahead() {
+    // `flow` not followed by `IDENT ->`, and `final` not followed by an identifier on its line.
+    let e = enum_of("enum E { flow, final, other }");
+    assert_eq!(e.variants.len(), 3);
+    assert!(e.flows.is_empty() && e.finals.is_empty());
+    let e = enum_of("enum E {\n flow\n final\n other\n}");
+    assert_eq!(e.variants.len(), 3);
+    let e = enum_of("enum E {\n final = \"F\"\n flow = \"L\"\n}");
+    assert_eq!(e.variants.len(), 2);
+}
+
+#[test]
+fn a_machine_may_still_have_variants_named_flow_and_final() {
+    let e = enum_of("enum E {\n flow, final, x\n flow flow -> final\n final final\n}");
+    assert_eq!(e.variants.len(), 3);
+    assert_eq!(names(&e.flows[0].states), ["flow", "final"]);
+    assert_eq!(names(&e.finals[0].states), ["final"]);
+}
+
+#[test]
+fn emits_is_rejected_and_names_events() {
+    let src = "enum E {\n a, b\n flow a -> b emits Booked\n final b\n}";
+    let r = p(src);
+    assert_eq!(codes(src), ["E0003"]);
+    assert!(r.diagnostics[0].message.contains("event"));
+    let DeclKind::Enum(e) = &r.file.decls[0].kind else {
+        panic!("not an enum")
+    };
+    assert_eq!(e.finals.len(), 1, "the next statement is still parsed");
+}
+
+#[test]
+fn a_flow_needs_a_target() {
+    assert_eq!(codes("enum E { a, b\n flow a -> \n}"), ["E0003"]);
+}
+
+#[test]
+fn docs_and_annotations_do_not_belong_to_a_flow() {
+    assert_eq!(
+        codes("enum E {\n a, b\n /// doc\n flow a -> b\n}"),
+        ["E0003"]
+    );
 }
