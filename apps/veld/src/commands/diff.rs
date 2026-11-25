@@ -141,6 +141,11 @@ fn print_changes(ui: &Ui, changes: &[Change], label: &str) {
             ui.out_styled(Style::Red, ui.theme_out().sym().fail),
         ),
         (
+            Severity::PossiblyBreaking,
+            "Possibly breaking changes (a rule changed; the direction is unknown)",
+            ui.out_styled(Style::Yellow, "?"),
+        ),
+        (
             Severity::NonBreaking,
             "Non-breaking changes",
             ui.out_styled(Style::Green, "+"),

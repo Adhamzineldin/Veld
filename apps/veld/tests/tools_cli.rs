@@ -214,6 +214,43 @@ fn diff_against_a_git_ref_never_touches_the_working_tree() {
         .stderr(predicate::str::contains("not a git"));
 }
 
+// --- rule-aware diff ---------------------------------------------------------------------
+
+const RULED: &str = "model Booking {\n  start: int\n  end: int\n  rule order: end > start\n}\n\nservice Bookings at \"/b\" {\n  post \"/\" book(body: Booking) -> 204\n}\n";
+
+#[test]
+fn diff_reports_a_tightened_invariant_with_both_expressions_and_fails_strict() {
+    let tmp = tempdir().unwrap();
+    init(tmp.path());
+    write(tmp.path(), "contracts/booking.veld", RULED);
+    veld(tmp.path()).arg("generate").assert().success();
+    veld(tmp.path())
+        .args(["diff", "--strict"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("no changes"));
+
+    write(
+        tmp.path(),
+        "contracts/booking.veld",
+        &RULED.replace("end > start", "end > start + 1"),
+    );
+    veld(tmp.path())
+        .arg("diff")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Possibly breaking changes"))
+        .stdout(predicate::str::contains(
+            "rule `order` changed from `end > start` to `end > start + 1`",
+        ));
+    veld(tmp.path())
+        .args(["diff", "--strict"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("`end > start`"))
+        .stdout(predicate::str::contains("`end > start + 1`"));
+}
+
 // --- export ------------------------------------------------------------------------------
 
 #[test]
