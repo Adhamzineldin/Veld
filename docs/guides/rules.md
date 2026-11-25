@@ -377,6 +377,41 @@ createBookingsHandler(service, {
 
 The hook `onRuleViolation` also runs for rejected requests (`position: 'input'`). It is for logs and metrics. An exception inside it never changes the response.
 
+## Rolling a rule out
+
+A new rule can reject requests that were fine yesterday. Write `@rollout(audit)` before it and it is only watched: the server evaluates it exactly where it would, reports every violation to `onRuleViolation` with the outcome `audited`, and lets the request go on as if the rule held. Nobody is rejected, and an audited violation never appears in a response.
+
+```veld
+model Booking {
+  guests: int
+
+  @rollout(audit)
+  rule smallParty: guests <= 6
+    message "Parties of more than six need a call"
+}
+
+service Bookings at "/bookings" {
+  post "/" createBooking(body: Booking) -> 201 Booking | RoomFull {
+    fact room: Room = body.roomId
+    @rollout(audit)
+    require body.guests <= room.capacity else RoomFull { capacity: room.capacity }
+    @rollout(audit)
+    ensure result.guests == body.guests
+  }
+}
+```
+
+The annotation stands on an invariant (in a model, an error or an event), on a `require` and on an `ensure`, and nowhere else. An audited `require ... else RoomFull` never answers `RoomFull`. When the numbers show that nobody breaks the rule, delete the line: the rule is enforced from then on. Its id does not change, so the hook keeps counting the same rule.
+
+What else changes while a rule is audited:
+
+- `veld test` does not fail an example for an audited rule. It lists, under each example, the audited rules that example would violate.
+- Generated clients do not check an audited rule, and the rules digest covers only the rules that reject. Adding or removing the annotation therefore changes the digest, and a client that was built before stops its local checks until you rebuild it.
+- `veld diff` judges adding the annotation to a rule like removing the rule, and removing it like adding the rule. A rule that is new and audited is compatible.
+- With `rules: { output: 'off' }` an audited rule of the server's own answer is not evaluated. In `strict` and `audit` it is, and it never turns into a `500`.
+
+**Generated servers do not support it yet.** The code generators have not learned `@rollout(audit)`. A contract with an audited rule stops `veld generate` with error `E0801` at the rule, so a server never enforces a rule you meant to watch. Today the annotation works in `veld check`, `veld test`, `veld diff`, `veld fmt` and the OpenAPI export.
+
 ## What belongs in the contract
 
 Put a rule in the contract when it is about the data or the call and can be said with the fields you have: ranges, relations between fields, "this must exist and be open", a limit that depends on a loaded record, a promise about the result.
@@ -398,7 +433,8 @@ A browser can read this header from another origin only if the server sends `Acc
 
 ## What is not supported yet
 
-- **Optimistic concurrency and idempotency** (`@version`, `@idempotent`), **rolling a rule out** (`@rollout(audit)`), **derived fields** and **`veld check --prove`**: they are designed in [`spec/rules.md`](../../spec/rules.md) (sections 11.7, 11.8, 17 and 18) and not implemented. Do not use them in a contract today.
+- **Optimistic concurrency and idempotency** (`@version`, `@idempotent`), **derived fields** and **`veld check --prove`**: they are designed in [`spec/rules.md`](../../spec/rules.md) (sections 11.7, 11.8, 17.2 and 18) and not implemented. Do not use them in a contract today.
+- **Rolling a rule out** (`@rollout(audit)`): the compiler and the tools know it, the generators do not (see above). A contract that uses it cannot be generated yet.
 - **Events** (messaging with Kafka and RabbitMQ): designed in [`spec/events.md`](../../spec/events.md), not implemented.
 - **Generators**: everything in this guide is enforced by the TypeScript client and the Node server, by Java (client, JDK server and Spring) and by Rust (client and axum server). The code in this guide is TypeScript; the Java and Rust shapes are in their target pages below. A generator that cannot enforce a rule, a plugin for example, stops with error `E0801`. It never generates code that ignores a rule.
 
