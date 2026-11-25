@@ -1,6 +1,6 @@
 # Veld events — v1
 
-Status: **DRAFT. Nothing in this file is implemented yet.** It is written first so that the compiler, the reference evaluator and the three generators are built from one text. Section 18 lists what each phase builds; section 20 lists the choices that wait for the owner.
+Status: **DRAFT. Nothing in this file is implemented yet.** It is written first so that the compiler, the reference evaluator and the three generators are built from one text. Section 18 lists what each phase builds; section 20 lists what the owner decided and what is still open.
 
 This file extends `spec/language.md`, `spec/ir.md` and `spec/rules.md`. Where it is silent, those files apply.
 
@@ -370,9 +370,14 @@ E1 needs no configuration: the application passes a transport. Choosing a broker
 - **`expect … called once`** waits for the inbox (E2). In E1 an example describes one delivery.
 - **The example in the proposal used `"b-1"` for a `uuid`**; examples here are type-correct.
 
-## 20. Decisions waiting for the owner
+## 20. Decisions
 
-1. **Contract skew (§8).** A consumer decodes with its own type and ignores unknown fields, and checks rules only when the digests match. The alternative is strict: reject every message whose signature differs, which makes every change to an event a coordinated deployment.
-2. **A service without `at` (§5).** Needed for a service that only consumes. The alternative keeps `at` required and gives such a service a prefix it never uses.
+Decided by the owner on 25 November 2026:
+
+1. **Contract skew (§8): the tolerant consumer.** A consumer decodes with its own type and ignores unknown fields, and checks rules only when the digests match. The alternative, rejecting every message whose signature differs, would have made every change to an event a coordinated deployment.
+2. **A service without `at` (§5): allowed** for a service that has no endpoints.
+
+Drafted as recommended and not yet confirmed:
+
 3. **Rejected messages are acknowledged (§8).** Otherwise one bad message blocks a Kafka partition forever. Without `@deadLetter` and without a hook that stores it, the message is gone.
 4. **`@retry` lives on the channel**, one policy for every consumer of it, as in the proposal. The alternative is per subscription.

@@ -19,21 +19,27 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - Commit `be05daf` (`ir_version` 1.0 to 1.1): 20 conformance snapshots, 5 OpenAPI snapshots (`x-veld-ir-version`) and the 4 example `veld.lock.ir.json` files each changed by exactly their version line. No generated source file changed. The new prelude error `InvalidTransition` changed no stored file, because a declaration appears in the IR only when a contract reaches it.
 - Policies (commits `f6acf79` to `9924791`): the conformance case `e0003_endpoint_later_phases` and its snapshot were removed, because it asserted that `allow` is "not supported yet" and `allow` now is. No other snapshot from before the branch changed or was renamed. `e0952_example_value_mismatch` keeps a help line that mentions "principals arrive with policies", now out of date, so that its snapshot stays byte-identical; correcting the wording changes that one snapshot.
 
+- The `auth-required` decision (see "Decided by the owner"): files from before the branch that gained one `@auth(none)` line are `examples/hello/contracts/hello.veld`, `examples/rust-catalog/contracts/books.veld`, four contract templates in `apps/veld/src/commands/init/render.rs`, two website presets and three website snippets. No generated source file changed; the two examples' `veld.lock.ir.json` moved by one line number each. No insta snapshot changed.
+
 ## Decisions waiting for the owner
 
 - **Spring and a trailing slash.** The JDK router treats `/bookings` and `/bookings/` as the same path; the generated Spring controller maps only the first, so `POST /bookings/` is a 404 on Spring. For contracts with rules the controller now maps both. Fixing it for every contract changes Spring snapshots from before this branch, so it was left alone.
 - **A Rust generator bug from before this branch.** A generated crate that uses SSE, in which one service has no SSE endpoint, does not compile (`call_sse` is missing for that service). Found while testing; not fixed here.
 - **Should `veld generate` stop on a changed rule?** `veld diff --strict` now fails on a "possibly breaking" rule change. The breaking-change gate of `veld generate` (`crates/veld-tools/src/gate.rs`) still looks at breaking changes only, so editing a rule's expression does not prompt or block a generate. Making it count is two lines (`Severity::fails_check`); it would mean a prompt every time a rule is edited until the lock is updated. Recommended: yes, for consistency with other breaking changes.
 - **Two Java helper names.** See the Phase 1 list: finishing the rename changes three lines of a snapshot.
-- **Is the `auth-required` lint (`L0014`) on by default?** It is on, as the plan says. Every contract with no `@auth` at all now gets one warning per endpoint from `veld check` (exit code still 0). In this repository it fires on `examples/hello` and `examples/rust-catalog` (left as they are) and it fired on `examples/bookings` (now says `@auth(none)`); two test fixtures from before the branch had to gain `@auth(none)` to stay clean (the `CLEAN` fixture of the lint tests and the one in `parity_cli`). The alternative is to ship it off by default and let a project turn it on.
 - **The policies feature covers more than `allow`.** A contract whose `require` or `ensure` reads the principal is marked with the `rules_policies` feature even without an `allow`, so a generator that cannot supply the principal refuses it (`E0801`) and never emits code that fails at run time. `spec/rules.md` 11.4 said only an `allow` uses it; the spec is to be widened to match unless you disagree.
 - **`Auth.declared` is not in the IR JSON.** The IR cannot tell an explicit `@auth(none)` from no `@auth`; adding a key would have changed every stored IR snapshot. The flag exists in memory only, for the lint, and a plugin or a tool that reads `ir.json` does not see it. Making it part of the IR is an `ir_version` change.
-- **Events: four choices in `spec/events.md` section 20, to answer before E1 is built.**
-  1. *Contract skew.* A consumer decodes an event with its own type, ignores fields it does not know, and checks rules only when its rules digest equals the publisher's. The proposal said a consumer "checks the signature"; taken literally that rejects every message after any change to an event, including an added optional field, which the proposal also calls safe. Recommended: the tolerant consumer, as drafted.
-  2. *A service without `at`*, for a service that only consumes (the proposal's `service Notifications { … }`). It touches `E0501`, the `empty-service` lint and the OpenAPI export. Recommended: allow it.
-  3. *A rejected message is acknowledged*, so one bad message cannot block a Kafka partition. Without `@deadLetter` and without a hook that stores it, the message is gone. Recommended: as drafted.
-  4. *`@retry` on the channel* (one policy for every consumer, as in the proposal) or per subscription. Recommended: the channel, as in the proposal.
+- **Events: two choices in `spec/events.md` section 20 that were not asked, drafted as recommended.**
+  1. *A rejected message is acknowledged*, so one bad message cannot block a Kafka partition. Without `@deadLetter` and without a hook that stores it, the message is gone.
+  2. *`@retry` on the channel* (one policy for every consumer, as in the proposal), not per subscription.
 - **`412` or `409` for a failed `If-Match`.** `spec/rules.md` 11.7 says `412 PreconditionFailed` (the HTTP meaning). Not built yet; say so if you want `409`.
+
+## Decided by the owner on 25 Nov 2026
+
+- **Events, contract skew:** the tolerant consumer. It decodes with its own type, ignores fields it does not know, and checks rules only when its rules digest equals the publisher's (`spec/events.md` section 8).
+- **Events, a service without `at`:** allowed for a service that has no endpoints (`spec/events.md` section 5).
+- **The `auth-required` lint (`L0014`):** on by default, and what the repository ships says `@auth(none)` where it is public. Done for `examples/hello`, `examples/rust-catalog`, the contracts `veld init` writes, and the website's hello and streaming presets and snippets; a test now checks that every `veld init` scaffold passes `veld check` without a warning.
+- **Emitters:** new features are built in the Rust, Java and Node generators; Node includes the TypeScript client. Every other emitter belongs to the teammates.
 
 ## Found while writing the bookings example (to fix or decide)
 
