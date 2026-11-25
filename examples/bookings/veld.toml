@@ -1,0 +1,28 @@
+[project]
+name = "bookings"
+contracts = "contracts"
+
+# The server. `testing = true` also writes a test handler for `veld test --live`.
+# It must never be mounted in production (see server/src/test-server.ts).
+[[targets]]
+name = "api"
+role = "server"
+emitter = "node"
+framework = "express"
+service = "bookings"
+out = "server/src/generated"
+
+[targets.options]
+testing = true
+
+# The client with React hooks and the form helper `useFormRules`.
+[[targets]]
+name = "web"
+role = "client"
+emitter = "typescript"
+framework = "react"
+out = "web/src/generated"
+
+# `Room` is used only as a fact, which the unused-model lint does not see yet.
+[lint]
+unused-model = "off"

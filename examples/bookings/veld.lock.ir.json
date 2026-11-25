@@ -1,0 +1,2303 @@
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "bookings",
+      "kind": "service"
+    },
+    {
+      "id": 1,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "bookings",
+      "name": "Booking",
+      "qualified": "bookings:bookings.Booking",
+      "sig": "veld:bookings/Booking@8e5f368ca7580c33",
+      "docs": "A booking the hotel has accepted.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 26,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": 1,
+      "fields": [
+        {
+          "name": "roomId",
+          "wire": "roomId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 1,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 14,
+            "col": 3
+          }
+        },
+        {
+          "name": "guests",
+          "wire": "guests",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 1,
+          "constraints": {
+            "min": 1.0,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 15,
+            "col": 3
+          }
+        },
+        {
+          "name": "start",
+          "wire": "start",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 1,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 16,
+            "col": 3
+          }
+        },
+        {
+          "name": "end",
+          "wire": "end",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 1,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 17,
+            "col": 3
+          }
+        },
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 27,
+            "col": 3
+          }
+        },
+        {
+          "name": "total",
+          "wire": "total",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": "The price of the whole stay.",
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 29,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "endAfterStart",
+          "id": "veld:bookings/NewBooking.endAfterStart@ada6a4114a0970df",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "gt",
+                "l": {
+                  "t": {
+                    "scalar": "datetime"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "end",
+                          "wire": "end",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "datetime"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "start",
+                          "wire": "start",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": "The stay must end after it starts",
+          "reads": [
+            "end",
+            "start"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 1,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 19,
+            "col": 8
+          }
+        },
+        {
+          "name": "atMost30Days",
+          "id": "veld:bookings/NewBooking.atMost30Days@38d265b42b364d76",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "le",
+                "l": {
+                  "t": "duration",
+                  "e": {
+                    "bin": {
+                      "op": "sub",
+                      "l": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "end",
+                                "wire": "end",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "start",
+                                "wire": "start",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": "duration",
+                  "e": {
+                    "call": {
+                      "f": "days",
+                      "args": [
+                        {
+                          "t": {
+                            "scalar": "int"
+                          },
+                          "e": {
+                            "lit": {
+                              "int": 30
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": "A stay is at most 30 days",
+          "reads": [
+            "end",
+            "start"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 1,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 21,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "bookings",
+      "name": "NewBooking",
+      "qualified": "bookings:bookings.NewBooking",
+      "sig": "veld:bookings/NewBooking@6bd445e3d5cc526a",
+      "docs": "What a guest sends to book a room.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 13,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "roomId",
+          "wire": "roomId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 14,
+            "col": 3
+          }
+        },
+        {
+          "name": "guests",
+          "wire": "guests",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": 1.0,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 15,
+            "col": 3
+          }
+        },
+        {
+          "name": "start",
+          "wire": "start",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 16,
+            "col": 3
+          }
+        },
+        {
+          "name": "end",
+          "wire": "end",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 17,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "endAfterStart",
+          "id": "veld:bookings/NewBooking.endAfterStart@ada6a4114a0970df",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "gt",
+                "l": {
+                  "t": {
+                    "scalar": "datetime"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "end",
+                          "wire": "end",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "datetime"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "start",
+                          "wire": "start",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": "The stay must end after it starts",
+          "reads": [
+            "end",
+            "start"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 19,
+            "col": 8
+          }
+        },
+        {
+          "name": "atMost30Days",
+          "id": "veld:bookings/NewBooking.atMost30Days@38d265b42b364d76",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "le",
+                "l": {
+                  "t": "duration",
+                  "e": {
+                    "bin": {
+                      "op": "sub",
+                      "l": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "end",
+                                "wire": "end",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "start",
+                                "wire": "start",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": "duration",
+                  "e": {
+                    "call": {
+                      "f": "days",
+                      "args": [
+                        {
+                          "t": {
+                            "scalar": "int"
+                          },
+                          "e": {
+                            "lit": {
+                              "int": 30
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": "A stay is at most 30 days",
+          "reads": [
+            "end",
+            "start"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 21,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "bookings",
+      "name": "Room",
+      "qualified": "bookings:bookings.Room",
+      "sig": "veld:bookings/Room@d7929fb7dd94f159",
+      "docs": "A room of the hotel.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 3,
+            "col": 3
+          }
+        },
+        {
+          "name": "name",
+          "wire": "name",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": 80,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 4,
+            "col": 3
+          }
+        },
+        {
+          "name": "capacity",
+          "wire": "capacity",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": 1.0,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": "How many guests the room sleeps.",
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 6,
+            "col": 3
+          }
+        },
+        {
+          "name": "closed",
+          "wire": "closed",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 7,
+            "col": 3
+          }
+        },
+        {
+          "name": "nightly",
+          "wire": "nightly",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": 0.0,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": "The price of one night.",
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 9,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "package": 0,
+      "module": "bookings",
+      "name": "RoomClosed",
+      "qualified": "bookings:bookings.RoomClosed",
+      "sig": "veld:bookings/RoomClosed@b03ac78ebe1d9787",
+      "docs": "The room is closed for bookings.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 36,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": []
+    },
+    {
+      "id": 4,
+      "package": 0,
+      "module": "bookings",
+      "name": "RoomFull",
+      "qualified": "bookings:bookings.RoomFull",
+      "sig": "veld:bookings/RoomFull@c32f6fc9e1e474cb",
+      "docs": "The room cannot sleep that many guests.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 33,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": [
+        {
+          "name": "capacity",
+          "wire": "capacity",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 33,
+            "col": 22
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "package": 1,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "package": 1,
+      "module": "prelude",
+      "name": "NotFound",
+      "qualified": "veld:prelude.NotFound",
+      "sig": "veld:veld/NotFound@a0eaf7a3323dce7c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 4,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 404,
+      "parent": null,
+      "fields": [
+        {
+          "name": "resource",
+          "wire": "resource",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 4,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "package": 1,
+      "module": "prelude",
+      "name": "ValidationError",
+      "qualified": "veld:prelude.ValidationError",
+      "sig": "veld:veld/ValidationError@7836aff24d914bea",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "issues",
+          "wire": "issues",
+          "type": {
+            "list": {
+              "decl": 8
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 6,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "package": 1,
+      "module": "prelude",
+      "name": "ValidationIssue",
+      "qualified": "veld:prelude.ValidationIssue",
+      "sig": "veld:veld/ValidationIssue@253beeea259ebf75",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 9,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "path",
+          "wire": "path",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 29
+          }
+        },
+        {
+          "name": "code",
+          "wire": "code",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 43
+          }
+        },
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 57
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "Bookings",
+      "prefix": "/bookings",
+      "base_url": null,
+      "docs": "Hotel bookings.",
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "createBooking",
+          "method": "POST",
+          "path": "/bookings",
+          "sig": "veld:bookings/Bookings.createBooking@44ec6880646a5a6f",
+          "docs": "Books a room. The room is loaded once, before any rule runs.",
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 1
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 404,
+              "decl": 6
+            },
+            {
+              "status": 409,
+              "decl": 3
+            },
+            {
+              "status": 409,
+              "decl": 4
+            },
+            {
+              "status": 422,
+              "decl": 7
+            },
+            {
+              "status": 500,
+              "decl": 5
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "room",
+                "type": {
+                  "decl": 2
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "body"
+                      },
+                      "steps": [
+                        {
+                          "name": "roomId",
+                          "wire": "roomId",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 42,
+                  "col": 10
+                }
+              }
+            ],
+            "requires": [
+              {
+                "name": null,
+                "id": "veld:bookings/Bookings.createBooking.require@55aa9d5be5846f0f",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "not": {
+                      "t": {
+                        "scalar": "bool"
+                      },
+                      "e": {
+                        "path": {
+                          "root": {
+                            "fact": "room"
+                          },
+                          "steps": [
+                            {
+                              "name": "closed",
+                              "wire": "closed",
+                              "optional": false
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [],
+                "else": {
+                  "decl": 3,
+                  "status": 409,
+                  "fields": []
+                },
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 43,
+                  "col": 5
+                }
+              },
+              {
+                "name": null,
+                "id": "veld:bookings/Bookings.createBooking.require@d2fe5f8bdc51048f",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "le",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "fact": "room"
+                            },
+                            "steps": [
+                              {
+                                "name": "capacity",
+                                "wire": "capacity",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "body"
+                ],
+                "else": {
+                  "decl": 4,
+                  "status": 409,
+                  "fields": [
+                    {
+                      "name": "capacity",
+                      "wire": "capacity",
+                      "value": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "fact": "room"
+                            },
+                            "steps": [
+                              {
+                                "name": "capacity",
+                                "wire": "capacity",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 44,
+                  "col": 5
+                }
+              },
+              {
+                "name": "notInPast",
+                "id": "veld:bookings/Bookings.createBooking.notInPast@8504bb958894cb24",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "ge",
+                      "l": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "start",
+                                "wire": "start",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "now": true
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": "A booking cannot start in the past",
+                "reads": [
+                  "body"
+                ],
+                "else": null,
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 45,
+                  "col": 13
+                }
+              }
+            ],
+            "ensures": [
+              {
+                "name": "keepsRoom",
+                "id": "veld:bookings/Bookings.createBooking.keepsRoom@de7756ee913c16fa",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "uuid"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "result",
+                            "steps": [
+                              {
+                                "name": "roomId",
+                                "wire": "roomId",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "uuid"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "roomId",
+                                "wire": "roomId",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "body"
+                ],
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 47,
+                  "col": 12
+                }
+              },
+              {
+                "name": "keepsGuests",
+                "id": "veld:bookings/Bookings.createBooking.keepsGuests@d19c2cf512759819",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "result",
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "body"
+                ],
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 48,
+                  "col": 12
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "bookings.veld",
+            "line": 41,
+            "col": 12
+          }
+        },
+        {
+          "name": "getBooking",
+          "method": "GET",
+          "path": "/bookings/{id}",
+          "sig": "veld:bookings/Bookings.getBooking@ece8c67556b3abf4",
+          "docs": "Returns one booking.",
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 404,
+              "decl": 6
+            },
+            {
+              "status": 422,
+              "decl": 7
+            },
+            {
+              "status": 500,
+              "decl": 5
+            }
+          ],
+          "origin": {
+            "file": "bookings.veld",
+            "line": 52,
+            "col": 15
+          }
+        }
+      ],
+      "facts": [
+        {
+          "name": "room",
+          "type": {
+            "decl": 2
+          },
+          "key": {
+            "scalar": "uuid"
+          },
+          "optional": false
+        }
+      ],
+      "rules_digest": "cad7f1bdf1d52964",
+      "origin": {
+        "file": "bookings.veld",
+        "line": 39,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {},
+  "examples": [
+    {
+      "name": "a booking cannot start in the past",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 1
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-05-01T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-05-03T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 7,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 102,
+        "col": 1
+      }
+    },
+    {
+      "name": "a closed room is refused, whatever the party",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": true
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 5
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 3,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 75,
+        "col": 1
+      }
+    },
+    {
+      "name": "a room that sleeps two refuses three guests",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 3
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 4,
+          "pattern": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 66,
+        "col": 1
+      }
+    },
+    {
+      "name": "a stay cannot end before it starts",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 1
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 7,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 84,
+        "col": 1
+      }
+    },
+    {
+      "name": "a stay is at most 30 days",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 1
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-08-10T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 7,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 93,
+        "col": 1
+      }
+    },
+    {
+      "name": "a valid booking is accepted",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 57,
+        "col": 1
+      }
+    },
+    {
+      "name": "an unknown room is not found",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": null
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 1
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 6,
+          "pattern": {
+            "object": [
+              {
+                "name": "resource",
+                "wire": "resource",
+                "value": {
+                  "json": "room"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 111,
+        "col": 1
+      }
+    },
+    {
+      "name": "the handler must keep the guests of the request",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 4
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": {
+        "object": [
+          {
+            "name": "roomId",
+            "wire": "roomId",
+            "value": {
+              "ref": {
+                "given": "room",
+                "path": [
+                  "id"
+                ]
+              }
+            }
+          },
+          {
+            "name": "guests",
+            "wire": "guests",
+            "value": {
+              "json": 3
+            }
+          }
+        ]
+      },
+      "outcome": {
+        "error": {
+          "decl": 5,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 120,
+        "col": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+/// A room of the hotel.
+model Room {
+  id: uuid
+  name: string @length(min: 1, max: 80)
+  /// How many guests the room sleeps.
+  capacity: int @min(1)
+  closed: bool
+  /// The price of one night.
+  nightly: decimal @min(0)
+}
+
+/// What a guest sends to book a room.
+model NewBooking {
+  roomId: uuid
+  guests: int @min(1)
+  start: datetime
+  end: datetime
+
+  rule endAfterStart: end > start
+    message "The stay must end after it starts"
+  rule atMost30Days: end - start <= days(30)
+    message "A stay is at most 30 days"
+}
+
+/// A booking the hotel has accepted.
+model Booking extends NewBooking {
+  id: uuid @readonly
+  /// The price of the whole stay.
+  total: decimal
+}
+
+/// The room cannot sleep that many guests.
+error RoomFull 409 { capacity: int }
+
+/// The room is closed for bookings.
+error RoomClosed 409 {}
+
+/// Hotel bookings.
+service Bookings at "/bookings" {
+  /// Books a room. The room is loaded once, before any rule runs.
+  post "/" createBooking(body: NewBooking) -> 201 Booking | RoomFull | RoomClosed {
+    fact room: Room = body.roomId
+    require not room.closed else RoomClosed
+    require body.guests <= room.capacity else RoomFull { capacity: room.capacity }
+    require notInPast: body.start >= now
+      message "A booking cannot start in the past"
+    ensure keepsRoom: result.roomId == body.roomId
+    ensure keepsGuests: result.guests == body.guests
+  }
+
+  /// Returns one booking.
+  get "/{id}" getBooking(id: uuid) -> Booking | NotFound
+}
+
+// Examples are documentation that `veld test` checks. Whatever an example does not write is filled in.
+
+example "a valid booking is accepted" {
+  given room = { capacity: 2, closed: false }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    roomId: room.id, guests: 2,
+    start: "2026-06-10T00:00:00Z", end: "2026-06-12T00:00:00Z"
+  }) -> ok
+}
+
+example "a room that sleeps two refuses three guests" {
+  given room = { capacity: 2, closed: false }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    roomId: room.id, guests: 3,
+    start: "2026-06-10T00:00:00Z", end: "2026-06-12T00:00:00Z"
+  }) -> RoomFull { capacity: 2 }
+}
+
+example "a closed room is refused, whatever the party" {
+  given room = { capacity: 2, closed: true }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    roomId: room.id, guests: 5,
+    start: "2026-06-10T00:00:00Z", end: "2026-06-12T00:00:00Z"
+  }) -> RoomClosed
+}
+
+example "a stay cannot end before it starts" {
+  given room = { capacity: 2, closed: false }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    roomId: room.id, guests: 1,
+    start: "2026-06-12T00:00:00Z", end: "2026-06-10T00:00:00Z"
+  }) -> ValidationError
+}
+
+example "a stay is at most 30 days" {
+  given room = { capacity: 2, closed: false }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    roomId: room.id, guests: 1,
+    start: "2026-06-10T00:00:00Z", end: "2026-08-10T00:00:00Z"
+  }) -> ValidationError
+}
+
+example "a booking cannot start in the past" {
+  given room = { capacity: 2, closed: false }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    roomId: room.id, guests: 1,
+    start: "2026-05-01T00:00:00Z", end: "2026-05-03T00:00:00Z"
+  }) -> ValidationError
+}
+
+example "an unknown room is not found" {
+  given room = absent
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    guests: 1,
+    start: "2026-06-10T00:00:00Z", end: "2026-06-12T00:00:00Z"
+  }) -> NotFound { resource: "room" }
+}
+
+example "the handler must keep the guests of the request" {
+  given room = { capacity: 4, closed: false }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    roomId: room.id, guests: 2,
+    start: "2026-06-10T00:00:00Z", end: "2026-06-12T00:00:00Z"
+  })
+    returns { roomId: room.id, guests: 3 }
+    -> Internal
+}
