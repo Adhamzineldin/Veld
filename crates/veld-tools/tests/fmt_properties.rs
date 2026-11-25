@@ -215,12 +215,15 @@ fn formatting_the_rules_contracts_is_idempotent_and_keeps_the_ir() {
 /// `not` against `!`, decimal text.
 #[test]
 fn tricky_expression_spellings_keep_their_ir() {
-    let src = "const K: int = 3\nmodel M {\n  a: int\n  b: int\n  d: decimal\n  x: bool\n  y: bool\n  z: bool\n  e: int[]\n\
+    let src = "const K: int = 3\nmodel M {\n  a: int\n  b: int\n  d: decimal\n  x: bool\n  y: bool\n  z: bool\n  e: int[]\n  l: long\n\
         rule w1: x implies (-1 < a)\n rule w2: x implies (-0.5 < d)\n rule w3: x implies (- 1 < a)\n rule w4: x implies (-1 < a && x)\n\
         rule neg: a > - 1\n rule lit: a > -1\n rule sub: a -1 > b - -1\n rule dub: a - - 1 > 0\n\
         rule dec: d == 1.50 && d != 0.250\n rule imp: (x implies y) implies z\n rule imp2: x implies (y implies z)\n\
         rule cmp: (a < b) == x\n rule not1: not x == y\n rule not2: !(x == y)\n rule mix: x || y && z || (x || y) && z\n\
-        rule arith: (a + b) * 2 - (a - b) == 4 % K\n rule lst: a in [-1, - 2, K]\n rule neg2: - -a < - (a + b)\n}\n";
+        rule arith: (a + b) * 2 - (a - b) == 4 % K\n rule lst: a in [-1, - 2, K]\n rule neg2: - -a < - (a + b)\n\
+        rule imin: x implies -2147483648 < a\n rule lmin: x implies l < -9223372036854775808\n\
+        rule negp: a > -(1) && d < -(1.50)\n rule negn: a > -(-1) && a > - -(1)\n\
+        rule inmin: a in [-2147483648, 0] && not x\n}\n";
     let formatted = format(src).unwrap();
     assert_eq!(format(&formatted).unwrap(), formatted);
     let input = |t: &str| CompileInput {

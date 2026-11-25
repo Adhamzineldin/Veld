@@ -731,3 +731,85 @@ mod declarations {
         );
     }
 }
+
+/// A `-` applied directly to a numeric literal is part of the literal (`spec/rules.md` 2.1),
+/// also after the words the lexer reads as identifiers.
+mod negative_literals {
+    use super::*;
+
+    #[test]
+    fn the_smallest_int_after_implies_in_not_and_at_the_start() {
+        assert_eq!(
+            typed(NUMS, "b implies -2147483648 < i"),
+            "(implies self.b (lt int:-2147483648 self.i))"
+        );
+        assert_eq!(
+            typed(NUMS, "i in [-2147483648, 0]"),
+            "(in self.i [int:-2147483648 int:0])"
+        );
+        assert_eq!(
+            typed(NUMS, "-2147483648 < i"),
+            "(lt int:-2147483648 self.i)"
+        );
+        assert_eq!(
+            typed(NUMS, "b implies i in [-2147483648]"),
+            "(implies self.b (in self.i [int:-2147483648]))"
+        );
+        // `not -2147483648` is a type error (`not` needs a bool) but not a range error.
+        let c = first_code(NUMS, "not -2147483648 == i");
+        assert!(!c.contains(&"E0908"), "{c:?}");
+    }
+
+    #[test]
+    fn the_smallest_long_after_implies_in_not_and_at_the_start() {
+        let min = "-9223372036854775808";
+        assert_eq!(
+            typed(NUMS, &format!("b implies {min} < l")),
+            format!("(implies self.b (lt long:{min} self.l))")
+        );
+        assert_eq!(
+            typed(NUMS, &format!("l in [{min}, 0]")),
+            format!("(in self.l [long:{min} long:0])")
+        );
+        assert_eq!(
+            typed(NUMS, &format!("{min} < l")),
+            format!("(lt long:{min} self.l)")
+        );
+        let c = first_code(NUMS, &format!("not {min} == l"));
+        assert!(!c.contains(&"E0908") && !c.contains(&"E0002"), "{c:?}");
+    }
+
+    #[test]
+    fn a_space_after_the_minus_makes_no_difference_but_parentheses_do() {
+        assert_eq!(typed(NUMS, "i > - 5"), "(gt self.i int:-5)");
+        assert_eq!(typed(NUMS, "i > -(5)"), "(gt self.i (neg int:5))");
+        assert_eq!(typed(NUMS, "d == - 1.50"), "(eq self.d dec:-1.50)");
+        assert_eq!(
+            typed(NUMS, "b implies d < -0.25"),
+            "(implies self.b (lt self.d dec:-0.25))"
+        );
+        assert_eq!(typed(NUMS, "f < - 1.5"), "(lt self.f float:-1.5)");
+    }
+
+    #[test]
+    fn literals_that_do_not_fit_are_still_errors() {
+        assert_eq!(first_code(NUMS, "i > -2147483649"), vec!["E0908"]);
+        assert_eq!(first_code(NUMS, "b implies i > -2147483649"), vec!["E0908"]);
+        assert_eq!(first_code(NUMS, "b implies -2147483649 < i"), vec!["E0908"]);
+        assert_eq!(first_code(NUMS, "i < 2147483648"), vec!["E0908"]);
+        assert_eq!(first_code(NUMS, "b implies i < 2147483648"), vec!["E0908"]);
+        assert_eq!(first_code(NUMS, "l > 9223372036854775808"), vec!["E0002"]);
+        assert_eq!(first_code(NUMS, "l > - 9223372036854775809"), vec!["E0002"]);
+    }
+
+    #[test]
+    fn a_rule_with_and_without_parentheses_has_the_same_id() {
+        let id = |rule: &str| {
+            let src = format!("model M {{ b: bool\n i: int\n rule r: {rule} }}");
+            rule_of(&src, "M", "r").id
+        };
+        assert_eq!(id("b implies -1 < i"), id("b implies (-1 < i)"));
+        assert_eq!(id("i in [-1, 2]"), id("i in [ - 1, 2 ]"));
+        assert_ne!(id("i > -1"), id("i > -(1)"));
+    }
+}

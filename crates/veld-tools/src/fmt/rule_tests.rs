@@ -113,15 +113,19 @@ fn not_and_bang_are_kept_as_written() {
 #[test]
 fn the_minus_rule_survives_formatting() {
     assert_eq!(expr("a > -1"), "a > -1");
-    assert_eq!(expr("a > - 1"), "a > - 1");
+    assert_eq!(expr("a > - 1"), "a > -1");
+    assert_eq!(expr("a > -(1)"), "a > -(1)");
+    assert_eq!(expr("a > -(-1)"), "a > -(-1)");
+    assert_eq!(expr("a > -(1.50)"), "a > -(1.50)");
+    assert_eq!(expr("a > - -(1)"), "a > - -(1)");
     assert_eq!(expr("a -1 > 0"), "a - 1 > 0");
     assert_eq!(expr("a - -1 > 0"), "a - -1 > 0");
-    assert_eq!(expr("a - - 1 > 0"), "a - - 1 > 0");
+    assert_eq!(expr("a - - 1 > 0"), "a - -1 > 0");
     assert_eq!(expr("-a > 0"), "-a > 0");
     assert_eq!(expr("- -a > 0"), "- -a > 0");
     assert_eq!(expr("-(a + b) > 0"), "-(a + b) > 0");
     assert_eq!(expr("n % 2 == -1"), "n % 2 == -1");
-    assert_eq!(expr("x in [-1, - 2]"), "x in [-1, - 2]");
+    assert_eq!(expr("x in [-1, - 2]"), "x in [-1, -2]");
 }
 
 #[test]
@@ -159,11 +163,19 @@ fn a_chained_comparison_or_syntax_error_is_refused() {
 }
 
 #[test]
-fn a_negative_literal_after_a_word_operator_keeps_its_parentheses() {
-    // `implies -1` would lex as a subtraction: the word is an identifier.
-    assert_eq!(expr("x implies (-1 < a)"), "x implies (-1 < a)");
-    assert_eq!(expr("x implies (-0.5 < d)"), "x implies (-0.5 < d)");
-    assert_eq!(expr("x implies (- 1 < a)"), "x implies - 1 < a");
+fn a_negative_literal_after_a_word_operator_needs_no_parentheses() {
+    // The parser joins the minus to the literal, so the parentheses are not needed (and are
+    // dropped when only the literal was inside them).
+    assert_eq!(expr("x implies (-1 < a)"), "x implies -1 < a");
+    assert_eq!(expr("x implies -1 < a"), "x implies -1 < a");
+    assert_eq!(
+        expr("x implies -9223372036854775808 < l"),
+        "x implies -9223372036854775808 < l"
+    );
+    assert_eq!(expr("a in [-2147483648, 0]"), "a in [-2147483648, 0]");
+    assert_eq!(expr("x implies -(1) < a"), "x implies -(1) < a");
+    assert_eq!(expr("x implies (-0.5 < d)"), "x implies -0.5 < d");
+    assert_eq!(expr("x implies (- 1 < a)"), "x implies -1 < a");
     assert_eq!(expr("x implies (a < -1)"), "x implies a < -1");
     assert_eq!(expr("a in [-1]"), "a in [-1]");
 }

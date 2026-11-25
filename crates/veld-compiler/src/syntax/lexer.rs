@@ -383,7 +383,13 @@ impl Lexer<'_> {
                 Ok(n) => Tok::Int(n),
                 Err(_) => {
                     self.error("integer literal is out of range", start, self.pos);
-                    Tok::Int(0)
+                    // The one magnitude that is valid after a unary minus in an expression
+                    // (`-9223372036854775808`); the parser removes the error above then.
+                    Tok::Int(if text == "9223372036854775808" {
+                        i64::MIN
+                    } else {
+                        0
+                    })
                 }
             }
         };

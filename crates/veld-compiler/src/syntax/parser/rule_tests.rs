@@ -98,7 +98,10 @@ fn a_minus_is_a_literal_or_an_operator_by_the_previous_token() {
     assert_eq!(sexp("a -1"), "(- a 1)");
     assert_eq!(sexp("a - -1"), "(- a -1)");
     assert_eq!(sexp("a == -1"), "(== a -1)");
-    assert_eq!(sexp("a > - 1"), "(> a (neg 1))");
+    assert_eq!(sexp("a > - 1"), "(> a -1)");
+    assert_eq!(sexp("a > -(1)"), "(> a (neg 1))");
+    assert_eq!(sexp("a implies -1 < b"), "(implies a (< -1 b))");
+    assert_eq!(sexp("not -1 == a"), "(== (not -1) a)");
     assert_eq!(sexp("-1 < a"), "(< -1 a)");
     assert_eq!(sexp("a in [-1, -2]"), "(in a [-1 -2])");
     assert_eq!(sexp("days(30) -1"), "(- (days 30) 1)");
@@ -285,6 +288,27 @@ fn unary_lists_and_calls_nest_too() {
     assert!(r(format!("{}a", "not ".repeat(100))).contains(&"E0005"));
     assert!(r(format!("{}a{}", "[".repeat(100), "]".repeat(100))).contains(&"E0005"));
     assert!(r(format!("{}a{}", "f(".repeat(100), ")".repeat(100))).contains(&"E0005"));
+}
+
+#[test]
+fn a_minus_before_a_numeric_literal_is_one_literal_inside_an_expression() {
+    assert_eq!(sexp("a implies -1 < b"), "(implies a (< -1 b))");
+    assert_eq!(sexp("a implies (-1 < b)"), "(implies a (< -1 b))");
+    assert_eq!(sexp("a in [-1, - 2]"), "(in a [-1 -2])");
+    assert_eq!(sexp("- -1"), "(neg -1)");
+    assert_eq!(sexp("-(1)"), "(neg 1)");
+    assert_eq!(sexp("- 1.50 < a"), "(< -1.50 a)");
+    // The smallest `long` is a valid literal only with its sign; the lexer's range error for
+    // the bare magnitude goes away when the sign joins it.
+    assert!(codes("model M { rule r: a implies -9223372036854775808 < b }").is_empty());
+    assert_eq!(
+        codes("model M { rule r: a implies 9223372036854775808 < b }"),
+        vec!["E0002"]
+    );
+    assert_eq!(
+        codes("model M { rule r: a implies -(9223372036854775808) < b }"),
+        vec!["E0002"]
+    );
 }
 
 #[test]

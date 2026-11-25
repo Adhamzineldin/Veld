@@ -1,7 +1,7 @@
 //! Prints rule expressions with the fewest parentheses that keep the parse (`spec/rules.md`
 //! section 3.1). The user's choice of `!` or `not` is kept, numbers keep their source text, and
-//! a binary minus always has spaces around it, because `a -1` and `a - 1` mean the same but
-//! `x > - 1` (a negation) and `x > -1` (a negative literal) do not.
+//! a binary minus always has spaces around it. A `-` applied directly to a numeric literal is
+//! part of the literal (`x implies -1`), so a negation of a literal is written `-(1)`.
 
 use veld_compiler::syntax::ast::{BinOp, CallArg, Expr, ExprKind, Rule, UnOp};
 
@@ -49,21 +49,6 @@ fn child(e: &Expr, min: u8) -> String {
     if prec(e) < min { format!("({s})") } else { s }
 }
 
-/// An operand written right after a word operator (`implies`, `in`, `not`). Those words are
-/// identifiers to the lexer, so a `-` and a digit after them read as a subtraction: a
-/// negative literal at the start of the operand needs parentheses to stay a literal.
-fn after_word(e: &Expr, min: u8) -> String {
-    let s = child(e, min);
-    let mut chars = s.chars();
-    let negative_literal =
-        chars.next() == Some('-') && chars.next().is_some_and(|c| c.is_ascii_digit());
-    if negative_literal {
-        format!("({s})")
-    } else {
-        s
-    }
-}
-
 /// The minimum precedence of the (left, right) operand of a binary operator.
 fn operand_levels(op: BinOp) -> (u8, u8) {
     let p = bin_prec(op);
@@ -98,12 +83,7 @@ pub(super) fn expr_text(e: &Expr) -> String {
         ExprKind::Unary { op, operand } => unary_text(*op, operand),
         ExprKind::Binary { op, l, r } => {
             let (lo, ro) = operand_levels(*op);
-            let right = if matches!(op, BinOp::Implies | BinOp::In) {
-                after_word(r, ro)
-            } else {
-                child(r, ro)
-            };
-            format!("{} {} {right}", child(l, lo), op.text())
+            format!("{} {} {}", child(l, lo), op.text(), child(r, ro))
         }
     }
 }
@@ -111,17 +91,15 @@ pub(super) fn expr_text(e: &Expr) -> String {
 fn unary_text(op: UnOp, operand: &Expr) -> String {
     let inner = child(operand, P_UNARY);
     match op {
-        UnOp::Not { word: true } => format!("not {}", after_word(operand, P_UNARY)),
+        UnOp::Not { word: true } => format!("not {inner}"),
         UnOp::Not { word: false } => format!("!{inner}"),
-        UnOp::Neg => {
-            // `-1` is a literal; a negation of the literal 1 is written `- 1`.
-            let starts_number = inner.starts_with(|c: char| c.is_ascii_digit() || c == '-');
-            if starts_number {
-                format!("- {inner}")
-            } else {
-                format!("-{inner}")
-            }
+        // A `-` applied directly to a numeric literal is part of the literal, so a negation
+        // of one keeps its parentheses: `-(1)`.
+        UnOp::Neg if matches!(operand.kind, ExprKind::Int(_) | ExprKind::Float { .. }) => {
+            format!("-({inner})")
         }
+        UnOp::Neg if inner.starts_with('-') => format!("- {inner}"),
+        UnOp::Neg => format!("-{inner}"),
     }
 }
 

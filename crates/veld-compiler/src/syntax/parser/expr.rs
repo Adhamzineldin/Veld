@@ -192,8 +192,51 @@ impl Parser<'_> {
         }
     }
 
+    /// A `-` directly followed by a numeric literal that has no sign of its own
+    /// (`spec/rules.md` section 2.1): the two tokens are one negative literal. The lexer reads a
+    /// `-` after a word such as `implies` as an operator, so the parser joins them here.
+    fn parse_negative_literal(&mut self) -> Option<Expr> {
+        if !matches!(self.peek(), Tok::Minus) {
+            return None;
+        }
+        let tok = self.tok_at(1).clone();
+        let lit_span = self.toks.get(self.pos + 1)?.span;
+        let text = self
+            .text
+            .get(lit_span.start as usize..lit_span.end as usize)
+            .unwrap_or_default()
+            .to_string();
+        if text.starts_with('-') {
+            return None;
+        }
+        let kind = match tok {
+            Tok::Int(i64::MIN) => {
+                // `9223372036854775808` overflowed in the lexer, which reported it; with the
+                // minus sign it is the smallest `long`.
+                self.diags
+                    .retain(|d| !(d.code == "E0002" && d.primary == lit_span));
+                ExprKind::Int(i64::MIN)
+            }
+            Tok::Int(n) => ExprKind::Int(-n),
+            Tok::Float(value) => ExprKind::Float {
+                value: -value,
+                text: format!("-{text}"),
+            },
+            _ => return None,
+        };
+        let start = self.advance().span;
+        self.advance();
+        Some(Expr {
+            kind,
+            span: start.to(lit_span),
+        })
+    }
+
     /// Prefix operators, a primary, then `.name` steps.
     fn parse_unary(&mut self) -> Option<Expr> {
+        if let Some(lit) = self.parse_negative_literal() {
+            return Some(lit);
+        }
         if let Some(op) = self.unary_op() {
             let start = self.advance().span;
             if !self.enter_expr() {
