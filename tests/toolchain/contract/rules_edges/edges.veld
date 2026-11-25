@@ -1,0 +1,60 @@
+// The shapes of endpoint block that the bookings contract does not have: ensure only, require only,
+// a keyless fact, a scalar fact, a computed key and a computed payload, an optional @query
+// parameter in a rule, an SSE endpoint with a fact, an ensure on an endpoint with no body, and a
+// service with blocks but no facts.
+
+enum Tier { basic, gold }
+
+model Account {
+  id: uuid
+  tier: Tier
+  limit: int
+}
+
+model Transfer {
+  count: int @min(0)
+  note?: string
+}
+
+model Receipt {
+  id: uuid
+  count: int
+}
+
+error Frozen 409 { reason: string }
+error TooMany 422 { allowed: int, asked: int }
+
+service Edges at "/edges" {
+  post "/echo" echo(body: Transfer) -> 201 Receipt {
+    ensure result.count == body.count
+  }
+
+  post "/ping" ping(@query limit?: int) -> 204 | Frozen {
+    require has(limit) implies limit <= 10 else Frozen { reason: "limit" }
+    ensure !has(limit) || limit > 0
+  }
+
+  post "/{id}/move" move(id: uuid, body: Transfer) -> 201 Receipt | Frozen | TooMany {
+    fact settings: Account
+    fact quota: int = body.count + 1
+    fact account: Account = id
+    require account.tier == .gold else Frozen { reason: "not gold" }
+    require body.count <= quota else TooMany { allowed: quota, asked: body.count * 2 }
+    ensure result.count == body.count
+  }
+
+  get "/{id}/watch" watch(id: uuid) -> stream Receipt | Frozen {
+    fact account: Account = id
+    require account.tier == .gold else Frozen { reason: "not gold" }
+  }
+}
+
+service Plain at "/plain" {
+  post "/echo" echo(body: Transfer) -> 201 Receipt {
+    ensure result.count == body.count
+  }
+
+  // A stream, so that every service of the crate has one (a crate with a stream needs `call_sse`
+  // from each of its services).
+  get "/feed" feed() -> stream Receipt
+}

@@ -203,9 +203,12 @@ async fn output_rules() {
 /// The child process of [`validation_off`]: a server whose request validation is off. It prints
 /// its port and serves until it is killed.
 async fn serve_off() {
-    let server = serve_with(RuleOutput::Strict, false).await;
-    println!("PORT={}", server.base.rsplit(':').next().unwrap());
-    std::future::pending::<()>().await;
+    // This crate was generated with the target option `validate = false`: the default hooks
+    // (`BookingsHandler::plain`) leave request validation off, and say so once when created.
+    let router = bookings_server::adapters::axum::router(BookingsHandler::plain(Impl));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    println!("PORT={}", listener.local_addr().unwrap().port());
+    let _ = axum::serve(listener, router).await;
 }
 
 /// Request validation off (`spec/rules.md` section 5.3): the server accepts a rule-violating body,

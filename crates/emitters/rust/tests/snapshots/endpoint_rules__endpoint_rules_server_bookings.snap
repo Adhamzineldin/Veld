@@ -230,7 +230,7 @@ struct CreateBookingState {
 /// Step 6 of `createBooking` (`spec/rules.md` section 9.5): the facts in order, then every `require`;
 /// the loaded facts are added to `args` for the handler.
 #[doc(hidden)]
-#[allow(clippy::all, unused_variables, unused_mut, unused_parens, unused_braces, unused_comparisons)]
+#[allow(clippy::all, unused_imports, unused_variables, unused_mut, unused_parens, unused_braces, unused_comparisons)]
 pub async fn step6_create_booking<L: BookingsFactLoaders + ?Sized>(loaders: &L, now: i64, enforce: bool, args: &mut serde_json::Map<String, serde_json::Value>, ctx: &veld::server::RequestContext) -> Result<veld::server::Prepared, veld::server::Halt> {
     use veld::rules as vr;
     use veld::server::Halt;
@@ -305,7 +305,7 @@ pub async fn step6_create_booking<L: BookingsFactLoaders + ?Sized>(loaders: &L, 
 
 /// Step 9 of `createBooking`: every `ensure`, in source order, on the success value.
 #[doc(hidden)]
-#[allow(clippy::all, unused_variables, unused_mut, unused_parens, unused_braces, unused_comparisons)]
+#[allow(clippy::all, unused_imports, unused_variables, unused_mut, unused_parens, unused_braces, unused_comparisons)]
 pub fn step9_create_booking(prepared: &veld::server::Prepared, result: &serde_json::Value) -> Vec<veld::rules::Violation> {
     use veld::rules as vr;
     let mut out = Vec::new();
@@ -333,7 +333,7 @@ struct PayBookingState {
 /// Step 6 of `payBooking` (`spec/rules.md` section 9.5): the facts in order, then every `require`;
 /// the loaded facts are added to `args` for the handler.
 #[doc(hidden)]
-#[allow(clippy::all, unused_variables, unused_mut, unused_parens, unused_braces, unused_comparisons)]
+#[allow(clippy::all, unused_imports, unused_variables, unused_mut, unused_parens, unused_braces, unused_comparisons)]
 pub async fn step6_pay_booking<L: BookingsFactLoaders + ?Sized>(loaders: &L, now: i64, enforce: bool, args: &mut serde_json::Map<String, serde_json::Value>, ctx: &veld::server::RequestContext) -> Result<veld::server::Prepared, veld::server::Halt> {
     use veld::rules as vr;
     use veld::server::Halt;
@@ -378,7 +378,7 @@ pub async fn step6_pay_booking<L: BookingsFactLoaders + ?Sized>(loaders: &L, now
 
 /// Step 9 of `payBooking`: every `ensure`, in source order, on the success value.
 #[doc(hidden)]
-#[allow(clippy::all, unused_variables, unused_mut, unused_parens, unused_braces, unused_comparisons)]
+#[allow(clippy::all, unused_imports, unused_variables, unused_mut, unused_parens, unused_braces, unused_comparisons)]
 pub fn step9_pay_booking(prepared: &veld::server::Prepared, result: &serde_json::Value) -> Vec<veld::rules::Violation> {
     use veld::rules as vr;
     let mut out = Vec::new();

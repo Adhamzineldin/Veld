@@ -325,6 +325,51 @@ fn run_examples(ir: &Ir) {
     assert_eq!(passed, 20, "every example of tests/rules/endpoints");
 }
 
+/// The shapes of block that the bookings contract does not have (`tests/toolchain/contract/
+/// rules_edges`): ensure only, require only, a keyless and a scalar fact, a computed key and a
+/// computed payload, an optional query parameter in a rule, an SSE endpoint with a fact, an
+/// `ensure` on an endpoint with no body, and a service with blocks and no facts, each with the test
+/// handler. The crates build and pass `clippy -D warnings`, and the handlers answer.
+#[test]
+fn the_edge_shapes_of_a_block_build_lint_and_answer() {
+    if !cargo_or_skip() {
+        return;
+    }
+    let path = repo_root().join("tests/toolchain/contract/rules_edges/edges.veld");
+    let ir = {
+        let out = compile(&CompileInput {
+            packages: vec![PackageInput {
+                name: "edges".into(),
+                kind: PackageKind::Service,
+                files: vec![SourceFile {
+                    path: "edges.veld".into(),
+                    text: std::fs::read_to_string(path).unwrap(),
+                }],
+                base_url: None,
+            }],
+            consumes: BTreeMap::new(),
+        });
+        assert!(out.ir.is_some(), "{}", out.render());
+        out.ir.unwrap()
+    };
+    let server = run(
+        &ir,
+        Role::Server,
+        vec![service_id(&ir, "Edges"), service_id(&ir, "Plain")],
+        vec![],
+        None,
+        json!({ "crate-name": "edges-server", "testing": true }),
+    );
+    let client = gen_client(&ir, "edges-client", None);
+    let ws = harness_workspace("endpoint-edges-ws", &server, &client, "edges-harness");
+    build_lint_and_run(
+        &ws,
+        ("edges-server", "edges-client", "edges-harness"),
+        &[],
+        "edges ok",
+    );
+}
+
 /// The server (with the test handler) and the client build and pass `clippy -D warnings`; the
 /// production handler behaves over HTTP; every example passes against the test handler.
 #[test]

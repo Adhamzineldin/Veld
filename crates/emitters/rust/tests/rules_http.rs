@@ -4,54 +4,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod common;
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
 use common::*;
 use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
 use veld_ir::{Ir, PackageKind};
-
-fn work_dir() -> PathBuf {
-    std::env::var("VELD_RUST_WORK").map_or_else(
-        |_| repo_root().join("tests/toolchain/rust/.work"),
-        PathBuf::from,
-    )
-}
-
-fn target_dir() -> PathBuf {
-    std::env::var("VELD_RUST_TARGET").map_or_else(|_| work_dir().join("target"), PathBuf::from)
-}
-
-fn have_cargo() -> bool {
-    Command::new("cargo")
-        .arg("--version")
-        .output()
-        .is_ok_and(|o| o.status.success())
-}
-
-fn cargo(ws: &Path, args: &[&str]) -> Command {
-    let mut cmd = Command::new("cargo");
-    cmd.args(args)
-        .current_dir(ws)
-        .env("CARGO_TARGET_DIR", target_dir())
-        .env("CARGO_TERM_COLOR", "never");
-    cmd
-}
-
-fn run_ok(cmd: &mut Command, what: &str) -> String {
-    let out = cmd.output().unwrap();
-    assert!(
-        out.status.success(),
-        "{what} failed\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-            .lines()
-            .take(150)
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
-    String::from_utf8_lossy(&out.stdout).into_owned()
-}
 
 fn bookings_ir() -> Ir {
     let path = repo_root().join("tests/toolchain/contract/rules/bookings_rust.veld");
@@ -100,76 +55,34 @@ fn the_bookings_contract_snapshots() {
     }
 }
 
-fn copy_dir(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).unwrap();
-    for entry in std::fs::read_dir(from).unwrap() {
-        let entry = entry.unwrap();
-        let (src, dst) = (entry.path(), to.join(entry.file_name()));
-        if src.is_dir() {
-            copy_dir(&src, &dst);
-        } else {
-            std::fs::copy(&src, &dst).unwrap();
-        }
-    }
-}
-
 /// A generated server rejects a bad body with the 422 problem document; the client with the local
-/// check off decodes the same violations, with it on fails locally and sends nothing; an output
-/// violation is a 500 in `strict` and passes with a hook event in `audit`.
+/// check off decodes the same violations, with it on fails locally (once a response has shown the
+/// rules digest) and sends nothing; an output violation is a 500 in `strict` and passes with a hook
+/// event in `audit`; a server generated with `validate = false` accepts a rule-violating body and
+/// says so once.
 #[test]
 fn rules_over_http() {
-    if !have_cargo() {
-        assert!(
-            std::env::var("VELD_REQUIRE_TOOLCHAINS").as_deref() != Ok("1"),
-            "toolchain required but `cargo` is unavailable"
-        );
-        eprintln!("SKIPPED: `cargo` is not on PATH");
+    if !cargo_or_skip() {
         return;
     }
     let ir = bookings_ir();
-    let ws = work_dir().join("rules-http-ws");
-    let _ = std::fs::remove_dir_all(&ws);
-    std::fs::create_dir_all(&ws).unwrap();
-    write_files(
-        &ws.join("server"),
-        &gen_server(&ir, "Bookings", &[], "bookings-server"),
+    // The server is generated with the target option `validate = false`; the harness's hooks
+    // switch validation back on for the normal scenarios, and the `serve-off` child keeps the
+    // option's default.
+    let server = run(
+        &ir,
+        veld_codegen::Role::Server,
+        vec![service_id(&ir, "Bookings")],
+        vec![],
+        None,
+        serde_json::json!({ "crate-name": "bookings-server", "validate": false }),
     );
-    write_files(
-        &ws.join("client"),
-        &gen_client(&ir, "bookings-client", None),
+    let client = gen_client(&ir, "bookings-client", None);
+    let ws = harness_workspace("rules-http-ws", &server, &client, "rules-harness");
+    build_lint_and_run(
+        &ws,
+        ("bookings-server", "bookings-client", "rules-harness"),
+        &[],
+        "rules roundtrip ok",
     );
-    copy_dir(
-        &repo_root().join("tests/toolchain/rust/rules-harness"),
-        &ws.join("rules-harness"),
-    );
-    std::fs::write(
-        ws.join("Cargo.toml"),
-        "[workspace]\nresolver = \"2\"\nmembers = [\"server\", \"client\", \"rules-harness\"]\n",
-    )
-    .unwrap();
-    let lock = repo_root().join("tests/toolchain/rust/Cargo.lock");
-    if lock.exists() {
-        std::fs::copy(&lock, ws.join("Cargo.lock")).unwrap();
-    }
-    run_ok(
-        &mut cargo(&ws, &["build", "--workspace", "--bins"]),
-        "cargo build",
-    );
-    let clippy = [
-        "clippy",
-        "--all-targets",
-        "-p",
-        "bookings-server",
-        "-p",
-        "bookings-client",
-        "--",
-        "-D",
-        "warnings",
-    ];
-    run_ok(&mut cargo(&ws, &clippy), "cargo clippy");
-    let out = run_ok(
-        &mut cargo(&ws, &["run", "-q", "-p", "rules-harness"]),
-        "rules round trip",
-    );
-    assert!(out.contains("rules roundtrip ok"), "{out}");
 }
