@@ -73,6 +73,15 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0906` | error | veld-compiler | Unknown function, wrong number or type of arguments, lambda where none is allowed |
 | `E0907` | error | veld-compiler | Duplicate rule name in a declaration, counting inherited rules |
 | `E0908` | error | veld-compiler | Numeric literal out of range for its type |
+| `E0920` | error | veld-compiler | A fact named like a parameter, another fact, the principal, `now` or `result` |
+| `E0921` | error | veld-compiler | The error after `else` is not one of the endpoint's declared errors |
+| `E0922` | error | veld-compiler | Two facts with one name but different types, key types or optionality in a service; an unknown or missing field in an `else` payload |
+| `E0923` | error | veld-compiler | A fact read in `ensure` outside `old(...)` |
+| `E0924` | error | veld-compiler | `ensure` on an endpoint whose success is a stream |
+| `E0950` | error | veld-compiler | Duplicate example name; unknown or ambiguous endpoint in an example |
+| `E0951` | error | veld-compiler | `given` names something that is not a fact of the called endpoint |
+| `E0952` | error | veld-compiler | A value in an example does not fit the type it is used at |
+| `E0953` | error | veld-rules | A value an example leaves out cannot be filled in, or the filled-in value breaks an invariant |
 | `W0001` | warning | veld-compiler | Doc comment is not attached to anything |
 | `W0201` | warning | veld-compiler | Unused import |
 | `W0202` | warning | veld-compiler | Declaration shadows a prelude declaration |

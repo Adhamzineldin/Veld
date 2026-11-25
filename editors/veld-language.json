@@ -51,7 +51,10 @@
     "principal",
     "example",
     "given",
-    "expect"
+    "expect",
+    "absent",
+    "returns",
+    "ok"
   ],
   "scalars": [
     "string",
