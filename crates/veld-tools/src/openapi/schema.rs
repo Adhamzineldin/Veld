@@ -205,6 +205,7 @@ fn decorate(m: &mut Map<String, Value>, d: &Decl) {
         m.insert("deprecated".into(), Value::Bool(true));
     }
     m.insert("x-veld-sig".into(), Value::from(d.sig.clone()));
+    super::rules::decorate_decl(d, m);
 }
 
 fn model_schema(ir: &Ir, d: &Decl) -> Value {

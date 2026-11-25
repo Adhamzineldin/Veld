@@ -3,6 +3,7 @@
 //! order.
 
 mod paths;
+mod rules;
 mod schema;
 
 use std::collections::{BTreeMap, BTreeSet};

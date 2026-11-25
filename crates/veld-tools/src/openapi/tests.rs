@@ -262,3 +262,120 @@ fn errors_sharing_a_status_become_one_of() {
         .unwrap_or_default();
     assert!(props.contains(&&json!("A")) && props.contains(&&json!("B")));
 }
+
+// --- rules ------------------------------------------------------------------------------
+
+const RULED: &str = r#"
+enum St { open, paid = "PAID", done
+  flow open -> paid -> done
+  final done
+}
+model Item {
+  id: uuid
+  st: St
+  startAt: datetime @wire("start_at")
+  endAt: datetime @wire("end_at")
+  rule order: startAt < endAt message "must end later"
+}
+model Sub extends Item { extra: int }
+error Gone 410 { why: string
+  rule short: len(why) < 20
+}
+service S at "/s" {
+  post "/{id}/pay" pay(id: uuid, body: Sub) -> Item | Gone {
+    fact item: Item = id
+    fact other?: Item = id
+    transition item.st: open -> paid
+    require ok: body.extra > 0 else Gone { why: "no" } message "extra needed"
+    require body.extra < 9
+    ensure sameId: result.id == old(item.id)
+  }
+}
+"#;
+
+#[test]
+fn invariants_become_x_veld_rules_with_wire_names() {
+    let d = doc(RULED);
+    let item = &d["components"]["schemas"]["app.Item"];
+    assert_eq!(
+        item["x-veld-rules"][0]["fields"],
+        json!(["start_at", "end_at"])
+    );
+    assert_eq!(item["x-veld-rules"][0]["name"], "order");
+    assert_eq!(item["x-veld-rules"][0]["message"], "must end later");
+    assert_eq!(item["x-veld-rules"][0]["expression"], "startAt < endAt");
+    assert!(
+        item["x-veld-rules"][0]["id"]
+            .as_str()
+            .is_some_and(|s| s.starts_with("veld:app/Item.order@"))
+    );
+    let keys: Vec<&String> = item["x-veld-rules"][0]
+        .as_object()
+        .map(|m| m.keys().collect())
+        .unwrap_or_default();
+    assert_eq!(keys, ["name", "id", "message", "fields", "expression"]);
+    // errors carry theirs; a child lists only its own rules (the parent schema has the rest)
+    assert_eq!(
+        d["components"]["schemas"]["app.Gone"]["x-veld-rules"][0]["name"],
+        "short"
+    );
+    assert!(
+        d["components"]["schemas"]["app.Sub"]
+            .get("x-veld-rules")
+            .is_none()
+    );
+}
+
+#[test]
+fn state_machines_list_flows_and_finals_as_wire_values() {
+    let d = doc(RULED);
+    let st = &d["components"]["schemas"]["app.St"];
+    assert_eq!(
+        st["x-veld-flows"],
+        json!([{"from": "open", "to": "PAID"}, {"from": "PAID", "to": "done"}])
+    );
+    assert_eq!(st["x-veld-finals"], json!(["done"]));
+}
+
+#[test]
+fn operations_document_facts_requires_ensures_and_the_transition() {
+    let d = doc(RULED);
+    let op = &d["paths"]["/s/{id}/pay"]["post"];
+    assert_eq!(op["x-veld-facts"][0]["name"], "item");
+    assert_eq!(
+        op["x-veld-facts"][0]["type"],
+        json!({"$ref": "#/components/schemas/app.Item"})
+    );
+    assert_eq!(op["x-veld-facts"][1]["optional"], true);
+    let req = &op["x-veld-rules"]["requires"];
+    assert_eq!(req[0]["name"], "ok");
+    assert_eq!(req[0]["expression"], "body.extra > 0");
+    assert_eq!(req[0]["else"], "Gone");
+    assert_eq!(req[0]["message"], "extra needed");
+    assert!(req[1].get("name").is_none() && req[1].get("else").is_none());
+    assert_eq!(
+        op["x-veld-rules"]["ensures"][0]["expression"],
+        "result.id == old(item.id)"
+    );
+    assert_eq!(op["x-veld-transition"]["field"], "item.st");
+    assert_eq!(op["x-veld-transition"]["from"], json!(["open"]));
+    assert_eq!(op["x-veld-transition"]["to"], "PAID");
+    // the implicit errors are documented because the IR lists them, not added by the exporter
+    for status in ["404", "409", "410", "422"] {
+        assert!(op["responses"].get(status).is_some(), "{status}");
+    }
+}
+
+#[test]
+fn a_contract_without_rules_has_no_rule_extensions() {
+    let text = serde_json::to_string(&doc(ORDERS)).unwrap_or_default();
+    for key in [
+        "x-veld-rules",
+        "x-veld-facts",
+        "x-veld-flows",
+        "x-veld-finals",
+        "x-veld-transition",
+    ] {
+        assert!(!text.contains(key), "{key}");
+    }
+}

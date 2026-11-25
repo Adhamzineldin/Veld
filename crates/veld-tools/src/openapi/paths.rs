@@ -207,6 +207,7 @@ pub(super) fn operation(ir: &Ir, svc: &Service, ep: &Endpoint) -> Value {
     if !ep.middleware.is_empty() {
         o.insert("x-veld-middleware".into(), json!(ep.middleware));
     }
+    super::rules::decorate_operation(ir, ep, &mut o);
     o.insert("x-veld-op-sig".into(), Value::from(ep.sig.clone()));
     Value::Object(o)
 }
