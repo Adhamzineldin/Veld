@@ -2,8 +2,9 @@
 //!
 //! Step 5 (invariants on the bound parameters), step 6 (facts, `require`, the saved `old(...)`
 //! values) and, once the handler has answered, steps 8 and 9 (invariants on the result, then
-//! every `ensure`) in `strict` mode. Policies (section 11) and the transition guard
-//! (section 10) belong between the facts and the `require` statements; see [`Pipeline::before`].
+//! every `ensure`, then the target state of a `transition`) in `strict` mode. The transition guard
+//! (section 10, [`crate::machine`]) runs between the facts and the `require` statements; policies
+//! (section 11) will go before it, see [`Pipeline::before`].
 //!
 //! Nothing here reads a clock, a loader or a handler: the caller hands in everything by value,
 //! so the same input always gives the same [`Outcome`].

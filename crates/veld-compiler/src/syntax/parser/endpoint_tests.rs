@@ -105,17 +105,15 @@ fn an_endpoint_without_a_block_has_none() {
 
 #[test]
 fn allow_names_its_phase() {
-    for (word, phase) in [("allow", "phase 4")] {
-        let src = format!("service S at \"/\" {{ get \"/\" f() {{ {word} x(y)\n ensure true }} }}");
-        let r = p(&src);
-        assert_eq!(codes(&src), ["E0003"], "{word}");
-        assert!(r.diagnostics[0].message.contains(phase), "{word}");
-        let DeclKind::Service(s) = &r.file.decls[0].kind else {
-            panic!()
-        };
-        let block = s.endpoints[0].block.as_ref().expect("block");
-        assert_eq!(block.stmts.len(), 1, "the next statement is still parsed");
-    }
+    let src = "service S at \"/\" { get \"/\" f() { allow x(y)\n ensure true } }";
+    let r = p(src);
+    assert_eq!(codes(src), ["E0003"]);
+    assert!(r.diagnostics[0].message.contains("phase 4"));
+    let DeclKind::Service(s) = &r.file.decls[0].kind else {
+        panic!()
+    };
+    let block = s.endpoints[0].block.as_ref().expect("block");
+    assert_eq!(block.stmts.len(), 1, "the next statement is still parsed");
 }
 
 #[test]

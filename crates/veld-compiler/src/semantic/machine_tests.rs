@@ -27,9 +27,12 @@ fn endpoint(block: &str) -> String {
 fn status(ir: &Ir) -> Enum {
     ir.decls
         .iter()
+        .filter(|d| d.name == "Status")
         .find_map(|d| match &d.kind {
-            DeclKind::Enum(e) if d.name == "Status" => Some(e.clone()),
-            _ => None,
+            DeclKind::Enum(e) => Some(e.clone()),
+            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Union(_) | DeclKind::Const(_) => {
+                None
+            }
         })
         .expect("Status")
 }
@@ -65,10 +68,11 @@ fn a_duplicate_edge_is_kept_once_and_warned_about() {
 
 fn status_of(src: &str) -> Enum {
     let ir = ir(src);
-    match &ir.decls.iter().find(|d| d.name == "S").expect("S").kind {
-        DeclKind::Enum(e) => e.clone(),
-        other => panic!("{other:?}"),
-    }
+    let decl = ir.decls.iter().find(|d| d.name == "S").expect("S");
+    let DeclKind::Enum(e) = &decl.kind else {
+        panic!("S is not an enum");
+    };
+    e.clone()
 }
 
 #[test]
