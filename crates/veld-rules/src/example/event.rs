@@ -101,7 +101,7 @@ pub fn deliver(ir: &Ir, channel: ChannelId, event: DeclId, value: &Json) -> Deli
     Delivery::Handled { called }
 }
 
-fn event_of<'a>(ex: &'a Example) -> Result<&'a ExampleEvent, ExampleError> {
+fn event_of(ex: &Example) -> Result<&ExampleEvent, ExampleError> {
     ex.event.as_ref().ok_or_else(|| ExampleError::WrongForm {
         example: ex.name.clone(),
         reason: "it is not an event example".to_owned(),
