@@ -20,6 +20,10 @@ const RAW: &str = include_str!("../runtime/veld.ts");
 /// The embedded `runtime/rules.ts`: the rule helpers, emitted only for a contract with rules.
 pub const RULES_SOURCE: &str = include_str!("../runtime/rules.ts");
 
+/// The embedded `runtime/rollout.ts`: the sink audited rules report to, emitted only for a
+/// contract with an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1).
+pub const ROLLOUT_SOURCE: &str = include_str!("../runtime/rollout.ts");
+
 /// Source of `runtime/veld.ts` for a contract without rules.
 pub static SOURCE: LazyLock<String> = LazyLock::new(|| source(false).unwrap_or_default());
 
@@ -51,6 +55,8 @@ pub struct Gates {
     pub transitions: bool,
     /// An `allow` or a read of the principal: the `policies` regions.
     pub policies: bool,
+    /// An audited rule: the `rollout` regions and `runtime/rollout.ts`.
+    pub rollout: bool,
 }
 
 impl Gates {
@@ -59,7 +65,7 @@ impl Gates {
     pub fn normalised(self) -> Self {
         let endpoint_rules = self.endpoint_rules || self.transitions || self.policies;
         Self {
-            rules: self.rules || endpoint_rules,
+            rules: self.rules || endpoint_rules || self.rollout,
             endpoint_rules,
             ..self
         }
@@ -73,6 +79,7 @@ impl Gates {
             endpoint_rules: self.endpoint_rules || other.endpoint_rules,
             transitions: self.transitions || other.transitions,
             policies: self.policies || other.policies,
+            rollout: self.rollout || other.rollout,
         }
     }
 }
@@ -98,6 +105,9 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
     let g = gates.normalised();
     gate_regions(RAW, &|name| match name {
         "rules" => g.rules,
+        "rollout" => g.rollout,
+        // Audited `require` and `ensure` need both.
+        "rollout_endpoint" => g.rollout && g.endpoint_rules,
         "endpoint_rules" => g.endpoint_rules,
         "transitions" => g.transitions,
         "policies" => g.policies,
@@ -137,6 +147,9 @@ pub fn emit_gated(files: &mut FileSet, gates: Gates) -> Result<(), Vec<GenDiagno
     if gates.rules {
         add_file(files, "runtime/rules.ts", RULES_SOURCE.to_string())?;
     }
+    if gates.rollout {
+        add_file(files, "runtime/rollout.ts", ROLLOUT_SOURCE.to_string())?;
+    }
     Ok(())
 }
 
@@ -156,6 +169,7 @@ mod tests {
                     endpoint_rules: true,
                     transitions,
                     policies,
+                    ..Gates::default()
                 };
                 assert!(source_gated(gates).is_ok(), "{gates:?}");
             }

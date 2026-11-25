@@ -28,6 +28,7 @@ pub struct Tree<'a> {
     endpoint_rules: bool,
     transitions: bool,
     policies: bool,
+    rollout: bool,
     decls: Vec<DeclId>,
 }
 
@@ -66,6 +67,10 @@ impl<'a> Tree<'a> {
         let transitions = endpoints().any(|ep| ep.rules.transition.is_some());
         let policies = endpoints().any(|ep| ep.rules.first_policy_origin().is_some());
         let rules = endpoint_rules || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
+        let rollout = set
+            .iter()
+            .any(|id| ir.decl(*id).rules().iter().any(veld_ir::Rule::is_audited))
+            || endpoints().any(|ep| ep.rules.first_audited_origin().is_some());
         Self {
             ir,
             root: root.to_string(),
@@ -77,6 +82,7 @@ impl<'a> Tree<'a> {
             endpoint_rules,
             transitions,
             policies,
+            rollout,
             decls: set.into_iter().collect(),
         }
     }
@@ -114,6 +120,13 @@ impl<'a> Tree<'a> {
         self.policies
     }
 
+    /// Whether a declaration or an endpoint of the tree has an audited rule (`@rollout(audit)`,
+    /// `spec/rules.md` section 17.1): the `rollout` regions of the runtime and `runtime/rollout.ts`.
+    #[must_use]
+    pub fn uses_rollout(&self) -> bool {
+        self.rollout
+    }
+
     /// The regions of `runtime/veld.ts` this tree needs.
     #[must_use]
     pub fn gates(&self) -> crate::runtime::Gates {
@@ -122,7 +135,14 @@ impl<'a> Tree<'a> {
             endpoint_rules: self.endpoint_rules,
             transitions: self.transitions,
             policies: self.policies,
+            rollout: self.rollout,
         }
+    }
+
+    /// Module path of the audit sink: next to the runtime module, without extension.
+    #[must_use]
+    pub fn rollout_module(&self) -> String {
+        sibling(&self.runtime, "rollout")
     }
 
     /// Module path of the rule helpers: next to the runtime module, without extension.
@@ -210,9 +230,14 @@ impl<'a> Tree<'a> {
 
 /// The module path of the rule helpers: next to the runtime module.
 fn sibling_rules(runtime_module: &str) -> String {
+    sibling(runtime_module, "rules")
+}
+
+/// The module path of a helper file `name` next to the runtime module.
+fn sibling(runtime_module: &str, name: &str) -> String {
     match runtime_module.rsplit_once('/') {
-        Some((dir, _)) => format!("{dir}/rules"),
-        None => "rules".to_string(),
+        Some((dir, _)) => format!("{dir}/{name}"),
+        None => name.to_string(),
     }
 }
 
@@ -223,6 +248,7 @@ pub struct Imports {
     named: BTreeMap<String, BTreeMap<String, bool>>,
     runtime: bool,
     rules: bool,
+    rollout: bool,
 }
 
 impl Imports {
@@ -249,6 +275,13 @@ impl Imports {
             lines.push((
                 spec.clone(),
                 format!("import * as veldRules from '{spec}';"),
+            ));
+        }
+        if self.rollout {
+            let spec = util::rel_import(from_file, &sibling(runtime_module, "rollout"));
+            lines.push((
+                spec.clone(),
+                format!("import * as veldRollout from '{spec}';"),
             ));
         }
         for (module, names) in &self.named {
@@ -310,6 +343,12 @@ impl<'t, 'a> FileCtx<'t, 'a> {
     pub fn rules_ns(&mut self) -> String {
         self.imports.rules = true;
         "veldRules".to_string()
+    }
+
+    /// The namespace of `runtime/rollout.ts` (`veldRollout`), recording the import.
+    pub fn rollout_ns(&mut self) -> String {
+        self.imports.rollout = true;
+        "veldRollout".to_string()
     }
 
     /// Name of `id` used as a type; records a type-only import when it lives elsewhere.

@@ -70,20 +70,35 @@ fn write_rule(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, rule: &Rul
     if guarded {
         w.open("if (mode !== 'request')");
     }
+    // An audited rule reports to the sink of a server and is skipped when there is none, so a
+    // client never evaluates it (`spec/rules.md` section 17.1).
+    let sink = if rule.is_audited() {
+        let rollout = fc.rollout_ns();
+        w.open_with("", "{");
+        w.line(format!("const audit = {rollout}.auditSink();"));
+        w.open("if (audit !== null)");
+        "audit"
+    } else {
+        "out"
+    };
     w.open("try");
     w.open(format!("if (!({cond}))"));
     w.line(format!(
-        "out.push({{ rule: {id}, path, fields: {fields}, message: {} }});",
+        "{sink}.push({{ rule: {id}, path, fields: {fields}, message: {} }});",
         message(rule)
     ));
     w.close();
     w.close_with("} catch (e) {");
     w.indent();
     w.line(format!(
-        "{ns}.failed(e, mode, out, {id}, {}, path, {fields});",
+        "{ns}.failed(e, mode, {sink}, {id}, {}, path, {fields});",
         ts_str(&rule.name)
     ));
     w.close();
+    if rule.is_audited() {
+        w.close();
+        w.close();
+    }
     if guarded {
         w.close();
     }

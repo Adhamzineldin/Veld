@@ -30,7 +30,7 @@ pub use events::{
     check_events_are_ignored_by_clients, check_events_are_refused, compiled_events_contract,
 };
 pub use fixtures::{FIXTURES, Fixture};
-pub use rollout::{check_rollout_is_refused, compiled_rollout_contracts};
+pub use rollout::{check_rollout_is_generated, check_rollout_is_refused, compiled_rollout_contracts};
 
 /// Compiles one contract as the single service package `app`.
 ///
@@ -967,6 +967,21 @@ mod tests {
         };
         let err = check_rollout_is_refused(&claims).unwrap_err();
         assert!(err.contains("declares `rules_rollout`"), "{err}");
+    }
+
+    #[test]
+    fn a_generator_that_refuses_rollout_is_caught_by_the_generating_check() {
+        let refuses = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]),
+        };
+        let err = check_rollout_is_generated(&refuses).unwrap_err();
+        assert!(err.contains("does not declare `rules_rollout`"), "{err}");
+        let opted_in = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]).with(Feature::RulesRollout),
+        };
+        check_rollout_is_generated(&opted_in).unwrap();
     }
 
     #[test]

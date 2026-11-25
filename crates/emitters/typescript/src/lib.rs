@@ -186,7 +186,8 @@ impl Generator for TypeScript {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        Capabilities::all_except(&UNSUPPORTED)
+        // A client skips audited rules in the local check and in `partial` (`spec/rules.md` 17.1).
+        Capabilities::all_except(&UNSUPPORTED).with(veld_ir::Feature::RulesRollout)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {

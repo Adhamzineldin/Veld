@@ -5,6 +5,9 @@
 import type { RuleMode, Violation } from './rules';
 export type { EvalErrorKind, RuleMode, Violation } from './rules';
 // #endif
+// #if rollout
+import { beginAudit, endAudit, stashAudited, takeStashed } from './rollout';
+// #endif
 
 // ---------------------------------------------------------------------------
 // Basic types
@@ -688,6 +691,61 @@ function ruleEvent(
     }
   }
 }
+// #endif
+// #if rollout
+
+/**
+ * Reports the violations of audited rules (`@rollout(audit)`, spec/rules.md section 17.1): the
+ * hook hears them with the outcome `audited` and the request goes on as if the rules held. `root`
+ * is the name an output value has in a path (`result`, `error`); input paths are rooted already.
+ */
+function reportAudited(
+  hooks: HandlerHooks,
+  ep: EndpointSpec,
+  position: 'input' | 'output',
+  violations: readonly Violation[],
+  started: number,
+  root?: string,
+): void {
+  if (violations.length === 0) return;
+  const rooted =
+    root === undefined ? violations : violations.map((v) => ({ ...v, path: `${root}${v.path.startsWith('$') ? v.path.slice(1) : v.path}` }));
+  ruleEvent(hooks, ep, position, 'audited', rooted, started);
+}
+
+/** Reports what the last output scan found in audited rules. */
+function reportStashed(hooks: HandlerHooks, ep: EndpointSpec, root: string): void {
+  const found = takeStashed();
+  reportAudited(hooks, ep, 'output', found.violations, found.started, root);
+}
+
+const AUDIT_LOGS = new WeakMap<object, Violation[]>();
+
+/**
+ * Starts a log of the audited violations the pipeline reports for `req`, and returns it. The test
+ * handler uses it to answer with `Veld-Test-Audited` (spec/rules.md section 12.4).
+ */
+export function auditLog(req: VeldRequest): Violation[] {
+  const log: Violation[] = [];
+  AUDIT_LOGS.set(req, log);
+  return log;
+}
+
+/** The hooks of one request: the same, and a copy of every audited report in its log if it has one. */
+function withAuditLog(hooks: HandlerHooks, req: VeldRequest): HandlerHooks {
+  const log = AUDIT_LOGS.get(req);
+  if (log === undefined) return hooks;
+  const next = hooks.onRuleViolation;
+  return {
+    ...hooks,
+    onRuleViolation: (event) => {
+      if (event.outcome === 'audited') log.push(event.violation);
+      next?.(event);
+    },
+  };
+}
+// #endif
+// #if rules
 
 /** The `422 ValidationError` problem document of rule violations: `data.issues` and `violations`. */
 function rulesProblem(ep: EndpointSpec, violations: readonly Violation[], std: StdSigs): VeldResponse {
@@ -707,11 +765,21 @@ function checkInputRules(ep: EndpointSpec, bound: Bound, std: StdSigs, hooks: Ha
   if (hooks.validateRequests === false) return null;
   const started = nowMicros();
   const violations: Violation[] = [];
+  // #endif
+  // #if rollout
+  beginAudit();
+  // #endif
+  // #if rules
   for (const p of ep.params) {
     if (p.s || (p.binding !== 'body' && p.binding !== 'query_object')) continue;
     const v = bound.value[p.name];
     if (v !== undefined) walkRules(p.t, v, paramLoc(p), 'request', violations);
   }
+  // #endif
+  // #if rollout
+  reportAudited(hooks, ep, 'input', endAudit(), started);
+  // #endif
+  // #if rules
   if (violations.length === 0) return null;
   ruleEvent(hooks, ep, 'input', 'rejected', violations, started);
   return rulesProblem(ep, violations, std);
@@ -727,7 +795,17 @@ function checkMessageRules(
 ): VeldResponse | null {
   if (hooks.validateRequests === false || !reachesRules(schema)) return null;
   const started = nowMicros();
+  // #endif
+  // #if rollout
+  beginAudit();
+  // #endif
+  // #if rules
   const violations = checkValue(schema, fromWire(schema, raw, { request: true }), 'message', 'request');
+  // #endif
+  // #if rollout
+  reportAudited(hooks, ep, 'input', endAudit(), started);
+  // #endif
+  // #if rules
   if (violations.length === 0) return null;
   ruleEvent(hooks, ep, 'input', 'rejected', violations, started);
   return rulesProblem(ep, violations, std);
@@ -781,7 +859,17 @@ function scanOutput(schema: Schema, value: unknown, hooks: HandlerHooks): Output
   const issues = validate(schema, value);
   if (issues.length > 0) return mode === 'strict' ? { mode, violations: [], started: 0, malformed: issues } : null;
   const started = nowMicros();
+  // #endif
+  // #if rollout
+  beginAudit();
+  // #endif
+  // #if rules
   const violations = checkValue(schema, value);
+  // #endif
+  // #if rollout
+  stashAudited(endAudit(), started);
+  // #endif
+  // #if rules
   return violations.length === 0 ? null : { mode, violations, started };
 }
 
@@ -795,6 +883,11 @@ function refuseOutput(ep: EndpointSpec, scan: OutputScan, hooks: HandlerHooks): 
 /** Step 8: the invariants of the result, by output mode. */
 function checkOutputRules(ep: EndpointSpec, result: unknown, std: StdSigs, hooks: HandlerHooks): VeldResponse | null {
   const scan = ep.success === null ? null : scanOutput(ep.success, result, hooks);
+  // #endif
+  // #if rollout
+  reportStashed(hooks, ep, 'result');
+  // #endif
+  // #if rules
   if (scan === null) return null;
   if (scan.malformed !== undefined) {
     throw new Error(`${ep.name}: response failed validation: ${JSON.stringify(scan.malformed)}`);
@@ -805,6 +898,11 @@ function checkOutputRules(ep: EndpointSpec, result: unknown, std: StdSigs, hooks
 /** A declared error is an output: in `strict` the caller gets `500 Internal`, never the malformed error. */
 function checkErrorRules(ep: EndpointSpec, declared: ErrorSpec, data: unknown, std: StdSigs, hooks: HandlerHooks): VeldResponse | null {
   const scan = scanOutput(declared.schema, data, hooks);
+  // #endif
+  // #if rollout
+  reportStashed(hooks, ep, 'error');
+  // #endif
+  // #if rules
   if (scan === null || !refuseOutput(ep, scan, hooks)) return null;
   return problem(std.internal, 'Internal', 500, ep.sig, {});
 }
@@ -815,6 +913,11 @@ function checkErrorRules(ep: EndpointSpec, declared: ErrorSpec, data: unknown, s
  */
 function checkItemRules(ep: EndpointSpec, what: string, item: unknown, hooks: HandlerHooks): void {
   const scan = ep.success === null ? null : scanOutput(ep.success, item, hooks);
+  // #endif
+  // #if rollout
+  reportStashed(hooks, ep, 'result');
+  // #endif
+  // #if rules
   if (scan === null) return;
   if (scan.malformed !== undefined) {
     throw new Error(`${ep.name}: ${what} failed validation: ${JSON.stringify(scan.malformed)}`);
@@ -882,6 +985,12 @@ interface StatementInfo {
   /** The parameters the expression reads. */
   fields: readonly string[];
   message: string;
+  // #endif
+  // #if rollout_endpoint
+  /** `@rollout(audit)`: evaluated and reported, never rejects (spec/rules.md section 17.1). */
+  audited?: boolean;
+  // #endif
+  // #if endpoint_rules
 }
 
 /** `require [name:] expr [else E { .. }]`. */
@@ -1070,6 +1179,15 @@ async function prepare(
   for (const step of rules.requires) {
     const verdict = verdictOf(() => step.holds(p as never, f as never, now));
     if (verdict === 'holds') continue;
+    // #endif
+    // #if rollout_endpoint
+    if (step.audited === true) {
+      // An audited `require` never answers, with `else E` or without: its payload is never built.
+      reportAudited(hooks, ep, 'input', [stepViolation(step, verdict)], started);
+      continue;
+    }
+    // #endif
+    // #if endpoint_rules
     if (step.otherwise !== undefined) {
       return elseAnswer(ep, ctx, std, hooks, { ...step, otherwise: step.otherwise }, { p, f, now }, verdict, started);
     }
@@ -1113,10 +1231,26 @@ function checkEnsures(
   const started = nowMicros();
   const full = ep.success === null ? undefined : withDefaults(ep.success, result);
   const violations: Violation[] = [];
+  // #endif
+  // #if rollout_endpoint
+  const audited: Violation[] = [];
+  // #endif
+  // #if endpoint_rules
   for (const step of rules.ensures) {
     const verdict = verdictOf(() => step.holds(params as never, full as never, prepared.now, prepared.old as never));
+    // #endif
+    // #if rollout_endpoint
+    if (step.audited === true) {
+      if (verdict !== 'holds') audited.push(stepViolation(step, verdict));
+      continue;
+    }
+    // #endif
+    // #if endpoint_rules
     if (verdict !== 'holds') violations.push(stepViolation(step, verdict));
   }
+  // #endif
+  // #if rollout_endpoint
+  reportAudited(hooks, ep, 'output', audited, started, undefined);
   // #endif
   // #if transitions
   describeTarget(rules, violations, full);
@@ -1898,6 +2032,9 @@ async function run(
 ): Promise<VeldResponse> {
   const ep = r.ep;
   const ctx = contextOf(ep, req, lowerHeaders(req.headers));
+  // #if rollout
+  hooks = withAuditLog(hooks, req);
+  // #endif
   try {
     const bound = await guard(r, m, req, ctx, std, hooks, false);
     if (isResponse(bound)) return bound;

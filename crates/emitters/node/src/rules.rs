@@ -272,6 +272,9 @@ fn write_require(
             "precondition failed"
         )
     ));
+    if r.rollout.is_some() {
+        w.line("audited: true,");
+    }
     let cond = printer.print(&r.expr);
     w.line(format!("holds: ({p}, {f}, now: bigint) => {cond},"));
     if let Some(e) = &r.else_error {
@@ -318,7 +321,10 @@ fn write_ensure(
             "postcondition failed"
         )
     ));
-    let o = old.map_or_else(String::new, |t| format!(", o: {t}"));
+    if e.rollout.is_some() {
+        w.line("audited: true,");
+    }
+    let o =old.map_or_else(String::new, |t| format!(", o: {t}"));
     w.line(format!(
         "holds: ({}, result: {result}, now: bigint{o}) => {cond},",
         sig.p

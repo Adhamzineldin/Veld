@@ -142,6 +142,32 @@ fn write_loaders(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, na
     w.blank();
 }
 
+/// What the handler answers with. A contract with an audited rule (`@rollout(audit)`) gets the
+/// answer with the response header `Veld-Test-Audited` (`spec/rules.md` section 12.4), and the
+/// function that builds it is written here; any other contract gets the plain answer and nothing
+/// else, so its file keeps its bytes.
+fn write_audited(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>) -> String {
+    if !fc.tree.uses_rollout() {
+        return "return inner(req);".to_string();
+    }
+    let violation = fc.rt("Violation");
+    let encode = fc.rt("base64Encode");
+    let log = fc.rt("auditLog");
+    w.line(format!(
+        "/** `Veld-Test-Audited`: the first 100 audited reports as compact JSON, in unpadded base64url. */
+function auditedHeader(found: readonly {violation}[]): string {{
+  return {encode}(JSON.stringify(found.slice(0, 100))).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+}}"
+    ));
+    w.blank();
+    format!(
+        "const audited = {log}(req);
+    const res = await inner(req);
+    if (res === null || audited.length === 0) return res;
+    return {{ ...res, headers: {{ ...res.headers, 'veld-test-audited': auditedHeader(audited) }} }};"
+    )
+}
+
 fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     let name = naming::pascal(&svc.name);
     let prod = module_of(fc.tree, svc);
@@ -153,6 +179,7 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     }
     write_helpers(w, fc, svc);
     write_loaders(w, fc, svc, &name);
+    let answer = write_audited(w, fc);
     let handler = fc.rt("VeldHandler");
     let endpoint = fc.rt("ServerEndpoint");
     let ctx = fc.rt("RequestContext");
@@ -206,7 +233,7 @@ export function create{name}TestHandler(impl: {name}Service, hooks: {name}TestHo
       const body = JSON.stringify({{ veldTestHandler: 1, digests: {{ {key}: {digest} }} }});
       return {{ status: 200, headers: {{ 'content-type': 'application/json' }}, body }};
     }}
-    return inner(req);
+    {answer}
   }};
   return Object.assign(handler, {{ ws: inner.ws }});
 }}",

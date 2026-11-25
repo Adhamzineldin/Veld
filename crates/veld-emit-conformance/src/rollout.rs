@@ -94,6 +94,47 @@ pub fn check_rollout_is_refused(generator: &dyn DynGenerator) -> Result<(), Stri
     Ok(())
 }
 
+/// The generator declares `rules_rollout` in every role, the gate lets each of the three
+/// contracts through, and `generate` makes files for each of them.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_rollout_is_generated(generator: &dyn DynGenerator) -> Result<(), String> {
+    for (ir, line) in compiled_rollout_contracts() {
+        let services: Vec<ServiceId> = ir.services.iter().map(|s| s.id).collect();
+        for role in generator.roles() {
+            let caps = generator.capabilities(*role);
+            if !caps.supports(Feature::RulesRollout) {
+                return Err(format!("{}: does not declare `rules_rollout`", role.name()));
+            }
+            let req = GenRequest {
+                ir: &ir,
+                role: *role,
+                services: services.clone(),
+                consumes: vec![],
+                framework: None,
+            };
+            let gate = check_capabilities(&ir, &req, &caps);
+            if !gate.is_empty() {
+                return Err(format!(
+                    "{} / line {line}: the gate reported {gate:?}",
+                    role.name()
+                ));
+            }
+            match generator.generate_dyn(&req, &serde_json::Value::Null) {
+                Ok(files) if !files.is_empty() => {}
+                other => {
+                    return Err(format!(
+                        "{} / line {line}: generate did not make files: {other:?}",
+                        role.name()
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn refuses(
     generator: &dyn DynGenerator,
     ir: &Ir,
