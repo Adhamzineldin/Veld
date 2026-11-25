@@ -429,6 +429,8 @@ fn fuzzing_the_generated_test_handler_agrees_with_the_reference_evaluator() {
         "fuzz of the generated test handler, seed {}: {seen:?}",
         report.seed
     );
+    assert_eq!(report.stopped, None, "the run stopped early");
+    assert!(report.one_sided().is_empty(), "{:?}", report.one_sided());
     // A green run proves nothing unless the fuzz reached the rules. `Internal` cannot be reached
     // without a handler result, and a dry run has none.
     for kind in [

@@ -168,6 +168,38 @@ fn policies_compile_strict_and_pass_every_example_es2022() {
     examples_run("es2022", "policies-2022-");
 }
 
+/// The generated test handler against the reference evaluator on generated requests: a principal
+/// on every request, permits and denials from both sides, and both kinds of denial message.
+#[test]
+fn fuzzing_the_policies_agrees_with_the_reference_evaluator() {
+    let Some(tsc) = tsc_path() else { return };
+    let ir = policy_ir();
+    let guard = scratch("policies-fuzz-");
+    let work = guard.path();
+    build(work, &tsc, &ir, &["policies_serve.ts"], "es2020");
+    let server = Live::start(work, "policies_serve.js");
+    let (count, seed) = (FUZZ_COUNT, FUZZ_SEED);
+    let tally = fuzz_agrees(&server.url, &ir, count, seed);
+    for endpoint in ["Bookings.payBooking", "Bookings.getBooking"] {
+        assert!(outcome_count(&tally, endpoint, "ok") > 10, "{endpoint}");
+        assert!(
+            outcome_count(&tally, endpoint, "Forbidden") > 10,
+            "{endpoint}"
+        );
+        let name = endpoint.rsplit('.').next().unwrap();
+        let messages = denial_messages(&ir, name, count, seed);
+        let forbid = "A suspended account cannot manage bookings";
+        assert!(
+            messages.get(forbid).copied().unwrap_or(0) > 0,
+            "{messages:?}"
+        );
+        assert!(
+            messages.get("not permitted").copied().unwrap_or(0) > 0,
+            "{messages:?}"
+        );
+    }
+}
+
 /// Every guard on one endpoint: two `allow` lines (one reads a request parameter), a transition,
 /// and a `require` and an `ensure` that read the caller.
 const GUARDED: &str = r#"

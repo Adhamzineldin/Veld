@@ -118,6 +118,29 @@ fn state_machines_compile_strict_and_pass_every_example_es2022() {
     examples_run("es2022", "machine-2022-");
 }
 
+/// The generated test handler against the reference evaluator on generated requests: the state of
+/// the booking is put in every state of the machine, so the guard refuses each illegal one and
+/// lets every source through.
+#[test]
+fn fuzzing_the_state_machines_agrees_with_the_reference_evaluator() {
+    let Some(tsc) = tsc_path() else { return };
+    let ir = machine_ir();
+    let guard = scratch("machine-fuzz-");
+    let work = guard.path();
+    build(work, &tsc, &ir, &["state_machines_serve.ts"], "es2020");
+    let server = Live::start(work, "state_machines_serve.js");
+    let tally = fuzz_agrees(&server.url, &ir, FUZZ_COUNT, FUZZ_SEED);
+    for endpoint in [
+        "Bookings.payBooking",
+        "Bookings.cancelBooking",
+        "Bookings.checkIn",
+    ] {
+        assert!(outcome_count(&tally, endpoint, "ok") > 10, "{endpoint}");
+        let refused = outcome_count(&tally, endpoint, "InvalidTransition");
+        assert!(refused > 10, "{endpoint}");
+    }
+}
+
 #[test]
 fn a_variant_called_like_a_helper_is_refused_with_e0801() {
     let source = std::fs::read_to_string(repo_root().join(CONTRACT)).unwrap();
