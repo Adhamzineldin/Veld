@@ -58,8 +58,11 @@ fn reported(answer: &Answer) -> Result<Vec<Key>, String> {
 /// Where the audited rules the server reported differ from the ones the reference evaluator
 /// reports. `None` when they agree. A reference that reports more than [`LIMIT`] rules only
 /// requires every entry of the header to be one of them, and the header to hold at most [`LIMIT`].
+/// Without `exact` the server may report more than the reference knows (it ran the application's
+/// handler on an answer that the reference could not see): it must report at least what the
+/// reference does.
 #[must_use]
-pub fn differences(reference: &[Violation], answer: &Answer) -> Option<Mismatch> {
+pub fn differences(reference: &[Violation], answer: &Answer, exact: bool) -> Option<Mismatch> {
     let want: BTreeSet<Key> = reference.iter().map(key_of).collect();
     let got = match reported(answer) {
         Ok(list) => list,
@@ -75,10 +78,12 @@ pub fn differences(reference: &[Violation], answer: &Answer) -> Option<Mismatch>
         };
         (too_many, extra)
     } else {
-        (
-            want.difference(&sent).collect(),
-            sent.difference(&want).collect(),
-        )
+        let extra = if exact {
+            sent.difference(&want).collect()
+        } else {
+            Vec::new()
+        };
+        (want.difference(&sent).collect(), extra)
     };
     if missing.is_empty() && unexpected.is_empty() {
         return None;
@@ -144,13 +149,13 @@ mod tests {
 
     #[test]
     fn no_header_and_nothing_audited_agree() {
-        assert!(differences(&[], &answer(None)).is_none());
+        assert!(differences(&[], &answer(None), true).is_none());
     }
 
     #[test]
     fn a_header_the_reference_does_not_expect_differs() {
         let h = encoded(r#"[{"rule":"r1","path":"body","fields":[],"message":"m"}]"#);
-        let m = differences(&[], &answer(Some(&h))).unwrap();
+        let m = differences(&[], &answer(Some(&h)), true).unwrap();
         assert_eq!(m.differences.len(), 1);
         assert!(m.differences[0].actual.contains("r1 at body"));
     }
@@ -158,7 +163,7 @@ mod tests {
     #[test]
     fn a_report_the_server_never_made_differs() {
         let reference = [violation("r1", "body")];
-        let m = differences(&reference, &answer(None)).unwrap();
+        let m = differences(&reference, &answer(None), true).unwrap();
         assert!(m.differences[0].expected.contains("r1 at body"));
         assert_eq!(m.differences[0].actual, "not reported");
     }
@@ -169,12 +174,12 @@ mod tests {
         let h = encoded(
             r#"[{"rule":"r2","path":"request","fields":[],"message":""},{"rule":"r1","path":"body","fields":[],"message":""}]"#,
         );
-        assert!(differences(&reference, &answer(Some(&h))).is_none());
+        assert!(differences(&reference, &answer(Some(&h)), true).is_none());
     }
 
     #[test]
     fn an_unreadable_header_fails() {
-        let m = differences(&[], &answer(Some("%%%"))).unwrap();
+        let m = differences(&[], &answer(Some("%%%")), true).unwrap();
         assert!(m.actual.contains("cannot be read"));
     }
 
@@ -187,9 +192,20 @@ mod tests {
             .map(|i| format!(r#"{{"rule":"r{i}","path":"body","fields":[],"message":""}}"#))
             .collect();
         let h = encoded(&format!("[{}]", known.join(",")));
-        assert!(differences(&reference, &answer(Some(&h))).is_none());
+        assert!(differences(&reference, &answer(Some(&h)), true).is_none());
         let stranger = encoded(r#"[{"rule":"zz","path":"body","fields":[],"message":""}]"#);
-        assert!(differences(&reference, &answer(Some(&stranger))).is_some());
+        assert!(differences(&reference, &answer(Some(&stranger)), true).is_some());
+    }
+
+    #[test]
+    fn without_exact_the_server_may_report_more_but_not_less() {
+        let reference = [violation("r1", "body")];
+        let h = encoded(
+            r#"[{"rule":"r1","path":"body","fields":[],"message":""},{"rule":"r2","path":"result","fields":[],"message":""}]"#,
+        );
+        assert!(differences(&reference, &answer(Some(&h)), false).is_none());
+        assert!(differences(&reference, &answer(Some(&h)), true).is_some());
+        assert!(differences(&reference, &answer(None), false).is_some());
     }
 
     fn violation(rule: &str, path: &str) -> Violation {

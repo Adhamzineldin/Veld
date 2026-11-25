@@ -779,8 +779,11 @@ fn rollout() -> Ir {
     compile_text(&std::fs::read_to_string(path).unwrap())
 }
 
-/// A test handler of the rollout contract that answers `201` with these headers.
-fn serve_parties(headers: Vec<(&'static str, String)>) -> Fake {
+/// A test handler of the rollout contract that answers a dry run (`204` and `Veld-Test-Passed: 1`)
+/// with these headers. The examples below are run as dry runs, so the reference reports the rules
+/// of steps 5 and 6 only and the server's list must equal it.
+fn serve_parties(mut headers: Vec<(&'static str, String)>) -> Fake {
+    headers.push(("Veld-Test-Passed", "1".to_owned()));
     serve_raw(move |c| {
         if c.target == "/__veld/test" {
             reply(
@@ -789,9 +792,9 @@ fn serve_parties(headers: Vec<(&'static str, String)>) -> Fake {
             )
         } else {
             Reply {
-                status: 201,
+                status: 204,
                 headers: headers.clone(),
-                body: "{}".to_owned(),
+                body: String::new(),
             }
         }
     })
@@ -806,7 +809,7 @@ fn audited_header(reports: &[Value]) -> (&'static str, String) {
 /// What the reference evaluator reports for the example, in the wire form of a header entry.
 fn reference_reports(ir: &Ir, name: &str) -> Vec<Value> {
     let fake = serve_parties(vec![]);
-    let report = run_live(&fake, ir, name, false);
+    let report = run_live(&fake, ir, name, true);
     report
         .audited
         .iter()
@@ -826,7 +829,7 @@ fn a_live_run_lists_the_audited_rules_the_reference_reports() {
 fn a_server_that_never_reports_an_audited_rule_fails_the_example() {
     let ir = rollout();
     let fake = serve_parties(vec![]);
-    let report = run_live(&fake, &ir, AUDITED_REQUEST, false);
+    let report = run_live(&fake, &ir, AUDITED_REQUEST, true);
     let Verdict::Failed(m) = &report.verdict else {
         panic!("{report}")
     };
@@ -841,7 +844,7 @@ fn a_server_that_reports_the_audited_rules_passes() {
     let ir = rollout();
     let reports = reference_reports(&ir, AUDITED_REQUEST);
     let fake = serve_parties(vec![audited_header(&reports)]);
-    let report = run_live(&fake, &ir, AUDITED_REQUEST, false);
+    let report = run_live(&fake, &ir, AUDITED_REQUEST, true);
     assert!(report.passed(), "{report}");
     assert_eq!(report.audited.len(), 1);
 }
@@ -852,7 +855,7 @@ fn an_audited_report_the_reference_does_not_make_fails_the_example() {
     let reports = reference_reports(&ir, AUDITED_REQUEST);
     let invented = json!({ "rule": "veld:t/Party.invented@0000", "path": "body", "fields": [], "message": "m" });
     let fake = serve_parties(vec![audited_header(&[reports[0].clone(), invented])]);
-    let report = run_live(&fake, &ir, AUDITED_REQUEST, false);
+    let report = run_live(&fake, &ir, AUDITED_REQUEST, true);
     let Verdict::Failed(m) = &report.verdict else {
         panic!("{report}")
     };
@@ -868,7 +871,7 @@ fn a_report_at_another_path_or_with_another_error_fails_the_example() {
         let mut wrong = reports[0].clone();
         wrong[member] = value;
         let fake = serve_parties(vec![audited_header(&[wrong])]);
-        let report = run_live(&fake, &ir, AUDITED_REQUEST, false);
+        let report = run_live(&fake, &ir, AUDITED_REQUEST, true);
         assert!(
             matches!(report.verdict, Verdict::Failed(_)),
             "{member}: {report}"
@@ -880,7 +883,7 @@ fn a_report_at_another_path_or_with_another_error_fails_the_example() {
 fn an_unreadable_audited_header_fails_the_example() {
     let ir = rollout();
     let fake = serve_parties(vec![("Veld-Test-Audited", "not base64!".to_owned())]);
-    let report = run_live(&fake, &ir, AUDITED_REQUEST, false);
+    let report = run_live(&fake, &ir, AUDITED_REQUEST, true);
     let Verdict::Failed(m) = &report.verdict else {
         panic!("{report}")
     };
@@ -892,12 +895,97 @@ fn an_example_that_audits_nothing_expects_no_header() {
     let ir = rollout();
     assert!(reference_reports(&ir, AUDITED_HOLDS).is_empty());
     let fake = serve_parties(vec![]);
-    let report = run_live(&fake, &ir, AUDITED_HOLDS, false);
+    let report = run_live(&fake, &ir, AUDITED_HOLDS, true);
     assert!(report.passed(), "{report}");
     let reports = reference_reports(&ir, AUDITED_REQUEST);
     let fake = serve_parties(vec![audited_header(&reports)]);
-    let report = run_live(&fake, &ir, AUDITED_HOLDS, false);
+    let report = run_live(&fake, &ir, AUDITED_HOLDS, true);
     assert!(matches!(report.verdict, Verdict::Failed(_)), "{report}");
+}
+
+/// A test handler of the rollout contract that answers `201` with `body` and these headers.
+fn serve_parties_answering(body: &str, headers: Vec<(&'static str, String)>) -> Fake {
+    let body = body.to_owned();
+    serve_raw(move |c| {
+        if c.target == "/__veld/test" {
+            reply(
+                200,
+                "{\"veldTestHandler\":1,\"digests\":{\"Parties\":null}}",
+            )
+        } else {
+            Reply {
+                status: 201,
+                headers: headers.clone(),
+                body: body.clone(),
+            }
+        }
+    })
+}
+
+/// An example without `returns` that is not a dry run runs the application's real handler: its
+/// success answer is the result steps 8 and 9 saw, so the audited rules of that result are part of
+/// what the server must report.
+#[test]
+fn the_answer_of_the_real_handler_is_the_result_the_reference_judges() {
+    let ir = rollout();
+    // The handler answers guests 3 to a request for 7: the audited `ensure` is violated.
+    let answer = r#"{"id":"00000000-0000-4000-8000-000000000009","guests":3}"#;
+    let bare = serve_parties_answering(answer, vec![]);
+    let report = run_live(&bare, &ir, AUDITED_REQUEST, false);
+    assert_eq!(report.audited.len(), 2, "{:?}", report.audited);
+    assert!(matches!(report.verdict, Verdict::Failed(_)), "{report}");
+    // Only the audited invariant of the body: the ensure of the answer is missing.
+    let reports = reference_reports(&ir, AUDITED_REQUEST);
+    let partial = serve_parties_answering(answer, vec![audited_header(&reports)]);
+    let report = run_live(&partial, &ir, AUDITED_REQUEST, false);
+    let Verdict::Failed(m) = &report.verdict else {
+        panic!("{report}")
+    };
+    assert!(m.differences[0].expected.contains(".ensure@"), "{m}");
+    // Everything the reference reports for that answer.
+    let full: Vec<Value> = report
+        .audited
+        .iter()
+        .map(|v| serde_json::to_value(v).unwrap())
+        .collect();
+    let right = serve_parties_answering(answer, vec![audited_header(&full)]);
+    let report = run_live(&right, &ir, AUDITED_REQUEST, false);
+    assert!(report.passed(), "{report}");
+}
+
+#[test]
+fn an_error_answer_of_the_real_handler_only_has_to_report_what_the_reference_knows() {
+    let ir = rollout();
+    let reports = reference_reports(&ir, AUDITED_REQUEST);
+    let extra = json!({ "rule": "veld:t/Booking.sane@0000", "path": "result", "fields": [], "message": "m" });
+    let mut more = reports.clone();
+    more.push(extra);
+    // A `500` answers no result: the server may have reported more than steps 5 and 6.
+    let fake = serve_raw(move |c| {
+        if c.target == "/__veld/test" {
+            reply(
+                200,
+                "{\"veldTestHandler\":1,\"digests\":{\"Parties\":null}}",
+            )
+        } else {
+            Reply {
+                status: 500,
+                headers: vec![audited_header(&more)],
+                body: "{}".to_owned(),
+            }
+        }
+    });
+    let report = run_live(&fake, &ir, AUDITED_REQUEST, false);
+    // The status is wrong for the example, but the audited list is not what fails it.
+    let Verdict::Failed(m) = &report.verdict else {
+        panic!("{report}")
+    };
+    assert!(
+        m.differences
+            .iter()
+            .all(|d| d.path != "header Veld-Test-Audited"),
+        "{m}"
+    );
 }
 
 #[test]

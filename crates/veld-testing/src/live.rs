@@ -6,8 +6,8 @@ use std::time::Duration;
 use serde_json::Value as Json;
 use veld_ir::{Example, Ir};
 use veld_rules::{
-    ExampleReport, FilledExample, Mismatch, Outcome, OutputMode, Pipeline, Reported, Verdict,
-    describe_actual, fill_example,
+    ExampleReport, FilledExample, Mismatch, Outcome, OutputMode, Pipeline, Reported, Request,
+    Verdict, Violation, describe_actual, fill_example,
 };
 
 use crate::audited;
@@ -164,7 +164,7 @@ impl Live {
         let req = build_request(ir, &filled, self.dry_run)?;
         let answer = self.send(&req)?;
         let mut report = judge(ir, &filled, self.dry_run, &answer);
-        let reported = reference(ir, &filled);
+        let reported = reference(ir, &filled, &filled.request);
         if report.passed()
             && let Some(mismatch) = reported
                 .as_ref()
@@ -175,24 +175,54 @@ impl Live {
         if let Some(reported) = reported {
             // What the server tells its hook about audited rules is judged like the rest of the
             // answer (section 12.4): a server that never reports one must not pass.
+            let (audited, exact) = self.audited_reference(ir, &filled, &answer, reported);
             if report.passed()
-                && let Some(mismatch) = audited::differences(&reported.audited, &answer)
+                && let Some(mismatch) = audited::differences(&audited, &answer, exact)
             {
                 report.verdict = Verdict::Failed(mismatch);
             }
-            report.audited = reported.audited;
+            report.audited = audited;
         }
         Ok(report)
     }
+
+    /// The audited rules the server must report for `filled`, and whether its list must equal them.
+    ///
+    /// An example with `returns`, and a dry run, tell the reference everything the server sees. An
+    /// example without `returns` that is not a dry run runs the application's real handler: its
+    /// success answer is the result that steps 8 and 9 saw, so the reference is given it. When the
+    /// answer is not a success there is no result to give, and the server may report more than the
+    /// reference knows: it must report at least what the reference does.
+    fn audited_reference(
+        &self,
+        ir: &Ir,
+        filled: &FilledExample,
+        answer: &Answer,
+        reported: Reported,
+    ) -> (Vec<Violation>, bool) {
+        if self.dry_run || filled.request.result.is_some() {
+            return (reported.audited, true);
+        }
+        if (200..300).contains(&answer.status)
+            && let Some(body) = answer.json()
+        {
+            let request = Request {
+                result: Some(body),
+                ..filled.request.clone()
+            };
+            if let Some(with_result) = reference(ir, filled, &request) {
+                return (with_result.audited, true);
+            }
+        }
+        (reported.audited, false)
+    }
 }
 
-/// What the reference evaluator does with the request of `filled`: `None` when it cannot run it.
-fn reference(ir: &Ir, filled: &FilledExample) -> Option<Reported> {
+/// What the reference evaluator does with `request` of `filled`: `None` when it cannot run it.
+fn reference(ir: &Ir, filled: &FilledExample, request: &Request) -> Option<Reported> {
     let service = ir.services.get(filled.service.index())?;
     let pipeline = Pipeline::new(ir, service, &filled.endpoint).ok()?;
-    pipeline
-        .run_reported(&filled.request, OutputMode::Strict)
-        .ok()
+    pipeline.run_reported(request, OutputMode::Strict).ok()
 }
 
 /// Where the answer differs from the error the reference evaluator gives for the same request.
