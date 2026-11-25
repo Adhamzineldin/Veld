@@ -1,6 +1,5 @@
 ---
 source: crates/veld-compiler/tests/conformance.rs
-assertion_line: 195
 ---
 == diagnostics ==
 warning[W1001]: channel `PaidChannel` is published and nobody in the workspace subscribes to it
@@ -81,7 +80,14 @@ warning[W1001]: channel `PaidChannel` is published and nobody in the workspace s
       "middleware": [],
       "endpoints": [],
       "publishes": [
-        0
+        {
+          "channel": 0,
+          "origin": {
+            "file": "app.veld",
+            "line": 4,
+            "col": 31
+          }
+        }
       ],
       "origin": {
         "file": "app.veld",

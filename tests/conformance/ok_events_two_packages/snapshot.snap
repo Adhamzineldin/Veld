@@ -1,6 +1,5 @@
 ---
 source: crates/veld-compiler/tests/conformance.rs
-assertion_line: 195
 ---
 == diagnostics ==
 (none)
@@ -294,7 +293,14 @@ assertion_line: 195
         }
       ],
       "publishes": [
-        0
+        {
+          "channel": 0,
+          "origin": {
+            "file": "events.veld",
+            "line": 21,
+            "col": 13
+          }
+        }
       ],
       "origin": {
         "file": "events.veld",

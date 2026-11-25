@@ -1316,7 +1316,14 @@ warning[W1001]: channel `Payments` is published and nobody in the workspace subs
       ],
       "rules_digest": "7d4c7d44646f75a0",
       "publishes": [
-        0
+        {
+          "channel": 0,
+          "origin": {
+            "file": "app.veld",
+            "line": 46,
+            "col": 13
+          }
+        }
       ],
       "origin": {
         "file": "app.veld",

@@ -1,6 +1,5 @@
 ---
 source: crates/veld-compiler/tests/conformance.rs
-assertion_line: 195
 ---
 == diagnostics ==
 warning[W1002]: no subscription handles `BookingArchived`, an event of channel `BookingEvents`
@@ -635,8 +634,22 @@ warning[W1002]: no subscription handles `BookingArchived`, an event of channel `
         }
       ],
       "publishes": [
-        1,
-        0
+        {
+          "channel": 1,
+          "origin": {
+            "file": "app.veld",
+            "line": 46,
+            "col": 13
+          }
+        },
+        {
+          "channel": 0,
+          "origin": {
+            "file": "app.veld",
+            "line": 46,
+            "col": 28
+          }
+        }
       ],
       "origin": {
         "file": "app.veld",

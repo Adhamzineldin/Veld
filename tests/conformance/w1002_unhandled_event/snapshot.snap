@@ -1,6 +1,5 @@
 ---
 source: crates/veld-compiler/tests/conformance.rs
-assertion_line: 195
 ---
 == diagnostics ==
 warning[W1002]: no subscription handles `Cancelled`, an event of channel `Bookings`
@@ -168,7 +167,14 @@ warning[W1002]: no subscription handles `Cancelled`, an event of channel `Bookin
       "middleware": [],
       "endpoints": [],
       "publishes": [
-        0
+        {
+          "channel": 0,
+          "origin": {
+            "file": "app.veld",
+            "line": 5,
+            "col": 31
+          }
+        }
       ],
       "origin": {
         "file": "app.veld",
