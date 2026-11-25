@@ -97,6 +97,18 @@ pub fn scratch(prefix: &str) -> tempfile::TempDir {
 /// `drivers`, and compiles all of it: the generated packages alone under `--strict` with no types
 /// packages, then the drivers with the Node types.
 pub fn build(work: &Path, tsc: &Path, ir: &Ir, drivers: &[&str], edition: &str) {
+    build_service(work, tsc, ir, "Bookings", drivers, edition);
+}
+
+/// Like [`build`], for the service `service` of `ir`.
+pub fn build_service(
+    work: &Path,
+    tsc: &Path,
+    ir: &Ir,
+    service: &str,
+    drivers: &[&str],
+    edition: &str,
+) {
     let target = TARGETS
         .iter()
         .find(|(e, _)| *e == edition)
@@ -105,7 +117,7 @@ pub fn build(work: &Path, tsc: &Path, ir: &Ir, drivers: &[&str], edition: &str) 
     let option = json!({ "typescript": edition, "testing": true });
     write(
         &work.join("server"),
-        &gen_server_with(ir, "Bookings", &[], &option),
+        &gen_server_with(ir, service, &[], &option),
         &opts,
     )
     .unwrap();

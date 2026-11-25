@@ -202,6 +202,10 @@ fn vectors_pass(tsc_path: &Path, edition: &str, target: &str) {
         assert_eq!(lines.len(), group.cases.len(), "{}", group.name);
         for (case, line) in group.cases.iter().zip(&lines) {
             assert_eq!(case.name, line.name, "{}: lines out of order", group.name);
+            // A client has no output mode: a case that is about the output mode of a server is not its own.
+            if case.output_is_off() {
+                continue;
+            }
             if let Some(e) = &line.error {
                 failures.push(format!(
                     "{} / {}: the driver threw {e}",

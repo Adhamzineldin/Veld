@@ -1,0 +1,41 @@
+// Audited rules (`@rollout(audit)`, spec/rules.md section 17.1) on every kind of value a server
+// sends or receives: a body, a `require` whose `else` payload cannot be evaluated, an `ensure`,
+// SSE items and WebSocket messages. Nothing here may ever reject: what a rule would have said goes to
+// the `onRuleViolation` hook, with the outcome `audited`.
+
+model Room {
+  id: uuid
+  capacity: int @min(1)
+}
+
+model Party {
+  roomId: uuid
+  guests: int @min(1)
+
+  @rollout(audit)
+  rule smallParty: guests <= 6
+}
+
+/// An item whose audited invariant the odd ones violate.
+model Tick {
+  n: int
+
+  @rollout(audit)
+  rule even: n % 2 == 0
+}
+
+error RoomFull 409 { capacity: int }
+
+service Audit at "/audit" {
+  post "/book" book(body: Party) -> 201 Party | RoomFull {
+    fact room: Room = body.roomId
+    // The payload divides by zero. It is never evaluated, because the rule is audited.
+    @rollout(audit)
+    require body.guests <= room.capacity else RoomFull { capacity: 100 / (room.capacity - room.capacity) }
+    @rollout(audit)
+    ensure result.guests == body.guests
+  }
+
+  get "/ticks" ticks(@query count: int) -> stream Tick
+  ws "/announce" announce() -> stream Tick
+}
