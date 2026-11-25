@@ -97,3 +97,103 @@ fn formatting_a_events_contract_does_not_fail() {
     let file = a.file_for(&tmp.path().join("c/m.veld")).unwrap();
     assert!(outline::format_edits(&a, file).is_some());
 }
+
+// ---- completion and hover (spec/events.md section 15) ---------------------------------------
+
+fn complete_at(src: &str) -> Vec<String> {
+    let at = src.find('^').unwrap();
+    let text = src.replace('^', "");
+    let (tmp, a) = analysis(&text);
+    let file = a.file_for(&tmp.path().join("c/m.veld")).unwrap();
+    let mut labels: Vec<String> = crate::complete::complete(&a, file, at)
+        .into_iter()
+        .map(|i| i.label)
+        .collect();
+    labels.sort();
+    labels
+}
+
+const DECLS: &str = "event Paid { id: uuid }\nevent Left { id: uuid }\nevent Other { id: uuid }\nmodel M { x: int }\n";
+const CHANNELS: &str =
+    "channel Pays { carries Paid, Left\n key id }\nchannel Others { carries Other\n key id }\n";
+
+#[test]
+fn events_are_completed_after_carries_without_the_ones_already_listed() {
+    let src = format!("{DECLS}channel C {{\n  carries ^\n}}\n");
+    assert_eq!(complete_at(&src), ["Left", "Other", "Paid"]);
+    let src = format!("{DECLS}channel C {{\n  carries Paid, ^\n}}\n");
+    assert_eq!(complete_at(&src), ["Left", "Other"]);
+    let src = format!("{DECLS}channel C {{\n  carries Pa^\n}}\n");
+    assert!(complete_at(&src).contains(&"Paid".to_owned()));
+}
+
+#[test]
+fn events_are_completed_after_given_event_and_channels_after_its_on() {
+    let src = format!("{DECLS}{CHANNELS}example \"x\" {{\n  given event ^\n}}\n");
+    assert_eq!(complete_at(&src), ["Left", "Other", "Paid"]);
+    let src = format!("{DECLS}{CHANNELS}example \"x\" {{\n  given event Paid {{ }} on ^\n}}\n");
+    assert_eq!(complete_at(&src), ["Others", "Pays"]);
+}
+
+#[test]
+fn channels_are_completed_after_publishes_and_subscribes() {
+    let src = format!("{DECLS}{CHANNELS}service S {{\n  publishes ^\n}}\n");
+    assert_eq!(complete_at(&src), ["Others", "Pays"]);
+    let src = format!("{DECLS}{CHANNELS}service S {{\n  publishes Pays, ^\n}}\n");
+    assert_eq!(complete_at(&src), ["Others", "Pays"]);
+    let src = format!("{DECLS}{CHANNELS}service S {{\n  subscribes ^\n}}\n");
+    assert_eq!(complete_at(&src), ["Others", "Pays"]);
+}
+
+#[test]
+fn an_on_line_offers_the_events_of_its_channel() {
+    let sub = |channel: &str| {
+        format!(
+            "{DECLS}{CHANNELS}service S {{\n  subscribes {channel} as \"g\" {{\n    on ^\n  }}\n}}\n"
+        )
+    };
+    assert_eq!(complete_at(&sub("Pays")), ["Left", "Paid"]);
+    assert_eq!(complete_at(&sub("Others")), ["Other"]);
+}
+
+#[test]
+fn event_words_do_not_leak_into_other_positions() {
+    let src = format!("{DECLS}model N {{\n  on: int\n  x: ^\n}}\n");
+    let found = complete_at(&src);
+    assert!(!found.contains(&"Paid".to_owned()), "{found:?}");
+    let src = format!("{DECLS}{CHANNELS}service S {{\n  publishes Pays ^\n}}\n");
+    assert!(!complete_at(&src).contains(&"Others".to_owned()));
+}
+
+#[test]
+fn hover_on_a_channel_shows_the_topic_the_key_and_the_signatures() {
+    let (tmp, a) = analysis(EVENTS);
+    let file = a.file_for(&tmp.path().join("c/m.veld")).unwrap();
+    let text = a.index.sources.text(file).unwrap();
+    // On the declaration, on the `publishes` line and on the `subscribes` line.
+    for needle in [
+        "channel Payments",
+        "publishes Payments",
+        "subscribes Payments",
+    ] {
+        let at = text.find(needle).unwrap() + needle.len() - 2;
+        let md = hover::hover(&a, file, u32::try_from(at).unwrap())
+            .unwrap_or_else(|| panic!("no hover on `{needle}`"))
+            .markdown;
+        assert!(md.contains("channel Payments"), "{md}");
+        assert!(md.contains("- topic: `shop.paid`"), "{md}");
+        assert!(md.contains("- key: `id` (uuid)"), "{md}");
+        assert!(md.contains("`Paid`, sig: `veld:"), "{md}");
+    }
+}
+
+#[test]
+fn a_word_that_is_only_called_like_a_channel_gets_no_channel_hover() {
+    let src = EVENTS.replace("ping() -> Pong", "Payments() -> Pong");
+    let (tmp, a) = analysis(&src);
+    let file = a.file_for(&tmp.path().join("c/m.veld")).unwrap();
+    let text = a.index.sources.text(file).unwrap();
+    let at = text.find("Payments() ->").unwrap() + 2;
+    let md = hover::hover(&a, file, u32::try_from(at).unwrap()).map(|h| h.markdown);
+    assert!(md.is_none_or(|m| !m.contains("topic")));
+}

@@ -26,7 +26,7 @@ pub fn hover(a: &Analysis, file: FileId, offset: u32) -> Option<HoverText> {
             span: h.span,
         });
     }
-    scalar_at(ix, file, offset)
+    crate::hover_events::channel_hover(a, file, offset).or_else(|| scalar_at(ix, file, offset))
 }
 
 /// Hover for built-in type names (`string`, `Page`, ...), found by scanning the word.

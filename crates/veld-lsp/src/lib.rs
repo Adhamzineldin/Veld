@@ -8,9 +8,11 @@
 #![allow(clippy::mutable_key_type)]
 
 pub mod complete;
+mod complete_events;
 pub mod context;
 pub mod diag;
 pub mod hover;
+mod hover_events;
 pub mod nav;
 pub mod outline;
 pub mod query;

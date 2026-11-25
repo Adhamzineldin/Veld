@@ -14,7 +14,7 @@ use crate::workspace::Analysis;
 
 /// Which declarations a type position accepts.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum TypePos {
+pub(crate) enum TypePos {
     /// Fields, parameters: models, enums, unions and the built-ins.
     Value,
     /// Union arms: declarations only.
@@ -23,6 +23,8 @@ enum TypePos {
     Response,
     /// After `extends`.
     Parent,
+    /// After `carries`, `on` and `given event`: events.
+    Event,
 }
 
 #[must_use]
@@ -36,17 +38,23 @@ pub fn complete(a: &Analysis, file: FileId, offset: usize) -> Vec<CompletionItem
     if ctx.inert {
         return Vec::new();
     }
-    let cx = Cx { a, file, ctx: &ctx };
+    let cx = Cx {
+        a,
+        file,
+        ctx: &ctx,
+        prefix,
+    };
     cx.items()
 }
 
-struct Cx<'a> {
-    a: &'a Analysis,
-    file: FileId,
-    ctx: &'a Context,
+pub(crate) struct Cx<'a> {
+    pub(crate) a: &'a Analysis,
+    pub(crate) file: FileId,
+    pub(crate) ctx: &'a Context,
+    pub(crate) prefix: &'a str,
 }
 
-fn item(label: &str, kind: CompletionItemKind, detail: Option<&str>) -> CompletionItem {
+pub(crate) fn item(label: &str, kind: CompletionItemKind, detail: Option<&str>) -> CompletionItem {
     CompletionItem {
         label: label.to_string(),
         kind: Some(kind),
@@ -64,7 +72,7 @@ fn snippet(label: &str, kind: CompletionItemKind, detail: &str, body: &str) -> C
 }
 
 impl Cx<'_> {
-    fn ix(&self) -> &Index {
+    pub(crate) fn ix(&self) -> &Index {
         &self.a.index
     }
 
@@ -75,6 +83,9 @@ impl Cx<'_> {
     fn items(&self) -> Vec<CompletionItem> {
         if self.prev() == Some(&Tok::Punct('@')) {
             return self.annotations();
+        }
+        if let Some(found) = self.event_position() {
+            return found;
         }
         if self.ctx.at_top_level && self.ctx.use_stmt.is_some() {
             return self.use_paths();
@@ -219,7 +230,7 @@ impl Cx<'_> {
     // ---- scope ----------------------------------------------------------------------
 
     /// Names visible in this file: its own declarations, imports and the prelude.
-    fn visible(&self) -> BTreeMap<String, usize> {
+    pub(crate) fn visible(&self) -> BTreeMap<String, usize> {
         let ix = self.ix();
         let mut map = BTreeMap::new();
         for (i, d) in ix.decls.iter().enumerate() {
@@ -249,7 +260,7 @@ impl Cx<'_> {
         map
     }
 
-    fn types(&self, pos: TypePos) -> Vec<CompletionItem> {
+    pub(crate) fn types(&self, pos: TypePos) -> Vec<CompletionItem> {
         let mut out = Vec::new();
         if matches!(pos, TypePos::Value | TypePos::Response) {
             for s in language::SCALARS {
@@ -438,10 +449,11 @@ fn accepts(pos: TypePos, kind: DKind) -> bool {
         TypePos::Value | TypePos::Arm => matches!(kind, DKind::Model | DKind::Enum | DKind::Union),
         TypePos::Response => !matches!(kind, DKind::Const | DKind::Event),
         TypePos::Parent => kind == DKind::Model,
+        TypePos::Event => kind == DKind::Event,
     }
 }
 
-fn decl_item(d: &DeclEntry, edit: Option<TextEdit>) -> CompletionItem {
+pub(crate) fn decl_item(d: &DeclEntry, edit: Option<TextEdit>) -> CompletionItem {
     decl_item_named(&d.name, d, edit)
 }
 
@@ -467,6 +479,18 @@ fn decl_keywords() -> Vec<CompletionItem> {
     let k = CompletionItemKind::KEYWORD;
     vec![
         item("use", k, Some("import declarations")),
+        snippet(
+            "event",
+            k,
+            "event Name { ... }",
+            "event ${1:Name} {\n  $0\n}",
+        ),
+        snippet(
+            "channel",
+            k,
+            "channel Name { carries ... }",
+            "channel ${1:Name} {\n  carries $0\n}",
+        ),
         snippet(
             "model",
             k,
@@ -555,10 +579,10 @@ fn annotation_args(name: &str) -> Vec<CompletionItem> {
 
 // ---- auto-import --------------------------------------------------------------------------
 
-struct ImportContext;
+pub(crate) struct ImportContext;
 
 impl Cx<'_> {
-    fn import_context(&self) -> ImportContext {
+    pub(crate) fn import_context(&self) -> ImportContext {
         ImportContext
     }
 }
@@ -566,7 +590,7 @@ impl Cx<'_> {
 impl ImportContext {
     /// The edit that makes `d` visible in `file`: extend an existing `use` of the same module,
     /// or add a new one after the last `use`.
-    fn edit_for(&self, ix: &Index, file: FileId, d: &DeclEntry) -> TextEdit {
+    pub(crate) fn edit_for(&self, ix: &Index, file: FileId, d: &DeclEntry) -> TextEdit {
         let own = ix.file(file).map(|f| f.package.as_str()).unwrap_or("");
         let Some(f) = ix.file(file) else {
             return TextEdit::new(Range::default(), String::new());
