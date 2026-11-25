@@ -371,3 +371,94 @@ pub fn build_lint_and_run(
     let out = run_ok(&mut cargo(ws, &run), "the harness");
     assert!(out.contains(ok_line), "{out}");
 }
+
+// ---------------------------------------------------------------------------
+// Contracts by path, and the examples through a generated test handler
+// ---------------------------------------------------------------------------
+
+/// Compiles the one file at `path` (below the repository root) as the package `package`.
+pub fn compile_path(path: &str, package: &str) -> Ir {
+    let text = std::fs::read_to_string(repo_root().join(path))
+        .unwrap_or_else(|e| panic!("{path}: {e}"));
+    compiled(
+        &CompileInput {
+            packages: vec![PackageInput {
+                name: package.into(),
+                kind: PackageKind::Service,
+                files: vec![SourceFile {
+                    path: format!("{package}.veld"),
+                    text,
+                }],
+                base_url: None,
+            }],
+            consumes: BTreeMap::new(),
+        },
+        path,
+    )
+}
+
+/// A running test handler (a harness binary that prints `PORT=<n>`); killed when dropped.
+pub struct Running {
+    child: std::process::Child,
+    pub url: String,
+}
+
+impl Running {
+    pub fn start(binary: &str) -> Running {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
+        let exe = if cfg!(windows) {
+            format!("{binary}.exe")
+        } else {
+            binary.to_string()
+        };
+        let mut child = Command::new(target_dir().join("debug").join(exe))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("cannot start the test handler");
+        let mut line = String::new();
+        BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        let port = line
+            .trim()
+            .strip_prefix("PORT=")
+            .unwrap_or_else(|| panic!("the server did not report a port: {line:?}"));
+        Running {
+            url: format!("http://127.0.0.1:{port}"),
+            child,
+        }
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// Sends every example of the contract to the test handler of the binary `binary`, in dry-run
+/// mode, through the shared live runner. Every example must run and pass: an example the handler
+/// skips (because its probe does not name the service) is a failure.
+pub fn run_every_example(ir: &Ir, binary: &str, expected: usize) {
+    let server = Running::start(binary);
+    let live = veld_testing::Live::connect(&server.url, true).unwrap();
+    let (mut passed, mut failures) = (0, Vec::new());
+    for ex in &ir.examples {
+        match live.run_example(ir, ex) {
+            Ok(report) if report.passed() => passed += 1,
+            Ok(report) => failures.push(format!("\"{}\": {report}", ex.name)),
+            Err(e) => failures.push(format!("\"{}\": {e}", ex.name)),
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} examples failed or were skipped:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+    assert_eq!(passed, expected, "every example of the contract");
+    eprintln!("examples passed through the generated test handler: {passed}");
+}
