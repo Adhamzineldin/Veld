@@ -52,6 +52,19 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [ ] `veld.FetchLike` does not accept the global `fetch` type without a cast.
 - [ ] Money arithmetic on `decimal` strings has to be written by hand in a handler; derived fields (Phase 5) will cover the common case.
 
+Found when the example gained a state machine and policies (25 Nov), most important first:
+
+- [ ] **A handler under `veld test --live` cannot find the example's facts in its own store.** The test handler takes the facts from a header and never calls the loaders, so a handler that writes conditionally (as a transition requires) finds no row. The example's test server works around it by putting the given booking into its store before the handler runs. The test handler needs a hook for this, or `spec/rules.md` 12.4 must say how a real handler sees a given fact.
+- [ ] **The caller is typed `unknown` inside a handler.** The auth hook returns the typed principal, but `ctx.principal` is not typed, so a handler that needs the caller (the owner of a new booking) casts. The context should carry the principal's type.
+- [ ] **A `post` that moves a state answers `201`** unless the contract writes `-> 200 Booking`, because `201` is the default of every `post`. Nothing warns. A lint could: a `post` with a `transition` that returns the fact's type.
+- [ ] **`can<Endpoint>` answers only yes or no.** An app can grey a button but cannot say why until the server refuses. A form that also gives the policy's message would help.
+- [ ] **A client has no way to learn who the caller is** except an endpoint the developer adds (`whoAmI` in the example), and the `can<Endpoint>` helpers need that value.
+- [ ] **Examples repeat themselves.** Every example of a signed-in call writes the whole principal again; there is no way to name a caller, or a given, once.
+- [ ] **`veld fmt` and a hand-formatted contract disagree in more places:** besides joining example calls into one long line, it puts every enum variant on its own line and expands a one-line `error X 409 { f: t }`. The example's contract does not pass `veld fmt --check`.
+- [ ] **`veld generate` stops on "breaking change" for the first edit of a contract under development** (adding auth adds `401` to every endpoint). True, but a project with no released client has nobody to break. `--accept-breaking` gets typed without reading.
+- [ ] **`npm ci` inside the example end-to-end test has no time limit.** It hung once for about 50 minutes while the machine was busy.
+- [i] The example test asserted `contains("8 passed")`, which "38 passed" also satisfies. It now counts the `example` blocks of the contract and requires exactly that many.
+
 ## Phase 0: spec
 - [i] `spec/rules.md`: expressions and invariants complete; endpoint rules, state machines, policies and examples have syntax and decisions
 - [i] §9 and §12 (endpoint rules, examples, `veld test`) complete, with the IR in §13.1
@@ -123,7 +136,7 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [i] Client `can<Endpoint>()` helpers and policy functions in every target: `Policies.manageBooking(user, booking)` and `BookingsClient.canPayBooking(booking, user)` in Java, `manageBooking(user, booking)` and `BookingsClient.canPayBooking(booking, user)` in TypeScript, `manage_booking(&user, &booking)` and `can_pay_booking(&booking, &user)` in Rust. The argument order is fixed in `spec/rules.md` 11.4
 - [i] The vector files `tests/rules/endpoints/transitions.veld` and `policies.veld` are no longer held back as `.pending`: every generator supports them
 - [i] The fuzzer generates the caller, makes policies permit and forbid on purpose, puts a fact in every state of its machine, and leaves some requests failing two checks at once so the order of the checks is exercised. It runs against the generated Node, Java (JDK) and Rust servers for all three rule contracts: 300 requests per endpoint, the same tallies in all three, no disagreement with the reference evaluator. Both denial messages are compared. Not covered: the Spring adapter under fuzz; an endpoint with both an `allow` and a `transition` against a real server (no served contract has both; the order is checked against the reference only); `matches(...)` and `!=` on floats or strings in a policy are left to chance
-- [ ] Not yet: `examples/bookings` does not use a state machine or a policy
+- [i] `examples/bookings` uses both: a `Status` machine moved by four endpoints, a `principal`, three policies, 38 examples, an Express server that writes conditionally, a React app that shows only the moves the server would accept, and an end-to-end test (HTTP checks, `veld test --live`, a fuzz run). The React app is type-checked and driven through the generated client; it was never opened in a browser
 - [ ] Not yet, and required by "every item ships with" above: the language server has no hover or completion for `policy`, `principal` and `allow` (reported by the agent that built them; whether it handles `flow` and `transition` has not been checked), and there is no record of the playground WASM being rebuilt since rules were added
 - [i] With `validate = false`, policies and the transition guard still run (`spec/rules.md` 5.3 corrected: it used to say everything in step 6 but the facts is switched off, which would have let a validation option switch authorization off)
 - [~] `@version` optimistic concurrency (`ETag`, `If-Match`): the exact behaviour, the example syntax (`ifMatch 3`) and the test handler are drafted in `spec/rules.md` 11.9; no code
