@@ -9,6 +9,7 @@
 //! because the clients that can break are the ones built against it. A type the
 //! old IR never uses falls back to the new IR.
 
+mod changed;
 mod decls;
 mod endpoint_rules;
 mod endpoints;
@@ -17,6 +18,7 @@ pub(crate) mod expr_text;
 mod rules;
 mod usage;
 
+pub use changed::{ChangedRule, RuleSite, changed_rules};
 use serde::Serialize;
 use veld_ir::{Constraints, Ir, Type};
 
@@ -289,6 +291,8 @@ pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
     out
 }
 
+#[cfg(test)]
+mod changed_tests;
 #[cfg(test)]
 mod event_tests;
 #[cfg(test)]

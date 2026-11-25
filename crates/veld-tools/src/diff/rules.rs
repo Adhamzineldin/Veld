@@ -57,7 +57,7 @@ pub(super) fn diff_decl_rules(ctx: &Ctx<'_>, usage: &Usage, out: &mut Vec<Change
 }
 
 /// The rules a declaration wrote itself; inherited ones are reported on the parent.
-fn own_rules(d: &Decl) -> BTreeMap<&str, &Rule> {
+pub(super) fn own_rules(d: &Decl) -> BTreeMap<&str, &Rule> {
     d.rules()
         .iter()
         .filter(|r| r.inherited_from.is_none())
@@ -67,7 +67,7 @@ fn own_rules(d: &Decl) -> BTreeMap<&str, &Rule> {
 
 /// Only the enforced rules: an audited rule never rejects and is judged as if it were absent
 /// (`spec/rules.md` section 17.1).
-fn enforced<'a>(all: &BTreeMap<&'a str, &'a Rule>) -> BTreeMap<&'a str, &'a Rule> {
+pub(super) fn enforced<'a>(all: &BTreeMap<&'a str, &'a Rule>) -> BTreeMap<&'a str, &'a Rule> {
     all.iter()
         .filter(|(_, r)| !r.is_audited())
         .map(|(n, r)| (*n, *r))

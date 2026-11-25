@@ -7,9 +7,9 @@ use veld_ir::{Endpoint, Ir, Param, Service};
 use super::decls::diff_docs;
 use super::{Change, ChangeKind, Ctx, push_constraint_changes};
 
-type Key = (String, String, String);
+pub(super) type Key = (String, String, String);
 
-fn index(ir: &Ir) -> BTreeMap<Key, (&Service, &Endpoint)> {
+pub(super) fn index(ir: &Ir) -> BTreeMap<Key, (&Service, &Endpoint)> {
     let mut m = BTreeMap::new();
     for s in &ir.services {
         let pkg = ir.package(s.package).name.clone();
@@ -21,7 +21,7 @@ fn index(ir: &Ir) -> BTreeMap<Key, (&Service, &Endpoint)> {
 }
 
 /// The operation signature without its hash: `veld:orders/Orders.getOrder`.
-fn subject(e: &Endpoint) -> &str {
+pub(super) fn subject(e: &Endpoint) -> &str {
     e.sig.split('@').next().unwrap_or(&e.sig)
 }
 

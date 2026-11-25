@@ -9,7 +9,7 @@ use super::expr_text::expr_text;
 use super::{Change, ChangeKind, Ctx};
 
 /// The part of a statement that identifies it: its name, or for an unnamed one its id.
-trait Stmt {
+pub(super) trait Stmt {
     fn stmt_name(&self) -> Option<&str>;
     fn stmt_id(&self) -> &str;
     fn stmt_audited(&self) -> bool;
@@ -40,15 +40,15 @@ impl Stmt for EndpointEnsure {
 }
 
 /// Statements paired between the old and the new endpoint.
-struct Paired<'a, T> {
-    both: Vec<(&'a T, &'a T)>,
-    removed: Vec<&'a T>,
-    added: Vec<&'a T>,
+pub(super) struct Paired<'a, T> {
+    pub(super) both: Vec<(&'a T, &'a T)>,
+    pub(super) removed: Vec<&'a T>,
+    pub(super) added: Vec<&'a T>,
 }
 
 /// Named statements pair by name. Unnamed ones pair by id (same expression); the leftovers pair in
 /// source order, which reads as "the expression of that statement changed".
-fn pair<'a, T: Stmt>(old: &[&'a T], new: &[&'a T]) -> Paired<'a, T> {
+pub(super) fn pair<'a, T: Stmt>(old: &[&'a T], new: &[&'a T]) -> Paired<'a, T> {
     let mut p = Paired {
         both: Vec::new(),
         removed: Vec::new(),
@@ -98,7 +98,7 @@ fn pair<'a, T: Stmt>(old: &[&'a T], new: &[&'a T]) -> Paired<'a, T> {
 
 /// The statements that reject: an audited one never does and is judged as if it were absent
 /// (`spec/rules.md` section 17.1).
-fn enforced<T: Stmt>(items: &[T]) -> Vec<&T> {
+pub(super) fn enforced<T: Stmt>(items: &[T]) -> Vec<&T> {
     items.iter().filter(|s| !s.stmt_audited()).collect()
 }
 
@@ -118,7 +118,7 @@ fn audited_in<T: Stmt>(other: &[T], s: &T) -> bool {
 const AUDITED_NOW: &str = "; it is now audited (`@rollout(audit)`): reported and never rejecting, so judged like removing it";
 const ENFORCED_NOW: &str = "; it is no longer audited: it now rejects, so judged like adding it";
 
-fn label(kind: &str, name: Option<&str>, expr: &str) -> String {
+pub(super) fn label(kind: &str, name: Option<&str>, expr: &str) -> String {
     match name {
         Some(n) => format!("{kind} `{n}`"),
         None => format!("{kind} `{expr}`"),
