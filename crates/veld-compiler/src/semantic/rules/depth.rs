@@ -7,10 +7,13 @@
 //!
 //! The arithmetic. `serde_json` fails when containers nest more than 127 deep. In the IR
 //! document the `expr` of a rule sits under five containers: the document object, `decls`, the
-//! declaration, `rules` and the rule object. So the expression itself may be at most
-//! `127 - 5 = 122` containers deep ([`MAX_EXPR_JSON_DEPTH`]). An expression at the parser limit
-//! needs at most 3 containers per level (`{"t", "e": {"bin": {"l": ...}}}`) for 32 levels plus a
-//! leaf of 5, which is 101 and leaves 21 containers for the types of the nodes. Nested calls cost 4 per level, which only a deep type can push over the budget; the check below catches those too.
+//! declaration, `rules` and the rule object. A plugin request wraps the IR in one more object
+//! (`{"type": "generate", "ir": {..}}`, `spec/plugin-protocol.md`), so the budget counts six.
+//! The expression itself may therefore be at most `127 - 6 = 121` containers deep
+//! ([`MAX_EXPR_JSON_DEPTH`]). An expression at the parser limit needs at most 3 containers per
+//! level (`{"t", "e": {"bin": {"l": ...}}}`) for 32 levels plus a leaf of 5, which is 101 and
+//! leaves 20 containers for the types of the nodes. Nested calls cost 4 per level, so only a
+//! deep type can push a rule over the budget in practice; this check catches every case.
 
 use veld_ir::Type;
 use veld_ir::rules::Expr;
@@ -20,11 +23,15 @@ use veld_ir::rules::{ExprKind, ExprLit, ExprType, PathRef, Root};
 /// rule.
 pub const IR_PREFIX_DEPTH: usize = 5;
 
+/// Containers a plugin request adds around the IR document.
+pub const PLUGIN_ENVELOPE_DEPTH: usize = 1;
+
 /// `serde_json` refuses a document nested deeper than this many containers.
 pub const SERDE_JSON_MAX_DEPTH: usize = 127;
 
 /// The most containers the JSON of one `expr` may nest.
-pub const MAX_EXPR_JSON_DEPTH: usize = SERDE_JSON_MAX_DEPTH - IR_PREFIX_DEPTH;
+pub const MAX_EXPR_JSON_DEPTH: usize =
+    SERDE_JSON_MAX_DEPTH - PLUGIN_ENVELOPE_DEPTH - IR_PREFIX_DEPTH;
 
 /// Containers nested in the JSON of `e`, counted as `serde_json` counts them (an object or an
 /// array is one level; a string, number or bool is none).

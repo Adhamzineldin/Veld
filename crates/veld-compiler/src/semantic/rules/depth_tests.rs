@@ -48,7 +48,7 @@ fn a_unary_chain_stops_at_32_levels() {
 
 #[test]
 fn a_left_associative_chain_stops_at_32_levels() {
-    // 32 `+` and the comparison above them are 33 operators: 32 terms.
+    // 31 `+` and the comparison above them are 32 operators: 32 terms.
     assert_limit("+", 32, |n| format!("{} > 0", vec!["n"; n].join(" + ")));
     // 32 `&&` or `||` operators join 33 terms.
     assert_limit("&&", 33, |n| vec!["a"; n].join(" && "));
@@ -89,18 +89,32 @@ fn deep_type_rule(brackets: usize, chain: usize) -> Result<Ir, Vec<&'static str>
 #[test]
 fn a_deep_type_inside_an_expression_is_caught_by_the_backstop() {
     // The expression has 22 levels, well inside the parser's limit, and the type of its
-    // innermost path is a list nested 53 or 54 deep: 3 containers per level (60) plus the
-    // leaf (`len(deep) > 0`, 9 + brackets) is 122 at 53 brackets and 123 at 54.
-    match deep_type_rule(53, 20) {
-        Ok(ir) => assert_reads_back(&ir, "53 brackets"),
-        Err(c) => panic!("53 brackets should compile: {c:?}"),
+    // innermost path is a list nested 52 or 53 deep: 3 containers per level (60) plus the
+    // leaf (`len(deep) > 0`, 9 + brackets) is 121 at 52 brackets and 122 at 53.
+    match deep_type_rule(52, 20) {
+        Ok(ir) => assert_reads_back(&ir, "52 brackets"),
+        Err(c) => panic!("52 brackets should compile: {c:?}"),
     }
-    let c = deep_type_rule(54, 20).expect_err("54 brackets exceed the JSON depth");
+    let c = deep_type_rule(53, 20).expect_err("53 brackets exceed the JSON depth");
     assert_eq!(c, vec!["E0005"]);
     let c = deep_type_rule(64, 20).expect_err("the type limit alone does not catch it");
     assert_eq!(c, vec!["E0005"]);
     // The same type in a short rule is fine.
     assert!(deep_type_rule(64, 0).is_ok());
+}
+
+#[test]
+fn the_budget_matches_the_real_documents() {
+    // At the budget the IR is 126 containers deep (5 above the rule, 121 in it) and a plugin
+    // request around it 127: `serde_json` reads the deepest document it accepts.
+    let ir = deep_type_rule(52, 20).expect("compiles");
+    let whole = serde_json::to_value(&ir).expect("serialises");
+    assert_eq!(value_depth(&whole), 126);
+    let request = serde_json::json!({ "type": "generate", "ir": whole });
+    assert_eq!(value_depth(&request), 127);
+    let text = serde_json::to_string(&request).expect("serialises");
+    serde_json::from_str::<serde_json::Value>(&text).expect("the plugin request reads back");
+    assert_eq!(super::depth::IR_PREFIX_DEPTH, 5);
 }
 
 /// Containers nested in a JSON value, counted as `serde_json` counts them.
@@ -149,13 +163,3 @@ fn the_depth_function_matches_the_real_json() {
     }
 }
 
-#[test]
-fn the_prefix_above_a_rule_is_five_containers() {
-    let ir = build("a", FIELDS).expect("compiles");
-    let whole = serde_json::to_value(&ir).expect("serialises");
-    let decls = whole["decls"].as_array().expect("decls");
-    let model = decls.iter().find(|d| d["name"] == "M").expect("the model");
-    // document (1), `decls` (2), the declaration (3), `rules` (4), the rule (5), its `expr`.
-    assert!(model["rules"][0]["expr"].is_object());
-    assert_eq!(IR_PREFIX_DEPTH, 5);
-}
