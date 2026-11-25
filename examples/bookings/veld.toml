@@ -22,7 +22,3 @@ role = "client"
 emitter = "typescript"
 framework = "react"
 out = "web/src/generated"
-
-# `Room` is used only as a fact, which the unused-model lint does not see yet.
-[lint]
-unused-model = "off"

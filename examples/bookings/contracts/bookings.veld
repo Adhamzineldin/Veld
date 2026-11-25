@@ -36,6 +36,7 @@ error RoomFull 409 { capacity: int }
 error RoomClosed 409 {}
 
 /// Hotel bookings.
+@auth(none)
 service Bookings at "/bookings" {
   /// Books a room. The room is loaded once, before any rule runs.
   post "/" createBooking(body: NewBooking) -> 201 Booking | RoomFull | RoomClosed {

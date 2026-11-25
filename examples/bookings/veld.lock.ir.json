@@ -1197,7 +1197,7 @@
                 },
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 42,
+                  "line": 43,
                   "col": 10
                 }
               }
@@ -1242,7 +1242,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 43,
+                  "line": 44,
                   "col": 5
                 }
               },
@@ -1333,7 +1333,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 44,
+                  "line": 45,
                   "col": 5
                 }
               },
@@ -1385,7 +1385,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 45,
+                  "line": 46,
                   "col": 13
                 }
               }
@@ -1447,7 +1447,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 47,
+                  "line": 48,
                   "col": 12
                 }
               },
@@ -1507,7 +1507,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 48,
+                  "line": 49,
                   "col": 12
                 }
               }
@@ -1515,7 +1515,7 @@
           },
           "origin": {
             "file": "bookings.veld",
-            "line": 41,
+            "line": 42,
             "col": 12
           }
         },
@@ -1574,7 +1574,7 @@
           ],
           "origin": {
             "file": "bookings.veld",
-            "line": 52,
+            "line": 53,
             "col": 15
           }
         }
@@ -1594,7 +1594,7 @@
       "rules_digest": "cad7f1bdf1d52964",
       "origin": {
         "file": "bookings.veld",
-        "line": 39,
+        "line": 40,
         "col": 9
       }
     }
@@ -1683,7 +1683,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 102,
+        "line": 103,
         "col": 1
       }
     },
@@ -1769,7 +1769,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 75,
+        "line": 76,
         "col": 1
       }
     },
@@ -1865,7 +1865,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 66,
+        "line": 67,
         "col": 1
       }
     },
@@ -1951,7 +1951,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 84,
+        "line": 85,
         "col": 1
       }
     },
@@ -2037,7 +2037,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 93,
+        "line": 94,
         "col": 1
       }
     },
@@ -2120,7 +2120,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 57,
+        "line": 58,
         "col": 1
       }
     },
@@ -2187,7 +2187,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 111,
+        "line": 112,
         "col": 1
       }
     },
@@ -2295,7 +2295,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 120,
+        "line": 121,
         "col": 1
       }
     }
