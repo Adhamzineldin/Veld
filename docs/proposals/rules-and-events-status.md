@@ -188,6 +188,7 @@ The work is two series, because only the second changes generated code. The layo
 - [ ] CLI and WASM share one target-resolution function (parity guardrail)
 
 ## Platform
+- [~] Spec for P1: `spec/platform.md` drafted (where each of the four runs in the pipeline, that no setting turns them off, what fails closed, the audit event, the limiter interface, codes `E1101`, `W1101`, `E1110`, `E1120`). No code. Seven choices in its section 9 wait for the owner. P2, P3 and P4 are not drafted
 - [ ] P1: `@visible`, `@tenant`, `@audited`, `@limit`
 - [ ] P2: timed transitions and the scheduler hook; `flag()`; `@timeout`, `@slo`, metrics hook, OpenSLO export
 - [ ] P3: sagas (experimental until crash and compensation-failure tests exist), with a needs-manual-intervention state
