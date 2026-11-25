@@ -23,10 +23,8 @@ fn an_event_that_no_channel_carries_is_unused() {
 
 #[test]
 fn a_carried_event_is_used_and_so_are_the_models_in_its_fields() {
-    let src = format!(
-        "model Money {{ cents: long }}\nevent Paid {{ amount: Money }}\nchannel C {{ carries Paid }}\nservice S {{ publishes C }}\n"
-    );
-    assert!(found(&src, "unused-model").is_empty());
+    let src = "model Money { cents: long }\nevent Paid { amount: Money }\nchannel C { carries Paid }\nservice S { publishes C }\n";
+    assert!(found(src, "unused-model").is_empty());
 }
 
 #[test]
