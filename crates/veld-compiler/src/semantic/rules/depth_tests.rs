@@ -162,4 +162,3 @@ fn the_depth_function_matches_the_real_json() {
         assert!(value_depth(&whole) >= decl_rule_depth, "`{rule}`");
     }
 }
-
