@@ -27,3 +27,9 @@ fn typescript_and_node_refuse_state_machines_with_e0801() {
     veld_emit_conformance::check_state_machines_are_refused(&Node).unwrap();
     veld_emit_conformance::check_state_machines_are_refused(&TypeScript).unwrap();
 }
+
+#[test]
+fn typescript_and_node_refuse_policies_with_e0801() {
+    veld_emit_conformance::check_policies_are_refused(&Node).unwrap();
+    veld_emit_conformance::check_policies_are_refused(&TypeScript).unwrap();
+}

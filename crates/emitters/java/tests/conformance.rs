@@ -63,3 +63,8 @@ fn java_declares_no_transition_or_policy_feature() {
 fn java_refuses_state_machines_with_e0801() {
     veld_emit_conformance::check_state_machines_are_refused(&Java).unwrap();
 }
+
+#[test]
+fn java_refuses_policies_with_e0801() {
+    veld_emit_conformance::check_policies_are_refused(&Java).unwrap();
+}

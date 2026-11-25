@@ -382,6 +382,156 @@ fn refuses_state_machines(
     Ok(())
 }
 
+const POLICY_SOURCE: &str = "model User { id: uuid }
+principal User
+
+model Booking { id: uuid, owner: uuid }
+
+policy Manage(user: User, booking: Booking) {
+  permit when booking.owner == user.id
+}
+
+@auth(bearer)
+service Bookings at \"/bookings\" {
+  get \"/{id}\" get(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow Manage(user, booking)
+  }
+}
+";
+
+const UNUSED_POLICY_SOURCE: &str = "model User { id: uuid }
+principal User
+
+policy Anyone(user: User) {
+  permit when true
+}
+
+@auth(bearer)
+service Users at \"/users\" {
+  get \"/\" list() -> User
+}
+";
+
+/// The contract of an endpoint with an `allow` (a principal and a policy), and the line of the
+/// statement.
+#[must_use]
+pub fn compiled_policy_contract() -> (Ir, u32) {
+    let ir = compile("compiled_policy", POLICY_SOURCE);
+    (ir, line_of(POLICY_SOURCE, "allow Manage"))
+}
+
+const PRINCIPAL_READ_SOURCE: &str = "model User { id: uuid, banned: bool }
+principal User
+
+@auth(bearer)
+service Users at \"/users\" {
+  get \"/\" list() -> User {
+    require not user.banned
+  }
+}
+";
+
+/// The contract of an endpoint that reads the principal in a `require` and has no `allow`, and the
+/// line of the statement. A generator must refuse it all the same: the principal is a root only
+/// the policy feature knows.
+#[must_use]
+pub fn compiled_principal_read_contract() -> (Ir, u32) {
+    let ir = compile("compiled_principal_read", PRINCIPAL_READ_SOURCE);
+    (ir, line_of(PRINCIPAL_READ_SOURCE, "require not user"))
+}
+
+/// A contract that declares a principal and a policy and uses neither in an endpoint: it needs
+/// no feature (`spec/rules.md` section 11.4).
+#[must_use]
+pub fn compiled_unused_policy_contract() -> Ir {
+    compile("compiled_unused_policy", UNUSED_POLICY_SOURCE)
+}
+
+/// The generator must not declare `rules_policies` and must refuse a compiled contract with an
+/// `allow`: the gate reports `E0801` for `rules_policies` at the statement, and `generate` answers
+/// `E0801` only. A contract that declares a policy and a principal but no `allow` needs no
+/// feature: the gate lets it through for `rules_policies` and `generate` makes files for it.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_policies_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    for (ir, line) in [
+        compiled_policy_contract(),
+        compiled_principal_read_contract(),
+    ] {
+        refuses_policies(generator, &ir, line)?;
+    }
+    accepts_unused_policies(generator)
+}
+
+fn refuses_policies(generator: &dyn DynGenerator, ir: &Ir, line: u32) -> Result<(), String> {
+    let services = all_services(ir);
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        if caps.supports(Feature::RulesPolicies) {
+            return Err(format!("{}: declares `rules_policies`", role.name()));
+        }
+        let req = GenRequest {
+            ir,
+            role: *role,
+            services: services.clone(),
+            consumes: vec![],
+            framework: None,
+        };
+        let gate = check_capabilities(ir, &req, &caps);
+        let mine: Vec<_> = gate
+            .iter()
+            .filter(|d| d.message.contains("rules_policies"))
+            .collect();
+        let at_the_allow = mine.len() == 1
+            && mine
+                .iter()
+                .all(|d| d.code == "E0801" && d.origin.as_ref().map(|o| o.line) == Some(line));
+        if !at_the_allow || gate.iter().any(|d| d.code != "E0801") {
+            return Err(format!("{}: the gate reported {gate:?}", role.name()));
+        }
+        match generator.generate_dyn(&req, &serde_json::Value::Null) {
+            Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
+            other => {
+                return Err(format!(
+                    "{}: generate did not answer E0801: {other:?}",
+                    role.name()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn accepts_unused_policies(generator: &dyn DynGenerator) -> Result<(), String> {
+    let ir = compiled_unused_policy_contract();
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        let req = GenRequest {
+            ir: &ir,
+            role: *role,
+            services: all_services(&ir),
+            consumes: vec![],
+            framework: None,
+        };
+        let gate = check_capabilities(&ir, &req, &caps);
+        if !gate.is_empty() {
+            return Err(format!(
+                "{}: a policy no endpoint uses was refused: {gate:?}",
+                role.name()
+            ));
+        }
+        if let Err(d) = generator.generate_dyn(&req, &serde_json::Value::Null) {
+            return Err(format!(
+                "{}: generate failed for an unused policy: {d:?}",
+                role.name()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// A generator that supports invariants and endpoint rules and nothing else of the rules: it
 /// declares `rules_invariants` and `rules_endpoint`, the gate lets both a hand-built block and one
 /// the compiler made through, and `generate` produces files for them (transitions and policies stay
@@ -784,6 +934,43 @@ mod tests {
             caps: Capabilities::all_except(&[]),
         };
         assert!(check_state_machines_are_refused(&claims).is_err());
+    }
+
+    #[test]
+    fn the_policy_contracts_use_the_policies_feature_only_with_an_allow() {
+        let (ir, line) = compiled_policy_contract();
+        let used = ir.features_used(&all_services(&ir));
+        assert!(used.contains(&Feature::RulesPolicies), "{used:?}");
+        assert!(line >= 1);
+        assert_eq!(ir.services[0].endpoints[0].rules.allows.len(), 1);
+        let (read, line) = compiled_principal_read_contract();
+        let used = read.features_used(&all_services(&read));
+        assert!(used.contains(&Feature::RulesPolicies), "{used:?}");
+        assert!(read.services[0].endpoints[0].rules.allows.is_empty());
+        assert!(line >= 1);
+        let unused = compiled_unused_policy_contract();
+        assert_eq!(unused.policies.len(), 1);
+        let used = unused.features_used(&all_services(&unused));
+        assert!(!used.contains(&Feature::RulesPolicies), "{used:?}");
+    }
+
+    #[test]
+    fn a_generator_that_claims_policies_is_caught() {
+        let claims = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]),
+        };
+        assert!(check_policies_are_refused(&claims).is_err());
+    }
+
+    #[test]
+    fn a_generator_that_does_not_gate_policies_is_caught() {
+        let ungated = Minimal {
+            embed: true,
+            caps: Capabilities::default(),
+        };
+        let err = check_policies_are_refused(&ungated).unwrap_err();
+        assert!(err.contains("did not answer E0801"), "{err}");
     }
 
     #[test]
