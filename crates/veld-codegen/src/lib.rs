@@ -7,6 +7,7 @@
 pub mod canonical;
 pub mod expr;
 pub mod fileset;
+pub mod gate;
 pub mod generator;
 pub mod lint;
 pub mod naming;
@@ -15,6 +16,7 @@ pub mod writer;
 
 pub use expr::{ExprPrinter, Printed, ValueKind, element_type, print_expr};
 pub use fileset::{FileSet, FileSetError, PathError};
+pub use gate::{GateError, gate_regions};
 pub use generator::resolve_profile;
 pub use generator::{
     Capabilities, DynGenerator, GenDiagnostic, GenRequest, Generator, Role, check_capabilities,

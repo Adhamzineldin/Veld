@@ -138,6 +138,49 @@ pub fn run_case(ir: &Ir, case: &Case) -> Result<(), Mismatch> {
             error: v.error.map(|e| e.as_str().to_owned()),
         })
         .collect();
+    diff(case, got)
+}
+
+/// A violation as generated code reported it: the JSON object of `spec/rules.md` section 7.
+/// The per-language vector harnesses deserialise their driver's output into this.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Produced {
+    /// The rule id, `veld:<package>/<Decl>.<rule>@<hex16>`.
+    pub rule: String,
+    pub path: String,
+    pub fields: Vec<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+/// The rule name inside a rule id: `veld:t/AddInt.small@91c0…` gives `small`.
+#[must_use]
+pub fn rule_name_of(id: &str) -> Option<&str> {
+    let (head, _hash) = id.rsplit_once('@')?;
+    let (_decl, name) = head.rsplit_once('.')?;
+    Some(name)
+}
+
+/// Compares what generated code produced for `case` with the case's `expect`, as a set. Rule
+/// ids are reduced to rule names first, because vectors name rules, not ids.
+///
+/// # Errors
+/// A [`Mismatch`] that says what differs. A rule id that has no name in it is reported as an
+/// unexpected violation under the whole id.
+pub fn compare_produced(case: &Case, produced: &[Produced]) -> Result<(), Mismatch> {
+    let got: BTreeSet<Key> = produced
+        .iter()
+        .map(|p| Key {
+            rule: rule_name_of(&p.rule).unwrap_or(&p.rule).to_owned(),
+            path: p.path.clone(),
+            fields: p.fields.clone(),
+            error: p.error.clone(),
+        })
+        .collect();
+    diff(case, got)
+}
+
+fn diff(case: &Case, got: BTreeSet<Key>) -> Result<(), Mismatch> {
     let want: BTreeSet<Key> = case
         .expect
         .iter()
