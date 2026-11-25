@@ -94,7 +94,7 @@ url = "https://registry.example.com"
 | `typescript` | client | `react` (`"18"`), `vue` (`"3"`); none is the plain client | `typescript`, `framework-version`, `package-name` |
 | `java` | server | `jdk` (unversioned), `spring` (`"3"`) | `package`, `java`, `framework-version`, `validate`, `testing` |
 | `java` | client | none | `package`, `java` |
-| `rust` | server | `axum` (`"0.8"`, the default) | `crate-name`, `transport`, `validate` |
+| `rust` | server | `axum` (`"0.8"`, the default) | `crate-name`, `transport`, `validate`, `testing` |
 | `rust` | client | `reqwest` (`"0.13"`, the default), `ureq` (`"2"`, blocking) | `crate-name`, `validate` |
 
 Streaming (`get ... -> stream`, `ws`) works with every framework above, except that a `rust` client on `ureq` reports `E0801` for `ws` endpoints (the blocking transport has no WebSocket client; use `reqwest`) and that a `java` server with `framework = "jdk"` reports `E0801` for `ws` endpoints (the JDK has no WebSocket server; use `spring`). A `node` server with `ws` endpoints adds a `ws` peer dependency to its `package.json` and needs `ws` installed by the application; a `spring` server with `ws` endpoints needs `spring-boot-starter-websocket`.
