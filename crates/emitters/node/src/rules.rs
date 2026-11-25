@@ -14,8 +14,7 @@ use veld_emit_typescript::tree::FileCtx;
 use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{method_key, prop_key, ts_str};
 use veld_ir::{
-    Endpoint, EndpointEnsure, EndpointFact, EndpointRequire, ExprType, Scalar,
-    Service, Type,
+    Endpoint, EndpointEnsure, EndpointFact, EndpointRequire, ExprType, Scalar, Service, Type,
 };
 
 /// Whether an endpoint has any statement.

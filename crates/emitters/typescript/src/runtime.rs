@@ -201,7 +201,10 @@ mod tests {
     fn machines_and_policies_add_their_regions_and_endpoint_rules_never_see_them() {
         let endpoint = source_with(true, true).unwrap();
         for word in ["checkAllows", "checkTransition", "refusal", "PolicyVerdict"] {
-            assert!(!endpoint.contains(word), "`{word}` leaked into endpoint rules");
+            assert!(
+                !endpoint.contains(word),
+                "`{word}` leaked into endpoint rules"
+            );
         }
         let machine = source_gated(Gates {
             transitions: true,

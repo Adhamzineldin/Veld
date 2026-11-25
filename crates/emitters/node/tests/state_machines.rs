@@ -117,3 +117,28 @@ fn state_machines_compile_strict_and_pass_every_example_es2020() {
 fn state_machines_compile_strict_and_pass_every_example_es2022() {
     examples_run("es2022", "machine-2022-");
 }
+
+#[test]
+fn a_variant_called_like_a_helper_is_refused_with_e0801() {
+    let source = std::fs::read_to_string(repo_root().join(CONTRACT)).unwrap();
+    let clashing = source.replace("pending, paid,", "pending, isFinal, paid,");
+    assert_ne!(source, clashing);
+    // The compiler accepts it (a variant may have any name); the generator refuses.
+    let ir = compile_text(clashing);
+    let services: Vec<_> = ir.services.iter().map(|s| s.id).collect();
+    let req = veld_codegen::GenRequest {
+        ir: &ir,
+        role: veld_codegen::Role::Client,
+        services,
+        consumes: vec![],
+        framework: None,
+    };
+    let err = veld_codegen::DynGenerator::generate_dyn(
+        &veld_emit_typescript::TypeScript,
+        &req,
+        &serde_json::Value::Null,
+    )
+    .unwrap_err();
+    assert!(err.iter().all(|d| d.code == "E0801"), "{err:?}");
+    assert!(err[0].message.contains("isFinal"), "{err:?}");
+}

@@ -153,10 +153,7 @@ pub fn write_can(
     }
     match Move::of(fc.tree.ir, ep) {
         Ok(Some(mv)) => match mv.current(&printer) {
-            Some(current) => checks.push(format!(
-                "{}.includes({current})",
-                mv.sources_array()
-            )),
+            Some(current) => checks.push(format!("{}.includes({current})", mv.sources_array())),
             None => notes.push("a transition path it cannot read"),
         },
         Ok(None) => {}
@@ -200,7 +197,11 @@ fn signature(fc: &mut FileCtx<'_, '_>, given: &Inputs<'_>) -> String {
 /// fixed order and an optional one may not be followed by a required one.
 fn typed(fc: &mut FileCtx<'_, '_>, ty: &Type, optional: bool) -> String {
     let t = ts_type(fc, ty);
-    if optional { format!("{t} | undefined") } else { t }
+    if optional {
+        format!("{t} | undefined")
+    } else {
+        t
+    }
 }
 
 fn docs(ep: &Endpoint, given: &Inputs<'_>) -> String {

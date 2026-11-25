@@ -169,14 +169,7 @@ pub fn write_members(
         let plan = Plan::new(fc.tree);
         let mut inner = CodeWriter::new();
         for allow in &site.ep.rules.allows {
-            allow_step(
-                &mut inner,
-                fc,
-                printer,
-                (site, sig, &plan),
-                allow,
-                diags,
-            );
+            allow_step(&mut inner, fc, printer, (site, sig, &plan), allow, diags);
         }
         w.open_with("allows:", " [");
         for line in inner.finish().lines() {
@@ -192,12 +185,7 @@ pub fn write_members(
 /// The target check of a transition, as the last `ensure` of the endpoint: the result holds the
 /// target state. The message is the reference evaluator's; the runtime completes it with the
 /// state the result held (``found `pending` ``).
-pub fn write_target(
-    w: &mut CodeWriter,
-    sig: &Sig,
-    result: &str,
-    (mv, state): (&Move<'_>, &str),
-) {
+pub fn write_target(w: &mut CodeWriter, sig: &Sig, result: &str, (mv, state): (&Move<'_>, &str)) {
     w.open_with("", "{");
     w.line(format!("id: {},", ts_str(&mv.transition.id)));
     w.line("name: 'transition',");

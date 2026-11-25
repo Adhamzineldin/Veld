@@ -23,6 +23,10 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
             .or_default()
             .push(id);
     }
+    let clashes = helper_clashes(tree);
+    if !clashes.is_empty() {
+        return Err(clashes);
+    }
     let mut modules = Vec::new();
     for (module, ids) in groups {
         let text = render_module(tree, &module, &ids);
@@ -30,6 +34,33 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
         modules.push(module);
     }
     Ok(modules)
+}
+
+/// A variant of a state machine that is called like one of its helpers would make two members of
+/// the enum's object with one name: refused (`E0801`) rather than generated wrongly.
+fn helper_clashes(tree: &Tree<'_>) -> Vec<GenDiagnostic> {
+    let mut out = Vec::new();
+    for &id in tree.decls() {
+        let d = tree.ir.decl(id);
+        let DeclKind::Enum(e) = &d.kind else {
+            continue;
+        };
+        for v in &e.variants {
+            let clash = e.is_state_machine() && matches!(v.name.as_str(), "nextStates" | "isFinal");
+            if clash {
+                let mut diag = GenDiagnostic::new(
+                    "E0801",
+                    format!(
+                        "enum `{}` is a state machine and has a variant `{}`, which is the name of a generated helper",
+                        d.name, v.name
+                    ),
+                );
+                diag.origin = Some(d.origin.clone());
+                out.push(diag);
+            }
+        }
+    }
+    out
 }
 
 fn render_module(tree: &Tree<'_>, module: &str, ids: &[DeclId]) -> String {
@@ -165,7 +196,9 @@ fn wire_of<'e>(e: &'e Enum, name: &'e str) -> &'e str {
 /// `nextStates` and `isFinal` of a state machine (`spec/rules.md` section 10.3): a client shows
 /// only the buttons the server would accept. The states are the enum's wire values.
 fn write_machine_helpers(w: &mut CodeWriter, name: &str, e: &Enum) {
-    w.line("/** The states that can follow `state`, in declaration order of the edges (`flow`). */");
+    w.line(
+        "/** The states that can follow `state`, in declaration order of the edges (`flow`). */",
+    );
     w.open(format!("nextStates(state: {name}): readonly {name}[]"));
     w.open("switch (state)");
     for v in &e.variants {

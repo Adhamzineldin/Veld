@@ -963,7 +963,11 @@ fn user_id() -> Expr {
 }
 
 fn user_roles() -> Expr {
-    path(Root::Principal, &[("roles", false)], list_of(Scalar::String))
+    path(
+        Root::Principal,
+        &[("roles", false)],
+        list_of(Scalar::String),
+    )
 }
 
 #[test]
@@ -1083,11 +1087,7 @@ fn locals_also_replace_a_fact_and_the_caller_of_can() {
         ..EndpointScope::default()
     };
     let printer = EndpointPrinter::new(&ir, NS, scope);
-    let who = path(
-        Root::Principal,
-        &[],
-        ExprType::Type(Type::Decl(DeclId(1))),
-    );
+    let who = path(Root::Principal, &[], ExprType::Type(Type::Decl(DeclId(1))));
     assert_eq!(printer.raw_path(&who).as_deref(), Some("user"));
     let fact = path(Root::Fact("booking".into()), &[("status", false)], status());
     assert_eq!(printer.raw_path(&fact).as_deref(), Some("booking.status"));
@@ -1098,4 +1098,19 @@ fn locals_also_replace_a_fact_and_the_caller_of_can() {
             .as_deref(),
         Some("booking.status")
     );
+}
+
+#[test]
+fn one_printer_serves_a_require_an_ensure_and_an_old_that_read_the_caller() {
+    let ir = ir();
+    let mut printer = EndpointPrinter::new(&ir, NS, with_principal());
+    // `ensure` expressions come first, then every other statement, with one printer.
+    printer.set_ensure(true);
+    let ensure = printer.print(&user_id());
+    printer.set_ensure(false);
+    let require = printer.print(&user_id());
+    assert_eq!(ensure, "r.toUuid(r.required(o[0].id))");
+    assert_eq!(require, "r.toUuid(r.required(f.user.id))");
+    let slots: Vec<&str> = printer.olds().iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(slots, ["f.user"]);
 }

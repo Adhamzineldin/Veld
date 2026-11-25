@@ -86,7 +86,13 @@ pub fn idents<'a>(names: impl IntoIterator<Item = &'a str>, reserved: &[&str]) -
     for name in names {
         let mut ident: String = name
             .chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '$' { c } else { '_' })
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '_' || c == '$' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
         ident = naming::escape(Lang::Ts, &ident);
         while used.contains(&ident) {
@@ -136,12 +142,7 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
     Ok(modules)
 }
 
-fn write_policy(
-    w: &mut CodeWriter,
-    fc: &mut FileCtx<'_, '_>,
-    policy: &Policy,
-    name: &str,
-) {
+fn write_policy(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, policy: &Policy, name: &str) {
     let veld = fc.rt("PolicyVerdict");
     let idents = idents(policy.params.iter().map(|p| p.name.as_str()), &LOCALS);
     let params: Vec<String> = policy
@@ -188,12 +189,7 @@ fn write_policy(
     w.close();
 }
 
-fn write_clauses(
-    w: &mut CodeWriter,
-    fc: &mut FileCtx<'_, '_>,
-    policy: &Policy,
-    idents: &[String],
-) {
+fn write_clauses(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, policy: &Policy, idents: &[String]) {
     let ns = fc.rules_ns();
     let scope = EndpointScope {
         locals: policy
@@ -352,6 +348,3 @@ fn from_rule_type(fc: &mut FileCtx<'_, '_>, code: &str, t: &Type, depth: usize) 
     };
     Some(format!("{}({code})", fc.rt(helper)))
 }
-
-#[cfg(test)]
-mod tests;

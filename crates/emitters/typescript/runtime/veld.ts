@@ -1134,8 +1134,8 @@ function reportEndpointRules(hooks: HandlerHooks, endpoints: readonly ServerEndp
   }
 }
 // #endif
-
 // #if guards
+
 /** The body of a `can<Endpoint>` function: an evaluation error answers `false`. */
 export function guarded(test: () => boolean): boolean {
   try {
@@ -1161,8 +1161,8 @@ function refusal(
   return failure(err, ep, ctx, std, hooks);
 }
 // #endif
-
 // #if policies
+
 // ---------------------------------------------------------------------------
 // Policies and the principal (spec/rules.md section 11)
 // ---------------------------------------------------------------------------
@@ -1248,8 +1248,8 @@ function checkAllows(
   return null;
 }
 // #endif
-
 // #if transitions
+
 // ---------------------------------------------------------------------------
 // State machines (spec/rules.md section 10)
 // ---------------------------------------------------------------------------
