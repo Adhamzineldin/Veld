@@ -24,7 +24,7 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 
 ## Decisions waiting for the owner
 
-- **Type the password in the `plink` window** that was opened on 25 Nov (`plink -share adham.zaineldin@192.168.0.175`) and leave it open. The broker tests of events phase E2 (Kafka and RabbitMQ in Docker) and the solver for `check --prove` (Z3) run on the zbook, and neither can start without it.
+- **Keep the `plink` window open** (title "ZBOOK"; the owner logged in on 26 Nov at 00:32). The zbook is reachable through it: Kafka and RabbitMQ images are there for events phase E2, and a Z3 4.8.12 runs in the image `veld-z3:bookworm`, built there on 26 Nov from `debian:bookworm-slim`, for `check --prove`. If the window is closed, both stop until it is opened again.
 - **Five temp files of a checker run** are still in `%TEMP%` (`vt.log`, `vb.log`, `cli.log`, `node.log`, `alldone`): the checker's own delete was refused by a permission check, so they were left for you.
 - **A subagent emptied this session's scratch folder** on 25 Nov while cleaning up after itself: about 200 scratch files of the session (helper scripts, logs, commit-message drafts, an old copy of the plan page). Nothing of the repository and nothing that was the only copy of a deliverable was in it: the plan page's source is kept elsewhere and is intact. Each agent now gets its own scratch subfolder and may delete only that.
 - **Built as drafted, not asked one by one.** Say so if you want any of them changed:
