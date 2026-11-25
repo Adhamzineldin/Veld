@@ -10,7 +10,10 @@
 //! old IR never uses falls back to the new IR.
 
 mod decls;
+mod endpoint_rules;
 mod endpoints;
+pub(crate) mod expr_text;
+mod rules;
 mod usage;
 
 use serde::Serialize;
@@ -21,6 +24,8 @@ use veld_ir::{Constraints, Ir, Type};
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
     Breaking,
+    /// A rule expression changed and no solver says whether it is tighter or looser.
+    PossiblyBreaking,
     NonBreaking,
 }
 
@@ -65,6 +70,21 @@ pub enum ChangeKind {
     AuthAdded,
     AuthChanged,
     AuthRemoved,
+    InvariantAdded,
+    InvariantRemoved,
+    InvariantChanged,
+    RuleMessageChanged,
+    RequireAdded,
+    RequireRemoved,
+    RequireChanged,
+    RequireErrorChanged,
+    EnsureAdded,
+    EnsureRemoved,
+    EnsureChanged,
+    FactChanged,
+    FlowRemoved,
+    FlowAdded,
+    TransitionChanged,
 }
 
 /// One difference between the old and the new contract.
@@ -97,6 +117,14 @@ impl Change {
         Change::new(kind, Severity::Breaking, subject, message)
     }
 
+    pub(crate) fn possibly_breaking(
+        kind: ChangeKind,
+        subject: &str,
+        message: impl Into<String>,
+    ) -> Change {
+        Change::new(kind, Severity::PossiblyBreaking, subject, message)
+    }
+
     pub(crate) fn non_breaking(
         kind: ChangeKind,
         subject: &str,
@@ -120,10 +148,23 @@ impl Change {
     }
 }
 
-/// True when any change is breaking.
+/// True when any change is breaking or possibly breaking. A rule whose expression changed fails
+/// a CI check even though the tool cannot prove the direction: passing a tightened rule silently
+/// is the worse error.
 #[must_use]
 pub fn has_breaking(changes: &[Change]) -> bool {
-    changes.iter().any(|c| c.severity == Severity::Breaking)
+    changes.iter().any(|c| c.severity.fails_check())
+}
+
+impl Severity {
+    /// Whether this severity fails `--strict` and blocks `generate`.
+    #[must_use]
+    pub fn fails_check(self) -> bool {
+        match self {
+            Severity::Breaking | Severity::PossiblyBreaking => true,
+            Severity::NonBreaking => false,
+        }
+    }
 }
 
 /// Both IRs, for comparisons that need to resolve declaration ids.
@@ -228,9 +269,12 @@ pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
     let usage = usage::Usage::of(old, new);
     let mut out = Vec::new();
     decls::diff_decls(&ctx, &usage, &mut out);
+    rules::diff_decl_rules(&ctx, &usage, &mut out);
     endpoints::diff_endpoints(&ctx, &mut out);
     out
 }
 
+#[cfg(test)]
+mod rule_tests;
 #[cfg(test)]
 mod tests;

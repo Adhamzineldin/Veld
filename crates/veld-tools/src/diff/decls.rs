@@ -9,7 +9,7 @@ use super::{Change, ChangeKind, Ctx, push_constraint_changes};
 
 /// Declarations by qualified name. Prelude declarations come and go with their
 /// use (reported as added or removed errors on the endpoints), so they are skipped.
-fn by_name(ir: &Ir) -> BTreeMap<&str, &Decl> {
+pub(super) fn by_name(ir: &Ir) -> BTreeMap<&str, &Decl> {
     ir.decls
         .iter()
         .filter(|d| ir.package(d.package).kind != PackageKind::Prelude)

@@ -103,6 +103,7 @@ fn diff_endpoint(ctx: &Ctx<'_>, o: &Endpoint, n: &Endpoint, out: &mut Vec<Change
     diff_success(ctx, s, o, n, out);
     diff_errors(ctx, s, o, n, out);
     diff_auth(s, o, n, out);
+    super::endpoint_rules::diff_endpoint_rules(ctx, s, o, n, out);
     diff_docs(
         s,
         &o.name,
