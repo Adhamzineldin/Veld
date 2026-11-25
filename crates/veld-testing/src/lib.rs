@@ -11,15 +11,22 @@
 
 pub mod b64;
 mod error;
+mod fuzz;
 mod judge;
 mod live;
 mod offline;
+mod outcome;
 mod request;
 
 pub use error::LiveError;
+pub use fuzz::{
+    EndpointReport, FuzzError, FuzzMismatch, FuzzOptions, FuzzReport, GenerateError, Generated,
+    fuzz, generate, render_example,
+};
 pub use judge::{Answer, judge};
 pub use live::Live;
 pub use offline::{ExampleRun, run_examples, run_offline, select};
+pub use outcome::{describe_answer, judge_outcome};
 pub use request::{
     DRY_RUN, FACTS, HttpRequest, NOW, PASSED, PRINCIPAL, PROBE_PATH, RESULT, build_request,
 };

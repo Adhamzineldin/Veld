@@ -28,19 +28,19 @@ impl Answer {
             .map(|(_, v)| v.as_str())
     }
 
-    fn json(&self) -> Option<Json> {
+    pub(crate) fn json(&self) -> Option<Json> {
         serde_json::from_str(&self.body).ok()
     }
 }
 
 /// An error answer: a problem document of section 5.5 of `spec/ir.md`.
-struct Problem {
-    ty: String,
-    status: Option<u64>,
-    data: Json,
+pub(crate) struct Problem {
+    pub ty: String,
+    pub status: Option<u64>,
+    pub data: Json,
 }
 
-fn problem_of(answer: &Answer) -> Option<Problem> {
+pub(crate) fn problem_of(answer: &Answer) -> Option<Problem> {
     let doc = answer.json()?;
     let ty = doc.get("type")?.as_str()?.to_owned();
     Some(Problem {
@@ -61,7 +61,7 @@ fn decl_by_sig<'a>(ir: &'a Ir, sig: &str) -> Option<&'a veld_ir::Decl> {
 }
 
 /// What the answer is, as far as the IR describes it.
-fn outcome_of(ir: &Ir, answer: &Answer) -> Option<Outcome> {
+pub(crate) fn outcome_of(ir: &Ir, answer: &Answer) -> Option<Outcome> {
     if (200..300).contains(&answer.status) {
         return Some(Outcome::Passes);
     }
