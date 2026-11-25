@@ -3,6 +3,7 @@ import Features from '../components/sections/Features';
 import HowItWorks from '../components/sections/HowItWorks';
 import CodeExample from '../components/sections/CodeExample';
 import GeneratedOutput from '../components/sections/GeneratedOutput';
+import RulesSection from '../components/sections/RulesSection';
 import SupportedStacks from '../components/sections/SupportedStacks';
 import Installation from '../components/sections/Installation';
 import Contributors from '../components/sections/Contributors';
@@ -16,6 +17,7 @@ export default function LandingPage() {
       <HowItWorks />
       <CodeExample />
       <GeneratedOutput />
+      <RulesSection />
       <SupportedStacks />
       <Installation />
       <Contributors />
