@@ -149,7 +149,7 @@ try {
   await page.getByText('20 files', { exact: true }).waitFor();
   await download.click({ trial: true });
   assert.deepEqual(errors, []);
-  console.log('Chromium: five preset ZIPs match the CLI and all five usage examples typecheck; ' + streaming.length + ' streaming targets, editor, diagnostics, format, clipboard, legacy links and offline generation passed.');
+  console.log('Chromium: six preset ZIPs match the CLI and all six usage examples typecheck; ' + streaming.length + ' streaming targets, editor, diagnostics, format, clipboard, legacy links and offline generation passed.');
 } finally {
   await browser?.close();
   await server.close();

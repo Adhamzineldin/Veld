@@ -67,8 +67,8 @@ export interface BookingsFactLoaders {
 }`;
 
 const client = `// bookings/client.ts (client)
-// Whether the server would let this call past the policies and the state check.
-// It never sends anything: use it to show or hide a button. The server decides.
+// Would the server let this call past its policies and state check?
+// It sends nothing: show or hide a button. The server decides.
 static canPayBooking(booking: Booking, user: User): boolean { /* generated */ }
 
 // bookings/models/bookings.ts: the same machine, to show only the moves that exist
