@@ -153,19 +153,12 @@ fn unknown_frameworks_and_options_are_reported() {
 /// (`spec/rules.md` section 8).
 #[test]
 fn rust_supports_invariants_and_still_refuses_the_other_rules_features() {
-    use veld_ir::Feature;
-    for role in Rust.roles() {
-        let caps = Rust.capabilities(*role);
-        assert!(caps.supports(Feature::RulesInvariants));
-        for f in [
-            Feature::RulesEndpoint,
-            Feature::RulesTransitions,
-            Feature::RulesPolicies,
-        ] {
-            assert!(!caps.supports(f), "rust declares `{}`", f.name());
-        }
-    }
-    // A contract whose only rule is an invariant generates, for both roles.
+    veld_emit_conformance::check_only_invariants_supported(&Rust).unwrap();
+}
+
+/// A crate with a rule carries no unresolved region marker.
+#[test]
+fn a_crate_with_a_rule_has_no_gate_markers() {
     let ir = veld_emit_conformance::ir_with_rule();
     for role in Rust.roles() {
         let req = GenRequest {
