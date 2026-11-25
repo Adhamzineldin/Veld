@@ -200,3 +200,89 @@ fn the_shared_vectors_pass_on_generated_java() {
     assert!(failures.is_empty(), "{} of {} cases failed:\n{}", failures.len(), cases.len(), failures.join("\n"));
     eprintln!("{} vector cases pass on Java", cases.len());
 }
+
+const BOOKINGS: &str = r#"model Booking {
+  start: datetime
+  end: datetime
+  rule endAfterStart: end > start
+    message "A booking must end after it starts"
+}
+
+service Bookings at "/bookings" {
+  post "/" create(body: Booking) -> 201 Booking
+  get "/bad" bad() -> Booking
+}
+"#;
+
+fn bookings_ir() -> Ir {
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "bk".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: "bk.veld".into(),
+                text: BOOKINGS.into(),
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    assert!(out.ir.is_some(), "bookings do not compile:\n{}", out.render());
+    out.ir.unwrap()
+}
+
+fn write_java(work: &std::path::Path, files: &veld_codegen::FileSet, sources: &mut Vec<PathBuf>) {
+    for (path, bytes) in files.iter() {
+        let target = work.join("src").join(path);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&target, bytes).unwrap();
+        if path.ends_with(".java") {
+            sources.push(target);
+        }
+    }
+}
+
+#[test]
+fn invariants_round_trip_over_http_on_the_jdk_server() {
+    if !require_javac("invariants_round_trip_over_http_on_the_jdk_server") {
+        return;
+    }
+    let ir = bookings_ir();
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = Vec::new();
+    for (role, base) in [(Role::Server, "gen.rs"), (Role::Client, "gen.rc")] {
+        let files = run(&ir, role, all_services(&ir), vec![], None, options(base, None));
+        write_java(work.path(), &files, &mut sources);
+    }
+    let java = repo_root().join("tests/toolchain/java");
+    sources.push(java.join("Check.java"));
+    sources.push(java.join("rules/RuleRoundtrip.java"));
+    let list: Vec<String> = sources
+        .iter()
+        .map(|p| p.display().to_string().replace('\\', "/"))
+        .collect();
+    std::fs::write(work.path().join("sources.args"), list.join("\n")).unwrap();
+    let out = Command::new("javac")
+        .args(["--release", "17", "-Xlint:all", "-Werror", "-encoding", "UTF-8"])
+        .args(["-d", "classes", "@sources.args"])
+        .current_dir(work.path())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "javac failed:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let out = Command::new("java")
+        .args(["-cp", "classes", "veldtest.RuleRoundtrip"])
+        .current_dir(work.path())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("OK"),
+        "round trip failed:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
