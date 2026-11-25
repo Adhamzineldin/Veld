@@ -186,45 +186,118 @@ fn fuzz_endpoint(
     };
     let pipeline =
         Pipeline::new(ir, service, &ep.name).map_err(|e| bug(GenerateError::Rejected(e)))?;
+    let cx = Cx {
+        ir,
+        live,
+        service,
+        ep,
+        pipeline,
+        seed: opts.seed,
+        boundaries: generated.boundaries,
+    };
     for (index, req) in generated.requests.iter().enumerate() {
-        let expected = pipeline
-            .run(req)
-            .map_err(|e| bug(GenerateError::Rejected(e)))?;
+        match cx.send(index, req).map_err(|e| e.in_endpoint(&name))? {
+            Sent::Unsupported(reason) => {
+                report.skipped = Some(reason);
+                return Ok(report);
+            }
+            Sent::Done { outcome, mismatch } => {
+                report.sent += 1;
+                report.boundaries += usize::from(index < generated.boundaries);
+                *report.outcomes.entry(outcome).or_default() += 1;
+                if mismatch.is_some() {
+                    report.mismatch = mismatch;
+                    break;
+                }
+            }
+        }
+    }
+    Ok(report)
+}
+
+/// What is needed to send the requests of one endpoint.
+struct Cx<'a> {
+    ir: &'a Ir,
+    live: &'a Live,
+    service: &'a Service,
+    ep: &'a Endpoint,
+    pipeline: Pipeline<'a>,
+    seed: u64,
+    boundaries: usize,
+}
+
+enum Sent {
+    /// The endpoint cannot be sent to (a stream, a value that cannot be bound).
+    Unsupported(String),
+    Done {
+        /// The label of the expected outcome.
+        outcome: String,
+        mismatch: Option<FuzzMismatch>,
+    },
+}
+
+/// A failure of one request, before it is known which endpoint it was for.
+enum Failed {
+    Live(LiveError),
+    Rejected(RunError),
+}
+
+impl Failed {
+    fn in_endpoint(self, name: &str) -> FuzzError {
+        match self {
+            Failed::Live(e) => FuzzError::Live(e),
+            Failed::Rejected(e) => FuzzError::Generator {
+                endpoint: name.to_owned(),
+                source: GenerateError::Rejected(e),
+            },
+        }
+    }
+}
+
+impl From<LiveError> for Failed {
+    fn from(e: LiveError) -> Failed {
+        Failed::Live(e)
+    }
+}
+
+impl Cx<'_> {
+    /// Works out the expected outcome of `req`, sends it in dry-run mode and judges the answer.
+    fn send(&self, index: usize, req: &Request) -> Result<Sent, Failed> {
+        let expected = self.pipeline.run(req).map_err(Failed::Rejected)?;
         let filled = FilledExample {
             name: format!("fuzz {index}"),
-            service: service.id,
-            endpoint: ep.name.clone(),
+            service: self.service.id,
+            endpoint: self.ep.name.clone(),
             request: req.clone(),
             clock: format_datetime(req.now),
             expected: Expected::Ok(None),
         };
-        let http = match build_request(ir, &filled, true) {
+        let http = match build_request(self.ir, &filled, true) {
             Ok(h) => h,
-            Err(LiveError::Unsupported { reason, .. }) => {
-                report.skipped = Some(reason);
-                return Ok(report);
-            }
+            Err(LiveError::Unsupported { reason, .. }) => return Ok(Sent::Unsupported(reason)),
             Err(e) => return Err(e.into()),
         };
-        let answer = live.send(&http)?;
-        report.sent += 1;
-        report.boundaries += usize::from(index < generated.boundaries);
-        *report.outcomes.entry(label(&expected)).or_default() += 1;
-        let differences = judge_outcome(ir, &expected, &answer);
-        if !differences.is_empty() {
-            let title = format!("fuzz seed {} {name} request {index}", opts.seed);
-            report.mismatch = Some(FuzzMismatch {
+        let answer = self.live.send(&http)?;
+        let differences = judge_outcome(self.ir, &expected, &answer);
+        let mismatch = (!differences.is_empty()).then(|| {
+            let title = format!(
+                "fuzz seed {} {}.{} request {index}",
+                self.seed, self.service.name, self.ep.name
+            );
+            FuzzMismatch {
                 index,
-                boundary: index < generated.boundaries,
+                boundary: index < self.boundaries,
                 expected: describe_actual(&expected, None),
-                actual: describe_answer(ir, &answer),
+                actual: describe_answer(self.ir, &answer),
                 differences,
-                example: render_example(ir, service, ep, req, &expected, &title),
-            });
-            break;
-        }
+                example: render_example(self.ir, self.service, self.ep, req, &expected, &title),
+            }
+        });
+        Ok(Sent::Done {
+            outcome: label(&expected),
+            mismatch,
+        })
     }
-    Ok(report)
 }
 
 // ---- generating requests ------------------------------------------------------------------
