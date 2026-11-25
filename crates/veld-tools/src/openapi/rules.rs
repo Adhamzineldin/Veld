@@ -100,9 +100,11 @@ fn transition(ir: &Ir, t: &EndpointTransition) -> Value {
     let field = format!("{}.{}", t.fact, steps.join("."));
     let wire = |name: &str| match &ir.decl(t.decl).kind {
         DeclKind::Enum(e) => variant_wire(e, name).to_string(),
-        DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Union(_) | DeclKind::Const(_) => {
-            name.to_string()
-        }
+        DeclKind::Model(_)
+        | DeclKind::Error(_)
+        | DeclKind::Union(_)
+        | DeclKind::Const(_)
+        | DeclKind::Event(_) => name.to_string(),
     };
     let from: Vec<String> = t.from.iter().map(|n| wire(n)).collect();
     json!({ "id": t.id, "field": field, "from": from, "to": wire(&t.to) })

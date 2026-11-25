@@ -216,7 +216,11 @@ fn model_schema(ir: &Ir, d: &Decl) -> Value {
         .collect();
     let parent = match &d.kind {
         DeclKind::Model(m) => m.parent,
-        DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => None,
+        DeclKind::Error(_)
+        | DeclKind::Enum(_)
+        | DeclKind::Union(_)
+        | DeclKind::Const(_)
+        | DeclKind::Event(_) => None,
     };
     let mut out = match parent {
         Some(p) => json!({ "allOf": [schema_ref(ir, p), object_of(ir, &own)] }),
@@ -270,7 +274,8 @@ pub(super) fn decl_schema(ir: &Ir, d: &Decl) -> Option<Value> {
                 "discriminator": { "propertyName": u.discriminator, "mapping": mapping },
             })
         }
-        DeclKind::Const(_) => return None,
+        // An event is not a component schema (`spec/events.md` section 13).
+        DeclKind::Const(_) | DeclKind::Event(_) => return None,
     };
     if let Some(m) = out.as_object_mut() {
         decorate(m, d);
