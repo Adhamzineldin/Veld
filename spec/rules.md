@@ -41,7 +41,7 @@ rule message implies not in has
 fact require else ensure old now result
 flow final emits transition
 policy permit forbid when allow principal
-example given expect
+example given absent returns ok
 ```
 
 Disambiguation, with at most three tokens of lookahead:
@@ -217,7 +217,8 @@ An invariant of model `M` is checked for **every value of type `M`**, wherever i
 - **All** invariants of a value are evaluated and all violations are reported (no short-circuit between rules).
 - **Order:** for a value of model type, its own rules in list order, then its fields in declaration order, recursively. List elements are visited by index. The order of map entries is not specified; tests compare violations as a set.
 - **Request position:** a rule that reads a `@readonly` field is skipped for a request body, because the field is absent there. It is checked on responses.
-- **Errors:** invariants of an `error` declaration are checked when the server encodes the error and when a client decodes it.
+- **Errors:** invariants of an `error` declaration are output checks. The server checks them when it encodes a declared error, under the output mode (§5.3): in `strict` the caller gets `500 Internal` and not the malformed error. A client never checks them when it decodes an error, so it can always read what a server sent.
+- **Streams:** every item a server sends on an SSE or WebSocket stream is an output: it is checked under the output mode before it is sent, and in `strict` a violating item is not sent and the stream ends the way it ends on any server failure. Every message a client sends on a WebSocket is an input: the client checks it locally like a request body, and the server rejects a violating message the way it rejects a message of the wrong shape, with the `violations` attached.
 
 ### 5.3 The server pipeline
 
@@ -228,11 +229,13 @@ The existing order of `spec/targets/typescript.md` §5 is kept; rule steps are a
 3. middleware
 4. bind and validate path, query, headers and body
 5. **invariants on the bound parameters** → `422 ValidationError` with `violations` (§7)
-6. *(Phase 2 and later: facts, policies, transition guard, `require`, in that order)*
+6. facts, policies, transition guard, `require`, in that order (§9, §10, §11)
 7. the handler
 8. **invariants on the result**, according to the output mode
-9. *(Phase 2 and later: `ensure`, target state)*
+9. `ensure` and the target state (§9, §10)
 10. serialise
+
+**Request validation turned off.** Rules need well-formed values. A target option that turns request validation off (`validate = false`) therefore turns steps 5 and 6 off too, and the client's local check with it. A server built that way says so once, when its handler is created, so nobody runs unchecked by accident. `veld generate` warns (`W0904`) when such a target reaches a declaration or endpoint with rules.
 
 **Output mode.** Checks on what callers send are always on. Checks on the server's own output (steps 8 and 9) have a mode, set per server instance:
 
@@ -242,7 +245,7 @@ The existing order of `spec/targets/typescript.md` §5 is kept; rule steps are a
 | `audit` | The response is sent unchanged; the violation goes to the hook. |
 | `off` | Output rules are not evaluated. |
 
-Every generated server has one `onRuleViolation(event)` hook. The event has the rule id, the operation signature, the position (`input` or `output`), the outcome (`rejected` or `audited`), the violation and the time the check took. The server logs the active output mode once at startup. Until the typed runtime config exists, the mode is an option of the existing hooks object of each target (`rules: { output }`).
+Every generated server has one `onRuleViolation(event)` hook. The event has the rule id, the operation signature, the position (`input` or `output`), the outcome (`rejected` or `audited`), the violation and the time the check took. A mode other than `strict` is reported once, when the handler is created. Until the typed runtime config exists, the mode is an option of the existing hooks object of each target (`rules: { output }`). In `audit` a result whose shape is invalid is passed through like any other result; its rules are not evaluated.
 
 ### 5.4 Clients
 
@@ -313,7 +316,7 @@ The same structure in every target, so the three implementations can be compared
 
 ## 9. Endpoint rules (Phase 2)
 
-An endpoint MAY end with a block:
+An endpoint MAY end with a block of statements:
 
 ```veld
 post "/" createBooking(body: NewBooking) -> 201 Booking | RoomFull | RoomClosed {
@@ -321,6 +324,7 @@ post "/" createBooking(body: NewBooking) -> 201 Booking | RoomFull | RoomClosed 
   require not room.closed              else RoomClosed
   require body.guests <= room.capacity else RoomFull { capacity: room.capacity }
   require notInPast: body.start >= now
+    message "A booking cannot start in the past"
   ensure  result.status == .pending
 }
 ```
@@ -329,19 +333,78 @@ post "/" createBooking(body: NewBooking) -> 201 Booking | RoomFull | RoomClosed 
 endpoint   = … [ "->" responses ] [ "{" { stmt } "}" ] ;
 stmt       = fact | allow | transition | require | ensure ;
 fact       = "fact" IDENT [ "?" ] ":" type [ "=" expr ] ;
-require    = "require" [ IDENT ":" ] expr [ "else" typeref [ "{" { IDENT ":" expr [","] } "}" ] ] ;
-ensure     = "ensure" [ IDENT ":" ] expr ;
+require    = { doc } "require" [ IDENT ":" ] expr [ "else" typeref [ payload ] ] [ "message" STRING ] ;
+payload    = "{" { IDENT ":" expr [","] } "}" ;
+ensure     = { doc } "ensure" [ IDENT ":" ] expr [ "message" STRING ] ;
 ```
 
-Decisions already taken:
+A statement starts with one of the five words; nothing else may appear in the block. `allow` is §11 and `transition` is §10. The formatter prints the statements in this order: facts, `allow`, `transition`, `require`, `ensure`, each group in source order.
 
-- **Scope:** the endpoint's parameters by name, facts, the principal (§11), `now`, and in `ensure` also `result`. A name declared twice is an error.
-- **Facts** are loaded by the developer's code through a generated loader interface, in declaration order, after step 5. A required fact that the loader does not find is `404 NotFound`. `fact x?: T` may be absent and needs a `has` guard. A fact's key may read earlier facts.
-- **`require`** lines run in source order and the first failure wins. With `else E`, `E` MUST be one of the endpoint's declared errors and the block gives its fields; without `else` the failure is a `422` with a violation. A `require` whose evaluation fails with an evaluation error fails the same way.
-- **`ensure`** is checked on the handler's result according to the output mode (§5.3). A fact read inside `ensure` MUST be written `old(fact.path)`. Every `old(...)` is evaluated and saved **before** the handler runs, so a handler that mutates a loaded object cannot change it.
-- **`now`** comes from a clock that is injected into the server. Tests set it.
-- **Ids:** a named statement has the id `veld:<package>/<Service>.<endpoint>.<name>@<hex16>`; an unnamed one uses `require` or `ensure` in place of the name.
-- **Stale clients:** every response of a service with rules carries `Veld-Rules: <hex16>`, a digest of the sorted ids of every rule a client checks locally. A client generated from other rules stops its local checks, lets the server decide, and calls `onContractMismatch`.
+### 9.1 Scope
+
+Inside the block these names are in scope:
+
+| Name | What it is |
+|---|---|
+| each parameter | by its name: path parameters, `@query` and `@header` parameters, `body`, `query`. A `stream` body is not in scope. |
+| each fact | the value the loader returned |
+| the principal | under the name of §11, when the package declares one and the endpoint's auth is not `none` |
+| `now` | a `datetime`: one reading of the server's clock, taken once per request before the facts load |
+| `result` | in `ensure` only: the success value. An endpoint with no success body, or with a `stream` success, has no `result` (`E0904`) |
+
+A fact named like a parameter, another fact, the principal, `now` or `result` is `E0920`. Statement names (`require notInPast: …`) are unique in an endpoint (`E0907`).
+
+### 9.2 Facts
+
+A fact is a value the rules need and only the application can load: the room being booked, the account being charged.
+
+- `fact name: T = key` declares it. `key` is an expression over the parameters and the facts declared **before** it; it may be left out for a fact that needs no key.
+- For each service the generator emits **one loader interface**, with one method per fact name. Two facts with the same name in one service MUST have the same type, the same key type and the same optionality (`E0922`), so one loader serves every endpoint.
+- Facts are loaded in declaration order, after step 5, whatever their position among the other statements.
+- A required fact that the loader does not find answers **`404 NotFound`** with `resource` set to the fact's name. An endpoint with a required fact implicitly declares `NotFound`, like the implicit `ValidationError`.
+- `fact x?: T = key` may be absent and needs a `has` guard where it is read. If its key reads an optional value that is absent, the loader is not called and the fact is absent. The key of a required fact must be known present (`E0903`).
+- Facts are trusted values of the application: they are not validated. They are handed to the handler together with the parameters, so the handler does not load them a second time.
+
+### 9.3 `require`
+
+- `require` lines are evaluated in source order after the facts, the policies and the transition guard. **The first failure ends the request.**
+- With `else E`, the answer is the error `E`, which MUST be one of the endpoint's declared errors (`E0921`). The payload block gives its fields: every field of `E` that is neither optional nor defaulted MUST be given, an unknown field is `E0922`, and a value of the wrong type is `E0902`. Payload expressions are evaluated only on failure, in the same scope.
+- Without `else`, the answer is `422 ValidationError` with one issue of code `rule`.
+- Either way the problem document carries one entry in `violations` (§7), so a caller and the hook can tell which rule fired. For an endpoint rule, `path` is `request` and `fields` are the names of the **parameters** the expression reads, in order of first use.
+- A `require` whose evaluation fails with an evaluation error (§3.7) has failed: the same answer, with `error` in the violation.
+- The default message is `violates rule <name>`, or `precondition failed` for an unnamed `require`.
+
+### 9.4 `ensure` and `old`
+
+- `ensure` is checked on the handler's **success** result, after the invariants of the result, according to the output mode (§5.3). It is not checked when the handler answers with a declared error.
+- It may read `result`, the parameters, `now` and `old(...)`.
+- **`old(e)`** is the value of `e` before the handler ran. `e` may read facts and parameters. Every `old(...)` is evaluated and saved at the end of step 6, so a handler that changes a loaded object in place cannot change it. A fact read in `ensure` MUST be inside `old(...)` (`E0923`); `old` anywhere else is `E0904`.
+- `ensure` is not allowed on an endpoint whose success is a `stream` (`E0924`).
+
+### 9.5 The pipeline, complete
+
+Steps 1 to 5 and 7, 8, 10 are those of §5.3. Step 6 is: read the clock; load the facts in order (`404`); policies (`403`, §11); transition guard (`409`, §10); `require` in order; save every `old(...)`. Step 9 is: `ensure` in source order; the target state of a transition (§10).
+
+The server's options gain the fact loaders (required by the type system when the service has facts) and a `clock`. The default clock is the system clock.
+
+### 9.6 Identity
+
+```
+rule_id    = "veld:" package "/" Service "." endpoint "." name "@" hex16( sha256( rule_bytes ) )
+rule_bytes = RFC 8785 JSON of { "d": "<qualified service name>.<endpoint>", "k": "require" | "ensure", "n": name, "e": ExprShape }
+```
+
+`name` is the statement's name, or `require` or `ensure` for an unnamed statement. The `else` error, its payload and the message are not part of the id. In `ExprShape` a parameter is `{ "param": name }` and a fact is `{ "fact": name }`.
+
+### 9.7 Stale clients
+
+A client checks invariants locally (§5.4). If the server's rules have been loosened since the client was generated, that check would reject requests the server now accepts. The **rules digest** prevents it.
+
+- `digest = hex16( sha256( RFC 8785 JSON array of the sorted, distinct rule ids of every invariant of every declaration the service's endpoints reach ) )`. It is computed by the compiler, stored on the service in the IR, and embedded in the generated client and server. A service that reaches no invariant has none.
+- The server sends `Veld-Rules: <digest>` on every response of that service, errors included.
+- The client remembers the digest of the last response. **It rejects locally only while that digest equals its own.** Before the first response, or when the header is missing, a request that fails the local check is sent anyway and the server decides.
+- When a response carries a different digest, the client stops its local checks for that service and calls `onContractMismatch` once per digest it had not seen, with the service name, its own digest and the server's.
+- A browser client can only read the header if the server's CORS configuration exposes it (`Access-Control-Expose-Headers: Veld-Rules`). Without it the client behaves as before the first response: it never rejects locally.
 
 ## 10. State machines (Phase 3)
 
@@ -388,16 +451,92 @@ allow      = "allow" IDENT "(" [ expr { "," expr } ] ")" ;
 - A policy permits when at least one `permit` is true **and** no `forbid` is true. `allow` in an endpoint block calls it; a denial is `403 Forbidden`. Several `allow` lines must all permit.
 - Policies are generated for clients too, so a UI can ask before it shows a button. The server always decides.
 
-## 12. Examples (Phase 2)
+## 12. Examples and `veld test` (Phase 2)
+
+An example states what one call does. It is documentation that runs.
 
 ```veld
 example "a full room is rejected" {
   given room = { capacity: 2, closed: false }
-  createBooking(body: { guests: 3 }) -> RoomFull { capacity: 2 }
+  createBooking(body: { roomId: room.id, guests: 3 }) -> RoomFull { capacity: 2 }
+}
+
+example "a missing room is not found" {
+  given room = absent
+  createBooking(body: { guests: 1 }) -> NotFound
+}
+
+example "the booking starts as pending" {
+  at "2026-03-01T09:00:00Z"
+  createBooking(body: { guests: 1, start: "2026-03-02T00:00:00Z", end: "2026-03-03T00:00:00Z" })
+    returns { status: .paid }
+    -> Internal
 }
 ```
 
-An example names facts, optionally a principal (`as { … }`) and a clock, calls one endpoint and states the outcome. `veld test` runs examples against the reference evaluator with the given facts, and with `--live` against a running server that was started in test mode. The full grammar is completed with Phase 2.
+```ebnf
+example  = { doc } "example" STRING "{" { given } [ "as" value ] [ "at" STRING ] call "}" ;
+given    = "given" IDENT "=" ( value | "absent" ) ;
+call     = [ IDENT "." ] IDENT "(" [ IDENT ":" value { "," IDENT ":" value } [","] ] ")"
+           [ "returns" value ] "->" outcome ;
+outcome  = "ok" [ value ] | typeref [ value ] ;
+value    = literal | "." IDENT | IDENT { "." IDENT }
+         | "{" [ IDENT ":" value { "," IDENT ":" value } [","] ] "}"
+         | "[" [ value { "," value } [","] ] "]" ;
+```
+
+The words `returns`, `ok` and `absent` are contextual, like every other word of this document.
+
+### 12.1 Meaning
+
+- An example is a top-level declaration. Its name is unique in its package (`E0950`).
+- The call names an endpoint of the package, as `endpoint` or as `Service.endpoint` when two services share the name. Unknown or ambiguous is `E0950`. Arguments are given by parameter name.
+- `given name = value` sets the fact `name` of that endpoint (`E0951` if the endpoint has no such fact). `given name = absent` makes the loader find nothing.
+- `as value` is the principal. `at "…"` is the clock; without it the clock is `2026-01-01T00:00:00Z`.
+- A value is checked against the type it is used at (`E0952`). `a.b` reads a field of a given.
+- `returns value` states what the handler returns. Without it, an offline run stops before the handler.
+- The **outcome** is `ok`, or the name of an error the endpoint can answer with, including the implicit ones (`ValidationError`, `NotFound`, `Forbidden`, `InvalidTransition`, `Internal`). A value after it is a **pattern**: every field it names must equal the actual one by the value semantics of §3.4, fields it does not name are ignored, objects match recursively, and lists match in length and order.
+
+### 12.2 Values an example leaves out
+
+Examples stay short because everything they leave out is filled in, the same way every time:
+
+| Type | Filled in with |
+|---|---|
+| a field with `@example` or a default | that value |
+| an optional field | nothing: it stays absent |
+| `string` | `a` repeated to the minimum length, at least once. A field with `@pattern` or `@format` and no `@example` cannot be filled in (`E0953`). |
+| `int`, `long`, `float`, `decimal` | `0`, moved inside `@min` and `@max` |
+| `bool` | `false` |
+| `uuid` | `00000000-0000-4000-8000-000000000001`, counting up through the example |
+| `datetime`, `date`, `time` | the example's clock |
+| `bytes`, list, map | empty, or `@length(min)` filled-in elements for a list |
+| `json` | `{}` |
+| enum | its first variant |
+| model | each of its fields by these rules |
+| union | its first arm |
+
+A filled-in value must be valid. If an invariant is violated and at least one field it reads was filled in, the example is wrong, not the server: `E0953` names the rule and the fields the example must give. An invariant whose fields the example wrote itself may be violated on purpose; that is how an example expects a `ValidationError`.
+
+### 12.3 `veld test`
+
+- **`veld test`** runs every example of the workspace (`-p member`, `--filter text`) against the reference evaluator (`crates/veld-rules`): it applies steps 5 and 6 of the pipeline with the given facts, principal and clock, and, when the example has `returns`, steps 8 and 9 in `strict` mode. No server, no network, milliseconds. It exits with 1 when an example fails and prints, per failure, the expected and the actual outcome with the violations.
+- **`veld test --live <base-url>`** sends each example as a real request to a running **test handler** (§12.4) and compares the status, the error and the patterns. An example without `returns` runs the application's real handler, so `ok { … }` checks what it actually answered.
+- **`--fuzz N`** (with `--live`; `--seed S` to repeat a run) builds `N` requests per endpoint from the types, constraints and rules, valid and invalid, works out the expected outcome with the reference evaluator, and fails on any difference in status, error or violation set. A failure prints the seed and the request in example syntax.
+- **Boundaries.** With `--live`, every comparison of a number, a time or a length with a constant in a rule also yields requests at the bound and one step on each side.
+
+### 12.4 The test handler
+
+A test must hand a server its facts, its principal and its clock. The production handler has no such door, and gets none.
+
+- A server target with the option `testing = true` generates a **second entry point** in a file of its own, for services that have endpoint rules. Nothing in the production entry point changes.
+- The test handler runs the same pipeline, but takes the facts from the request header `Veld-Test-Facts` (base64url of a JSON object: fact name to wire value, or `null` for absent), the principal from `Veld-Test-Principal`, the clock from `Veld-Test-Now` and, when present, the result from `Veld-Test-Result` in place of calling the application's handler. The application's loaders and auth hook are not called.
+- It answers `GET /__veld/test` with the rules digests of its services, so `veld test --live` can tell a test handler from a production server and refuse the latter.
+- It MUST NOT be mounted in production. The generated file says so at its top, and creating the handler reports it once.
+
+### 12.5 Examples are the vectors for endpoint rules
+
+`tests/rules/endpoints/` holds contracts whose examples cover §9, §10 and §11. Every server target runs them through `veld test --live` against its own generated test handler with stub application handlers, and the offline run covers the reference evaluator. A target passes when every example passes.
 
 ## 13. IR additions
 
@@ -441,7 +580,48 @@ Builtin = "len|matches|starts_with|ends_with|contains|days|hours|minutes|seconds
 - Both operands of a `bin` have the same type, except `in` (element and collection) and the datetime and duration combinations of §3.4. Every other difference was resolved by a `widen` node.
 - A `const` is already replaced by its `lit`. An `int` or `long` literal is stored in its final type.
 - `Feature` gains `rules_invariants`, `rules_endpoint`, `rules_transitions` and `rules_policies`.
-- **One-time change to existing output:** `ir_version` becomes `1.1`, and the prelude gains `error InvalidTransition 409 { field: string, from: string, to: string }`. Both change every stored IR (`veld.lock.ir.json` and IR snapshots) once. No generated file of an existing contract changes, because a target emits only the prelude declarations a service reaches.
+- **One-time change to existing output:** `ir_version` becomes `1.1`: every stored IR (`veld.lock.ir.json`, IR and OpenAPI snapshots) changes by its version line. The prelude gains `error InvalidTransition 409 { field: string, from: string, to: string }`, which changes nothing stored, because a declaration appears in an IR only when a contract reaches it.
+
+### 13.1 Endpoint rules and examples (Phase 2)
+
+Everything here is omitted from the JSON when empty.
+
+```jsonc
+Endpoint = { …, "rules": EndpointRules }
+EndpointRules = {
+  "facts":    [ { "name": "room", "type": Type, "optional": false, "key": Expr | null, "origin": Origin } ],   // load order
+  "requires": [ { "name": "notInPast" | null, "id": "veld:bookings/Bookings.createBooking.notInPast@…",
+                  "expr": Expr, "message": "…" | null, "reads": ["body"],                 // parameter names
+                  "else": { "decl": DeclId, "status": 409,
+                            "fields": [ { "name": "capacity", "wire": "capacity", "value": Expr } ] } | null,
+                  "docs": .., "origin": Origin } ],                                         // source order
+  "ensures":  [ { "name": null, "id": "…ensure@…", "expr": Expr, "message": null, "reads": [..],
+                  "docs": .., "origin": Origin } ]
+}
+
+Service = { …,
+  "facts": [ { "name": "room", "type": Type, "key": Type | null, "optional": false } ],     // one loader each, sorted by name
+  "rules_digest": "3fa9c2e1b7d04a55" }                                                     // §9.7
+
+Ir = { …, "examples": [ Example ] }
+Example = {
+  "name": "a full room is rejected", "package": PackageId, "service": ServiceId, "endpoint": "createBooking",
+  "givens": [ { "fact": "room", "value": ExampleValue | null } ],     // null is `absent`
+  "principal": ExampleValue | null, "now": "2026-03-01T09:00:00Z" | null,
+  "args": [ { "param": "body", "value": ExampleValue } ],
+  "returns": ExampleValue | null,
+  "outcome": { "ok": ExampleValue | null } | { "error": { "decl": DeclId, "pattern": ExampleValue | null } },
+  "docs": .., "origin": Origin
+}
+ExampleValue = { "json": <a wire value> }                          // a literal, already typed
+             | { "ref": { "given": "room", "path": ["id"] } }       // wire names
+             | { "object": [ { "name": "guests", "wire": "guests", "value": ExampleValue } ] }
+             | { "list": [ ExampleValue ] }
+```
+
+- An endpoint with a required fact has `NotFound` among its `errors`, like the implicit `ValidationError`.
+- `Feature::RulesEndpoint` is used when an endpoint of the requested services has `rules`. Examples need no feature: they are read by `veld test`, not by generators.
+- Filling in what an example leaves out (§12.2) happens when the example runs; the IR holds only what was written.
 
 ## 14. Diagnostics
 
@@ -460,8 +640,18 @@ Range `E09xx` (errors) and `W09xx` (warnings). Codes are never reused.
 | `W0901` | `==` or `!=` on `float` |
 | `W0902` | Nested comprehension over a list without `@length(max:)` |
 | `W0903` | A rule that reads no field |
+| `W0904` | A target with request validation turned off reaches rules, which it will not enforce (§5.3) |
+| `E0920` | A fact named like a parameter, another fact, the principal, `now` or `result` |
+| `E0921` | The error after `else` is not one of the endpoint's declared errors |
+| `E0922` | Two facts with one name but different types, key types or optionality in a service; an unknown or missing field in an `else` payload |
+| `E0923` | A fact read in `ensure` outside `old(...)` |
+| `E0924` | `ensure` on an endpoint whose success is a stream |
+| `E0950` | Duplicate example name; unknown or ambiguous endpoint in an example |
+| `E0951` | `given` names something that is not a fact of the called endpoint |
+| `E0952` | A value in an example does not fit the type it is used at |
+| `E0953` | A value the example leaves out cannot be filled in, or the filled-in value breaks an invariant |
 
-`E0920` to `E0929` are reserved for endpoint rules, `E0930` to `E0939` for state machines, `E0940` to `E0949` for policies and `E0950` to `E0959` for examples.
+`E0930` to `E0939` are reserved for state machines and `E0940` to `E0949` for policies.
 
 ## 15. Test vectors
 
