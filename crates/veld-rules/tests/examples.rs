@@ -24,7 +24,10 @@ fn contracts() -> Vec<PathBuf> {
 #[test]
 fn the_reference_evaluator_passes_every_example() {
     let files = contracts();
-    assert!(!files.is_empty(), "no contracts under tests/rules/endpoints");
+    assert!(
+        !files.is_empty(),
+        "no contracts under tests/rules/endpoints"
+    );
     let (mut examples_run, mut failures) = (0usize, Vec::new());
     for veld in files {
         let text = std::fs::read_to_string(&veld).unwrap();
