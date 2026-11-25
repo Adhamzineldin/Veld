@@ -19,7 +19,7 @@ use veld_ir::{
 
 use self::fill::Filler;
 pub use self::matching::{Difference, diff_pattern};
-pub use self::report::{ExampleReport, Mismatch, Verdict};
+pub use self::report::{ExampleReport, Mismatch, Verdict, describe_actual, describe_expected};
 use crate::check::{Options, check_type};
 use crate::error::InputError;
 use crate::helpers::instant::parse_datetime;
@@ -390,6 +390,6 @@ pub fn run_example(ir: &Ir, ex: &Example) -> Result<ExampleReport, ExampleError>
     Ok(ExampleReport {
         name: ex.name.clone(),
         verdict,
-        outcome,
+        outcome: Some(outcome),
     })
 }

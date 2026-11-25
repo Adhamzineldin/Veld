@@ -43,8 +43,9 @@ impl fmt::Display for Mismatch {
 pub struct ExampleReport {
     pub name: String,
     pub verdict: Verdict,
-    /// What the pipeline answered.
-    pub outcome: Outcome,
+    /// What the pipeline answered. A live run has none when the answer is not one the IR
+    /// describes (an unknown error type).
+    pub outcome: Option<Outcome>,
 }
 
 impl ExampleReport {
@@ -87,7 +88,9 @@ fn render_error(a: &ErrorAnswer) -> String {
     s
 }
 
-fn render_actual(outcome: &Outcome, result: Option<&Json>) -> String {
+/// The actual outcome as text, as a [`Mismatch`] prints it.
+#[must_use]
+pub fn describe_actual(outcome: &Outcome, result: Option<&Json>) -> String {
     match (outcome, result) {
         (Outcome::Passes, Some(r)) => format!("ok {r}"),
         (Outcome::Passes, None) => "ok".to_owned(),
@@ -95,7 +98,9 @@ fn render_actual(outcome: &Outcome, result: Option<&Json>) -> String {
     }
 }
 
-fn render_expected(ir: &Ir, expected: &Expected) -> String {
+/// The expected outcome as text, as a [`Mismatch`] prints it.
+#[must_use]
+pub fn describe_expected(ir: &Ir, expected: &Expected) -> String {
     let with = |head: &str, pattern: &Option<Json>| match pattern {
         Some(p) => format!("{head} {p}"),
         None => head.to_owned(),
@@ -122,8 +127,8 @@ pub(super) fn compare(
 ) -> Verdict {
     let fail = |differences: Vec<Difference>| {
         Verdict::Failed(Mismatch {
-            expected: render_expected(ir, expected),
-            actual: render_actual(outcome, result),
+            expected: describe_expected(ir, expected),
+            actual: describe_actual(outcome, result),
             differences,
         })
     };
