@@ -340,6 +340,8 @@ A change to an event is judged for both sides of the stream: consumers generated
 | An event is added to a channel | compatible (§8, step 2) |
 | An event is removed from a channel, the topic or the key changes | breaking |
 
+**Before phase E3** `veld diff` does not look inside an event. It reports an **addition** as compatible: a new event, a new channel, an event a channel newly carries, a new `publishes` line, a new subscription, and a new `on` line of a subscription that keeps its group and its other lines. Every other change to an event, a channel, a `publishes` line or a subscription is one entry, **possibly breaking**, which fails `veld diff --strict`: the tool does not know yet which side of the stream it hurts.
+
 `veld export asyncapi` writes an AsyncAPI 3.0 document: channels, their messages with the event schemas, and the operations of each service.
 
 ## 17. Diagnostics

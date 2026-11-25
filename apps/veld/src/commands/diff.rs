@@ -142,7 +142,7 @@ fn print_changes(ui: &Ui, changes: &[Change], label: &str) {
         ),
         (
             Severity::PossiblyBreaking,
-            "Possibly breaking changes (a rule changed; the direction is unknown)",
+            "Possibly breaking changes (whether they break a caller or a consumer is not known)",
             ui.out_styled(Style::Yellow, "?"),
         ),
         (

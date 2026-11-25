@@ -25,7 +25,9 @@ use veld_ir::{Constraints, Ir, Type};
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
     Breaking,
-    /// A rule expression changed and no solver says whether it is tighter or looser.
+    /// The tool cannot tell: a rule expression changed and no solver says whether it is tighter
+    /// or looser, or something other than an addition changed in an event, a channel or a
+    /// subscription (`spec/events.md` section 16 is not built yet).
     PossiblyBreaking,
     NonBreaking,
 }

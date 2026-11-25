@@ -1,8 +1,11 @@
 //! Events, channels, `publishes` and `subscribes` (`spec/events.md` sections 3 to 5).
 //!
-//! Event-aware classification is a later phase (`spec/events.md` section 16). Until then every
-//! change is one entry, classified "possibly breaking": the tool cannot yet tell which side of
-//! the stream a change hurts. Events are matched by qualified name, like other declarations.
+//! An addition is compatible: a new event, a new channel, an event a channel newly carries (a
+//! consumer ignores an event it does not know, `spec/events.md` section 8), a new `publishes`
+//! line, a new subscription and a new `on` line of a subscription. Every other change is one
+//! entry, classified "possibly breaking": the table of `spec/events.md` section 16, which judges
+//! a change for both sides of the stream, is a later phase. Events are matched by qualified name,
+//! like other declarations.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -64,7 +67,7 @@ fn diff_event_decls(ctx: &Ctx<'_>, out: &mut Vec<Change>) {
     }
     for (q, n) in &new {
         if !old.contains_key(q) {
-            out.push(Change::possibly_breaking(
+            out.push(Change::non_breaking(
                 ChangeKind::EventAdded,
                 q,
                 format!("event `{}` was added", n.name),
@@ -87,10 +90,47 @@ fn key_text(ir: &Ir, c: &Channel) -> String {
     })
 }
 
-fn channel_changed(ctx: &Ctx<'_>, o: &Channel, n: &Channel) -> bool {
-    o.topic != n.topic
-        || key_text(ctx.old, o) != key_text(ctx.new, n)
-        || carried(ctx.old, o) != carried(ctx.new, n)
+/// The names of the events `c` carries that are not in `known` (qualified names), sorted, in
+/// backticks and separated by commas.
+fn new_event_names(ir: &Ir, c: &Channel, known: &BTreeSet<String>) -> String {
+    let names: BTreeSet<&str> = c
+        .events
+        .iter()
+        .map(|d| ir.decl(*d))
+        .filter(|d| !known.contains(&d.qualified))
+        .map(|d| d.name.as_str())
+        .collect();
+    names
+        .into_iter()
+        .map(|n| format!("`{n}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// What changed in a channel that both contracts have. A channel that only carries more events
+/// is compatible; a changed topic or key, or an event it no longer carries, is not.
+fn channel_change(ctx: &Ctx<'_>, q: &str, o: &Channel, n: &Channel) -> Option<Change> {
+    let (was, is) = (carried(ctx.old, o), carried(ctx.new, n));
+    let same_address = o.topic == n.topic && key_text(ctx.old, o) == key_text(ctx.new, n);
+    if same_address && was == is {
+        return None;
+    }
+    if same_address && was.is_subset(&is) {
+        return Some(Change::non_breaking(
+            ChangeKind::ChannelChanged,
+            q,
+            format!(
+                "channel `{}` now also carries {}",
+                o.name,
+                new_event_names(ctx.new, n, &was)
+            ),
+        ));
+    }
+    Some(Change::possibly_breaking(
+        ChangeKind::ChannelChanged,
+        q,
+        format!("the topic, key or events of channel `{}` changed", o.name),
+    ))
 }
 
 fn diff_channels(ctx: &Ctx<'_>, out: &mut Vec<Change>) {
@@ -102,17 +142,12 @@ fn diff_channels(ctx: &Ctx<'_>, out: &mut Vec<Change>) {
                 q,
                 format!("channel `{}` was removed or renamed", o.name),
             )),
-            Some(n) if channel_changed(ctx, o, n) => out.push(Change::possibly_breaking(
-                ChangeKind::ChannelChanged,
-                q,
-                format!("the topic, key or events of channel `{}` changed", o.name),
-            )),
-            Some(_) => {}
+            Some(n) => out.extend(channel_change(ctx, q, o, n)),
         }
     }
     for (q, n) in &new {
         if !old.contains_key(q) {
-            out.push(Change::possibly_breaking(
+            out.push(Change::non_breaking(
                 ChangeKind::ChannelAdded,
                 q,
                 format!("channel `{}` was added", n.name),
@@ -140,22 +175,29 @@ fn publishes(ir: &Ir, s: Option<&Service>) -> BTreeSet<String> {
     .unwrap_or_default()
 }
 
-/// A subscription as comparable text: its group and its sorted `on` lines.
-fn sub_text(ir: &Ir, s: &Subscription) -> String {
-    let mut lines: Vec<String> = s
-        .handlers
-        .iter()
-        .map(|h| format!("{}->{}", ir.decl(h.event).qualified, h.name))
-        .collect();
-    lines.sort();
-    format!("{} {}", s.group, lines.join(","))
+/// A subscription in comparable form: its group and its `on` lines as `event->handler`.
+#[derive(PartialEq, Eq)]
+struct Sub {
+    group: String,
+    lines: BTreeSet<String>,
 }
 
-fn subscriptions(ir: &Ir, s: Option<&Service>) -> BTreeMap<String, String> {
+fn sub(ir: &Ir, s: &Subscription) -> Sub {
+    Sub {
+        group: s.group.clone(),
+        lines: s
+            .handlers
+            .iter()
+            .map(|h| format!("{}->{}", ir.decl(h.event).qualified, h.name))
+            .collect(),
+    }
+}
+
+fn subscriptions(ir: &Ir, s: Option<&Service>) -> BTreeMap<String, Sub> {
     s.map(|s| {
         s.subscriptions
             .iter()
-            .map(|x| (ir.channel(x.channel).qualified.clone(), sub_text(ir, x)))
+            .map(|x| (ir.channel(x.channel).qualified.clone(), sub(ir, x)))
             .collect()
     })
     .unwrap_or_default()
@@ -194,7 +236,7 @@ fn diff_publishes(
         ));
     }
     for c in new.difference(&old) {
-        out.push(Change::possibly_breaking(
+        out.push(Change::non_breaking(
             ChangeKind::PublishesAdded,
             subject,
             format!("service `{subject}` now publishes to `{c}`"),
@@ -202,31 +244,45 @@ fn diff_publishes(
     }
 }
 
+/// What changed in a subscription that both contracts have. One that keeps its group and its
+/// `on` lines and only gains lines is compatible; another group, or a line that went away or
+/// names another handler, is not.
+fn subscription_change(subject: &str, channel: &str, o: &Sub, n: &Sub) -> Option<Change> {
+    if o == n {
+        return None;
+    }
+    if o.group == n.group && o.lines.is_subset(&n.lines) {
+        return Some(Change::non_breaking(
+            ChangeKind::SubscriptionChanged,
+            subject,
+            format!("the subscription of `{subject}` to `{channel}` handles more events"),
+        ));
+    }
+    Some(Change::possibly_breaking(
+        ChangeKind::SubscriptionChanged,
+        subject,
+        format!("the group or handlers of the subscription of `{subject}` to `{channel}` changed"),
+    ))
+}
+
 fn diff_subscriptions(
     subject: &str,
-    maps: (BTreeMap<String, String>, BTreeMap<String, String>),
+    maps: (BTreeMap<String, Sub>, BTreeMap<String, Sub>),
     out: &mut Vec<Change>,
 ) {
     let (old, new) = maps;
-    for (c, text) in &old {
+    for (c, o) in &old {
         match new.get(c) {
             None => out.push(Change::possibly_breaking(
                 ChangeKind::SubscriptionRemoved,
                 subject,
                 format!("service `{subject}` no longer subscribes to `{c}`"),
             )),
-            Some(t) if t != text => out.push(Change::possibly_breaking(
-                ChangeKind::SubscriptionChanged,
-                subject,
-                format!(
-                    "the group or handlers of the subscription of `{subject}` to `{c}` changed"
-                ),
-            )),
-            Some(_) => {}
+            Some(n) => out.extend(subscription_change(subject, c, o, n)),
         }
     }
     for c in new.keys().filter(|c| !old.contains_key(*c)) {
-        out.push(Change::possibly_breaking(
+        out.push(Change::non_breaking(
             ChangeKind::SubscriptionAdded,
             subject,
             format!("service `{subject}` now subscribes to `{c}`"),
