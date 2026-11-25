@@ -4,6 +4,7 @@ export * as veld from './runtime/veld';
 export { VeldError, VeldHttpError, VeldTransportError, canonical, canonicalError, matchesError, same } from './runtime/veld';
 export * from './errors/bookings';
 export * from './models/bookings';
+export * from './policies/bookings';
 export * from './prelude';
 export * from './server/adapters';
 export * from './server/bookings';

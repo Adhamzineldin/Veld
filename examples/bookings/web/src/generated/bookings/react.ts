@@ -7,8 +7,8 @@ import { useMutation, useQuery } from '../runtime/react';
 import type { MutationOptions, MutationResult, QueryOptions, QueryResult } from '../runtime/react';
 export { formRules, useFormRules } from '../runtime/react';
 export type { FormModel, FormRules } from '../runtime/react';
-import type { BookingsClient, CreateBookingRequest, GetBookingRequest } from './client';
-import type { Booking } from './models/bookings';
+import type { BookingsClient, CancelBookingRequest, CheckInRequest, CreateBookingRequest, GetBookingRequest, ListBookingsRequest, ListRoomsRequest, PayBookingRequest, RefundBookingRequest } from './client';
+import type { Booking, Room } from './models/bookings';
 
 const bookingsContext = createContext<BookingsClient | null>(null);
 
@@ -33,14 +33,50 @@ export function useBookingsClient(client?: BookingsClient): BookingsClient {
   return found;
 }
 
-/** Books a room. The room is loaded once, before any rule runs. */
+/** The rooms of the hotel. Anyone may look. */
+export function useListRooms(req: ListRoomsRequest | null = {}, opts: QueryOptions<BookingsClient> = {}): QueryResult<Room[]> {
+  const client = useBookingsClient(opts.client);
+  return useQuery((r, init) => client.listRooms(r, init), req, opts.enabled);
+}
+
+/** Books a room for the caller. The room is loaded once, before any rule runs. */
 export function useCreateBooking(opts: MutationOptions<BookingsClient> = {}): MutationResult<CreateBookingRequest, Booking> {
   const client = useBookingsClient(opts.client);
   return useMutation((r, init) => client.createBooking(r, init));
+}
+
+/** The bookings the caller may manage: their own, or all of them for the staff. */
+export function useListBookings(req: ListBookingsRequest | null = {}, opts: QueryOptions<BookingsClient> = {}): QueryResult<Booking[]> {
+  const client = useBookingsClient(opts.client);
+  return useQuery((r, init) => client.listBookings(r, init), req, opts.enabled);
 }
 
 /** Returns one booking. */
 export function useGetBooking(req: GetBookingRequest | null, opts: QueryOptions<BookingsClient> = {}): QueryResult<Booking> {
   const client = useBookingsClient(opts.client);
   return useQuery((r, init) => client.getBooking(r, init), req, opts.enabled);
+}
+
+/** Pays for a booking. The amount must be the price. */
+export function usePayBooking(opts: MutationOptions<BookingsClient> = {}): MutationResult<PayBookingRequest, Booking> {
+  const client = useBookingsClient(opts.client);
+  return useMutation((r, init) => client.payBooking(r, init));
+}
+
+/** Cancels a booking that has not been used. */
+export function useCancelBooking(opts: MutationOptions<BookingsClient> = {}): MutationResult<CancelBookingRequest, Booking> {
+  const client = useBookingsClient(opts.client);
+  return useMutation((r, init) => client.cancelBooking(r, init));
+}
+
+/** The guest arrives. */
+export function useCheckIn(opts: MutationOptions<BookingsClient> = {}): MutationResult<CheckInRequest, Booking> {
+  const client = useBookingsClient(opts.client);
+  return useMutation((r, init) => client.checkIn(r, init));
+}
+
+/** Gives the money back. Only the staff may. */
+export function useRefundBooking(opts: MutationOptions<BookingsClient> = {}): MutationResult<RefundBookingRequest, Booking> {
+  const client = useBookingsClient(opts.client);
+  return useMutation((r, init) => client.refundBooking(r, init));
 }

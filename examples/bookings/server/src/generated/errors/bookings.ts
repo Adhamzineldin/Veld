@@ -2,6 +2,31 @@
 
 import * as veld from '../runtime/veld';
 
+/** The payment is not the price of the stay. */
+export interface AmountMismatchData {
+  expected: string;
+}
+
+/** The payment is not the price of the stay. */
+export class AmountMismatch extends veld.VeldError<AmountMismatchData> {
+  static readonly sig = 'veld:bookings/AmountMismatch@821d2ec4af6b28cc';
+  static readonly defaultStatus = 422;
+  static readonly schema: veld.Schema = {
+    k: 'object',
+    fields: [
+      { n: 'expected', t: { k: 'decimal' } },
+    ],
+  };
+
+  constructor(data: AmountMismatchData, init: veld.ErrorInit = {}) {
+    super(AmountMismatch.sig, 'AmountMismatch', data, init, 422);
+  }
+
+  static matches(e: unknown, service?: string): e is AmountMismatch {
+    return veld.matchesError(e, AmountMismatch.sig, service);
+  }
+}
+
 /** The room is closed for bookings. */
 export interface RoomClosedData {}
 

@@ -8,8 +8,8 @@
 // that once.
 //
 
-import { Room } from '../models/bookings';
-import { Internal, NotFound, ValidationError } from '../prelude';
+import { Booking, Room, User } from '../models/bookings';
+import { Internal, NotFound, Unauthorized, ValidationError } from '../prelude';
 import * as veld from '../runtime/veld';
 import type { BookingsFactLoaders, BookingsHooks, BookingsService } from './bookings';
 import { bookingsEndpoints } from './bookings';
@@ -49,12 +49,13 @@ async function testFact<T>(ctx: veld.RequestContext, name: string, schema: veld.
 /** The clock and the principal of the request, as the test sent them. */
 function prime(ctx: veld.RequestContext): Date {
   const principal = decode(header(ctx, 'veld-test-principal'));
-  if (principal !== undefined) ctx.principal = principal;
+  if (principal !== undefined) ctx.principal = veld.fromWire({ k: 'ref', to: () => User.schema }, principal);
   const now = header(ctx, 'veld-test-now');
   return now === undefined ? new Date() : new Date(now);
 }
 
 const loaders: BookingsFactLoaders = {
+  booking: (_key, ctx: veld.RequestContext) => testFact<Booking>(ctx, 'booking', { k: 'ref', to: () => Booking.schema }),
   room: (_key, ctx: veld.RequestContext) => testFact<Room>(ctx, 'room', { k: 'ref', to: () => Room.schema }),
 };
 
@@ -88,7 +89,7 @@ export function createBookingsTestHandler(impl: BookingsService, hooks: Bookings
   const log = (globalThis as { console?: { warn?: (message: string) => void } }).console;
   log?.warn?.('veld: the TEST HANDLER of Bookings is active: it takes facts, principal, clock and results from request headers. Never mount it in production.');
   const endpoints = bookingsEndpoints(impl, loaders).map(open);
-  const inner = veld.createHandler(endpoints, { unauthorized: 'about:blank', validation: ValidationError.sig, internal: Internal.sig, notFound: NotFound.sig }, { ...hooks, clock: (ctx: veld.RequestContext) => prime(ctx) });
+  const inner = veld.createHandler(endpoints, { unauthorized: Unauthorized.sig, validation: ValidationError.sig, internal: Internal.sig, notFound: NotFound.sig }, { ...hooks, clock: (ctx: veld.RequestContext) => prime(ctx) });
   const handler = async (req: Parameters<veld.VeldHandler>[0]) => {
     if (req.method.toUpperCase() === 'GET' && req.path === '/__veld/test') {
       const body = JSON.stringify({ veldTestHandler: 1, digests: { 'Bookings': 'cad7f1bdf1d52964' } });

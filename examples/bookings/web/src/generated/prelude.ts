@@ -17,6 +17,29 @@ export const ValidationIssue: veld.Companion<ValidationIssue> = veld.companion<V
   ],
 });
 
+export interface ForbiddenData {
+  message?: string;
+}
+
+export class Forbidden extends veld.VeldError<ForbiddenData> {
+  static readonly sig = 'veld:veld/Forbidden@95d9a9217df05eac';
+  static readonly defaultStatus = 403;
+  static readonly schema: veld.Schema = {
+    k: 'object',
+    fields: [
+      { n: 'message', t: { k: 'string' }, o: true },
+    ],
+  };
+
+  constructor(data: ForbiddenData, init: veld.ErrorInit = {}) {
+    super(Forbidden.sig, 'Forbidden', data, init, 403);
+  }
+
+  static matches(e: unknown, service?: string): e is Forbidden {
+    return veld.matchesError(e, Forbidden.sig, service);
+  }
+}
+
 export interface InternalData {
   message?: string;
 }
@@ -40,6 +63,33 @@ export class Internal extends veld.VeldError<InternalData> {
   }
 }
 
+export interface InvalidTransitionData {
+  field: string;
+  from: string;
+  to: string;
+}
+
+export class InvalidTransition extends veld.VeldError<InvalidTransitionData> {
+  static readonly sig = 'veld:veld/InvalidTransition@29c70142526d0750';
+  static readonly defaultStatus = 409;
+  static readonly schema: veld.Schema = {
+    k: 'object',
+    fields: [
+      { n: 'field', t: { k: 'string' } },
+      { n: 'from', t: { k: 'string' } },
+      { n: 'to', t: { k: 'string' } },
+    ],
+  };
+
+  constructor(data: InvalidTransitionData, init: veld.ErrorInit = {}) {
+    super(InvalidTransition.sig, 'InvalidTransition', data, init, 409);
+  }
+
+  static matches(e: unknown, service?: string): e is InvalidTransition {
+    return veld.matchesError(e, InvalidTransition.sig, service);
+  }
+}
+
 export interface NotFoundData {
   resource?: string;
 }
@@ -60,6 +110,29 @@ export class NotFound extends veld.VeldError<NotFoundData> {
 
   static matches(e: unknown, service?: string): e is NotFound {
     return veld.matchesError(e, NotFound.sig, service);
+  }
+}
+
+export interface UnauthorizedData {
+  message?: string;
+}
+
+export class Unauthorized extends veld.VeldError<UnauthorizedData> {
+  static readonly sig = 'veld:veld/Unauthorized@ee241dccf5c82e14';
+  static readonly defaultStatus = 401;
+  static readonly schema: veld.Schema = {
+    k: 'object',
+    fields: [
+      { n: 'message', t: { k: 'string' }, o: true },
+    ],
+  };
+
+  constructor(data: UnauthorizedData, init: veld.ErrorInit = {}) {
+    super(Unauthorized.sig, 'Unauthorized', data, init, 401);
+  }
+
+  static matches(e: unknown, service?: string): e is Unauthorized {
+    return veld.matchesError(e, Unauthorized.sig, service);
   }
 }
 

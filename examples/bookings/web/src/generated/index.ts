@@ -5,5 +5,6 @@ export { VeldError, VeldHttpError, VeldTransportError, canonical, canonicalError
 export * from './bookings/client';
 export * from './bookings/errors/bookings';
 export * from './bookings/models/bookings';
+export * from './bookings/policies/bookings';
 export * from './clients';
 export * from './prelude';

@@ -6,8 +6,11 @@ import * as veld from '../../runtime/veld';
 /** A booking the hotel has accepted. */
 export interface Booking extends NewBooking {
   readonly id: string;
+  /** The guest who made the booking. */
+  guestId: string;
   /** The price of the whole stay. */
   total: string;
+  status: Status;
 }
 
 function checkBookingRules(self: Booking, path: string, mode: veld.RuleMode, out: veld.Violation[]): void {
@@ -28,7 +31,7 @@ function checkBookingRules(self: Booking, path: string, mode: veld.RuleMode, out
 }
 
 export const Booking: veld.Companion<Booking> & { readonly ruleIds: { readonly endAfterStart: string; readonly atMost30Days: string } } = {
-  ...veld.companion<Booking>('veld:bookings/Booking@8e5f368ca7580c33', {
+  ...veld.companion<Booking>('veld:bookings/Booking@0e89caf046c02263', {
     k: 'object',
     fields: [
       { n: 'roomId', t: { k: 'uuid' } },
@@ -36,7 +39,9 @@ export const Booking: veld.Companion<Booking> & { readonly ruleIds: { readonly e
       { n: 'start', t: { k: 'datetime' } },
       { n: 'end', t: { k: 'datetime' } },
       { n: 'id', t: { k: 'uuid' }, ro: true },
+      { n: 'guestId', t: { k: 'uuid' } },
       { n: 'total', t: { k: 'decimal' } },
+      { n: 'status', t: { k: 'ref', to: () => Status.schema }, d: 'pending' },
     ],
     rules: checkBookingRules,
   }),
@@ -82,6 +87,18 @@ export const NewBooking: veld.Companion<NewBooking> & { readonly ruleIds: { read
   ruleIds: { endAfterStart: 'veld:bookings/NewBooking.endAfterStart@ada6a4114a0970df', atMost30Days: 'veld:bookings/NewBooking.atMost30Days@38d265b42b364d76' },
 };
 
+/** What a guest sends to pay. */
+export interface Payment {
+  amount: string;
+}
+
+export const Payment: veld.Companion<Payment> = veld.companion<Payment>('veld:bookings/Payment@1a76d5654086b976', {
+  k: 'object',
+  fields: [
+    { n: 'amount', t: { k: 'decimal' } },
+  ],
+});
+
 /** A room of the hotel. */
 export interface Room {
   id: string;
@@ -101,5 +118,51 @@ export const Room: veld.Companion<Room> = veld.companion<Room>('veld:bookings/Ro
     { n: 'capacity', t: { k: 'int', min: 1 } },
     { n: 'closed', t: { k: 'bool' } },
     { n: 'nightly', t: { k: 'decimal', min: 0 } },
+  ],
+});
+
+/** Where a booking is in its life. `flow` lists the legal moves. A `final` state has no way out. */
+export type Status = 'pending' | 'paid' | 'checkedIn' | 'cancelled' | 'refunded';
+
+export const Status = {
+  ...veld.companion<Status>('veld:bookings/Status@81deecc42aef5157', { k: 'enum', values: ['pending', 'paid', 'checkedIn', 'cancelled', 'refunded'] }),
+  pending: 'pending',
+  paid: 'paid',
+  checkedIn: 'checkedIn',
+  cancelled: 'cancelled',
+  refunded: 'refunded',
+  /** The states that can follow `state`, in declaration order of the edges (`flow`). */
+  nextStates(state: Status): readonly Status[] {
+    switch (state) {
+      case 'pending': return ['paid', 'cancelled'];
+      case 'paid': return ['checkedIn', 'cancelled', 'refunded'];
+      default: return [];
+    }
+  },
+  /** Whether `state` is final: no state follows it. */
+  isFinal(state: Status): boolean {
+    switch (state) {
+      case 'checkedIn': case 'cancelled': case 'refunded':
+        return true;
+      default: return false;
+    }
+  },
+} as const;
+
+/** Whoever calls the API. The auth hook turns a bearer token into one of these. */
+export interface User {
+  id: string;
+  name: string;
+  roles: string[];
+  suspended: boolean;
+}
+
+export const User: veld.Companion<User> = veld.companion<User>('veld:bookings/User@0fa7835f0691f48a', {
+  k: 'object',
+  fields: [
+    { n: 'id', t: { k: 'uuid' } },
+    { n: 'name', t: { k: 'string' } },
+    { n: 'roles', t: { k: 'list', of: { k: 'string' } } },
+    { n: 'suspended', t: { k: 'bool' } },
   ],
 });

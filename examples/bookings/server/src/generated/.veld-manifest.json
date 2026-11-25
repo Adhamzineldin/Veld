@@ -3,15 +3,16 @@
   "generator": "veld 2.0",
   "files": {
     "README.md": "7fc48f3cb2325f47535485e9e1bcf65fb22d6ec91bb3ebccc8f0300fc633a6a1",
-    "errors/bookings.ts": "397bd6064aed3ad17ac224585f4e27547093fdbdb022603e8c4150e05e9c9932",
-    "index.ts": "c746dda0f2b385bc4c84c8d8ff07d1d2dbbd7ab9fb1c740f88222f32b180396d",
-    "models/bookings.ts": "bea072bec132dc69eb01202914bc6d371259d85691efeff0acce6f8b7df9cb11",
+    "errors/bookings.ts": "135b5bbdd7fca65d068d30876df7e5b9ce2f1f861157d5e7cf4e14a60fbb259d",
+    "index.ts": "01644c52480283b9a735d327f2c56c62ecc91b3254fac94e44e699bc6bc6a160",
+    "models/bookings.ts": "4afd20f61a26fc20799239acae2da873363ec6386d62e15056d63437d6b7191b",
     "package.json": "d375af0877a84beb41edf41a0cac765837bc9efd431a1e89726ad69a5e0aa443",
-    "prelude.ts": "4f80c54907a04295cab1f98da4ed4a34b1e7a1945a5b7f004f8c7ab5b638b283",
+    "policies/bookings.ts": "e38ed658cb913348a484487bfb3982b4dfe54aaeef2a471e1fe25fd2b070e9a6",
+    "prelude.ts": "1e3b7e765c806947a31ffc99f43e910b1469b90f80bf2623e6f5ca44c91383ba",
     "runtime/rules.ts": "0eda47aa8dc0c3f4e8ab7e41f211971be0ab5fc93541af9132e27a9caad9ec61",
-    "runtime/veld.ts": "1046a17999d3808085c7d090d3195cedac5a828c9e3151d48884717e8d881c3a",
+    "runtime/veld.ts": "307bd1c1d19805889cf3dea55a912e7a1830309e175c418d45dfbcde64241858",
     "server/adapters.ts": "f182d6e48b7a1f38fb3b4de6b1669ed8a7b8fca01f7625d556b9fdf1712ca2f9",
-    "server/bookings-test-handler.ts": "8ef4833627883c31ca28836541cd93d2bd5ad11078d780e658a2477563e82517",
-    "server/bookings.ts": "3c74fb7486a18d7c4e1ab43f9bc90ab870be9c804e1080d56ac911bd78f78938"
+    "server/bookings-test-handler.ts": "66471a2230b2b02f139b998c64e6ff8530f7e12a3758a4e36f4f2d1d2027fdd7",
+    "server/bookings.ts": "20643d7de742bd942625e3b845ef62032cc195bc8b870bc2f581518fa1ae85ba"
   }
 }

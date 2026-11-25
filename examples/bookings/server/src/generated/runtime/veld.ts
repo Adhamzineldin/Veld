@@ -1019,6 +1019,7 @@ async function prepare(
   const now = BigInt((hooks.clock?.(ctx) ?? new Date()).getTime());
   const p = bound.value;
   const f: Record<string, unknown> = {};
+  if (rules.principal !== undefined) f[rules.principal] = ctx.principal;
   for (const step of rules.facts) {
     const key = step.key?.(p as never, f as never, now);
     // An optional fact whose key reads an absent value is absent: its loader is not called.
@@ -1030,7 +1031,12 @@ async function prepare(
       return problem(std.notFound ?? 'about:blank', 'NotFound', 404, ep.sig, { resource: step.name });
     }
   }
+  const denied = checkAllows(ep, rules, ctx, std, hooks, { p, f, now }, started);
+  if (denied !== null) return denied;
+  const illegal = checkTransition(ep, rules, ctx, std, hooks, { p, f }, started);
+  if (illegal !== null) return illegal;
   if (hooks.validateRequests === false) {
+    if (rules.principal !== undefined) delete f[rules.principal];
     Object.assign(p, f);
     return null;
   }
@@ -1045,6 +1051,7 @@ async function prepare(
     return rulesProblem(ep, [violation], std);
   }
   const old = rules.old.map((operand) => snapshot(operand(p as never, f as never, now)));
+  if (rules.principal !== undefined) delete f[rules.principal];
   Object.assign(p, f);
   return { now, old };
 }
@@ -1079,6 +1086,7 @@ function checkEnsures(
     const verdict = verdictOf(() => step.holds(params as never, full as never, prepared.now, prepared.old as never));
     if (verdict !== 'holds') violations.push(stepViolation(step, verdict));
   }
+  describeTarget(rules, violations, full);
   if (violations.length === 0) return null;
   ruleEvent(hooks, ep, 'output', mode === 'strict' ? 'rejected' : 'audited', violations, started);
   return mode === 'strict' ? problem(std.internal, 'Internal', 500, ep.sig, {}) : null;
@@ -1089,6 +1097,197 @@ function reportEndpointRules(hooks: HandlerHooks, endpoints: readonly ServerEndp
   if (hooks.validateRequests === false && endpoints.some((ep) => ep.rules !== undefined)) {
     log?.warn?.('veld: request validation is off: require, old and ensure are not evaluated');
   }
+}
+
+/** The body of a `can<Endpoint>` function: an evaluation error answers `false`. */
+export function guarded(test: () => boolean): boolean {
+  try {
+    return test();
+  } catch (e) {
+    if (evalErrorKind(e) === null) throw e;
+    return false;
+  }
+}
+
+/** The answer of a rule that stops the request before the handler: a declared error with one violation. */
+function refusal(
+  ep: ServerEndpoint,
+  ctx: RequestContext,
+  std: StdSigs,
+  hooks: HandlerHooks,
+  refused: { sig: string; data: unknown; violation: Violation; started: number },
+): VeldResponse {
+  const spec = ep.errors.find((e) => e.sig === refused.sig);
+  if (spec === undefined) throw new Error(`${ep.name}: the error of ${refused.violation.rule} is not declared`);
+  ruleEvent(hooks, ep, 'input', 'rejected', [refused.violation], refused.started);
+  const err = spec.create(refused.data, { status: spec.status, op: ep.sig, violations: [refused.violation] });
+  return failure(err, ep, ctx, std, hooks);
+}
+
+// ---------------------------------------------------------------------------
+// Policies and the principal (spec/rules.md section 11)
+// ---------------------------------------------------------------------------
+
+/**
+ * What a policy decided: whether it permits and, when it denies, the message of the first `forbid`
+ * that was true (none when that `forbid` has no message).
+ */
+export interface PolicyVerdict {
+  permitted: boolean;
+  message?: string;
+}
+
+/** A `permit` clause: a clause that cannot be evaluated does not permit. */
+export function permits(test: () => boolean): boolean {
+  try {
+    return test();
+  } catch (e) {
+    if (evalErrorKind(e) === null) throw e;
+    return false;
+  }
+}
+
+/** A `forbid` clause: a clause that cannot be evaluated forbids. */
+export function forbids(test: () => boolean): boolean {
+  try {
+    return test();
+  } catch (e) {
+    if (evalErrorKind(e) === null) throw e;
+    return true;
+  }
+}
+
+/** `allow Policy(args)`. */
+export interface AllowStep {
+  /** The policy's id. */
+  id: string;
+  /** The parameters the arguments read. */
+  fields: readonly string[];
+  /** Asks the policy, at the request's clock, with the arguments of this `allow`. */
+  verdict: (p: never, f: never, now: bigint) => PolicyVerdict;
+  /** The declared error that answers a denial: `Forbidden`. */
+  otherwise: { sig: string };
+}
+
+export interface EndpointRuleSet {
+  /**
+   * The name the caller has in the rules of this endpoint. The caller is put into the scope the
+   * rules read (`f`) under this name, and taken out again before the handler gets the facts.
+   */
+  principal?: string;
+  /** The `allow` lines, in source order. */
+  allows?: readonly AllowStep[];
+}
+
+/**
+ * Step 6, after the facts: every `allow` in source order. The first denial ends the request with
+ * `403 Forbidden`; its message is the one of the first `forbid` that was true, else `not permitted`.
+ * An argument that cannot be evaluated denies. This runs even when request validation is off.
+ */
+function checkAllows(
+  ep: ServerEndpoint,
+  rules: EndpointRuleSet,
+  ctx: RequestContext,
+  std: StdSigs,
+  hooks: HandlerHooks,
+  scope: { p: Record<string, unknown>; f: Record<string, unknown>; now: bigint },
+  started: number,
+): VeldResponse | null {
+  for (const step of rules.allows ?? []) {
+    let verdict: PolicyVerdict;
+    try {
+      verdict = step.verdict(scope.p as never, scope.f as never, scope.now);
+    } catch (e) {
+      if (evalErrorKind(e) === null) throw e;
+      verdict = { permitted: false };
+    }
+    if (verdict.permitted) continue;
+    const message = verdict.message ?? 'not permitted';
+    const violation: Violation = { rule: step.id, path: 'request', fields: [...step.fields], message };
+    return refusal(ep, ctx, std, hooks, { sig: step.otherwise.sig, data: { message }, violation, started });
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// State machines (spec/rules.md section 10)
+// ---------------------------------------------------------------------------
+
+/**
+ * The move an endpoint makes, handed to the handler as `transition`: the wire path of the state
+ * field inside the fact, the state it had when the server checked it, and the target.
+ *
+ * The check is a guard, not an atomic guarantee: a second request can change the row after it.
+ * Apply the change with a conditional write (compare-and-swap or a row lock, in your own
+ * transaction) that only matches while the row still holds `from`, and answer `InvalidTransition`
+ * yourself when that write finds another value.
+ */
+export interface Transition<S extends string = string> {
+  readonly field: string;
+  readonly from: S;
+  readonly to: S;
+}
+
+/** `transition fact.path: a, b -> c`. */
+export interface TransitionStep {
+  /** The transition's id. */
+  id: string;
+  /** The wire path of the state field inside the fact. */
+  field: string;
+  /** The wire values of the source states. */
+  sources: readonly string[];
+  /** The wire value of the target state. */
+  to: string;
+  /** The state the fact holds, as its wire value (a field the fact leaves out has its default). */
+  current: (f: never) => string;
+  /**
+   * The state the result holds, as text for the message of the target check. Present only when
+   * the endpoint's `ensures` end with that check (the result is the fact's own declaration).
+   */
+  found?: (result: never) => string;
+  /** The declared error that answers an illegal move: `InvalidTransition`. */
+  otherwise: { sig: string };
+}
+
+export interface EndpointRuleSet {
+  transition?: TransitionStep;
+}
+
+/**
+ * Step 6, after the policies and before the first `require`: `409 InvalidTransition` when the fact
+ * is not in one of the source states. A legal move is handed to the handler as `transition`. This
+ * runs even when request validation is off.
+ */
+function checkTransition(
+  ep: ServerEndpoint,
+  rules: EndpointRuleSet,
+  ctx: RequestContext,
+  std: StdSigs,
+  hooks: HandlerHooks,
+  scope: { p: Record<string, unknown>; f: Record<string, unknown> },
+  started: number,
+): VeldResponse | null {
+  const step = rules.transition;
+  if (step === undefined) return null;
+  const from = step.current(scope.f as never);
+  if (step.sources.includes(from)) {
+    scope.f['transition'] = { field: step.field, from, to: step.to };
+    return null;
+  }
+  const violation: Violation = { rule: step.id, path: 'request', fields: [], message: 'violates rule transition' };
+  const data = { field: step.field, from, to: step.to };
+  return refusal(ep, ctx, std, hooks, { sig: step.otherwise.sig, data, violation, started });
+}
+
+/**
+ * Step 9: the target check is the last `ensure` of the endpoint (it follows the output mode like
+ * the others). When it fails its message says which state the result held instead.
+ */
+function describeTarget(rules: EndpointRuleSet, violations: Violation[], result: unknown): void {
+  const step = rules.transition;
+  if (step === undefined || step.found === undefined) return;
+  const failed = violations.find((v) => v.rule === step.id && v.error === undefined);
+  if (failed !== undefined) failed.message = `${failed.message}, found \`${step.found(result as never)}\``;
 }
 
 // ---------------------------------------------------------------------------
