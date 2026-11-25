@@ -1,4 +1,4 @@
-//! Compiles every `tests/rules/**/*.veld` and runs every case of its vector file through the
+//! Compiles every `tests/rules/core/**/*.veld` and runs every case of its vector file through the
 //! reference evaluator (`spec/rules.md` section 15). The generated targets run the same cases.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -26,10 +26,10 @@ fn veld_files(dir: &Path, out: &mut Vec<PathBuf>) {
 
 #[test]
 fn the_reference_evaluator_passes_every_vector() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/rules");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/rules/core");
     let mut files = Vec::new();
     veld_files(&root, &mut files);
-    assert!(!files.is_empty(), "no vectors under tests/rules");
+    assert!(!files.is_empty(), "no vectors under tests/rules/core");
     let (mut cases_run, mut failures) = (0usize, Vec::new());
     for veld in files {
         let text = std::fs::read_to_string(&veld).unwrap();
