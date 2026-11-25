@@ -120,6 +120,25 @@ impl Tally {
 /// One line per example: `ok`, `skip` with the reason, or `FAIL` with what differs. A failure
 /// is a result, so `--quiet` does not hide it.
 fn print_result(ui: &Ui, name: &str, done: &Done) {
+    print_verdict(ui, name, done);
+    if let Done::Report(r) = done {
+        audited_lines(ui, r);
+    }
+}
+
+/// Under an example: the audited rules (`@rollout(audit)`) it would violate. They do not fail it
+/// (`spec/rules.md` section 17.1), so they are information, not a result.
+fn audited_lines(ui: &Ui, r: &ExampleReport) {
+    for v in &r.audited {
+        let text = format!(
+            "     audited {}: {} (at {})",
+            v.rule_name, v.message, v.path
+        );
+        ui.info(&ui.out_styled(Style::Dim, &text));
+    }
+}
+
+fn print_verdict(ui: &Ui, name: &str, done: &Done) {
     let verdict = match done {
         Done::Report(r) => &r.verdict,
         Done::Skipped(why) => return skip_line(ui, name, why),

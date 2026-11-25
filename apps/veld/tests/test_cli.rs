@@ -515,3 +515,46 @@ fn a_fuzz_run_without_a_seed_prints_the_one_it_chose() {
         .unwrap();
     assert!(stdout.contains(&format!("seed {seed}")), "{stdout}");
 }
+
+// --- `@rollout(audit)` (spec/rules.md section 17.1) ----------------------------------------
+
+fn rollout() -> String {
+    fs::read_to_string(repo_root().join("tests/rules/endpoints/rollout.veld.pending")).unwrap()
+}
+
+#[test]
+fn an_audited_rule_is_listed_under_the_example_that_violates_it_and_does_not_fail_it() {
+    let tmp = project_with(&rollout());
+    let out =
+        veld(tmp.path()).arg("test").assert().success().stdout(
+            predicate::str::contains("11 passed").and(predicate::str::contains("FAIL").not()),
+        );
+    let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
+    let lines: Vec<&str> = stdout.lines().collect();
+    let at = lines
+        .iter()
+        .position(|l| {
+            l.contains("an audited invariant that is violated does not reject the request")
+        })
+        .unwrap();
+    assert!(
+        lines[at + 1].contains("audited smallParty") && lines[at + 1].starts_with("     "),
+        "{stdout}"
+    );
+    // An example that violates no audited rule has nothing listed under it.
+    let at = lines
+        .iter()
+        .position(|l| l.contains("an audited rule that holds changes nothing"))
+        .unwrap();
+    assert!(!lines[at + 1].contains("audited"), "{stdout}");
+}
+
+#[test]
+fn the_output_of_a_contract_without_audited_rules_has_no_audited_lines() {
+    let tmp = project_with(&bookings());
+    veld(tmp.path())
+        .arg("test")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("audited").not());
+}
