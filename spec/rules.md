@@ -509,7 +509,8 @@ Examples stay short because everything they leave out is filled in, the same way
 | `int`, `long`, `float`, `decimal` | `0`, moved inside `@min` and `@max` |
 | `bool` | `false` |
 | `uuid` | `00000000-0000-4000-8000-000000000001`, counting up through the example |
-| `datetime`, `date` | the example's clock, plus one hour (one day for a `date`) for each `datetime` or `date` already filled in during the example. So `start` and `end`, declared in that order and both left out, are an hour apart and `end > start` holds. |
+| `datetime` | the example's clock, plus one millisecond for each `datetime` already filled in during the example: the smallest step a rule can see. So `start` and `end`, declared in that order and both left out, are a millisecond apart and `end > start` holds. |
+| `date` | the date of the example's clock, plus one day for each `date` already filled in |
 | `time` | the time of the example's clock |
 | `bytes`, list, map | empty, or `@length(min)` filled-in elements for a list |
 | `json` | `{}` |
@@ -517,7 +518,7 @@ Examples stay short because everything they leave out is filled in, the same way
 | model | each of its fields by these rules |
 | union | its first arm |
 
-Values are filled in in this order: the givens as written, the principal, the arguments, the `returns` value; inside a model, its fields in declaration order. The uuid and time counters run through the whole example.
+Values are filled in in this order: the givens as written, the principal, the arguments, the `returns` value; inside a model, its fields in declaration order. The uuid, datetime and date counters run through the whole example; values the example wrote do not advance them.
 
 A filled-in value must be valid. If an invariant is violated and at least one field it reads was filled in, the example is wrong, not the server: `E0953` names the rule and the fields the example must give. An invariant whose fields the example wrote itself may be violated on purpose; that is how an example expects a `ValidationError`.
 
