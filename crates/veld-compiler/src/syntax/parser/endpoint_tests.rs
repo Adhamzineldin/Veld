@@ -51,7 +51,9 @@ fn parses_every_statement_form() {
         .collect();
     assert_eq!(
         kinds,
-        ["fact", "fact", "require", "require", "require", "ensure", "ensure"]
+        [
+            "fact", "fact", "require", "require", "require", "ensure", "ensure"
+        ]
     );
     let Stmt::Fact(f) = &block.stmts[0] else {
         panic!()
@@ -65,7 +67,10 @@ fn parses_every_statement_form() {
         panic!()
     };
     assert!(r.name.is_none() && r.docs.len() == 1);
-    assert_eq!(r.otherwise.as_ref().map(|o| o.payload.is_none()), Some(true));
+    assert_eq!(
+        r.otherwise.as_ref().map(|o| o.payload.is_none()),
+        Some(true)
+    );
     let Stmt::Require(r) = &block.stmts[3] else {
         panic!()
     };
@@ -191,7 +196,10 @@ fn parses_examples() {
     assert!(e.givens[0].value.is_some() && e.givens[1].value.is_none());
     assert!(e.principal.is_some() && e.at.is_some());
     let call = &e.call;
-    assert_eq!(call.service.as_ref().map(|s| s.name.as_str()), Some("Bookings"));
+    assert_eq!(
+        call.service.as_ref().map(|s| s.name.as_str()),
+        Some("Bookings")
+    );
     assert_eq!(call.endpoint.name, "createBooking");
     assert!(call.returns.is_some());
     assert!(call.outcome.error.is_some() && call.outcome.value.is_some());
@@ -209,7 +217,10 @@ fn a_negative_literal_after_a_word_is_a_literal() {
     let r = p("example \"x\" { f(a: 1) returns -5 -> ok -2.5 }");
     assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
     let c = &r.file.examples[0].call;
-    assert!(matches!(c.returns.as_ref().map(|v| &v.kind), Some(ValueKind::Int(-5))));
+    assert!(matches!(
+        c.returns.as_ref().map(|v| &v.kind),
+        Some(ValueKind::Int(-5))
+    ));
     assert!(matches!(
         c.outcome.value.as_ref().map(|v| &v.kind),
         Some(ValueKind::Float { .. })

@@ -2,14 +2,15 @@
 
 use veld_compiler::Comment;
 use veld_compiler::syntax::ast::{
-    Annotation, Decl, DeclKind, Doc, Endpoint, EnumDecl, Field, File, HttpMethod, Param, RespItem,
-    Rule, ServiceDecl, UnionDecl, Use, Variant,
+    Annotation, Decl, DeclKind, Doc, Endpoint, EnumDecl, Example, Field, File, HttpMethod, Param,
+    RespItem, Rule, ServiceDecl, Stmt, UnionDecl, Use, Variant,
 };
 use veld_compiler::syntax::lexer::CommentKind;
 
 use super::WIDTH;
 use super::expr::rule_lines;
 use super::layout::{self, Attached, Layout, Lead, ROOT};
+use super::stmt;
 use super::text::{annotation, literal, quote, type_expr};
 
 pub(super) fn print_file(file: &File, lay: &Layout) -> String {
@@ -98,9 +99,23 @@ impl Printer<'_> {
             self.out.push_str(&use_line(u));
             self.end_line(u.span.start, 0);
         }
-        for d in &f.decls {
+        let mut items: Vec<(u32, Item<'_>)> = f
+            .decls
+            .iter()
+            .map(|d| (layout::decl_key(d), Item::Decl(d)))
+            .chain(
+                f.examples
+                    .iter()
+                    .map(|x| (layout::example_key(x), Item::Example(x))),
+            )
+            .collect();
+        items.sort_by_key(|(k, _)| *k);
+        for (_, item) in items {
             self.blank_line();
-            self.decl(d);
+            match item {
+                Item::Decl(d) => self.decl(d),
+                Item::Example(x) => self.example(x),
+            }
         }
         let tail = self.att(ROOT).map(|a| a.tail.clone()).unwrap_or_default();
         if !tail.is_empty() {
@@ -120,6 +135,7 @@ impl Printer<'_> {
             .iter()
             .map(|u| u.span.start)
             .chain(f.decls.iter().map(layout::decl_key))
+            .chain(f.examples.iter().map(layout::example_key))
             .min();
         let Some(key) = first else { return };
         let list = self.att(key).map(|a| a.leading.clone()).unwrap_or_default();
@@ -399,6 +415,7 @@ impl Printer<'_> {
             .zip(&rendered)
             .map(|(e, r)| {
                 !e.docs.is_empty()
+                    || e.block.is_some()
                     || !e.annotations.is_empty()
                     || r.len() > 1
                     || self
@@ -421,9 +438,67 @@ impl Printer<'_> {
         self.leading(key, ind);
         self.docs(&e.docs, ind);
         self.annotations_own_lines(&e.annotations, ind);
-        self.out.push_str(&lines.join("\n"));
-        self.end_line(key, ind);
+        let Some(block) = &e.block else {
+            self.out.push_str(&lines.join("\n"));
+            self.end_line(key, ind);
+            return;
+        };
+        let joined = lines.join("\n");
+        let head = joined.strip_prefix(&pad(ind)).unwrap_or(&joined);
+        self.block(key, head, ind, block.stmts.is_empty(), |p| {
+            p.statements(&block.stmts, ind + 2);
+        });
     }
+
+    /// Facts, then `require`, then `ensure`, each group in source order (`spec/rules.md` 9).
+    fn statements(&mut self, stmts: &[Stmt], ind: usize) {
+        for group in 0..3 {
+            for s in stmts.iter().filter(|s| stmt::stmt_group(s) == group) {
+                let key = s.start();
+                self.leading(key, ind);
+                self.docs(stmt::stmt_docs(s), ind);
+                self.out.push_str(&stmt::stmt_lines(s, ind).join("\n"));
+                self.end_line(key, ind);
+            }
+        }
+    }
+
+    fn example(&mut self, x: &Example) {
+        let key = layout::example_key(x);
+        self.leading(key, 0);
+        self.docs(&x.docs, 0);
+        self.block(key, &stmt::example_head(x), 0, false, |p| {
+            for g in &x.givens {
+                p.example_line(g.span.start, &stmt::given_line(g));
+            }
+            if let Some(a) = &x.principal {
+                p.example_line(a.span.start, &format!("as {}", stmt::value_text(&a.value)));
+            }
+            if let Some(a) = &x.at {
+                p.example_line(a.span.start, &format!("at {}", quote(&a.time.value)));
+            }
+            let key = x.call.span.start;
+            p.leading(key, 2);
+            p.out.push_str(&stmt::call_lines(&x.call, 2).join("\n"));
+            p.end_line(key, 2);
+        });
+    }
+
+    fn example_line(&mut self, key: u32, text: &str) {
+        self.leading(key, 2);
+        self.line_no_newline(2, text);
+        self.end_line(key, 2);
+    }
+
+    fn line_no_newline(&mut self, ind: usize, text: &str) {
+        self.out.push_str(&pad(ind));
+        self.out.push_str(text);
+    }
+}
+
+enum Item<'a> {
+    Decl(&'a Decl),
+    Example(&'a Example),
 }
 
 fn field_line(f: &Field) -> String {

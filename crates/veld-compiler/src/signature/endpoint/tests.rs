@@ -44,12 +44,17 @@ fn the_id_has_the_documented_form() {
         id.starts_with("veld:app/Bookings.create.guestsPositive@"),
         "{id}"
     );
-    assert_eq!(id.len(), "veld:app/Bookings.create.guestsPositive@".len() + 16);
+    assert_eq!(
+        id.len(),
+        "veld:app/Bookings.create.guestsPositive@".len() + 16
+    );
 }
 
 #[test]
 fn an_unnamed_statement_uses_its_kind_as_the_name() {
-    assert!(requires("    require body.guests > 0")[0].starts_with("veld:app/Bookings.create.require@"));
+    assert!(
+        requires("    require body.guests > 0")[0].starts_with("veld:app/Bookings.create.require@")
+    );
     assert!(ensures("    ensure result.n > 0")[0].starts_with("veld:app/Bookings.create.ensure@"));
 }
 
@@ -85,7 +90,9 @@ fn a_fact_appears_by_name_in_the_shape() {
 
 #[test]
 fn the_message_and_the_else_part_do_not_change_the_id() {
-    let plain = requires(&format!("{FACT}    require r: body.guests <= room.capacity"));
+    let plain = requires(&format!(
+        "{FACT}    require r: body.guests <= room.capacity"
+    ));
     let described = requires(&format!(
         "{FACT}    require r: body.guests <= room.capacity message \"too many\""
     ));

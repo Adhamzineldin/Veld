@@ -1,0 +1,164 @@
+//! Text of endpoint statements and examples (`spec/rules.md` sections 9 and 12).
+//!
+//! A statement is one line, with its `message` on a continuation line like a rule. An example
+//! call is one line; with `returns` the call, `returns` and the outcome take a line each.
+
+use veld_compiler::syntax::ast::{
+    Else, Example, ExampleCall, Given, Outcome, Stmt, Value, ValueKind,
+};
+
+use super::expr::expr_text;
+use super::text::{quote, type_expr};
+
+fn pad(n: usize) -> String {
+    " ".repeat(n)
+}
+
+fn payload_text(o: &Else) -> String {
+    let mut s = type_expr(&o.error);
+    if let Some(fields) = &o.payload {
+        if fields.is_empty() {
+            s.push_str(" {}");
+        } else {
+            let items: Vec<String> = fields
+                .iter()
+                .map(|f| format!("{}: {}", f.name.name, expr_text(&f.value)))
+                .collect();
+            s.push_str(&format!(" {{ {} }}", items.join(", ")));
+        }
+    }
+    s
+}
+
+/// The lines of a statement, indented by `ind`.
+pub(super) fn stmt_lines(s: &Stmt, ind: usize) -> Vec<String> {
+    let p = pad(ind);
+    match s {
+        Stmt::Fact(f) => {
+            let mut line = format!(
+                "{p}fact {}{}: {}",
+                f.name.name,
+                if f.optional { "?" } else { "" },
+                type_expr(&f.ty)
+            );
+            if let Some(k) = &f.key {
+                line.push_str(&format!(" = {}", expr_text(k)));
+            }
+            vec![line]
+        }
+        Stmt::Require(r) => {
+            let name = r
+                .name
+                .as_ref()
+                .map_or(String::new(), |n| format!("{}: ", n.name));
+            let mut line = format!("{p}require {name}{}", expr_text(&r.expr));
+            if let Some(o) = &r.otherwise {
+                line.push_str(&format!(" else {}", payload_text(o)));
+            }
+            with_message(line, r.message.as_ref().map(|m| m.value.as_str()), &p)
+        }
+        Stmt::Ensure(e) => {
+            let name = e
+                .name
+                .as_ref()
+                .map_or(String::new(), |n| format!("{}: ", n.name));
+            let line = format!("{p}ensure {name}{}", expr_text(&e.expr));
+            with_message(line, e.message.as_ref().map(|m| m.value.as_str()), &p)
+        }
+    }
+}
+
+fn with_message(line: String, message: Option<&str>, p: &str) -> Vec<String> {
+    let mut lines = vec![line];
+    if let Some(m) = message {
+        lines.push(format!("{p}  message {}", quote(m)));
+    }
+    lines
+}
+
+/// The printing group of a statement: facts, then `require`, then `ensure` (`spec/rules.md` 9).
+pub(super) fn stmt_group(s: &Stmt) -> u8 {
+    match s {
+        Stmt::Fact(_) => 0,
+        Stmt::Require(_) => 1,
+        Stmt::Ensure(_) => 2,
+    }
+}
+
+pub(super) fn stmt_docs(s: &Stmt) -> &[veld_compiler::syntax::ast::Doc] {
+    match s {
+        Stmt::Fact(_) => &[],
+        Stmt::Require(r) => &r.docs,
+        Stmt::Ensure(e) => &e.docs,
+    }
+}
+
+pub(super) fn value_text(v: &Value) -> String {
+    match &v.kind {
+        ValueKind::Bool(b) => b.to_string(),
+        ValueKind::Int(n) => n.to_string(),
+        ValueKind::Float { text, .. } => text.clone(),
+        ValueKind::Str(s) => quote(s),
+        ValueKind::EnumLit(id) => format!(".{}", id.name),
+        ValueKind::Path(p) => p
+            .iter()
+            .map(|i| i.name.as_str())
+            .collect::<Vec<_>>()
+            .join("."),
+        ValueKind::Object(fields) if fields.is_empty() => "{}".to_string(),
+        ValueKind::Object(fields) => {
+            let items: Vec<String> = fields
+                .iter()
+                .map(|f| format!("{}: {}", f.name.name, value_text(&f.value)))
+                .collect();
+            format!("{{ {} }}", items.join(", "))
+        }
+        ValueKind::List(items) => {
+            let items: Vec<String> = items.iter().map(value_text).collect();
+            format!("[{}]", items.join(", "))
+        }
+    }
+}
+
+pub(super) fn given_line(g: &Given) -> String {
+    let value = g.value.as_ref().map_or("absent".to_string(), value_text);
+    format!("given {} = {value}", g.name.name)
+}
+
+fn outcome_text(o: &Outcome) -> String {
+    let mut s = o.error.as_ref().map_or_else(|| "ok".to_string(), type_expr);
+    if let Some(v) = &o.value {
+        s.push(' ');
+        s.push_str(&value_text(v));
+    }
+    s
+}
+
+/// The call of an example, indented by `ind`.
+pub(super) fn call_lines(c: &ExampleCall, ind: usize) -> Vec<String> {
+    let p = pad(ind);
+    let service = c
+        .service
+        .as_ref()
+        .map_or(String::new(), |s| format!("{}.", s.name));
+    let args: Vec<String> = c
+        .args
+        .iter()
+        .map(|a| format!("{}: {}", a.name.name, value_text(&a.value)))
+        .collect();
+    let head = format!("{p}{service}{}({})", c.endpoint.name, args.join(", "));
+    let outcome = outcome_text(&c.outcome);
+    match &c.returns {
+        None => vec![format!("{head} -> {outcome}")],
+        Some(r) => vec![
+            head,
+            format!("{p}  returns {}", value_text(r)),
+            format!("{p}  -> {outcome}"),
+        ],
+    }
+}
+
+/// `example "name"`, the head of the block.
+pub(super) fn example_head(x: &Example) -> String {
+    format!("example {}", quote(&x.name.value))
+}

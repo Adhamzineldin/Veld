@@ -177,13 +177,23 @@ impl Checker<'_, '_, '_> {
         let param = ep.params.iter().find(|f| f.name == name).cloned();
         let fact = ep.facts.iter().find(|f| f.name == name).cloned();
         if let Some(f) = param {
-            return Some(self.walk(Root::Param(name), flat, Start::Root(Box::new(f), true), in_has));
+            return Some(self.walk(
+                Root::Param(name),
+                flat,
+                Start::Root(Box::new(f), true),
+                in_has,
+            ));
         }
         if let Some(f) = fact {
             if !self.fact_readable(&name, flat.root.span) {
                 return Some(None);
             }
-            return Some(self.walk(Root::Fact(name), flat, Start::Root(Box::new(f), false), in_has));
+            return Some(self.walk(
+                Root::Fact(name),
+                flat,
+                Start::Root(Box::new(f), false),
+                in_has,
+            ));
         }
         match name.as_str() {
             "now" => Some(self.now_value(flat, in_has)),
@@ -215,11 +225,19 @@ impl Checker<'_, '_, '_> {
 
     fn now_value(&mut self, flat: &Flat<'_>, in_has: bool) -> Option<Typed> {
         if in_has {
-            self.err("E0906", "`now` is never absent, so `has` has nothing to ask", flat.root.span);
+            self.err(
+                "E0906",
+                "`now` is never absent, so `has` has nothing to ask",
+                flat.root.span,
+            );
             return None;
         }
         if let Some(step) = flat.steps.first() {
-            self.err("E0902", format!("cannot read `.{}` of a `datetime`", step.name), step.span);
+            self.err(
+                "E0902",
+                format!("cannot read `.{}` of a `datetime`", step.name),
+                step.span,
+            );
             return None;
         }
         Some(Typed {

@@ -12,7 +12,7 @@ use super::checker::{Checker, EpScope, Phase};
 use super::depth;
 use super::types::of;
 use crate::diagnostics::{Diagnostic, Span};
-use crate::semantic::{DKind, Program, RField, REndpoint, ServiceInfo};
+use crate::semantic::{DKind, Program, REndpoint, RField, ServiceInfo};
 use crate::syntax::ast::{self, Stmt, doc_text};
 use veld_ir::rules::{Expr, ExprType};
 use veld_ir::{Constraints, Type};
@@ -24,9 +24,8 @@ use veld_ir::{Constraints, Type};
 const ENDPOINT_PREFIX_DEPTH: usize = 11;
 
 /// The most containers the JSON of one expression of an endpoint block may nest.
-const MAX_JSON_DEPTH: usize = depth::SERDE_JSON_MAX_DEPTH
-    - depth::PLUGIN_ENVELOPE_DEPTH
-    - ENDPOINT_PREFIX_DEPTH;
+const MAX_JSON_DEPTH: usize =
+    depth::SERDE_JSON_MAX_DEPTH - depth::PLUGIN_ENVELOPE_DEPTH - ENDPOINT_PREFIX_DEPTH;
 
 /// The checked statements of one endpoint block.
 #[derive(Debug, Clone, Default)]
@@ -359,7 +358,12 @@ impl BlockChecker<'_, '_, '_> {
             .prog
             .resolve_type(self.module, &o.error, true, self.diags)?;
         let decl = self.declared_error(&ty, &o.error)?;
-        let status = self.ep.errors.iter().find(|(_, d)| *d == decl).map(|(s, _)| *s)?;
+        let status = self
+            .ep
+            .errors
+            .iter()
+            .find(|(_, d)| *d == decl)
+            .map(|(s, _)| *s)?;
         let fields = self.payload(decl, o)?;
         Some(RElse {
             decl,

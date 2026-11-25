@@ -93,7 +93,10 @@ example "implicit" { given room = absent
 "#,
     );
     let by = |n: &str| ir.examples.iter().find(|e| e.name == n).expect("example");
-    assert!(matches!(&by("ok with a pattern").outcome, ExampleOutcome::Ok(Some(_))));
+    assert!(matches!(
+        &by("ok with a pattern").outcome,
+        ExampleOutcome::Ok(Some(_))
+    ));
     assert!(matches!(&by("ok").outcome, ExampleOutcome::Ok(None)));
     let implicit = by("implicit");
     assert_eq!(implicit.givens[0].value, None);
@@ -124,7 +127,11 @@ fn examples_are_sorted_by_package_and_name() {
 fn a_contract_without_examples_has_no_examples_member() {
     let ir = ir(HEAD);
     assert!(ir.examples.is_empty());
-    assert!(!serde_json::to_string(&ir).expect("json").contains("examples"));
+    assert!(
+        !serde_json::to_string(&ir)
+            .expect("json")
+            .contains("examples")
+    );
 }
 
 // ---- E0950 -------------------------------------------------------------------------
@@ -136,7 +143,11 @@ fn a_duplicate_name_is_e0950_also_across_files() {
         ["E0950"]
     );
     let out = multi(&[
-        ("app", "a.veld", "service S at \"/\" { get \"/\" f() }\nexample \"x\" { f() -> ok }"),
+        (
+            "app",
+            "a.veld",
+            "service S at \"/\" { get \"/\" f() }\nexample \"x\" { f() -> ok }",
+        ),
         ("app", "b.veld", "example \"x\" { f() -> ok }"),
     ]);
     assert_eq!(
@@ -148,8 +159,16 @@ fn a_duplicate_name_is_e0950_also_across_files() {
 #[test]
 fn the_same_name_in_another_package_is_fine() {
     let out = multi(&[
-        ("a", "a.veld", "service S at \"/\" { get \"/\" f() }\nexample \"x\" { f() -> ok }"),
-        ("b", "b.veld", "service S at \"/\" { get \"/\" f() }\nexample \"x\" { f() -> ok }"),
+        (
+            "a",
+            "a.veld",
+            "service S at \"/\" { get \"/\" f() }\nexample \"x\" { f() -> ok }",
+        ),
+        (
+            "b",
+            "b.veld",
+            "service S at \"/\" { get \"/\" f() }\nexample \"x\" { f() -> ok }",
+        ),
     ]);
     assert!(out.ir.is_some(), "{}", out.render());
 }
@@ -161,7 +180,11 @@ fn an_unknown_endpoint_is_e0950_with_a_suggestion() {
         out.diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
         ["E0950"]
     );
-    assert!(out.render().contains("did you mean `create`"), "{}", out.render());
+    assert!(
+        out.render().contains("did you mean `create`"),
+        "{}",
+        out.render()
+    );
 }
 
 #[test]
@@ -236,35 +259,43 @@ fn enum_values_must_name_a_variant() {
 fn a_read_must_name_an_earlier_given_with_a_value_and_a_field() {
     let given = "given room = absent\n";
     assert_eq!(
-        codes_of(&format!("example \"x\" {{ {given} create(body: {{ roomId: room.id }}) -> ok }}")),
+        codes_of(&format!(
+            "example \"x\" {{ {given} create(body: {{ roomId: room.id }}) -> ok }}"
+        )),
         ["E0952"],
         "an absent given has no fields"
     );
     let with_room = "given room = { id: \"00000000-0000-4000-8000-000000000001\" }\n";
     assert_eq!(
-        codes_of(&format!("example \"x\" {{ {with_room} create(body: {{ roomId: room.idd }}) -> ok }}")),
+        codes_of(&format!(
+            "example \"x\" {{ {with_room} create(body: {{ roomId: room.idd }}) -> ok }}"
+        )),
         ["E0952"]
     );
     assert_eq!(
-        codes_of(&format!("example \"x\" {{ {with_room} create(body: {{ guests: room.id }}) -> ok }}")),
+        codes_of(&format!(
+            "example \"x\" {{ {with_room} create(body: {{ guests: room.id }}) -> ok }}"
+        )),
         ["E0952"],
         "uuid is not an int"
     );
     assert!(
-        codes_of(&format!("example \"x\" {{ {with_room} create(body: {{ guests: room.capacity }}) -> ok }}"))
-            .is_empty()
+        codes_of(&format!(
+            "example \"x\" {{ {with_room} create(body: {{ guests: room.capacity }}) -> ok }}"
+        ))
+        .is_empty()
     );
 }
 
 #[test]
 fn returns_needs_a_success_body() {
     assert_eq!(
-        codes_of("example \"x\" { remove() returns { id: \"00000000-0000-4000-8000-000000000001\" } -> ok }"),
+        codes_of(
+            "example \"x\" { remove() returns { id: \"00000000-0000-4000-8000-000000000001\" } -> ok }"
+        ),
         ["E0952"]
     );
-    assert!(
-        codes_of("example \"x\" { find() returns { status: .paid } -> ok }").is_empty()
-    );
+    assert!(codes_of("example \"x\" { find() returns { status: .paid } -> ok }").is_empty());
 }
 
 #[test]
@@ -273,7 +304,9 @@ fn an_outcome_must_be_an_error_the_endpoint_can_answer_with() {
     assert_eq!(codes_of("example \"x\" { find() -> Booking }"), ["E0952"]);
     assert_eq!(codes_of("example \"x\" { find() -> Nope }"), ["E0205"]);
     assert!(codes_of("example \"x\" { find() -> Forbidden }").is_empty());
-    assert!(codes_of("example \"x\" { find() -> InvalidTransition { field: \"status\" } }").is_empty());
+    assert!(
+        codes_of("example \"x\" { find() -> InvalidTransition { field: \"status\" } }").is_empty()
+    );
     assert_eq!(
         codes_of("example \"x\" { remove() -> ok { id: \"x\" } }"),
         ["E0952"],
@@ -283,13 +316,22 @@ fn an_outcome_must_be_an_error_the_endpoint_can_answer_with() {
 
 #[test]
 fn a_principal_needs_a_declared_principal() {
-    assert_eq!(codes_of("example \"x\" { as 1\n remove() -> ok }"), ["E0952"]);
+    assert_eq!(
+        codes_of("example \"x\" { as 1\n remove() -> ok }"),
+        ["E0952"]
+    );
 }
 
 #[test]
 fn the_clock_is_a_date_and_time() {
-    assert!(codes_of("example \"x\" { at \"2026-03-01T09:00:00.5+02:00\"\n remove() -> ok }").is_empty());
-    assert_eq!(codes_of("example \"x\" { at \"tomorrow\"\n remove() -> ok }"), ["E0952"]);
+    assert!(
+        codes_of("example \"x\" { at \"2026-03-01T09:00:00.5+02:00\"\n remove() -> ok }")
+            .is_empty()
+    );
+    assert_eq!(
+        codes_of("example \"x\" { at \"tomorrow\"\n remove() -> ok }"),
+        ["E0952"]
+    );
 }
 
 #[test]
@@ -314,7 +356,10 @@ example "union" { pay(body: { method: { kind: "card", number: "4" }, history: { 
 "#;
     let ir = ir(src);
     let arg = serde_json::to_value(&ir.examples[0].args[0].value).expect("json");
-    assert_eq!(arg["object"][0]["value"]["object"][0]["value"], json!({"json": "card"}));
+    assert_eq!(
+        arg["object"][0]["value"]["object"][0]["value"],
+        json!({"json": "card"})
+    );
     assert_eq!(
         codes(&src.replace("kind: \"card\", ", "")),
         ["E0952"],
@@ -334,7 +379,9 @@ fn a_json_value_holds_literals_only() {
 
 #[test]
 fn the_ir_form_round_trips() {
-    let ir = compile("example \"x\" { given room = { capacity: 1 }\n create(body: { guests: room.capacity }) -> ok }");
+    let ir = compile(
+        "example \"x\" { given room = { capacity: 1 }\n create(body: { guests: room.capacity }) -> ok }",
+    );
     let json = serde_json::to_string(&ir).expect("json");
     let back: Ir = serde_json::from_str(&json).expect("reads back");
     assert_eq!(ir, back);

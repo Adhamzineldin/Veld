@@ -64,7 +64,10 @@ pub fn check(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
                 diags.push(
                     Diagnostic::error(
                         "E0950",
-                        format!("example \"{}\" is already declared in this package", ex.name.value),
+                        format!(
+                            "example \"{}\" is already declared in this package",
+                            ex.name.value
+                        ),
                         ex.name.span,
                     )
                     .with_label(*first, "first declared here"),

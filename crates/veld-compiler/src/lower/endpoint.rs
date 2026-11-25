@@ -3,11 +3,10 @@
 use std::collections::BTreeMap;
 
 use super::Lowerer;
-use crate::semantic::{REndpoint, RElse, ServiceInfo};
+use crate::semantic::{RElse, REndpoint, ServiceInfo};
 use crate::signature::{self, EndpointRef, StatementKind};
 use veld_ir::endpoint_rules::{
-    ElseError, ElseField, EndpointEnsure, EndpointFact, EndpointRequire, EndpointRules,
-    ServiceFact,
+    ElseError, ElseField, EndpointEnsure, EndpointFact, EndpointRequire, EndpointRules, ServiceFact,
 };
 use veld_ir::{Decl, Type};
 

@@ -11,8 +11,8 @@ mod rules;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagnostics::{FileId, SourceMap, Span};
-use crate::semantic::{Program, ROutcome};
 use crate::semantic::{DKind, DeclInfo, REndpoint, RField, ServiceInfo};
+use crate::semantic::{Program, ROutcome};
 use crate::signature;
 use crate::syntax::ast::doc_text;
 use veld_ir::{
@@ -112,7 +112,11 @@ fn endpoint_refs(e: &REndpoint) -> Vec<usize> {
     let mut out: Vec<usize> = e.params.iter().flat_map(|p| type_refs(&p.ty)).collect();
     out.extend(e.success_ty.iter().flat_map(type_refs));
     out.extend(e.errors.iter().map(|(_, d)| *d));
-    out.extend(e.rules.facts.iter().flat_map(|f| type_refs(&f.ty).into_iter().chain(f.key_ty.iter().flat_map(type_refs))));
+    out.extend(e.rules.facts.iter().flat_map(|f| {
+        type_refs(&f.ty)
+            .into_iter()
+            .chain(f.key_ty.iter().flat_map(type_refs))
+    }));
     out
 }
 

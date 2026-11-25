@@ -60,6 +60,7 @@ impl Layout {
     pub fn build(src: &str, file: &ast::File, comments: &[Comment]) -> Layout {
         let mut kids: Vec<Node> = file.uses.iter().map(use_node).collect();
         kids.extend(file.decls.iter().map(decl_node));
+        kids.extend(file.examples.iter().map(example_node));
         kids.sort_by_key(|n| n.start);
         let mut b = Builder {
             src,
@@ -227,21 +228,74 @@ fn decl_kids(d: &ast::Decl) -> (bool, Vec<Node>) {
                 .map(|a| leaf(a.span.start, a.span.start, a.span.end))
                 .collect(),
         ),
-        DeclKind::Service(s) => (
-            true,
-            s.endpoints
-                .iter()
-                .map(|e| {
-                    leaf(
-                        first_start(e.span.start, &e.docs, &e.annotations),
-                        e.span.start,
-                        e.span.end,
-                    )
-                })
-                .collect(),
-        ),
+        DeclKind::Service(s) => (true, s.endpoints.iter().map(endpoint_node).collect()),
         DeclKind::Const(_) => (false, vec![]),
     }
+}
+
+/// An endpoint is a leaf, or a braced node holding the statements of its block. The header
+/// comment of the block is the one on the line of its `{`.
+fn endpoint_node(e: &ast::Endpoint) -> Node {
+    let start = first_start(e.span.start, &e.docs, &e.annotations);
+    let Some(block) = &e.block else {
+        return leaf(start, e.span.start, e.span.end);
+    };
+    Node {
+        start,
+        kw: e.span.start,
+        anchor: block.span.start,
+        end: e.span.end,
+        braced: true,
+        kids: block
+            .stmts
+            .iter()
+            .map(|s| leaf(s.start(), stmt_kw(s), stmt_end(s)))
+            .collect(),
+    }
+}
+
+fn stmt_kw(s: &ast::Stmt) -> u32 {
+    match s {
+        ast::Stmt::Fact(f) => f.span.start,
+        ast::Stmt::Require(r) => r.span.start,
+        ast::Stmt::Ensure(e) => e.span.start,
+    }
+}
+
+fn stmt_end(s: &ast::Stmt) -> u32 {
+    match s {
+        ast::Stmt::Fact(f) => f.span.end,
+        ast::Stmt::Require(r) => r.span.end,
+        ast::Stmt::Ensure(e) => e.span.end,
+    }
+}
+
+/// An example: a braced node whose children are its givens, principal, clock and call.
+fn example_node(x: &ast::Example) -> Node {
+    let mut kids: Vec<Node> = x
+        .givens
+        .iter()
+        .map(|g| leaf(g.span.start, g.span.start, g.span.end))
+        .collect();
+    if let Some(p) = &x.principal {
+        kids.push(leaf(p.span.start, p.span.start, p.span.end));
+    }
+    if let Some(a) = &x.at {
+        kids.push(leaf(a.span.start, a.span.start, a.span.end));
+    }
+    kids.push(leaf(x.call.span.start, x.call.span.start, x.call.span.end));
+    Node {
+        start: example_key(x),
+        kw: x.span.start,
+        anchor: x.span.start,
+        end: x.span.end,
+        braced: true,
+        kids,
+    }
+}
+
+pub(super) fn example_key(x: &ast::Example) -> u32 {
+    first_start(x.span.start, &x.docs, &[])
 }
 
 /// Fields and rules of a body, in source order (the printer regroups them, the comments stay

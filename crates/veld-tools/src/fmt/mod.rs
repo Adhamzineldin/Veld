@@ -5,6 +5,7 @@
 mod expr;
 mod layout;
 mod print;
+mod stmt;
 pub(crate) mod text;
 
 use veld_compiler::{Diagnostic, FileId, parse_file};
@@ -32,3 +33,6 @@ mod tests;
 
 #[cfg(test)]
 mod rule_tests;
+
+#[cfg(test)]
+mod endpoint_tests;

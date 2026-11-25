@@ -100,7 +100,9 @@ fn an_endpoint_without_a_block_lowers_as_before() {
 
 #[test]
 fn a_bare_require_adds_validation_error_even_without_parameters() {
-    let ir = ir(&svc("  get \"/x\" f() -> 200 Booking { require now > now }"));
+    let ir = ir(&svc(
+        "  get \"/x\" f() -> 200 Booking { require now > now }",
+    ));
     let names: Vec<&str> = ir.services[0].endpoints[0]
         .errors
         .iter()
@@ -279,7 +281,8 @@ fn has_on_a_required_parameter_is_e0906() {
 fn an_optional_fact_needs_a_guard() {
     let unguarded = "    fact room?: Room = body.roomId\n    require room.capacity > 0";
     assert_eq!(codes_of(unguarded), ["E0903"]);
-    let guarded = "    fact room?: Room = body.roomId\n    require has(room) implies room.capacity > 0";
+    let guarded =
+        "    fact room?: Room = body.roomId\n    require has(room) implies room.capacity > 0";
     assert!(codes_of(guarded).is_empty(), "{:?}", codes_of(guarded));
 }
 
@@ -296,7 +299,8 @@ fn the_key_of_a_required_fact_must_be_known_present_but_not_an_optional_fact() {
 
 #[test]
 fn a_guard_across_old_is_written_inside_it() {
-    let src = "    fact room?: Room = body.roomId\n    ensure old(has(room) implies room.capacity >= 0)";
+    let src =
+        "    fact room?: Room = body.roomId\n    ensure old(has(room) implies room.capacity >= 0)";
     assert!(codes_of(src).is_empty(), "{:?}", codes_of(src));
     let bad = "    fact room?: Room = body.roomId\n    ensure old(room.capacity) >= 0";
     assert_eq!(codes_of(bad), ["E0903"]);
@@ -325,7 +329,10 @@ fn statement_names_are_unique_across_require_and_ensure() {
         codes_of("    require r: true\n    require r: true"),
         ["E0907"]
     );
-    assert_eq!(codes_of("    require r: true\n    ensure r: true"), ["E0907"]);
+    assert_eq!(
+        codes_of("    require r: true\n    ensure r: true"),
+        ["E0907"]
+    );
     assert!(codes_of("    require true\n    require true").is_empty());
 }
 
@@ -390,13 +397,25 @@ fn a_fact_must_agree_across_the_endpoints_of_a_service() {
             "  post \"/a\" a(body: NewBooking) -> 201 Booking {{ {a} }}\n  post \"/b\" b(body: NewBooking) -> 201 Booking {{ {b} }}"
         ))
     };
-    let ok = two("fact room: Room = body.roomId", "fact room: Room = body.roomId");
+    let ok = two(
+        "fact room: Room = body.roomId",
+        "fact room: Room = body.roomId",
+    );
     assert!(codes(&ok).is_empty(), "{:?}", codes(&ok));
     for (a, b) in [
-        ("fact room: Room = body.roomId", "fact room: Booking = body.roomId"),
-        ("fact room: Room = body.roomId", "fact room: Room = body.guests"),
+        (
+            "fact room: Room = body.roomId",
+            "fact room: Booking = body.roomId",
+        ),
+        (
+            "fact room: Room = body.roomId",
+            "fact room: Room = body.guests",
+        ),
         ("fact room: Room = body.roomId", "fact room: Room"),
-        ("fact room: Room = body.roomId", "fact room?: Room = body.roomId"),
+        (
+            "fact room: Room = body.roomId",
+            "fact room?: Room = body.roomId",
+        ),
     ] {
         assert_eq!(codes(&two(a, b)), ["E0922"], "{a} / {b}");
     }

@@ -23,7 +23,12 @@ impl Lowerer<'_, '_> {
             .prog
             .examples
             .iter()
-            .map(|ex| self.example(ex, ids.get(&ex.service).copied().unwrap_or(ServiceId(u32::MAX))))
+            .map(|ex| {
+                self.example(
+                    ex,
+                    ids.get(&ex.service).copied().unwrap_or(ServiceId(u32::MAX)),
+                )
+            })
             .collect();
         out.sort_by(|a, b| (a.package, &a.name).cmp(&(b.package, &b.name)));
         out

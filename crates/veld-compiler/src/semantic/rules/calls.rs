@@ -82,7 +82,9 @@ impl Checker<'_, '_, '_> {
     fn old_call(&mut self, name: &ast::Ident, args: &[CallArg], span: Span) -> Option<Expr> {
         let state = self.ep.as_ref().map(|e| (e.phase, e.in_old));
         let msg = match state {
-            None => "`old(...)` is not available in an invariant: there is no operation to compare with",
+            None => {
+                "`old(...)` is not available in an invariant: there is no operation to compare with"
+            }
             Some((phase, _)) if phase != Phase::Ensure => {
                 "`old(...)` is only available in `ensure`"
             }

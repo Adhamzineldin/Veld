@@ -123,7 +123,11 @@ impl Values<'_, '_, '_> {
                     format!("endpoint `{}` has no parameter `{name}`", ep.name),
                     a.name.span,
                 )
-                .did_you_mean(name, names.iter().copied(), Some(format!("parameters: {}", names.join(", "))));
+                .did_you_mean(
+                    name,
+                    names.iter().copied(),
+                    Some(format!("parameters: {}", names.join(", "))),
+                );
                 self.diags.push(diag);
                 ok = false;
                 continue;
@@ -159,7 +163,10 @@ impl Values<'_, '_, '_> {
             (Some(t), false) => Some(t.clone()),
             (Some(_) | None, _) => {
                 self.err(
-                    format!("endpoint `{}` has no success body to give a value for", ep.name),
+                    format!(
+                        "endpoint `{}` has no success body to give a value for",
+                        ep.name
+                    ),
                     span,
                 );
                 None
@@ -179,9 +186,7 @@ impl Values<'_, '_, '_> {
             };
             return Some(ROutcome::Ok(value));
         };
-        let ty = self
-            .prog
-            .resolve_type(self.module, te, true, self.diags)?;
+        let ty = self.prog.resolve_type(self.module, te, true, self.diags)?;
         let decl = self.answerable(&ty, te, ep)?;
         let pattern = match &o.value {
             None => None,
@@ -223,9 +228,10 @@ impl Values<'_, '_, '_> {
             ValueKind::EnumLit(id) => self.enum_value(id, ty, v.span),
             ValueKind::Object(fields) => self.object(fields, ty, v.span),
             ValueKind::List(items) => self.list(items, ty, v.span),
-            ValueKind::Bool(_) | ValueKind::Int(_) | ValueKind::Float { .. } | ValueKind::Str(_) => {
-                self.literal(&v.kind, ty, v.span).map(ExampleValue::Json)
-            }
+            ValueKind::Bool(_)
+            | ValueKind::Int(_)
+            | ValueKind::Float { .. }
+            | ValueKind::Str(_) => self.literal(&v.kind, ty, v.span).map(ExampleValue::Json),
         }
     }
 
@@ -267,7 +273,11 @@ impl Values<'_, '_, '_> {
             format!("enum `{}` has no variant `{}`", info.name, id.name),
             id.span,
         )
-        .did_you_mean(&id.name, names.iter().copied(), Some(format!("variants: {}", names.join(", "))));
+        .did_you_mean(
+            &id.name,
+            names.iter().copied(),
+            Some(format!("variants: {}", names.join(", "))),
+        );
         self.diags.push(diag);
         None
     }
@@ -341,13 +351,20 @@ impl Values<'_, '_, '_> {
                     format!("`{}` has no field `{}`", info.name, f.name.name),
                     f.name.span,
                 )
-                .did_you_mean(&f.name.name, names.iter().copied(), Some(format!("fields: {}", names.join(", "))));
+                .did_you_mean(
+                    &f.name.name,
+                    names.iter().copied(),
+                    Some(format!("fields: {}", names.join(", "))),
+                );
                 self.diags.push(diag);
                 ok = false;
                 continue;
             };
             if out.iter().any(|o| o.name == field.name) {
-                self.err(format!("field `{}` is given twice", f.name.name), f.name.span);
+                self.err(
+                    format!("field `{}` is given twice", f.name.name),
+                    f.name.span,
+                );
                 ok = false;
                 continue;
             }
@@ -364,14 +381,22 @@ impl Values<'_, '_, '_> {
     }
 
     /// A union value names its arm with the discriminator, as it does on the wire.
-    fn union(&mut self, decl: usize, fields: &[ast::ValueField], span: Span) -> Option<ExampleValue> {
+    fn union(
+        &mut self,
+        decl: usize,
+        fields: &[ast::ValueField],
+        span: Span,
+    ) -> Option<ExampleValue> {
         let info = &self.prog.decls[decl];
         let disc = info.res.discriminator.clone();
         let Some(tag) = fields.iter().find(|f| f.name.name == disc) else {
             self.diags.push(
                 Diagnostic::error(
                     "E0952",
-                    format!("a value of union `{}` needs its discriminator `{disc}`", info.name),
+                    format!(
+                        "a value of union `{}` needs its discriminator `{disc}`",
+                        info.name
+                    ),
                     span,
                 )
                 .with_help(format!("write `{disc}: \"<arm>\"`")),
@@ -379,18 +404,29 @@ impl Values<'_, '_, '_> {
             return None;
         };
         let ValueKind::Str(label) = &tag.value.kind else {
-            self.err(format!("`{disc}` must be the label of an arm, as a string"), tag.value.span);
+            self.err(
+                format!("`{disc}` must be the label of an arm, as a string"),
+                tag.value.span,
+            );
             return None;
         };
         let Some(arm) = info.res.arms.iter().find(|a| &a.label == label) else {
             let labels: Vec<&str> = info.res.arms.iter().map(|a| a.label.as_str()).collect();
             self.err(
-                format!("union `{}` has no arm `{label}` (arms: {})", info.name, labels.join(", ")),
+                format!(
+                    "union `{}` has no arm `{label}` (arms: {})",
+                    info.name,
+                    labels.join(", ")
+                ),
                 tag.value.span,
             );
             return None;
         };
-        let rest: Vec<ast::ValueField> = fields.iter().filter(|f| f.name.name != disc).cloned().collect();
+        let rest: Vec<ast::ValueField> = fields
+            .iter()
+            .filter(|f| f.name.name != disc)
+            .cloned()
+            .collect();
         let ExampleValue::Object(mut out) = self.record(arm.decl, &rest)? else {
             return None;
         };
@@ -437,7 +473,9 @@ impl Values<'_, '_, '_> {
                 "page" | "size" => Type::Scalar(Scalar::Int),
                 other => {
                     self.err(
-                        format!("a `Page` has no field `{other}` (it has items, total, page, size)"),
+                        format!(
+                            "a `Page` has no field `{other}` (it has items, total, page, size)"
+                        ),
                         f.name.span,
                     );
                     ok = false;
@@ -466,12 +504,19 @@ impl Values<'_, '_, '_> {
                 format!("`{}` is not a given of this example", root.name),
                 root.span,
             )
-            .did_you_mean(&root.name, names.iter().copied(), Some("a value can read only the facts the example gives, above it".to_string()));
+            .did_you_mean(
+                &root.name,
+                names.iter().copied(),
+                Some("a value can read only the facts the example gives, above it".to_string()),
+            );
             self.diags.push(diag);
             return None;
         };
         let Some(mut cur) = given.clone() else {
-            self.err(format!("`{}` is absent, so it has no fields to read", root.name), root.span);
+            self.err(
+                format!("`{}` is absent, so it has no fields to read", root.name),
+                root.span,
+            );
             return None;
         };
         let mut wires = Vec::new();
@@ -509,13 +554,18 @@ impl Values<'_, '_, '_> {
                 let decl = is_record(self.prog, ty)?;
                 let info = &self.prog.decls[decl];
                 let Some(f) = info.res.fields.iter().find(|f| f.name == id.name) else {
-                    let names: Vec<&str> = info.res.fields.iter().map(|f| f.name.as_str()).collect();
+                    let names: Vec<&str> =
+                        info.res.fields.iter().map(|f| f.name.as_str()).collect();
                     let diag = Diagnostic::error(
                         "E0952",
                         format!("`{}` has no field `{}`", info.name, id.name),
                         id.span,
                     )
-                    .did_you_mean(&id.name, names.iter().copied(), Some(format!("fields: {}", names.join(", "))));
+                    .did_you_mean(
+                        &id.name,
+                        names.iter().copied(),
+                        Some(format!("fields: {}", names.join(", "))),
+                    );
                     self.diags.push(diag);
                     return None;
                 };
@@ -523,7 +573,10 @@ impl Values<'_, '_, '_> {
             }
             Type::Scalar(_) | Type::List(_) | Type::Map(_) | Type::Decl(_) => {
                 let shown = self.prog.type_name(ty);
-                self.err(format!("cannot read `.{}` of a value of type `{shown}`", id.name), id.span);
+                self.err(
+                    format!("cannot read `.{}` of a value of type `{shown}`", id.name),
+                    id.span,
+                );
                 None
             }
         }
@@ -532,15 +585,16 @@ impl Values<'_, '_, '_> {
     /// A value written inside a `json` type: literals, objects and lists only.
     fn json_of(&mut self, v: &ast::Value) -> Option<Json> {
         match &v.kind {
-            ValueKind::Bool(_) | ValueKind::Int(_) | ValueKind::Float { .. } | ValueKind::Str(_) => {
-                match scalar_json(Scalar::Json, &v.kind) {
-                    Ok(j) => Some(j),
-                    Err(_) => {
-                        self.err("this number cannot be written as JSON", v.span);
-                        None
-                    }
+            ValueKind::Bool(_)
+            | ValueKind::Int(_)
+            | ValueKind::Float { .. }
+            | ValueKind::Str(_) => match scalar_json(Scalar::Json, &v.kind) {
+                Ok(j) => Some(j),
+                Err(_) => {
+                    self.err("this number cannot be written as JSON", v.span);
+                    None
                 }
-            }
+            },
             ValueKind::List(items) => items
                 .iter()
                 .map(|i| self.json_of(i))
@@ -600,13 +654,14 @@ fn scalar_json(s: Scalar, k: &ValueKind) -> Result<Json, Option<String>> {
         (Scalar::Json, ValueKind::Int(n)) => Ok(Json::Number((*n).into())),
         (Scalar::Long, ValueKind::Int(n)) => Ok(Json::String(n.to_string())),
         (Scalar::Long, ValueKind::Str(t)) if is_integer(t) => Ok(Json::String(t.clone())),
-        (Scalar::Float, ValueKind::Int(n)) if n.abs() <= MAX_EXACT_FLOAT => {
+        (Scalar::Float, ValueKind::Int(n)) if n.abs() <= MAX_EXACT_FLOAT =>
+        {
             #[allow(clippy::cast_precision_loss)]
             number(*n as f64).ok_or(None)
         }
-        (Scalar::Float, ValueKind::Int(n)) => {
-            Err(Some(format!("`{n}` cannot be represented exactly as a `float`")))
-        }
+        (Scalar::Float, ValueKind::Int(n)) => Err(Some(format!(
+            "`{n}` cannot be represented exactly as a `float`"
+        ))),
         (Scalar::Float | Scalar::Json, ValueKind::Float { value, .. }) => {
             number(*value).ok_or(Some("a `float` must be finite".to_string()))
         }
@@ -624,12 +679,22 @@ fn scalar_json(s: Scalar, k: &ValueKind) -> Result<Json, Option<String>> {
         (Scalar::Datetime, ValueKind::Str(t)) if is_datetime(t) => Ok(Json::String(t.clone())),
         (Scalar::Time, ValueKind::Str(t)) if is_time(t) => Ok(Json::String(t.clone())),
         (Scalar::Bytes, ValueKind::Str(t)) if is_base64(t) => Ok(Json::String(t.clone())),
-        (Scalar::Uuid, ValueKind::Str(_)) => Err(Some("not a UUID such as \"00000000-0000-4000-8000-000000000001\"".to_string())),
-        (Scalar::Date, ValueKind::Str(_)) => Err(Some("not a date such as \"2026-03-01\"".to_string())),
-        (Scalar::Datetime, ValueKind::Str(_)) => Err(Some("not a date and time such as \"2026-03-01T09:00:00Z\"".to_string())),
-        (Scalar::Time, ValueKind::Str(_)) => Err(Some("not a time such as \"09:00:00\"".to_string())),
+        (Scalar::Uuid, ValueKind::Str(_)) => Err(Some(
+            "not a UUID such as \"00000000-0000-4000-8000-000000000001\"".to_string(),
+        )),
+        (Scalar::Date, ValueKind::Str(_)) => {
+            Err(Some("not a date such as \"2026-03-01\"".to_string()))
+        }
+        (Scalar::Datetime, ValueKind::Str(_)) => Err(Some(
+            "not a date and time such as \"2026-03-01T09:00:00Z\"".to_string(),
+        )),
+        (Scalar::Time, ValueKind::Str(_)) => {
+            Err(Some("not a time such as \"09:00:00\"".to_string()))
+        }
         (Scalar::Bytes, ValueKind::Str(_)) => Err(Some("not padded base64".to_string())),
-        (Scalar::Decimal | Scalar::Long, ValueKind::Str(_)) => Err(Some("not a number written in digits".to_string())),
+        (Scalar::Decimal | Scalar::Long, ValueKind::Str(_)) => {
+            Err(Some("not a number written in digits".to_string()))
+        }
         _ => Err(None),
     }
 }
@@ -660,8 +725,14 @@ fn is_uuid(s: &str) -> bool {
 
 fn is_date(s: &str) -> bool {
     let p: Vec<&str> = s.split('-').collect();
-    let [y, m, d] = p.as_slice() else { return false };
-    let num = |t: &str, len: usize| (t.len() == len && all_digits(t)).then(|| t.parse::<u32>().ok()).flatten();
+    let [y, m, d] = p.as_slice() else {
+        return false;
+    };
+    let num = |t: &str, len: usize| {
+        (t.len() == len && all_digits(t))
+            .then(|| t.parse::<u32>().ok())
+            .flatten()
+    };
     matches!(
         (num(y, 4), num(m, 2), num(d, 2)),
         (Some(_), Some(1..=12), Some(1..=31))
@@ -672,10 +743,18 @@ fn is_date(s: &str) -> bool {
 fn is_time(s: &str) -> bool {
     let (clock, frac) = s.split_once('.').map_or((s, None), |(c, f)| (c, Some(f)));
     let p: Vec<&str> = clock.split(':').collect();
-    let [h, m, sec] = p.as_slice() else { return false };
-    let num = |t: &str| (t.len() == 2 && all_digits(t)).then(|| t.parse::<u32>().ok()).flatten();
-    matches!((num(h), num(m), num(sec)), (Some(0..=23), Some(0..=59), Some(0..=60)))
-        && frac.is_none_or(all_digits)
+    let [h, m, sec] = p.as_slice() else {
+        return false;
+    };
+    let num = |t: &str| {
+        (t.len() == 2 && all_digits(t))
+            .then(|| t.parse::<u32>().ok())
+            .flatten()
+    };
+    matches!(
+        (num(h), num(m), num(sec)),
+        (Some(0..=23), Some(0..=59), Some(0..=60))
+    ) && frac.is_none_or(all_digits)
 }
 
 /// RFC 3339: a date, `T`, a time and `Z` or an offset.
@@ -687,7 +766,10 @@ fn is_datetime(s: &str) -> bool {
         (t, true)
     } else if let Some(i) = rest.rfind(['+', '-']) {
         let off = &rest[i + 1..];
-        let ok = off.len() == 5 && off.as_bytes()[2] == b':' && all_digits(&off[..2]) && all_digits(&off[3..]);
+        let ok = off.len() == 5
+            && off.as_bytes()[2] == b':'
+            && all_digits(&off[..2])
+            && all_digits(&off[3..]);
         (&rest[..i], ok)
     } else {
         (rest, false)
@@ -699,5 +781,7 @@ fn is_base64(s: &str) -> bool {
     let body = s.trim_end_matches('=');
     s.len() % 4 == 0
         && s.len() - body.len() <= 2
-        && body.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/')
+        && body
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/')
 }
