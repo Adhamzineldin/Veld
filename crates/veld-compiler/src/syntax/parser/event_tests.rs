@@ -126,6 +126,53 @@ fn a_broken_subscription_reports_and_the_next_item_still_parses() {
     assert_eq!(r.file.decls.len(), 2);
 }
 
+fn messages(src: &str) -> Vec<String> {
+    p(src)
+        .diagnostics
+        .iter()
+        .map(|d| format!("{} {}", d.code, d.message))
+        .collect()
+}
+
+#[test]
+fn an_event_that_extends_says_so_and_the_next_item_still_parses() {
+    let src = "event Paid extends Base {\n id: uuid\n}\nmodel After { a: int }";
+    assert_eq!(
+        messages(src),
+        ["E0003 an event has no `extends`: write its fields in the event itself"]
+    );
+    assert_eq!(p(src).file.decls.len(), 1);
+}
+
+#[test]
+fn an_event_or_a_channel_without_its_brace_is_reported_as_one() {
+    assert_eq!(
+        messages("event Paid\nmodel After { a: int }"),
+        ["E0003 expected `{` to open the event body, found `model`"]
+    );
+    assert_eq!(
+        messages("channel C carries Paid"),
+        ["E0003 expected `{` to open the channel body, found `carries`"]
+    );
+}
+
+#[test]
+fn publishes_or_subscribes_without_a_channel_asks_for_one() {
+    assert_eq!(
+        messages("service S {\n publishes\n}\nmodel After { a: int }"),
+        ["E0003 expected the name of a channel after `publishes`, found `}`"]
+    );
+    let src = "service S at \"/s\" {\n subscribes \"g\" { on X -> h }\n get \"/a\" a() -> 204\n}";
+    assert_eq!(
+        messages(src),
+        ["E0003 expected the name of a channel after `subscribes`, found a string"]
+    );
+    let DeclKind::Service(s) = &p(src).file.decls[0].kind else {
+        panic!("not a service")
+    };
+    assert_eq!(s.endpoints.len(), 1);
+}
+
 #[test]
 fn a_service_with_neither_at_nor_a_brace_is_still_an_error() {
     let r = p("service S nope");

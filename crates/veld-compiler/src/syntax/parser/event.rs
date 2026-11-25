@@ -2,7 +2,8 @@
 //! and `subscribes` lines of a service and the event form of `example`.
 //!
 //! `event`, `channel`, `carries`, `key`, `publishes`, `subscribes`, `on`, `called` and `rejected`
-//! are contextual words. A declaration starts with `event IDENT {` or `channel IDENT {`, a
+//! are contextual words. A declaration starts with `event IDENT` or `channel IDENT` where a
+//! declaration may stand (error recovery, which scans other text, wants the `{` too), a
 //! `publishes` line with `publishes IDENT`, and an event example with `given event IDENT`, so
 //! any of them stays an ordinary name everywhere else.
 
@@ -15,17 +16,47 @@ use crate::syntax::ast::{
 use crate::syntax::lexer::Tok;
 
 impl Parser<'_> {
-    /// `event` IDENT `{` or `channel` IDENT `{` at token `n`.
+    /// `event` IDENT `{` or `channel` IDENT `{` at token `n`. Error recovery looks for this
+    /// form: it scans text that may be the inside of a body, where two names can follow each
+    /// other (a field of type `event` before a field called `key`).
     pub(super) fn is_event_item_start_at(&self, n: usize) -> bool {
         matches!(self.tok_at(n), Tok::Ident(w) if w == "event" || w == "channel")
             && matches!(self.tok_at(n + 1), Tok::Ident(_))
             && matches!(self.tok_at(n + 2), Tok::LBrace)
     }
 
+    /// `event` IDENT or `channel` IDENT where a declaration may start (`spec/events.md`
+    /// section 2: at declaration level the word starts a declaration when an identifier
+    /// follows). What comes after the name is the declaration's business, so that
+    /// `event A extends B` is reported as what it is.
+    pub(super) fn is_event_decl_start(&self) -> bool {
+        matches!(self.tok_at(0), Tok::Ident(w) if w == "event" || w == "channel")
+            && matches!(self.tok_at(1), Tok::Ident(_))
+    }
+
     /// `publishes` IDENT or `subscribes` IDENT at token `n`.
     pub(super) fn is_event_line_start_at(&self, n: usize) -> bool {
         matches!(self.tok_at(n), Tok::Ident(w) if w == "publishes" || w == "subscribes")
             && matches!(self.tok_at(n + 1), Tok::Ident(_))
+    }
+
+    /// `publishes` or `subscribes` where a line of a service starts, with no channel name after
+    /// it. No endpoint starts with either word, so it can only be an unfinished line.
+    pub(super) fn is_bare_event_word(&self) -> bool {
+        (self.at_word("publishes") || self.at_word("subscribes")) && !self.is_event_line_start_at(0)
+    }
+
+    /// Reports the missing channel name of an unfinished `publishes` or `subscribes` line and
+    /// skips the rest of the line.
+    pub(super) fn bare_event_word(&mut self) {
+        let word = if self.at_word("publishes") {
+            "publishes"
+        } else {
+            "subscribes"
+        };
+        self.advance();
+        self.unexpected(&format!("the name of a channel after `{word}`"));
+        self.skip_service_line();
     }
 
     /// `given event` IDENT at token `n`: the start of an event example.
@@ -91,6 +122,15 @@ impl Parser<'_> {
     /// `event Name { fields and rules }`, with the keyword already consumed.
     pub(super) fn parse_event(&mut self) -> Option<EventDecl> {
         let name = self.expect_ident("an event name")?;
+        if self.at_word("extends") {
+            let span = self.span();
+            self.err(
+                "E0003",
+                "an event has no `extends`: write its fields in the event itself",
+                span,
+            );
+            return None;
+        }
         self.expect(&Tok::LBrace, "`{` to open the event body")?;
         let (fields, rules) = self.parse_members();
         Some(EventDecl {

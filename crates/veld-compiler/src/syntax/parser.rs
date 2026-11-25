@@ -312,7 +312,7 @@ impl Parser<'_> {
                 }
             }
             Tok::Ident(w) if language::V1_KEYWORDS.contains(&w.as_str()) => self.v1_syntax(&w),
-            Tok::Ident(w) if language::is_decl_keyword(&w) || self.is_event_item_start_at(0) => {
+            Tok::Ident(w) if language::is_decl_keyword(&w) || self.is_event_decl_start() => {
                 self.warn_dangling_docs_if_any(&docs, false);
                 if let Some(d) = self.parse_decl(docs, anns) {
                     decls.push(d);
@@ -1084,6 +1084,10 @@ impl Parser<'_> {
                 if self.pos == before {
                     self.advance();
                 }
+                continue;
+            }
+            if self.is_bare_event_word() {
+                self.bare_event_word();
                 continue;
             }
             match self.parse_endpoint(docs, anns) {
