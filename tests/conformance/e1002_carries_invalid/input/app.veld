@@ -1,0 +1,6 @@
+event Paid { id: uuid }
+model NotAnEvent { id: uuid }
+
+channel Twice { carries Paid, Paid }
+channel NotEvents { carries NotAnEvent }
+channel Nothing { }

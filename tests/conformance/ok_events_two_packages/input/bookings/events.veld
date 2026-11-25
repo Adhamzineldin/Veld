@@ -1,0 +1,23 @@
+// The publisher package: the events, the channel and the service that publishes it.
+
+/// Published when a booking is paid.
+event BookingPaid {
+  bookingId: uuid
+  amount: decimal
+  rule positive: amount > 0
+}
+
+event BookingCancelled {
+  bookingId: uuid
+}
+
+@topic("shop.bookings.v1")
+channel BookingEvents {
+  carries BookingPaid, BookingCancelled
+  key bookingId
+}
+
+service Bookings at "/bookings" {
+  publishes BookingEvents
+  get "/ping" ping() -> 204
+}

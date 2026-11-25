@@ -1,0 +1,14 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E1007]: `bad group` is not a legal consumer group name
+ --> app/app.veld:7:19
+  |
+7 |   subscribes A as "bad group" { on Paid -> handle }
+  |                   ^^^^^^^^^^^
+  = help: a group matches [A-Za-z0-9._-]{1,200}
+
+== ir ==
+(no IR: compilation failed)

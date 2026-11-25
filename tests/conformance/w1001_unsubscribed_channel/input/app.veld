@@ -1,0 +1,4 @@
+event Paid { id: uuid }
+channel PaidChannel { carries Paid }
+
+service Publisher { publishes PaidChannel }

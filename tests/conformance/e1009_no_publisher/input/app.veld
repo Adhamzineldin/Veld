@@ -1,0 +1,6 @@
+event Paid { id: uuid }
+channel Orphans { carries Paid }
+
+service Consumer {
+  subscribes Orphans as "consumer" { on Paid -> handle }
+}

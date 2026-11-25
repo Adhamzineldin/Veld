@@ -1,0 +1,947 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    },
+    {
+      "id": 1,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Key",
+      "qualified": "app:app.Key",
+      "sig": "veld:app/Key@58a46f9e3881c3ce",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 4,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "event",
+          "wire": "event",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "channel",
+          "wire": "channel",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "carries",
+          "wire": "carries",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "key",
+          "wire": "key",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "publishes",
+          "wire": "publishes",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "subscribes",
+          "wire": "subscribes",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "on",
+          "wire": "on",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "called",
+          "wire": "called",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "rejected",
+          "wire": "rejected",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "called",
+      "qualified": "app:app.called",
+      "sig": "veld:app/called@e38a50abe1bde482",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 29,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "scalar": "int"
+      },
+      "value": {
+        "lit": "int",
+        "value": 1
+      }
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "app",
+      "name": "carries",
+      "qualified": "app:app.carries",
+      "sig": "veld:app/carries@1867af543e2d52a6",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 22,
+        "col": 7
+      },
+      "kind": "union",
+      "discriminator": "kind",
+      "arms": [
+        {
+          "label": "event",
+          "decl": 4
+        },
+        {
+          "label": "channel",
+          "decl": 3
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "package": 0,
+      "module": "app",
+      "name": "channel",
+      "qualified": "app:app.channel",
+      "sig": "veld:app/channel@361f38b4d22f2d27",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 17,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "event",
+          "wire": "event",
+          "type": {
+            "decl": 4
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 18,
+            "col": 3
+          }
+        },
+        {
+          "name": "state",
+          "wire": "state",
+          "type": {
+            "decl": 0
+          },
+          "optional": false,
+          "default": {
+            "lit": "enum_variant",
+            "value": {
+              "name": "event",
+              "wire": "event"
+            }
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 19,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "package": 0,
+      "module": "app",
+      "name": "event",
+      "qualified": "app:app.event",
+      "sig": "veld:app/event@070cce895d4d91b2",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "channel",
+          "wire": "channel",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 7,
+            "col": 3
+          }
+        },
+        {
+          "name": "carries",
+          "wire": "carries",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 8,
+            "col": 3
+          }
+        },
+        {
+          "name": "key",
+          "wire": "key",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 9,
+            "col": 3
+          }
+        },
+        {
+          "name": "publishes",
+          "wire": "publishes",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 10,
+            "col": 3
+          }
+        },
+        {
+          "name": "subscribes",
+          "wire": "subscribes",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 11,
+            "col": 3
+          }
+        },
+        {
+          "name": "on",
+          "wire": "on",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 12,
+            "col": 3
+          }
+        },
+        {
+          "name": "called",
+          "wire": "called",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 13,
+            "col": 3
+          }
+        },
+        {
+          "name": "rejected",
+          "wire": "rejected",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 14,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "package": 0,
+      "module": "app",
+      "name": "keyed",
+      "qualified": "app:app.keyed",
+      "sig": "veld:app/keyed@013dc13d6aaa4fd0",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 30,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "scalar": "int"
+      },
+      "value": {
+        "lit": "int",
+        "value": 2
+      }
+    },
+    {
+      "id": 6,
+      "package": 0,
+      "module": "app",
+      "name": "rejected",
+      "qualified": "app:app.rejected",
+      "sig": "veld:app/rejected@c6cb37dc8ae5419f",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 27,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": [
+        {
+          "name": "on",
+          "wire": "on",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 27,
+            "col": 22
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "package": 1,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "package": 1,
+      "module": "prelude",
+      "name": "ValidationError",
+      "qualified": "veld:prelude.ValidationError",
+      "sig": "veld:veld/ValidationError@7836aff24d914bea",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "issues",
+          "wire": "issues",
+          "type": {
+            "list": {
+              "decl": 9
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 6,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "package": 1,
+      "module": "prelude",
+      "name": "ValidationIssue",
+      "qualified": "veld:prelude.ValidationIssue",
+      "sig": "veld:veld/ValidationIssue@253beeea259ebf75",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 9,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "path",
+          "wire": "path",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 29
+          }
+        },
+        {
+          "name": "code",
+          "wire": "code",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 43
+          }
+        },
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 57
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "key",
+      "prefix": "/key",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "publishes",
+          "method": "GET",
+          "path": "/key/event",
+          "sig": "veld:app/key.publishes@dcfb755751c7dba9",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "on",
+              "binding": "query",
+              "header": null,
+              "type": {
+                "scalar": "int"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            },
+            {
+              "name": "called",
+              "binding": "query",
+              "header": null,
+              "type": {
+                "scalar": "int"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 4
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 422,
+              "decl": 8
+            },
+            {
+              "status": 500,
+              "decl": 7
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 33,
+            "col": 16
+          }
+        },
+        {
+          "name": "subscribes",
+          "method": "GET",
+          "path": "/key/channel",
+          "sig": "veld:app/key.subscribes@8402ccd8b072851a",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 3
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 409,
+              "decl": 6
+            },
+            {
+              "status": 500,
+              "decl": 7
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 34,
+            "col": 18
+          }
+        },
+        {
+          "name": "on",
+          "method": "POST",
+          "path": "/key/union",
+          "sig": "veld:app/key.on@99cc328804577c46",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 2
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 204,
+            "type": null,
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 422,
+              "decl": 8
+            },
+            {
+              "status": 500,
+              "decl": 7
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 35,
+            "col": 17
+          }
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 32,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {},
+  "examples": [
+    {
+      "name": "an endpoint called like an event word",
+      "package": 0,
+      "service": 0,
+      "endpoint": "publishes",
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [
+        {
+          "param": "on",
+          "value": {
+            "json": 1
+          }
+        },
+        {
+          "param": "called",
+          "value": {
+            "json": 2
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 38,
+        "col": 1
+      }
+    }
+  ]
+}

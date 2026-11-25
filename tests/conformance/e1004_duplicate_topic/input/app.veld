@@ -1,0 +1,7 @@
+event Paid { id: uuid }
+
+@topic("shop.paid")
+channel First { carries Paid }
+
+@topic("shop.paid")
+channel Second { carries Paid }

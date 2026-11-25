@@ -1,0 +1,6 @@
+event Paid { id: uuid }
+
+@retry(max: 3, backoff: fixed)
+@deadLetter
+@ordered
+channel A { carries Paid }

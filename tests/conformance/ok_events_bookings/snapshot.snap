@@ -1,0 +1,1245 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+warning[W1002]: no subscription handles `BookingArchived`, an event of channel `BookingEvents`
+ --> app/app.veld:35:42
+   |
+35 |   carries BookingPaid, BookingCancelled, BookingArchived
+   |                                          ^^^^^^^^^^^^^^^
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    },
+    {
+      "id": 1,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "BookingArchived",
+      "qualified": "app:app.BookingArchived",
+      "sig": "veld:app/BookingArchived@1961631100382b62",
+      "docs": "Carried by the channel, handled by nobody (`W1002`).",
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 29,
+        "col": 7
+      },
+      "kind": "event",
+      "fields": [
+        {
+          "name": "bookingId",
+          "wire": "bookingId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 30,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "BookingCancelled",
+      "qualified": "app:app.BookingCancelled",
+      "sig": "veld:app/BookingCancelled@2dcf6194a211dafb",
+      "docs": "Published when a booking is cancelled.",
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 21,
+        "col": 7
+      },
+      "kind": "event",
+      "fields": [
+        {
+          "name": "bookingId",
+          "wire": "bookingId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 22,
+            "col": 3
+          }
+        },
+        {
+          "name": "reason",
+          "wire": "reason",
+          "type": {
+            "decl": 3
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 23,
+            "col": 3
+          }
+        },
+        {
+          "name": "note",
+          "wire": "note",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 24,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "noteNotEmpty",
+          "id": "veld:app/BookingCancelled.noteNotEmpty@3c82558c6c901170",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "implies",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "has": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "note",
+                          "wire": "note",
+                          "optional": true
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "gt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "call": {
+                            "f": "len",
+                            "args": [
+                              {
+                                "t": {
+                                  "scalar": "string"
+                                },
+                                "e": {
+                                  "path": {
+                                    "root": "self",
+                                    "steps": [
+                                      {
+                                        "name": "note",
+                                        "wire": "note",
+                                        "optional": true
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "note"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 25,
+            "col": 8
+          }
+        }
+      ],
+      "rules_digest": "a0bd891e03d34e72"
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "app",
+      "name": "BookingPaid",
+      "qualified": "app:app.BookingPaid",
+      "sig": "veld:app/BookingPaid@6e304e13181685fd",
+      "docs": "Published when a booking is paid.",
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 10,
+        "col": 7
+      },
+      "kind": "event",
+      "fields": [
+        {
+          "name": "bookingId",
+          "wire": "bookingId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 11,
+            "col": 3
+          }
+        },
+        {
+          "name": "amount",
+          "wire": "amount",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 12,
+            "col": 3
+          }
+        },
+        {
+          "name": "paidAt",
+          "wire": "paidAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 13,
+            "col": 3
+          }
+        },
+        {
+          "name": "nights",
+          "wire": "nights",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": {
+            "lit": "int",
+            "value": 1
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 14,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "positive",
+          "id": "veld:app/BookingPaid.positive@96bf79c3c3e07d56",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "gt",
+                "l": {
+                  "t": {
+                    "scalar": "decimal"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "amount",
+                          "wire": "amount",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "decimal"
+                  },
+                  "e": {
+                    "lit": {
+                      "decimal": "0"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "amount"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 15,
+            "col": 8
+          }
+        },
+        {
+          "name": "shortStay",
+          "id": "veld:app/BookingPaid.shortStay@b86273a40fd9c1ca",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "le",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "nights",
+                          "wire": "nights",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 30
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": "A stay is at most 30 nights",
+          "reads": [
+            "nights"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 16,
+            "col": 8
+          }
+        }
+      ],
+      "rules_digest": "e338c56e2b0c30b2"
+    },
+    {
+      "id": 3,
+      "package": 0,
+      "module": "app",
+      "name": "Reason",
+      "qualified": "app:app.Reason",
+      "sig": "veld:app/Reason@b23769e8cf7c9e2c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 7,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "guest",
+          "wire": "guest",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "hotel",
+          "wire": "hotel",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "fraud",
+          "wire": "fraud",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "package": 1,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "Bookings",
+      "prefix": "/bookings",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "ping",
+          "method": "GET",
+          "path": "/bookings/ping",
+          "sig": "veld:app/Bookings.ping@64a95eb48830d51f",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 204,
+            "type": null,
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 500,
+              "decl": 4
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 47,
+            "col": 15
+          }
+        }
+      ],
+      "publishes": [
+        1,
+        0
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 45,
+        "col": 9
+      }
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "name": "Ledger",
+      "prefix": "",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [],
+      "subscriptions": [
+        {
+          "channel": 1,
+          "group": "ledger",
+          "handlers": [
+            {
+              "event": 2,
+              "name": "recordPayment",
+              "docs": null,
+              "origin": {
+                "file": "app.veld",
+                "line": 60,
+                "col": 5
+              }
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 59,
+            "col": 3
+          }
+        },
+        {
+          "channel": 0,
+          "group": "ledger-audit",
+          "handlers": [
+            {
+              "event": 2,
+              "name": "auditPayment",
+              "docs": null,
+              "origin": {
+                "file": "app.veld",
+                "line": 63,
+                "col": 5
+              }
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 62,
+            "col": 3
+          }
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 58,
+        "col": 9
+      }
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "name": "Notifications",
+      "prefix": "",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [],
+      "subscriptions": [
+        {
+          "channel": 1,
+          "group": "notifications",
+          "handlers": [
+            {
+              "event": 2,
+              "name": "sendReceipt",
+              "docs": null,
+              "origin": {
+                "file": "app.veld",
+                "line": 53,
+                "col": 5
+              }
+            },
+            {
+              "event": 1,
+              "name": "sendApology",
+              "docs": null,
+              "origin": {
+                "file": "app.veld",
+                "line": 54,
+                "col": 5
+              }
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 52,
+            "col": 3
+          }
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 51,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {},
+  "examples": [
+    {
+      "name": "a cancellation reaches the one subscription that handles it",
+      "package": 0,
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "docs": null,
+      "event": {
+        "decl": 1,
+        "channel": 1,
+        "value": {
+          "object": [
+            {
+              "name": "reason",
+              "wire": "reason",
+              "value": {
+                "json": "guest"
+              }
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "service": 2,
+          "handler": "sendApology",
+          "called": true
+        },
+        {
+          "service": 2,
+          "handler": "sendReceipt",
+          "called": false
+        },
+        {
+          "service": 1,
+          "handler": "recordPayment",
+          "called": false
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 110,
+        "col": 1
+      }
+    },
+    {
+      "name": "a left-out field takes its default, which passes",
+      "package": 0,
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "docs": null,
+      "event": {
+        "decl": 2,
+        "channel": 1,
+        "value": {
+          "object": [
+            {
+              "name": "amount",
+              "wire": "amount",
+              "value": {
+                "json": "1.00"
+              }
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "service": 2,
+          "handler": "sendReceipt",
+          "called": true
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 93,
+        "col": 1
+      }
+    },
+    {
+      "name": "a paid booking reaches every subscriber that handles it",
+      "package": 0,
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "docs": null,
+      "event": {
+        "decl": 2,
+        "channel": 1,
+        "value": {
+          "object": [
+            {
+              "name": "amount",
+              "wire": "amount",
+              "value": {
+                "json": "120.00"
+              }
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "service": 2,
+          "handler": "sendReceipt",
+          "called": true
+        },
+        {
+          "service": 1,
+          "handler": "recordPayment",
+          "called": true
+        },
+        {
+          "service": 2,
+          "handler": "sendApology",
+          "called": false
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 69,
+        "col": 1
+      }
+    },
+    {
+      "name": "a rule is checked on every channel that carries the event",
+      "package": 0,
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "docs": null,
+      "event": {
+        "decl": 2,
+        "channel": 0,
+        "value": {
+          "object": [
+            {
+              "name": "amount",
+              "wire": "amount",
+              "value": {
+                "json": "-5.00"
+              }
+            }
+          ]
+        }
+      },
+      "expect": "rejected",
+      "origin": {
+        "file": "app.veld",
+        "line": 88,
+        "col": 1
+      }
+    },
+    {
+      "name": "a stay of exactly thirty nights passes",
+      "package": 0,
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "docs": null,
+      "event": {
+        "decl": 2,
+        "channel": 1,
+        "value": {
+          "object": [
+            {
+              "name": "amount",
+              "wire": "amount",
+              "value": {
+                "json": "1.00"
+              }
+            },
+            {
+              "name": "nights",
+              "wire": "nights",
+              "value": {
+                "json": 30
+              }
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "service": 1,
+          "handler": "recordPayment",
+          "called": true
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 98,
+        "col": 1
+      }
+    },
+    {
+      "name": "a stay of thirty-one nights is rejected",
+      "package": 0,
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "docs": null,
+      "event": {
+        "decl": 2,
+        "channel": 1,
+        "value": {
+          "object": [
+            {
+              "name": "amount",
+              "wire": "amount",
+              "value": {
+                "json": "1.00"
+              }
+            },
+            {
+              "name": "nights",
+              "wire": "nights",
+              "value": {
+                "json": 31
+              }
+            }
+          ]
+        }
+      },
+      "expect": "rejected",
+      "origin": {
+        "file": "app.veld",
+        "line": 103,
+        "col": 1
+      }
+    },
+    {
+      "name": "an event nobody handles is ignored by every subscription",
+      "package": 0,
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "docs": null,
+      "event": {
+        "decl": 0,
+        "channel": 1,
+        "value": {
+          "object": []
+        }
+      },
+      "expect": [
+        {
+          "service": 2,
+          "handler": "sendReceipt",
+          "called": false
+        },
+        {
+          "service": 2,
+          "handler": "sendApology",
+          "called": false
+        },
+        {
+          "service": 1,
+          "handler": "recordPayment",
+          "called": false
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 127,
+        "col": 1
+      }
+    },
+    {
+      "name": "an event that breaks a rule reaches no handler",
+      "package": 0,
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "docs": null,
+      "event": {
+        "decl": 2,
+        "channel": 1,
+        "value": {
+          "object": [
+            {
+              "name": "amount",
+              "wire": "amount",
+              "value": {
+                "json": "0.00"
+              }
+            }
+          ]
+        }
+      },
+      "expect": "rejected",
+      "origin": {
+        "file": "app.veld",
+        "line": 83,
+        "col": 1
+      }
+    },
+    {
+      "name": "an optional field that is present is checked",
+      "package": 0,
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "docs": null,
+      "event": {
+        "decl": 1,
+        "channel": 1,
+        "value": {
+          "object": [
+            {
+              "name": "reason",
+              "wire": "reason",
+              "value": {
+                "json": "fraud"
+              }
+            },
+            {
+              "name": "note",
+              "wire": "note",
+              "value": {
+                "json": ""
+              }
+            }
+          ]
+        }
+      },
+      "expect": "rejected",
+      "origin": {
+        "file": "app.veld",
+        "line": 117,
+        "col": 1
+      }
+    },
+    {
+      "name": "an optional field with a value passes",
+      "package": 0,
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "docs": null,
+      "event": {
+        "decl": 1,
+        "channel": 1,
+        "value": {
+          "object": [
+            {
+              "name": "reason",
+              "wire": "reason",
+              "value": {
+                "json": "hotel"
+              }
+            },
+            {
+              "name": "note",
+              "wire": "note",
+              "value": {
+                "json": "overbooked"
+              }
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "service": 2,
+          "handler": "sendApology",
+          "called": true
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 122,
+        "col": 1
+      }
+    },
+    {
+      "name": "the same event on another channel reaches that channel's subscribers",
+      "package": 0,
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "docs": null,
+      "event": {
+        "decl": 2,
+        "channel": 0,
+        "value": {
+          "object": [
+            {
+              "name": "amount",
+              "wire": "amount",
+              "value": {
+                "json": "120.00"
+              }
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "service": 1,
+          "handler": "auditPayment",
+          "called": true
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 76,
+        "col": 1
+      }
+    }
+  ],
+  "channels": [
+    {
+      "name": "Audit",
+      "package": 0,
+      "module": "app",
+      "qualified": "app:app.Audit",
+      "topic": "app.Audit",
+      "events": [
+        2
+      ],
+      "key": null,
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 40,
+        "col": 9
+      }
+    },
+    {
+      "name": "BookingEvents",
+      "package": 0,
+      "module": "app",
+      "qualified": "app:app.BookingEvents",
+      "topic": "shop.bookings.v1",
+      "events": [
+        2,
+        1,
+        0
+      ],
+      "key": {
+        "name": "bookingId",
+        "wire": "bookingId",
+        "type": {
+          "scalar": "uuid"
+        }
+      },
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 34,
+        "col": 9
+      }
+    }
+  ]
+}

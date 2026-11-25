@@ -1,0 +1,40 @@
+// Every word of events is contextual: a name outside its own place, so a contract written
+// before events keeps compiling. (`spec/events.md` section 2.)
+
+enum Key { event, channel, carries, key, publishes, subscribes, on, called, rejected }
+
+model event {
+  channel: string
+  carries: int
+  key: string
+  publishes: bool
+  subscribes: bool
+  on: int
+  called: int
+  rejected: int
+}
+
+model channel {
+  event: event
+  state: Key = .event
+}
+
+union carries {
+  event: event
+  channel: channel
+}
+
+error rejected 409 { on: string }
+
+const called: int = 1
+const keyed: int = 2
+
+service key at "/key" {
+  get "/event" publishes(@query on: int, @query called: int) -> event
+  get "/channel" subscribes() -> channel | rejected
+  post "/union" on(body: carries) -> 204
+}
+
+example "an endpoint called like an event word" {
+  publishes(on: 1, called: 2) -> ok
+}

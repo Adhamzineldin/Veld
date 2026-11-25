@@ -1,0 +1,21 @@
+event Paid { id: uuid }
+event Other { id: uuid }
+channel A { carries Paid }
+channel B { carries Paid }
+
+service Publisher { publishes A, B }
+
+service NotCarried {
+  subscribes A as "g" { on Other -> handle }
+}
+
+service Empty {
+  subscribes B as "g" { }
+}
+
+service Twice {
+  subscribes A as "g" {
+    on Paid -> first
+    on Paid -> second
+  }
+}

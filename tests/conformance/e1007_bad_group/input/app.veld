@@ -1,0 +1,8 @@
+event Paid { id: uuid }
+channel A { carries Paid }
+
+service Publisher { publishes A }
+
+service Consumer {
+  subscribes A as "bad group" { on Paid -> handle }
+}

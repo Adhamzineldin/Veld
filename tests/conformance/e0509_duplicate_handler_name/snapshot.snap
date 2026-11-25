@@ -1,0 +1,27 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E0509]: `handle` is already an endpoint or handler of this service
+ --> app/app.veld:9:16
+  |
+9 |     on Paid -> handle
+  |                ^^^^^^
+ --> app/app.veld:7:17
+  |
+7 |   get "/handle" handle() -> 204
+  |                 ------ first declared here
+
+error[E0509]: `again` is already an endpoint or handler of this service
+ --> app/app.veld:17:21
+   |
+17 |     on Cancelled -> again
+   |                     ^^^^^
+ --> app/app.veld:16:16
+   |
+16 |     on Paid -> again
+   |                ----- first declared here
+
+== ir ==
+(no IR: compilation failed)

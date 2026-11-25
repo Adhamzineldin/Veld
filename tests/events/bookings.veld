@@ -1,8 +1,7 @@
 // Events, channels and subscriptions (spec/events.md). The examples are the vectors: the
 // reference evaluator, and later every server target, must give exactly the stated outcome.
 // The outcomes were written by hand from the spec, before any implementation.
-//
-// The file is `.pending` until the compiler knows events (phase E1).
+// `cargo test -p veld-rules --test events` runs them.
 
 enum Reason { guest, hotel, fraud }
 

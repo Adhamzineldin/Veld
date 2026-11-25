@@ -1,0 +1,35 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E1003]: `bad topic!` is not a legal topic name
+ --> app/app.veld:3:1
+  |
+3 | @topic("bad topic!")
+  | ^^^^^^^^^^^^^^^^^^^^
+  = help: a topic matches [A-Za-z0-9._-]{1,200}, is not `.` or `..` and does not end in `.dlq`
+
+error[E1003]: `orders.dlq` is not a legal topic name
+ --> app/app.veld:6:1
+  |
+6 | @topic("orders.dlq")
+  | ^^^^^^^^^^^^^^^^^^^^
+  = help: a topic matches [A-Za-z0-9._-]{1,200}, is not `.` or `..` and does not end in `.dlq`
+
+error[E1003]: `..` is not a legal topic name
+ --> app/app.veld:9:1
+  |
+9 | @topic("..")
+  | ^^^^^^^^^^^^
+  = help: a topic matches [A-Za-z0-9._-]{1,200}, is not `.` or `..` and does not end in `.dlq`
+
+error[E1003]: `` is not a legal topic name
+ --> app/app.veld:12:1
+   |
+12 | @topic("")
+   | ^^^^^^^^^^
+  = help: a topic matches [A-Za-z0-9._-]{1,200}, is not `.` or `..` and does not end in `.dlq`
+
+== ir ==
+(no IR: compilation failed)

@@ -1,0 +1,13 @@
+event A {
+  id: uuid
+  n?: int
+  f: float
+  name: string
+}
+event B { id: string }
+
+channel NoSuchField { carries A key nope }
+channel OptionalKey { carries A key n }
+channel BadKeyType { carries A key f }
+channel MixedTypes { carries A, B key id }
+channel TwoKeys { carries A key id key name }

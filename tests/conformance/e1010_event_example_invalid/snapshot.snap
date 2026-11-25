@@ -1,0 +1,43 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E1010]: `Paid` is carried by several channels (A, B, Other); say which with `on`
+ --> app/app.veld:14:15
+   |
+14 |   given event Paid { }
+   |               ^^^^
+  = help: write `on A`
+
+error[E1010]: no handler `Consumer.nope` on channel `A`
+ --> app/app.veld:20:10
+   |
+20 |   expect Consumer.nope called
+   |          ^^^^^^^^^^^^^
+  = help: did you mean `Consumer.handle`?
+
+error[E1010]: `rejected` cannot be combined with a `called` line
+ --> app/app.veld:25:3
+   |
+25 |   expect rejected
+   |   ^^^^^^^^^^^^^^^
+ --> app/app.veld:26:3
+   |
+26 |   expect Consumer.handle called
+   |   ----------------------------- this line expects a call
+
+error[E1010]: `Plain` is not an event
+ --> app/app.veld:30:15
+   |
+30 |   given event Plain { } on A
+   |               ^^^^^
+
+error[E1010]: `Consumer.handle` is named twice
+ --> app/app.veld:37:3
+   |
+37 |   expect Consumer.handle not called
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+== ir ==
+(no IR: compilation failed)

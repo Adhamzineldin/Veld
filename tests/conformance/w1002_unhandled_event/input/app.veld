@@ -1,0 +1,9 @@
+event Paid { id: uuid }
+event Cancelled { id: uuid }
+channel Bookings { carries Paid, Cancelled }
+
+service Publisher { publishes Bookings }
+
+service Consumer {
+  subscribes Bookings as "consumer" { on Paid -> handle }
+}
