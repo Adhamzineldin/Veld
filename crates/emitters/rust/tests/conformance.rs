@@ -273,6 +273,13 @@ fn rust_server_refuses_events_and_the_client_ignores_them() {
     veld_emit_conformance::check_events_are_ignored_by_clients(&Rust).unwrap();
 }
 
+/// `@rollout(audit)` (`spec/rules.md` section 17.1): refused with `E0801` until Rust declares
+/// `rules_rollout`, as a server and as a client.
+#[test]
+fn rust_refuses_audited_rules() {
+    veld_emit_conformance::check_rollout_is_refused(&Rust).unwrap();
+}
+
 /// The shared checks hold a generator that does not support state machines and policies to
 /// `E0801`. Rust supports them, so both checks must now notice that it does.
 #[test]

@@ -92,3 +92,11 @@ fn node_refuses_events_and_typescript_ignores_them() {
     veld_emit_conformance::check_events_are_refused(&Node).unwrap();
     veld_emit_conformance::check_events_are_ignored_by_clients(&TypeScript).unwrap();
 }
+
+/// `@rollout(audit)` (`spec/rules.md` section 17.1): until a generator declares `rules_rollout`, the
+/// gate and `generate` refuse an audited rule with `E0801`, for the server and the client alike.
+#[test]
+fn node_and_typescript_refuse_audited_rules() {
+    veld_emit_conformance::check_rollout_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_rollout_is_refused(&TypeScript).unwrap();
+}

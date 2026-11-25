@@ -15,6 +15,7 @@
 
 mod events;
 mod fixtures;
+mod rollout;
 
 use std::collections::BTreeMap;
 
@@ -25,6 +26,7 @@ pub use events::{
     check_events_are_ignored_by_clients, check_events_are_refused, compiled_events_contract,
 };
 pub use fixtures::{FIXTURES, Fixture};
+pub use rollout::{check_rollout_is_refused, compiled_rollout_contracts};
 
 /// Compiles one contract as the single service package `app`.
 ///
@@ -870,7 +872,7 @@ mod tests {
         let covered: Vec<Feature> = FIXTURES.iter().filter_map(|f| f.feature).collect();
         // `consts` is never reported by `features_used` (see fixtures.rs), so it has no fixture.
         // The rules features have no fixture until the language has rule syntax; `ir_with_rule`
-        // covers `rules_invariants` by hand. `rules_rollout` has contracts of its own (`rollout.rs`).
+        // covers `rules_invariants` by hand. `rules_rollout` is covered by `compiled_rollout_contracts`.
         for feature in Feature::ALL.into_iter().filter(|f| {
             *f != Feature::Consts && *f != Feature::RulesRollout && !Feature::RULES.contains(f)
         }) {
@@ -940,6 +942,37 @@ mod tests {
             caps: Capabilities::all_except(&[]),
         };
         assert!(check_state_machines_are_refused(&claims).is_err());
+    }
+
+    #[test]
+    fn the_rollout_contracts_use_the_rollout_feature_at_a_known_line() {
+        let contracts = compiled_rollout_contracts();
+        assert_eq!(contracts.len(), 3);
+        for (ir, line) in contracts {
+            let used = ir.features_used(&all_services(&ir));
+            assert!(used.contains(&Feature::RulesRollout), "{used:?}");
+            assert!(line > 1);
+        }
+    }
+
+    #[test]
+    fn a_generator_that_claims_rollout_is_caught() {
+        let claims = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]).with(Feature::RulesRollout),
+        };
+        let err = check_rollout_is_refused(&claims).unwrap_err();
+        assert!(err.contains("declares `rules_rollout`"), "{err}");
+    }
+
+    #[test]
+    fn a_generator_that_does_not_gate_rollout_is_caught() {
+        let ungated = Minimal {
+            embed: true,
+            caps: Capabilities::default(),
+        };
+        let err = check_rollout_is_refused(&ungated).unwrap_err();
+        assert!(err.contains("did not answer E0801"), "{err}");
     }
 
     #[test]

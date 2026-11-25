@@ -115,3 +115,10 @@ fn java_server_refuses_events_and_the_client_ignores_them() {
     veld_emit_conformance::check_events_are_refused(&Java).unwrap();
     veld_emit_conformance::check_events_are_ignored_by_clients(&Java).unwrap();
 }
+
+/// `@rollout(audit)` (`spec/rules.md` section 17.1): refused with `E0801` until Java declares
+/// `rules_rollout`, as a server and as a client.
+#[test]
+fn java_refuses_audited_rules() {
+    veld_emit_conformance::check_rollout_is_refused(&Java).unwrap();
+}
