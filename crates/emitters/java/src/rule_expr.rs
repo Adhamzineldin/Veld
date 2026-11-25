@@ -105,6 +105,21 @@ impl<'f, 't, 'a> JavaExpr<'f, 't, 'a> {
         &self.olds
     }
 
+    /// The Java code that reads the last of `steps` below `root` (a fact, the principal or the
+    /// result), as the developer sees the value. `None` (with a note) when `root` is not in scope.
+    pub fn field_code(&mut self, root: Root, steps: &[veld_ir::Step]) -> Option<String> {
+        let path = PathRef {
+            root,
+            steps: steps.to_vec(),
+        };
+        let before = self.unsupported.len();
+        let (prefixes, _) = self.walk(&path);
+        if self.unsupported.len() > before {
+            return None;
+        }
+        prefixes.last().cloned()
+    }
+
     /// The value of a plain path as the developer sees it (`java.time.Instant` for a datetime),
     /// when `expr` is one; `None` for anything computed.
     pub fn raw_path(&mut self, expr: &veld_ir::Expr) -> Option<String> {

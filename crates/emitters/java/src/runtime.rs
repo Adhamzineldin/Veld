@@ -23,6 +23,8 @@ const RULE_FILES: &[&str] = &[
 const ENDPOINT_FILES: &[&str] = &["EndpointRules"];
 /// The runtime classes of the test handler, emitted only with the target option `testing`.
 const TESTING_FILES: &[&str] = &["TestSupport"];
+/// The runtime classes of the state machines of endpoints (`spec/targets/java.md` section 10).
+const MACHINE_FILES: &[&str] = &["Transition"];
 
 /// The package the embedded adapter sources declare. It is replaced by `<base>.adapters`.
 const ADAPTER_PACKAGE: &str = "dev.veld.adapters";
@@ -62,6 +64,7 @@ runtime_files!(
     "SseParser",
     "SseStream",
     "TestSupport",
+    "Transition",
     "UntypedError",
     "Veld",
     "VeldError",
@@ -197,6 +200,8 @@ pub struct Flags {
     pub endpoint: bool,
     /// The test handler support (`// #if testing` regions and `TestSupport`).
     pub testing: bool,
+    /// The transition guard of endpoints (`// #if machine` regions and `Transition`). Needs `endpoint`.
+    pub machine: bool,
 }
 
 /// Like [`emit`], with the endpoint rules and test handler parts switched by `flags`.
@@ -212,11 +217,13 @@ pub fn emit_with(
             && (flags.rules || !RULE_FILES.contains(&name))
             && (flags.endpoint || !ENDPOINT_FILES.contains(&name))
             && (flags.testing || !TESTING_FILES.contains(&name))
+            && (flags.machine || !MACHINE_FILES.contains(&name))
     };
     let enabled = |region: &str| match region {
         "rules" => flags.rules,
         "endpoint" => flags.endpoint,
         "testing" => flags.testing,
+        "machine" => flags.machine,
         _ => false,
     };
     for (name, source) in RUNTIME.iter().filter(|(name, _)| wanted(name)) {

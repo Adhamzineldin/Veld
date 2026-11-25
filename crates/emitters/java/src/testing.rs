@@ -8,7 +8,7 @@ use veld_codegen::{CodeWriter, GenDiagnostic};
 use veld_ir::{Endpoint, Service};
 
 use crate::endpoint::{loaders_name, service_has_rules};
-use crate::server::{needs_hooks, signature, std_sigs};
+use crate::server::{extra_args, needs_hooks, signature, std_sigs};
 use crate::spec::{RequestNames, is_sse, is_ws, method_name};
 use crate::tree::FileCtx;
 use crate::types::{codec_expr, java_type, schema_expr};
@@ -178,11 +178,7 @@ fn write_stub_method(
     let declaration = signature(fc, ep, &request, ctx);
     let declaration = declaration.trim_end_matches(';').to_string();
     let method = method_name(ep);
-    let facts = if ep.rules.facts.is_empty() {
-        String::new()
-    } else {
-        "facts, ".to_string()
-    };
+    let facts = extra_args(ep);
     w.line("@Override");
     w.open(format!("public {declaration}"));
     if is_ws(ep) {

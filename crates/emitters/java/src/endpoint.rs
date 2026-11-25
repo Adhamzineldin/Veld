@@ -5,8 +5,9 @@
 //! reporting.
 
 use veld_codegen::{CodeWriter, GenDiagnostic, print_expr};
-use veld_ir::{Endpoint, EndpointFact, EndpointRequire, Service};
+use veld_ir::{Endpoint, EndpointFact, EndpointRequire, Ir, Service, ServiceId};
 
+use crate::machine;
 use crate::rule_expr::{EndpointScope, JavaExpr, ScopeVar, rule_value_type};
 use crate::spec::{param_idents, spec_const};
 use crate::tree::FileCtx;
@@ -23,6 +24,17 @@ pub fn endpoint_has_rules(ep: &Endpoint) -> bool {
 #[must_use]
 pub fn service_has_rules(svc: &Service) -> bool {
     svc.endpoints.iter().any(endpoint_has_rules)
+}
+
+/// Whether any endpoint of the given services has a `transition`.
+#[must_use]
+pub fn services_have_transition(ir: &Ir, services: &[ServiceId]) -> bool {
+    services.iter().any(|id| {
+        ir.service(*id)
+            .endpoints
+            .iter()
+            .any(|e| e.rules.transition.is_some())
+    })
 }
 
 /// The record of the facts an endpoint's handler gets: `CreateBookingFacts` for `CreateBookingRequest`.
@@ -130,7 +142,7 @@ pub struct Site<'a> {
     pub request: &'a str,
 }
 
-fn unsupported(site: &Site<'_>, what: &str) -> GenDiagnostic {
+pub(crate) fn unsupported(site: &Site<'_>, what: &str) -> GenDiagnostic {
     let mut d = GenDiagnostic::new(
         "E0801",
         format!(
@@ -319,6 +331,7 @@ pub fn write_call_body(
         let method = loaders_method(site, &fact.name, &loaders);
         write_fact(w, &mut printer, site, (fact, ident, &method), &mut diags);
     }
+    machine::write_guard(w, &mut printer, site, &mut diags);
     for r in &ep.rules.requires {
         write_require(w, &mut printer, site, r, &mut diags);
     }
@@ -332,7 +345,7 @@ pub fn write_call_body(
         Some(_) => w.line(format!("var result = {call};")),
         None => w.line(format!("{call};")),
     };
-    write_finish(w, &mut printer, site, &ensures, encode);
+    write_finish(w, &mut printer, site, &ensures, encode, &mut diags);
     diags.extend(printer_problems(&printer, site));
     diags
 }
@@ -356,6 +369,7 @@ fn write_finish(
     site: &Site<'_>,
     ensures: &[String],
     encode: Option<&str>,
+    diags: &mut Vec<GenDiagnostic>,
 ) {
     for (e, cond) in site.ep.rules.ensures.iter().zip(ensures) {
         let fields = list_of(printer.file(), &e.reads);
@@ -369,6 +383,9 @@ fn write_finish(
                 "postcondition failed"
             )
         ));
+    }
+    if encode.is_some() {
+        machine::write_target(w, printer, site, diags);
     }
     match encode {
         Some(enc) => {

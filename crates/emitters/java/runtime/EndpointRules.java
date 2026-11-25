@@ -194,6 +194,25 @@ public final class EndpointRules {
       return new Early(Router.problem(error.sig(), error.title(), status, spec.sig(), data, found));
     }
 
+    // #if machine
+    /**
+     * The transition guard (spec/rules.md section 10.2): {@code from} must be one of {@code
+     * sources}, else the request ends with {@code 409 InvalidTransition}. It runs whether or not
+     * request validation is on: it reads a fact, never a request value. The result is what the
+     * handler receives; it is a guard, not an atomic guarantee.
+     */
+    public <S extends Enum<S>> Transition<S> transition(
+        String id, String field, S from, List<S> sources, S to, Supplier<VeldError> invalid) {
+      if (sources.contains(from)) {
+        return new Transition<>(field, from, to);
+      }
+      List<Violation> found = List.of(new Violation(id, "request", List.of(), "violates rule transition", null));
+      RuleWalk.report(hooks, spec, RuleWalk.Position.INPUT, RuleWalk.Outcome.REJECTED, found, started);
+      VeldError error = invalid.get();
+      throw early(error, error.status(), found);
+    }
+
+    // #endif
     /** One {@code ensure}: checked after the handler, once the result's invariants hold. */
     public void ensure(String id, String name, List<String> fields, String message, BooleanSupplier holds) {
       if (active()) {

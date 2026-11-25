@@ -8,6 +8,7 @@
 pub mod client;
 pub mod endpoint;
 pub mod frameworks;
+pub mod machine;
 pub mod models;
 pub mod readme;
 pub mod rule_expr;
@@ -140,9 +141,9 @@ impl Generator for Java {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        // Invariants and endpoint rules are enforced (`spec/targets/java.md` sections 8 and 9);
-        // the other rules features are not implemented yet: `E0801` (`spec/rules.md` section 8).
-        Capabilities::all_except(&[Feature::RulesTransitions, Feature::RulesPolicies])
+        // Invariants, endpoint rules and state machines are enforced (`spec/targets/java.md`
+        // sections 8 to 10); policies are not implemented yet: `E0801` (`spec/rules.md` section 8).
+        Capabilities::all_except(&[Feature::RulesPolicies])
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
@@ -182,6 +183,7 @@ impl Generator for Java {
             rules,
             endpoint,
             testing: endpoint && opts.testing == Some(true),
+            machine: endpoint && endpoint::services_have_transition(req.ir, &req.services),
         };
         runtime::emit_with(&mut files, &base, streaming, flags)?;
         let tree = tree.with_rules(rules).with_testing(flags.testing);

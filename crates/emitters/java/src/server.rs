@@ -9,8 +9,9 @@ use veld_ir::{AuthKind, Endpoint, Service};
 
 use crate::endpoint;
 use crate::frameworks::{EndpointKind, EndpointModel, ServiceModel};
+use crate::machine;
 use crate::spec::{
-    RequestNames, emit_requests, endpoint_docs, is_sse, is_ws, method_name, spec_const,
+    RequestNames, emit_requests, endpoint_docs, endpoint_docs_note, is_sse, is_ws, method_name, spec_const,
     write_spec_const, ws_incoming,
 };
 use crate::tree::{FileCtx, Tree, java_path};
@@ -118,7 +119,11 @@ fn write_interface(
         if i > 0 {
             w.blank();
         }
-        endpoint_docs(w, ep);
+        if ep.rules.transition.is_some() {
+            endpoint_docs_note(w, ep, machine::TRANSITION_NOTE);
+        } else {
+            endpoint_docs(w, ep);
+        }
         let request = names.get(svc.id, &ep.name);
         w.line(signature(fc, ep, &request, &ctx));
     }
@@ -126,16 +131,30 @@ fn write_interface(
 }
 
 /// The request parameter list of a handler method: the request record, then the facts record
-/// when the endpoint has facts, then the context.
-fn request_params(ep: &Endpoint, request: &str, ctx: &str) -> String {
-    if ep.rules.facts.is_empty() {
-        format!("{request} request, {ctx} ctx")
-    } else {
-        format!(
-            "{request} request, {} facts, {ctx} ctx",
-            endpoint::facts_name(request)
-        )
+/// when the endpoint has facts, then the `transition` when it has one, then the context.
+fn request_params(fc: &mut FileCtx<'_, '_>, ep: &Endpoint, request: &str, ctx: &str) -> String {
+    let mut params = vec![format!("{request} request")];
+    if !ep.rules.facts.is_empty() {
+        params.push(format!("{} facts", endpoint::facts_name(request)));
     }
+    if let Some(t) = &ep.rules.transition {
+        params.push(format!("{} transition", machine::transition_type(fc, t)));
+    }
+    params.push(format!("{ctx} ctx"));
+    params.join(", ")
+}
+
+/// What follows `request` in a call of a handler method: `facts, transition, `, each when the
+/// endpoint has it.
+pub(crate) fn extra_args(ep: &Endpoint) -> String {
+    let mut out = String::new();
+    if !ep.rules.facts.is_empty() {
+        out.push_str("facts, ");
+    }
+    if ep.rules.transition.is_some() {
+        out.push_str("transition, ");
+    }
+    out
 }
 
 /// One required hook of a service.
@@ -519,12 +538,7 @@ fn write_endpoint(
             ep,
             request: &request,
         };
-        let facts = if ep.rules.facts.is_empty() {
-            ""
-        } else {
-            "facts, "
-        };
-        let call = format!("impl.{method}(request, {facts}ctx)");
+        let call = format!("impl.{method}(request, {}ctx)", extra_args(ep));
         let encode = ep
             .success
             .ty
@@ -676,6 +690,6 @@ pub(crate) fn signature(
         Some(t) => java_type(fc, t, true),
         None => "void".to_string(),
     };
-    let params = request_params(ep, request, ctx);
+    let params = request_params(fc, ep, request, ctx);
     format!("{ret} {method}({params}) throws Exception;")
 }
