@@ -9,13 +9,17 @@
     reason = "token scanning: only a few tokens matter, the rest are skipped"
 )]
 
+#[cfg(test)]
+mod endpoint_tests;
+mod endpoint;
+mod example;
 mod expr;
 #[cfg(test)]
 mod rule_tests;
 
 use super::ast::{
     Annotation, Arg, ArgValue, ConstDecl, Decl, DeclKind, Doc, Endpoint, EnumDecl, ErrorDecl,
-    Field, File, HttpMethod, Ident, Import, LitKind, Literal, ModelDecl, Param, RespItem,
+    Example, Field, File, HttpMethod, Ident, Import, LitKind, Literal, ModelDecl, Param, RespItem,
     Responses, Rule, ServiceDecl, StrLit, TypeExpr, TypeExprKind, UnionArm, UnionDecl, Use,
     Variant,
 };
@@ -225,9 +229,10 @@ impl Parser<'_> {
         let start = self.span();
         let mut uses = Vec::new();
         let mut decls: Vec<Decl> = Vec::new();
+        let mut examples: Vec<Example> = Vec::new();
         while !self.at_eof() {
             let before = self.pos;
-            self.parse_top_item(&mut uses, &mut decls);
+            self.parse_top_item(&mut uses, &mut decls, &mut examples);
             if self.pos == before {
                 self.advance();
             }
@@ -235,18 +240,34 @@ impl Parser<'_> {
         File {
             uses,
             decls,
+            examples,
             span: start.to(self.span()),
         }
     }
 
-    fn parse_top_item(&mut self, uses: &mut Vec<Use>, decls: &mut Vec<Decl>) {
+    fn parse_top_item(
+        &mut self,
+        uses: &mut Vec<Use>,
+        decls: &mut Vec<Decl>,
+        examples: &mut Vec<Example>,
+    ) {
         let item_start = self.pos;
         let docs = self.docs();
         let anns = self.annotations_before();
         match self.peek().clone() {
             Tok::Eof => self.dangling(&docs, &anns),
+            Tok::Ident(w) if w == "example" && self.is_example_start_at(0) => {
+                if let Some(a) = anns.first() {
+                    self.err("E0003", "an example takes no annotations", a.span);
+                }
+                if let Some(e) = self.parse_example(docs) {
+                    examples.push(e);
+                } else {
+                    self.recover_decl(item_start);
+                }
+            }
             Tok::Ident(w) if w == "use" && docs.is_empty() && anns.is_empty() => {
-                if !decls.is_empty() {
+                if !decls.is_empty() || !examples.is_empty() {
                     let span = self.span();
                     self.err(
                         "E0003",
@@ -349,6 +370,7 @@ impl Parser<'_> {
                     if depth == 0
                         && (language::is_decl_keyword(w)
                             || w == "use"
+                            || self.is_example_start_at(0)
                             || language::V1_KEYWORDS.contains(&w.as_str())) =>
                 {
                     return;
@@ -384,7 +406,9 @@ impl Parser<'_> {
                 Tok::Ident(w)
                     if depth == 0
                         && self.pos > start
-                        && (language::is_decl_keyword(w) || w == "use") =>
+                        && (language::is_decl_keyword(w)
+                            || w == "use"
+                            || self.is_example_start_at(0)) =>
                 {
                     return;
                 }
@@ -1027,6 +1051,11 @@ impl Parser<'_> {
         } else {
             None
         };
+        let block = if matches!(self.peek(), Tok::LBrace) {
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
         let end = Span {
             file: self.file,
             start: self.prev_end(),
@@ -1041,6 +1070,7 @@ impl Parser<'_> {
             name,
             params,
             responses,
+            block,
             span: method_span.to(end),
         })
     }

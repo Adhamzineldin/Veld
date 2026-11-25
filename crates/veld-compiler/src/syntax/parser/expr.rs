@@ -195,7 +195,7 @@ impl Parser<'_> {
     /// A `-` directly followed by a numeric literal that has no sign of its own
     /// (`spec/rules.md` section 2.1): the two tokens are one negative literal. The lexer reads a
     /// `-` after a word such as `implies` as an operator, so the parser joins them here.
-    fn parse_negative_literal(&mut self) -> Option<Expr> {
+    pub(super) fn parse_negative_literal(&mut self) -> Option<Expr> {
         if !matches!(self.peek(), Tok::Minus) {
             return None;
         }

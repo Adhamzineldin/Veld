@@ -12,6 +12,9 @@ pub struct Ident {
 pub struct File {
     pub uses: Vec<Use>,
     pub decls: Vec<Decl>,
+    /// Top-level `example "..." { }` declarations (`spec/rules.md` section 12). They have no
+    /// name of their own, so they live beside `decls`.
+    pub examples: Vec<Example>,
     pub span: Span,
 }
 
@@ -323,7 +326,173 @@ pub struct Endpoint {
     pub name: Ident,
     pub params: Vec<Param>,
     pub responses: Option<Responses>,
+    /// The `{ ... }` block of endpoint rules (`spec/rules.md` section 9).
+    pub block: Option<EndpointBlock>,
+    /// From the method to the closing `}` of the block, or to the end of the responses.
     pub span: Span,
+}
+
+/// The statements of an endpoint block, in source order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EndpointBlock {
+    pub stmts: Vec<Stmt>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Stmt {
+    Fact(FactStmt),
+    Require(RequireStmt),
+    Ensure(EnsureStmt),
+}
+
+impl Stmt {
+    /// The first byte of the statement, docs included.
+    #[must_use]
+    pub fn start(&self) -> u32 {
+        let (docs, span) = match self {
+            Stmt::Fact(f) => (&[][..], f.span),
+            Stmt::Require(r) => (&r.docs[..], r.span),
+            Stmt::Ensure(e) => (&e.docs[..], e.span),
+        };
+        docs.first()
+            .map_or(span.start, |d| d.span.start.min(span.start))
+    }
+}
+
+/// `fact name[?]: T [= key]`
+#[derive(Debug, Clone, PartialEq)]
+pub struct FactStmt {
+    pub name: Ident,
+    pub optional: bool,
+    pub ty: TypeExpr,
+    pub key: Option<Expr>,
+    pub span: Span,
+}
+
+/// `require [name:] expr [else Error [{ payload }]] [message "text"]`
+#[derive(Debug, Clone, PartialEq)]
+pub struct RequireStmt {
+    pub docs: Vec<Doc>,
+    pub name: Option<Ident>,
+    pub expr: Expr,
+    pub otherwise: Option<Else>,
+    pub message: Option<StrLit>,
+    pub span: Span,
+}
+
+/// `else Error { field: expr, .. }`
+#[derive(Debug, Clone, PartialEq)]
+pub struct Else {
+    pub error: TypeExpr,
+    /// `None` when written without braces.
+    pub payload: Option<Vec<PayloadField>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PayloadField {
+    pub name: Ident,
+    pub value: Expr,
+}
+
+/// `ensure [name:] expr [message "text"]`
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnsureStmt {
+    pub docs: Vec<Doc>,
+    pub name: Option<Ident>,
+    pub expr: Expr,
+    pub message: Option<StrLit>,
+    pub span: Span,
+}
+
+/// `example "name" { given.. [as v] [at "t"] call }` (`spec/rules.md` section 12).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Example {
+    pub docs: Vec<Doc>,
+    pub name: StrLit,
+    pub givens: Vec<Given>,
+    pub principal: Option<ExampleAs>,
+    pub at: Option<ExampleAt>,
+    pub call: ExampleCall,
+    /// From the `example` keyword to the closing `}`.
+    pub span: Span,
+}
+
+/// `given name = value` (`None` is `absent`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Given {
+    pub name: Ident,
+    pub value: Option<Value>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExampleAs {
+    pub value: Value,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExampleAt {
+    pub time: StrLit,
+    pub span: Span,
+}
+
+/// `[Service.]endpoint(arg: value, ..) [returns value] -> outcome`
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExampleCall {
+    pub service: Option<Ident>,
+    pub endpoint: Ident,
+    pub args: Vec<ExampleArgument>,
+    pub returns: Option<Value>,
+    pub outcome: Outcome,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExampleArgument {
+    pub name: Ident,
+    pub value: Value,
+}
+
+/// `ok [value]` or `ErrorName [value]`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Outcome {
+    /// `None` is `ok`.
+    pub error: Option<TypeExpr>,
+    pub value: Option<Value>,
+    pub span: Span,
+}
+
+/// A value written in an example.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Value {
+    pub kind: ValueKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ValueKind {
+    Bool(bool),
+    Int(i64),
+    /// A float keeps its source text: a `decimal` is that text.
+    Float {
+        value: f64,
+        text: String,
+    },
+    Str(String),
+    /// `.name`
+    EnumLit(Ident),
+    /// `a.b.c`: a given and the fields read from it.
+    Path(Vec<Ident>),
+    Object(Vec<ValueField>),
+    List(Vec<Value>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValueField {
+    pub name: Ident,
+    pub value: Value,
 }
 
 #[derive(Debug, Clone, PartialEq)]
