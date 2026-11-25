@@ -12,9 +12,13 @@
 //! absent required field to be detectable, so a required step of a path goes through
 //! `required(...)`; an optional step the compiler proved present uses a non-null assertion.
 
+use std::collections::BTreeSet;
+
 use veld_codegen::canonical::es_number;
 use veld_codegen::expr::{ExprPrinter, Printed, ValueKind, print_expr};
-use veld_ir::{Builtin, Expr, ExprLit, ExprType, Ir, Op, PathRef, Quantifier, Root, Scalar, Type};
+use veld_ir::{
+    Builtin, Expr, ExprKind, ExprLit, ExprType, Ir, Op, PathRef, Quantifier, Root, Scalar, Type,
+};
 
 use crate::util::{is_ident, ts_str};
 
@@ -32,6 +36,8 @@ mod prec {
 pub struct TsExpr<'a> {
     ir: &'a Ir,
     ns: String,
+    scope: Option<EndpointScope>,
+    olds: Vec<(String, ExprType)>,
 }
 
 /// Prints `expr` with the helpers under the namespace `ns`.
@@ -40,6 +46,8 @@ pub fn print(ir: &Ir, ns: &str, expr: &Expr) -> String {
     let mut p = TsExpr {
         ir,
         ns: ns.to_owned(),
+        scope: None,
+        olds: Vec::new(),
     };
     print_expr(&mut p, expr).code
 }
@@ -82,13 +90,12 @@ impl TsExpr<'_> {
 
     /// The raw TypeScript expression of a path, one step at a time.
     fn chain(&self, path: &PathRef) -> String {
-        let mut code = match &path.root {
-            Root::SelfValue => "self".to_owned(),
-            Root::Var(name) => var_ident(name),
-            Root::Param(_) | Root::Fact(_) | Root::Principal | Root::Result => {
-                return self.unavailable("a root other than `self`");
-            }
+        let Some((mut code, optional)) = self.root_code(&path.root) else {
+            return self.unavailable("a root other than `self`");
         };
+        if optional {
+            code.push('!');
+        }
         for step in &path.steps {
             let access = member(&code, &step.name);
             code = if step.optional {
@@ -98,6 +105,24 @@ impl TsExpr<'_> {
             };
         }
         code
+    }
+
+    /// The code of a root and whether it may be absent. `None` for a root the scope does not have.
+    fn root_code(&self, root: &Root) -> Option<(String, bool)> {
+        match root {
+            Root::SelfValue => Some(("self".to_owned(), false)),
+            Root::Var(name) => Some((var_ident(name), false)),
+            Root::Param(name) => {
+                let scope = self.scope.as_ref()?;
+                Some((member("p", name), scope.optional_params.contains(name)))
+            }
+            Root::Fact(name) => {
+                let scope = self.scope.as_ref()?;
+                Some((member("f", name), scope.optional_facts.contains(name)))
+            }
+            Root::Result => self.scope.as_ref().map(|_| ("result".to_owned(), false)),
+            Root::Principal => None,
+        }
     }
 
     fn unavailable(&self, what: &str) -> String {
@@ -282,14 +307,14 @@ impl ExprPrinter for TsExpr<'_> {
     }
 
     fn has(&mut self, path: &PathRef) -> Printed {
-        let mut code = match &path.root {
-            Root::SelfValue => "self".to_owned(),
-            Root::Var(name) => var_ident(name),
-            Root::Param(_) | Root::Fact(_) | Root::Principal | Root::Result => {
-                return Printed::atom(self.unavailable("a root other than `self`"));
-            }
+        let Some((mut code, optional)) = self.root_code(&path.root) else {
+            return Printed::atom(self.unavailable("a root other than `self`"));
         };
         let mut present = Vec::new();
+        if optional {
+            present.push(format!("{code} !== undefined"));
+            code.push('!');
+        }
         for step in &path.steps {
             let access = member(&code, &step.name);
             if step.optional {
@@ -307,6 +332,9 @@ impl ExprPrinter for TsExpr<'_> {
     }
 
     fn now(&mut self) -> Printed {
+        if self.scope.is_some() {
+            return Printed::atom("now");
+        }
         Printed::atom(self.unavailable("now"))
     }
 
@@ -460,8 +488,88 @@ impl ExprPrinter for TsExpr<'_> {
         }
     }
 
-    fn old(&mut self, _operand: Printed, _ty: &ExprType) -> Printed {
-        Printed::atom(self.unavailable("old"))
+    fn old(&mut self, operand: Printed, ty: &ExprType) -> Printed {
+        if self.scope.is_none() {
+            return Printed::atom(self.unavailable("old"));
+        }
+        let slot = match self.olds.iter().position(|(code, _)| *code == operand.code) {
+            Some(slot) => slot,
+            None => {
+                self.olds.push((operand.code, ty.clone()));
+                self.olds.len() - 1
+            }
+        };
+        Printed::atom(format!("o[{slot}]"))
+    }
+}
+
+/// What the rules of an endpoint block can read besides the parameters' types: which parameters
+/// and facts may be absent. A root that may be absent is asserted present where the compiler
+/// proved it (`coupon!`), and `has(coupon)` tests it.
+#[derive(Debug, Default, Clone)]
+pub struct EndpointScope {
+    pub optional_params: BTreeSet<String>,
+    pub optional_facts: BTreeSet<String>,
+}
+
+/// The printer of the expressions of one endpoint block (`spec/rules.md` section 9).
+///
+/// The generated functions take `p` (the parameters, as the handler receives them), `f` (the
+/// loaded facts), `now` (milliseconds since the epoch, a `bigint`) and, in an `ensure`, `result`
+/// and `o` (the saved `old(...)` values). All of them hold values in the developer-facing
+/// representation; a read converts at the leaf like in a check function.
+#[derive(Debug)]
+pub struct EndpointPrinter<'a> {
+    inner: TsExpr<'a>,
+}
+
+impl<'a> EndpointPrinter<'a> {
+    #[must_use]
+    pub fn new(ir: &'a Ir, ns: &str, scope: EndpointScope) -> Self {
+        Self {
+            inner: TsExpr {
+                ir,
+                ns: ns.to_owned(),
+                scope: Some(scope),
+                olds: Vec::new(),
+            },
+        }
+    }
+
+    /// Prints `expr`; the value is in the rule representation.
+    pub fn print(&mut self, expr: &Expr) -> String {
+        print_expr(&mut self.inner, expr).code
+    }
+
+    /// The value of a plain path in the developer-facing representation, `undefined` when an
+    /// optional step is absent. This is what a fact loader takes as its key and what an `else`
+    /// payload carries. `None` when `expr` is not a plain path.
+    #[must_use]
+    pub fn raw_path(&self, expr: &Expr) -> Option<String> {
+        let ExprKind::Path(path) = &expr.e else {
+            return None;
+        };
+        let (mut code, optional) = self.inner.root_code(&path.root)?;
+        let mut guarded = optional;
+        for step in &path.steps {
+            let dot = if guarded { "?." } else { "." };
+            code = if is_ident(&step.name) {
+                format!("{code}{dot}{}", step.name)
+            } else if guarded {
+                format!("{code}?.[{}]", ts_str(&step.name))
+            } else {
+                format!("{code}[{}]", ts_str(&step.name))
+            };
+            guarded |= step.optional;
+        }
+        Some(code)
+    }
+
+    /// The `old(...)` operands printed so far: the code to evaluate before the handler runs, and
+    /// the type of the saved value, by slot.
+    #[must_use]
+    pub fn olds(&self) -> &[(String, ExprType)] {
+        &self.inner.olds
     }
 }
 

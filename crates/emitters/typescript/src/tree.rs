@@ -25,6 +25,7 @@ pub struct Tree<'a> {
     /// default to skipping runtime request validation. The types are unchanged.
     pub validate: bool,
     rules: bool,
+    endpoint_rules: bool,
     decls: Vec<DeclId>,
 }
 
@@ -46,7 +47,13 @@ impl<'a> Tree<'a> {
                 set.insert(d.id);
             }
         }
-        let rules = set.iter().any(|id| !ir.decl(*id).rules().is_empty());
+        let endpoint_rules = services.iter().any(|s| {
+            ir.service(*s)
+                .endpoints
+                .iter()
+                .any(|ep| !ep.rules.is_empty())
+        });
+        let rules = endpoint_rules || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
         Self {
             ir,
             root: root.to_string(),
@@ -55,6 +62,7 @@ impl<'a> Tree<'a> {
             services,
             validate: true,
             rules,
+            endpoint_rules,
             decls: set.into_iter().collect(),
         }
     }
@@ -65,6 +73,15 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn uses_rules(&self) -> bool {
         self.rules
+    }
+
+    /// Whether an endpoint of the tree's services has endpoint rules (`spec/rules.md` section 9).
+    /// It switches `uses_rules` on too, and it adds the `endpoint_rules` regions of the runtime,
+    /// the fact loaders, the rules digest and the test handler. A contract with invariants only
+    /// never sees any of it.
+    #[must_use]
+    pub fn uses_endpoint_rules(&self) -> bool {
+        self.endpoint_rules
     }
 
     /// Module path of the rule helpers: next to the runtime module, without extension.

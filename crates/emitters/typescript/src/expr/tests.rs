@@ -779,3 +779,162 @@ fn wire_names_come_from_the_fields() {
     assert_eq!(wire_name(&fields, "roomId"), "room_id");
     assert_eq!(wire_name(&fields, "other"), "other");
 }
+
+// ---- endpoint rules (`spec/rules.md` section 9) -----------------------------------------
+
+fn scope() -> EndpointScope {
+    EndpointScope {
+        optional_params: ["note".to_owned()].into(),
+        optional_facts: ["coupon".to_owned()].into(),
+    }
+}
+
+fn endpoint(e: &Expr) -> String {
+    EndpointPrinter::new(&ir(), NS, scope()).print(e)
+}
+
+fn root_has(root: Root, steps: &[(&str, bool)]) -> Expr {
+    let p = PathRef {
+        root,
+        steps: mk_steps(steps),
+    };
+    ex(sc(Scalar::Bool), ExprKind::Has(p))
+}
+
+#[test]
+fn a_parameter_is_read_from_p_and_a_fact_from_f() {
+    let guests = path(
+        Root::Param("body".into()),
+        &[("guests", false)],
+        sc(Scalar::Int),
+    );
+    assert_eq!(endpoint(&guests), "r.required(p.body.guests)");
+    let capacity = path(
+        Root::Fact("room".into()),
+        &[("capacity", false)],
+        sc(Scalar::Int),
+    );
+    assert_eq!(endpoint(&capacity), "r.required(f.room.capacity)");
+    let id = path(Root::Param("id".into()), &[], sc(Scalar::Uuid));
+    assert_eq!(endpoint(&id), "r.toUuid(p.id)");
+}
+
+#[test]
+fn a_decimal_read_from_a_fact_converts_at_the_leaf() {
+    let total = path(
+        Root::Fact("booking".into()),
+        &[("total", false)],
+        sc(Scalar::Decimal),
+    );
+    assert_eq!(endpoint(&total), "r.dec(r.required(f.booking.total))");
+}
+
+#[test]
+fn the_result_is_read_like_a_parameter() {
+    let status = path(Root::Result, &[("status", false)], status());
+    assert_eq!(endpoint(&status), "r.required(result.status)");
+}
+
+#[test]
+fn a_root_that_may_be_absent_is_asserted_and_tested_by_has() {
+    let percent = path(
+        Root::Fact("coupon".into()),
+        &[("percent", false)],
+        sc(Scalar::Int),
+    );
+    assert_eq!(endpoint(&percent), "r.required(f.coupon!.percent)");
+    assert_eq!(
+        endpoint(&root_has(Root::Fact("coupon".into()), &[])),
+        "f.coupon !== undefined"
+    );
+    assert_eq!(
+        endpoint(&root_has(Root::Fact("coupon".into()), &[("code", true)])),
+        "f.coupon !== undefined && f.coupon!.code !== undefined"
+    );
+    assert_eq!(
+        endpoint(&root_has(Root::Param("note".into()), &[])),
+        "p.note !== undefined"
+    );
+    assert_eq!(endpoint(&root_has(Root::Param("body".into()), &[])), "true");
+}
+
+#[test]
+fn now_is_the_clock_of_the_request() {
+    let now = ex(sc(Scalar::Datetime), ExprKind::Now(veld_ir::Always));
+    assert_eq!(endpoint(&now), "now");
+}
+
+#[test]
+fn old_reads_a_saved_slot_and_the_same_operand_shares_it() {
+    let total = || {
+        path(
+            Root::Fact("booking".into()),
+            &[("total", false)],
+            sc(Scalar::Decimal),
+        )
+    };
+    let old = |x: Expr| ex(sc(Scalar::Decimal), ExprKind::Old(Box::new(x)));
+    let ir = ir();
+    let mut printer = EndpointPrinter::new(&ir, NS, scope());
+    assert_eq!(printer.print(&old(total())), "o[0]");
+    let other = path(
+        Root::Param("body".into()),
+        &[("amount", false)],
+        sc(Scalar::Decimal),
+    );
+    assert_eq!(printer.print(&old(other)), "o[1]");
+    assert_eq!(printer.print(&old(total())), "o[0]");
+    let slots: Vec<&str> = printer.olds().iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(
+        slots,
+        [
+            "r.dec(r.required(f.booking.total))",
+            "r.dec(r.required(p.body.amount))"
+        ]
+    );
+}
+
+#[test]
+fn raw_paths_keep_the_developer_facing_value_and_stop_at_an_absent_step() {
+    let ir = ir();
+    let printer = EndpointPrinter::new(&ir, NS, scope());
+    let id = path(
+        Root::Param("body".into()),
+        &[("roomId", false)],
+        sc(Scalar::Uuid),
+    );
+    assert_eq!(printer.raw_path(&id).as_deref(), Some("p.body.roomId"));
+    let code = path(
+        Root::Param("body".into()),
+        &[("couponCode", true)],
+        sc(Scalar::String),
+    );
+    assert_eq!(
+        printer.raw_path(&code).as_deref(),
+        Some("p.body.couponCode")
+    );
+    let deep = path(
+        Root::Param("body".into()),
+        &[("coupon", true), ("code", false)],
+        sc(Scalar::String),
+    );
+    assert_eq!(
+        printer.raw_path(&deep).as_deref(),
+        Some("p.body.coupon?.code")
+    );
+    let note = path(Root::Param("note".into()), &[], sc(Scalar::String));
+    assert_eq!(printer.raw_path(&note).as_deref(), Some("p.note"));
+    let fact = path(
+        Root::Fact("coupon".into()),
+        &[("code", false)],
+        sc(Scalar::String),
+    );
+    assert_eq!(printer.raw_path(&fact).as_deref(), Some("f.coupon?.code"));
+    assert_eq!(printer.raw_path(&int(1)), None);
+}
+
+#[test]
+fn the_principal_stays_unavailable_in_an_endpoint() {
+    let e = path(Root::Principal, &[("id", false)], sc(Scalar::Int));
+    assert_eq!(endpoint(&e), "r.unavailable('a root other than `self`')");
+}
