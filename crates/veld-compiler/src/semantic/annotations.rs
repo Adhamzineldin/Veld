@@ -20,6 +20,7 @@ pub struct Anns<'a> {
     pub discriminator: Option<String>,
     pub query: Option<Span>,
     pub header: Option<(String, Span)>,
+    pub topic: Option<String>,
 }
 
 #[must_use]
@@ -36,6 +37,8 @@ pub fn target_name(t: Target) -> &'static str {
         Target::Variant => "enum variant",
         Target::Rule => "rule",
         Target::Param => "parameter",
+        Target::Event => "event",
+        Target::Channel => "channel",
     }
 }
 
@@ -52,7 +55,7 @@ pub fn parse<'a>(
     for a in anns {
         let name = a.name.name.as_str();
         let Some(spec) = language::annotation(name) else {
-            diags.push(unknown(a));
+            diags.push(unknown(a, target));
             continue;
         };
         if !spec.targets.contains(&target) {
@@ -78,11 +81,19 @@ pub fn parse<'a>(
     out
 }
 
-fn unknown(a: &Annotation) -> Diagnostic {
-    let known: Vec<String> = language::ANNOTATIONS
+/// True when `spec` applies only to channels or events and `target` is neither: such an
+/// annotation is not suggested for a model, a field or an endpoint.
+fn hidden_from(spec: &language::AnnotationSpec, target: Target) -> bool {
+    let events_only = |t: &Target| matches!(t, Target::Channel | Target::Event);
+    !events_only(&target) && spec.targets.iter().all(events_only)
+}
+
+fn unknown(a: &Annotation, target: Target) -> Diagnostic {
+    let visible: Vec<&language::AnnotationSpec> = language::ANNOTATIONS
         .iter()
-        .map(|s| format!("@{}", s.name))
+        .filter(|s| !hidden_from(s, target))
         .collect();
+    let known: Vec<String> = visible.iter().map(|s| format!("@{}", s.name)).collect();
     Diagnostic::error(
         "E0601",
         format!("unknown annotation `@{}`", a.name.name),
@@ -90,7 +101,7 @@ fn unknown(a: &Annotation) -> Diagnostic {
     )
     .did_you_mean(
         &a.name.name,
-        language::ANNOTATIONS.iter().map(|s| s.name),
+        visible.iter().map(|s| s.name),
         Some(format!("known annotations: {}", known.join(", "))),
     )
 }
@@ -176,6 +187,7 @@ fn apply<'a>(
         ("example", _) => out.example = Some(one_literal(args)?),
         ("discriminator", _) => out.discriminator = Some(one_string(args)?),
         ("header", _) => out.header = Some((one_string(args)?, a.span)),
+        ("topic", _) => out.topic = Some(one_string(args)?),
         ("auth", _) => out.auth = Some(auth_arg(args)?.declared()),
         ("middleware", _) => out.middleware = Some(idents(args)?),
         _ => {}

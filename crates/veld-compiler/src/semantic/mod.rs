@@ -3,6 +3,9 @@
 
 pub mod annotations;
 mod collect;
+mod events;
+#[cfg(test)]
+mod events_tests;
 mod examples;
 pub use collect::module_path;
 mod inherit;
@@ -25,7 +28,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagnostics::{Diagnostic, FileId, Span, has_errors};
 use crate::syntax::ast;
-pub use examples::{RExample, ROutcome};
+pub use events::{
+    ChannelEntry, ChannelInfo, RChannel, RChannelKey, RHandler, RSubscription, legal_name,
+    topic_is_legal,
+};
+pub use examples::{REventExample, REventExpect, RExample, ROutcome};
 pub use policy::{PolicyEntry, PolicyInfo, RClause, RPolicy, RPolicyParam, RPrincipal};
 pub use rules::RRule;
 pub(crate) use rules::{RAllow, RBlock, RElse, REnsure, RRequire, RTransition};
@@ -76,6 +83,7 @@ pub enum DKind {
     Enum,
     Union,
     Const,
+    Event,
 }
 
 #[derive(Debug, Clone)]
@@ -193,6 +201,10 @@ pub struct ServiceInfo {
     pub auth: Auth,
     pub middleware: Vec<String>,
     pub endpoints: Vec<REndpoint>,
+    /// Channels the service publishes to (indices into `Program::channels`), in source order.
+    pub publishes: Vec<usize>,
+    pub publish_spans: Vec<Span>,
+    pub subscriptions: Vec<RSubscription>,
     pub span: Span,
 }
 
@@ -218,6 +230,8 @@ pub struct Scope {
     pub poisoned: BTreeSet<String>,
     /// The policies visible here: declared in this module, or imported.
     pub policy_names: BTreeMap<String, PolicyEntry>,
+    /// The channels visible here: declared in this module, or imported.
+    pub channel_names: BTreeMap<String, ChannelEntry>,
 }
 
 /// The analysed workspace.
@@ -229,6 +243,10 @@ pub struct Program<'a> {
     pub services: Vec<ServiceInfo>,
     /// Checked examples (`spec/rules.md` section 12).
     pub examples: Vec<RExample>,
+    /// Checked event examples (`spec/events.md` section 12).
+    pub event_examples: Vec<REventExample>,
+    /// Every `channel` of the workspace (`spec/events.md` section 4).
+    pub channels: Vec<ChannelInfo<'a>>,
     /// Every `policy` of the workspace (`spec/rules.md` section 11.2).
     pub policies: Vec<PolicyInfo<'a>>,
     /// The principal of each package that declares one, by package index.
@@ -282,10 +300,12 @@ pub fn analyze_lenient<'a>(
     resolve::resolve_decls(&mut prog, diags);
     inherit::flatten(&mut prog, diags);
     typeck::check(&mut prog, diags);
+    events::check_channels(&mut prog, diags);
     rules::check(&mut prog, diags);
     rules::check_policies(&mut prog, diags);
     services::analyze(&mut prog, diags);
     examples::check(&mut prog, diags);
+    events::check_graph(&prog, diags);
     resolve::report_unused_imports(&prog, diags);
     collect::check_consumes(&prog, consumes, diags);
     prog

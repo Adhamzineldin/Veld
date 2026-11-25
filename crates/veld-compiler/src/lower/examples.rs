@@ -30,6 +30,7 @@ impl Lowerer<'_, '_> {
                 )
             })
             .collect();
+        out.extend(self.event_examples(&ids));
         out.sort_by(|a, b| (a.package, &a.name).cmp(&(b.package, &b.name)));
         out
     }
@@ -38,7 +39,7 @@ impl Lowerer<'_, '_> {
         Example {
             name: ex.name.clone(),
             package: self.pkg_id(ex.pkg),
-            service,
+            service: Some(service),
             endpoint: ex.endpoint.clone(),
             givens: ex
                 .givens
@@ -59,14 +60,16 @@ impl Lowerer<'_, '_> {
                 })
                 .collect(),
             returns: ex.returns.clone(),
-            outcome: match &ex.outcome {
+            outcome: Some(match &ex.outcome {
                 ROutcome::Ok(v) => ExampleOutcome::Ok(v.clone()),
                 ROutcome::Error(decl, pattern) => ExampleOutcome::Error(ExampleErrorOutcome {
                     decl: self.decl_id(*decl),
                     pattern: pattern.clone(),
                 }),
-            },
+            }),
             docs: ex.docs.clone(),
+            event: None,
+            expect: None,
             origin: self.origin(ex.span, ex.module),
         }
     }

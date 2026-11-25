@@ -38,7 +38,7 @@ fn check_discriminators(prog: &Program<'_>, diags: &mut Vec<Diagnostic>) {
 /// Declarations that a required field of `d` contains directly.
 fn required_edges<'p>(prog: &'p Program<'_>, d: usize) -> Vec<(usize, &'p RField)> {
     let decl = &prog.decls[d];
-    if !matches!(decl.kind, DKind::Model | DKind::Error) {
+    if !matches!(decl.kind, DKind::Model | DKind::Error | DKind::Event) {
         return Vec::new();
     }
     decl.res

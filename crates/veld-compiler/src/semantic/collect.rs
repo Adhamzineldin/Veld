@@ -3,7 +3,8 @@
 use std::collections::BTreeMap;
 
 use super::{
-    DKind, DeclInfo, ModuleInfo, ParsedPackage, PkgInfo, PolicyInfo, Program, Resolved, Scope,
+    ChannelInfo, DKind, DeclInfo, ModuleInfo, ParsedPackage, PkgInfo, PolicyInfo, Program,
+    Resolved, Scope,
 };
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language;
@@ -35,6 +36,8 @@ pub fn collect<'a>(packages: &'a [ParsedPackage], diags: &mut Vec<Diagnostic>) -
         services: Vec::new(),
         examples: Vec::new(),
         policies: Vec::new(),
+        event_examples: Vec::new(),
+        channels: Vec::new(),
         principals: BTreeMap::new(),
         scopes: Vec::new(),
         prelude: BTreeMap::new(),
@@ -152,6 +155,11 @@ fn add_decl<'a>(
         DeclKind::Enum(_) => DKind::Enum,
         DeclKind::Union(_) => DKind::Union,
         DeclKind::Const(_) => DKind::Const,
+        DeclKind::Event(_) => DKind::Event,
+        DeclKind::Channel(c) => {
+            add_channel(prog, mi, decl, c, id.span);
+            return;
+        }
         DeclKind::Service(_) => return,
     };
     let qualified = format!(
@@ -167,6 +175,31 @@ fn add_decl<'a>(
         ast: decl,
         name_span: id.span,
         res: Resolved::default(),
+    });
+}
+
+/// Registers a channel; its name was already entered in the package-wide name table.
+fn add_channel<'a>(
+    prog: &mut Program<'a>,
+    mi: usize,
+    decl: &'a crate::syntax::ast::Decl,
+    c: &'a crate::syntax::ast::ChannelDecl,
+    name_span: Span,
+) {
+    let pkg = prog.modules[mi].pkg;
+    let qualified = format!(
+        "{}:{}.{}",
+        prog.packages[pkg].name, prog.modules[mi].path, c.name.name
+    );
+    prog.channels.push(ChannelInfo {
+        pkg,
+        module: mi,
+        name: c.name.name.clone(),
+        qualified,
+        decl,
+        ast: c,
+        name_span,
+        res: None,
     });
 }
 

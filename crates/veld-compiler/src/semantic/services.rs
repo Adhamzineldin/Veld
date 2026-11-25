@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use super::annotations::{self, Anns};
-use super::{DKind, Program, RBlock, REndpoint, RParam, ServiceInfo, rules};
+use super::{DKind, Program, RBlock, REndpoint, RParam, ServiceInfo, events, rules};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language::{self, Target};
 use crate::syntax::ast::{self, DeclKind, HttpMethod, doc_text};
@@ -39,11 +39,26 @@ fn analyze_service(
     diags: &mut Vec<Diagnostic>,
 ) -> ServiceInfo {
     let anns = annotations::parse(&decl.annotations, Target::Service, None, diags);
-    let prefix = service_prefix(
-        &prog.packages[prog.modules[module].pkg].prefix,
-        &s.prefix,
-        diags,
-    );
+    let prefix = match &s.prefix {
+        Some(p) => service_prefix(&prog.packages[prog.modules[module].pkg].prefix, p, diags),
+        None => {
+            if let Some(first) = s.endpoints.first() {
+                diags.push(
+                    Diagnostic::error(
+                        "E0501",
+                        format!(
+                            "service `{}` has endpoints and needs `at \"/prefix\"`",
+                            s.name.name
+                        ),
+                        s.name.span,
+                    )
+                    .with_label(first.span, "its first endpoint")
+                    .with_help("only a service that publishes or subscribes can leave out `at`"),
+                );
+            }
+            String::new()
+        }
+    };
     let auth = anns.auth.clone().unwrap_or_else(Auth::none);
     let middleware = anns.middleware.clone().unwrap_or_default();
     let ctx = Ctx { prog, module };
@@ -69,6 +84,8 @@ fn analyze_service(
             endpoints.push(ep);
         }
     }
+    let taken: Vec<(String, Span)> = endpoints.iter().map(|e| (e.name.clone(), e.span)).collect();
+    let events = events::check_service_events(prog, module, s, &taken, diags);
     let info = ServiceInfo {
         pkg,
         module,
@@ -78,6 +95,9 @@ fn analyze_service(
         auth,
         middleware,
         endpoints,
+        publishes: events.publishes,
+        publish_spans: events.publish_spans,
+        subscriptions: events.subscriptions,
         span: s.name.span,
     };
     rules::check_service_facts(&info, diags);

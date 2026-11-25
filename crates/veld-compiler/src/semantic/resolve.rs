@@ -7,7 +7,8 @@ use std::collections::BTreeMap;
 
 use super::annotations::{self, Anns};
 use super::{
-    DKind, DeclInfo, Entry, ImportRec, PolicyEntry, Program, RArm, RField, RVariant, Resolved,
+    ChannelEntry, DKind, DeclInfo, Entry, ImportRec, PolicyEntry, Program, RArm, RField, RVariant,
+    Resolved,
 };
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language::Target;
@@ -25,6 +26,9 @@ pub fn build_scopes(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
     }
     for (i, p) in prog.policies.iter().enumerate() {
         by_name.policies.insert((p.module, p.name.clone()), i);
+    }
+    for (i, c) in prog.channels.iter().enumerate() {
+        by_name.channels.insert((c.module, c.name.clone()), i);
     }
     for mi in 0..prog.modules.len() {
         let mut scope = std::mem::take(&mut prog.scopes[mi]);
@@ -60,6 +64,21 @@ pub fn build_scopes(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
             );
             spans.insert(p.name.clone(), p.ast.name.span);
         }
+        for (i, c) in prog
+            .channels
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.module == mi)
+        {
+            scope.channel_names.insert(
+                c.name.clone(),
+                ChannelEntry {
+                    channel: i,
+                    import: None,
+                },
+            );
+            spans.insert(c.name.clone(), c.name_span);
+        }
         let ast = prog.modules[mi].ast;
         for u in &ast.uses {
             import_use(prog, mi, u, &by_name, &mut scope, &mut spans, diags);
@@ -73,6 +92,7 @@ pub fn build_scopes(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
 struct NameIndex {
     decls: BTreeMap<(usize, String), usize>,
     policies: BTreeMap<(usize, String), usize>,
+    channels: BTreeMap<(usize, String), usize>,
 }
 
 fn warn_shadow(
@@ -171,11 +191,12 @@ fn import_use(
     };
     for imp in &u.imports {
         let key = (target_mod, imp.name.name.clone());
-        let (decl, policy) = (
+        let (decl, policy, channel) = (
             by_name.decls.get(&key).copied(),
             by_name.policies.get(&key).copied(),
+            by_name.channels.get(&key).copied(),
         );
-        if decl.is_none() && policy.is_none() {
+        if decl.is_none() && policy.is_none() && channel.is_none() {
             scope
                 .poisoned
                 .insert(imp.alias.as_ref().unwrap_or(&imp.name).name.clone());
@@ -196,6 +217,12 @@ fn import_use(
                                 .iter()
                                 .filter(|p| p.module == target_mod)
                                 .map(|p| p.name.as_str()),
+                        )
+                        .chain(
+                            prog.channels
+                                .iter()
+                                .filter(|c| c.module == target_mod)
+                                .map(|c| c.name.as_str()),
                         ),
                     Some(declared_in(prog, target_mod)),
                 ),
@@ -234,6 +261,10 @@ fn import_use(
             scope
                 .policy_names
                 .insert(local.name.clone(), PolicyEntry { policy, import });
+        } else if let Some(channel) = channel {
+            scope
+                .channel_names
+                .insert(local.name.clone(), ChannelEntry { channel, import });
         }
     }
 }
@@ -249,6 +280,12 @@ fn declared_in(prog: &Program<'_>, module: usize) -> String {
                 .iter()
                 .filter(|p| p.module == module)
                 .map(|p| p.name.as_str()),
+        )
+        .chain(
+            prog.channels
+                .iter()
+                .filter(|c| c.module == module)
+                .map(|c| c.name.as_str()),
         )
         .collect();
     format!(
@@ -439,6 +476,17 @@ impl Program<'_> {
             diags.push(error_position(&name.name, name.span));
             return None;
         }
+        if self.decls[decl].kind == DKind::Event {
+            diags.push(
+                Diagnostic::error(
+                    "E1001",
+                    format!("event `{}` cannot be used as a type", name.name),
+                    name.span,
+                )
+                .with_help("an event is named only in `carries`, `on`, `emits` and `given event`"),
+            );
+            return None;
+        }
         Some(Type::Decl(veld_ir::DeclId(u32::try_from(decl).ok()?)))
     }
 
@@ -493,6 +541,8 @@ impl Program<'_> {
             | DeclKind::Error(_)
             | DeclKind::Union(_)
             | DeclKind::Service(_)
+            | DeclKind::Event(_)
+            | DeclKind::Channel(_)
             | DeclKind::Const(_) => Vec::new(),
         }
     }
@@ -627,6 +677,7 @@ fn resolve_one(prog: &Program<'_>, i: usize, diags: &mut Vec<Diagnostic>) -> Res
         DKind::Enum => Target::Enum,
         DKind::Union => Target::Union,
         DKind::Const => Target::Const,
+        DKind::Event => Target::Event,
     };
     let anns = annotations::parse(&d.ast.annotations, target, None, diags);
     res.deprecated = anns.deprecated.clone();
@@ -654,6 +705,11 @@ fn resolve_one(prog: &Program<'_>, i: usize, diags: &mut Vec<Diagnostic>) -> Res
             res.arms = resolve_arms(prog, module, u, diags);
         }
         DeclKind::Const(c) => resolve_const(prog, module, c, &mut res, diags),
+        DeclKind::Event(e) => {
+            res.own_fields = resolve_fields(prog, module, &e.fields, diags);
+            check_event_fields(&e.fields, &res.own_fields, diags);
+        }
+        DeclKind::Channel(_) => {}
         DeclKind::Service(_) => {}
     }
     res
@@ -885,7 +941,7 @@ fn resolve_arms(
                 diags.push(error_position(&prog.decls[decl].name, arm.ty.span));
                 continue;
             }
-            DKind::Enum | DKind::Union | DKind::Const => {
+            DKind::Enum | DKind::Union | DKind::Const | DKind::Event => {
                 diags.push(Diagnostic::error(
                     "E0409",
                     format!(
@@ -929,4 +985,20 @@ fn resolve_const(
     };
     res.const_value = convert(prog, &ty, &c.value, diags);
     res.const_ty = Some(ty);
+}
+
+/// `@readonly` has no meaning on an event field (`spec/events.md` section 3).
+fn check_event_fields(ast: &[ast::Field], resolved: &[RField], diags: &mut Vec<Diagnostic>) {
+    for f in resolved.iter().filter(|f| f.readonly) {
+        let at = ast
+            .iter()
+            .find(|a| a.name.name == f.name)
+            .and_then(|a| a.annotations.iter().find(|n| n.name.name == "readonly"))
+            .map_or(f.span, |n| n.span);
+        diags.push(Diagnostic::error(
+            "E0602",
+            "`@readonly` cannot be applied to an event field",
+            at,
+        ));
+    }
 }

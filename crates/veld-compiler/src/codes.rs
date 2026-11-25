@@ -149,7 +149,7 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E0501",
         C,
-        "Service prefix or endpoint path does not start with `/`",
+        "Service prefix or endpoint path does not start with `/`, or a service with endpoints has no `at`",
     ),
     e(
         "E0502",
@@ -178,7 +178,11 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "Error has neither a status here nor a default status",
     ),
-    e("E0509", C, "Endpoint declared twice in a service"),
+    e(
+        "E0509",
+        C,
+        "Endpoint or event handler declared twice in a service",
+    ),
     e("E0510", C, "Two endpoints collide on method and path"),
     e("E0511", C, "`stream` used where it is not allowed"),
     e("E0512", C, "Duplicate parameter"),
@@ -349,6 +353,56 @@ pub const CODES: &[CodeInfo] = &[
         "veld-rules",
         "A value an example leaves out cannot be filled in, or the filled-in value breaks an invariant",
     ),
+    e(
+        "E1001",
+        C,
+        "An event is used as a type, or an event field has an event type",
+    ),
+    e(
+        "E1002",
+        C,
+        "`carries` names something that is not an event, names an event twice, or is missing",
+    ),
+    e(
+        "E1003",
+        C,
+        "The topic of a channel is not a legal topic name",
+    ),
+    e(
+        "E1004",
+        C,
+        "Two channels of the workspace have the same topic",
+    ),
+    e(
+        "E1005",
+        C,
+        "The `key` of a channel is not a required field of the same key type in every carried event, or the channel has two keys",
+    ),
+    e(
+        "E1006",
+        C,
+        "`publishes` or `subscribes` names something that is not a channel, or names a channel twice",
+    ),
+    e(
+        "E1007",
+        C,
+        "The group of a subscription is not a legal group name",
+    ),
+    e(
+        "E1008",
+        C,
+        "An `on` line names an event the channel does not carry or names an event twice, or the subscription has no `on` line",
+    ),
+    e(
+        "E1009",
+        C,
+        "A subscription to a channel of this workspace that no service publishes",
+    ),
+    e(
+        "E1010",
+        C,
+        "An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, or `rejected` is combined with `called`",
+    ),
     w("W0001", C, "Doc comment is not attached to anything"),
     w("W0201", C, "Unused import"),
     w("W0202", C, "Declaration shadows a prelude declaration"),
@@ -373,6 +427,16 @@ pub const CODES: &[CodeInfo] = &[
         "A variant of a state machine that takes part in no flow and is not final",
     ),
     w("W0940", C, "A policy with no `permit` permits nobody"),
+    w(
+        "W1001",
+        C,
+        "A published channel that nobody in the workspace subscribes to",
+    ),
+    w(
+        "W1002",
+        C,
+        "An event of a published channel that no subscription handles",
+    ),
     l(
         "L0001",
         T,

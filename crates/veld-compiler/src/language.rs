@@ -50,6 +50,20 @@ pub const CONTEXTUAL_RULE_WORDS: [&str; 29] = [
     "ok",
 ];
 
+/// Contextual words of events (`spec/events.md` section 2). `emits`, `given` and `expect` are rule
+/// words already. Each is a keyword only where the grammar expects it; the reserved list never grows.
+pub const CONTEXTUAL_EVENT_WORDS: [&str; 9] = [
+    "event",
+    "channel",
+    "carries",
+    "key",
+    "publishes",
+    "subscribes",
+    "on",
+    "called",
+    "rejected",
+];
+
 /// Words that start a declaration.
 pub const DECL_KEYWORDS: [&str; 6] = ["model", "enum", "error", "union", "service", "const"];
 
@@ -105,6 +119,8 @@ pub enum Target {
     Variant,
     Param,
     Rule,
+    Event,
+    Channel,
 }
 
 /// What arguments an annotation takes.
@@ -129,15 +145,18 @@ pub struct AnnotationSpec {
     pub usage: &'static str,
 }
 
-use Target::{Const, Endpoint, Enum, Error, Field, Model, Param, Rule, Service, Union, Variant};
+use Target::{
+    Channel, Const, Endpoint, Enum, Error, Event, Field, Model, Param, Rule, Service, Union,
+    Variant,
+};
 
 const ANY_DECL: [Target; 7] = [Service, Model, Error, Enum, Union, Const, Endpoint];
-const DEPRECATABLE: [Target; 10] = [
-    Service, Model, Error, Enum, Union, Const, Endpoint, Field, Variant, Rule,
+const DEPRECATABLE: [Target; 12] = [
+    Service, Model, Error, Enum, Union, Const, Endpoint, Field, Variant, Rule, Event, Channel,
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 14] = [
+pub const ANNOTATIONS: [AnnotationSpec; 15] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -222,6 +241,12 @@ pub const ANNOTATIONS: [AnnotationSpec; 14] = [
         args: ArgShape::OneString,
         usage: "@header(\"Name\")",
     },
+    AnnotationSpec {
+        name: "topic",
+        targets: &[Channel],
+        args: ArgShape::OneString,
+        usage: "@topic(\"name\")",
+    },
 ];
 
 /// Looks an annotation up by name.
@@ -272,6 +297,8 @@ pub struct LanguageSpec {
     pub contextual: Vec<&'static str>,
     /// Contextual words of the rules language (`spec/rules.md` section 2.2).
     pub rule_words: Vec<&'static str>,
+    /// Contextual words of events (`spec/events.md` section 2).
+    pub event_words: Vec<&'static str>,
     pub scalars: Vec<&'static str>,
     pub generics: Vec<&'static str>,
     pub annotations: Vec<AnnotationOut>,
@@ -285,6 +312,7 @@ pub fn spec() -> LanguageSpec {
         reserved: RESERVED.to_vec(),
         contextual: METHOD_WORDS.to_vec(),
         rule_words: CONTEXTUAL_RULE_WORDS.to_vec(),
+        event_words: CONTEXTUAL_EVENT_WORDS.to_vec(),
         scalars: SCALARS.to_vec(),
         generics: GENERICS.to_vec(),
         annotations,
@@ -324,7 +352,7 @@ mod tests {
     #[test]
     fn spec_serializes_and_lists_every_annotation() {
         let json = serde_json::to_value(spec()).map(|v| v["annotations"].as_array().map(Vec::len));
-        assert_eq!(json.ok().flatten(), Some(14));
+        assert_eq!(json.ok().flatten(), Some(15));
     }
 
     #[test]

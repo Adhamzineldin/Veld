@@ -65,7 +65,12 @@ pub(crate) fn ast_rules(d: &ast::Decl) -> &[ast::Rule] {
     match &d.kind {
         DeclKind::Model(m) => &m.rules,
         DeclKind::Error(e) => &e.rules,
-        DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Service(_) | DeclKind::Const(_) => &[],
+        DeclKind::Event(e) => &e.rules,
+        DeclKind::Enum(_)
+        | DeclKind::Union(_)
+        | DeclKind::Service(_)
+        | DeclKind::Channel(_)
+        | DeclKind::Const(_) => &[],
     }
 }
 
@@ -73,7 +78,12 @@ fn ast_fields(d: &ast::Decl) -> &[ast::Field] {
     match &d.kind {
         DeclKind::Model(m) => &m.fields,
         DeclKind::Error(e) => &e.fields,
-        DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Service(_) | DeclKind::Const(_) => &[],
+        DeclKind::Event(e) => &e.fields,
+        DeclKind::Enum(_)
+        | DeclKind::Union(_)
+        | DeclKind::Service(_)
+        | DeclKind::Channel(_)
+        | DeclKind::Const(_) => &[],
     }
 }
 
@@ -94,7 +104,10 @@ pub(crate) fn ancestors(prog: &Program<'_>, i: usize) -> Vec<usize> {
 fn check_decl(prog: &Program<'_>, i: usize, diags: &mut Vec<Diagnostic>) -> Vec<RRule> {
     let d = &prog.decls[i];
     let rules = ast_rules(d.ast);
-    if rules.is_empty() || d.res.cyclic || !matches!(d.kind, DKind::Model | DKind::Error) {
+    if rules.is_empty()
+        || d.res.cyclic
+        || !matches!(d.kind, DKind::Model | DKind::Error | DKind::Event)
+    {
         return Vec::new();
     }
     let chain = ancestors(prog, i);

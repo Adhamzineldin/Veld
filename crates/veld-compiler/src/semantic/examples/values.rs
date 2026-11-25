@@ -324,7 +324,7 @@ impl Values<'_, '_, '_> {
     ) -> Option<ExampleValue> {
         match ty {
             Type::Decl(d) => match self.prog.decls[d.index()].kind {
-                DKind::Model | DKind::Error => self.record(d.index(), fields),
+                DKind::Model | DKind::Error | DKind::Event => self.record(d.index(), fields),
                 DKind::Union => self.union(d.index(), fields, span),
                 DKind::Enum | DKind::Const => {
                     self.mismatch("an object", ty, span);

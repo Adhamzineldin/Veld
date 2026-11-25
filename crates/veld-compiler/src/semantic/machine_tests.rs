@@ -30,9 +30,11 @@ fn status(ir: &Ir) -> Enum {
         .filter(|d| d.name == "Status")
         .find_map(|d| match &d.kind {
             DeclKind::Enum(e) => Some(e.clone()),
-            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Union(_) | DeclKind::Const(_) => {
-                None
-            }
+            DeclKind::Model(_)
+            | DeclKind::Error(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_)
+            | DeclKind::Event(_) => None,
         })
         .expect("Status")
 }

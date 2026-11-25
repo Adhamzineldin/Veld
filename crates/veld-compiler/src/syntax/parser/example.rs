@@ -6,8 +6,8 @@
 use super::Parser;
 use crate::diagnostics::Span;
 use crate::syntax::ast::{
-    Doc, Example, ExampleArgument, ExampleAs, ExampleAt, ExampleCall, Given, Ident, Outcome, Value,
-    ValueField, ValueKind,
+    Doc, Example, ExampleArgument, ExampleAs, ExampleAt, ExampleBody, ExampleCall, Given, Ident,
+    Outcome, Value, ValueField, ValueKind,
 };
 use crate::syntax::lexer::Tok;
 
@@ -27,6 +27,9 @@ impl Parser<'_> {
         let kw = self.advance().span;
         let name = self.expect_str("the name of the example")?;
         self.expect(&Tok::LBrace, "`{` to open the example")?;
+        if self.is_event_example_start_at(0) {
+            return self.event_example_rest(docs, name, kw);
+        }
         let mut givens = Vec::new();
         while self.is_given_start() {
             givens.push(self.parse_given()?);
@@ -59,7 +62,7 @@ impl Parser<'_> {
             givens,
             principal,
             at,
-            call,
+            body: ExampleBody::Call(call),
             span: kw.to(close),
         })
     }

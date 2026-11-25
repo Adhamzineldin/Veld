@@ -93,6 +93,8 @@ Reserved words, which cannot be used as identifiers:
 Contextual words, which are keywords only where the grammar expects them and are ordinary identifiers everywhere else (so a field may be called `get` or `body`):
 `get post put patch delete head options ws`
 
+The words of rules (`spec/rules.md` section 2.2) and of events (`spec/events.md` section 2: `event channel carries key publishes subscribes on called rejected`) are contextual in the same way.
+
 The single source of truth for both lists is `crates/veld-compiler/src/language.rs`. The editor grammars are generated from that file.
 
 ## 4. Grammar (EBNF)
@@ -201,7 +203,7 @@ Prelude errors belong to the reserved package `veld`. Their identity at runtime 
 
 ## 6. Services and endpoints
 
-- `service Name at "/prefix"` groups endpoints. The prefix MUST start with `/` (`E0501`).
+- `service Name at "/prefix"` groups endpoints. The prefix MUST start with `/` (`E0501`). A service with endpoints MUST have an `at` (`E0501`); a service that only publishes or subscribes (`spec/events.md` section 5) has none, and its prefix is the empty string.
 - **Path templates** use `{name}` segments. The full path is the prefix joined with the endpoint path. A trailing `/` is normalised away, except on the root path.
 - **Parameter binding**, in this order:
   1. The name appears in the path template: it is a **path** parameter. It MUST be a scalar or an enum, and MUST NOT be optional (`E0502`).
@@ -221,7 +223,7 @@ Prelude errors belong to the reserved package `veld`. Their identity at runtime 
     - Two errors with the same status are allowed, and they are told apart on the wire by `type` (see `spec/ir.md` §5).
   - **Implicit `ValidationError`:** every endpoint that has a body, query, header or path parameters implicitly declares `| ValidationError` unless it already lists one.
   - **Implicit `Unauthorized` and `Internal`:** every endpoint whose effective auth is not `none` implicitly declares `| Unauthorized` (401), and every endpoint implicitly declares `| Internal` (500), unless already listed. Together with `ValidationError` this means every response the server runtime can produce has a declared signature.
-- **Endpoint names** MUST be unique within a service (`E0509`). The pair (method, full path) MUST be unique across all services of one package (`E0510`). Paths are compared with parameter names erased: `/a/{x}` and `/a/{y}` collide.
+- **Endpoint names** MUST be unique within a service, and so must its event handler names (`E0509`). The pair (method, full path) MUST be unique across all services of one package (`E0510`). Paths are compared with parameter names erased: `/a/{x}` and `/a/{y}` collide.
 - **Streaming** (capability-gated; the wire format is in the target specs: `spec/targets/typescript.md` §4b, `spec/targets/java.md`):
   - On `get`, `-> stream T` is Server-Sent Events.
   - On `ws`, `-> stream T` sends server-to-client messages, and `body: stream T` receives client-to-server messages.

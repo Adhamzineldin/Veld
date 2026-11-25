@@ -25,10 +25,13 @@ impl Parser<'_> {
             && matches!(self.tok_at(n + 1), Tok::Ident(_))
     }
 
-    /// The start of an example, a policy or a principal: the top-level items that are no
-    /// ordinary declaration.
+    /// The start of an example, a policy, a principal, an event or a channel: the top-level
+    /// items that a `model`-like keyword does not introduce.
     pub(super) fn is_rule_decl_start_at(&self, n: usize) -> bool {
-        self.is_example_start_at(n) || self.is_policy_start_at(n) || self.is_principal_start_at(n)
+        self.is_example_start_at(n)
+            || self.is_policy_start_at(n)
+            || self.is_principal_start_at(n)
+            || self.is_event_item_start_at(n)
     }
 
     pub(super) fn no_annotations(&mut self, anns: &[Annotation], what: &str) {

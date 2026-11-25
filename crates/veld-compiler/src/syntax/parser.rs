@@ -12,6 +12,9 @@
 mod endpoint;
 #[cfg(test)]
 mod endpoint_tests;
+mod event;
+#[cfg(test)]
+mod event_tests;
 mod example;
 mod expr;
 mod machine;
@@ -311,7 +314,7 @@ impl Parser<'_> {
                 }
             }
             Tok::Ident(w) if language::V1_KEYWORDS.contains(&w.as_str()) => self.v1_syntax(&w),
-            Tok::Ident(w) if language::is_decl_keyword(&w) => {
+            Tok::Ident(w) if language::is_decl_keyword(&w) || self.is_event_item_start_at(0) => {
                 self.warn_dangling_docs_if_any(&docs, false);
                 if let Some(d) = self.parse_decl(docs, anns) {
                     decls.push(d);
@@ -742,7 +745,8 @@ impl Parser<'_> {
 
     fn parse_decl(&mut self, docs: Vec<Doc>, annotations: Vec<Annotation>) -> Option<Decl> {
         let start = annotations.first().map_or(self.span(), |a| a.span);
-        let Tok::Ident(kw) = self.advance().tok else {
+        let kw_tok = self.advance();
+        let Tok::Ident(kw) = kw_tok.tok else {
             return None;
         };
         let kind = match kw.as_str() {
@@ -752,6 +756,8 @@ impl Parser<'_> {
             "union" => DeclKind::Union(self.parse_union()?),
             "service" => DeclKind::Service(self.parse_service()?),
             "const" => DeclKind::Const(self.parse_const()?),
+            "event" => DeclKind::Event(self.parse_event()?),
+            "channel" => DeclKind::Channel(self.parse_channel(kw_tok.span)?),
             _ => return None,
         };
         let end = Span {
@@ -1044,13 +1050,18 @@ impl Parser<'_> {
 
     fn parse_service(&mut self) -> Option<ServiceDecl> {
         let name = self.expect_ident("a service name")?;
-        if !self.eat_word("at") {
+        let prefix = if matches!(self.peek(), Tok::LBrace) {
+            None
+        } else if self.eat_word("at") {
+            Some(self.expect_str("a string path prefix")?)
+        } else {
             self.unexpected("`at` and a path prefix");
             return None;
-        }
-        let prefix = self.expect_str("a string path prefix")?;
+        };
         self.expect(&Tok::LBrace, "`{` to open the service body")?;
         let mut endpoints = Vec::new();
+        let mut publishes = Vec::new();
+        let mut subscribes = Vec::new();
         loop {
             if self.at_eof() {
                 self.unexpected("`}` to close the service");
@@ -1070,6 +1081,13 @@ impl Parser<'_> {
                 self.v1_syntax(&w);
                 continue;
             }
+            if self.is_event_line_start_at(0) {
+                self.service_event_line(&docs, &anns, &mut publishes, &mut subscribes);
+                if self.pos == before {
+                    self.advance();
+                }
+                continue;
+            }
             match self.parse_endpoint(docs, anns) {
                 Some(e) => endpoints.push(e),
                 None => {
@@ -1084,6 +1102,8 @@ impl Parser<'_> {
             name,
             prefix,
             endpoints,
+            publishes,
+            subscribes,
         })
     }
 
@@ -1193,7 +1213,10 @@ impl Parser<'_> {
         };
         let type_follows = match self.peek() {
             Tok::Ident(w) if w == "stream" => true,
-            Tok::Ident(_) => status.is_none() || !self.is_endpoint_start_at(0),
+            Tok::Ident(_) => {
+                status.is_none()
+                    || !(self.is_endpoint_start_at(0) || self.is_event_line_start_at(0))
+            }
             _ => false,
         };
         if status.is_some() && !first && !type_follows {

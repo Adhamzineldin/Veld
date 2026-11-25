@@ -78,7 +78,7 @@ example "all the forms" {
         arg["object"][0],
         json!({"name": "roomId", "wire": "roomId", "value": {"ref": {"given": "room", "path": ["id"]}}})
     );
-    assert!(matches!(ex.outcome, ExampleOutcome::Error(_)));
+    assert!(matches!(ex.outcome, Some(ExampleOutcome::Error(_))));
     assert!(ex.returns.is_some());
 }
 
@@ -95,12 +95,12 @@ example "implicit" { given room = absent
     let by = |n: &str| ir.examples.iter().find(|e| e.name == n).expect("example");
     assert!(matches!(
         &by("ok with a pattern").outcome,
-        ExampleOutcome::Ok(Some(_))
+        Some(ExampleOutcome::Ok(Some(_)))
     ));
-    assert!(matches!(&by("ok").outcome, ExampleOutcome::Ok(None)));
+    assert!(matches!(&by("ok").outcome, Some(ExampleOutcome::Ok(None))));
     let implicit = by("implicit");
     assert_eq!(implicit.givens[0].value, None);
-    let ExampleOutcome::Error(e) = &implicit.outcome else {
+    let Some(ExampleOutcome::Error(e)) = &implicit.outcome else {
         panic!()
     };
     assert_eq!(ir.decls[e.decl.index()].name, "NotFound");
@@ -120,7 +120,7 @@ fn examples_are_sorted_by_package_and_name() {
     let ir = compile("example \"b\" { remove() -> ok }\nexample \"a\" { remove() -> ok }");
     let names: Vec<&str> = ir.examples.iter().map(|e| e.name.as_str()).collect();
     assert_eq!(names, ["a", "b"]);
-    assert_eq!(ir.examples[0].service.index(), 0);
+    assert_eq!(ir.examples[0].service.expect("a call").index(), 0);
 }
 
 #[test]
@@ -198,7 +198,7 @@ fn a_name_two_services_share_is_ambiguous_until_qualified() {
     assert!(codes(&two("A.f()")).is_empty());
     assert_eq!(codes(&two("C.f()")), ["E0950"]);
     let ir = ir(&two("B.f()"));
-    assert_eq!(ir.examples[0].service.index(), 1);
+    assert_eq!(ir.examples[0].service.expect("a call").index(), 1);
 }
 
 // ---- E0951 -------------------------------------------------------------------------

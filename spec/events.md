@@ -1,6 +1,6 @@
 # Veld events — v1
 
-Status: **DRAFT. Nothing in this file is implemented yet.** It is written first so that the compiler, the reference evaluator and the three generators are built from one text. Section 18 lists what each phase builds; section 20 lists what the owner decided and what is still open.
+Status: **DRAFT. Phase E1 is implemented in the IR, the compiler, the reference evaluator and the tools; no generator emits events yet, and every server generator refuses them with `E0801`.** It is written first so that the compiler, the reference evaluator and the three generators are built from one text. Section 18 lists what each phase builds; section 20 lists what the owner decided and what is still open.
 
 This file extends `spec/language.md`, `spec/ir.md` and `spec/rules.md`. Where it is silent, those files apply.
 

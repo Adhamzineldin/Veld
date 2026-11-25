@@ -219,7 +219,7 @@ fn parses_examples() {
     assert_eq!(e.givens.len(), 2);
     assert!(e.givens[0].value.is_some() && e.givens[1].value.is_none());
     assert!(e.principal.is_some() && e.at.is_some());
-    let call = &e.call;
+    let call = e.body.as_call().expect("a call");
     assert_eq!(
         call.service.as_ref().map(|s| s.name.as_str()),
         Some("Bookings")
@@ -233,14 +233,17 @@ fn parses_examples() {
     assert!(matches!(fields[0].value.kind, ValueKind::Path(ref p) if p.len() == 2));
     assert!(matches!(fields[3].value.kind, ValueKind::Int(-1)));
     let second = &r.file.examples[1];
-    assert!(second.call.outcome.error.is_none() && second.call.outcome.value.is_none());
+    assert!({
+        let c = second.body.as_call().expect("a call");
+        c.outcome.error.is_none() && c.outcome.value.is_none()
+    });
 }
 
 #[test]
 fn a_negative_literal_after_a_word_is_a_literal() {
     let r = p("example \"x\" { f(a: 1) returns -5 -> ok -2.5 }");
     assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
-    let c = &r.file.examples[0].call;
+    let c = r.file.examples[0].body.as_call().expect("a call");
     assert!(matches!(
         c.returns.as_ref().map(|v| &v.kind),
         Some(ValueKind::Int(-5))
@@ -257,7 +260,7 @@ fn an_endpoint_may_be_called_given_and_a_given_may_be_named_given() {
     assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
     let e = &r.file.examples[0];
     assert_eq!(e.givens[0].name.name, "given");
-    assert_eq!(e.call.endpoint.name, "given");
+    assert_eq!(e.body.as_call().expect("a call").endpoint.name, "given");
 }
 
 #[test]

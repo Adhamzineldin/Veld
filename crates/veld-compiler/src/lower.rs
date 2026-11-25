@@ -5,6 +5,7 @@
 //! only when referenced, and package `veld` is listed only when it is used.
 
 mod endpoint;
+mod events;
 mod examples;
 mod policy;
 mod rules;
@@ -17,9 +18,9 @@ use crate::semantic::{Program, ROutcome};
 use crate::signature;
 use crate::syntax::ast::doc_text;
 use veld_ir::{
-    Decl, DeclId, DeclKind, Endpoint, Enum, ErrorDecl, ErrorResponse, Field, Flow, Ir, Model,
-    Origin, Package, PackageId, Param, PolicyId, Service, ServiceId, Success, Type, Union,
-    UnionArm, Variant,
+    ChannelId, Decl, DeclId, DeclKind, Endpoint, Enum, ErrorDecl, ErrorResponse, Event, Field,
+    Flow, Ir, Model, Origin, Package, PackageId, Param, PolicyId, Service, ServiceId, Success,
+    Type, Union, UnionArm, Variant,
 };
 
 struct Lowerer<'p, 'a> {
@@ -28,6 +29,8 @@ struct Lowerer<'p, 'a> {
     decl_map: Vec<Option<DeclId>>,
     /// Policy index in the program -> index in `Ir.policies`.
     policy_map: Vec<Option<PolicyId>>,
+    /// Channel index in the program -> index in `Ir.channels`.
+    channel_map: Vec<Option<ChannelId>>,
     pkg_map: Vec<Option<PackageId>>,
     file_rel: BTreeMap<FileId, &'p str>,
 }
@@ -45,6 +48,7 @@ pub fn lower(
         sources,
         decl_map: vec![None; prog.decls.len()],
         policy_map: vec![None; prog.policies.len()],
+        channel_map: vec![None; prog.channels.len()],
         pkg_map: vec![None; prog.packages.len()],
         file_rel: prog.modules.iter().map(|m| (m.file, m.rel_path)).collect(),
     };
@@ -53,6 +57,9 @@ pub fn lower(
     }
     for (new, old) in lw.policy_order().into_iter().enumerate() {
         lw.policy_map[old] = Some(PolicyId(u32::try_from(new).unwrap_or(u32::MAX)));
+    }
+    for (new, old) in lw.channel_order().into_iter().enumerate() {
+        lw.channel_map[old] = Some(ChannelId(u32::try_from(new).unwrap_or(u32::MAX)));
     }
     let packages = lw.packages(&included);
     let mut decls: Vec<Decl> = included.iter().map(|&i| lw.decl(i)).collect();
@@ -71,8 +78,10 @@ pub fn lower(
         consumes: lw.consumes(consumes),
         examples: lw.examples(),
         policies,
+        channels: lw.channels(),
     };
     signature::fill_rules_digests(&mut ir);
+    signature::fill_event_digests(&mut ir);
     ir
 }
 
@@ -243,6 +252,11 @@ impl Lowerer<'_, '_> {
                     rules: self.rules_of(old),
                 },
             }),
+            DKind::Event => DeclKind::Event(Event {
+                fields: fields(),
+                rules: self.rules_of(old),
+                rules_digest: None,
+            }),
             DKind::Enum => DeclKind::Enum(Enum {
                 variants: d
                     .res
@@ -340,6 +354,8 @@ impl Lowerer<'_, '_> {
             facts: self.service_facts(s),
             rules_digest: None,
             principal: self.service_principal(s),
+            publishes: self.service_publishes(s),
+            subscriptions: self.service_subscriptions(s),
             origin: self.origin(s.span, s.module),
         }
     }

@@ -75,6 +75,8 @@ impl Decl {
             DeclKind::Union(d) => &d.name,
             DeclKind::Service(d) => &d.name,
             DeclKind::Const(d) => &d.name,
+            DeclKind::Event(d) => &d.name,
+            DeclKind::Channel(d) => &d.name,
         }
     }
 }
@@ -87,6 +89,43 @@ pub enum DeclKind {
     Union(UnionDecl),
     Service(ServiceDecl),
     Const(ConstDecl),
+    /// `event Name { fields and rules }` (`spec/events.md` section 3).
+    Event(EventDecl),
+    /// `channel Name { carries .. key .. }` (`spec/events.md` section 4).
+    Channel(ChannelDecl),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EventDecl {
+    pub name: Ident,
+    pub fields: Vec<Field>,
+    /// Invariants, in source order.
+    pub rules: Vec<Rule>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChannelDecl {
+    pub name: Ident,
+    /// The `carries` lines, in source order.
+    pub carries: Vec<Carries>,
+    /// The `key` lines, in source order (more than one is an error).
+    pub keys: Vec<ChannelKeyLine>,
+    /// From the `channel` word to the closing `}`.
+    pub span: Span,
+}
+
+/// `carries A, B`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Carries {
+    pub events: Vec<TypeExpr>,
+    pub span: Span,
+}
+
+/// `key field`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChannelKeyLine {
+    pub field: Ident,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -300,8 +339,38 @@ pub struct ConstDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ServiceDecl {
     pub name: Ident,
-    pub prefix: StrLit,
+    /// `None` for a service written without `at` (`spec/events.md` section 5).
+    pub prefix: Option<StrLit>,
     pub endpoints: Vec<Endpoint>,
+    /// `publishes A, B` lines, in source order.
+    pub publishes: Vec<Publishes>,
+    /// `subscribes C as "g" { .. }` blocks, in source order.
+    pub subscribes: Vec<Subscribes>,
+}
+
+/// `publishes A, B`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Publishes {
+    pub channels: Vec<TypeExpr>,
+    pub span: Span,
+}
+
+/// `subscribes C as "group" { on E -> handler .. }`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Subscribes {
+    pub channel: TypeExpr,
+    pub group: StrLit,
+    pub handlers: Vec<OnLine>,
+    pub span: Span,
+}
+
+/// `on E -> handler`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OnLine {
+    pub docs: Vec<Doc>,
+    pub event: TypeExpr,
+    pub handler: Ident,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -491,12 +560,60 @@ pub struct EnsureStmt {
 pub struct Example {
     pub docs: Vec<Doc>,
     pub name: StrLit,
+    /// Empty in an event example.
     pub givens: Vec<Given>,
     pub principal: Option<ExampleAs>,
     pub at: Option<ExampleAt>,
-    pub call: ExampleCall,
+    pub body: ExampleBody,
     /// From the `example` keyword to the closing `}`.
     pub span: Span,
+}
+
+/// What an example is about: one call, or one delivery of an event.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExampleBody {
+    Call(ExampleCall),
+    Event(EventExample),
+}
+
+impl ExampleBody {
+    /// The call of a call example.
+    #[must_use]
+    pub fn as_call(&self) -> Option<&ExampleCall> {
+        match self {
+            ExampleBody::Call(c) => Some(c),
+            ExampleBody::Event(_) => None,
+        }
+    }
+}
+
+/// `given event E { .. } [on C] expect ..` (`spec/events.md` section 12).
+#[derive(Debug, Clone, PartialEq)]
+pub struct EventExample {
+    pub event: TypeExpr,
+    /// The record, always an object value.
+    pub value: Value,
+    pub channel: Option<TypeExpr>,
+    pub expects: Vec<Expectation>,
+    /// From the `given` word to the last `expect` line.
+    pub span: Span,
+}
+
+/// `expect S.handler [not] called` or `expect rejected`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Expectation {
+    pub kind: ExpectKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExpectKind {
+    Called {
+        service: Ident,
+        handler: Ident,
+        not: bool,
+    },
+    Rejected,
 }
 
 /// `given name = value` (`None` is `absent`).

@@ -38,6 +38,7 @@ fn rules_mut(d: &mut Decl) -> &mut [veld_ir::rules::Rule] {
     match &mut d.kind {
         veld_ir::DeclKind::Model(m) => &mut m.rules,
         veld_ir::DeclKind::Error(e) => &mut e.fields.rules,
+        veld_ir::DeclKind::Event(e) => &mut e.rules,
         veld_ir::DeclKind::Enum(_) | veld_ir::DeclKind::Union(_) | veld_ir::DeclKind::Const(_) => {
             &mut []
         }

@@ -4,6 +4,7 @@
 //! An example states only what it cares about. The values it leaves out are filled in when it
 //! runs (section 12.2), so nothing here requires a field, a parameter or a given.
 
+mod events;
 mod values;
 
 use std::collections::BTreeMap;
@@ -36,6 +37,29 @@ pub struct RExample {
     pub span: Span,
 }
 
+/// A checked event example (`spec/events.md` section 12).
+#[derive(Debug, Clone)]
+pub struct REventExample {
+    pub name: String,
+    pub pkg: usize,
+    pub module: usize,
+    /// The event, an index into `Program::decls`.
+    pub event: usize,
+    /// The channel, an index into `Program::channels`.
+    pub channel: usize,
+    pub value: ExampleValue,
+    pub expect: REventExpect,
+    pub docs: Option<String>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum REventExpect {
+    Rejected,
+    /// (service index, handler name, whether it is expected to be called).
+    Calls(Vec<(usize, String, bool)>),
+}
+
 #[derive(Debug, Clone)]
 pub enum ROutcome {
     Ok(Option<ExampleValue>),
@@ -56,6 +80,7 @@ const IMPLICIT_ERRORS: [&str; 6] = [
 
 pub fn check(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
     let mut out = Vec::new();
+    let mut event_out = Vec::new();
     let mut names: BTreeMap<(usize, String), Span> = BTreeMap::new();
     for mi in 0..prog.modules.len() {
         let pkg = prog.modules[mi].pkg;
@@ -77,10 +102,18 @@ pub fn check(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
                 continue;
             }
             names.insert(key, ex.name.span);
-            out.extend(check_example(prog, mi, ex, diags));
+            match &ex.body {
+                ast::ExampleBody::Call(call) => {
+                    out.extend(check_example(prog, mi, ex, call, diags))
+                }
+                ast::ExampleBody::Event(ev) => {
+                    event_out.extend(events::check_event_example(prog, mi, ex, ev, diags));
+                }
+            }
         }
     }
     prog.examples = out;
+    prog.event_examples = event_out;
 }
 
 /// The endpoint of `call` among the services of the package (`E0950`).
@@ -170,10 +203,11 @@ fn check_example(
     prog: &Program<'_>,
     module: usize,
     ex: &ast::Example,
+    call: &ast::ExampleCall,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<RExample> {
     let pkg = prog.modules[module].pkg;
-    let (service, _, ep) = resolve_endpoint(prog, pkg, &ex.call, diags)?;
+    let (service, _, ep) = resolve_endpoint(prog, pkg, call, diags)?;
     let mut v = Values {
         prog,
         module,
@@ -191,9 +225,9 @@ fn check_example(
     let principal = v.principal(ex.principal.as_ref());
     ok &= principal.is_some();
     let now = v.clock(ex.at.as_ref());
-    let args = v.args(&ex.call, ep);
-    let returns = v.returns(&ex.call, ep);
-    let outcome = v.outcome(&ex.call, ep);
+    let args = v.args(call, ep);
+    let returns = v.returns(call, ep);
+    let outcome = v.outcome(call, ep);
     // Every part is checked before the first failure is acted on, so one run reports them all.
     let (now, args, returns, outcome) = (now?, args?, returns?, outcome?);
     ok.then(|| RExample {
@@ -201,7 +235,7 @@ fn check_example(
         pkg,
         module,
         service,
-        endpoint: ex.call.endpoint.name.clone(),
+        endpoint: call.endpoint.name.clone(),
         givens,
         principal: principal.flatten(),
         now,
