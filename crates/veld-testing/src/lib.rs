@@ -9,6 +9,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+pub mod audited;
 pub mod b64;
 mod error;
 mod fuzz;

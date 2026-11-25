@@ -1,10 +1,6 @@
 //! `@rollout(audit)` in the reference evaluator (`spec/rules.md` section 17.1): the shared
-//! vectors `tests/rules/core/rollout.*.pending` and `tests/rules/endpoints/rollout.veld.pending`,
+//! vectors `tests/rules/core/rollout.*` and `tests/rules/endpoints/rollout.veld`,
 //! and what the pipeline reports besides its outcome.
-//!
-//! The vector files carry the suffix `.pending` so that the walkers of the generators, which look
-//! for `.veld` and `.json`, do not pick them up before a generator supports the feature. This
-//! file reads them by their explicit names.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::collections::BTreeMap;
@@ -48,8 +44,8 @@ fn read(rel: &str) -> String {
 
 #[test]
 fn the_reference_evaluator_passes_the_core_rollout_vectors() {
-    let ir = compile_text(&read("tests/rules/core/rollout.veld.pending"));
-    let cases = load_cases(&read("tests/rules/core/rollout.json.pending")).unwrap();
+    let ir = compile_text(&read("tests/rules/core/rollout.veld"));
+    let cases = load_cases(&read("tests/rules/core/rollout.json")).unwrap();
     assert_eq!(cases.len(), 8);
     let failures: Vec<String> = cases
         .iter()
@@ -62,16 +58,38 @@ fn the_reference_evaluator_passes_the_core_rollout_vectors() {
 }
 
 #[test]
+fn the_reference_evaluator_passes_the_output_mode_vectors() {
+    let ir = compile_text(&read("tests/rules/core/rollout_off.veld"));
+    let cases = load_cases(&read("tests/rules/core/rollout_off.json")).unwrap();
+    assert_eq!(cases.len(), 5);
+    let failures: Vec<String> = cases
+        .iter()
+        .filter_map(|c| run_case(&ir, c).err().map(|m| m.to_string()))
+        .collect();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    // Mode `off` is what makes those cases empty: in strict mode the same value is reported.
+    let off: Vec<&Case> = cases.iter().filter(|c| c.output_is_off()).collect();
+    assert_eq!(off.len(), 2);
+    for case in off {
+        let mut strict = case.clone();
+        strict.output = None;
+        assert!(run_case(&ir, &strict).is_err(), "{}", case.name);
+    }
+    // A request is not an output: its rules are evaluated in every mode.
+    assert!(cases.iter().any(|c| c.request && c.output.is_some()));
+}
+
+#[test]
 fn a_vector_that_states_the_audited_violations_wrongly_fails() {
-    let ir = compile_text(&read("tests/rules/core/rollout.veld.pending"));
-    let mut cases = load_cases(&read("tests/rules/core/rollout.json.pending")).unwrap();
+    let ir = compile_text(&read("tests/rules/core/rollout.veld"));
+    let mut cases = load_cases(&read("tests/rules/core/rollout.json")).unwrap();
     let mut case: Case = cases.remove(1);
     case.audited.clear();
     assert!(matches!(
         run_case(&ir, &case),
         Err(Mismatch::AuditedDiffers { .. })
     ));
-    let mut case: Case = load_cases(&read("tests/rules/core/rollout.json.pending"))
+    let mut case: Case = load_cases(&read("tests/rules/core/rollout.json"))
         .unwrap()
         .remove(1);
     case.expect.push(Expected {
@@ -303,7 +321,7 @@ fn run_and_before_after_keep_their_meaning_without_audited_rules() {
 // --- the shared endpoint examples --------------------------------------------------------------
 
 fn endpoint_ir() -> Ir {
-    compile_text(&read("tests/rules/endpoints/rollout.veld.pending"))
+    compile_text(&read("tests/rules/endpoints/rollout.veld"))
 }
 
 #[test]

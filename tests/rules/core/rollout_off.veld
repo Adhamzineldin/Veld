@@ -1,0 +1,11 @@
+// Output mode `off` and audited rules (spec/rules.md sections 5.3 and 17.1). In mode `off` a
+// server evaluates no output rule, an audited one included, so it reports nothing. An input rule
+// is evaluated in every mode, so a case in request position is reported whatever the mode.
+
+model Roster {
+  guests: int
+
+  @rollout(audit)
+  rule smallParty: guests <= 6
+  rule positive: guests > 0
+}

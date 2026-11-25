@@ -46,6 +46,20 @@ pub struct Case {
     /// and never in `expect`. Absent means none. A client does not check audited rules at all.
     #[serde(default)]
     pub audited: Vec<Expected>,
+    /// The output mode of the server for a case in response position: `"off"` means no output
+    /// rule is evaluated, audited ones included, so a server reports nothing (section 5.3). Absent
+    /// means `strict`. It does not apply to a case with `"request": true`: input rules are always
+    /// evaluated.
+    #[serde(default)]
+    pub output: Option<String>,
+}
+
+impl Case {
+    /// True when the case is a response checked by a server whose output mode is `off`.
+    #[must_use]
+    pub fn output_is_off(&self) -> bool {
+        !self.request && self.output.as_deref() == Some("off")
+    }
 }
 
 #[derive(Deserialize)]
@@ -142,11 +156,16 @@ pub fn run_case(ir: &Ir, case: &Case) -> Result<(), Mismatch> {
         request: case.request,
         partial: case.partial,
     };
-    let found =
+    let mut found =
         check_value_audited(ir, decl, &case.value, options).map_err(|error| Mismatch::Input {
             case: case.name.clone(),
             error,
         })?;
+    if case.output_is_off() {
+        // Output mode `off` evaluates no output rule, so nothing is found and nothing reported.
+        found.violations.clear();
+        found.audited.clear();
+    }
     let keys = |vs: Vec<crate::check::Violation>| -> BTreeSet<Key> {
         vs.into_iter()
             .map(|v| Key {

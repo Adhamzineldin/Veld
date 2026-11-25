@@ -766,3 +766,142 @@ fn an_error_that_is_not_problem_json_or_lacks_the_rules_digest_fails_against_the
         assert_eq!(paths, [path], "{m}");
     }
 }
+
+// --- audited rules (`@rollout(audit)`, spec/rules.md sections 12.4 and 17.1) ---------------------
+
+const AUDITED_REQUEST: &str = "an audited invariant that is violated does not reject the request";
+const AUDITED_ENFORCED: &str = "the same invariant enforced rejects it";
+const AUDITED_HOLDS: &str = "an audited rule that holds changes nothing";
+
+fn rollout() -> Ir {
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/rules/endpoints/rollout.veld");
+    compile_text(&std::fs::read_to_string(path).unwrap())
+}
+
+/// A test handler of the rollout contract that answers `201` with these headers.
+fn serve_parties(headers: Vec<(&'static str, String)>) -> Fake {
+    serve_raw(move |c| {
+        if c.target == "/__veld/test" {
+            reply(
+                200,
+                "{\"veldTestHandler\":1,\"digests\":{\"Parties\":null}}",
+            )
+        } else {
+            Reply {
+                status: 201,
+                headers: headers.clone(),
+                body: "{}".to_owned(),
+            }
+        }
+    })
+}
+
+/// The header a test handler sends for these reports (the unpadded base64url of a JSON array).
+fn audited_header(reports: &[Value]) -> (&'static str, String) {
+    let text = serde_json::to_string(reports).unwrap();
+    ("Veld-Test-Audited", b64::encode(text.as_bytes()))
+}
+
+/// What the reference evaluator reports for the example, in the wire form of a header entry.
+fn reference_reports(ir: &Ir, name: &str) -> Vec<Value> {
+    let fake = serve_parties(vec![]);
+    let report = run_live(&fake, ir, name, false);
+    report
+        .audited
+        .iter()
+        .map(|v| serde_json::to_value(v).unwrap())
+        .collect()
+}
+
+#[test]
+fn a_live_run_lists_the_audited_rules_the_reference_reports() {
+    let ir = rollout();
+    let reports = reference_reports(&ir, AUDITED_REQUEST);
+    assert_eq!(reports.len(), 1, "{reports:?}");
+    assert_eq!(reports[0]["path"], "body");
+}
+
+#[test]
+fn a_server_that_never_reports_an_audited_rule_fails_the_example() {
+    let ir = rollout();
+    let fake = serve_parties(vec![]);
+    let report = run_live(&fake, &ir, AUDITED_REQUEST, false);
+    let Verdict::Failed(m) = &report.verdict else {
+        panic!("{report}")
+    };
+    assert_eq!(m.differences.len(), 1, "{m}");
+    assert_eq!(m.differences[0].path, "header Veld-Test-Audited");
+    assert_eq!(m.differences[0].actual, "not reported");
+    assert!(!report.audited.is_empty());
+}
+
+#[test]
+fn a_server_that_reports_the_audited_rules_passes() {
+    let ir = rollout();
+    let reports = reference_reports(&ir, AUDITED_REQUEST);
+    let fake = serve_parties(vec![audited_header(&reports)]);
+    let report = run_live(&fake, &ir, AUDITED_REQUEST, false);
+    assert!(report.passed(), "{report}");
+    assert_eq!(report.audited.len(), 1);
+}
+
+#[test]
+fn an_audited_report_the_reference_does_not_make_fails_the_example() {
+    let ir = rollout();
+    let reports = reference_reports(&ir, AUDITED_REQUEST);
+    let invented = json!({ "rule": "veld:t/Party.invented@0000", "path": "body", "fields": [], "message": "m" });
+    let fake = serve_parties(vec![audited_header(&[reports[0].clone(), invented])]);
+    let report = run_live(&fake, &ir, AUDITED_REQUEST, false);
+    let Verdict::Failed(m) = &report.verdict else {
+        panic!("{report}")
+    };
+    assert_eq!(m.differences.len(), 1, "{m}");
+    assert_eq!(m.differences[0].expected, "not reported");
+}
+
+#[test]
+fn a_report_at_another_path_or_with_another_error_fails_the_example() {
+    let ir = rollout();
+    let reports = reference_reports(&ir, AUDITED_REQUEST);
+    for (member, value) in [("path", json!("body.guests")), ("error", json!("overflow"))] {
+        let mut wrong = reports[0].clone();
+        wrong[member] = value;
+        let fake = serve_parties(vec![audited_header(&[wrong])]);
+        let report = run_live(&fake, &ir, AUDITED_REQUEST, false);
+        assert!(
+            matches!(report.verdict, Verdict::Failed(_)),
+            "{member}: {report}"
+        );
+    }
+}
+
+#[test]
+fn an_unreadable_audited_header_fails_the_example() {
+    let ir = rollout();
+    let fake = serve_parties(vec![("Veld-Test-Audited", "not base64!".to_owned())]);
+    let report = run_live(&fake, &ir, AUDITED_REQUEST, false);
+    let Verdict::Failed(m) = &report.verdict else {
+        panic!("{report}")
+    };
+    assert!(m.actual.contains("cannot be read"), "{m}");
+}
+
+#[test]
+fn an_example_that_audits_nothing_expects_no_header() {
+    let ir = rollout();
+    assert!(reference_reports(&ir, AUDITED_HOLDS).is_empty());
+    let fake = serve_parties(vec![]);
+    let report = run_live(&fake, &ir, AUDITED_HOLDS, false);
+    assert!(report.passed(), "{report}");
+    let reports = reference_reports(&ir, AUDITED_REQUEST);
+    let fake = serve_parties(vec![audited_header(&reports)]);
+    let report = run_live(&fake, &ir, AUDITED_HOLDS, false);
+    assert!(matches!(report.verdict, Verdict::Failed(_)), "{report}");
+}
+
+#[test]
+fn an_enforced_rule_is_not_an_audited_report() {
+    let ir = rollout();
+    assert!(reference_reports(&ir, AUDITED_ENFORCED).is_empty());
+}

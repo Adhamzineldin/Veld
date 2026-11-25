@@ -74,6 +74,8 @@ fn each_contract_of_the_folder_holds_its_examples() {
         ("bookings.veld", 20),
         ("transitions.veld", 14),
         ("policies.veld", 10),
+        ("rollout.veld", 11),
+        ("rollout_error.veld", 3),
     ];
     for (file, count) in expected {
         assert_eq!(compile_vectors(file).examples.len(), count, "{file}");
@@ -196,12 +198,12 @@ fn an_illegal_move_is_409_invalid_transition_with_the_transition_as_the_rule() {
     assert!(a.hook.is_empty());
 }
 
-/// The contract of `@rollout(audit)` (`spec/rules.md` section 17.1) waits under a `.pending`
-/// suffix until a generator supports it, so the walker above does not see it. Its count is
+/// The contract of `@rollout(audit)` (`spec/rules.md` section 17.1) is a vector like the others;
+/// the walker above runs it. Its count is
 /// pinned here; the counts of the three contracts above are unchanged.
 #[test]
-fn the_pending_rollout_contract_holds_its_eleven_examples() {
-    let ir = compile_vectors("rollout.veld.pending");
+fn the_rollout_contract_holds_its_eleven_examples() {
+    let ir = compile_vectors("rollout.veld");
     assert_eq!(ir.examples.len(), 11);
     for example in &ir.examples {
         let report = run_example(&ir, example).unwrap();

@@ -1,0 +1,39 @@
+// An audited invariant of an `error` the server encodes (spec/rules.md sections 5.2 and 17.1). The
+// server sends the error as it is, and an audited invariant of it never turns the answer into
+// `500 Internal`; the rule is reported, and a live run checks that it is (`Veld-Test-Audited`).
+
+model Guests {
+  guests: int @min(1)
+}
+
+model Confirmation {
+  id: uuid
+}
+
+/// Too many guests. The count is expected to stay small, which is watched and not enforced yet.
+error TooMany 409 {
+  count: int
+
+  @rollout(audit)
+  rule sane: count <= 100
+}
+
+service Tables at "/tables" {
+  post "/book" book(body: Guests) -> 201 Confirmation | TooMany {
+    require body.guests <= 5 else TooMany { count: body.guests }
+  }
+}
+
+example "an error whose audited invariant is violated is still sent" {
+  book(body: { guests: 500 }) -> TooMany { count: 500 }
+}
+
+example "an error whose audited invariant holds is sent as it is" {
+  book(body: { guests: 7 }) -> TooMany { count: 7 }
+}
+
+example "a request that passes the require is not an error" {
+  book(body: { guests: 2 })
+    returns { id: "00000000-0000-4000-8000-000000000009" }
+    -> ok
+}

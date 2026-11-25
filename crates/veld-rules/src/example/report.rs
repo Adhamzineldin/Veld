@@ -47,8 +47,9 @@ pub struct ExampleReport {
     /// describes (an unknown error type).
     pub outcome: Option<Outcome>,
     /// The audited rules (`@rollout(audit)`, `spec/rules.md` section 17.1) the example would
-    /// violate. They never fail an example; `veld test` lists them under it. A live run has none:
-    /// the server reports them to its own hook.
+    /// violate. They never fail an example offline; `veld test` lists them under it. A live run
+    /// lists the same ones and fails the example when the `Veld-Test-Audited` header of the
+    /// answer says something else (section 12.4).
     pub audited: Vec<Violation>,
 }
 

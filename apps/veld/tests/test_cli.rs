@@ -519,7 +519,7 @@ fn a_fuzz_run_without_a_seed_prints_the_one_it_chose() {
 // --- `@rollout(audit)` (spec/rules.md section 17.1) ----------------------------------------
 
 fn rollout() -> String {
-    fs::read_to_string(repo_root().join("tests/rules/endpoints/rollout.veld.pending")).unwrap()
+    fs::read_to_string(repo_root().join("tests/rules/endpoints/rollout.veld")).unwrap()
 }
 
 #[test]

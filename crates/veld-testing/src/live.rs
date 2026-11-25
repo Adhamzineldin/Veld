@@ -6,10 +6,11 @@ use std::time::Duration;
 use serde_json::Value as Json;
 use veld_ir::{Example, Ir};
 use veld_rules::{
-    ExampleReport, FilledExample, Mismatch, Outcome, Pipeline, Verdict, describe_actual,
-    fill_example,
+    ExampleReport, FilledExample, Mismatch, Outcome, OutputMode, Pipeline, Reported, Verdict,
+    describe_actual, fill_example,
 };
 
+use crate::audited;
 use crate::error::LiveError;
 use crate::judge::{Answer, judge};
 use crate::outcome::{Called, describe_answer, judge_outcome};
@@ -163,25 +164,50 @@ impl Live {
         let req = build_request(ir, &filled, self.dry_run)?;
         let answer = self.send(&req)?;
         let mut report = judge(ir, &filled, self.dry_run, &answer);
+        let reported = reference(ir, &filled);
         if report.passed()
-            && let Some(mismatch) = against_reference(ir, &filled, &answer)
+            && let Some(mismatch) = reported
+                .as_ref()
+                .and_then(|r| against_reference(ir, &filled, &r.outcome, &answer))
         {
             report.verdict = Verdict::Failed(mismatch);
+        }
+        if let Some(reported) = reported {
+            // What the server tells its hook about audited rules is judged like the rest of the
+            // answer (section 12.4): a server that never reports one must not pass.
+            if report.passed()
+                && let Some(mismatch) = audited::differences(&reported.audited, &answer)
+            {
+                report.verdict = Verdict::Failed(mismatch);
+            }
+            report.audited = reported.audited;
         }
         Ok(report)
     }
 }
 
+/// What the reference evaluator does with the request of `filled`: `None` when it cannot run it.
+fn reference(ir: &Ir, filled: &FilledExample) -> Option<Reported> {
+    let service = ir.services.get(filled.service.index())?;
+    let pipeline = Pipeline::new(ir, service, &filled.endpoint).ok()?;
+    pipeline
+        .run_reported(&filled.request, OutputMode::Strict)
+        .ok()
+}
+
 /// Where the answer differs from the error the reference evaluator gives for the same request.
 /// `None` when the reference passes the request, cannot run it, or agrees.
-fn against_reference(ir: &Ir, filled: &FilledExample, answer: &Answer) -> Option<Mismatch> {
+fn against_reference(
+    ir: &Ir,
+    filled: &FilledExample,
+    outcome: &Outcome,
+    answer: &Answer,
+) -> Option<Mismatch> {
     let service = ir.services.get(filled.service.index())?;
     let endpoint = service
         .endpoints
         .iter()
         .find(|e| e.name == filled.endpoint)?;
-    let pipeline = Pipeline::new(ir, service, &filled.endpoint).ok()?;
-    let outcome = pipeline.run(&filled.request).ok()?;
     if matches!(outcome, Outcome::Passes) {
         return None;
     }
