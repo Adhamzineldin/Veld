@@ -531,7 +531,7 @@ A filled-in value must be valid. If an invariant is violated and at least one fi
 ### 12.3 `veld test`
 
 - **`veld test`** runs every example of the workspace (`-p member`, `--filter text`) against the reference evaluator (`crates/veld-rules`): it applies steps 5 and 6 of the pipeline with the given facts, principal and clock, and, when the example has `returns`, steps 8 and 9 in `strict` mode. No server, no network, milliseconds. It exits with 1 when an example fails and prints, per failure, the expected and the actual outcome with the violations. An example that expects `ok` with a pattern but has no `returns` cannot be checked offline; it is reported as skipped, with the reason, and does not fail the run.
-- **`veld test --live <base-url>`** sends each example as a real request to a running **test handler** (§12.4) and compares the status, the error and the patterns. An example without `returns` runs the application's real handler, so `ok { … }` checks what it actually answered.
+- **`veld test --live <base-url>`** sends each example as a real request to a running **test handler** (§12.4) and compares the status, the error and the patterns. An example without `returns` runs the application's real handler, so `ok { … }` checks what it actually answered; with `--dry-run` such an example stops before the handler (§12.4).
 - **`--fuzz N`** (with `--live`; `--seed S` to repeat a run) builds `N` requests per endpoint from the types, constraints and rules, valid and invalid, works out the expected outcome with the reference evaluator, and fails on any difference in status, error or violation set. A failure prints the seed and the request in example syntax.
 - **Boundaries.** With `--live`, every comparison of a number, a time or a length with a constant in a rule also yields requests at the bound and one step on each side.
 
@@ -541,6 +541,7 @@ A test must hand a server its facts, its principal and its clock. The production
 
 - A server target with the option `testing = true` generates a **second entry point** in a file of its own, for services that have endpoint rules. Nothing in the production entry point changes.
 - The test handler runs the same pipeline, but takes the facts from the request header `Veld-Test-Facts` (base64url of a JSON object: fact name to wire value, or `null` for absent), the principal from `Veld-Test-Principal`, the clock from `Veld-Test-Now` and, when present, the result from `Veld-Test-Result` in place of calling the application's handler. The application's loaders and auth hook are not called.
+- With the request header `Veld-Test-Dry-Run: 1` the test handler stops after step 6: if every check passed it answers `204` with the response header `Veld-Test-Passed: 1` and does not call the application's handler. `veld test --live --dry-run` sends it for every example that has no `returns`, which makes a live run check exactly what an offline run checks. The shared vectors run this way against every server target.
 - It answers `GET /__veld/test` with the rules digests of its services, so `veld test --live` can tell a test handler from a production server and refuse the latter.
 - It MUST NOT be mounted in production. The generated file says so at its top, and creating the handler reports it once.
 
