@@ -945,33 +945,99 @@ fn requests_where_two_checks_apply_end_in_the_one_that_comes_first() {
     let ir = compile_text(ORDER);
     let (s, e) = endpoint(&ir, "pay");
     let pipeline = Pipeline::new(&ir, s, "pay").unwrap();
-    let (mut denied_and_illegal, mut illegal_and_wrong, mut denied_and_wrong) = (0, 0, 0);
     let mut tally = BTreeMap::new();
     for req in generate(&ir, s, e, 9, 600).unwrap().requests {
-        let Some(booking) = req.facts["booking"].clone() else {
-            continue;
-        };
-        let user = req.principal.as_ref().unwrap();
-        let denied = user["id"] != booking["guestId"];
-        let illegal = booking["status"] != "pending";
-        let wrong = booking["total"] != req.params["body"]["amount"];
-        let outcome = label(&pipeline.run(&req).unwrap());
-        *tally.entry(outcome.clone()).or_insert(0) += 1;
-        if denied && illegal {
-            denied_and_illegal += 1;
-            assert_eq!(outcome, "Forbidden");
-        } else if illegal && wrong {
-            illegal_and_wrong += 1;
-            assert_eq!(outcome, "InvalidTransition");
-        } else if denied && wrong {
-            denied_and_wrong += 1;
-            assert_eq!(outcome, "Forbidden");
-        }
+        let first = label(&pipeline.run(&req).unwrap());
+        *tally.entry(first).or_insert(0) += 1;
     }
-    assert!(denied_and_illegal > 3, "{denied_and_illegal} {tally:?}");
-    assert!(illegal_and_wrong > 3, "{illegal_and_wrong} {tally:?}");
-    assert!(denied_and_wrong > 3, "{denied_and_wrong} {tally:?}");
     for outcome in ["ok", "Forbidden", "InvalidTransition", "ValidationError"] {
         assert!(tally.contains_key(outcome), "{tally:?}");
     }
+    // Requests that fail two checks: cure the first failure and the reference must then give the
+    // second one. Counted by the reference, not by looking at the values.
+    let pairs = two_checks(&ir, "pay", 9, 600, cure_order);
+    let n = |a: &str, b: &str| {
+        pairs
+            .get(&(a.to_owned(), b.to_owned()))
+            .copied()
+            .unwrap_or(0)
+    };
+    assert!(n("Forbidden", "InvalidTransition") > 3, "{pairs:?}");
+    assert!(n("Forbidden", "ValidationError") > 3, "{pairs:?}");
+    assert!(n("InvalidTransition", "ValidationError") > 3, "{pairs:?}");
+}
+
+/// For each request of `name` that the reference refuses, `cure` removes that one refusal; the
+/// result counts how often a refusal `first` was followed, after the cure, by the refusal `then`.
+fn two_checks(
+    ir: &Ir,
+    name: &str,
+    seed: u64,
+    count: usize,
+    cure: fn(&mut veld_rules::Request, &str),
+) -> BTreeMap<(String, String), usize> {
+    let (s, e) = endpoint(ir, name);
+    let pipeline = Pipeline::new(ir, s, name).unwrap();
+    let mut pairs = BTreeMap::new();
+    for req in generate(ir, s, e, seed, count).unwrap().requests {
+        let first = label(&pipeline.run(&req).unwrap());
+        let mut cured = req.clone();
+        cure(&mut cured, &first);
+        if cured == req {
+            continue;
+        }
+        let then = label(&pipeline.run(&cured).unwrap());
+        if then != "ok" {
+            *pairs.entry((first, then)).or_default() += 1;
+        }
+    }
+    pairs
+}
+
+/// The contract `ORDER`: a denied caller becomes the guest, an illegal state becomes `pending`.
+fn cure_order(req: &mut veld_rules::Request, refusal: &str) {
+    match refusal {
+        "Forbidden" => {
+            let guest = req.facts["booking"].as_ref().unwrap()["guestId"].clone();
+            req.principal.as_mut().unwrap()["id"] = guest;
+        }
+        "InvalidTransition" => {
+            let booking = req.facts.get_mut("booking").unwrap().as_mut().unwrap();
+            booking["status"] = "pending".into();
+        }
+        _ => {}
+    }
+}
+
+/// `policies.veld`: a denied caller becomes the guest and is not suspended.
+fn cure_policies(req: &mut veld_rules::Request, refusal: &str) {
+    if refusal == "Forbidden" {
+        cure_order(req, refusal);
+        req.principal.as_mut().unwrap()["suspended"] = false.into();
+    }
+}
+
+/// `transitions.veld`: an illegal state of the booking becomes `pending` (the source of
+/// `payBooking`).
+fn cure_transitions(req: &mut veld_rules::Request, refusal: &str) {
+    if refusal == "InvalidTransition" {
+        cure_order(req, refusal);
+    }
+}
+
+/// On the two contracts of `tests/rules/endpoints` that have one of each, a request often fails
+/// the earlier check and would fail the later one too: the denied caller who also sends the wrong
+/// amount, the booking in an illegal state with the wrong amount.
+#[test]
+fn the_served_contracts_have_requests_that_fail_two_checks() {
+    let (_, ir) = policies();
+    let pairs = two_checks(&ir, "payBooking", 20_260_201, 300, cure_policies);
+    let denied_wrong = pairs.get(&("Forbidden".to_owned(), "ValidationError".to_owned()));
+    eprintln!("policies.payBooking, seed 20260201, 300: {pairs:?}");
+    assert!(denied_wrong.copied().unwrap_or(0) > 3, "{pairs:?}");
+    let (_, ir) = transitions();
+    let pairs = two_checks(&ir, "payBooking", 20_260_201, 300, cure_transitions);
+    let illegal_wrong = pairs.get(&("InvalidTransition".to_owned(), "AmountMismatch".to_owned()));
+    eprintln!("transitions.payBooking, seed 20260201, 300: {pairs:?}");
+    assert!(illegal_wrong.copied().unwrap_or(0) > 3, "{pairs:?}");
 }

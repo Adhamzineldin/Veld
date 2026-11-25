@@ -68,7 +68,7 @@ fuzz Bookings.createBooking: 200 sent (24 boundary): NotFound 12, RoomClosed 9, 
 skip Bookings.upload (a string with @pattern or @format and no @example)
 ```
 
-The count per outcome tells you whether the fuzz reached your rules. An endpoint is **skipped**, with the reason, when it takes a string with `@pattern` or `@format` and no `@example` (the generator cannot make a value for it; give the field an `@example` and the endpoint is fuzzed), when it is a stream, and when its service has no endpoint rules, because a server target generates a test handler only for a service that has some. An optional field with `@pattern` and no `@example` is simply left out.
+The count per outcome tells you whether the fuzz reached your rules. An endpoint is **skipped**, with the reason, when it takes a string with `@pattern` or `@format` and no `@example`, in a parameter, a fact or the principal's model (the generator cannot make a value for it; give the field an `@example` and the endpoint is fuzzed), when it is a stream, and when its service has no endpoint rules, because a server target generates a test handler only for a service that has some. An optional field with `@pattern` and no `@example` is simply left out.
 
 Fuzzing covers every endpoint of the services the test handler serves: `--filter` and the file arguments choose the examples that run first, not the endpoints that are fuzzed. Requests are made from the parameters and the facts. `N` is from 1 to 100000.
 

@@ -386,11 +386,18 @@ impl Cx<'_> {
 /// decimal, the next float). The other side can be a literal, `now`, a `days(30)` or another
 /// path such as `room.capacity`.
 ///
-/// **Random requests.** Parameters and facts are generated from their types; a required fact is
+/// **States.** For an endpoint with a `transition`, one more boundary request per state of the
+/// machine: everything else is made to pass, then the state is written (`access::states`).
+///
+/// **Random requests.** Parameters and facts are generated from their types, and so is the
+/// principal when the package declares one and the endpoint has auth; a required fact is
 /// absent in one request of ten, an optional one in one of two. In three requests of four the
 /// reference pipeline is then run and every rule it reports as violated is made true if the
 /// generator can (see `rules::repair`), so a request is not a violation of `end > start` every
-/// time. In one request of four the clock is moved next to a datetime found in the request.
+/// time. The same repair makes a `permit` of a denied `allow` true and writes a source state
+/// for an illegal one (see `access`). Each failing check is left alone one time in eight
+/// ([`QUIT`]), so requests that fail two checks at once are common. In one request of four the
+/// clock is moved next to a datetime found in the request.
 ///
 /// # Errors
 /// [`GenerateError::Skipped`] when no value can be made for a type of the endpoint (a string with
