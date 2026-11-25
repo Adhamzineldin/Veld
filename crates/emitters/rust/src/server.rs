@@ -288,20 +288,7 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs) {
     w.line("self.hooks.on_error(err, ctx);");
     w.close().blank();
     if rules {
-        w.open("fn rules_output(&self) -> veld::rules::RuleOutput");
-        w.line("self.hooks.rules_output()");
-        w.close().blank();
-        w.open("fn on_rule_violation(&self, event: &veld::rules::RuleEvent)");
-        w.line("self.hooks.on_rule_violation(event);");
-        w.close().blank();
-        w.open("fn reaches_rules(&self) -> bool");
-        w.line(input_reaches_rules(tree, svc).to_string());
-        w.close().blank();
-        if let Some(digest) = &svc.rules_digest {
-            w.open("fn digest(&self) -> Option<&'static str>");
-            w.line(format!("Some({})", crate::util::lit(digest)));
-            w.close().blank();
-        }
+        rules_forwards(w, tree, svc);
     }
     if block::has_block(svc) {
         block_methods(w, svc);
@@ -309,6 +296,24 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs) {
     auth_forwards(w, n);
     call_methods(w, svc);
     w.close().blank();
+}
+
+/// The rule hooks of a dispatch, the input reach and the digest.
+fn rules_forwards(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service) {
+    w.open("fn rules_output(&self) -> veld::rules::RuleOutput");
+    w.line("self.hooks.rules_output()");
+    w.close().blank();
+    w.open("fn on_rule_violation(&self, event: &veld::rules::RuleEvent)");
+    w.line("self.hooks.on_rule_violation(event);");
+    w.close().blank();
+    w.open("fn reaches_rules(&self) -> bool");
+    w.line(input_reaches_rules(tree, svc).to_string());
+    w.close().blank();
+    if let Some(digest) = &svc.rules_digest {
+        w.open("fn digest(&self) -> Option<&'static str>");
+        w.line(format!("Some({})", crate::util::lit(digest)));
+        w.close().blank();
+    }
 }
 
 /// `prepare` and `ensure` of a dispatch whose service has endpoint rules.
