@@ -34,6 +34,19 @@ export const nav: NavGroup[] = [
     ],
   },
   {
+    group: 'Business rules',
+    items: [
+      { id: 'rules', label: 'Overview' },
+      { id: 'rules-invariants', label: 'Invariants' },
+      { id: 'rules-endpoint', label: 'Endpoint rules' },
+      { id: 'rules-output', label: 'Output mode and hook' },
+      { id: 'rules-states', label: 'State machines' },
+      { id: 'rules-policies', label: 'Policies' },
+      { id: 'rules-testing', label: 'Examples and veld test' },
+      { id: 'rules-tools', label: 'veld diff and OpenAPI' },
+    ],
+  },
+  {
     group: 'Using generated code',
     items: [
       { id: 'using', label: 'Overview' },
