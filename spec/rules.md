@@ -373,6 +373,7 @@ A fact is a value the rules need and only the application can load: the room bei
 - Either way the problem document carries one entry in `violations` (§7), so a caller and the hook can tell which rule fired. For an endpoint rule, `path` is `request` and `fields` are the names of the **parameters** the expression reads, in order of first use.
 - A `require` whose evaluation fails with an evaluation error (§3.7) has failed: the same answer, with `error` in the violation.
 - The default message is `violates rule <name>`, or `precondition failed` for an unnamed `require`.
+- If the payload of an `else` error cannot be evaluated, or the error it builds breaks one of its own invariants, the answer is `500 Internal`: the server could not build the error it promised.
 
 ### 9.4 `ensure` and `old`
 
@@ -380,6 +381,7 @@ A fact is a value the rules need and only the application can load: the room bei
 - It may read `result`, the parameters, `now` and `old(...)`.
 - **`old(e)`** is the value of `e` before the handler ran. `e` may read facts and parameters. Every `old(...)` is evaluated and saved at the end of step 6, so a handler that changes a loaded object in place cannot change it. A fact read in `ensure` MUST be inside `old(...)` (`E0923`); `old` anywhere else is `E0904`.
 - `ensure` is not allowed on an endpoint whose success is a `stream` (`E0924`).
+- An `ensure` violation has the same `path` (`request`) and `fields` (the parameters it reads) as a `require` violation. Its default message is `violates rule <name>`, or `postcondition failed` when unnamed.
 
 ### 9.5 The pipeline, complete
 
@@ -503,28 +505,30 @@ Examples stay short because everything they leave out is filled in, the same way
 
 | Type | Filled in with |
 |---|---|
-| a field with `@example` or a default | that value |
+| a field with `@example` or a default | that value, `@example` first; this holds for an optional field too |
+| a required fact the example does not give | a filled-in value, after the givens |
 | an optional field | nothing: it stays absent |
 | `string` | `a` repeated to the minimum length, at least once. A field with `@pattern` or `@format` and no `@example` cannot be filled in (`E0953`). |
 | `int`, `long`, `float`, `decimal` | `0`, moved inside `@min` and `@max` |
 | `bool` | `false` |
-| `uuid` | `00000000-0000-4000-8000-000000000001`, counting up through the example |
+| `uuid` | `00000000-0000-4000-8000-000000000001`, counting up in decimal through the example |
 | `datetime` | the example's clock, plus one millisecond for each `datetime` already filled in during the example: the smallest step a rule can see. So `start` and `end`, declared in that order and both left out, are a millisecond apart and `end > start` holds. |
 | `date` | the date of the example's clock, plus one day for each `date` already filled in |
 | `time` | the time of the example's clock |
 | `bytes`, list, map | empty, or `@length(min)` filled-in elements for a list |
 | `json` | `{}` |
+| `Page<T>` | an empty page: no items, total `0`, page `1`, size `0` |
 | enum | its first variant |
 | model | each of its fields by these rules |
 | union | its first arm |
 
-Values are filled in in this order: the givens as written, the principal, the arguments, the `returns` value; inside a model, its fields in declaration order. The uuid, datetime and date counters run through the whole example; values the example wrote do not advance them.
+Values are filled in in this order: the givens as written, the facts the example does not give, the principal, the arguments in the endpoint's parameter order, the `returns` value; inside a model, its fields in declaration order. The uuid, datetime and date counters run through the whole example; values the example wrote do not advance them.
 
 A filled-in value must be valid. If an invariant is violated and at least one field it reads was filled in, the example is wrong, not the server: `E0953` names the rule and the fields the example must give. An invariant whose fields the example wrote itself may be violated on purpose; that is how an example expects a `ValidationError`.
 
 ### 12.3 `veld test`
 
-- **`veld test`** runs every example of the workspace (`-p member`, `--filter text`) against the reference evaluator (`crates/veld-rules`): it applies steps 5 and 6 of the pipeline with the given facts, principal and clock, and, when the example has `returns`, steps 8 and 9 in `strict` mode. No server, no network, milliseconds. It exits with 1 when an example fails and prints, per failure, the expected and the actual outcome with the violations.
+- **`veld test`** runs every example of the workspace (`-p member`, `--filter text`) against the reference evaluator (`crates/veld-rules`): it applies steps 5 and 6 of the pipeline with the given facts, principal and clock, and, when the example has `returns`, steps 8 and 9 in `strict` mode. No server, no network, milliseconds. It exits with 1 when an example fails and prints, per failure, the expected and the actual outcome with the violations. An example that expects `ok` with a pattern but has no `returns` cannot be checked offline; it is reported as skipped, with the reason, and does not fail the run.
 - **`veld test --live <base-url>`** sends each example as a real request to a running **test handler** (§12.4) and compares the status, the error and the patterns. An example without `returns` runs the application's real handler, so `ok { … }` checks what it actually answered.
 - **`--fuzz N`** (with `--live`; `--seed S` to repeat a run) builds `N` requests per endpoint from the types, constraints and rules, valid and invalid, works out the expected outcome with the reference evaluator, and fails on any difference in status, error or violation set. A failure prints the seed and the request in example syntax.
 - **Boundaries.** With `--live`, every comparison of a number, a time or a length with a constant in a rule also yields requests at the bound and one step on each side.
