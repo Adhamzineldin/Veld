@@ -120,7 +120,22 @@ fn bookings_examples_pass_offline() {
         .stdout
         .clone();
     let text = String::from_utf8(out).unwrap();
-    assert!(text.contains("8 passed"), "{text}");
+    // Every `example` block of the contract ran and passed (the count comes from the file, so a
+    // new example needs no change here, and a block that silently did not run is noticed).
+    let contract =
+        fs::read_to_string(examples_dir().join("bookings/contracts/bookings.veld")).unwrap();
+    let count = contract
+        .lines()
+        .filter(|l| l.starts_with("example \""))
+        .count();
+    assert!(
+        count > 30,
+        "the contract should state the state machine and policy examples too"
+    );
+    assert!(
+        text.contains(&format!(" {count} passed")),
+        "expected {count} passed: {text}"
+    );
     assert!(!text.contains("FAIL") && !text.contains("skip"), "{text}");
 }
 

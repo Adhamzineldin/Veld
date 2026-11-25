@@ -419,7 +419,15 @@ fn bookings_server_enforces_the_contract_rules() {
     let room = "00000000-0000-4000-8000-0000000000a1";
     let body = |guests: u32, start: &str, end: &str| json!({ "roomId": room, "guests": guests, "start": start, "end": end });
     let (start, end) = ("2030-06-10T00:00:00Z", "2030-06-12T00:00:00Z");
-    let post = |b: &Value| call("POST", &format!("{base}/bookings"), None, Some(b));
+    // The demo accounts of the server: Ann and Bob are guests, Sam is staff, Eve is suspended.
+    let post = |b: &Value| {
+        call(
+            "POST",
+            &format!("{base}/bookings"),
+            Some("token-ann"),
+            Some(b),
+        )
+    };
     let backwards = post(&body(2, end, start));
     assert_error(&backwards, 422, "ValidationError");
     assert_eq!(backwards.1["violations"].as_array().map(Vec::len), Some(1));
@@ -442,6 +450,9 @@ fn bookings_server_enforces_the_contract_rules() {
         (created.0, created.1["total"].clone()),
         (201, json!("179.00"))
     );
+    assert_eq!(created.1["status"], "pending");
+    assert_eq!(created.1["guestId"], "00000000-0000-4000-8000-0000000000aa");
+    bookings_over_http(&base, &created.1);
 
     // The same through the generated client, including the local check.
     let out = node_ts(&web, "test/client.ts")
@@ -457,6 +468,11 @@ fn bookings_server_enforces_the_contract_rules() {
 
     // The examples of the contract, run against the test server.
     let live = url(test_port);
+    let contract = fs::read_to_string(root.join("contracts/bookings.veld")).unwrap();
+    let count = contract
+        .lines()
+        .filter(|l| l.starts_with("example \""))
+        .count();
     for extra in [&[][..], &["--dry-run"][..]] {
         let out = veld(&root)
             .args(["test", "--live", &live])
@@ -467,8 +483,111 @@ fn bookings_server_enforces_the_contract_rules() {
             .stdout
             .clone();
         let text = String::from_utf8(out).unwrap();
-        assert!(text.contains("8 passed"), "{extra:?}: {text}");
+        assert!(
+            text.contains(&format!(" {count} passed")),
+            "{extra:?}: {text}"
+        );
     }
+    // The fuzzer builds callers, bookings in every state and bodies, and the test server agrees
+    // with the reference evaluator on all of them.
+    let out = veld(&root)
+        .args(["test", "--live", &live, "--fuzz", "100", "--seed", "1"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8(out).unwrap();
+    assert!(!text.to_lowercase().contains("disagree"), "{text}");
+}
+
+/// The rules of the contract over plain HTTP: who may call, which moves are legal, what the answers
+/// say. `created` is a pending booking of Ann.
+fn bookings_over_http(base: &str, created: &Value) {
+    let id = created["id"].as_str().unwrap().to_string();
+    let at = |path: &str| format!("{base}/bookings{path}");
+    let get = |path: &str, token: Option<&str>| call("GET", &at(path), token, None);
+    let act = |path: &str, token: Option<&str>, body: Option<&Value>| {
+        call("POST", &at(path), token, body)
+    };
+    let pay_ann = |amount: &str| {
+        act(
+            &format!("/{id}/pay"),
+            Some("token-ann"),
+            Some(&json!({ "amount": amount })),
+        )
+    };
+
+    // A public endpoint needs no token, a protected one does.
+    let rooms = get("/rooms", None);
+    assert_eq!((rooms.0, rooms.1.as_array().map(Vec::len)), (200, Some(3)));
+    assert_error(&get("/me", None), 401, "Unauthorized");
+    assert_error(&get("/me", Some("token-nobody")), 401, "Unauthorized");
+    assert_eq!(get("/me", Some("token-sam")).1["roles"], json!(["staff"]));
+
+    // A denied caller: 403 with the message of the policy.
+    let stranger = get(&format!("/{id}"), Some("token-bob"));
+    assert_error(&stranger, 403, "Forbidden");
+    assert_eq!(stranger.1["data"]["message"], "not permitted");
+    assert_eq!(stranger.1["violations"][0]["message"], "not permitted");
+    assert_eq!(get(&format!("/{id}"), Some("token-sam")).0, 200);
+    let suspended = act(
+        "",
+        Some("token-eve"),
+        Some(
+            &json!({ "roomId": "00000000-0000-4000-8000-0000000000a1", "guests": 1,
+                      "start": "2030-06-10T00:00:00Z", "end": "2030-06-12T00:00:00Z" }),
+        ),
+    );
+    assert_error(&suspended, 403, "Forbidden");
+    assert_eq!(
+        suspended.1["data"]["message"],
+        "A suspended account cannot book"
+    );
+
+    // A missing booking is a 404, before any policy is asked.
+    let missing = get("/00000000-0000-4000-8000-00000000ffff", Some("token-bob"));
+    assert_error(&missing, 404, "NotFound");
+    assert_eq!(missing.1["data"]["resource"], "booking");
+
+    // The order of the checks: policy, then the move, then the amount.
+    assert_error(
+        &act(&format!("/{id}/cancel"), Some("token-bob"), None),
+        403,
+        "Forbidden",
+    );
+    assert_error(&pay_ann("1.00"), 422, "AmountMismatch");
+
+    // A legal move.
+    let paid = pay_ann("179.00");
+    assert_eq!((paid.0, paid.1["status"].clone()), (200, json!("paid")));
+    assert_eq!(
+        get(&format!("/{id}"), Some("token-ann")).1["status"],
+        "paid"
+    );
+
+    // An illegal move: 409 with the field and both states, whatever the amount.
+    let again = pay_ann("1.00");
+    assert_error(&again, 409, "InvalidTransition");
+    assert_eq!(
+        again.1["data"],
+        json!({ "field": "status", "from": "paid", "to": "paid" })
+    );
+
+    // The staff-only refund, then a final state with no way out.
+    assert_error(
+        &act(&format!("/{id}/refund"), Some("token-ann"), None),
+        403,
+        "Forbidden",
+    );
+    let refunded = act(&format!("/{id}/refund"), Some("token-sam"), None);
+    assert_eq!(
+        (refunded.0, refunded.1["status"].clone()),
+        (200, json!("refunded"))
+    );
+    let stuck = act(&format!("/{id}/cancel"), Some("token-sam"), None);
+    assert_error(&stuck, 409, "InvalidTransition");
+    assert_eq!(stuck.1["data"]["from"], "refunded");
 }
 
 // ---------------------------------------------------------------------------
