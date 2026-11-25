@@ -13,6 +13,7 @@
 // This crate is test support: it panics on purpose, with a report, when a check fails.
 #![allow(clippy::panic)]
 
+mod events;
 mod fixtures;
 
 use std::collections::BTreeMap;
@@ -20,6 +21,9 @@ use std::collections::BTreeMap;
 use veld_codegen::{DynGenerator, FileSet, GenRequest, Role, check_capabilities};
 use veld_ir::{Feature, Ir, ServiceId};
 
+pub use events::{
+    check_events_are_ignored_by_clients, check_events_are_refused, compiled_events_contract,
+};
 pub use fixtures::{FIXTURES, Fixture};
 
 /// Compiles one contract as the single service package `app`.
@@ -91,7 +95,8 @@ pub fn ir_with_rule() -> Ir {
         | DeclKind::Error(_)
         | DeclKind::Enum(_)
         | DeclKind::Union(_)
-        | DeclKind::Const(_) => None,
+        | DeclKind::Const(_)
+        | DeclKind::Event(_) => None,
     });
     match model {
         Some(m) => m.rules.push(rule),
