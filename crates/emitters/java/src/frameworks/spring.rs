@@ -81,7 +81,10 @@ fn write_ctor(
     loaders: Option<&str>,
 ) {
     let (given, pass) = match loaders {
-        Some(l) => (format!("{service} service, {l} loaders, "), "service, loaders"),
+        Some(l) => (
+            format!("{service} service, {l} loaders, "),
+            "service, loaders",
+        ),
         None => (format!("{service} service, "), "service"),
     };
     if svc.needs_hooks {
@@ -144,7 +147,10 @@ fn controller(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
     let service = imp.name(&format!("{server}.{name}Service"));
     let hooks = imp.name(&format!("{server}.{name}Hooks"));
     let handler_factory = imp.name(&format!("{server}.{name}Handler"));
-    let loaders = svc.loaders.as_ref().map(|l| imp.name(&format!("{server}.{l}")));
+    let loaders = svc
+        .loaders
+        .as_ref()
+        .map(|l| imp.name(&format!("{server}.{l}")));
     let veld = imp.name(&format!("{}.VeldHandler", runtime::package(&model.base)));
     let rest_controller = imp.name(&format!("{MVC}.RestController"));
     let mut w = CodeWriter::new();
@@ -233,7 +239,10 @@ fn ws_config(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
     let service = imp.name(&format!("{server}.{name}Service"));
     let hooks = imp.name(&format!("{server}.{name}Hooks"));
     let handler_factory = imp.name(&format!("{server}.{name}Handler"));
-    let loaders = svc.loaders.as_ref().map(|l| imp.name(&format!("{server}.{l}")));
+    let loaders = svc
+        .loaders
+        .as_ref()
+        .map(|l| imp.name(&format!("{server}.{l}")));
     let veld = imp.name(&format!("{}.VeldHandler", runtime::package(&model.base)));
     let bridge = imp.name(&format!(
         "{}.SpringWebSocketAdapter",

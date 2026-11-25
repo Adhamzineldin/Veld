@@ -8,9 +8,9 @@ use veld_codegen::{CodeWriter, GenDiagnostic, print_expr};
 use veld_ir::{Endpoint, EndpointFact, EndpointRequire, Service};
 
 use crate::rule_expr::{EndpointScope, JavaExpr, ScopeVar, rule_value_type};
-use crate::spec::{method_name, param_idents, spec_const};
+use crate::spec::{param_idents, spec_const};
 use crate::tree::FileCtx;
-use crate::types::{codec_expr, java_type, schema_expr};
+use crate::types::{codec_expr, java_type};
 use crate::util::{doc_comment, java_str, member_ident, unique};
 
 /// Whether an endpoint has statements.
@@ -47,7 +47,12 @@ fn fact_idents(facts: &[EndpointFact]) -> Vec<String> {
 
 /// `public record CreateBookingFacts(Room room, Coupon coupon)`: the facts the loaders found,
 /// handed to the handler with the parameters. An absent optional fact is `null`.
-pub fn write_facts_record(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, request: &str, ep: &Endpoint) {
+pub fn write_facts_record(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    request: &str,
+    ep: &Endpoint,
+) {
     let idents = fact_idents(&ep.rules.facts);
     let docs: Vec<(String, String)> = ep
         .rules
@@ -307,15 +312,8 @@ pub fn write_call_body(
         .iter()
         .map(|e| print_expr(&mut printer, &e.expr).code)
         .collect();
-    let (rules, spec) = (printer_rt(&mut printer, "EndpointRules"), spec_const(ep));
-    let (validation, not_found) = factories(printer.file());
     let request = site.request;
-    let run = format!("{rules}.Run");
-    w.line(format!("{request} request = {request}.fromWire(params);"));
-    w.line(format!(
-        "{run} run = {rules}.start(hooks, {spec}, issues -> {validation}, resource -> {not_found}, clock.applyAsLong(ctx));"
-    ));
-    w.line("long now = run.now();");
+    write_start(w, &mut printer, site);
     let loaders: Vec<String> = service_methods(site);
     for (fact, ident) in ep.rules.facts.iter().zip(&idents) {
         let method = loaders_method(site, &fact.name, &loaders);
@@ -334,18 +332,47 @@ pub fn write_call_body(
         Some(_) => w.line(format!("var result = {call};")),
         None => w.line(format!("{call};")),
     };
-    for (e, cond) in ep.rules.ensures.iter().zip(&ensures) {
+    write_finish(w, &mut printer, site, &ensures, encode);
+    diags.extend(printer_problems(&printer, site));
+    diags
+}
+
+/// The request, the run (the one clock reading) and `now`.
+fn write_start(w: &mut CodeWriter, printer: &mut JavaExpr<'_, '_, '_>, site: &Site<'_>) {
+    let (rules, spec) = (printer_rt(printer, "EndpointRules"), spec_const(site.ep));
+    let (validation, not_found) = factories(printer.file());
+    let request = site.request;
+    w.line(format!("{request} request = {request}.fromWire(params);"));
+    w.line(format!(
+        "{rules}.Run run = {rules}.start(hooks, {spec}, issues -> {validation}, resource -> {not_found}, clock.applyAsLong(ctx));"
+    ));
+    w.line("long now = run.now();");
+}
+
+/// The `ensure` checks, registered after the handler, and the encoded result.
+fn write_finish(
+    w: &mut CodeWriter,
+    printer: &mut JavaExpr<'_, '_, '_>,
+    site: &Site<'_>,
+    ensures: &[String],
+    encode: Option<&str>,
+) {
+    for (e, cond) in site.ep.rules.ensures.iter().zip(ensures) {
         let fields = list_of(printer.file(), &e.reads);
         w.line(format!(
             "run.ensure({}, {}, {fields}, {}, () -> {cond});",
             java_str(&e.id),
             java_str(e.name.as_deref().unwrap_or("ensure")),
-            message(e.name.as_deref(), e.message.as_deref(), "postcondition failed")
+            message(
+                e.name.as_deref(),
+                e.message.as_deref(),
+                "postcondition failed"
+            )
         ));
     }
     match encode {
         Some(enc) => {
-            let json = printer_rt(&mut printer, "Json");
+            let json = printer_rt(printer, "Json");
             w.line(format!("{json} encoded = {enc};"));
             w.line("run.arm();");
             w.line("return encoded;");
@@ -355,8 +382,6 @@ pub fn write_call_body(
             w.line("return null;");
         }
     }
-    diags.extend(printer_problems(&printer, site));
-    diags
 }
 
 fn write_require(
@@ -404,7 +429,7 @@ fn printer_rt(p: &mut JavaExpr<'_, '_, '_>, simple: &str) -> String {
 fn printer_problems(p: &JavaExpr<'_, '_, '_>, site: &Site<'_>) -> Vec<GenDiagnostic> {
     p.unsupported()
         .iter()
-        .map(|what| unsupported(site, &format!("{what}")))
+        .map(|what| unsupported(site, what))
         .collect()
 }
 
@@ -447,15 +472,4 @@ pub fn refusals(svc: &Service) -> Vec<GenDiagnostic> {
         }
     }
     out
-}
-
-/// The fully qualified service-method name used in docs.
-#[must_use]
-pub fn handler_method(ep: &Endpoint) -> String {
-    method_name(ep)
-}
-
-/// A schema expression for a wire value of `ty`, used by the test handler.
-pub fn wire_schema(fc: &mut FileCtx<'_, '_>, ty: &veld_ir::Type) -> String {
-    schema_expr(fc, ty, &veld_ir::Constraints::default(), false)
 }

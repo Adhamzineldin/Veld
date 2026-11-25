@@ -1,7 +1,7 @@
 //! The shared generator conformance kit, for every framework of the Java server.
 #![allow(clippy::unwrap_used)]
-use veld_emit_conformance::{Setup, check_generator_with};
 use veld_codegen::DynGenerator;
+use veld_emit_conformance::{Setup, check_generator_with};
 use veld_emit_java::Java;
 use veld_ir::Feature;
 

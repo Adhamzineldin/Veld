@@ -956,3 +956,6 @@ fn number(code: String, negative: bool) -> Printed {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod endpoint_tests;

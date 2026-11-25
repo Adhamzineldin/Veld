@@ -1,0 +1,7 @@
+---
+source: crates/emitters/java/tests/endpoint_rules.rs
+expression: "runtime.join(\"\\n\")"
+---
+gen/b/runtime/DigestHandler.java
+gen/b/runtime/EndpointRules.java
+gen/b/runtime/TestSupport.java

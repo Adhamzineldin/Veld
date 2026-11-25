@@ -92,7 +92,7 @@ url = "https://registry.example.com"
 |---|---|---|---|
 | `node` | server | `express`, `fastify`, `hono`, `node-http` (unversioned), `nest` (`"10"`) | `typescript`, `framework-version`, `package-name`, `testing` |
 | `typescript` | client | `react` (`"18"`), `vue` (`"3"`); none is the plain client | `typescript`, `framework-version`, `package-name` |
-| `java` | server | `jdk` (unversioned), `spring` (`"3"`) | `package`, `java`, `framework-version` |
+| `java` | server | `jdk` (unversioned), `spring` (`"3"`) | `package`, `java`, `framework-version`, `validate`, `testing` |
 | `java` | client | none | `package`, `java` |
 | `rust` | server | `axum` (`"0.8"`, the default) | `crate-name`, `transport`, `validate` |
 | `rust` | client | `reqwest` (`"0.13"`, the default), `ureq` (`"2"`, blocking) | `crate-name`, `validate` |

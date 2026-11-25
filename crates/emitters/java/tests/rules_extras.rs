@@ -22,7 +22,11 @@ fn compile_contract_with(package: &str, path: &str, patch: &dyn Fn(&str) -> Stri
             name: package.into(),
             kind: PackageKind::Service,
             files: vec![SourceFile {
-                path: std::path::Path::new(path).file_name().unwrap().to_string_lossy().into_owned(),
+                path: std::path::Path::new(path)
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
                 text,
             }],
             base_url: None,
@@ -49,16 +53,24 @@ fn golden_request() -> serde_json::Value {
 /// the body.
 fn assert_golden(status: u16, content_type: &str, body: &str) {
     let request = golden_request();
-    assert_eq!(u64::from(status), request["status"].as_u64().unwrap(), "{body}");
+    assert_eq!(
+        u64::from(status),
+        request["status"].as_u64().unwrap(),
+        "{body}"
+    );
     assert!(
         content_type.starts_with(request["contentType"].as_str().unwrap()),
         "{content_type}"
     );
     let parsed: serde_json::Value = serde_json::from_str(body.trim()).unwrap();
     let canonical = veld_codegen::canonical::canonical(&parsed);
-    let expected = std::fs::read_to_string(repo_root().join("tests/wire/rules/problem.json"))
-        .unwrap();
-    assert_eq!(canonical, expected.trim_end(), "the problem document differs from the golden");
+    let expected =
+        std::fs::read_to_string(repo_root().join("tests/wire/rules/problem.json")).unwrap();
+    assert_eq!(
+        canonical,
+        expected.trim_end(),
+        "the problem document differs from the golden"
+    );
 }
 
 fn golden_files(framework: Option<&str>) -> (Ir, veld_codegen::FileSet) {
@@ -192,15 +204,24 @@ fn stream_items_and_websocket_messages_are_checked_through_the_spring_adapter() 
     let work = build_spring(
         "spring-streams",
         &server,
-        &["rules/spring-streams/App.java", "rules/spring-streams/Probe.java"],
+        &[
+            "rules/spring-streams/App.java",
+            "rules/spring-streams/Probe.java",
+        ],
     );
     let driver = tempfile::tempdir().unwrap();
     let mut sources = write_files(driver.path(), &client);
     sources.push(repo_root().join("tests/toolchain/java/rules/RuleStreamsWs.java"));
     javac_ok(driver.path(), &sources, "17");
     for (mode, events) in [
-        ("strict", vec!["OUTPUT REJECTED", "OUTPUT REJECTED", "INPUT REJECTED"]),
-        ("audit", vec!["OUTPUT AUDITED", "OUTPUT AUDITED", "INPUT REJECTED"]),
+        (
+            "strict",
+            vec!["OUTPUT REJECTED", "OUTPUT REJECTED", "INPUT REJECTED"],
+        ),
+        (
+            "audit",
+            vec!["OUTPUT AUDITED", "OUTPUT AUDITED", "INPUT REJECTED"],
+        ),
         ("off", vec!["INPUT REJECTED"]),
     ] {
         let app = run_spring(&work, "/__events", &[&format!("--veld.mode={mode}")]);
@@ -212,7 +233,9 @@ fn stream_items_and_websocket_messages_are_checked_through_the_spring_adapter() 
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr)
         );
-        let seen = raw_http(app.port, "GET", "/__events", &[], "").unwrap().body;
+        let seen = raw_http(app.port, "GET", "/__events", &[], "")
+            .unwrap()
+            .body;
         let seen: Vec<&str> = seen.lines().collect();
         assert_eq!(seen, events, "{mode}: the hook saw these violations");
     }

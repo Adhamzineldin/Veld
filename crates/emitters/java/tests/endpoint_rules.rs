@@ -42,6 +42,72 @@ pub fn generate(ir: &Ir, role: Role, framework: Option<&str>, testing: bool) -> 
     run(ir, role, all, vec![], framework, o)
 }
 
+#[test]
+fn the_server_files_of_the_bookings_contract_are_snapshotted() {
+    let ir = bookings_ir();
+    let files = generate(&ir, Role::Server, None, true);
+    let paths: Vec<&str> = files.paths().filter(|p| !p.contains("/runtime/")).collect();
+    insta::assert_snapshot!("endpoint_rules_server_file_list", paths.join("\n"));
+    for name in [
+        "BookingsHandler",
+        "BookingsTestHandler",
+        "BookingsHooks",
+        "BookingsService",
+        "BookingsFactLoaders",
+        "CreateBookingFacts",
+    ] {
+        let path = format!("gen/b/bookings/server/{name}.java");
+        insta::assert_snapshot!(format!("endpoint_rules_{name}"), text(&files, &path));
+    }
+    let runtime: Vec<&str> = files
+        .paths()
+        .filter(|p| {
+            ["EndpointRules", "DigestHandler", "TestSupport"]
+                .iter()
+                .any(|n| p.ends_with(&format!("/runtime/{n}.java")))
+        })
+        .collect();
+    insta::assert_snapshot!("endpoint_rules_runtime_files", runtime.join("\n"));
+}
+
+#[test]
+fn the_spring_controller_takes_the_fact_loaders_as_a_bean() {
+    let ir = bookings_ir();
+    let files = generate(&ir, Role::Server, Some("spring"), false);
+    insta::assert_snapshot!(
+        "endpoint_rules_spring_controller",
+        text(&files, "gen/b/adapters/bookings/BookingsController.java")
+    );
+}
+
+#[test]
+fn the_test_handler_changes_nothing_in_the_production_files() {
+    let ir = bookings_ir();
+    let plain = generate(&ir, Role::Server, None, false);
+    let testing = generate(&ir, Role::Server, None, true);
+    for (path, bytes) in plain.iter() {
+        let other = testing
+            .get(path)
+            .unwrap_or_else(|| panic!("{path} is gone"));
+        assert_eq!(bytes, other, "{path} differs with `testing = true`");
+    }
+    let added: Vec<&str> = testing.paths().filter(|p| plain.get(p).is_none()).collect();
+    assert_eq!(
+        added,
+        [
+            "gen/b/bookings/server/BookingsTestHandler.java",
+            "gen/b/runtime/TestSupport.java"
+        ]
+    );
+    for (path, bytes) in plain.iter().filter(|(p, _)| p.ends_with(".java")) {
+        let text = String::from_utf8_lossy(bytes);
+        assert!(
+            !text.contains("Veld-Test") && !text.contains("veld-test"),
+            "{path} reads a test header"
+        );
+    }
+}
+
 /// A running Java process that printed `PORT=<n>`; killed when dropped.
 #[allow(missing_debug_implementations)]
 pub struct Running {
@@ -149,6 +215,26 @@ fn the_production_handler_runs_facts_requires_ensures_and_old_over_http() {
         return;
     }
     run_driver("EndpointHttp.java", "veldtest.EndpointHttp", false);
+}
+
+#[test]
+fn every_example_passes_through_the_generated_test_handler_on_spring() {
+    let name = "every_example_passes_through_the_test_handler_on_spring";
+    if !require_javac(name) || !spring_available(name) {
+        return;
+    }
+    let ir = bookings_ir();
+    let files = generate(&ir, Role::Server, Some("spring"), true);
+    let app = start_spring(
+        "spring-endpoints",
+        &files,
+        &["rules/spring-endpoints/App.java"],
+        "/__veld/test",
+        &[],
+    );
+    let passed = run_every_example(&ir, &format!("http://127.0.0.1:{}", app.port));
+    eprintln!("examples passed on the Spring test handler: {passed}");
+    assert_eq!(passed, 20, "every example of tests/rules/endpoints");
 }
 
 #[test]

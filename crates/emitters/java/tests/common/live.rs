@@ -101,7 +101,8 @@ pub fn raw_http(
     let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).ok()?;
     s.set_read_timeout(Some(std::time::Duration::from_secs(20)))
         .ok()?;
-    let mut request = format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n");
+    let mut request =
+        format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n");
     for (k, v) in headers {
         request.push_str(&format!("{k}: {v}\r\n"));
     }
@@ -265,7 +266,7 @@ pub fn run_spring(work: &Path, ready_path: &str, extra: &[&str]) -> SpringApp {
         .arg(format!("--server.port={port}"))
         .arg("--server.address=127.0.0.1")
         .args(extra)
-        .current_dir(&work);
+        .current_dir(work);
     let mut server =
         veld_test_support::ProcessTree::spawn_logged(&mut app, &work.join("app.log")).unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);

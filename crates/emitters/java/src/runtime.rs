@@ -12,7 +12,13 @@ use crate::util::{HEADER, add_file};
 /// The package the embedded sources declare. It is replaced by `<base>.runtime`.
 const SOURCE_PACKAGE: &str = "dev.veld.runtime";
 /// The runtime classes that exist only for a contract with rules (`spec/targets/java.md` section 8).
-const RULE_FILES: &[&str] = &["DigestHandler", "RuleError", "RuleWalk", "Rules", "Violation"];
+const RULE_FILES: &[&str] = &[
+    "DigestHandler",
+    "RuleError",
+    "RuleWalk",
+    "Rules",
+    "Violation",
+];
 /// The runtime classes that exist only for a contract with endpoint rules (`spec/targets/java.md` section 9).
 const ENDPOINT_FILES: &[&str] = &["EndpointRules"];
 /// The runtime classes of the test handler, emitted only with the target option `testing`.

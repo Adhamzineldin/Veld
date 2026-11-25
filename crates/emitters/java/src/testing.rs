@@ -29,9 +29,7 @@ pub fn write_test_handler(
     class: &str,
     base: &str,
 ) -> Vec<GenDiagnostic> {
-    let (handler, router) = (fc.rt("VeldHandler"), fc.rt("Router"));
-    let (support, endpoint) = (fc.rt("TestSupport"), fc.rt("ServerEndpoint"));
-    let (list, array_list) = (fc.name("java.util.List"), fc.name("java.util.ArrayList"));
+    let handler = fc.rt("VeldHandler");
     let (service, hooks) = (format!("{base}Service"), format!("{base}Hooks"));
     let loaders = (!svc.facts.is_empty()).then(|| loaders_name(base));
     doc_comment(
@@ -58,18 +56,37 @@ pub fn write_test_handler(
     w.open(format!(
         "public static {handler} create({service} impl, {hooks} hooks)"
     ));
+    write_create_body(w, fc, svc, base, loaders.is_some());
+    w.close();
+    if let Some(l) = &loaders {
+        w.blank();
+        write_loaders(w, fc, svc, l);
+    }
+    w.blank();
+    write_stub(w, fc, names, svc, &service);
+    w.close();
+    Vec::new()
+}
+
+/// The body of `create`: the production endpoints over the stub service and the header loaders,
+/// without authentication and middleware, behind the probe.
+fn write_create_body(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    svc: &Service,
+    base: &str,
+    has_loaders: bool,
+) {
+    let (router, support) = (fc.rt("Router"), fc.rt("TestSupport"));
+    let endpoint = fc.rt("ServerEndpoint");
+    let (list, array_list) = (fc.name("java.util.List"), fc.name("java.util.ArrayList"));
     w.line(format!("{support}.notice({});", java_str(&svc.name)));
     w.line(format!("{} built = hooks.build();", fc.rt("HandlerHooks")));
-    let given = match &loaders {
-        Some(_) => "new Loaders(), ",
-        None => "",
-    };
+    let given = if has_loaders { "new Loaders(), " } else { "" };
     w.line(format!(
         "{list}<{endpoint}> endpoints = {base}Handler.endpoints(new Stub(impl), {given}built, {support}::now);"
     ));
-    w.line(format!(
-        "{list}<{endpoint}> open = new {array_list}<>();"
-    ));
+    w.line(format!("{list}<{endpoint}> open = new {array_list}<>();"));
     w.line(format!(
         "for ({endpoint} e : endpoints) {{ open.add({support}.endpoint(e)); }}"
     ));
@@ -92,15 +109,6 @@ pub fn write_test_handler(
         "return {support}.handler({wrapped}, {collections}.singletonMap({}, {digest}));",
         java_str(&svc.name)
     ));
-    w.close();
-    if let Some(l) = &loaders {
-        w.blank();
-        write_loaders(w, fc, svc, l);
-    }
-    w.blank();
-    write_stub(w, fc, names, svc, &service);
-    w.close();
-    Vec::new()
 }
 
 /// The loaders that read their fact from `Veld-Test-Facts`; the key is ignored.
@@ -121,9 +129,7 @@ fn write_loaders(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, in
         let codec = codec_expr(fc, &fact.ty);
         let schema = schema_expr(fc, &fact.ty, &veld_ir::Constraints::default(), false);
         w.line("@Override");
-        w.open(format!(
-            "public {optional}<{ty}> {name}({key}{ctx} ctx)"
-        ));
+        w.open(format!("public {optional}<{ty}> {name}({key}{ctx} ctx)"));
         w.line(format!(
             "return {support}.fact(ctx, {}).map(json -> {codec}.decode({wire}.prepare({schema}, json, {wire}.Mode.RESPONSE)));",
             java_str(&fact.name)
@@ -142,8 +148,12 @@ fn write_stub(
     service: &str,
 ) {
     let ctx = fc.rt("RequestContext");
-    w.line("/** Answers a dry run or the result of the request, and else calls the application. */");
-    w.open(format!("private static final class Stub implements {service}"));
+    w.line(
+        "/** Answers a dry run or the result of the request, and else calls the application. */",
+    );
+    w.open(format!(
+        "private static final class Stub implements {service}"
+    ));
     w.line(format!("private final {service} delegate;"));
     w.blank();
     w.open(format!("Stub({service} delegate)"));
