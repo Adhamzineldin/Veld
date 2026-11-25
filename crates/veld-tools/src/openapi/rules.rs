@@ -16,6 +16,14 @@ fn wire_of(d: &Decl, name: &str) -> String {
         .map_or_else(|| name.to_string(), |f| f.wire.clone())
 }
 
+/// `"rollout": "audit"` on a rule that never rejects (`@rollout(audit)`, `spec/rules.md` section
+/// 17.1); nothing for an enforced one, so an export without the annotation keeps its bytes.
+fn audit_mark(audited: bool, o: &mut Map<String, Value>) {
+    if audited {
+        o.insert("rollout".into(), Value::from("audit"));
+    }
+}
+
 fn invariant(d: &Decl, r: &Rule) -> Value {
     let mut o = Map::new();
     o.insert("name".into(), Value::from(r.name.clone()));
@@ -26,6 +34,7 @@ fn invariant(d: &Decl, r: &Rule) -> Value {
     let fields: Vec<String> = r.reads.iter().map(|n| wire_of(d, n)).collect();
     o.insert("fields".into(), json!(fields));
     o.insert("expression".into(), Value::from(expr_text(&r.expr)));
+    audit_mark(r.is_audited(), &mut o);
     Value::Object(o)
 }
 
@@ -76,6 +85,7 @@ fn require_entry(ir: &Ir, r: &veld_ir::EndpointRequire) -> Value {
     if let Some(e) = &r.else_error {
         o.insert("else".into(), Value::from(ir.decl(e.decl).name.clone()));
     }
+    audit_mark(r.rollout.is_some(), &mut o);
     if let Some(m) = &r.message {
         o.insert("message".into(), Value::from(m.clone()));
     }
@@ -89,6 +99,7 @@ fn ensure_entry(r: &veld_ir::EndpointEnsure) -> Value {
     }
     o.insert("id".into(), Value::from(r.id.clone()));
     o.insert("expression".into(), Value::from(expr_text(&r.expr)));
+    audit_mark(r.rollout.is_some(), &mut o);
     if let Some(m) = &r.message {
         o.insert("message".into(), Value::from(m.clone()));
     }

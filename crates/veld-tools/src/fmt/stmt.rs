@@ -141,6 +141,14 @@ pub(super) fn stmt_docs(s: &Stmt) -> &[veld_compiler::syntax::ast::Doc] {
     }
 }
 
+pub(super) fn stmt_annotations(s: &Stmt) -> &[veld_compiler::syntax::ast::Annotation] {
+    match s {
+        Stmt::Fact(_) | Stmt::Transition(_) | Stmt::Allow(_) => &[],
+        Stmt::Require(r) => &r.annotations,
+        Stmt::Ensure(e) => &e.annotations,
+    }
+}
+
 pub(super) fn value_text(v: &Value) -> String {
     match &v.kind {
         ValueKind::Bool(b) => b.to_string(),

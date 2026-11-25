@@ -290,6 +290,8 @@ pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
 #[cfg(test)]
 mod event_tests;
 #[cfg(test)]
+mod rollout_tests;
+#[cfg(test)]
 mod rule_tests;
 #[cfg(test)]
 mod tests;

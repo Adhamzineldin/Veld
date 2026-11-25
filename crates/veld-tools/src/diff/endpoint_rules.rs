@@ -12,6 +12,7 @@ use super::{Change, ChangeKind, Ctx};
 trait Stmt {
     fn stmt_name(&self) -> Option<&str>;
     fn stmt_id(&self) -> &str;
+    fn stmt_audited(&self) -> bool;
 }
 
 impl Stmt for EndpointRequire {
@@ -21,6 +22,9 @@ impl Stmt for EndpointRequire {
     fn stmt_id(&self) -> &str {
         &self.id
     }
+    fn stmt_audited(&self) -> bool {
+        self.rollout.is_some()
+    }
 }
 
 impl Stmt for EndpointEnsure {
@@ -29,6 +33,9 @@ impl Stmt for EndpointEnsure {
     }
     fn stmt_id(&self) -> &str {
         &self.id
+    }
+    fn stmt_audited(&self) -> bool {
+        self.rollout.is_some()
     }
 }
 
@@ -41,7 +48,7 @@ struct Paired<'a, T> {
 
 /// Named statements pair by name. Unnamed ones pair by id (same expression); the leftovers pair in
 /// source order, which reads as "the expression of that statement changed".
-fn pair<'a, T: Stmt>(old: &'a [T], new: &'a [T]) -> Paired<'a, T> {
+fn pair<'a, T: Stmt>(old: &[&'a T], new: &[&'a T]) -> Paired<'a, T> {
     let mut p = Paired {
         both: Vec::new(),
         removed: Vec::new(),
@@ -49,23 +56,28 @@ fn pair<'a, T: Stmt>(old: &'a [T], new: &'a [T]) -> Paired<'a, T> {
     };
     let mut new_named: BTreeMap<&str, &T> = new
         .iter()
-        .filter_map(|s| s.stmt_name().map(|n| (n, s)))
+        .filter_map(|s| s.stmt_name().map(|n| (n, *s)))
         .collect();
     let mut old_loose: Vec<&T> = Vec::new();
     for o in old {
         match o.stmt_name() {
             Some(n) => match new_named.remove(n) {
-                Some(m) => p.both.push((o, m)),
-                None => p.removed.push(o),
+                Some(m) => p.both.push((*o, m)),
+                None => p.removed.push(*o),
             },
-            None => old_loose.push(o),
+            None => old_loose.push(*o),
         }
     }
     p.added.extend(
         new.iter()
-            .filter(|s| s.stmt_name().is_some_and(|n| new_named.contains_key(n))),
+            .filter(|s| s.stmt_name().is_some_and(|n| new_named.contains_key(n)))
+            .copied(),
     );
-    let mut new_loose: Vec<&T> = new.iter().filter(|s| s.stmt_name().is_none()).collect();
+    let mut new_loose: Vec<&T> = new
+        .iter()
+        .filter(|s| s.stmt_name().is_none())
+        .copied()
+        .collect();
     old_loose.retain(
         |o| match new_loose.iter().position(|m| m.stmt_id() == o.stmt_id()) {
             Some(i) => {
@@ -83,6 +95,28 @@ fn pair<'a, T: Stmt>(old: &'a [T], new: &'a [T]) -> Paired<'a, T> {
     p.added.extend(new_loose.into_iter().skip(common));
     p
 }
+
+/// The statements that reject: an audited one never does and is judged as if it were absent
+/// (`spec/rules.md` section 17.1).
+fn enforced<T: Stmt>(items: &[T]) -> Vec<&T> {
+    items.iter().filter(|s| !s.stmt_audited()).collect()
+}
+
+/// True when `other` holds an audited statement that is `s` with the annotation added: the same
+/// name, or for an unnamed one the same expression.
+fn audited_in<T: Stmt>(other: &[T], s: &T) -> bool {
+    other.iter().any(|x| {
+        x.stmt_audited()
+            && match (x.stmt_name(), s.stmt_name()) {
+                (Some(a), Some(b)) => a == b,
+                (None, None) => x.stmt_id() == s.stmt_id(),
+                _ => false,
+            }
+    })
+}
+
+const AUDITED_NOW: &str = "; it is now audited (`@rollout(audit)`): reported and never rejecting, so judged like removing it";
+const ENFORCED_NOW: &str = "; it is no longer audited: it now rejects, so judged like adding it";
 
 fn label(kind: &str, name: Option<&str>, expr: &str) -> String {
     match name {
@@ -154,25 +188,35 @@ fn else_text(ir: &Ir, e: Option<&ElseError>) -> String {
 }
 
 fn diff_requires(ctx: &Ctx<'_>, s: &str, o: &Endpoint, n: &Endpoint, out: &mut Vec<Change>) {
-    let p = pair(&o.rules.requires, &n.rules.requires);
+    let p = pair(&enforced(&o.rules.requires), &enforced(&n.rules.requires));
     for r in p.added {
         let what = label("require", r.name.as_deref(), &expr_text(&r.expr));
+        let now = if audited_in(&o.rules.requires, r) {
+            ENFORCED_NOW
+        } else {
+            ""
+        };
         out.push(Change::breaking(
             ChangeKind::RequireAdded,
             s,
             format!(
-                "{what} was added: `{}`; a request that was accepted before may now be rejected",
+                "{what} was added: `{}`; a request that was accepted before may now be rejected{now}",
                 expr_text(&r.expr)
             ),
         ));
     }
     for r in p.removed {
         let what = label("require", r.name.as_deref(), &expr_text(&r.expr));
+        let now = if audited_in(&n.rules.requires, r) {
+            AUDITED_NOW
+        } else {
+            ""
+        };
         out.push(Change::non_breaking(
             ChangeKind::RequireRemoved,
             s,
             format!(
-                "{what} was removed (was `{}`); requests are now accepted more widely",
+                "{what} was removed (was `{}`); requests are now accepted more widely{now}",
                 expr_text(&r.expr)
             ),
         ));
@@ -226,25 +270,35 @@ fn require_changed(
 }
 
 fn diff_ensures(s: &str, o: &Endpoint, n: &Endpoint, out: &mut Vec<Change>) {
-    let p = pair(&o.rules.ensures, &n.rules.ensures);
+    let p = pair(&enforced(&o.rules.ensures), &enforced(&n.rules.ensures));
     for e in p.removed {
         let what = label("ensure", e.name.as_deref(), &expr_text(&e.expr));
+        let now = if audited_in(&n.rules.ensures, e) {
+            AUDITED_NOW
+        } else {
+            ""
+        };
         out.push(Change::breaking(
             ChangeKind::EnsureRemoved,
             s,
             format!(
-                "{what} was removed (was `{}`); consumers lose a guarantee on the result",
+                "{what} was removed (was `{}`); consumers lose a guarantee on the result{now}",
                 expr_text(&e.expr)
             ),
         ));
     }
     for e in p.added {
         let what = label("ensure", e.name.as_deref(), &expr_text(&e.expr));
+        let now = if audited_in(&o.rules.ensures, e) {
+            ENFORCED_NOW
+        } else {
+            ""
+        };
         out.push(Change::non_breaking(
             ChangeKind::EnsureAdded,
             s,
             format!(
-                "note: {what} was added: `{}`; a new guarantee on the result",
+                "note: {what} was added: `{}`; a new guarantee on the result{now}",
                 expr_text(&e.expr)
             ),
         ));

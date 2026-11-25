@@ -486,6 +486,7 @@ impl Printer<'_> {
                 let key = s.start();
                 self.leading(key, ind);
                 self.docs(stmt::stmt_docs(s), ind);
+                self.annotations_own_lines(stmt::stmt_annotations(s), ind);
                 self.out.push_str(&stmt::stmt_lines(s, ind).join("\n"));
                 self.end_line(key, ind);
             }

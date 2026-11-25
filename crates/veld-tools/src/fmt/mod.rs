@@ -42,3 +42,6 @@ mod policy_tests;
 
 #[cfg(test)]
 mod event_tests;
+
+#[cfg(test)]
+mod rollout_tests;

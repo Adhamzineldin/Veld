@@ -65,20 +65,44 @@ fn own_rules(d: &Decl) -> BTreeMap<&str, &Rule> {
         .collect()
 }
 
+/// Only the enforced rules: an audited rule never rejects and is judged as if it were absent
+/// (`spec/rules.md` section 17.1).
+fn enforced<'a>(all: &BTreeMap<&'a str, &'a Rule>) -> BTreeMap<&'a str, &'a Rule> {
+    all.iter()
+        .filter(|(_, r)| !r.is_audited())
+        .map(|(n, r)| (*n, *r))
+        .collect()
+}
+
 fn diff_invariants(q: &str, pair: (&Decl, &Decl), pos: Position, out: &mut Vec<Change>) {
-    let (old, new) = (own_rules(pair.0), own_rules(pair.1));
+    let (old_all, new_all) = (own_rules(pair.0), own_rules(pair.1));
+    let (old, new) = (enforced(&old_all), enforced(&new_all));
     for (name, o) in &old {
         match new.get(name) {
-            None => out.push(removed(q, o, pos)),
+            None => {
+                let mut c = removed(q, o, pos);
+                if new_all.contains_key(name) {
+                    c.message.push_str(AUDITED_NOW);
+                }
+                out.push(c);
+            }
             Some(n) => changed(q, (o, n), pos, out),
         }
     }
     for (name, n) in &new {
         if !old.contains_key(name) {
-            out.push(added(q, n, pos));
+            let mut c = added(q, n, pos);
+            if old_all.contains_key(name) {
+                c.message.push_str(ENFORCED_NOW);
+            }
+            out.push(c);
         }
     }
 }
+
+const AUDITED_NOW: &str = "; the rule is now audited (`@rollout(audit)`): it is reported and never rejects, so this is judged like removing it";
+const ENFORCED_NOW: &str =
+    "; the rule is no longer audited: it now rejects, so this is judged like adding it";
 
 fn added(q: &str, r: &Rule, pos: Position) -> Change {
     let text = expr_text(&r.expr);
