@@ -46,15 +46,10 @@ fn source(rel: &str) -> String {
     std::fs::read_to_string(repo_root().join(rel)).unwrap()
 }
 
-/// The contract of the round trip: Rust serves SSE on axum, and the `ws` endpoint of the shared
-/// contract is left out here.
+/// The contract of the round trip, with its SSE and WebSocket endpoints: the generated crate is built
+/// and linted with them, so the audited paths of a message and of an item are compiled.
 fn contract_ir() -> Ir {
-    let plain: String = source(CONTRACT)
-        .lines()
-        .filter(|l| !l.trim_start().starts_with("ws "))
-        .collect::<Vec<_>>()
-        .join("\n");
-    compile_text(&plain, "audit")
+    compile_text(&source(CONTRACT), "audit")
 }
 
 /// `rollout.veld` and `rollout_error.veld` as one package: their declarations do not clash.
@@ -182,6 +177,51 @@ fn audited_rules_report_and_never_reject_over_http_and_sse() {
         &[],
         "rollout ok",
     );
+}
+
+/// An audited invariant of a declaration that no endpoint reaches: the crate emits the declaration
+/// all the same, so it needs the audit machinery of the runtime, in both roles. The gate does not ask
+/// for `rules_rollout` here (nothing reaches the rule), and the generator must not need it either.
+#[test]
+fn an_audited_model_that_no_endpoint_reaches_is_still_built_in_both_roles() {
+    if !cargo_or_skip() {
+        return;
+    }
+    let ir = compile_text(
+        "model Unused {\n  n: int\n\n  @rollout(audit)\n  rule small: n < 10\n}\n\nmodel Pong {\n  ok: bool\n}\n\nservice Ping at \"/ping\" {\n  get \"/\" ping() -> Pong\n}\n",
+        "unreached",
+    );
+    let (server, client) = (
+        server(&ir, "unreached-server", false),
+        client(&ir, "unreached-client"),
+    );
+    let ws = work_dir().join("rollout-unreached-ws");
+    let _ = std::fs::remove_dir_all(&ws);
+    std::fs::create_dir_all(&ws).unwrap();
+    write_files(&ws.join("server"), &server);
+    write_files(&ws.join("client"), &client);
+    std::fs::write(
+        ws.join("Cargo.toml"),
+        "[workspace]\nresolver = \"2\"\nmembers = [\"server\", \"client\"]\n",
+    )
+    .unwrap();
+    let lock = repo_root().join("tests/toolchain/rust/Cargo.lock");
+    if lock.exists() {
+        std::fs::copy(&lock, ws.join("Cargo.lock")).unwrap();
+    }
+    run_ok(&mut cargo(&ws, &["build", "--workspace"]), "cargo build");
+    let clippy = [
+        "clippy",
+        "--all-targets",
+        "-p",
+        "unreached-server",
+        "-p",
+        "unreached-client",
+        "--",
+        "-D",
+        "warnings",
+    ];
+    run_ok(&mut cargo(&ws, &clippy), "cargo clippy");
 }
 
 /// Every example of the two contracts, sent to the generated test handler.

@@ -11,10 +11,11 @@ use audit_client::audit::audit_client::{AuditClient, BookRequest as ClientBook};
 use audit_client::veld::client::ClientOptions;
 use audit_server::audit::audit::{Party, Room, Tick};
 use audit_server::audit::audit_server::{
-    AuditFactLoaders, AuditHandler, AuditHooks, AuditService, BookFacts, BookRequest, TicksRequest,
+    AnnounceRequest, AuditFactLoaders, AuditHandler, AuditHooks, AuditService, BookFacts, BookRequest, EchoRequest,
+    TicksRequest,
 };
 use audit_server::veld::rules::{Outcome, Position, RuleEvent, RuleOutput};
-use audit_server::veld::server::RequestContext;
+use audit_server::veld::server::{RequestContext, WsSession};
 use audit_server::veld::stream::{EventStream, SseEvent, unfold};
 use audit_server::veld::Error;
 
@@ -40,6 +41,25 @@ impl AuditService for Impl {
     async fn book(&self, request: BookRequest, _facts: BookFacts, _ctx: &RequestContext) -> Result<Party, Error> {
         let guests = if request.body.guests == 5 { 6 } else { request.body.guests };
         Ok(Party { room_id: request.body.room_id, guests })
+    }
+
+    async fn announce(
+        &self,
+        _request: AnnounceRequest,
+        _ctx: &RequestContext,
+        ws: WsSession<(), Tick>,
+    ) -> Result<(), Error> {
+        for n in 0..3 {
+            ws.send(Tick { n })?;
+        }
+        Ok(())
+    }
+
+    async fn echo(&self, _request: EchoRequest, _ctx: &RequestContext, mut ws: WsSession<Party, Tick>) -> Result<(), Error> {
+        while let Some(message) = ws.recv().await {
+            ws.send(Tick { n: message?.guests })?;
+        }
+        Ok(())
     }
 
     async fn ticks(&self, request: TicksRequest, _ctx: &RequestContext) -> Result<EventStream<Tick>, Error> {

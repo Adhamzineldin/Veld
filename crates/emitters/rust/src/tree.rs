@@ -74,6 +74,18 @@ impl<'a> Tree<'a> {
             .any(|id| !self.ir.decl(*id).rules().is_empty())
     }
 
+    /// Whether any declaration of the tree has an audited invariant (`@rollout(audit)`).
+    #[must_use]
+    pub fn has_audited(&self) -> bool {
+        self.decls.iter().any(|id| {
+            self.ir
+                .decl(*id)
+                .rules()
+                .iter()
+                .any(veld_ir::Rule::is_audited)
+        })
+    }
+
     /// Whether a value of type `ty` can hold a declaration that has invariants.
     #[must_use]
     pub fn type_reaches_rules(&self, ty: &Type) -> bool {

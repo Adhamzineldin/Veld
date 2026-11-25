@@ -271,7 +271,9 @@ impl Generator for Rust {
                 .services
                 .iter()
                 .any(|s| guards::svc_has_guards(req.ir.service(*s)));
-        let rollout = used_features.contains(&Feature::RulesRollout);
+        // A declaration that no endpoint reaches is emitted too, and it calls `vr::audit` for its
+        // audited rules: the rollout regions are kept for every audited rule the crate has.
+        let rollout = used_features.contains(&Feature::RulesRollout) || crate_has_audited(req);
         let rules = crate_has_rules(req) || endpoint_rules || policies || rollout;
         let f = Features {
             rules,
@@ -368,6 +370,22 @@ fn crate_has_rules(req: &GenRequest<'_>) -> bool {
                 false,
             )
             .has_rules()
+        })
+}
+
+/// Whether any declaration that the crate emits has an audited invariant (`@rollout(audit)`).
+fn crate_has_audited(req: &GenRequest<'_>) -> bool {
+    let main = Tree::new(req.ir, "crate", "src", req.services.clone(), true);
+    main.has_audited()
+        || req.consumes.iter().any(|sid| {
+            Tree::new(
+                req.ir,
+                "crate::clients::x",
+                "src/clients/x",
+                vec![*sid],
+                false,
+            )
+            .has_audited()
         })
 }
 
