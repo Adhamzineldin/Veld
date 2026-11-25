@@ -42,8 +42,18 @@ fn read(rel: &str) -> String {
     std::fs::read_to_string(path).unwrap()
 }
 
-/// The hotel of `examples/bookings`: it has the 30 day rule.
+/// A small hotel with the 30 day rule: `createBooking` has rules and `getBooking` has none.
+/// It is a fixed copy of what `examples/bookings` was before it grew a state machine and
+/// policies, so that the tests below, which name its endpoints, do not move with the example.
 fn hotel() -> (String, Ir) {
+    let text = read("crates/veld-testing/tests/fixtures/hotel.veld");
+    let ir = compile_text(&text);
+    (text, ir)
+}
+
+/// The contract of `examples/bookings` as it is today. It changes with the example, so a test
+/// may only assert about it what holds for every contract.
+fn bookings_example() -> (String, Ir) {
     let text = read("examples/bookings/contracts/bookings.veld");
     let ir = compile_text(&text);
     (text, ir)
@@ -94,6 +104,28 @@ fn the_same_seed_gives_the_same_requests() {
     assert_eq!(a.boundaries, b.boundaries);
     let c = generate(&ir, s, e, 43, 300).unwrap();
     assert_ne!(a.requests, c.requests);
+}
+
+/// The example has endpoints without a parameter, which have only a few different requests, so
+/// no number of requests is asserted here.
+#[test]
+fn no_generated_request_of_the_bookings_example_is_an_input_error() {
+    let (_, ir) = bookings_example();
+    let mut endpoints = 0;
+    for s in &ir.services {
+        for e in &s.endpoints {
+            let pipeline = Pipeline::new(&ir, s, &e.name).unwrap();
+            let generated = generate(&ir, s, e, 7, 600).unwrap();
+            assert!(!generated.requests.is_empty(), "{}", e.name);
+            for req in &generated.requests {
+                pipeline
+                    .run(req)
+                    .unwrap_or_else(|err| panic!("{}: {err}\n{req:?}", e.name));
+            }
+            endpoints += 1;
+        }
+    }
+    assert!(endpoints > 0);
 }
 
 #[test]
