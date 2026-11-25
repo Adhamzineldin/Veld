@@ -56,6 +56,17 @@
     "returns",
     "ok"
   ],
+  "event_words": [
+    "event",
+    "channel",
+    "carries",
+    "key",
+    "publishes",
+    "subscribes",
+    "on",
+    "called",
+    "rejected"
+  ],
   "scalars": [
     "string",
     "int",
@@ -105,7 +116,9 @@
         "endpoint",
         "field",
         "variant",
-        "rule"
+        "rule",
+        "event",
+        "channel"
       ],
       "args": "one_string",
       "usage": "@deprecated(\"message\")"
@@ -203,6 +216,14 @@
       ],
       "args": "one_string",
       "usage": "@header(\"Name\")"
+    },
+    {
+      "name": "topic",
+      "targets": [
+        "channel"
+      ],
+      "args": "one_string",
+      "usage": "@topic(\"name\")"
     }
   ],
   "prelude": "error BadRequest 400      { message: string }\nerror Unauthorized 401    { message?: string }\nerror Forbidden 403       { message?: string }\nerror NotFound 404        { resource?: string }\nerror Conflict 409        { message: string }\nerror ValidationError 422 { issues: ValidationIssue[] }\nerror TooManyRequests 429 { retryAfter?: int }\nerror Internal 500        { message?: string }\nmodel ValidationIssue     { path: string, code: string, message: string }\nerror InvalidTransition 409 { field: string, from: string, to: string }\n"

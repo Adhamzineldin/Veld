@@ -35,7 +35,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0408` | error | veld-compiler | `extends` target is not a model |
 | `E0409` | error | veld-compiler | Union arm is not a model, or the union is empty |
 | `E0410` | error | veld-compiler | Duplicate field, wire name, variant or arm |
-| `E0501` | error | veld-compiler | Service prefix or endpoint path does not start with `/` |
+| `E0501` | error | veld-compiler | Service prefix or endpoint path does not start with `/`, or a service with endpoints has no `at` |
 | `E0502` | error | veld-compiler | Path parameter is optional or has an invalid type |
 | `E0503` | error | veld-compiler | `body` is not allowed on this HTTP method |
 | `E0504` | error | veld-compiler | Invalid `query` parameter or `@query` binding type |
@@ -43,7 +43,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0506` | error | veld-compiler | Path template names a parameter that does not exist |
 | `E0507` | error | veld-compiler | Success status is not 2xx |
 | `E0508` | error | veld-compiler | Error has neither a status here nor a default status |
-| `E0509` | error | veld-compiler | Endpoint declared twice in a service |
+| `E0509` | error | veld-compiler | Endpoint or event handler declared twice in a service |
 | `E0510` | error | veld-compiler | Two endpoints collide on method and path |
 | `E0511` | error | veld-compiler | `stream` used where it is not allowed |
 | `E0512` | error | veld-compiler | Duplicate parameter |
@@ -90,6 +90,16 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0951` | error | veld-compiler | `given` names something that is not a fact of the called endpoint |
 | `E0952` | error | veld-compiler | A value in an example does not fit the type it is used at |
 | `E0953` | error | veld-rules | A value an example leaves out cannot be filled in, or the filled-in value breaks an invariant |
+| `E1001` | error | veld-compiler | An event is used as a type, or an event field has an event type |
+| `E1002` | error | veld-compiler | `carries` names something that is not an event, names an event twice, or is missing |
+| `E1003` | error | veld-compiler | The topic of a channel is not a legal topic name |
+| `E1004` | error | veld-compiler | Two channels of the workspace have the same topic |
+| `E1005` | error | veld-compiler | The `key` of a channel is not a required field of the same key type in every carried event, or the channel has two keys |
+| `E1006` | error | veld-compiler | `publishes` or `subscribes` names something that is not a channel, or names a channel twice |
+| `E1007` | error | veld-compiler | The group of a subscription is not a legal group name |
+| `E1008` | error | veld-compiler | An `on` line names an event the channel does not carry or names an event twice, or the subscription has no `on` line |
+| `E1009` | error | veld-compiler | A subscription to a channel of this workspace that no service publishes |
+| `E1010` | error | veld-compiler | An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, or `rejected` is combined with `called` |
 | `W0001` | warning | veld-compiler | Doc comment is not attached to anything |
 | `W0201` | warning | veld-compiler | Unused import |
 | `W0202` | warning | veld-compiler | Declaration shadows a prelude declaration |
@@ -102,6 +112,8 @@ never reused. The ranges are listed in `language.md` section 9.
 | `W0931` | warning | veld-compiler | A state that is not final and has no way out |
 | `W0932` | warning | veld-compiler | A variant of a state machine that takes part in no flow and is not final |
 | `W0940` | warning | veld-compiler | A policy with no `permit` permits nobody |
+| `W1001` | warning | veld-compiler | A published channel that nobody in the workspace subscribes to |
+| `W1002` | warning | veld-compiler | An event of a published channel that no subscription handles |
 | `L0001` | lint | veld-tools | `unused-model`: declaration is never used by any endpoint, model or constant |
 | `L0002` | lint | veld-tools | `empty-service`: service has no endpoints |
 | `L0003` | lint | veld-tools | `empty-model`: model has no fields |

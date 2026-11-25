@@ -176,7 +176,10 @@ const SERVICE: Fields = &[
     ("rules_digest", T::Optional(&T::Str)),
     ("principal", T::Optional(&T::Ref("ServicePrincipal"))),
     ("publishes", T::Optional(&T::List(&T::Ref("ChannelId")))),
-    ("subscriptions", T::Optional(&T::List(&T::Ref("Subscription")))),
+    (
+        "subscriptions",
+        T::Optional(&T::List(&T::Ref("Subscription"))),
+    ),
     ("origin", ORIGIN),
 ];
 
@@ -612,11 +615,7 @@ pub const DEFS: &[Def] = &[
     ),
     Def::Object(
         "ChannelKey",
-        &[
-            ("name", T::Str),
-            ("wire", T::Str),
-            ("type", T::Ref("Type")),
-        ],
+        &[("name", T::Str), ("wire", T::Str), ("type", T::Ref("Type"))],
     ),
     Def::Object(
         "Subscription",

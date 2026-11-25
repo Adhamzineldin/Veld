@@ -9,6 +9,7 @@ export interface Ir {
   consumes: Record<string, string[]>;
   examples?: Example[];
   policies?: Policy[];
+  channels?: Channel[];
 }
 
 export type PackageId = number;
@@ -18,6 +19,8 @@ export type DeclId = number;
 export type ServiceId = number;
 
 export type PolicyId = number;
+
+export type ChannelId = number;
 
 export interface Package {
   id: PackageId;
@@ -107,6 +110,21 @@ export type Decl =
       origin: Origin;
       type: Type;
       value: Literal;
+    }
+  | {
+      kind: "event";
+      id: DeclId;
+      package: PackageId;
+      module: string;
+      name: string;
+      qualified: string;
+      sig: string;
+      docs: string | null;
+      deprecated: string | null;
+      origin: Origin;
+      fields: Field[];
+      rules?: Rule[];
+      rules_digest?: string;
     }
 
 export interface Variant {
@@ -373,14 +391,16 @@ export interface ServiceFact {
 export interface Example {
   name: string;
   package: PackageId;
-  service: ServiceId;
-  endpoint: string;
+  service?: ServiceId;
+  endpoint?: string;
   givens: ExampleGiven[];
   principal: ExampleValue | null;
   now: string | null;
   args: ExampleArg[];
   returns: ExampleValue | null;
-  outcome: ExampleOutcome;
+  outcome?: ExampleOutcome;
+  event?: ExampleEvent;
+  expect?: EventExpect;
   docs: string | null;
   origin: Origin;
 }
@@ -421,6 +441,53 @@ export interface ExampleField {
   value: ExampleValue;
 }
 
+export interface ExampleEvent {
+  decl: DeclId;
+  channel: ChannelId;
+  value: ExampleValue;
+}
+
+export type EventExpect = "rejected" | ExpectedCall[];
+
+export interface ExpectedCall {
+  service: ServiceId;
+  handler: string;
+  called: boolean;
+}
+
+export interface Channel {
+  name: string;
+  package: PackageId;
+  module: string;
+  qualified: string;
+  topic: string;
+  events: DeclId[];
+  key: ChannelKey | null;
+  docs: string | null;
+  deprecated: string | null;
+  origin: Origin;
+}
+
+export interface ChannelKey {
+  name: string;
+  wire: string;
+  type: Type;
+}
+
+export interface Subscription {
+  channel: ChannelId;
+  group: string;
+  handlers: Handler[];
+  origin: Origin;
+}
+
+export interface Handler {
+  event: DeclId;
+  name: string;
+  docs: string | null;
+  origin: Origin;
+}
+
 export interface Service {
   id: ServiceId;
   package: PackageId;
@@ -434,6 +501,8 @@ export interface Service {
   facts?: ServiceFact[];
   rules_digest?: string;
   principal?: ServicePrincipal;
+  publishes?: ChannelId[];
+  subscriptions?: Subscription[];
   origin: Origin;
 }
 
@@ -485,7 +554,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "events";
 
 export type Role = "server" | "client";
 

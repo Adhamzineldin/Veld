@@ -15,9 +15,9 @@ pub mod suggest;
 
 pub use endpoint_rules::{
     ElseError, ElseField, EndpointAllow, EndpointEnsure, EndpointFact, EndpointRequire,
-    EndpointRules, EndpointTransition, Example, ExampleArg, ExampleErrorOutcome, ExampleField,
-    EventExpect, ExampleEvent, ExpectedCall, ExampleGiven, ExampleOutcome, ExampleRef, ExampleValue, Policy, PolicyClause, PolicyEffect,
-    PolicyParam, ServiceFact, ServicePrincipal,
+    EndpointRules, EndpointTransition, EventExpect, Example, ExampleArg, ExampleErrorOutcome,
+    ExampleEvent, ExampleField, ExampleGiven, ExampleOutcome, ExampleRef, ExampleValue,
+    ExpectedCall, Policy, PolicyClause, PolicyEffect, PolicyParam, ServiceFact, ServicePrincipal,
 };
 pub use rules::{
     Always, BinExpr, Builtin, CallExpr, EnumLit, Expr, ExprKind, ExprLit, ExprType, Op, PathRef,

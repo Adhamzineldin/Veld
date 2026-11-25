@@ -354,7 +354,11 @@ fn decls() -> Vec<Decl> {
             6,
             "Ev",
             DeclKind::Event(Event {
-                fields: vec![field("amount", Type::Scalar(Scalar::Decimal), Literal::Int(1))],
+                fields: vec![field(
+                    "amount",
+                    Type::Scalar(Scalar::Decimal),
+                    Literal::Int(1),
+                )],
                 rules: vec![sample_rule()],
                 rules_digest: Some("3fa9c2e1b7d04a55".into()),
             }),
