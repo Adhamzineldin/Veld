@@ -170,7 +170,7 @@ Found when the example gained a state machine and policies (25 Nov), most import
 ## Config
 The work is two series, because only the second changes generated code. The layout series must leave every generated file, manifest and lock file of every example and fixture the same bytes; the runtime config series changes client code for every contract, and those snapshots go on the owner's list.
 - [~] Spec for the layout: `spec/workspace.md` drafted (root and member files, the single file form, defaults, target names and default `out`, `-p`, `--affected --since`, `owners`, the error for the earlier layout, codes `E0709` to `E0712`, and the list of every reader of the layout). No code. Six choices in its section 16 wait for the owner
-- [ ] Spec for the typed runtime config: not written
+- [~] Spec for the typed runtime config: `spec/runtime-config.md` drafted (what a setting is, one `<Target>Runtime` type per target, the check that lists every problem at startup, `fromEnv` with names the application chooses, what is removed, `veld export runtime-schema`, and which generated files change). No code. Six choices in its section 9 wait for the owner; read it before it is built, because it changes the constructor of every generated client
 - [ ] Workspace root plus one `veld.toml` per member; the old single-file format removed
 - [ ] `-p`, `--affected --since`, `owners`
 - [ ] Typed runtime config per target; `VELD_<SERVICE>_URL` fallback removed; `fromEnv()` opt-in
