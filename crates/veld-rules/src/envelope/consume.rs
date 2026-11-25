@@ -110,10 +110,10 @@ fn envelope(bytes: &[u8]) -> Result<Map<String, Json>, ConsumeError> {
     for name in ["subject", "time", "datacontenttype", RULES_ATTRIBUTE] {
         optional(&m, name)?;
     }
-    if let Some(Json::String(ct)) = m.get("datacontenttype") {
-        if ct != DATA_CONTENT_TYPE {
-            return malformed(format!("`datacontenttype` is `{ct}`"));
-        }
+    if let Some(Json::String(ct)) = m.get("datacontenttype")
+        && ct != DATA_CONTENT_TYPE
+    {
+        return malformed(format!("`datacontenttype` is `{ct}`"));
     }
     if m.contains_key("data_base64") {
         return malformed("`data_base64` is not allowed");
@@ -155,7 +155,11 @@ pub fn decode(ir: &Ir, handled: &[DeclId], bytes: &[u8]) -> Result<Received, Con
     let veldrules = optional(&m, RULES_ATTRIBUTE)?;
     let own = match &decl.kind {
         DeclKind::Event(e) => e.rules_digest.clone(),
-        _ => None,
+        DeclKind::Model(_)
+        | DeclKind::Error(_)
+        | DeclKind::Enum(_)
+        | DeclKind::Union(_)
+        | DeclKind::Const(_) => None,
     };
     let data = m.get("data").cloned().unwrap_or(Json::Null);
     let (data, violations) = check_decl_full(ir, decl, &data, Options::default())

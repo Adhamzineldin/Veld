@@ -120,10 +120,10 @@ fn the_failures_of_section_8_are_typed() {
         receive(&ir, &msg("", r#"{"amount":2}"#)),
         Err(ConsumeError::Shape(_))
     ));
-    let digest = match &ir.decl(event(&ir, "Paid")).kind {
-        veld_ir::DeclKind::Event(e) => e.rules_digest.clone().unwrap(),
-        _ => unreachable!(),
+    let veld_ir::DeclKind::Event(paid) = &ir.decl(event(&ir, "Paid")).kind else {
+        panic!("Paid is not an event");
     };
+    let digest = paid.rules_digest.clone().unwrap();
     let own = format!(r#","veldrules":"{digest}""#);
     let broken = r#"{"id":"k","amount":0}"#;
     assert!(matches!(
