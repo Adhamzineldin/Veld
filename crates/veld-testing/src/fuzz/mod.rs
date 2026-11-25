@@ -2,8 +2,8 @@
 //!
 //! For every endpoint a seeded generator builds requests, valid and invalid. The reference
 //! pipeline works out what each one must end in, the request goes to the test handler in
-//! dry-run mode, and any difference in status, error type, payload or the set of violations is
-//! a failure. The first requests of a run are the **boundaries** of the rules; the rest are
+//! dry-run mode, and any difference in the answer (see [`crate::outcome::judge_outcome`]) is a
+//! failure. The first requests of a run are the **boundaries** of the rules; the rest are
 //! random. See [`rules`] for how both are found, and [`generate`] for how requests are made.
 //!
 //! The same seed always gives the same requests, so a failure can be repeated.
@@ -31,7 +31,7 @@ use self::rules::{RuleIndex, Scope, Target, Task};
 use self::values::{Gen, Skip};
 use crate::error::LiveError;
 use crate::live::Live;
-use crate::outcome::{describe_answer, judge_outcome};
+use crate::outcome::{Called, describe_answer, judge_outcome};
 use crate::request::build_request;
 
 /// The size and the seed of a fuzz run.
@@ -132,13 +132,30 @@ impl EndpointReport {
 pub struct FuzzReport {
     pub seed: u64,
     pub endpoints: Vec<EndpointReport>,
+    /// Why the run ended early (the server could not be reached any more, or the generator made
+    /// a request the reference evaluator rejects). What was found before is kept in `endpoints`.
+    pub stopped: Option<String>,
 }
 
 impl FuzzReport {
-    /// True when no endpoint disagrees with the reference evaluator.
+    /// True when the run finished and no endpoint disagrees with the reference evaluator.
     #[must_use]
     pub fn passed(&self) -> bool {
-        self.endpoints.iter().all(|e| e.mismatch.is_none())
+        self.stopped.is_none() && self.endpoints.iter().all(|e| e.mismatch.is_none())
+    }
+
+    /// Endpoints whose every request ended the same way, with that outcome: the fuzz did not get
+    /// past it, so whatever comes after it in the pipeline was not exercised.
+    #[must_use]
+    pub fn one_sided(&self) -> Vec<(String, String)> {
+        self.endpoints
+            .iter()
+            .filter(|e| e.sent > 1 && e.outcomes.len() == 1 && e.mismatch.is_none())
+            .filter_map(|e| {
+                let only = e.outcomes.keys().next()?;
+                (only != "ok").then(|| (format!("{}.{}", e.service, e.endpoint), only.clone()))
+            })
+            .collect()
     }
 
     /// How many endpoints were skipped, with the reasons.
@@ -151,33 +168,55 @@ impl FuzzReport {
     }
 }
 
-/// Fuzzes every endpoint of `ir` against a live test handler.
+/// Why the endpoints of `service` are not fuzzed on `live`, if they are not.
+fn not_fuzzed(live: &Live, service: &Service) -> Option<String> {
+    // A server target generates a test handler only for a service with endpoint rules
+    // (`spec/rules.md` section 12.4); another service has nothing to answer a dry run.
+    if !service.endpoints.iter().any(|e| !e.rules.is_empty()) {
+        return Some("the service has no endpoint rules, so it has no test handler".to_owned());
+    }
+    // A workspace has one test handler per service: this one may be another service's.
+    (!live.serves(&service.name)).then(|| {
+        format!(
+            "the test handler at {} does not serve `{}`",
+            live.base_url(),
+            service.name
+        )
+    })
+}
+
+/// Fuzzes every endpoint of `ir` that the live test handler serves.
+///
+/// A run that cannot go on (the server stops answering, or the generator made a request the
+/// reference evaluator rejects) ends there with [`FuzzReport::stopped`] set: what was found
+/// before is in the report, never thrown away. A disagreement with the server is in the report
+/// too.
 ///
 /// # Errors
-/// [`FuzzError::Live`] when the server cannot be reached, [`FuzzError::Generator`] for a bug of
-/// the generator. A disagreement with the server is not an error: it is in the report.
+/// None today; the type is kept so that callers do not change when one is added.
 pub fn fuzz(ir: &Ir, live: &Live, opts: &FuzzOptions) -> Result<FuzzReport, FuzzError> {
-    let mut endpoints = Vec::new();
+    let mut report = FuzzReport {
+        seed: opts.seed,
+        endpoints: Vec::new(),
+        stopped: None,
+    };
     for service in &ir.services {
-        // A server target generates a test handler only for a service with endpoint rules
-        // (`spec/rules.md` section 12.4); another service has nothing to answer a dry run.
-        let handled = service.endpoints.iter().any(|e| !e.rules.is_empty());
+        let skip = not_fuzzed(live, service);
         for ep in &service.endpoints {
-            if handled {
-                endpoints.push(fuzz_endpoint(ir, live, service, ep, opts)?);
-            } else {
-                endpoints.push(EndpointReport::skipped(
-                    service,
-                    ep,
-                    "the service has no endpoint rules, so it has no test handler",
-                ));
+            if let Some(why) = &skip {
+                let skipped = EndpointReport::skipped(service, ep, why);
+                report.endpoints.push(skipped);
+                continue;
+            }
+            let (endpoint, failure) = fuzz_endpoint(ir, live, service, ep, opts);
+            report.endpoints.push(endpoint);
+            if let Some(failure) = failure {
+                report.stopped = Some(failure.to_string());
+                return Ok(report);
             }
         }
     }
-    Ok(FuzzReport {
-        seed: opts.seed,
-        endpoints,
-    })
+    Ok(report)
 }
 
 fn label(outcome: &Outcome) -> String {
@@ -187,13 +226,15 @@ fn label(outcome: &Outcome) -> String {
     }
 }
 
+/// The report of one endpoint and, when the run cannot go on, why. The report holds whatever was
+/// sent before the failure.
 fn fuzz_endpoint(
     ir: &Ir,
     live: &Live,
     service: &Service,
     ep: &Endpoint,
     opts: &FuzzOptions,
-) -> Result<EndpointReport, FuzzError> {
+) -> (EndpointReport, Option<FuzzError>) {
     let name = format!("{}.{}", service.name, ep.name);
     let bug = |source: GenerateError| FuzzError::Generator {
         endpoint: name.clone(),
@@ -204,12 +245,14 @@ fn fuzz_endpoint(
         Ok(g) => g,
         Err(GenerateError::Skipped(why)) => {
             report.skipped = Some(why);
-            return Ok(report);
+            return (report, None);
         }
-        Err(e) => return Err(bug(e)),
+        Err(e) => return (report, Some(bug(e))),
     };
-    let pipeline =
-        Pipeline::new(ir, service, &ep.name).map_err(|e| bug(GenerateError::Rejected(e)))?;
+    let pipeline = match Pipeline::new(ir, service, &ep.name) {
+        Ok(p) => p,
+        Err(e) => return (report, Some(bug(GenerateError::Rejected(e)))),
+    };
     let cx = Cx {
         ir,
         live,
@@ -220,12 +263,13 @@ fn fuzz_endpoint(
         boundaries: generated.boundaries,
     };
     for (index, req) in generated.requests.iter().enumerate() {
-        match cx.send(index, req).map_err(|e| e.in_endpoint(&name))? {
-            Sent::Unsupported(reason) => {
+        match cx.send(index, req) {
+            Err(failed) => return (report, Some(failed.in_endpoint(&name))),
+            Ok(Sent::Unsupported(reason)) => {
                 report.skipped = Some(reason);
-                return Ok(report);
+                break;
             }
-            Sent::Done { outcome, mismatch } => {
+            Ok(Sent::Done { outcome, mismatch }) => {
                 report.sent += 1;
                 report.boundaries += usize::from(index < generated.boundaries);
                 *report.outcomes.entry(outcome).or_default() += 1;
@@ -236,7 +280,7 @@ fn fuzz_endpoint(
             }
         }
     }
-    Ok(report)
+    (report, None)
 }
 
 /// What is needed to send the requests of one endpoint.
@@ -302,7 +346,11 @@ impl Cx<'_> {
             Err(e) => return Err(e.into()),
         };
         let answer = self.live.send(&http)?;
-        let differences = judge_outcome(self.ir, &expected, &answer);
+        let called = Called {
+            service: self.service,
+            endpoint: self.ep,
+        };
+        let differences = judge_outcome(self.ir, called, &expected, &answer);
         let mismatch = (!differences.is_empty()).then(|| {
             let title = format!(
                 "fuzz seed {} {}.{} request {index}",
@@ -380,7 +428,8 @@ pub fn generate(
     }
     let boundaries = out.requests.len();
     let mut tries = 0;
-    while out.requests.len() < count && tries < count * 4 + 16 {
+    let max_tries = count.saturating_mul(4).saturating_add(16);
+    while out.requests.len() < count && tries < max_tries {
         tries += 1;
         let mut req = baseline(&mut g, ep, Facts::Random)?;
         if g.rng.chance(75) {

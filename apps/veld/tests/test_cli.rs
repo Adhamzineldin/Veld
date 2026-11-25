@@ -219,6 +219,12 @@ impl AlwaysPass {
         let addr = listener.local_addr().unwrap();
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let stop2 = stop.clone();
+        // The probe of a test handler of the `Bookings` service (`spec/rules.md` section 12.4).
+        let body = "{\"veldTestHandler\":1,\"digests\":{\"Bookings\":null}}";
+        let probe = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
         let thread = std::thread::spawn(move || {
             for stream in listener.incoming() {
                 if stop2.load(Ordering::SeqCst) {
@@ -226,7 +232,7 @@ impl AlwaysPass {
                 }
                 let Ok(mut stream) = stream else { continue };
                 let reply = if read_target(&mut stream).as_deref() == Some("/__veld/test") {
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"
+                    probe.as_str()
                 } else {
                     "HTTP/1.1 204 No Content\r\nVeld-Test-Passed: 1\r\nConnection: close\r\n\r\n"
                 };
@@ -300,6 +306,20 @@ fn fuzz_needs_live_and_seed_needs_fuzz() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("--fuzz"));
+}
+
+/// `--fuzz 0` used to print a green tick for a run that sent nothing, and a count near the
+/// largest integer overflowed. Both are refused as usage errors, before anything is sent.
+#[test]
+fn a_fuzz_count_of_zero_or_beyond_the_limit_is_a_usage_error() {
+    let tmp = project_with(&bookings());
+    for count in ["0", "100001", "18446744073709551615"] {
+        veld(tmp.path())
+            .args(["test", "--live", "http://127.0.0.1:1", "--fuzz", count])
+            .assert()
+            .code(2)
+            .stderr(predicate::str::contains("--fuzz"));
+    }
 }
 
 #[test]

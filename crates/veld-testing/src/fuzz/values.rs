@@ -16,6 +16,8 @@ use super::rng::Rng;
 pub(crate) struct Skip(pub String);
 
 const MAX_DEPTH: usize = 6;
+/// The longest string, list, map or `bytes` value the generator makes for an `@length(min)`.
+const MAX_LEN: u64 = 4096;
 const ALPHABET: &[u8; 36] = b"abcdefghijklmnopqrstuvwxyz0123456789";
 
 pub(crate) struct Gen<'a> {
@@ -125,16 +127,24 @@ impl<'a> Gen<'a> {
         Ok(Json::Object(out))
     }
 
-    /// A length in the bounds of `@length`, small unless the bounds ask for more.
-    pub fn length(&mut self, c: &Constraints, spread: u64) -> usize {
+    /// A length in the bounds of `@length`, small unless the bounds ask for more. The minimum is
+    /// never cut short: a value shorter than `@length(min)` would be rejected by a correct server
+    /// and passed by the reference pipeline, which does not validate shape.
+    pub fn length(&mut self, c: &Constraints, spread: u64) -> Result<usize, Skip> {
         let floor = u64::from(self.flat);
-        let lo = c.min_len.unwrap_or(0).max(floor).min(64);
+        let lo = c.min_len.unwrap_or(0).max(floor);
+        if lo > MAX_LEN {
+            return Err(Skip(format!(
+                "a value must be at least {lo} long, more than the generator makes ({MAX_LEN})"
+            )));
+        }
         let hi = c.max_len.unwrap_or(lo + spread).min(lo + spread).max(lo);
-        usize::try_from(lo + self.rng.below(hi - lo + 1)).unwrap_or(0)
+        usize::try_from(lo + self.rng.below(hi - lo + 1))
+            .map_err(|_| Skip("a length does not fit this platform".to_owned()))
     }
 
     fn list(&mut self, t: &Type, c: &Constraints) -> Result<Json, Skip> {
-        let n = self.length(c, 3);
+        let n = self.length(c, 3)?;
         let items: Result<Vec<Json>, Skip> = (0..n)
             .map(|_| self.value(t, &Constraints::default()))
             .collect();
@@ -142,7 +152,7 @@ impl<'a> Gen<'a> {
     }
 
     fn map(&mut self, t: &Type, c: &Constraints) -> Result<Json, Skip> {
-        let n = self.length(c, 3);
+        let n = self.length(c, 3)?;
         let mut out = Map::new();
         for i in 0..n {
             out.insert(
@@ -154,7 +164,7 @@ impl<'a> Gen<'a> {
     }
 
     fn page(&mut self, t: &Type) -> Result<Json, Skip> {
-        let n = self.length(&Constraints::default(), 2);
+        let n = self.length(&Constraints::default(), 2)?;
         let items: Result<Vec<Json>, Skip> = (0..n)
             .map(|_| self.value(t, &Constraints::default()))
             .collect();
@@ -201,7 +211,7 @@ impl<'a> Gen<'a> {
                     let why = "a string with @pattern or @format and no @example";
                     return Err(Skip(why.to_owned()));
                 }
-                let n = self.length(c, 6);
+                let n = self.length(c, 6)?;
                 Json::String(self.text(n))
             }
             Scalar::Int => {
@@ -227,7 +237,7 @@ impl<'a> Gen<'a> {
             Scalar::Datetime => Json::String(format_datetime(self.datetime())),
             Scalar::Time => Json::String(format_time(self.rng.range(0, MS_PER_DAY - 1))),
             Scalar::Bytes => {
-                let n = self.length(c, 6);
+                let n = self.length(c, 6)?;
                 self.sized(&Type::Scalar(Scalar::Bytes), n)?
             }
             Scalar::Json => json!({}),

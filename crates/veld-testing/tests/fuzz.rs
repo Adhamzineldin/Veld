@@ -14,7 +14,7 @@ use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
 use veld_ir::{Endpoint, Ir, PackageKind, Service};
 use veld_rules::helpers::instant::parse_datetime;
 use veld_rules::{Outcome, Pipeline, fill_example};
-use veld_testing::{FuzzOptions, Live, fuzz, generate, render_example};
+use veld_testing::{EndpointReport, FuzzOptions, FuzzReport, Live, fuzz, generate, render_example};
 
 fn compile_text(text: &str) -> Ir {
     let out = compile(&CompileInput {
@@ -331,7 +331,9 @@ fn an_example_block_gives_the_request_back() {
 
 // --- the fuzz loop against a fake test handler -----------------------------------------------------
 
-/// A test handler that answers every request with a dry-run pass.
+/// A test handler for the services of a contract that answers every request with a dry-run
+/// pass. It speaks the protocol otherwise: the probe names its services, and every answer carries
+/// the rules digest. With `dies_after`, it stops answering after that many requests.
 struct AlwaysPass {
     addr: SocketAddr,
     stop: Arc<AtomicBool>,
@@ -339,24 +341,51 @@ struct AlwaysPass {
 }
 
 impl AlwaysPass {
-    fn start() -> AlwaysPass {
+    fn start(ir: &Ir) -> AlwaysPass {
+        AlwaysPass::serving(ir, |_| true, None)
+    }
+
+    /// The handler of the services of `ir` that `serves` accepts.
+    fn serving(ir: &Ir, serves: impl Fn(&str) -> bool, dies_after: Option<usize>) -> AlwaysPass {
+        let digests: serde_json::Map<String, serde_json::Value> = ir
+            .services
+            .iter()
+            .filter(|s| serves(&s.name))
+            .map(|s| (s.name.clone(), serde_json::json!(s.rules_digest)))
+            .collect();
+        let probe = serde_json::json!({ "veldTestHandler": 1, "digests": digests }).to_string();
+        let probe = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{probe}",
+            probe.len()
+        );
+        // One service per contract in these tests, so one digest serves every answer.
+        let digest = ir.services.iter().find_map(|s| s.rules_digest.clone());
+        let rules = digest.map_or_else(String::new, |d| format!("Veld-Rules: {d}\r\n"));
+        let pass = format!(
+            "HTTP/1.1 204 No Content\r\nVeld-Test-Passed: 1\r\n{rules}Connection: close\r\n\r\n"
+        );
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let stop = Arc::new(AtomicBool::new(false));
         let stop2 = stop.clone();
         let thread = std::thread::spawn(move || {
+            let mut answered = 0usize;
             for stream in listener.incoming() {
                 if stop2.load(Ordering::SeqCst) {
                     return;
                 }
                 let Ok(mut stream) = stream else { continue };
                 let target = read_target(&mut stream);
-                let reply = if target.as_deref() == Some("/__veld/test") {
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"
-                } else {
-                    "HTTP/1.1 204 No Content\r\nVeld-Test-Passed: 1\r\nConnection: close\r\n\r\n"
-                };
-                let _ = stream.write_all(reply.as_bytes());
+                if target.as_deref() == Some("/__veld/test") {
+                    let _ = stream.write_all(probe.as_bytes());
+                    continue;
+                }
+                if dies_after.is_some_and(|n| answered >= n) {
+                    // Dropping the listener refuses every later connection: the server is gone.
+                    return;
+                }
+                answered += 1;
+                let _ = stream.write_all(pass.as_bytes());
             }
         });
         AlwaysPass {
@@ -416,7 +445,7 @@ fn read_target(stream: &mut TcpStream) -> Option<String> {
 #[test]
 fn a_server_that_always_passes_is_caught_with_a_seed_and_a_block_that_compiles() {
     let (text, ir) = hotel();
-    let fake = AlwaysPass::start();
+    let fake = AlwaysPass::start(&ir);
     let live = Live::connect(&fake.url(), true).unwrap();
     let opts = FuzzOptions {
         count: 200,
@@ -465,7 +494,7 @@ fn a_server_that_always_passes_is_caught_with_a_seed_and_a_block_that_compiles()
 #[test]
 fn a_fuzz_run_is_repeatable_from_its_seed() {
     let (_, ir) = hotel();
-    let fake = AlwaysPass::start();
+    let fake = AlwaysPass::start(&ir);
     let live = Live::connect(&fake.url(), true).unwrap();
     let run = |seed| {
         let report = fuzz(&ir, &live, &FuzzOptions { count: 60, seed }).unwrap();
@@ -505,7 +534,7 @@ fn a_value_that_needs_escaping_is_written_so_that_it_compiles() {
 #[test]
 fn a_service_without_endpoint_rules_has_no_test_handler_and_is_skipped() {
     let ir = compile_text(MEASURES);
-    let fake = AlwaysPass::start();
+    let fake = AlwaysPass::start(&ir);
     let live = Live::connect(&fake.url(), true).unwrap();
     let report = fuzz(&ir, &live, &FuzzOptions { count: 20, seed: 1 }).unwrap();
     assert!(report.passed());
@@ -631,4 +660,107 @@ fn the_blocks_of_those_boundaries_compile_and_give_the_requests_back() {
             .unwrap();
         assert_eq!(&fill_example(&with, ex).unwrap().request, req, "m {i}");
     }
+}
+
+// --- what the independent check of the fuzzer found ------------------------------------------
+
+/// A minimum length used to be cut at 64: the value then broke its own constraint, a correct
+/// server answered 422 and the reference pipeline, which does not validate shape, said ok.
+#[test]
+fn a_minimum_length_is_never_cut_short() {
+    let ir = compile_text(
+        "model Big { s: string @length(min: 100), tags: string[] @length(min: 70), \
+           m: Map<string, int> @length(min: 66), n: int @min(0)  rule small: n <= 5 }\n\
+         service B at \"/b\" { post \"/\" go(body: Big) -> Big { require body.n < 3 } }\n",
+    );
+    let (s, e) = endpoint(&ir, "go");
+    let generated = generate(&ir, s, e, 1, 60).unwrap();
+    assert_eq!(generated.requests.len(), 60);
+    assert!(generated.boundaries > 0, "no boundary request was made");
+    for req in &generated.requests {
+        let body = &req.params["body"];
+        assert!(body["s"].as_str().unwrap().chars().count() >= 100, "{body}");
+        assert!(body["tags"].as_array().unwrap().len() >= 70);
+        assert!(body["m"].as_object().unwrap().len() >= 66);
+    }
+}
+
+#[test]
+fn a_minimum_length_beyond_the_generator_skips_the_endpoint_with_a_reason() {
+    let ir = compile_text(
+        "model Huge { s: string @length(min: 5000) }\n\
+         service H at \"/h\" { post \"/\" go(body: Huge) -> Huge }\n",
+    );
+    let (s, e) = endpoint(&ir, "go");
+    let err = generate(&ir, s, e, 1, 10).unwrap_err();
+    assert!(err.to_string().contains("at least 5000"), "{err}");
+}
+
+/// A server that stops answering ends the run, and what was sent before is still reported.
+#[test]
+fn a_server_that_dies_mid_run_keeps_what_was_found() {
+    let (_, ir) = hotel();
+    let fake = AlwaysPass::serving(&ir, |_| true, Some(5));
+    let live = Live::connect(&fake.url(), true).unwrap();
+    let report = fuzz(&ir, &live, &FuzzOptions { count: 50, seed: 7 }).unwrap();
+    let why = report
+        .stopped
+        .as_ref()
+        .expect("the run must say it stopped");
+    assert!(why.contains("cannot reach"), "{why}");
+    assert!(!report.passed());
+    let sent: usize = report.endpoints.iter().map(|e| e.sent).sum();
+    assert_eq!(sent, 5, "{:?}", report.endpoints);
+    // The always-pass handler disagrees on the first request that must be rejected: that
+    // finding was made before the server died, and it is in the report.
+    assert!(report.endpoints.iter().any(|e| e.mismatch.is_some()));
+}
+
+/// A workspace has one test handler per service. Requests for a service the handler does not
+/// name in its probe are not sent to it.
+#[test]
+fn a_service_the_handler_does_not_serve_is_skipped() {
+    let (_, ir) = hotel();
+    let fake = AlwaysPass::serving(&ir, |_| false, None);
+    let live = Live::connect(&fake.url(), true).unwrap();
+    let report = fuzz(&ir, &live, &FuzzOptions { count: 20, seed: 1 }).unwrap();
+    assert!(report.passed());
+    assert!(!report.endpoints.is_empty());
+    for e in &report.endpoints {
+        assert_eq!(e.sent, 0);
+        assert!(
+            e.skipped.as_ref().unwrap().contains("does not serve"),
+            "{e:?}"
+        );
+    }
+}
+
+#[test]
+fn an_endpoint_that_only_ever_ends_one_way_is_named() {
+    let endpoint = |name: &str, outcomes: &[(&str, usize)]| EndpointReport {
+        service: "S".to_owned(),
+        endpoint: name.to_owned(),
+        sent: outcomes.iter().map(|(_, n)| n).sum(),
+        boundaries: 0,
+        outcomes: outcomes
+            .iter()
+            .map(|(k, n)| ((*k).to_owned(), *n))
+            .collect(),
+        skipped: None,
+        mismatch: None,
+    };
+    let report = FuzzReport {
+        seed: 1,
+        endpoints: vec![
+            endpoint("stuck", &[("ValidationError", 300)]),
+            endpoint("fine", &[("ok", 200), ("ValidationError", 100)]),
+            endpoint("allOk", &[("ok", 300)]),
+            endpoint("once", &[("NotFound", 1)]),
+        ],
+        stopped: None,
+    };
+    assert_eq!(
+        report.one_sided(),
+        [("S.stuck".to_owned(), "ValidationError".to_owned())]
+    );
 }

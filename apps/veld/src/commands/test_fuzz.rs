@@ -44,10 +44,29 @@ pub fn run(ui: &Ui, ir: &Ir, live: &Live, count: usize, seed: Option<u64>) -> Re
             print_mismatch(ui, e, m, seed);
         }
     }
+    // A run that reached only one outcome proves little: say so, without failing it.
+    for (endpoint, only) in report.one_sided() {
+        let line = format!(
+            "warn {endpoint}: every request ended in {only}, so nothing after that check was reached"
+        );
+        ui.info(&ui.out_styled(Style::Dim, &line));
+    }
     let fuzzed = report.endpoints.len() - skipped;
     let mut parts = vec![format!("{fuzzed} endpoints fuzzed")];
     if skipped > 0 {
         parts.push(format!("{skipped} skipped"));
+    }
+    if let Some(why) = &report.stopped {
+        // What was sent before the run stopped is printed above; the run itself did not finish.
+        parts.insert(0, format!("the run stopped early: {why}"));
+        if failed > 0 {
+            parts.insert(0, format!("{failed} disagree with the reference evaluator"));
+        }
+        eprintln!(
+            "{}",
+            crate::ui::render::fail(&ui.theme_err(), &parts.join(", "))
+        );
+        return Ok(Exit::User);
     }
     if failed > 0 {
         parts.insert(0, format!("{failed} disagree with the reference evaluator"));

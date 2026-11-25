@@ -57,8 +57,27 @@ fn sig_of(ir: &Ir, decl: &str) -> String {
         .clone()
 }
 
+/// The operation signature of `createBooking`, the endpoint the error examples call.
+fn create_booking(ir: &Ir) -> String {
+    ir.services
+        .iter()
+        .flat_map(|s| &s.endpoints)
+        .find(|e| e.name == "createBooking")
+        .unwrap()
+        .sig
+        .clone()
+}
+
+/// The problem document of an error of `createBooking` (`spec/ir.md` section 5.5).
 fn problem(ir: &Ir, decl: &str, status: u16, data: &Value) -> String {
-    json!({ "type": sig_of(ir, decl), "title": decl, "status": status, "data": data }).to_string()
+    json!({
+        "type": sig_of(ir, decl),
+        "title": decl,
+        "status": status,
+        "operation": create_booking(ir),
+        "data": data,
+    })
+    .to_string()
 }
 
 // --- offline ---------------------------------------------------------------------------
@@ -122,14 +141,14 @@ impl Captured {
 
 struct Reply {
     status: u16,
-    headers: Vec<(&'static str, &'static str)>,
+    headers: Vec<(&'static str, String)>,
     body: String,
 }
 
 fn reply(status: u16, body: impl Into<String>) -> Reply {
     Reply {
         status,
-        headers: vec![("Content-Type", "application/json")],
+        headers: vec![("Content-Type", "application/json".to_owned())],
         body: body.into(),
     }
 }
@@ -221,14 +240,37 @@ fn write_reply(stream: &mut TcpStream, r: &Reply) {
     let _ = stream.flush();
 }
 
-/// A test handler: the probe answers `{}`, everything else comes from `script`.
+/// What a test handler of the services of these tests answers to the probe (section 12.4).
+const PROBE: &str = "{\"veldTestHandler\":1,\"digests\":{\"Bookings\":null,\"S\":null}}";
+
+/// A test handler: the probe names its services, everything else comes from `script`.
 fn serve(script: impl Fn(&Captured) -> Reply + Send + 'static) -> Fake {
     serve_raw(move |c| {
         if c.target == "/__veld/test" {
-            reply(200, "{\"services\":{}}")
+            reply(200, PROBE)
         } else {
             script(c)
         }
+    })
+}
+
+/// The headers a generated server puts on an error: the problem media type and the rules digest
+/// of the service.
+fn problem_headers(ir: &Ir) -> Vec<(&'static str, String)> {
+    let mut headers = vec![("Content-Type", "application/problem+json".to_owned())];
+    if let Some(digest) = ir.services.iter().find_map(|s| s.rules_digest.clone()) {
+        headers.push(("Veld-Rules", digest));
+    }
+    headers
+}
+
+/// A test handler that answers every request with this error, as a generated server would.
+fn serve_problem(ir: &Ir, status: u16, body: String) -> Fake {
+    let headers = problem_headers(ir);
+    serve(move |_| Reply {
+        status,
+        headers: headers.clone(),
+        body: body.clone(),
     })
 }
 
@@ -408,7 +450,7 @@ const FULL_ROOM: &str = "a full room is rejected with its capacity";
 fn a_matching_error_passes() {
     let ir = bookings();
     let body = room_full(&ir, &room_full_violation(&ir));
-    let fake = serve(move |_| reply(409, body.clone()));
+    let fake = serve_problem(&ir, 409, body.clone());
     let report = run_live(&fake, &ir, FULL_ROOM, false);
     assert!(report.passed(), "{report}");
     assert!(report.outcome.is_some());
@@ -421,7 +463,7 @@ fn a_matching_error_passes() {
 fn an_error_without_its_violations_fails_against_the_reference() {
     let ir = bookings();
     let body = problem(&ir, "RoomFull", 409, &json!({ "capacity": 2 }));
-    let fake = serve(move |_| reply(409, body.clone()));
+    let fake = serve_problem(&ir, 409, body.clone());
     let report = run_live(&fake, &ir, FULL_ROOM, false);
     let Verdict::Failed(m) = &report.verdict else {
         panic!("{report}")
@@ -449,7 +491,7 @@ fn a_violation_that_differs_in_any_member_fails_against_the_reference() {
         let mut violation = room_full_violation(&ir);
         violation[member] = value;
         let body = room_full(&ir, &violation);
-        let fake = serve(move |_| reply(409, body.clone()));
+        let fake = serve_problem(&ir, 409, body.clone());
         let report = run_live(&fake, &ir, FULL_ROOM, false);
         let Verdict::Failed(m) = &report.verdict else {
             panic!("a changed `{member}` passed: {report}")
@@ -465,7 +507,7 @@ fn an_extra_violation_fails_against_the_reference() {
     let again = doc["violations"][0].clone();
     doc["violations"].as_array_mut().unwrap().push(again);
     let body = doc.to_string();
-    let fake = serve(move |_| reply(409, body.clone()));
+    let fake = serve_problem(&ir, 409, body.clone());
     let report = run_live(&fake, &ir, FULL_ROOM, false);
     assert!(matches!(report.verdict, Verdict::Failed(_)), "{report}");
 }
@@ -474,7 +516,7 @@ fn an_extra_violation_fails_against_the_reference() {
 fn a_wrong_error_type_fails_and_says_so() {
     let ir = bookings();
     let body = problem(&ir, "RoomClosed", 409, &json!({}));
-    let fake = serve(move |_| reply(409, body.clone()));
+    let fake = serve_problem(&ir, 409, body.clone());
     let report = run_live(
         &fake,
         &ir,
@@ -493,7 +535,7 @@ fn a_wrong_error_type_fails_and_says_so() {
 fn a_data_mismatch_fails_with_its_path() {
     let ir = bookings();
     let body = problem(&ir, "RoomFull", 409, &json!({ "capacity": 3 }));
-    let fake = serve(move |_| reply(409, body.clone()));
+    let fake = serve_problem(&ir, 409, body.clone());
     let report = run_live(
         &fake,
         &ir,
@@ -511,7 +553,7 @@ fn a_data_mismatch_fails_with_its_path() {
 fn a_wrong_status_fails() {
     let ir = bookings();
     let body = problem(&ir, "RoomFull", 500, &json!({ "capacity": 2 }));
-    let fake = serve(move |_| reply(500, body.clone()));
+    let fake = serve_problem(&ir, 500, body.clone());
     let report = run_live(
         &fake,
         &ir,
@@ -547,7 +589,7 @@ fn a_dry_run_passes_on_204_with_the_header() {
     let name = "a valid booking passes every check";
     let fake = serve(|_| Reply {
         status: 204,
-        headers: vec![("Veld-Test-Passed", "1")],
+        headers: vec![("Veld-Test-Passed", "1".to_owned())],
         body: String::new(),
     });
     assert!(run_live(&fake, &ir, name, true).passed());
@@ -557,7 +599,7 @@ fn a_dry_run_passes_on_204_with_the_header() {
     assert!(matches!(report.verdict, Verdict::Failed(_)), "{report}");
 
     let body = problem(&ir, "RoomFull", 409, &json!({ "capacity": 2 }));
-    let fake = serve(move |_| reply(409, body.clone()));
+    let fake = serve_problem(&ir, 409, body.clone());
     let report = run_live(&fake, &ir, name, true);
     assert!(matches!(report.verdict, Verdict::Failed(_)), "{report}");
 }
@@ -609,4 +651,118 @@ fn a_failed_connection_names_the_url() {
     let err = Live::connect(&url, false).unwrap_err();
     assert!(matches!(err, LiveError::Connect { .. }), "{err}");
     assert!(err.to_string().contains(&addr.to_string()), "{err}");
+}
+
+/// Any JSON object used to pass the probe. A production server that answers `{}` on an unknown
+/// path must not be sent test headers.
+#[test]
+fn a_probe_answer_must_say_it_is_a_test_handler_and_name_its_services() {
+    let refused = [
+        "{}",
+        "{\"services\":{}}",
+        "{\"veldTestHandler\":0,\"digests\":{}}",
+        "{\"veldTestHandler\":1}",
+        "{\"veldTestHandler\":1,\"digests\":[]}",
+        "[1]",
+    ];
+    for body in refused {
+        let fake = serve_raw(move |_| reply(200, body));
+        let err = Live::connect(&fake.url(), false).unwrap_err();
+        assert!(
+            matches!(err, LiveError::NotTestHandler { .. }),
+            "{body}: {err}"
+        );
+        assert!(fake.requests().is_empty(), "{body}");
+    }
+    let fake = serve_raw(|_| reply(200, PROBE));
+    let live = Live::connect(&fake.url(), false).unwrap();
+    assert!(live.serves("Bookings") && live.serves("S"));
+    assert!(!live.serves("Payments"));
+}
+
+/// A workspace has one test handler per service: an example of another service is not sent.
+#[test]
+fn an_example_of_a_service_the_handler_does_not_serve_is_skipped() {
+    let ir = bookings();
+    let fake = serve_raw(|c| {
+        if c.target == "/__veld/test" {
+            reply(
+                200,
+                "{\"veldTestHandler\":1,\"digests\":{\"Payments\":null}}",
+            )
+        } else {
+            reply(500, "must not be asked")
+        }
+    });
+    let report = run_live(&fake, &ir, FULL_ROOM, false);
+    let Verdict::Skipped(why) = &report.verdict else {
+        panic!("{report}")
+    };
+    assert!(why.contains("does not serve `Bookings`"), "{why}");
+    assert!(fake.requests().is_empty());
+}
+
+// The members of the problem document that an example never states are held to the contract too.
+
+/// The full, correct `RoomFull` answer with one member of the document changed.
+fn room_full_with(ir: &Ir, member: &str, value: Value) -> String {
+    let mut doc: Value = serde_json::from_str(&room_full(ir, &room_full_violation(ir))).unwrap();
+    doc[member] = value;
+    doc.to_string()
+}
+
+#[test]
+fn a_wrong_title_or_operation_fails_against_the_reference() {
+    let ir = bookings();
+    for (member, value) in [
+        ("title", json!("WRONG")),
+        ("operation", json!("veld:wrong/Op@0000000000000000")),
+    ] {
+        let fake = serve_problem(&ir, 409, room_full_with(&ir, member, value));
+        let report = run_live(&fake, &ir, FULL_ROOM, false);
+        let Verdict::Failed(m) = &report.verdict else {
+            panic!("a wrong `{member}` passed: {report}")
+        };
+        let paths: Vec<&str> = m.differences.iter().map(|d| d.path.as_str()).collect();
+        assert_eq!(paths, [format!("$.{member}")], "{m}");
+    }
+}
+
+#[test]
+fn an_error_that_is_not_problem_json_or_lacks_the_rules_digest_fails_against_the_reference() {
+    let ir = bookings();
+    let body = room_full(&ir, &room_full_violation(&ir));
+    let good = problem_headers(&ir);
+    assert_eq!(good.len(), 2, "the bookings service has a rules digest");
+    let cases: [(&str, Vec<(&'static str, String)>); 3] = [
+        (
+            "header Content-Type",
+            vec![
+                ("Content-Type", "application/json".to_owned()),
+                good[1].clone(),
+            ],
+        ),
+        ("header Veld-Rules", vec![good[0].clone()]),
+        (
+            "header Veld-Rules",
+            vec![
+                good[0].clone(),
+                ("Veld-Rules", "0000000000000000".to_owned()),
+            ],
+        ),
+    ];
+    for (path, headers) in cases {
+        let body = body.clone();
+        let fake = serve(move |_| Reply {
+            status: 409,
+            headers: headers.clone(),
+            body: body.clone(),
+        });
+        let report = run_live(&fake, &ir, FULL_ROOM, false);
+        let Verdict::Failed(m) = &report.verdict else {
+            panic!("{path}: {report}")
+        };
+        let paths: Vec<&str> = m.differences.iter().map(|d| d.path.as_str()).collect();
+        assert_eq!(paths, [path], "{m}");
+    }
 }

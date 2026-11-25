@@ -1,7 +1,9 @@
 //! Running examples against a live test handler (`spec/rules.md` section 12.4).
 
+use std::collections::BTreeSet;
 use std::time::Duration;
 
+use serde_json::Value as Json;
 use veld_ir::{Example, Ir};
 use veld_rules::{
     ExampleReport, FilledExample, Mismatch, Outcome, Pipeline, Verdict, describe_actual,
@@ -10,7 +12,7 @@ use veld_rules::{
 
 use crate::error::LiveError;
 use crate::judge::{Answer, judge};
-use crate::outcome::{describe_answer, judge_outcome};
+use crate::outcome::{Called, describe_answer, judge_outcome};
 use crate::request::{HttpRequest, PROBE_PATH, build_request};
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -21,6 +23,8 @@ pub struct Live {
     base: String,
     dry_run: bool,
     agent: ureq::Agent,
+    /// The services the handler said it serves: the keys of the probe's `digests`.
+    services: BTreeSet<String>,
 }
 
 impl Live {
@@ -32,15 +36,16 @@ impl Live {
     /// [`LiveError::Connect`] when the server cannot be reached and
     /// [`LiveError::NotTestHandler`] when it answers the probe as anything but a test handler.
     pub fn connect(base_url: &str, dry_run: bool) -> Result<Live, LiveError> {
-        let live = Live {
+        let mut live = Live {
             base: base_url.trim_end_matches('/').to_owned(),
             dry_run,
             agent: ureq::AgentBuilder::new()
                 .redirects(0)
                 .timeout(TIMEOUT)
                 .build(),
+            services: BTreeSet::new(),
         };
-        live.probe()?;
+        live.services = live.probe()?;
         Ok(live)
     }
 
@@ -50,7 +55,16 @@ impl Live {
         &self.base
     }
 
-    fn probe(&self) -> Result<(), LiveError> {
+    /// Whether the handler said it serves the service `name`. A workspace has one test handler
+    /// per service, so the examples and the fuzz requests of another service do not go to it.
+    #[must_use]
+    pub fn serves(&self, name: &str) -> bool {
+        self.services.contains(name)
+    }
+
+    /// The answer MUST be `{ "veldTestHandler": 1, "digests": { "<Service>": .. } }`: anything
+    /// else may be a production server, which must never be sent test headers.
+    fn probe(&self) -> Result<BTreeSet<String>, LiveError> {
         let probe = HttpRequest {
             method: "GET".to_owned(),
             target: PROBE_PATH.to_owned(),
@@ -69,12 +83,20 @@ impl Live {
                 answer.status
             )));
         }
-        match serde_json::from_str::<serde_json::Value>(&answer.body) {
-            Ok(serde_json::Value::Object(_)) => Ok(()),
-            Ok(_) | Err(_) => Err(not(format!(
-                "`GET {url}` did not answer with the rules digests as a JSON object"
-            ))),
+        let body: Json = serde_json::from_str(&answer.body)
+            .map_err(|_| not(format!("`GET {url}` did not answer with JSON")))?;
+        if body.get("veldTestHandler").and_then(Json::as_u64) != Some(1) {
+            return Err(not(format!(
+                "the answer of `GET {url}` does not say `\"veldTestHandler\": 1`"
+            )));
         }
+        let digests = body.get("digests").and_then(Json::as_object);
+        let digests = digests.ok_or_else(|| {
+            not(format!(
+                "the answer of `GET {url}` has no `digests` object naming its services"
+            ))
+        })?;
+        Ok(digests.keys().cloned().collect())
     }
 
     /// Sends one request and returns whatever the server answered, including `4xx` and `5xx`.
@@ -113,6 +135,19 @@ impl Live {
     /// connection fails.
     pub fn run_example(&self, ir: &Ir, ex: &Example) -> Result<ExampleReport, LiveError> {
         let filled = fill_example(ir, ex)?;
+        if let Some(service) = ir.services.get(filled.service.index())
+            && !self.serves(&service.name)
+        {
+            let why = format!(
+                "the test handler at {} does not serve `{}`",
+                self.base, service.name
+            );
+            return Ok(ExampleReport {
+                name: filled.name,
+                verdict: Verdict::Skipped(why),
+                outcome: None,
+            });
+        }
         let req = build_request(ir, &filled, self.dry_run)?;
         let answer = self.send(&req)?;
         let mut report = judge(ir, &filled, self.dry_run, &answer);
@@ -129,12 +164,17 @@ impl Live {
 /// `None` when the reference passes the request, cannot run it, or agrees.
 fn against_reference(ir: &Ir, filled: &FilledExample, answer: &Answer) -> Option<Mismatch> {
     let service = ir.services.get(filled.service.index())?;
+    let endpoint = service
+        .endpoints
+        .iter()
+        .find(|e| e.name == filled.endpoint)?;
     let pipeline = Pipeline::new(ir, service, &filled.endpoint).ok()?;
     let outcome = pipeline.run(&filled.request).ok()?;
     if matches!(outcome, Outcome::Passes) {
         return None;
     }
-    let differences = judge_outcome(ir, &outcome, answer);
+    let called = Called { service, endpoint };
+    let differences = judge_outcome(ir, called, &outcome, answer);
     if differences.is_empty() {
         return None;
     }

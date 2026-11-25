@@ -41,11 +41,11 @@ veld test --live http://localhost:3000 --dry-run
 
 `--live` sends each example as a real HTTP request to a running **test handler** and compares the status, the error type and the patterns. The request carries the example's facts, principal and clock in the headers `Veld-Test-Facts`, `Veld-Test-Principal` and `Veld-Test-Now` (and the handler's result in `Veld-Test-Result`), so the server needs no data of its own.
 
-An example writes down only part of an answer: `-> RoomFull { capacity: 2 }` says nothing about the violations. So when the answer agrees with the example, `veld test` also asks the reference evaluator what the whole error must be, and the server has to give exactly that: the same type, status and fields, and the same violations in the same order, each with the same rule id, path, fields, message and error. A server that answers the right error with the wrong violation fails the example, and the report says what the evaluator expected.
+An example writes down only part of an answer: `-> RoomFull { capacity: 2 }` says nothing about the violations. So when the answer agrees with the example, `veld test` also asks the reference evaluator what the whole error must be, and the server has to give exactly that: the same type, title, status, operation and fields, sent as `application/problem+json`, and the same violations in the same order, each with the same rule id, path, fields, message and error. (When a parameter contains a map, the violations are compared without their order, because the order of map entries is not defined.) Every answer must also carry the service's rules digest in `Veld-Rules`. A server that answers the right error with the wrong violation fails the example, and the report says what the evaluator expected.
 
 An example without `returns` runs the application's real handler, so `-> ok { ... }` checks what it answered. With `--dry-run` such an example stops before the handler: the test handler answers `204` with `Veld-Test-Passed: 1` when every check passed. That makes a live run check exactly what an offline run checks.
 
-Before the first example, `veld test` asks `GET /__veld/test`. A server that does not answer as a test handler is refused.
+Before the first example, `veld test` asks `GET /__veld/test`. A test handler answers that it is one and names the services it serves; a server that does not is refused, so a production server is never sent test headers. Examples and fuzz requests of a service the handler does not name are reported as skipped, not sent: in a project with several services, run `veld test --live` once per test handler.
 
 **The test handler must never be mounted in production.** It lets any caller choose the facts, the principal and the clock of a request, which switches authorization off. It is generated only for a target with `testing = true`, in a file of its own, and says so at its top. Run it in CI or on a developer machine, never on a server that real users can reach.
 
@@ -70,7 +70,12 @@ skip Bookings.upload (a string with @pattern or @format and no @example)
 
 The count per outcome tells you whether the fuzz reached your rules. An endpoint is **skipped**, with the reason, when it takes a string with `@pattern` or `@format` and no `@example` (the generator cannot make a value for it; give the field an `@example` and the endpoint is fuzzed), when it is a stream, and when its service has no endpoint rules, because a server target generates a test handler only for a service that has some. An optional field with `@pattern` and no `@example` is simply left out.
 
-Fuzzing covers every endpoint of the project: `--filter` and the file arguments choose the examples that run first, not the endpoints that are fuzzed. Requests are made from the parameters; the principal is not generated.
+Fuzzing covers every endpoint of the services the test handler serves: `--filter` and the file arguments choose the examples that run first, not the endpoints that are fuzzed. Requests are made from the parameters; the principal is not generated. `N` is from 1 to 100000.
+
+Two things a green run does not hide:
+
+- If every request of an endpoint ended in the same error, the run says so (`warn Bookings.x: every request ended in ValidationError …`). The generator could not get past that check, so the rules after it were not exercised. The usual cause is a rule the generator cannot satisfy by itself, such as `100 / n > 5`; an `@example` on the field helps.
+- If the server stops answering in the middle, the run fails, and whatever it found before is still printed.
 
 A disagreement prints the seed, the endpoint, what the reference evaluator expects, what the server answered, and the request as an `example` block you can paste into the contract (it passes offline, and fails live until the server is fixed):
 

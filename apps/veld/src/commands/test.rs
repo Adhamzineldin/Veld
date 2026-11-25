@@ -80,6 +80,7 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &TestArgs) -> Result<Exit> {
     let (Some(count), Some(live)) = (args.fuzz, live.as_ref()) else {
         return Ok(examples_exit);
     };
+    let count = usize::try_from(count).unwrap_or(usize::MAX);
     let fuzz_exit = test_fuzz::run(ui, &done.ir, live, count, args.seed)?;
     let ok = matches!((examples_exit, fuzz_exit), (Exit::Ok, Exit::Ok));
     Ok(if ok { Exit::Ok } else { Exit::User })

@@ -352,8 +352,13 @@ pub struct TestArgs {
     pub dry_run: bool,
     /// With --live: after the examples, send N generated requests per endpoint (the boundaries
     /// of its rules first) and compare each answer with the reference evaluator
-    #[arg(long, value_name = "N", requires = "live")]
-    pub fuzz: Option<usize>,
+    #[arg(
+        long,
+        value_name = "N",
+        requires = "live",
+        value_parser = clap::value_parser!(u32).range(1..=100_000)
+    )]
+    pub fuzz: Option<u32>,
     /// With --fuzz: the seed to repeat a run (a run without one picks and prints a seed)
     #[arg(long, value_name = "SEED", requires = "fuzz")]
     pub seed: Option<u64>,

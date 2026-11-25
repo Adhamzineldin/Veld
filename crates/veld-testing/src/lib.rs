@@ -26,7 +26,7 @@ pub use fuzz::{
 pub use judge::{Answer, judge};
 pub use live::Live;
 pub use offline::{ExampleRun, run_examples, run_offline, select};
-pub use outcome::{describe_answer, judge_outcome};
+pub use outcome::{Called, describe_answer, judge_outcome};
 pub use request::{
     DRY_RUN, FACTS, HttpRequest, NOW, PASSED, PRINCIPAL, PROBE_PATH, RESULT, build_request,
 };
