@@ -686,3 +686,29 @@ fn init_workspace_assigns_no_consumes_unless_asked() {
         "nothing is consumed, so no consumed client is generated"
     );
 }
+
+/// A project that `veld init` has just written must not start with warnings. The `auth-required`
+/// lint is on by default, so every scaffolded service says who may call it.
+#[test]
+fn a_freshly_scaffolded_project_checks_without_a_warning() {
+    let scaffolds: [&[&str]; 4] = [
+        &["init", "--name", "demo"],
+        &["init", "--name", "shop", "--template", "crud", "--yes"],
+        &["init", "--name", "ws", "--workspace"],
+        &["init", "--name", "ws", "--workspace", "billing,catalog"],
+    ];
+    for args in scaffolds {
+        let tmp = tempdir().unwrap();
+        veld(tmp.path()).args(args).assert().success();
+        let out = veld(tmp.path())
+            .arg("check")
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!stderr.contains("warning["), "{args:?}: {stderr}");
+        assert!(!stdout.contains("warning"), "{args:?}: {stdout}");
+    }
+}

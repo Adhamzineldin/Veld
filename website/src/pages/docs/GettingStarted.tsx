@@ -112,7 +112,9 @@ out = "generated/client"`}</CodeBlock>
       <Section id="first-contract" title="A first contract">
         <P>
           This is the contract of the <code>examples/hello</code> project: one model, one service, one
-          endpoint. <code>NotFound</code> is a prelude error, so it needs no declaration.
+          endpoint. <code>NotFound</code> is a prelude error, so it needs no declaration.{' '}
+          <code>@auth(none)</code> says the service is public: <code>veld check</code> warns about an
+          endpoint that does not say who may call it.
         </P>
         <CodeBlock title="contracts/hello.veld" lang="veld">{`/// A greeting for one person.
 model Greeting {
@@ -120,6 +122,7 @@ model Greeting {
 }
 
 /// Says hello.
+@auth(none)
 service Hello at "/hello" {
   /// Greets the person with the given name.
   get "/{name}" greet(name: string) -> Greeting | NotFound

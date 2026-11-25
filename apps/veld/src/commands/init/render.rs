@@ -269,7 +269,7 @@ fn contracts(a: &Answers) -> Vec<File> {
 fn generic(svc: &str) -> String {
     let p = pascal(svc);
     format!(
-        "/// A {svc} record.\nmodel {p}Item {{\n  id: uuid\n  name: string\n}}\n\n/// The {svc} service.\nservice {p} at \"/{svc}\" {{\n  /// Fetch one record.\n  get \"/{{id}}\" get{p}Item(id: uuid) -> {p}Item | NotFound\n}}\n"
+        "/// A {svc} record.\nmodel {p}Item {{\n  id: uuid\n  name: string\n}}\n\n/// The {svc} service.\n@auth(none)\nservice {p} at \"/{svc}\" {{\n  /// Fetch one record.\n  get \"/{{id}}\" get{p}Item(id: uuid) -> {p}Item | NotFound\n}}\n"
     )
 }
 
@@ -279,6 +279,7 @@ model Greeting {
 }
 
 /// Says hello.
+@auth(none)
 service Hello at "/hello" {
   /// Greets the person with the given name.
   get "/{name}" greet(name: string) -> Greeting | NotFound
@@ -292,6 +293,7 @@ model User {
 }
 
 /// User accounts.
+@auth(none)
 service Users at "/users" {
   /// Fetch one user.
   get "/{id}" getUser(id: uuid) -> User | NotFound
@@ -305,6 +307,7 @@ model Order {
 }
 
 /// Order management.
+@auth(none)
 service Orders at "/orders" {
   /// Fetch one order.
   get "/{id}" getOrder(id: uuid) -> Order | NotFound

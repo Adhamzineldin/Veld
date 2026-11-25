@@ -27,6 +27,7 @@ error NoSuchRoom 404 {
 }
 
 /// Server-Sent Events and a chat WebSocket, open to everyone.
+@auth(none)
 service Live at "/live" {
   /// `count` ticks. `failAt` raises a declared error after that many. A negative count raises it
   /// before the first event.
