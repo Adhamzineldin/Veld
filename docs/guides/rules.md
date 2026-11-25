@@ -127,6 +127,100 @@ app.use(toExpress(createBookingsHandler(service, { facts: loaders })));
 
 This handler does not test the dates, the party size or whether the room is closed. The contract already did. If you find yourself writing such a check here, move it into the contract.
 
+## State machines: which moves are legal
+
+The example project does not use this section or the next one yet. The contracts shown are [`tests/rules/endpoints/transitions.veld`](../../tests/rules/endpoints/transitions.veld) and [`policies.veld`](../../tests/rules/endpoints/policies.veld), which every generator is tested against.
+
+A cancelled booking must not become paid. Say which moves exist on the enum, and which move an endpoint makes:
+
+```veld
+enum Status {
+  pending, paid, checkedIn, cancelled, refunded
+  flow pending -> paid -> checkedIn
+  flow pending -> cancelled
+  flow paid -> cancelled
+  flow paid -> refunded
+  final checkedIn, cancelled, refunded
+}
+
+post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking | AmountMismatch {
+  fact booking: Booking = id
+  transition booking.status: pending -> paid
+  require body.amount == booking.total else AmountMismatch { expected: booking.total }
+}
+```
+
+- `flow` lists the legal moves. A `final` state has no way out. `veld check` warns about a state you can get stuck in.
+- `transition booking.status: pending -> paid` says this endpoint moves the booking from `pending` to `paid`. If the loaded booking is in any other state, the server answers `409 InvalidTransition` with `field`, `from` and `to`, before your handler runs.
+- When the endpoint returns the booking, the server also checks that your handler really moved it to `paid`.
+
+**This is a guard, not a lock.** Two requests can pass the check at the same moment. So the handler receives the move as data, and writes only if the booking is still where the check found it:
+
+```ts
+async payBooking({ id, booking, transition }) {
+  // transition is { field: 'status', from: 'pending', to: 'paid' }
+  const moved = await db.bookings.updateWhere(
+    { id, status: transition.from },            // only if it is still pending
+    { status: transition.to },
+  );
+  // If nothing was updated, another request moved it first: answer InvalidTransition yourself.
+  return { ...booking, status: transition.to };
+}
+```
+
+Clients get the same machine, to show only the buttons the server would accept:
+
+```ts
+Status.nextStates('pending');   // ['paid', 'cancelled']
+Status.isFinal('refunded');     // true
+```
+
+## Policies: who may call
+
+A policy says who may do something. It is written once and used by every endpoint that needs it:
+
+```veld
+model User { id: uuid  roles: string[]  suspended: bool }
+principal User
+
+policy ManageBooking(user: User, booking: Booking) {
+  permit when booking.guestId == user.id
+  permit when "support" in user.roles
+  forbid when user.suspended
+    message "A suspended account cannot manage bookings"
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+  }
+}
+```
+
+- `principal User` says what a caller is. In an endpoint block the caller is `user`.
+- A policy permits when at least one `permit` is true and no `forbid` is. A `forbid` always wins.
+- `allow` runs after the request has been validated and the facts are loaded, and before the state check and every `require`. A denial is `403 Forbidden`, with the message of the `forbid` that was true, or `not permitted`.
+- A record that does not exist is `404` before the policy is asked.
+
+Your auth hook returns the caller, with the generated type:
+
+```ts
+createBookingsHandler(service, {
+  facts: loaders,
+  auth: { bearer: async (token) => sessions.userOf(token) },   // Promise<User | null>
+});
+```
+
+The client gets the policy too. `canPayBooking` answers whether the server would let this call past its policies and its state check, so the app can hide a button the server would refuse. It never sends anything, and the server still decides:
+
+```ts
+if (BookingsClient.canPayBooking(booking, me)) showPayButton();
+```
+
+Say who may call every endpoint. `veld check` warns about an endpoint with no `@auth` at all; write `@auth(none)` when it is meant to be public.
+
 ## Examples and `veld test`
 
 An `example` states what one call does:
@@ -183,10 +277,9 @@ A browser can read this header from another origin only if the server sends `Acc
 
 ## What is not supported yet
 
-- **State machines** (`flow`, `transition`) and **policies** (`policy`, `allow`): they are designed in [`spec/rules.md`](../../spec/rules.md) (sections 10 and 11) but no generator implements them yet. Do not use them in a contract today. A generator that cannot enforce a rule stops with error `E0801`. It never generates code that ignores it.
-- **Events** (messaging with Kafka, RabbitMQ, NATS, SQS): not implemented.
-- **Generators**: rules are enforced by the TypeScript client and the Node server today. Other targets report `E0801` for a contract that has rules they cannot enforce.
-- **The principal** (who is calling) is not available inside a rule until policies land.
+- **Optimistic concurrency and idempotency** (`@version`, `@idempotent`), **rolling a rule out** (`@rollout(audit)`), **derived fields** and **`veld check --prove`**: they are designed in [`spec/rules.md`](../../spec/rules.md) (sections 11.7, 11.8, 17 and 18) and not implemented. Do not use them in a contract today.
+- **Events** (messaging with Kafka and RabbitMQ): designed in [`spec/events.md`](../../spec/events.md), not implemented.
+- **Generators**: everything in this guide is enforced by the TypeScript client and the Node server, by Java (client, JDK server and Spring) and by Rust (client and axum server). The code in this guide is TypeScript; the Java and Rust shapes are in their target pages below. A generator that cannot enforce a rule, a plugin for example, stops with error `E0801`. It never generates code that ignores a rule.
 
 ## Where to go next
 
@@ -194,3 +287,4 @@ A browser can read this header from another origin only if the server sends `Acc
 - [Testing with examples](testing.md).
 - [`spec/rules.md`](../../spec/rules.md): the language of rules and the wire format.
 - [`spec/targets/typescript.md`](../../spec/targets/typescript.md): the generated check functions, the client and server steps.
+- [`spec/targets/java.md`](../../spec/targets/java.md) and [`spec/targets/rust.md`](../../spec/targets/rust.md): the same for Java and Rust.
