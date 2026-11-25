@@ -438,7 +438,7 @@ mod tests {
         }
         fn warnings(&self, _: &GenRequest<'_>, opts: &Opts) -> Vec<GenDiagnostic> {
             if opts.flag {
-                vec![GenDiagnostic::new("W9999", "the flag is set")]
+                vec![GenDiagnostic::new("W0904", "the flag is set")]
             } else {
                 Vec::new()
             }
@@ -458,7 +458,7 @@ mod tests {
         let g: Box<dyn DynGenerator> = Box::new(Dummy);
         let on = g.warnings_dyn(&req, &serde_json::json!({ "flag": true }));
         assert_eq!(on.len(), 1);
-        assert_eq!(on[0].code, "W9999");
+        assert_eq!(on[0].code, "W0904");
         assert!(g.warnings_dyn(&req, &serde_json::Value::Null).is_empty());
         // Options that do not parse are `generate_dyn`'s `E0802`, not a warning.
         assert!(

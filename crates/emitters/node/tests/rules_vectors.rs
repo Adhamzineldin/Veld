@@ -55,6 +55,11 @@ fn load_groups() -> Vec<Group> {
         files.sort();
         for veld in files {
             let cases_path = veld.with_extension("json");
+            // A contract with no case file holds examples, not vectors (`tests/rules/endpoints`):
+            // those are run by the endpoint rule tests.
+            if !cases_path.is_file() {
+                continue;
+            }
             let text = std::fs::read_to_string(&cases_path)
                 .unwrap_or_else(|e| panic!("{}: {e}", cases_path.display()));
             let stem = veld.file_stem().unwrap().to_string_lossy().into_owned();
