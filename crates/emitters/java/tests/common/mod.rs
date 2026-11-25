@@ -379,6 +379,12 @@ fn is_download_failure(log: &str) -> bool {
         "Temporary failure in name resolution",
         "502 Bad Gateway",
         "503 Service",
+        // Maven Central limits how often one address may ask; the wrapper on Windows reports it
+        // through PowerShell (`Exception calling "DownloadFile" ... (429) Too Many Requests`).
+        "Too Many Requests",
+        "(429)",
+        "status code: 429",
+        "Exception calling \"DownloadFile\"",
     ]
     .iter()
     .any(|sign| log.contains(sign))
@@ -420,6 +426,7 @@ pub fn mvnw_package(work: &std::path::Path, release: &str) {
             "mvnw package failed ({status}):\n{output}"
         );
         eprintln!("mvnw package: a download failed, trying again ({attempt} of {ATTEMPTS})");
-        std::thread::sleep(std::time::Duration::from_secs(5 * attempt));
+        // A limit on requests needs more than a moment: 20 seconds, then 40.
+        std::thread::sleep(std::time::Duration::from_secs(20 * attempt));
     }
 }
