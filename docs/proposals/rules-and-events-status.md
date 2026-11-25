@@ -27,8 +27,8 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 ## Phase 0: spec
 - [i] `spec/rules.md`: expressions and invariants complete; endpoint rules, state machines, policies and examples have syntax and decisions
 - [i] §9 and §12 (endpoint rules, examples, `veld test`) complete, with the IR in §13.1
-- [ ] Complete §10 (state machines) before Phase 3
-- [ ] Complete §11 (policies) before Phase 4
+- [i] §10 (state machines) complete
+- [i] §11 (policies, `@version`, `@idempotent`) complete
 - [ ] `spec/events.md` before E1
 - [ ] `spec/platform.md` before P1
 - [ ] `spec/config.md` rewrite before the config series
@@ -57,10 +57,10 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [t] Java: check functions, helpers, client and server (JDK and Spring); 103 of 103 vectors that apply; HTTP round trip
 - [t] Rust: check functions (the reference evaluator's own helper files, embedded), client and server; 101 of 101 vectors that apply; HTTP round trip
 - [t] Vector runner per target, and the reference cross-check that compiles every vector contract
-- [i] One golden 422 answer (`tests/wire/rules`): the Node server, the JDK server, the Spring adapter and the Rust server all answer with the same canonical bytes
-- [i] Invariants on SSE and WebSocket items, in every target (TypeScript, Node and Java verified by CI; Rust implemented)
-- [i] Invariants of `error` declarations on encode, in every target
-- [i] `validate = false`: the one-time report and `W0904`, in every target
+- [t] One golden 422 answer (`tests/wire/rules`): the Node server, the JDK server, the Spring adapter and the Rust server all answer with the same canonical bytes
+- [t] Invariants on SSE and WebSocket items, in every target
+- [t] Invariants of `error` declarations on encode, in every target
+- [t] `validate = false`: the one-time report and `W0904`, in every target
 - [t] `in` over lists of dates and times: shared vectors in `tests/rules/core/calendar.*`, passing in every target and the reference
 - [~] Java helper names follow the TypeScript reference list, except two (`instantMs`, `len`) that the printer still uses: finishing them changes three lines of a snapshot, and that edit was blocked in the agent's session, so it waits for the owner
 - [i] React and Vue form helpers (`useFormRules`) on top of `.partial(draft)`
@@ -69,27 +69,27 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [i] Target specs updated (`spec/targets/*.md`); `spec/ir.md`, `spec/language.md` cross-references still to do
 
 ## Phase 2: endpoint rules, examples, `veld test`
-- [~] `fact`, `require ... else`, `ensure`, `old()`, `now`: IR, compiler, reference evaluator, TypeScript, Node and Java are tested (`[t]`, CI green on three systems); Rust implemented (`[i]`)
-- [i] Fact-loader interfaces and the pipeline in Node, Java and Rust
+- [t] `fact`, `require ... else`, `ensure`, `old()`, `now`: IR, compiler, reference evaluator and every target (CI green on three systems)
+- [t] Fact-loader interfaces and the pipeline in Node, Java and Rust
 - [ ] Output mode and sampling in the runtime config (the mode is a handler option today; sampling and the typed runtime config come with the config series)
 - [ ] WebSocket endpoints with endpoint rules: every server target refuses them with `E0801` for now (Java refuses SSE endpoints with rules too)
 - [x] Stale-client safety: Java, Rust, TypeScript and Node have it for every service with a digest, with or without endpoint rules
 - [i] `example` blocks: IR, compiler, and filling in and running examples in the reference evaluator
 - [t] Endpoint rule vectors: `tests/rules/endpoints/bookings.veld`, 20 examples, all passing through the compiler and the reference evaluator
 - [t] `veld test` offline, the shared runner (`crates/veld-testing`), `E0953` in `veld check`, and `docs/guides/testing.md`
-- [i] `veld test --live` and `--dry-run`: all 20 examples pass against the generated Node server, the JDK server, the Spring adapter and the Rust server
+- [t] `veld test --live` and `--dry-run`: all 20 examples pass against the generated Node server, the JDK server, the Spring adapter and the Rust server
 - [ ] Boundary cases generated from rules
 - [ ] `veld test --live --fuzz`
 
 ## Phase 3: state machines
-- [~] `flow`, `final`, `transition`: spec section 10 complete, 14 examples written (held back as `transitions.veld.pending`); IR, compiler and reference evaluator in progress; generators to do
+- [~] `flow`, `final`, `transition`: IR, compiler (12 conformance cases) and reference evaluator implemented (`[i]`); all 14 hand-written examples pass in the evaluator (the file stays `transitions.veld.pending` until the generators support transitions); generators to do, together with policies
 - [ ] `InvalidTransition`; the transition passed to the handler for a conditional write (a guard, not an atomic guarantee)
 - [ ] Client `nextStates()`
 - [ ] `emits` (with E3)
 - [ ] State diagrams in docs and the playground
 
 ## Phase 4: policies
-- [ ] `principal`, `policy`, `permit`, `forbid`, `allow`; implicit `Forbidden`
+- [~] `principal`, `policy`, `permit`, `forbid`, `allow`; implicit `Forbidden`: spec section 11 complete, 10 examples written (`policies.veld.pending`); IR, compiler and reference evaluator in progress; generators to do
 - [ ] Client `can<Operation>()` helpers
 - [ ] `@version` optimistic concurrency (`ETag`, `If-Match`)
 - [ ] `@idempotent` and the key store interface
@@ -97,10 +97,10 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 
 ## Phase 5: proof and lifecycle
 - [ ] `check --prove`: SMT-LIB encoding, external Z3 or cvc5, four results (proved, counterexample, unknown, unsupported), assumptions and solver version reported
-- [ ] Rule-aware `veld diff`
+- [~] Rule-aware `veld diff` (without the solver: a changed expression is "possibly breaking")
 - [ ] `@rollout(audit)`
 - [ ] Derived fields
-- [ ] OpenAPI `x-veld-rules`
+- [~] OpenAPI `x-veld-rules`, `x-veld-facts`, `x-veld-flows`, `x-veld-transition`
 - [ ] LSP: hover and completion inside expressions
 - [ ] Playground: live rule evaluation (WASM)
 - [ ] `veld test --from-violation`
