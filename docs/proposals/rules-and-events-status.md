@@ -18,6 +18,11 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 
 - Commit `be05daf` (`ir_version` 1.0 to 1.1): 20 conformance snapshots, 5 OpenAPI snapshots (`x-veld-ir-version`) and the 4 example `veld.lock.ir.json` files each changed by exactly their version line. No generated source file changed. The new prelude error `InvalidTransition` changed no stored file, because a declaration appears in the IR only when a contract reaches it.
 
+## Decisions waiting for the owner
+
+- **Spring and a trailing slash.** The JDK router treats `/bookings` and `/bookings/` as the same path; the generated Spring controller maps only the first, so `POST /bookings/` is a 404 on Spring. For contracts with rules the controller now maps both. Fixing it for every contract changes Spring snapshots from before this branch, so it was left alone.
+- **Two Java helper names.** See the Phase 1 list: finishing the rename changes three lines of a snapshot.
+
 ## Phase 0: spec
 - [i] `spec/rules.md`: expressions and invariants complete; endpoint rules, state machines, policies and examples have syntax and decisions
 - [i] §9 and §12 (endpoint rules, examples, `veld test`) complete, with the IR in §13.1
@@ -51,27 +56,27 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [t] Java: check functions, helpers, client and server (JDK and Spring); 103 of 103 vectors that apply; HTTP round trip
 - [t] Rust: check functions (the reference evaluator's own helper files, embedded), client and server; 101 of 101 vectors that apply; HTTP round trip
 - [t] Vector runner per target, and the reference cross-check that compiles every vector contract
-- [~] Toolchain round trip: each target passes its own; a golden 422 answer is in `tests/wire/rules` and the Node server is held to it; Java and Rust to be held to the same file
-- [~] Invariants on SSE and WebSocket items: TypeScript and Node done (`[i]`); Java and Rust to do
-- [~] Invariants of `error` declarations on encode: TypeScript and Java done; Rust to do
-- [~] `validate = false`: the one-time report and `W0904`: TypeScript and Node done, with a warning channel for generators; Java and Rust to do
+- [~] One golden 422 answer (`tests/wire/rules`): the Node server, the JDK server and the Spring adapter all answer with the same canonical bytes; Rust in progress
+- [~] Invariants on SSE and WebSocket items: TypeScript, Node and Java done; Rust in progress
+- [~] Invariants of `error` declarations on encode: TypeScript and Java done; Rust in progress
+- [~] `validate = false`: the one-time report and `W0904`: TypeScript, Node and Java done; Rust in progress
 - [t] `in` over lists of dates and times: shared vectors in `tests/rules/core/calendar.*`, passing in every target and the reference
-- [ ] Java helper names aligned with the TypeScript reference list
+- [~] Java helper names follow the TypeScript reference list, except two (`instantMs`, `len`) that the printer still uses: finishing them changes three lines of a snapshot, and that edit was blocked in the agent's session, so it waits for the owner
 - [i] React and Vue form helpers (`useFormRules`) on top of `.partial(draft)`
 - [t] Full verification of the merged branch: draft PR #8, CI green on Linux, macOS and Windows (the local run was stopped for lack of memory, so CI is the check)
 - [t] OpenAPI export does not break on rules (full `x-veld-rules` is Phase 5)
 - [i] Target specs updated (`spec/targets/*.md`); `spec/ir.md`, `spec/language.md` cross-references still to do
 
 ## Phase 2: endpoint rules, examples, `veld test`
-- [~] `fact`, `require ... else`, `ensure`, `old()`, `now`: IR, compiler and the reference evaluator are tested (`[t]`, CI green); TypeScript and Node generators implemented (`[i]`); Java and Rust in progress
-- [~] Fact-loader interfaces and the pipeline: Node done (`[i]`); Java and Rust in progress
+- [~] `fact`, `require ... else`, `ensure`, `old()`, `now`: IR, compiler, reference evaluator, TypeScript and Node are tested (`[t]`, CI green on three systems); Java implemented (`[i]`); Rust in progress
+- [~] Fact-loader interfaces and the pipeline: Node (`[t]`) and Java (`[i]`) done; Rust in progress
 - [ ] Output mode and sampling in the runtime config (the mode is a handler option today; sampling and the typed runtime config come with the config series)
 - [ ] WebSocket endpoints with endpoint rules: TypeScript and Node refuse them with `E0801` for now
-- [~] Stale-client safety: digest in the compiler; `Veld-Rules` header and client behaviour in TypeScript and Node for contracts with endpoint rules (`[i]`); still to do there for a contract with only invariants; Java and Rust in progress
+- [~] Stale-client safety: Java has it for every service with a digest; TypeScript and Node have it for contracts with endpoint rules and still need it for a contract with only invariants; Rust in progress
 - [i] `example` blocks: IR, compiler, and filling in and running examples in the reference evaluator
 - [t] Endpoint rule vectors: `tests/rules/endpoints/bookings.veld`, 20 examples, all passing through the compiler and the reference evaluator
 - [t] `veld test` offline, the shared runner (`crates/veld-testing`), `E0953` in `veld check`, and `docs/guides/testing.md`
-- [~] `veld test --live` and `--dry-run`: the runner and the Node test handler are in, all 20 examples pass against the generated Node server (`[i]`); Java and Rust test handlers in progress
+- [~] `veld test --live` and `--dry-run`: all 20 examples pass against the generated Node server (`[t]`), the JDK server and the Spring adapter (`[i]`); Rust test handler in progress
 - [ ] Boundary cases generated from rules
 - [ ] `veld test --live --fuzz`
 
