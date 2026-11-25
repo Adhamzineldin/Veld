@@ -26,3 +26,9 @@ fn typescript_and_node_refuse_endpoint_rules_with_e0801() {
     veld_emit_conformance::check_endpoint_rules_are_refused(&Node).unwrap();
     veld_emit_conformance::check_endpoint_rules_are_refused(&TypeScript).unwrap();
 }
+
+#[test]
+fn typescript_and_node_refuse_a_compiled_contract_with_endpoint_rules_with_e0801() {
+    veld_emit_conformance::check_compiled_endpoint_rules_are_refused(&Node).unwrap();
+    veld_emit_conformance::check_compiled_endpoint_rules_are_refused(&TypeScript).unwrap();
+}

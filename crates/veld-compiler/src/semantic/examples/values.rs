@@ -779,7 +779,7 @@ fn is_datetime(s: &str) -> bool {
 
 fn is_base64(s: &str) -> bool {
     let body = s.trim_end_matches('=');
-    s.len() % 4 == 0
+    s.len().is_multiple_of(4)
         && s.len() - body.len() <= 2
         && body
             .bytes()

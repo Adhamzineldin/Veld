@@ -191,25 +191,66 @@ pub fn ir_with_endpoint_rules() -> Ir {
 /// # Errors
 /// A description of the first role for which the generator does not refuse.
 pub fn check_endpoint_rules_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
-    let ir = ir_with_endpoint_rules();
-    let services = all_services(&ir);
+    refuses_endpoint_rules(
+        generator,
+        &ir_with_endpoint_rules(),
+        Some(ENDPOINT_RULE_ORIGIN_LINE),
+    )
+}
+
+/// The contract `veld_compiler` makes of a block with a fact, a `require` and an `ensure`: what a
+/// real contract with endpoint rules looks like to a generator.
+#[must_use]
+pub fn compiled_endpoint_rules_contract() -> Ir {
+    compile(
+        "compiled_endpoint_rules",
+        "model Booking { id: uuid, guests: int }
+
+service Bookings at \"/bookings\" {
+  post \"/\" create(body: Booking) -> 201 Booking {
+    fact room: Booking = body.id
+    require body.guests > 0
+    ensure result.guests > 0
+  }
+}
+",
+    )
+}
+
+/// Like [`check_endpoint_rules_are_refused`], for a contract that went through the compiler: the
+/// gate and `generate` answer `E0801` for it as well.
+///
+/// # Errors
+/// A description of the first role for which the generator does not refuse.
+pub fn check_compiled_endpoint_rules_are_refused(
+    generator: &dyn DynGenerator,
+) -> Result<(), String> {
+    refuses_endpoint_rules(generator, &compiled_endpoint_rules_contract(), None)
+}
+
+fn refuses_endpoint_rules(
+    generator: &dyn DynGenerator,
+    ir: &Ir,
+    origin_line: Option<u32>,
+) -> Result<(), String> {
+    let services = all_services(ir);
     for role in generator.roles() {
         let caps = generator.capabilities(*role);
         if caps.supports(Feature::RulesEndpoint) {
             return Err(format!("{}: declares `rules_endpoint`", role.name()));
         }
         let req = GenRequest {
-            ir: &ir,
+            ir,
             role: *role,
             services: services.clone(),
             consumes: vec![],
             framework: None,
         };
-        let gate = check_capabilities(&ir, &req, &caps);
+        let gate = check_capabilities(ir, &req, &caps);
         let at_statement = |d: &veld_codegen::GenDiagnostic| {
             d.code == "E0801"
                 && d.message.contains("rules_endpoint")
-                && d.origin.as_ref().map(|o| o.line) == Some(ENDPOINT_RULE_ORIGIN_LINE)
+                && origin_line.is_none_or(|l| d.origin.as_ref().map(|o| o.line) == Some(l))
         };
         if gate.len() != 1 || !gate.iter().all(at_statement) {
             return Err(format!("{}: the gate reported {gate:?}", role.name()));
@@ -537,6 +578,25 @@ mod tests {
         let used = ir.features_used(&all_services(&ir));
         assert!(used.contains(&Feature::RulesEndpoint), "{used:?}");
         assert!(!used.contains(&Feature::RulesInvariants), "{used:?}");
+    }
+
+    #[test]
+    fn a_compiled_block_uses_the_endpoint_feature() {
+        let ir = compiled_endpoint_rules_contract();
+        let used = ir.features_used(&all_services(&ir));
+        assert!(used.contains(&Feature::RulesEndpoint), "{used:?}");
+        let ep = &ir.services[0].endpoints[0];
+        assert_eq!(ep.rules.facts.len(), 1);
+        assert_eq!((ep.rules.requires.len(), ep.rules.ensures.len()), (1, 1));
+    }
+
+    #[test]
+    fn a_generator_that_claims_a_compiled_block_is_caught() {
+        let claims = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]),
+        };
+        assert!(check_compiled_endpoint_rules_are_refused(&claims).is_err());
     }
 
     #[test]

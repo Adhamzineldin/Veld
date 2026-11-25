@@ -108,34 +108,19 @@ fn resolve_endpoint<'p>(
     match hits.as_slice() {
         [one] => Some(*one),
         [] if services.is_empty() && call.service.is_some() => {
-            let known: Vec<&str> = prog
-                .services
-                .iter()
-                .filter(|s| s.pkg == pkg)
-                .map(|s| s.name.as_str())
-                .collect();
-            let wanted = call.service.as_ref().map_or("", |s| s.name.as_str());
-            let at = call.service.as_ref().map_or(call.endpoint.span, |s| s.span);
-            let diag = Diagnostic::error(
-                "E0950",
-                format!("no service `{wanted}` in this package"),
-                at,
-            )
-            .did_you_mean(wanted, known.iter().copied(), None);
-            diags.push(diag);
+            unknown_service(prog, pkg, call, diags);
             None
         }
         [] => {
-            let all: Vec<&str> = services
+            let names = services
                 .iter()
-                .flat_map(|(_, s)| s.endpoints.iter().map(|e| e.name.as_str()))
-                .collect();
+                .flat_map(|(_, s)| s.endpoints.iter().map(|e| e.name.as_str()));
             let diag = Diagnostic::error(
                 "E0950",
                 format!("no endpoint `{name}` in this package"),
                 call.endpoint.span,
             )
-            .did_you_mean(name, all.iter().copied(), None);
+            .did_you_mean(name, names, None);
             diags.push(diag);
             None
         }
@@ -155,6 +140,28 @@ fn resolve_endpoint<'p>(
             None
         }
     }
+}
+
+fn unknown_service(
+    prog: &Program<'_>,
+    pkg: usize,
+    call: &ast::ExampleCall,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let known = prog
+        .services
+        .iter()
+        .filter(|s| s.pkg == pkg)
+        .map(|s| s.name.as_str());
+    let wanted = call.service.as_ref().map_or("", |s| s.name.as_str());
+    let at = call.service.as_ref().map_or(call.endpoint.span, |s| s.span);
+    let diag = Diagnostic::error(
+        "E0950",
+        format!("no service `{wanted}` in this package"),
+        at,
+    )
+    .did_you_mean(wanted, known, None);
+    diags.push(diag);
 }
 
 fn check_example(

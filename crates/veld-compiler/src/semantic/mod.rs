@@ -21,7 +21,7 @@ use crate::diagnostics::{Diagnostic, FileId, Span, has_errors};
 use crate::syntax::ast;
 pub use examples::{RExample, ROutcome};
 pub use rules::RRule;
-pub(crate) use rules::{RBlock, RElse};
+pub(crate) use rules::{RBlock, RElse, REnsure, RRequire};
 use veld_ir::{Auth, Constraints, Literal, Method, PackageKind, Type};
 
 /// One parsed `.veld` file of a package.

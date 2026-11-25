@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use super::Lowerer;
-use crate::semantic::{RElse, REndpoint, ServiceInfo};
+use crate::semantic::{RElse, REndpoint, REnsure, RRequire, ServiceInfo};
 use crate::signature::{self, EndpointRef, StatementKind};
 use veld_ir::endpoint_rules::{
     ElseError, ElseField, EndpointEnsure, EndpointFact, EndpointRequire, EndpointRules, ServiceFact,
@@ -33,47 +33,61 @@ impl Lowerer<'_, '_> {
             key: f.key.as_ref().map(|k| self.remap_expr(k)),
             origin: self.origin(f.span, s.module),
         });
-        let requires = e.rules.requires.iter().map(|r| {
-            let expr = self.remap_expr(&r.expr);
-            EndpointRequire {
-                name: r.name.clone(),
-                id: signature::endpoint_rule_id(
-                    decls,
-                    &at,
-                    StatementKind::Require,
-                    r.name.as_deref(),
-                    &expr,
-                ),
-                expr,
-                message: r.message.clone(),
-                reads: r.reads.clone(),
-                else_error: r.otherwise.as_ref().map(|o| self.else_error(o)),
-                docs: r.docs.clone(),
-                origin: self.origin(r.span, s.module),
-            }
-        });
-        let ensures = e.rules.ensures.iter().map(|r| {
-            let expr = self.remap_expr(&r.expr);
-            EndpointEnsure {
-                name: r.name.clone(),
-                id: signature::endpoint_rule_id(
-                    decls,
-                    &at,
-                    StatementKind::Ensure,
-                    r.name.as_deref(),
-                    &expr,
-                ),
-                expr,
-                message: r.message.clone(),
-                reads: r.reads.clone(),
-                docs: r.docs.clone(),
-                origin: self.origin(r.span, s.module),
-            }
-        });
+        let requires = e
+            .rules
+            .requires
+            .iter()
+            .map(|r| self.require(r, s.module, &at, decls));
+        let ensures = e
+            .rules
+            .ensures
+            .iter()
+            .map(|r| self.ensure(r, s.module, &at, decls));
         EndpointRules {
             facts: facts.collect(),
             requires: requires.collect(),
             ensures: ensures.collect(),
+        }
+    }
+
+    fn require(
+        &self,
+        r: &RRequire,
+        module: usize,
+        at: &EndpointRef<'_>,
+        decls: &[Decl],
+    ) -> EndpointRequire {
+        let expr = self.remap_expr(&r.expr);
+        let kind = StatementKind::Require;
+        EndpointRequire {
+            name: r.name.clone(),
+            id: signature::endpoint_rule_id(decls, at, kind, r.name.as_deref(), &expr),
+            expr,
+            message: r.message.clone(),
+            reads: r.reads.clone(),
+            else_error: r.otherwise.as_ref().map(|o| self.else_error(o)),
+            docs: r.docs.clone(),
+            origin: self.origin(r.span, module),
+        }
+    }
+
+    fn ensure(
+        &self,
+        r: &REnsure,
+        module: usize,
+        at: &EndpointRef<'_>,
+        decls: &[Decl],
+    ) -> EndpointEnsure {
+        let expr = self.remap_expr(&r.expr);
+        let kind = StatementKind::Ensure;
+        EndpointEnsure {
+            name: r.name.clone(),
+            id: signature::endpoint_rule_id(decls, at, kind, r.name.as_deref(), &expr),
+            expr,
+            message: r.message.clone(),
+            reads: r.reads.clone(),
+            docs: r.docs.clone(),
+            origin: self.origin(r.span, module),
         }
     }
 
