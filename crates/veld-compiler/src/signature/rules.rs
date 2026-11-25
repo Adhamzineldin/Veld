@@ -84,7 +84,7 @@ fn etype(t: &ExprType, decls: &[Decl]) -> Json {
 
 /// `ExprShape` of one node. `vars` holds the enclosing lambda variables, outermost first; a
 /// variable is written `v<depth>`.
-fn shape(e: &Expr, decls: &[Decl], vars: &mut Vec<String>) -> Json {
+pub(super) fn shape(e: &Expr, decls: &[Decl], vars: &mut Vec<String>) -> Json {
     obj(vec![
         ("t", etype(&e.t, decls)),
         ("e", kind(&e.e, decls, vars)),

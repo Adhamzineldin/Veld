@@ -4,6 +4,7 @@
 //! Services are sorted by (package, name). Prelude declarations are included
 //! only when referenced, and package `veld` is listed only when it is used.
 
+mod endpoint;
 mod rules;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -105,6 +106,7 @@ fn endpoint_refs(e: &REndpoint) -> Vec<usize> {
     let mut out: Vec<usize> = e.params.iter().flat_map(|p| type_refs(&p.ty)).collect();
     out.extend(e.success_ty.iter().flat_map(type_refs));
     out.extend(e.errors.iter().map(|(_, d)| *d));
+    out.extend(e.rules.facts.iter().flat_map(|f| type_refs(&f.ty).into_iter().chain(f.key_ty.iter().flat_map(type_refs))));
     out
 }
 
@@ -293,7 +295,7 @@ impl Lowerer<'_, '_> {
                 .iter()
                 .map(|e| self.endpoint(e, s, &pkg.name, decls))
                 .collect(),
-            facts: Vec::new(),
+            facts: self.service_facts(s),
             rules_digest: None,
             origin: self.origin(s.span, s.module),
         }
@@ -339,7 +341,7 @@ impl Lowerer<'_, '_> {
                 stream: e.success_stream,
             },
             errors,
-            rules: veld_ir::EndpointRules::default(),
+            rules: self.endpoint_rules(e, s, pkg, decls),
             origin: self.origin(e.span, s.module),
         }
     }
