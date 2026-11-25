@@ -116,6 +116,7 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [i] Lint `auth-required` (`L0014`; `L0005` was taken): every endpoint has auth or `@auth(none)`
 
 ## Phase 5: proof and lifecycle
+- [~] Spec: `spec/rules.md` sections 17 (`@rollout(audit)`, derived fields, `veld test --from-violation`) and 18 (`check --prove`: the questions, the four results, the modelled fragment, the solver) drafted. No code yet
 - [ ] `check --prove`: SMT-LIB encoding, external Z3 or cvc5, four results (proved, counterexample, unknown, unsupported), assumptions and solver version reported
 - [i] Rule-aware `veld diff`: invariants, `require`, `ensure`, facts, flows and transitions are classified; with no solver yet, a changed expression is "possibly breaking" and shows the old and the new text; `--strict` fails on it
 - [ ] `@rollout(audit)`
