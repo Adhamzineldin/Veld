@@ -417,7 +417,7 @@ mod tests {
         std::fs::create_dir_all(root.join("contracts")).unwrap();
         std::fs::write(
             root.join("veld.toml"),
-            "[project]\nname = \"app\"\n[dependencies]\n\"@acme/billing\" = \"^1\"\n",
+            "[service]\nname = \"app\"\n[dependencies]\n\"@acme/billing\" = \"^1\"\n",
         )
         .unwrap();
         let lock = Lockfile {

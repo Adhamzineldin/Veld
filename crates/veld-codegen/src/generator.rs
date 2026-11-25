@@ -134,6 +134,11 @@ pub trait DynGenerator {
     fn warnings_dyn(&self, _req: &GenRequest<'_>, _opts: &serde_json::Value) -> Vec<GenDiagnostic> {
         Vec::new()
     }
+    /// Whether `opts` parse as the generator's own options (`E0802` otherwise), without running
+    /// it. A generator that cannot tell (a plugin) accepts everything here.
+    fn check_options(&self, _opts: &serde_json::Value) -> Result<(), Vec<GenDiagnostic>> {
+        Ok(())
+    }
 }
 
 /// `E0803` when `req.framework` is not one of the generator's `frameworks(role)`. Every role is
@@ -228,6 +233,9 @@ impl<T: Generator> DynGenerator for T {
             Ok(parsed) => Generator::warnings(self, req, &parsed),
             Err(_) => Vec::new(),
         }
+    }
+    fn check_options(&self, opts: &serde_json::Value) -> Result<(), Vec<GenDiagnostic>> {
+        parse_options(self, opts).map(|_| ())
     }
 }
 

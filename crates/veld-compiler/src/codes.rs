@@ -202,7 +202,7 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E0702",
         C,
-        "`consumes` or `service` names an unknown service",
+        "`consumes` or `uses` names an unknown service",
     ),
     e(
         "E0703",
@@ -212,12 +212,32 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E0704",
         P,
-        "Output directory is forbidden (project root or a contracts directory)",
+        "Output directory is forbidden (workspace root or a contracts directory)",
     ),
     e("E0705", H, "Plugin executable hash does not match `sha256`"),
     e("E0706", H, "Plugin protocol error"),
     e("E0707", H, "Plugin returned invalid or unsafe files"),
     e("E0708", H, "Plugin process failed or timed out"),
+    e(
+        "E0709",
+        P,
+        "`veld.toml` is in the layout of earlier betas (`[project]`, `[services.*]`, `[libraries.*]` or `[[targets]]`); the message says what to write instead",
+    ),
+    e(
+        "E0710",
+        P,
+        "Invalid workspace structure (no member table, more than one, a nested workspace, a member no workspace lists, a bad `members` pattern, a missing member file, a missing, invalid or duplicate member or target name)",
+    ),
+    e(
+        "E0711",
+        P,
+        "A table that is not allowed in this `veld.toml` (a root-only table in a member file, a `[server]` in an app, a target in a library)",
+    ),
+    e(
+        "E0712",
+        P,
+        "`--affected` cannot read the changes (no git work tree, `git` not found, unknown ref)",
+    ),
     e(
         "E0801",
         G,
@@ -231,7 +251,7 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E0803",
         G,
-        "Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected)",
+        "Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected, a `-p` name or a target that is not a selected member)",
     ),
     e(
         "E0804",

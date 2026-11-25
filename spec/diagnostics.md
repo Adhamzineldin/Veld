@@ -52,16 +52,20 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0603` | error | veld-compiler | Pattern is outside the portable regex subset |
 | `E0700` | error | veld-project | Invalid `veld.toml` |
 | `E0701` | error | veld-compiler | Unknown key in `veld.toml`, or a reserved package name |
-| `E0702` | error | veld-compiler | `consumes` or `service` names an unknown service |
+| `E0702` | error | veld-compiler | `consumes` or `uses` names an unknown service |
 | `E0703` | error | veld-project | Two targets have overlapping output directories |
-| `E0704` | error | veld-project | Output directory is forbidden (project root or a contracts directory) |
+| `E0704` | error | veld-project | Output directory is forbidden (workspace root or a contracts directory) |
 | `E0705` | error | veld-plugin-host | Plugin executable hash does not match `sha256` |
 | `E0706` | error | veld-plugin-host | Plugin protocol error |
 | `E0707` | error | veld-plugin-host | Plugin returned invalid or unsafe files |
 | `E0708` | error | veld-plugin-host | Plugin process failed or timed out |
+| `E0709` | error | veld-project | `veld.toml` is in the layout of earlier betas (`[project]`, `[services.*]`, `[libraries.*]` or `[[targets]]`); the message says what to write instead |
+| `E0710` | error | veld-project | Invalid workspace structure (no member table, more than one, a nested workspace, a member no workspace lists, a bad `members` pattern, a missing member file, a missing, invalid or duplicate member or target name) |
+| `E0711` | error | veld-project | A table that is not allowed in this `veld.toml` (a root-only table in a member file, a `[server]` in an app, a target in a library) |
+| `E0712` | error | veld-project | `--affected` cannot read the changes (no git work tree, `git` not found, unknown ref) |
 | `E0801` | error | veld-codegen | Feature not supported by the generator for this role |
 | `E0802` | error | veld-codegen | Invalid generator options (also: an unsupported language version, such as `java = "19"`) |
-| `E0803` | error | veld-codegen | Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected) |
+| `E0803` | error | veld-codegen | Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected, a `-p` name or a target that is not a selected member) |
 | `E0804` | error | generators | Constant cannot be represented by the generator |
 | `E0805` | error | generators | Generated file cannot be added (bad or duplicate path) |
 | `E0899` | error | veld-codegen | Generator or plugin failure without a more specific code |

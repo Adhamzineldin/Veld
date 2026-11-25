@@ -14,7 +14,7 @@ use serde_json::Value;
 use crate::fileset::FileSet;
 use crate::generator::{GenDiagnostic, Role};
 
-/// The option key of the framework version (`[targets.options] framework-version = "3"`).
+/// The option key of the framework version (`[server.options] framework-version = "3"`).
 pub const FRAMEWORK_VERSION_KEY: &str = "framework-version";
 
 /// A language version as `major.minor`: `17`, `1.9`, or an ECMAScript edition (`es2022`).

@@ -181,6 +181,11 @@ fn verified_executable(spec: &PluginSpec, runner: &Runner) -> Result<PathBuf, Pl
         | ConfigError::UnknownService { .. }
         | ConfigError::OutputOverlap { .. }
         | ConfigError::OutputForbidden { .. }
+        | ConfigError::EarlierLayout { .. }
+        | ConfigError::Workspace { .. }
+        | ConfigError::NotAllowed { .. }
+        | ConfigError::Affected { .. }
+        | ConfigError::UnknownMember { .. }
         | ConfigError::SymlinkEscape { .. }
         | ConfigError::NonUtf8Path { .. }) => PluginError::process(&spec.name, other.to_string()),
     })?;

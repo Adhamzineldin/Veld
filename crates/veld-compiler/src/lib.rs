@@ -83,8 +83,8 @@ pub fn compile_with(input: &CompileInput, rules: Option<&AccessRules>) -> Compil
     compile_prefixed(input, rules, &BTreeMap::new())
 }
 
-/// Like [`compile_with`], with a route prefix per package name (`[project] prefix` joined with
-/// `[services.x] prefix`), prepended to every service prefix of that package so that all targets
+/// Like [`compile_with`], with a route prefix per package name (`[workspace] prefix` joined with
+/// `[service] prefix`), prepended to every service prefix of that package so that all targets
 /// agree on the full route. Prefixes must be absolute (`/api`); the project config validates them.
 #[must_use]
 pub fn compile_prefixed(
