@@ -13,16 +13,29 @@ pub(crate) enum Step {
     Item(usize),
 }
 
+/// The `root` of a place below the principal. It cannot clash with a parameter or a fact: no
+/// identifier holds a NUL.
+pub(crate) const PRINCIPAL: &str = "\0principal";
+
 /// Where a value sits in a request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Loc {
     pub root: String,
-    /// True for a fact, false for a parameter.
+    /// True for a fact, false for a parameter (or, with the root [`PRINCIPAL`], the principal).
     pub fact: bool,
     pub steps: Vec<Step>,
 }
 
 impl Loc {
+    /// The place of the principal itself.
+    pub fn principal() -> Loc {
+        Loc {
+            root: PRINCIPAL.to_owned(),
+            fact: false,
+            steps: Vec::new(),
+        }
+    }
+
     pub fn child(&self, step: Step) -> Loc {
         let mut out = self.clone();
         out.steps.push(step);
@@ -57,7 +70,9 @@ impl Loc {
 
 /// The value at `loc`, when the request has one.
 pub(crate) fn get<'r>(req: &'r Request, loc: &Loc) -> Option<&'r Json> {
-    let mut cur = if loc.fact {
+    let mut cur = if loc.root == PRINCIPAL {
+        req.principal.as_ref()?
+    } else if loc.fact {
         req.facts.get(&loc.root)?.as_ref()?
     } else {
         req.params.get(&loc.root)?
@@ -104,6 +119,14 @@ pub(crate) fn slot<'r>(
     req: &'r mut Request,
     loc: &Loc,
 ) -> Option<Slot<'r>> {
+    if loc.root == PRINCIPAL {
+        let ty = Type::Decl(g.principal?);
+        if req.principal.is_none() {
+            req.principal = Some(g.value(&ty, &Constraints::default()).ok()?);
+        }
+        let json = req.principal.as_mut()?;
+        return descend(g, ty, Constraints::default(), json, &loc.steps);
+    }
     if loc.fact {
         let f = ep.rules.facts.iter().find(|f| f.name == loc.root)?;
         let entry = req.facts.entry(f.name.clone()).or_insert(None);

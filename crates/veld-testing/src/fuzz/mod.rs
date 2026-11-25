@@ -8,6 +8,7 @@
 //!
 //! The same seed always gives the same requests, so a failure can be repeated.
 
+mod access;
 mod loc;
 mod render;
 mod rng;
@@ -17,7 +18,7 @@ mod values;
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value as Json;
-use veld_ir::{Endpoint, Ir, Scalar, Service};
+use veld_ir::{AuthKind, Constraints, Endpoint, Ir, Scalar, Service, Type};
 use veld_rules::helpers::instant::parse_datetime;
 use veld_rules::{
     Difference, Expected, FilledExample, Outcome, Pipeline, Request, RunError, describe_actual,
@@ -403,6 +404,7 @@ pub fn generate(
 ) -> Result<Generated, GenerateError> {
     let key = format!("{}.{}", service.name, ep.name);
     let mut g = Gen::new(ir, derive(seed, &key));
+    g.principal = service.principal.as_ref().map(|p| p.decl);
     let pipeline = Pipeline::new(ir, service, &ep.name).map_err(GenerateError::Rejected)?;
     let index = rules::index(ir, ep);
     let mut out = Out::default();
@@ -416,7 +418,7 @@ pub fn generate(
             for _ in 0..BASELINES {
                 let mut req = baseline(&mut g, ep, Facts::Present)?;
                 let ready = rules::prepare(&mut g, ep, &mut req, &task).is_some()
-                    && settle(&mut g, ep, &mut req, &pipeline, &index)?;
+                    && settle(&mut g, ep, &mut req, &pipeline, &index, 0)?;
                 if ready {
                     if rules::apply(&mut g, ep, &mut req, &task, delta).is_some() {
                         out.push(req);
@@ -426,6 +428,7 @@ pub fn generate(
             }
         }
     }
+    state_boundaries(&mut g, ep, (&pipeline, &index), &mut out, count)?;
     let boundaries = out.requests.len();
     let mut tries = 0;
     let max_tries = count.saturating_mul(4).saturating_add(16);
@@ -433,7 +436,7 @@ pub fn generate(
         tries += 1;
         let mut req = baseline(&mut g, ep, Facts::Random)?;
         if g.rng.chance(75) {
-            settle(&mut g, ep, &mut req, &pipeline, &index)?;
+            settle(&mut g, ep, &mut req, &pipeline, &index, QUIT)?;
         }
         move_clock(&mut g, &mut req);
         out.push(req);
@@ -444,6 +447,34 @@ pub fn generate(
     })
 }
 
+/// One request for every state of the machine of the endpoint's `transition`: everything else
+/// passes (the baseline is settled first), then the state is written. A state the transition
+/// refuses meets `InvalidTransition`, a source state gets past the guard.
+fn state_boundaries(
+    g: &mut Gen<'_>,
+    ep: &Endpoint,
+    (pipeline, index): (&Pipeline<'_>, &RuleIndex<'_>),
+    out: &mut Out,
+    count: usize,
+) -> Result<(), GenerateError> {
+    for (t, state) in access::states(g.ir, ep) {
+        if out.requests.len() >= count {
+            break;
+        }
+        let mut req = baseline(g, ep, Facts::Present)?;
+        for _ in 0..BASELINES {
+            if settle(g, ep, &mut req, pipeline, index, 0)? {
+                break;
+            }
+            req = baseline(g, ep, Facts::Present)?;
+        }
+        if access::set_state(g, ep, &mut req, t, state).is_some() {
+            out.push(req);
+        }
+    }
+    Ok(())
+}
+
 #[derive(Default)]
 struct Out {
     requests: Vec<Request>,
@@ -452,7 +483,7 @@ struct Out {
 
 impl Out {
     fn push(&mut self, req: Request) {
-        let key = format!("{:?}", (&req.params, &req.facts, req.now));
+        let key = format!("{:?}", (&req.params, &req.facts, &req.principal, req.now));
         if self.seen.insert(key) {
             self.requests.push(req);
         }
@@ -496,27 +527,45 @@ fn baseline(g: &mut Gen<'_>, ep: &Endpoint, facts: Facts) -> Result<Request, Gen
         };
         req.facts.insert(f.name.clone(), value);
     }
+    // The filler of an `example` adds a principal to every endpoint with auth, so one is made
+    // for it too: a printed block then fills back to this request.
+    if let Some(decl) = g.principal.filter(|_| ep.auth.kind != AuthKind::None) {
+        let ty = Type::Decl(decl);
+        req.principal = Some(g.value(&ty, &Constraints::default()).map_err(skipped)?);
+    }
     Ok(req)
 }
 
 /// How many baselines are tried for one boundary request.
 const BASELINES: usize = 4;
 
+/// The chance in a hundred that a random request is left as it is at any check it fails, instead
+/// of being repaired. Without it a request that fails a late check (a `require`) would nearly
+/// always have passed the earlier ones, and two checks that both apply (a denied caller on a
+/// booking in an illegal state) would be rare: the order of `spec/rules.md` section 9.5 would
+/// be fuzzed only by luck.
+const QUIT: u64 = 12;
+
 /// Runs the reference pipeline and repairs the rules it reports, until the request passes or
-/// nothing more can be repaired. True when the request passes.
+/// nothing more can be repaired. True when the request passes. At each failing check, `quit`
+/// in a hundred leaves the request as it is.
 fn settle(
     g: &mut Gen<'_>,
     ep: &Endpoint,
     req: &mut Request,
     pipeline: &Pipeline<'_>,
     index: &RuleIndex<'_>,
+    quit: u64,
 ) -> Result<bool, GenerateError> {
     // Each round repairs the rules the pipeline reports; more rules need more rounds.
     for _ in 0..(8 + index.len().min(56)) {
         match pipeline.run(req).map_err(GenerateError::Rejected)? {
             Outcome::Passes => return Ok(true),
             Outcome::Error(a) => {
-                if a.violations.is_empty() || !rules::repair(g, ep, req, &a.violations, index) {
+                if a.violations.is_empty()
+                    || (quit > 0 && g.rng.chance(quit))
+                    || !rules::repair(g, ep, req, &a.violations, index)
+                {
                     return Ok(false);
                 }
             }
@@ -557,8 +606,9 @@ fn boundary_tasks(ir: &Ir, ep: &Endpoint) -> Vec<Task> {
                     | Scalar::Date
             ),
             Target::Len(_) | Target::Diff(..) => true,
+            Target::Member(_) => false,
         };
-        if numeric && !out.contains(&t) {
+        if numeric && t.op != veld_ir::Op::In && !out.contains(&t) {
             out.push(t);
         }
     }

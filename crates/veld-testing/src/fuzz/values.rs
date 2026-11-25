@@ -28,6 +28,8 @@ pub(crate) struct Gen<'a> {
     /// True while a value is made for the path, the query string or a header: no string, list or
     /// map is empty there, because an empty value cannot be told from a missing one.
     pub flat: bool,
+    /// The model of the principal of the service being fuzzed, if it has one.
+    pub principal: Option<DeclId>,
     depth: usize,
 }
 
@@ -38,6 +40,7 @@ impl<'a> Gen<'a> {
             rng: Rng::new(seed),
             clock: parse_datetime(DEFAULT_CLOCK).unwrap_or(0),
             flat: false,
+            principal: None,
             depth: 0,
         }
     }

@@ -41,6 +41,8 @@ pub(crate) enum Target {
     Len(PathRef),
     /// `a - b` of two datetimes or two dates.
     Diff(PathRef, PathRef, Scalar),
+    /// The list of `x in list`: `x` (the other side) is put into it.
+    Member(PathRef),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -105,10 +107,13 @@ fn scalar_of(e: &Expr) -> Option<Scalar> {
 }
 
 fn writable_root(p: &PathRef) -> bool {
-    matches!(p.root, Root::Param(_) | Root::Fact(_) | Root::SelfValue)
+    matches!(
+        p.root,
+        Root::Param(_) | Root::Fact(_) | Root::SelfValue | Root::Principal
+    )
 }
 
-fn path_of(e: &Expr) -> Option<&PathRef> {
+pub(crate) fn path_of(e: &Expr) -> Option<&PathRef> {
     match &strip(e).e {
         ExprKind::Path(p) => writable_root(p).then_some(p),
         ExprKind::Lit(_)
@@ -197,7 +202,8 @@ fn comparisons(e: &Expr, all: bool, out: &mut Vec<(Op, Expr, Expr)>) {
             Op::Lt | Op::Le | Op::Gt | Op::Ge | Op::Eq | Op::Ne => {
                 out.push((b.op, b.l.clone(), b.r.clone()));
             }
-            Op::In | Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Rem => {}
+            Op::In => out.push((Op::In, b.l.clone(), b.r.clone())),
+            Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Rem => {}
         },
         ExprKind::Not(inner) => {
             if path_of(inner).is_some() {
@@ -227,6 +233,10 @@ pub(crate) fn tasks(scope: &Scope, rule: &Expr, all: bool, first_only: bool) -> 
     comparisons(rule, all, &mut cmps);
     let mut out = Vec::new();
     for (op, l, r) in cmps {
+        if op == Op::In {
+            out.extend(membership(scope, &l, &r));
+            continue;
+        }
         let sides = [(&l, &r, op), (&r, &l, flip(op))];
         for (target, other, op) in sides {
             let Some(t) = target_of(target) else { continue };
@@ -242,6 +252,89 @@ pub(crate) fn tasks(scope: &Scope, rule: &Expr, all: bool, first_only: bool) -> 
         }
     }
     out
+}
+
+/// The task of `l in r`: put `l` into the list `r` when `r` is a path, else set the path `l` to
+/// an item of the list `r`.
+fn membership(scope: &Scope, l: &Expr, r: &Expr) -> Option<Task> {
+    let (target, other) = match (path_of(r), target_of(l)) {
+        (Some(list), _) => (Target::Member(list.clone()), l),
+        (None, Some(t @ Target::Path(..))) => (t, r),
+        _ => return None,
+    };
+    Some(Task {
+        scope: scope.clone(),
+        target,
+        op: Op::In,
+        other: other.clone(),
+    })
+}
+
+/// The tasks that make a rule **false**, where the generator can: the comparison negated. For
+/// `a && b` the left side is made false, for `a || b` both.
+pub(crate) fn falsifying(scope: &Scope, rule: &Expr) -> Vec<Task> {
+    match &rule.e {
+        ExprKind::Bin(b) => match (b.op, negate(b.op)) {
+            (Op::And, _) => falsifying(scope, &b.l),
+            (Op::Or, _) => {
+                let mut out = falsifying(scope, &b.l);
+                out.extend(falsifying(scope, &b.r));
+                out
+            }
+            (_, Some(op)) => tasks(scope, &cmp_expr(op, &b.l, &b.r), false, true),
+            (_, None) => Vec::new(),
+        },
+        ExprKind::Not(inner) => tasks(scope, inner, false, true),
+        ExprKind::Path(p) if writable_root(p) && scalar_of(rule) == Some(Scalar::Bool) => {
+            tasks(scope, &bool_cmp(rule, false), false, true)
+        }
+        ExprKind::Path(_)
+        | ExprKind::Lit(_)
+        | ExprKind::Now(_)
+        | ExprKind::Neg(_)
+        | ExprKind::Has(_)
+        | ExprKind::Call(_)
+        | ExprKind::Quant(_)
+        | ExprKind::List(_)
+        | ExprKind::Widen(_)
+        | ExprKind::Old(_) => Vec::new(),
+    }
+}
+
+/// The comparison that holds exactly when `op` does not.
+fn negate(op: Op) -> Option<Op> {
+    match op {
+        Op::Eq => Some(Op::Ne),
+        Op::Ne => Some(Op::Eq),
+        Op::Lt => Some(Op::Ge),
+        Op::Le => Some(Op::Gt),
+        Op::Gt => Some(Op::Le),
+        Op::Ge => Some(Op::Lt),
+        Op::And
+        | Op::Or
+        | Op::Implies
+        | Op::In
+        | Op::Add
+        | Op::Sub
+        | Op::Mul
+        | Op::Div
+        | Op::Rem => None,
+    }
+}
+
+fn cmp_expr(op: Op, l: &Expr, r: &Expr) -> Expr {
+    Expr {
+        t: ExprType::Type(Type::Scalar(Scalar::Bool)),
+        e: ExprKind::Bin(Box::new(veld_ir::BinExpr {
+            op,
+            l: l.clone(),
+            r: r.clone(),
+        })),
+    }
+}
+
+fn bool_cmp(path: &Expr, to: bool) -> Expr {
+    cmp_expr(Op::Eq, path, &bool_lit(to))
 }
 
 /// The places of the parameters that hold a model with rules, below `ep`'s parameters.
@@ -285,6 +378,7 @@ fn walk(ir: &Ir, ty: &Type, at: &Loc, seen: &mut Vec<DeclId>, out: &mut Vec<(Loc
 
 fn loc_of(p: &PathRef, scope: &Scope) -> Option<Loc> {
     let mut loc = match (&p.root, scope) {
+        (Root::Principal, _) => Loc::principal(),
         (Root::Param(n), _) => Loc {
             root: n.clone(),
             fact: false,
@@ -365,7 +459,9 @@ pub(crate) fn prepare(
 ) -> Option<()> {
     ensure_paths(g, ep, req, &task.scope, &task.other);
     match &task.target {
-        Target::Path(p, _) | Target::Len(p) => ensure_path(g, ep, req, &task.scope, p),
+        Target::Path(p, _) | Target::Len(p) | Target::Member(p) => {
+            ensure_path(g, ep, req, &task.scope, p)
+        }
         Target::Diff(a, b, _) => {
             ensure_path(g, ep, req, &task.scope, a)?;
             ensure_path(g, ep, req, &task.scope, b)
@@ -496,10 +592,11 @@ pub(crate) fn satisfying(op: Op) -> i32 {
     }
 }
 
-fn env_of<'a>(ir: &'a Ir, req: &Request, this: Option<&'a Json>) -> Env<'a> {
+pub(crate) fn env_of<'a>(ir: &'a Ir, req: &Request, this: Option<&'a Json>) -> Env<'a> {
     let mut env = Env::new(ir);
     env.this = this;
     env.params.clone_from(&req.params);
+    env.principal.clone_from(&req.principal);
     env.facts = req
         .facts
         .iter()
@@ -528,6 +625,7 @@ pub(crate) fn apply(
     match &task.target {
         Target::Path(p, s) => set_path(g, ep, req, task, (p, *s), &other, delta),
         Target::Len(p) => set_len(g, ep, req, task, p, &other, delta),
+        Target::Member(list) => put_in_list(g, ep, req, task, list, &other),
         Target::Diff(a, b, s) => {
             let base = {
                 let this = instance.as_ref();
@@ -562,6 +660,7 @@ fn set_path(
             Json::String(t.clone())
         }
         (_, Value::Enum(w)) if task.op == Op::Eq => Json::String(w.clone()),
+        (_, Value::List(items)) if task.op == Op::In => items.first()?.to_json().ok()?,
         _ => {
             let want = shift(&num_of(other)?, delta, s)?;
             let json = write(s, &want)?;
@@ -574,6 +673,34 @@ fn set_path(
         }
     };
     *slot(g, ep, req, &loc)?.json = json;
+    Some(())
+}
+
+/// `x in list`: puts the value of `x` into the list, replacing its first item when `@length`
+/// does not allow one more.
+fn put_in_list(
+    g: &mut Gen<'_>,
+    ep: &Endpoint,
+    req: &mut Request,
+    task: &Task,
+    list: &PathRef,
+    other: &Value,
+) -> Option<()> {
+    let item = other.to_json().ok()?;
+    let loc = loc_of(list, &task.scope)?;
+    let s = slot(g, ep, req, &loc)?;
+    let full = s
+        .constraints
+        .max_len
+        .is_some_and(|m| s.json.as_array().is_some_and(|a| a.len() as u64 >= m));
+    let items = s.json.as_array_mut()?;
+    if items.contains(&item) {
+        return Some(());
+    }
+    match items.first_mut() {
+        Some(first) if full => *first = item,
+        _ => items.push(item),
+    }
     Some(())
 }
 
@@ -643,6 +770,10 @@ pub(crate) fn repair(
 ) -> bool {
     let mut changed = false;
     for v in violations {
+        if let Some(done) = super::access::repair(g, ep, req, v) {
+            changed |= done;
+            continue;
+        }
         let Some(rule) = rules.get(v.rule_id.as_str()) else {
             continue;
         };

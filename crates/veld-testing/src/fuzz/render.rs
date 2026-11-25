@@ -28,6 +28,12 @@ pub fn render_example(
         };
         lines.push(format!("  given {} = {value}", f.name));
     }
+    if let (Some(p), Some(principal)) = (&req.principal, &service.principal) {
+        lines.push(format!(
+            "  as {}",
+            value(ir, &Type::Decl(principal.decl), p)?
+        ));
+    }
     lines.push(format!("  at {}", quote(&format_datetime(req.now))?));
     let mut args = Vec::new();
     for p in ep.params.iter().filter(|p| !p.stream) {
