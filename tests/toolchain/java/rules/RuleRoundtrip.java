@@ -45,6 +45,16 @@ public final class RuleRoundtrip {
     public gen.rs.bk.bk.Booking bad(BadRequest request, RequestContext ctx) {
       return new gen.rs.bk.bk.Booking(T0, T1);
     }
+
+    @Override
+    public void overOk(gen.rs.bk.server.OverOkRequest request, RequestContext ctx) {
+      throw new gen.rs.bk.bk.Overbooked(new gen.rs.bk.bk.Overbooked.Data(2, 5));
+    }
+
+    @Override
+    public void overBad(gen.rs.bk.server.OverBadRequest request, RequestContext ctx) {
+      throw new gen.rs.bk.bk.Overbooked(new gen.rs.bk.bk.Overbooked.Data(9, 5));
+    }
   }
 
   private static HttpServer serve(RuleWalk.OutputMode mode, List<RuleWalk.Event> events) throws Exception {
@@ -69,6 +79,8 @@ public final class RuleRoundtrip {
       validPasses(url(strict));
       outputStrict(url(strict), events);
       outputAudit(url(audit), auditEvents);
+      errors(url(strict), events, url(audit), auditEvents);
+      throughInvoke();
       System.out.println("OK");
     } finally {
       strict.stop(0);
@@ -149,6 +161,38 @@ public final class RuleRoundtrip {
     Check.that(ev.operation().startsWith("veld:bk/Bookings.bad@"), "operation " + ev.operation());
     Check.that(ev.rule().startsWith("veld:bk/Booking.endAfterStart@"), "rule");
     Check.that(ev.elapsedMicros() >= 0, "elapsed");
+  }
+
+  /** The rules of an error declaration are checked when the server encodes it. */
+  private static void errors(String strict, List<RuleWalk.Event> events, String audit, List<RuleWalk.Event> auditEvents) {
+    gen.rc.bk.bk.Overbooked ok = Check.thrown(gen.rc.bk.bk.Overbooked.class, "a valid error is sent as declared", () ->
+        client(strict, true).overOk(new gen.rc.bk.client.OverOkRequest()));
+    Check.equal(new gen.rc.bk.bk.Overbooked.Data(2, 5), ok.data(), "its data");
+    Check.equal(409, ok.status(), "its status");
+    Check.equal(3, events.size(), "a valid error reports nothing");
+    Throwable t = Check.thrown(RuntimeException.class, "an error that breaks its rule is a 500 in strict", () ->
+        client(strict, true).overBad(new gen.rc.bk.client.OverBadRequest()));
+    int status = t instanceof VeldError ve ? ve.status() : t instanceof VeldHttpError he ? he.status() : -1;
+    Check.equal(500, status, "500");
+    Check.equal(4, events.size(), "the violation was reported");
+    Check.that(events.get(3).rule().startsWith("veld:bk/Overbooked.within@"), "rule " + events.get(3).rule());
+    Check.equal(RuleWalk.Position.OUTPUT, events.get(3).position(), "output");
+    gen.rc.bk.bk.Overbooked sent = Check.thrown(gen.rc.bk.bk.Overbooked.class, "audit sends the error", () ->
+        client(audit, true).overBad(new gen.rc.bk.client.OverBadRequest()));
+    Check.equal(new gen.rc.bk.bk.Overbooked.Data(9, 5), sent.data(), "audited data");
+    Check.equal(2, auditEvents.size(), "audit reported it");
+    Check.equal(RuleWalk.Outcome.AUDITED, auditEvents.get(1).outcome(), "audited");
+  }
+
+  /** The entry the Spring adapter uses: {@code VeldHandler.invoke} runs the same pipeline. */
+  private static void throughInvoke() {
+    gen.rs.runtime.VeldHandler handler = BookingsHandler.create(new Impl(), new BookingsHooks());
+    var request = new gen.rs.runtime.VeldRequest(
+        "POST", "/bookings/", null, java.util.Map.of("content-type", List.of("application/json")),
+        "{\"start\":\"2026-01-02T00:00:00Z\",\"end\":\"2026-01-01T00:00:00Z\"}", null);
+    var response = handler.invoke("create", request).orElseThrow();
+    Check.equal(422, response.status(), "invoke answers 422");
+    Check.that(response.body().contains("\"violations\":[{\"rule\":\"veld:bk/Booking.endAfterStart@"), response.body());
   }
 
   private static void outputAudit(String base, List<RuleWalk.Event> events) {

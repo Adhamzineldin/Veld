@@ -176,7 +176,7 @@ The structure of `spec/rules.md` §8, in Java. The other rules features (`rules_
 | conversions | `instantMs` `dateDays` `timeMs` |
 | durations | `days` `hours` `minutes` `seconds` `ms` (checked multiplication) |
 | strings | `len` (code points), `matches` (same `Pattern.find` semantics as `@pattern`) |
-| membership | `in` (by `equals`), `inDecimal` (numeric), `inDouble` |
+| membership | `in` (by `equals`), `inDecimal` (numeric), `inDouble`, `inTemporal` (list fields of `date`, `datetime`, `time` against the unit-converted value) |
 | comprehensions | `all` `any` `count` `sumInt` `sumLong` `sumDouble` `sumDecimal` |
 | running a rule | `run(out, id, name, path, fields, message, test)` evaluates one rule, catches `RuleError` and records the violation (message `rule <name> could not be evaluated`, `error` = the kind) |
 

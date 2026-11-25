@@ -126,6 +126,7 @@ model Order {
 
 service Shop at "/shop" {
   post "/" place(body: Order) -> 201 Order
+  get "/watch" watch() -> stream Item
 }
 "#;
 
@@ -176,7 +177,7 @@ fn the_shop_compiles_for_every_role_and_both_releases() {
         return;
     }
     let ir = shop_ir();
-    for release in ["17", "21"] {
+    for release in releases() {
         for role in [Role::Client, Role::Server] {
             let dir = tempfile::tempdir().unwrap();
             compile_generated(dir.path(), &generate(&ir, role, None), release);

@@ -16,8 +16,16 @@ use veld_emit_java::util::type_name;
 use veld_ir::{DeclKind, Ir, PackageKind};
 use veld_rules::vectors::{Produced, compare_produced, load_cases};
 
-fn rules_dir() -> PathBuf {
-    repo_root().join("tests/rules/core")
+/// The shared vectors, and the Java-specific ones next to this test.
+fn vector_dirs() -> Vec<PathBuf> {
+    vec![
+        repo_root().join("tests/rules/core"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/vectors"),
+    ]
+}
+
+fn vector_files(ext: &str) -> Vec<PathBuf> {
+    vector_dirs().iter().flat_map(|d| sorted(d, ext)).collect()
 }
 
 fn javac_ok() -> bool {
@@ -55,7 +63,7 @@ fn vector_ir() -> Ir {
     let mut uses = String::new();
     let mut probes = String::from("service Probe at \"/probe\" {\n");
     let mut n = 0;
-    for path in sorted(&rules_dir(), "veld") {
+    for path in vector_files("veld") {
         let text = std::fs::read_to_string(&path)
             .unwrap()
             .replace("\r\n", "\n");
@@ -156,7 +164,7 @@ fn the_shared_vectors_pass_on_generated_java() {
     // The cases of every vector file, partial ones left out (TypeScript only).
     let mut cases = Vec::new();
     let mut lines = String::new();
-    for path in sorted(&rules_dir(), "json") {
+    for path in vector_files("json") {
         for case in load_cases(&std::fs::read_to_string(&path).unwrap()).unwrap() {
             if case.partial {
                 continue;
@@ -203,6 +211,11 @@ fn the_shared_vectors_pass_on_generated_java() {
         "driver failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
+    for case in &cases {
+        if let Err(m) = veld_rules::vectors::run_case(&ir, case) {
+            panic!("the reference evaluator disagrees with the vector: {m}");
+        }
+    }
     let mut failures = Vec::new();
     let mut seen = 0;
     for line in String::from_utf8_lossy(&out.stdout).lines() {
@@ -241,9 +254,17 @@ const BOOKINGS: &str = r#"model Booking {
     message "A booking must end after it starts"
 }
 
+error Overbooked 409 {
+  seats: int
+  limit: int
+  rule within: seats <= limit
+}
+
 service Bookings at "/bookings" {
   post "/" create(body: Booking) -> 201 Booking
   get "/bad" bad() -> Booking
+  get "/over/ok" overOk() -> 204 | Overbooked
+  get "/over/bad" overBad() -> 204 | Overbooked
 }
 "#;
 

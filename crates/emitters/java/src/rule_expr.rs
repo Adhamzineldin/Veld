@@ -255,14 +255,12 @@ impl<'f, 't, 'a> JavaExpr<'f, 't, 'a> {
                 let helper = match left {
                     ValueKind::Decimal => "inDecimal",
                     ValueKind::Float => "inDouble",
+                    ValueKind::Date | ValueKind::Datetime | ValueKind::Time => "inTemporal",
                     ValueKind::Bool
                     | ValueKind::Int
                     | ValueKind::Long
                     | ValueKind::String
                     | ValueKind::Uuid
-                    | ValueKind::Date
-                    | ValueKind::Datetime
-                    | ValueKind::Time
                     | ValueKind::Duration
                     | ValueKind::Bytes
                     | ValueKind::Json
@@ -537,7 +535,7 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
         match (f, args.as_slice()) {
             (Builtin::Len, [a]) => match first {
                 ValueKind::String => self.call_helper("len", &[a]),
-                ValueKind::List | ValueKind::Map | ValueKind::Page => {
+                ValueKind::List | ValueKind::Map => {
                     Printed::atom(format!("{}.size()", a.at(Printed::ATOM)))
                 }
                 ValueKind::Bytes => Printed::atom(format!("{}.length", a.at(Printed::ATOM))),
@@ -552,6 +550,7 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
                 | ValueKind::Time
                 | ValueKind::Duration
                 | ValueKind::Json
+                | ValueKind::Page
                 | ValueKind::Enum
                 | ValueKind::Model => self.refuse("`len` of this type"),
             },

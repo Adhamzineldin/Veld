@@ -29,6 +29,13 @@ model Line {
   inner: Inner
   innerOpt?: Inner
   inners: Inner[]
+  blob: bytes
+  reals: float[]
+  days: date[]
+  longs: long[]
+  prices: decimal[]
+  colors: Color[]
+  window: Page<Inner>
 }
 
 service S at "/s" {
@@ -468,4 +475,124 @@ fn what_java_cannot_express_is_reported_not_printed() {
     assert_eq!(now.len(), 1);
     let param = path(Root::Param("body".into()), vec![], sc(Scalar::Int));
     assert_eq!(java(&param).1.len(), 1);
+}
+
+fn list_of(s: Scalar) -> ExprType {
+    ExprType::Type(Type::List(Box::new(Type::Scalar(s))))
+}
+
+fn decl(name: &str) -> veld_ir::DeclId {
+    let ir = veld_emit_conformance::compile("rule_expr", SOURCE);
+    ir.decls.iter().find(|d| d.name == name).unwrap().id
+}
+
+#[test]
+fn in_over_dates_and_floats_uses_the_unit_aware_helpers() {
+    let b = sc(Scalar::Bool);
+    let days = field("days", list_of(Scalar::Date));
+    let day = field("day", sc(Scalar::Date));
+    assert_eq!(
+        code(&bin(Op::In, day, days, b.clone())),
+        "Rules.inTemporal(v.days(), Rules.dateDays(v.day()))"
+    );
+    let ratio = field("ratio", sc(Scalar::Float));
+    let reals = field("reals", list_of(Scalar::Float));
+    assert_eq!(
+        code(&bin(Op::In, ratio, reals, b.clone())),
+        "Rules.inDouble(v.reals(), v.ratio())"
+    );
+    let longs = field("longs", list_of(Scalar::Long));
+    let big = field("big", sc(Scalar::Long));
+    assert_eq!(
+        code(&bin(Op::In, big, longs, b)),
+        "Rules.in(v.longs(), v.big())"
+    );
+}
+
+#[test]
+fn enums_bools_bytes_and_the_duration_functions() {
+    let color = ExprType::Type(Type::Decl(decl("Color")));
+    let eq = cmp(Op::Eq, field("color", color.clone()), field("color", color));
+    assert_eq!(code(&eq), "v.color() == v.color()");
+    let flag = || field("flag", sc(Scalar::Bool));
+    assert_eq!(code(&cmp(Op::Ne, flag(), flag())), "v.flag() != v.flag()");
+    let int_t = sc(Scalar::Int);
+    let blob = field("blob", sc(Scalar::Bytes));
+    assert_eq!(
+        code(&call(Builtin::Len, vec![blob], int_t.clone())),
+        "v.blob().length"
+    );
+    let n = || field("qty", int_t.clone());
+    for (f, name) in [
+        (Builtin::Hours, "hours"),
+        (Builtin::Minutes, "minutes"),
+        (Builtin::Seconds, "seconds"),
+        (Builtin::Ms, "ms"),
+    ] {
+        assert_eq!(
+            code(&call(f, vec![n()], ExprType::Duration)),
+            format!("Rules.{name}(v.qty())")
+        );
+    }
+}
+
+#[test]
+fn the_other_sums_and_has_on_a_variable() {
+    let x = |t| path(Root::Var("x".into()), vec![], t);
+    let sum = |list: Expr, t: ExprType| quant(Quantifier::Sum, list, "x", x(t.clone()), t);
+    assert_eq!(
+        code(&sum(
+            field("longs", list_of(Scalar::Long)),
+            sc(Scalar::Long)
+        )),
+        "Rules.sumLong(v.longs(), it_x -> (long) it_x)"
+    );
+    assert_eq!(
+        code(&sum(
+            field("reals", list_of(Scalar::Float)),
+            sc(Scalar::Float)
+        )),
+        "Rules.sumDouble(v.reals(), it_x -> (double) it_x)"
+    );
+    assert_eq!(
+        code(&sum(
+            field("prices", list_of(Scalar::Decimal)),
+            sc(Scalar::Decimal)
+        )),
+        "Rules.sumDecimal(v.prices(), it_x -> it_x)"
+    );
+    let inners = field(
+        "inners",
+        ExprType::Type(Type::List(Box::new(Type::Decl(decl("Inner"))))),
+    );
+    let has = ex(
+        sc(Scalar::Bool),
+        ExprKind::Has(PathRef {
+            root: Root::Var("i".into()),
+            steps: vec![step("n", true)],
+        }),
+    );
+    assert_eq!(
+        code(&quant(Quantifier::Any, inners, "i", has, sc(Scalar::Bool))),
+        "Rules.any(v.inners(), it_i -> it_i.n() != null)"
+    );
+}
+
+#[test]
+fn page_members_and_what_is_refused() {
+    let window = ExprType::Type(Type::Page(Box::new(Type::Decl(decl("Inner")))));
+    let total = path(
+        Root::SelfValue,
+        vec![step("window", false), step("total", false)],
+        sc(Scalar::Long),
+    );
+    assert_eq!(code(&total), "v.window().total()");
+    let len = call(Builtin::Len, vec![field("window", window)], sc(Scalar::Int));
+    assert_eq!(
+        java(&len).1.len(),
+        1,
+        "len of a page is refused, not printed as a page size"
+    );
+    let old = ex(sc(Scalar::Int), ExprKind::Old(Box::new(int(1))));
+    assert_eq!(java(&old).1.len(), 1);
 }

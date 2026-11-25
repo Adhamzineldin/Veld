@@ -249,6 +249,30 @@ public final class Rules {
     return false;
   }
 
+  /**
+   * Whether {@code x}, an instant, date or time in the units of {@link #instantMs}, {@link
+   * #dateDays} or {@link #timeMs}, is one of {@code list}. The elements are {@link Instant}s,
+   * {@link LocalDate}s or {@link LocalTime}s (a list field) or already {@code long}s (a literal).
+   */
+  public static boolean inTemporal(List<?> list, long x) {
+    for (Object item : list) {
+      long v;
+      if (item instanceof Instant at) {
+        v = instantMs(at);
+      } else if (item instanceof LocalDate day) {
+        v = dateDays(day);
+      } else if (item instanceof LocalTime time) {
+        v = timeMs(time);
+      } else {
+        v = ((Number) item).longValue();
+      }
+      if (v == x) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** Whether {@code x} is one of {@code list}, by {@code equals}. */
   public static boolean in(List<?> list, Object x) {
     return list.contains(x);

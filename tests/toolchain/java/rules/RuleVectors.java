@@ -58,9 +58,28 @@ public final class RuleVectors {
       throw new IllegalArgumentException("the value is not valid: " + issues);
     }
     List<Json> found = new ArrayList<>();
-    for (Violation v : RuleWalk.checkWire(schema, value, request)) {
+    for (Violation v : violations(Class.forName(fqn), schema, value, request)) {
       found.add(v.toWire());
     }
     return Json.object().put("violations", Json.array(found)).build();
+  }
+
+  /**
+   * The violations through the public surface of the class (decode the value as its type, then
+   * {@code check} or {@code checkRequest}) when it has rules, otherwise through the schema walk.
+   */
+  private static List<Violation> violations(Class<?> cls, Schema schema, Json value, boolean request)
+      throws Exception {
+    java.lang.reflect.Method check;
+    try {
+      check = cls.getMethod(request ? "checkRequest" : "check", cls);
+    } catch (NoSuchMethodException e) {
+      return RuleWalk.checkWire(schema, value, request);
+    }
+    Json prepared = Wire.prepare(schema, value, request ? Wire.Mode.REQUEST : Wire.Mode.RESPONSE);
+    Object typed = cls.getMethod("fromWire", Json.class).invoke(null, RuleWalk.forDecoding(schema, prepared, request));
+    @SuppressWarnings("unchecked")
+    List<Violation> found = (List<Violation>) check.invoke(null, typed);
+    return found;
   }
 }
