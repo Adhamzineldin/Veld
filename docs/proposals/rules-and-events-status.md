@@ -34,6 +34,7 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
   2. *`@retry` on the channel* (one policy for every consumer, as in the proposal), not per subscription.
 - **`412` or `409` for a failed `If-Match`.** `spec/rules.md` 11.7 says `412 PreconditionFailed` (the HTTP meaning). Not built yet; say so if you want `409`.
 - **Idempotency needs to know who the caller is.** A key must never replay another caller's answer, so the store's scope includes the caller's identity. `spec/rules.md` 11.9 drafts it as a text the application returns from a server hook; a server whose endpoint needs it and has no such hook does not start. The alternative is to name a field of the principal in the contract (`@idempotent(caller: user.id)`).
+- **Workspace layout: six choices in `spec/workspace.md` section 16**, drafted as recommended. The ones you would notice: defaults are written per role (`[workspace.defaults.server.java]`), one level deeper than the proposal's sketch, because a Java server takes a framework and a Java client takes none; a project that is one file must write the service's `name`, because the folder name changes with where the repository is cloned; there is no converter from today's layout; and `veld.lock.ir.json` stays one file for the workspace, refreshed only by a run over every member.
 - **Derived fields: two things you will see in contracts and in handler code** (`spec/rules.md` 17.2), not built until you confirm. (1) `total: decimal = 0` is a default and `total: decimal = subtotal - discount` is derived: the only difference is whether a literal follows the `=`. The alternative is a keyword. (2) In the type a handler returns, a derived field is optional and whatever the handler puts there is overwritten.
 
 ## Decided by the owner on 25 Nov 2026
@@ -167,6 +168,9 @@ Found when the example gained a state machine and policies (25 Nov), most import
 - [ ] E3: outbox and relay for `emits` (at-least-once, stated as such); event-aware `diff`; AsyncAPI export; crash-injection tests
 
 ## Config
+The work is two series, because only the second changes generated code. The layout series must leave every generated file, manifest and lock file of every example and fixture the same bytes; the runtime config series changes client code for every contract, and those snapshots go on the owner's list.
+- [~] Spec for the layout: `spec/workspace.md` drafted (root and member files, the single file form, defaults, target names and default `out`, `-p`, `--affected --since`, `owners`, the error for the earlier layout, codes `E0709` to `E0712`, and the list of every reader of the layout). No code. Six choices in its section 16 wait for the owner
+- [ ] Spec for the typed runtime config: not written
 - [ ] Workspace root plus one `veld.toml` per member; the old single-file format removed
 - [ ] `-p`, `--affected --since`, `owners`
 - [ ] Typed runtime config per target; `VELD_<SERVICE>_URL` fallback removed; `fromEnv()` opt-in
