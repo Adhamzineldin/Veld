@@ -22,11 +22,65 @@ model NewBooking {
     message "A stay is at most 30 days"
 }
 
+/// Where a booking is in its life. `flow` lists the legal moves. A `final` state has no way out.
+enum Status {
+  pending,
+  paid,
+  checkedIn,
+  cancelled,
+  refunded,
+
+  flow pending -> paid -> checkedIn
+  flow pending -> cancelled
+  flow paid -> cancelled
+  flow paid -> refunded
+  final checkedIn, cancelled, refunded
+}
+
 /// A booking the hotel has accepted.
 model Booking extends NewBooking {
   id: uuid @readonly
+  /// The guest who made the booking.
+  guestId: uuid
   /// The price of the whole stay.
   total: decimal
+  status: Status = .pending
+}
+
+/// What a guest sends to pay.
+model Payment {
+  amount: decimal
+}
+
+/// Whoever calls the API. The auth hook turns a bearer token into one of these.
+model User {
+  id: uuid
+  name: string
+  roles: string[]
+  suspended: bool
+}
+
+/// The caller of every endpoint that is not public. In an endpoint block it is called `user`.
+principal User
+
+/// May this caller manage this booking? The guest who made it, and the staff. A suspended account never.
+policy ManageBooking(user: User, booking: Booking) {
+  permit when booking.guestId == user.id
+  permit when "staff" in user.roles
+  forbid when user.suspended
+    message "A suspended account cannot manage bookings"
+}
+
+/// May this caller make a booking? Anyone who is not suspended.
+policy MayBook(user: User) {
+  permit when true
+  forbid when user.suspended
+    message "A suspended account cannot book"
+}
+
+/// Only the staff of the hotel.
+policy StaffOnly(user: User) {
+  permit when "staff" in user.roles
 }
 
 /// The room cannot sleep that many guests.
@@ -35,25 +89,75 @@ error RoomFull 409 { capacity: int }
 /// The room is closed for bookings.
 error RoomClosed 409 {}
 
-/// Hotel bookings.
-@auth(none)
+/// The payment is not the price of the stay.
+error AmountMismatch 422 {
+  expected: decimal
+}
+
+/// Hotel bookings. Every endpoint needs a bearer token unless it says `@auth(none)`.
+@auth(bearer)
 service Bookings at "/bookings" {
-  /// Books a room. The room is loaded once, before any rule runs.
+  /// The rooms of the hotel. Anyone may look.
+  @auth(none)
+  get "/rooms" listRooms() -> Room[]
+
+  /// Books a room for the caller. The room is loaded once, before any rule runs.
   post "/" createBooking(body: NewBooking) -> 201 Booking | RoomFull | RoomClosed {
     fact room: Room = body.roomId
+    allow MayBook(user)
     require not room.closed else RoomClosed
     require body.guests <= room.capacity else RoomFull { capacity: room.capacity }
     require notInPast: body.start >= now
       message "A booking cannot start in the past"
     ensure keepsRoom: result.roomId == body.roomId
     ensure keepsGuests: result.guests == body.guests
+    ensure belongsToCaller: result.guestId == user.id
+    ensure startsPending: result.status == .pending
   }
 
+  /// The bookings the caller may manage: their own, or all of them for the staff.
+  get "/" listBookings() -> Booking[]
+
   /// Returns one booking.
-  get "/{id}" getBooking(id: uuid) -> Booking | NotFound
+  get "/{id}" getBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+  }
+
+  /// Pays for a booking. The amount must be the price.
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking | AmountMismatch {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+    transition booking.status: pending -> paid
+    require body.amount == booking.total else AmountMismatch { expected: booking.total }
+  }
+
+  /// Cancels a booking that has not been used.
+  post "/{id}/cancel" cancelBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+    transition booking.status: pending, paid -> cancelled
+  }
+
+  /// The guest arrives.
+  post "/{id}/check-in" checkIn(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+    transition booking.status: paid -> checkedIn
+  }
+
+  /// Gives the money back. Only the staff may.
+  post "/{id}/refund" refundBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow StaffOnly(user)
+    transition booking.status: paid -> refunded
+  }
 }
 
 // Examples are documentation that `veld test` checks. Whatever an example does not write is filled in.
+// The callers: Ann (guest, ...aa), Bob (another guest, ...bb), Sam (staff, ...cc), Eve (suspended, ...ee).
+
+// --- booking a room ---
 
 example "a valid booking is accepted" {
   given room = { capacity: 2, closed: false }
@@ -120,11 +224,211 @@ example "an unknown room is not found" {
 
 example "the handler must keep the guests of the request" {
   given room = { capacity: 4, closed: false }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
   at "2026-06-01T00:00:00Z"
   createBooking(body: {
     roomId: room.id, guests: 2,
     start: "2026-06-10T00:00:00Z", end: "2026-06-12T00:00:00Z"
   })
-    returns { roomId: room.id, guests: 3 }
+    returns { roomId: room.id, guests: 3, guestId: "00000000-0000-4000-8000-0000000000aa" }
     -> Internal
+}
+
+// --- who may book ---
+
+example "a suspended account cannot book" {
+  given room = { capacity: 2, closed: false }
+  as { id: "00000000-0000-4000-8000-0000000000ee", roles: [], suspended: true }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    roomId: room.id, guests: 1,
+    start: "2026-06-10T00:00:00Z", end: "2026-06-12T00:00:00Z"
+  }) -> Forbidden { message: "A suspended account cannot book" }
+}
+
+example "the policy is asked before the room is checked" {
+  given room = { capacity: 2, closed: true }
+  as { id: "00000000-0000-4000-8000-0000000000ee", roles: [], suspended: true }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    roomId: room.id, guests: 1,
+    start: "2026-06-10T00:00:00Z", end: "2026-06-12T00:00:00Z"
+  }) -> Forbidden
+}
+
+example "the new booking must belong to the caller" {
+  given room = { capacity: 2, closed: false }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    roomId: room.id, guests: 1,
+    start: "2026-06-10T00:00:00Z", end: "2026-06-12T00:00:00Z"
+  })
+    returns { roomId: room.id, guests: 1, guestId: "00000000-0000-4000-8000-0000000000bb" }
+    -> Internal
+}
+
+// --- who may see and manage a booking ---
+
+example "anyone may look at the rooms" {
+  listRooms() -> ok
+}
+
+example "the guest sees their own booking" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa" }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  getBooking(id: booking.id) -> ok
+}
+
+example "another guest does not see it" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa" }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [], suspended: false }
+  getBooking(id: booking.id) -> Forbidden { message: "not permitted" }
+}
+
+example "a missing booking is not found before the policy is asked" {
+  given booking = absent
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [], suspended: false }
+  getBooking(id: "00000000-0000-4000-8000-0000000000f0") -> NotFound { resource: "booking" }
+}
+
+example "the staff sees every booking" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa" }
+  as { id: "00000000-0000-4000-8000-0000000000cc", roles: ["staff"], suspended: false }
+  getBooking(id: booking.id) -> ok
+}
+
+example "a suspended guest cannot even see their own booking" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000ee" }
+  as { id: "00000000-0000-4000-8000-0000000000ee", roles: [], suspended: true }
+  getBooking(id: booking.id) -> Forbidden { message: "A suspended account cannot manage bookings" }
+}
+
+example "forbid beats permit: suspended staff is refused too" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa" }
+  as { id: "00000000-0000-4000-8000-0000000000cc", roles: ["staff"], suspended: true }
+  getBooking(id: booking.id) -> Forbidden { message: "A suspended account cannot manage bookings" }
+}
+
+// --- paying: the state machine ---
+
+example "a pending booking is paid by its guest" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .pending, total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 179.00 }) -> ok
+}
+
+example "a booking that was just made can be paid (the default status is pending)" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 179.00 }) -> ok
+}
+
+example "a paid booking cannot be paid again" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .paid, total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 179.00 })
+    -> InvalidTransition { field: "status", from: "paid", to: "paid" }
+}
+
+example "a stranger may not pay" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 179.00 }) -> Forbidden { message: "not permitted" }
+}
+
+example "the policy is asked before the transition" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .cancelled, total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 179.00 }) -> Forbidden
+}
+
+example "the transition is checked before the amount" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .cancelled, total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 1.00 }) -> InvalidTransition { from: "cancelled" }
+}
+
+example "a legal move with the wrong amount is refused by require" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .pending, total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 1.00 }) -> AmountMismatch { expected: 179 }
+}
+
+example "a missing booking is not found before the transition is looked at" {
+  given booking = absent
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: "00000000-0000-4000-8000-0000000000f0", body: { amount: 1.00 }) -> NotFound { resource: "booking" }
+}
+
+example "the handler must move the booking to paid" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .pending, total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 179.00 })
+    returns { status: .pending, total: 179.00 }
+    -> Internal
+}
+
+example "a result in the target state passes" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .pending, total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 179.00 })
+    returns { status: .paid, total: 179.00 }
+    -> ok
+}
+
+// --- cancelling, checking in, refunding ---
+
+example "a pending booking can be cancelled" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .pending }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  cancelBooking(id: booking.id) -> ok
+}
+
+example "a paid booking can be cancelled by the staff" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .paid }
+  as { id: "00000000-0000-4000-8000-0000000000cc", roles: ["staff"], suspended: false }
+  cancelBooking(id: booking.id) -> ok
+}
+
+example "a checked-in booking cannot be cancelled" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .checkedIn }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  cancelBooking(id: booking.id) -> InvalidTransition { field: "status", from: "checkedIn", to: "cancelled" }
+}
+
+example "a final state has no way out" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .refunded }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  cancelBooking(id: booking.id) -> InvalidTransition { from: "refunded", to: "cancelled" }
+}
+
+example "a paid booking can check in" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .paid }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  checkIn(id: booking.id) -> ok
+}
+
+example "a pending booking cannot check in" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .pending }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  checkIn(id: booking.id) -> InvalidTransition { from: "pending", to: "checkedIn" }
+}
+
+example "the staff refunds a paid booking" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .paid }
+  as { id: "00000000-0000-4000-8000-0000000000cc", roles: ["staff"], suspended: false }
+  refundBooking(id: booking.id) -> ok
+}
+
+example "a guest cannot refund their own booking" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .paid }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  refundBooking(id: booking.id) -> Forbidden { message: "not permitted" }
+}
+
+example "only a paid booking can be refunded" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .pending }
+  as { id: "00000000-0000-4000-8000-0000000000cc", roles: ["staff"], suspended: false }
+  refundBooking(id: booking.id) -> InvalidTransition { from: "pending", to: "refunded" }
 }
