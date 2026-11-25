@@ -101,6 +101,9 @@ service Bookings at "/bookings" {
   @auth(none)
   get "/rooms" listRooms() -> Room[]
 
+  /// The caller, as the server knows them. The web app asks it once after sign-in.
+  get "/me" whoAmI() -> User
+
   /// Books a room for the caller. The room is loaded once, before any rule runs.
   post "/" createBooking(body: NewBooking) -> 201 Booking | RoomFull | RoomClosed {
     fact room: Room = body.roomId
@@ -125,7 +128,7 @@ service Bookings at "/bookings" {
   }
 
   /// Pays for a booking. The amount must be the price.
-  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking | AmountMismatch {
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> 200 Booking | AmountMismatch {
     fact booking: Booking = id
     allow ManageBooking(user, booking)
     transition booking.status: pending -> paid
@@ -133,21 +136,21 @@ service Bookings at "/bookings" {
   }
 
   /// Cancels a booking that has not been used.
-  post "/{id}/cancel" cancelBooking(id: uuid) -> Booking {
+  post "/{id}/cancel" cancelBooking(id: uuid) -> 200 Booking {
     fact booking: Booking = id
     allow ManageBooking(user, booking)
     transition booking.status: pending, paid -> cancelled
   }
 
   /// The guest arrives.
-  post "/{id}/check-in" checkIn(id: uuid) -> Booking {
+  post "/{id}/check-in" checkIn(id: uuid) -> 200 Booking {
     fact booking: Booking = id
     allow ManageBooking(user, booking)
     transition booking.status: paid -> checkedIn
   }
 
   /// Gives the money back. Only the staff may.
-  post "/{id}/refund" refundBooking(id: uuid) -> Booking {
+  post "/{id}/refund" refundBooking(id: uuid) -> 200 Booking {
     fact booking: Booking = id
     allow StaffOnly(user)
     transition booking.status: paid -> refunded
@@ -272,6 +275,11 @@ example "the new booking must belong to the caller" {
 
 example "anyone may look at the rooms" {
   listRooms() -> ok
+}
+
+example "a caller can ask who they are" {
+  as { id: "00000000-0000-4000-8000-0000000000aa", name: "Ann", roles: [], suspended: false }
+  whoAmI() -> ok
 }
 
 example "the guest sees their own booking" {

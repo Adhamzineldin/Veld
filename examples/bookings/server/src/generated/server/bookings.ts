@@ -2,8 +2,8 @@
 
 import type { AmountMismatchData, RoomClosedData, RoomFullData } from '../errors/bookings';
 import { AmountMismatch, RoomClosed, RoomFull } from '../errors/bookings';
-import type { Status, User } from '../models/bookings';
-import { Booking, NewBooking, Payment, Room } from '../models/bookings';
+import type { Status } from '../models/bookings';
+import { Booking, NewBooking, Payment, Room, User } from '../models/bookings';
 import { manageBookingVerdict, mayBookVerdict, staffOnlyVerdict } from '../policies/bookings';
 import type { ForbiddenData, InternalData, InvalidTransitionData, NotFoundData, UnauthorizedData, ValidationErrorData } from '../prelude';
 import { Forbidden, Internal, InvalidTransition, NotFound, Unauthorized, ValidationError } from '../prelude';
@@ -11,6 +11,8 @@ import * as veldRules from '../runtime/rules';
 import * as veld from '../runtime/veld';
 
 export type ListRoomsRequest = {};
+
+export type WhoAmIRequest = {};
 
 export interface CreateBookingRequest {
   body: NewBooking;
@@ -113,6 +115,8 @@ export interface RefundBookingTransition {
 export interface BookingsService<Ctx = veld.RequestContext> {
   /** The rooms of the hotel. Anyone may look. */
   listRooms(req: ListRoomsRequest, ctx: Ctx): Promise<Room[]>;
+  /** The caller, as the server knows them. The web app asks it once after sign-in. */
+  whoAmI(req: WhoAmIRequest, ctx: Ctx): Promise<User>;
   /** Books a room for the caller. The room is loaded once, before any rule runs. */
   createBooking(req: CreateBookingRequest & CreateBookingFacts, ctx: Ctx): Promise<Booking>;
   /** The bookings the caller may manage: their own, or all of them for the staff. */
@@ -168,6 +172,23 @@ export function bookingsEndpoints(impl: BookingsService, loaders: BookingsFactLo
       ],
       middleware: [],
       call: (req, ctx) => impl.listRooms(req as ListRoomsRequest, ctx),
+      digest: 'cad7f1bdf1d52964',
+    },
+    {
+      name: 'whoAmI',
+      method: 'GET',
+      path: '/bookings/me',
+      sig: 'veld:bookings/Bookings.whoAmI@c169647bd368610f',
+      status: 200,
+      auth: { kind: 'bearer' },
+      params: [],
+      success: { k: 'ref', to: () => User.schema },
+      errors: [
+        { status: 401, sig: Unauthorized.sig, schema: Unauthorized.schema, create: (data, init) => new Unauthorized(data as UnauthorizedData, init) },
+        { status: 500, sig: Internal.sig, schema: Internal.schema, create: (data, init) => new Internal(data as InternalData, init) },
+      ],
+      middleware: [],
+      call: (req, ctx) => impl.whoAmI(req as WhoAmIRequest, ctx),
       digest: 'cad7f1bdf1d52964',
     },
     {
@@ -337,7 +358,7 @@ export function bookingsEndpoints(impl: BookingsService, loaders: BookingsFactLo
       method: 'POST',
       path: '/bookings/{id}/pay',
       sig: 'veld:bookings/Bookings.payBooking@13a1fe6a454db92f',
-      status: 201,
+      status: 200,
       auth: { kind: 'bearer' },
       params: [
         { name: 'id', binding: 'path', t: { k: 'uuid' } },
@@ -410,7 +431,7 @@ export function bookingsEndpoints(impl: BookingsService, loaders: BookingsFactLo
       method: 'POST',
       path: '/bookings/{id}/cancel',
       sig: 'veld:bookings/Bookings.cancelBooking@5ac58a20c1116a7e',
-      status: 201,
+      status: 200,
       auth: { kind: 'bearer' },
       params: [
         { name: 'id', binding: 'path', t: { k: 'uuid' } },
@@ -472,7 +493,7 @@ export function bookingsEndpoints(impl: BookingsService, loaders: BookingsFactLo
       method: 'POST',
       path: '/bookings/{id}/check-in',
       sig: 'veld:bookings/Bookings.checkIn@0b7eec98e5f13f0c',
-      status: 201,
+      status: 200,
       auth: { kind: 'bearer' },
       params: [
         { name: 'id', binding: 'path', t: { k: 'uuid' } },
@@ -534,7 +555,7 @@ export function bookingsEndpoints(impl: BookingsService, loaders: BookingsFactLo
       method: 'POST',
       path: '/bookings/{id}/refund',
       sig: 'veld:bookings/Bookings.refundBooking@e60463e702f57c9e',
-      status: 201,
+      status: 200,
       auth: { kind: 'bearer' },
       params: [
         { name: 'id', binding: 'path', t: { k: 'uuid' } },

@@ -6,8 +6,7 @@ import * as veldRules from '../runtime/rules';
 import * as veld from '../runtime/veld';
 import type { AmountMismatchData, RoomClosedData, RoomFullData } from './errors/bookings';
 import { AmountMismatch, RoomClosed, RoomFull } from './errors/bookings';
-import type { User } from './models/bookings';
-import { Booking, NewBooking, Payment, Room } from './models/bookings';
+import { Booking, NewBooking, Payment, Room, User } from './models/bookings';
 import { manageBookingVerdict, mayBookVerdict, staffOnlyVerdict } from './policies/bookings';
 
 export type ListRoomsRequest = {};
@@ -21,6 +20,23 @@ const bookingsListRoomsOp: veld.EndpointSpec = {
   params: [],
   success: { k: 'list', of: { k: 'ref', to: () => Room.schema } },
   errors: [
+    { status: 500, sig: Internal.sig, schema: Internal.schema, create: (data, init) => new Internal(data as InternalData, init) },
+  ],
+};
+
+export type WhoAmIRequest = {};
+
+const bookingsWhoAmIOp: veld.EndpointSpec = {
+  name: 'whoAmI',
+  method: 'GET',
+  path: '/bookings/me',
+  sig: 'veld:bookings/Bookings.whoAmI@c169647bd368610f',
+  status: 200,
+  auth: { kind: 'bearer' },
+  params: [],
+  success: { k: 'ref', to: () => User.schema },
+  errors: [
+    { status: 401, sig: Unauthorized.sig, schema: Unauthorized.schema, create: (data, init) => new Unauthorized(data as UnauthorizedData, init) },
     { status: 500, sig: Internal.sig, schema: Internal.schema, create: (data, init) => new Internal(data as InternalData, init) },
   ],
 };
@@ -102,7 +118,7 @@ const bookingsPayBookingOp: veld.EndpointSpec = {
   method: 'POST',
   path: '/bookings/{id}/pay',
   sig: 'veld:bookings/Bookings.payBooking@13a1fe6a454db92f',
-  status: 201,
+  status: 200,
   auth: { kind: 'bearer' },
   params: [
     { name: 'id', binding: 'path', t: { k: 'uuid' } },
@@ -129,7 +145,7 @@ const bookingsCancelBookingOp: veld.EndpointSpec = {
   method: 'POST',
   path: '/bookings/{id}/cancel',
   sig: 'veld:bookings/Bookings.cancelBooking@5ac58a20c1116a7e',
-  status: 201,
+  status: 200,
   auth: { kind: 'bearer' },
   params: [
     { name: 'id', binding: 'path', t: { k: 'uuid' } },
@@ -154,7 +170,7 @@ const bookingsCheckInOp: veld.EndpointSpec = {
   method: 'POST',
   path: '/bookings/{id}/check-in',
   sig: 'veld:bookings/Bookings.checkIn@0b7eec98e5f13f0c',
-  status: 201,
+  status: 200,
   auth: { kind: 'bearer' },
   params: [
     { name: 'id', binding: 'path', t: { k: 'uuid' } },
@@ -179,7 +195,7 @@ const bookingsRefundBookingOp: veld.EndpointSpec = {
   method: 'POST',
   path: '/bookings/{id}/refund',
   sig: 'veld:bookings/Bookings.refundBooking@e60463e702f57c9e',
-  status: 201,
+  status: 200,
   auth: { kind: 'bearer' },
   params: [
     { name: 'id', binding: 'path', t: { k: 'uuid' } },
@@ -212,6 +228,11 @@ export class BookingsClient {
   /** The rooms of the hotel. Anyone may look. */
   listRooms(req: ListRoomsRequest = {}, init?: veld.CallInit): Promise<Room[]> {
     return this.#core.call(bookingsListRoomsOp, req, init) as Promise<Room[]>;
+  }
+
+  /** The caller, as the server knows them. The web app asks it once after sign-in. */
+  whoAmI(req: WhoAmIRequest = {}, init?: veld.CallInit): Promise<User> {
+    return this.#core.call(bookingsWhoAmIOp, req, init) as Promise<User>;
   }
 
   /** Books a room for the caller. The room is loaded once, before any rule runs. */

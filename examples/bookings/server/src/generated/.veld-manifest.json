@@ -13,6 +13,6 @@
     "runtime/veld.ts": "307bd1c1d19805889cf3dea55a912e7a1830309e175c418d45dfbcde64241858",
     "server/adapters.ts": "f182d6e48b7a1f38fb3b4de6b1669ed8a7b8fca01f7625d556b9fdf1712ca2f9",
     "server/bookings-test-handler.ts": "66471a2230b2b02f139b998c64e6ff8530f7e12a3758a4e36f4f2d1d2027fdd7",
-    "server/bookings.ts": "20643d7de742bd942625e3b845ef62032cc195bc8b870bc2f581518fa1ae85ba"
+    "server/bookings.ts": "14573e9a2532fc5139506f8a3f9c531214ff781b5ff5d5b519e8af2d9ce0fdfd"
   }
 }

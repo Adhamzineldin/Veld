@@ -3,11 +3,11 @@
   "generator": "veld 2.0",
   "files": {
     "README.md": "6b557c002bf95051d832ef189b78c4f90eec597d4e7824ffbedb0b5960c274b5",
-    "bookings/client.ts": "58429b6b2616f91048fede0391402ab748dae309da5878d11266f10cf4dd04de",
+    "bookings/client.ts": "0a1095eed74f1ed24a084bf195475c8e5dfc67aafa21c75a5affad20a7ee894a",
     "bookings/errors/bookings.ts": "4f1e57d076b0a62697de512f0218a1de75310f43b7f395f27eae736d3878004c",
     "bookings/models/bookings.ts": "706243a03c962d3c40193a905f437aace3db1a5de6e2e21fe8a2185f1bd1b6bb",
     "bookings/policies/bookings.ts": "a623441a4b6d8ff4b237009e5da81d6d25592296f7f929fa4a202cd1d7dad009",
-    "bookings/react.ts": "610361b1fe501097645f03ddb90782503808faabf644d54f38f9fd56c659571c",
+    "bookings/react.ts": "538ff81e4d5e213682073841ee8439740e28ac56cbd6495c1e2faf94574ea60b",
     "clients.ts": "9926881bb937e790a7d3378d7081016a14d65e21124d1e98ae0e29fb60ad7148",
     "index.ts": "20fbf4a5653aa2fdda82266de49b4eceab933a7cc6671650a8ce65f999ab9636",
     "package.json": "0bf1e401087ae0c84db2a4b8d72141c13e199f210200825c83f07d09cae98d35",

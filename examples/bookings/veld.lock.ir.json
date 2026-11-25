@@ -1694,6 +1694,42 @@
           }
         },
         {
+          "name": "whoAmI",
+          "method": "GET",
+          "path": "/bookings/me",
+          "sig": "veld:bookings/Bookings.whoAmI@c169647bd368610f",
+          "docs": "The caller, as the server knows them. The web app asks it once after sign-in.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 8
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 13
+            },
+            {
+              "status": 500,
+              "decl": 10
+            }
+          ],
+          "origin": {
+            "file": "bookings.veld",
+            "line": 105,
+            "col": 13
+          }
+        },
+        {
           "name": "createBooking",
           "method": "POST",
           "path": "/bookings",
@@ -1791,7 +1827,7 @@
                 },
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 106,
+                  "line": 109,
                   "col": 10
                 }
               }
@@ -1836,7 +1872,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 108,
+                  "line": 111,
                   "col": 5
                 }
               },
@@ -1927,7 +1963,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 109,
+                  "line": 112,
                   "col": 5
                 }
               },
@@ -1979,7 +2015,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 110,
+                  "line": 113,
                   "col": 13
                 }
               }
@@ -2041,7 +2077,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 112,
+                  "line": 115,
                   "col": 12
                 }
               },
@@ -2101,7 +2137,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 113,
+                  "line": 116,
                   "col": 12
                 }
               },
@@ -2157,7 +2193,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 114,
+                  "line": 117,
                   "col": 12
                 }
               },
@@ -2210,7 +2246,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 115,
+                  "line": 118,
                   "col": 12
                 }
               }
@@ -2234,7 +2270,7 @@
                 "reads": [],
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 107,
+                  "line": 110,
                   "col": 5
                 }
               }
@@ -2242,7 +2278,7 @@
           },
           "origin": {
             "file": "bookings.veld",
-            "line": 105,
+            "line": 108,
             "col": 12
           }
         },
@@ -2280,7 +2316,7 @@
           ],
           "origin": {
             "file": "bookings.veld",
-            "line": 119,
+            "line": 122,
             "col": 11
           }
         },
@@ -2368,7 +2404,7 @@
                 },
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 123,
+                  "line": 126,
                   "col": 10
                 }
               }
@@ -2407,7 +2443,7 @@
                 "reads": [],
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 124,
+                  "line": 127,
                   "col": 5
                 }
               }
@@ -2415,7 +2451,7 @@
           },
           "origin": {
             "file": "bookings.veld",
-            "line": 122,
+            "line": 125,
             "col": 15
           }
         },
@@ -2470,7 +2506,7 @@
             }
           ],
           "success": {
-            "status": 201,
+            "status": 200,
             "type": {
               "decl": 1
             },
@@ -2529,7 +2565,7 @@
                 },
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 129,
+                  "line": 132,
                   "col": 10
                 }
               }
@@ -2622,7 +2658,7 @@
                 "docs": null,
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 132,
+                  "line": 135,
                   "col": 5
                 }
               }
@@ -2645,7 +2681,7 @@
               "to": "paid",
               "origin": {
                 "file": "bookings.veld",
-                "line": 131,
+                "line": 134,
                 "col": 5
               }
             },
@@ -2681,7 +2717,7 @@
                 "reads": [],
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 130,
+                  "line": 133,
                   "col": 5
                 }
               }
@@ -2689,7 +2725,7 @@
           },
           "origin": {
             "file": "bookings.veld",
-            "line": 128,
+            "line": 131,
             "col": 20
           }
         },
@@ -2726,7 +2762,7 @@
             }
           ],
           "success": {
-            "status": 201,
+            "status": 200,
             "type": {
               "decl": 1
             },
@@ -2781,7 +2817,7 @@
                 },
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 137,
+                  "line": 140,
                   "col": 10
                 }
               }
@@ -2806,7 +2842,7 @@
               "to": "cancelled",
               "origin": {
                 "file": "bookings.veld",
-                "line": 139,
+                "line": 142,
                 "col": 5
               }
             },
@@ -2842,7 +2878,7 @@
                 "reads": [],
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 138,
+                  "line": 141,
                   "col": 5
                 }
               }
@@ -2850,7 +2886,7 @@
           },
           "origin": {
             "file": "bookings.veld",
-            "line": 136,
+            "line": 139,
             "col": 23
           }
         },
@@ -2887,7 +2923,7 @@
             }
           ],
           "success": {
-            "status": 201,
+            "status": 200,
             "type": {
               "decl": 1
             },
@@ -2942,7 +2978,7 @@
                 },
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 144,
+                  "line": 147,
                   "col": 10
                 }
               }
@@ -2966,7 +3002,7 @@
               "to": "checkedIn",
               "origin": {
                 "file": "bookings.veld",
-                "line": 146,
+                "line": 149,
                 "col": 5
               }
             },
@@ -3002,7 +3038,7 @@
                 "reads": [],
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 145,
+                  "line": 148,
                   "col": 5
                 }
               }
@@ -3010,7 +3046,7 @@
           },
           "origin": {
             "file": "bookings.veld",
-            "line": 143,
+            "line": 146,
             "col": 25
           }
         },
@@ -3047,7 +3083,7 @@
             }
           ],
           "success": {
-            "status": 201,
+            "status": 200,
             "type": {
               "decl": 1
             },
@@ -3102,7 +3138,7 @@
                 },
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 151,
+                  "line": 154,
                   "col": 10
                 }
               }
@@ -3126,7 +3162,7 @@
               "to": "refunded",
               "origin": {
                 "file": "bookings.veld",
-                "line": 153,
+                "line": 156,
                 "col": 5
               }
             },
@@ -3149,7 +3185,7 @@
                 "reads": [],
                 "origin": {
                   "file": "bookings.veld",
-                  "line": 152,
+                  "line": 155,
                   "col": 5
                 }
               }
@@ -3157,7 +3193,7 @@
           },
           "origin": {
             "file": "bookings.veld",
-            "line": 150,
+            "line": 153,
             "col": 23
           }
         }
@@ -3280,7 +3316,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 207,
+        "line": 210,
         "col": 1
       }
     },
@@ -3372,7 +3408,58 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 321,
+        "line": 329,
+        "col": 1
+      }
+    },
+    {
+      "name": "a caller can ask who they are",
+      "package": 0,
+      "service": 0,
+      "endpoint": "whoAmI",
+      "givens": [],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "name",
+            "wire": "name",
+            "value": {
+              "json": "Ann"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 280,
         "col": 1
       }
     },
@@ -3477,7 +3564,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 394,
+        "line": 402,
         "col": 1
       }
     },
@@ -3563,7 +3650,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 180,
+        "line": 183,
         "col": 1
       }
     },
@@ -3661,7 +3748,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 400,
+        "line": 408,
         "col": 1
       }
     },
@@ -3752,7 +3839,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 424,
+        "line": 432,
         "col": 1
       }
     },
@@ -3864,7 +3951,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 352,
+        "line": 360,
         "col": 1
       }
     },
@@ -3933,7 +4020,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 289,
+        "line": 297,
         "col": 1
       }
     },
@@ -4016,7 +4103,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 358,
+        "line": 366,
         "col": 1
       }
     },
@@ -4098,7 +4185,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 388,
+        "line": 396,
         "col": 1
       }
     },
@@ -4176,7 +4263,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 406,
+        "line": 414,
         "col": 1
       }
     },
@@ -4302,7 +4389,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 327,
+        "line": 335,
         "col": 1
       }
     },
@@ -4380,7 +4467,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 382,
+        "line": 390,
         "col": 1
       }
     },
@@ -4478,7 +4565,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 412,
+        "line": 420,
         "col": 1
       }
     },
@@ -4577,7 +4664,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 315,
+        "line": 323,
         "col": 1
       }
     },
@@ -4693,7 +4780,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 372,
+        "line": 380,
         "col": 1
       }
     },
@@ -4789,7 +4876,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 171,
+        "line": 174,
         "col": 1
       }
     },
@@ -4875,7 +4962,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 189,
+        "line": 192,
         "col": 1
       }
     },
@@ -4961,7 +5048,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 198,
+        "line": 201,
         "col": 1
       }
     },
@@ -5066,7 +5153,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 334,
+        "line": 342,
         "col": 1
       }
     },
@@ -5186,7 +5273,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 239,
+        "line": 242,
         "col": 1
       }
     },
@@ -5270,7 +5357,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 301,
+        "line": 309,
         "col": 1
       }
     },
@@ -5353,7 +5440,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 162,
+        "line": 165,
         "col": 1
       }
     },
@@ -5420,7 +5507,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 216,
+        "line": 219,
         "col": 1
       }
     },
@@ -5504,7 +5591,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 283,
+        "line": 291,
         "col": 1
       }
     },
@@ -5524,7 +5611,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 273,
+        "line": 276,
         "col": 1
       }
     },
@@ -5612,7 +5699,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 307,
+        "line": 315,
         "col": 1
       }
     },
@@ -5714,7 +5801,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 430,
+        "line": 438,
         "col": 1
       }
     },
@@ -5785,7 +5872,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 277,
+        "line": 285,
         "col": 1
       }
     },
@@ -5924,7 +6011,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 225,
+        "line": 228,
         "col": 1
       }
     },
@@ -6043,7 +6130,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 364,
+        "line": 372,
         "col": 1
       }
     },
@@ -6182,7 +6269,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 259,
+        "line": 262,
         "col": 1
       }
     },
@@ -6292,7 +6379,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 249,
+        "line": 252,
         "col": 1
       }
     },
@@ -6394,7 +6481,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 340,
+        "line": 348,
         "col": 1
       }
     },
@@ -6476,7 +6563,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 418,
+        "line": 426,
         "col": 1
       }
     },
@@ -6551,7 +6638,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 295,
+        "line": 303,
         "col": 1
       }
     },
@@ -6663,7 +6750,7 @@
       "docs": null,
       "origin": {
         "file": "bookings.veld",
-        "line": 346,
+        "line": 354,
         "col": 1
       }
     }

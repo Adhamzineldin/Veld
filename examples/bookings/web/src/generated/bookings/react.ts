@@ -7,8 +7,8 @@ import { useMutation, useQuery } from '../runtime/react';
 import type { MutationOptions, MutationResult, QueryOptions, QueryResult } from '../runtime/react';
 export { formRules, useFormRules } from '../runtime/react';
 export type { FormModel, FormRules } from '../runtime/react';
-import type { BookingsClient, CancelBookingRequest, CheckInRequest, CreateBookingRequest, GetBookingRequest, ListBookingsRequest, ListRoomsRequest, PayBookingRequest, RefundBookingRequest } from './client';
-import type { Booking, Room } from './models/bookings';
+import type { BookingsClient, CancelBookingRequest, CheckInRequest, CreateBookingRequest, GetBookingRequest, ListBookingsRequest, ListRoomsRequest, PayBookingRequest, RefundBookingRequest, WhoAmIRequest } from './client';
+import type { Booking, Room, User } from './models/bookings';
 
 const bookingsContext = createContext<BookingsClient | null>(null);
 
@@ -37,6 +37,12 @@ export function useBookingsClient(client?: BookingsClient): BookingsClient {
 export function useListRooms(req: ListRoomsRequest | null = {}, opts: QueryOptions<BookingsClient> = {}): QueryResult<Room[]> {
   const client = useBookingsClient(opts.client);
   return useQuery((r, init) => client.listRooms(r, init), req, opts.enabled);
+}
+
+/** The caller, as the server knows them. The web app asks it once after sign-in. */
+export function useWhoAmI(req: WhoAmIRequest | null = {}, opts: QueryOptions<BookingsClient> = {}): QueryResult<User> {
+  const client = useBookingsClient(opts.client);
+  return useQuery((r, init) => client.whoAmI(r, init), req, opts.enabled);
 }
 
 /** Books a room for the caller. The room is loaded once, before any rule runs. */
