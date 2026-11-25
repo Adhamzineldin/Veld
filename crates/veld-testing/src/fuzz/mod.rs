@@ -584,14 +584,15 @@ fn settle(
 /// The tasks whose boundaries are worth sending: numbers, instants and lengths.
 fn boundary_tasks(ir: &Ir, ep: &Endpoint) -> Vec<Task> {
     let mut all = Vec::new();
-    for r in &ep.rules.requires {
+    // The boundaries of an audited rule change no outcome, so they are not requested.
+    for r in ep.rules.requires.iter().filter(|r| r.rollout.is_none()) {
         all.extend(rules::tasks(&Scope::Request, &r.expr, true, false));
     }
     for (at, id) in rules::rule_places(ir, ep) {
         let Some(decl) = ir.decls.get(id.index()) else {
             continue;
         };
-        for rule in decl.rules() {
+        for rule in decl.rules().iter().filter(|r| !r.is_audited()) {
             all.extend(rules::tasks(
                 &Scope::Instance(at.clone()),
                 &rule.expr,

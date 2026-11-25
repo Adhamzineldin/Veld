@@ -66,8 +66,9 @@ pub(crate) type RuleIndex<'a> = BTreeMap<&'a str, RuleRef<'a>>;
 /// Every rule that can fire on a request to `ep`, by id.
 pub(crate) fn index<'a>(ir: &'a Ir, ep: &'a Endpoint) -> RuleIndex<'a> {
     let mut out = BTreeMap::new();
+    // An audited rule never rejects, so there is nothing to repair for it (section 17.1).
     for d in &ir.decls {
-        for r in d.rules() {
+        for r in d.rules().iter().filter(|r| !r.is_audited()) {
             out.insert(
                 r.id.as_str(),
                 RuleRef {
@@ -77,7 +78,7 @@ pub(crate) fn index<'a>(ir: &'a Ir, ep: &'a Endpoint) -> RuleIndex<'a> {
             );
         }
     }
-    for r in &ep.rules.requires {
+    for r in ep.rules.requires.iter().filter(|r| r.rollout.is_none()) {
         out.insert(
             r.id.as_str(),
             RuleRef {
@@ -361,7 +362,7 @@ fn walk(ir: &Ir, ty: &Type, at: &Loc, seen: &mut Vec<DeclId>, out: &mut Vec<(Loc
             if !matches!(decl.kind, DeclKind::Model(_) | DeclKind::Error(_)) {
                 return;
             }
-            if !decl.rules().is_empty() {
+            if decl.rules().iter().any(|r| !r.is_audited()) {
                 out.push((at.clone(), *id));
             }
             seen.push(*id);
