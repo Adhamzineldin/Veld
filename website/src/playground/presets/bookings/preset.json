@@ -1,0 +1,7 @@
+{
+  "title": "Bookings",
+  "usageTitle": "Mount the server with a fact loader and an auth hook",
+  "blurb": "Rules, a state machine and a policy in the contract, enforced by the generated server.",
+  "project": { "packages": [{ "name": "bookings" }] },
+  "target": { "emitter": "node", "role": "server", "framework": "express" }
+}

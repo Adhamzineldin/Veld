@@ -61,7 +61,7 @@ try {
   await download.click({ trial: true });
   await context.setOffline(false);
 
-  const presets = { hello: 'Hello', errors: 'Errors', 'library-package': 'Shared library', microservices: 'Microservices', streaming: 'Streaming' };
+  const presets = { hello: 'Hello', bookings: 'Bookings', errors: 'Errors', 'library-package': 'Shared library', microservices: 'Microservices', streaming: 'Streaming' };
   for (const [id, title] of Object.entries(presets)) {
     const entry = cases.find((c) => c.name.startsWith('preset:' + id + ' / ') && c.target.name === c.target.role + '-' + c.target.emitter);
     assert(entry?.ok, 'Generate fresh CLI parity fixtures for preset ' + id);

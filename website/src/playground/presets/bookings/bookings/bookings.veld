@@ -1,0 +1,120 @@
+/// A room of the hotel.
+model Room {
+  id: uuid
+  capacity: int @min(1)
+  closed: bool
+  nightly: decimal @min(0)
+}
+
+/// What a guest sends to book a room.
+model NewBooking {
+  roomId: uuid
+  guests: int @min(1)
+  start: datetime
+  end: datetime
+
+  rule endAfterStart: end > start
+    message "The stay must end after it starts"
+  rule atMost30Days: end - start <= days(30)
+    message "A stay is at most 30 days"
+}
+
+/// Where a booking is in its life. `flow` lists the legal moves.
+enum Status {
+  pending,
+  paid,
+  cancelled,
+
+  flow pending -> paid
+  flow pending -> cancelled
+  flow paid -> cancelled
+  final cancelled
+}
+
+model Booking extends NewBooking {
+  id: uuid @readonly
+  guestId: uuid
+  total: decimal
+  status: Status = .pending
+}
+
+model Payment {
+  amount: decimal
+}
+
+/// Whoever calls the API.
+model User {
+  id: uuid
+  roles: string[]
+  suspended: bool
+}
+
+principal User
+
+/// The guest who made the booking, and the staff. A suspended account never.
+policy ManageBooking(user: User, booking: Booking) {
+  permit when booking.guestId == user.id
+  permit when "staff" in user.roles
+  forbid when user.suspended
+    message "A suspended account cannot manage bookings"
+}
+
+error RoomFull 409 {
+  capacity: int
+}
+
+error AmountMismatch 422 {
+  expected: decimal
+}
+
+/// Hotel bookings. Every endpoint needs a bearer token.
+@auth(bearer)
+service Bookings at "/bookings" {
+  /// Books a room. The room is loaded once, before any rule runs.
+  post "/" createBooking(body: NewBooking) -> 201 Booking | RoomFull {
+    fact room: Room = body.roomId
+    require body.guests <= room.capacity else RoomFull { capacity: room.capacity }
+    require notInPast: body.start >= now
+      message "A booking cannot start in the past"
+    ensure keepsGuests: result.guests == body.guests
+  }
+
+  /// Pays for a booking. The amount must be the price.
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> 200 Booking | AmountMismatch {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+    transition booking.status: pending -> paid
+    require body.amount == booking.total else AmountMismatch { expected: booking.total }
+  }
+}
+
+example "a room that sleeps two refuses three guests" {
+  given room = { capacity: 2, closed: false }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    roomId: room.id, guests: 3,
+    start: "2026-06-10T00:00:00Z", end: "2026-06-12T00:00:00Z"
+  }) -> RoomFull { capacity: 2 }
+}
+
+example "a stay cannot end before it starts" {
+  given room = { capacity: 2, closed: false }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: {
+    roomId: room.id, guests: 1,
+    start: "2026-06-12T00:00:00Z", end: "2026-06-10T00:00:00Z"
+  }) -> ValidationError
+}
+
+example "a paid booking cannot be paid again" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", status: .paid, total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 179.00 })
+    -> InvalidTransition { field: "status", from: "paid", to: "paid" }
+}
+
+example "a stranger may not pay" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 179.00 }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [], suspended: false }
+  payBooking(id: booking.id, body: { amount: 179.00 }) -> Forbidden { message: "not permitted" }
+}

@@ -1,0 +1,42 @@
+import { createBookingsHandler, InvalidTransition, NotFound, toExpress } from '@veld/server-node';
+import type { Booking, Room, User } from '@veld/server-node';
+
+// Your data. Here two maps; in a real server, a database.
+const rooms = new Map<string, Room>();
+const bookings = new Map<string, Booking>();
+const users: Record<string, User> = {};
+
+// The handler checks the dates, the party size, the caller, the state and the amount
+// before this code runs. It only loads the data and writes the change.
+export const bookingsApi = toExpress(createBookingsHandler({
+  async createBooking({ body, room }, ctx) {
+    const booking: Booking = {
+      ...body,
+      id: crypto.randomUUID(),
+      guestId: (ctx.principal as User).id,
+      total: room.nightly,
+      status: 'pending',
+    };
+    bookings.set(booking.id, booking);
+    return booking;
+  },
+  async payBooking({ booking, transition }) {
+    // The check was a guard, not a lock: write only if the booking is still in `from`.
+    const current = bookings.get(booking.id);
+    if (current === undefined) throw new NotFound({ resource: 'booking' });
+    if (current.status !== transition.from) {
+      throw new InvalidTransition({ field: transition.field, from: current.status, to: transition.to });
+    }
+    const paid: Booking = { ...current, status: transition.to };
+    bookings.set(paid.id, paid);
+    return paid;
+  },
+}, {
+  // One loader per `fact`. Return nothing and the server answers 404.
+  facts: {
+    async room(key) { return rooms.get(key); },
+    async booking(key) { return bookings.get(key); },
+  },
+  // A bearer token to the caller of the contract's `principal`, or null for a 401.
+  auth: { bearer: async (token) => users[token] ?? null },
+}));
