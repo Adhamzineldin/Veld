@@ -1,5 +1,5 @@
 //! Policies and the principal (`spec/rules.md` section 11, `spec/targets/java.md` section 11): what
-//! is generated for `tests/rules/endpoints/policies.veld.pending`, that it compiles under
+//! is generated for `tests/rules/endpoints/policies.veld`, that it compiles under
 //! `javac -Xlint:all -Werror`, and that every example of the contract passes through the generated
 //! test handler on the JDK server and on Spring.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -10,7 +10,7 @@ use common::*;
 use veld_codegen::{FileSet, Role};
 use veld_ir::Ir;
 
-pub const POLICIES: &str = "tests/rules/endpoints/policies.veld.pending";
+pub const POLICIES: &str = "tests/rules/endpoints/policies.veld";
 /// A contract that has the policies of the examples and a state machine on one endpoint, for the
 /// order of the checks over HTTP.
 pub const GUARDED: &str = "crates/emitters/java/tests/fixtures/guarded.veld";

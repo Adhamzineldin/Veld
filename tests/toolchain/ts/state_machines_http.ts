@@ -1,6 +1,6 @@
 // State machines over real HTTP (spec/rules.md section 10): the production handler of a generated
 // Node server. Expects `./server` and `./client` generated from
-// tests/rules/endpoints/transitions.veld.pending.
+// tests/rules/endpoints/transitions.veld.
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';

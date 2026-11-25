@@ -19,15 +19,11 @@ use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
 use veld_ir::{Ir, PackageKind};
 use veld_project::output::{WriteOptions, write};
 
+/// The contract of the endpoint rules vectors. The other contracts of `tests/rules/endpoints`
+/// declare a service of the same name with other endpoints; they have their own test handlers
+/// and their own tests (`state_machines.rs`, `policies.rs`).
 fn endpoint_contracts() -> Vec<PathBuf> {
-    let dir = repo_root().join("tests/rules/endpoints");
-    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .filter(|p| p.extension().is_some_and(|x| x == "veld"))
-        .collect();
-    files.sort();
-    files
+    vec![repo_root().join("tests/rules/endpoints/bookings.veld")]
 }
 
 fn compile_text(text: String) -> Ir {
@@ -308,7 +304,7 @@ fn endpoint_rules_compile_strict_and_behave_over_http() {
 
 // ---- the examples are the vectors -------------------------------------------------------------
 
-/// Every contract of `tests/rules/endpoints`, compiled.
+/// The contracts of `endpoint_contracts`, compiled.
 fn endpoints_ir_all() -> Vec<Ir> {
     endpoint_contracts()
         .into_iter()
@@ -375,7 +371,10 @@ fn run_examples(work: &Path, contracts: &[Ir]) {
         failures.join("\n")
     );
     eprintln!("endpoint examples passed through the generated test handler: {passed}");
-    assert_eq!(passed, 20, "every example of tests/rules/endpoints");
+    assert_eq!(
+        passed, 20,
+        "every example of tests/rules/endpoints/bookings.veld"
+    );
 }
 
 // ---- fuzzing the generated test handler ---------------------------------------------------------

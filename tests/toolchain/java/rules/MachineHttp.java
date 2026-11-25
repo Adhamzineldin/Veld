@@ -32,7 +32,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * The production handler of {@code tests/rules/endpoints/transitions.veld.pending} over HTTP on the
+ * The production handler of {@code tests/rules/endpoints/transitions.veld} over HTTP on the
  * JDK server: the guard (409 with {@code field}, {@code from} and {@code to}), the transition the
  * handler receives, the order of the checks and the target check in {@code strict} and {@code audit}.
  */

@@ -1,6 +1,6 @@
 //! State machines in the generated TypeScript (`spec/targets/typescript.md` section 5d): snapshots
 //! of the helpers, the server module and the test handler; `tsc --strict` on all of them; every
-//! example of `tests/rules/endpoints/transitions.veld.pending` sent to the generated test handler;
+//! example of `tests/rules/endpoints/transitions.veld` sent to the generated test handler;
 //! and the production handler over HTTP.
 //!
 //! Without `node` or `node_modules` the toolchain tests are skipped unless
@@ -13,7 +13,7 @@ use common::*;
 use serde_json::json;
 use veld_ir::Ir;
 
-const CONTRACT: &str = "tests/rules/endpoints/transitions.veld.pending";
+const CONTRACT: &str = "tests/rules/endpoints/transitions.veld";
 
 fn machine_ir() -> Ir {
     compile_path(CONTRACT)

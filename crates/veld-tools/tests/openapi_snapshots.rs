@@ -41,7 +41,7 @@ fn streaming_and_auth() {
 // --- rules: invariants, endpoint rules and state machines --------------------------------
 
 const BOOKINGS: &str = include_str!("../../../tests/rules/endpoints/bookings.veld");
-const TRANSITIONS: &str = include_str!("../../../tests/rules/endpoints/transitions.veld.pending");
+const TRANSITIONS: &str = include_str!("../../../tests/rules/endpoints/transitions.veld");
 
 fn export_text(src: &str) -> String {
     let out = veld_compiler::compile(&veld_compiler::CompileInput {

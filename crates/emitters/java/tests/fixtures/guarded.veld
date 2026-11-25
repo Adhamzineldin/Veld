@@ -1,4 +1,4 @@
-// The policies of tests/rules/endpoints/policies.veld.pending and a state machine on the same
+// The policies of tests/rules/endpoints/policies.veld and a state machine on the same
 // endpoint: the order of the checks over HTTP (a missing fact, then the policies, then the
 // transition guard, then require) and `can<Endpoint>` against the server.
 

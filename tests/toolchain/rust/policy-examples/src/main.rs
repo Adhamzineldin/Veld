@@ -1,4 +1,4 @@
-//! Serves the generated test handler of `tests/rules/endpoints/policies.veld.pending` on a free
+//! Serves the generated test handler of `tests/rules/endpoints/policies.veld` on a free
 //! port with stub application handlers, and prints `PORT=<n>`. The examples are sent to it.
 
 use policies_server::bookings::bookings::{Booking, User};

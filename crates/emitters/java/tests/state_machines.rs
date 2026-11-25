@@ -1,5 +1,5 @@
 //! State machines of endpoints (`spec/rules.md` section 10, `spec/targets/java.md` section 10):
-//! what is generated for `tests/rules/endpoints/transitions.veld.pending`, that it compiles under
+//! what is generated for `tests/rules/endpoints/transitions.veld`, that it compiles under
 //! `javac -Xlint:all -Werror`, and that every example of the contract passes through the
 //! generated test handler on the JDK server and on Spring.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -10,7 +10,7 @@ use common::*;
 use veld_codegen::{FileSet, Role};
 use veld_ir::Ir;
 
-pub const TRANSITIONS: &str = "tests/rules/endpoints/transitions.veld.pending";
+pub const TRANSITIONS: &str = "tests/rules/endpoints/transitions.veld";
 
 fn transitions_ir() -> Ir {
     compile_path(TRANSITIONS, "bookings")

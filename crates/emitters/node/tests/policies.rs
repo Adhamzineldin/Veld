@@ -1,7 +1,7 @@
 //! Policies and the principal in the generated TypeScript (`spec/targets/typescript.md` section
 //! 5e): snapshots of the policy functions, the server module, the test handler and the client with
 //! `can<Endpoint>`; `tsc --strict` on all of them, in every framework adapter; every example of
-//! `tests/rules/endpoints/policies.veld.pending` sent to the generated test handler; and the
+//! `tests/rules/endpoints/policies.veld` sent to the generated test handler; and the
 //! production handler over HTTP.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod common;
@@ -11,7 +11,7 @@ use common::*;
 use serde_json::json;
 use veld_ir::Ir;
 
-const CONTRACT: &str = "tests/rules/endpoints/policies.veld.pending";
+const CONTRACT: &str = "tests/rules/endpoints/policies.veld";
 
 fn policy_ir() -> Ir {
     compile_path(CONTRACT)

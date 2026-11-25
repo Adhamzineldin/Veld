@@ -2,7 +2,7 @@
 //! `spec/targets/rust.md` section 11): what is generated, that unused policies and unread
 //! principals change nothing, the production handler over HTTP
 //! (`tests/toolchain/rust/policy-harness`, against `crates/emitters/java/tests/fixtures/
-//! guarded.veld`) and every example of `tests/rules/endpoints/policies.veld.pending` through the
+//! guarded.veld`) and every example of `tests/rules/endpoints/policies.veld` through the
 //! generated test handler.
 //!
 //! Without `cargo` the toolchain tests are skipped unless `VELD_REQUIRE_TOOLCHAINS=1`.
@@ -14,7 +14,7 @@ use serde_json::json;
 use veld_codegen::{FileSet, Role};
 use veld_ir::Ir;
 
-const POLICIES: &str = "tests/rules/endpoints/policies.veld.pending";
+const POLICIES: &str = "tests/rules/endpoints/policies.veld";
 const GUARDED: &str = "crates/emitters/java/tests/fixtures/guarded.veld";
 
 /// The crates of the examples workspace. All scratch workspaces build into one shared target

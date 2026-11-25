@@ -14,7 +14,7 @@ import gen.b.runtime.RequestContext;
 import java.net.InetSocketAddress;
 
 /**
- * The generated test handler of {@code tests/rules/endpoints/policies.veld.pending} on the JDK
+ * The generated test handler of {@code tests/rules/endpoints/policies.veld} on the JDK
  * server, with a stub application that is never reached (every example is a dry run or brings its
  * result). The auth hook is never called by the test handler. Prints {@code PORT=<n>} and serves
  * until it is killed.

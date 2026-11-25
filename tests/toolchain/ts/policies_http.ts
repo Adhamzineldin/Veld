@@ -1,6 +1,6 @@
 // Policies over real HTTP (spec/rules.md section 11): the production handler of a generated Node
 // server and the `can<Endpoint>` of a generated client. Expects `./server` and `./client` generated
-// from tests/rules/endpoints/policies.veld.pending.
+// from tests/rules/endpoints/policies.veld.
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';

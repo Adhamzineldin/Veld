@@ -1,4 +1,4 @@
-//! Serves the generated test handler of `tests/rules/endpoints/transitions.veld.pending` on a free
+//! Serves the generated test handler of `tests/rules/endpoints/transitions.veld` on a free
 //! port with stub application handlers, and prints `PORT=<n>`. The examples are sent to it.
 
 use bookings_server::bookings::bookings::{Booking, Status};

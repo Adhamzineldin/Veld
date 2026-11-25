@@ -1,5 +1,5 @@
 //! State machines over HTTP (`spec/rules.md` section 10): the production handler generated from
-//! `tests/rules/endpoints/transitions.veld.pending`, with application-written fact loaders, the
+//! `tests/rules/endpoints/transitions.veld`, with application-written fact loaders, the
 //! helpers of the machine and `can_<endpoint>` of the generated client.
 
 use std::collections::BTreeMap;

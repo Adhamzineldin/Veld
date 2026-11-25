@@ -1,4 +1,4 @@
-// The generated test handler of tests/rules/endpoints/policies.veld.pending (spec/rules.md sections
+// The generated test handler of tests/rules/endpoints/policies.veld (spec/rules.md sections
 // 11 and 12.4), served over node:http with a stub application. Prints `PORT=<n>` and serves until
 // stdin closes. The Rust test sends every example to it. Expects `./server` generated with
 // `testing = true`.

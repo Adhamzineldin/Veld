@@ -18,7 +18,7 @@ import gen.b.runtime.Transition;
 import java.net.InetSocketAddress;
 
 /**
- * The generated test handler of {@code tests/rules/endpoints/transitions.veld.pending} on the JDK
+ * The generated test handler of {@code tests/rules/endpoints/transitions.veld} on the JDK
  * server, with a stub application that is never reached (every example is a dry run or brings its
  * result). Prints {@code PORT=<n>} and serves until it is killed.
  */

@@ -1,6 +1,6 @@
 //! State machines of endpoints in generated Rust (`spec/rules.md` section 10,
 //! `spec/targets/rust.md` section 11): what is generated for
-//! `tests/rules/endpoints/transitions.veld.pending`, that the crates build and pass clippy, the
+//! `tests/rules/endpoints/transitions.veld`, that the crates build and pass clippy, the
 //! production handler over HTTP (`tests/toolchain/rust/machine-harness`) and every example of the
 //! contract through the generated test handler.
 //!
@@ -13,7 +13,7 @@ use serde_json::json;
 use veld_codegen::{FileSet, Role};
 use veld_ir::Ir;
 
-const TRANSITIONS: &str = "tests/rules/endpoints/transitions.veld.pending";
+const TRANSITIONS: &str = "tests/rules/endpoints/transitions.veld";
 
 fn transitions_ir() -> Ir {
     compile_path(TRANSITIONS, "bookings")
