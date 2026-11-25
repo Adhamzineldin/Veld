@@ -50,6 +50,24 @@ public final class BookingsClient {
           new EndpointSpec.Declared(422, ValidationError.VELD_SIG, ValidationError.SCHEMA, ValidationError::fromWire),
           new EndpointSpec.Declared(500, Internal.VELD_SIG, Internal.SCHEMA, Internal::fromWire)));
 
+  private static final EndpointSpec REFUND_BOOKING = new EndpointSpec(
+      "refundBooking",
+      "POST",
+      "/bookings/{id}/refund",
+      "veld:bookings/Bookings.refundBooking@e60463e702f57c9e",
+      201,
+      new EndpointSpec.Auth(EndpointSpec.AuthKind.BEARER, null),
+      List.of(
+          new EndpointSpec.Param("id", EndpointSpec.Binding.PATH, null, Schema.uuid(), false),
+          new EndpointSpec.Param("body", EndpointSpec.Binding.BODY, null, Payment.SCHEMA, false)),
+      Booking.SCHEMA,
+      List.of(
+          new EndpointSpec.Declared(401, Unauthorized.VELD_SIG, Unauthorized.SCHEMA, Unauthorized::fromWire),
+          new EndpointSpec.Declared(403, Forbidden.VELD_SIG, Forbidden.SCHEMA, Forbidden::fromWire),
+          new EndpointSpec.Declared(404, NotFound.VELD_SIG, NotFound.SCHEMA, NotFound::fromWire),
+          new EndpointSpec.Declared(422, ValidationError.VELD_SIG, ValidationError.SCHEMA, ValidationError::fromWire),
+          new EndpointSpec.Declared(500, Internal.VELD_SIG, Internal.SCHEMA, Internal::fromWire)));
+
   private static final EndpointSpec POSITIVE_BOOKING = new EndpointSpec(
       "positiveBooking",
       "GET",
@@ -138,6 +156,10 @@ public final class BookingsClient {
     return Booking.codec().decode(core.call(DIVIDES_BOOKING, request.toWire()));
   }
 
+  public Booking refundBooking(RefundBookingRequest request) {
+    return Booking.codec().decode(core.call(REFUND_BOOKING, request.toWire()));
+  }
+
   public Booking positiveBooking(PositiveBookingRequest request) {
     return Booking.codec().decode(core.call(POSITIVE_BOOKING, request.toWire()));
   }
@@ -163,6 +185,21 @@ public final class BookingsClient {
     long now = System.currentTimeMillis();
     try {
       return Policies.dividesVerdict(user, now).permitted();
+    } catch (RuleError e) {
+      return false;
+    }
+  }
+
+  /**
+   * Whether the server would let a call of `refundBooking` past the policies and the transition guard, for these facts, this caller and these parameters. It never sends or rejects anything: use it to show or hide a button. The server decides.
+   *
+   * @param user the caller
+   * @param body the parameter `body`
+   */
+  public static boolean canRefundBooking(User user, Payment body) {
+    long now = System.currentTimeMillis();
+    try {
+      return Policies.smallPaymentVerdict(user, body, now).permitted();
     } catch (RuleError e) {
       return false;
     }

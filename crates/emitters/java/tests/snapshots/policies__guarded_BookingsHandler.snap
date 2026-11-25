@@ -53,6 +53,24 @@ public final class BookingsHandler {
           new EndpointSpec.Declared(422, ValidationError.VELD_SIG, ValidationError.SCHEMA, ValidationError::fromWire),
           new EndpointSpec.Declared(500, Internal.VELD_SIG, Internal.SCHEMA, Internal::fromWire)));
 
+  private static final EndpointSpec REFUND_BOOKING = new EndpointSpec(
+      "refundBooking",
+      "POST",
+      "/bookings/{id}/refund",
+      "veld:bookings/Bookings.refundBooking@e60463e702f57c9e",
+      201,
+      new EndpointSpec.Auth(EndpointSpec.AuthKind.BEARER, null),
+      List.of(
+          new EndpointSpec.Param("id", EndpointSpec.Binding.PATH, null, Schema.uuid(), false),
+          new EndpointSpec.Param("body", EndpointSpec.Binding.BODY, null, Payment.SCHEMA, false)),
+      Booking.SCHEMA,
+      List.of(
+          new EndpointSpec.Declared(401, Unauthorized.VELD_SIG, Unauthorized.SCHEMA, Unauthorized::fromWire),
+          new EndpointSpec.Declared(403, Forbidden.VELD_SIG, Forbidden.SCHEMA, Forbidden::fromWire),
+          new EndpointSpec.Declared(404, NotFound.VELD_SIG, NotFound.SCHEMA, NotFound::fromWire),
+          new EndpointSpec.Declared(422, ValidationError.VELD_SIG, ValidationError.SCHEMA, ValidationError::fromWire),
+          new EndpointSpec.Declared(500, Internal.VELD_SIG, Internal.SCHEMA, Internal::fromWire)));
+
   private static final EndpointSpec POSITIVE_BOOKING = new EndpointSpec(
       "positiveBooking",
       "GET",
@@ -146,6 +164,22 @@ public final class BookingsHandler {
               run.allow("veld:bookings/Divides@b29effa06148307d", List.of(), () -> Policies.dividesVerdict(principal, now), reason -> Forbidden.fromWire(Json.object().put("message", Json.of(reason)).build(), 403, null));
               DividesBookingFacts facts = new DividesBookingFacts(fact_booking);
               var result = impl.dividesBooking(request, facts, ctx);
+              Json encoded = Booking.codec().encode(result);
+              run.arm();
+              return encoded;
+            }),
+        new ServerEndpoint(
+            REFUND_BOOKING,
+            List.of(),
+            (params, ctx) -> {
+              RefundBookingRequest request = RefundBookingRequest.fromWire(params);
+              EndpointRules.Run run = EndpointRules.start(hooks, REFUND_BOOKING, issues -> ValidationError.fromWire(Router.issuesToWire(issues), 422, null), resource -> NotFound.fromWire(Json.object().put("resource", Json.of(resource)).build(), 404, null), clock.applyAsLong(ctx));
+              long now = run.now();
+              User principal = (User) ctx.principal();
+              Booking fact_booking = run.required("booking", loaders.booking(request.id(), ctx));
+              run.allow("veld:bookings/SmallPayment@d34c1d60da1f922a", List.of("body"), () -> Policies.smallPaymentVerdict(principal, request.body(), now), reason -> Forbidden.fromWire(Json.object().put("message", Json.of(reason)).build(), 403, null));
+              RefundBookingFacts facts = new RefundBookingFacts(fact_booking);
+              var result = impl.refundBooking(request, facts, ctx);
               Json encoded = Booking.codec().encode(result);
               run.arm();
               return encoded;

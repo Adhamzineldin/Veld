@@ -50,11 +50,21 @@ policy Positive(user: User, n: int) {
   permit when n > 0
 }
 
+// An argument that reads a request parameter: the violation names it and can<Endpoint> takes it.
+policy SmallPayment(user: User, payment: Payment) {
+  permit when payment.amount <= 100.00
+}
+
 @auth(bearer)
 service Bookings at "/bookings" {
   get "/{id}/divides" dividesBooking(id: uuid) -> Booking {
     fact booking: Booking = id
     allow Divides(user)
+  }
+
+  post "/{id}/refund" refundBooking(id: uuid, body: Payment) -> Booking {
+    fact booking: Booking = id
+    allow SmallPayment(user, body)
   }
 
   get "/{id}/positive" positiveBooking(id: uuid) -> Booking {

@@ -19,6 +19,8 @@ import gen.b.bookings.server.PayBookingFacts;
 import gen.b.bookings.server.PayBookingRequest;
 import gen.b.bookings.server.PositiveBookingFacts;
 import gen.b.bookings.server.PositiveBookingRequest;
+import gen.b.bookings.server.RefundBookingFacts;
+import gen.b.bookings.server.RefundBookingRequest;
 import gen.b.runtime.Json;
 import gen.b.runtime.RequestContext;
 import gen.b.runtime.RuleWalk;
@@ -117,6 +119,12 @@ public final class PolicyHttp {
     }
 
     @Override
+    public Booking refundBooking(RefundBookingRequest request, RefundBookingFacts facts, RequestContext ctx) {
+      HANDLER_CALLS.incrementAndGet();
+      return facts.booking();
+    }
+
+    @Override
     public Booking positiveBooking(PositiveBookingRequest request, PositiveBookingFacts facts, RequestContext ctx) {
       HANDLER_CALLS.incrementAndGet();
       return facts.booking();
@@ -184,6 +192,7 @@ public final class PolicyHttp {
       theOrderOfTheChecks(server);
       severalAllows(server);
       aClauseThatCannotBeEvaluatedFailsClosed(server);
+      anArgumentThatReadsAParameter(server);
       theClientAgreesWithTheServer(server);
       thePolicyMethods();
     } finally {
@@ -269,6 +278,19 @@ public final class PolicyHttp {
     check(getPath(server, "member", "positive").status() == 200, "a defined argument passes");
   }
 
+  /** An argument that reads a request parameter: the violation names it. */
+  private static void anArgumentThatReadsAParameter(HttpServer server) throws Exception {
+    check(refund(server, "guest", "50.00").status() == 201, "a small payment passes");
+    Answer big = refund(server, "guest", "500.00");
+    check(big.status() == 403, "a big payment: " + big.status());
+    check(big.body().get("violations").asArray().items().get(0).asObject().get("fields").write().equals("[\"body\"]"),
+        "the violation names the parameter: " + big.body().write());
+  }
+
+  private static Answer refund(HttpServer server, String token, String amount) throws Exception {
+    return call(server, "POST", "/bookings/" + BOOKING + "/refund", token, "{\"amount\":\"" + amount + "\"}");
+  }
+
   /** {@code can<Endpoint>} answers what the server answers, for every caller and both states. */
   private static void theClientAgreesWithTheServer(HttpServer server) throws Exception {
     int compared = 0;
@@ -286,13 +308,18 @@ public final class PolicyHttp {
         check(divides == (getPath(server, token, "divides").status() == 200), "canDividesBooking " + token);
         boolean positive = gen.c.bookings.client.BookingsClient.canPositiveBooking(caller);
         check(positive == (getPath(server, token, "positive").status() == 200), "canPositiveBooking " + token);
-        compared += 4;
+        for (String amount : new String[] {"50.00", "500.00"}) {
+          boolean small = gen.c.bookings.client.BookingsClient.canRefundBooking(
+              caller, new gen.c.bookings.bookings.Payment(new BigDecimal(amount)));
+          check(small == (refund(server, token, amount).status() / 100 == 2), "canRefundBooking " + token + " " + amount);
+        }
+        compared += 6;
       }
       boolean cancellable = gen.c.bookings.client.BookingsClient.canCancelBooking(fact);
       check(cancellable == (cancel(server, "guest").status() == 201), "canCancelBooking " + state);
       compared++;
     }
-    check(compared == 2 * (4 * CALLERS.size() + 1), "every combination was compared: " + compared);
+    check(compared == 2 * (6 * CALLERS.size() + 1), "every combination was compared: " + compared);
     // Spot checks of the answers themselves, so that agreeing on `false` everywhere cannot pass.
     gen.c.bookings.bookings.Booking pending = new gen.c.bookings.bookings.Booking(
         BOOKING, GUEST, gen.c.bookings.bookings.Status.PENDING, TOTAL);
