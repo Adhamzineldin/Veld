@@ -6,6 +6,7 @@ mod collect;
 mod events;
 #[cfg(test)]
 mod events_groundwork_tests;
+#[cfg(test)]
 mod events_tests;
 mod examples;
 pub use collect::module_path;
