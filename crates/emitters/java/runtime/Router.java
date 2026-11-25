@@ -227,6 +227,9 @@ public final class Router implements VeldHandler {
         throw new IllegalStateException(spec.name() + ": stream item failed validation: " + issues);
       }
     }
+    // #if rules
+    RuleWalk.checkItem(spec, hooks, wire);
+    // #endif
     return SseEvent.frame(Wire.canonicalOf(spec.success(), wire), event.id(), event.event(), event.retry());
   }
   // veld:end
@@ -251,6 +254,9 @@ public final class Router implements VeldHandler {
   private void startWs(Route route, Matcher match, VeldRequest request, WsSocket socket) {
     WsConnection conn = new WsConnection(
             route.endpoint().spec(), socket, hooks.validateResponses(), hooks.validateRequests(), std);
+    // #if rules
+    conn.rules(hooks);
+    // #endif
     conn.attach();
     Thread thread = new Thread(() -> runWs(route, match, request, conn), "veld-ws");
     thread.setDaemon(true);
@@ -394,6 +400,11 @@ public final class Router implements VeldHandler {
   }
 
   private VeldResponse failure(Throwable err, EndpointSpec spec, RequestContext ctx) {
+    // #if rules
+    if (err instanceof RuleWalk.Rejected) {
+      return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
+    }
+    // #endif
     if (err instanceof VeldError ve) {
       for (EndpointSpec.Declared d : spec.errors()) {
         if (d.sig().equals(ve.sig())) {

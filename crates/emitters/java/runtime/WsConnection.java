@@ -29,6 +29,9 @@ final class WsConnection implements WsSession<Json, Json> {
   private final List<String> early = new ArrayList<>();
   private boolean ready;
   private volatile boolean closed;
+  // #if rules
+  private HandlerHooks rulesHooks;
+  // #endif
 
   WsConnection(
       EndpointSpec spec,
@@ -50,6 +53,13 @@ final class WsConnection implements WsSession<Json, Json> {
     this.incomingSchema = in;
   }
 
+  // #if rules
+  /** Gives the connection the hooks that carry the rule output mode and the violation hook. */
+  void rules(HandlerHooks hooks) {
+    this.rulesHooks = hooks;
+  }
+
+  // #endif
   /** Starts listening; frames are held back until {@link #ready()}. */
   void attach() {
     socket.onMessage(this::onText);
@@ -103,6 +113,16 @@ final class WsConnection implements WsSession<Json, Json> {
       fail(validation(issues));
       return;
     }
+    // #if rules
+    if (rulesHooks != null && validateRequests) {
+      VeldResponse broken = RuleWalk.messageFailure(
+          spec, rulesHooks, incomingSchema, Wire.prepare(incomingSchema, raw, Wire.Mode.REQUEST), std);
+      if (broken != null) {
+        fail(broken);
+        return;
+      }
+    }
+    // #endif
     inbox.add(Wire.prepare(incomingSchema, raw, Wire.Mode.REQUEST));
   }
 
@@ -204,6 +224,16 @@ final class WsConnection implements WsSession<Json, Json> {
         throw new IllegalStateException(spec.name() + ": message failed validation: " + issues);
       }
     }
+    // #if rules
+    if (rulesHooks != null) {
+      try {
+        RuleWalk.checkItem(spec, rulesHooks, wire);
+      } catch (RuleWalk.Rejected rejected) {
+        fail(Router.problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build()));
+        throw rejected;
+      }
+    }
+    // #endif
     socket.send("{\"data\":" + Wire.canonicalOf(spec.success(), wire) + "}");
   }
 

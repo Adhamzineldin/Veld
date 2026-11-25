@@ -12,7 +12,11 @@ use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
 use veld_ir::{Ir, PackageKind};
 
 fn compile_contract_file(package: &str, path: &str) -> Ir {
-    let text = std::fs::read_to_string(repo_root().join(path)).unwrap();
+    compile_contract_with(package, path, &|s| s.to_string())
+}
+
+fn compile_contract_with(package: &str, path: &str, patch: &dyn Fn(&str) -> String) -> Ir {
+    let text = patch(&std::fs::read_to_string(repo_root().join(path)).unwrap());
     let out = compile(&CompileInput {
         packages: vec![PackageInput {
             name: package.into(),
@@ -133,6 +137,85 @@ fn the_spring_adapter_answers_the_422_golden() {
         .unwrap_or("")
         .to_string();
     assert_golden(raw.status, &content_type, &raw.body);
+}
+
+// -- streams ----------------------------------------------------------------------------------
+
+const LIVE: &str = "tests/toolchain/contract/rules_live/live.veld";
+
+#[test]
+fn an_sse_item_that_violates_its_rule_is_handled_by_the_output_mode_on_the_jdk_server() {
+    if !require_javac("an_sse_item_that_violates") {
+        return;
+    }
+    let ir = compile_contract_with("live", LIVE, &without_ws);
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = Vec::new();
+    for (role, base) in [(Role::Server, "gen.rs"), (Role::Client, "gen.rc")] {
+        let files = run(&ir, role, all(&ir), vec![], None, options(base, Some("17")));
+        sources.extend(write_files(work.path(), &files));
+    }
+    sources.push(repo_root().join("tests/toolchain/java/rules/RuleStreamsSse.java"));
+    javac_ok(work.path(), &sources, "17");
+    let out = java_main(work.path(), "veldtest.RuleStreamsSse", &[]);
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("OK"),
+        "{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn stream_items_and_websocket_messages_are_checked_through_the_spring_adapter() {
+    let name = "stream_items_and_websocket_messages";
+    if !require_javac(name) || !spring_available(name) {
+        return;
+    }
+    let ir = compile_contract_file("live", LIVE);
+    let server = run(
+        &ir,
+        Role::Server,
+        all(&ir),
+        vec![],
+        Some("spring"),
+        options("gen.rs", Some("17")),
+    );
+    let client = run(
+        &ir,
+        Role::Client,
+        all(&ir),
+        vec![],
+        None,
+        options("gen.rc", Some("17")),
+    );
+    let work = build_spring(
+        "spring-streams",
+        &server,
+        &["rules/spring-streams/App.java", "rules/spring-streams/Probe.java"],
+    );
+    let driver = tempfile::tempdir().unwrap();
+    let mut sources = write_files(driver.path(), &client);
+    sources.push(repo_root().join("tests/toolchain/java/rules/RuleStreamsWs.java"));
+    javac_ok(driver.path(), &sources, "17");
+    for (mode, events) in [
+        ("strict", vec!["OUTPUT REJECTED", "OUTPUT REJECTED", "INPUT REJECTED"]),
+        ("audit", vec!["OUTPUT AUDITED", "OUTPUT AUDITED", "INPUT REJECTED"]),
+        ("off", vec!["INPUT REJECTED"]),
+    ] {
+        let app = run_spring(&work, "/__events", &[&format!("--veld.mode={mode}")]);
+        let port = app.port.to_string();
+        let out = java_main(driver.path(), "veldtest.RuleStreamsWs", &[&port, mode]);
+        assert!(
+            out.status.success() && String::from_utf8_lossy(&out.stdout).contains("OK"),
+            "{mode}:\n{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let seen = raw_http(app.port, "GET", "/__events", &[], "").unwrap().body;
+        let seen: Vec<&str> = seen.lines().collect();
+        assert_eq!(seen, events, "{mode}: the hook saw these violations");
+    }
 }
 
 // -- request validation turned off ------------------------------------------------------------

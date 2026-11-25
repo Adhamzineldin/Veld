@@ -202,6 +202,12 @@ pub fn start_spring(
     ready_path: &str,
     extra: &[&str],
 ) -> SpringApp {
+    let work = build_spring(dir, files, app_sources);
+    run_spring(&work, ready_path, extra)
+}
+
+/// Builds the application and returns its work directory (see [`start_spring`]).
+pub fn build_spring(dir: &str, files: &FileSet, app_sources: &[&str]) -> PathBuf {
     let java = repo_root().join("tests/toolchain/java");
     let work = java.join(".work").join(dir);
     let _ = std::fs::remove_dir_all(&work);
@@ -243,6 +249,11 @@ pub fn start_spring(
         "mvnw package failed:\n{}",
         std::fs::read_to_string(work.join("mvnw.log")).unwrap_or_default()
     );
+    work
+}
+
+/// Starts the jar built in `work` and waits until `ready_path` answers.
+pub fn run_spring(work: &Path, ready_path: &str, extra: &[&str]) -> SpringApp {
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
         .local_addr()

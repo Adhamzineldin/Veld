@@ -365,9 +365,37 @@ public final class RuleWalk {
    */
   static VeldResponse outputFailure(
       EndpointSpec spec, HandlerHooks hooks, Schema schema, Json wire, boolean strictShape, Router.StdSigs std) {
+    return outputRejected(spec, hooks, schema, wire, strictShape)
+        ? Router.problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build())
+        : null;
+  }
+
+  /** Thrown from a stream when the output mode {@code STRICT} rejects an item. */
+  static final class Rejected extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    Rejected() {
+      super("a stream item violates a rule", null, false, false);
+    }
+  }
+
+  /**
+   * The same check for one item of a stream the server is about to send (spec/rules.md section
+   * 5.2): {@code STRICT} throws {@link Rejected} (the stream ends as it does on any server
+   * failure), {@code AUDIT} reports, {@code OFF} does nothing.
+   */
+  static void checkItem(EndpointSpec spec, HandlerHooks hooks, Json wire) {
+    if (outputRejected(spec, hooks, spec.success(), wire, true)) {
+      throw new Rejected();
+    }
+  }
+
+  /** Whether strict mode rejects the value; reports every violation to the hook. */
+  private static boolean outputRejected(
+      EndpointSpec spec, HandlerHooks hooks, Schema schema, Json wire, boolean strictShape) {
     OutputMode mode = hooks.rulesOutput();
     if (mode == OutputMode.OFF || schema == null || !reachesRules(schema)) {
-      return null;
+      return false;
     }
     long started = System.nanoTime();
     List<Issue> shape = Wire.validate(schema, wire, "$", false);
@@ -375,15 +403,50 @@ public final class RuleWalk {
       if (strictShape) {
         throw new IllegalStateException(spec.name() + ": response failed validation: " + shape);
       }
-      return null;
+      return false;
     }
     List<Violation> found = check(schema, wire, "$", false);
     if (found.isEmpty()) {
-      return null;
+      return false;
     }
     boolean strict = mode == OutputMode.STRICT;
     report(hooks, spec, Position.OUTPUT, strict ? Outcome.REJECTED : Outcome.AUDITED, found, started);
-    return strict ? Router.problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build()) : null;
+    return strict;
+  }
+
+  /**
+   * The invariants of a message a WebSocket client sent, after its shape was validated: the
+   * {@code 422} problem (path root {@code message}) to send as the final frame, or {@code null}.
+   */
+  static VeldResponse messageFailure(
+      EndpointSpec spec, HandlerHooks hooks, Schema schema, Json prepared, Router.StdSigs std) {
+    if (schema == null || !reachesRules(schema)) {
+      return null;
+    }
+    long started = System.nanoTime();
+    List<Violation> found = check(schema, prepared, "message", true);
+    if (found.isEmpty()) {
+      return null;
+    }
+    report(hooks, spec, Position.INPUT, Outcome.REJECTED, found, started);
+    return Router.problem(
+        std.validation(), "ValidationError", 422, spec.sig(), Router.issuesToWire(issues(found)), found);
+  }
+
+  /** The client's check of a message it is about to send on a WebSocket (path root {@code message}). */
+  static void localMessageCheck(
+      EndpointSpec ep, Schema schema, Json wire, java.util.function.Function<List<Issue>, VeldError> validation) {
+    if (schema == null || !reachesRules(schema)) {
+      return;
+    }
+    List<Violation> found = check(schema, Wire.prepare(schema, wire, Wire.Mode.REQUEST), "message", true);
+    if (!found.isEmpty()) {
+      VeldError err = validation.apply(issues(found));
+      err.setOp(ep.sig());
+      err.setViolations(found);
+      err.markLocal();
+      throw err;
+    }
   }
 
   private static void report(

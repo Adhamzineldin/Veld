@@ -252,7 +252,7 @@ fn streaming_source() -> String {
 
 /// The streaming contract without its `ws` endpoints (and the doc comments of those): what the
 /// `jdk` framework can serve.
-fn without_ws(source: &str) -> String {
+pub fn without_ws(source: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
     let mut docs: Vec<&str> = Vec::new();
     for line in source.lines() {

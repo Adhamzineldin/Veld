@@ -163,6 +163,9 @@ public final class ClientCore {
       EndpointSpec ep, Json.Obj params, Codec<In> in, Codec<Out> out) {
     check(ep, params);
     WsChannel<In, Out> channel = new WsChannel<>(ep, in, out, options.validate(defaults.validate()), defaults.validation());
+    // #if rules
+    channel.localRules(options.localRules());
+    // #endif
     URI uri = wsUri(ep, params);
     java.util.function.Function<WebSocket.Listener, WebSocket> opener =
         listener -> {
