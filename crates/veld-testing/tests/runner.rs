@@ -245,8 +245,11 @@ fn serve_raw(script: impl Fn(&Captured) -> Reply + Send + 'static) -> Fake {
             }
             let Ok(mut stream) = stream else { continue };
             if let Some(c) = read_request(&mut stream) {
-                write_reply(&mut stream, &script(&c));
+                // Record the request before answering: the client may read the answer and the
+                // test may look at the requests before this thread runs again.
+                let answer = script(&c);
                 seen2.lock().unwrap().push(c);
+                write_reply(&mut stream, &answer);
             }
         }
     });
