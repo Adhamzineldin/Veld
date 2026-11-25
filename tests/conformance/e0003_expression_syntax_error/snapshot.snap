@@ -1,0 +1,37 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0003]: expected an expression, found `rule`
+ --> app/app.veld:5:3
+  |
+5 |   rule unclosed: (a + b
+  |   ^^^^
+
+error[E0003]: expected `)` to close the parenthesis, found `rule`
+ --> app/app.veld:6:3
+  |
+6 |   rule missingOperand: a + * b
+  |   ^^^^
+
+error[E0003]: expected an expression, found `*`
+ --> app/app.veld:6:28
+  |
+6 |   rule missingOperand: a + * b
+  |                            ^
+
+error[E0003]: expected an expression, found `null`
+ --> app/app.veld:7:30
+  |
+7 |   rule nullIsNotAThing: a == null
+  |                              ^^^^
+  = help: rules have no `null`; ask `has(field)` instead
+
+error[E0003]: expected an expression, found `,`
+ --> app/app.veld:8:27
+  |
+8 |   rule emptyArgument: len(,)
+  |                           ^
+
+== ir ==
+(no IR: compilation failed)

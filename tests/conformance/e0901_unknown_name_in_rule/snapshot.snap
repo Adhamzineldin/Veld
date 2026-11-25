@@ -1,0 +1,48 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0901]: unknown name `totl`
+ --> app/app.veld:11:14
+   |
+11 |   rule typo: totl > 0
+   |              ^^^^
+  = help: did you mean `total`?
+
+error[E0901]: lambda variable `total` shadows a field of this declaration
+ --> app/app.veld:12:33
+   |
+12 |   rule shadowsField: all(lines, total => total.qty > 0)
+   |                                 ^^^^^
+  = help: choose another name
+
+error[E0901]: enum `Status` has no variant `pendng`
+ --> app/app.veld:13:34
+   |
+13 |   rule unknownVariant: status == .pendng
+   |                                  ^^^^^^^
+  = help: did you mean `pending`?
+
+error[E0901]: `Line` has no field `qtty`
+ --> app/app.veld:14:46
+   |
+14 |   rule unknownNestedField: all(lines, l => l.qtty > 0)
+   |                                              ^^^^
+  = help: did you mean `qty`?
+
+error[E0901]: unknown name `LIMIT`
+ --> app/app.veld:15:30
+   |
+15 |   rule unknownConst: total < LIMIT
+   |                              ^^^^^
+  = help: fields in scope: total, status, lines
+
+error[E0901]: lambda variable `l` shadows an enclosing lambda variable
+ --> app/app.veld:16:50
+   |
+16 |   rule shadowsLambda: all(lines, l => any(lines, l => l.qty > 0))
+   |                                                  ^
+  = help: choose another name
+
+== ir ==
+(no IR: compilation failed)

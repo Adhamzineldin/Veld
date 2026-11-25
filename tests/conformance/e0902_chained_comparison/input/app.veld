@@ -1,0 +1,6 @@
+model Range {
+  low: int
+  mid: int
+  high: int
+  rule ordered: low < mid < high
+}

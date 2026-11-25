@@ -241,6 +241,10 @@ fn every_diagnostic_code_has_an_invalid_case() {
     codes.extend((501..=512).map(|n| format!("E0{n}")));
     codes.extend((601..=603).map(|n| format!("E0{n}")));
     codes.extend(["E0701", "E0702", "W0001", "W0201", "W0202", "W0701"].map(String::from));
+    // Rules (spec/rules.md section 14) and the expression nesting limit.
+    codes.push("E0005".to_string());
+    codes.extend((901..=908).map(|n| format!("E0{n}")));
+    codes.extend((901..=903).map(|n| format!("W0{n}")));
     let names: Vec<String> = case_dirs()
         .iter()
         .map(|d| case_name(d).to_lowercase())

@@ -1,0 +1,21 @@
+model Address {
+  city: string
+  zip?: string
+}
+
+model Reads {
+  a?: int
+  b?: int
+  nick?: string
+  address?: Address
+  items: Address[]
+  rule bare: a > 0
+  rule orNotGuard: has(a) || a > 0
+  rule wrongSide: a > 0 && has(a)
+  rule otherField: has(b) && a > 0
+  rule onlyPrefix: has(address) && len(address.zip) == 5
+  rule notEnough: !has(a) && a > 0
+  rule impliesLeft: a > 0 implies has(a)
+  rule inLambda: all(items, i => len(i.zip) > 0)
+  rule afterOr: has(nick) || len(nick) > 0
+}

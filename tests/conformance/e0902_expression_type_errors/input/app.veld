@@ -1,0 +1,24 @@
+enum Status { pending, paid }
+
+model Types {
+  n: int
+  big: long
+  ratio: float
+  price: decimal
+  name: string
+  ok: bool
+  status: Status
+  tags: string[]
+  rule notBool: n + 1
+  rule longWithFloat: big < ratio
+  rule decimalWithFloat: price == ratio
+  rule stringWithInt: name == n
+  rule andNeedsBool: n && ok
+  rule negatesString: -name > 0
+  rule bareVariant: .paid == .paid
+  rule wrongEnum: status == 1
+  rule inNeedsList: n in n
+  rule narrowing: big in [1, 2] && n in [big]
+  rule sumsStrings: name + name == name
+  rule readsFieldOfInt: n.x > 0
+}

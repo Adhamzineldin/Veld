@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0902]: comparisons cannot be chained
+ --> app/app.veld:5:27
+  |
+5 |   rule ordered: low < mid < high
+  |                           ^
+  = help: write `a < b && b < c`; a comparison is not associative
+
+== ir ==
+(no IR: compilation failed)

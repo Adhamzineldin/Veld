@@ -1,0 +1,25 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0908]: `3000000000` does not fit in a 32-bit `int`
+ --> app/app.veld:5:26
+  |
+5 |   rule tooBigForInt: n > 3000000000
+  |                          ^^^^^^^^^^
+
+error[E0908]: `9007199254740993` cannot be represented exactly as a `float`
+ --> app/app.veld:6:30
+  |
+6 |   rule inexactFloat: ratio < 9007199254740993
+  |                              ^^^^^^^^^^^^^^^^
+
+error[E0908]: `1.5e3` cannot be a `decimal`: a decimal has no exponent
+ --> app/app.veld:7:26
+  |
+7 |   rule exponent: price < 1.5e3
+  |                          ^^^^^
+  = help: write the digits out in full, or compare against a `float` field
+
+== ir ==
+(no IR: compilation failed)

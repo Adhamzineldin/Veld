@@ -1,0 +1,26 @@
+// Every accepted guard form of spec/rules.md section 3.6.
+
+model Address {
+  city: string
+  zip?: string
+}
+
+model Guards {
+  a?: int
+  b?: int
+  nick?: string
+  address?: Address
+  items: Address[]
+  rule andLeft: has(a) && a > 0
+  rule impliesLeft: has(a) implies a > 0
+  rule orNegated: !has(a) || a > 0
+  rule orNot: not has(a) || a > 0
+  rule conjunction: has(a) && has(b) && a < b
+  rule prefixes: has(address.zip) && len(address.zip) == 5 && len(address.city) > 0
+  rule chain: has(address) && has(address.zip) && len(address.zip) > 0
+  rule insideImplies: has(nick) && has(a) implies len(nick) < a
+  rule bothAbsent: !has(a) || !has(b) || a != b
+  rule inLambda: all(items, i => has(i.zip) implies len(i.zip) > 0)
+  rule guardedRight: has(a) && (a > 1 || a < 0)
+  rule everywhere: has(nick) && len(nick) > 0 || !has(nick)
+}

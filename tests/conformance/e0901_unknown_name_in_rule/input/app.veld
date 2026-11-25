@@ -1,0 +1,17 @@
+enum Status { pending, paid }
+
+model Line {
+  qty: int
+}
+
+model Order {
+  total: decimal
+  status: Status
+  lines: Line[]
+  rule typo: totl > 0
+  rule shadowsField: all(lines, total => total.qty > 0)
+  rule unknownVariant: status == .pendng
+  rule unknownNestedField: all(lines, l => l.qtty > 0)
+  rule unknownConst: total < LIMIT
+  rule shadowsLambda: all(lines, l => any(lines, l => l.qty > 0))
+}

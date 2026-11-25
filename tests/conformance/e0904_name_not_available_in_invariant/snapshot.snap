@@ -1,0 +1,24 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0904]: `now` is not available in an invariant: data that was valid yesterday stays valid today
+ --> app/app.veld:4:31
+  |
+4 |   rule notInThePast: stamp >= now
+  |                               ^^^
+
+error[E0904]: `result` is not available in an invariant
+ --> app/app.veld:5:28
+  |
+5 |   rule resultName: size == result.size
+  |                            ^^^^^^
+
+error[E0904]: `old(...)` is not available in an invariant: there is no operation to compare with
+ --> app/app.veld:6:18
+  |
+6 |   rule oldValue: old(size) < size
+  |                  ^^^
+
+== ir ==
+(no IR: compilation failed)

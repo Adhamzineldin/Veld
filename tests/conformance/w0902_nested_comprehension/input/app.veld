@@ -1,0 +1,18 @@
+model Cell {
+  v: int
+}
+
+model Row {
+  cells: Cell[]
+  bounded: Cell[] @length(max: 10)
+}
+
+model Grid {
+  rows: Row[]
+  capped: Row[] @length(max: 10)
+  rule unbounded: all(rows, r => all(r.cells, c => c.v > 0))
+  rule innerUnbounded: all(capped, r => all(r.cells, c => c.v > 0))
+  rule outerUnbounded: all(rows, r => all(r.bounded, c => c.v > 0))
+  rule bothBounded: all(capped, r => all(r.bounded, c => c.v > 0))
+  rule flat: all(rows, r => len(r.cells) > 0)
+}

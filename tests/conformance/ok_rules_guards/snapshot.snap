@@ -1,0 +1,1643 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Address",
+      "qualified": "app:app.Address",
+      "sig": "veld:app/Address@525ce7905bd3a0db",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 3,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "city",
+          "wire": "city",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 4,
+            "col": 3
+          }
+        },
+        {
+          "name": "zip",
+          "wire": "zip",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 5,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "Guards",
+      "qualified": "app:app.Guards",
+      "sig": "veld:app/Guards@3b662d8854d83557",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "a",
+          "wire": "a",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 9,
+            "col": 3
+          }
+        },
+        {
+          "name": "b",
+          "wire": "b",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 10,
+            "col": 3
+          }
+        },
+        {
+          "name": "nick",
+          "wire": "nick",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 11,
+            "col": 3
+          }
+        },
+        {
+          "name": "address",
+          "wire": "address",
+          "type": {
+            "decl": 0
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 12,
+            "col": 3
+          }
+        },
+        {
+          "name": "items",
+          "wire": "items",
+          "type": {
+            "list": {
+              "decl": 0
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 13,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "andLeft",
+          "id": "veld:app/Guards.andLeft@b874a6db21e49865",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "has": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "a",
+                          "wire": "a",
+                          "optional": true
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "gt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "a",
+                                "wire": "a",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "a"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 14,
+            "col": 8
+          }
+        },
+        {
+          "name": "impliesLeft",
+          "id": "veld:app/Guards.impliesLeft@1da221bff35bbc94",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "implies",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "has": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "a",
+                          "wire": "a",
+                          "optional": true
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "gt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "a",
+                                "wire": "a",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "a"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 15,
+            "col": 8
+          }
+        },
+        {
+          "name": "orNegated",
+          "id": "veld:app/Guards.orNegated@5d5c5ed3e429d0b3",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "or",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "not": {
+                      "t": {
+                        "scalar": "bool"
+                      },
+                      "e": {
+                        "has": {
+                          "root": "self",
+                          "steps": [
+                            {
+                              "name": "a",
+                              "wire": "a",
+                              "optional": true
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "gt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "a",
+                                "wire": "a",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "a"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 16,
+            "col": 8
+          }
+        },
+        {
+          "name": "orNot",
+          "id": "veld:app/Guards.orNot@062b98908120ecaa",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "or",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "not": {
+                      "t": {
+                        "scalar": "bool"
+                      },
+                      "e": {
+                        "has": {
+                          "root": "self",
+                          "steps": [
+                            {
+                              "name": "a",
+                              "wire": "a",
+                              "optional": true
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "gt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "a",
+                                "wire": "a",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "a"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 17,
+            "col": 8
+          }
+        },
+        {
+          "name": "conjunction",
+          "id": "veld:app/Guards.conjunction@b638d1b76f21b299",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "has": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "a",
+                                "wire": "a",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "has": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "b",
+                                "wire": "b",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "lt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "a",
+                                "wire": "a",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "b",
+                                "wire": "b",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "a",
+            "b"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 18,
+            "col": 8
+          }
+        },
+        {
+          "name": "prefixes",
+          "id": "veld:app/Guards.prefixes@395538e45dc88878",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "has": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "address",
+                                "wire": "address",
+                                "optional": true
+                              },
+                              {
+                                "name": "zip",
+                                "wire": "zip",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "eq",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "call": {
+                                  "f": "len",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "path": {
+                                          "root": "self",
+                                          "steps": [
+                                            {
+                                              "name": "address",
+                                              "wire": "address",
+                                              "optional": true
+                                            },
+                                            {
+                                              "name": "zip",
+                                              "wire": "zip",
+                                              "optional": true
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 5
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "gt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "call": {
+                            "f": "len",
+                            "args": [
+                              {
+                                "t": {
+                                  "scalar": "string"
+                                },
+                                "e": {
+                                  "path": {
+                                    "root": "self",
+                                    "steps": [
+                                      {
+                                        "name": "address",
+                                        "wire": "address",
+                                        "optional": true
+                                      },
+                                      {
+                                        "name": "city",
+                                        "wire": "city",
+                                        "optional": false
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "address"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 19,
+            "col": 8
+          }
+        },
+        {
+          "name": "chain",
+          "id": "veld:app/Guards.chain@ca3b4812274c1b8a",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "has": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "address",
+                                "wire": "address",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "has": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "address",
+                                "wire": "address",
+                                "optional": true
+                              },
+                              {
+                                "name": "zip",
+                                "wire": "zip",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "gt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "call": {
+                            "f": "len",
+                            "args": [
+                              {
+                                "t": {
+                                  "scalar": "string"
+                                },
+                                "e": {
+                                  "path": {
+                                    "root": "self",
+                                    "steps": [
+                                      {
+                                        "name": "address",
+                                        "wire": "address",
+                                        "optional": true
+                                      },
+                                      {
+                                        "name": "zip",
+                                        "wire": "zip",
+                                        "optional": true
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "address"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 20,
+            "col": 8
+          }
+        },
+        {
+          "name": "insideImplies",
+          "id": "veld:app/Guards.insideImplies@5001949c1ed4e138",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "implies",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "has": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "nick",
+                                "wire": "nick",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "has": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "a",
+                                "wire": "a",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "lt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "call": {
+                            "f": "len",
+                            "args": [
+                              {
+                                "t": {
+                                  "scalar": "string"
+                                },
+                                "e": {
+                                  "path": {
+                                    "root": "self",
+                                    "steps": [
+                                      {
+                                        "name": "nick",
+                                        "wire": "nick",
+                                        "optional": true
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "a",
+                                "wire": "a",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "nick",
+            "a"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 21,
+            "col": 8
+          }
+        },
+        {
+          "name": "bothAbsent",
+          "id": "veld:app/Guards.bothAbsent@e7678ed0e397c19c",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "or",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "or",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "not": {
+                            "t": {
+                              "scalar": "bool"
+                            },
+                            "e": {
+                              "has": {
+                                "root": "self",
+                                "steps": [
+                                  {
+                                    "name": "a",
+                                    "wire": "a",
+                                    "optional": true
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "not": {
+                            "t": {
+                              "scalar": "bool"
+                            },
+                            "e": {
+                              "has": {
+                                "root": "self",
+                                "steps": [
+                                  {
+                                    "name": "b",
+                                    "wire": "b",
+                                    "optional": true
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "ne",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "a",
+                                "wire": "a",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "b",
+                                "wire": "b",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "a",
+            "b"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 22,
+            "col": 8
+          }
+        },
+        {
+          "name": "inLambda",
+          "id": "veld:app/Guards.inLambda@3e028070ebf6175f",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "quant": {
+                "q": "all",
+                "list": {
+                  "t": {
+                    "list": {
+                      "decl": 0
+                    }
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "items",
+                          "wire": "items",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "var": "i",
+                "body": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "implies",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "has": {
+                            "root": {
+                              "var": "i"
+                            },
+                            "steps": [
+                              {
+                                "name": "zip",
+                                "wire": "zip",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "call": {
+                                  "f": "len",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "path": {
+                                          "root": {
+                                            "var": "i"
+                                          },
+                                          "steps": [
+                                            {
+                                              "name": "zip",
+                                              "wire": "zip",
+                                              "optional": true
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "items"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 23,
+            "col": 8
+          }
+        },
+        {
+          "name": "guardedRight",
+          "id": "veld:app/Guards.guardedRight@844a3fc0f3bbef6b",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "has": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "a",
+                          "wire": "a",
+                          "optional": true
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "or",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "self",
+                                  "steps": [
+                                    {
+                                      "name": "a",
+                                      "wire": "a",
+                                      "optional": true
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 1
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "lt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "self",
+                                  "steps": [
+                                    {
+                                      "name": "a",
+                                      "wire": "a",
+                                      "optional": true
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "a"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 24,
+            "col": 8
+          }
+        },
+        {
+          "name": "everywhere",
+          "id": "veld:app/Guards.everywhere@9bf050981b7d3750",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "or",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "has": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "nick",
+                                "wire": "nick",
+                                "optional": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "call": {
+                                  "f": "len",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "path": {
+                                          "root": "self",
+                                          "steps": [
+                                            {
+                                              "name": "nick",
+                                              "wire": "nick",
+                                              "optional": true
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "not": {
+                      "t": {
+                        "scalar": "bool"
+                      },
+                      "e": {
+                        "has": {
+                          "root": "self",
+                          "steps": [
+                            {
+                              "name": "nick",
+                              "wire": "nick",
+                              "optional": true
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "nick"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 25,
+            "col": 8
+          }
+        }
+      ]
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

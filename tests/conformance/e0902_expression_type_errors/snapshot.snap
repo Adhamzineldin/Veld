@@ -1,0 +1,91 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0902]: a rule must be a `bool`, found `int`
+ --> app/app.veld:12:17
+   |
+12 |   rule notBool: n + 1
+   |                 ^^^^^
+
+error[E0902]: `<` cannot be applied to `long` and `float`
+ --> app/app.veld:13:23
+   |
+13 |   rule longWithFloat: big < ratio
+   |                       ^^^^^^^^^^^
+  = help: operand types must agree; only `int` to `long`, `float` or `decimal` and `long` to `decimal` convert
+
+error[E0902]: `==` cannot be applied to `decimal` and `float`
+ --> app/app.veld:14:26
+   |
+14 |   rule decimalWithFloat: price == ratio
+   |                          ^^^^^^^^^^^^^^
+  = help: operand types must agree; only `int` to `long`, `float` or `decimal` and `long` to `decimal` convert
+
+error[E0902]: `==` cannot be applied to `string` and `int`
+ --> app/app.veld:15:23
+   |
+15 |   rule stringWithInt: name == n
+   |                       ^^^^^^^^^
+  = help: operand types must agree; only `int` to `long`, `float` or `decimal` and `long` to `decimal` convert
+
+error[E0902]: an operand of `&&` must be a `bool`, found `int`
+ --> app/app.veld:16:22
+   |
+16 |   rule andNeedsBool: n && ok
+   |                      ^
+
+error[E0902]: unary `-` needs a number or a duration, found `string`
+ --> app/app.veld:17:23
+   |
+17 |   rule negatesString: -name > 0
+   |                       ^^^^^
+
+error[E0902]: cannot tell which enum `.paid` belongs to
+ --> app/app.veld:18:21
+   |
+18 |   rule bareVariant: .paid == .paid
+   |                     ^^^^^
+  = help: compare it with a value of the enum, e.g. `status == .paid`
+
+error[E0902]: cannot tell which enum `.paid` belongs to
+ --> app/app.veld:18:30
+   |
+18 |   rule bareVariant: .paid == .paid
+   |                              ^^^^^
+  = help: compare it with a value of the enum, e.g. `status == .paid`
+
+error[E0902]: `==` cannot be applied to `Status` and `int`
+ --> app/app.veld:19:19
+   |
+19 |   rule wrongEnum: status == 1
+   |                   ^^^^^^^^^^^
+  = help: operand types must agree; only `int` to `long`, `float` or `decimal` and `long` to `decimal` convert
+
+error[E0902]: the right side of `in` must be a list or a map, found `int`
+ --> app/app.veld:20:21
+   |
+20 |   rule inNeedsList: n in n
+   |                     ^^^^^^
+
+error[E0902]: list element is `long`, the list holds `int`
+ --> app/app.veld:21:42
+   |
+21 |   rule narrowing: big in [1, 2] && n in [big]
+   |                                          ^^^
+
+error[E0902]: `+` cannot be applied to `string` and `string`
+ --> app/app.veld:22:21
+   |
+22 |   rule sumsStrings: name + name == name
+   |                     ^^^^^^^^^^^
+  = help: operand types must agree; only `int` to `long`, `float` or `decimal` and `long` to `decimal` convert
+
+error[E0902]: cannot read `.x` of a value of type `int`
+ --> app/app.veld:23:27
+   |
+23 |   rule readsFieldOfInt: n.x > 0
+   |                           ^
+
+== ir ==
+(no IR: compilation failed)

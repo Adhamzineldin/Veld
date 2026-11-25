@@ -1,0 +1,9 @@
+model Annotated {
+  n: int
+  @min(1)
+  rule minOnRule: n > 0
+  @readonly @wire("x")
+  rule readonlyOnRule: n < 100
+  @deprecated("use n")
+  rule deprecatedIsFine: n != 5
+}

@@ -1,0 +1,87 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0906]: unknown function `size`
+ --> app/app.veld:7:17
+  |
+7 |   rule unknown: size(tags) > 0
+  |                 ^^^^
+  = help: functions: has, len, matches, startsWith, endsWith, contains, days, hours, minutes, seconds, ms, all, any, count, sum
+
+error[E0906]: unknown function `min`
+ --> app/app.veld:8:15
+  |
+8 |   rule noMin: min(n, 3) > 0
+  |               ^^^
+  = help: `min` and `max` are not part of rules v1; `all(items, i => i.qty <= 10)` states a bound
+
+error[E0906]: `len` takes 1 argument, found 2
+ --> app/app.veld:9:17
+  |
+9 |   rule tooMany: len(name, name) > 0
+  |                 ^^^^^^^^^^^^^^^
+
+error[E0906]: `startsWith` takes 2 arguments, found 1
+ --> app/app.veld:10:16
+   |
+10 |   rule tooFew: startsWith(name)
+   |                ^^^^^^^^^^^^^^^^
+
+error[E0906]: `len` takes a string, list, map or `bytes`, found `int`
+ --> app/app.veld:11:23
+   |
+11 |   rule wrongType: len(n) > 0
+   |                       ^
+
+error[E0906]: the second argument of `matches` must be a string literal
+ --> app/app.veld:12:41
+   |
+12 |   rule patternNotLiteral: matches(name, prefix)
+   |                                         ^^^^^^
+
+error[E0906]: `contains` takes strings, found `int`
+ --> app/app.veld:13:31
+   |
+13 |   rule stringNeeded: contains(n, "x")
+   |                               ^
+
+error[E0906]: `len` does not take a lambda
+ --> app/app.veld:14:24
+   |
+14 |   rule lambdaHere: len(x => x) > 0
+   |                        ^^^^^^
+
+error[E0906]: `all` takes a list and a lambda: `all(list, x => ...)`
+ --> app/app.veld:15:23
+   |
+15 |   rule lambdaMissing: all(tags)
+   |                       ^^^^^^^^^
+
+error[E0906]: `all` takes a list, found `string`
+ --> app/app.veld:16:22
+   |
+16 |   rule notAList: all(name, c => c == "a")
+   |                      ^^^^
+
+error[E0906]: `required` is never absent, so `has` has nothing to ask
+ --> app/app.veld:17:25
+   |
+17 |   rule neverAbsent: has(required)
+   |                         ^^^^^^^^
+  = help: `has` takes an optional field (`name?: T`) or a path through one
+
+error[E0906]: `has` takes a field path such as `has(address.zip)`
+ --> app/app.veld:18:29
+   |
+18 |   rule hasOfExpression: has(n + 1)
+   |                             ^^^^^
+
+error[E0906]: `days` takes an `int` or a `long`, found `string`
+ --> app/app.veld:19:27
+   |
+19 |   rule daysOfString: days(name) > days(1)
+   |                           ^^^^
+
+== ir ==
+(no IR: compilation failed)

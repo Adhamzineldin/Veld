@@ -1,0 +1,8 @@
+model Range {
+  n: int
+  ratio: float
+  price: decimal
+  rule tooBigForInt: n > 3000000000
+  rule inexactFloat: ratio < 9007199254740993
+  rule exponent: price < 1.5e3
+}
