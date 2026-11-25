@@ -32,6 +32,8 @@ pub struct ServiceModel {
     pub adapter_package: String,
     /// Whether the service's endpoints need hooks (auth or middleware).
     pub needs_hooks: bool,
+    /// Whether the target has rules: such a target also routes the path with a trailing slash.
+    pub rules: bool,
     pub endpoints: Vec<EndpointModel>,
 }
 

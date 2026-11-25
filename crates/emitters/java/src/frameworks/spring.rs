@@ -103,8 +103,19 @@ fn controller_class(svc: &ServiceModel) -> String {
 const MVC: &str = "org.springframework.web.bind.annotation";
 
 /// The Spring mapping annotation of an endpoint, importing what it uses.
-fn mapping(imp: &mut Imports, ep: &EndpointModel) -> String {
-    let path = java_str(&ep.path);
+///
+/// With `slash` the path is also mapped with a trailing slash, because the shared router ignores
+/// it (`spec/targets/java.md` section 5) and Spring MVC 6 does not.
+fn mapping(imp: &mut Imports, ep: &EndpointModel, slash: bool) -> String {
+    let path = if slash && ep.path != "/" {
+        format!(
+            "{{{}, {}}}",
+            java_str(&ep.path),
+            java_str(&format!("{}/", ep.path))
+        )
+    } else {
+        java_str(&ep.path)
+    };
     let verb = match ep.http_method {
         "GET" => "Get",
         "POST" => "Post",
@@ -159,7 +170,7 @@ fn controller(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
     );
     for ep in svc.endpoints.iter().filter(|e| e.kind != EndpointKind::Ws) {
         w.blank();
-        w.line(mapping(&mut imp, ep));
+        w.line(mapping(&mut imp, ep, svc.rules));
         let bridge = imp.name(&format!(
             "{}.SpringAdapter",
             runtime::adapter_package(&model.base)
@@ -279,6 +290,7 @@ mod tests {
                 server_package: "a.b.orders.server".into(),
                 adapter_package: "a.b.adapters.orders".into(),
                 needs_hooks: true,
+                rules: false,
                 endpoints: vec![
                     EndpointModel {
                         name: "getOrder".into(),
@@ -322,6 +334,7 @@ mod tests {
                 server_package: "a.b.live.server".into(),
                 adapter_package: "a.b.adapters.live".into(),
                 needs_hooks: false,
+                rules: false,
                 endpoints: vec![
                     endpoint("ticks", "/live/ticks", EndpointKind::Sse),
                     endpoint("chat", "/live/chat/{room}", EndpointKind::Ws),

@@ -397,6 +397,7 @@ pub fn service_models(tree: &Tree<'_>) -> Vec<ServiceModel> {
             server_package: tree.api_package(pkg, "server"),
             adapter_package: format!("{}.adapters.{dir}", tree.base),
             needs_hooks: needs_hooks(svc),
+            rules: tree.rules,
             endpoints: svc
                 .endpoints
                 .iter()

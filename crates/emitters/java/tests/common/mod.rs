@@ -1,6 +1,8 @@
 //! Shared helpers: compile the realistic contract and run the Java generator.
 #![allow(dead_code)]
 
+pub mod live;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
