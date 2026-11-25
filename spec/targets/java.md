@@ -172,12 +172,12 @@ The structure of `spec/rules.md` §8, in Java. The other rules features (`rules_
 |---|---|
 | int | `addInt` `subInt` `mulInt` `divInt` `remInt` `negInt` (`MIN / -1` overflows, `MIN % -1` is `0`, a zero divisor is `division_by_zero`) |
 | long, instants, dates, times, durations | `addLong` `subLong` `mulLong` `divLong` `remLong` `negLong`, `dateDiff` |
-| float | `addDouble` `subDouble` `mulDouble` `divDouble` `remDouble` `finite` (zero divisor checked first, result must be finite) |
-| conversions | `instantMs` `dateDays` `timeMs` |
+| float | `addFloat` `subFloat` `mulFloat` `divFloat` `remFloat` `finite` (Java only) (zero divisor checked first, result must be finite) |
+| conversions | `toDatetime` `toDate` `toTime` (`instantMs` is an alias of `toDatetime`, still printed because a committed snapshot spells it) |
 | durations | `days` `hours` `minutes` `seconds` `ms` (checked multiplication) |
-| strings | `len` (code points), `matches` (same `Pattern.find` semantics as `@pattern`) |
-| membership | `in` (by `equals`), `inDecimal` (numeric), `inDouble`, `inTemporal` (list fields of `date`, `datetime`, `time` against the unit-converted value) |
-| comprehensions | `all` `any` `count` `sumInt` `sumLong` `sumDouble` `sumDecimal` |
+| strings | `lenString` (code points; `len` is an alias still printed, as above), `matches` (same `Pattern.find` semantics as `@pattern`) |
+| membership | `in` (by `equals`), `decIn` (numeric), `inDouble`, `inTemporal` (`in`, `inDouble` and `inTemporal` are Java only) (list fields of `date`, `datetime`, `time` against the unit-converted value) |
+| comprehensions | `all` `any` `countWhere` `sumInt` `sumLong` `sumFloat` `sumDecimal` |
 | running a rule | `run(out, id, name, path, fields, message, test)` evaluates one rule, catches `RuleError` and records the violation (message `rule <name> could not be evaluated`, `error` = the kind) |
 
 **Generated per declaration with rules** (model: in the record; error: in the error class, on `Data`):

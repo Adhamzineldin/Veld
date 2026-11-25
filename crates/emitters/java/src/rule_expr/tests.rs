@@ -161,11 +161,11 @@ fn paths_read_accessors_and_unbox_what_can_be_null() {
     );
     assert_eq!(
         code(&field("day", sc(Scalar::Date))),
-        "Rules.dateDays(v.day())"
+        "Rules.toDate(v.day())"
     );
     assert_eq!(
         code(&field("clock", sc(Scalar::Time))),
-        "Rules.timeMs(v.clock())"
+        "Rules.toTime(v.clock())"
     );
     let nested = path(
         Root::SelfValue,
@@ -238,7 +238,7 @@ fn arithmetic_goes_through_checked_helpers_by_type() {
     let ratio = || field("ratio", sc(Scalar::Float));
     assert_eq!(
         code(&bin(Op::Sub, ratio(), ratio(), sc(Scalar::Float))),
-        "Rules.subDouble(v.ratio(), v.ratio())"
+        "Rules.subFloat(v.ratio(), v.ratio())"
     );
     let price = || field("price", sc(Scalar::Decimal));
     assert_eq!(
@@ -315,7 +315,7 @@ fn time_and_duration_arithmetic_is_checked_long_arithmetic() {
     let dates = bin(Op::Sub, day(), day(), ExprType::Duration);
     assert_eq!(
         code(&dates),
-        "Rules.dateDiff(Rules.dateDays(v.day()), Rules.dateDays(v.day()))"
+        "Rules.dateDiff(Rules.toDate(v.day()), Rules.toDate(v.day()))"
     );
     let neg = ex(
         ExprType::Duration,
@@ -396,7 +396,7 @@ fn in_picks_the_helper_by_element_type() {
             list,
             b.clone()
         )),
-        "Rules.inDecimal(List.of(new BigDecimal(\"1.5\")), v.price())"
+        "Rules.decIn(List.of(new BigDecimal(\"1.5\")), v.price())"
     );
     let by = field(
         "by",
@@ -427,7 +427,7 @@ fn comprehensions_are_lambdas_over_prefixed_variables() {
     );
     assert_eq!(
         code(&quant(Quantifier::Count, nums(), "x", positive(), int_t())),
-        "Rules.count(v.nums(), it_x -> (int) it_x > 0)"
+        "Rules.countWhere(v.nums(), it_x -> (int) it_x > 0)"
     );
     assert_eq!(
         code(&quant(Quantifier::Sum, nums(), "x", x(), int_t())),
@@ -493,7 +493,7 @@ fn in_over_dates_and_floats_uses_the_unit_aware_helpers() {
     let day = field("day", sc(Scalar::Date));
     assert_eq!(
         code(&bin(Op::In, day, days, b.clone())),
-        "Rules.inTemporal(v.days(), Rules.dateDays(v.day()))"
+        "Rules.inTemporal(v.days(), Rules.toDate(v.day()))"
     );
     let ratio = field("ratio", sc(Scalar::Float));
     let reals = field("reals", list_of(Scalar::Float));
@@ -552,7 +552,7 @@ fn the_other_sums_and_has_on_a_variable() {
             field("reals", list_of(Scalar::Float)),
             sc(Scalar::Float)
         )),
-        "Rules.sumDouble(v.reals(), it_x -> (double) it_x)"
+        "Rules.sumFloat(v.reals(), it_x -> (double) it_x)"
     );
     assert_eq!(
         code(&sum(

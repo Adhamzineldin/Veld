@@ -197,22 +197,22 @@ public final class Rules {
   }
 
   /** {@code a + b}, finite. */
-  public static double addDouble(double a, double b) {
+  public static double addFloat(double a, double b) {
     return finite(a + b);
   }
 
   /** {@code a - b}, finite. */
-  public static double subDouble(double a, double b) {
+  public static double subFloat(double a, double b) {
     return finite(a - b);
   }
 
   /** {@code a * b}, finite. */
-  public static double mulDouble(double a, double b) {
+  public static double mulFloat(double a, double b) {
     return finite(a * b);
   }
 
   /** {@code a / b}; the zero divisor is checked before dividing. */
-  public static double divDouble(double a, double b) {
+  public static double divFloat(double a, double b) {
     if (b == 0.0) {
       throw RuleError.divisionByZero();
     }
@@ -220,7 +220,7 @@ public final class Rules {
   }
 
   /** {@code a % b} with the sign of the dividend; the zero divisor is checked first. */
-  public static double remDouble(double a, double b) {
+  public static double remFloat(double a, double b) {
     if (b == 0.0) {
       throw RuleError.divisionByZero();
     }
@@ -230,7 +230,7 @@ public final class Rules {
   // -- decimal --------------------------------------------------------------------------------
 
   /** Whether {@code x} is one of {@code list}, comparing numerically ({@code 1.50 in [1.5]}). */
-  public static boolean inDecimal(List<BigDecimal> list, BigDecimal x) {
+  public static boolean decIn(List<BigDecimal> list, BigDecimal x) {
     for (BigDecimal item : list) {
       if (item.compareTo(x) == 0) {
         return true;
@@ -250,19 +250,19 @@ public final class Rules {
   }
 
   /**
-   * Whether {@code x}, an instant, date or time in the units of {@link #instantMs}, {@link
-   * #dateDays} or {@link #timeMs}, is one of {@code list}. The elements are {@link Instant}s,
+   * Whether {@code x}, an instant, date or time in the units of {@link #toDatetime}, {@link
+   * #toDate} or {@link #toTime}, is one of {@code list}. The elements are {@link Instant}s,
    * {@link LocalDate}s or {@link LocalTime}s (a list field) or already {@code long}s (a literal).
    */
   public static boolean inTemporal(List<?> list, long x) {
     for (Object item : list) {
       long v;
       if (item instanceof Instant at) {
-        v = instantMs(at);
+        v = toDatetime(at);
       } else if (item instanceof LocalDate day) {
-        v = dateDays(day);
+        v = toDate(day);
       } else if (item instanceof LocalTime time) {
-        v = timeMs(time);
+        v = toTime(time);
       } else {
         v = ((Number) item).longValue();
       }
@@ -281,17 +281,22 @@ public final class Rules {
   // -- instants, dates, times, durations ------------------------------------------------------
 
   /** The instant as epoch milliseconds; digits below the millisecond are dropped. */
-  public static long instantMs(Instant at) {
+  public static long toDatetime(Instant at) {
     return at.toEpochMilli();
   }
 
+  /** The same as {@link #toDatetime}; the name the generated check functions of the first release call. */
+  public static long instantMs(Instant at) {
+    return toDatetime(at);
+  }
+
   /** The date as days since the epoch. */
-  public static long dateDays(LocalDate date) {
+  public static long toDate(LocalDate date) {
     return date.toEpochDay();
   }
 
   /** The time as milliseconds since midnight; digits below the millisecond are dropped. */
-  public static long timeMs(LocalTime time) {
+  public static long toTime(LocalTime time) {
     return time.toNanoOfDay() / 1_000_000L;
   }
 
@@ -328,8 +333,13 @@ public final class Rules {
   // -- strings --------------------------------------------------------------------------------
 
   /** The number of Unicode code points (the meaning of {@code @length} and {@code len}). */
-  public static int len(String s) {
+  public static int lenString(String s) {
     return s.codePointCount(0, s.length());
+  }
+
+  /** The same as {@link #lenString}; the name the generated check functions of the first release call. */
+  public static int len(String s) {
+    return lenString(s);
   }
 
   /** {@code matches(s, re)}: a match anywhere unless anchored, as {@code @pattern} does. */
@@ -360,7 +370,7 @@ public final class Rules {
   }
 
   /** The number of elements for which {@code test} holds, checked. */
-  public static <T> int count(List<T> list, Predicate<? super T> test) {
+  public static <T> int countWhere(List<T> list, Predicate<? super T> test) {
     int n = 0;
     for (T x : list) {
       if (test.test(x)) {
@@ -389,10 +399,10 @@ public final class Rules {
   }
 
   /** Sum of {@code float} values, finite after every step; zero for an empty list. */
-  public static <T> double sumDouble(List<T> list, ToDoubleFunction<? super T> f) {
+  public static <T> double sumFloat(List<T> list, ToDoubleFunction<? super T> f) {
     double acc = 0.0;
     for (T x : list) {
-      acc = addDouble(acc, f.applyAsDouble(x));
+      acc = addFloat(acc, f.applyAsDouble(x));
     }
     return acc;
   }

@@ -253,7 +253,7 @@ impl<'f, 't, 'a> JavaExpr<'f, 't, 'a> {
             )),
             ValueKind::List => {
                 let helper = match left {
-                    ValueKind::Decimal => "inDecimal",
+                    ValueKind::Decimal => "decIn",
                     ValueKind::Float => "inDouble",
                     ValueKind::Date | ValueKind::Datetime | ValueKind::Time => "inTemporal",
                     ValueKind::Bool
@@ -326,7 +326,7 @@ impl<'f, 't, 'a> JavaExpr<'f, 't, 'a> {
             | ValueKind::Duration
             | ValueKind::Date
             | ValueKind::Time => self.call_helper(&format!("{name}Long"), &[l, r]),
-            ValueKind::Float => self.call_helper(&format!("{name}Double"), &[l, r]),
+            ValueKind::Float => self.call_helper(&format!("{name}Float"), &[l, r]),
             ValueKind::Decimal => match op {
                 Op::Add => Printed::atom(format!("{}.add({})", l.at(Printed::ATOM), r.at(0))),
                 Op::Sub => Printed::atom(format!("{}.subtract({})", l.at(Printed::ATOM), r.at(0))),
@@ -411,8 +411,8 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
         let code = prefixes.last().cloned().unwrap_or_default();
         match self.kind(ty) {
             ValueKind::Datetime => self.call_helper("instantMs", &[&Printed::atom(code)]),
-            ValueKind::Date => self.call_helper("dateDays", &[&Printed::atom(code)]),
-            ValueKind::Time => self.call_helper("timeMs", &[&Printed::atom(code)]),
+            ValueKind::Date => self.call_helper("toDate", &[&Printed::atom(code)]),
+            ValueKind::Time => self.call_helper("toTime", &[&Printed::atom(code)]),
             ValueKind::Int if boxed => Printed::new(format!("(int) {code}"), UNARY),
             ValueKind::Long if boxed => Printed::new(format!("(long) {code}"), UNARY),
             ValueKind::Float if boxed => Printed::new(format!("(double) {code}"), UNARY),
@@ -603,11 +603,11 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
         let helper = match q {
             Quantifier::All => "all",
             Quantifier::Any => "any",
-            Quantifier::Count => "count",
+            Quantifier::Count => "countWhere",
             Quantifier::Sum => match self.kind(body_ty) {
                 ValueKind::Int => "sumInt",
                 ValueKind::Long | ValueKind::Duration => "sumLong",
-                ValueKind::Float => "sumDouble",
+                ValueKind::Float => "sumFloat",
                 ValueKind::Decimal => "sumDecimal",
                 ValueKind::Bool
                 | ValueKind::String
