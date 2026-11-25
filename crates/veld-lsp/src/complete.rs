@@ -301,9 +301,11 @@ impl Cx<'_> {
     fn annotations(&self) -> Vec<CompletionItem> {
         let want: &[Target] = match &self.ctx.block {
             None => language::any_decl_targets(),
-            Some(Block::Body(BodyKind::Model | BodyKind::Error)) => &[Target::Field],
+            Some(Block::Body(BodyKind::Model | BodyKind::Error)) => &[Target::Field, Target::Rule],
             Some(Block::Body(BodyKind::Enum)) => &[Target::Variant],
-            Some(Block::Body(BodyKind::Service)) => &[Target::Endpoint],
+            Some(Block::Body(BodyKind::Service)) => {
+                &[Target::Endpoint, Target::Require, Target::Ensure]
+            }
             Some(Block::Params) => &[Target::Param],
             Some(Block::Body(BodyKind::Union))
             | Some(Block::Import)
@@ -533,6 +535,7 @@ fn annotation_args(name: &str) -> Vec<CompletionItem> {
         Some(ArgShape::Auth) => &["bearer", "basic", "none"],
         Some(ArgShape::Format) => &["email", "uri", "hostname", "ipv4", "ipv6"],
         Some(ArgShape::Length) => &["min", "max"],
+        Some(ArgShape::Rollout) => &["audit"],
         _ => &[],
     };
     let mut out: Vec<CompletionItem> = words
@@ -703,6 +706,23 @@ mod tests {
         assert!(labels(&v).contains(&"email"));
         let (v, _) = run("service S at \"/s\" {\n  @auth(^)\n}\n", "^");
         assert!(labels(&v).contains(&"bearer") && labels(&v).contains(&"apiKey"));
+    }
+
+    #[test]
+    fn rollout_is_offered_before_a_rule_a_require_and_an_ensure_and_not_on_a_declaration() {
+        let (v, _) = run("model A {\n  x: int\n  @^\n  rule r: x > 0\n}\n", "^");
+        let rollout = v.iter().find(|i| i.label == "rollout").unwrap();
+        assert_eq!(rollout.insert_text.as_deref(), Some("rollout(audit)"));
+        let src = "model A { x: int }\nservice S at \"/s\" {\n  post \"/\" f(body: A) -> 201 A {\n    @^\n    require true\n  }\n}\n";
+        let (v, _) = run(src, "^");
+        assert!(labels(&v).contains(&"rollout"), "{:?}", labels(&v));
+        let (v, _) = run(
+            "model A {\n  x: int\n  @rollout(^)\n  rule r: x > 0\n}\n",
+            "^",
+        );
+        assert_eq!(labels(&v), ["audit"]);
+        let (v, _) = run("@^\nmodel A {}\n", "^");
+        assert!(!labels(&v).contains(&"rollout"));
     }
 
     #[test]

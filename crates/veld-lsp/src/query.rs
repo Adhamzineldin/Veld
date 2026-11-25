@@ -171,8 +171,14 @@ fn in_decl(
     }
     let decl = entry;
     match &d.kind {
-        DeclKind::Model(m) => fields_at(&m.fields, decl?, offset),
-        DeclKind::Error(e) => fields_at(&e.fields, decl?, offset),
+        DeclKind::Model(m) => {
+            let found = decl.and_then(|d| fields_at(&m.fields, d, offset));
+            found.or_else(|| rule_annotation_at(&m.rules, offset))
+        }
+        DeclKind::Error(e) => {
+            let found = decl.and_then(|d| fields_at(&e.fields, d, offset));
+            found.or_else(|| rule_annotation_at(&e.rules, offset))
+        }
         DeclKind::Enum(e) => {
             for (i, v) in e.variants.iter().enumerate() {
                 if let Some(a) = annotation_at(&v.annotations, offset) {
@@ -204,9 +210,29 @@ fn in_decl(
             let si = service_index(ix, file, ast_index)?;
             endpoint_at(s, si, offset)
         }
-        DeclKind::Event(e) => fields_at(&e.fields, decl?, offset),
+        DeclKind::Event(e) => {
+            let found = decl.and_then(|d| fields_at(&e.fields, d, offset));
+            found.or_else(|| rule_annotation_at(&e.rules, offset))
+        }
         DeclKind::Const(_) | DeclKind::Channel(_) => None,
     }
+}
+
+/// An annotation written before a `rule` (`@rollout`, `@deprecated`).
+fn rule_annotation_at(rules: &[ast::Rule], offset: u32) -> Option<Hit> {
+    rules
+        .iter()
+        .find_map(|r| annotation_at(&r.annotations, offset))
+}
+
+/// An annotation written before a `require` or an `ensure` of an endpoint block.
+fn statement_annotation_at(ep: &ast::Endpoint, offset: u32) -> Option<Hit> {
+    let block = ep.block.as_ref()?;
+    block.stmts.iter().find_map(|s| match s {
+        ast::Stmt::Require(r) => annotation_at(&r.annotations, offset),
+        ast::Stmt::Ensure(e) => annotation_at(&e.annotations, offset),
+        ast::Stmt::Fact(_) | ast::Stmt::Transition(_) | ast::Stmt::Allow(_) => None,
+    })
 }
 
 fn fields_at(fields: &[ast::Field], decl: usize, offset: u32) -> Option<Hit> {
@@ -224,6 +250,9 @@ fn fields_at(fields: &[ast::Field], decl: usize, offset: u32) -> Option<Hit> {
 fn endpoint_at(s: &ast::ServiceDecl, service: usize, offset: u32) -> Option<Hit> {
     for (ei, ep) in s.endpoints.iter().enumerate() {
         if let Some(a) = annotation_at(&ep.annotations, offset) {
+            return Some(a);
+        }
+        if let Some(a) = statement_annotation_at(ep, offset) {
             return Some(a);
         }
         if contains(ep.name.span, offset) {

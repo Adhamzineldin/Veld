@@ -381,4 +381,19 @@ mod tests {
         assert!(hover_at(&a, tmp.path(), "c/m.veld", "int", 1).contains("Built-in scalar"));
         assert!(hover_at(&a, tmp.path(), "c/m.veld", "min", 1).contains("@min(n)"));
     }
+
+    #[test]
+    fn rollout_has_hover_text_on_a_rule_a_require_and_an_ensure() {
+        let src = "model A {\n  x: int\n  @rollout(audit)\n  rule r: x > 0\n}\nservice S at \"/s\" {\n  post \"/\" f(body: A) -> 201 A {\n    @rollout(audit)\n    require true\n    @rollout(audit)\n    ensure true\n  }\n}\n";
+        let (tmp, a) = analysis(&[("veld.toml", TOML), ("c/m.veld", src)]);
+        for needle in [
+            "rollout(audit)\n  rule",
+            "rollout(audit)\n    require",
+            "rollout(audit)\n    ensure",
+        ] {
+            let md = hover_at(&a, tmp.path(), "c/m.veld", needle, 1);
+            assert!(md.contains("@rollout(audit)"), "{md}");
+            assert!(md.contains("rule, require, ensure"), "{md}");
+        }
+    }
 }
