@@ -14,6 +14,7 @@
 
 mod builtins;
 mod check;
+pub mod envelope;
 mod error;
 mod eval;
 pub mod example;

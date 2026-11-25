@@ -1,0 +1,56 @@
+// The edge cases of the event envelope (spec/events.md section 6): a field with `@wire`, an
+// optional field, a decimal, a datetime with milliseconds, a default inside a nested value, an
+// event with no rules, an event whose rules are all audited (so it has no digest), and the three
+// kinds of channel (a uuid key, an int key, no key). `envelopes.json` holds the goldens.
+
+enum Tier { gold, silver }
+
+model Line {
+  sku: string
+  qty: int = 1
+}
+
+event InvoiceSettled {
+  invoiceId: uuid @wire("invoice_id")
+  total: decimal
+  settledAt: datetime
+  tier: Tier
+  memo?: string
+  lines: Line[]
+  rule positive: total > 0
+}
+
+event InvoiceViewed {
+  invoiceId: uuid @wire("invoice_id")
+  seq: long
+}
+
+event InvoiceNudged {
+  invoiceId: uuid @wire("invoice_id")
+  days: int
+  @rollout(audit)
+  rule soon: days < 30
+}
+
+event Counted {
+  n: int
+  label: string
+}
+
+channel InvoiceEvents {
+  carries InvoiceSettled, InvoiceViewed, InvoiceNudged
+  key invoiceId
+}
+
+channel Counts {
+  carries Counted
+  key n
+}
+
+channel Everything {
+  carries InvoiceViewed
+}
+
+service Billing {
+  publishes InvoiceEvents, Counts, Everything
+}
