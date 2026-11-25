@@ -1,0 +1,776 @@
+---
+source: crates/veld-tools/tests/openapi_snapshots.rs
+expression: export_text(TRANSITIONS)
+---
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Bookings",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/bookings/{id}/cancel": {
+      "post": {
+        "operationId": "Bookings.cancelBooking",
+        "tags": [
+          "Bookings"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app.Booking"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/NotFound@a0eaf7a3323dce7c"
+                    },
+                    "title": {
+                      "const": "NotFound"
+                    },
+                    "status": {
+                      "const": 404
+                    },
+                    "operation": {
+                      "const": "veld:app/Bookings.cancelBooking@5ac58a20c1116a7e"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.NotFound"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "InvalidTransition",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/InvalidTransition@29c70142526d0750"
+                    },
+                    "title": {
+                      "const": "InvalidTransition"
+                    },
+                    "status": {
+                      "const": 409
+                    },
+                    "operation": {
+                      "const": "veld:app/Bookings.cancelBooking@5ac58a20c1116a7e"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.InvalidTransition"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/ValidationError@7836aff24d914bea"
+                    },
+                    "title": {
+                      "const": "ValidationError"
+                    },
+                    "status": {
+                      "const": 422
+                    },
+                    "operation": {
+                      "const": "veld:app/Bookings.cancelBooking@5ac58a20c1116a7e"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.ValidationError"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Bookings.cancelBooking@5ac58a20c1116a7e"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-facts": [
+          {
+            "name": "booking",
+            "type": {
+              "$ref": "#/components/schemas/app.Booking"
+            },
+            "optional": false
+          }
+        ],
+        "x-veld-transition": {
+          "id": "veld:app/Bookings.cancelBooking.transition@cd04ace5a919c806",
+          "field": "booking.status",
+          "from": [
+            "pending",
+            "paid"
+          ],
+          "to": "cancelled"
+        },
+        "x-veld-op-sig": "veld:app/Bookings.cancelBooking@5ac58a20c1116a7e"
+      }
+    },
+    "/bookings/{id}/check-in": {
+      "post": {
+        "operationId": "Bookings.checkIn",
+        "tags": [
+          "Bookings"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/NotFound@a0eaf7a3323dce7c"
+                    },
+                    "title": {
+                      "const": "NotFound"
+                    },
+                    "status": {
+                      "const": 404
+                    },
+                    "operation": {
+                      "const": "veld:app/Bookings.checkIn@0b7eec98e5f13f0c"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.NotFound"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "InvalidTransition",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/InvalidTransition@29c70142526d0750"
+                    },
+                    "title": {
+                      "const": "InvalidTransition"
+                    },
+                    "status": {
+                      "const": 409
+                    },
+                    "operation": {
+                      "const": "veld:app/Bookings.checkIn@0b7eec98e5f13f0c"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.InvalidTransition"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/ValidationError@7836aff24d914bea"
+                    },
+                    "title": {
+                      "const": "ValidationError"
+                    },
+                    "status": {
+                      "const": 422
+                    },
+                    "operation": {
+                      "const": "veld:app/Bookings.checkIn@0b7eec98e5f13f0c"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.ValidationError"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Bookings.checkIn@0b7eec98e5f13f0c"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-facts": [
+          {
+            "name": "booking",
+            "type": {
+              "$ref": "#/components/schemas/app.Booking"
+            },
+            "optional": false
+          }
+        ],
+        "x-veld-transition": {
+          "id": "veld:app/Bookings.checkIn.transition@ee64708757c034a3",
+          "field": "booking.status",
+          "from": [
+            "paid"
+          ],
+          "to": "checkedIn"
+        },
+        "x-veld-op-sig": "veld:app/Bookings.checkIn@0b7eec98e5f13f0c"
+      }
+    },
+    "/bookings/{id}/pay": {
+      "post": {
+        "operationId": "Bookings.payBooking",
+        "tags": [
+          "Bookings"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app.Payment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app.Booking"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/NotFound@a0eaf7a3323dce7c"
+                    },
+                    "title": {
+                      "const": "NotFound"
+                    },
+                    "status": {
+                      "const": 404
+                    },
+                    "operation": {
+                      "const": "veld:app/Bookings.payBooking@13a1fe6a454db92f"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.NotFound"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "InvalidTransition",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/InvalidTransition@29c70142526d0750"
+                    },
+                    "title": {
+                      "const": "InvalidTransition"
+                    },
+                    "status": {
+                      "const": 409
+                    },
+                    "operation": {
+                      "const": "veld:app/Bookings.payBooking@13a1fe6a454db92f"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.InvalidTransition"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "AmountMismatch or ValidationError",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "const": "veld:app/AmountMismatch@1f1e767064e78b2f"
+                        },
+                        "title": {
+                          "const": "AmountMismatch"
+                        },
+                        "status": {
+                          "const": 422
+                        },
+                        "operation": {
+                          "const": "veld:app/Bookings.payBooking@13a1fe6a454db92f"
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/app.AmountMismatch"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "title",
+                        "status",
+                        "operation",
+                        "data"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "const": "veld:veld/ValidationError@7836aff24d914bea"
+                        },
+                        "title": {
+                          "const": "ValidationError"
+                        },
+                        "status": {
+                          "const": 422
+                        },
+                        "operation": {
+                          "const": "veld:app/Bookings.payBooking@13a1fe6a454db92f"
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/veld.ValidationError"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "title",
+                        "status",
+                        "operation",
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "veld:veld/Internal@c2b1f6bb355266e7"
+                    },
+                    "title": {
+                      "const": "Internal"
+                    },
+                    "status": {
+                      "const": 500
+                    },
+                    "operation": {
+                      "const": "veld:app/Bookings.payBooking@13a1fe6a454db92f"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/veld.Internal"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "operation",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-veld-facts": [
+          {
+            "name": "booking",
+            "type": {
+              "$ref": "#/components/schemas/app.Booking"
+            },
+            "optional": false
+          }
+        ],
+        "x-veld-rules": {
+          "requires": [
+            {
+              "id": "veld:app/Bookings.payBooking.require@baa7f3ddef907313",
+              "expression": "body.amount == booking.total",
+              "else": "AmountMismatch"
+            }
+          ]
+        },
+        "x-veld-transition": {
+          "id": "veld:app/Bookings.payBooking.transition@9d2b993c7d14a996",
+          "field": "booking.status",
+          "from": [
+            "pending"
+          ],
+          "to": "paid"
+        },
+        "x-veld-op-sig": "veld:app/Bookings.payBooking@13a1fe6a454db92f"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "app.AmountMismatch": {
+        "type": "object",
+        "properties": {
+          "expected": {
+            "type": "string",
+            "format": "decimal"
+          }
+        },
+        "required": [
+          "expected"
+        ],
+        "x-veld-sig": "veld:app/AmountMismatch@1f1e767064e78b2f"
+      },
+      "app.Booking": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/app.Status",
+            "default": "pending"
+          },
+          "total": {
+            "type": "string",
+            "format": "decimal"
+          }
+        },
+        "required": [
+          "id",
+          "total"
+        ],
+        "x-veld-sig": "veld:app/Booking@80de9c179a71c1c5"
+      },
+      "app.Payment": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "string",
+            "format": "decimal"
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "x-veld-sig": "veld:app/Payment@7153e978945ad7fd"
+      },
+      "app.Status": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "paid",
+          "checkedIn",
+          "cancelled",
+          "refunded"
+        ],
+        "x-veld-sig": "veld:app/Status@36fd4688c7c31e4d",
+        "x-veld-flows": [
+          {
+            "from": "pending",
+            "to": "paid"
+          },
+          {
+            "from": "paid",
+            "to": "checkedIn"
+          },
+          {
+            "from": "pending",
+            "to": "cancelled"
+          },
+          {
+            "from": "paid",
+            "to": "cancelled"
+          },
+          {
+            "from": "paid",
+            "to": "refunded"
+          }
+        ],
+        "x-veld-finals": [
+          "checkedIn",
+          "cancelled",
+          "refunded"
+        ]
+      },
+      "veld.Internal": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "x-veld-sig": "veld:veld/Internal@c2b1f6bb355266e7"
+      },
+      "veld.InvalidTransition": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "from",
+          "to"
+        ],
+        "x-veld-sig": "veld:veld/InvalidTransition@29c70142526d0750"
+      },
+      "veld.NotFound": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string"
+          }
+        },
+        "x-veld-sig": "veld:veld/NotFound@a0eaf7a3323dce7c"
+      },
+      "veld.ValidationError": {
+        "type": "object",
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/veld.ValidationIssue"
+            }
+          }
+        },
+        "required": [
+          "issues"
+        ],
+        "x-veld-sig": "veld:veld/ValidationError@7836aff24d914bea"
+      },
+      "veld.ValidationIssue": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "code",
+          "message"
+        ],
+        "x-veld-sig": "veld:veld/ValidationIssue@253beeea259ebf75"
+      }
+    }
+  },
+  "x-veld-ir-version": "1.1"
+}
