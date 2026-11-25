@@ -126,6 +126,21 @@ fn endpoints_without_rollout() -> veld_ir::Ir {
     common::toolchain::compile_text(plain)
 }
 
+/// An audited invariant of a declaration that no endpoint reaches: the output has the declaration
+/// all the same, and it imports the sink, so the sink is emitted whether or not anything reaches it.
+#[test]
+fn an_audited_model_that_no_endpoint_reaches_still_gets_the_audit_sink() {
+    let ir = common::toolchain::compile_text(
+        "model Unused {\n  n: int\n\n  @rollout(audit)\n  rule small: n < 10\n}\n\nmodel Pong {\n  ok: bool\n}\n\nservice Ping at \"/ping\" {\n  get \"/\" ping() -> Pong\n}\n"
+            .to_owned(),
+    );
+    let server = gen_server(&ir, "Ping", &[]);
+    assert!(server.get("runtime/rollout.ts").is_some());
+    assert!(text(&server, "runtime/veld.ts").contains("beginAudit"));
+    let client = gen_client(&ir);
+    assert!(client.get("runtime/rollout.ts").is_some());
+}
+
 #[test]
 fn the_test_handler_answers_with_veld_test_audited_only_for_a_contract_with_an_audited_rule() {
     let audited = gen_server_with(&compile_path(ENDPOINTS), "Parties", &[], &testing());

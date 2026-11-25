@@ -32,6 +32,9 @@ const impl: srv.AuditService = {
   async announce(_req, _ctx, ws) {
     for (let n = 0; n < 3; n += 1) ws.send({ n });
   },
+  async echo(_req, _ctx, ws) {
+    for await (const message of ws.incoming) ws.send({ n: message.guests });
+  },
 };
 
 interface Running {
@@ -165,6 +168,20 @@ async function streams(): Promise<void> {
   assert.equal(frames.length, 3, frames.join('\n'));
   assert.deepEqual(heard(ws.events), ['audited output Tick.even result']);
   await ws.close();
+
+  // A message the client sends is an input: its audited invariant is reported and the message is answered.
+  const echo = await start();
+  const sock2 = new RawWebSocket(`${echo.url.replace(/^http/, 'ws')}/audit/echo`);
+  const answers: string[] = [];
+  sock2.on('message', (d) => answers.push(String(d)));
+  await new Promise((resolve) => sock2.on('open', resolve));
+  sock2.send(JSON.stringify({ roomId: ROOM, guests: 7 }));
+  for (let waited = 0; answers.length === 0 && waited < 50; waited += 1) await new Promise((r) => setTimeout(r, 100));
+  sock2.close();
+  assert.equal(answers.length, 1, answers.join('\n'));
+  assert.ok(!answers[0]?.includes('violations') && !answers[0]?.includes('error'), answers.join('\n'));
+  assert.deepEqual(heard(echo.events), ['audited input Party.smallParty message', 'audited output Tick.even result']);
+  await echo.close();
 }
 
 /** A client skips audited rules: in the local check before a send and in the partial check of a form. */

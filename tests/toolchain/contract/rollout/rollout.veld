@@ -38,4 +38,6 @@ service Audit at "/audit" {
 
   get "/ticks" ticks(@query count: int) -> stream Tick
   ws "/announce" announce() -> stream Tick
+  /// A message the client sends is an input (its audited invariant is reported), and what comes back is an output.
+  ws "/echo" echo(body: stream Party) -> stream Tick
 }
