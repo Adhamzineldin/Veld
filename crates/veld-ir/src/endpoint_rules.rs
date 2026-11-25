@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::rules::{Expr, Step};
-use crate::{DeclId, Origin, PackageId, PolicyId, ServiceId, Type};
+use crate::{ChannelId, DeclId, Origin, PackageId, PolicyId, ServiceId, Type};
 
 /// The statements of an endpoint block.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -223,11 +223,18 @@ pub struct ServiceFact {
 }
 
 /// `example "name" { .. }`: what one call does.
+///
+/// An example is either a call (`service`, `endpoint`, `outcome` and the rest) or, when `event`
+/// is set, one delivery of an event (`spec/events.md` section 12): then `service` and `outcome`
+/// are `None`, `endpoint` is empty and `expect` is set. Those three keys are omitted from the
+/// JSON of an event example, and `event` and `expect` from the JSON of a call example.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Example {
     pub name: String,
     pub package: PackageId,
-    pub service: ServiceId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service: Option<ServiceId>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub endpoint: String,
     pub givens: Vec<ExampleGiven>,
     pub principal: Option<ExampleValue>,
@@ -235,9 +242,67 @@ pub struct Example {
     pub now: Option<String>,
     pub args: Vec<ExampleArg>,
     pub returns: Option<ExampleValue>,
-    pub outcome: ExampleOutcome,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<ExampleOutcome>,
     pub docs: Option<String>,
+    /// The event form: `given event E { .. } [on C]`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event: Option<ExampleEvent>,
+    /// The `expect` lines of an event example.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expect: Option<EventExpect>,
     pub origin: Origin,
+}
+
+/// `given event E { .. } on C`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExampleEvent {
+    pub decl: DeclId,
+    /// Index into `Ir.channels`.
+    pub channel: ChannelId,
+    pub value: ExampleValue,
+}
+
+/// What an event example expects: `"rejected"` or a list of `Service.handler` lines.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EventExpect {
+    Rejected,
+    Calls(Vec<ExpectedCall>),
+}
+
+/// `expect S.handler [not] called`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExpectedCall {
+    pub service: ServiceId,
+    pub handler: String,
+    pub called: bool,
+}
+
+impl Serialize for EventExpect {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            EventExpect::Rejected => s.serialize_str("rejected"),
+            EventExpect::Calls(c) => c.serialize(s),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for EventExpect {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Word(String),
+            Calls(Vec<ExpectedCall>),
+        }
+        match Raw::deserialize(d)? {
+            Raw::Calls(c) => Ok(EventExpect::Calls(c)),
+            Raw::Word(w) if w == "rejected" => Ok(EventExpect::Rejected),
+            Raw::Word(w) => Err(serde::de::Error::custom(format!(
+                "expected \"rejected\" or a list, found \"{w}\""
+            ))),
+        }
+    }
 }
 
 /// `given fact = value`; `None` is `absent`.

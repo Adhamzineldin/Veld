@@ -280,7 +280,8 @@ fn decls() -> Vec<Decl> {
         | DeclKind::Error(_)
         | DeclKind::Enum(_)
         | DeclKind::Union(_)
-        | DeclKind::Const(_) => {}
+        | DeclKind::Const(_)
+        | DeclKind::Event(_) => {}
     }
     let fields: Vec<Field> = all_types()
         .into_iter()
@@ -347,6 +348,15 @@ fn decls() -> Vec<Decl> {
             DeclKind::Const(Const {
                 ty: Type::Scalar(Scalar::Int),
                 value: Literal::Int(1),
+            }),
+        ),
+        decl(
+            6,
+            "Ev",
+            DeclKind::Event(Event {
+                fields: vec![field("amount", Type::Scalar(Scalar::Decimal), Literal::Int(1))],
+                rules: vec![sample_rule()],
+                rules_digest: Some("3fa9c2e1b7d04a55".into()),
             }),
         ),
     ]
@@ -482,13 +492,45 @@ fn full_ir() -> Ir {
                 decl: DeclId(0),
                 name: "user".into(),
             }),
+            publishes: vec![ChannelId(0)],
+            subscriptions: vec![Subscription {
+                channel: ChannelId(0),
+                group: "g".into(),
+                handlers: vec![Handler {
+                    event: DeclId(6),
+                    name: "h".into(),
+                    docs: Some("d".into()),
+                    origin: origin(),
+                }],
+                origin: origin(),
+            }],
             origin: origin(),
         }],
         consumes: [("S".to_string(), vec!["T".to_string()])]
             .into_iter()
             .collect(),
-        examples: crate::endpoint_rules::tests::sample_examples(),
+        examples: [
+            crate::endpoint_rules::tests::sample_examples(),
+            crate::endpoint_rules::tests::sample_event_examples(),
+        ]
+        .concat(),
         policies: crate::endpoint_rules::tests::sample_policies(),
+        channels: vec![Channel {
+            name: "C".into(),
+            package: PackageId(0),
+            module: "m".into(),
+            qualified: "p:m.C".into(),
+            topic: "t".into(),
+            events: vec![DeclId(6)],
+            key: Some(ChannelKey {
+                name: "amount".into(),
+                wire: "amount".into(),
+                ty: Type::Scalar(Scalar::Int),
+            }),
+            docs: Some("d".into()),
+            deprecated: Some("x".into()),
+            origin: origin(),
+        }],
     }
 }
 

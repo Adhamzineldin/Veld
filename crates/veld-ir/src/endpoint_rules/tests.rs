@@ -162,7 +162,7 @@ pub(crate) fn sample_examples() -> Vec<Example> {
     let full = Example {
         name: "a full room is rejected".into(),
         package: PackageId(0),
-        service: ServiceId(0),
+        service: Some(ServiceId(0)),
         endpoint: "createBooking".into(),
         givens: vec![
             ExampleGiven {
@@ -181,10 +181,12 @@ pub(crate) fn sample_examples() -> Vec<Example> {
             value: body,
         }],
         returns: Some(ExampleValue::Json(json!({"status": "PENDING"}))),
-        outcome: ExampleOutcome::Error(ExampleErrorOutcome {
+        outcome: Some(ExampleOutcome::Error(ExampleErrorOutcome {
             decl: DeclId(2),
             pattern: Some(capacity),
-        }),
+        })),
+        event: None,
+        expect: None,
         docs: Some("d".into()),
         origin: origin(20),
     };
@@ -194,16 +196,57 @@ pub(crate) fn sample_examples() -> Vec<Example> {
         principal: None,
         now: None,
         returns: None,
-        outcome: ExampleOutcome::Ok(None),
+        outcome: Some(ExampleOutcome::Ok(None)),
         docs: None,
         ..full.clone()
     };
     let ok_value = Example {
         name: "it answers a value".into(),
-        outcome: ExampleOutcome::Ok(Some(ExampleValue::List(vec![]))),
+        outcome: Some(ExampleOutcome::Ok(Some(ExampleValue::List(vec![])))),
         ..ok.clone()
     };
     vec![full, ok, ok_value]
+}
+
+/// One event example per expectation form.
+pub(crate) fn sample_event_examples() -> Vec<Example> {
+    let call = Example {
+        name: "a paid booking sends a receipt".into(),
+        package: PackageId(0),
+        service: None,
+        endpoint: String::new(),
+        givens: vec![],
+        principal: None,
+        now: None,
+        args: vec![],
+        returns: None,
+        outcome: None,
+        docs: None,
+        event: Some(ExampleEvent {
+            decl: DeclId(6),
+            channel: ChannelId(0),
+            value: ExampleValue::Object(vec![field("amount", ExampleValue::Json(json!("120.00")))]),
+        }),
+        expect: Some(EventExpect::Calls(vec![
+            ExpectedCall {
+                service: ServiceId(0),
+                handler: "sendReceipt".into(),
+                called: true,
+            },
+            ExpectedCall {
+                service: ServiceId(0),
+                handler: "sendApology".into(),
+                called: false,
+            },
+        ])),
+        origin: origin(30),
+    };
+    let rejected = Example {
+        name: "an event that breaks its rule reaches no handler".into(),
+        expect: Some(EventExpect::Rejected),
+        ..call.clone()
+    };
+    vec![call, rejected]
 }
 
 pub(crate) fn sample_allows() -> Vec<EndpointAllow> {
@@ -319,6 +362,8 @@ fn service_with(endpoints: Vec<Endpoint>) -> Service {
         facts: vec![],
         rules_digest: None,
         principal: None,
+        publishes: vec![],
+        subscriptions: vec![],
         origin: origin(1),
     }
 }
@@ -332,6 +377,7 @@ fn ir_with(services: Vec<Service>, examples: Vec<Example>) -> Ir {
         consumes: Default::default(),
         examples,
         policies: vec![],
+        channels: vec![],
     }
 }
 

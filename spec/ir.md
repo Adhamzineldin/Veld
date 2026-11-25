@@ -106,6 +106,10 @@ Policy         = { "name", "package", "module", "qualified", "id": "veld:<packag
 
 In a policy's expressions a parameter is the root `{ "param": name }`; in an endpoint block the caller is the root `"principal"`. An endpoint with an `allow` uses the feature `rules_policies`; a generator that cannot represent it reports `E0801` at the first `allow`. A policy that no endpoint uses needs no feature. An endpoint with an `allow` also declares `Forbidden` among its `errors`.
 
+### 3.3 Events
+
+Events, channels, `publishes` and `subscribes` are described in `spec/events.md` §13. Every key is **omitted from the JSON when empty or absent**: `Decl.kind` `"event"` (with `fields`, `rules`, `rules_digest`), `Ir.channels`, `Service.publishes`, `Service.subscriptions`, and in an `Example` the keys `event` and `expect`. An example of the event form has no `service`, `endpoint` or `outcome`. `Service.prefix` is `""` for a service without `at`. A service with `publishes` or `subscriptions` uses the feature `events`; a generator that cannot represent it reports `E0801` at the first such line. The IR does not record the origin of a `publishes` line: a gate that needs one uses the origin of the service.
+
 ## 4. Capabilities
 
 The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`, …). Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.

@@ -16,7 +16,7 @@ pub mod suggest;
 pub use endpoint_rules::{
     ElseError, ElseField, EndpointAllow, EndpointEnsure, EndpointFact, EndpointRequire,
     EndpointRules, EndpointTransition, Example, ExampleArg, ExampleErrorOutcome, ExampleField,
-    ExampleGiven, ExampleOutcome, ExampleRef, ExampleValue, Policy, PolicyClause, PolicyEffect,
+    EventExpect, ExampleEvent, ExpectedCall, ExampleGiven, ExampleOutcome, ExampleRef, ExampleValue, Policy, PolicyClause, PolicyEffect,
     PolicyParam, ServiceFact, ServicePrincipal,
 };
 pub use rules::{
@@ -45,6 +45,7 @@ id_type!(PackageId);
 id_type!(DeclId);
 id_type!(ServiceId);
 id_type!(PolicyId);
+id_type!(ChannelId);
 
 /// A whole compiled workspace.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,9 +63,18 @@ pub struct Ir {
     /// Omitted from the JSON when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policies: Vec<Policy>,
+    /// Channels of the workspace, sorted by qualified name (`spec/events.md` section 13).
+    /// Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub channels: Vec<Channel>,
 }
 
 impl Ir {
+    #[must_use]
+    pub fn channel(&self, id: ChannelId) -> &Channel {
+        &self.channels[id.index()]
+    }
+
     #[must_use]
     pub fn decl(&self, id: DeclId) -> &Decl {
         &self.decls[id.index()]
@@ -145,6 +155,17 @@ impl Ir {
                 DeclKind::Union(_) => {
                     f.insert(Feature::Unions);
                 }
+                DeclKind::Event(e) => {
+                    if !e.rules.is_empty() {
+                        f.insert(Feature::RulesInvariants);
+                    }
+                    for fld in &e.fields {
+                        fld.ty.features(&mut f);
+                        if !fld.constraints.is_empty() {
+                            f.insert(Feature::Constraints);
+                        }
+                    }
+                }
                 DeclKind::Model(m) | DeclKind::Error(ErrorDecl { fields: m, .. }) => {
                     if !m.rules.is_empty() {
                         f.insert(Feature::RulesInvariants);
@@ -168,6 +189,9 @@ impl Ir {
         }
         for sid in services {
             let s = self.service(*sid);
+            if s.uses_events() {
+                f.insert(Feature::Events);
+            }
             for ep in &s.endpoints {
                 if ep.auth.kind != AuthKind::None {
                     f.insert(Feature::Auth);
@@ -275,30 +299,42 @@ impl Decl {
                     f.ty.collect_decls(out);
                 }
             }
+            DeclKind::Event(e) => {
+                for f in &e.fields {
+                    f.ty.collect_decls(out);
+                }
+            }
             DeclKind::Union(u) => out.extend(u.arms.iter().map(|a| a.decl)),
             DeclKind::Const(c) => c.ty.collect_decls(out),
             DeclKind::Enum(_) => {}
         }
     }
 
-    /// Rules for models and errors; empty for anything else.
+    /// Rules for models, errors and events; empty for anything else.
     #[must_use]
     pub fn rules(&self) -> &[Rule] {
         match &self.kind {
             DeclKind::Model(m) => &m.rules,
             DeclKind::Error(e) => &e.fields.rules,
+            DeclKind::Event(e) => &e.rules,
             DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => &[],
         }
     }
 
-    /// Fields for models and errors; empty for anything else.
+    /// Fields for models, errors and events; empty for anything else.
     #[must_use]
     pub fn fields(&self) -> &[Field] {
         match &self.kind {
             DeclKind::Model(m) => &m.fields,
             DeclKind::Error(e) => &e.fields.fields,
+            DeclKind::Event(e) => &e.fields,
             DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => &[],
         }
+    }
+
+    #[must_use]
+    pub fn is_event(&self) -> bool {
+        matches!(self.kind, DeclKind::Event(_))
     }
 
     #[must_use]
@@ -315,6 +351,63 @@ pub enum DeclKind {
     Enum(Enum),
     Union(Union),
     Const(Const),
+    /// An event (`spec/events.md` section 3).
+    Event(Event),
+}
+
+/// An event declaration: a record with event identity.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Event {
+    pub fields: Vec<Field>,
+    /// Invariants. Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<Rule>,
+    /// The rules digest of the event (`spec/events.md` section 6.1). Omitted when it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rules_digest: Option<String>,
+}
+
+/// A channel: one logical stream of events (`spec/events.md` section 4).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Channel {
+    pub name: String,
+    pub package: PackageId,
+    pub module: String,
+    pub qualified: String,
+    pub topic: String,
+    /// The carried events, in `carries` order.
+    pub events: Vec<DeclId>,
+    pub key: Option<ChannelKey>,
+    pub docs: Option<String>,
+    pub deprecated: Option<String>,
+    pub origin: Origin,
+}
+
+/// The `key` of a channel: the field that orders the stream.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChannelKey {
+    pub name: String,
+    pub wire: String,
+    #[serde(rename = "type")]
+    pub ty: Type,
+}
+
+/// `subscribes C as "group" { on E -> handler }`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Subscription {
+    pub channel: ChannelId,
+    pub group: String,
+    pub handlers: Vec<Handler>,
+    pub origin: Origin,
+}
+
+/// One `on E -> name` line.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Handler {
+    pub event: DeclId,
+    pub name: String,
+    pub docs: Option<String>,
+    pub origin: Origin,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -594,7 +687,34 @@ pub struct Service {
     /// The package's principal (`spec/rules.md` section 11.1).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub principal: Option<ServicePrincipal>,
+    /// Channels the service publishes to, in source order (`spec/events.md` section 13).
+    /// Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub publishes: Vec<ChannelId>,
+    /// The service's subscriptions, in source order. Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subscriptions: Vec<Subscription>,
     pub origin: Origin,
+}
+
+impl Service {
+    /// True when the service publishes or subscribes (the feature `events`).
+    #[must_use]
+    pub fn uses_events(&self) -> bool {
+        !self.publishes.is_empty() || !self.subscriptions.is_empty()
+    }
+
+    /// Where the first `publishes` or `subscribes` line is, for diagnostics. A subscription has
+    /// its own origin; the IR records no origin for a `publishes` line, so that case answers
+    /// with the origin of the service.
+    #[must_use]
+    pub fn first_event_origin(&self) -> Option<&Origin> {
+        if !self.publishes.is_empty() {
+            Some(&self.origin)
+        } else {
+            self.subscriptions.first().map(|s| &s.origin)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -818,6 +938,8 @@ pub enum Feature {
     RulesEndpoint,
     RulesTransitions,
     RulesPolicies,
+    /// `publishes` or `subscribes` (`spec/events.md` section 13).
+    Events,
 }
 
 impl Feature {
@@ -828,7 +950,7 @@ impl Feature {
         Feature::RulesTransitions,
         Feature::RulesPolicies,
     ];
-    pub const ALL: [Feature; 14] = [
+    pub const ALL: [Feature; 15] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -843,6 +965,7 @@ impl Feature {
         Feature::RulesEndpoint,
         Feature::RulesTransitions,
         Feature::RulesPolicies,
+        Feature::Events,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -861,6 +984,7 @@ impl Feature {
             Feature::RulesEndpoint => "rules_endpoint",
             Feature::RulesTransitions => "rules_transitions",
             Feature::RulesPolicies => "rules_policies",
+            Feature::Events => "events",
         }
     }
     #[must_use]
@@ -901,3 +1025,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod events_tests;

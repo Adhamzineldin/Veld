@@ -121,6 +121,14 @@ const DECL_KINDS: &[(&str, Fields)] = &[
         "const",
         &[("type", T::Ref("Type")), ("value", T::Ref("Literal"))],
     ),
+    (
+        "event",
+        &[
+            ("fields", T::List(&T::Ref("Field"))),
+            ("rules", RULES),
+            ("rules_digest", T::Optional(&T::Str)),
+        ],
+    ),
 ];
 
 const FIELD: Fields = &[
@@ -167,6 +175,8 @@ const SERVICE: Fields = &[
     ("facts", T::Optional(&T::List(&T::Ref("ServiceFact")))),
     ("rules_digest", T::Optional(&T::Str)),
     ("principal", T::Optional(&T::Ref("ServicePrincipal"))),
+    ("publishes", T::Optional(&T::List(&T::Ref("ChannelId")))),
+    ("subscriptions", T::Optional(&T::List(&T::Ref("Subscription")))),
     ("origin", ORIGIN),
 ];
 
@@ -182,12 +192,14 @@ pub const DEFS: &[Def] = &[
             ("consumes", T::Map(&T::List(&T::Str))),
             ("examples", T::Optional(&T::List(&T::Ref("Example")))),
             ("policies", T::Optional(&T::List(&T::Ref("Policy")))),
+            ("channels", T::Optional(&T::List(&T::Ref("Channel")))),
         ],
     ),
     Def::Alias("PackageId", T::Num),
     Def::Alias("DeclId", T::Num),
     Def::Alias("ServiceId", T::Num),
     Def::Alias("PolicyId", T::Num),
+    Def::Alias("ChannelId", T::Num),
     Def::Object(
         "Package",
         &[
@@ -503,14 +515,16 @@ pub const DEFS: &[Def] = &[
         &[
             ("name", T::Str),
             ("package", T::Ref("PackageId")),
-            ("service", T::Ref("ServiceId")),
-            ("endpoint", T::Str),
+            ("service", T::Optional(&T::Ref("ServiceId"))),
+            ("endpoint", T::Optional(&T::Str)),
             ("givens", T::List(&T::Ref("ExampleGiven"))),
             ("principal", T::Nullable(&T::Ref("ExampleValue"))),
             ("now", OPT_STR),
             ("args", T::List(&T::Ref("ExampleArg"))),
             ("returns", T::Nullable(&T::Ref("ExampleValue"))),
-            ("outcome", T::Ref("ExampleOutcome")),
+            ("outcome", T::Optional(&T::Ref("ExampleOutcome"))),
+            ("event", T::Optional(&T::Ref("ExampleEvent"))),
+            ("expect", T::Optional(&T::Ref("EventExpect"))),
             ("docs", OPT_STR),
             ("origin", ORIGIN),
         ],
@@ -559,6 +573,67 @@ pub const DEFS: &[Def] = &[
             ("name", T::Str),
             ("wire", T::Str),
             ("value", T::Ref("ExampleValue")),
+        ],
+    ),
+    Def::Object(
+        "ExampleEvent",
+        &[
+            ("decl", DECL_ID),
+            ("channel", T::Ref("ChannelId")),
+            ("value", T::Ref("ExampleValue")),
+        ],
+    ),
+    Def::Alias(
+        "EventExpect",
+        T::Union(&[T::Lit("rejected"), T::List(&T::Ref("ExpectedCall"))]),
+    ),
+    Def::Object(
+        "ExpectedCall",
+        &[
+            ("service", T::Ref("ServiceId")),
+            ("handler", T::Str),
+            ("called", T::Bool),
+        ],
+    ),
+    Def::Object(
+        "Channel",
+        &[
+            ("name", T::Str),
+            ("package", T::Ref("PackageId")),
+            ("module", T::Str),
+            ("qualified", T::Str),
+            ("topic", T::Str),
+            ("events", T::List(&DECL_ID)),
+            ("key", T::Nullable(&T::Ref("ChannelKey"))),
+            ("docs", OPT_STR),
+            ("deprecated", OPT_STR),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "ChannelKey",
+        &[
+            ("name", T::Str),
+            ("wire", T::Str),
+            ("type", T::Ref("Type")),
+        ],
+    ),
+    Def::Object(
+        "Subscription",
+        &[
+            ("channel", T::Ref("ChannelId")),
+            ("group", T::Str),
+            ("handlers", T::List(&T::Ref("Handler"))),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "Handler",
+        &[
+            ("event", DECL_ID),
+            ("name", T::Str),
+            ("docs", OPT_STR),
+            ("origin", ORIGIN),
         ],
     ),
     Def::Object("Service", SERVICE),
@@ -614,6 +689,7 @@ pub const DEFS: &[Def] = &[
             "rules_endpoint",
             "rules_transitions",
             "rules_policies",
+            "events",
         ],
     ),
     Def::Strings("Role", &["server", "client"]),
