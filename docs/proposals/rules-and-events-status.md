@@ -88,7 +88,7 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [t] `veld test` offline, the shared runner (`crates/veld-testing`), `E0953` in `veld check`, and `docs/guides/testing.md`
 - [t] `veld test --live` and `--dry-run`: all 20 examples pass against the generated Node server, the JDK server, the Spring adapter and the Rust server
 - [ ] Boundary cases generated from rules
-- [~] `veld test --live --fuzz`, with boundary requests first
+- [i] `veld test --live <url> --fuzz N [--seed S]`: seeded generated requests, boundary requests first (numbers, lengths, datetimes, dates, decimals), the reference evaluator's verdict compared with the server's answer including the violations; a mismatch prints the seed and a paste-ready `example` block. The generated Node server agrees on 800 requests in the committed test (8,000 in a one-off run). Not yet: a generated principal (so endpoints with policies are not fuzzed), repair of transition guards, boundaries for `time` values; Java and Rust servers are not fuzzed in their own tests yet
 
 ## Phase 3: state machines
 - [~] `flow`, `final`, `transition`: IR, compiler and reference evaluator tested (`[t]`, CI green); all 14 hand-written examples pass in the evaluator; generators: Java in progress, TypeScript/Node and Rust next
