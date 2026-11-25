@@ -94,7 +94,9 @@ fn variant_index(ix: &Index, decl: usize, name: &str) -> Option<usize> {
         | DeclKind::Error(_)
         | DeclKind::Union(_)
         | DeclKind::Service(_)
-        | DeclKind::Const(_) => None,
+        | DeclKind::Const(_)
+        | DeclKind::Event(_)
+        | DeclKind::Channel(_) => None,
     }
 }
 
@@ -202,7 +204,8 @@ fn in_decl(
             let si = service_index(ix, file, ast_index)?;
             endpoint_at(s, si, offset)
         }
-        DeclKind::Const(_) => None,
+        DeclKind::Event(e) => fields_at(&e.fields, decl?, offset),
+        DeclKind::Const(_) | DeclKind::Channel(_) => None,
     }
 }
 
@@ -318,7 +321,9 @@ pub fn definition_span(ix: &Index, sym: &Symbol) -> Option<Span> {
                 | DeclKind::Error(_)
                 | DeclKind::Union(_)
                 | DeclKind::Service(_)
-                | DeclKind::Const(_) => None,
+                | DeclKind::Const(_)
+                | DeclKind::Event(_)
+                | DeclKind::Channel(_) => None,
             }
         }
         Symbol::Arm { decl, arm } => {
@@ -329,7 +334,9 @@ pub fn definition_span(ix: &Index, sym: &Symbol) -> Option<Span> {
                 | DeclKind::Enum(_)
                 | DeclKind::Error(_)
                 | DeclKind::Service(_)
-                | DeclKind::Const(_) => None,
+                | DeclKind::Const(_)
+                | DeclKind::Event(_)
+                | DeclKind::Channel(_) => None,
             }
         }
         Symbol::Service(s) => Some(service_ast(ix, *s)?.name.span),
@@ -358,6 +365,7 @@ pub fn decl_fields<'a>(ix: &'a Index, d: &DeclEntry) -> &'a [ast::Field] {
     match ix.decl_ast(d).map(|a| &a.kind) {
         Some(DeclKind::Model(m)) => &m.fields,
         Some(DeclKind::Error(e)) => &e.fields,
+        Some(DeclKind::Event(e)) => &e.fields,
         _ => &[],
     }
 }
@@ -372,7 +380,9 @@ pub fn service_ast(ix: &Index, service: usize) -> Option<&ast::ServiceDecl> {
         | DeclKind::Enum(_)
         | DeclKind::Error(_)
         | DeclKind::Union(_)
-        | DeclKind::Const(_) => None,
+        | DeclKind::Const(_)
+        | DeclKind::Event(_)
+        | DeclKind::Channel(_) => None,
     }
 }
 

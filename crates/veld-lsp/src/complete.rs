@@ -434,7 +434,7 @@ fn parse_use_path(stmt: &[Tok]) -> (Option<String>, Vec<String>) {
 fn accepts(pos: TypePos, kind: DKind) -> bool {
     match pos {
         TypePos::Value | TypePos::Arm => matches!(kind, DKind::Model | DKind::Enum | DKind::Union),
-        TypePos::Response => kind != DKind::Const,
+        TypePos::Response => !matches!(kind, DKind::Const | DKind::Event),
         TypePos::Parent => kind == DKind::Model,
     }
 }
@@ -447,6 +447,7 @@ fn decl_item_named(label: &str, d: &DeclEntry, edit: Option<TextEdit>) -> Comple
     let kind = match d.kind {
         DKind::Enum => CompletionItemKind::ENUM,
         DKind::Const => CompletionItemKind::CONSTANT,
+        DKind::Event => CompletionItemKind::EVENT,
         DKind::Model | DKind::Error | DKind::Union => CompletionItemKind::CLASS,
     };
     let mut i = item(label, kind, Some(&d.qualified));

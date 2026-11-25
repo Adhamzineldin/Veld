@@ -125,6 +125,8 @@ fn header(ix: &Index, d: &DeclEntry) -> String {
         DeclKind::Union(_) => format!("union {}", d.name),
         DeclKind::Const(c) => format!("const {}: {}", d.name, src(ix, c.ty.span)),
         DeclKind::Service(_) => format!("service {}", d.name),
+        DeclKind::Event(_) => format!("event {}", d.name),
+        DeclKind::Channel(_) => format!("channel {}", d.name),
     }
 }
 
@@ -136,6 +138,7 @@ fn kind_word(d: &DeclEntry) -> &'static str {
         DKind::Enum => "enum",
         DKind::Union => "union",
         DKind::Const => "const",
+        DKind::Event => "event",
     }
 }
 
@@ -210,10 +213,10 @@ fn variant_hover(ix: &Index, decl: usize, variant: usize) -> Option<String> {
 fn service_hover(ix: &Index, s: usize) -> Option<String> {
     let entry = ix.services.get(s)?;
     let ast = service_ast(ix, s)?;
-    let mut out = format!(
-        "```veld\nservice {} at \"{}\"\n```\n",
-        entry.name, ast.prefix.value
-    );
+    let mut out = match &ast.prefix {
+        Some(p) => format!("```veld\nservice {} at \"{}\"\n```\n", entry.name, p.value),
+        None => format!("```veld\nservice {}\n```\n", entry.name),
+    };
     if let Some(d) = &entry.docs {
         out.push_str(&format!("{d}\n\n"));
     }
@@ -269,7 +272,7 @@ fn endpoint_hover(a: &Analysis, service: usize, endpoint: usize) -> Option<Strin
         None => out.push_str(&format!(
             "- `{} {}{}`\n",
             ast_ep.method_span_text(ix),
-            sd.prefix.value,
+            sd.prefix.as_ref().map_or("", |p| p.value.as_str()),
             ast_ep.path.value
         )),
     }

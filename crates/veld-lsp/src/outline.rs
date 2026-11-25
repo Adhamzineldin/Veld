@@ -88,6 +88,12 @@ fn decl_symbol(ix: &Index, lines: &LineIndex, d: &ast::Decl) -> DocumentSymbol {
             let detail = e.status.map(|(s, _)| format!("error {s}"));
             sym(SymbolKind::STRUCT, detail, fields(ix, lines, &e.fields))
         }
+        DeclKind::Event(e) => sym(SymbolKind::EVENT, None, fields(ix, lines, &e.fields)),
+        DeclKind::Channel(_) => sym(
+            SymbolKind::INTERFACE,
+            Some("channel".to_string()),
+            Vec::new(),
+        ),
         DeclKind::Enum(e) => {
             let kids = e
                 .variants
@@ -148,7 +154,7 @@ fn decl_symbol(ix: &Index, lines: &LineIndex, d: &ast::Decl) -> DocumentSymbol {
                     )
                 })
                 .collect();
-            let detail = Some(format!("at \"{}\"", s.prefix.value));
+            let detail = s.prefix.as_ref().map(|p| format!("at \"{}\"", p.value));
             sym(SymbolKind::CLASS, detail, kids)
         }
     }
@@ -262,6 +268,11 @@ fn decl_tokens(d: &ast::Decl, out: &mut Vec<Raw>) {
             out.push(raw(name, T_TYPE, M_DECLARATION));
             field_tokens(&e.fields, out);
         }
+        DeclKind::Event(e) => {
+            out.push(raw(name, T_TYPE, M_DECLARATION));
+            field_tokens(&e.fields, out);
+        }
+        DeclKind::Channel(_) => out.push(raw(name, T_TYPE, M_DECLARATION)),
         DeclKind::Union(u) => {
             out.push(raw(name, T_TYPE, M_DECLARATION));
             out.extend(

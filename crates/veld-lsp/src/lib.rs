@@ -22,4 +22,6 @@ pub mod workspace;
 pub use server::{ServerError, capabilities, run_stdio, serve};
 
 #[cfg(test)]
+mod event_tests;
+#[cfg(test)]
 mod testutil;
