@@ -153,6 +153,12 @@ pub trait Endpoints: Send + Sync + 'static {
     /// Observes every violated rule, of the input (rejected) and of the output (rejected or
     /// audited). It cannot change the response.
     fn on_rule_violation(&self, _event: &super::rules::RuleEvent) {}
+
+    /// Whether a body, query object or WebSocket message of this service can reach a rule: with
+    /// request validation off the server says once, when it is created, that they are not enforced.
+    fn reaches_rules(&self) -> bool {
+        false
+    }
     // #endif
 
     /// Observes every error that becomes `Internal`. It cannot change the response.
@@ -432,7 +438,7 @@ impl Bound {
         let wire = Value::Object(wire);
         let issues = if self.check { p.schema.validate(&wire, &p.location(), true) } else { Vec::new() };
         // #if rules
-        if issues.is_empty() {
+        if self.check && issues.is_empty() {
             self.rules(p, &wire);
         }
         // #endif
@@ -455,7 +461,7 @@ impl Bound {
         };
         let issues = if self.check { p.schema.validate(&raw, "body", true) } else { Vec::new() };
         // #if rules
-        if issues.is_empty() {
+        if self.check && issues.is_empty() {
             self.rules(p, &raw);
         }
         // #endif
@@ -510,6 +516,9 @@ impl<E: Endpoints> Handler<E> {
     #[must_use]
     pub fn new(endpoints: E) -> Self {
         // #if rules
+        if !endpoints.validate_requests() && endpoints.reaches_rules() {
+            eprintln!("veld: request validation is off: the rules of request bodies, query objects and WebSocket messages are not enforced");
+        }
         let output = endpoints.rules_output();
         if output != super::rules::RuleOutput::Strict {
             eprintln!("veld: output rules run in {output:?} mode");

@@ -22,11 +22,16 @@ type Events = Arc<Mutex<Vec<RuleEvent>>>;
 struct Hooks {
     mode: RuleOutput,
     events: Events,
+    validate: bool,
 }
 
 impl BookingsHooks for Hooks {
     fn rules_output(&self) -> RuleOutput {
         self.mode
+    }
+
+    fn validate_requests(&self) -> bool {
+        self.validate
     }
 
     fn on_rule_violation(&self, event: &RuleEvent) {
@@ -53,9 +58,13 @@ struct Server {
 }
 
 async fn serve(mode: RuleOutput) -> Server {
+    serve_with(mode, true).await
+}
+
+async fn serve_with(mode: RuleOutput, validate: bool) -> Server {
     let events: Events = Arc::default();
     let hits = Arc::new(AtomicUsize::new(0));
-    let handler = BookingsHandler::create(Impl, Hooks { mode, events: events.clone() });
+    let handler = BookingsHandler::create(Impl, Hooks { mode, events: events.clone(), validate });
     let counter = hits.clone();
     let router = bookings_server::adapters::axum::router(handler).layer(axum::middleware::from_fn(
         move |req: axum::extract::Request, next: axum::middleware::Next| {
@@ -186,9 +195,60 @@ async fn output_rules() {
     assert!(off.events.lock().unwrap().is_empty());
 }
 
+/// The child process of [`validation_off`]: a server whose request validation is off. It prints
+/// its port and serves until it is killed.
+async fn serve_off() {
+    let server = serve_with(RuleOutput::Strict, false).await;
+    println!("PORT={}", server.base.rsplit(':').next().unwrap());
+    std::future::pending::<()>().await;
+}
+
+/// Request validation off (`spec/rules.md` section 5.3): the server accepts a rule-violating body,
+/// says so once when it is created, and a client with validation off sends it too.
+async fn validation_off() {
+    use std::io::{BufRead, BufReader, Read};
+    use std::process::{Command, Stdio};
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .arg("serve-off")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+    let port = line.trim().strip_prefix("PORT=").unwrap_or_else(|| panic!("no port: {line:?}"));
+    let base = format!("http://127.0.0.1:{port}");
+    let bad = r#"{"guest":"a","start":"2026-01-02T00:00:00Z","end":"2026-01-01T00:00:00Z","rooms":[1]}"#;
+    for _ in 0..2 {
+        let raw = reqwest::Client::new()
+            .post(format!("{base}/bookings"))
+            .header("content-type", "application/json")
+            .body(bad)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(raw.status().as_u16(), 201, "the rule-violating body is accepted");
+    }
+    // The client's local check is off with validation: the body is sent and accepted.
+    let client = BookingsClient::reqwest(ClientOptions::new().base_url(&base).validate(false)).unwrap();
+    let ok = client.create_booking(CreateBookingRequest { body: booking(BAD.0, BAD.1) }).await.unwrap();
+    assert_eq!(ok.total, 5);
+    child.kill().unwrap();
+    child.wait().unwrap();
+    let mut stderr = String::new();
+    child.stderr.take().unwrap().read_to_string(&mut stderr).unwrap();
+    let said = stderr.lines().filter(|l| l.contains("request validation is off")).count();
+    assert_eq!(said, 1, "reported once, when the handler is created: {stderr:?}");
+}
+
 #[tokio::main]
 async fn main() {
+    if std::env::args().nth(1).as_deref() == Some("serve-off") {
+        serve_off().await;
+        return;
+    }
     input_rules().await;
     output_rules().await;
+    validation_off().await;
     println!("rules roundtrip ok");
 }

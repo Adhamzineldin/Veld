@@ -15,6 +15,7 @@ pub mod server;
 pub mod tree;
 pub mod types;
 pub mod util;
+pub mod warn;
 
 use std::collections::BTreeMap;
 
@@ -195,6 +196,10 @@ impl Generator for Rust {
             Feature::RulesTransitions,
             Feature::RulesPolicies,
         ])
+    }
+
+    fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
+        warn::validation_off(req, opts.validate)
     }
 
     fn generate(

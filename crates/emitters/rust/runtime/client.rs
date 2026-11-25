@@ -446,7 +446,7 @@ impl<T: Transport> Core<T> {
                 issues.extend(p.schema.validate(&wire, &p.location(), true));
             }
             // #if rules
-            if self.options.check_rules && issues.is_empty() && matches!(p.binding, Binding::Body | Binding::QueryObject) {
+            if self.validate && self.options.check_rules && issues.is_empty() && matches!(p.binding, Binding::Body | Binding::QueryObject) {
                 violations.extend(super::rules::check_wire(p.schema, &wire, &p.location(), super::rules::Mode::Request));
             }
             // #endif

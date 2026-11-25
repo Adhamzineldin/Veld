@@ -145,6 +145,16 @@ pub fn streaming_sse_ir() -> Ir {
     )
 }
 
+/// The shared bookings contract of the rules tests (`tests/toolchain/contract/rules`).
+pub fn rules_ir() -> Ir {
+    single("bookings", "rules", "bookings.veld")
+}
+
+/// Streams and errors with invariants (`tests/toolchain/contract/rules_live`).
+pub fn rules_live_ir() -> Ir {
+    single("live", "rules_live", "live.veld")
+}
+
 pub fn greeter_ir() -> Ir {
     single("greeter", "validate", "greeter.veld")
 }

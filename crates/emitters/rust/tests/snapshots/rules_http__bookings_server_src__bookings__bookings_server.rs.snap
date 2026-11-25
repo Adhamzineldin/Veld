@@ -181,6 +181,10 @@ impl<S: BookingsService, H: BookingsHooks> veld::server::Endpoints for BookingsD
         self.hooks.on_rule_violation(event);
     }
 
+    fn reaches_rules(&self) -> bool {
+        true
+    }
+
     async fn call(&self, endpoint: usize, args: serde_json::Map<String, serde_json::Value>, ctx: &veld::server::RequestContext) -> Result<serde_json::Value, veld::Error> {
         match endpoint {
             0 => {

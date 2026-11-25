@@ -1,7 +1,7 @@
 //! The server of a service: the `Service` trait, the hooks, and the dispatch into the core.
 
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
-use veld_ir::{AuthKind, Endpoint, Service, ServiceId};
+use veld_ir::{AuthKind, Binding, Endpoint, Service, ServiceId};
 
 use crate::endpoints::{self, Kind, endpoint_statics, request_name, request_struct, std_sigs};
 use crate::models::with_imports;
@@ -94,7 +94,7 @@ fn service_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, _sid: Serv
     service_trait(w, ctx, svc);
     let n = needs(svc);
     hooks_trait(w, svc, &n, ctx.tree.validate, ctx.tree.rules);
-    dispatch(w, svc, &n, ctx.tree.rules);
+    dispatch(w, ctx.tree, svc, &n);
     handler(w, svc, &n);
 }
 
@@ -202,7 +202,19 @@ fn hooks_trait(w: &mut CodeWriter, svc: &Service, n: &Needs, validate: bool, rul
     }
 }
 
-fn dispatch(w: &mut CodeWriter, svc: &Service, n: &Needs, rules: bool) {
+/// Whether a body, query object or WebSocket message of the service can reach a rule.
+fn input_reaches_rules(tree: &Tree<'_>, svc: &Service) -> bool {
+    svc.endpoints.iter().any(|ep| {
+        !ep.rules.is_empty()
+            || ep.params.iter().any(|p| {
+                (p.stream || matches!(p.binding, Binding::Body | Binding::QueryObject))
+                    && tree.type_reaches_rules(&p.ty)
+            })
+    })
+}
+
+fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs) {
+    let rules = tree.rules;
     let name = service_type(svc);
     w.line(format!(
         "/// Connects `{name}Service` and `{name}Hooks` to the server core."
@@ -235,6 +247,9 @@ fn dispatch(w: &mut CodeWriter, svc: &Service, n: &Needs, rules: bool) {
         w.close().blank();
         w.open("fn on_rule_violation(&self, event: &veld::rules::RuleEvent)");
         w.line("self.hooks.on_rule_violation(event);");
+        w.close().blank();
+        w.open("fn reaches_rules(&self) -> bool");
+        w.line(input_reaches_rules(tree, svc).to_string());
         w.close().blank();
     }
     auth_forwards(w, n);

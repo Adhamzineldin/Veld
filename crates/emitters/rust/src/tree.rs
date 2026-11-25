@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use veld_ir::{Decl, DeclId, DeclKind, Ir, PackageId, PackageKind, ServiceId};
+use veld_ir::{Decl, DeclId, DeclKind, Ir, PackageId, PackageKind, ServiceId, Type};
 
 use crate::util::{self, RESERVED_MODULES};
 
@@ -66,6 +66,25 @@ impl<'a> Tree<'a> {
         self.decls
             .iter()
             .any(|id| !self.ir.decl(*id).rules().is_empty())
+    }
+
+    /// Whether a value of type `ty` can hold a declaration that has invariants.
+    #[must_use]
+    pub fn type_reaches_rules(&self, ty: &Type) -> bool {
+        let mut stack = Vec::new();
+        ty.collect_decls(&mut stack);
+        let mut seen = BTreeSet::new();
+        while let Some(id) = stack.pop() {
+            if !seen.insert(id) {
+                continue;
+            }
+            let d = self.ir.decl(id);
+            if !d.rules().is_empty() {
+                return true;
+            }
+            refs(d, &mut stack);
+        }
+        false
     }
 
     /// Sets whether the crate carries the invariants runtime.
