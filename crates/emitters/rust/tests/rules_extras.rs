@@ -63,6 +63,26 @@ fn errors_sse_items_and_websocket_messages_are_checked() {
     );
 }
 
+/// The generated Rust server answers the request of `tests/wire/rules/request.json` with a
+/// problem document whose canonical bytes are `problem.json`.
+#[test]
+fn the_rust_server_answers_the_golden_422_problem_document_byte_for_byte() {
+    if !cargo_or_skip() {
+        return;
+    }
+    let ir = rules_ir();
+    let server = gen_server(&ir, "Bookings", &[], "golden-server");
+    let client = gen_client(&ir, "golden-client", None);
+    let ws = harness_workspace("rules-golden-ws", &server, &client, "rules-golden-harness");
+    let dir = repo_root().join("tests/wire/rules");
+    build_lint_and_run(
+        &ws,
+        ("golden-server", "golden-client", "rules-golden-harness"),
+        &[dir.to_str().unwrap()],
+        "rules golden ok",
+    );
+}
+
 #[test]
 fn w0904_is_not_reported_when_the_contract_has_no_rules() {
     let ir = standard_ir();
