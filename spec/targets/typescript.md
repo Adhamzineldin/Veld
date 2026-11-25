@@ -288,6 +288,74 @@ OrdersVeldModule.forRoot({ useClass | useValue | useFactory (+ inject, imports),
 - Needs `experimentalDecorators` and `emitDecoratorMetadata` in `tsconfig.json`. Only `server/nest/**` needs them: every other generated file still compiles without those flags (`tsc --strict`, no decorator options, no Nest packages). Nest's own body parser runs first, so a malformed JSON body is answered by Nest (400) before Veld sees it.
 - Limits: a global prefix (`app.setGlobalPrefix`) or URI versioning changes the path the router core sees and is not supported; mount the module under the contract's own prefix instead.
 
+## 5b. Rules (invariants)
+
+Both generators implement `rules_invariants` (`spec/rules.md` §5 and §8). The other three rules features (`rules_endpoint`, `rules_transitions`, `rules_policies`) are still refused with `E0801`.
+
+**A contract without rules gets the same bytes as before.** The rule code is added in two ways only: `runtime/rules.ts` is emitted *only* when an emitted declaration has an invariant, and the lines of `runtime/veld.ts` that need to know about rules sit between `// #if rules` and `// #endif` marker lines in the embedded source. `veld_codegen::gate_regions` drops the marker lines, and drops the lines between them unless the contract has rules, so a contract without rules gets `runtime/veld.ts` exactly as it was before rules existed. Everything below is about a contract that has rules.
+
+### Layout
+```
+runtime/rules.ts        the value helpers and the three evaluation errors (the list below); no imports
+runtime/veld.ts         + the schema walk, the pipeline steps, the local client check (gated regions)
+models/<module>.ts      + a check function `check<Decl>Rules` per declaration with rules, and `ruleIds`
+```
+A generated file that has a check function imports the helpers as `import * as veldRules from '<rel>/runtime/rules'`. Both generators emit the same models, so the same check functions.
+
+### Values while a rule runs
+`int` and `float` are `number`; `long`, `duration`, `datetime`, `date` (days since the epoch) and `time` (milliseconds since midnight) are `bigint`; `decimal` is a `Decimal` (`{ n: bigint, s: number }`, the value `n * 10^-s`); `string`, `uuid` (lower case), `bytes` (base64 text) and enums (wire strings) keep their wire form. A field read converts at the leaf (`self.price` of type `decimal` is `veldRules.dec(...)`), and a list read converts its elements once, so a lambda variable over scalars is a bare identifier (`l_<name>`). Comparisons, `&&`, `||`, `!`, `startsWith`, `endsWith`, `includes` and `===` are native; every checked or exact operation is a helper. A required step of a path goes through `veldRules.required(...)`, which throws `AbsentField` for an absent value (only a partial check can see one); an optional step the compiler proved present is read with `!`.
+
+### Helper reference list (`runtime/rules.ts`)
+The other targets mirror these names in their own naming style; `crates/veld-rules/src/helpers` is the reference for every one.
+
+| Group | Names |
+|---|---|
+| Errors | `RuleEvalError` (`kind`: `overflow`, `division_by_zero`, `non_finite`), `AbsentField`, `required`, `unavailable`, `failed` |
+| `int` (`number`) | `addInt`, `subInt`, `mulInt`, `divInt`, `remInt`, `negInt` |
+| `long`, `duration` (`bigint`) | `addLong`, `subLong`, `mulLong`, `divLong`, `remLong`, `negLong`, `toLong` |
+| `float` | `addFloat`, `subFloat`, `mulFloat`, `divFloat`, `remFloat` |
+| duration | `days`, `hours`, `minutes`, `seconds`, `ms`, `dateDiff` |
+| `decimal` | `dec`, `decFromInt`, `decFromLong`, `decAdd`, `decSub`, `decMul`, `decNeg`, `decCmp`, `decIn` |
+| `date`, `datetime`, `time` | `toDate`, `toDatetime`, `toTime` (parsed by hand, never `Date.parse`; digits below the millisecond are dropped) |
+| strings | `lenString` (code points), `lenBytes`, `lenMap`, `hasKey`, `toUuid`, `matches` (`new RegExp(pattern, 'u')`, the same as `@pattern`) |
+| comprehensions | `countWhere`, `sumInt`, `sumLong`, `sumFloat`, `sumDecimal` (`all` and `any` are `every` and `some`) |
+
+`int` arithmetic is checked against the 32-bit range, `long` and `duration` against the 64-bit range; `/` truncates toward zero and `%` takes the sign of the dividend (`divInt(a, b)` is `(a - a % b) / b`, which is exact in a double); a zero divisor is `division_by_zero` for floats too; a float result that is not finite is `non_finite`.
+
+### Check functions
+For every model or error with at least one rule, one plain function evaluates the rules in list order on one value:
+```ts
+function checkBookingRules(self: Booking, path: string, mode: veld.RuleMode, out: veld.Violation[]): void {
+  try {
+    if (!(veldRules.toDatetime(veldRules.required(self.end)) > veldRules.toDatetime(veldRules.required(self.start)))) {
+      out.push({ rule: 'veld:…', path, fields: ['end', 'start'], message: 'A booking must end after it starts' });
+    }
+  } catch (e) {
+    veldRules.failed(e, mode, out, 'veld:…', 'endAfterStart', path, ['end', 'start']);
+  }
+  // …one block per rule
+}
+```
+- `mode` is `'full'`, `'request'` or `'partial'`. A rule with `reads_readonly` is wrapped in `if (mode !== 'request')`.
+- `failed` records an evaluation error as a violation with `error` and the message `rule <name> could not be evaluated`; it ignores `AbsentField` in `'partial'` mode (the rule is skipped, not failed) and rethrows anything else. Nothing else can escape a check function except a bug.
+- `fields` are the wire names of `Rule.reads`; `message` is the rule's message or `violates rule <name>`.
+- The declaration's schema node carries the function: `{ k: 'object', fields: [...], rules: checkBookingRules }`. `checkValue(schema, value, path, mode)` in the runtime walks a value by its schema and calls the function of every object it visits, its own rules before its fields, with the paths of `spec/rules.md` §5.2 built from **wire** field names (`$`, `$.rows[1]`, `$.named.k`, `body.items[2]`; a union arm keeps the path of the union, a page adds `.items`).
+
+### Public surface
+Every companion has `check(value, path = '$'): Violation[]` and `partial(draft): Violation[]`, which walk nested values too. A declaration with rules also has `ruleIds`, a member holding the rule ids by rule name (`Booking.ruleIds.endAfterStart`). An error class with rules has the static `ruleIds` and `check(data)`.
+- `partial(draft)` (`spec/rules.md` §5.4): the draft is not shape-validated, defaults are applied, a rule whose evaluation reads an absent required field is skipped.
+- `Violation` is `{ rule, path, fields, message, error? }`.
+- `VeldError` has `violations` (empty unless the problem document had the member) and `local` (true when the client raised it before sending).
+
+### Client
+Before sending, the client checks the invariants of a `body` and of a `query` object in request mode, after applying defaults, once the shape validation passed. On a violation it sends nothing and throws the typed `ValidationError` with `issues` (code `rule`, or `rule_error` for an evaluation error), `violations`, `local = true` and `op`. The option `rules: false` turns the check off; `validate: false` also skips it, because the shape of the value is then unknown. An error response that carries a `violations` member decodes with `violations` filled and `local = false`.
+
+### Server
+- Step 4 is unchanged. **Step 5** (after bind and validate, only when requests are validated): the invariants of the bound `body` and `query` object, in request mode. A violation answers `422 ValidationError` whose problem document has both `data.issues` (one issue per violation, code `rule` or `rule_error`) and the top-level `violations` member (`spec/rules.md` §7).
+- **Step 8**: the invariants of the result, by output mode, default `strict`. When the mode is not `off` and the success type reaches a declaration with rules, the result's shape is validated first (a shape failure is the 500 of `validateResponses` in `strict`; in `audit` the rules are skipped). `strict` answers `500 Internal` with no rule detail; `audit` sends the response unchanged.
+- The hooks object of a server that has rules gains `rules?: { output?: 'strict' | 'audit' | 'off' }` and `onRuleViolation?(event)`. The event is `{ rule, operation, position: 'input' | 'output', outcome: 'rejected' | 'audited', violation, elapsedMicros }`; it is called once per violation, and an exception in the hook never changes the response. A mode other than `strict` is reported once, with `console.warn`, when `create<Service>Handler` runs.
+- Not checked in this phase: SSE items, WebSocket messages in either direction, and the invariants of an `error` declaration when the server encodes it or the client decodes it.
+
 ## 6. Tests every change must keep green
 - `tests/toolchain/ts`: generate the conformance workspaces, then compile them with `tsc --strict --noEmit` once per edition (`typescript = "es2020"` with `--target es2020`, and `"es2022"` with `--target es2022`; the matrix is `TARGETS` in `crates/emitters/node/tests/common/mod.rs`). The run must produce zero errors.
 - Round trip: the generated server mounted through `toExpress`, with the generated client calling every endpoint. This covers success, every declared error, an undeclared error leaking nothing, a validation failure, and auth failure and success.
