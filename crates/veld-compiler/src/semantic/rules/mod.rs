@@ -8,6 +8,9 @@ mod checker;
 mod depth;
 #[cfg(test)]
 mod depth_tests;
+mod endpoint;
+#[cfg(test)]
+mod endpoint_tests;
 mod ops;
 mod paths;
 #[cfg(test)]
@@ -21,6 +24,10 @@ use crate::diagnostics::{Diagnostic, Span, has_errors};
 use crate::language::Target;
 use crate::syntax::ast::{self, DeclKind, doc_text};
 use checker::Checker;
+pub(crate) use endpoint::{
+    RBlock, RElse, RElseField, REnsure, RFact, RRequire, check_block, check_service_facts,
+    has_bare_require, has_required_fact,
+};
 use veld_ir::rules::Expr;
 
 /// A checked rule of one declaration.
@@ -151,6 +158,7 @@ fn check_rule(
         bounded: Vec::new(),
         reads: Vec::new(),
         reads_readonly: false,
+        ep: None,
     };
     let Some(expr) = c.bool_expr(&rule.expr, "a rule") else {
         // A rule must never disappear quietly: without any error the IR would just lack it.

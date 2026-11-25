@@ -29,6 +29,35 @@ pub(super) struct Checker<'p, 'a, 'd> {
     pub bounded: Vec<bool>,
     pub reads: Vec<String>,
     pub reads_readonly: bool,
+    /// The names of an endpoint block (`spec/rules.md` section 9.1). `None` inside an invariant.
+    pub ep: Option<EpScope>,
+}
+
+/// Which statement of an endpoint block is being checked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Phase {
+    /// The key of a fact.
+    Fact,
+    /// A `require` or the payload of its `else`.
+    Require,
+    Ensure,
+}
+
+/// What an endpoint block can name.
+#[derive(Debug, Clone)]
+pub(super) struct EpScope {
+    /// Parameters, as fields without constraints that matter to a rule (`stream` bodies are left
+    /// out: they are not in scope).
+    pub params: Vec<RField>,
+    /// The facts in scope: those declared before the statement, or all of them after the facts.
+    pub facts: Vec<RField>,
+    /// The success value, when the endpoint has one that is not a stream.
+    pub result: Option<Type>,
+    pub phase: Phase,
+    /// Inside `old(...)`.
+    pub in_old: bool,
+    /// The key of an optional fact may read absent values: the loader is then not called.
+    pub lenient: bool,
 }
 
 /// True for an expression that takes its type from the other operand: a numeric or enum
@@ -294,22 +323,32 @@ impl Checker<'_, '_, '_> {
 
     fn list_item(&mut self, item: &ast::Expr, elem: &ExprType) -> Option<Expr> {
         let typed = self.expr(item, Some(elem))?;
-        if &typed.t == elem {
+        self.fit(typed, elem, item.span, |found, expected| {
+            format!("list element is `{found}`, the list holds `{expected}`")
+        })
+    }
+
+    /// `typed` as a value of type `want`: unchanged when it already is one, widened when that
+    /// is exact, `E0902` (with the message `what` builds from the two type names) otherwise.
+    pub fn fit(
+        &mut self,
+        typed: Expr,
+        want: &ExprType,
+        span: Span,
+        what: impl FnOnce(&str, &str) -> String,
+    ) -> Option<Expr> {
+        if &typed.t == want {
             return Some(typed);
         }
         let exact = matches!(
-            (as_scalar(&typed.t), as_scalar(elem)),
+            (as_scalar(&typed.t), as_scalar(want)),
             (Some(a), Some(b)) if unify_numeric(a, b) == Some(b)
         );
         if exact {
-            return Some(coerce(typed, elem));
+            return Some(coerce(typed, want));
         }
-        let (found, expected) = (self.tname(&typed.t), self.tname(elem));
-        self.err(
-            "E0902",
-            format!("list element is `{found}`, the list holds `{expected}`"),
-            item.span,
-        );
+        let (found, expected) = (self.tname(&typed.t), self.tname(want));
+        self.err("E0902", what(&found, &expected), span);
         None
     }
 }

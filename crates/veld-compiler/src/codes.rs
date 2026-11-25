@@ -280,6 +280,47 @@ pub const CODES: &[CodeInfo] = &[
         "Duplicate rule name in a declaration, counting inherited rules",
     ),
     e("E0908", C, "Numeric literal out of range for its type"),
+    e(
+        "E0920",
+        C,
+        "A fact named like a parameter, another fact, the principal, `now` or `result`",
+    ),
+    e(
+        "E0921",
+        C,
+        "The error after `else` is not one of the endpoint's declared errors",
+    ),
+    e(
+        "E0922",
+        C,
+        "Two facts with one name but different types, key types or optionality in a service; an unknown or missing field in an `else` payload",
+    ),
+    e("E0923", C, "A fact read in `ensure` outside `old(...)`"),
+    e(
+        "E0924",
+        C,
+        "`ensure` on an endpoint whose success is a stream",
+    ),
+    e(
+        "E0950",
+        C,
+        "Duplicate example name; unknown or ambiguous endpoint in an example",
+    ),
+    e(
+        "E0951",
+        C,
+        "`given` names something that is not a fact of the called endpoint",
+    ),
+    e(
+        "E0952",
+        C,
+        "A value in an example does not fit the type it is used at",
+    ),
+    e(
+        "E0953",
+        "veld-rules",
+        "A value an example leaves out cannot be filled in, or the filled-in value breaks an invariant",
+    ),
     w("W0001", C, "Doc comment is not attached to anything"),
     w("W0201", C, "Unused import"),
     w("W0202", C, "Declaration shadows a prelude declaration"),

@@ -1,6 +1,6 @@
 //! Built-in functions and comprehensions (`spec/rules.md` section 3.5).
 
-use super::checker::Checker;
+use super::checker::{Checker, Phase};
 use super::paths::flatten;
 use super::types::{as_scalar, boolean, is_bool, is_numeric, is_string, list_elem, node, scalar};
 use crate::diagnostics::{Diagnostic, Span};
@@ -73,15 +73,39 @@ impl Checker<'_, '_, '_> {
             "has" => self.has_call(name, args, span),
             "len" => self.len_call(name, args, span),
             "matches" => self.matches_call(name, args, span),
-            "old" => {
-                self.err(
-                    "E0904",
-                    "`old(...)` is not available in an invariant: there is no operation to compare with",
-                    name.span,
-                );
-                None
-            }
+            "old" => self.old_call(name, args, span),
             _ => self.unknown_function(name),
+        }
+    }
+
+    /// `old(e)`: the value of `e` before the handler ran (`spec/rules.md` section 9.4).
+    fn old_call(&mut self, name: &ast::Ident, args: &[CallArg], span: Span) -> Option<Expr> {
+        let state = self.ep.as_ref().map(|e| (e.phase, e.in_old));
+        let msg = match state {
+            None => "`old(...)` is not available in an invariant: there is no operation to compare with",
+            Some((phase, _)) if phase != Phase::Ensure => {
+                "`old(...)` is only available in `ensure`"
+            }
+            Some((_, true)) => "`old(...)` cannot be nested",
+            Some((_, false)) => "",
+        };
+        if !msg.is_empty() {
+            self.err("E0904", msg, name.span);
+            return None;
+        }
+        let [arg] = self.plain_args(name, args, 1, span)?[..] else {
+            return None;
+        };
+        self.set_in_old(true);
+        let inner = self.expr(arg, None);
+        self.set_in_old(false);
+        let inner = inner?;
+        Some(node(inner.t.clone(), ExprKind::Old(Box::new(inner))))
+    }
+
+    fn set_in_old(&mut self, on: bool) {
+        if let Some(ep) = &mut self.ep {
+            ep.in_old = on;
         }
     }
 

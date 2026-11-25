@@ -3,12 +3,12 @@
 
 use std::collections::BTreeSet;
 
-use super::checker::Checker;
+use super::checker::{Checker, Phase};
 use super::types::{boolean, lit, node, of, scalar};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::semantic::{DKind, RField};
 use crate::syntax::ast::{self, BinOp, CallArg, ExprKind as A, UnOp};
-use veld_ir::rules::{Expr, ExprKind, ExprLit, PathRef, Root, Step};
+use veld_ir::rules::{Always, Expr, ExprKind, ExprLit, PathRef, Root, Step};
 use veld_ir::{Literal, Scalar, Type};
 
 /// The pieces of a path expression `a.b.c`.
@@ -131,6 +131,9 @@ pub(super) fn absent_facts(e: &ast::Expr) -> BTreeSet<String> {
 /// Where a path starts: a field of the declaration or a lambda variable of this type.
 enum Start {
     Field(Box<RField>),
+    /// A parameter or fact of an endpoint block: the root itself, not a step. The flag says
+    /// whether reading it counts as a read of a parameter.
+    Root(Box<RField>, bool),
     Var(Type),
 }
 
@@ -156,10 +159,94 @@ impl Checker<'_, '_, '_> {
             let ty = self.lambdas[i].1.clone();
             return self.walk(Root::Var(name.clone()), &flat, Start::Var(ty), in_has);
         }
-        if let Some(f) = self.fields.iter().find(|f| &f.name == name).cloned() {
+        if self.ep.is_some() {
+            if let Some(found) = self.endpoint_name(&flat, in_has) {
+                return found;
+            }
+        } else if let Some(f) = self.fields.iter().find(|f| &f.name == name).cloned() {
             return self.walk(Root::SelfValue, &flat, Start::Field(Box::new(f)), in_has);
         }
         self.constant_or_unknown(&flat)
+    }
+
+    /// A name of an endpoint block (`spec/rules.md` section 9.1). `None` when `flat` starts with
+    /// none of them; `Some(None)` when it does and the use was reported.
+    fn endpoint_name(&mut self, flat: &Flat<'_>, in_has: bool) -> Option<Option<Typed>> {
+        let name = flat.root.name.clone();
+        let ep = self.ep.as_ref()?;
+        let param = ep.params.iter().find(|f| f.name == name).cloned();
+        let fact = ep.facts.iter().find(|f| f.name == name).cloned();
+        if let Some(f) = param {
+            return Some(self.walk(Root::Param(name), flat, Start::Root(Box::new(f), true), in_has));
+        }
+        if let Some(f) = fact {
+            if !self.fact_readable(&name, flat.root.span) {
+                return Some(None);
+            }
+            return Some(self.walk(Root::Fact(name), flat, Start::Root(Box::new(f), false), in_has));
+        }
+        match name.as_str() {
+            "now" => Some(self.now_value(flat, in_has)),
+            "result" => Some(self.result_value(flat, in_has)),
+            _ => None,
+        }
+    }
+
+    /// `E0923`: a fact is read in `ensure` only inside `old(...)`.
+    fn fact_readable(&mut self, name: &str, span: Span) -> bool {
+        let in_ensure_bare = self
+            .ep
+            .as_ref()
+            .is_some_and(|e| e.phase == Phase::Ensure && !e.in_old);
+        if in_ensure_bare {
+            self.report(
+                Diagnostic::error(
+                    "E0923",
+                    format!("fact `{name}` is read in `ensure` outside `old(...)`"),
+                    span,
+                )
+                .with_help(format!(
+                    "the handler may have changed it: write `old({name}...)` for its value before the handler ran"
+                )),
+            );
+        }
+        !in_ensure_bare
+    }
+
+    fn now_value(&mut self, flat: &Flat<'_>, in_has: bool) -> Option<Typed> {
+        if in_has {
+            self.err("E0906", "`now` is never absent, so `has` has nothing to ask", flat.root.span);
+            return None;
+        }
+        if let Some(step) = flat.steps.first() {
+            self.err("E0902", format!("cannot read `.{}` of a `datetime`", step.name), step.span);
+            return None;
+        }
+        Some(Typed {
+            expr: node(scalar(Scalar::Datetime), ExprKind::Now(Always)),
+            bounded: false,
+        })
+    }
+
+    fn result_value(&mut self, flat: &Flat<'_>, in_has: bool) -> Option<Typed> {
+        let span = flat.root.span;
+        let (phase, result) = self.ep.as_ref().map(|e| (e.phase, e.result.clone()))?;
+        if phase != Phase::Ensure {
+            self.err("E0904", "`result` is only available in `ensure`", span);
+            return None;
+        }
+        let Some(ty) = result else {
+            self.report(
+                Diagnostic::error(
+                    "E0904",
+                    "`result` is not available: this endpoint has no success body to read",
+                    span,
+                )
+                .with_help("give the endpoint a success type, e.g. `-> 200 Booking`"),
+            );
+            return None;
+        };
+        self.walk(Root::Result, flat, Start::Var(ty), in_has)
     }
 
     fn walk(&mut self, root: Root, flat: &Flat<'_>, start: Start, in_has: bool) -> Option<Typed> {
@@ -179,6 +266,15 @@ impl Checker<'_, '_, '_> {
                     wire: f.wire,
                     optional: f.optional,
                 });
+                f.ty
+            }
+            Start::Root(f, is_param) => {
+                if is_param {
+                    self.note_read(&f.name, false);
+                }
+                bounded = f.constraints.max_len.is_some();
+                any_optional |= f.optional;
+                self.require_present(f.optional, &key, flat.root.span, in_has)?;
                 f.ty
             }
         };
@@ -230,7 +326,8 @@ impl Checker<'_, '_, '_> {
         span: Span,
         in_has: bool,
     ) -> Option<()> {
-        if !optional || in_has || self.known.contains(key) {
+        let lenient = self.ep.as_ref().is_some_and(|e| e.lenient);
+        if !optional || in_has || lenient || self.known.contains(key) {
             return Some(());
         }
         self.report(
@@ -351,7 +448,7 @@ impl Checker<'_, '_, '_> {
             return None;
         }
         let mut names: Vec<String> = self.lambdas.iter().map(|(v, _)| v.clone()).collect();
-        names.extend(self.fields.iter().map(|f| f.name.clone()));
+        names.extend(self.scope_names());
         names.extend(self.visible_consts());
         let diag = Diagnostic::error("E0901", format!("unknown name `{}`", id.name), id.span)
             .did_you_mean(
@@ -363,9 +460,28 @@ impl Checker<'_, '_, '_> {
         None
     }
 
+    /// The local names of the scope: fields of the declaration, or the parameters, facts, `now`
+    /// and `result` of an endpoint block.
+    fn scope_names(&self) -> Vec<String> {
+        let Some(ep) = &self.ep else {
+            return self.fields.iter().map(|f| f.name.clone()).collect();
+        };
+        let mut names: Vec<String> = ep.params.iter().map(|f| f.name.clone()).collect();
+        names.extend(ep.facts.iter().map(|f| f.name.clone()));
+        names.push("now".to_string());
+        if ep.phase == Phase::Ensure && ep.result.is_some() {
+            names.push("result".to_string());
+        }
+        names
+    }
+
     fn scope_hint(&self) -> String {
-        let fields: Vec<&str> = self.fields.iter().map(|f| f.name.as_str()).collect();
-        format!("fields in scope: {}", fields.join(", "))
+        let what = if self.ep.is_some() {
+            "names in scope"
+        } else {
+            "fields in scope"
+        };
+        format!("{what}: {}", self.scope_names().join(", "))
     }
 
     fn visible_consts(&self) -> Vec<String> {

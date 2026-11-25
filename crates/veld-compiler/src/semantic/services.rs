@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use super::annotations::{self, Anns};
-use super::{DKind, Program, REndpoint, RParam, ServiceInfo};
+use super::{DKind, Program, RBlock, REndpoint, RParam, ServiceInfo, rules};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language::{self, Target};
 use crate::syntax::ast::{self, DeclKind, HttpMethod, doc_text};
@@ -69,7 +69,7 @@ fn analyze_service(
             endpoints.push(ep);
         }
     }
-    ServiceInfo {
+    let info = ServiceInfo {
         pkg,
         module,
         name: s.name.name.clone(),
@@ -79,7 +79,9 @@ fn analyze_service(
         middleware,
         endpoints,
         span: s.name.span,
-    }
+    };
+    rules::check_service_facts(&info, diags);
+    info
 }
 
 fn service_prefix(base: &str, p: &ast::StrLit, diags: &mut Vec<Diagnostic>) -> String {
@@ -221,10 +223,14 @@ impl Ctx<'_, '_> {
             success_ty: None,
             success_stream: false,
             errors: Vec::new(),
+            rules: RBlock::default(),
             span: e.name.span,
         };
         self.responses(e, method, &mut ep, diags);
-        self.implicit_errors(&mut ep);
+        self.implicit_errors(&mut ep, e);
+        if e.block.is_some() {
+            ep.rules = rules::check_block(self.prog, self.module, e, &ep, diags);
+        }
         Some(ep)
     }
 
@@ -640,9 +646,14 @@ impl Ctx<'_, '_> {
     /// Adds the implicit errors every server response needs a declaration for:
     /// `ValidationError` (when the endpoint has parameters), `Unauthorized`
     /// (when auth is not `none`) and `Internal` (always), unless already listed.
-    fn implicit_errors(&self, ep: &mut REndpoint) {
-        if !ep.params.is_empty() {
+    fn implicit_errors(&self, ep: &mut REndpoint, e: &ast::Endpoint) {
+        // A `require` without `else` answers `ValidationError`, also when nothing is bound.
+        if !ep.params.is_empty() || rules::has_bare_require(e) {
             self.add_implicit(ep, "ValidationError", 422);
+        }
+        // A required fact the loader cannot find answers `404 NotFound` (`spec/rules.md` 9.2).
+        if rules::has_required_fact(e) {
+            self.add_implicit(ep, "NotFound", 404);
         }
         if ep.auth.kind != veld_ir::AuthKind::None {
             self.add_implicit(ep, "Unauthorized", 401);

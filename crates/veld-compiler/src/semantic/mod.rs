@@ -19,6 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::diagnostics::{Diagnostic, FileId, Span, has_errors};
 use crate::syntax::ast;
 pub use rules::RRule;
+pub(crate) use rules::{RBlock, RElse};
 use veld_ir::{Auth, Constraints, Literal, Method, PackageKind, Type};
 
 /// One parsed `.veld` file of a package.
@@ -158,6 +159,8 @@ pub struct REndpoint {
     /// (status, error declaration), deduplicated, in source order with the
     /// implicit `ValidationError`, `Unauthorized` and `Internal` last.
     pub errors: Vec<(u16, usize)>,
+    /// The checked endpoint block (`spec/rules.md` section 9); empty without one.
+    pub rules: RBlock,
     pub span: Span,
 }
 
