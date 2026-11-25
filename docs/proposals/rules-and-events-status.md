@@ -28,6 +28,11 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - **Is the `auth-required` lint (`L0014`) on by default?** It is on, as the plan says. Every contract with no `@auth` at all now gets one warning per endpoint from `veld check` (exit code still 0). In this repository it fires on `examples/hello` and `examples/rust-catalog` (left as they are) and it fired on `examples/bookings` (now says `@auth(none)`); two test fixtures from before the branch had to gain `@auth(none)` to stay clean (the `CLEAN` fixture of the lint tests and the one in `parity_cli`). The alternative is to ship it off by default and let a project turn it on.
 - **The policies feature covers more than `allow`.** A contract whose `require` or `ensure` reads the principal is marked with the `rules_policies` feature even without an `allow`, so a generator that cannot supply the principal refuses it (`E0801`) and never emits code that fails at run time. `spec/rules.md` 11.4 said only an `allow` uses it; the spec is to be widened to match unless you disagree.
 - **`Auth.declared` is not in the IR JSON.** The IR cannot tell an explicit `@auth(none)` from no `@auth`; adding a key would have changed every stored IR snapshot. The flag exists in memory only, for the lint, and a plugin or a tool that reads `ir.json` does not see it. Making it part of the IR is an `ir_version` change.
+- **Events: four choices in `spec/events.md` section 20, to answer before E1 is built.**
+  1. *Contract skew.* A consumer decodes an event with its own type, ignores fields it does not know, and checks rules only when its rules digest equals the publisher's. The proposal said a consumer "checks the signature"; taken literally that rejects every message after any change to an event, including an added optional field, which the proposal also calls safe. Recommended: the tolerant consumer, as drafted.
+  2. *A service without `at`*, for a service that only consumes (the proposal's `service Notifications { … }`). It touches `E0501`, the `empty-service` lint and the OpenAPI export. Recommended: allow it.
+  3. *A rejected message is acknowledged*, so one bad message cannot block a Kafka partition. Without `@deadLetter` and without a hook that stores it, the message is gone. Recommended: as drafted.
+  4. *`@retry` on the channel* (one policy for every consumer, as in the proposal) or per subscription. Recommended: the channel, as in the proposal.
 - **`412` or `409` for a failed `If-Match`.** `spec/rules.md` 11.7 says `412 PreconditionFailed` (the HTTP meaning). Not built yet; say so if you want `409`.
 
 ## Found while writing the bookings example (to fix or decide)
@@ -127,6 +132,7 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [ ] `@pii` and `@secret` redaction, lint for `@pii` without auth
 
 ## Events
+- [~] Spec: `spec/events.md` drafted (grammar, envelope, publish and consume pipelines, transport, IR, diagnostics `E1001` to `E1010`, phases); 11 hand-written example vectors in `tests/events/bookings.veld.pending`. No code yet: E1 starts after the Phase 3 and 4 generator passes are merged, and after the four choices in "Decisions waiting for the owner" are answered
 - [ ] E1: `event`, `channel`, `publishes`, `subscribes`; CloudEvents envelope; typed publisher and subscriber in Node, Java and Rust; memory transport; event examples in `veld test`
 - [ ] E2: Kafka and RabbitMQ adapters per language; retry and dead letter; inbox; broker capability matrix; Docker toolchain tests
 - [ ] E3: outbox and relay for `emits` (at-least-once, stated as such); event-aware `diff`; AsyncAPI export; crash-injection tests
