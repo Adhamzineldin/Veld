@@ -1,21 +1,18 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { NewBooking, NotFound, RoomClosed, RoomFull, ValidationError } from '@veld/web';
-import type { NewBooking as NewBookingData } from '@veld/web';
-import { useCreateBooking, useFormRules } from '@veld/web/bookings/react';
-
-/** The rooms of the demo server (`server/src/service.ts`). */
-const ROOMS = [
-  { id: '00000000-0000-4000-8000-0000000000a1', name: 'Double room (2 guests)' },
-  { id: '00000000-0000-4000-8000-0000000000a2', name: 'Family suite (4 guests)' },
-  { id: '00000000-0000-4000-8000-0000000000a3', name: 'Attic room (closed)' },
-];
+import { BookingsClient, NewBooking, RoomClosed, RoomFull } from '@veld/web';
+import type { NewBooking as NewBookingData, User } from '@veld/web';
+import { useCreateBooking, useFormRules, useListRooms } from '@veld/web/bookings/react';
+import { describe } from './describe';
 
 /** A date input gives `2026-06-10`; the contract wants a datetime. */
 const midnight = (day: string): string | undefined => (day === '' ? undefined : `${day}T00:00:00Z`);
 
-export function BookingForm() {
-  const [roomId, setRoomId] = useState(ROOMS[0]?.id ?? '');
+export function BookingForm({ me, onBooked }: { me: User; onBooked: () => void }) {
+  // The rooms come from the public endpoint `listRooms` (`@auth(none)`).
+  const rooms = useListRooms().data ?? [];
+  const [chosen, setChosen] = useState('');
+  const roomId = chosen === '' ? (rooms[0]?.id ?? '') : chosen;
   const [guests, setGuests] = useState('1');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
@@ -37,8 +34,12 @@ export function BookingForm() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (from === undefined || to === undefined) return;
-    await create.mutate({ body: { roomId, guests: Number(guests), start: from, end: to } });
+    const booking = await create.mutate({ body: { roomId, guests: Number(guests), start: from, end: to } });
+    if (booking !== undefined) onBooked();
   }
+
+  // The policy `MayBook`, asked here with the generated helper. The server asks it again.
+  const mayBook = BookingsClient.canCreateBooking(me);
 
   const problems = (field: string) =>
     (rules.messages[field] ?? []).map((m) => (
@@ -51,10 +52,10 @@ export function BookingForm() {
     <form onSubmit={submit}>
       <label>
         Room
-        <select value={roomId} onChange={(e) => setRoomId(e.target.value)}>
-          {ROOMS.map((r) => (
+        <select value={roomId} onChange={(e) => setChosen(e.target.value)}>
+          {rooms.map((r) => (
             <option key={r.id} value={r.id}>
-              {r.name}
+              {r.name} ({r.capacity} guests)
             </option>
           ))}
         </select>
@@ -75,9 +76,10 @@ export function BookingForm() {
       </label>
       {problems('end')}
 
-      <button type="submit" disabled={!complete || !rules.valid || create.loading}>
+      <button type="submit" disabled={!mayBook || !complete || !rules.valid || create.loading}>
         Book
       </button>
+      {!mayBook && <p>The server would refuse this account.</p>}
 
       {create.data && (
         <p role="status">
@@ -94,17 +96,12 @@ export function BookingForm() {
           That room is closed.
         </p>
       )}
-      {NotFound.matches(create.error) && (
+      {/* Any other refusal (a denied account, a rule, a missing room) is shown in the server's own words. */}
+      {create.error !== undefined && create.error !== null && !RoomFull.matches(create.error) && !RoomClosed.matches(create.error) && (
         <p role="alert" className="problem">
-          There is no such room.
+          {describe(create.error)}
         </p>
       )}
-      {ValidationError.matches(create.error) &&
-        create.error.violations.map((v) => (
-          <p key={v.rule} role="alert" className="problem">
-            {v.message}
-          </p>
-        ))}
     </form>
   );
 }
