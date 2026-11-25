@@ -573,8 +573,8 @@ export function fromWire(schema: Schema, wire: unknown, opts: { request?: boolea
 export function canonicalOf(schema: Schema, value: unknown): string {
   return canonical(mapValue(schema, value, { dir: 'to', request: false, normalize: true }));
 }
-
 // #if rules
+
 // ---------------------------------------------------------------------------
 // Rules (invariants): the schema walk, the server steps 5 and 8, the local client check
 // ---------------------------------------------------------------------------
@@ -1957,8 +1957,8 @@ export class ClientCore {
     this.checkRules(ep, req);
     // #endif
   }
-
   // #if rules
+
   private checkRules(ep: EndpointSpec, req: Record<string, unknown>): void {
     if (this.opts.rules === false) return;
     const out: Violation[] = [];
