@@ -33,6 +33,8 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
   1. *A rejected message is acknowledged*, so one bad message cannot block a Kafka partition. Without `@deadLetter` and without a hook that stores it, the message is gone.
   2. *`@retry` on the channel* (one policy for every consumer, as in the proposal), not per subscription.
 - **`412` or `409` for a failed `If-Match`.** `spec/rules.md` 11.7 says `412 PreconditionFailed` (the HTTP meaning). Not built yet; say so if you want `409`.
+- **Idempotency needs to know who the caller is.** A key must never replay another caller's answer, so the store's scope includes the caller's identity. `spec/rules.md` 11.9 drafts it as a text the application returns from a server hook; a server whose endpoint needs it and has no such hook does not start. The alternative is to name a field of the principal in the contract (`@idempotent(caller: user.id)`).
+- **Derived fields: two things you will see in contracts and in handler code** (`spec/rules.md` 17.2), not built until you confirm. (1) `total: decimal = 0` is a default and `total: decimal = subtotal - discount` is derived: the only difference is whether a literal follows the `=`. The alternative is a keyword. (2) In the type a handler returns, a derived field is optional and whatever the handler puts there is overwritten.
 
 ## Decided by the owner on 25 Nov 2026
 
@@ -123,8 +125,8 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [ ] Not yet: the fuzzer does not generate a principal, so endpoints with an `allow` are not fuzzed; `examples/bookings` does not use a state machine or a policy yet
 - [ ] Not yet, and required by "every item ships with" above: the language server has no hover or completion for `policy`, `principal` and `allow` (reported by the agent that built them; whether it handles `flow` and `transition` has not been checked), and there is no record of the playground WASM being rebuilt since rules were added
 - [i] With `validate = false`, policies and the transition guard still run (`spec/rules.md` 5.3 corrected: it used to say everything in step 6 but the facts is switched off, which would have let a validation option switch authorization off)
-- [ ] `@version` optimistic concurrency (`ETag`, `If-Match`)
-- [ ] `@idempotent` and the key store interface
+- [~] `@version` optimistic concurrency (`ETag`, `If-Match`): the exact behaviour, the example syntax (`ifMatch 3`) and the test handler are drafted in `spec/rules.md` 11.9; no code
+- [~] `@idempotent` and the key store interface: the store, the fingerprint, the scope, the replay, the example syntax (`key "k-1" stored ...`) and the test handler are drafted in `spec/rules.md` 11.9; no code
 - [i] Lint `auth-required` (`L0014`; `L0005` was taken): every endpoint has auth or `@auth(none)`
 
 ## Phase 5: proof and lifecycle
@@ -132,7 +134,7 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [ ] `check --prove`: SMT-LIB encoding, external Z3 or cvc5, four results (proved, counterexample, unknown, unsupported), assumptions and solver version reported
 - [i] Rule-aware `veld diff`: invariants, `require`, `ensure`, facts, flows and transitions are classified; with no solver yet, a changed expression is "possibly breaking" and shows the old and the new text; `--strict` fails on it
 - [ ] `@rollout(audit)`
-- [ ] Derived fields
+- [ ] Derived fields: specified in 17.2, held until the owner confirms two visible choices (see "Decisions waiting for the owner"). The proposal names them as the first Phase 5 cut
 - [i] OpenAPI `x-veld-rules`, `x-veld-facts`, `x-veld-flows`, `x-veld-finals`, `x-veld-transition`; a contract without rules exports the same bytes as before
 - [ ] LSP: hover and completion inside expressions
 - [ ] Playground: live rule evaluation (WASM)

@@ -588,6 +588,55 @@ The code is `L0014`: `L0005` is `missing-description` since v2.0 and codes are n
 - The same key with different parameters, or while the first request is still running, is `409 Conflict`.
 - With `required: true`, a request without the header is `422 ValidationError`.
 
+### 11.9 Version and idempotency: the exact behaviour, examples and the test handler
+
+**Status: draft, not implemented.** Sections 11.7 and 11.8 say what the two annotations are for. This section fixes what a server does, so that an example can state it and three generators can be held to it.
+
+**`@version`**
+
+- The prelude gains `error PreconditionFailed 412 { expected: long, actual: long }`.
+- `If-Match` is read as a header of the request. It MUST be `*`, or one strong entity tag whose text is the version in decimal digits (`"3"`). Anything else, a weak tag or a list included, is `422 ValidationError` with one issue at `header.If-Match`.
+- The check runs in step 6, after the policies and before the transition guard. `*` passes. A tag that is not the fact's current version answers `412 PreconditionFailed` with `expected` (the version the caller sent) and `actual` (the fact's version), and one violation: `rule` is `veld:<package>/<Service>.<endpoint>.version@<hex16>` over the RFC 8785 JSON of `{ "d": "<qualified service name>.<endpoint>", "k": "version", "f": "<fact>", "p": [<wire names of the path to the version field>] }`, `path` is `request`, `fields` is empty and `message` is `violates rule version`.
+- A request without `If-Match` is not checked. The handler receives, next to the facts and under the name `version`, the version that was checked, or nothing when the header was absent; like a transition it is a guard, and the handler MUST write conditionally.
+- A success response whose type is a model with a version field carries `ETag: "<version of the returned value>"`.
+- In an example, `ifMatch 3` or `ifMatch any` stands before the call. It is `E0952` on an endpoint without such a fact. A live run sends the header as above.
+
+**`@idempotent`**
+
+- The store holds, per **scope** and key, a **fingerprint** and either "running" or a stored answer.
+  - The scope is the operation signature and, when the endpoint's effective auth is not `none`, the caller's identity: a text the application gives through a hook of the server. A server whose endpoint needs it and has no such hook does not start.
+  - The fingerprint is the first 16 hex characters of the SHA-256 of the RFC 8785 JSON of the bound parameters in wire form, keyed by parameter name. The key's own header is not part of it.
+  - A stored answer is the status, the body bytes, the content type, and the `ETag` and `Location` headers when present.
+- With a key, after step 5 the server asks the store:
+  - nothing stored: it records "running" with the fingerprint, runs the rest of the pipeline, stores the answer when the status is below `500`, and removes the entry otherwise;
+  - a stored answer with the same fingerprint: that answer is sent again, with `Veld-Idempotent-Replay: true`; no fact is loaded and the handler is not called;
+  - "running", or another fingerprint: `409 Conflict`, whose `message` says which of the two it was.
+- How long an entry is kept is the store's business. The generated memory store keeps everything and is for tests.
+- In an example, a `key` line stands before the call and states the header and what the store holds for it:
+
+  ```veld
+  example "a key that was used replays its answer and loads nothing" {
+    given room = absent
+    key "k-1" stored RoomFull { capacity: 2 }
+    createBooking(body: { guests: 1 }) -> RoomFull { capacity: 2 }
+  }
+
+  example "the same key with other parameters is a conflict" {
+    key "k-1" other
+    createBooking(body: { guests: 1 }) -> Conflict
+  }
+  ```
+
+  ```ebnf
+  example = { doc } "example" STRING "{" { given } [ "as" value ] [ "at" STRING ]
+            [ "ifMatch" ( INT | "any" ) ] [ key ] call "}" ;
+  key     = "key" STRING [ "stored" outcome | "other" | "running" ] ;
+  ```
+
+  `key "k"` alone is a key the store does not know. `stored` gives the answer the store holds for this key and these parameters, written like an outcome; `other` says the store holds the key with another fingerprint; `running` says the first request has not finished. A `key` line on an endpoint without `@idempotent` is `E0952`. `ifMatch`, `key`, `any`, `stored`, `other` and `running` are contextual words.
+- The test handler takes the store's state for the request from the header `Veld-Test-Idempotency`: unpadded base64url of `{ "state": "stored", "status": 409, "type": "<error signature>" | null, "data": { … } }`, `{ "state": "other" }` or `{ "state": "running" }`. Without the header the store is empty. The key itself travels in its ordinary header.
+- Capability flags: `rules_version` and `idempotency`, each `E0801` in a generator that does not implement it.
+
 ## 12. Examples and `veld test` (Phase 2)
 
 An example states what one call does. It is documentation that runs.
