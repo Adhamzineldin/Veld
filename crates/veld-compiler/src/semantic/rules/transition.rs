@@ -39,7 +39,7 @@ pub(super) fn transitions(stmts: &[Stmt]) -> Vec<&ast::TransitionStmt> {
         .iter()
         .filter_map(|s| match s {
             Stmt::Transition(t) => Some(t),
-            Stmt::Fact(_) | Stmt::Require(_) | Stmt::Ensure(_) => None,
+            Stmt::Fact(_) | Stmt::Require(_) | Stmt::Ensure(_) | Stmt::Allow(_) => None,
         })
         .collect()
 }
@@ -61,7 +61,7 @@ pub(super) fn reserved_name(e: &ast::Endpoint, diags: &mut Vec<Diagnostic>) {
         .flat_map(|b| &b.stmts)
         .filter_map(|s| match s {
             Stmt::Fact(f) => Some((&f.name, "fact")),
-            Stmt::Require(_) | Stmt::Ensure(_) | Stmt::Transition(_) => None,
+            Stmt::Require(_) | Stmt::Ensure(_) | Stmt::Transition(_) | Stmt::Allow(_) => None,
         });
     for (name, what) in params.chain(facts) {
         if name.name == "transition" {

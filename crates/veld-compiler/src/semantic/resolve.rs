@@ -6,7 +6,9 @@
 use std::collections::BTreeMap;
 
 use super::annotations::{self, Anns};
-use super::{DKind, DeclInfo, Entry, ImportRec, Program, RArm, RField, RVariant, Resolved};
+use super::{
+    DKind, DeclInfo, Entry, ImportRec, PolicyEntry, Program, RArm, RField, RVariant, Resolved,
+};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language::Target;
 use crate::syntax::ast::{self, DeclKind, LitKind, TypeExpr, TypeExprKind, doc_text};
@@ -17,9 +19,12 @@ type LitError = (&'static str, String);
 // ---- scopes ------------------------------------------------------------------
 
 pub fn build_scopes(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
-    let mut by_name: BTreeMap<(usize, String), usize> = BTreeMap::new();
+    let mut by_name = NameIndex::default();
     for (i, d) in prog.decls.iter().enumerate() {
-        by_name.insert((d.module, d.name.clone()), i);
+        by_name.decls.insert((d.module, d.name.clone()), i);
+    }
+    for (i, p) in prog.policies.iter().enumerate() {
+        by_name.policies.insert((p.module, p.name.clone()), i);
     }
     for mi in 0..prog.modules.len() {
         let mut scope = std::mem::take(&mut prog.scopes[mi]);
@@ -40,12 +45,34 @@ pub fn build_scopes(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
             spans.insert(d.name.clone(), d.name_span);
             warn_shadow(prog, &d.name, d.name_span, mi, diags);
         }
+        for (i, p) in prog
+            .policies
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.module == mi)
+        {
+            scope.policy_names.insert(
+                p.name.clone(),
+                PolicyEntry {
+                    policy: i,
+                    import: None,
+                },
+            );
+            spans.insert(p.name.clone(), p.ast.name.span);
+        }
         let ast = prog.modules[mi].ast;
         for u in &ast.uses {
             import_use(prog, mi, u, &by_name, &mut scope, &mut spans, diags);
         }
         prog.scopes[mi] = scope;
     }
+}
+
+/// Declarations and policies by (module, name): what a `use` can import.
+#[derive(Default)]
+struct NameIndex {
+    decls: BTreeMap<(usize, String), usize>,
+    policies: BTreeMap<(usize, String), usize>,
 }
 
 fn warn_shadow(
@@ -68,7 +95,7 @@ fn import_use(
     prog: &Program<'_>,
     mi: usize,
     u: &ast::Use,
-    by_name: &BTreeMap<(usize, String), usize>,
+    by_name: &NameIndex,
     scope: &mut super::Scope,
     spans: &mut BTreeMap<String, Span>,
     diags: &mut Vec<Diagnostic>,
@@ -143,7 +170,12 @@ fn import_use(
         return;
     };
     for imp in &u.imports {
-        let Some(&decl) = by_name.get(&(target_mod, imp.name.name.clone())) else {
+        let key = (target_mod, imp.name.name.clone());
+        let (decl, policy) = (
+            by_name.decls.get(&key).copied(),
+            by_name.policies.get(&key).copied(),
+        );
+        if decl.is_none() && policy.is_none() {
             scope
                 .poisoned
                 .insert(imp.alias.as_ref().unwrap_or(&imp.name).name.clone());
@@ -158,12 +190,18 @@ fn import_use(
                     prog.decls
                         .iter()
                         .filter(|d| d.module == target_mod)
-                        .map(|d| d.name.as_str()),
+                        .map(|d| d.name.as_str())
+                        .chain(
+                            prog.policies
+                                .iter()
+                                .filter(|p| p.module == target_mod)
+                                .map(|p| p.name.as_str()),
+                        ),
                     Some(declared_in(prog, target_mod)),
                 ),
             );
             continue;
-        };
+        }
         let local = imp.alias.as_ref().unwrap_or(&imp.name);
         if let Some(prev) = spans.get(&local.name) {
             diags.push(
@@ -187,13 +225,16 @@ fn import_use(
             span: imp.span,
             used: std::cell::Cell::new(false),
         });
-        scope.names.insert(
-            local.name.clone(),
-            Entry {
-                decl,
-                import: Some(scope.imports.len() - 1),
-            },
-        );
+        let import = Some(scope.imports.len() - 1);
+        if let Some(decl) = decl {
+            scope
+                .names
+                .insert(local.name.clone(), Entry { decl, import });
+        } else if let Some(policy) = policy {
+            scope
+                .policy_names
+                .insert(local.name.clone(), PolicyEntry { policy, import });
+        }
     }
 }
 
@@ -203,6 +244,12 @@ fn declared_in(prog: &Program<'_>, module: usize) -> String {
         .iter()
         .filter(|d| d.module == module)
         .map(|d| d.name.as_str())
+        .chain(
+            prog.policies
+                .iter()
+                .filter(|p| p.module == module)
+                .map(|p| p.name.as_str()),
+        )
         .collect();
     format!(
         "declared there: {}",

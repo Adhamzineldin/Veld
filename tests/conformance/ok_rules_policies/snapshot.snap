@@ -1,0 +1,2698 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "admin",
+      "kind": "service"
+    },
+    {
+      "id": 1,
+      "name": "shop",
+      "kind": "service"
+    },
+    {
+      "id": 2,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "admin",
+      "name": "Audit",
+      "qualified": "admin:admin.Audit",
+      "sig": "veld:admin/Audit@e1266466658fd0ec",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "admin.veld",
+        "line": 10,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "admin.veld",
+            "line": 11,
+            "col": 3
+          }
+        },
+        {
+          "name": "level",
+          "wire": "level",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "admin.veld",
+            "line": 12,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "admin",
+      "name": "Staff",
+      "qualified": "admin:admin.Staff",
+      "sig": "veld:admin/Staff@40dbdf84b3d81d78",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "admin.veld",
+        "line": 3,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "admin.veld",
+            "line": 4,
+            "col": 3
+          }
+        },
+        {
+          "name": "level",
+          "wire": "level",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "admin.veld",
+            "line": 5,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 1,
+      "module": "shop",
+      "name": "AmountMismatch",
+      "qualified": "shop:shop.AmountMismatch",
+      "sig": "veld:shop/AmountMismatch@7f1d5c850773d57b",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "shop.veld",
+        "line": 33,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": [
+        {
+          "name": "expected",
+          "wire": "expected",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 33,
+            "col": 28
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "package": 1,
+      "module": "shop",
+      "name": "Booking",
+      "qualified": "shop:shop.Booking",
+      "sig": "veld:shop/Booking@9568d9fb756a4ab7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "shop.veld",
+        "line": 22,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 23,
+            "col": 3
+          }
+        },
+        {
+          "name": "guestId",
+          "wire": "guestId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 24,
+            "col": 3
+          }
+        },
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 5
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 25,
+            "col": 3
+          }
+        },
+        {
+          "name": "total",
+          "wire": "total",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 26,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "package": 1,
+      "module": "shop",
+      "name": "Payment",
+      "qualified": "shop:shop.Payment",
+      "sig": "veld:shop/Payment@566f4705e1663b38",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "shop.veld",
+        "line": 29,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "amount",
+          "wire": "amount",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 30,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "package": 1,
+      "module": "shop",
+      "name": "Status",
+      "qualified": "shop:shop.Status",
+      "sig": "veld:shop/Status@65b0c4a106fcd42e",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "shop.veld",
+        "line": 6,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "pending",
+          "wire": "pending",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "paid",
+          "wire": "paid",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "cancelled",
+          "wire": "cancelled",
+          "docs": null,
+          "deprecated": null
+        }
+      ],
+      "flows": [
+        {
+          "from": "pending",
+          "to": "paid"
+        },
+        {
+          "from": "pending",
+          "to": "cancelled"
+        }
+      ],
+      "finals": [
+        "paid",
+        "cancelled"
+      ]
+    },
+    {
+      "id": 6,
+      "package": 1,
+      "module": "shop",
+      "name": "User",
+      "qualified": "shop:shop.User",
+      "sig": "veld:shop/User@b91fff41388c9050",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "shop.veld",
+        "line": 13,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 14,
+            "col": 3
+          }
+        },
+        {
+          "name": "roles",
+          "wire": "roles",
+          "type": {
+            "list": {
+              "scalar": "string"
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 15,
+            "col": 3
+          }
+        },
+        {
+          "name": "suspended",
+          "wire": "suspended",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 16,
+            "col": 3
+          }
+        },
+        {
+          "name": "nick",
+          "wire": "nick",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 17,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "package": 2,
+      "module": "prelude",
+      "name": "Forbidden",
+      "qualified": "veld:prelude.Forbidden",
+      "sig": "veld:veld/Forbidden@95d9a9217df05eac",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 3,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 403,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 3,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "package": 2,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "package": 2,
+      "module": "prelude",
+      "name": "InvalidTransition",
+      "qualified": "veld:prelude.InvalidTransition",
+      "sig": "veld:veld/InvalidTransition@29c70142526d0750",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 10,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": [
+        {
+          "name": "field",
+          "wire": "field",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 10,
+            "col": 31
+          }
+        },
+        {
+          "name": "from",
+          "wire": "from",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 10,
+            "col": 46
+          }
+        },
+        {
+          "name": "to",
+          "wire": "to",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 10,
+            "col": 60
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "package": 2,
+      "module": "prelude",
+      "name": "NotFound",
+      "qualified": "veld:prelude.NotFound",
+      "sig": "veld:veld/NotFound@a0eaf7a3323dce7c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 4,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 404,
+      "parent": null,
+      "fields": [
+        {
+          "name": "resource",
+          "wire": "resource",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 4,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "package": 2,
+      "module": "prelude",
+      "name": "Unauthorized",
+      "qualified": "veld:prelude.Unauthorized",
+      "sig": "veld:veld/Unauthorized@ee241dccf5c82e14",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 401,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 2,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "package": 2,
+      "module": "prelude",
+      "name": "ValidationError",
+      "qualified": "veld:prelude.ValidationError",
+      "sig": "veld:veld/ValidationError@7836aff24d914bea",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "issues",
+          "wire": "issues",
+          "type": {
+            "list": {
+              "decl": 13
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 6,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "package": 2,
+      "module": "prelude",
+      "name": "ValidationIssue",
+      "qualified": "veld:prelude.ValidationIssue",
+      "sig": "veld:veld/ValidationIssue@253beeea259ebf75",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 9,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "path",
+          "wire": "path",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 29
+          }
+        },
+        {
+          "name": "code",
+          "wire": "code",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 43
+          }
+        },
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 57
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "Audits",
+      "prefix": "/audits",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "basic",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "getAudit",
+          "method": "GET",
+          "path": "/audits/{id}",
+          "sig": "veld:admin/Audits.getAudit@d8045de07aed4808",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "basic",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 11
+            },
+            {
+              "status": 403,
+              "decl": 7
+            },
+            {
+              "status": 404,
+              "decl": 10
+            },
+            {
+              "status": 422,
+              "decl": 12
+            },
+            {
+              "status": 500,
+              "decl": 8
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "audit",
+                "type": {
+                  "decl": 0
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "admin.veld",
+                  "line": 22,
+                  "col": 10
+                }
+              }
+            ],
+            "requires": [],
+            "ensures": [],
+            "allows": [
+              {
+                "policy": 0,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 1
+                    },
+                    "e": {
+                      "path": {
+                        "root": "principal",
+                        "steps": []
+                      }
+                    }
+                  },
+                  {
+                    "t": {
+                      "decl": 0
+                    },
+                    "e": {
+                      "path": {
+                        "root": {
+                          "fact": "audit"
+                        },
+                        "steps": []
+                      }
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "admin.veld",
+                  "line": 23,
+                  "col": 5
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "admin.veld",
+            "line": 21,
+            "col": 15
+          }
+        }
+      ],
+      "facts": [
+        {
+          "name": "audit",
+          "type": {
+            "decl": 0
+          },
+          "key": {
+            "scalar": "uuid"
+          },
+          "optional": false
+        }
+      ],
+      "principal": {
+        "decl": 1,
+        "name": "caller"
+      },
+      "origin": {
+        "file": "admin.veld",
+        "line": 20,
+        "col": 9
+      }
+    },
+    {
+      "id": 1,
+      "package": 1,
+      "name": "Bookings",
+      "prefix": "/bookings",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "bearer",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "payBooking",
+          "method": "POST",
+          "path": "/bookings/{id}/pay",
+          "sig": "veld:shop/Bookings.payBooking@13a1fe6a454db92f",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            },
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 4
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 3
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 11
+            },
+            {
+              "status": 403,
+              "decl": 7
+            },
+            {
+              "status": 404,
+              "decl": 10
+            },
+            {
+              "status": 409,
+              "decl": 2
+            },
+            {
+              "status": 409,
+              "decl": 9
+            },
+            {
+              "status": 422,
+              "decl": 12
+            },
+            {
+              "status": 500,
+              "decl": 8
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "booking",
+                "type": {
+                  "decl": 3
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "shop.veld",
+                  "line": 63,
+                  "col": 10
+                }
+              }
+            ],
+            "requires": [
+              {
+                "name": null,
+                "id": "veld:shop/Bookings.payBooking.require@6892b29abdabacdd",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "amount",
+                                "wire": "amount",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "fact": "booking"
+                            },
+                            "steps": [
+                              {
+                                "name": "total",
+                                "wire": "total",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "body"
+                ],
+                "else": {
+                  "decl": 2,
+                  "status": 409,
+                  "fields": [
+                    {
+                      "name": "expected",
+                      "wire": "expected",
+                      "value": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "fact": "booking"
+                            },
+                            "steps": [
+                              {
+                                "name": "total",
+                                "wire": "total",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "docs": null,
+                "origin": {
+                  "file": "shop.veld",
+                  "line": 67,
+                  "col": 5
+                }
+              }
+            ],
+            "ensures": [],
+            "transition": {
+              "id": "veld:shop/Bookings.payBooking.transition@c109407365ac733d",
+              "fact": "booking",
+              "steps": [
+                {
+                  "name": "status",
+                  "wire": "status",
+                  "optional": false
+                }
+              ],
+              "decl": 5,
+              "from": [
+                "pending"
+              ],
+              "to": "paid",
+              "origin": {
+                "file": "shop.veld",
+                "line": 66,
+                "col": 5
+              }
+            },
+            "allows": [
+              {
+                "policy": 3,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 6
+                    },
+                    "e": {
+                      "path": {
+                        "root": "principal",
+                        "steps": []
+                      }
+                    }
+                  },
+                  {
+                    "t": {
+                      "decl": 3
+                    },
+                    "e": {
+                      "path": {
+                        "root": {
+                          "fact": "booking"
+                        },
+                        "steps": []
+                      }
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "shop.veld",
+                  "line": 64,
+                  "col": 5
+                }
+              },
+              {
+                "policy": 5,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 6
+                    },
+                    "e": {
+                      "path": {
+                        "root": "principal",
+                        "steps": []
+                      }
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "shop.veld",
+                  "line": 65,
+                  "col": 5
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "shop.veld",
+            "line": 62,
+            "col": 20
+          }
+        },
+        {
+          "name": "getBooking",
+          "method": "GET",
+          "path": "/bookings/{id}",
+          "sig": "veld:shop/Bookings.getBooking@ece8c67556b3abf4",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 3
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 11
+            },
+            {
+              "status": 403,
+              "decl": 7
+            },
+            {
+              "status": 404,
+              "decl": 10
+            },
+            {
+              "status": 422,
+              "decl": 12
+            },
+            {
+              "status": 500,
+              "decl": 8
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "booking",
+                "type": {
+                  "decl": 3
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "shop.veld",
+                  "line": 71,
+                  "col": 10
+                }
+              }
+            ],
+            "requires": [],
+            "ensures": [],
+            "allows": [
+              {
+                "policy": 3,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 6
+                    },
+                    "e": {
+                      "path": {
+                        "root": "principal",
+                        "steps": []
+                      }
+                    }
+                  },
+                  {
+                    "t": {
+                      "decl": 3
+                    },
+                    "e": {
+                      "path": {
+                        "root": {
+                          "fact": "booking"
+                        },
+                        "steps": []
+                      }
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "shop.veld",
+                  "line": 72,
+                  "col": 5
+                }
+              },
+              {
+                "policy": 2,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 6
+                    },
+                    "e": {
+                      "path": {
+                        "root": "principal",
+                        "steps": []
+                      }
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "shop.veld",
+                  "line": 73,
+                  "col": 5
+                }
+              },
+              {
+                "policy": 4,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 3
+                    },
+                    "e": {
+                      "path": {
+                        "root": {
+                          "fact": "booking"
+                        },
+                        "steps": []
+                      }
+                    }
+                  },
+                  {
+                    "t": {
+                      "scalar": "datetime"
+                    },
+                    "e": {
+                      "now": true
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "shop.veld",
+                  "line": 74,
+                  "col": 5
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "shop.veld",
+            "line": 70,
+            "col": 15
+          }
+        }
+      ],
+      "facts": [
+        {
+          "name": "booking",
+          "type": {
+            "decl": 3
+          },
+          "key": {
+            "scalar": "uuid"
+          },
+          "optional": false
+        }
+      ],
+      "principal": {
+        "decl": 6,
+        "name": "user"
+      },
+      "origin": {
+        "file": "shop.veld",
+        "line": 61,
+        "col": 9
+      }
+    },
+    {
+      "id": 2,
+      "package": 1,
+      "name": "Public",
+      "prefix": "/public",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "peek",
+          "method": "GET",
+          "path": "/public/{id}",
+          "sig": "veld:shop/Public.peek@3230dcd01e8bf39b",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 3
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 403,
+              "decl": 7
+            },
+            {
+              "status": 404,
+              "decl": 10
+            },
+            {
+              "status": 422,
+              "decl": 12
+            },
+            {
+              "status": 500,
+              "decl": 8
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "booking",
+                "type": {
+                  "decl": 3
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "shop.veld",
+                  "line": 81,
+                  "col": 10
+                }
+              }
+            ],
+            "requires": [],
+            "ensures": [],
+            "allows": [
+              {
+                "policy": 1,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 3
+                    },
+                    "e": {
+                      "path": {
+                        "root": {
+                          "fact": "booking"
+                        },
+                        "steps": []
+                      }
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "shop.veld",
+                  "line": 82,
+                  "col": 5
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "shop.veld",
+            "line": 80,
+            "col": 15
+          }
+        }
+      ],
+      "facts": [
+        {
+          "name": "booking",
+          "type": {
+            "decl": 3
+          },
+          "key": {
+            "scalar": "uuid"
+          },
+          "optional": false
+        }
+      ],
+      "principal": {
+        "decl": 6,
+        "name": "user"
+      },
+      "origin": {
+        "file": "shop.veld",
+        "line": 78,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {},
+  "examples": [
+    {
+      "name": "another caller may not",
+      "package": 1,
+      "service": 1,
+      "endpoint": "getBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000bb"
+            }
+          },
+          {
+            "name": "nick",
+            "wire": "nick",
+            "value": {
+              "json": "bob"
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 7,
+          "pattern": {
+            "object": [
+              {
+                "name": "message",
+                "wire": "message",
+                "value": {
+                  "json": "not permitted"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "shop.veld",
+        "line": 92,
+        "col": 1
+      }
+    },
+    {
+      "name": "the guest may read their booking",
+      "package": 1,
+      "service": 1,
+      "endpoint": "getBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "nick",
+            "wire": "nick",
+            "value": {
+              "json": "ann"
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "shop.veld",
+        "line": 86,
+        "col": 1
+      }
+    }
+  ],
+  "policies": [
+    {
+      "name": "SeniorEnough",
+      "package": 0,
+      "module": "admin",
+      "qualified": "admin:admin.SeniorEnough",
+      "id": "veld:admin/SeniorEnough@b95cd47c3f67dc38",
+      "params": [
+        {
+          "name": "caller",
+          "type": {
+            "decl": 1
+          }
+        },
+        {
+          "name": "audit",
+          "type": {
+            "decl": 0
+          }
+        }
+      ],
+      "clauses": [
+        {
+          "effect": "permit",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "ge",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "caller"
+                      },
+                      "steps": [
+                        {
+                          "name": "level",
+                          "wire": "level",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "audit"
+                      },
+                      "steps": [
+                        {
+                          "name": "level",
+                          "wire": "level",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "admin.veld",
+            "line": 16,
+            "col": 3
+          }
+        }
+      ],
+      "docs": null,
+      "origin": {
+        "file": "admin.veld",
+        "line": 15,
+        "col": 8
+      }
+    },
+    {
+      "name": "Anyone",
+      "package": 1,
+      "module": "shop",
+      "qualified": "shop:shop.Anyone",
+      "id": "veld:shop/Anyone@7a62ebba8b50f51b",
+      "params": [
+        {
+          "name": "booking",
+          "type": {
+            "decl": 3
+          }
+        }
+      ],
+      "clauses": [
+        {
+          "effect": "permit",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "ge",
+                "l": {
+                  "t": {
+                    "scalar": "decimal"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "booking"
+                      },
+                      "steps": [
+                        {
+                          "name": "total",
+                          "wire": "total",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "decimal"
+                  },
+                  "e": {
+                    "lit": {
+                      "decimal": "0"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 57,
+            "col": 3
+          }
+        }
+      ],
+      "docs": null,
+      "origin": {
+        "file": "shop.veld",
+        "line": 56,
+        "col": 8
+      }
+    },
+    {
+      "name": "GuardedNick",
+      "package": 1,
+      "module": "shop",
+      "qualified": "shop:shop.GuardedNick",
+      "id": "veld:shop/GuardedNick@d34bbb524f2ddfeb",
+      "params": [
+        {
+          "name": "user",
+          "type": {
+            "decl": 6
+          }
+        }
+      ],
+      "clauses": [
+        {
+          "effect": "permit",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "has": {
+                      "root": {
+                        "param": "user"
+                      },
+                      "steps": [
+                        {
+                          "name": "nick",
+                          "wire": "nick",
+                          "optional": true
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "gt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "call": {
+                            "f": "len",
+                            "args": [
+                              {
+                                "t": {
+                                  "scalar": "string"
+                                },
+                                "e": {
+                                  "path": {
+                                    "root": {
+                                      "param": "user"
+                                    },
+                                    "steps": [
+                                      {
+                                        "name": "nick",
+                                        "wire": "nick",
+                                        "optional": true
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 49,
+            "col": 3
+          }
+        }
+      ],
+      "docs": null,
+      "origin": {
+        "file": "shop.veld",
+        "line": 48,
+        "col": 8
+      }
+    },
+    {
+      "name": "ManageBooking",
+      "package": 1,
+      "module": "shop",
+      "qualified": "shop:shop.ManageBooking",
+      "id": "veld:shop/ManageBooking@8099f75cc9319b0a",
+      "params": [
+        {
+          "name": "user",
+          "type": {
+            "decl": 6
+          }
+        },
+        {
+          "name": "booking",
+          "type": {
+            "decl": 3
+          }
+        }
+      ],
+      "clauses": [
+        {
+          "effect": "permit",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "eq",
+                "l": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "booking"
+                      },
+                      "steps": [
+                        {
+                          "name": "guestId",
+                          "wire": "guestId",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "user"
+                      },
+                      "steps": [
+                        {
+                          "name": "id",
+                          "wire": "id",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 37,
+            "col": 3
+          }
+        },
+        {
+          "effect": "permit",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "in",
+                "l": {
+                  "t": {
+                    "scalar": "string"
+                  },
+                  "e": {
+                    "lit": {
+                      "string": "support"
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "list": {
+                      "scalar": "string"
+                    }
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "user"
+                      },
+                      "steps": [
+                        {
+                          "name": "roles",
+                          "wire": "roles",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 38,
+            "col": 3
+          }
+        },
+        {
+          "effect": "forbid",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "path": {
+                "root": {
+                  "param": "user"
+                },
+                "steps": [
+                  {
+                    "name": "suspended",
+                    "wire": "suspended",
+                    "optional": false
+                  }
+                ]
+              }
+            }
+          },
+          "message": "A suspended account cannot manage bookings",
+          "origin": {
+            "file": "shop.veld",
+            "line": 39,
+            "col": 3
+          }
+        },
+        {
+          "effect": "forbid",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "gt",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "call": {
+                      "f": "len",
+                      "args": [
+                        {
+                          "t": {
+                            "list": {
+                              "scalar": "string"
+                            }
+                          },
+                          "e": {
+                            "path": {
+                              "root": {
+                                "param": "user"
+                              },
+                              "steps": [
+                                {
+                                  "name": "roles",
+                                  "wire": "roles",
+                                  "optional": false
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 20
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 41,
+            "col": 3
+          }
+        }
+      ],
+      "docs": "Who may manage a booking.",
+      "origin": {
+        "file": "shop.veld",
+        "line": 36,
+        "col": 8
+      }
+    },
+    {
+      "name": "OpenFrom",
+      "package": 1,
+      "module": "shop",
+      "qualified": "shop:shop.OpenFrom",
+      "id": "veld:shop/OpenFrom@0f4a32a20e9d26d7",
+      "params": [
+        {
+          "name": "booking",
+          "type": {
+            "decl": 3
+          }
+        },
+        {
+          "name": "since",
+          "type": {
+            "scalar": "datetime"
+          }
+        }
+      ],
+      "clauses": [
+        {
+          "effect": "permit",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "decl": 5
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "booking"
+                            },
+                            "steps": [
+                              {
+                                "name": "status",
+                                "wire": "status",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "decl": 5
+                        },
+                        "e": {
+                          "lit": {
+                            "enum": {
+                              "decl": 5,
+                              "name": "pending",
+                              "wire": "pending"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "le",
+                      "l": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "since"
+                            },
+                            "steps": []
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "now": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 53,
+            "col": 3
+          }
+        }
+      ],
+      "docs": null,
+      "origin": {
+        "file": "shop.veld",
+        "line": 52,
+        "col": 8
+      }
+    },
+    {
+      "name": "Staff",
+      "package": 1,
+      "module": "shop",
+      "qualified": "shop:shop.Staff",
+      "id": "veld:shop/Staff@bf23ff5d0282c2b9",
+      "params": [
+        {
+          "name": "user",
+          "type": {
+            "decl": 6
+          }
+        }
+      ],
+      "clauses": [
+        {
+          "effect": "permit",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "in",
+                "l": {
+                  "t": {
+                    "scalar": "string"
+                  },
+                  "e": {
+                    "lit": {
+                      "string": "staff"
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "list": {
+                      "scalar": "string"
+                    }
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "user"
+                      },
+                      "steps": [
+                        {
+                          "name": "roles",
+                          "wire": "roles",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "shop.veld",
+            "line": 45,
+            "col": 3
+          }
+        }
+      ],
+      "docs": null,
+      "origin": {
+        "file": "shop.veld",
+        "line": 44,
+        "col": 8
+      }
+    }
+  ]
+}

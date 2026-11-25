@@ -655,6 +655,10 @@ impl Ctx<'_, '_> {
         if rules::has_required_fact(e) {
             self.add_implicit(ep, "NotFound", 404);
         }
+        // An `allow` that denies answers `403 Forbidden` (`spec/rules.md` section 11.3).
+        if rules::has_allow(e) {
+            self.add_implicit(ep, "Forbidden", 403);
+        }
         // A `transition` whose guard fails answers `409 InvalidTransition` (`spec/rules.md` 10.2).
         if rules::has_transition(e) {
             self.add_implicit(ep, "InvalidTransition", 409);

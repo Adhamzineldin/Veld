@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use super::checker::{Checker, Phase};
+use super::checker::{Checker, Phase, PrincipalScope};
 use super::types::{boolean, lit, node, of, scalar};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::semantic::{DKind, RField};
@@ -198,11 +198,44 @@ impl Checker<'_, '_, '_> {
                 in_has,
             ));
         }
+        let principal = ep.principal.clone().filter(|p| p.field.name == name);
+        if let Some(p) = principal {
+            return Some(self.principal_value(flat, in_has, p));
+        }
         match name.as_str() {
             "now" => Some(self.now_value(flat, in_has)),
             "result" => Some(self.result_value(flat, in_has)),
             _ => None,
         }
+    }
+
+    /// The caller: a root of its own, never a parameter (`spec/rules.md` section 11.1).
+    fn principal_value(
+        &mut self,
+        flat: &Flat<'_>,
+        in_has: bool,
+        p: PrincipalScope,
+    ) -> Option<Typed> {
+        if !p.available {
+            self.report(
+                Diagnostic::error(
+                    "E0904",
+                    format!(
+                        "`{}` is the principal, which this endpoint does not have: its auth is `none`",
+                        p.field.name
+                    ),
+                    flat.root.span,
+                )
+                .with_help("give the endpoint or its service an `@auth`, or do not read the caller"),
+            );
+            return None;
+        }
+        self.walk(
+            Root::Principal,
+            flat,
+            Start::Root(Box::new(p.field), false),
+            in_has,
+        )
     }
 
     /// `E0923`: a fact is read in `ensure` only inside `old(...)`.
@@ -490,6 +523,9 @@ impl Checker<'_, '_, '_> {
         let mut names: Vec<String> = ep.params.iter().map(|f| f.name.clone()).collect();
         names.extend(ep.facts.iter().map(|f| f.name.clone()));
         names.push("now".to_string());
+        if let Some(p) = ep.principal.as_ref().filter(|p| p.available) {
+            names.push(p.field.name.clone());
+        }
         if ep.phase == Phase::Ensure && ep.result.is_some() {
             names.push("result".to_string());
         }

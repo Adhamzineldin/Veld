@@ -6,6 +6,7 @@
 
 mod endpoint;
 mod examples;
+mod policy;
 mod rules;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -17,13 +18,16 @@ use crate::signature;
 use crate::syntax::ast::doc_text;
 use veld_ir::{
     Decl, DeclId, DeclKind, Endpoint, Enum, ErrorDecl, ErrorResponse, Field, Flow, Ir, Model,
-    Origin, Package, PackageId, Param, Service, ServiceId, Success, Type, Union, UnionArm, Variant,
+    Origin, Package, PackageId, Param, PolicyId, Service, ServiceId, Success, Type, Union,
+    UnionArm, Variant,
 };
 
 struct Lowerer<'p, 'a> {
     prog: &'p Program<'a>,
     sources: &'p SourceMap,
     decl_map: Vec<Option<DeclId>>,
+    /// Policy index in the program -> index in `Ir.policies`.
+    policy_map: Vec<Option<PolicyId>>,
     pkg_map: Vec<Option<PackageId>>,
     file_rel: BTreeMap<FileId, &'p str>,
 }
@@ -40,11 +44,15 @@ pub fn lower(
         prog,
         sources,
         decl_map: vec![None; prog.decls.len()],
+        policy_map: vec![None; prog.policies.len()],
         pkg_map: vec![None; prog.packages.len()],
         file_rel: prog.modules.iter().map(|m| (m.file, m.rel_path)).collect(),
     };
     for (new, &old) in included.iter().enumerate() {
         lw.decl_map[old] = Some(DeclId(u32::try_from(new).unwrap_or(u32::MAX)));
+    }
+    for (new, old) in lw.policy_order().into_iter().enumerate() {
+        lw.policy_map[old] = Some(PolicyId(u32::try_from(new).unwrap_or(u32::MAX)));
     }
     let packages = lw.packages(&included);
     let mut decls: Vec<Decl> = included.iter().map(|&i| lw.decl(i)).collect();
@@ -54,6 +62,7 @@ pub fn lower(
     }
     signature::rule_ids(&mut decls, &packages);
     let services = lw.services(&decls);
+    let policies = lw.policies(&decls);
     let mut ir = Ir {
         ir_version: veld_ir::IR_VERSION.to_string(),
         packages,
@@ -61,6 +70,7 @@ pub fn lower(
         services,
         consumes: lw.consumes(consumes),
         examples: lw.examples(),
+        policies,
     };
     signature::fill_rules_digests(&mut ir);
     ir
@@ -85,6 +95,9 @@ fn included_decls(prog: &Program<'_>) -> Vec<usize> {
         if let ROutcome::Error(decl, _) = &ex.outcome {
             stack.push(*decl);
         }
+    }
+    for p in prog.policies.iter().filter_map(|p| p.res.as_ref()) {
+        stack.extend(p.params.iter().flat_map(|x| type_refs(&x.ty)));
     }
     while let Some(i) = stack.pop() {
         if prog.is_prelude(i) && set.insert(i) {
@@ -326,6 +339,7 @@ impl Lowerer<'_, '_> {
                 .collect(),
             facts: self.service_facts(s),
             rules_digest: None,
+            principal: self.service_principal(s),
             origin: self.origin(s.span, s.module),
         }
     }

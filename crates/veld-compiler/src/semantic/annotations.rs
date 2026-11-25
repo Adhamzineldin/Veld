@@ -176,7 +176,7 @@ fn apply<'a>(
         ("example", _) => out.example = Some(one_literal(args)?),
         ("discriminator", _) => out.discriminator = Some(one_string(args)?),
         ("header", _) => out.header = Some((one_string(args)?, a.span)),
-        ("auth", _) => out.auth = Some(auth_arg(args)?),
+        ("auth", _) => out.auth = Some(auth_arg(args)?.declared()),
         ("middleware", _) => out.middleware = Some(idents(args)?),
         _ => {}
     }
@@ -301,14 +301,8 @@ fn auth_arg(args: &[Arg]) -> Result<Auth, String> {
     let arg = one(args)?;
     match &arg.value {
         ArgValue::Ident(i) => match i.name.as_str() {
-            "bearer" => Ok(Auth {
-                kind: AuthKind::Bearer,
-                header: None,
-            }),
-            "basic" => Ok(Auth {
-                kind: AuthKind::Basic,
-                header: None,
-            }),
+            "bearer" => Ok(Auth::new(AuthKind::Bearer, None)),
+            "basic" => Ok(Auth::new(AuthKind::Basic, None)),
             "none" => Ok(Auth::none()),
             "apiKey" => Err("`apiKey` needs a header: `apiKey(header: \"X-API-Key\")`".to_string()),
             other => Err(format!("unknown auth scheme `{other}`")),
@@ -327,10 +321,7 @@ fn auth_arg(args: &[Arg]) -> Result<Auth, String> {
                 }
                 _ => return Err("`apiKey` takes exactly `header: \"Name\"`".to_string()),
             };
-            Ok(Auth {
-                kind: AuthKind::ApiKey,
-                header: Some(header),
-            })
+            Ok(Auth::new(AuthKind::ApiKey, Some(header)))
         }
         ArgValue::Literal(_) | ArgValue::Call { .. } => {
             Err("expected bearer, basic, none or apiKey(header: \"X\")".to_string())

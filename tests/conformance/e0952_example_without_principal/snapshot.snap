@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0952]: this package declares no principal, so an example cannot say who calls
+ --> app/app.veld:11:3
+   |
+11 |   as { id: "00000000-0000-4000-8000-0000000000aa" }
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: principals arrive with policies (spec/rules.md section 11)
+
+== ir ==
+(no IR: compilation failed)

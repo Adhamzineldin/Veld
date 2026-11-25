@@ -1,0 +1,9 @@
+// A policy with no `permit` permits nobody: it warns, and still compiles.
+
+model User { id: uuid, banned: bool }
+
+policy OnlyForbids(user: User) {
+  forbid when user.banned
+}
+
+policy Empty(user: User) {}

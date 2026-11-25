@@ -58,6 +58,17 @@ pub(super) struct EpScope {
     pub in_old: bool,
     /// The key of an optional fact may read absent values: the loader is then not called.
     pub lenient: bool,
+    /// The caller of the endpoint, when the package declares a principal (`spec/rules.md` 11.1).
+    pub principal: Option<PrincipalScope>,
+}
+
+/// The principal as an endpoint block sees it.
+#[derive(Debug, Clone)]
+pub(super) struct PrincipalScope {
+    /// The name and the model of the principal.
+    pub field: RField,
+    /// False on an endpoint whose auth is `none`: the name exists but cannot be read (`E0904`).
+    pub available: bool,
 }
 
 /// True for an expression that takes its type from the other operand: a numeric or enum
@@ -337,6 +348,18 @@ impl Checker<'_, '_, '_> {
         span: Span,
         what: impl FnOnce(&str, &str) -> String,
     ) -> Option<Expr> {
+        self.fit_code("E0902", typed, want, span, what)
+    }
+
+    /// [`Self::fit`] with the code of the diagnostic chosen by the caller.
+    pub fn fit_code(
+        &mut self,
+        code: &'static str,
+        typed: Expr,
+        want: &ExprType,
+        span: Span,
+        what: impl FnOnce(&str, &str) -> String,
+    ) -> Option<Expr> {
         if &typed.t == want {
             return Some(typed);
         }
@@ -348,7 +371,7 @@ impl Checker<'_, '_, '_> {
             return Some(coerce(typed, want));
         }
         let (found, expected) = (self.tname(&typed.t), self.tname(want));
-        self.err("E0902", what(&found, &expected), span);
+        self.err(code, what(&found, &expected), span);
         None
     }
 }

@@ -1,0 +1,7 @@
+// A package declares at most one principal, whichever file it is in.
+
+model User { id: uuid }
+model Robot { id: uuid }
+
+principal User
+principal Robot as bot

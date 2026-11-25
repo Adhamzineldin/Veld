@@ -74,18 +74,26 @@ impl Values<'_, '_, '_> {
         }
     }
 
-    /// `as value`: there is no principal to type it against until policies exist.
-    pub fn principal(&mut self, p: Option<&ast::ExampleAs>) -> bool {
-        let Some(p) = p else { return true };
-        self.diags.push(
-            Diagnostic::error(
-                "E0952",
-                "this package declares no principal, so an example cannot say who calls",
-                p.span,
-            )
-            .with_help("principals arrive with policies (spec/rules.md section 11)"),
-        );
-        false
+    /// `as value`, typed by the model of the principal of the package (`spec/rules.md` 11.1).
+    /// The outer `None` is an error; `Some(None)` is no `as`.
+    pub fn principal(&mut self, p: Option<&ast::ExampleAs>) -> Option<Option<ExampleValue>> {
+        let Some(p) = p else { return Some(None) };
+        let pkg = self.prog.modules[self.module].pkg;
+        let Some(principal) = self.prog.principals.get(&pkg) else {
+            self.diags.push(
+                Diagnostic::error(
+                    "E0952",
+                    "this package declares no principal, so an example cannot say who calls",
+                    p.span,
+                )
+                .with_help("principals arrive with policies (spec/rules.md section 11)"),
+            );
+            return None;
+        };
+        let ty = Type::Decl(veld_ir::DeclId(
+            u32::try_from(principal.decl).unwrap_or(u32::MAX),
+        ));
+        self.value(&p.value, &ty).map(Some)
     }
 
     /// `at "time"`. The outer `None` is an error; `Some(None)` is no clock.

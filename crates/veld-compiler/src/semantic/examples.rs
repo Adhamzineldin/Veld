@@ -26,6 +26,8 @@ pub struct RExample {
     pub endpoint: String,
     /// `None` is `absent`.
     pub givens: Vec<(String, Option<ExampleValue>)>,
+    /// `as value`: the principal, typed by the model of the package's principal.
+    pub principal: Option<ExampleValue>,
     pub now: Option<String>,
     pub args: Vec<(String, ExampleValue)>,
     pub returns: Option<ExampleValue>,
@@ -186,7 +188,8 @@ fn check_example(
             None => ok = false,
         }
     }
-    ok &= v.principal(ex.principal.as_ref());
+    let principal = v.principal(ex.principal.as_ref());
+    ok &= principal.is_some();
     let now = v.clock(ex.at.as_ref());
     let args = v.args(&ex.call, ep);
     let returns = v.returns(&ex.call, ep);
@@ -200,6 +203,7 @@ fn check_example(
         service,
         endpoint: ex.call.endpoint.name.clone(),
         givens,
+        principal: principal.flatten(),
         now,
         args,
         returns,

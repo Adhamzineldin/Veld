@@ -1,0 +1,17 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0941]: package `app` already declares a principal
+ --> app/app.veld:7:1
+  |
+7 | principal Robot as bot
+  | ^^^^^^^^^^^^^^^^^^^^^^
+ --> app/app.veld:6:1
+  |
+6 | principal User
+  | -------------- first declared here
+  = help: a package has one caller type: keep one `principal`
+
+== ir ==
+(no IR: compilation failed)

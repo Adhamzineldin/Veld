@@ -1,0 +1,36 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0942]: policy `Manage` takes 2 arguments, found 1
+ --> app/app.veld:16:5
+   |
+16 |     allow Manage(user)
+   |     ^^^^^^^^^^^^^^^^^^
+ --> app/app.veld:8:8
+  |
+8 | policy Manage(user: User, booking: Booking) {
+  |        ------ declared here
+
+error[E0942]: policy `Manage` takes 2 arguments, found 3
+ --> app/app.veld:17:5
+   |
+17 |     allow Manage(user, booking, booking)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ --> app/app.veld:8:8
+  |
+8 | policy Manage(user: User, booking: Booking) {
+  |        ------ declared here
+
+error[E0942]: policy `Manage` takes 2 arguments, found 0
+ --> app/app.veld:18:5
+   |
+18 |     allow Manage()
+   |     ^^^^^^^^^^^^^^
+ --> app/app.veld:8:8
+  |
+8 | policy Manage(user: User, booking: Booking) {
+  |        ------ declared here
+
+== ir ==
+(no IR: compilation failed)

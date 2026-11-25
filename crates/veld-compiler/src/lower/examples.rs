@@ -48,7 +48,7 @@ impl Lowerer<'_, '_> {
                     value: value.clone(),
                 })
                 .collect(),
-            principal: None,
+            principal: ex.principal.clone(),
             now: ex.now.clone(),
             args: ex
                 .args

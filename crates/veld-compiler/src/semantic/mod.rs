@@ -9,6 +9,9 @@ mod inherit;
 mod machine;
 #[cfg(test)]
 mod machine_tests;
+mod policy;
+#[cfg(test)]
+mod policy_tests;
 pub mod regex;
 mod resolve;
 pub mod rules;
@@ -23,8 +26,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::diagnostics::{Diagnostic, FileId, Span, has_errors};
 use crate::syntax::ast;
 pub use examples::{RExample, ROutcome};
+pub use policy::{PolicyEntry, PolicyInfo, RClause, RPolicy, RPolicyParam, RPrincipal};
 pub use rules::RRule;
-pub(crate) use rules::{RBlock, RElse, REnsure, RRequire, RTransition};
+pub(crate) use rules::{RAllow, RBlock, RElse, REnsure, RRequire, RTransition};
 use veld_ir::{Auth, Constraints, Literal, Method, PackageKind, Type};
 
 /// One parsed `.veld` file of a package.
@@ -212,6 +216,8 @@ pub struct Scope {
     pub imports: Vec<ImportRec>,
     /// Local names of imports that failed to resolve; uses of them stay silent.
     pub poisoned: BTreeSet<String>,
+    /// The policies visible here: declared in this module, or imported.
+    pub policy_names: BTreeMap<String, PolicyEntry>,
 }
 
 /// The analysed workspace.
@@ -223,6 +229,10 @@ pub struct Program<'a> {
     pub services: Vec<ServiceInfo>,
     /// Checked examples (`spec/rules.md` section 12).
     pub examples: Vec<RExample>,
+    /// Every `policy` of the workspace (`spec/rules.md` section 11.2).
+    pub policies: Vec<PolicyInfo<'a>>,
+    /// The principal of each package that declares one, by package index.
+    pub principals: BTreeMap<usize, RPrincipal>,
     pub scopes: Vec<Scope>,
     /// Prelude name -> declaration index.
     pub prelude: BTreeMap<String, usize>,
@@ -273,6 +283,7 @@ pub fn analyze_lenient<'a>(
     inherit::flatten(&mut prog, diags);
     typeck::check(&mut prog, diags);
     rules::check(&mut prog, diags);
+    rules::check_policies(&mut prog, diags);
     services::analyze(&mut prog, diags);
     examples::check(&mut prog, diags);
     resolve::report_unused_imports(&prog, diags);

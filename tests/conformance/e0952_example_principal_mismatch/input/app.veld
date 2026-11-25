@@ -1,0 +1,25 @@
+// `as` is typed by the model of the principal: a field of the wrong type, an unknown field and a
+// value that is not an object are all E0952.
+
+model User { id: uuid, active: bool }
+principal User
+
+@auth(bearer)
+service S at "/s" {
+  get "/" f() -> User
+}
+
+example "wrong field type" {
+  as { id: "00000000-0000-4000-8000-0000000000aa", active: 3 }
+  f() -> ok
+}
+
+example "unknown field" {
+  as { id: "00000000-0000-4000-8000-0000000000aa", nope: true }
+  f() -> ok
+}
+
+example "not an object" {
+  as 5
+  f() -> ok
+}

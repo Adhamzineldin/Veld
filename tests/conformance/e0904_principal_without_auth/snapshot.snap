@@ -1,0 +1,20 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0904]: `user` is the principal, which this endpoint does not have: its auth is `none`
+ --> app/app.veld:10:17
+   |
+10 |     require not user.banned
+   |                 ^^^^
+  = help: give the endpoint or its service an `@auth`, or do not read the caller
+
+error[E0904]: `user` is the principal, which this endpoint does not have: its auth is `none`
+ --> app/app.veld:14:17
+   |
+14 |     require not user.banned
+   |                 ^^^^
+  = help: give the endpoint or its service an `@auth`, or do not read the caller
+
+== ir ==
+(no IR: compilation failed)

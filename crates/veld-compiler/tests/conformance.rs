@@ -245,6 +245,8 @@ fn every_diagnostic_code_has_an_invalid_case() {
     codes.push("E0005".to_string());
     codes.extend((901..=908).map(|n| format!("E0{n}")));
     codes.extend((920..=924).map(|n| format!("E0{n}")));
+    codes.extend((940..=942).map(|n| format!("E0{n}")));
+    codes.push("W0940".to_string());
     codes.extend((950..=952).map(|n| format!("E0{n}")));
     codes.extend((901..=903).map(|n| format!("W0{n}")));
     let names: Vec<String> = case_dirs()

@@ -338,7 +338,7 @@ payload    = "{" { IDENT ":" expr [","] } "}" ;
 ensure     = { doc } "ensure" [ IDENT ":" ] expr [ "message" STRING ] ;
 ```
 
-A statement starts with one of the five words; nothing else may appear in the block. Until their phases land, `allow` and `transition` are rejected with `E0003` and a message that names the phase. `allow` is §11 and `transition` is §10. The formatter prints the statements in this order: facts, `allow`, `transition`, `require`, `ensure`, each group in source order.
+A statement starts with one of the five words; nothing else may appear in the block. `allow` is §11 and `transition` is §10. The formatter prints the statements in this order: facts, `allow`, `transition`, `require`, `ensure`, each group in source order.
 
 ### 9.1 Scope
 
@@ -565,7 +565,9 @@ All three are omitted from the JSON when empty or absent. In a policy's expressi
 
 ### 11.6 A lint for public endpoints
 
-`auth-required` (`L0005`, default `warn`): an endpoint whose effective auth comes from nowhere, neither its own `@auth` nor its service's, should say `@auth(none)` if it is meant to be public.
+`auth-required` (`L0014`, default `warn`): an endpoint whose effective auth comes from nowhere, neither its own `@auth` nor its service's, should say `@auth(none)` if it is meant to be public.
+
+The code is `L0014`: `L0005` is `missing-description` since v2.0 and codes are never reused. The IR does not tell an `@auth(none)` that the author wrote from the default, and it must not grow a key for it (the JSON of every existing contract stays the same). The compiler therefore marks the `Auth` of an endpoint or service as *declared* when an `@auth` was written on it or on its service; the mark is not part of the JSON, and only this lint reads it, in the process that compiled the contract.
 
 ### 11.7 Optimistic concurrency: `@version`
 
@@ -624,7 +626,7 @@ The words `returns`, `ok` and `absent` are contextual, like every other word of 
 - An example is a top-level declaration. Its name is unique in its package (`E0950`).
 - The call names an endpoint of the package, as `endpoint` or as `Service.endpoint` when two services share the name. Unknown or ambiguous is `E0950`. Arguments are given by parameter name.
 - `given name = value` sets the fact `name` of that endpoint (`E0951` if the endpoint has no such fact). `given name = absent` makes the loader find nothing.
-- `as value` is the principal (`E0952` until §11 gives it a type). `at "…"` is the clock; without it the clock is `2026-01-01T00:00:00Z`.
+- `as value` is the principal, a value of the principal's model (§11.1): `E0952` when it does not fit, and when the package declares no principal. `at "…"` is the clock; without it the clock is `2026-01-01T00:00:00Z`.
 - A value is checked against the type it is used at (`E0952`). `a.b` reads a field of a given.
 - `returns value` states what the handler returns. Without it, an offline run stops before the handler.
 - The **outcome** is `ok`, or the name of an error the endpoint can answer with, including the implicit ones (`ValidationError`, `NotFound`, `Unauthorized`, `Forbidden`, `InvalidTransition`, `Internal`). An error the endpoint cannot answer with, an unknown argument and a clock that is not a datetime are `E0952`. A value after it is a **pattern**: every field it names must equal the actual one by the value semantics of §3.4, fields it does not name are ignored, objects match recursively, and lists match in length and order.
@@ -805,7 +807,7 @@ Range `E09xx` (errors) and `W09xx` (warnings). Codes are never reused.
 | `E0941` | More than one `principal` in a package |
 | `E0942` | `allow` names an unknown policy, or its arguments do not fit the policy's parameters |
 | `W0940` | A policy with no `permit` permits nobody |
-| `L0005` | `auth-required`: an endpoint with no `@auth` of its own or its service's |
+| `L0014` | `auth-required`: an endpoint with no `@auth` of its own or its service's |
 
 ## 15. Test vectors
 

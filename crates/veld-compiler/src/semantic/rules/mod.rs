@@ -13,6 +13,7 @@ mod endpoint;
 mod endpoint_tests;
 mod ops;
 mod paths;
+mod policy;
 #[cfg(test)]
 mod tests;
 mod transition;
@@ -26,9 +27,10 @@ use crate::language::Target;
 use crate::syntax::ast::{self, DeclKind, doc_text};
 use checker::Checker;
 pub(crate) use endpoint::{
-    RBlock, RElse, REnsure, RRequire, check_block, check_service_facts, has_bare_require,
-    has_required_fact, has_transition,
+    RAllow, RBlock, RElse, REnsure, RRequire, check_block, check_service_facts, has_allow,
+    has_bare_require, has_required_fact, has_transition,
 };
+pub(super) use policy::check_policies;
 pub(crate) use transition::RTransition;
 use veld_ir::rules::Expr;
 

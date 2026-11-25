@@ -556,6 +556,10 @@
         "deprecated-declaration": {
           "$ref": "#/$defs/lintLevel",
           "description": "Lint rule L0013."
+        },
+        "auth-required": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0014."
         }
       },
       "description": "Lint rule levels (`off`, `warn`, `error`). Every rule defaults to `warn`; `veld check` reports them."

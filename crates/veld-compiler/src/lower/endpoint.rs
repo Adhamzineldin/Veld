@@ -51,6 +51,7 @@ impl Lowerer<'_, '_> {
             .map(|t| self.transition(t, s.module, &at));
         EndpointRules {
             transition,
+            allows: self.allows(&e.rules.allows, s.module),
             facts: facts.collect(),
             requires: requires.collect(),
             ensures: ensures.collect(),

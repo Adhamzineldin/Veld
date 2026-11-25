@@ -322,6 +322,13 @@ pub const CODES: &[CodeInfo] = &[
         "A `transition` lists a move that is not a flow of the machine",
     ),
     e("E0934", C, "More than one `transition` in an endpoint"),
+    e("E0940", C, "The type after `principal` is not a model"),
+    e("E0941", C, "More than one `principal` in a package"),
+    e(
+        "E0942",
+        C,
+        "`allow` names an unknown policy, or its arguments do not fit the policy's parameters",
+    ),
     e(
         "E0950",
         C,
@@ -365,6 +372,7 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "A variant of a state machine that takes part in no flow and is not final",
     ),
+    w("W0940", C, "A policy with no `permit` permits nobody"),
     l(
         "L0001",
         T,
@@ -406,10 +414,15 @@ pub const CODES: &[CodeInfo] = &[
         T,
         "`deprecated-declaration`: declaration or enum variant is deprecated",
     ),
+    l(
+        "L0014",
+        T,
+        "`auth-required`: an endpoint whose auth comes from neither its own `@auth` nor its service's",
+    ),
 ];
 
 /// Lint rule names by code, in code order. The names are what `[lint]` in `veld.toml` uses.
-pub const LINT_RULES: [(&str, &str); 13] = [
+pub const LINT_RULES: [(&str, &str); 14] = [
     ("L0001", "unused-model"),
     ("L0002", "empty-service"),
     ("L0003", "empty-model"),
@@ -423,6 +436,7 @@ pub const LINT_RULES: [(&str, &str); 13] = [
     ("L0011", "endpoint-name-case"),
     ("L0012", "variant-name-case"),
     ("L0013", "deprecated-declaration"),
+    ("L0014", "auth-required"),
 ];
 
 /// The entry for `code`, if it is documented.

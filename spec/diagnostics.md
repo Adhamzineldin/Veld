@@ -83,6 +83,9 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0932` | error | veld-compiler | The path of a `transition` does not start at a fact, does not end in a state machine, or passes through an optional step |
 | `E0933` | error | veld-compiler | A `transition` lists a move that is not a flow of the machine |
 | `E0934` | error | veld-compiler | More than one `transition` in an endpoint |
+| `E0940` | error | veld-compiler | The type after `principal` is not a model |
+| `E0941` | error | veld-compiler | More than one `principal` in a package |
+| `E0942` | error | veld-compiler | `allow` names an unknown policy, or its arguments do not fit the policy's parameters |
 | `E0950` | error | veld-compiler | Duplicate example name; unknown or ambiguous endpoint in an example |
 | `E0951` | error | veld-compiler | `given` names something that is not a fact of the called endpoint |
 | `E0952` | error | veld-compiler | A value in an example does not fit the type it is used at |
@@ -98,6 +101,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `W0930` | warning | veld-compiler | The same flow declared twice |
 | `W0931` | warning | veld-compiler | A state that is not final and has no way out |
 | `W0932` | warning | veld-compiler | A variant of a state machine that takes part in no flow and is not final |
+| `W0940` | warning | veld-compiler | A policy with no `permit` permits nobody |
 | `L0001` | lint | veld-tools | `unused-model`: declaration is never used by any endpoint, model or constant |
 | `L0002` | lint | veld-tools | `empty-service`: service has no endpoints |
 | `L0003` | lint | veld-tools | `empty-model`: model has no fields |
@@ -111,3 +115,4 @@ never reused. The ranges are listed in `language.md` section 9.
 | `L0011` | lint | veld-tools | `endpoint-name-case`: endpoint name is not camelCase |
 | `L0012` | lint | veld-tools | `variant-name-case`: enum variant is neither camelCase nor snake_case |
 | `L0013` | lint | veld-tools | `deprecated-declaration`: declaration or enum variant is deprecated |
+| `L0014` | lint | veld-tools | `auth-required`: an endpoint whose auth comes from neither its own `@auth` nor its service's |

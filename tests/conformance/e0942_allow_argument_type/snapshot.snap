@@ -1,0 +1,24 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0942]: argument `user` of policy `Manage` is `User`, found `Booking`
+ --> app/app.veld:16:18
+   |
+16 |     allow Manage(booking, user)
+   |                  ^^^^^^^
+
+error[E0942]: argument `booking` of policy `Manage` is `Booking`, found `User`
+ --> app/app.veld:16:27
+   |
+16 |     allow Manage(booking, user)
+   |                           ^^^^
+
+error[E0942]: argument `booking` of policy `Manage` is `Booking`, found `uuid`
+ --> app/app.veld:17:24
+   |
+17 |     allow Manage(user, id)
+   |                        ^^
+
+== ir ==
+(no IR: compilation failed)

@@ -1,0 +1,16 @@
+// `allow` names a policy that is not declared or imported here: a near miss gets a suggestion.
+
+model User { id: uuid }
+principal User
+
+policy ManageBooking(user: User) {
+  permit when user.id == user.id
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  get "/" list() -> User {
+    allow ManageBookin(user)
+    allow Missing(user)
+  }
+}

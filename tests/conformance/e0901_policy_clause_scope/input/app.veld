@@ -1,0 +1,13 @@
+// A clause of a policy sees its parameters and `now`, nothing else: a fact, the principal and a
+// name that does not exist are unknown names. `now` is fine.
+
+model User { id: uuid, until: datetime }
+principal User
+
+model Booking { id: uuid, owner: uuid }
+
+policy Manage(user: User) {
+  permit when user.until > now
+  permit when booking.owner == user.id
+  permit when caller.id == user.id
+}

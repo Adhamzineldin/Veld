@@ -1,0 +1,96 @@
+// Policies and the principal (spec/rules.md section 11): a principal without `as`, policies with
+// several clauses and messages, `allow` with a fact and the principal as arguments, several
+// `allow` lines, the clock inside a policy, a policy over facts only on an endpoint without auth,
+// the implicit Forbidden, and examples that say who calls.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model User {
+  id: uuid
+  roles: string[]
+  suspended: bool
+  nick?: string
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  guestId: uuid
+  status: Status
+  total: decimal
+}
+
+model Payment {
+  amount: decimal
+}
+
+error AmountMismatch 409 { expected: decimal }
+
+/// Who may manage a booking.
+policy ManageBooking(user: User, booking: Booking) {
+  permit when booking.guestId == user.id
+  permit when "support" in user.roles
+  forbid when user.suspended
+    message "A suspended account cannot manage bookings"
+  forbid when len(user.roles) > 20
+}
+
+policy Staff(user: User) {
+  permit when "staff" in user.roles
+}
+
+policy GuardedNick(user: User) {
+  permit when has(user.nick) && len(user.nick) > 0
+}
+
+policy OpenFrom(booking: Booking, since: datetime) {
+  permit when booking.status == .pending && since <= now
+}
+
+policy Anyone(booking: Booking) {
+  permit when booking.total >= 0
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking | AmountMismatch {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+    allow Staff(user)
+    transition booking.status: pending -> paid
+    require body.amount == booking.total else AmountMismatch { expected: booking.total }
+  }
+
+  get "/{id}" getBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+    allow GuardedNick(user)
+    allow OpenFrom(booking, now)
+  }
+}
+
+service Public at "/public" {
+  @auth(none)
+  get "/{id}" peek(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow Anyone(booking)
+  }
+}
+
+example "the guest may read their booking" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa" }
+  as { id: "00000000-0000-4000-8000-0000000000aa", nick: "ann" }
+  getBooking(id: booking.id) -> ok
+}
+
+example "another caller may not" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa" }
+  as { id: "00000000-0000-4000-8000-0000000000bb", nick: "bob" }
+  getBooking(id: booking.id) -> Forbidden { message: "not permitted" }
+}

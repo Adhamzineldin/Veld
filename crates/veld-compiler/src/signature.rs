@@ -5,6 +5,7 @@
 //! objects, so no number formatting is needed.
 
 mod endpoint;
+mod policy;
 mod rules;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -14,6 +15,7 @@ pub use endpoint::{
     EndpointRef, StatementKind, TransitionRef, endpoint_rule_bytes, endpoint_rule_id,
     fill_rules_digests, rules_digest, transition_rule_bytes, transition_rule_id,
 };
+pub use policy::{policy_bytes, policy_id};
 pub use rules::{rule_id, rule_ids};
 use sha2::{Digest, Sha256};
 use veld_ir::{Decl, DeclKind, Method, Package, PathSegment, Type};

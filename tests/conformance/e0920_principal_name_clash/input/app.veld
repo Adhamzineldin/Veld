@@ -1,0 +1,22 @@
+// A parameter or a fact named like the principal is E0920 on an endpoint that has the principal.
+// On an `@auth(none)` endpoint the name is free.
+
+model User { id: uuid }
+principal User
+
+service Bookings at "/bookings" {
+  @auth(bearer)
+  get "/a" a(@query user: int) -> User {
+    require user > 0
+  }
+
+  @auth(bearer)
+  get "/b/{id}" b(id: uuid) -> User {
+    fact user: User = id
+  }
+
+  @auth(none)
+  get "/c" c(@query user: int) -> User {
+    require user > 0
+  }
+}

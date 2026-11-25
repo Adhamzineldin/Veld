@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::checker::{Checker, EpScope, Phase};
+use super::checker::{Checker, EpScope, Phase, PrincipalScope};
 use super::depth;
 use super::transition::{self, RTransition};
 use super::types::of;
@@ -32,6 +32,7 @@ const MAX_JSON_DEPTH: usize =
 #[derive(Debug, Clone, Default)]
 pub struct RBlock {
     pub facts: Vec<RFact>,
+    pub allows: Vec<RAllow>,
     pub transition: Option<RTransition>,
     pub requires: Vec<RRequire>,
     pub ensures: Vec<REnsure>,
@@ -44,6 +45,17 @@ pub struct RFact {
     pub optional: bool,
     pub key: Option<Expr>,
     pub key_ty: Option<Type>,
+    pub span: Span,
+}
+
+/// A checked `allow` (`spec/rules.md` section 11.3).
+#[derive(Debug, Clone)]
+pub struct RAllow {
+    /// Index into `Program::policies`.
+    pub policy: usize,
+    pub args: Vec<Expr>,
+    /// Names of the parameters the arguments read, first use first.
+    pub reads: Vec<String>,
     pub span: Span,
 }
 
@@ -100,6 +112,11 @@ pub(crate) fn has_transition(e: &ast::Endpoint) -> bool {
         .any(|s| matches!(s, Stmt::Transition(_)))
 }
 
+/// True when the block has an `allow`: the endpoint then implicitly declares `Forbidden`.
+pub(crate) fn has_allow(e: &ast::Endpoint) -> bool {
+    statements(e).iter().any(|s| matches!(s, Stmt::Allow(_)))
+}
+
 /// True when a `require` has no `else`: its answer is `ValidationError`.
 pub(crate) fn has_bare_require(e: &ast::Endpoint) -> bool {
     statements(e)
@@ -122,6 +139,44 @@ fn scope_field(name: &str, ty: &Type, optional: bool, constraints: Constraints) 
         docs: None,
         deprecated: None,
         span: Span::none(),
+    }
+}
+
+/// The principal of the package of `module`, as the block of endpoint `ep` sees it.
+fn principal_scope(prog: &Program<'_>, module: usize, ep: &REndpoint) -> Option<PrincipalScope> {
+    let p = prog.principals.get(&prog.modules[module].pkg)?;
+    Some(PrincipalScope {
+        field: scope_field(
+            &p.name,
+            &Type::Decl(veld_ir::DeclId(u32::try_from(p.decl).unwrap_or(u32::MAX))),
+            false,
+            Constraints::default(),
+        ),
+        available: ep.auth.kind != veld_ir::AuthKind::None,
+    })
+}
+
+/// `E0920`: on an endpoint that has the principal, a parameter is not called like it.
+fn principal_param_clash(
+    e: &ast::Endpoint,
+    principal: Option<&PrincipalScope>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(p) = principal.filter(|p| p.available) else {
+        return;
+    };
+    for param in e.params.iter().filter(|x| x.name.name == p.field.name) {
+        diags.push(
+            Diagnostic::error(
+                "E0920",
+                format!(
+                    "parameter `{}` has the name of the principal",
+                    param.name.name
+                ),
+                param.name.span,
+            )
+            .with_help("rename it, or name the principal differently: `principal User as caller`"),
+        );
     }
 }
 
@@ -151,6 +206,8 @@ pub(crate) fn check_block(
         ep.success_ty.clone()
     };
     transition::reserved_name(e, diags);
+    let principal = principal_scope(prog, module, ep);
+    principal_param_clash(e, principal.as_ref(), diags);
     let mut bc = BlockChecker {
         prog,
         module,
@@ -158,6 +215,7 @@ pub(crate) fn check_block(
         diags,
         params,
         facts: Vec::new(),
+        principal,
         poisoned,
         result,
         names: BTreeMap::new(),
@@ -172,6 +230,7 @@ struct BlockChecker<'p, 'a, 'd> {
     diags: &'d mut Vec<Diagnostic>,
     params: Vec<RField>,
     facts: Vec<RField>,
+    principal: Option<PrincipalScope>,
     poisoned: BTreeSet<String>,
     result: Option<Type>,
     /// Names of `require` and `ensure` statements.
@@ -190,6 +249,7 @@ impl BlockChecker<'_, '_, '_> {
         for s in stmts {
             match s {
                 Stmt::Fact(_) | Stmt::Transition(_) => {}
+                Stmt::Allow(a) => out.allows.extend(self.allow(a)),
                 Stmt::Require(r) => out.requires.extend(self.require(r)),
                 Stmt::Ensure(r) => out.ensures.extend(self.ensure(r)),
             }
@@ -236,6 +296,7 @@ impl BlockChecker<'_, '_, '_> {
                 phase,
                 in_old: false,
                 lenient,
+                principal: self.principal.clone(),
             }),
         };
         f(&mut c)
@@ -318,6 +379,12 @@ impl BlockChecker<'_, '_, '_> {
             "the clock"
         } else if name == "result" {
             "the success value"
+        } else if self
+            .principal
+            .as_ref()
+            .is_some_and(|p| p.available && p.field.name == name)
+        {
+            "the principal"
         } else {
             return false;
         };
@@ -351,6 +418,95 @@ impl BlockChecker<'_, '_, '_> {
                 None
             }
         }
+    }
+
+    // ---- allow -------------------------------------------------------------------
+
+    /// `allow Policy(args)` (`spec/rules.md` section 11.3). `E0942` for an unknown policy, a
+    /// wrong number of arguments or an argument of the wrong type.
+    fn allow(&mut self, a: &ast::AllowStmt) -> Option<RAllow> {
+        let policy = self.policy_named(&a.policy)?;
+        let params: Vec<(String, Type)> = {
+            let res = self.prog.policies[policy].res.as_ref()?;
+            res.params
+                .iter()
+                .map(|p| (p.name.clone(), p.ty.clone()))
+                .collect()
+        };
+        let name = &a.policy.name;
+        if params.len() != a.args.len() {
+            self.diags.push(
+                Diagnostic::error(
+                    "E0942",
+                    format!(
+                        "policy `{name}` takes {} argument{}, found {}",
+                        params.len(),
+                        if params.len() == 1 { "" } else { "s" },
+                        a.args.len()
+                    ),
+                    a.span,
+                )
+                .with_label(self.prog.policies[policy].ast.name.span, "declared here"),
+            );
+            return None;
+        }
+        let (args, reads) = self.with_checker(Phase::Require, false, |c| {
+            let args: Vec<Option<Expr>> = a
+                .args
+                .iter()
+                .zip(&params)
+                .map(|(arg, (pname, ty))| {
+                    let want = of(ty.clone());
+                    let typed = c.expr(arg, Some(&want))?;
+                    c.fit_code("E0942", typed, &want, arg.span, |found, expected| {
+                        format!(
+                            "argument `{pname}` of policy `{name}` is `{expected}`, found `{found}`"
+                        )
+                    })
+                })
+                .collect();
+            (args, std::mem::take(&mut c.reads))
+        });
+        let args: Option<Vec<Expr>> = args.into_iter().collect();
+        let args = args?;
+        if !args.iter().all(|x| self.depth_ok(x, a.span)) {
+            return None;
+        }
+        Some(RAllow {
+            policy,
+            args,
+            reads,
+            span: a.span,
+        })
+    }
+
+    /// The policy `name` as seen from this module; `E0942` when there is none.
+    fn policy_named(&mut self, name: &ast::Ident) -> Option<usize> {
+        if let Some(p) = self.prog.lookup_policy(self.module, &name.name) {
+            return Some(p);
+        }
+        if self.prog.scopes[self.module].poisoned.contains(&name.name) {
+            return None;
+        }
+        let known: Vec<&str> = self.prog.scopes[self.module]
+            .policy_names
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let hint = if known.is_empty() {
+            "no policy is declared or imported in this module".to_string()
+        } else {
+            format!("policies in scope: {}", known.join(", "))
+        };
+        self.diags.push(
+            Diagnostic::error(
+                "E0942",
+                format!("unknown policy `{}`", name.name),
+                name.span,
+            )
+            .did_you_mean(&name.name, known.iter().copied(), Some(hint)),
+        );
+        None
     }
 
     // ---- require -----------------------------------------------------------------
