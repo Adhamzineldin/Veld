@@ -4,7 +4,8 @@
 //! call is one line; with `returns` the call, `returns` and the outcome take a line each.
 
 use veld_compiler::syntax::ast::{
-    Else, Example, ExampleCall, Given, Outcome, Stmt, TransitionStmt, Value, ValueKind,
+    Else, Example, ExampleCall, Given, Outcome, PolicyClause, PolicyDecl, PrincipalDecl, Stmt,
+    TransitionStmt, Value, ValueKind,
 };
 
 use super::expr::expr_text;
@@ -66,6 +67,10 @@ pub(super) fn stmt_lines(s: &Stmt, ind: usize) -> Vec<String> {
             with_message(line, e.message.as_ref().map(|m| m.value.as_str()), &p)
         }
         Stmt::Transition(t) => vec![format!("{p}{}", transition_text(t))],
+        Stmt::Allow(a) => {
+            let args: Vec<String> = a.args.iter().map(expr_text).collect();
+            vec![format!("{p}allow {}({})", a.policy.name, args.join(", "))]
+        }
     }
 }
 
@@ -75,6 +80,33 @@ fn with_message(line: String, message: Option<&str>, p: &str) -> Vec<String> {
         lines.push(format!("{p}  message {}", quote(m)));
     }
     lines
+}
+
+/// The lines of a `permit` or `forbid` clause, indented by `ind`.
+pub(super) fn clause_lines(c: &PolicyClause, ind: usize) -> Vec<String> {
+    let p = pad(ind);
+    let word = if c.forbid { "forbid" } else { "permit" };
+    let line = format!("{p}{word} when {}", expr_text(&c.expr));
+    with_message(line, c.message.as_ref().map(|m| m.value.as_str()), &p)
+}
+
+/// `policy Name(a: T, b: U)`, the head of the block.
+pub(super) fn policy_head(p: &PolicyDecl) -> String {
+    let params: Vec<String> = p
+        .params
+        .iter()
+        .map(|x| format!("{}: {}", x.name.name, type_expr(&x.ty)))
+        .collect();
+    format!("policy {}({})", p.name.name, params.join(", "))
+}
+
+/// `principal User [as name]`.
+pub(super) fn principal_line(p: &PrincipalDecl) -> String {
+    let mut s = format!("principal {}", type_expr(&p.ty));
+    if let Some(n) = &p.name {
+        s.push_str(&format!(" as {}", n.name));
+    }
+    s
 }
 
 /// `transition booking.status: a, b -> c`.
@@ -89,11 +121,12 @@ fn transition_text(t: &TransitionStmt) -> String {
     )
 }
 
-/// The printing group of a statement: facts, `transition`, then `require`, then `ensure`
-/// (`spec/rules.md` 9). Group 1 is kept for `allow`.
+/// The printing group of a statement: facts, `allow`, `transition`, then `require`, then `ensure`
+/// (`spec/rules.md` 9).
 pub(super) fn stmt_group(s: &Stmt) -> u8 {
     match s {
         Stmt::Fact(_) => 0,
+        Stmt::Allow(_) => 1,
         Stmt::Transition(_) => 2,
         Stmt::Require(_) => 3,
         Stmt::Ensure(_) => 4,
@@ -102,7 +135,7 @@ pub(super) fn stmt_group(s: &Stmt) -> u8 {
 
 pub(super) fn stmt_docs(s: &Stmt) -> &[veld_compiler::syntax::ast::Doc] {
     match s {
-        Stmt::Fact(_) | Stmt::Transition(_) => &[],
+        Stmt::Fact(_) | Stmt::Transition(_) | Stmt::Allow(_) => &[],
         Stmt::Require(r) => &r.docs,
         Stmt::Ensure(e) => &e.docs,
     }

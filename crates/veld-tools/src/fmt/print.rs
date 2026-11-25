@@ -3,7 +3,7 @@
 use veld_compiler::Comment;
 use veld_compiler::syntax::ast::{
     Annotation, Decl, DeclKind, Doc, Endpoint, EnumDecl, Example, Field, File, HttpMethod, Param,
-    RespItem, Rule, ServiceDecl, Stmt, UnionDecl, Use, Variant,
+    PolicyDecl, PrincipalDecl, RespItem, Rule, ServiceDecl, Stmt, UnionDecl, Use, Variant,
 };
 use veld_compiler::syntax::lexer::CommentKind;
 
@@ -108,6 +108,16 @@ impl Printer<'_> {
                     .iter()
                     .map(|x| (layout::example_key(x), Item::Example(x))),
             )
+            .chain(
+                f.policies
+                    .iter()
+                    .map(|x| (layout::policy_key(x), Item::Policy(x))),
+            )
+            .chain(
+                f.principals
+                    .iter()
+                    .map(|x| (layout::principal_key(x), Item::Principal(x))),
+            )
             .collect();
         items.sort_by_key(|(k, _)| *k);
         for (_, item) in items {
@@ -115,6 +125,8 @@ impl Printer<'_> {
             match item {
                 Item::Decl(d) => self.decl(d),
                 Item::Example(x) => self.example(x),
+                Item::Policy(x) => self.policy(x),
+                Item::Principal(x) => self.principal(x),
             }
         }
         let tail = self.att(ROOT).map(|a| a.tail.clone()).unwrap_or_default();
@@ -136,6 +148,8 @@ impl Printer<'_> {
             .map(|u| u.span.start)
             .chain(f.decls.iter().map(layout::decl_key))
             .chain(f.examples.iter().map(layout::example_key))
+            .chain(f.policies.iter().map(layout::policy_key))
+            .chain(f.principals.iter().map(layout::principal_key))
             .min();
         let Some(key) = first else { return };
         let list = self.att(key).map(|a| a.leading.clone()).unwrap_or_default();
@@ -477,7 +491,7 @@ impl Printer<'_> {
         });
     }
 
-    /// Facts, `transition`, `require`, then `ensure`, each group in source order (`spec/rules.md` 9).
+    /// Facts, `allow`, `transition`, `require`, then `ensure`, each group in source order (`spec/rules.md` 9).
     fn statements(&mut self, stmts: &[Stmt], ind: usize) {
         for group in 0..5 {
             for s in stmts.iter().filter(|s| stmt::stmt_group(s) == group) {
@@ -511,6 +525,28 @@ impl Printer<'_> {
         });
     }
 
+    fn policy(&mut self, p: &PolicyDecl) {
+        let key = layout::policy_key(p);
+        self.leading(key, 0);
+        self.docs(&p.docs, 0);
+        self.block(key, &stmt::policy_head(p), 0, p.clauses.is_empty(), |s| {
+            for c in &p.clauses {
+                let ck = c.span.start;
+                s.leading(ck, 2);
+                s.out.push_str(&stmt::clause_lines(c, 2).join("\n"));
+                s.end_line(ck, 2);
+            }
+        });
+    }
+
+    fn principal(&mut self, p: &PrincipalDecl) {
+        let key = layout::principal_key(p);
+        self.leading(key, 0);
+        self.docs(&p.docs, 0);
+        self.out.push_str(&stmt::principal_line(p));
+        self.end_line(key, 0);
+    }
+
     fn example_line(&mut self, key: u32, text: &str) {
         self.leading(key, 2);
         self.line_no_newline(2, text);
@@ -526,6 +562,8 @@ impl Printer<'_> {
 enum Item<'a> {
     Decl(&'a Decl),
     Example(&'a Example),
+    Policy(&'a PolicyDecl),
+    Principal(&'a PrincipalDecl),
 }
 
 fn field_line(f: &Field) -> String {

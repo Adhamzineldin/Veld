@@ -36,3 +36,6 @@ mod rule_tests;
 
 #[cfg(test)]
 mod endpoint_tests;
+
+#[cfg(test)]
+mod policy_tests;

@@ -61,6 +61,8 @@ impl Layout {
         let mut kids: Vec<Node> = file.uses.iter().map(use_node).collect();
         kids.extend(file.decls.iter().map(decl_node));
         kids.extend(file.examples.iter().map(example_node));
+        kids.extend(file.policies.iter().map(policy_node));
+        kids.extend(file.principals.iter().map(principal_node));
         kids.sort_by_key(|n| n.start);
         let mut b = Builder {
             src,
@@ -275,6 +277,7 @@ fn stmt_kw(s: &ast::Stmt) -> u32 {
         ast::Stmt::Require(r) => r.span.start,
         ast::Stmt::Ensure(e) => e.span.start,
         ast::Stmt::Transition(t) => t.span.start,
+        ast::Stmt::Allow(a) => a.span.start,
     }
 }
 
@@ -284,7 +287,36 @@ fn stmt_end(s: &ast::Stmt) -> u32 {
         ast::Stmt::Require(r) => r.span.end,
         ast::Stmt::Ensure(e) => e.span.end,
         ast::Stmt::Transition(t) => t.span.end,
+        ast::Stmt::Allow(a) => a.span.end,
     }
+}
+
+/// A policy: a braced node whose children are its clauses.
+fn policy_node(p: &ast::PolicyDecl) -> Node {
+    Node {
+        start: policy_key(p),
+        kw: p.span.start,
+        anchor: p.span.start,
+        end: p.span.end,
+        braced: true,
+        kids: p
+            .clauses
+            .iter()
+            .map(|c| leaf(c.span.start, c.span.start, c.span.end))
+            .collect(),
+    }
+}
+
+pub(super) fn policy_key(p: &ast::PolicyDecl) -> u32 {
+    first_start(p.span.start, &p.docs, &[])
+}
+
+fn principal_node(p: &ast::PrincipalDecl) -> Node {
+    leaf(principal_key(p), p.span.start, p.span.end)
+}
+
+pub(super) fn principal_key(p: &ast::PrincipalDecl) -> u32 {
+    first_start(p.span.start, &p.docs, &[])
 }
 
 /// An example: a braced node whose children are its givens, principal, clock and call.
