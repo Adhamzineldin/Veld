@@ -160,7 +160,11 @@ fn changed(q: &str, pair: (&Rule, &Rule), pos: Position, out: &mut Vec<Change>) 
 fn enum_of(d: &Decl) -> Option<&Enum> {
     match &d.kind {
         DeclKind::Enum(e) => Some(e),
-        DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Union(_) | DeclKind::Const(_) => None,
+        DeclKind::Model(_)
+        | DeclKind::Error(_)
+        | DeclKind::Union(_)
+        | DeclKind::Const(_)
+        | DeclKind::Event(_) => None,
     }
 }
 

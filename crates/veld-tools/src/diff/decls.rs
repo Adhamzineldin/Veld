@@ -12,7 +12,8 @@ use super::{Change, ChangeKind, Ctx, push_constraint_changes};
 pub(super) fn by_name(ir: &Ir) -> BTreeMap<&str, &Decl> {
     ir.decls
         .iter()
-        .filter(|d| ir.package(d.package).kind != PackageKind::Prelude)
+        // Events have their own comparison (`events.rs`).
+        .filter(|d| ir.package(d.package).kind != PackageKind::Prelude && !d.is_event())
         .map(|d| (d.qualified.as_str(), d))
         .collect()
 }
@@ -24,6 +25,7 @@ fn kind_name(d: &Decl) -> &'static str {
         DeclKind::Enum(_) => "enum",
         DeclKind::Union(_) => "union",
         DeclKind::Const(_) => "const",
+        DeclKind::Event(_) => "event",
     }
 }
 
@@ -63,6 +65,8 @@ fn diff_decl(ctx: &Ctx<'_>, o: &Decl, n: &Decl, role: Role, out: &mut Vec<Change
         (DeclKind::Union(a), DeclKind::Union(b)) if shape => diff_union(ctx, q, (a, b), role, out),
         (DeclKind::Const(a), DeclKind::Const(b)) => diff_const(ctx, q, a, b, out),
         (DeclKind::Enum(_), DeclKind::Enum(_)) | (DeclKind::Union(_), DeclKind::Union(_)) => {}
+        // `by_name` never yields an event: they are compared in `events.rs`.
+        (DeclKind::Event(_), _) | (_, DeclKind::Event(_)) => {}
         (
             DeclKind::Model(_) | DeclKind::Error(_),
             DeclKind::Model(_)

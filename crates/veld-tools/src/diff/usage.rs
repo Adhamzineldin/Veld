@@ -49,7 +49,7 @@ fn refs(ir: &Ir, id: DeclId, out: &mut Vec<DeclId>) {
         DeclKind::Model(m) => out.extend(m.parent),
         DeclKind::Union(u) => out.extend(u.arms.iter().map(|a| a.decl)),
         DeclKind::Const(c) => c.ty.collect_decls(out),
-        DeclKind::Error(_) | DeclKind::Enum(_) => {}
+        DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Event(_) => {}
     }
     for f in d.fields() {
         f.ty.collect_decls(out);

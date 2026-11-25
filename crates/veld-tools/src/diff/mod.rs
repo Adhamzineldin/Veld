@@ -12,6 +12,7 @@
 mod decls;
 mod endpoint_rules;
 mod endpoints;
+mod events;
 pub(crate) mod expr_text;
 mod rules;
 mod usage;
@@ -85,6 +86,17 @@ pub enum ChangeKind {
     FlowRemoved,
     FlowAdded,
     TransitionChanged,
+    EventAdded,
+    EventRemoved,
+    EventChanged,
+    ChannelAdded,
+    ChannelRemoved,
+    ChannelChanged,
+    PublishesAdded,
+    PublishesRemoved,
+    SubscriptionAdded,
+    SubscriptionRemoved,
+    SubscriptionChanged,
 }
 
 /// One difference between the old and the new contract.
@@ -271,9 +283,12 @@ pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
     decls::diff_decls(&ctx, &usage, &mut out);
     rules::diff_decl_rules(&ctx, &usage, &mut out);
     endpoints::diff_endpoints(&ctx, &mut out);
+    events::diff_events(&ctx, &mut out);
     out
 }
 
+#[cfg(test)]
+mod event_tests;
 #[cfg(test)]
 mod rule_tests;
 #[cfg(test)]
