@@ -9,5 +9,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 pub mod api;
+#[cfg(test)]
+mod event_tests;
 pub mod registry;
 mod wasm;
