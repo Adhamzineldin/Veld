@@ -86,6 +86,8 @@ fn used_decls(ir: &Ir) -> BTreeSet<DeclId> {
             key.collect_decls(&mut stack);
         }
     }
+    // An event is used when a channel carries it (`spec/events.md` section 15).
+    stack.extend(ir.channels.iter().flat_map(|c| c.events.iter().copied()));
     for d in &ir.decls {
         if let DeclKind::Model(m) = &d.kind {
             stack.extend(m.parent);
@@ -105,7 +107,7 @@ fn used_decls(ir: &Ir) -> BTreeSet<DeclId> {
         match &d.kind {
             DeclKind::Model(m) => stack.extend(m.parent),
             DeclKind::Union(u) => stack.extend(u.arms.iter().map(|a| a.decl)),
-            DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Const(_) => {}
+            DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Const(_) | DeclKind::Event(_) => {}
         }
     }
     seen
@@ -118,15 +120,50 @@ fn kind_word(d: &Decl) -> &'static str {
         DeclKind::Enum(_) => "enum",
         DeclKind::Union(_) => "union",
         DeclKind::Const(_) => "const",
+        DeclKind::Event(_) => "event",
+    }
+}
+
+/// A channel is used when a service publishes to it or subscribes to it.
+fn unused_channels(ir: &Ir, out: &mut Vec<Raw>) {
+    let used: BTreeSet<usize> = ir
+        .services
+        .iter()
+        .flat_map(|s| {
+            s.publishes
+                .iter()
+                .copied()
+                .chain(s.subscriptions.iter().map(|x| x.channel))
+        })
+        .map(|c| c.0 as usize)
+        .collect();
+    for (i, c) in ir.channels.iter().enumerate() {
+        if ir.package(c.package).kind == PackageKind::Service && !used.contains(&i) {
+            push(
+                out,
+                "unused-model",
+                c.name.clone(),
+                format!(
+                    "channel `{}` is never published to or subscribed to by a service",
+                    c.name
+                ),
+                &c.origin,
+            );
+        }
     }
 }
 
 fn unused(ir: &Ir, user: &[&Decl], out: &mut Vec<Raw>) {
+    unused_channels(ir, out);
     let used = used_decls(ir);
     for d in user {
         let candidate = matches!(
             d.kind,
-            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Union(_)
+            DeclKind::Model(_)
+                | DeclKind::Error(_)
+                | DeclKind::Enum(_)
+                | DeclKind::Union(_)
+                | DeclKind::Event(_)
         );
         if candidate && ir.package(d.package).kind == PackageKind::Service && !used.contains(&d.id)
         {
@@ -147,7 +184,8 @@ fn unused(ir: &Ir, user: &[&Decl], out: &mut Vec<Raw>) {
 
 fn empty_service(services: &[&Service], out: &mut Vec<Raw>) {
     for s in services {
-        if s.endpoints.is_empty() {
+        // A `publishes` or `subscribes` line is content (`spec/events.md` section 5).
+        if s.endpoints.is_empty() && !s.uses_events() {
             push(
                 out,
                 "empty-service",

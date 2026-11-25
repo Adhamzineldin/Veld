@@ -12,6 +12,8 @@
 #[cfg(test)]
 mod auth_tests;
 mod config;
+#[cfg(test)]
+mod event_tests;
 mod naming;
 mod rules;
 #[cfg(test)]
