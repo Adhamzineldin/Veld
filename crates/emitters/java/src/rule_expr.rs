@@ -457,10 +457,11 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
                 At::Decl(d) => d.fields().iter().any(|f| f.name == step.name && f.optional),
                 At::Page | At::Nothing => false,
             };
-            if step.optional || declared_optional {
-                if let Some(prefix) = prefixes.get(i + 1) {
-                    checks.push(format!("{prefix} != null"));
-                }
+            if let Some(prefix) = prefixes
+                .get(i + 1)
+                .filter(|_| step.optional || declared_optional)
+            {
+                checks.push(format!("{prefix} != null"));
             }
             at = next;
         }
