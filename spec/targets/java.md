@@ -163,7 +163,7 @@ Every Java target writes `README.md` at the root of its output: the base package
 
 ## 8. Invariants (`rules_invariants`)
 
-The structure of `spec/rules.md` §8, in Java. Endpoint rules are section 9; `rules_transitions` and `rules_policies` are still `E0801`. A contract without rules gets exactly the files it got before: the rule classes below are emitted only when a model or error that the target emits has a rule, and every hook in an existing runtime class sits between `// #if rules` and `// #endif` marker lines that `veld_codegen::gate_regions` removes (with their content) when rules are off.
+The structure of `spec/rules.md` §8, in Java. Endpoint rules are section 9, state machines section 10; `rules_policies` is still `E0801`. A contract without rules gets exactly the files it got before: the rule classes below are emitted only when a model or error that the target emits has a rule, and every hook in an existing runtime class sits between `// #if rules` and `// #endif` marker lines that `veld_codegen::gate_regions` removes (with their content) when rules are off.
 
 **Values in expressions.** `boolean`, `int`, `long`, `double`, `BigDecimal`, `String`, `UUID` and enum constants as they are. `datetime` is `long` epoch milliseconds (`Instant.toEpochMilli()`, so digits below the millisecond are dropped), `date` is `long` epoch days, `time` is `long` milliseconds of the day, `duration` is `long` milliseconds. A path that may read a boxed type (an optional or defaulted field, a list element) is cast to the primitive, so `==` never compares references. Decimals compare with `compareTo`, strings and uuids with `equals`, enums with `==`.
 
@@ -244,3 +244,42 @@ For every service that has a `rules_digest` in the IR, **including a contract th
 ### 9.6 Tests
 
 `tests/endpoint_rules.rs` and the drivers `EndpointServe.java` (the test handler on the JDK server), `EndpointHttp.java` (the production handler over HTTP: a missing fact, the order of the checks, `else` payloads and violations, an optional fact whose key is absent, `ensure` in `strict` and `audit`, `old`, the clock) and `EndpointDigest.java` (the header; the client's local check for the same, a different and a missing digest): every one of the 20 examples of `tests/rules/endpoints/bookings.veld` runs through `veld_testing::Live` in dry-run mode against the generated test handler on the JDK server and on the Spring adapter (a Spring Boot application with one catch-all controller, `spring-endpoints/App.java`); the printer in `src/rule_expr/endpoint_tests.rs`; snapshots `endpoint_rules__*`; `javac -Xlint:all -Werror` on the server (with and without `testing`) and the client for both releases.
+
+## 10. State machines (`rules_transitions`)
+
+`spec/rules.md` §10, in Java. A contract without a state machine and without a `transition` gets the bytes it got before: the enum helpers exist only for an enum with `flow` lines, `runtime/Transition.java` and the guard in `EndpointRules` are emitted only for a **server** with a `transition` (`// #if machine` regions; they come on top of the `endpoint` regions).
+
+### 10.1 The helpers (client and server)
+
+An enum with at least one `flow` gets, in its own class:
+
+```java
+/** The states that can follow this one, in declaration order of the edges (`flow`). */
+public List<Status> nextStates()      // Status.PENDING.nextStates() is [PAID, CANCELLED]
+/** Whether this state is final: no state follows it. */
+public boolean isFinal()
+```
+
+`nextStates()` is a `switch` expression over every constant, so a state with no way out answers `List.of()`. `final` states are the only ones `isFinal()` is true for. An enum without flows is generated as before.
+
+### 10.2 The guard and the transition
+
+Step 6 runs, after the facts and (section 11) the policies and before the first `require`:
+
+```java
+Status transition_from = fact_booking.status();             // a defaulted field that is null reads its default
+Transition<Status> transition = run.transition(id, "status", transition_from, List.of(Status.PENDING), Status.PAID,
+    () -> InvalidTransition.fromWire(…, 409, null));
+```
+
+`run.transition` answers `409 InvalidTransition` when `transition_from` is not one of the sources: `data.field` is the wire path of the field inside the fact, `data.from` and `data.to` are wire values, and `violations` has one entry whose `rule` is the transition's id, `path` is `request`, `fields` is empty and `message` is `violates rule transition` (the text of the reference evaluator); the hook gets position `INPUT`, outcome `REJECTED`. The guard runs even when request validation is off, because it reads a fact, never a request value. An optional fact, or a path the printer cannot read, is `E0801`.
+
+The handler receives the value next to the parameters and the facts, as an argument named `transition` before the context: `Booking payBooking(PayBookingRequest request, PayBookingFacts facts, Transition<Status> transition, RequestContext ctx)`. `Transition<S>` is the runtime record `(String field, S from, S to)`. The Javadoc of the interface method and of the record say that this is a guard and not an atomic guarantee, that the handler must write conditionally (compare-and-swap or a row lock, in its own transaction) and answer `InvalidTransition` itself when that write finds another value.
+
+### 10.3 The target check
+
+When the success type is the same declaration as the fact's type, step 9 registers, after the `ensure` statements, one more check on the result: the same field must hold the target state. It is registered through `run.ensure(id, "transition", List.of(), message, …)`, so it follows the output mode of every `ensure` (`STRICT`: `500 Internal` and the violation goes to the hook as `OUTPUT`; `AUDIT`: the hook only; `OFF`: skipped). The message is the reference evaluator's: ``the result must hold the state `paid` in `status`, found `pending` ``. An endpoint whose success type is another declaration, or none, has no target check.
+
+### 10.4 Tests
+
+`tests/state_machines.rs` with `tests/toolchain/java/rules/MachineServe.java` (the test handler on the JDK server), `spring-machine/App.java` (on Spring) and `MachineHttp.java` (the production handler over HTTP: a legal and an illegal move, the transition the handler receives, the order of the checks, several sources, a final state, an endpoint without a result, the target check in `strict` and `audit`): every one of the 14 examples of `tests/rules/endpoints/transitions.veld.pending` runs through `veld_testing::Live` in dry-run mode on both adapters; snapshots `state_machines__*`; `javac -Xlint:all -Werror` on the server (with and without `testing`) and the client for both releases; the helpers appear in both roles and an enum without flows has none.
