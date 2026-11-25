@@ -12,8 +12,10 @@ use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
 use veld_ir::{Ir, PackageKind};
 
 fn work_dir() -> PathBuf {
-    std::env::var("VELD_RUST_WORK")
-        .map_or_else(|_| repo_root().join("tests/toolchain/rust/.work"), PathBuf::from)
+    std::env::var("VELD_RUST_WORK").map_or_else(
+        |_| repo_root().join("tests/toolchain/rust/.work"),
+        PathBuf::from,
+    )
 }
 
 fn target_dir() -> PathBuf {
@@ -128,8 +130,14 @@ fn rules_over_http() {
     let ws = work_dir().join("rules-http-ws");
     let _ = std::fs::remove_dir_all(&ws);
     std::fs::create_dir_all(&ws).unwrap();
-    write_files(&ws.join("server"), &gen_server(&ir, "Bookings", &[], "bookings-server"));
-    write_files(&ws.join("client"), &gen_client(&ir, "bookings-client", None));
+    write_files(
+        &ws.join("server"),
+        &gen_server(&ir, "Bookings", &[], "bookings-server"),
+    );
+    write_files(
+        &ws.join("client"),
+        &gen_client(&ir, "bookings-client", None),
+    );
     copy_dir(
         &repo_root().join("tests/toolchain/rust/rules-harness"),
         &ws.join("rules-harness"),
@@ -143,11 +151,25 @@ fn rules_over_http() {
     if lock.exists() {
         std::fs::copy(&lock, ws.join("Cargo.lock")).unwrap();
     }
-    run_ok(&mut cargo(&ws, &["build", "--workspace", "--bins"]), "cargo build");
+    run_ok(
+        &mut cargo(&ws, &["build", "--workspace", "--bins"]),
+        "cargo build",
+    );
     let clippy = [
-        "clippy", "--all-targets", "-p", "bookings-server", "-p", "bookings-client", "--", "-D", "warnings",
+        "clippy",
+        "--all-targets",
+        "-p",
+        "bookings-server",
+        "-p",
+        "bookings-client",
+        "--",
+        "-D",
+        "warnings",
     ];
     run_ok(&mut cargo(&ws, &clippy), "cargo clippy");
-    let out = run_ok(&mut cargo(&ws, &["run", "-q", "-p", "rules-harness"]), "rules round trip");
+    let out = run_ok(
+        &mut cargo(&ws, &["run", "-q", "-p", "rules-harness"]),
+        "rules round trip",
+    );
     assert!(out.contains("rules roundtrip ok"), "{out}");
 }

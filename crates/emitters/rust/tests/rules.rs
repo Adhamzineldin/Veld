@@ -150,7 +150,7 @@ fn crate_files(ir: &Ir, name: &str) -> FileSet {
         json!({ "crate-name": format!("vec-{name}") }),
     );
     files
-        .add(&format!("src/bin/vectors_{name}.rs"), driver(ir, name))
+        .add(format!("src/bin/vectors_{name}.rs"), driver(ir, name))
         .unwrap();
     files
 }

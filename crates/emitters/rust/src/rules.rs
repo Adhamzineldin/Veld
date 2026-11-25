@@ -163,7 +163,18 @@ impl<'p, 't, 'a> RustPrinter<'p, 't, 'a> {
             Op::Lt => ("<", "is_lt"),
             Op::Le => ("<=", "is_le"),
             Op::Gt => (">", "is_gt"),
-            _ => (">=", "is_ge"),
+            Op::Ge
+            | Op::And
+            | Op::Or
+            | Op::Implies
+            | Op::Eq
+            | Op::Ne
+            | Op::In
+            | Op::Add
+            | Op::Sub
+            | Op::Mul
+            | Op::Div
+            | Op::Rem => (">=", "is_ge"),
         };
         match kind {
             ValueKind::Int
@@ -223,7 +234,17 @@ impl<'p, 't, 'a> RustPrinter<'p, 't, 'a> {
             Op::Sub => "sub",
             Op::Mul => "mul",
             Op::Div => "div",
-            _ => "rem",
+            Op::Rem
+            | Op::And
+            | Op::Or
+            | Op::Implies
+            | Op::Eq
+            | Op::Ne
+            | Op::Lt
+            | Op::Le
+            | Op::Gt
+            | Op::Ge
+            | Op::In => "rem",
         };
         match out {
             ValueKind::Int => {
@@ -309,7 +330,20 @@ impl ExprPrinter for RustPrinter<'_, '_, '_> {
                 ValueKind::Decimal => {
                     return Printed::atom(format!("vr::dec({})?", lit(&n.to_string())));
                 }
-                _ => (format!("{n}_i32"), n < 0),
+                ValueKind::Int
+                | ValueKind::Bool
+                | ValueKind::String
+                | ValueKind::Uuid
+                | ValueKind::Date
+                | ValueKind::Datetime
+                | ValueKind::Time
+                | ValueKind::Bytes
+                | ValueKind::Json
+                | ValueKind::Enum
+                | ValueKind::Model
+                | ValueKind::List
+                | ValueKind::Map
+                | ValueKind::Page => (format!("{n}_i32"), n < 0),
             };
             Printed::new(code, if neg { UNARY } else { Printed::ATOM })
         };
@@ -378,7 +412,19 @@ impl ExprPrinter for RustPrinter<'_, '_, '_> {
             }
             ValueKind::Float => Printed::new(format!("-{}", operand.at(UNARY)), UNARY),
             ValueKind::Decimal => Printed::atom(format!("{}.negated()", operand.at(Printed::ATOM))),
-            _ => self.no("a negation of a value that is not a number"),
+            ValueKind::Bool
+            | ValueKind::String
+            | ValueKind::Uuid
+            | ValueKind::Date
+            | ValueKind::Datetime
+            | ValueKind::Time
+            | ValueKind::Bytes
+            | ValueKind::Json
+            | ValueKind::Enum
+            | ValueKind::Model
+            | ValueKind::List
+            | ValueKind::Map
+            | ValueKind::Page => self.no("a negation of a value that is not a number"),
         }
     }
 
@@ -444,7 +490,12 @@ impl ExprPrinter for RustPrinter<'_, '_, '_> {
                     Builtin::Hours => "hours_ms",
                     Builtin::Minutes => "minutes_ms",
                     Builtin::Seconds => "seconds_ms",
-                    _ => "ms_ms",
+                    Builtin::Ms
+                    | Builtin::Len
+                    | Builtin::Matches
+                    | Builtin::StartsWith
+                    | Builtin::EndsWith
+                    | Builtin::Contains => "ms_ms",
                 };
                 let n = match kinds.first() {
                     Some(ValueKind::Long) => code(0),
@@ -482,7 +533,20 @@ impl ExprPrinter for RustPrinter<'_, '_, '_> {
                 ValueKind::Long => ("sum_i64", "i64"),
                 ValueKind::Float => ("sum_f64", "f64"),
                 ValueKind::Decimal => ("sum_dec", "vr::Decimal"),
-                _ => return self.no("`sum` of something that is not a number"),
+                ValueKind::Bool
+                | ValueKind::String
+                | ValueKind::Uuid
+                | ValueKind::Date
+                | ValueKind::Datetime
+                | ValueKind::Time
+                | ValueKind::Duration
+                | ValueKind::Bytes
+                | ValueKind::Json
+                | ValueKind::Enum
+                | ValueKind::Model
+                | ValueKind::List
+                | ValueKind::Map
+                | ValueKind::Page => return self.no("`sum` of something that is not a number"),
             },
         };
         Printed::atom(format!(
