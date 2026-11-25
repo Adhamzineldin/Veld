@@ -159,3 +159,46 @@ Every Java target writes `README.md` at the root of its output: the base package
   - cross-package equality across several generated packages;
   - streaming (`tests/toolchain/contract/streaming`, matrix 17 and 21): `streaming_round_trip_on_the_jdk_adapter` (Java client against the Java server on `JdkHttpServerAdapter`: ordered items, close mid-stream seen by the server, typed errors before and after the first event, resume with the last event id, auth), `java_client_streams_from_the_node_server` (SSE, `ws`, auth), `typescript_client_streams_from_the_java_server` (the generated TypeScript client against the JDK server), `spring_adapter_serves_sse_and_websockets` (the Java and the TypeScript client against Spring: SSE, echo, a bad message, auth by `access_token`, a typed `NoSuchRoom`, raw frames and close codes) and `sse_wire_golden` (`tests/wire/streaming/sse.json` through `SseEvent.frame` and `SseParser`). The JDK server is built from the contract without its `ws` endpoints, since the full contract is `E0801` there;
   - Spring: `spring_adapter_serves_the_round_trip` generates the toolchain contract with `framework = "spring"`, builds `tests/toolchain/java/spring` (Spring Boot 3.5.6, `spring-boot-starter-web`, plus `spring-boot-starter-websocket` for the streaming contract, Maven 3.9.9 through the committed Maven Wrapper) with `mvnw -q -B package -DskipTests`, starts the jar (`--server.port=0`; the port comes from Spring's own `Tomcat started on port` log line and readiness is an answered `GET /__probe`) and runs the same client scenario (Java client, then the generated TypeScript client) against it, with the server counters read from a test-only `/__probe`. It is skipped, or fails under `VELD_REQUIRE_TOOLCHAINS=1`, when neither the network nor a populated `~/.m2` can provide Spring. CI runs it in the `spring` job.
+
+## 8. Invariants (`rules_invariants`)
+
+The structure of `spec/rules.md` §8, in Java. The other rules features (`rules_endpoint`, `rules_transitions`, `rules_policies`) are still `E0801`. A contract without rules gets exactly the files it got before: the rule classes below are emitted only when a model or error that the target emits has a rule, and every hook in an existing runtime class sits between `// #if rules` and `// #endif` marker lines that `veld_codegen::gate_regions` removes (with their content) when rules are off.
+
+**Values in expressions.** `boolean`, `int`, `long`, `double`, `BigDecimal`, `String`, `UUID` and enum constants as they are. `datetime` is `long` epoch milliseconds (`Instant.toEpochMilli()`, so digits below the millisecond are dropped), `date` is `long` epoch days, `time` is `long` milliseconds of the day, `duration` is `long` milliseconds. A path that may read a boxed type (an optional or defaulted field, a list element) is cast to the primitive, so `==` never compares references. Decimals compare with `compareTo`, strings and uuids with `equals`, enums with `==`.
+
+**Runtime helpers** (`Rules`, emitted only with rules; `RuleError` is the one unchecked exception for the three evaluation errors, with `kind()`):
+
+| Group | Names |
+|---|---|
+| int | `addInt` `subInt` `mulInt` `divInt` `remInt` `negInt` (`MIN / -1` overflows, `MIN % -1` is `0`, a zero divisor is `division_by_zero`) |
+| long, instants, dates, times, durations | `addLong` `subLong` `mulLong` `divLong` `remLong` `negLong`, `dateDiff` |
+| float | `addDouble` `subDouble` `mulDouble` `divDouble` `remDouble` `finite` (zero divisor checked first, result must be finite) |
+| conversions | `instantMs` `dateDays` `timeMs` |
+| durations | `days` `hours` `minutes` `seconds` `ms` (checked multiplication) |
+| strings | `len` (code points), `matches` (same `Pattern.find` semantics as `@pattern`) |
+| membership | `in` (by `equals`), `inDecimal` (numeric), `inDouble` |
+| comprehensions | `all` `any` `count` `sumInt` `sumLong` `sumDouble` `sumDecimal` |
+| running a rule | `run(out, id, name, path, fields, message, test)` evaluates one rule, catches `RuleError` and records the violation (message `rule <name> could not be evaluated`, `error` = the kind) |
+
+**Generated per declaration with rules** (model: in the record; error: in the error class, on `Data`):
+
+```java
+public static final String RULE_END_AFTER_START = "veld:bookings/Booking.endAfterStart@…";
+static void checkOwn(Booking v, boolean request, String path, List<Violation> out)   // own rules in list order
+private static void checkWire(Json json, boolean request, String path, List<Violation> out)
+public static List<Violation> check(Booking value)          // full check, nested values included
+public static List<Violation> checkRequest(Booking value)   // request position: rules that read a @readonly field are skipped
+public static final Schema SCHEMA = Schema.object(…).checked(Booking::checkWire);
+```
+
+Rules that read a `@readonly` field are wrapped in `if (!request)`. Rule expressions are printed by `rule_expr.rs`, the Java `ExprPrinter`; a rule that reads `now`, `old`, a parameter, a fact, the principal or the result is `E0801`.
+
+**Nesting is the runtime's.** `RuleWalk` walks a validated, prepared `Json` by its `Schema`: for an object it calls the schema's check (own rules first), then its fields in declaration order; lists by index (`$.rows[1]`), maps by key (`$.named.k`), pages through `items`, unions through their arm. In request position the check decodes the object with `fromWire` after `RuleWalk.forDecoding` filled the required fields a request cannot carry (read-only ones) with placeholders; a rule that reads such a field is skipped, so a placeholder is never read.
+
+**`Violation`** is the runtime record `(rule, path, fields, message, error)`; `VeldError` gains `violations()` (empty without the member) and `raisedLocally()`.
+
+**Client.** Before sending, with `validate` on and `ClientOptions.Builder.localRules(true)` (the default), the body and the `query` object are prepared in request mode and checked. A violation is thrown as the `ValidationError` built by the client's own factory, with issues of code `rule` / `rule_error`, the violations and `raisedLocally() == true`; nothing is sent. `localRules(false)` skips it. A problem document with a `violations` member decodes into the typed error with its violations.
+
+**Server.** Step 5 runs after binding and validation (and only when request validation is on, since the rules need well formed values): a violation answers `422 ValidationError` with `data.issues` and the top-level `violations`. Step 8 follows the output mode `STRICT` (default) | `AUDIT` | `OFF`, set with `<Service>Hooks.rulesOutput(RuleWalk.OutputMode)`; unless `OFF`, the result's shape is validated first (an invalid result is a 500 as with `validateResponses`), `STRICT` answers `500 Internal` without detail. The same applies to a declared error the server encodes. A result whose schema reaches no rule is not touched. `<Service>Hooks.onRuleViolation(RuleWalk.Hook)` receives one `RuleWalk.Event(rule, operation, position, outcome, violation, elapsedMicros)` per violation (`INPUT`/`OUTPUT`, `REJECTED`/`AUDITED`). A mode other than `STRICT` is logged once, at `WARNING`, through `System.Logger` `veld.rules` when the router is created. SSE items and WebSocket messages are not checked. Both adapters (JDK and Spring) go through the same router, so they behave the same.
+
+Tests: `crates/emitters/java/src/rule_expr/tests.rs` (exact printer output), `tests/rules.rs` (snapshots, `javac` on every role and release, no rule code without rules), `tests/rules_toolchain.rs` (the shared vectors of `tests/rules/core` through `tests/toolchain/java/rules/RuleVectors.java`, partial cases skipped; the HTTP round trip `RuleRoundtrip.java`).

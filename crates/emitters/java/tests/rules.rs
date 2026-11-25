@@ -99,14 +99,104 @@ fn a_hand_built_rule_gets_a_check_function_and_the_rule_classes() {
     }
 }
 
+const SHOP: &str = r#"enum State { open, paid }
+
+model Item {
+  sku: string
+  qty: int
+  rule positive: qty > 0
+}
+
+model Order {
+  id: uuid @readonly
+  state: State = .open
+  items: Item[]
+  placed: datetime
+  closed?: datetime
+  total: decimal
+  note?: string
+  /// Shown next to the items.
+  rule hasItems: len(items) > 0
+    message "An order needs items"
+  rule closedAfterPlaced: has(closed) implies closed >= placed
+  rule paidHasNote: state == .paid implies has(note) && len(note) > 0
+  rule cheap: sum(items, i => i.qty) < 1000
+  rule idSet: id != id
+}
+
+service Shop at "/shop" {
+  post "/" place(body: Order) -> 201 Order
+}
+"#;
+
+fn shop_ir() -> veld_ir::Ir {
+    use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "shop".into(),
+            kind: veld_ir::PackageKind::Service,
+            files: vec![SourceFile {
+                path: "shop.veld".into(),
+                text: SHOP.into(),
+            }],
+            base_url: None,
+        }],
+        consumes: Default::default(),
+    });
+    assert!(out.ir.is_some(), "shop does not compile:\n{}", out.render());
+    out.ir.unwrap()
+}
+
 #[test]
-fn dump_for_debugging() {
-    let ir = veld_emit_conformance::ir_with_rule();
-    let files = generate(&ir, Role::Client, None);
-    for p in files.paths() {
-        if p.contains("Greeting") {
-            eprintln!("{p}\n{}", text(&files, p));
+fn the_generated_check_functions_are_snapshotted() {
+    let ir = shop_ir();
+    let server = generate(&ir, Role::Server, None);
+    insta::assert_snapshot!(
+        "rules_order_java",
+        text(&server, "gen/r/shop/shop/Order.java")
+    );
+    insta::assert_snapshot!(
+        "rules_item_java",
+        text(&server, "gen/r/shop/shop/Item.java")
+    );
+    insta::assert_snapshot!(
+        "rules_hooks_java",
+        text(&server, "gen/r/shop/server/ShopHooks.java")
+    );
+    let files: Vec<&str> = server
+        .paths()
+        .filter(|p| p.contains("/runtime/Rule"))
+        .collect();
+    insta::assert_snapshot!("rules_runtime_files", files.join("\n"));
+}
+
+#[test]
+fn the_shop_compiles_for_every_role_and_both_releases() {
+    if !have_javac("the_shop_compiles") {
+        return;
+    }
+    let ir = shop_ir();
+    for release in ["17", "21"] {
+        for role in [Role::Client, Role::Server] {
+            let dir = tempfile::tempdir().unwrap();
+            compile_generated(dir.path(), &generate(&ir, role, None), release);
         }
+    }
+}
+
+#[test]
+fn a_contract_without_rules_gets_no_rule_code() {
+    let ir = standard_ir();
+    let files = gen_server(&ir, "Orders", &["Iam"], "gen.a", None);
+    assert!(
+        files
+            .paths()
+            .all(|p| !p.contains("/runtime/Rule") && !p.ends_with("/Violation.java"))
+    );
+    for (path, bytes) in files.iter() {
+        let text = String::from_utf8_lossy(bytes);
+        assert!(!text.contains("// #if"), "{path}");
+        assert!(!text.contains("RuleWalk"), "{path}");
     }
 }
 

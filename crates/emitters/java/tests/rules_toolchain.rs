@@ -89,7 +89,11 @@ fn vector_ir() -> Ir {
         }],
         consumes: BTreeMap::new(),
     });
-    assert!(out.ir.is_some(), "vectors do not compile:\n{}", out.render());
+    assert!(
+        out.ir.is_some(),
+        "vectors do not compile:\n{}",
+        out.render()
+    );
     out.ir.unwrap()
 }
 
@@ -130,7 +134,14 @@ fn the_shared_vectors_pass_on_generated_java() {
         .collect();
     std::fs::write(work.join("sources.args"), list.join("\n")).unwrap();
     let out = Command::new("javac")
-        .args(["--release", "17", "-Xlint:all", "-Werror", "-encoding", "UTF-8"])
+        .args([
+            "--release",
+            "17",
+            "-Xlint:all",
+            "-Werror",
+            "-encoding",
+            "UTF-8",
+        ])
         .args(["-d", "classes", "@sources.args"])
         .current_dir(work)
         .output()
@@ -166,13 +177,24 @@ fn the_shared_vectors_pass_on_generated_java() {
     for id in tree.decls() {
         let d = ir.decl(*id);
         if matches!(d.kind, DeclKind::Model(_) | DeclKind::Union(_)) {
-            types.push_str(&format!("{}\t{}.{}\n", d.name, tree.decl_package(d), type_name(d)));
+            types.push_str(&format!(
+                "{}\t{}.{}\n",
+                d.name,
+                tree.decl_package(d),
+                type_name(d)
+            ));
         }
     }
     std::fs::write(work.join("types.tsv"), types).unwrap();
 
     let out = Command::new("java")
-        .args(["-cp", "classes", "veldtest.RuleVectors", "cases.jsonl", "types.tsv"])
+        .args([
+            "-cp",
+            "classes",
+            "veldtest.RuleVectors",
+            "cases.jsonl",
+            "types.tsv",
+        ])
         .current_dir(work)
         .output()
         .unwrap();
@@ -196,8 +218,19 @@ fn the_shared_vectors_pass_on_generated_java() {
             failures.push(m.to_string());
         }
     }
-    assert_eq!(seen, cases.len(), "the driver answered {seen} of {} cases", cases.len());
-    assert!(failures.is_empty(), "{} of {} cases failed:\n{}", failures.len(), cases.len(), failures.join("\n"));
+    assert_eq!(
+        seen,
+        cases.len(),
+        "the driver answered {seen} of {} cases",
+        cases.len()
+    );
+    assert!(
+        failures.is_empty(),
+        "{} of {} cases failed:\n{}",
+        failures.len(),
+        cases.len(),
+        failures.join("\n")
+    );
     eprintln!("{} vector cases pass on Java", cases.len());
 }
 
@@ -227,7 +260,11 @@ fn bookings_ir() -> Ir {
         }],
         consumes: BTreeMap::new(),
     });
-    assert!(out.ir.is_some(), "bookings do not compile:\n{}", out.render());
+    assert!(
+        out.ir.is_some(),
+        "bookings do not compile:\n{}",
+        out.render()
+    );
     out.ir.unwrap()
 }
 
@@ -251,7 +288,14 @@ fn invariants_round_trip_over_http_on_the_jdk_server() {
     let work = tempfile::tempdir().unwrap();
     let mut sources = Vec::new();
     for (role, base) in [(Role::Server, "gen.rs"), (Role::Client, "gen.rc")] {
-        let files = run(&ir, role, all_services(&ir), vec![], None, options(base, None));
+        let files = run(
+            &ir,
+            role,
+            all_services(&ir),
+            vec![],
+            None,
+            options(base, None),
+        );
         write_java(work.path(), &files, &mut sources);
     }
     let java = repo_root().join("tests/toolchain/java");
@@ -263,7 +307,14 @@ fn invariants_round_trip_over_http_on_the_jdk_server() {
         .collect();
     std::fs::write(work.path().join("sources.args"), list.join("\n")).unwrap();
     let out = Command::new("javac")
-        .args(["--release", "17", "-Xlint:all", "-Werror", "-encoding", "UTF-8"])
+        .args([
+            "--release",
+            "17",
+            "-Xlint:all",
+            "-Werror",
+            "-encoding",
+            "UTF-8",
+        ])
         .args(["-d", "classes", "@sources.args"])
         .current_dir(work.path())
         .output()

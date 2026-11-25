@@ -255,7 +255,22 @@ impl<'f, 't, 'a> JavaExpr<'f, 't, 'a> {
                 let helper = match left {
                     ValueKind::Decimal => "inDecimal",
                     ValueKind::Float => "inDouble",
-                    _ => "in",
+                    ValueKind::Bool
+                    | ValueKind::Int
+                    | ValueKind::Long
+                    | ValueKind::String
+                    | ValueKind::Uuid
+                    | ValueKind::Date
+                    | ValueKind::Datetime
+                    | ValueKind::Time
+                    | ValueKind::Duration
+                    | ValueKind::Bytes
+                    | ValueKind::Json
+                    | ValueKind::Enum
+                    | ValueKind::Model
+                    | ValueKind::List
+                    | ValueKind::Map
+                    | ValueKind::Page => "in",
                 };
                 self.call_helper(helper, &[collection, item])
             }
@@ -369,7 +384,21 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
                 ValueKind::Long => number(format!("{n}L"), *n < 0),
                 ValueKind::Float => number(java_double(*n as f64), *n < 0),
                 ValueKind::Decimal => self.decimal(&n.to_string()),
-                _ => number(n.to_string(), *n < 0),
+                ValueKind::Bool
+                | ValueKind::Int
+                | ValueKind::String
+                | ValueKind::Uuid
+                | ValueKind::Date
+                | ValueKind::Datetime
+                | ValueKind::Time
+                | ValueKind::Duration
+                | ValueKind::Bytes
+                | ValueKind::Json
+                | ValueKind::Enum
+                | ValueKind::Model
+                | ValueKind::List
+                | ValueKind::Map
+                | ValueKind::Page => number(n.to_string(), *n < 0),
             },
             ExprLit::Long(n) => number(format!("{n}L"), *n < 0),
             ExprLit::Float(x) => number(java_double(*x), *x < 0.0),
@@ -390,7 +419,21 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
             ValueKind::Long if boxed => Printed::new(format!("(long) {code}"), UNARY),
             ValueKind::Float if boxed => Printed::new(format!("(double) {code}"), UNARY),
             ValueKind::Bool if boxed => Printed::new(format!("(boolean) {code}"), UNARY),
-            _ => Printed::atom(code),
+            ValueKind::Bool
+            | ValueKind::Int
+            | ValueKind::Long
+            | ValueKind::Float
+            | ValueKind::Decimal
+            | ValueKind::String
+            | ValueKind::Uuid
+            | ValueKind::Duration
+            | ValueKind::Bytes
+            | ValueKind::Json
+            | ValueKind::Enum
+            | ValueKind::Model
+            | ValueKind::List
+            | ValueKind::Map
+            | ValueKind::Page => Printed::atom(code),
         }
     }
 
@@ -498,7 +541,19 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
                     Printed::atom(format!("{}.size()", a.at(Printed::ATOM)))
                 }
                 ValueKind::Bytes => Printed::atom(format!("{}.length", a.at(Printed::ATOM))),
-                _ => self.refuse("`len` of this type"),
+                ValueKind::Bool
+                | ValueKind::Int
+                | ValueKind::Long
+                | ValueKind::Float
+                | ValueKind::Decimal
+                | ValueKind::Uuid
+                | ValueKind::Date
+                | ValueKind::Datetime
+                | ValueKind::Time
+                | ValueKind::Duration
+                | ValueKind::Json
+                | ValueKind::Enum
+                | ValueKind::Model => self.refuse("`len` of this type"),
             },
             (Builtin::Matches, [_, _]) => self.call_helper("matches", &refs),
             (Builtin::StartsWith, [_, _]) => method("startsWith", &args),
@@ -612,3 +667,6 @@ fn number(code: String, negative: bool) -> Printed {
         Printed::atom(code)
     }
 }
+
+#[cfg(test)]
+mod tests;
