@@ -113,7 +113,6 @@ impl Ir {
     /// errors and field types, transitively.
     #[must_use]
     pub fn reachable_decls(&self, services: &[ServiceId]) -> Vec<DeclId> {
-        let mut seen = BTreeSet::new();
         let mut stack = Vec::new();
         for sid in services {
             for ep in &self.service(*sid).endpoints {
@@ -128,6 +127,12 @@ impl Ir {
                 }
             }
         }
+        self.close_over(stack)
+    }
+
+    /// Every declaration reachable from `stack`, itself included, sorted by id.
+    fn close_over(&self, mut stack: Vec<DeclId>) -> Vec<DeclId> {
+        let mut seen = BTreeSet::new();
         while let Some(id) = stack.pop() {
             if !seen.insert(id) {
                 continue;
@@ -137,6 +142,80 @@ impl Ir {
         seen.into_iter().collect()
     }
 
+    /// The channels the given services publish to or subscribe to, in id order, once each.
+    #[must_use]
+    pub fn event_channels(&self, services: &[ServiceId]) -> Vec<ChannelId> {
+        let all: BTreeSet<ChannelId> = services
+            .iter()
+            .flat_map(|s| self.service(*s).channels_used())
+            .collect();
+        all.into_iter().collect()
+    }
+
+    /// The events of the given services: every event carried by a channel one of them publishes
+    /// to or subscribes to (not only the ones a subscription handles), sorted by id, once each.
+    #[must_use]
+    pub fn events_of(&self, services: &[ServiceId]) -> Vec<DeclId> {
+        let all: BTreeSet<DeclId> = self
+            .event_channels(services)
+            .into_iter()
+            .flat_map(|c| self.channel(c).events.iter().copied())
+            .collect();
+        all.into_iter().collect()
+    }
+
+    /// The declarations the events of [`Ir::events_of`] reach through field types, parents and
+    /// union arms, to any depth, sorted by id. The events themselves are not in the list.
+    #[must_use]
+    pub fn event_reachable_decls(&self, services: &[ServiceId]) -> Vec<DeclId> {
+        let events = self.events_of(services);
+        let mut stack = Vec::new();
+        for id in &events {
+            self.decl(*id).collect_refs(&mut stack);
+        }
+        let mut reached = self.close_over(stack);
+        reached.retain(|id| !events.contains(id));
+        reached
+    }
+
+    /// The declarations that exist only because of events: reached by an event of the services
+    /// and by no endpoint of them. Sorted by id.
+    #[must_use]
+    pub fn event_only_decls(&self, services: &[ServiceId]) -> Vec<DeclId> {
+        let by_endpoints: BTreeSet<DeclId> = self.reachable_decls(services).into_iter().collect();
+        let mut only = self.event_reachable_decls(services);
+        only.retain(|id| !by_endpoints.contains(id));
+        only
+    }
+
+    /// Where the first audited invariant of the events of the services stands, in source order:
+    /// a rule of an event or of a declaration an event reaches. `None` when there is none.
+    #[must_use]
+    pub fn first_event_audited_origin(&self, services: &[ServiceId]) -> Option<&Origin> {
+        let mut ids = self.events_of(services);
+        ids.extend(self.event_reachable_decls(services));
+        ids.into_iter()
+            .flat_map(|id| self.decl(id).rules().iter())
+            .filter(|r| r.is_audited())
+            .map(|r| &r.origin)
+            .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+    }
+
+    /// The features only the events of the services use: `events` when one of them publishes or
+    /// subscribes, and `rules_rollout` when an event it handles reaches an audited invariant
+    /// (`spec/rules.md` section 17.1). A client generates nothing for events and ignores these.
+    #[must_use]
+    pub fn event_features(&self, services: &[ServiceId]) -> BTreeSet<Feature> {
+        let mut f = BTreeSet::new();
+        if services.iter().any(|s| self.service(*s).uses_events()) {
+            f.insert(Feature::Events);
+        }
+        if self.first_event_audited_origin(services).is_some() {
+            f.insert(Feature::RulesRollout);
+        }
+        f
+    }
+
     /// Every declaration of the workspace that is not in the prelude and is
     /// reachable from anything (used for library-only generation).
     #[must_use]
@@ -144,9 +223,19 @@ impl Ir {
         (0..self.decls.len() as u32).map(DeclId).collect()
     }
 
-    /// Features a set of services (and everything they reach) uses.
+    /// Features a set of services (and everything they reach) uses: [`Ir::http_features_used`]
+    /// and [`Ir::event_features`].
     #[must_use]
     pub fn features_used(&self, services: &[ServiceId]) -> BTreeSet<Feature> {
+        let mut f = self.http_features_used(services);
+        f.extend(self.event_features(services));
+        f
+    }
+
+    /// Features of the endpoints of the services and the declarations they reach, without what
+    /// only events use. A server that merely calls a service (`consumes`) uses these.
+    #[must_use]
+    pub fn http_features_used(&self, services: &[ServiceId]) -> BTreeSet<Feature> {
         let mut f = BTreeSet::new();
         let decls = self.reachable_decls(services);
         for id in &decls {
@@ -195,9 +284,6 @@ impl Ir {
         }
         for sid in services {
             let s = self.service(*sid);
-            if s.uses_events() {
-                f.insert(Feature::Events);
-            }
             for ep in &s.endpoints {
                 if ep.auth.kind != AuthKind::None {
                     f.insert(Feature::Auth);
@@ -399,6 +485,13 @@ pub struct ChannelKey {
     pub wire: String,
     #[serde(rename = "type")]
     pub ty: Type,
+}
+
+/// One channel of a `publishes` line, with the position of its name.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Publication {
+    pub channel: ChannelId,
+    pub origin: Origin,
 }
 
 /// `subscribes C as "group" { on E -> handler }`.
@@ -696,10 +789,10 @@ pub struct Service {
     /// The package's principal (`spec/rules.md` section 11.1).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub principal: Option<ServicePrincipal>,
-    /// Channels the service publishes to, in source order (`spec/events.md` section 13).
-    /// Omitted from the JSON when empty.
+    /// Channels the service publishes to, in source order, each with the position of the channel
+    /// name in its `publishes` line (`spec/events.md` section 13). Omitted from the JSON when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub publishes: Vec<ChannelId>,
+    pub publishes: Vec<Publication>,
     /// The service's subscriptions, in source order. Omitted from the JSON when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subscriptions: Vec<Subscription>,
@@ -713,16 +806,30 @@ impl Service {
         !self.publishes.is_empty() || !self.subscriptions.is_empty()
     }
 
-    /// Where the first `publishes` or `subscribes` line is, for diagnostics. A subscription has
-    /// its own origin; the IR records no origin for a `publishes` line, so that case answers
-    /// with the origin of the service.
+    /// Where the first `publishes` or `subscribes` line is, for diagnostics: the channel name of
+    /// the first `publishes` line when the service publishes, otherwise the first `subscribes`
+    /// line.
     #[must_use]
     pub fn first_event_origin(&self) -> Option<&Origin> {
-        if !self.publishes.is_empty() {
-            Some(&self.origin)
-        } else {
-            self.subscriptions.first().map(|s| &s.origin)
+        match self.publishes.first() {
+            Some(p) => Some(&p.origin),
+            None => self.subscriptions.first().map(|s| &s.origin),
         }
+    }
+
+    /// The channels the service publishes to, in source order.
+    pub fn published_channels(&self) -> impl Iterator<Item = ChannelId> + '_ {
+        self.publishes.iter().map(|p| p.channel)
+    }
+
+    /// Every channel the service publishes to or subscribes to, in id order, once each.
+    #[must_use]
+    pub fn channels_used(&self) -> Vec<ChannelId> {
+        let all: BTreeSet<ChannelId> = self
+            .published_channels()
+            .chain(self.subscriptions.iter().map(|s| s.channel))
+            .collect();
+        all.into_iter().collect()
     }
 }
 

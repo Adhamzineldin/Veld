@@ -5,6 +5,7 @@ pub mod annotations;
 mod collect;
 mod events;
 #[cfg(test)]
+mod events_groundwork_tests;
 mod events_tests;
 mod examples;
 pub use collect::module_path;

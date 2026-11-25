@@ -25,7 +25,7 @@ fn channel() -> Channel {
     }
 }
 
-fn service(publishes: Vec<ChannelId>, subscriptions: Vec<Subscription>) -> Service {
+fn service(publishes: Vec<Publication>, subscriptions: Vec<Subscription>) -> Service {
     Service {
         id: ServiceId(0),
         package: PackageId(0),
@@ -110,14 +110,24 @@ fn a_subscription_round_trips_in_source_order() {
         ],
         origin: origin(4),
     };
-    let s = service(vec![ChannelId(0)], vec![sub]);
+    let s = service(
+        vec![Publication {
+            channel: ChannelId(0),
+            origin: origin(2),
+        }],
+        vec![sub],
+    );
     let v = serde_json::to_value(&s).unwrap();
-    assert_eq!(v["publishes"], json!([0]));
+    assert_eq!(v["publishes"][0]["channel"], json!(0));
+    assert_eq!(
+        v["publishes"][0]["origin"],
+        serde_json::to_value(origin(2)).unwrap()
+    );
     assert_eq!(v["subscriptions"][0]["handlers"][1]["name"], "sendApology");
     let back: Service = serde_json::from_value(v).unwrap();
     assert_eq!(back, s);
     assert!(s.uses_events());
-    assert_eq!(s.first_event_origin(), Some(&origin(1)));
+    assert_eq!(s.first_event_origin(), Some(&origin(2)));
 }
 
 #[test]

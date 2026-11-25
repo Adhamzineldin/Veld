@@ -167,9 +167,8 @@ fn services(ir: &Ir) -> BTreeMap<ServiceKey, &Service> {
 
 fn publishes(ir: &Ir, s: Option<&Service>) -> BTreeSet<String> {
     s.map(|s| {
-        s.publishes
-            .iter()
-            .map(|c| ir.channel(*c).qualified.clone())
+        s.published_channels()
+            .map(|c| ir.channel(c).qualified.clone())
             .collect()
     })
     .unwrap_or_default()

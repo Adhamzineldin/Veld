@@ -13,6 +13,7 @@
 // This crate is test support: it panics on purpose, with a report, when a check fails.
 #![allow(clippy::panic)]
 
+mod event_rollout;
 mod events;
 mod fixtures;
 mod rollout;
@@ -22,6 +23,9 @@ use std::collections::BTreeMap;
 use veld_codegen::{DynGenerator, FileSet, GenRequest, Role, check_capabilities};
 use veld_ir::{Feature, Ir, ServiceId};
 
+pub use event_rollout::{
+    EventRolloutContract, compiled_event_rollout_contracts, without_the_annotation,
+};
 pub use events::{
     check_events_are_ignored_by_clients, check_events_are_refused, compiled_events_contract,
 };

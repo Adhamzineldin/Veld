@@ -293,7 +293,8 @@ Channel  = { "name": "BookingEvents", "package": PackageId, "module": "…", "qu
              "events": [ DeclId ],                              // `carries` order
              "key": { "name": "bookingId", "wire": "bookingId", "type": Type } | null,
              "docs": .., "deprecated": .., "origin": Origin }
-Service += { "publishes": [ <index into Ir.channels> ],         // source order
+Service += { "publishes": [ { "channel": <index into Ir.channels>,
+                              "origin": Origin } ],             // source order; the origin is the channel name in the line
              "subscriptions": [ { "channel": <index into Ir.channels>, "group": "notifications",
                                   "handlers": [ { "event": DeclId, "name": "sendReceipt", "docs": .., "origin": Origin } ],
                                   "origin": Origin } ] }        // source order
@@ -303,7 +304,7 @@ Example += { "event": { "decl": DeclId, "channel": <index>, "value": ExampleValu
 
 - `Service.prefix` is the empty string for a service without `at`.
 - An event example has `event` and `expect` and omits `service`, `endpoint` and `outcome`, which a call example always has.
-- `Feature::Events` (`events`) is used by a service that has `publishes` or `subscriptions`. A generator that cannot represent it reports `E0801`: at the `service` line when the service publishes, because the IR records no origin for a `publishes` line, and otherwise at its first `subscribes` line.
+- `Feature::Events` (`events`) is used by a service that has `publishes` or `subscriptions`. A generator that cannot represent it reports `E0801`: at the channel name of the first `publishes` line when the service publishes, and otherwise at its first `subscribes` line. A service that publishes or subscribes to a channel which carries an event with an audited invariant (on the event, or on a declaration the event reaches) also uses `rules_rollout` (`spec/rules.md` §17.1); the `E0801` for it points at the first such rule in source order. A client does not count that.
 - Only the services a target generates count. A server that calls a publishing service over HTTP (`consumes`) does not use the feature, and neither does its client for that service.
 - An event declaration is reached from a service only through its channels. The declarations a service reaches through its endpoints (`spec/ir.md`) do not include events or what only events refer to.
 

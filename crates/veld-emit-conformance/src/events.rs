@@ -74,8 +74,8 @@ fn service_id(ir: &Ir, name: &str) -> Result<ServiceId, String> {
 }
 
 /// A server generator must not declare `events` and must refuse a service that publishes or
-/// subscribes: the gate reports exactly one `E0801` that names the feature, at the service for a
-/// publisher (the IR records no origin for a `publishes` line) and at the `subscribes` line for a
+/// subscribes: the gate reports exactly one `E0801` that names the feature, at the `publishes` line for a
+/// publisher and at the `subscribes` line for a
 /// subscriber, and `generate` answers `E0801` only and makes no files. Roles other than the server
 /// are not checked here.
 ///
@@ -84,7 +84,7 @@ fn service_id(ir: &Ir, name: &str) -> Result<ServiceId, String> {
 pub fn check_events_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
     let ir = compiled_events_contract();
     let cases = [
-        ("Hello", line_of("service Hello")?),
+        ("Hello", line_of("publishes GreetingEvents")?),
         ("Audit", line_of("subscribes GreetingEvents")?),
     ];
     for role in generator.roles().iter().filter(|r| **r == Role::Server) {

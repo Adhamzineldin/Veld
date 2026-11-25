@@ -479,6 +479,11 @@ export interface ChannelKey {
   type: Type;
 }
 
+export interface Publication {
+  channel: ChannelId;
+  origin: Origin;
+}
+
 export interface Subscription {
   channel: ChannelId;
   group: string;
@@ -506,7 +511,7 @@ export interface Service {
   facts?: ServiceFact[];
   rules_digest?: string;
   principal?: ServicePrincipal;
-  publishes?: ChannelId[];
+  publishes?: Publication[];
   subscriptions?: Subscription[];
   origin: Origin;
 }

@@ -497,7 +497,10 @@ fn full_ir() -> Ir {
                 decl: DeclId(0),
                 name: "user".into(),
             }),
-            publishes: vec![ChannelId(0)],
+            publishes: vec![Publication {
+                channel: ChannelId(0),
+                origin: origin(),
+            }],
             subscriptions: vec![Subscription {
                 channel: ChannelId(0),
                 group: "g".into(),

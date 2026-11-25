@@ -130,9 +130,7 @@ fn unused_channels(ir: &Ir, out: &mut Vec<Raw>) {
         .services
         .iter()
         .flat_map(|s| {
-            s.publishes
-                .iter()
-                .copied()
+            s.published_channels()
                 .chain(s.subscriptions.iter().map(|x| x.channel))
         })
         .map(|c| c.0 as usize)

@@ -353,14 +353,16 @@ fn rollout_is_not_suggested_for_an_unknown_annotation_on_a_field() {
 }
 
 #[test]
-fn an_audited_invariant_of_an_event_alone_makes_no_service_use_rules_rollout() {
-    // No endpoint reaches an event: the service uses `events`, and a generator that supports
-    // events has to look at the rules of its events itself.
+fn an_audited_invariant_of_an_event_makes_the_service_use_rules_rollout() {
+    // No endpoint reaches an event, but the channel does (`spec/rules.md` section 17.1).
     let src = format!(
         "event Paid {{ id: uuid\n amount: int\n @rollout(audit)\n rule positive: amount > 0\n}}\n{EVENT_HEAD}"
     );
     let ir = ir(&src);
     let used = features(&ir);
     assert!(used.contains(&Feature::Events), "{used:?}");
+    assert!(used.contains(&Feature::RulesRollout), "{used:?}");
+    let plain = src.replace(" @rollout(audit)\n", "");
+    let used = features(&self::ir(&plain));
     assert!(!used.contains(&Feature::RulesRollout), "{used:?}");
 }

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use super::Lowerer;
 use crate::semantic::{ChannelInfo, REventExample, REventExpect, RSubscription, ServiceInfo};
 use veld_ir::endpoint_rules::{EventExpect, Example, ExampleEvent, ExpectedCall};
-use veld_ir::{Channel, ChannelId, ChannelKey, Handler, ServiceId, Subscription};
+use veld_ir::{Channel, ChannelId, ChannelKey, Handler, Publication, ServiceId, Subscription};
 
 impl Lowerer<'_, '_> {
     /// Indices into `prog.channels`, in IR order: by qualified name.
@@ -58,8 +58,15 @@ impl Lowerer<'_, '_> {
         }
     }
 
-    pub(super) fn service_publishes(&self, s: &ServiceInfo) -> Vec<ChannelId> {
-        s.publishes.iter().map(|c| self.channel_id(*c)).collect()
+    pub(super) fn service_publishes(&self, s: &ServiceInfo) -> Vec<Publication> {
+        s.publishes
+            .iter()
+            .zip(&s.publish_spans)
+            .map(|(c, span)| Publication {
+                channel: self.channel_id(*c),
+                origin: self.origin(*span, s.module),
+            })
+            .collect()
     }
 
     pub(super) fn service_subscriptions(&self, s: &ServiceInfo) -> Vec<Subscription> {

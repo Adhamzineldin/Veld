@@ -260,10 +260,15 @@ pub fn check_capabilities(
 ) -> Vec<GenDiagnostic> {
     let mut all = req.services.clone();
     all.extend(req.consumes.iter().copied());
-    let events_of_services = ir.features_used(&req.services).contains(&Feature::Events);
-    ir.features_used(&all)
-        .into_iter()
-        .filter(|f| *f != Feature::Events || events_of_services)
+    // Only the services a target generates count for events; a client generates nothing for them,
+    // so what only an event uses (an audited invariant) does not concern it.
+    let mut used = ir.http_features_used(&all);
+    let mut from_events = ir.event_features(&req.services);
+    if req.role == Role::Client {
+        from_events.remove(&Feature::RulesRollout);
+    }
+    used.extend(from_events);
+    used.into_iter()
         .filter(|f| !caps.supports(*f))
         .map(|f| GenDiagnostic {
             code: "E0801",
@@ -272,15 +277,20 @@ pub fn check_capabilities(
                 f.name(),
                 req.role.name()
             ),
-            origin: first_use(ir, &all, f),
+            origin: first_use(ir, &all, event_services(req), f),
         })
         .collect()
 }
 
 /// Where a feature is first used: an endpoint for endpoint-level features, a declaration otherwise.
-fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin> {
+fn first_use(
+    ir: &Ir,
+    services: &[ServiceId],
+    event_services: &[ServiceId],
+    feature: Feature,
+) -> Option<Origin> {
     if feature == Feature::RulesRollout {
-        return first_audited_origin(ir, services);
+        return first_audited_origin(ir, services, event_services);
     }
     for sid in services {
         for ep in &ir.service(*sid).endpoints {
@@ -323,7 +333,7 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
         }
     }
     if feature == Feature::Events {
-        return services
+        return event_services
             .iter()
             .find_map(|s| ir.service(*s).first_event_origin().cloned());
     }
@@ -361,9 +371,22 @@ fn first_rule_origin(ir: &Ir, services: &[ServiceId]) -> Option<Origin> {
         .find_map(|id| ir.decl(id).rules().first().map(|r| r.origin.clone()))
 }
 
-/// The origin of the first audited rule in source order: an invariant of a reachable declaration, or
-/// a `require` or an `ensure` of one of the services.
-fn first_audited_origin(ir: &Ir, services: &[ServiceId]) -> Option<Origin> {
+/// The services whose events count: the ones the target generates, and none for a client.
+fn event_services<'a>(req: &'a GenRequest<'_>) -> &'a [ServiceId] {
+    match req.role {
+        Role::Server => &req.services,
+        Role::Client => &[],
+    }
+}
+
+/// The origin of the first audited rule in source order: an invariant of a reachable declaration,
+/// a `require` or an `ensure` of one of the services, or an invariant an event of
+/// `event_services` reaches.
+fn first_audited_origin(
+    ir: &Ir,
+    services: &[ServiceId],
+    event_services: &[ServiceId],
+) -> Option<Origin> {
     let invariants = ir
         .reachable_decls(services)
         .into_iter()
@@ -376,6 +399,7 @@ fn first_audited_origin(ir: &Ir, services: &[ServiceId]) -> Option<Origin> {
         .filter_map(|ep| ep.rules.first_audited_origin());
     invariants
         .chain(statements)
+        .chain(ir.first_event_audited_origin(event_services))
         .min_by_key(|o| (o.file.as_str(), o.line, o.col))
         .cloned()
 }
