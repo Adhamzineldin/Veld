@@ -89,6 +89,23 @@ Ir       += { "examples": [ Example ] }                   // spec/rules.md §12
 
 `EndpointRules`, `ServiceFact`, `Example` and `ExampleValue` (`json`, `ref`, `object`, `list`) are defined in `spec/rules.md` §13.1 and described by `spec/ir.d.ts`. An endpoint with `rules` uses the feature `rules_endpoint`; examples need no feature. An enum with `flows`, or an endpoint with a `transition`, uses the feature `rules_transitions`; a generator that cannot represent it reports `E0801` at the first flow or transition.
 
+### 3.2 Policies, the principal and `allow`
+
+Three more keys carry policies (`spec/rules.md` §11), each **omitted from the JSON when empty or absent**:
+
+```jsonc
+Ir            += { "policies": [ Policy ] }                          // sorted by qualified name
+Service       += { "principal": { "decl": DeclId, "name": "user" } } // the principal of the service's package
+EndpointRules += { "allows": [ { "policy": 0, "args": [Expr], "reads": ["id"], "origin": Origin } ] }
+                                                                     // in source order; "policy" indexes Ir.policies
+Policy         = { "name", "package", "module", "qualified", "id": "veld:<package>/<Policy>@<hex16>",
+                   "params": [ { "name", "type": Type } ],
+                   "clauses": [ { "effect": "permit" | "forbid", "expr": Expr, "message": "…" | null, "origin": Origin } ],
+                   "docs", "origin" }
+```
+
+In a policy's expressions a parameter is the root `{ "param": name }`; in an endpoint block the caller is the root `"principal"`. An endpoint with an `allow` uses the feature `rules_policies`; a generator that cannot represent it reports `E0801` at the first `allow`. A policy that no endpoint uses needs no feature. An endpoint with an `allow` also declares `Forbidden` among its `errors`.
+
 ## 4. Capabilities
 
 The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`, …). Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.

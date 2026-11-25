@@ -147,6 +147,7 @@ fn ir() -> Ir {
         services: vec![],
         consumes: Default::default(),
         examples: vec![],
+        policies: vec![],
     }
 }
 

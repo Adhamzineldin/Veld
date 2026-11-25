@@ -285,13 +285,13 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
                     .any(|p| p.binding == veld_ir::Binding::Header),
                 Feature::RulesEndpoint => !ep.rules.is_empty(),
                 Feature::RulesTransitions => ep.rules.transition.is_some(),
+                Feature::RulesPolicies => ep.rules.first_policy_origin().is_some(),
                 Feature::Unions
                 | Feature::Constraints
                 | Feature::Consts
                 | Feature::Page
                 | Feature::Bytes
-                | Feature::RulesInvariants
-                | Feature::RulesPolicies => false,
+                | Feature::RulesInvariants => false,
             };
             if hit {
                 if feature == Feature::RulesEndpoint {
@@ -299,6 +299,9 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
                 }
                 if feature == Feature::RulesTransitions {
                     return ep.rules.transition.as_ref().map(|t| t.origin.clone());
+                }
+                if feature == Feature::RulesPolicies {
+                    return ep.rules.first_policy_origin().cloned();
                 }
                 return Some(ep.origin.clone());
             }
@@ -387,10 +390,12 @@ mod tests {
                 endpoints: vec![ep],
                 facts: vec![],
                 rules_digest: None,
+                principal: None,
                 origin: Origin::default(),
             }],
             consumes: Default::default(),
             examples: vec![],
+            policies: vec![],
         }
     }
 

@@ -360,10 +360,7 @@ fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
         sig: "veld:p/S.op@0".into(),
         docs: Some("d".into()),
         deprecated: Some("x".into()),
-        auth: Auth {
-            kind: auth,
-            header: Some("X-Key".into()),
-        },
+        auth: Auth::new(auth, Some("X-Key".into())),
         middleware: vec!["m".into()],
         params: vec![Param {
             name: "p".into(),
@@ -383,7 +380,10 @@ fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
             status: 404,
             decl: DeclId(2),
         }],
-        rules: crate::endpoint_rules::tests::sample_rules(),
+        rules: EndpointRules {
+            allows: crate::endpoint_rules::tests::sample_allows(),
+            ..crate::endpoint_rules::tests::sample_rules()
+        },
         origin: origin(),
     }
 }
@@ -478,12 +478,17 @@ fn full_ir() -> Ir {
             endpoints,
             facts: crate::endpoint_rules::tests::sample_service_facts(),
             rules_digest: Some("3fa9c2e1b7d04a55".into()),
+            principal: Some(ServicePrincipal {
+                decl: DeclId(0),
+                name: "user".into(),
+            }),
             origin: origin(),
         }],
         consumes: [("S".to_string(), vec!["T".to_string()])]
             .into_iter()
             .collect(),
         examples: crate::endpoint_rules::tests::sample_examples(),
+        policies: crate::endpoint_rules::tests::sample_policies(),
     }
 }
 

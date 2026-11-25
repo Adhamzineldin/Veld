@@ -166,6 +166,7 @@ const SERVICE: Fields = &[
     ("endpoints", T::List(&T::Ref("Endpoint"))),
     ("facts", T::Optional(&T::List(&T::Ref("ServiceFact")))),
     ("rules_digest", T::Optional(&T::Str)),
+    ("principal", T::Optional(&T::Ref("ServicePrincipal"))),
     ("origin", ORIGIN),
 ];
 
@@ -180,11 +181,13 @@ pub const DEFS: &[Def] = &[
             ("services", T::List(&T::Ref("Service"))),
             ("consumes", T::Map(&T::List(&T::Str))),
             ("examples", T::Optional(&T::List(&T::Ref("Example")))),
+            ("policies", T::Optional(&T::List(&T::Ref("Policy")))),
         ],
     ),
     Def::Alias("PackageId", T::Num),
     Def::Alias("DeclId", T::Num),
     Def::Alias("ServiceId", T::Num),
+    Def::Alias("PolicyId", T::Num),
     Def::Object(
         "Package",
         &[
@@ -389,6 +392,7 @@ pub const DEFS: &[Def] = &[
             ("requires", T::List(&T::Ref("EndpointRequire"))),
             ("ensures", T::List(&T::Ref("EndpointEnsure"))),
             ("transition", T::Optional(&T::Ref("EndpointTransition"))),
+            ("allows", T::Optional(&T::List(&T::Ref("EndpointAllow")))),
         ],
     ),
     Def::Object(
@@ -403,6 +407,41 @@ pub const DEFS: &[Def] = &[
             ("origin", ORIGIN),
         ],
     ),
+    Def::Object(
+        "EndpointAllow",
+        &[
+            ("policy", T::Ref("PolicyId")),
+            ("args", T::List(&EXPR)),
+            ("reads", T::List(&T::Str)),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "Policy",
+        &[
+            ("name", T::Str),
+            ("package", T::Ref("PackageId")),
+            ("module", T::Str),
+            ("qualified", T::Str),
+            ("id", T::Str),
+            ("params", T::List(&T::Ref("PolicyParam"))),
+            ("clauses", T::List(&T::Ref("PolicyClause"))),
+            ("docs", OPT_STR),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object("PolicyParam", &[("name", T::Str), ("type", T::Ref("Type"))]),
+    Def::Object(
+        "PolicyClause",
+        &[
+            ("effect", T::Ref("PolicyEffect")),
+            ("expr", EXPR),
+            ("message", OPT_STR),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Strings("PolicyEffect", &["permit", "forbid"]),
+    Def::Object("ServicePrincipal", &[("decl", DECL_ID), ("name", T::Str)]),
     Def::Object(
         "EndpointFact",
         &[

@@ -46,6 +46,7 @@ pub(crate) fn sample_rules() -> EndpointRules {
     let guests = path(Root::Param("body".into()), vec![step("guests")], int_ty());
     let capacity = path(Root::Fact("room".into()), vec![step("capacity")], int_ty());
     EndpointRules {
+        allows: vec![],
         transition: Some(sample_transition()),
         facts: vec![EndpointFact {
             name: "room".into(),
@@ -205,6 +206,83 @@ pub(crate) fn sample_examples() -> Vec<Example> {
     vec![full, ok, ok_value]
 }
 
+pub(crate) fn sample_allows() -> Vec<EndpointAllow> {
+    vec![EndpointAllow {
+        policy: PolicyId(0),
+        args: vec![
+            path(
+                Root::Principal,
+                vec![],
+                ExprType::Type(Type::Decl(DeclId(3))),
+            ),
+            path(
+                Root::Fact("room".into()),
+                vec![],
+                ExprType::Type(Type::Decl(DeclId(1))),
+            ),
+        ],
+        reads: vec!["roomId".into()],
+        origin: origin(8),
+    }]
+}
+
+pub(crate) fn sample_policies() -> Vec<Policy> {
+    let owner = Expr {
+        t: bool_ty(),
+        e: ExprKind::Bin(Box::new(BinExpr {
+            op: Op::Eq,
+            l: path(
+                Root::Param("user".into()),
+                vec![step("id")],
+                ExprType::Type(Type::Scalar(Scalar::Uuid)),
+            ),
+            r: path(
+                Root::Param("room".into()),
+                vec![step("ownerId")],
+                ExprType::Type(Type::Scalar(Scalar::Uuid)),
+            ),
+        })),
+    };
+    let suspended = path(
+        Root::Param("user".into()),
+        vec![step("suspended")],
+        bool_ty(),
+    );
+    vec![Policy {
+        name: "ManageRoom".into(),
+        package: PackageId(0),
+        module: "rooms".into(),
+        qualified: "rooms.ManageRoom".into(),
+        id: "veld:bookings/ManageRoom@0123456789abcdef".into(),
+        params: vec![
+            PolicyParam {
+                name: "user".into(),
+                ty: Type::Decl(DeclId(3)),
+            },
+            PolicyParam {
+                name: "room".into(),
+                ty: Type::Decl(DeclId(1)),
+            },
+        ],
+        clauses: vec![
+            PolicyClause {
+                effect: PolicyEffect::Permit,
+                expr: owner,
+                message: None,
+                origin: origin(5),
+            },
+            PolicyClause {
+                effect: PolicyEffect::Forbid,
+                expr: suspended,
+                message: Some("A suspended account cannot manage rooms".into()),
+                origin: origin(6),
+            },
+        ],
+        docs: Some("Who may manage a room.".into()),
+        origin: origin(4),
+    }]
+}
+
 fn endpoint_with(rules: EndpointRules) -> Endpoint {
     Endpoint {
         name: "book".into(),
@@ -240,6 +318,7 @@ fn service_with(endpoints: Vec<Endpoint>) -> Service {
         endpoints,
         facts: vec![],
         rules_digest: None,
+        principal: None,
         origin: origin(1),
     }
 }
@@ -252,6 +331,7 @@ fn ir_with(services: Vec<Service>, examples: Vec<Example>) -> Ir {
         services,
         consumes: Default::default(),
         examples,
+        policies: vec![],
     }
 }
 
@@ -606,3 +686,5 @@ fn the_exact_json_text_of_a_machine_and_a_transition() {
         r#"{"facts":[],"requires":[],"ensures":[]}"#
     );
 }
+
+mod policies;

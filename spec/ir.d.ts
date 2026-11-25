@@ -8,6 +8,7 @@ export interface Ir {
   services: Service[];
   consumes: Record<string, string[]>;
   examples?: Example[];
+  policies?: Policy[];
 }
 
 export type PackageId = number;
@@ -15,6 +16,8 @@ export type PackageId = number;
 export type DeclId = number;
 
 export type ServiceId = number;
+
+export type PolicyId = number;
 
 export interface Package {
   id: PackageId;
@@ -268,6 +271,7 @@ export interface EndpointRules {
   requires: EndpointRequire[];
   ensures: EndpointEnsure[];
   transition?: EndpointTransition;
+  allows?: EndpointAllow[];
 }
 
 export interface EndpointTransition {
@@ -278,6 +282,44 @@ export interface EndpointTransition {
   from: string[];
   to: string;
   origin: Origin;
+}
+
+export interface EndpointAllow {
+  policy: PolicyId;
+  args: Expr[];
+  reads: string[];
+  origin: Origin;
+}
+
+export interface Policy {
+  name: string;
+  package: PackageId;
+  module: string;
+  qualified: string;
+  id: string;
+  params: PolicyParam[];
+  clauses: PolicyClause[];
+  docs: string | null;
+  origin: Origin;
+}
+
+export interface PolicyParam {
+  name: string;
+  type: Type;
+}
+
+export interface PolicyClause {
+  effect: PolicyEffect;
+  expr: Expr;
+  message: string | null;
+  origin: Origin;
+}
+
+export type PolicyEffect = "permit" | "forbid";
+
+export interface ServicePrincipal {
+  decl: DeclId;
+  name: string;
 }
 
 export interface EndpointFact {
@@ -391,6 +433,7 @@ export interface Service {
   endpoints: Endpoint[];
   facts?: ServiceFact[];
   rules_digest?: string;
+  principal?: ServicePrincipal;
   origin: Origin;
 }
 

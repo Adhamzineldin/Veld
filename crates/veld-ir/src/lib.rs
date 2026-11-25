@@ -14,9 +14,10 @@ pub mod schema;
 pub mod suggest;
 
 pub use endpoint_rules::{
-    ElseError, ElseField, EndpointEnsure, EndpointFact, EndpointRequire, EndpointRules,
-    EndpointTransition, Example, ExampleArg, ExampleErrorOutcome, ExampleField, ExampleGiven,
-    ExampleOutcome, ExampleRef, ExampleValue, ServiceFact,
+    ElseError, ElseField, EndpointAllow, EndpointEnsure, EndpointFact, EndpointRequire,
+    EndpointRules, EndpointTransition, Example, ExampleArg, ExampleErrorOutcome, ExampleField,
+    ExampleGiven, ExampleOutcome, ExampleRef, ExampleValue, Policy, PolicyClause, PolicyEffect,
+    PolicyParam, ServiceFact, ServicePrincipal,
 };
 pub use rules::{
     Always, BinExpr, Builtin, CallExpr, EnumLit, Expr, ExprKind, ExprLit, ExprType, Op, PathRef,
@@ -43,6 +44,7 @@ macro_rules! id_type {
 id_type!(PackageId);
 id_type!(DeclId);
 id_type!(ServiceId);
+id_type!(PolicyId);
 
 /// A whole compiled workspace.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -56,12 +58,20 @@ pub struct Ir {
     /// Examples of the workspace (`spec/rules.md` section 12). Omitted from the JSON when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub examples: Vec<Example>,
+    /// Policies of the workspace, sorted by qualified name (`spec/rules.md` section 11.5).
+    /// Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policies: Vec<Policy>,
 }
 
 impl Ir {
     #[must_use]
     pub fn decl(&self, id: DeclId) -> &Decl {
         &self.decls[id.index()]
+    }
+    #[must_use]
+    pub fn policy(&self, id: PolicyId) -> &Policy {
+        &self.policies[id.index()]
     }
     #[must_use]
     pub fn service(&self, id: ServiceId) -> &Service {
@@ -170,6 +180,9 @@ impl Ir {
                 }
                 if ep.rules.transition.is_some() {
                     f.insert(Feature::RulesTransitions);
+                }
+                if ep.rules.first_policy_origin().is_some() {
+                    f.insert(Feature::RulesPolicies);
                 }
                 for p in &ep.params {
                     p.ty.features(&mut f);
@@ -578,6 +591,9 @@ pub struct Service {
     /// Digest of the invariants the service reaches (`spec/rules.md` section 9.7).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rules_digest: Option<String>,
+    /// The package's principal (`spec/rules.md` section 11.1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub principal: Option<ServicePrincipal>,
     pub origin: Origin,
 }
 
@@ -732,19 +748,46 @@ pub struct ErrorResponse {
     pub decl: DeclId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Auth {
     pub kind: AuthKind,
     pub header: Option<String>,
+    /// True when the author wrote `@auth` on the endpoint or on its service, `@auth(none)`
+    /// included. It is not part of the JSON and not of equality: only the `auth-required` lint
+    /// reads it, in the process that compiled the contract (`spec/rules.md` section 11.6).
+    #[serde(skip)]
+    pub declared: bool,
 }
 
+impl PartialEq for Auth {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.header == other.header
+    }
+}
+
+impl Eq for Auth {}
+
 impl Auth {
+    /// An auth scheme that is not marked as written by the author.
+    #[must_use]
+    pub fn new(kind: AuthKind, header: Option<String>) -> Self {
+        Auth {
+            kind,
+            header,
+            declared: false,
+        }
+    }
+
     #[must_use]
     pub fn none() -> Self {
-        Auth {
-            kind: AuthKind::None,
-            header: None,
-        }
+        Auth::new(AuthKind::None, None)
+    }
+
+    /// The same scheme, marked as written by the author.
+    #[must_use]
+    pub fn declared(mut self) -> Self {
+        self.declared = true;
+        self
     }
 }
 

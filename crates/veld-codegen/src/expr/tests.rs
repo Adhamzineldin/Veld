@@ -537,6 +537,7 @@ fn kind_ir() -> Ir {
         services: vec![],
         consumes: Default::default(),
         examples: vec![],
+        policies: vec![],
     }
 }
 

@@ -35,6 +35,24 @@ pub struct Expr {
     pub e: ExprKind,
 }
 
+impl Expr {
+    /// True when the expression reads the principal (`spec/rules.md` section 11.1) anywhere.
+    #[must_use]
+    pub fn reads_principal(&self) -> bool {
+        match &self.e {
+            ExprKind::Lit(_) | ExprKind::Now(_) => false,
+            ExprKind::Path(p) | ExprKind::Has(p) => p.root == Root::Principal,
+            ExprKind::Not(x) | ExprKind::Neg(x) | ExprKind::Widen(x) | ExprKind::Old(x) => {
+                x.reads_principal()
+            }
+            ExprKind::Bin(b) => b.l.reads_principal() || b.r.reads_principal(),
+            ExprKind::Call(c) => c.args.iter().any(Expr::reads_principal),
+            ExprKind::Quant(q) => q.list.reads_principal() || q.body.reads_principal(),
+            ExprKind::List(items) => items.iter().any(Expr::reads_principal),
+        }
+    }
+}
+
 /// The type of an expression: an ordinary IR type, or the expression-only `duration`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExprType {

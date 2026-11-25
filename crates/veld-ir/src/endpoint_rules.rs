@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::rules::{Expr, Step};
-use crate::{DeclId, Origin, PackageId, ServiceId, Type};
+use crate::{DeclId, Origin, PackageId, PolicyId, ServiceId, Type};
 
 /// The statements of an endpoint block.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -23,6 +23,10 @@ pub struct EndpointRules {
     /// from the JSON when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transition: Option<EndpointTransition>,
+    /// The `allow` lines in source order (`spec/rules.md` section 11.3). Omitted from the JSON
+    /// when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allows: Vec<EndpointAllow>,
 }
 
 impl EndpointRules {
@@ -31,6 +35,7 @@ impl EndpointRules {
     pub fn is_empty(&self) -> bool {
         self.facts.is_empty()
             && self.transition.is_none()
+            && self.allows.is_empty()
             && self.requires.is_empty()
             && self.ensures.is_empty()
     }
@@ -41,10 +46,97 @@ impl EndpointRules {
         self.facts
             .first()
             .map(|f| &f.origin)
+            .or_else(|| self.allows.first().map(|a| &a.origin))
             .or_else(|| self.transition.as_ref().map(|t| &t.origin))
             .or_else(|| self.requires.first().map(|r| &r.origin))
             .or_else(|| self.ensures.first().map(|e| &e.origin))
     }
+    /// The origin of the first statement that needs `rules_policies`: the first `allow`, else
+    /// the first fact key, `require`, payload or `ensure` that reads the principal (a policy is
+    /// not needed to read the caller, but a generator that cannot represent the principal must
+    /// refuse it all the same).
+    #[must_use]
+    pub fn first_policy_origin(&self) -> Option<&Origin> {
+        let key = |f: &&EndpointFact| f.key.as_ref().is_some_and(Expr::reads_principal);
+        let payload = |r: &&EndpointRequire| {
+            r.expr.reads_principal()
+                || r.else_error
+                    .iter()
+                    .flat_map(|e| &e.fields)
+                    .any(|f| f.value.reads_principal())
+        };
+        self.allows
+            .first()
+            .map(|a| &a.origin)
+            .or_else(|| self.facts.iter().find(key).map(|f| &f.origin))
+            .or_else(|| self.requires.iter().find(payload).map(|r| &r.origin))
+            .or_else(|| {
+                self.ensures
+                    .iter()
+                    .find(|e| e.expr.reads_principal())
+                    .map(|e| &e.origin)
+            })
+    }
+}
+
+/// `allow Policy(args)` (`spec/rules.md` section 11.3).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EndpointAllow {
+    /// Index into `Ir.policies`.
+    pub policy: PolicyId,
+    /// One expression per parameter of the policy, in the endpoint's scope.
+    pub args: Vec<Expr>,
+    /// Names of the parameters the arguments read, first use first.
+    pub reads: Vec<String>,
+    pub origin: Origin,
+}
+
+/// A top-level `policy` (`spec/rules.md` section 11.2).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Policy {
+    pub name: String,
+    pub package: PackageId,
+    pub module: String,
+    pub qualified: String,
+    /// Stable identity (`spec/rules.md` section 11.2).
+    pub id: String,
+    pub params: Vec<PolicyParam>,
+    pub clauses: Vec<PolicyClause>,
+    pub docs: Option<String>,
+    pub origin: Origin,
+}
+
+/// One typed parameter of a policy.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PolicyParam {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: Type,
+}
+
+/// `permit when expr` or `forbid when expr`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PolicyClause {
+    pub effect: PolicyEffect,
+    pub expr: Expr,
+    pub message: Option<String>,
+    pub origin: Origin,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PolicyEffect {
+    Permit,
+    Forbid,
+}
+
+/// The package's principal, on each of its services (`spec/rules.md` section 11.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServicePrincipal {
+    /// The model.
+    pub decl: DeclId,
+    /// The name it has in endpoint blocks.
+    pub name: String,
 }
 
 /// `transition fact.path: a, b -> c` (`spec/rules.md` section 10.2).
