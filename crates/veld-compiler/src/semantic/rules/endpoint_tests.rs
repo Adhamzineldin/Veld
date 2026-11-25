@@ -433,6 +433,55 @@ fn an_expression_at_the_depth_limit_is_e0005() {
     assert_eq!(codes_of(&format!("    require {deep}")), ["E0005"]);
 }
 
+/// The IR, and the IR inside a plugin request, read back with the default recursion limit.
+fn assert_reads_back(ir: &Ir, what: &str) {
+    let text = serde_json::to_string(ir).expect("the IR serialises");
+    let back: Ir = serde_json::from_str(&text)
+        .unwrap_or_else(|e| panic!("{what}: the IR does not read back: {e}"));
+    assert_eq!(&back, ir, "{what}");
+    let request = format!("{{\"type\":\"generate\",\"ir\":{text}}}");
+    if let Err(e) = serde_json::from_str::<serde_json::Value>(&request) {
+        panic!("{what}: the plugin request does not read back: {e}");
+    }
+}
+
+#[test]
+fn statements_at_the_depth_limit_read_back_from_their_ir_json() {
+    let chain = |n: usize, term: &str, op: &str| vec![term; n].join(op);
+    // 33 terms joined by `&&` are 32 levels.
+    let wide = compile(&format!(
+        "    require {}",
+        chain(31, "body.guests > 0", " && ")
+    ));
+    assert_reads_back(&wide, "a require at the limit");
+    // The value of a payload field sits deepest in the document.
+    let payload = format!(
+        "    require true else RoomFull {{ capacity: {} }}",
+        chain(32, "body.guests", " + ")
+    );
+    assert_reads_back(&compile(&payload), "a payload value at the limit");
+    let key = format!("    fact room: Room = {}", "body.roomId");
+    assert_reads_back(&compile(&key), "a fact key");
+    let ensure = format!(
+        "    ensure {}",
+        chain(28, "result.id == body.roomId", " && ")
+    );
+    assert_reads_back(&compile(&ensure), "an ensure at the limit");
+    let old = format!(
+        "    fact room: Room = body.roomId\n    ensure {}",
+        chain(20, "old(room.capacity)", " + ") + " > 0"
+    );
+    assert_reads_back(&compile(&old), "old(...) at the limit");
+}
+
+#[test]
+fn a_guard_may_stand_in_one_old_and_cover_a_read_in_another() {
+    let src = "    fact room?: Room = body.roomId\n    ensure old(has(room)) implies old(room.capacity) >= 0";
+    assert!(codes_of(src).is_empty(), "{:?}", codes_of(src));
+    let bare = "    fact room?: Room = body.roomId\n    ensure old(room.capacity) >= 0";
+    assert_eq!(codes_of(bare), ["E0903"]);
+}
+
 #[test]
 fn a_broken_statement_does_not_hide_the_next() {
     let out = one(&create("    require nope > 0\n    require alsoNope > 0"));

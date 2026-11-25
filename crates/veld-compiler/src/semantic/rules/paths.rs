@@ -68,6 +68,9 @@ fn has_arg(e: &ast::Expr) -> Option<Flat<'_>> {
     };
     match args.as_slice() {
         [CallArg::Expr(arg)] if name.name == "has" => flatten(arg),
+        // `old(has(p))` in `ensure`: presence before the handler covers the reads inside
+        // `old(...)` (`spec/rules.md` section 9.4).
+        [CallArg::Expr(arg)] if name.name == "old" => has_arg(arg),
         _ => None,
     }
 }
