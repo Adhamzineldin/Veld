@@ -26,6 +26,8 @@ pub struct Tree<'a> {
     pub validate: bool,
     rules: bool,
     endpoint_rules: bool,
+    transitions: bool,
+    policies: bool,
     decls: Vec<DeclId>,
 }
 
@@ -53,6 +55,13 @@ impl<'a> Tree<'a> {
                 .iter()
                 .any(|ep| !ep.rules.is_empty())
         });
+        let endpoints = || {
+            services
+                .iter()
+                .flat_map(|s| ir.service(*s).endpoints.iter())
+        };
+        let transitions = endpoints().any(|ep| ep.rules.transition.is_some());
+        let policies = endpoints().any(|ep| ep.rules.first_policy_origin().is_some());
         let rules = endpoint_rules || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
         Self {
             ir,
@@ -63,6 +72,8 @@ impl<'a> Tree<'a> {
             validate: true,
             rules,
             endpoint_rules,
+            transitions,
+            policies,
             decls: set.into_iter().collect(),
         }
     }
@@ -82,6 +93,33 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn uses_endpoint_rules(&self) -> bool {
         self.endpoint_rules
+    }
+
+    /// Whether an endpoint of the tree's services has a `transition` (`spec/rules.md` section 10).
+    /// It adds the `transitions` regions of the runtime, the guard and the `transition` the
+    /// handler receives.
+    #[must_use]
+    pub fn uses_transitions(&self) -> bool {
+        self.transitions
+    }
+
+    /// Whether an endpoint of the tree's services has an `allow` or reads the principal
+    /// (`spec/rules.md` section 11): the `policies` regions of the runtime, the policy functions,
+    /// `can<Endpoint>` and the typed auth hook of a service with a principal.
+    #[must_use]
+    pub fn uses_policies(&self) -> bool {
+        self.policies
+    }
+
+    /// The regions of `runtime/veld.ts` this tree needs.
+    #[must_use]
+    pub fn gates(&self) -> crate::runtime::Gates {
+        crate::runtime::Gates {
+            rules: self.rules,
+            endpoint_rules: self.endpoint_rules,
+            transitions: self.transitions,
+            policies: self.policies,
+        }
     }
 
     /// Module path of the rule helpers: next to the runtime module, without extension.

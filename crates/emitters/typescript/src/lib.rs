@@ -200,7 +200,7 @@ impl Generator for TypeScript {
         let mut files = FileSet::new();
         let tree = Tree::new(req.ir, "", None, runtime::MODULE, req.services.clone())
             .with_validate(opts.validate != Some(false));
-        runtime::emit_with(&mut files, tree.uses_rules(), tree.uses_endpoint_rules())?;
+        runtime::emit_gated(&mut files, tree.gates())?;
         let mut modules = emit_client_tree(&mut files, &tree)?;
         modules.push(clients::emit(&mut files, &tree)?);
         if opts.query_options == Some(true) {

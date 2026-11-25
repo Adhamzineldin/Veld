@@ -103,13 +103,8 @@ impl Generator for Node {
             frameworks::emit_ws(&mut files)?;
             modules.push("server/ws".to_string());
         }
-        let (extra, consumed_rules, consumed_endpoint) =
-            emit_consumed(&mut files, req, opts.validate != Some(false))?;
-        runtime::emit_with(
-            &mut files,
-            tree.uses_rules() || consumed_rules,
-            tree.uses_endpoint_rules() || consumed_endpoint,
-        )?;
+        let (extra, consumed) = emit_consumed(&mut files, req, opts.validate != Some(false))?;
+        runtime::emit_gated(&mut files, tree.gates().union(consumed))?;
         testing::emit(&mut files, &tree, opts.testing == Some(true))?;
         modules.sort();
         barrel::write(&mut files, "", &modules, &extra, true)?;
@@ -146,28 +141,26 @@ impl Generator for Node {
 }
 
 /// Emits a client tree under `clients/<service>/` for each consumed service; returns the barrel lines
-/// and whether any consumed declaration has rules.
+/// and the runtime regions the consumed clients need.
 fn emit_consumed(
     files: &mut FileSet,
     req: &GenRequest<'_>,
     validate: bool,
-) -> Result<(Vec<String>, bool, bool), Vec<GenDiagnostic>> {
+) -> Result<(Vec<String>, runtime::Gates), Vec<GenDiagnostic>> {
     let mut lines = Vec::new();
-    let mut rules = false;
-    let mut endpoint_rules = false;
+    let mut gates = runtime::Gates::default();
     for sid in &req.consumes {
         let svc = req.ir.service(*sid);
         let dir = naming::kebab(&svc.name);
         let root = format!("clients/{dir}/");
         let tree =
             Tree::new(req.ir, &root, None, runtime::MODULE, vec![*sid]).with_validate(validate);
-        rules |= tree.uses_rules();
-        endpoint_rules |= tree.uses_endpoint_rules();
+        gates = gates.union(tree.gates());
         let modules = emit_client_tree(files, &tree)?;
         barrel::write(files, &root, &modules, &[], false)?;
         let ns = naming::escape(Lang::Ts, &naming::camel(&svc.name));
         lines.push(format!("export * as {ns} from './clients/{dir}/index';"));
     }
     lines.sort();
-    Ok((lines, rules, endpoint_rules))
+    Ok((lines, gates))
 }
