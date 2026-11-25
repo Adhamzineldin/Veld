@@ -163,7 +163,7 @@ Every Java target writes `README.md` at the root of its output: the base package
 
 ## 8. Invariants (`rules_invariants`)
 
-The structure of `spec/rules.md` §8, in Java. Endpoint rules are section 9, state machines section 10; `rules_policies` is still `E0801`. A contract without rules gets exactly the files it got before: the rule classes below are emitted only when a model or error that the target emits has a rule, and every hook in an existing runtime class sits between `// #if rules` and `// #endif` marker lines that `veld_codegen::gate_regions` removes (with their content) when rules are off.
+The structure of `spec/rules.md` §8, in Java. Endpoint rules are section 9, state machines section 10, policies section 11. A contract without rules gets exactly the files it got before: the rule classes below are emitted only when a model or error that the target emits has a rule, and every hook in an existing runtime class sits between `// #if rules` and `// #endif` marker lines that `veld_codegen::gate_regions` removes (with their content) when rules are off.
 
 **Values in expressions.** `boolean`, `int`, `long`, `double`, `BigDecimal`, `String`, `UUID` and enum constants as they are. `datetime` is `long` epoch milliseconds (`Instant.toEpochMilli()`, so digits below the millisecond are dropped), `date` is `long` epoch days, `time` is `long` milliseconds of the day, `duration` is `long` milliseconds. A path that may read a boxed type (an optional or defaulted field, a list element) is cast to the primitive, so `==` never compares references. Decimals compare with `compareTo`, strings and uuids with `equals`, enums with `==`.
 
@@ -225,7 +225,7 @@ Tests: `crates/emitters/java/src/rule_expr/tests.rs` (exact printer output), `te
 
 ### 9.2 Printing
 
-`rule_expr.rs` prints the roots of an endpoint block with `JavaExpr::for_endpoint`: a parameter is `request.<name>()`, a fact is the local `fact_<name>`, `now` is the `long` local `now` (epoch milliseconds, the rule representation of a `datetime`), `result` is the local `result`, and `old(e)` is the saved slot `o<i>` (`(int) o0.get()`). The same operand is one slot. `has(fact)` is `fact_x != null`. The key of a fact and the values of an `else` payload are the developer-facing value: a plain path as it is (an `Instant`), anything computed converted back (`Instant.ofEpochMilli(...)`). The principal is still `E0801`.
+`rule_expr.rs` prints the roots of an endpoint block with `JavaExpr::for_endpoint`: a parameter is `request.<name>()`, a fact is the local `fact_<name>`, `now` is the `long` local `now` (epoch milliseconds, the rule representation of a `datetime`), `result` is the local `result`, and `old(e)` is the saved slot `o<i>` (`(int) o0.get()`). The same operand is one slot. `has(fact)` is `fact_x != null`. The key of a fact and the values of an `else` payload are the developer-facing value: a plain path as it is (an `Instant`), anything computed converted back (`Instant.ofEpochMilli(...)`). The principal is `principal` (section 11), a local of the generated type of the principal's model.
 
 ### 9.3 Step 6 and step 9
 
@@ -239,7 +239,7 @@ For every service that has a `rules_digest` in the IR, **including a contract th
 
 ### 9.5 The test handler (`testing = true`)
 
-`server/<Service>TestHandler.java` and `runtime/TestSupport.java`, for services with endpoint rules; the production files are byte for byte the same with the option on or off, and none of them reads a `Veld-Test-*` header. `<Service>TestHandler.create(impl[, hooks])` logs a warning once that it is a test handler and returns a `VeldHandler` that: builds `<Service>Handler.endpoints` with loaders that read `Veld-Test-Facts` (base64url JSON, padded or not; a fact missing from the object or `null` is absent) and a clock that reads `Veld-Test-Now` (plain RFC 3339; the system clock when absent); drops authentication and middleware and sets the principal from `Veld-Test-Principal` (`true` when absent); wraps the application in a service that, for a plain HTTP endpoint, answers a dry run (`Veld-Test-Dry-Run: 1`: `204` with `Veld-Test-Passed: 1` through `EndpointRules.Early`, the response a call may throw) or the result of `Veld-Test-Result` before it calls the application; and answers `GET /__veld/test` with `{"veldTestHandler":1,"digests":{"<Service>":"<digest>"|null}}`. The auth hooks of the `hooks` argument are never called and may be `null`. Mounting it with Spring is the application's job: one catch-all route that hands the request to the handler.
+`server/<Service>TestHandler.java` and `runtime/TestSupport.java`, for services with endpoint rules; the production files are byte for byte the same with the option on or off, and none of them reads a `Veld-Test-*` header. `<Service>TestHandler.create(impl[, hooks])` logs a warning once that it is a test handler and returns a `VeldHandler` that: builds `<Service>Handler.endpoints` with loaders that read `Veld-Test-Facts` (base64url JSON, padded or not; a fact missing from the object or `null` is absent) and a clock that reads `Veld-Test-Now` (plain RFC 3339; the system clock when absent); drops authentication and middleware and sets the principal from `Veld-Test-Principal` (`true` when absent; for a service with a principal, section 11, the wire JSON decoded as the principal's model, and `null` when absent); wraps the application in a service that, for a plain HTTP endpoint, answers a dry run (`Veld-Test-Dry-Run: 1`: `204` with `Veld-Test-Passed: 1` through `EndpointRules.Early`, the response a call may throw) or the result of `Veld-Test-Result` before it calls the application; and answers `GET /__veld/test` with `{"veldTestHandler":1,"digests":{"<Service>":"<digest>"|null}}`. The auth hooks of the `hooks` argument are never called and may be `null`. Mounting it with Spring is the application's job: one catch-all route that hands the request to the handler.
 
 ### 9.6 Tests
 
@@ -283,3 +283,61 @@ When the success type is the same declaration as the fact's type, step 9 registe
 ### 10.4 Tests
 
 `tests/state_machines.rs` with `tests/toolchain/java/rules/MachineServe.java` (the test handler on the JDK server), `spring-machine/App.java` (on Spring) and `MachineHttp.java` (the production handler over HTTP: a legal and an illegal move, the transition the handler receives, the order of the checks, several sources, a final state, an endpoint without a result, the target check in `strict` and `audit`): every one of the 14 examples of `tests/rules/endpoints/transitions.veld.pending` runs through `veld_testing::Live` in dry-run mode on both adapters; snapshots `state_machines__*`; `javac -Xlint:all -Werror` on the server (with and without `testing`) and the client for both releases; the helpers appear in both roles and an enum without flows has none.
+
+## 11. Policies and the principal (`rules_policies`)
+
+`spec/rules.md` §11.1 to §11.5, in Java. A contract that uses no policy and does not read the principal gets the bytes it got before: `runtime/Policy.java`, the `// #if policies` regions of `EndpointRules` and `TestSupport`, the typed hooks and the `Policies` classes exist only when the services use `rules_policies` (an `allow`, or a statement that reads the principal). A principal that is declared and never read changes nothing.
+
+### 11.1 The principal
+
+For a service with a principal, `<Service>Hooks` declares one **typed** interface per auth hook it needs, nested in the hooks class, whose method returns the generated type of the principal's model:
+
+```java
+public interface BearerAuth { User authenticate(String token, RequestContext ctx) throws Exception; }   // also BasicAuth, ApiKeyAuth
+public BookingsHooks(BearerAuth bearer)
+```
+
+The constructor adapts it to the untyped `HandlerHooks` hook (`builder.bearer(bearer::authenticate)`), so the runtime is unchanged. In an endpoint with auth the generated call starts with `User principal = (User) ctx.principal();` and the root `principal` of a rule reads that local (`principal.id()`). The principal is trusted and not validated. A service without a principal keeps the untyped hooks.
+
+### 11.2 Policy functions (client and server)
+
+For every policy that an `allow` of the generated services names, in the package of the policy (`<package>.<module>`), a class `Policies` (`Policies_` when a declaration of that package is called `Policies`) has:
+
+```java
+public static boolean manageBooking(User user, Booking booking)                          // reads the system clock
+public static Policy.Verdict manageBookingVerdict(User user, Booking booking, long now)  // the server calls this one
+```
+
+`Policy.Verdict` is `(boolean permitted, String message)` with `denial()` (the message of the first `forbid` that was true, else `not permitted`). The verdict method evaluates every `forbid` in source order first (the first one that is true ends it with its message, or none), then the `permit` clauses. Every clause is wrapped in `Policy.permits(...)` / `Policy.forbids(...)`: an evaluation error (`RuleError`) is `false` for a `permit` and `true` for a `forbid`, so a clause that cannot be evaluated fails closed. A clause reads its parameters by name (a parameter called `now` is renamed), `now` is the `long` parameter of the verdict method. A policy that no `allow` names is not generated (the contract's feature set does not include it either).
+
+### 11.3 `allow`
+
+Step 6 runs, after the facts and before the transition guard, one `run.allow(policyId, reads, () -> Policies.xVerdict(args…, now), reason -> Forbidden.fromWire({message: reason}, 403, null))` per `allow`, in source order. The arguments are printed as values the developer sees (`app_value`). A denial, **or an argument that cannot be evaluated** (it fails closed, with `not permitted`), ends the request with `403 Forbidden`: `data.message` and the one violation's `message` are the text of the verdict, the violation's `rule` is the policy id, `path` is `request`, `fields` are the `reads` of that `allow`; the hook gets `INPUT`, `REJECTED`. Like the guard, `allow` runs even when request validation is off, because it decides who may call.
+
+A `require` or an `ensure` may read the principal (`principal.roles`): the IR marks it with the policies feature and the printer reads the local above.
+
+### 11.4 `can<Endpoint>` (client)
+
+For every endpoint with an `allow` or a `transition`, `<Service>Client` has a **static** method that takes, in this order, the facts, the principal and the parameters that the endpoint's `allow` arguments and its `transition` read (only those; each by its name, with the generated type of the fact, the model or the parameter), and returns whether the server would let the call past the policies and the transition guard:
+
+```java
+public static boolean canPayBooking(Booking booking, User user)
+// Policies.manageBookingVerdict(user, booking, now).permitted() && List.of(Status.PENDING).contains(booking.status())
+```
+
+It reads the system clock for `now`, never sends anything and never rejects: an evaluation error is `false`. The server decides.
+
+### 11.5 The test handler
+
+`TestSupport.endpoint(e, decode)` (a `policies` region, an overload) sets the principal from `Veld-Test-Principal` (unpadded base64url of the wire JSON) decoded as the principal's model, `null` when the header is absent; the generated test handler uses it for a service with a principal and leaves the one-argument method (the principal as plain JSON, or `true`) for every other service.
+
+### 11.6 Choices where the spec leaves room
+
+- The policy classes are emitted for the policies an `allow` names, not for every policy of the contract: a policy no endpoint uses does not use the feature (`spec/rules.md` §11.4) and so generates nothing.
+- `allow` and the transition guard are not switched off by `validate = false` (the other statements are): authorization must not depend on a request-validation option. `W0904` is unchanged.
+- The `now` of the boolean policy and `can<Endpoint>` methods is the system clock; the server passes the request's own clock reading.
+- A policy parameter is never `null`; a `null` argument is an error of the application (`500`), not a denial.
+
+### 11.7 Tests
+
+`tests/policies.rs` with `tests/toolchain/java/rules/PolicyServe.java` (the test handler on the JDK server), `spring-policies/App.java` (on Spring) and `PolicyHttp.java` against the contract `tests/fixtures/guarded.veld` (the production handler over HTTP: `403` and its messages with a `forbid`, several `allow` lines, the order missing fact, denial, transition guard, `require`, fail-closed clauses and arguments, the principal the handler sees, and `can<Endpoint>` of the generated client against the server for every caller and both states): every one of the 10 examples of `tests/rules/endpoints/policies.veld.pending` runs through `veld_testing::Live` in dry-run mode on both adapters; the printer for the `principal` root and for policy parameters in `src/rule_expr/endpoint_tests.rs` and `src/policy.rs`; snapshots `policies__*`; `javac -Xlint:all -Werror` on both contracts, server (with and without `testing`) and client, for both releases; `tests/conformance.rs` asserts that the generator declares and generates every rules feature.
