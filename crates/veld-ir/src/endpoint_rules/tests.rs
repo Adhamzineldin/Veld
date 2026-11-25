@@ -1,0 +1,434 @@
+use serde_json::{Value, json};
+
+use crate::*;
+
+pub(crate) fn origin(line: u32) -> Origin {
+    Origin {
+        file: "bookings.veld".into(),
+        line,
+        col: 3,
+    }
+}
+
+fn int_ty() -> ExprType {
+    ExprType::Type(Type::Scalar(Scalar::Int))
+}
+
+fn bool_ty() -> ExprType {
+    ExprType::Type(Type::Scalar(Scalar::Bool))
+}
+
+fn step(name: &str) -> Step {
+    Step {
+        name: name.into(),
+        wire: name.into(),
+        optional: false,
+    }
+}
+
+fn path(root: Root, steps: Vec<Step>, t: ExprType) -> Expr {
+    Expr {
+        t,
+        e: ExprKind::Path(PathRef { root, steps }),
+    }
+}
+
+fn le(l: Expr, r: Expr) -> Expr {
+    Expr {
+        t: bool_ty(),
+        e: ExprKind::Bin(Box::new(BinExpr { op: Op::Le, l, r })),
+    }
+}
+
+/// One of every statement form: a fact with a key, a named `require` with `else` and a payload,
+/// an unnamed `require` without `else`, a named `ensure` and an unnamed one.
+pub(crate) fn sample_rules() -> EndpointRules {
+    let guests = path(Root::Param("body".into()), vec![step("guests")], int_ty());
+    let capacity = path(Root::Fact("room".into()), vec![step("capacity")], int_ty());
+    EndpointRules {
+        facts: vec![EndpointFact {
+            name: "room".into(),
+            ty: Type::Decl(DeclId(1)),
+            optional: false,
+            key: Some(path(
+                Root::Param("roomId".into()),
+                vec![],
+                ExprType::Type(Type::Scalar(Scalar::Uuid)),
+            )),
+            origin: origin(10),
+        }],
+        requires: vec![
+            EndpointRequire {
+                name: Some("fits".into()),
+                id: "veld:bookings/Bookings.book.fits@0123456789abcdef".into(),
+                expr: le(guests.clone(), capacity.clone()),
+                message: Some("too many guests".into()),
+                reads: vec!["body".into()],
+                else_error: Some(ElseError {
+                    decl: DeclId(2),
+                    status: 409,
+                    fields: vec![ElseField {
+                        name: "capacity".into(),
+                        wire: "capacity".into(),
+                        value: capacity,
+                    }],
+                }),
+                docs: Some("a doc".into()),
+                origin: origin(11),
+            },
+            EndpointRequire {
+                name: None,
+                id: "veld:bookings/Bookings.book.require@fedcba9876543210".into(),
+                expr: le(guests, path(Root::Param("max".into()), vec![], int_ty())),
+                message: None,
+                reads: vec!["body".into(), "max".into()],
+                else_error: None,
+                docs: None,
+                origin: origin(12),
+            },
+        ],
+        ensures: vec![
+            EndpointEnsure {
+                name: Some("pending".into()),
+                id: "veld:bookings/Bookings.book.pending@0011223344556677".into(),
+                expr: Expr {
+                    t: bool_ty(),
+                    e: ExprKind::Lit(ExprLit::Bool(true)),
+                },
+                message: Some("must be pending".into()),
+                reads: vec![],
+                docs: None,
+                origin: origin(13),
+            },
+            EndpointEnsure {
+                name: None,
+                id: "veld:bookings/Bookings.book.ensure@7766554433221100".into(),
+                expr: Expr {
+                    t: bool_ty(),
+                    e: ExprKind::Now(Always),
+                },
+                message: None,
+                reads: vec![],
+                docs: Some("d".into()),
+                origin: origin(14),
+            },
+        ],
+    }
+}
+
+pub(crate) fn sample_service_facts() -> Vec<ServiceFact> {
+    vec![
+        ServiceFact {
+            name: "room".into(),
+            ty: Type::Decl(DeclId(1)),
+            key: Some(Type::Scalar(Scalar::Uuid)),
+            optional: false,
+        },
+        ServiceFact {
+            name: "tenant".into(),
+            ty: Type::Scalar(Scalar::String),
+            key: None,
+            optional: true,
+        },
+    ]
+}
+
+fn field(name: &str, value: ExampleValue) -> ExampleField {
+    ExampleField {
+        name: name.into(),
+        wire: name.into(),
+        value,
+    }
+}
+
+/// Every `ExampleValue` form and every outcome form.
+pub(crate) fn sample_examples() -> Vec<Example> {
+    let given_ref = ExampleValue::Ref(ExampleRef {
+        given: "room".into(),
+        path: vec!["id".into()],
+    });
+    let tags = ExampleValue::List(vec![
+        ExampleValue::Json(json!("a")),
+        ExampleValue::Json(Value::Null),
+    ]);
+    let body = ExampleValue::Object(vec![
+        field("roomId", given_ref),
+        field("guests", ExampleValue::Json(json!(3))),
+        field("tags", tags),
+    ]);
+    let capacity = ExampleValue::Object(vec![field("capacity", ExampleValue::Json(json!(2)))]);
+    let full = Example {
+        name: "a full room is rejected".into(),
+        package: PackageId(0),
+        service: ServiceId(0),
+        endpoint: "createBooking".into(),
+        givens: vec![
+            ExampleGiven {
+                fact: "room".into(),
+                value: Some(capacity.clone()),
+            },
+            ExampleGiven {
+                fact: "tenant".into(),
+                value: None,
+            },
+        ],
+        principal: Some(ExampleValue::Json(json!({"id": "u1"}))),
+        now: Some("2026-03-01T09:00:00Z".into()),
+        args: vec![ExampleArg {
+            param: "body".into(),
+            value: body,
+        }],
+        returns: Some(ExampleValue::Json(json!({"status": "PENDING"}))),
+        outcome: ExampleOutcome::Error(ExampleErrorOutcome {
+            decl: DeclId(2),
+            pattern: Some(capacity),
+        }),
+        docs: Some("d".into()),
+        origin: origin(20),
+    };
+    let ok = Example {
+        name: "it works".into(),
+        givens: vec![],
+        principal: None,
+        now: None,
+        returns: None,
+        outcome: ExampleOutcome::Ok(None),
+        docs: None,
+        ..full.clone()
+    };
+    let ok_value = Example {
+        name: "it answers a value".into(),
+        outcome: ExampleOutcome::Ok(Some(ExampleValue::List(vec![]))),
+        ..ok.clone()
+    };
+    vec![full, ok, ok_value]
+}
+
+fn endpoint_with(rules: EndpointRules) -> Endpoint {
+    Endpoint {
+        name: "book".into(),
+        method: Method::Post,
+        path: "/".into(),
+        sig: "veld:bookings/Bookings.book@0".into(),
+        docs: None,
+        deprecated: None,
+        auth: Auth::none(),
+        middleware: vec![],
+        params: vec![],
+        success: Success {
+            status: 201,
+            ty: None,
+            stream: false,
+        },
+        errors: vec![],
+        rules,
+        origin: origin(9),
+    }
+}
+
+fn service_with(endpoints: Vec<Endpoint>) -> Service {
+    Service {
+        id: ServiceId(0),
+        package: PackageId(0),
+        name: "Bookings".into(),
+        prefix: "/".into(),
+        base_url: None,
+        docs: None,
+        auth: Auth::none(),
+        middleware: vec![],
+        endpoints,
+        facts: vec![],
+        rules_digest: None,
+        origin: origin(1),
+    }
+}
+
+fn ir_with(services: Vec<Service>, examples: Vec<Example>) -> Ir {
+    Ir {
+        ir_version: IR_VERSION.into(),
+        packages: vec![],
+        decls: vec![],
+        services,
+        consumes: Default::default(),
+        examples,
+    }
+}
+
+fn round_trip<T>(v: &T) -> Value
+where
+    T: serde::Serialize + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug,
+{
+    let text = serde_json::to_string(v).unwrap();
+    let back: T = serde_json::from_str(&text).unwrap();
+    assert_eq!(&back, v);
+    serde_json::from_str(&text).unwrap()
+}
+
+#[test]
+fn an_endpoint_with_every_statement_form_round_trips() {
+    let v = round_trip(&endpoint_with(sample_rules()));
+    assert_eq!(v["rules"]["facts"].as_array().map(Vec::len), Some(1));
+    assert_eq!(v["rules"]["requires"].as_array().map(Vec::len), Some(2));
+    assert_eq!(v["rules"]["ensures"].as_array().map(Vec::len), Some(2));
+    assert!(v["rules"]["requires"][1]["else"].is_null());
+    assert!(v["rules"]["requires"][1]["name"].is_null());
+}
+
+#[test]
+fn a_fact_and_a_require_match_the_spec_json() {
+    let rules = sample_rules();
+    let fact = serde_json::to_value(&rules.facts[0]).unwrap();
+    assert_eq!(
+        fact,
+        json!({
+            "name": "room",
+            "type": { "decl": 1 },
+            "optional": false,
+            "key": { "t": { "scalar": "uuid" },
+                     "e": { "path": { "root": { "param": "roomId" }, "steps": [] } } },
+            "origin": { "file": "bookings.veld", "line": 10, "col": 3 }
+        })
+    );
+    let require = serde_json::to_value(&rules.requires[0]).unwrap();
+    assert_eq!(require["else"]["decl"], json!(2));
+    assert_eq!(require["else"]["status"], json!(409));
+    assert_eq!(require["else"]["fields"][0]["name"], json!("capacity"));
+    assert_eq!(require["else"]["fields"][0]["wire"], json!("capacity"));
+    assert_eq!(require["reads"], json!(["body"]));
+    assert_eq!(require["message"], json!("too many guests"));
+    let text = serde_json::to_string(&rules.ensures[1]).unwrap();
+    let head = r#"{"name":null,"id":"veld:bookings/Bookings.book.ensure@7766554433221100","expr":{"t":{"scalar":"bool"},"e":{"now":true}},"message":null,"reads":[],"docs":"d","origin":"#;
+    assert!(text.starts_with(head), "{text}");
+}
+
+#[test]
+fn service_facts_match_the_spec_json() {
+    let facts = sample_service_facts();
+    assert_eq!(
+        serde_json::to_string(&facts[1]).unwrap(),
+        r#"{"name":"tenant","type":{"scalar":"string"},"key":null,"optional":true}"#
+    );
+}
+
+#[test]
+fn an_example_with_every_value_form_round_trips() {
+    let v = round_trip(&sample_examples());
+    assert_eq!(
+        v[0]["givens"][1],
+        json!({ "fact": "tenant", "value": null })
+    );
+    assert_eq!(v[1]["outcome"], json!({ "ok": null }));
+    assert_eq!(v[2]["outcome"], json!({ "ok": { "list": [] } }));
+    assert_eq!(
+        v[0]["outcome"],
+        json!({ "error": { "decl": 2, "pattern": { "object": [
+            { "name": "capacity", "wire": "capacity", "value": { "json": 2 } }
+        ] } } })
+    );
+}
+
+#[test]
+fn example_values_match_the_spec_json() {
+    let r = ExampleValue::Ref(ExampleRef {
+        given: "room".into(),
+        path: vec!["id".into()],
+    });
+    assert_eq!(
+        serde_json::to_string(&r).unwrap(),
+        r#"{"ref":{"given":"room","path":["id"]}}"#
+    );
+    let o = ExampleValue::Object(vec![field("guests", ExampleValue::Json(json!(3)))]);
+    assert_eq!(
+        serde_json::to_string(&o).unwrap(),
+        r#"{"object":[{"name":"guests","wire":"guests","value":{"json":3}}]}"#
+    );
+    let l = ExampleValue::List(vec![ExampleValue::Json(Value::Null)]);
+    assert_eq!(
+        serde_json::to_string(&l).unwrap(),
+        r#"{"list":[{"json":null}]}"#
+    );
+    let back: ExampleValue = serde_json::from_str(r#"{"json":null}"#).unwrap();
+    assert_eq!(back, ExampleValue::Json(Value::Null));
+}
+
+#[test]
+fn an_example_has_the_keys_of_the_spec() {
+    let v = serde_json::to_value(&sample_examples()[0]).unwrap();
+    let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        [
+            "args",
+            "docs",
+            "endpoint",
+            "givens",
+            "name",
+            "now",
+            "origin",
+            "outcome",
+            "package",
+            "principal",
+            "returns",
+            "service"
+        ]
+    );
+}
+
+#[test]
+fn nothing_new_is_serialised_when_it_is_empty() {
+    let endpoint = endpoint_with(EndpointRules::default());
+    let ir = ir_with(vec![service_with(vec![endpoint])], vec![]);
+    let v = serde_json::to_value(&ir).unwrap();
+    assert!(v.get("examples").is_none());
+    let service = &v["services"][0];
+    assert!(service.get("facts").is_none());
+    assert!(service.get("rules_digest").is_none());
+    assert!(service["endpoints"][0].get("rules").is_none());
+    // A document written before these keys existed reads back as empty.
+    let back: Ir = serde_json::from_value(v).unwrap();
+    assert_eq!(back, ir);
+}
+
+#[test]
+fn the_new_keys_appear_when_there_is_something_to_say() {
+    let mut service = service_with(vec![endpoint_with(sample_rules())]);
+    service.facts = sample_service_facts();
+    service.rules_digest = Some("3fa9c2e1b7d04a55".into());
+    let v = round_trip(&ir_with(vec![service], sample_examples()));
+    assert!(v["examples"].is_array());
+    assert_eq!(v["services"][0]["rules_digest"], json!("3fa9c2e1b7d04a55"));
+    assert_eq!(v["services"][0]["facts"][0]["name"], json!("room"));
+    assert!(v["services"][0]["endpoints"][0]["rules"]["requires"].is_array());
+}
+
+#[test]
+fn endpoint_rules_use_the_rules_endpoint_feature() {
+    let plain = endpoint_with(EndpointRules::default());
+    let plain = ir_with(vec![service_with(vec![plain])], vec![]);
+    assert!(plain.features_used(&[ServiceId(0)]).is_empty());
+    let ruled = ir_with(
+        vec![service_with(vec![endpoint_with(sample_rules())])],
+        vec![],
+    );
+    let used = ruled.features_used(&[ServiceId(0)]);
+    assert!(used.contains(&Feature::RulesEndpoint), "{used:?}");
+    assert!(ruled.features_used(&[]).is_empty());
+}
+
+#[test]
+fn the_first_origin_is_the_first_statement() {
+    let rules = sample_rules();
+    assert_eq!(rules.first_origin().map(|o| o.line), Some(10));
+    let no_facts = EndpointRules {
+        facts: vec![],
+        ..rules
+    };
+    assert_eq!(no_facts.first_origin().map(|o| o.line), Some(11));
+    let only_ensure = EndpointRules {
+        requires: vec![],
+        ..no_facts
+    };
+    assert_eq!(only_ensure.first_origin().map(|o| o.line), Some(13));
+    assert!(EndpointRules::default().first_origin().is_none());
+}

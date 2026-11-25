@@ -469,6 +469,7 @@ impl Kit {
             decls: self.decls,
             services: Vec::new(),
             consumes: std::collections::BTreeMap::new(),
+            examples: Vec::new(),
         }
     }
 }

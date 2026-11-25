@@ -20,3 +20,9 @@ fn typescript_and_node_declare_only_the_invariants_feature() {
     veld_emit_conformance::check_only_invariants_supported(&Node).unwrap();
     veld_emit_conformance::check_only_invariants_supported(&TypeScript).unwrap();
 }
+
+#[test]
+fn typescript_and_node_refuse_endpoint_rules_with_e0801() {
+    veld_emit_conformance::check_endpoint_rules_are_refused(&Node).unwrap();
+    veld_emit_conformance::check_endpoint_rules_are_refused(&TypeScript).unwrap();
+}

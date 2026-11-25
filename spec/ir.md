@@ -72,6 +72,19 @@ Endpoint = {
 Auth = { "kind": "none|bearer|basic|api_key", "header": "X-API-Key"|null }
 ```
 
+### 3.1 Endpoint rules, service facts and examples
+
+Three additions carry endpoint rules (`spec/rules.md` §9) and examples (§12). Each key is **omitted from the JSON when empty or absent**, so the IR of a contract without them is unchanged:
+
+```jsonc
+Endpoint += { "rules": EndpointRules }                    // facts, requires and ensures of the endpoint block
+Service  += { "facts": [ ServiceFact ],                   // one loader method per fact name, sorted by name
+              "rules_digest": "3fa9c2e1b7d04a55" }        // spec/rules.md §9.7
+Ir       += { "examples": [ Example ] }                   // spec/rules.md §12
+```
+
+`EndpointRules`, `ServiceFact`, `Example` and `ExampleValue` (`json`, `ref`, `object`, `list`) are defined in `spec/rules.md` §13.1 and described by `spec/ir.d.ts`. An endpoint with `rules` uses the feature `rules_endpoint`; examples need no feature.
+
 ## 4. Capabilities
 
 The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`, …). Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.

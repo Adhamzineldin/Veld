@@ -142,6 +142,91 @@ pub fn check_rules_are_refused(generator: &dyn DynGenerator) -> Result<(), Strin
     Ok(())
 }
 
+/// Where the first statement of [`ir_with_endpoint_rules`] is declared.
+pub const ENDPOINT_RULE_ORIGIN_LINE: u32 = 7;
+
+/// The plain fixture with a block on its first endpoint (one `ensure`), built by hand. The
+/// feature it uses is `rules_endpoint`.
+///
+/// # Panics
+/// When the plain fixture no longer has an endpoint.
+#[must_use]
+pub fn ir_with_endpoint_rules() -> Ir {
+    use veld_ir::{EndpointEnsure, Expr, ExprKind, ExprLit, ExprType, Origin, Scalar, Type};
+    let plain = FIXTURES
+        .iter()
+        .find(|f| f.feature.is_none())
+        .map(|f| compile(f.name, f.source));
+    let Some(mut ir) = plain else {
+        panic!("veld-emit-conformance has no plain fixture");
+    };
+    let ensure = EndpointEnsure {
+        name: None,
+        id: "veld:app/Greeter.hello.ensure@0".into(),
+        expr: Expr {
+            t: ExprType::Type(Type::Scalar(Scalar::Bool)),
+            e: ExprKind::Lit(ExprLit::Bool(true)),
+        },
+        message: None,
+        reads: vec![],
+        docs: None,
+        origin: Origin {
+            file: "rules.veld".into(),
+            line: ENDPOINT_RULE_ORIGIN_LINE,
+            col: 5,
+        },
+    };
+    let endpoint = ir.services.iter_mut().find_map(|s| s.endpoints.first_mut());
+    match endpoint {
+        Some(ep) => ep.rules.ensures.push(ensure),
+        None => panic!("the plain fixture has no endpoint"),
+    }
+    ir
+}
+
+/// The generator must not declare `rules_endpoint` and must refuse a contract with endpoint rules:
+/// the capability gate reports exactly one `E0801` at the first statement, and `generate` refuses
+/// with `E0801`. Other rules features (invariants) may be declared.
+///
+/// # Errors
+/// A description of the first role for which the generator does not refuse.
+pub fn check_endpoint_rules_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    let ir = ir_with_endpoint_rules();
+    let services = all_services(&ir);
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        if caps.supports(Feature::RulesEndpoint) {
+            return Err(format!("{}: declares `rules_endpoint`", role.name()));
+        }
+        let req = GenRequest {
+            ir: &ir,
+            role: *role,
+            services: services.clone(),
+            consumes: vec![],
+            framework: None,
+        };
+        let gate = check_capabilities(&ir, &req, &caps);
+        let at_statement = |d: &veld_codegen::GenDiagnostic| {
+            d.code == "E0801"
+                && d.message.contains("rules_endpoint")
+                && d.origin.as_ref().map(|o| o.line) == Some(ENDPOINT_RULE_ORIGIN_LINE)
+        };
+        if gate.len() != 1 || !gate.iter().all(at_statement) {
+            return Err(format!("{}: the gate reported {gate:?}", role.name()));
+        }
+        match generator.generate_dyn(&req, &serde_json::Value::Null) {
+            Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
+            other => {
+                return Err(format!(
+                    "{}: generate did not answer E0801: {other:?}",
+                    role.name()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// A generator that supports invariants and nothing else of the rules: it declares `rules_invariants`
 /// only, and generates a contract with a rule (the other rules features stay refused).
 ///
@@ -444,6 +529,23 @@ mod tests {
         let ir = ir_with_rule();
         let used = ir.features_used(&all_services(&ir));
         assert!(used.contains(&Feature::RulesInvariants), "{used:?}");
+    }
+
+    #[test]
+    fn the_hand_built_endpoint_rules_use_the_endpoint_feature() {
+        let ir = ir_with_endpoint_rules();
+        let used = ir.features_used(&all_services(&ir));
+        assert!(used.contains(&Feature::RulesEndpoint), "{used:?}");
+        assert!(!used.contains(&Feature::RulesInvariants), "{used:?}");
+    }
+
+    #[test]
+    fn a_generator_that_claims_endpoint_rules_is_caught() {
+        let claims = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]),
+        };
+        assert!(check_endpoint_rules_are_refused(&claims).is_err());
     }
 
     #[test]

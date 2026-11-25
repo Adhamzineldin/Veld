@@ -8,10 +8,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
 
+pub mod endpoint_rules;
 pub mod rules;
 pub mod schema;
 pub mod suggest;
 
+pub use endpoint_rules::{
+    ElseError, ElseField, EndpointEnsure, EndpointFact, EndpointRequire, EndpointRules, Example,
+    ExampleArg, ExampleErrorOutcome, ExampleField, ExampleGiven, ExampleOutcome, ExampleRef,
+    ExampleValue, ServiceFact,
+};
 pub use rules::{
     Always, BinExpr, Builtin, CallExpr, EnumLit, Expr, ExprKind, ExprLit, ExprType, Op, PathRef,
     QuantExpr, Quantifier, Root, Rule, Step,
@@ -47,6 +53,9 @@ pub struct Ir {
     pub services: Vec<Service>,
     /// service name -> consumed service names (sorted). May contain cycles.
     pub consumes: std::collections::BTreeMap<String, Vec<String>>,
+    /// Examples of the workspace (`spec/rules.md` section 12). Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<Example>,
 }
 
 impl Ir {
@@ -151,6 +160,9 @@ impl Ir {
                 }
                 if !ep.middleware.is_empty() {
                     f.insert(Feature::Middleware);
+                }
+                if !ep.rules.is_empty() {
+                    f.insert(Feature::RulesEndpoint);
                 }
                 for p in &ep.params {
                     p.ty.features(&mut f);
@@ -521,6 +533,12 @@ pub struct Service {
     pub auth: Auth,
     pub middleware: Vec<String>,
     pub endpoints: Vec<Endpoint>,
+    /// One loader method per fact name (`spec/rules.md` section 9.2), sorted by name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub facts: Vec<ServiceFact>,
+    /// Digest of the invariants the service reaches (`spec/rules.md` section 9.7).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rules_digest: Option<String>,
     pub origin: Origin,
 }
 
@@ -585,6 +603,9 @@ pub struct Endpoint {
     pub params: Vec<Param>,
     pub success: Success,
     pub errors: Vec<ErrorResponse>,
+    /// The statements of the endpoint block. Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "EndpointRules::is_empty")]
+    pub rules: EndpointRules,
     pub origin: Origin,
 }
 

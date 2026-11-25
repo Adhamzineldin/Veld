@@ -143,6 +143,7 @@ const ENDPOINT: Fields = &[
     ("params", T::List(&T::Ref("Param"))),
     ("success", T::Ref("Success")),
     ("errors", T::List(&T::Ref("ErrorResponse"))),
+    ("rules", T::Optional(&T::Ref("EndpointRules"))),
     ("origin", ORIGIN),
 ];
 
@@ -156,6 +157,8 @@ const SERVICE: Fields = &[
     ("auth", T::Ref("Auth")),
     ("middleware", T::List(&T::Str)),
     ("endpoints", T::List(&T::Ref("Endpoint"))),
+    ("facts", T::Optional(&T::List(&T::Ref("ServiceFact")))),
+    ("rules_digest", T::Optional(&T::Str)),
     ("origin", ORIGIN),
 ];
 
@@ -169,6 +172,7 @@ pub const DEFS: &[Def] = &[
             ("decls", T::List(&T::Ref("Decl"))),
             ("services", T::List(&T::Ref("Service"))),
             ("consumes", T::Map(&T::List(&T::Str))),
+            ("examples", T::Optional(&T::List(&T::Ref("Example")))),
         ],
     ),
     Def::Alias("PackageId", T::Num),
@@ -369,6 +373,134 @@ pub const DEFS: &[Def] = &[
         ],
     ),
     Def::Strings("Quantifier", &["all", "any", "count", "sum"]),
+    // --- endpoint rules and examples (spec/rules.md section 13.1) ---
+    Def::Object(
+        "EndpointRules",
+        &[
+            ("facts", T::List(&T::Ref("EndpointFact"))),
+            ("requires", T::List(&T::Ref("EndpointRequire"))),
+            ("ensures", T::List(&T::Ref("EndpointEnsure"))),
+        ],
+    ),
+    Def::Object(
+        "EndpointFact",
+        &[
+            ("name", T::Str),
+            ("type", T::Ref("Type")),
+            ("optional", T::Bool),
+            ("key", T::Nullable(&EXPR)),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "EndpointRequire",
+        &[
+            ("name", OPT_STR),
+            ("id", T::Str),
+            ("expr", EXPR),
+            ("message", OPT_STR),
+            ("reads", T::List(&T::Str)),
+            ("else", T::Nullable(&T::Ref("ElseError"))),
+            ("docs", OPT_STR),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "ElseError",
+        &[
+            ("decl", DECL_ID),
+            ("status", T::Num),
+            ("fields", T::List(&T::Ref("ElseField"))),
+        ],
+    ),
+    Def::Object(
+        "ElseField",
+        &[("name", T::Str), ("wire", T::Str), ("value", EXPR)],
+    ),
+    Def::Object(
+        "EndpointEnsure",
+        &[
+            ("name", OPT_STR),
+            ("id", T::Str),
+            ("expr", EXPR),
+            ("message", OPT_STR),
+            ("reads", T::List(&T::Str)),
+            ("docs", OPT_STR),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "ServiceFact",
+        &[
+            ("name", T::Str),
+            ("type", T::Ref("Type")),
+            ("key", T::Nullable(&T::Ref("Type"))),
+            ("optional", T::Bool),
+        ],
+    ),
+    Def::Object(
+        "Example",
+        &[
+            ("name", T::Str),
+            ("package", T::Ref("PackageId")),
+            ("service", T::Ref("ServiceId")),
+            ("endpoint", T::Str),
+            ("givens", T::List(&T::Ref("ExampleGiven"))),
+            ("principal", T::Nullable(&T::Ref("ExampleValue"))),
+            ("now", OPT_STR),
+            ("args", T::List(&T::Ref("ExampleArg"))),
+            ("returns", T::Nullable(&T::Ref("ExampleValue"))),
+            ("outcome", T::Ref("ExampleOutcome")),
+            ("docs", OPT_STR),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "ExampleGiven",
+        &[
+            ("fact", T::Str),
+            ("value", T::Nullable(&T::Ref("ExampleValue"))),
+        ],
+    ),
+    Def::Object(
+        "ExampleArg",
+        &[("param", T::Str), ("value", T::Ref("ExampleValue"))],
+    ),
+    Def::External(
+        "ExampleOutcome",
+        &[
+            ("ok", T::Nullable(&T::Ref("ExampleValue"))),
+            ("error", T::Ref("ExampleErrorOutcome")),
+        ],
+    ),
+    Def::Object(
+        "ExampleErrorOutcome",
+        &[
+            ("decl", DECL_ID),
+            ("pattern", T::Nullable(&T::Ref("ExampleValue"))),
+        ],
+    ),
+    Def::External(
+        "ExampleValue",
+        &[
+            ("json", T::Any),
+            ("ref", T::Ref("ExampleRef")),
+            ("object", T::List(&T::Ref("ExampleField"))),
+            ("list", T::List(&T::Ref("ExampleValue"))),
+        ],
+    ),
+    Def::Object(
+        "ExampleRef",
+        &[("given", T::Str), ("path", T::List(&T::Str))],
+    ),
+    Def::Object(
+        "ExampleField",
+        &[
+            ("name", T::Str),
+            ("wire", T::Str),
+            ("value", T::Ref("ExampleValue")),
+        ],
+    ),
     Def::Object("Service", SERVICE),
     Def::Strings(
         "Method",

@@ -186,3 +186,8 @@ fn rust_supports_invariants_and_still_refuses_the_other_rules_features() {
         }
     }
 }
+
+#[test]
+fn rust_refuses_endpoint_rules_with_e0801() {
+    veld_emit_conformance::check_endpoint_rules_are_refused(&Rust).unwrap();
+}

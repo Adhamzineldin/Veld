@@ -258,17 +258,20 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
                     .params
                     .iter()
                     .any(|p| p.binding == veld_ir::Binding::Header),
+                Feature::RulesEndpoint => !ep.rules.is_empty(),
                 Feature::Unions
                 | Feature::Constraints
                 | Feature::Consts
                 | Feature::Page
                 | Feature::Bytes
                 | Feature::RulesInvariants
-                | Feature::RulesEndpoint
                 | Feature::RulesTransitions
                 | Feature::RulesPolicies => false,
             };
             if hit {
+                if feature == Feature::RulesEndpoint {
+                    return ep.rules.first_origin().cloned();
+                }
                 return Some(ep.origin.clone());
             }
         }
@@ -317,6 +320,7 @@ mod tests {
                 stream: true,
             },
             errors: vec![],
+            rules: EndpointRules::default(),
             origin: Origin {
                 file: "a.veld".into(),
                 line: 3,
@@ -341,9 +345,12 @@ mod tests {
                 auth: Auth::none(),
                 middleware: vec![],
                 endpoints: vec![ep],
+                facts: vec![],
+                rules_digest: None,
                 origin: Origin::default(),
             }],
             consumes: Default::default(),
+            examples: vec![],
         }
     }
 

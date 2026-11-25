@@ -631,6 +631,7 @@ mod tests {
             decls: vec![],
             services: vec![],
             consumes: BTreeMap::new(),
+            examples: vec![],
         }
     }
 

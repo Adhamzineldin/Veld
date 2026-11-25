@@ -538,6 +538,7 @@ fn kind_ir() -> Ir {
         decls,
         services: vec![],
         consumes: Default::default(),
+        examples: vec![],
     }
 }
 

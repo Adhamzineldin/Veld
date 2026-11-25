@@ -145,6 +145,7 @@ fn ir() -> Ir {
         decls,
         services: vec![],
         consumes: Default::default(),
+        examples: vec![],
     }
 }
 

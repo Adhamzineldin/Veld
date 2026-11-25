@@ -71,3 +71,8 @@ fn java_enforces_invariants_and_declares_no_other_rules_feature() {
             });
     }
 }
+
+#[test]
+fn java_refuses_endpoint_rules_with_e0801() {
+    veld_emit_conformance::check_endpoint_rules_are_refused(&Java).unwrap();
+}

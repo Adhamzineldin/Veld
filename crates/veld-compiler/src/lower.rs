@@ -58,6 +58,7 @@ pub fn lower(
         decls,
         services,
         consumes: lw.consumes(consumes),
+        examples: Vec::new(),
     }
 }
 
@@ -292,6 +293,8 @@ impl Lowerer<'_, '_> {
                 .iter()
                 .map(|e| self.endpoint(e, s, &pkg.name, decls))
                 .collect(),
+            facts: Vec::new(),
+            rules_digest: None,
             origin: self.origin(s.span, s.module),
         }
     }
@@ -336,6 +339,7 @@ impl Lowerer<'_, '_> {
                 stream: e.success_stream,
             },
             errors,
+            rules: veld_ir::EndpointRules::default(),
             origin: self.origin(e.span, s.module),
         }
     }

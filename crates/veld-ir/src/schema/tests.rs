@@ -378,6 +378,7 @@ fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
             status: 404,
             decl: DeclId(2),
         }],
+        rules: crate::endpoint_rules::tests::sample_rules(),
         origin: origin(),
     }
 }
@@ -470,11 +471,14 @@ fn full_ir() -> Ir {
             auth: Auth::none(),
             middleware: vec!["m".into()],
             endpoints,
+            facts: crate::endpoint_rules::tests::sample_service_facts(),
+            rules_digest: Some("3fa9c2e1b7d04a55".into()),
             origin: origin(),
         }],
         consumes: [("S".to_string(), vec!["T".to_string()])]
             .into_iter()
             .collect(),
+        examples: crate::endpoint_rules::tests::sample_examples(),
     }
 }
 

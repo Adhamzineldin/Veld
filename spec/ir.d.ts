@@ -7,6 +7,7 @@ export interface Ir {
   decls: Decl[];
   services: Service[];
   consumes: Record<string, string[]>;
+  examples?: Example[];
 }
 
 export type PackageId = number;
@@ -255,6 +256,111 @@ export interface QuantExpr {
 
 export type Quantifier = "all" | "any" | "count" | "sum";
 
+export interface EndpointRules {
+  facts: EndpointFact[];
+  requires: EndpointRequire[];
+  ensures: EndpointEnsure[];
+}
+
+export interface EndpointFact {
+  name: string;
+  type: Type;
+  optional: boolean;
+  key: Expr | null;
+  origin: Origin;
+}
+
+export interface EndpointRequire {
+  name: string | null;
+  id: string;
+  expr: Expr;
+  message: string | null;
+  reads: string[];
+  else: ElseError | null;
+  docs: string | null;
+  origin: Origin;
+}
+
+export interface ElseError {
+  decl: DeclId;
+  status: number;
+  fields: ElseField[];
+}
+
+export interface ElseField {
+  name: string;
+  wire: string;
+  value: Expr;
+}
+
+export interface EndpointEnsure {
+  name: string | null;
+  id: string;
+  expr: Expr;
+  message: string | null;
+  reads: string[];
+  docs: string | null;
+  origin: Origin;
+}
+
+export interface ServiceFact {
+  name: string;
+  type: Type;
+  key: Type | null;
+  optional: boolean;
+}
+
+export interface Example {
+  name: string;
+  package: PackageId;
+  service: ServiceId;
+  endpoint: string;
+  givens: ExampleGiven[];
+  principal: ExampleValue | null;
+  now: string | null;
+  args: ExampleArg[];
+  returns: ExampleValue | null;
+  outcome: ExampleOutcome;
+  docs: string | null;
+  origin: Origin;
+}
+
+export interface ExampleGiven {
+  fact: string;
+  value: ExampleValue | null;
+}
+
+export interface ExampleArg {
+  param: string;
+  value: ExampleValue;
+}
+
+export type ExampleOutcome =
+  | { ok: ExampleValue | null }
+  | { error: ExampleErrorOutcome }
+
+export interface ExampleErrorOutcome {
+  decl: DeclId;
+  pattern: ExampleValue | null;
+}
+
+export type ExampleValue =
+  | { json: unknown }
+  | { ref: ExampleRef }
+  | { object: ExampleField[] }
+  | { list: ExampleValue[] }
+
+export interface ExampleRef {
+  given: string;
+  path: string[];
+}
+
+export interface ExampleField {
+  name: string;
+  wire: string;
+  value: ExampleValue;
+}
+
 export interface Service {
   id: ServiceId;
   package: PackageId;
@@ -265,6 +371,8 @@ export interface Service {
   auth: Auth;
   middleware: string[];
   endpoints: Endpoint[];
+  facts?: ServiceFact[];
+  rules_digest?: string;
   origin: Origin;
 }
 
@@ -282,6 +390,7 @@ export interface Endpoint {
   params: Param[];
   success: Success;
   errors: ErrorResponse[];
+  rules?: EndpointRules;
   origin: Origin;
 }
 
