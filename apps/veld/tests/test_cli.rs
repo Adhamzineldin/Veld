@@ -170,3 +170,170 @@ fn check_is_clean_when_every_example_can_be_filled_in() {
         .success()
         .stderr(predicate::str::contains("E0953").not());
 }
+
+// --- --fuzz ------------------------------------------------------------------------------
+
+/// A test handler that answers every request with a dry-run pass. It stops when dropped.
+struct AlwaysPass {
+    addr: std::net::SocketAddr,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+fn read_target(stream: &mut std::net::TcpStream) -> Option<String> {
+    use std::io::Read;
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 4096];
+    let head_end = loop {
+        if let Some(p) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            break p + 4;
+        }
+        let n = stream.read(&mut chunk).ok()?;
+        if n == 0 {
+            return None;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+    };
+    let head = String::from_utf8_lossy(&buf[..head_end]).into_owned();
+    let len: usize = head
+        .lines()
+        .filter_map(|l| l.split_once(':'))
+        .find(|(k, _)| k.eq_ignore_ascii_case("content-length"))
+        .and_then(|(_, v)| v.trim().parse().ok())
+        .unwrap_or(0);
+    while buf.len() < head_end + len {
+        let n = stream.read(&mut chunk).ok()?;
+        if n == 0 {
+            break;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+    }
+    Some(head.lines().next()?.split(' ').nth(1)?.to_owned())
+}
+
+impl AlwaysPass {
+    fn start() -> AlwaysPass {
+        use std::io::Write;
+        use std::sync::atomic::Ordering;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop2 = stop.clone();
+        let thread = std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                if stop2.load(Ordering::SeqCst) {
+                    return;
+                }
+                let Ok(mut stream) = stream else { continue };
+                let reply = if read_target(&mut stream).as_deref() == Some("/__veld/test") {
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"
+                } else {
+                    "HTTP/1.1 204 No Content\r\nVeld-Test-Passed: 1\r\nConnection: close\r\n\r\n"
+                };
+                let _ = stream.write_all(reply.as_bytes());
+            }
+        });
+        AlwaysPass {
+            addr,
+            stop,
+            thread: Some(thread),
+        }
+    }
+
+    fn url(&self) -> String {
+        format!("http://{}", self.addr)
+    }
+}
+
+impl Drop for AlwaysPass {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = std::net::TcpStream::connect(self.addr);
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+/// Runs `veld test --live <fake> --dry-run <extra>` and returns stdout; the run must exit 1.
+fn fuzz_stdout(tmp: &Path, extra: &[&str]) -> String {
+    let fake = AlwaysPass::start();
+    let url = fake.url();
+    let mut args = vec!["test", "--live", url.as_str(), "--dry-run"];
+    args.extend_from_slice(extra);
+    let out = veld(tmp).args(&args).assert().code(1).get_output().clone();
+    String::from_utf8(out.stdout).unwrap()
+}
+
+/// What a run prints, without the line that names the port of the fake.
+fn without_port(text: &str) -> String {
+    text.lines()
+        .filter(|l| !l.contains("127.0.0.1"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn fuzz_needs_live_and_seed_needs_fuzz() {
+    let tmp = project_with(&bookings());
+    veld(tmp.path())
+        .args(["test", "--fuzz", "10"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--live"));
+    veld(tmp.path())
+        .args(["test", "--live", "http://127.0.0.1:1", "--seed", "3"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--fuzz"));
+}
+
+#[test]
+fn a_fuzz_run_against_a_server_that_always_passes_fails_with_a_seed_and_an_example() {
+    let tmp = project_with(&bookings());
+    let stdout = fuzz_stdout(tmp.path(), &["--fuzz", "60", "--seed", "4242"]);
+    assert!(stdout.contains("seed 4242"), "{stdout}");
+    assert!(stdout.contains("repeat with --seed 4242"), "{stdout}");
+    assert!(
+        stdout.contains("FAIL Bookings.createBooking (seed 4242"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("example \"fuzz seed 4242 Bookings.createBooking request"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("given room = "), "{stdout}");
+    assert!(stdout.contains("createBooking(body: {"), "{stdout}");
+    assert!(
+        stdout.contains(" sent ("),
+        "the tally per endpoint: {stdout}"
+    );
+}
+
+#[test]
+fn the_same_seed_repeats_a_fuzz_run_and_another_seed_does_not() {
+    let tmp = project_with(&bookings());
+    let first = without_port(&fuzz_stdout(tmp.path(), &["--fuzz", "60", "--seed", "99"]));
+    let again = without_port(&fuzz_stdout(tmp.path(), &["--fuzz", "60", "--seed", "99"]));
+    assert_eq!(first, again);
+    let other = without_port(&fuzz_stdout(tmp.path(), &["--fuzz", "60", "--seed", "100"]));
+    assert_ne!(first, other);
+}
+
+#[test]
+fn a_fuzz_run_without_a_seed_prints_the_one_it_chose() {
+    let tmp = project_with(&bookings());
+    let stdout = fuzz_stdout(tmp.path(), &["--fuzz", "5"]);
+    let line = stdout
+        .lines()
+        .find(|l| l.starts_with("fuzz: 5 requests"))
+        .unwrap();
+    let seed: u64 = line
+        .split("--seed ")
+        .nth(1)
+        .unwrap()
+        .trim_end_matches(')')
+        .parse()
+        .unwrap();
+    assert!(stdout.contains(&format!("seed {seed}")), "{stdout}");
+}

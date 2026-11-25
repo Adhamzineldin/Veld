@@ -350,6 +350,13 @@ pub struct TestArgs {
     /// With --live: an example without `returns` stops before the application's handler
     #[arg(long, requires = "live")]
     pub dry_run: bool,
+    /// With --live: after the examples, send N generated requests per endpoint (the boundaries
+    /// of its rules first) and compare each answer with the reference evaluator
+    #[arg(long, value_name = "N", requires = "live")]
+    pub fuzz: Option<usize>,
+    /// With --fuzz: the seed to repeat a run (a run without one picks and prints a seed)
+    #[arg(long, value_name = "SEED", requires = "fuzz")]
+    pub seed: Option<u64>,
 }
 
 #[derive(Debug, Subcommand)]

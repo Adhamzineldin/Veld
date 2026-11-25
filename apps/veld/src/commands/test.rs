@@ -10,6 +10,7 @@ use veld_ir::{Example, Ir};
 use veld_rules::{ExampleReport, Verdict};
 use veld_testing::{Live, LiveError};
 
+use super::test_fuzz;
 use crate::cli::TestArgs;
 use crate::error::{Exit, user};
 use crate::pipeline;
@@ -53,8 +54,10 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &TestArgs) -> Result<Exit> {
                 .is_none_or(|s| s.has_relative(&e.origin.file))
         })
         .collect();
-    if examples.is_empty() {
-        ui.info("no examples to run (write `example \"...\" { ... }` blocks in your contracts)");
+    let no_examples =
+        "no examples to run (write `example \"...\" { ... }` blocks in your contracts)";
+    if examples.is_empty() && args.fuzz.is_none() {
+        ui.info(no_examples);
         return Ok(Exit::Ok);
     }
     let live = match &args.live {
@@ -62,12 +65,24 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &TestArgs) -> Result<Exit> {
         None => None,
     };
     let mut tally = Tally::default();
-    for ex in examples {
+    for ex in &examples {
         let result = run_one(&done.ir, live.as_ref(), ex)?;
         print_result(ui, &ex.name, &result);
         tally.record(&result);
     }
-    Ok(summarize(ui, tally))
+    let examples_exit = if examples.is_empty() {
+        ui.info(no_examples);
+        Exit::Ok
+    } else {
+        summarize(ui, tally)
+    };
+    // Fuzzing runs after the examples; `--fuzz` requires `--live`, so `live` is there.
+    let (Some(count), Some(live)) = (args.fuzz, live.as_ref()) else {
+        return Ok(examples_exit);
+    };
+    let fuzz_exit = test_fuzz::run(ui, &done.ir, live, count, args.seed)?;
+    let ok = matches!((examples_exit, fuzz_exit), (Exit::Ok, Exit::Ok));
+    Ok(if ok { Exit::Ok } else { Exit::User })
 }
 
 fn run_one(ir: &Ir, live: Option<&Live>, ex: &Example) -> Result<Done> {

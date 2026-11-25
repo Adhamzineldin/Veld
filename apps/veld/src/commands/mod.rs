@@ -15,6 +15,7 @@ mod plugin;
 mod registry;
 mod setup;
 mod test;
+mod test_fuzz;
 mod watch;
 
 use anyhow::Result;
