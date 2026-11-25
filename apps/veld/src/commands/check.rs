@@ -61,7 +61,8 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &CheckArgs) -> Result<Exit> {
             run_lint(ui, &project, &ir, &cfg, scope.as_ref())
         }
     };
-    summarize(ui, &ir, counts, &issues, args.strict, started)
+    let example_errors = run_examples(ui, &project, &ir, scope.as_ref());
+    summarize(ui, &ir, counts, &issues, example_errors, args.strict, started)
 }
 
 fn deps_format(f: GraphFormat) -> DepsFormat {
@@ -108,11 +109,46 @@ pub fn render_issue(issue: &LintIssue, packages: &BTreeMap<String, String>) -> S
     )
 }
 
+/// `E0953`: an example whose left-out values cannot be filled in, or whose filled-in value
+/// breaks an invariant (`spec/rules.md` section 12.2). Prints each one and returns how many.
+fn run_examples(
+    ui: &Ui,
+    project: &veld_project::config::Project,
+    ir: &veld_ir::Ir,
+    scope: Option<&Scope>,
+) -> usize {
+    let packages = pipeline::file_packages(project);
+    let mut count = 0;
+    for ex in &ir.examples {
+        if scope.is_some_and(|s| !s.has_relative(&ex.origin.file)) {
+            continue;
+        }
+        let Err(err) = veld_rules::fill_example(ir, ex) else {
+            continue;
+        };
+        if err.code() != "E0953" {
+            continue;
+        }
+        count += 1;
+        let file = &ex.origin.file;
+        let shown = match packages.get(file) {
+            Some(pkg) => format!("{pkg}/{file}"),
+            None => file.clone(),
+        };
+        ui.diagnostic(&format!(
+            "error[E0953]: {err}\n --> {shown}:{}:{}\n",
+            ex.origin.line, ex.origin.col
+        ));
+    }
+    count
+}
+
 fn summarize(
     ui: &Ui,
     ir: &veld_ir::Ir,
     counts: Counts,
     issues: &[LintIssue],
+    example_errors: usize,
     strict: bool,
     started: Instant,
 ) -> Result<Exit> {
@@ -121,9 +157,12 @@ fn summarize(
         .filter(|i| i.level == LintLevel::Error)
         .count();
     let lint_warns = issues.len() - lint_errors;
-    let failed = lint_errors > 0 || (strict && counts.warnings > 0);
+    let failed = lint_errors > 0 || example_errors > 0 || (strict && counts.warnings > 0);
     if failed {
         let mut parts = Vec::new();
+        if example_errors > 0 {
+            parts.push(pipeline::plural(example_errors, "example error"));
+        }
         if lint_errors > 0 {
             parts.push(pipeline::plural(lint_errors, "lint error"));
         }

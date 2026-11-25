@@ -55,6 +55,8 @@ pub enum Command {
     Fmt(FmtArgs),
     /// Show breaking and non-breaking contract changes
     Diff(DiffArgs),
+    /// Run the `example` blocks of the contracts, offline or against a live test handler
+    Test(TestArgs),
     /// Export OpenAPI or the compiled IR
     #[command(subcommand)]
     Export(ExportCommand),
@@ -332,6 +334,22 @@ pub struct DiffArgs {
     /// Exit 1 if any change is breaking
     #[arg(long)]
     pub strict: bool,
+}
+
+/// `veld test`.
+#[derive(Debug, Args, Default)]
+pub struct TestArgs {
+    /// Run only the examples written in these .veld files or directories
+    pub paths: Vec<PathBuf>,
+    /// Run only the examples whose name or `Service.endpoint` contains this text
+    #[arg(long, value_name = "TEXT")]
+    pub filter: Option<String>,
+    /// Send the examples to a running test handler at this base URL instead of running them offline
+    #[arg(long, value_name = "BASE_URL")]
+    pub live: Option<String>,
+    /// With --live: an example without `returns` stops before the application's handler
+    #[arg(long, requires = "live")]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Subcommand)]

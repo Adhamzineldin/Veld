@@ -14,6 +14,7 @@ mod lsp;
 mod plugin;
 mod registry;
 mod setup;
+mod test;
 mod watch;
 
 use anyhow::Result;
@@ -47,6 +48,7 @@ pub fn run(cli: &Cli, ui: &Ui) -> Result<Exit> {
         }
         Command::Fmt(args) => fmt::run(ui, config, args),
         Command::Diff(args) => diff::run(ui, config, args),
+        Command::Test(args) => test::run(ui, config, args),
         Command::Export(cmd) => export::run(ui, config, cmd),
         Command::Plugin(cmd) => plugin::run(ui, cmd),
         Command::Add(_)

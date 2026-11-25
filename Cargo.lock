@@ -1540,7 +1540,9 @@ dependencies = [
  "veld-plugin-host",
  "veld-project",
  "veld-registry-client",
+ "veld-rules",
  "veld-test-support",
+ "veld-testing",
  "veld-tools",
 ]
 

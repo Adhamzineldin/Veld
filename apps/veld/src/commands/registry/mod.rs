@@ -39,6 +39,7 @@ pub fn run(ui: &Ui, config: Option<&std::path::Path>, command: &Command) -> Opti
         | Command::Setup(_)
         | Command::Fmt(_)
         | Command::Diff(_)
+        | Command::Test(_)
         | Command::Export(_)
         | Command::Plugin(_)
         | Command::Debug(_)
