@@ -205,8 +205,8 @@ fn leaf(start: u32, kw: u32, end: u32) -> Node {
 
 fn decl_kids(d: &ast::Decl) -> (bool, Vec<Node>) {
     match &d.kind {
-        DeclKind::Model(m) => (true, m.fields.iter().map(field_node).collect()),
-        DeclKind::Error(e) => (true, e.fields.iter().map(field_node).collect()),
+        DeclKind::Model(m) => (true, member_nodes(&m.fields, &m.rules)),
+        DeclKind::Error(e) => (true, member_nodes(&e.fields, &e.rules)),
         DeclKind::Enum(e) => (
             true,
             e.variants
@@ -244,6 +244,23 @@ fn decl_kids(d: &ast::Decl) -> (bool, Vec<Node>) {
     }
 }
 
+/// Fields and rules of a body, in source order (the printer regroups them, the comments stay
+/// with their own item).
+fn member_nodes(fields: &[ast::Field], rules: &[ast::Rule]) -> Vec<Node> {
+    let mut nodes: Vec<Node> = fields.iter().map(field_node).collect();
+    nodes.extend(rules.iter().map(rule_node));
+    nodes.sort_by_key(|n| n.start);
+    nodes
+}
+
+fn rule_node(r: &ast::Rule) -> Node {
+    leaf(
+        first_start(r.span.start, &r.docs, &r.annotations),
+        r.span.start,
+        r.span.end,
+    )
+}
+
 fn field_node(f: &ast::Field) -> Node {
     leaf(
         first_start(f.span.start, &f.docs, &f.annotations),
@@ -277,6 +294,10 @@ pub(super) fn decl_key(d: &ast::Decl) -> u32 {
 
 pub(super) fn field_key(f: &ast::Field) -> u32 {
     field_node(f).start
+}
+
+pub(super) fn rule_key(r: &ast::Rule) -> u32 {
+    rule_node(r).start
 }
 
 pub(super) fn variant_key(v: &ast::Variant) -> u32 {

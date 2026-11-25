@@ -142,3 +142,100 @@ fn formatting_refuses_syntax_errors() {
     let r = format("import \"x.veld\"");
     assert!(r.is_err());
 }
+
+fn rules_contracts() -> Vec<std::path::PathBuf> {
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .map(|rd| rd.filter_map(Result::ok).map(|e| e.path()).collect())
+            .unwrap_or_default();
+        entries.sort();
+        for p in entries {
+            if p.is_dir() {
+                walk(&p, out);
+            } else if p.extension().is_some_and(|e| e == "veld") {
+                out.push(p);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/rules"),
+        &mut out,
+    );
+    out
+}
+
+/// The shared rule vectors (`tests/rules/`) are formatted like everything else: idempotent,
+/// comments kept and the IR (rule ids included) unchanged.
+#[test]
+fn formatting_the_rules_contracts_is_idempotent_and_keeps_the_ir() {
+    let files = rules_contracts();
+    assert!(files.len() >= 8, "found {} rules contracts", files.len());
+    for path in files {
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
+        let once = format(&text).unwrap_or_else(|d| panic!("{}: {d:?}", path.display()));
+        assert_eq!(
+            format(&once).as_deref().ok(),
+            Some(once.as_str()),
+            "{}: not idempotent",
+            path.display()
+        );
+        assert_eq!(
+            comment_multiset(&text),
+            comment_multiset(&once),
+            "{}: comments changed",
+            path.display()
+        );
+        let input = |t: &str| CompileInput {
+            packages: vec![veld_compiler::PackageInput {
+                name: "t".into(),
+                kind: veld_ir::PackageKind::Service,
+                files: vec![veld_compiler::SourceFile {
+                    path: "t.veld".into(),
+                    text: t.to_string(),
+                }],
+                base_url: None,
+            }],
+            consumes: Default::default(),
+        };
+        let before = ir_json(&input(&text));
+        assert!(before.is_ok(), "{}: {before:?}", path.display());
+        assert_eq!(
+            before,
+            ir_json(&input(&once)),
+            "{}: IR changed",
+            path.display()
+        );
+    }
+}
+
+/// Spellings that parse differently when printed carelessly: the minus rule, parentheses,
+/// `not` against `!`, decimal text.
+#[test]
+fn tricky_expression_spellings_keep_their_ir() {
+    let src = "const K: int = 3\nmodel M {\n  a: int\n  b: int\n  d: decimal\n  x: bool\n  y: bool\n  z: bool\n  e: int[]\n\
+        rule w1: x implies (-1 < a)\n rule w2: x implies (-0.5 < d)\n rule w3: x implies (- 1 < a)\n rule w4: x implies (-1 < a && x)\n\
+        rule neg: a > - 1\n rule lit: a > -1\n rule sub: a -1 > b - -1\n rule dub: a - - 1 > 0\n\
+        rule dec: d == 1.50 && d != 0.250\n rule imp: (x implies y) implies z\n rule imp2: x implies (y implies z)\n\
+        rule cmp: (a < b) == x\n rule not1: not x == y\n rule not2: !(x == y)\n rule mix: x || y && z || (x || y) && z\n\
+        rule arith: (a + b) * 2 - (a - b) == 4 % K\n rule lst: a in [-1, - 2, K]\n rule neg2: - -a < - (a + b)\n}\n";
+    let formatted = format(src).unwrap();
+    assert_eq!(format(&formatted).unwrap(), formatted);
+    let input = |t: &str| CompileInput {
+        packages: vec![veld_compiler::PackageInput {
+            name: "t".into(),
+            kind: veld_ir::PackageKind::Service,
+            files: vec![veld_compiler::SourceFile {
+                path: "t.veld".into(),
+                text: t.to_string(),
+            }],
+            base_url: None,
+        }],
+        consumes: Default::default(),
+    };
+    let before = ir_json(&input(src));
+    assert!(before.is_ok(), "{before:?}");
+    assert_eq!(before, ir_json(&input(&formatted)));
+}

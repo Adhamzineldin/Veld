@@ -2,6 +2,7 @@
 //! the comment side-table, so every comment survives and the output is a fixed
 //! point of the formatter.
 
+mod expr;
 mod layout;
 mod print;
 pub(crate) mod text;
@@ -28,3 +29,6 @@ pub fn format(source: &str) -> Result<String, Vec<Diagnostic>> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod rule_tests;

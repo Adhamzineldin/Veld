@@ -3,11 +3,12 @@
 use veld_compiler::Comment;
 use veld_compiler::syntax::ast::{
     Annotation, Decl, DeclKind, Doc, Endpoint, EnumDecl, Field, File, HttpMethod, Param, RespItem,
-    ServiceDecl, UnionDecl, Use, Variant,
+    Rule, ServiceDecl, UnionDecl, Use, Variant,
 };
 use veld_compiler::syntax::lexer::CommentKind;
 
 use super::WIDTH;
+use super::expr::rule_lines;
 use super::layout::{self, Attached, Layout, Lead, ROOT};
 use super::text::{annotation, literal, quote, type_expr};
 
@@ -210,16 +211,28 @@ impl Printer<'_> {
                     .as_ref()
                     .map_or_else(String::new, |e| format!(" extends {}", type_expr(e)));
                 let head = format!("model {}{ext}", m.name.name);
-                self.block(key, &head, 0, m.fields.is_empty(), |p| {
-                    p.fields(&m.fields, 2);
-                });
+                self.block(
+                    key,
+                    &head,
+                    0,
+                    m.fields.is_empty() && m.rules.is_empty(),
+                    |p| {
+                        p.members(&m.fields, &m.rules, 2);
+                    },
+                );
             }
             DeclKind::Error(e) => {
                 let status = e.status.map_or_else(String::new, |(s, _)| format!(" {s}"));
                 let head = format!("error {}{status}", e.name.name);
-                self.block(key, &head, 0, e.fields.is_empty(), |p| {
-                    p.fields(&e.fields, 2);
-                });
+                self.block(
+                    key,
+                    &head,
+                    0,
+                    e.fields.is_empty() && e.rules.is_empty(),
+                    |p| {
+                        p.members(&e.fields, &e.rules, 2);
+                    },
+                );
             }
             DeclKind::Enum(e) => self.enum_decl(key, e),
             DeclKind::Union(u) => self.union_decl(key, u),
@@ -274,6 +287,22 @@ impl Printer<'_> {
             self.docs(&f.docs, ind);
             self.out.push_str(&pad(ind));
             self.out.push_str(&field_line(f));
+            self.end_line(key, ind);
+        }
+    }
+
+    /// Fields first, one blank line, then the rules, each in source order (`spec/rules.md` 4).
+    fn members(&mut self, fields: &[Field], rules: &[Rule], ind: usize) {
+        self.fields(fields, ind);
+        if !fields.is_empty() && !rules.is_empty() {
+            self.out.push('\n');
+        }
+        for r in rules {
+            let key = layout::rule_key(r);
+            self.leading(key, ind);
+            self.docs(&r.docs, ind);
+            self.annotations_own_lines(&r.annotations, ind);
+            self.out.push_str(&rule_lines(r, ind).join("\n"));
             self.end_line(key, ind);
         }
     }
