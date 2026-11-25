@@ -111,7 +111,59 @@ pub struct RequestContext {
     /// What step 6 saved for step 9.
     prepared: Prepared,
     // #endif
+    // #if rollout
+    /// The audited rules this request reported (`@rollout(audit)`).
+    audit: AuditLog,
+    // #endif
 }
+// #if rollout
+
+/// The audited violations of one request: what step 6 found and has not reported yet, and what
+/// has been reported (the test handler answers with it in `Veld-Test-Audited`).
+#[derive(Debug, Clone, Default)]
+pub struct AuditLog {
+    // #endif
+    // #if rollout_endpoint
+    pending: Arc<std::sync::Mutex<Vec<super::rules::Violation>>>,
+    // #endif
+    // #if rollout
+    sent: Arc<std::sync::Mutex<Vec<super::rules::Violation>>>,
+}
+
+impl AuditLog {
+    // #endif
+    // #if rollout_endpoint
+    fn take_pending(&self) -> Vec<super::rules::Violation> {
+        self.pending.lock().map(|mut p| std::mem::take(&mut *p)).unwrap_or_default()
+    }
+
+    // #endif
+    // #if rollout
+    fn record(&self, found: &[super::rules::Violation]) {
+        if let Ok(mut sent) = self.sent.lock() {
+            sent.extend(found.iter().cloned());
+        }
+    }
+
+    /// Everything reported so far, in order.
+    fn sent(&self) -> Vec<super::rules::Violation> {
+        self.sent.lock().map(|s| s.clone()).unwrap_or_default()
+    }
+}
+// #endif
+// #if rollout_endpoint
+
+impl RequestContext {
+    /// An audited `require` that does not hold (`@rollout(audit)`): the server reports it to the
+    /// hook with the outcome `audited` and the request goes on. For generated code.
+    #[doc(hidden)]
+    pub fn audited(&self, violation: super::rules::Violation) {
+        if let Ok(mut pending) = self.audit.pending.lock() {
+            pending.push(violation);
+        }
+    }
+}
+// #endif
 // #if endpoint_rules
 
 /// What step 6 of an endpoint saved for step 9: the typed parameters, the facts and the clock
@@ -247,6 +299,21 @@ pub trait Endpoints: Send + Sync + 'static {
     /// has one.
     fn trusted_principal(&self, _ctx: &RequestContext) -> Option<Principal> {
         None
+    }
+    // #endif
+    // #if rollout
+
+    /// Whether the answers carry the audited reports of the request in `Veld-Test-Audited`
+    /// (`spec/rules.md` section 12.4). Only a test handler says so.
+    fn test_audited(&self) -> bool {
+        false
+    }
+    // #endif
+    // #if rollout_endpoint
+
+    /// Step 9 for the audited `ensure` statements: the violated ones, which never reject.
+    fn ensure_audited(&self, _prepared: &Prepared, _result: &Value) -> Vec<super::rules::Violation> {
+        Vec::new()
     }
     // #endif
 
@@ -435,7 +502,53 @@ trait RuleSink: Send + Sync + fmt::Debug {
     /// The error that rejects an input whose rules are violated: a `ValidationError` with the
     /// violations. The hook gets them.
     fn reject_input(&self, ep: &EndpointSpec, violations: Vec<super::rules::Violation>, micros: u64) -> Problem;
+    // #endif
+    // #if rollout
+
+    /// The audited rules (`@rollout(audit)`) of an output value, under the output mode: reported to
+    /// the hook, never rejecting. `root` is the name the value has in a path (`result`, `error`).
+    fn audit_output(&self, ep: &EndpointSpec, schema: &Schema, wire: &Value, root: &str, log: Option<&AuditLog>);
+
+    // @if ws_server
+    /// The audited rules of a message a WebSocket client sent: reported, never rejecting.
+    fn audit_message(&self, ep: &EndpointSpec, schema: &Schema, wire: &Value);
+    // @end
+    // #endif
+    // #if rules
 }
+// #endif
+// #if rollout
+
+impl<E: Endpoints> Inner<E> {
+    /// Reports audited violations to the hook with the outcome `audited`; `root` rewrites the `$`
+    /// of an output path.
+    fn report_audited(
+        &self,
+        ep: &EndpointSpec,
+        found: Vec<super::rules::Violation>,
+        position: super::rules::Position,
+        micros: u64,
+        (root, log): (Option<&str>, Option<&AuditLog>),
+    ) {
+        let found: Vec<super::rules::Violation> = found
+            .into_iter()
+            .map(|mut v| {
+                if let Some(root) = root {
+                    v.path = format!("{root}{}", v.path.strip_prefix('$').unwrap_or(&v.path));
+                }
+                v
+            })
+            .collect();
+        if let Some(log) = log {
+            log.record(&found);
+        }
+        for v in &found {
+            self.report(ep, v, position, super::rules::Outcome::Audited, micros);
+        }
+    }
+}
+// #endif
+// #if rules
 
 impl<E: Endpoints> Inner<E> {
     fn report(&self, ep: &EndpointSpec, v: &super::rules::Violation, position: super::rules::Position, outcome: super::rules::Outcome, micros: u64) {
@@ -492,6 +605,30 @@ impl<E: Endpoints> RuleSink for Inner<E> {
             rulings: super::rules::Rulings::boxed(violations, false),
         }
     }
+    // #endif
+    // #if rollout
+
+    fn audit_output(&self, ep: &EndpointSpec, schema: &Schema, wire: &Value, root: &str, log: Option<&AuditLog>) {
+        if self.endpoints.rules_output() == super::rules::RuleOutput::Off {
+            return;
+        }
+        if !schema.validate(wire, "$", false).is_empty() {
+            return;
+        }
+        let watch = super::rules::Stopwatch::start();
+        let found = super::rules::audit_wire(schema, wire, "$", super::rules::Mode::Full);
+        self.report_audited(ep, found, super::rules::Position::Output, watch.micros(), (Some(root), log));
+    }
+
+    // @if ws_server
+    fn audit_message(&self, ep: &EndpointSpec, schema: &Schema, wire: &Value) {
+        let watch = super::rules::Stopwatch::start();
+        let found = super::rules::audit_wire(schema, wire, "message", super::rules::Mode::Request);
+        self.report_audited(ep, found, super::rules::Position::Input, watch.micros(), (None, None));
+    }
+    // @end
+    // #endif
+    // #if rules
 }
 // #endif
 
@@ -512,6 +649,22 @@ impl<E: Endpoints> fmt::Debug for Handler<E> {
     }
 }
 
+// #if rollout
+/// `Veld-Test-Audited` (`spec/rules.md` section 12.4): the audited reports of the request, the first
+/// 100, as a compact JSON array in unpadded base64url. Absent when there is none.
+fn stamp_audited(mut resp: Response, log: &AuditLog) -> Response {
+    let sent = log.sent();
+    if sent.is_empty() {
+        return resp;
+    }
+    let items: Vec<String> = sent.iter().take(100).map(super::rules::Violation::to_text).collect();
+    let text = format!("[{}]", items.join(","));
+    let encoded = super::util::base64_encode(text.as_bytes()).replace('+', "-").replace('/', "_");
+    resp.headers.push(("veld-test-audited".into(), encoded.trim_end_matches('=').to_string()));
+    resp
+}
+
+// #endif
 fn parse_query(qs: &str) -> BTreeMap<String, Vec<String>> {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for pair in qs.split('&').filter(|p| !p.is_empty()) {
@@ -570,6 +723,9 @@ struct Bound {
     violations: Vec<super::rules::Violation>,
     micros: u64,
     // #endif
+    // #if rollout
+    audited: Vec<super::rules::Violation>,
+    // #endif
 }
 // #if rules
 
@@ -580,6 +736,11 @@ impl Bound {
         let found = super::rules::check_wire(p.schema, wire, &p.location(), super::rules::Mode::Request);
         self.micros += watch.micros();
         self.violations.extend(found);
+    // #endif
+    // #if rollout
+        self.audited.extend(super::rules::audit_wire(p.schema, wire, &p.location(), super::rules::Mode::Request));
+    // #endif
+    // #if rules
     }
 }
 // #endif
@@ -848,13 +1009,33 @@ impl<E: Endpoints> Handler<E> {
             // #if endpoint_rules
             prepared: Prepared::none(),
             // #endif
+            // #if rollout
+            audit: AuditLog::default(),
+            // #endif
         }
     }
 
+    // #if !rollout
     async fn run(&self, index: usize, caps: Vec<(String, String)>, req: Request) -> Response {
+    // #endif
+    // #if rollout
+    async fn run(&self, index: usize, caps: Vec<(String, String)>, req: Request) -> Response {
+        let audit = AuditLog::default();
+        let resp = self.run_audited(index, caps, req, audit.clone()).await;
+        if self.inner.endpoints.test_audited() {
+            return stamp_audited(resp, &audit);
+        }
+        resp
+    }
+
+    async fn run_audited(&self, index: usize, caps: Vec<(String, String)>, req: Request, audit: AuditLog) -> Response {
+    // #endif
         let e = &self.inner.endpoints;
         let ep = &e.endpoints()[index];
         let mut ctx = self.context(ep, &req);
+        // #if rollout
+        ctx.audit = audit;
+        // #endif
         let args = match self.guard(ep, &caps, &req, &mut ctx, false).await {
             Ok(args) => args,
             Err(resp) => return resp,
@@ -867,6 +1048,12 @@ impl<E: Endpoints> Handler<E> {
             Ok(prepared) => ctx.prepared = prepared,
             Err(halt) => return self.halted(halt, ep, &ctx, watch.micros()),
         }
+        // #endif
+        // #if rollout_endpoint
+        let pending = ctx.audit.take_pending();
+        self.inner.report_audited(ep, pending, super::rules::Position::Input, watch.micros(), (None, Some(&ctx.audit)));
+        // #endif
+        // #if endpoint_rules
         // #endif
         // @if sse
         if ep.kind == Kind::Sse {
@@ -914,6 +1101,15 @@ impl<E: Endpoints> Handler<E> {
         }
         // #endif
         let bound = self.bind(ep, caps, req, ctx, ws);
+        // #if rollout
+        self.inner.report_audited(
+            ep,
+            bound.audited.clone(),
+            super::rules::Position::Input,
+            bound.micros,
+            (None, Some(&ctx.audit)),
+        );
+        // #endif
         // #if rules
         if bound.issues.is_empty() && !bound.violations.is_empty() {
             return Err(self.rejection(ep, bound.violations, bound.micros));
@@ -949,6 +1145,11 @@ impl<E: Endpoints> Handler<E> {
             check: self.inner.endpoints.validate_requests(),
             violations: Vec::new(),
             micros: 0,
+        // #endif
+        // #if rollout
+            audited: Vec::new(),
+        // #endif
+        // #if rules
         };
         // #endif
         let query = parse_query(&req.query);
@@ -1020,6 +1221,11 @@ impl<E: Endpoints> Handler<E> {
 
     /// Step 8: the invariants of the result, by output mode. `Some` replaces the response.
     fn output_rules(&self, ep: &EndpointSpec, schema: &'static Schema, wire: &Value, ctx: &RequestContext) -> Option<Response> {
+        // #endif
+        // #if rollout
+        self.inner.audit_output(ep, schema, wire, "result", Some(&ctx.audit));
+        // #endif
+        // #if rules
         match self.inner.check_output(ep, schema, wire, "result") {
             Ok(()) => None,
             Err(why) => Some(self.failure(&Error::other(why), ep, ctx)),
@@ -1038,6 +1244,12 @@ impl<E: Endpoints> Handler<E> {
         }
         let watch = super::rules::Stopwatch::start();
         let violations = self.inner.endpoints.ensure(&ctx.prepared, value);
+        // #endif
+        // #if rollout_endpoint
+        let audited = self.inner.endpoints.ensure_audited(&ctx.prepared, value);
+        self.inner.report_audited(ep, audited, Position::Output, watch.micros(), (None, Some(&ctx.audit)));
+        // #endif
+        // #if endpoint_rules
         if violations.is_empty() {
             return None;
         }
@@ -1053,6 +1265,12 @@ impl<E: Endpoints> Handler<E> {
 
     /// Step 6 stopped the request.
     fn halted(&self, halt: Halt, ep: &EndpointSpec, ctx: &RequestContext, micros: u64) -> Response {
+        // #endif
+        // #if rollout_endpoint
+        let pending = ctx.audit.take_pending();
+        self.inner.report_audited(ep, pending, super::rules::Position::Input, micros, (None, Some(&ctx.audit)));
+        // #endif
+        // #if endpoint_rules
         use super::rules::{Outcome, Position};
         match halt {
             Halt::Early(resp) => resp,
@@ -1115,6 +1333,11 @@ impl<E: Endpoints> Handler<E> {
                 if let Some(d) = ep.errors.iter().find(|d| d.sig == p.sig) {
                     // #if rules
                     // A declared error is an output: its own rules are checked like a result's.
+                    // #endif
+                    // #if rollout
+                    self.inner.audit_output(ep, d.schema, &p.data, "error", Some(&ctx.audit));
+                    // #endif
+                    // #if rules
                     if let Err(why) = self.inner.check_output(ep, d.schema, &p.data, "declared error") {
                         e.on_error(&Error::other(why), ctx);
                         return problem(std.internal, "Internal", 500, serde_json::json!({}));
@@ -1140,6 +1363,11 @@ impl<E: Endpoints> Handler<E> {
         let schema = ep.success.ok_or_else(|| Error::other(format!("{}: a stream needs an item type", ep.name)))?;
         // #if rules
         // A stream item is an output: in `strict` a violating item is not sent.
+        // #endif
+        // #if rollout
+        self.inner.audit_output(ep, schema, &schema.to_wire(&ev.data, false, false), "result", None);
+        // #endif
+        // #if rules
         self.inner.check_output(ep, schema, &schema.to_wire(&ev.data, false, false), "stream item").map_err(Error::other)?;
         // #endif
         if self.inner.endpoints.validate_responses() {
@@ -1351,6 +1579,11 @@ impl<In: DeserializeOwned, Out: Serialize> WsSession<In, Out> {
             }
             // #if rules
             // The rules of a message are checked like those of a request body.
+            // #endif
+            // #if rollout
+            self.io.rules.audit_message(self.ep, schema, &wire);
+            // #endif
+            // #if rules
             let watch = super::rules::Stopwatch::start();
             let violations = super::rules::check_wire(schema, &wire, "message", super::rules::Mode::Request);
             if !violations.is_empty() {
@@ -1378,6 +1611,11 @@ impl<In: DeserializeOwned, Out: Serialize> WsSession<In, Out> {
                 }
                 // #if rules
                 // A message the server sends is an output: in `strict` a violating one is not sent.
+                // #endif
+                // #if rollout
+                self.io.rules.audit_output(self.ep, schema, &schema.to_wire(&typed, false, false), "result", None);
+                // #endif
+                // #if rules
                 self.io.rules.check_output(self.ep, schema, &schema.to_wire(&typed, false, false), "message").map_err(Error::other)?;
                 // #endif
                 String::from_utf8_lossy(&schema.canonical_typed(&typed)).into_owned()

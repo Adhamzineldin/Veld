@@ -905,12 +905,23 @@ fn rule_statement(w: &mut CodeWriter, m: &Model, rule: &Rule, id_const: &str, bo
     if rule.reads_readonly {
         w.open("if mode != vr::Mode::Request");
     }
-    w.line(format!(
-        "vr::record(out, path, Self::{id_const}, {}, &[{}], {}, (|| -> vr::Res<bool> {{ Ok({body}) }})());",
-        lit(&rule.name),
-        fields.join(", "),
-        lit(&message)
-    ));
+    if rule.is_audited() {
+        // An audited rule reports to the sink of a server and is skipped when there is none, so a
+        // client never evaluates it (`spec/rules.md` section 17.1).
+        w.line(format!(
+            "vr::audit(path, Self::{id_const}, {}, &[{}], {}, || -> vr::Res<bool> {{ Ok({body}) }});",
+            lit(&rule.name),
+            fields.join(", "),
+            lit(&message)
+        ));
+    } else {
+        w.line(format!(
+            "vr::record(out, path, Self::{id_const}, {}, &[{}], {}, (|| -> vr::Res<bool> {{ Ok({body}) }})());",
+            lit(&rule.name),
+            fields.join(", "),
+            lit(&message)
+        ));
+    }
     if rule.reads_readonly {
         w.close();
     }

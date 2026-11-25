@@ -28,6 +28,9 @@ pub struct Tree<'a> {
     /// True when the crate has declarations with invariants: every schema then carries its
     /// check function (or `None`), and the declarations with rules get their check functions.
     pub rules: bool,
+    /// True when the crate has an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1): the test
+    /// handler then answers with `Veld-Test-Audited`.
+    pub rollout: bool,
 }
 
 impl<'a> Tree<'a> {
@@ -59,6 +62,7 @@ impl<'a> Tree<'a> {
             owns_prelude,
             validate: true,
             rules: false,
+            rollout: false,
         }
     }
 
@@ -87,6 +91,13 @@ impl<'a> Tree<'a> {
             refs(d, &mut stack);
         }
         false
+    }
+
+    /// Sets whether the crate has an audited rule.
+    #[must_use]
+    pub fn with_rollout(mut self, rollout: bool) -> Self {
+        self.rollout = rollout;
+        self
     }
 
     /// Sets whether the crate carries the invariants runtime.

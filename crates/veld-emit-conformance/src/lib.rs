@@ -30,7 +30,9 @@ pub use events::{
     check_events_are_ignored_by_clients, check_events_are_refused, compiled_events_contract,
 };
 pub use fixtures::{FIXTURES, Fixture};
-pub use rollout::{check_rollout_is_generated, check_rollout_is_refused, compiled_rollout_contracts};
+pub use rollout::{
+    check_rollout_is_generated, check_rollout_is_refused, compiled_rollout_contracts,
+};
 
 /// Compiles one contract as the single service package `app`.
 ///

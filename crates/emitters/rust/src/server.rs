@@ -369,6 +369,26 @@ fn block_methods(w: &mut CodeWriter, svc: &Service) {
     }
     w.line("_ => Vec::new(),");
     w.close().close().blank();
+    audited_ensure(w, svc);
+}
+
+/// `ensure_audited` of a dispatch whose service has an audited `ensure` (`@rollout(audit)`).
+fn audited_ensure(w: &mut CodeWriter, svc: &Service) {
+    if !svc.endpoints.iter().any(block::has_audited_ensure) {
+        return;
+    }
+    w.open("fn ensure_audited(&self, prepared: &veld::server::Prepared, result: &serde_json::Value) -> Vec<veld::rules::Violation>");
+    w.open("match prepared.index()");
+    for (i, ep) in svc.endpoints.iter().enumerate() {
+        if block::has_audited_ensure(ep) {
+            w.line(format!(
+                "{i} => {}(prepared, result),",
+                block::step9_audited_name(ep)
+            ));
+        }
+    }
+    w.line("_ => Vec::new(),");
+    w.close().close().blank();
 }
 
 /// The principal type of a service whose hooks are typed: it has a principal and some endpoint

@@ -22,8 +22,17 @@ use veld_emit_rust::tree::Tree;
 use veld_ir::{DeclKind, Ir, PackageKind};
 use veld_rules::vectors::{Case, Produced, compare_produced, load_cases};
 
-const CONTRACTS: [&str; 8] = [
-    "decimal", "lists", "logic", "nested", "numbers", "optional", "strings", "time",
+const CONTRACTS: [&str; 10] = [
+    "decimal",
+    "lists",
+    "logic",
+    "nested",
+    "numbers",
+    "optional",
+    "rollout",
+    "rollout_off",
+    "strings",
+    "time",
 ];
 
 fn core_dir() -> PathBuf {
@@ -242,7 +251,7 @@ fn run_vectors(ws: &Path, name: &str) -> usize {
     let cases: Vec<Case> = load_cases(&text)
         .unwrap()
         .into_iter()
-        .filter(|c| !c.partial)
+        .filter(|c| !c.partial && !c.output_is_off())
         .collect();
     let input: Vec<serde_json::Value> = cases
         .iter()

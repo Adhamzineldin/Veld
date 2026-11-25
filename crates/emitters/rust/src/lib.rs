@@ -88,8 +88,8 @@ fn client_frameworks() -> Vec<FrameworkInfo> {
 /// (`spec/events.md` section 14).
 fn events_capabilities(role: Role) -> Capabilities {
     match role {
-        Role::Server => Capabilities::all_except(&[Feature::Events]),
-        Role::Client => Capabilities::all_except(&[]),
+        Role::Server => Capabilities::all_except(&[Feature::Events]).with(Feature::RulesRollout),
+        Role::Client => Capabilities::all_except(&[]).with(Feature::RulesRollout),
     }
 }
 
@@ -271,12 +271,14 @@ impl Generator for Rust {
                 .services
                 .iter()
                 .any(|s| guards::svc_has_guards(req.ir.service(*s)));
-        let rules = crate_has_rules(req) || endpoint_rules || policies;
+        let rollout = used_features.contains(&Feature::RulesRollout);
+        let rules = crate_has_rules(req) || endpoint_rules || policies || rollout;
         let f = Features {
             rules,
             endpoint_rules,
             guards,
             policies,
+            rollout,
             server,
             client: !server || !req.consumes.is_empty(),
             sse: streaming,
@@ -297,7 +299,8 @@ impl Generator for Rust {
         let validate = opts.validate != Some(false);
         let main = Tree::new(req.ir, "crate", "src", req.services.clone(), true)
             .with_validate(validate)
-            .with_rules(rules);
+            .with_rules(rules)
+            .with_rollout(rollout);
         models::emit(&mut files, &main)?;
         policies::emit(&mut files, &main)?;
         if !files.contains("src/prelude.rs") {

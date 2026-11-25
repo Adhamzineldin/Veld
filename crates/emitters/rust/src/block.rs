@@ -68,6 +68,18 @@ pub fn step9_name(ep: &Endpoint) -> String {
     format!("step9_{}", bare(&snake(&ep.name)))
 }
 
+/// The function of step 9 for the audited `ensure` statements of an endpoint (`@rollout(audit)`).
+#[must_use]
+pub fn step9_audited_name(ep: &Endpoint) -> String {
+    format!("{}_audited", step9_name(ep))
+}
+
+/// Whether the endpoint has an audited `ensure`.
+#[must_use]
+pub fn has_audited_ensure(ep: &Endpoint) -> bool {
+    ep.rules.ensures.iter().any(|e| e.rollout.is_some())
+}
+
 /// Whether the endpoint's handler receives facts.
 #[must_use]
 pub fn has_facts(ep: &Endpoint) -> bool {
@@ -603,6 +615,11 @@ fn require(
         )
     ));
     match &r.else_error {
+        // An audited `require` never answers, with `else E` or without, and its payload is never
+        // built: the violation goes to the hook and the request goes on (`spec/rules.md` 17.1).
+        _ if r.rollout.is_some() => {
+            w.line("ctx.audited(violation);");
+        }
         None => {
             w.line(format!(
                 "return Err(Halt::Error(vr::request_rejection(STD.validation, ENDPOINTS[{index}].sig, violation)));"
@@ -722,16 +739,36 @@ fn step9(
     svc: &Service,
     ep: &Endpoint,
 ) -> Result<(), String> {
+    step9_fn(w, ctx, svc, ep, false)?;
+    if has_audited_ensure(ep) {
+        step9_fn(w, ctx, svc, ep, true)?;
+    }
+    Ok(())
+}
+
+/// One function of step 9: the enforced `ensure` statements and the target state, or, with
+/// `audited`, the `ensure` statements that are audited (`@rollout(audit)`) and never reject.
+fn step9_fn(
+    w: &mut CodeWriter,
+    ctx: &Ctx<'_, '_>,
+    svc: &Service,
+    ep: &Endpoint,
+    audited: bool,
+) -> Result<(), String> {
     let result = has_result(ep);
     let sc = scope(svc, ep, result);
+    let (what, name) = if audited {
+        ("every audited `ensure`", step9_audited_name(ep))
+    } else {
+        ("every `ensure`", step9_name(ep))
+    };
     w.line(format!(
-        "/// Step 9 of `{}`: every `ensure`, in source order, on the success value.",
+        "/// Step 9 of `{}`: {what}, in source order, on the success value.",
         ep.name
     ));
     w.line("#[doc(hidden)]").line(ALLOW);
     w.open(format!(
-        "pub fn {}(prepared: &veld::server::Prepared, result: &serde_json::Value) -> Vec<veld::rules::Violation>",
-        step9_name(ep)
+        "pub fn {name}(prepared: &veld::server::Prepared, result: &serde_json::Value) -> Vec<veld::rules::Violation>"
     ));
     w.line("use veld::rules as vr;");
     w.line("let mut out = Vec::new();");
@@ -761,10 +798,17 @@ fn step9(
             ));
         }
     }
-    for e in &ep.rules.ensures {
+    for e in ep
+        .rules
+        .ensures
+        .iter()
+        .filter(|e| e.rollout.is_some() == audited)
+    {
         ensure_line(w, ctx, e, &sc)?;
     }
-    guards::target_check(w, ctx, ep)?;
+    if !audited {
+        guards::target_check(w, ctx, ep)?;
+    }
     w.line("out");
     w.close().blank();
     Ok(())

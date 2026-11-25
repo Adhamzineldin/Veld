@@ -686,3 +686,34 @@ impl Stopwatch {
         u64::try_from(self.0.elapsed().as_micros()).unwrap_or(u64::MAX)
     }
 }
+// #if rollout
+
+// ---------------------------------------------------------------------------
+// Audited rules (`@rollout(audit)`, `spec/rules.md` section 17.1)
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    /// Where audited rules report while a server checks a value. Rule checks are synchronous, so
+    /// the sink is opened right before a walk and closed right after it.
+    static SINK: std::cell::RefCell<Option<Vec<Violation>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// One audited rule of a declaration: evaluated when a server listens, skipped when nobody does
+/// (a client never opens a sink, so it skips audited rules in the local check).
+pub fn audit(path: &str, id: &str, name: &str, fields: &[&str], message: &str, verdict: impl FnOnce() -> Res<bool>) {
+    SINK.with(|sink| {
+        if let Some(out) = sink.borrow_mut().as_mut() {
+            record(out, path, id, name, fields, message, verdict());
+        }
+    });
+}
+
+/// The violations of the audited rules of a wire value and of everything inside it (the rules that
+/// reject are not looked at here). The value must have passed validation.
+#[must_use]
+pub fn audit_wire(schema: &Schema, wire: &Value, path: &str, mode: Mode) -> Vec<Violation> {
+    SINK.with(|sink| *sink.borrow_mut() = Some(Vec::new()));
+    let _ = check_wire(schema, wire, path, mode);
+    SINK.with(|sink| sink.borrow_mut().take()).unwrap_or_default()
+}
+// #endif

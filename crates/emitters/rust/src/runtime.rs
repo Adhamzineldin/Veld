@@ -32,6 +32,9 @@ pub struct Features {
     /// A policy is generated (an `allow` of a generated service names one), in either role: the
     /// system clock reading of the policy functions. Implies `rules`.
     pub policies: bool,
+    /// The crate has an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1): the `// #if rollout`
+    /// regions of the runtime are kept. Implies `rules`.
+    pub rollout: bool,
 }
 
 impl Features {
@@ -44,6 +47,9 @@ impl Features {
             "endpoint_rules" => self.endpoint_rules,
             "guards" => self.guards,
             "policies" => self.policies,
+            "rollout" => self.rollout,
+            "!rollout" => !self.rollout,
+            "rollout_endpoint" => self.rollout && self.endpoint_rules,
             _ => false,
         }
     }

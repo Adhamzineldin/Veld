@@ -197,10 +197,27 @@ fn dispatch(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, name: &str) {
         "impl<S: {name}Service, H: {name}Hooks> Endpoints for {name}TestDispatch<S, H>"
     ));
     delegates(w);
+    audited(w, ctx, svc);
     prepare(w, svc);
     trusted(w, ctx, svc);
     call(w, svc);
     w.close().blank();
+}
+
+/// The audited rules of a test handler (`@rollout(audit)`, `spec/rules.md` sections 12.4 and 17.1):
+/// it answers with `Veld-Test-Audited`, and runs the audited `ensure` statements of the dispatch.
+fn audited(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
+    if !ctx.tree.rollout {
+        return;
+    }
+    w.open("fn test_audited(&self) -> bool");
+    w.line("true");
+    w.close().blank();
+    if svc.endpoints.iter().any(block::has_audited_ensure) {
+        w.open("fn ensure_audited(&self, prepared: &Prepared, result: &serde_json::Value) -> Vec<veld::rules::Violation>");
+        w.line("self.inner.ensure_audited(prepared, result)");
+        w.close().blank();
+    }
 }
 
 fn delegates(w: &mut CodeWriter) {
