@@ -21,6 +21,9 @@ use crate::util::{HEADER, add_file, doc_comment, rel_import};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientModel {
     pub packages: Vec<PackageModel>,
+    /// Whether an emitted declaration has rules: the framework runtime then also holds the form
+    /// helpers (`useFormRules`), and the package files re-export them.
+    pub rules: bool,
 }
 
 /// One package: its directory and the services whose clients get helpers.
@@ -31,6 +34,8 @@ pub struct PackageModel {
     /// Import lines for the model types the hooks mention, rendered for a file in `prefix`.
     pub imports: Vec<String>,
     pub services: Vec<ServiceModel>,
+    /// Whether the package file re-exports the form helpers (the contract has rules).
+    pub rules: bool,
 }
 
 /// One service and its endpoints.
@@ -103,7 +108,10 @@ pub fn model(tree: &Tree<'_>) -> ClientModel {
         .into_iter()
         .map(|pkg| package_model(tree, &names, pkg))
         .collect();
-    ClientModel { packages }
+    ClientModel {
+        packages,
+        rules: tree.uses_rules(),
+    }
 }
 
 fn package_model(tree: &Tree<'_>, names: &RequestNames, pkg: PackageId) -> PackageModel {
@@ -162,23 +170,38 @@ fn package_model(tree: &Tree<'_>, names: &RequestNames, pkg: PackageId) -> Packa
         prefix,
         imports,
         services,
+        rules: tree.uses_rules(),
     }
+}
+
+/// The form helpers every framework shares (`formRules`, `FormModel`, `FormRules`).
+const FORM_SHARED: &str = include_str!("../../runtime/form_shared.ts");
+
+/// The embedded sources of one framework's `runtime/<id>.ts`: the base, and the parts appended
+/// only when the contract streams or has rules.
+struct RuntimeParts {
+    runtime: &'static str,
+    stream: &'static str,
+    form: &'static str,
 }
 
 /// The files of one framework: `runtime/<id>.ts` and `<package>/<id>.ts` for every package.
 fn framework_files(
     id: &str,
-    runtime: &str,
-    stream_runtime: &str,
+    parts: &RuntimeParts,
     model: &ClientModel,
     package: fn(&PackageModel, &str) -> String,
 ) -> Result<FileSet, Vec<GenDiagnostic>> {
     let mut files = FileSet::new();
-    // The streaming helpers are appended only when the contract streams, so the runtime of a
-    // contract without streams is unchanged.
-    let mut runtime = runtime.to_string();
+    // The streaming helpers are appended only when the contract streams, and the form helpers
+    // only when it has rules, so the runtime of a contract with neither is unchanged.
+    let mut runtime = parts.runtime.to_string();
     if model.has_streams() {
-        runtime.push_str(stream_runtime);
+        runtime.push_str(parts.stream);
+    }
+    if model.rules {
+        runtime.push_str(FORM_SHARED);
+        runtime.push_str(parts.form);
     }
     add_file(&mut files, &format!("runtime/{id}.ts"), runtime)?;
     for pkg in &model.packages {
@@ -197,6 +220,8 @@ struct Flavor {
     imports: &'static [&'static str],
     /// Wraps the request type of a query hook (`MaybeRefOrGetter<R | null>` or `R | null`).
     query_request: fn(&str) -> String,
+    /// The form helper types this framework's runtime exports, next to `FormModel` and `FormRules`.
+    form_types: &'static str,
 }
 
 fn header(w: &mut CodeWriter, pkg: &PackageModel, flavor: &Flavor, path: &str) {
@@ -226,6 +251,15 @@ fn header(w: &mut CodeWriter, pkg: &PackageModel, flavor: &Flavor, path: &str) {
     };
     w.line(format!("import {{ {hooks} }} from '{runtime}';"));
     w.line(format!("import type {{ {types} }} from '{runtime}';"));
+    if pkg.rules {
+        w.line(format!(
+            "export {{ formRules, useFormRules }} from '{runtime}';"
+        ));
+        w.line(format!(
+            "export type {{ {} }} from '{runtime}';",
+            flavor.form_types
+        ));
+    }
     let client = rel_import(path, &format!("{}client", pkg.prefix));
     let mut names: Vec<&str> = pkg
         .services
@@ -353,6 +387,7 @@ mod tests {
     fn a_profile_without_the_framework_emits_nothing_extra() {
         let model = ClientModel {
             packages: Vec::new(),
+            rules: false,
         };
         for adapter in ADAPTERS {
             let files = adapter.files(&model, &Profile::unversioned()).unwrap();

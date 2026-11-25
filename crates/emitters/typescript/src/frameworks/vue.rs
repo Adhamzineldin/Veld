@@ -6,8 +6,8 @@ use veld_codegen::{
 };
 
 use super::{
-    ClientModel, Flavor, PackageModel, framework_files, header, missing, write_clients_type,
-    write_hooks,
+    ClientModel, Flavor, PackageModel, RuntimeParts, framework_files, header, missing,
+    write_clients_type, write_hooks,
 };
 
 /// The framework id, as written in `veld.toml`.
@@ -15,6 +15,7 @@ pub const ID: &str = "vue";
 
 const RUNTIME: &str = include_str!("../../runtime/vue.ts");
 const STREAM_RUNTIME: &str = include_str!("../../runtime/vue_stream.ts");
+const FORM_RUNTIME: &str = include_str!("../../runtime/vue_form.ts");
 
 /// The `vue` framework (Vue 3).
 #[derive(Debug, Clone, Copy)]
@@ -37,7 +38,12 @@ impl FrameworkAdapter<ClientModel> for Vue {
         if profile.framework() != Some(ID) {
             return Ok(FileSet::new());
         }
-        framework_files(ID, RUNTIME, STREAM_RUNTIME, model, package_source)
+        let parts = RuntimeParts {
+            runtime: RUNTIME,
+            stream: STREAM_RUNTIME,
+            form: FORM_RUNTIME,
+        };
+        framework_files(ID, &parts, model, package_source)
     }
 }
 
@@ -49,6 +55,7 @@ const FLAVOR: Flavor = Flavor {
         "import type { InjectionKey, MaybeRefOrGetter, Plugin } from 'vue';",
     ],
     query_request: |req| format!("MaybeRefOrGetter<{req} | null>"),
+    form_types: "FormModel, FormRules, FormRulesRefs",
 };
 
 fn package_source(pkg: &PackageModel, path: &str) -> String {
