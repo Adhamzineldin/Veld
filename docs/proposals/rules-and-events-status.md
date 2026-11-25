@@ -25,6 +25,14 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - **Should `veld generate` stop on a changed rule?** `veld diff --strict` now fails on a "possibly breaking" rule change. The breaking-change gate of `veld generate` (`crates/veld-tools/src/gate.rs`) still looks at breaking changes only, so editing a rule's expression does not prompt or block a generate. Making it count is two lines (`Severity::fails_check`); it would mean a prompt every time a rule is edited until the lock is updated. Recommended: yes, for consistency with other breaking changes.
 - **Two Java helper names.** See the Phase 1 list: finishing the rename changes three lines of a snapshot.
 
+## Found while writing the bookings example (to fix or decide)
+
+- [ ] The `unused-model` lint (`L0001`) says a model is never used when only a `fact` uses it. A fact is a use.
+- [ ] `testing = true` written as a direct target key in `veld.toml` is rejected with a message that lists only the direct keys; it belongs under the target's options. The message should say so.
+- [ ] A `require` violation lists the parameter (`body`) in `fields`, not the field inside it (`body.guests`), so a form cannot place the message next to an input. Consider listing the paths.
+- [ ] `veld.FetchLike` does not accept the global `fetch` type without a cast.
+- [ ] Money arithmetic on `decimal` strings has to be written by hand in a handler; derived fields (Phase 5) will cover the common case.
+
 ## Phase 0: spec
 - [i] `spec/rules.md`: expressions and invariants complete; endpoint rules, state machines, policies and examples have syntax and decisions
 - [i] §9 and §12 (endpoint rules, examples, `veld test`) complete, with the IR in §13.1
@@ -132,9 +140,9 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [ ] P4: message catalogs (Arabic first), `@retain` and the retention export
 
 ## Docs, examples, website
-- [ ] New example: bookings with rules, a Node server, a Java server and a React client
+- [i] New example `examples/bookings`: a Node server with fact loaders and a separate test server, a React form with live rule messages (`useFormRules`), eight examples, covered by the example tests and an end-to-end test (the web form is type-checked but was not opened in a browser); a Java server for it is still to do
 - [ ] `examples/microservices` gains events
-- [ ] Guides: rules, testing, events, configuration
+- [~] Guides: `docs/guides/rules.md` and `docs/guides/testing.md` written; events and configuration to do
 - [ ] Website: docs pages, landing examples, playground presets, rebuilt WASM
 - [ ] Editor grammars (VS Code, JetBrains) regenerated; README and `docs/README.md` index
 
