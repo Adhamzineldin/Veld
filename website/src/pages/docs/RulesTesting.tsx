@@ -114,15 +114,13 @@ veld test --live http://localhost:3000 --dry-run`}</CodeBlock>
         It is available for the <code>node</code>, <code>java</code> and <code>rust</code> server emitters. Only a service with
         endpoint rules gets one.
       </P>
-      <CodeBlock title="examples/bookings/veld.toml (excerpt)" lang="toml">{`[[targets]]
+      <CodeBlock title="examples/bookings/veld.toml (excerpt)" lang="toml">{`[server]
 name = "api"
-role = "server"
 emitter = "node"
 framework = "express"
-service = "bookings"
 out = "server/src/generated"
 
-[targets.options]
+[server.options]
 testing = true`}</CodeBlock>
       <Warn>
         <strong>The test handler must never be mounted in production.</strong> It lets any caller choose the facts,

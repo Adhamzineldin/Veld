@@ -17,7 +17,7 @@ Both obey the same rules below. A plugin is not a lesser citizen: the host enfor
 ## The generator contract
 
 - A generator declares its **roles** (`server`, `client`) and, per role, its **frameworks** and **capabilities**.
-- **Options** are typed. A Rust generator has an `Options` type that implements `Deserialize + Default`, and Veld fills it from `[targets.options]`. A plugin may publish a JSON Schema for them in its `hello`.
+- **Options** are typed. A Rust generator has an `Options` type that implements `Deserialize + Default`, and Veld fills it from `[server.options]` or `[client.options]`. A plugin may publish a JSON Schema for them in its `hello`.
 - `generate(request, options)` is a **pure function**. It receives the IR, the role and the selected services. It returns a `FileSet`, an ordered map of relative path to bytes, or a list of diagnostics. It does **no I/O**: it never reads or writes the disk, the network or the clock. Veld writes the files through `veld_project::output`, which stages them, keeps a manifest and checks that every path stays inside `out`.
 - **Output is deterministic.** Use `BTreeMap` or sorted `Vec`. Put no timestamps, absolute paths or host names in the output.
 - **Generated code has zero runtime dependencies**, except a framework adapter for the framework the user chose.
@@ -63,17 +63,19 @@ Tests ship with the emitter. Never weaken or delete one to make it pass.
 1. `veld plugin new <name>` creates `./<name>` with a TypeScript project: `src/protocol.ts` (handshake and loop), `src/ir.d.ts` (generated IR types), `src/generate.ts` (your code) and a README.
 2. `cd <name> && npm install && npm run build`.
 3. `veld plugin test node dist/main.js` runs the protocol conformance suite: handshake, path safety, determinism and signature embedding. It exits 1 on any failure.
-4. Pin it in `veld.toml`:
+4. Pin it in the workspace root's `veld.toml`, and use it in the `veld.toml` of the member that gets the generated code:
    ```toml
+   # veld.toml of the workspace root
    [plugins.<name>]
    command = "node <name>/dist/main.js"
    version = "0.1.0"
    sha256 = "<sha-256 of the first word of command>"
-
-   [[targets]]
-   role = "client"
-   emitter = "plugin:<name>"
-   out = "generated/<name>"
    ```
-   The pin is the hash of the executable named first in `command`. Relative file arguments are resolved against the project root.
+   ```toml
+   # veld.toml of the member (a `[service]` or an `[app]`)
+   [client]
+   emitter = "plugin:<name>"
+   out = "generated/<name>"   # a plugin has no default `out`
+   ```
+   The pin is the hash of the executable named first in `command`. Relative file arguments are resolved against the workspace root.
 5. Run `veld generate`. Then add a toolchain test for your language, as above.

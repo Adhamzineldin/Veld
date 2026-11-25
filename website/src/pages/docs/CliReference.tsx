@@ -9,7 +9,7 @@ interface Cmd {
 const commands: Cmd[] = [
   { key: 'veld init', about: 'Create veld.toml and a starter contract. Interactive on a terminal; flags and --yes skip the questions.' },
   { key: 'veld check', about: 'Compile every contract and report diagnostics.' },
-  { key: 'veld generate', about: 'Write code for every target, or one by name. Never overwrites a file you edited unless --force.' },
+  { key: 'veld generate', about: 'Write code for every target, or one by name. Never overwrites a file you edited unless --force. In a workspace it works on the member whose directory you are in; -p NAME picks members, --workspace takes all of them, and --affected --since REF takes the members a change can have affected. The same selection applies to watch, clean, setup and test.' },
   { key: 'veld clean', about: 'Remove generated files you have not modified. Modified files are kept and stay listed in the manifest.' },
   { key: 'veld setup', about: 'Wire generated targets into your apps: @veld/<target> file: dependencies, or a Maven or Gradle source root.' },
   { key: 'veld fmt', about: 'Format .veld files canonically. --check changes nothing and exits 1 if a file would change.' },

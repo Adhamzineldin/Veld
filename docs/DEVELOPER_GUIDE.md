@@ -14,7 +14,7 @@ build on it.
 
 ```
 .veld files ──lex/parse──▶ AST ──semantic passes──▶ checked model ──lower──▶ IR  (immutable, with signatures)
-veld.toml   ──veld-project─▶ Project (packages, targets, plugins)                │
+veld.toml(s) ─veld-project─▶ Project (members, packages, targets, plugins)       │
                                                                                  ▼
                           ┌──────────── capability check (E0801) ────────────────┤
                           ▼                                                      │
@@ -105,10 +105,16 @@ if any source file mentions a code that is not in the table.
 
 ## 5. The project layer
 
-`veld-project::config` loads `veld.toml` in two steps: `raw.rs` is the on-disk shape (serde with
-`deny_unknown_fields`, so an unknown key is `E0701` with the closest valid key), and `resolve.rs` turns it into a
-`Project` (packages, services, `consumes`, targets with resolved roles, frameworks and paths, plugins)
-and checks the rules of [`spec/config.md`](../spec/config.md) (`E0702` to `E0705`, `W0701`).
+`veld-project::config` loads a workspace of `veld.toml` files (see [`spec/workspace.md`](../spec/workspace.md))
+in steps. `raw.rs` is the on-disk shape of one file (serde with `deny_unknown_fields`, so an unknown
+key is `E0701` with the closest valid key), and `legacy.rs` turns the layout of earlier betas into
+`E0709`. `discover.rs` finds the root from a member's file and reads the files from the disk (or from
+virtual files, for the playground); `members.rs` expands `members` and `exclude`. `resolve.rs` is
+the one pure function that turns the text of the root and of each member into a `Project` (members,
+packages, `consumes`, targets with resolved roles, names, frameworks and paths, plugins) and checks
+the rules of [`spec/config.md`](../spec/config.md) and `workspace.md` (`E0702` to `E0705`, `E0709` to
+`E0711`, `W0701`). `select.rs` holds member selection and `--affected`. The CLI and the WASM build
+both call `resolve`, and `crates/veld-wasm/tests/parity.rs` proves they agree.
 
 `veld-project::output` is the only code that writes generated files: `plan` compares a `FileSet` with
 the manifest on disk (create, update, delete, user-modified, conflict), `write` stages, commits and

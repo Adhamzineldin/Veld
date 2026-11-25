@@ -20,7 +20,9 @@ receives the typed class.
 
 ```
 contracts/<service>/*.veld              the contracts
-veld.toml                               targets: five servers (4 Node, 1 Java) and the web client
+veld.toml                               the workspace root: members and the Express default
+backend/<svc>-service/veld.toml         `[service]` (consumes, base-url, owners) and its server target
+web/veld.toml                           `[app]` and the web client
 backend/<svc>-service/src/main.ts       hand-written Node implementations
 backend/<svc>-service/src/generated/    generated  ->  package @veld/<svc>-api
 backend/transaction-service/            Maven project; hand-written Java in src/main/java/.../app,

@@ -42,8 +42,8 @@ service Orders at "/orders" {
 ## 2. Projects, packages and modules
 
 - A **package** is a directory tree of `.veld` files with one root. The package kinds are:
-  - a workspace service (`[services.<name>]` in `veld.toml`)
-  - a workspace library (`[libraries.<name>]`)
+  - a workspace service (a `[service]` member of the workspace)
+  - a workspace library (a `[library]` member)
   - a registry package (`@org/name`)
 - A **module** is one `.veld` file. Its module path is the file path relative to the package root, with `/` replaced by `.` and the `.veld` extension removed. For example, `contracts/orders/billing/invoices.veld` inside package `orders` is the module `billing.invoices`.
 - Module path segments MUST be valid identifiers (§3.2). If a segment is not, the error is `E0101`.

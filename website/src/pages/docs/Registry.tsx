@@ -24,18 +24,18 @@ veld logout`}</CodeBlock>
 
       <Sub>Publish</Sub>
       <P>
-        Give the <code>[project]</code>, <code>[libraries.*]</code> or <code>[services.*]</code> section a{' '}
+        Give the <code>[service]</code> or <code>[library]</code> table of the member a{' '}
         <code>package</code>, a semver <code>version</code> and optionally a <code>description</code>.{' '}
         <code>veld publish</code> packs <code>contracts/**.veld</code> and a <code>veld-package.toml</code>{' '}
         (<code>name</code>, <code>version</code>, <code>language = "2"</code> and a <code>[files]</code> table of
         SHA-256 checksums) into a deterministic tar.gz and uploads it.
       </P>
-      <CodeBlock title="veld.toml" lang="toml">{`[libraries.money]
-contracts = "contracts/money"
+      <CodeBlock title="libs/money/veld.toml, and [dependencies] in the root veld.toml" lang="toml">{`[library]
 package = "@acme/money"
 version = "1.0.0"
 description = "Shared money types"
 
+# in the veld.toml of the workspace root:
 [dependencies]
 "@acme/billing" = "^1.2"`}</CodeBlock>
       <CodeBlock title="Terminal">{`veld publish --dry-run                  # pack and check, upload nothing

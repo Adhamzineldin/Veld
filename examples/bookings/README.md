@@ -7,7 +7,7 @@ for who may do what, and `example` blocks that `veld test` checks. The guide
 
 ```
 contracts/bookings.veld     the contract: models, rules, status machine, policies, the service, examples
-veld.toml                   two targets: api (Node + Express, with the test handler) and web (React)
+veld.toml                   one file, two targets: api (Node + Express, with the test handler) and web (React)
 server/                     hand-written Express app
   src/service.ts            the business logic, the auth hook, the loaders and the in-memory data
   src/main.ts               the real server

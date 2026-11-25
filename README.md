@@ -91,21 +91,22 @@ service Orders at "/orders" {
 The project file, `veld.toml` (see [`spec/config.md`](spec/config.md)):
 
 ```toml
-[project]
+[service]
 name = "shop"
 
-[[targets]]
-role = "server"
+[server]
 emitter = "node"
 framework = "express"
-service = "shop"
 out = "api/src/generated"
 
-[[targets]]
-role = "client"
+[client]
 emitter = "typescript"
 out = "web/src/generated"
 ```
+
+One file is a whole project. A larger project is a workspace: a root `veld.toml` that lists the
+members, and a small `veld.toml` in the directory of each service, app or library
+([Microservices](#microservices-and-mutual-consumes)).
 
 Prelude errors (`NotFound`, `Unauthorized`, `ValidationError`, ...) and `Page<T>` need no
 declaration. Veld validates requests on the server and in the client, and maps errors to RFC 9457
@@ -236,11 +237,11 @@ the `node` server also supports `nest`. `veld export openapi` produces an OpenAP
 With `query-options = true` on a `typescript` client target, Veld also writes `queries.ts` next to each package's client: query keys, query options and mutation options as plain objects. The generated code imports no package, so you decide what to use them with:
 
 ```toml
-[[targets]]
-role = "client"
+[client]
 emitter = "typescript"
 out = "web/src/generated"
-[targets.options]
+
+[client.options]
 query-options = true
 ```
 
@@ -260,27 +261,47 @@ Keys are built from the canonical bytes of the request, so equal requests share 
 
 ### Skipping run-time request validation
 
-`validate = false` in `[targets.options]` of a `node`, `typescript`, `java` or `rust` target skips run-time request validation by default and keeps the types. The client option `validate: true` (TypeScript) or `ClientOptions.validate(true)` (Java) switches it back on.
+`validate = false` in `[server.options]` or `[client.options]` of a `node`, `typescript`, `java` or `rust` target skips run-time request validation by default and keeps the types. The client option `validate: true` (TypeScript) or `ClientOptions.validate(true)` (Java) switches it back on.
 
 ## Microservices and mutual consumes
 
-A workspace lists services, and each service says which others it calls:
+A workspace is a root `veld.toml` that lists its members, and one `veld.toml` per member next to
+its code. Each service says which others it calls:
 
 ```toml
-[services.accounts]
-contracts = "contracts/accounts"
+# veld.toml (the root)
+[workspace]
+name = "bank"
+members = ["services/*", "apps/*"]
+```
+
+```toml
+# services/accounts/veld.toml
+[service]
 consumes = ["iam", "transactions"]
 
-[services.transactions]
-contracts = "contracts/transactions"
+[server]
+emitter = "node"
+```
+
+```toml
+# services/transactions/veld.toml
+[service]
 consumes = ["iam", "accounts"]     # accounts and transactions call each other
+
+[server]
+emitter = "java"
 ```
 
 Cycles are legal. Every server target also gets a generated client for each consumed service, in
 the server's own language, and modules can import each other's types across services
-(`use accounts:accounts.{Account}`). Shared contracts live in a `[libraries.<name>]` package.
+(`use accounts:accounts.{Account}`). Shared contracts live in a `[library]` member.
 Server targets of different languages can sit in one workspace: the
 [`microservices` example](examples/microservices) has Node servers and one Java server.
+
+Inside a member's directory `veld generate` works on that member; `-p accounts` picks one from
+anywhere, `--workspace` takes them all, and `veld generate --affected --since origin/master` takes
+the members that a change can have affected. See [`docs/guides/workspaces.md`](docs/guides/workspaces.md).
 
 ## Signature-based equality
 

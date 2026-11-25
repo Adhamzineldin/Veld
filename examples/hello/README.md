@@ -7,7 +7,7 @@ into `src/generated`.
 
 ```
 contracts/hello.veld        the contract
-veld.toml                   the project: two targets (api, web)
+veld.toml                   the project in one file: two targets (api, web)
 server/                     Express app, hand-written (src/main.ts)
   src/generated/            generated, committed  ->  package @veld/api
 web/                        Vite + React 18 app, hand-written (src/*.tsx)
@@ -33,7 +33,7 @@ service Hello at "/hello" {
 
 ## 2. Generate and wire
 
-`veld.toml` has two targets. The client one has `framework = "react"`, which adds the hooks.
+`veld.toml` has two targets (`[server]` and `[client]`). The client one has `framework = "react"`, which adds the hooks.
 
 ```bash
 veld generate        # writes server/src/generated and web/src/generated

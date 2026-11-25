@@ -89,24 +89,24 @@ export default function GettingStarted() {
           ]}
         />
         <P>That command writes the following.</P>
-        <CodeBlock title="veld.toml" lang="toml">{`[project]
+        <CodeBlock title="veld.toml" lang="toml">{`[service]
 name = "shop"
-contracts = "contracts"
 
-[[targets]]
+[server]
 name = "api"
-role = "server"
 emitter = "node"
 framework = "express"
-service = "shop"
 out = "generated/server"
 
-[[targets]]
+[client]
 name = "web"
-role = "client"
 emitter = "typescript"
 framework = "react"
 out = "generated/client"`}</CodeBlock>
+        <P>
+          One <code>veld.toml</code> with one <code>[service]</code> is a whole project. A larger project is a
+          workspace with a <code>veld.toml</code> per service or app (see Microservices).
+        </P>
       </Section>
 
       <Section id="first-contract" title="A first contract">

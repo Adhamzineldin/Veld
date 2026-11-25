@@ -12,7 +12,7 @@ Status: normative for the built-in Rust generator. It follows `spec/targets/type
 
 ## 1. Options and layout
 
-Options (`[targets.options]`, validated, unknown keys are `E0802`):
+Options (`[server.options]` or `[client.options]`, validated, unknown keys are `E0802`):
 
 | Option | Default | Meaning |
 |---|---|---|

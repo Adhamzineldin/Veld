@@ -14,6 +14,13 @@ Run them in that order, cheapest first. `veld check` includes the lint rules, th
 lint command. `veld generate --check` and `veld diff --strict` need the output and snapshot you
 committed, which is why the examples commit them.
 
+In a workspace with many members, `veld generate --check --affected --since origin/master` checks
+only the members that the change can have affected (the changed ones and everything that consumes
+or imports them) and prints why each one is on the list, so the work of a pull request follows the
+size of the change. `[lint]` and `[hooks]` live in the root `veld.toml`; `[hooks] post-generate`
+runs once per `veld generate` from the root directory, whatever members were selected. See
+[Workspaces](workspaces.md).
+
 > **Never prompts.** On a terminal, `veld generate` asks before it writes over a breaking change.
 > In CI there is no terminal, so it fails instead; `veld generate --strict` makes that explicit and
 > `--accept-breaking` continues. `veld generate --check` and `--dry-run` only report the breaking

@@ -47,7 +47,7 @@ Client target (`role = "client"`, `emitter = "typescript"`; `framework` is `reac
 
 ## 1a. Options, language version and frameworks
 
-Both generators take the same language option in `[targets.options]` (validated centrally, `E0802` when wrong, the message lists the valid values):
+Both generators take the same language option in `[server.options]` or `[client.options]` (validated centrally, `E0802` when wrong, the message lists the valid values):
 
 | Option | Default | Meaning |
 |---|---|---|

@@ -280,7 +280,7 @@ use @acme/billing:invoices.{Invoice}     // registry package (must be in veld.lo
         <List>
           <li>Imports may form cycles, between modules and between packages. Resolution collects every declaration first and resolves references second, so a cycle is never an error.</li>
           <li>Unknown package <code>E0203</code>, unknown module <code>E0204</code>, unknown name <code>E0205</code>. An unused import is the warning <code>W0201</code>.</li>
-          <li>A package is a workspace service (<code>[services.x]</code>), a workspace library (<code>[libraries.x]</code>) or a registry package (<code>@org/name</code>).</li>
+          <li>A package is a workspace service (a <code>[service]</code> member), a workspace library (a <code>[library]</code> member) or a registry package (<code>@org/name</code>).</li>
         </List>
       </Section>
 

@@ -5,27 +5,25 @@ export default function Microservices() {
     <>
       <Section id="microservices" title="Microservices: workspaces and consumes">
         <P>
-          A workspace lists services, and each service says which others it calls with{' '}
+          A workspace is a root <code>veld.toml</code> that lists its members, and one{' '}
+          <code>veld.toml</code> per member next to its code. Each service says which others it calls with{' '}
           <code>consumes</code>. <strong>Cycles are legal</strong>: services may call each other, and
           modules may import each other's types across services.
         </P>
-        <CodeBlock title="examples/microservices/veld.toml (excerpt)" lang="toml">{`[project]
+        <CodeBlock title="examples/microservices/veld.toml" lang="toml">{`[workspace]
 name = "nexusbank"
+members = ["backend/*", "web"]
 
-[services.iam]
-contracts = "contracts/iam"
-base-url = "http://iam-service:3001"
-
-# accounts and transactions consume each other. Cycles are legal.
-[services.accounts]
-contracts = "contracts/accounts"
+# Node servers use Express unless a service says otherwise.
+[workspace.defaults.server.node]
+framework = "express"`}</CodeBlock>
+        <CodeBlock title="examples/microservices/backend/account-service/veld.toml" lang="toml">{`# accounts and transactions consume each other. Cycles are legal.
+[service]
+name = "accounts"
+contracts = "../../contracts/accounts"
 base-url = "http://account-service:3002"
 consumes = ["iam", "transactions"]
-
-[services.transactions]
-contracts = "contracts/transactions"
-base-url = "http://transaction-service:3003"
-consumes = ["iam", "accounts"]`}</CodeBlock>
+owners = ["team-accounts"]`}</CodeBlock>
         <P>
           The contracts import across services with <code>use</code>.{' '}
           <code>accounts</code> declares a <code>Statement</code> that holds{' '}
@@ -47,37 +45,34 @@ model Statement {
           <code>accounts</code> service, which raises <code>NotFound</code>. Java turns it into its own{' '}
           <code>NotFound</code>, and the React app receives the typed class.
         </P>
-        <CodeBlock title="Targets (excerpt)" lang="toml">{`[[targets]]
+        <CodeBlock title="Targets (excerpts, each in the veld.toml of its member)" lang="toml">{`# backend/account-service/veld.toml: the framework comes from the workspace defaults
+[server]
 name = "accounts-api"
-service = "accounts"
-role = "server"
 emitter = "node"
-framework = "express"
-out = "backend/account-service/src/generated"
+out = "src/generated"
 
-# The transactions service is a Java server (JDK HTTP server adapter, no dependencies).
-[[targets]]
+# backend/transaction-service/veld.toml: a Java server (JDK HTTP server adapter, no dependencies)
+[server]
 name = "transactions-api"
-service = "transactions"
-role = "server"
 emitter = "java"
 framework = "jdk"
-out = "backend/transaction-service/src/main/java"
+out = "src/main/java"
 
-[targets.options]
+[server.options]
 package = "com.nexusbank.transactions"
 
-# One TypeScript client with React hooks for the web app, covering every service.
-[[targets]]
+# web/veld.toml: one TypeScript client with React hooks for the web app, covering every service
+[app]
+
+[client]
 name = "web"
-role = "client"
 emitter = "typescript"
 framework = "react"
-out = "web/src/generated"`}</CodeBlock>
+out = "src/generated"`}</CodeBlock>
         <List>
           <li><code>consumes</code> entries must name existing services (<code>E0702</code>). Listing the service itself is the warning <code>W0701</code>.</li>
-          <li>A server target needs <code>service</code>. A client target takes <code>services = [...]</code> and defaults to all of them.</li>
-          <li><code>veld generate accounts-api</code> generates one target by name.</li>
+          <li>A server serves its own service. An app&apos;s clients take <code>uses = [...]</code> and default to every service.</li>
+          <li><code>veld generate accounts-api</code> generates one target by name. In a member&apos;s directory <code>veld generate</code> works on that member; <code>-p accounts</code> picks one from anywhere, and <code>--affected --since origin/master</code> takes the members a change can have affected.</li>
         </List>
       </Section>
 
@@ -120,15 +115,22 @@ import com.nexusbank.transactions.transactions.server.TransactionsService;`}</Co
 
       <Section id="ms-libraries" title="Shared libraries">
         <P>
-          Shared contracts live in a <code>[libraries.&lt;name&gt;]</code> package. A library has no endpoints
+          Shared contracts live in a <code>[library]</code> member. A library has no endpoints
           and no target. Its declarations are generated into every target that uses them. Because a shared
           error is declared once, it has one signature everywhere.
         </P>
-        <CodeBlock title="examples/library-package/veld.toml (excerpt)" lang="toml">{`[libraries.common]
-contracts = "contracts/common"
+        <CodeBlock title="examples/library-package (excerpts)" lang="toml">{`# veld.toml (the root)
+[workspace]
+name = "shop"
+members = ["contracts/common", "orders", "invoices", "web"]
 
-[services.orders]
-contracts = "contracts/orders"
+# contracts/common/veld.toml
+[library]
+contracts = "."
+
+# orders/veld.toml
+[service]
+contracts = "../contracts/orders"
 base-url = "http://orders:3001"`}</CodeBlock>
         <CodeBlock title="contracts/orders/orders.veld (excerpt)" lang="veld">{`use common:errors.{PlanLimitReached, Unavailable}
 use common:money.{Money, PageQuery}

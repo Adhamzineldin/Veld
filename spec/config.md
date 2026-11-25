@@ -2,93 +2,102 @@
 
 Status: **DRAFT — frozen together with `language.md`.**
 
-Each project has exactly one config file, `veld.toml`. It lives at the project root, and `veld` finds it by searching upward from the current directory. Paths in it are resolved relative to the file. Any unknown key is an error (`E0701`), and the message lists the closest valid key.
+A project is a **workspace**: a root `veld.toml` that lists the members and holds what is shared, and one small `veld.toml` per member (a service, an app or a library) in the member's own directory. A project with one member keeps one file. `veld` finds the file by searching upward from the current directory. Paths in a file are resolved relative to that file. Any unknown key is an error (`E0701`), and the message lists the closest valid key. The layout of earlier betas (`[project]`, `[services.*]`, `[libraries.*]`, `[[targets]]`) is an error (`E0709`) that says what to write instead.
 
-## Single service (minimal)
+`workspace.md` is the specification of the layout: the files, `members`, defaults, member names and target names, `-p`, `--affected` and `owners`. This file holds what does not depend on the layout: frameworks and options, `veld setup`, the lock files, generated output and registry packages. The sections "Layout in short" and "Rules" below repeat what a user needs from `workspace.md`.
+
+## Layout in short
+
+One file, one service (the **single file** form):
 
 ```toml
-[project]
-name = "shop"              # package name of the implicit default service
+[service]
+name = "shop"              # package name of the service; required in a root file
 contracts = "contracts"    # package root (default "contracts")
 
-[[targets]]
-role = "server"
+[server]
 emitter = "node"
 framework = "express"      # express | fastify | hono | node-http (node server)
 out = "../api/src/generated"
 
-[[targets]]
-role = "client"
+[client]
 emitter = "typescript"
 out = "../web/src/generated"
 ```
 
-## Workspace (microservices)
+A workspace (microservices). The root file:
 
 ```toml
-[project]
+[workspace]
 name = "nexusbank"
+members = ["services/*", "apps/*", "libs/*"]
 
-[libraries.common]          # shared contracts, importable as `use common:money.{Money}`
-contracts = "contracts/common"
-
-[services.iam]
-contracts = "contracts/iam"
-base-url = "http://iam:3001"
-
-[services.orders]
-contracts = "contracts/orders"
-base-url = "http://orders:3002"
-consumes = ["iam", "payments"]   # cycles allowed
-
-[services.payments]
-contracts = "contracts/payments"
-consumes = ["orders"]
-
-[[targets]]
-name = "orders-api"              # optional; used by `veld generate <name>`
-service = "orders"
-role = "server"
-emitter = "node"
+[workspace.defaults.server.node]     # a target of that role and emitter starts from these
 framework = "express"
-out = "services/orders/src/generated"
-# For each service in `consumes`, a client in the same emitter's language is generated
-# under <out>/clients/<service>/. Set `clients = false` to opt out.
-
-[[targets]]
-role = "client"
-services = ["iam", "orders"]     # default: all services
-emitter = "typescript"
-out = "web/src/generated"
-
-[[targets]]
-role = "server"
-service = "payments"
-emitter = "java"
-framework = "spring"             # jdk | spring
-out = "services/payments/src/main/java"
-
-[targets.options]                # emitter-specific, validated by the emitter's typed Options
-package = "com.acme.payments"    # java: the base Java package
 
 [plugins.kotlin]
-command = "veld-emit-kotlin"     # resolved on PATH or relative path
+command = "veld-emit-kotlin"         # resolved on PATH or relative path
 version = "1.2.0"
-entry = "plugins/kotlin/main.js" # optional: the script an interpreter `command` runs
-sha256 = "…"                     # of `entry` if set, else of the executable; mismatch = refuse (E0705)
+entry = "plugins/kotlin/main.js"     # optional: the script an interpreter `command` runs
+sha256 = "…"                         # of `entry` if set, else of the executable; mismatch = refuse (E0705)
 
 [registry]
 url = "https://registry.example.com"
 
 [dependencies]
-"@acme/billing" = "^1.2"         # resolved and pinned in veld.lock
+"@acme/billing" = "^1.2"             # resolved and pinned in veld.lock
 ```
+
+A service, `services/orders/veld.toml`:
+
+```toml
+[service]
+consumes = ["iam", "payments"]   # cycles allowed; `name` defaults to the directory name
+base-url = "http://orders:3002"
+owners = ["team-orders"]
+
+[server]
+name = "orders-api"              # optional; used by `veld generate <name>`
+emitter = "node"
+out = "src/generated"            # relative to this file; default depends on the emitter
+# For each service in `consumes`, a client in the same emitter's language is generated
+# under <out>/clients/<service>/. Set `clients = false` to opt out.
+```
+
+An app, `apps/web/veld.toml`, and a library, `libs/common/veld.toml`:
+
+```toml
+[app]
+uses = ["iam", "orders"]         # default: every service
+
+[client]
+emitter = "typescript"
+framework = "react"
+out = "src/generated"
+```
+
+```toml
+[library]                        # shared contracts, importable as `use common:money.{Money}`
+```
+
+A Java server with options:
+
+```toml
+[server]
+emitter = "java"
+framework = "spring"             # jdk | spring
+
+[server.options]                 # emitter-specific, validated by the emitter's typed Options
+package = "com.acme.payments"    # java: the base Java package
+```
+
+`[workspace]`, `[registry]`, `[dependencies]`, `[plugins.<name>]`, `[lint]` and `[hooks]` are allowed only in the root file (`E0711` in a member file). A target is a `[server]` or `[client]` table, or an array of them (`[[server]]`, `[[client]]`) for more than one of a role; the table name is the role.
 
 ## Frameworks and options per emitter
 
 `framework` is optional and is validated by the generator for the target's role. An unknown value is `E0803`, and the message lists the valid values. A role that takes no framework rejects any value.
 
-| Emitter | Role | `framework` values (versions) | `[targets.options]` keys |
+| Emitter | Role | `framework` values (versions) | `[server.options]` or `[client.options]` keys |
 |---|---|---|---|
 | `node` | server | `express`, `fastify`, `hono`, `node-http` (unversioned), `nest` (`"10"`) | `typescript`, `framework-version`, `package-name`, `testing` |
 | `typescript` | client | `react` (`"18"`), `vue` (`"3"`); none is the plain client | `typescript`, `framework-version`, `package-name` |
@@ -106,14 +115,13 @@ The frameworks of a built-in emitter come from its adapter registry, one slice p
 Three options are resolved **once**, centrally, into a `Profile` before the generator runs. Generators query the profile (`java_at_least(21)`) and never compare raw version strings.
 
 ```toml
-[[targets]]
-role = "server"
-service = "orders"
+# services/orders/veld.toml
+[server]
 emitter = "java"
 framework = "spring"
-out = "services/orders/src/main/java"
+out = "src/main/java"
 
-[targets.options]
+[server.options]
 java = "21"                # the language: "17" (default, the oldest supported) or "21"
 framework-version = "3"    # the framework version: Spring Boot 3
 ```
@@ -136,7 +144,7 @@ The language and `framework-version` keys belong to the core: they are removed b
 
 Every `node` and `typescript` target writes a `package.json` into its `out`: name `@veld/<target-name>` (override with the target option `package-name`), `private`, no dependencies, `main` and `types` pointing at `index.ts`. A `react`, `vue` or `nest` target declares its framework as a `peerDependency` only. Consumed-service clients of a server are re-exported by the same package as namespaces (`import { transactions } from '@veld/accounts-api'`).
 
-`veld setup [target] [--dry-run]` wires each target into the app that consumes it. The app is the target's `app = "path"` key (relative to `veld.toml`), else the nearest ancestor of `out`, up to the project root, that has a `package.json` (TypeScript) or a `pom.xml`, `build.gradle.kts` or `build.gradle` (Java).
+`veld setup [target] [--dry-run]` wires each target into the app that consumes it. The app is the target's `app = "path"` key (relative to the member's `veld.toml`), else the nearest ancestor of `out`, up to the workspace root, that has a `package.json` (TypeScript) or a `pom.xml`, `build.gradle.kts` or `build.gradle` (Java).
 
 - **TypeScript:** adds `"@veld/<name>": "file:<relative out>"` to the app's `dependencies`, then run `npm install`. A `file:` dependency is ordinary package resolution, so it works for `tsc`, Node (`tsx`), Vite and test runners alike; a `tsconfig` `paths` alias would only serve `tsc`.
 - **Maven:** adds a `build-helper-maven-plugin` `add-source` execution `veld-<target>` for `out` (nothing to do when `out` is `src/main/java`).
@@ -146,16 +154,17 @@ Edits keep the file's formatting, are idempotent, and never touch unrelated keys
 
 ## Rules
 
-- Exactly one of `[project].contracts` or `[services.*]` defines the packages. With no `[services]` section, the project itself is a single service named `project.name`.
+- Every `[service]` and `[library]` member defines one contracts package, named like the member. A single file with one `[service]` is a complete project.
 - `consumes` entries MUST name existing services (`E0702`). Listing the service itself is a warning (`W0701`). Cycles are allowed. `consumes = ["*"]` means every other service (it can be combined with named services and is expanded when the config is loaded).
-- `prefix` (optional, in `[project]` and in `[services.<name>]`) is a route prefix such as `/api` that is prepended to every service prefix of the service in the IR, so every target and export agrees on the full route. The project prefix comes first: `[project] prefix = "/api"` and `[services.iam] prefix = "/v1"` give `/api/v1/<service prefix>`. A prefix MUST start with `/`; trailing slashes are dropped.
+- `prefix` (optional, in `[workspace]` and in `[service]`) is a route prefix such as `/api` that is prepended to every service prefix of the service in the IR, so every target and export agrees on the full route. The workspace prefix comes first: `[workspace] prefix = "/api"` and `[service] prefix = "/v1"` give `/api/v1/<service prefix>`. A prefix MUST start with `/`; trailing slashes are dropped.
 - `[lint]` maps a lint rule name to `"off"`, `"warn"` or `"error"` (`veld check` runs the rules; see `spec/diagnostics.md`, codes `L####`). An unknown rule name is a configuration error that lists the valid names; rules not listed keep their default level (`warn`). `veld check` exits 1 when a rule set to `error` finds something.
-- `[hooks]` (optional): `post-generate` is a shell command or a list of commands. `veld generate` runs them in order, from the directory of `veld.toml`, after a successful write (never on `--dry-run` or `--check`); their output is streamed. A failing hook is a warning and generate still exits 0, unless `fail = true` is set, which makes it exit 1. An unknown key under `[hooks]` is `E0701`.
-- A target needs `role`, `emitter` and `out`.
-  - `service` is required for `role = "server"`.
+- `[hooks]` (optional): `post-generate` is a shell command or a list of commands. `veld generate` runs them in order, from the directory of the root `veld.toml`, once per run, after a successful write (never on `--dry-run` or `--check`); their output is streamed. A failing hook is a warning and generate still exits 0, unless `fail = true` is set, which makes it exit 1. An unknown key under `[hooks]` is `E0701`.
+- A target needs an `emitter`. Its role is the table name (`[server]` or `[client]`), and the services it serves come from the member (`workspace.md`, section 6).
+  - `out` is relative to the member's directory. It has a default for each built-in emitter (`src/generated` for `node` and `typescript`, `src/main/java` for `java`, `generated` for `rust`); a plugin must set it (`E0700`).
   - `app` (optional) is the directory of the app that consumes the output, for `veld setup`.
-  - Two targets MUST NOT share an `out` directory (`E0703`).
-  - `out` MUST NOT be the project root or a contracts directory (`E0704`).
+  - Two targets MUST NOT share an `out` directory (`E0703`). The message names both targets and the directory.
+  - `out` MUST NOT be the workspace root or a contracts directory (`E0704`).
+  - A target's `name` selects it in `veld generate <name>` and names the package `@veld/<name>`. It defaults to the member's name, to `<member>-server` and `<member>-client` when the member has both, and must be set when a member has several targets of one role (`E0710`).
 - `[plugins.x].entry` is optional. When set, Veld runs `command` with the entry path appended (unless `command` already contains it), and `sha256` is the hash of the entry file, checked before every run. Without `entry`, `sha256` is the hash of the executable that `command` resolves to. For a script plugin always set `entry`, because hashing the interpreter protects nothing.
 - `emitter` is either a built-in id (`node`, `typescript`, `java`, `rust`) or `plugin:<name>`.
 - `base-url` resolution in generated clients, highest priority first:
@@ -167,7 +176,7 @@ Edits keep the file's formatting, are idempotent, and never touch unrelated keys
 
 ## `veld.lock.ir.json`
 
-`veld generate` (for all targets, not a dry run, no conflicts) writes `veld.lock.ir.json` next to `veld.toml`: the compiled IR as pretty JSON with sorted, deterministic content. It is a snapshot of the contract as last generated. **Commit it.** `veld diff --lock` (the default of `veld diff`) compares the current contracts against this snapshot and reports breaking and non-breaking changes, so a pull request shows exactly what a contract change does to the wire. The file is rewritten only when its content changes. It is distinct from `veld.lock` (pinned registry packages).
+`veld generate` (for every member and every target, not a dry run, no conflicts: a run with `-p`, `--affected` or inside one member does not write it) writes `veld.lock.ir.json` next to the root `veld.toml`: the compiled IR as pretty JSON with sorted, deterministic content. It is a snapshot of the contract as last generated. **Commit it.** `veld diff --lock` (the default of `veld diff`) compares the current contracts against this snapshot and reports breaking and non-breaking changes, so a pull request shows exactly what a contract change does to the wire. The file is rewritten only when its content changes. It is distinct from `veld.lock` (pinned registry packages).
 
 ## Generated output
 
@@ -192,5 +201,5 @@ Each `out` directory holds a manifest, `.veld-manifest.json`, listing the files 
   - `veld add` updates `veld.toml`, `veld.lock` and the cache as a unit: on any failure nothing is changed. `veld install` and `veld add` also check that every installed package's manifest declares the dependencies the lock records for it, and that each locked version satisfies the ranges of the packages that depend on it.
   - **Visibility.** The project may `use` only the packages listed in its own `[dependencies]`; a registry package may `use` only the packages in its own `[dependencies]`. Importing a package that is merely installed because something else needs it is `E0206`, with a help line saying where to declare it.
 - Installed packages live in `.veld/packages/@org/name/<version>/` (gitignored). `veld check` and `veld generate` install what `veld.lock` pins and the cache lacks; without a lock they never touch the network.
-- To publish, a `[project]`, `[libraries.*]` or `[services.*]` section sets `package = "@org/name"`, `version` (semver) and optionally `description`. `veld publish [--package <name>]` packs `contracts/**.veld` plus `veld-package.toml` (`name`, `version`, `language = "2"`, `[files]` sha256 checksums) into a deterministic tar.gz.
+- To publish, the `[service]` or `[library]` table of a member sets `package = "@org/name"`, `version` (semver) and optionally `description`. `veld publish [--package <name>]` packs `contracts/**.veld` plus `veld-package.toml` (`name`, `version`, `language = "2"`, `[files]` sha256 checksums) into a deterministic tar.gz.
 - API tokens are stored per registry URL in `~/.veld/credentials.toml` (`$VELD_HOME` overrides the directory) and are never printed.

@@ -10,7 +10,7 @@ CLI look and feel is being restyled by another agent. UX rows are still listed s
 
 ## Summary: every item the audit found, with its final status
 
-Fixes are written for v2's architecture: new subcommands in `apps/veld/src/commands`, reusable logic in `veld-tools`, generator-style output through `veld export` or a `[[targets]]` entry, config in `veld.toml`, and new codes in `crates/veld-compiler/src/codes.rs`. Every fix keeps rules 1 to 8 of `CLAUDE.md` (staged writes, determinism, no panics, tests with the change).
+Fixes are written for v2's architecture: new subcommands in `apps/veld/src/commands`, reusable logic in `veld-tools`, generator-style output through `veld export` or a target table, config in `veld.toml`, and new codes in `crates/veld-compiler/src/codes.rs`. Every fix keeps rules 1 to 8 of `CLAUDE.md` (staged writes, determinism, no panics, tests with the change).
 
 ### P1
 
@@ -62,7 +62,7 @@ Fixes are written for v2's architecture: new subcommands in `apps/veld/src/comma
 | 34 | Import instructions printed after `generate` (per target, with example imports) | improved (done) | Print one `import { ... } from '@veld/<target>'` or Java package line per target after generation, next to the `veld setup` hint. Keep the content when the restyle lands. **Done:** After the summary `generate` prints `Use it:` with one line per target: `import { ... } from '@veld/<target>'` (or the `package-name` option) for typescript and node, `import <package>.*;` for java. Evidence: `parity_cli::import_hints_are_printed_per_target`, unit test `import_lines_per_emitter`. |
 | 35 | Generated `README.md` in each output dir | improved (done) | Done. Every target writes a deterministic `README.md` (how to import, how to regenerate, no paths), listed in the manifest like any generated file: `typescript` and `node` (`crates/emitters/typescript/src/readme.rs`), `java` (`crates/emitters/java/src/readme.rs`), and the spec emitters (`crates/emitters/specs/src/lib.rs`). Specs: `targets/typescript.md` 1c, `targets/java.md` 6.4, `targets/specs.md`. Evidence: the file lists and snapshots of the emitter tests, and unit test `the_readme_is_deterministic_and_has_no_paths`. |
 | 36 | Richer `veld init` (v1: users CRUD, auth and common models, README.md, description prompt, project-type detection, "run setup now?" prompt) | improved (done) | Keep `hello.veld` as the minimum; add `--template crud` (users, auth, pagination), write `README.md`, detect `pom.xml` or `package.json` to pre-select the target, and offer to run `setup` and `generate` at the end of an interactive init. **Done:** `veld init --template crud` (users CRUD with `Page<User>`, auth, a shared `PageQuery`), a project `README.md` (never replaces one), detection of `package.json` (framework dependencies) and `pom.xml` or Gradle (spring-boot) to start the selections, and an offer at the end of the guided flow to run `generate` and `setup`. Evidence: `parity_cli` tests `init_template_crud_scaffolds_users_auth_and_pagination_that_generate`, `init_detects_an_existing_package_json_and_pom_xml`, `init_writes_a_project_readme_and_never_replaces_an_existing_one`; unit tests `the_guided_flow_offers_to_run_generate_and_setup`, `detect::tests`. The two init snapshots changed by one line (the README) and are pending review. |
-| 37 | Top-level `prefix` (app-level route prefix applied to every module) | improved (done) | Done. `[services.<name>] prefix = "/api"` (or `[project] prefix`), prepended to every service prefix in the IR so all targets agree. |
+| 37 | Top-level `prefix` (app-level route prefix applied to every module) | improved (done) | Done. `[service] prefix = "/api"` (or `[workspace] prefix`), prepended to every service prefix in the IR so all targets agree. |
 | 38 | Workspace `consumes = ["*"]` wildcard | improved (done) | Done. Accept `consumes = ["*"]` (every other service), expanded in `crates/veld-project/src/config/resolve.rs`. Verified: no wildcard handling exists. |
 | 39 | Field-level literal union (`status: "A" \| "B"`) migrates as `json` | dropped (owner decision 2026-11-21) | Not built in 2.0. |
 | 40 | TypeScript client aggregate (`VeldApiClient` with one member per module, and the default `api` instance) | improved (done) | Done. `createClients(opts, overrides?)` in `clients.ts`, re-exported by the client `index.ts` (`crates/emitters/typescript/src/clients.rs`, spec `targets/typescript.md` 4): `{ [service]: Client }` from one `ClientOptions`, with per-service overrides. No default singleton instance (it would hide the `baseUrl` choice). Evidence: `tests/toolchain/ts/equality.ts` (keys, classes, per-service base URLs). |
@@ -133,7 +133,7 @@ Restyle in progress; every v1 behaviour is listed so the restyle can keep it.
 |---|---|---|---|---|
 | Banner and numbered menus with defaults (`Choose [1]:`) | `init.go:39` to `init.go:300` | same | interactive `init` on a TTY (README, `commands/init/answers.rs`) | P3 |
 | Project-type detection (`pom.xml`, `package.json`, `composer.json`, `*.csproj`) | `init.go:60` | improved | `veld init` does not pre-select from existing files (summary 36) | P3 |
-| Description prompt | `init.go:302` | improved | a description prompt in `veld init`, written to `[project].description` | P3 |
+| Description prompt | `init.go:302` | improved | a description prompt in `veld init`, written to `[workspace].description` | P3 |
 | "Runtime validation" prompt | `init.go:279` | improved | validators are always on, so the question is gone | P3 |
 | "Run setup now?" prompt, backend and frontend dir prompts | `init.go:690` | improved | `init` prints `next: veld setup`; no prompt (summary 36) | P3 |
 | Workspace prompts: service count, same backend, per-service name, base URL, consumes, frontend entry | `init.go:317` | same | workspace questions and `--workspace`, `--server service=...` | P3 |
@@ -155,18 +155,18 @@ Restyle in progress; every v1 behaviour is listed so the restyle can keep it.
 
 | v1 feature | where in v1 | v2 status | evidence | severity |
 |---|---|---|---|---|
-| `input`, `$schema` | `config.go:51` | superseded | `[project].contracts` | P3 |
-| `backend` / `backendConfig.target`, `frontend` / `frontendConfig.target` | `config.go:23`, `config.go:68` | superseded | `[[targets]] role, emitter` | P3 |
+| `input`, `$schema` | `config.go:51` | superseded | `[service] contracts` | P3 |
+| `backend` / `backendConfig.target`, `frontend` / `frontendConfig.target` | `config.go:23`, `config.go:68` | superseded | the `[server]` or `[client]` table and its `emitter` | P3 |
 | `framework` (backend, frontend) | `config.go:25` | improved | `framework` validated by the emitter, `E0803` lists valid values; `framework-version` | P3 |
-| `out`, `backendOut`, `frontendOut` | `config.go:72` | superseded | `[[targets]] out`, with overlap and forbidden-dir checks `E0703`, `E0704` | P3 |
+| `out`, `backendOut`, `frontendOut` | `config.go:72` | superseded | `out` of a `[server]` or `[client]` table, with overlap and forbidden-dir checks `E0703`, `E0704` | P3 |
 | `backendDir`, `frontendDir` (alias `backendDirectory`) | `config.go:73` | improved | `app = "path"`, or auto-detect (`spec/config.md`) | P3 |
 | `validate` (flat and nested) | `config.go:76` | improved | always on; `validateResponses` hook at runtime | P3 |
 | `baseUrl` (global) | `config.go:55` | improved | per-service `base-url`, `VELD_<SERVICE>_URL`, constructor argument | P3 |
-| `services` (module to base URL) | `config.go:58` | improved | `[services.x] base-url` | P3 |
+| `services` (module to base URL) | `config.go:58` | improved | `[service] base-url` | P3 |
 | `aliases` (`@alias` to folder) | `config.go:57` | superseded | `use pkg:module.{Name}` imports | P3 |
-| `description` | `config.go:54` | same | `[project].description` | P3 |
+| `description` | `config.go:54` | same | `[workspace] description` | P3 |
 | `serverSdk` | `config.go:59` | improved | `clients = true` default for servers | P3 |
-| `workspace[]` (name, input, backend, frontend, out, baseUrl, consumes, description, validate, serverSdk) | `config.go:11` | improved | `[services.*]`, `[libraries.*]`, `[[targets]] service/services` | P3 |
+| `workspace[]` (name, input, backend, frontend, out, baseUrl, consumes, description, validate, serverSdk) | `config.go:11` | improved | `[service]`, `[library]` and `[app]` members, `uses` | P3 |
 | `consumes` with `"*"` wildcard | `config.go:189` | improved | summary 38 | P3 |
 | `consumes` validation (unknown, self, circular) | `validator/workspace.go` | improved | `E0702`, `W0701`; cycles are legal (rule 6) | P3 |
 | `tools` block (openapi, dockerfile, cicd, database, scaffold, envconfig) | `config.go:41` | dropped (owner decision 2026-11-21) | the auxiliary generators other than OpenAPI are not built in 2.0 (summary 30) | P2 |
