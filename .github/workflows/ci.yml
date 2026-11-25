@@ -141,28 +141,32 @@ jobs:
             rm -rf "$dir"
             mkdir -p "$dir"
             cp -R tests/toolchain/contract "$dir/contracts"
+            mkdir -p "$dir/services/iam" "$dir/services/orders" "$dir/apps/web"
             cat > "$dir/veld.toml" <<'TOML'
-          [project]
+          [workspace]
           name = "contract"
+          members = ["services/*", "apps/*"]
+          TOML
+            cat > "$dir/services/iam/veld.toml" <<'TOML'
+          [service]
+          contracts = "../../contracts/iam"
+          TOML
+            cat > "$dir/services/orders/veld.toml" <<'TOML'
+          [service]
+          contracts = "../../contracts/orders"
 
-          [services.iam]
-          contracts = "contracts/iam"
-
-          [services.orders]
-          contracts = "contracts/orders"
-
-          [[targets]]
+          [server]
           name = "orders-api"
-          role = "server"
           emitter = "node"
-          service = "orders"
-          out = "out/orders"
+          out = "../../out/orders"
+          TOML
+            cat > "$dir/apps/web/veld.toml" <<'TOML'
+          [app]
 
-          [[targets]]
+          [client]
           name = "web"
-          role = "client"
           emitter = "typescript"
-          out = "out/web"
+          out = "../../out/web"
           TOML
             (cd "$dir" && "$veld" generate)
           done
