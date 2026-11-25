@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use veld_codegen::FileSet;
+use veld_ir::Ir;
 
 use super::repo_root;
 
@@ -295,3 +296,66 @@ impl SpringApp {
         std::fs::read_to_string(work.join("app.log")).unwrap_or_default()
     }
 }
+
+/// A running Java process that printed `PORT=<n>`; killed when dropped.
+#[allow(missing_debug_implementations)]
+pub struct Running {
+    tree: veld_test_support::ProcessTree,
+    pub url: String,
+}
+
+impl Running {
+    pub fn start(work: &std::path::Path, class: &str, args: &[&str]) -> Running {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
+        let mut cmd = Command::new("java");
+        cmd.args(["-cp", "classes", class])
+            .args(args)
+            .current_dir(work)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        let mut tree =
+            veld_test_support::ProcessTree::spawn(&mut cmd).expect("cannot start the server");
+        let mut line = String::new();
+        BufReader::new(tree.child_mut().stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        let port = line
+            .trim()
+            .strip_prefix("PORT=")
+            .unwrap_or_else(|| panic!("the server did not report a port: {line:?}"));
+        Running {
+            tree,
+            url: format!("http://127.0.0.1:{port}"),
+        }
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        self.tree.kill_tree();
+    }
+}
+
+/// Sends every example of the contract through the shared live runner, in dry-run mode, and
+/// returns how many passed.
+pub fn run_every_example(ir: &Ir, url: &str) -> usize {
+    let live = veld_testing::Live::connect(url, true).unwrap();
+    let (mut passed, mut failures) = (0, Vec::new());
+    for ex in &ir.examples {
+        match live.run_example(ir, ex) {
+            Ok(report) if report.passed() => passed += 1,
+            Ok(report) => failures.push(format!("\"{}\": {report}", ex.name)),
+            Err(e) => failures.push(format!("\"{}\": {e}", ex.name)),
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} examples failed:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+    passed
+}
+
