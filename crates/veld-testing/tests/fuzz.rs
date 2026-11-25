@@ -98,7 +98,7 @@ fn the_same_seed_gives_the_same_requests() {
 
 #[test]
 fn no_generated_request_is_an_input_error() {
-    for (_, ir) in [hotel(), endpoints()] {
+    for (_, ir) in [hotel(), endpoints(), policies(), transitions()] {
         for s in &ir.services {
             for e in &s.endpoints {
                 let pipeline = Pipeline::new(&ir, s, &e.name).unwrap();
@@ -295,12 +295,30 @@ fn every_kind_of_type_can_be_generated() {
 #[test]
 fn an_example_block_gives_the_request_back() {
     let (text, ir) = endpoints();
+    block_round_trip(&text, &ir, &[("createBooking", 150), ("payBooking", 100)]);
+}
+
+/// The same for requests with a principal (`as { ... }`) and with every state of a machine.
+#[test]
+fn a_block_with_a_principal_and_a_state_gives_the_request_back() {
+    let (text, ir) = policies();
+    block_round_trip(&text, &ir, &[("payBooking", 150), ("getBooking", 100)]);
+    let (text, ir) = transitions();
+    let all = [("payBooking", 80), ("cancelBooking", 80), ("checkIn", 80)];
+    block_round_trip(&text, &ir, &all);
+    let ir = compile_text(ORDER);
+    block_round_trip(ORDER, &ir, &[("pay", 200)]);
+}
+
+/// Prints the blocks of generated requests, appends them to the contract and checks that each
+/// fills back to its request, and that it passes offline.
+fn block_round_trip(text: &str, ir: &Ir, endpoints: &[(&str, usize)]) {
     let mut blocks = Vec::new();
     let mut requests = Vec::new();
-    for (name, count) in [("createBooking", 150), ("payBooking", 100)] {
-        let (s, e) = endpoint(&ir, name);
-        let pipeline = Pipeline::new(&ir, s, name).unwrap();
-        for (i, req) in generate(&ir, s, e, 21, count)
+    for &(name, count) in endpoints {
+        let (s, e) = endpoint(ir, name);
+        let pipeline = Pipeline::new(ir, s, name).unwrap();
+        for (i, req) in generate(ir, s, e, 21, count)
             .unwrap()
             .requests
             .into_iter()
@@ -308,7 +326,7 @@ fn an_example_block_gives_the_request_back() {
         {
             let outcome = pipeline.run(&req).unwrap();
             let title = format!("fuzz {name} {i}");
-            blocks.push(render_example(&ir, s, e, &req, &outcome, &title).unwrap());
+            blocks.push(render_example(ir, s, e, &req, &outcome, &title).unwrap());
             requests.push((title, req, outcome));
         }
     }
@@ -763,4 +781,197 @@ fn an_endpoint_that_only_ever_ends_one_way_is_named() {
         report.one_sided(),
         [("S.stuck".to_owned(), "ValidationError".to_owned())]
     );
+}
+
+// --- the principal, policies and state machines -----------------------------------------------
+
+fn policies() -> (String, Ir) {
+    let text = read("tests/rules/endpoints/policies.veld");
+    let ir = compile_text(&text);
+    (text, ir)
+}
+
+fn transitions() -> (String, Ir) {
+    let text = read("tests/rules/endpoints/transitions.veld");
+    let ir = compile_text(&text);
+    (text, ir)
+}
+
+/// The `message` of every `Forbidden` the reference gives for the requests of `name`.
+fn denial_messages(ir: &Ir, name: &str, seed: u64, count: usize) -> BTreeMap<String, usize> {
+    let (s, e) = endpoint(ir, name);
+    let pipeline = Pipeline::new(ir, s, name).unwrap();
+    let mut seen = BTreeMap::new();
+    for req in generate(ir, s, e, seed, count).unwrap().requests {
+        if let Outcome::Error(a) = pipeline.run(&req).unwrap()
+            && a.name == "Forbidden"
+        {
+            let message = a.data["message"].as_str().unwrap().to_owned();
+            *seen.entry(message).or_default() += 1;
+        }
+    }
+    seen
+}
+
+#[test]
+fn a_principal_is_generated_for_an_endpoint_with_auth_and_only_for_it() {
+    let (_, ir) = policies();
+    for name in ["payBooking", "getBooking"] {
+        let (s, e) = endpoint(&ir, name);
+        let generated = generate(&ir, s, e, 3, 200).unwrap();
+        for req in &generated.requests {
+            let p = req.principal.as_ref().expect("a principal");
+            assert!(p["id"].is_string() && p["roles"].is_array(), "{p}");
+        }
+    }
+    // No principal in a package that declares none.
+    let (_, ir) = endpoints();
+    let (s, e) = endpoint(&ir, "payBooking");
+    assert!(
+        generate(&ir, s, e, 3, 50)
+            .unwrap()
+            .requests
+            .iter()
+            .all(|r| r.principal.is_none())
+    );
+}
+
+#[test]
+fn the_policies_are_permitted_and_denied_by_a_permit_and_by_a_forbid() {
+    let (_, ir) = policies();
+    for name in ["payBooking", "getBooking"] {
+        let seen = outcomes(&ir, name, 11, 400);
+        assert!(
+            seen.get("ok").copied().unwrap_or(0) > 20,
+            "{name}: {seen:?}"
+        );
+        assert!(
+            seen.get("Forbidden").copied().unwrap_or(0) > 20,
+            "{name}: {seen:?}"
+        );
+        let messages = denial_messages(&ir, name, 11, 400);
+        let forbid = "A suspended account cannot manage bookings";
+        assert!(
+            messages.get(forbid).copied().unwrap_or(0) > 5,
+            "{messages:?}"
+        );
+        assert!(
+            messages.get("not permitted").copied().unwrap_or(0) > 5,
+            "{messages:?}"
+        );
+    }
+    // Every permit is reached: the guest's own booking and a caller with the role `support`.
+    let (s, e) = endpoint(&ir, "payBooking");
+    let pipeline = Pipeline::new(&ir, s, "payBooking").unwrap();
+    let (mut own, mut support) = (0, 0);
+    for req in generate(&ir, s, e, 11, 400).unwrap().requests {
+        if !matches!(pipeline.run(&req).unwrap(), Outcome::Passes) {
+            continue;
+        }
+        let user = req.principal.as_ref().unwrap();
+        let guest = req.facts["booking"].as_ref().unwrap()["guestId"].clone();
+        own += usize::from(user["id"] == guest);
+        let roles = user["roles"].as_array().unwrap();
+        support += usize::from(roles.iter().any(|r| r == "support"));
+    }
+    assert!(own > 5 && support > 5, "own {own}, support {support}");
+}
+
+#[test]
+fn every_state_of_a_machine_is_requested_as_a_boundary() {
+    let (_, ir) = transitions();
+    for (name, legal) in [
+        ("payBooking", vec!["pending"]),
+        ("cancelBooking", vec!["pending", "paid"]),
+        ("checkIn", vec!["paid"]),
+    ] {
+        let (s, e) = endpoint(&ir, name);
+        let pipeline = Pipeline::new(&ir, s, name).unwrap();
+        let generated = generate(&ir, s, e, 5, 300).unwrap();
+        let mut states = BTreeMap::new();
+        for req in &generated.requests[..generated.boundaries] {
+            let booking = req.facts["booking"].as_ref().unwrap();
+            let status = booking["status"].as_str().unwrap();
+            states.insert(status.to_owned(), label(&pipeline.run(req).unwrap()));
+        }
+        for state in ["pending", "paid", "checkedIn", "cancelled", "refunded"] {
+            let outcome = states
+                .get(state)
+                .unwrap_or_else(|| panic!("{name}: no {state}"));
+            if legal.contains(&state) {
+                assert_ne!(outcome, "InvalidTransition", "{name} {state}");
+            } else {
+                assert_eq!(outcome, "InvalidTransition", "{name} {state}");
+            }
+        }
+        let seen = outcomes(&ir, name, 5, 300);
+        assert!(
+            seen.get("ok").copied().unwrap_or(0) > 20,
+            "{name}: {seen:?}"
+        );
+        assert!(
+            seen.get("InvalidTransition").copied().unwrap_or(0) > 20,
+            "{name}: {seen:?}"
+        );
+    }
+}
+
+/// A contract where a request can be denied, in an illegal state and fail a `require` at once.
+const ORDER: &str = r#"
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+model User { id: uuid }
+principal User
+model Booking { id: uuid, guestId: uuid, status: Status = .pending, total: decimal }
+model Payment { amount: decimal }
+policy Own(user: User, booking: Booking) { permit when booking.guestId == user.id }
+@auth(bearer)
+service Bookings at "/bookings" {
+  post "/{id}/pay" pay(id: uuid, body: Payment) -> Booking {
+    fact booking: Booking = id
+    allow Own(user, booking)
+    transition booking.status: pending -> paid
+    require body.amount == booking.total
+  }
+}
+"#;
+
+#[test]
+fn requests_where_two_checks_apply_end_in_the_one_that_comes_first() {
+    let ir = compile_text(ORDER);
+    let (s, e) = endpoint(&ir, "pay");
+    let pipeline = Pipeline::new(&ir, s, "pay").unwrap();
+    let (mut denied_and_illegal, mut illegal_and_wrong, mut denied_and_wrong) = (0, 0, 0);
+    let mut tally = BTreeMap::new();
+    for req in generate(&ir, s, e, 9, 600).unwrap().requests {
+        let Some(booking) = req.facts["booking"].clone() else {
+            continue;
+        };
+        let user = req.principal.as_ref().unwrap();
+        let denied = user["id"] != booking["guestId"];
+        let illegal = booking["status"] != "pending";
+        let wrong = booking["total"] != req.params["body"]["amount"];
+        let outcome = label(&pipeline.run(&req).unwrap());
+        *tally.entry(outcome.clone()).or_insert(0) += 1;
+        if denied && illegal {
+            denied_and_illegal += 1;
+            assert_eq!(outcome, "Forbidden");
+        } else if illegal && wrong {
+            illegal_and_wrong += 1;
+            assert_eq!(outcome, "InvalidTransition");
+        } else if denied && wrong {
+            denied_and_wrong += 1;
+            assert_eq!(outcome, "Forbidden");
+        }
+    }
+    assert!(denied_and_illegal > 3, "{denied_and_illegal} {tally:?}");
+    assert!(illegal_and_wrong > 3, "{illegal_and_wrong} {tally:?}");
+    assert!(denied_and_wrong > 3, "{denied_and_wrong} {tally:?}");
+    for outcome in ["ok", "Forbidden", "InvalidTransition", "ValidationError"] {
+        assert!(tally.contains_key(outcome), "{tally:?}");
+    }
 }
