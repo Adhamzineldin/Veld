@@ -1,0 +1,25 @@
+---
+source: crates/emitters/java/tests/policies.rs
+expression: "paths.join(\"\\n\")"
+---
+README.md
+gen/b/adapters/JdkHttpServerAdapter.java
+gen/b/bookings/bookings/Booking.java
+gen/b/bookings/bookings/Payment.java
+gen/b/bookings/bookings/Policies.java
+gen/b/bookings/bookings/User.java
+gen/b/bookings/server/BookingsFactLoaders.java
+gen/b/bookings/server/BookingsHandler.java
+gen/b/bookings/server/BookingsHooks.java
+gen/b/bookings/server/BookingsService.java
+gen/b/bookings/server/BookingsTestHandler.java
+gen/b/bookings/server/GetBookingFacts.java
+gen/b/bookings/server/GetBookingRequest.java
+gen/b/bookings/server/PayBookingFacts.java
+gen/b/bookings/server/PayBookingRequest.java
+gen/b/prelude/Forbidden.java
+gen/b/prelude/Internal.java
+gen/b/prelude/NotFound.java
+gen/b/prelude/Unauthorized.java
+gen/b/prelude/ValidationError.java
+gen/b/prelude/ValidationIssue.java

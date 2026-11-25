@@ -358,4 +358,3 @@ pub fn run_every_example(ir: &Ir, url: &str) -> usize {
     );
     passed
 }
-

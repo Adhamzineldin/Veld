@@ -73,7 +73,11 @@ fn an_enum_without_flows_has_no_helpers() {
 fn no_state_machine_runtime_without_a_transition() {
     let ir = standard_ir();
     let files = gen_server(&ir, "Orders", &["Iam"], "gen.a", None);
-    assert!(files.paths().all(|p| !p.ends_with("/runtime/Transition.java")));
+    assert!(
+        files
+            .paths()
+            .all(|p| !p.ends_with("/runtime/Transition.java"))
+    );
     for (path, bytes) in files.iter() {
         let text = String::from_utf8_lossy(bytes);
         assert!(!text.contains("InvalidTransition"), "{path}");

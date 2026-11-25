@@ -64,8 +64,8 @@ pub fn compile_contract(orders_pkg: &str, patch: &dyn Fn(&str) -> String) -> Ir 
 /// Compiles one `.veld` file of the repository (a path relative to the repository root, for
 /// example `tests/rules/endpoints/transitions.veld.pending`) as the single package `package`.
 pub fn compile_path(rel: &str, package: &str) -> Ir {
-    let text = std::fs::read_to_string(repo_root().join(rel))
-        .unwrap_or_else(|e| panic!("{rel}: {e}"));
+    let text =
+        std::fs::read_to_string(repo_root().join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
     let out = compile(&CompileInput {
         packages: vec![PackageInput {
             name: package.into(),

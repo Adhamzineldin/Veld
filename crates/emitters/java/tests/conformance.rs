@@ -2,8 +2,10 @@
 #![allow(clippy::unwrap_used, clippy::panic)]
 use veld_codegen::{DynGenerator, GenRequest, check_capabilities};
 use veld_emit_conformance::{
-    Setup, check_generator_with, compiled_endpoint_rules_contract, compiled_state_machine_contract,
-    compiled_transition_contract, ir_with_endpoint_rules, ir_with_rule,
+    Setup, check_generator_with, compiled_endpoint_rules_contract, compiled_policy_contract,
+    compiled_principal_read_contract, compiled_state_machine_contract,
+    compiled_transition_contract, compiled_unused_policy_contract, ir_with_endpoint_rules,
+    ir_with_rule,
 };
 use veld_emit_java::Java;
 use veld_ir::{Feature, Ir};
@@ -45,16 +47,17 @@ fn spring_passes_the_conformance_kit_with_everything() {
     );
 }
 
-/// The rules features Java supports (`spec/targets/java.md` sections 8 to 10).
-const SUPPORTED: [Feature; 3] = [
+/// The rules features Java supports (`spec/targets/java.md` sections 8 to 11): all of them.
+const SUPPORTED: [Feature; 4] = [
     Feature::RulesInvariants,
     Feature::RulesEndpoint,
     Feature::RulesTransitions,
+    Feature::RulesPolicies,
 ];
 
 /// Every contract below must pass the gate and generate, in both roles. The shared
 /// `check_invariants_and_endpoint_rules_supported` still holds the other generators to refusing
-/// transitions, so Java asserts its own support here.
+/// transitions and policies, so Java asserts its own support here.
 fn assert_generates(contracts: &[Ir]) {
     for role in Java.roles() {
         let caps = Java.capabilities(*role);
@@ -76,7 +79,11 @@ fn assert_generates(contracts: &[Ir]) {
                 framework: None,
             };
             let gate = check_capabilities(ir, &req, &caps);
-            assert!(gate.is_empty(), "{}: the gate reported {gate:?}", role.name());
+            assert!(
+                gate.is_empty(),
+                "{}: the gate reported {gate:?}",
+                role.name()
+            );
             if let Err(d) = Java.generate_dyn(&req, &serde_json::Value::Null) {
                 panic!("{}: generate failed: {d:?}", role.name());
             }
@@ -84,20 +91,19 @@ fn assert_generates(contracts: &[Ir]) {
     }
 }
 
-/// Invariants, endpoint rules and state machines are enforced, in both roles and with a hand-built
-/// and a compiled contract. Policies are still `E0801` (`spec/rules.md` section 8).
+/// Every rules feature is enforced, in both roles and with a hand-built
+/// and a compiled contract: state machines, a policy, a read of the principal and a policy no
+/// endpoint uses.
 #[test]
-fn java_enforces_invariants_endpoint_rules_and_state_machines() {
+fn java_enforces_every_rules_feature() {
     assert_generates(&[
         ir_with_rule(),
         ir_with_endpoint_rules(),
         compiled_endpoint_rules_contract(),
         compiled_state_machine_contract().0,
         compiled_transition_contract().0,
+        compiled_policy_contract().0,
+        compiled_principal_read_contract().0,
+        compiled_unused_policy_contract(),
     ]);
-}
-
-#[test]
-fn java_refuses_policies_with_e0801() {
-    veld_emit_conformance::check_policies_are_refused(&Java).unwrap();
 }
