@@ -73,7 +73,7 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [i] Fact-loader interfaces and the pipeline in Node, Java and Rust
 - [ ] Output mode and sampling in the runtime config (the mode is a handler option today; sampling and the typed runtime config come with the config series)
 - [ ] WebSocket endpoints with endpoint rules: every server target refuses them with `E0801` for now (Java refuses SSE endpoints with rules too)
-- [~] Stale-client safety: Java and Rust have it for every service with a digest; TypeScript and Node have it for contracts with endpoint rules and still need it for a contract with only invariants
+- [x] Stale-client safety: Java, Rust, TypeScript and Node have it for every service with a digest, with or without endpoint rules
 - [i] `example` blocks: IR, compiler, and filling in and running examples in the reference evaluator
 - [t] Endpoint rule vectors: `tests/rules/endpoints/bookings.veld`, 20 examples, all passing through the compiler and the reference evaluator
 - [t] `veld test` offline, the shared runner (`crates/veld-testing`), `E0953` in `veld check`, and `docs/guides/testing.md`
