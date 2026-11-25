@@ -3,9 +3,9 @@
 //! the target check of step 9. The helpers of the enum itself are in `models.rs`.
 
 use veld_codegen::{CodeWriter, GenDiagnostic};
-use veld_ir::{DeclKind, Enum, EndpointTransition, Ir, Literal, Root, Step, Type};
+use veld_ir::{DeclKind, EndpointTransition, Enum, Ir, Literal, Root, Step, Type};
 
-use crate::endpoint::{Site, unsupported};
+use crate::endpoint::{Site, prelude_error, unsupported};
 use crate::models::enum_constants;
 use crate::rule_expr::JavaExpr;
 use crate::tree::FileCtx;
@@ -68,24 +68,6 @@ fn state_read(read: &str, default: Option<String>, machine: &Enum, class: &str) 
     }
 }
 
-/// `InvalidTransition.fromWire(data, status, null)`, or the untyped error when the prelude has none.
-fn invalid_transition(fc: &mut FileCtx<'_, '_>, site: &Site<'_>, data: &str) -> String {
-    let name = "InvalidTransition";
-    let status = site
-        .ep
-        .errors
-        .iter()
-        .find(|e| fc.tree.ir.decl(e.decl).name == name)
-        .map_or(409, |e| e.status);
-    match fc.tree.prelude_decl(name) {
-        Some(id) => format!("{}.fromWire({data}, {status}, null)", fc.decl(id)),
-        None => {
-            let untyped = fc.rt("UntypedError");
-            format!("new {untyped}(\"about:blank\", \"{name}\", {data}, {status}, null)")
-        }
-    }
-}
-
 /// The guard of a `transition` (step 6, after the policies and before `require`): leaves the
 /// `transition` value the handler receives.
 pub fn write_guard(
@@ -99,7 +81,10 @@ pub fn write_guard(
     };
     let ir = printer.file().tree.ir;
     let DeclKind::Enum(machine) = &ir.decl(t.decl).kind else {
-        diags.push(unsupported(site, "a transition on something that is not an enum"));
+        diags.push(unsupported(
+            site,
+            "a transition on something that is not an enum",
+        ));
         return;
     };
     let fact = site.ep.rules.facts.iter().find(|f| f.name == t.fact);
@@ -137,7 +122,7 @@ pub fn write_guard(
         java_str(&field_path(t)),
         java_str(to_wire)
     );
-    let error = invalid_transition(printer.file(), site, &data);
+    let error = prelude_error(printer.file(), site, ("InvalidTransition", 409), &data);
     w.line(format!("{class} transition_from = {from};"));
     w.line(format!(
         "{transition} transition = run.transition({}, {}, transition_from, {list}.of({}), {target}, () -> {error});",
@@ -145,6 +130,47 @@ pub fn write_guard(
         java_str(&field_path(t)),
         sources.join(", ")
     ));
+}
+
+/// The transition part of `can<Endpoint>` in the client: a Java condition that is true when the
+/// state the fact holds is one of the sources. `None` when the endpoint has no `transition`, or
+/// (with a note) when it cannot be printed.
+pub fn can_condition(
+    printer: &mut JavaExpr<'_, '_, '_>,
+    site: &Site<'_>,
+    diags: &mut Vec<GenDiagnostic>,
+) -> Option<String> {
+    let t = site.ep.rules.transition.as_ref()?;
+    let ir = printer.file().tree.ir;
+    let DeclKind::Enum(machine) = &ir.decl(t.decl).kind else {
+        diags.push(unsupported(
+            site,
+            "a transition on something that is not an enum",
+        ));
+        return None;
+    };
+    let fact = site.ep.rules.facts.iter().find(|f| f.name == t.fact);
+    let Some(fact) = fact.filter(|f| !f.optional) else {
+        diags.push(unsupported(site, "a transition on an optional fact"));
+        return None;
+    };
+    let Some(read) = printer.field_code(Root::Fact(t.fact.clone()), &t.steps) else {
+        diags.push(unsupported(site, "a transition path it cannot read"));
+        return None;
+    };
+    let class = printer.file().decl(t.decl);
+    let default = state_default(ir, &fact.ty, &t.steps);
+    let from = state_read(&read, default, machine, &class);
+    let sources: Vec<String> = t
+        .from
+        .iter()
+        .filter_map(|s| state_constant(machine, &class, s))
+        .collect();
+    let list = printer.file().name("java.util.List");
+    Some(format!(
+        "{list}.of({}).contains({from})",
+        sources.join(", ")
+    ))
 }
 
 /// The target check (step 9, after the `ensure` statements): the same field of the result must

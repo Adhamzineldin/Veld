@@ -5,11 +5,13 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+pub mod can;
 pub mod client;
 pub mod endpoint;
 pub mod frameworks;
 pub mod machine;
 pub mod models;
+pub mod policy;
 pub mod readme;
 pub mod rule_expr;
 pub mod rules;
@@ -141,9 +143,8 @@ impl Generator for Java {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        // Invariants, endpoint rules and state machines are enforced (`spec/targets/java.md`
-        // sections 8 to 10); policies are not implemented yet: `E0801` (`spec/rules.md` section 8).
-        Capabilities::all_except(&[Feature::RulesPolicies])
+        // Every rules feature is enforced (`spec/targets/java.md` sections 8 to 11).
+        Capabilities::all_except(&[])
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
@@ -179,14 +180,19 @@ impl Generator for Java {
                 && req.consumes.iter().any(|sid| {
                     declares_rules(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
                 }));
+        let policies = features.contains(&Feature::RulesPolicies);
         let flags = runtime::Flags {
-            rules,
+            rules: rules || policies,
             endpoint,
             testing: endpoint && opts.testing == Some(true),
             machine: endpoint && endpoint::services_have_transition(req.ir, &req.services),
+            policies,
         };
         runtime::emit_with(&mut files, &base, streaming, flags)?;
-        let tree = tree.with_rules(rules).with_testing(flags.testing);
+        let tree = tree
+            .with_rules(flags.rules)
+            .with_testing(flags.testing)
+            .with_policies(uses_policies(req.ir, &req.services));
         models::emit(&mut files, &tree)?;
         match req.role {
             Role::Client => client::emit(&mut files, &tree)?,
@@ -203,7 +209,7 @@ impl Generator for Java {
                     &base,
                     &runtime_package,
                     opts.validate != Some(false),
-                    rules,
+                    flags.rules,
                 )?;
             }
         }
@@ -262,6 +268,11 @@ fn validation_off_warnings(req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagn
     }]
 }
 
+/// Whether the services use policies: an `allow`, or a statement that reads the principal.
+fn uses_policies(ir: &veld_ir::Ir, services: &[veld_ir::ServiceId]) -> bool {
+    ir.features_used(services).contains(&Feature::RulesPolicies)
+}
+
 /// Whether a declaration the tree emits has invariants, reachable from a service or not.
 fn declares_rules(tree: &Tree<'_>) -> bool {
     tree.decls()
@@ -291,7 +302,8 @@ fn emit_consumed(
             vec![*sid],
         )
         .with_validate(validate)
-        .with_rules(rules);
+        .with_rules(rules)
+        .with_policies(uses_policies(req.ir, &[*sid]));
         models::emit(files, &tree)?;
         client::emit(files, &tree)?;
     }

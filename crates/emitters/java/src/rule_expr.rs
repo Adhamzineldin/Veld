@@ -48,6 +48,9 @@ pub struct ScopeVar {
 pub struct EndpointScope {
     pub params: Vec<ScopeVar>,
     pub facts: Vec<ScopeVar>,
+    /// The caller (`spec/rules.md` section 11.1), where the endpoint has auth and the package a
+    /// principal.
+    pub principal: Option<ScopeVar>,
     /// The success type, when `result` is in scope.
     pub result: Option<Type>,
 }
@@ -148,6 +151,7 @@ impl<'f, 't, 'a> JavaExpr<'f, 't, 'a> {
         let found = match (&self.scope, root) {
             (Some(s), Root::Param(n)) => s.params.iter().find(|v| &v.name == n).cloned(),
             (Some(s), Root::Fact(n)) => s.facts.iter().find(|v| &v.name == n).cloned(),
+            (Some(s), Root::Principal) => s.principal.clone(),
             (Some(s), Root::Result) => s.result.clone().map(|ty| ScopeVar {
                 name: "result".into(),
                 code: "result".into(),
@@ -894,8 +898,8 @@ impl JavaExpr<'_, '_, '_> {
         for path in paths {
             let (prefixes, _) = self.walk(path);
             let mut at = match &path.root {
-                Root::SelfValue | Root::Var(_) | Root::Principal => At::Nothing,
-                Root::Param(_) | Root::Fact(_) | Root::Result => {
+                Root::SelfValue | Root::Var(_) => At::Nothing,
+                Root::Param(_) | Root::Fact(_) | Root::Principal | Root::Result => {
                     match self.endpoint_root(&path.root) {
                         Some((code, at, optional)) => {
                             if optional {

@@ -30,6 +30,10 @@ pub struct Tree<'a> {
     /// True when the target option `testing` is set and the services have endpoint rules: the
     /// server then also gets a test handler per service with endpoint rules.
     pub testing: bool,
+    /// True when the contract uses policies or reads the principal: a service with a principal
+    /// then gets typed auth hooks, and `allow`, the policy methods and `can<Endpoint>` are
+    /// generated (`spec/targets/java.md` section 11).
+    pub policies: bool,
     decls: Vec<DeclId>,
 }
 
@@ -53,6 +57,7 @@ impl<'a> Tree<'a> {
             validate: true,
             rules: false,
             testing: false,
+            policies: false,
             decls: set.into_iter().collect(),
         }
     }
@@ -68,6 +73,13 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn with_testing(mut self, testing: bool) -> Self {
         self.testing = testing;
+        self
+    }
+
+    /// Sets whether the contract uses policies or reads the principal.
+    #[must_use]
+    pub fn with_policies(mut self, policies: bool) -> Self {
+        self.policies = policies;
         self
     }
 
@@ -118,8 +130,14 @@ impl<'a> Tree<'a> {
         if self.ir.package(d.package).kind == PackageKind::Prelude {
             return format!("{}.prelude", self.base);
         }
-        let mut pkg = self.pkg_package(d.package);
-        for (i, seg) in d.module.split('.').filter(|s| !s.is_empty()).enumerate() {
+        self.module_package(d.package, &d.module)
+    }
+
+    /// Java package of the declarations of one module of a contract package.
+    #[must_use]
+    pub fn module_package(&self, package: PackageId, module: &str) -> String {
+        let mut pkg = self.pkg_package(package);
+        for (i, seg) in module.split('.').filter(|s| !s.is_empty()).enumerate() {
             let mut s = util::segment(seg);
             if i == 0 && (s == "client" || s == "server") {
                 s.push('_');

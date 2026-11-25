@@ -25,6 +25,8 @@ const ENDPOINT_FILES: &[&str] = &["EndpointRules"];
 const TESTING_FILES: &[&str] = &["TestSupport"];
 /// The runtime classes of the state machines of endpoints (`spec/targets/java.md` section 10).
 const MACHINE_FILES: &[&str] = &["Transition"];
+/// The runtime classes of the policies (`spec/targets/java.md` section 11).
+const POLICY_FILES: &[&str] = &["Policy"];
 
 /// The package the embedded adapter sources declare. It is replaced by `<base>.adapters`.
 const ADAPTER_PACKAGE: &str = "dev.veld.adapters";
@@ -50,6 +52,7 @@ runtime_files!(
     "JsonParser",
     "JsonWriter",
     "Page",
+    "Policy",
     "Reconnect",
     "RequestContext",
     "RuleError",
@@ -202,6 +205,8 @@ pub struct Flags {
     pub testing: bool,
     /// The transition guard of endpoints (`// #if machine` regions and `Transition`). Needs `endpoint`.
     pub machine: bool,
+    /// Policies and the typed principal (`// #if policies` regions and `Policy`). Needs `rules`.
+    pub policies: bool,
 }
 
 /// Like [`emit`], with the endpoint rules and test handler parts switched by `flags`.
@@ -218,12 +223,14 @@ pub fn emit_with(
             && (flags.endpoint || !ENDPOINT_FILES.contains(&name))
             && (flags.testing || !TESTING_FILES.contains(&name))
             && (flags.machine || !MACHINE_FILES.contains(&name))
+            && (flags.policies || !POLICY_FILES.contains(&name))
     };
     let enabled = |region: &str| match region {
         "rules" => flags.rules,
         "endpoint" => flags.endpoint,
         "testing" => flags.testing,
         "machine" => flags.machine,
+        "policies" => flags.policies,
         _ => false,
     };
     for (name, source) in RUNTIME.iter().filter(|(name, _)| wanted(name)) {

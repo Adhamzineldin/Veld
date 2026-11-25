@@ -91,6 +91,27 @@ public final class TestSupport {
     });
   }
 
+  // #if policies
+  /**
+   * Like {@link #endpoint(ServerEndpoint)}, for a service with a principal: the principal is what
+   * {@code decode} makes of the wire JSON in {@code Veld-Test-Principal}, the generated type of the
+   * principal's model, or {@code null} when the header is absent.
+   */
+  public static ServerEndpoint endpoint(ServerEndpoint e, java.util.function.Function<Json, Object> decode) {
+    if (e.call() == null) {
+      return e;
+    }
+    EndpointSpec s = e.spec();
+    EndpointSpec open = new EndpointSpec(
+        s.name(), s.method(), s.path(), s.sig(), s.status(), null, s.params(), s.success(), s.errors(), s.stream());
+    return new ServerEndpoint(open, List.of(), (params, ctx) -> {
+      Json principal = json(ctx, "Veld-Test-Principal");
+      ctx.setPrincipal(principal == null ? null : decode.apply(principal));
+      return e.call().call(params, ctx);
+    });
+  }
+
+  // #endif
   /**
    * Adds {@code GET /__veld/test}, which answers {@code 200} with
    * {@code {"veldTestHandler":1,"digests":{"<Service>":"<digest>"}}}.

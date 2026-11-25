@@ -87,8 +87,19 @@ fn write_create_body(
         "{list}<{endpoint}> endpoints = {base}Handler.endpoints(new Stub(impl), {given}built, {support}::now);"
     ));
     w.line(format!("{list}<{endpoint}> open = new {array_list}<>();"));
+    let principal = match (&svc.principal, fc.tree.policies) {
+        (Some(p), true) => {
+            let ty = veld_ir::Type::Decl(p.decl);
+            let (codec, wire) = (codec_expr(fc, &ty), fc.rt("Wire"));
+            let schema = schema_expr(fc, &ty, &veld_ir::Constraints::default(), false);
+            format!(
+                ", json -> {codec}.decode({wire}.prepare({schema}, json, {wire}.Mode.RESPONSE))"
+            )
+        }
+        (Some(_) | None, _) => String::new(),
+    };
     w.line(format!(
-        "for ({endpoint} e : endpoints) {{ open.add({support}.endpoint(e)); }}"
+        "for ({endpoint} e : endpoints) {{ open.add({support}.endpoint(e{principal})); }}"
     ));
     let std = std_sigs(fc);
     let created = format!("{router}.create({list}.copyOf(open), {std}, built)");

@@ -4,6 +4,7 @@ use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{Endpoint, Service};
 
+use crate::can;
 use crate::spec::{
     RequestNames, emit_requests, endpoint_docs, endpoint_docs_note, is_sse, is_ws, method_name,
     spec_const, write_spec_const, ws_incoming,
@@ -27,7 +28,10 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
             let class = class_name(svc);
             let mut fc = FileCtx::new(tree, &package, &class);
             let mut w = CodeWriter::new();
-            write_client(&mut w, &mut fc, &names, svc, &class);
+            let problems = write_client(&mut w, &mut fc, &names, svc, &class);
+            if !problems.is_empty() {
+                return Err(problems);
+            }
             add_file(files, &java_path(&package, &class), fc.finish(&w.finish()))?;
         }
     }
@@ -44,7 +48,8 @@ fn write_client(
     names: &RequestNames,
     svc: &Service,
     class: &str,
-) {
+) -> Vec<GenDiagnostic> {
+    let mut problems = Vec::new();
     let core = fc.rt("ClientCore");
     let options = fc.rt("ClientOptions");
     let env = format!("VELD_{}_URL", naming::screaming_snake(&svc.name));
@@ -81,7 +86,12 @@ fn write_client(
         w.blank();
         write_method(w, fc, &names.get(svc.id, &ep.name), ep);
     }
+    for ep in svc.endpoints.iter().filter(|e| can::wanted(e)) {
+        w.blank();
+        can::write_can(w, fc, svc, ep, &mut problems);
+    }
     w.close();
+    problems
 }
 
 fn write_constructor_body(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, env: &str) {

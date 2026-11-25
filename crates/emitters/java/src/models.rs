@@ -41,7 +41,7 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
         let text = render_constants(tree, &package, &ids)?;
         add_file(files, &java_path(&package, "Constants"), text)?;
     }
-    Ok(())
+    crate::policy::emit(files, tree)
 }
 
 fn render(
@@ -352,7 +352,9 @@ fn write_machine_helpers(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &st
             .and_then(|i| consts.get(i).cloned())
             .unwrap_or_default()
     };
-    w.line("/** The states that can follow this one, in declaration order of the edges (`flow`). */");
+    w.line(
+        "/** The states that can follow this one, in declaration order of the edges (`flow`). */",
+    );
     w.open(format!("public {list}<{name}> nextStates()"));
     w.open("return switch (this)");
     for (v, c) in e.variants.iter().zip(&consts) {

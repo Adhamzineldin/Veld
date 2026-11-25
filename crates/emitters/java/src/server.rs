@@ -11,8 +11,8 @@ use crate::endpoint;
 use crate::frameworks::{EndpointKind, EndpointModel, ServiceModel};
 use crate::machine;
 use crate::spec::{
-    RequestNames, emit_requests, endpoint_docs, endpoint_docs_note, is_sse, is_ws, method_name, spec_const,
-    write_spec_const, ws_incoming,
+    RequestNames, emit_requests, endpoint_docs, endpoint_docs_note, is_sse, is_ws, method_name,
+    spec_const, write_spec_const, ws_incoming,
 };
 use crate::tree::{FileCtx, Tree, java_path};
 use crate::types::{codec_expr, java_type};
@@ -166,6 +166,29 @@ struct Hook {
     /// Statement that registers it on the builder.
     register: String,
     doc: String,
+    /// The typed interface this hook has in the hooks class (an auth hook of a service with a
+    /// principal), as lines relative to the class body.
+    iface: Vec<String>,
+}
+
+/// The typed auth hook of a service with a principal: it returns the principal's model.
+fn typed_auth(ctx: &str, principal: &str, (setter, name): (&str, &str)) -> Vec<String> {
+    let (what, params) = match setter {
+        "basic" => (
+            "The basic-credentials hook",
+            format!("String username, String password, {ctx} ctx"),
+        ),
+        "apiKey" => ("The API-key hook", format!("String key, {ctx} ctx")),
+        _ => ("The bearer-token hook", format!("String token, {ctx} ctx")),
+    };
+    vec![
+        format!("/** {what}: returns the principal (a `{principal}`), or `null` to reject. */"),
+        "@FunctionalInterface".to_string(),
+        format!("public interface {name} {{"),
+        "  /** Authenticates. */".to_string(),
+        format!("  {principal} authenticate({params}) throws Exception;"),
+        "}".to_string(),
+    ]
 }
 
 fn auth_kind_name(kind: AuthKind) -> Option<(&'static str, &'static str, &'static str)> {
@@ -202,14 +225,33 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
             .chain(middleware.iter().map(|m| member_ident(m)))
             .collect(),
     );
+    let principal = match (&svc.principal, fc.tree.policies, auth.is_empty()) {
+        (Some(p), true, false) => Some(fc.decl(p.decl)),
+        (Some(_) | None, _, _) => None,
+    };
+    let ctx = match &principal {
+        Some(_) => fc.rt("RequestContext"),
+        None => String::new(),
+    };
     let mut out = Vec::new();
     for (i, (setter, ty, doc)) in auth.iter().enumerate() {
-        out.push(Hook {
-            param: params[i].clone(),
-            ty: format!("{hooks}.{ty}"),
-            register: format!("builder.{setter}({});", params[i]),
-            doc: (*doc).to_string(),
-        });
+        let hook = match &principal {
+            Some(class) => Hook {
+                param: params[i].clone(),
+                ty: (*ty).to_string(),
+                register: format!("builder.{setter}({}::authenticate);", params[i]),
+                doc: (*doc).to_string(),
+                iface: typed_auth(&ctx, class, (setter, ty)),
+            },
+            None => Hook {
+                param: params[i].clone(),
+                ty: format!("{hooks}.{ty}"),
+                register: format!("builder.{setter}({});", params[i]),
+                doc: (*doc).to_string(),
+                iface: Vec::new(),
+            },
+        };
+        out.push(hook);
     }
     for (j, m) in middleware.iter().enumerate() {
         let param = params[auth.len() + j].clone();
@@ -218,6 +260,7 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
             register: format!("builder.middleware({}, {param});", java_str(m)),
             doc: format!("the `{m}` middleware"),
             param,
+            iface: Vec::new(),
         });
     }
     out
@@ -253,6 +296,12 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
         w.line(format!("private {clock} clock = {clock}.systemUTC();"));
     }
     w.blank();
+    for h in required.iter().filter(|h| !h.iface.is_empty()) {
+        for line in &h.iface {
+            w.line(line.clone());
+        }
+        w.blank();
+    }
     let params: Vec<(String, String)> = required
         .iter()
         .map(|h| (h.param.clone(), h.doc.clone()))

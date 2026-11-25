@@ -68,6 +68,7 @@ fn print(expr: &Expr) -> (String, Vec<String>, Vec<(String, ExprType)>) {
             var("fact_line", "line", ty.clone(), false),
             var("fact_maybe", "maybe", ty.clone(), true),
         ],
+        principal: Some(var("principal", "user", ty.clone(), false)),
         result: Some(ty),
     };
     let mut fc = FileCtx::new(&tree, "g.app", "Handler");
@@ -157,6 +158,48 @@ fn has_checks_an_optional_root_and_the_optional_steps_below_it() {
 }
 
 #[test]
+fn the_principal_is_a_local_of_the_generated_type_of_its_model() {
+    let qty = path(Root::Principal, vec![step("qty", false)], sc(Scalar::Int));
+    assert_eq!(code(&qty), "principal.qty()");
+    let stamp = path(
+        Root::Principal,
+        vec![step("stamp", false)],
+        sc(Scalar::Datetime),
+    );
+    assert_eq!(code(&stamp), "Rules.instantMs(principal.stamp())");
+    let nick = path(
+        Root::Principal,
+        vec![step("nick", true)],
+        sc(Scalar::String),
+    );
+    assert_eq!(code(&nick), "principal.nick()");
+    let has = ex(
+        sc(Scalar::Bool),
+        ExprKind::Has(PathRef {
+            root: Root::Principal,
+            steps: vec![step("nick", true)],
+        }),
+    );
+    assert_eq!(code(&has), "principal.nick() != null");
+}
+
+#[test]
+fn the_principal_without_a_scope_is_refused() {
+    let ir = veld_emit_conformance::compile("rule_expr", SOURCE);
+    let tree = Tree::new(&ir, "g", "g.runtime", vec![]);
+    let mut fc = FileCtx::new(&tree, "g.app", "Handler");
+    let mut printer = JavaExpr::for_endpoint(&mut fc, EndpointScope::default());
+    let qty = path(Root::Principal, vec![step("qty", false)], sc(Scalar::Int));
+    print_expr(&mut printer, &qty);
+    assert_eq!(
+        printer.unsupported().len(),
+        1,
+        "{:?}",
+        printer.unsupported()
+    );
+}
+
+#[test]
 fn result_is_the_value_the_handler_returned() {
     let qty = path(Root::Result, vec![step("qty", false)], sc(Scalar::Int));
     assert_eq!(code(&qty), "result.qty()");
@@ -234,9 +277,9 @@ fn a_plain_path_is_given_to_a_loader_as_the_developer_sees_it() {
 }
 
 #[test]
-fn the_principal_and_names_that_are_not_in_scope_are_refused() {
-    let principal = path(Root::Principal, vec![], sc(Scalar::Uuid));
-    assert_eq!(print(&principal).1.len(), 1);
+fn names_that_are_not_in_scope_are_refused() {
+    // The principal is a root of the scope now; without one it is refused (see
+    // `the_principal_without_a_scope_is_refused`).
     let unknown = fact("nothing", vec![], sc(Scalar::Int));
     assert_eq!(print(&unknown).1.len(), 1);
 }

@@ -213,6 +213,32 @@ public final class EndpointRules {
     }
 
     // #endif
+    // #if policies
+    /**
+     * One {@code allow} (spec/rules.md section 11.3). When the policy denies, or an argument
+     * cannot be evaluated (it fails closed), the request ends with {@code 403 Forbidden}: the
+     * message is the one of the first {@code forbid} that was true, else {@code not permitted}.
+     * It runs whether or not request validation is on, because it decides who may call.
+     */
+    public void allow(
+        String id, List<String> fields, Supplier<Policy.Verdict> verdict, Function<String, VeldError> forbidden) {
+      Policy.Verdict decided;
+      try {
+        decided = verdict.get();
+      } catch (RuleError e) {
+        decided = Policy.Verdict.denied(null);
+      }
+      if (decided.permitted()) {
+        return;
+      }
+      String text = decided.denial();
+      List<Violation> found = List.of(new Violation(id, "request", fields, text, null));
+      RuleWalk.report(hooks, spec, RuleWalk.Position.INPUT, RuleWalk.Outcome.REJECTED, found, started);
+      VeldError error = forbidden.apply(text);
+      throw early(error, error.status(), found);
+    }
+
+    // #endif
     /** One {@code ensure}: checked after the handler, once the result's invariants hold. */
     public void ensure(String id, String name, List<String> fields, String message, BooleanSupplier holds) {
       if (active()) {

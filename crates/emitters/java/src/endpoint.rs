@@ -5,9 +5,10 @@
 //! reporting.
 
 use veld_codegen::{CodeWriter, GenDiagnostic, print_expr};
-use veld_ir::{Endpoint, EndpointFact, EndpointRequire, Ir, Service, ServiceId};
+use veld_ir::{AuthKind, Endpoint, EndpointFact, EndpointRequire, Ir, Service, ServiceId, Type};
 
 use crate::machine;
+use crate::policy;
 use crate::rule_expr::{EndpointScope, JavaExpr, ScopeVar, rule_value_type};
 use crate::spec::{param_idents, spec_const};
 use crate::tree::FileCtx;
@@ -154,7 +155,48 @@ pub(crate) fn unsupported(site: &Site<'_>, what: &str) -> GenDiagnostic {
     d
 }
 
-fn scope(ep: &Endpoint, facts: &[String]) -> EndpointScope {
+/// The caller as a name in the scope of the endpoint, and the Java type of the principal: only
+/// where the contract uses policies, the service has a principal and the endpoint has auth.
+fn principal_of(fc: &mut FileCtx<'_, '_>, site: &Site<'_>) -> Option<(ScopeVar, String)> {
+    if !fc.tree.policies || site.ep.auth.kind == AuthKind::None {
+        return None;
+    }
+    let principal = site.svc.principal.as_ref()?;
+    let class = fc.decl(principal.decl);
+    let var = ScopeVar {
+        name: principal.name.clone(),
+        code: "principal".to_string(),
+        ty: Type::Decl(principal.decl),
+        optional: false,
+    };
+    Some((var, class))
+}
+
+/// `Name.fromWire(data, status, null)` for a prelude error the server raises itself, with the
+/// status the endpoint declares for it (`fallback` when it declares none); the untyped error when
+/// the prelude has no such declaration.
+pub(crate) fn prelude_error(
+    fc: &mut FileCtx<'_, '_>,
+    site: &Site<'_>,
+    (name, fallback): (&str, u16),
+    data: &str,
+) -> String {
+    let status = site
+        .ep
+        .errors
+        .iter()
+        .find(|e| fc.tree.ir.decl(e.decl).name == name)
+        .map_or(fallback, |e| e.status);
+    match fc.tree.prelude_decl(name) {
+        Some(id) => format!("{}.fromWire({data}, {status}, null)", fc.decl(id)),
+        None => {
+            let untyped = fc.rt("UntypedError");
+            format!("new {untyped}(\"about:blank\", \"{name}\", {data}, {status}, null)")
+        }
+    }
+}
+
+fn scope(ep: &Endpoint, facts: &[String], principal: Option<ScopeVar>) -> EndpointScope {
     let params = param_idents(ep)
         .into_iter()
         .map(|(p, ident)| ScopeVar {
@@ -179,11 +221,12 @@ fn scope(ep: &Endpoint, facts: &[String]) -> EndpointScope {
     EndpointScope {
         params,
         facts,
+        principal,
         result: ep.success.ty.clone().filter(|_| !ep.success.stream),
     }
 }
 
-fn list_of(fc: &mut FileCtx<'_, '_>, items: &[String]) -> String {
+pub(crate) fn list_of(fc: &mut FileCtx<'_, '_>, items: &[String]) -> String {
     let list = fc.name("java.util.List");
     let items: Vec<String> = items.iter().map(|i| java_str(i)).collect();
     format!("{list}.of({})", items.join(", "))
@@ -316,7 +359,9 @@ pub fn write_call_body(
     let ep = site.ep;
     let mut diags = Vec::new();
     let idents = fact_idents(&ep.rules.facts);
-    let mut printer = JavaExpr::for_endpoint(fc, scope(ep, &idents));
+    let principal = principal_of(fc, site);
+    let held = principal.as_ref().map(|(_, class)| class.clone());
+    let mut printer = JavaExpr::for_endpoint(fc, scope(ep, &idents, principal.map(|(v, _)| v)));
     // The `ensure` expressions come first: they decide the slots of `old(...)`.
     let ensures: Vec<String> = ep
         .rules
@@ -326,11 +371,15 @@ pub fn write_call_body(
         .collect();
     let request = site.request;
     write_start(w, &mut printer, site);
+    if let Some(class) = &held {
+        w.line(format!("{class} principal = ({class}) ctx.principal();"));
+    }
     let loaders: Vec<String> = service_methods(site);
     for (fact, ident) in ep.rules.facts.iter().zip(&idents) {
         let method = loaders_method(site, &fact.name, &loaders);
         write_fact(w, &mut printer, site, (fact, ident, &method), &mut diags);
     }
+    policy::write_allows(w, &mut printer, site, &mut diags);
     machine::write_guard(w, &mut printer, site, &mut diags);
     for r in &ep.rules.requires {
         write_require(w, &mut printer, site, r, &mut diags);
