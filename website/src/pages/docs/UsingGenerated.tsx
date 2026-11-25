@@ -81,11 +81,11 @@ interface OrdersHooks {
           When a service has <a href="#rules-endpoint">endpoint rules</a>, the generated code adds three things to what you
           implement. The facts an endpoint loads are handed to your handler next to its parameters. The state
           change of a <code>transition</code> is handed over as data. And the handler options gain the loaders, the
-          output mode and the violation hook. This is the generated code for the bookings contract (
+          output mode and the violation hook. This is the generated code for the bookings preset of the playground (
           <code>createBooking</code> has the fact <code>room</code>, <code>payBooking</code> has the fact <code>booking</code> and a
           transition).
         </P>
-        <CodeBlock title="Generated server/bookings.ts (excerpt)" lang="ts">{`export interface PayBookingRequest {
+        <CodeBlock title="Generated server/bookings.ts for the playground's bookings preset (excerpt)" lang="ts">{`export interface PayBookingRequest {
   id: string;
   body: Payment;
 }
@@ -124,7 +124,7 @@ export interface BookingsHooks {
         </List>
         <P>
           With <code>testing = true</code> on the target (<a href="#config">veld.toml</a>), a second file{' '}
-          <code>server/&lt;service&gt;-test-handler.ts</code> exports <code>create&lt;Service&gt;TestHandler</code>, which
+          <code>server/&lt;service&gt;-test-handler.ts</code> exports <code>create&lt;Service&gt;TestHandler</code>, which{' '}
           <code>veld test --live</code> talks to. It is never exported from <code>index.ts</code> and must never be mounted in
           production. See <a href="#rules-testing">Examples and veld test</a>.
         </P>

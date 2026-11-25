@@ -74,7 +74,7 @@ example "the policy is asked before the transition" {
         needs to know the caller reads <code>ctx.principal</code>. It is typed <code>unknown</code>, so the example
         narrows it once.
       </P>
-      <CodeBlock title="examples/bookings/server/src/service.ts" lang="ts">{`export async function authenticate(token: string): Promise<User | null> {
+      <CodeBlock title="examples/bookings/server/src/service.ts (excerpt)" lang="ts">{`export async function authenticate(token: string): Promise<User | null> {
   return USERS[token] ?? null;
 }
 

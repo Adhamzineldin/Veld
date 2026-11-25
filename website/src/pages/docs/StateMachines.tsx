@@ -69,7 +69,7 @@ post "/{id}/cancel" cancelBooking(id: uuid) -> 200 Booking {
         <code>Map</code>, so the compare and the write cannot be separated there, but the shape is the one a
         database needs (<code>UPDATE ... WHERE id = $id AND status = $from</code>).
       </P>
-      <CodeBlock title="examples/bookings/server/src/service.ts" lang="ts">{`function move(store: Store, id: string, transition: veld.Transition<Status>): Booking {
+      <CodeBlock title="examples/bookings/server/src/service.ts (excerpt)" lang="ts">{`function move(store: Store, id: string, transition: veld.Transition<Status>): Booking {
   const current = store.bookings.get(id);
   if (current === undefined) throw new NotFound({ resource: 'booking' });
   if (current.status !== transition.from) {

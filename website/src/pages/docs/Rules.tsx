@@ -5,8 +5,8 @@ export default function Rules() {
     <Section id="rules" title="Business rules">
       <P>
         A rule is a statement about your data that must always be true. The contract states it. The
-        generated server enforces it and the generated client checks it before it sends a request. You
-        write it once, so the server, the web form and the mobile app cannot drift apart.
+        generated server enforces it, and the generated client checks a rule about a request before it sends
+        it. You write it once, so the server, the web form and the mobile app cannot drift apart.
       </P>
       <P>
         These pages use <code>examples/bookings</code> from the repository: a small hotel-booking service.
@@ -48,7 +48,7 @@ export default function Rules() {
       <P>
         An expression uses the fields of the value, literals, enum literals such as <code>.paid</code>,
         arithmetic, comparisons, <code>&amp;&amp;</code>, <code>||</code>, <code>not</code>,{' '}
-        <code>implies</code> and <code>in</code>. There are a few built-in functions. There is no
+        <code>implies</code> and <code>in</code>. There are a few built-in functions. There is no{' '}
         <code>null</code>, no ternary and no loop.
       </P>
       <Table
@@ -113,7 +113,7 @@ export default function Rules() {
         <code>useFormRules</code> runs <code>partial</code> on what the user has typed and groups the messages by
         field.
       </P>
-      <CodeBlock title="examples/bookings/web/src/BookingForm.tsx (excerpt)" lang="ts">{`import { NewBooking } from '@veld/web';
+      <CodeBlock title="A form, as in examples/bookings/web/src/BookingForm.tsx" lang="ts">{`import { NewBooking } from '@veld/web';
 import { useFormRules } from '@veld/web/bookings/react';
 
 const rules = useFormRules(NewBooking, draft);   // draft: what has been typed so far
@@ -156,7 +156,7 @@ rules.valid;            // true when the draft has no violations yet`}</CodeBloc
       </P>
       <Warn>
         <code>validate = false</code> on a target turns request validation off, including invariants. Policies and
-        the state check still run. <code>veld check</code> warns about it with <code>W0904</code>.
+        the state check still run. <code>veld generate</code> warns about it with <code>W0904</code>.
       </Warn>
 
       <Sub id="rules-coming">Coming next</Sub>

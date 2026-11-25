@@ -159,7 +159,7 @@ veld test --live http://localhost:3000 --fuzz 200 --seed 1234567`}</CodeBlock>
         </li>
         <li>
           An endpoint is skipped, with the reason, when it takes a string with <code>@pattern</code> or{' '}
-          <code>@format</code> and no <code>@example</code>, when it is a stream, and when its service has no endpoint rules.
+          <code>@format</code> and no <code>@example</code>, when it is a stream, and when its service has no endpoint rules.{' '}
           <code>N</code> is from 1 to 100000. <code>--fuzz</code> needs <code>--live</code>, and <code>--seed</code> needs{' '}
           <code>--fuzz</code>.
         </li>

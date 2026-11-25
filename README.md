@@ -208,8 +208,9 @@ server also gets the clients of the services it consumes, through the same packa
 
 A contract can state what must always be true. A `rule` in a model, `require` and `ensure` on an endpoint,
 a `flow` on an enum (the legal state changes) and a `policy` (who may call) are written once. The generated
-server enforces them before your handler runs, and the generated client checks them before it sends a
-request. `example` blocks run offline with `veld test`, and against a real server with `veld test --live`.
+server checks the request before your handler runs and the result after it. The generated client checks the
+rules before it sends a request, and has helpers for the states and the policies. `example` blocks run
+offline with `veld test`, and against the test handler of a running server with `veld test --live`.
 The TypeScript, Node, Java and Rust generators support them. See the
 [business rules guide](docs/guides/rules.md), [testing with examples](docs/guides/testing.md) and the
 [`bookings` example](examples/bookings).

@@ -63,10 +63,11 @@ export default function EndpointRules() {
           A loader that finds nothing returns <code>undefined</code> or <code>null</code>, and the server answers{' '}
           <code>404</code>.
         </P>
-        <CodeBlock title="examples/bookings/server/src/service.ts" lang="ts">{`export function createLoaders(store: Store): BookingsFactLoaders {
+        <CodeBlock title="examples/bookings/server/src/service.ts (excerpt)" lang="ts">{`/** One loader per \`fact\` of the contract. A record that is not there is \`undefined\`: the server answers 404. */
+export function createLoaders(store: Store): BookingsFactLoaders {
   return {
     async room(key) {
-      return store.rooms.get(key);   // undefined or null: the server answers 404
+      return store.rooms.get(key);
     },
     async booking(key) {
       return store.bookings.get(key);

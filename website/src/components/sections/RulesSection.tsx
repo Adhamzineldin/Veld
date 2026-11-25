@@ -8,7 +8,7 @@ import styles from './CodeExample.module.css';
 // The contract is checked with `veld check` and `veld test`. The generated excerpts are what
 // `veld generate` writes for it (the node server and the typescript client). It is a smaller
 // version of examples/bookings in the repository.
-const contract = `// The models Booking and User are left out.
+const contract = `// The models Booking and User and the error AmountMismatch are left out.
 enum Status {
   pending,
   paid,
@@ -100,8 +100,9 @@ export default function RulesSection() {
         >
           <h2 className={styles.heading}>Business rules in the contract</h2>
           <p className={styles.subtitle}>
-            A rule, a state machine and a policy are written once. The generated server enforces them before
-            your handler runs, and the generated client checks them before it sends a request.
+            A rule, a state machine and a policy are written once. The generated server enforces them around
+            your handler. The generated client checks the rules before it sends a request, and has helpers for
+            the states and the policies.
           </p>
         </motion.div>
 
