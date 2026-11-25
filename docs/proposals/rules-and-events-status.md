@@ -20,7 +20,7 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 
 ## Phase 0: spec
 - [i] `spec/rules.md`: expressions and invariants complete; endpoint rules, state machines, policies and examples have syntax and decisions
-- [ ] Complete §9 and §12 (endpoint rules, examples) before Phase 2
+- [i] §9 and §12 (endpoint rules, examples, `veld test`) complete, with the IR in §13.1
 - [ ] Complete §10 (state machines) before Phase 3
 - [ ] Complete §11 (policies) before Phase 4
 - [ ] `spec/events.md` before E1
@@ -41,19 +41,26 @@ Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative
 - [t] Lowering to IR, `reads`, inherited rules
 - [t] Rule ids in `veld-compiler::signature`
 - [t] Conformance cases: 19 new (every new code, every contextual word used as a name, every guard form)
-- [~] Follow-ups: expression depth limit 32 with an IR read-back test; a unary minus on a literal is part of the literal
+- [i] Follow-ups: expression depth limit 32 with an IR read-back test; a unary minus on a literal is part of the literal
 - [t] `fmt` for rules and expressions; fmt properties still hold (long rule lines are not wrapped yet)
 - [t] `crates/veld-rules`: reference evaluator and value helpers; all 104 vectors pass
 - [t] `tests/rules/`: 104 starter vectors in `tests/rules/core` covering the list in `spec/rules.md` §15
 - [t] `veld-codegen`: `ExprPrinter`, plus `gate_regions` for runtime files
-- [~] TypeScript client: check functions, helpers, local check before send, `violations` on `ValidationError`, `.partial(draft)`
-- [~] Node server: pipeline steps 5 and 8, output mode, `onRuleViolation`
-- [~] Java: check functions, helpers, client and server (JDK and Spring)
-- [~] Rust: check functions, helpers, client and server
-- [ ] Vector runner per target: all vectors identical in TypeScript, Java, Rust and the reference
-- [ ] Toolchain round trip: a rule violation over real HTTP, same `violations` from the Node, Java and Rust servers
-- [ ] OpenAPI export does not break on rules (full `x-veld-rules` is Phase 5)
-- [ ] Target specs updated (`spec/targets/*.md`), `spec/ir.md`, `spec/language.md` cross-references
+- [i] TypeScript client: check functions, helpers, local check before send, `violations` on `ValidationError`, `.partial(draft)`; 104 of 104 vectors
+- [i] Node server: pipeline steps 5 and 8, output mode, `onRuleViolation`; HTTP round trip
+- [i] Java: check functions, helpers, client and server (JDK and Spring); 103 of 103 vectors that apply; HTTP round trip
+- [i] Rust: check functions (the reference evaluator's own helper files, embedded), client and server; 101 of 101 vectors that apply; HTTP round trip
+- [i] Vector runner per target, and the reference cross-check that compiles every vector contract
+- [~] Toolchain round trip: each target passes its own; one shared contract and a test that the three servers answer with the same problem document are still to do
+- [ ] Invariants on SSE and WebSocket items, in all three targets
+- [ ] Invariants of `error` declarations on encode in TypeScript and Rust (Java has it)
+- [ ] `validate = false`: the one-time report and `W0904`, the same in all three
+- [ ] `in` over lists of dates and times: shared vectors (found by the Java work)
+- [ ] Java helper names aligned with the TypeScript reference list
+- [ ] React and Vue per-field helpers on top of `.partial(draft)`
+- [ ] Full verification of the merged branch: the local run was stopped for lack of memory; the draft PR's CI is the check
+- [t] OpenAPI export does not break on rules (full `x-veld-rules` is Phase 5)
+- [i] Target specs updated (`spec/targets/*.md`); `spec/ir.md`, `spec/language.md` cross-references still to do
 
 ## Phase 2: endpoint rules, examples, `veld test`
 - [ ] `fact`, `require ... else`, `ensure`, `old()`, `now`, the injected clock
