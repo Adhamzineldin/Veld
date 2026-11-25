@@ -247,6 +247,7 @@ An unknown annotation is `E0601`. Annotations with the wrong arguments or the wr
 | `@example(literal)` | field, param | Documentation and mock data. |
 | `@discriminator("prop")` | union | Discriminator property. |
 | `@query` / `@header("Name")` | param | Binding (§6). |
+| `@rollout(audit)` | invariant, `require`, `ensure` | The rule is evaluated and reported and never rejects (`spec/rules.md` §17.1). `E0602` anywhere else. |
 
 ### 7.1 Regex subset
 The allowed syntax is literal characters, `.`, classes `[...]`, `\d \w \s`, the quantifiers `* + ? {n,m}`, groups `( )`, alternation `|`, and the anchors `^ $`. Lookaround and backreferences are `E0603`, because every target must enforce the same pattern.

@@ -774,7 +774,8 @@ Builtin = "len|matches|starts_with|ends_with|contains|days|hours|minutes|seconds
 
 - Both operands of a `bin` have the same type, except `in` (element and collection) and the datetime and duration combinations of §3.4. Every other difference was resolved by a `widen` node.
 - A `const` is already replaced by its `lit`. An `int` or `long` literal is stored in its final type.
-- `Feature` gains `rules_invariants`, `rules_endpoint`, `rules_transitions` and `rules_policies`.
+- `Feature` gains `rules_invariants`, `rules_endpoint`, `rules_transitions` and `rules_policies`, and later `rules_rollout` (§17.1).
+- `Rule`, `EndpointRequire` and `EndpointEnsure` gain `"rollout": "audit"` for an audited rule (§17.1). It is omitted from the JSON when the rule is enforced.
 - **One-time change to existing output:** `ir_version` becomes `1.1`: every stored IR (`veld.lock.ir.json`, IR and OpenAPI snapshots) changes by its version line. The prelude gains `error InvalidTransition 409 { field: string, from: string, to: string }`, which changes nothing stored, because a declaration appears in an IR only when a contract reaches it.
 
 ### 13.1 Endpoint rules and examples (Phase 2)
@@ -884,6 +885,7 @@ tests/rules/<group>/<name>.json      cases for it
 
 - `expect` is the list of violations, compared as a set of `(rule name, path, fields, error)`. `[]` means the value is valid. Messages and rule ids are covered by snapshots, not by vectors.
 - A case with `"request": true` checks the value in request position (§5.2). A case with `"partial": true` runs the partial check and applies to TypeScript and the reference evaluator only.
+- A case may have an `"audited"` list of the same shape as `expect`, for the violations of **audited** rules (`@rollout(audit)`, §17.1). `expect` then holds only the violations of enforced rules, the ones that reject, and an audited violation is never in it. A missing `"audited"` means none. A target that evaluates rules on the server side (it reports to `onRuleViolation`) compares both lists, as sets. A target that only checks on a client compares `expect` alone and reports nothing audited, because a client skips audited rules, in `"partial": true` cases too. The vectors of audited rules are in `tests/rules/core/rollout.*` and `tests/rules/endpoints/rollout.veld`; until a generator supports the feature they carry the suffix `.pending` so that a walker over `*.veld` and `*.json` does not run them.
 - The starter set MUST cover, at least: code-point length with astral characters; `int` and `long` overflow at both bounds, including a `long` beyond 2^53; truncating division and remainder with negative operands; division by zero; decimal equality across scales and exact decimal arithmetic; float non-finite results; datetime offsets and sub-millisecond digits; `date` differences; duration overflow; `uuid` case; enum literals and `in`; every short-circuit form of §3.6; `all`, `any`, `count` and `sum` on empty and non-empty lists; nested models, lists, maps, pages and union arms; inherited rules; `@readonly` in request position; defaults applied before rules.
 
 ## 16. Differences from the proposal
@@ -904,7 +906,7 @@ tests/rules/<group>/<name>.json      cases for it
 
 ## 17. Lifecycle (Phase 5)
 
-**Status: draft, not implemented.** Sections 17 and 18 are written before their code, as the rest of this document was.
+**Status: 17.1 is implemented in the compiler, the tools and the reference evaluator, and not yet in any generator, which refuses it with `E0801`. 17.2, 17.3 and 18 are drafts, not implemented.** Sections 17 and 18 are written before their code, as the rest of this document was.
 
 ### 17.1 Rolling a rule out: `@rollout(audit)`
 
@@ -929,6 +931,19 @@ ensure  = { doc } { annotation } "ensure" … ;
 - `veld test` treats an audited rule as not enforced, and lists under each example the audited rules that example would violate, without failing it.
 - `veld diff`: adding the annotation to an existing rule is judged like removing the rule; removing the annotation like adding the rule. A new rule that arrives audited is compatible.
 - In the IR, a rule, a `require` and an `ensure` gain `"rollout": "audit"`, omitted when enforced. The feature is `rules_rollout`: a generator that does not know it would enforce a rule that must not reject, so it reports `E0801`.
+
+Where the text above was silent, the compiler, the tools and the reference evaluator do this:
+
+- **Where it may stand.** `@rollout` may be written after the doc comment and in any order with `@deprecated` on an invariant. On a `require` or an `ensure` it is the only annotation that is legal: any other is `E0602` (`E0601` when unknown). On a `fact`, an `allow`, a `transition`, a policy, a principal and an example, `@rollout` is `E0602`; any other annotation there stays `E0003`. Written twice, or with no argument or an argument other than the word `audit` (a string, a number, a named or a second argument), it is `E0602`.
+- **An audited invariant is evaluated wherever its declaration is checked**, so also on a declaration inside a list, a map, a page or a union arm, on an `error` the server encodes (an audited invariant never turns that answer into `500`) and on an event. A rule inherited from a parent is audited in the child too.
+- **The digest.** A service whose reached invariants are all audited has no `rules_digest`, like a service with no invariant; the same holds for the digest of an event (`spec/events.md` §6.1). The digest of a contract without an audited rule is the one it had before.
+- **The feature.** A service uses `rules_rollout` when a declaration its endpoints reach has an audited invariant (a model or an error), or one of its own endpoints has an audited `require` or `ensure`. No endpoint reaches an event, so an audited invariant of an event does not make a service use `rules_rollout`: the service uses `events`, and a generator that supports `events` must handle the audited rules of its events itself. A feature that changes what a rule means is opt-in: a generator does not support it unless it says so. The gate reports `E0801` once, at the first audited rule.
+- **`require ... else E`.** An audited one never answers, so its payload expressions are never evaluated (§9.3 evaluates them only when the answer is built).
+- **Output mode in the reference evaluator.** `strict` evaluates an audited output rule and reports it; `audit` does the same; `off` evaluates no output rule, an audited one included. An audited input rule (step 5 and the `require` lines of step 6) is evaluated in every mode.
+- **`veld test` and `veld check`.** An audited rule is not enforced, so it cannot fail an example and cannot make a filled-in value wrong (`E0953`). `veld test` prints the audited violations of an example under its line; `veld check` prints no such lines.
+- **`veld diff`.** An audited rule is judged as if it were absent on both sides: adding the annotation is a removal, removing it is an addition, and a rule that is new and audited, or that changes or goes away while audited, is compatible.
+- **The OpenAPI export.** The entry of an audited rule in `x-veld-rules` (a declaration or an operation) carries `"rollout": "audit"`; the entry of an enforced rule has no such key.
+- **Vectors.** A case may say which violations are audited with the `"audited"` list of §15.
 
 ### 17.2 Derived fields
 
