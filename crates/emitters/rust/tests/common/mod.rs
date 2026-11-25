@@ -378,8 +378,8 @@ pub fn build_lint_and_run(
 
 /// Compiles the one file at `path` (below the repository root) as the package `package`.
 pub fn compile_path(path: &str, package: &str) -> Ir {
-    let text = std::fs::read_to_string(repo_root().join(path))
-        .unwrap_or_else(|e| panic!("{path}: {e}"));
+    let text =
+        std::fs::read_to_string(repo_root().join(path)).unwrap_or_else(|e| panic!("{path}: {e}"));
     compiled(
         &CompileInput {
             packages: vec![PackageInput {

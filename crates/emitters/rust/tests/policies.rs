@@ -41,9 +41,18 @@ fn snapshots_of_the_policy_contracts() {
         server.paths().collect::<Vec<_>>().join("\n")
     );
     for (name, path) in [
-        ("policies_server_bookings", "src/bookings/bookings_server.rs"),
-        ("policies_server_policies", "src/bookings/bookings_policies.rs"),
-        ("policies_test_handler", "src/bookings/bookings_test_server.rs"),
+        (
+            "policies_server_bookings",
+            "src/bookings/bookings_server.rs",
+        ),
+        (
+            "policies_server_policies",
+            "src/bookings/bookings_policies.rs",
+        ),
+        (
+            "policies_test_handler",
+            "src/bookings/bookings_test_server.rs",
+        ),
     ] {
         insta::assert_snapshot!(name, text(&server, path));
     }
@@ -74,7 +83,10 @@ fn the_policy_functions_and_the_typed_principal_have_the_documented_shape() {
     assert!(policies.contains("pub fn manage_booking_verdict("));
     assert!(policies.contains("now: i64) -> Result<(), String>"));
     let body = text(&server, "src/bookings/bookings_server.rs");
-    assert!(body.contains("Option<crate::bookings::bookings::User>"), "typed hook");
+    assert!(
+        body.contains("Option<crate::bookings::bookings::User>"),
+        "typed hook"
+    );
     assert!(body.contains("veld::server::Principal::new"));
     // `allow` comes after the facts and before the `require`.
     let (fact, allow, require) = (
@@ -103,7 +115,12 @@ fn a_policy_that_nothing_names_and_a_principal_that_nothing_reads_change_no_byte
         for (path, bytes) in files.iter() {
             let body = String::from_utf8_lossy(bytes);
             assert!(!path.contains("policies"), "{path}");
-            for word in ["system_now_ms", "guard_violation", "Principal::new", "decode_key"] {
+            for word in [
+                "system_now_ms",
+                "guard_violation",
+                "Principal::new",
+                "decode_key",
+            ] {
                 assert!(!body.contains(word), "{path} mentions {word}");
             }
         }
@@ -138,7 +155,15 @@ fn build_and_lint(ws: &std::path::Path, server: &str, client: &str) {
         "cargo build",
     );
     let clippy = [
-        "clippy", "--all-targets", "-p", server, "-p", client, "--", "-D", "warnings",
+        "clippy",
+        "--all-targets",
+        "-p",
+        server,
+        "-p",
+        client,
+        "--",
+        "-D",
+        "warnings",
     ];
     run_ok(&mut cargo(ws, &clippy), "cargo clippy");
 }

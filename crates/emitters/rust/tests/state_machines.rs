@@ -98,8 +98,16 @@ fn an_enum_without_flows_has_no_helpers_and_a_contract_without_machines_no_guard
     let server = server_with(&ir, json!({}));
     for (path, bytes) in server.iter() {
         let body = String::from_utf8_lossy(bytes);
-        for word in ["Transition", "InvalidTransition", "decode_key", "guard_violation"] {
-            assert!(!body.contains(word) || path.ends_with("prelude.rs"), "{path}: {word}");
+        for word in [
+            "Transition",
+            "InvalidTransition",
+            "decode_key",
+            "guard_violation",
+        ] {
+            assert!(
+                !body.contains(word) || path.ends_with("prelude.rs"),
+                "{path}: {word}"
+            );
         }
     }
 }
@@ -115,7 +123,10 @@ fn validate_false_keeps_the_guard_outside_the_validated_statements() {
     let body = text(&server, "src/bookings/bookings_server.rs");
     let guard = body.find("let transition_from").unwrap();
     let enforce = body.find("if enforce").unwrap();
-    assert!(guard < enforce, "the guard comes before the `require` statements");
+    assert!(
+        guard < enforce,
+        "the guard comes before the `require` statements"
+    );
 }
 
 /// The server (with the test handler) and the client build and pass `clippy -D warnings`; the

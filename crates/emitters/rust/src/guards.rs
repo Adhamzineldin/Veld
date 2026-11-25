@@ -108,9 +108,9 @@ fn wire_path(t: &EndpointTransition) -> String {
 
 /// The place of the state field below `base`.
 fn field_place(base: &str, t: &EndpointTransition) -> String {
-    t.steps
-        .iter()
-        .fold(base.to_string(), |acc, s| format!("{acc}.{}", snake(&s.name)))
+    t.steps.iter().fold(base.to_string(), |acc, s| {
+        format!("{acc}.{}", snake(&s.name))
+    })
 }
 
 fn variant_wire(e: &veld_ir::Enum, name: &str) -> Result<String, String> {
@@ -133,9 +133,7 @@ fn transition_fact<'a>(
         .find(|f| f.name == t.fact)
         .ok_or_else(|| format!("the fact `{}` of the `transition` is not declared", t.fact))?;
     if fact.optional || t.steps.iter().any(|s| s.optional) {
-        return Err(
-            "a `transition` through an optional fact or field cannot be read".to_string(),
-        );
+        return Err("a `transition` through an optional fact or field cannot be read".to_string());
     }
     Ok(fact)
 }
@@ -227,17 +225,16 @@ pub fn hand_over_transition(w: &mut CodeWriter, ep: &Endpoint) {
 ///
 /// # Errors
 /// What the generator cannot express.
-pub fn target_check(
-    w: &mut CodeWriter,
-    ctx: &Ctx<'_, '_>,
-    ep: &Endpoint,
-) -> Result<(), String> {
+pub fn target_check(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint) -> Result<(), String> {
     let (true, Some(t)) = (has_target(ep), &ep.rules.transition) else {
         return Ok(());
     };
     let (e, ty) = machine(ctx, t)?;
     let place = field_place("r", t);
-    w.line(format!("// transition {}: the result holds `{}`", t.fact, t.to));
+    w.line(format!(
+        "// transition {}: the result holds `{}`",
+        t.fact, t.to
+    ));
     w.open(format!("if {place} != {ty}::{}", variant(&t.to)));
     w.line(format!(
         "out.push(vr::guard_violation({}, &[], &format!(\"the result must hold the state `{{}}` in `{{}}`, found `{{}}`\", {}, {}, {place}.wire())));",

@@ -103,7 +103,14 @@ fn service_file(
     service_trait(w, ctx, svc);
     let n = needs(svc);
     let typed = typed_principal(ctx, svc);
-    hooks_trait(w, svc, &n, ctx.tree.validate, ctx.tree.rules, typed.as_deref());
+    hooks_trait(
+        w,
+        svc,
+        &n,
+        ctx.tree.validate,
+        ctx.tree.rules,
+        typed.as_deref(),
+    );
     if !svc.facts.is_empty() {
         block::loader_trait(w, ctx, svc);
     }

@@ -89,7 +89,8 @@ impl Plan {
     /// The path of the verdict function of policy `index`.
     #[must_use]
     pub fn verdict_path(&self, tree: &Tree<'_>, index: usize) -> Option<String> {
-        self.function_path(tree, index).map(|p| format!("{p}_verdict"))
+        self.function_path(tree, index)
+            .map(|p| format!("{p}_verdict"))
     }
 }
 
@@ -124,13 +125,11 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
     }
     for ((pkg, file), indexes) in by_file {
         let here = format!("{}::{pkg}::{file}", tree.root);
-        let ctx = Ctx {
-            tree,
-            here: &here,
-        };
+        let ctx = Ctx { tree, here: &here };
         let mut w = CodeWriter::with_unit("    ");
         w.line("//! The policies of the contract (`spec/rules.md` section 11): a boolean function and a");
-        w.line("//! verdict function for each policy that an `allow` names.").blank();
+        w.line("//! verdict function for each policy that an `allow` names.")
+            .blank();
         let mut problems = Vec::new();
         for i in indexes {
             if let (Some(p), Some(e)) = (tree.ir.policies.get(i), plan.entries.get(&i)) {
@@ -167,7 +166,13 @@ fn write_policy(
     let params: Vec<String> = p
         .params
         .iter()
-        .map(|x| format!("{}: &{}", local_ident(&x.name), rust_type(ctx, &x.ty, false)))
+        .map(|x| {
+            format!(
+                "{}: &{}",
+                local_ident(&x.name),
+                rust_type(ctx, &x.ty, false)
+            )
+        })
         .collect();
     let names: Vec<String> = p.params.iter().map(|x| local_ident(&x.name)).collect();
     doc(
@@ -183,11 +188,7 @@ fn write_policy(
     w.line("/// Whether the policy permits, at the system clock. A clause that cannot be evaluated fails");
     w.line("/// closed.");
     w.line(ALLOW);
-    w.open(format!(
-        "pub fn {}({}) -> bool",
-        e.func,
-        params.join(", ")
-    ));
+    w.open(format!("pub fn {}({}) -> bool", e.func, params.join(", ")));
     w.line(format!(
         "{}_verdict({}, veld::rules::system_now_ms()).is_ok()",
         e.func,
@@ -199,7 +200,9 @@ fn write_policy(
         p.name
     ));
     w.line("/// else the denial: the message of the first `forbid` that was true if it has one, otherwise");
-    w.line("/// `not permitted`. The server calls this form with the clock reading of the request.");
+    w.line(
+        "/// `not permitted`. The server calls this form with the clock reading of the request.",
+    );
     w.line(ALLOW);
     w.open(format!(
         "pub fn {}_verdict({}, now: i64) -> Result<(), String>",
@@ -375,7 +378,11 @@ fn can_signature(ctx: &Ctx<'_, '_>, given: &Inputs<'_>) -> String {
         })
         .collect();
     if let Some((name, ty)) = &given.principal {
-        parts.push(format!("{}: &{}", local_ident(name), rust_type(ctx, ty, false)));
+        parts.push(format!(
+            "{}: &{}",
+            local_ident(name),
+            rust_type(ctx, ty, false)
+        ));
     }
     parts.extend(given.params.iter().map(|p| {
         format!(

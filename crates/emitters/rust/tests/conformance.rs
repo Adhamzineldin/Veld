@@ -200,7 +200,12 @@ fn rust_enforces_every_rules_feature() {
     for role in Rust.roles() {
         let caps = Rust.capabilities(*role);
         for f in veld_ir::Feature::RULES {
-            assert!(caps.supports(f), "{}: `{}` is not declared", role.name(), f.name());
+            assert!(
+                caps.supports(f),
+                "{}: `{}` is not declared",
+                role.name(),
+                f.name()
+            );
         }
         for ir in rules_contracts() {
             let services: Vec<_> = ir.services.iter().map(|s| s.id).collect();
@@ -212,7 +217,11 @@ fn rust_enforces_every_rules_feature() {
                 framework: None,
             };
             let gate = check_capabilities(&ir, &req, &caps);
-            assert!(gate.is_empty(), "{}: the gate reported {gate:?}", role.name());
+            assert!(
+                gate.is_empty(),
+                "{}: the gate reported {gate:?}",
+                role.name()
+            );
             let files = match Rust.generate_dyn(&req, &serde_json::Value::Null) {
                 Ok(files) => files,
                 Err(d) => panic!("{}: generate failed: {d:?}", role.name()),

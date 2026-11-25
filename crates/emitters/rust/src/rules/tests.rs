@@ -652,19 +652,21 @@ fn principal_scope() -> super::Scope {
 
 #[test]
 fn the_principal_is_read_from_its_local_in_every_form() {
-    let id = from_root(
-        Root::Principal,
-        ty(Scalar::Uuid),
-        vec![step("id", false)],
+    let id = from_root(Root::Principal, ty(Scalar::Uuid), vec![step("id", false)]);
+    assert_eq!(
+        show_scope(principal_scope(), &id),
+        "(*principal).id.as_str()"
     );
-    assert_eq!(show_scope(principal_scope(), &id), "(*principal).id.as_str()");
     let suspended = from_root(
         Root::Principal,
         ty(Scalar::Bool),
         vec![step("suspended", false)],
     );
     let denied = x(ty(Scalar::Bool), ExprKind::Not(Box::new(suspended)));
-    assert_eq!(show_scope(principal_scope(), &denied), "!(*principal).suspended");
+    assert_eq!(
+        show_scope(principal_scope(), &denied),
+        "!(*principal).suspended"
+    );
     // A bare path of the principal is a place that an argument of a policy borrows.
     let ir = veld_emit_conformance::ir_with_rule();
     let tree = Tree::new(&ir, "crate", "src", vec![], true);
@@ -683,14 +685,21 @@ fn the_principal_is_read_from_its_local_in_every_form() {
             steps: vec![step("nick", true)],
         }),
     );
-    assert_eq!(show_scope(principal_scope(), &has), "(*principal).nick.is_some()");
+    assert_eq!(
+        show_scope(principal_scope(), &has),
+        "(*principal).nick.is_some()"
+    );
 }
 
 fn policy_scope() -> super::Scope {
     super::Scope {
-        params: [("user".to_string(), false), ("n".to_string(), false), ("now".to_string(), false)]
-            .into_iter()
-            .collect(),
+        params: [
+            ("user".to_string(), false),
+            ("n".to_string(), false),
+            ("now".to_string(), false),
+        ]
+        .into_iter()
+        .collect(),
         facts: [("booking".to_string(), false)].into_iter().collect(),
         locals: true,
         ..super::Scope::default()
