@@ -18,7 +18,7 @@ const run = (args) =>
 
 const commands = [
   [],
-  ['init'], ['check'], ['generate'], ['clean'], ['setup'], ['fmt'], ['diff'],
+  ['init'], ['check'], ['generate'], ['clean'], ['setup'], ['fmt'], ['diff'], ['test'],
   ['export'], ['export', 'openapi'], ['export', 'ir'],
   ['plugin'], ['plugin', 'new'], ['plugin', 'test'],
   ['add'], ['install'], ['publish'], ['login'], ['logout'],
