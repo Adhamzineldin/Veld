@@ -1,7 +1,5 @@
-//! The block of endpoint rules (`spec/rules.md` section 9): `fact`, `transition`, `require` and `ensure`.
-//!
-//! `allow` belongs to a later phase. It is recognised only to say so, and the rest of the
-//! statement is skipped. `transition` is parsed in `machine.rs`.
+//! The block of endpoint rules (`spec/rules.md` section 9): `fact`, `allow`, `transition`, `require`
+//! and `ensure`. `transition` is parsed in `machine.rs` and `allow` in `policy.rs`.
 
 use super::Parser;
 use crate::diagnostics::Span;
@@ -50,10 +48,12 @@ impl Parser<'_> {
             "fact" => self.fact_stmt(&docs),
             "require" => self.require_stmt(docs),
             "ensure" => self.ensure_stmt(docs),
-            "allow" => return self.later_phase("allow", "policies (phase 4)"),
+            "allow" => self.allow_stmt(&docs),
             "transition" => self.transition_stmt(&docs),
             _ => {
-                self.unexpected("a statement (`fact`, `transition`, `require` or `ensure`)");
+                self.unexpected(
+                    "a statement (`fact`, `allow`, `transition`, `require` or `ensure`)",
+                );
                 None
             }
         };
@@ -61,17 +61,6 @@ impl Parser<'_> {
             self.skip_statement();
         }
         parsed
-    }
-
-    fn later_phase(&mut self, word: &str, phase: &str) -> Option<Stmt> {
-        let span = self.advance().span;
-        self.err(
-            "E0003",
-            format!("`{word}` belongs to {phase} and is not supported yet"),
-            span,
-        );
-        self.skip_statement();
-        None
     }
 
     /// Skips to the next statement word at the start of a line, or to the closing `}`.
@@ -142,7 +131,7 @@ impl Parser<'_> {
         None
     }
 
-    fn message(&mut self) -> Option<Option<StrLit>> {
+    pub(super) fn message(&mut self) -> Option<Option<StrLit>> {
         if self.at_word("message") && matches!(self.tok_at(1), Tok::Str(_)) {
             self.advance();
             return self.expect_str("a message string").map(Some);

@@ -282,7 +282,8 @@ fn a_failed_fact_does_not_cascade_into_the_transition() {
 }
 
 #[test]
-fn allow_is_still_rejected() {
+fn allow_is_a_statement_now_and_an_unknown_policy_is_e0942() {
     let out = one(&endpoint("    allow Whatever(booking)"));
-    assert!(out.diagnostics.iter().any(|d| d.code == "E0003"));
+    let found: Vec<&str> = out.diagnostics.iter().map(|d| d.code).collect();
+    assert_eq!(found, ["E0942"]);
 }

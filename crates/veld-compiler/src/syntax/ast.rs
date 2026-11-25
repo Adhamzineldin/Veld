@@ -15,6 +15,11 @@ pub struct File {
     /// Top-level `example "..." { }` declarations (`spec/rules.md` section 12). They have no
     /// name of their own, so they live beside `decls`.
     pub examples: Vec<Example>,
+    /// Top-level `policy` declarations (`spec/rules.md` section 11.2). Like examples they sit
+    /// beside `decls`: the checker names and imports them in a table of their own.
+    pub policies: Vec<PolicyDecl>,
+    /// Top-level `principal` declarations (`spec/rules.md` section 11.1).
+    pub principals: Vec<PrincipalDecl>,
     pub span: Span,
 }
 
@@ -363,6 +368,7 @@ pub enum Stmt {
     Require(RequireStmt),
     Ensure(EnsureStmt),
     Transition(TransitionStmt),
+    Allow(AllowStmt),
 }
 
 impl Stmt {
@@ -374,10 +380,55 @@ impl Stmt {
             Stmt::Require(r) => (&r.docs[..], r.span),
             Stmt::Ensure(e) => (&e.docs[..], e.span),
             Stmt::Transition(t) => (&[][..], t.span),
+            Stmt::Allow(a) => (&[][..], a.span),
         };
         docs.first()
             .map_or(span.start, |d| d.span.start.min(span.start))
     }
+}
+
+/// `allow Policy(args)` (`spec/rules.md` section 11.3).
+#[derive(Debug, Clone, PartialEq)]
+pub struct AllowStmt {
+    pub policy: Ident,
+    pub args: Vec<Expr>,
+    pub span: Span,
+}
+
+/// `[docs] policy Name(param: T, ..) { clause* }` (`spec/rules.md` section 11.2).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PolicyDecl {
+    pub docs: Vec<Doc>,
+    pub name: Ident,
+    pub params: Vec<PolicyParam>,
+    pub clauses: Vec<PolicyClause>,
+    /// From the `policy` keyword to the closing `}`.
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PolicyParam {
+    pub name: Ident,
+    pub ty: TypeExpr,
+}
+
+/// `permit when expr [message "text"]` or `forbid when ...`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PolicyClause {
+    pub forbid: bool,
+    pub expr: Expr,
+    pub message: Option<StrLit>,
+    /// From the `permit` or `forbid` word to the end of the clause.
+    pub span: Span,
+}
+
+/// `principal Type [as name]` (`spec/rules.md` section 11.1).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrincipalDecl {
+    pub docs: Vec<Doc>,
+    pub ty: TypeExpr,
+    pub name: Option<Ident>,
+    pub span: Span,
 }
 
 /// `transition fact.path: a, b -> c` (`spec/rules.md` section 10.2).

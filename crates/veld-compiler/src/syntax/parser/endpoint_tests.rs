@@ -48,6 +48,7 @@ fn parses_every_statement_form() {
             Stmt::Require(_) => "require",
             Stmt::Ensure(_) => "ensure",
             Stmt::Transition(_) => "transition",
+            Stmt::Allow(_) => "allow",
         })
         .collect();
     assert_eq!(
@@ -104,16 +105,40 @@ fn an_endpoint_without_a_block_has_none() {
 }
 
 #[test]
-fn allow_names_its_phase() {
-    let src = "service S at \"/\" { get \"/\" f() { allow x(y)\n ensure true } }";
+fn allow_is_a_statement() {
+    let e = endpoint(
+        "service S at \"/\" { get \"/\" f() {\n allow x(y, z.w, 1 + 2)\n allow q()\n ensure true } }",
+    );
+    let block = e.block.expect("block");
+    assert_eq!(block.stmts.len(), 3);
+    let Stmt::Allow(a) = &block.stmts[0] else {
+        panic!("not an allow")
+    };
+    assert_eq!(a.policy.name, "x");
+    assert_eq!(a.args.len(), 3);
+    let Stmt::Allow(b) = &block.stmts[1] else {
+        panic!("not an allow")
+    };
+    assert!(b.args.is_empty());
+}
+
+#[test]
+fn a_broken_allow_is_reported_and_the_next_statement_still_parses() {
+    for src in [
+        "service S at \"/\" { get \"/\" f() { allow\n ensure true } }",
+        "service S at \"/\" { get \"/\" f() { allow x\n ensure true } }",
+        "service S at \"/\" { get \"/\" f() { allow x(\n ensure true } }",
+        "service S at \"/\" { get \"/\" f() { allow x(a b)\n ensure true } }",
+    ] {
+        assert_eq!(codes(src), ["E0003"], "{src}");
+    }
+    let src = "service S at \"/\" { get \"/\" f() { allow x\n ensure true } }";
     let r = p(src);
-    assert_eq!(codes(src), ["E0003"]);
-    assert!(r.diagnostics[0].message.contains("phase 4"));
     let DeclKind::Service(s) = &r.file.decls[0].kind else {
         panic!()
     };
     let block = s.endpoints[0].block.as_ref().expect("block");
-    assert_eq!(block.stmts.len(), 1, "the next statement is still parsed");
+    assert!(block.stmts.iter().any(|s| matches!(s, Stmt::Ensure(_))));
 }
 
 #[test]
