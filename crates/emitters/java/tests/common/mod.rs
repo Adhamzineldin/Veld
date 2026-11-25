@@ -66,6 +66,12 @@ pub fn compile_contract(orders_pkg: &str, patch: &dyn Fn(&str) -> String) -> Ir 
 pub fn compile_path(rel: &str, package: &str) -> Ir {
     let text =
         std::fs::read_to_string(repo_root().join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+    compile_source(text, package, rel)
+}
+
+/// Compiles `text` as the single package `package`; `what` names it in a failure.
+pub fn compile_source(text: String, package: &str, what: &str) -> Ir {
+    let rel = what;
     let out = compile(&CompileInput {
         packages: vec![PackageInput {
             name: package.into(),

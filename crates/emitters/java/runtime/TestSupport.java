@@ -140,4 +140,55 @@ public final class TestSupport {
       }
     };
   }
+  // #if rollout
+
+  /** The most audited reports a test handler sends in {@code Veld-Test-Audited}. */
+  private static final int AUDITED_LIMIT = 100;
+
+  /**
+   * Like {@link #handler}, and every answer carries the response header {@code Veld-Test-Audited}
+   * when the request made the server report audited rules ({@code @rollout(audit)}, spec/rules.md
+   * section 12.4): the unpadded base64url of a compact JSON array with one entry per report, the
+   * first 100 at most.
+   */
+  public static VeldHandler auditedHandler(VeldHandler inner, Map<String, String> digests) {
+    VeldHandler probe = handler(inner, digests);
+    return new VeldHandler() {
+      @Override
+      public Optional<VeldResponse> handle(VeldRequest request) {
+        return audited(() -> probe.handle(request));
+      }
+
+      @Override
+      public Optional<VeldResponse> invoke(String endpoint, VeldRequest request) {
+        return audited(() -> probe.invoke(endpoint, request));
+      }
+    };
+  }
+
+  private static Optional<VeldResponse> audited(java.util.function.Supplier<Optional<VeldResponse>> call) {
+    Audit.startLog();
+    Optional<VeldResponse> answer;
+    try {
+      answer = call.get();
+    } catch (RuntimeException | Error e) {
+      Audit.endLog();
+      throw e;
+    }
+    List<Violation> reported = Audit.endLog();
+    return reported.isEmpty() ? answer : answer.map(r -> withAudited(r, reported));
+  }
+
+  private static VeldResponse withAudited(VeldResponse response, List<Violation> reported) {
+    List<Json> entries = new java.util.ArrayList<>();
+    for (Violation v : reported.subList(0, Math.min(reported.size(), AUDITED_LIMIT))) {
+      entries.add(v.toWire());
+    }
+    String text = Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(Json.array(entries).write().getBytes(StandardCharsets.UTF_8));
+    Map<String, String> headers = new LinkedHashMap<>(response.headers());
+    headers.put("veld-test-audited", text);
+    return new VeldResponse(response.status(), headers, response.body());
+  }
+  // #endif
 }

@@ -116,9 +116,9 @@ fn java_server_refuses_events_and_the_client_ignores_them() {
     veld_emit_conformance::check_events_are_ignored_by_clients(&Java).unwrap();
 }
 
-/// `@rollout(audit)` (`spec/rules.md` section 17.1): refused with `E0801` until Java declares
-/// `rules_rollout`, as a server and as a client.
+/// `@rollout(audit)` (`spec/rules.md` section 17.1): Java declares `rules_rollout` as a server and
+/// as a client, so an audited invariant, `require` and `ensure` pass the gate and generate.
 #[test]
-fn java_refuses_audited_rules() {
-    veld_emit_conformance::check_rollout_is_refused(&Java).unwrap();
+fn java_generates_audited_rules() {
+    veld_emit_conformance::check_rollout_is_generated(&Java).unwrap();
 }

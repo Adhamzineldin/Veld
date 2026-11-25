@@ -60,8 +60,8 @@ pub struct Java;
 /// (`spec/events.md` section 14).
 fn events_capabilities(role: Role) -> Capabilities {
     match role {
-        Role::Server => Capabilities::all_except(&[Feature::Events]),
-        Role::Client => Capabilities::all_except(&[]),
+        Role::Server => Capabilities::all_except(&[Feature::Events]).with(Feature::RulesRollout),
+        Role::Client => Capabilities::all_except(&[]).with(Feature::RulesRollout),
     }
 }
 
@@ -191,18 +191,21 @@ impl Generator for Java {
                     declares_rules(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
                 }));
         let policies = features.contains(&Feature::RulesPolicies);
+        let rollout = features.contains(&Feature::RulesRollout);
         let flags = runtime::Flags {
-            rules: rules || policies,
+            rules: rules || policies || rollout,
             endpoint,
             testing: endpoint && opts.testing == Some(true),
             machine: endpoint && endpoint::services_have_transition(req.ir, &req.services),
             policies,
+            rollout,
         };
         runtime::emit_with(&mut files, &base, streaming, flags)?;
         let tree = tree
             .with_rules(flags.rules)
             .with_testing(flags.testing)
-            .with_policies(uses_policies(req.ir, &req.services));
+            .with_policies(uses_policies(req.ir, &req.services))
+            .with_rollout(flags.rollout);
         models::emit(&mut files, &tree)?;
         match req.role {
             Role::Client => client::emit(&mut files, &tree)?,

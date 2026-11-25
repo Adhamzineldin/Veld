@@ -21,8 +21,35 @@ fn vector_dirs() -> Vec<PathBuf> {
     vec![repo_root().join("tests/rules/core")]
 }
 
-fn vector_files(ext: &str) -> Vec<PathBuf> {
-    vector_dirs().iter().flat_map(|d| sorted(d, ext)).collect()
+/// Which vector files run together. Files of one group share a package, so two files that declare a
+/// model of the same name (`lists` and `rollout` both have a `Party`) are in different groups.
+#[derive(Clone, Copy)]
+enum Group {
+    /// Every file but those of audited rules.
+    Core,
+    /// One of the files of audited rules (`@rollout(audit)`), alone.
+    Only(&'static str),
+}
+
+impl Group {
+    fn has(self, stem: &str) -> bool {
+        match self {
+            Group::Core => !stem.starts_with("rollout"),
+            Group::Only(only) => stem == only,
+        }
+    }
+}
+
+fn vector_files(ext: &str, group: Group) -> Vec<PathBuf> {
+    let stem = |p: &PathBuf| {
+        p.file_stem()
+            .map_or(String::new(), |s| s.to_string_lossy().into_owned())
+    };
+    vector_dirs()
+        .iter()
+        .flat_map(|d| sorted(d, ext))
+        .filter(|p| group.has(&stem(p)))
+        .collect()
 }
 
 fn javac_ok() -> bool {
@@ -55,12 +82,12 @@ fn sorted(dir: &std::path::Path, ext: &str) -> Vec<PathBuf> {
 }
 
 /// Every vector contract in one package, plus a service that makes every model reachable.
-fn vector_ir() -> Ir {
+fn vector_ir(group: Group) -> Ir {
     let mut files = Vec::new();
     let mut uses = String::new();
     let mut probes = String::from("service Probe at \"/probe\" {\n");
     let mut n = 0;
-    for path in vector_files("veld") {
+    for path in vector_files("veld", group) {
         let text = std::fs::read_to_string(&path)
             .unwrap()
             .replace("\r\n", "\n");
@@ -108,10 +135,22 @@ fn all_services(ir: &Ir) -> Vec<veld_ir::ServiceId> {
 
 #[test]
 fn the_shared_vectors_pass_on_generated_java() {
+    run_vectors(Group::Core);
+}
+
+/// The vectors of audited rules: a client skips them, so only `expect` is compared here. What a
+/// server reports to `onRuleViolation` is held to `audited` by `rollout.rs`.
+#[test]
+fn the_rollout_vectors_pass_on_generated_java() {
+    run_vectors(Group::Only("rollout"));
+    run_vectors(Group::Only("rollout_off"));
+}
+
+fn run_vectors(group: Group) {
     if !require_javac("the_shared_vectors_pass_on_generated_java") {
         return;
     }
-    let ir = vector_ir();
+    let ir = vector_ir(group);
     let files = run(
         &ir,
         Role::Client,
@@ -162,10 +201,11 @@ fn the_shared_vectors_pass_on_generated_java() {
     let mut cases = Vec::new();
     let mut lines = String::new();
     let (mut total, mut partial) = (0, 0);
-    for path in vector_files("json") {
+    for path in vector_files("json", group) {
         for case in load_cases(&std::fs::read_to_string(&path).unwrap()).unwrap() {
             total += 1;
-            if case.partial {
+            // A client has no output mode, and has no partial check in Java.
+            if case.partial || case.output_is_off() {
                 partial += 1;
                 continue;
             }

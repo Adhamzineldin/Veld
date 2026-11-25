@@ -160,10 +160,17 @@ fn write_rule(
     if skipped {
         w.open("if (!request)");
     }
-    w.line(format!("{rules}.run("));
+    // An audited rule reports to the sink of a server and is skipped when there is none, so a
+    // client never evaluates it (`spec/rules.md` section 17.1).
+    let (call, sink) = if rule.is_audited() {
+        (format!("{}.run(", fc.rt("Audit")), "")
+    } else {
+        (format!("{rules}.run("), "out, ")
+    };
+    w.line(call);
     w.indent().indent();
     w.line(format!(
-        "out, {constant}, {}, path, {list}.of({}), {},",
+        "{sink}{constant}, {}, path, {list}.of({}), {},",
         java_str(&rule.name),
         read_wires(d, rule),
         java_str(&message)

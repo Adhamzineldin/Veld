@@ -17,6 +17,9 @@ public final class EndpointRules {
   private EndpointRules() {}
 
   private static final ThreadLocal<List<Check>> PENDING = new ThreadLocal<>();
+  // #if rollout
+  private static final ThreadLocal<List<Check>> PENDING_AUDITED = new ThreadLocal<>();
+  // #endif
 
   /** Thrown to end a request with a response that is already built. */
   public static final class Early extends RuntimeException {
@@ -87,6 +90,9 @@ public final class EndpointRules {
   /** Forgets the {@code ensure} checks of a request that ended without reaching step 9. */
   static void discard() {
     PENDING.remove();
+    // #if rollout
+    PENDING_AUDITED.remove();
+    // #endif
   }
 
   /** The schema-prepared wire form of an error payload, defaults applied. */
@@ -103,6 +109,9 @@ public final class EndpointRules {
     private final long now;
     private final long started = System.nanoTime();
     private final List<Check> ensures = new ArrayList<>();
+    // #if rollout
+    private final List<Check> auditedEnsures = new ArrayList<>();
+    // #endif
 
     private Run(
         HandlerHooks hooks,
@@ -181,6 +190,9 @@ public final class EndpointRules {
         throw new RuleWalk.Rejected();
       }
       Json data = Wire.prepare(built.dataSchema(), built.dataWire(), Wire.Mode.RESPONSE);
+      // #if rollout
+      Audit.checkError(hooks, spec, built.dataSchema(), data, started);
+      // #endif
       List<Violation> broken = RuleWalk.check(built.dataSchema(), data, "error", false);
       if (!broken.isEmpty()) {
         RuleWalk.report(hooks, spec, RuleWalk.Position.OUTPUT, RuleWalk.Outcome.REJECTED, broken, started);
@@ -251,7 +263,46 @@ public final class EndpointRules {
       if (!ensures.isEmpty()) {
         PENDING.set(List.copyOf(ensures));
       }
+      // #if rollout
+      if (!auditedEnsures.isEmpty()) {
+        PENDING_AUDITED.set(List.copyOf(auditedEnsures));
+      }
+      // #endif
     }
+    // #if rollout
+
+    /**
+     * One audited {@code require} ({@code @rollout(audit)}, spec/rules.md section 17.1): evaluated
+     * where the enforced one would be, reported with the outcome {@code AUDITED}, and it never
+     * answers. It has no {@code else} payload to build.
+     */
+    public void requireAudited(
+        String id, String name, List<String> fields, String message, BooleanSupplier holds) {
+      if (!active()) {
+        return;
+      }
+      String error = null;
+      boolean ok;
+      try {
+        ok = holds.getAsBoolean();
+      } catch (RuleError e) {
+        ok = false;
+        error = e.kind();
+      }
+      if (!ok) {
+        String text = error == null ? message : "rule " + name + " could not be evaluated";
+        Audit.report(
+            hooks, spec, RuleWalk.Position.INPUT, List.of(new Violation(id, "request", fields, text, error)), started, null);
+      }
+    }
+
+    /** One audited {@code ensure}: checked after the handler, it never rejects. */
+    public void ensureAudited(String id, String name, List<String> fields, String message, BooleanSupplier holds) {
+      if (active()) {
+        auditedEnsures.add(new Check(id, name, fields, message, holds));
+      }
+    }
+    // #endif
   }
 
   /**
@@ -261,6 +312,9 @@ public final class EndpointRules {
    */
   static VeldResponse ensureFailure(
       EndpointSpec spec, HandlerHooks hooks, Json wire, Router.StdSigs std) {
+    // #if rollout
+    auditedEnsures(spec, hooks, wire);
+    // #endif
     List<Check> checks = PENDING.get();
     PENDING.remove();
     RuleWalk.OutputMode mode = hooks.rulesOutput();
@@ -298,4 +352,39 @@ public final class EndpointRules {
         hooks, spec, RuleWalk.Position.OUTPUT, strict ? RuleWalk.Outcome.REJECTED : RuleWalk.Outcome.AUDITED, found, started);
     return strict ? Router.problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build()) : null;
   }
+  // #if rollout
+
+  /**
+   * Step 9 for the audited {@code ensure} statements of this request: evaluated and reported when
+   * the output mode is not {@code off}, and never rejecting. They are evaluated even when no
+   * enforced {@code ensure} is registered.
+   */
+  private static void auditedEnsures(EndpointSpec spec, HandlerHooks hooks, Json wire) {
+    List<Check> checks = PENDING_AUDITED.get();
+    PENDING_AUDITED.remove();
+    if (checks == null || hooks.rulesOutput() == RuleWalk.OutputMode.OFF) {
+      return;
+    }
+    long started = System.nanoTime();
+    if (!Wire.validate(spec.success(), wire, "$", false).isEmpty()) {
+      return;
+    }
+    List<Violation> found = new ArrayList<>();
+    for (Check c : checks) {
+      String error = null;
+      boolean ok;
+      try {
+        ok = c.holds().getAsBoolean();
+      } catch (RuleError e) {
+        ok = false;
+        error = e.kind();
+      }
+      if (!ok) {
+        String text = error == null ? c.message() : "rule " + c.name() + " could not be evaluated";
+        found.add(new Violation(c.id(), "request", c.fields(), text, error));
+      }
+    }
+    Audit.report(hooks, spec, RuleWalk.Position.OUTPUT, found, started, null);
+  }
+  // #endif
 }

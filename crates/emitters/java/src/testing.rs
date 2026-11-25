@@ -112,12 +112,18 @@ fn write_create_body(
         (Some(_) | None, _) => created,
     };
     let collections = fc.name("java.util.Collections");
+    // A contract with an audited rule answers with `Veld-Test-Audited` (`spec/rules.md` section 12.4).
+    let handler_method = if fc.tree.rollout {
+        "auditedHandler"
+    } else {
+        "handler"
+    };
     let digest = svc
         .rules_digest
         .as_deref()
         .map_or_else(|| "null".to_string(), java_str);
     w.line(format!(
-        "return {support}.handler({wrapped}, {collections}.singletonMap({}, {digest}));",
+        "return {support}.{handler_method}({wrapped}, {collections}.singletonMap({}, {digest}));",
         java_str(&svc.name)
     ));
 }

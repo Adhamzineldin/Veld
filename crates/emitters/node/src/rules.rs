@@ -324,7 +324,7 @@ fn write_ensure(
     if e.rollout.is_some() {
         w.line("audited: true,");
     }
-    let o =old.map_or_else(String::new, |t| format!(", o: {t}"));
+    let o = old.map_or_else(String::new, |t| format!(", o: {t}"));
     w.line(format!(
         "holds: ({}, result: {result}, now: bigint{o}) => {cond},",
         sig.p

@@ -1,0 +1,106 @@
+package dev.veld.runtime;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Audited rules ({@code @rollout(audit)}, spec/rules.md section 17.1): evaluated and reported, never
+ * rejecting.
+ *
+ * <p>The check function of a declaration that has an audited rule reports it to the sink of this
+ * class, and only a server opens a sink: a client never does, so a client skips audited rules in
+ * the local check. Rule checks run synchronously on the thread that handles the request, so the
+ * sink is a thread-local that is opened right before a walk and closed right after it.
+ */
+public final class Audit {
+  private Audit() {}
+
+  private static final ThreadLocal<List<Violation>> SINK = new ThreadLocal<>();
+  private static final ThreadLocal<List<Violation>> LOG = new ThreadLocal<>();
+
+  /**
+   * One audited rule of a declaration: evaluated when a server listens, skipped otherwise.
+   *
+   * @param id the rule id
+   * @param name the rule name
+   * @param path the path of the value that carries the rule
+   * @param fields the wire names of the fields the rule reads
+   * @param message the rule's message, or its default
+   * @param test the rule's expression
+   */
+  public static void run(
+      String id, String name, String path, List<String> fields, String message, Rules.Test test) {
+    List<Violation> sink = SINK.get();
+    if (sink != null) {
+      Rules.run(sink, id, name, path, fields, message, test);
+    }
+  }
+
+  /** Opens a sink: the rule checks that run next report their audited violations to it. */
+  static void begin() {
+    SINK.set(new ArrayList<>());
+  }
+
+  /** Closes the sink and returns what it collected. */
+  static List<Violation> end() {
+    List<Violation> out = SINK.get();
+    SINK.remove();
+    return out == null ? List.of() : out;
+  }
+
+  /**
+   * Reports audited violations to the hook with the outcome {@code AUDITED}. {@code root} is the
+   * name a value has in a path when it is not an input ({@code result}, {@code error}); input paths
+   * are rooted already.
+   */
+  static void report(
+      HandlerHooks hooks,
+      EndpointSpec spec,
+      RuleWalk.Position position,
+      List<Violation> found,
+      long started,
+      String root) {
+    if (found.isEmpty()) {
+      return;
+    }
+    List<Violation> rooted = new ArrayList<>();
+    for (Violation v : found) {
+      String rest = v.path().startsWith("$") ? v.path().substring(1) : v.path();
+      rooted.add(
+          root == null ? v : new Violation(v.rule(), root + rest, v.fields(), v.message(), v.error()));
+    }
+    List<Violation> log = LOG.get();
+    if (log != null) {
+      log.addAll(rooted);
+    }
+    RuleWalk.report(hooks, spec, position, RuleWalk.Outcome.AUDITED, rooted, started);
+  }
+
+  /**
+   * The audited rules of the declared error that a failed {@code require ... else E} is about to
+   * answer with: reported, under the output mode, and never rejecting.
+   */
+  static void checkError(HandlerHooks hooks, EndpointSpec spec, Schema schema, Json data, long started) {
+    if (hooks.rulesOutput() == RuleWalk.OutputMode.OFF) {
+      return;
+    }
+    begin();
+    RuleWalk.check(schema, data, "$", false);
+    report(hooks, spec, RuleWalk.Position.OUTPUT, end(), started, "error");
+  }
+
+  /**
+   * Starts a log of the audited violations the pipeline reports on this thread. The test handler
+   * uses it to answer with {@code Veld-Test-Audited} (spec/rules.md section 12.4).
+   */
+  static void startLog() {
+    LOG.set(new ArrayList<>());
+  }
+
+  /** Ends the log and returns what was reported. */
+  static List<Violation> endLog() {
+    List<Violation> out = LOG.get();
+    LOG.remove();
+    return out == null ? List.of() : out;
+  }
+}

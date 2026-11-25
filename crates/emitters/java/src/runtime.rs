@@ -27,6 +27,8 @@ const TESTING_FILES: &[&str] = &["TestSupport"];
 const MACHINE_FILES: &[&str] = &["Transition"];
 /// The runtime classes of the policies (`spec/targets/java.md` section 11).
 const POLICY_FILES: &[&str] = &["Policy"];
+/// The runtime class of audited rules (`@rollout(audit)`, `spec/rules.md` section 17.1).
+const ROLLOUT_FILES: &[&str] = &["Audit"];
 
 /// The package the embedded adapter sources declare. It is replaced by `<base>.adapters`.
 const ADAPTER_PACKAGE: &str = "dev.veld.adapters";
@@ -39,6 +41,7 @@ macro_rules! runtime_files {
 }
 
 runtime_files!(
+    "Audit",
     "ClientCore",
     "ClientDefaults",
     "ClientOptions",
@@ -207,6 +210,8 @@ pub struct Flags {
     pub machine: bool,
     /// Policies and the typed principal (`// #if policies` regions and `Policy`). Needs `rules`.
     pub policies: bool,
+    /// Audited rules (`// #if rollout` regions and `Audit`). Needs `rules`.
+    pub rollout: bool,
 }
 
 /// Like [`emit`], with the endpoint rules and test handler parts switched by `flags`.
@@ -224,6 +229,7 @@ pub fn emit_with(
             && (flags.testing || !TESTING_FILES.contains(&name))
             && (flags.machine || !MACHINE_FILES.contains(&name))
             && (flags.policies || !POLICY_FILES.contains(&name))
+            && (flags.rollout || !ROLLOUT_FILES.contains(&name))
     };
     let enabled = |region: &str| match region {
         "rules" => flags.rules,
@@ -231,6 +237,7 @@ pub fn emit_with(
         "testing" => flags.testing,
         "machine" => flags.machine,
         "policies" => flags.policies,
+        "rollout" => flags.rollout,
         _ => false,
     };
     for (name, source) in RUNTIME.iter().filter(|(name, _)| wanted(name)) {

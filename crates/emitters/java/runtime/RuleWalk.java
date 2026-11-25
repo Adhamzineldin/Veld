@@ -342,12 +342,18 @@ public final class RuleWalk {
       EndpointSpec spec, HandlerHooks hooks, Map<String, Json> bound, Router.StdSigs std) {
     long started = System.nanoTime();
     List<Violation> found = new ArrayList<>();
+    // #if rollout
+    Audit.begin();
+    // #endif
     for (EndpointSpec.Param p : spec.params()) {
       Json value = p.stream() ? null : bound.get(p.name());
       if (value != null && reachesRules(p.type())) {
         found.addAll(check(p.type(), value, p.location(), true));
       }
     }
+    // #if rollout
+    Audit.report(hooks, spec, Position.INPUT, Audit.end(), started, null);
+    // #endif
     if (found.isEmpty()) {
       return null;
     }
@@ -405,7 +411,14 @@ public final class RuleWalk {
       }
       return false;
     }
+    // #if rollout
+    Audit.begin();
+    // #endif
     List<Violation> found = check(schema, wire, "$", false);
+    // #if rollout
+    Audit.report(
+        hooks, spec, Position.OUTPUT, Audit.end(), started, schema == spec.success() ? "result" : "error");
+    // #endif
     if (found.isEmpty()) {
       return false;
     }
@@ -424,7 +437,13 @@ public final class RuleWalk {
       return null;
     }
     long started = System.nanoTime();
+    // #if rollout
+    Audit.begin();
+    // #endif
     List<Violation> found = check(schema, prepared, "message", true);
+    // #if rollout
+    Audit.report(hooks, spec, Position.INPUT, Audit.end(), started, null);
+    // #endif
     if (found.isEmpty()) {
       return null;
     }

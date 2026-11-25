@@ -34,6 +34,10 @@ pub struct Tree<'a> {
     /// then gets typed auth hooks, and `allow`, the policy methods and `can<Endpoint>` are
     /// generated (`spec/targets/java.md` section 11).
     pub policies: bool,
+    /// True when the contract has an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1): the
+    /// output then carries `Audit` and the `rollout` regions of the runtime, and the test handler
+    /// answers with `Veld-Test-Audited`.
+    pub rollout: bool,
     decls: Vec<DeclId>,
 }
 
@@ -61,6 +65,7 @@ impl<'a> Tree<'a> {
             rules: false,
             testing: false,
             policies: false,
+            rollout: false,
             decls: set.into_iter().collect(),
         }
     }
@@ -83,6 +88,13 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn with_policies(mut self, policies: bool) -> Self {
         self.policies = policies;
+        self
+    }
+
+    /// Sets whether the contract has an audited rule.
+    #[must_use]
+    pub fn with_rollout(mut self, rollout: bool) -> Self {
+        self.rollout = rollout;
         self
     }
 

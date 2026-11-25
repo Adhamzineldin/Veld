@@ -422,8 +422,14 @@ fn write_finish(
 ) {
     for (e, cond) in site.ep.rules.ensures.iter().zip(ensures) {
         let fields = list_of(printer.file(), &e.reads);
+        // An audited `ensure` is registered like an enforced one and never rejects (section 17.1).
+        let register = if e.rollout.is_some() {
+            "ensureAudited"
+        } else {
+            "ensure"
+        };
         w.line(format!(
-            "run.ensure({}, {}, {fields}, {}, () -> {cond});",
+            "run.{register}({}, {}, {fields}, {}, () -> {cond});",
             java_str(&e.id),
             java_str(e.name.as_deref().unwrap_or("ensure")),
             message(
@@ -459,6 +465,21 @@ fn write_require(
 ) {
     let cond = print_expr(printer, &r.expr).code;
     let fields = list_of(printer.file(), &r.reads);
+    if r.rollout.is_some() {
+        // An audited `require` never answers, so its `else` payload is never built: it is not
+        // generated at all (`spec/rules.md` section 17.1).
+        w.line(format!(
+            "run.requireAudited({}, {}, {fields}, {}, () -> {cond});",
+            java_str(&r.id),
+            java_str(r.name.as_deref().unwrap_or("require")),
+            message(
+                r.name.as_deref(),
+                r.message.as_deref(),
+                "precondition failed"
+            )
+        ));
+        return;
+    }
     let otherwise = write_otherwise(printer, site, r, diags);
     w.line(format!(
         "run.require({}, {}, {fields}, {},",
