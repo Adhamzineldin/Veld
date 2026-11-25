@@ -41,6 +41,8 @@ veld test --live http://localhost:3000 --dry-run
 
 `--live` sends each example as a real HTTP request to a running **test handler** and compares the status, the error type and the patterns. The request carries the example's facts, principal and clock in the headers `Veld-Test-Facts`, `Veld-Test-Principal` and `Veld-Test-Now` (and the handler's result in `Veld-Test-Result`), so the server needs no data of its own.
 
+An example writes down only part of an answer: `-> RoomFull { capacity: 2 }` says nothing about the violations. So when the answer agrees with the example, `veld test` also asks the reference evaluator what the whole error must be, and the server has to give exactly that: the same type, status and fields, and the same violations in the same order, each with the same rule id, path, fields, message and error. A server that answers the right error with the wrong violation fails the example, and the report says what the evaluator expected.
+
 An example without `returns` runs the application's real handler, so `-> ok { ... }` checks what it answered. With `--dry-run` such an example stops before the handler: the test handler answers `204` with `Veld-Test-Passed: 1` when every check passed. That makes a live run check exactly what an offline run checks.
 
 Before the first example, `veld test` asks `GET /__veld/test`. A server that does not answer as a test handler is refused.
@@ -54,7 +56,7 @@ veld test --live http://localhost:3000 --fuzz 200
 veld test --live http://localhost:3000 --fuzz 200 --seed 1234567
 ```
 
-Examples cover the cases you thought of. `--fuzz N` covers the ones you did not: after the examples, it sends `N` generated requests to **every endpoint**, valid and invalid, to the test handler in dry-run mode (whatever `--dry-run` says). For each request the reference evaluator works out what the answer must be; any difference in the status, the error type, the error's fields or the **set of violations** (rule ids, paths and fields) fails the run with exit code 1. It stops at the first difference per endpoint.
+Examples cover the cases you thought of. `--fuzz N` covers the ones you did not: after the examples, it sends `N` generated requests to **every endpoint**, valid and invalid, to the test handler in dry-run mode (whatever `--dry-run` says). For each request the reference evaluator works out what the answer must be; any difference in the status, the error type, the error's fields or the **violations** (in order: rule id, path, fields, message and error) fails the run with exit code 1. It stops at the first difference per endpoint.
 
 The first requests of a run are the **boundaries**. Every comparison in a rule of the endpoint (its `require` lines and the rules of the models its parameters contain) with something the generator can write on one side (a field, `len(field)`, or the difference of two datetimes) is tried with the field exactly at the other side's value and one smallest step on each side: `guests` at `room.capacity` and one more, a stay of exactly `days(30)` and one millisecond longer, a coupon at `50` and `51`. The other side can be a literal, `now` or another field. Then come purely random requests. A request is not a rule violation every time: the generator runs the reference evaluator and, for each rule it reports as violated, sets the field of the comparison to what the rule asks for (and the clock sometimes lands next to a datetime of the request), so most rules are also reached with a request that passes them.
 
