@@ -5,6 +5,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+pub mod block;
 pub mod client;
 pub mod endpoints;
 pub mod models;
@@ -12,6 +13,7 @@ pub mod package;
 pub mod rules;
 pub mod runtime;
 pub mod server;
+pub mod testing;
 pub mod tree;
 pub mod types;
 pub mod util;
@@ -46,6 +48,10 @@ pub struct Options {
     pub transport: Option<String>,
     /// `false` skips run-time request validation by default (the types are unchanged).
     pub validate: Option<bool>,
+    /// `true` adds the test handler (`spec/rules.md` section 12.4) next to every service that has
+    /// endpoint rules: a second entry point, in a file of its own, for `veld test --live`. Server
+    /// role only. Never mount it in production.
+    pub testing: Option<bool>,
 }
 
 /// The Rust generator (roles `server` and `client`).
@@ -188,14 +194,12 @@ impl Generator for Rust {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        // Everything except the endpoint, state-machine and policy rules (not implemented, `E0801`);
-        // invariants are enforced (`spec/targets/rust.md` section 10). The one limit is
-        // framework dependent and reported as `E0801` by `generate`: the blocking `ureq` transport cannot open WebSockets.
-        Capabilities::all_except(&[
-            Feature::RulesEndpoint,
-            Feature::RulesTransitions,
-            Feature::RulesPolicies,
-        ])
+        // Everything except the state-machine and policy rules (not implemented, `E0801`);
+        // invariants and endpoint rules are enforced (`spec/targets/rust.md` section 10). The
+        // limits that depend on the framework or the endpoint are reported as `E0801` by
+        // `generate`: the blocking `ureq` transport cannot open WebSockets, and an endpoint rule
+        // on a `ws` endpoint is not supported.
+        Capabilities::all_except(&[Feature::RulesTransitions, Feature::RulesPolicies])
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
@@ -234,9 +238,18 @@ impl Generator for Rust {
                 "generator `rust` cannot open WebSockets on the `ureq` transport (it is blocking and has no WebSocket client); use the `reqwest` framework, or serve this contract from another generator",
             ));
         }
-        let rules = crate_has_rules(req);
+        refuse_ws_blocks(req)?;
+        if opts.testing == Some(true) && req.role != Role::Server {
+            return Err(vec![GenDiagnostic::new(
+                "E0802",
+                "invalid options for generator `rust`: `testing` is an option of the server role",
+            )]);
+        }
+        let endpoint_rules = server && block::served_has_blocks(req.ir, &req.services);
+        let rules = crate_has_rules(req) || endpoint_rules;
         let f = Features {
             rules,
+            endpoint_rules,
             server,
             client: !server || !req.consumes.is_empty(),
             sse: streaming,
@@ -274,6 +287,11 @@ impl Generator for Rust {
         }
         if server {
             server::emit(&mut files, &main)?;
+            for sid in testing::emit(&mut files, &main, opts.testing == Some(true))? {
+                mods.entry(sid)
+                    .or_default()
+                    .push(testing::test_mod(req.ir.service(sid)));
+            }
         } else {
             client::emit(&mut files, &main, tr)?;
         }
@@ -282,6 +300,23 @@ impl Generator for Rust {
         package::emit_lib(&mut files, &packages, has_clients, &f, req.role)?;
         Ok(files)
     }
+}
+
+/// `E0801` for an endpoint block on a `ws` endpoint: a conversation has no single result and no
+/// request/response pair to apply steps 6 and 9 to.
+fn refuse_ws_blocks(req: &GenRequest<'_>) -> Result<(), Vec<GenDiagnostic>> {
+    for sid in req.services.iter().chain(&req.consumes) {
+        let svc = req.ir.service(*sid);
+        for ep in &svc.endpoints {
+            if endpoints::kind(ep) == endpoints::Kind::Ws && !ep.rules.is_empty() {
+                return Err(util::unsupported(format!(
+                    "generator `rust` does not support endpoint rules on the `ws` endpoint `{}.{}`",
+                    svc.name, ep.name
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Whether any declaration that the crate emits has invariants. The flag is per crate: with it,

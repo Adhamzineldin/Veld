@@ -1632,6 +1632,7 @@ dependencies = [
  "veld-ir",
  "veld-rules",
  "veld-test-support",
+ "veld-testing",
 ]
 
 [[package]]

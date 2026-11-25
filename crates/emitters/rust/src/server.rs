@@ -3,6 +3,7 @@
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{AuthKind, Binding, Endpoint, Service, ServiceId};
 
+use crate::block;
 use crate::endpoints::{self, Kind, endpoint_statics, request_name, request_struct, std_sigs};
 use crate::models::with_imports;
 use crate::tree::Tree;
@@ -15,19 +16,19 @@ pub fn service_mod(svc: &Service) -> String {
     format!("{}_server", module(&svc.name))
 }
 
-fn service_type(svc: &Service) -> String {
+pub(crate) fn service_type(svc: &Service) -> String {
     type_name(&svc.name)
 }
 
 /// The authentication kinds and middleware names the endpoints of a service need.
-struct Needs {
+pub(crate) struct Needs {
     bearer: bool,
     basic: bool,
     api_key: bool,
     middleware: Vec<String>,
 }
 
-fn needs(svc: &Service) -> Needs {
+pub(crate) fn needs(svc: &Service) -> Needs {
     let mut n = Needs {
         bearer: false,
         basic: false,
@@ -51,7 +52,7 @@ fn needs(svc: &Service) -> Needs {
 }
 
 impl Needs {
-    fn any(&self) -> bool {
+    pub(crate) fn any(&self) -> bool {
         self.bearer || self.basic || self.api_key || !self.middleware.is_empty()
     }
 }
@@ -68,7 +69,7 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
         );
         let ctx = Ctx { tree, here: &here };
         let mut w = CodeWriter::with_unit("    ");
-        service_file(&mut w, &ctx, svc, *sid);
+        service_file(&mut w, &ctx, svc, *sid)?;
         let path = format!(
             "{}/{}/{}.rs",
             tree.dir,
@@ -80,7 +81,12 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
     Ok(())
 }
 
-fn service_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, _sid: ServiceId) {
+fn service_file(
+    w: &mut CodeWriter,
+    ctx: &Ctx<'_, '_>,
+    svc: &Service,
+    _sid: ServiceId,
+) -> Result<(), Vec<GenDiagnostic>> {
     w.line(format!(
         "//! The `{}` service: requests, the service trait, hooks and the handler.",
         svc.name
@@ -88,14 +94,22 @@ fn service_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, _sid: Serv
     .blank();
     for ep in &svc.endpoints {
         request_struct(w, ctx, ep);
+        if block::has_facts(ep) {
+            block::facts_struct(w, ctx, ep);
+        }
     }
     endpoint_statics(w, ctx, svc);
     std_sigs(w, ctx.tree);
     service_trait(w, ctx, svc);
     let n = needs(svc);
     hooks_trait(w, svc, &n, ctx.tree.validate, ctx.tree.rules);
+    if !svc.facts.is_empty() {
+        block::loader_trait(w, ctx, svc);
+    }
+    block::steps(w, ctx, svc)?;
     dispatch(w, ctx.tree, svc, &n);
     handler(w, svc, &n);
+    Ok(())
 }
 
 fn context_type() -> &'static str {
@@ -126,7 +140,7 @@ fn service_trait(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
             let (incoming, outgoing) = endpoints::ws_types(ctx, ep);
             w.line(format!("fn {}(&self, request: {}, ctx: {}, ws: veld::server::WsSession<{incoming}, {outgoing}>) -> impl std::future::Future<Output = Result<(), veld::Error>> + Send;", method(&ep.name), request_name(ep), context_type()));
         } else {
-            w.line(format!("fn {}(&self, request: {}, ctx: {}) -> impl std::future::Future<Output = Result<{}, veld::Error>> + Send;", method(&ep.name), request_name(ep), context_type(), success_type(ctx, ep)));
+            w.line(format!("fn {}(&self, request: {}{}, ctx: {}) -> impl std::future::Future<Output = Result<{}, veld::Error>> + Send;", method(&ep.name), request_name(ep), block::facts_param(ep), context_type(), success_type(ctx, ep)));
         }
         w.blank();
     }
@@ -193,6 +207,14 @@ fn hooks_trait(w: &mut CodeWriter, svc: &Service, n: &Needs, validate: bool, rul
         w.line("/// audited). It cannot change the response.");
         w.line("fn on_rule_violation(&self, _event: &veld::rules::RuleEvent) {}");
     }
+    if block::has_block(svc) {
+        w.blank();
+        w.line("/// The clock of the endpoint rules (`now`): read once per request, before the facts are");
+        w.line("/// loaded. The default is the system clock.");
+        w.open("fn clock(&self, _ctx: &veld::server::RequestContext) -> std::time::SystemTime");
+        w.line("std::time::SystemTime::now()");
+        w.close();
+    }
     w.close().blank();
     if !n.any() {
         w.line("/// The hooks of a service that needs none.");
@@ -219,12 +241,36 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs) {
     w.line(format!(
         "/// Connects `{name}Service` and `{name}Hooks` to the server core."
     ));
-    w.open(format!("pub struct {name}Dispatch<S, H>"));
-    w.line("service: S,");
-    w.line("hooks: H,");
+    let loaders = !svc.facts.is_empty();
+    let (decl, bounds) = if loaders {
+        (
+            "S, H, L".to_string(),
+            format!(
+                "S: {name}Service, H: {name}Hooks, L: {}",
+                block::loaders_name(svc)
+            ),
+        )
+    } else {
+        (
+            "S, H".to_string(),
+            format!("S: {name}Service, H: {name}Hooks"),
+        )
+    };
+    w.open(format!("pub struct {name}Dispatch<{decl}>"));
+    // The test handler of a service with endpoint rules reaches into its dispatch.
+    let vis = if block::has_block(svc) {
+        "pub(crate) "
+    } else {
+        ""
+    };
+    w.line(format!("{vis}service: S,"));
+    w.line(format!("{vis}hooks: H,"));
+    if loaders {
+        w.line(format!("{vis}loaders: L,"));
+    }
     w.close().blank();
     w.open(format!(
-        "impl<S: {name}Service, H: {name}Hooks> veld::server::Endpoints for {name}Dispatch<S, H>"
+        "impl<{bounds}> veld::server::Endpoints for {name}Dispatch<{decl}>"
     ));
     w.open("fn endpoints(&self) -> &'static [sp::EndpointSpec]");
     w.line("&ENDPOINTS");
@@ -251,10 +297,53 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs) {
         w.open("fn reaches_rules(&self) -> bool");
         w.line(input_reaches_rules(tree, svc).to_string());
         w.close().blank();
+        if let Some(digest) = &svc.rules_digest {
+            w.open("fn digest(&self) -> Option<&'static str>");
+            w.line(format!("Some({})", crate::util::lit(digest)));
+            w.close().blank();
+        }
+    }
+    if block::has_block(svc) {
+        block_methods(w, svc);
     }
     auth_forwards(w, n);
     call_methods(w, svc);
     w.close().blank();
+}
+
+/// `prepare` and `ensure` of a dispatch whose service has endpoint rules.
+fn block_methods(w: &mut CodeWriter, svc: &Service) {
+    let loaders = !svc.facts.is_empty();
+    let pass = if loaders { "&self.loaders, " } else { "" };
+    w.open("async fn prepare(&self, endpoint: usize, args: &mut serde_json::Map<String, serde_json::Value>, ctx: &veld::server::RequestContext) -> Result<veld::server::Prepared, veld::server::Halt>");
+    w.line("let enforce = self.hooks.validate_requests();");
+    w.line("let now = veld::rules::clock_ms(self.hooks.clock(ctx));");
+    w.open("match endpoint");
+    for (i, ep) in svc.endpoints.iter().enumerate() {
+        if block::ep_has_block(ep) {
+            w.line(format!(
+                "{i} => {}({pass}now, enforce, args, ctx).await,",
+                block::step6_name(ep)
+            ));
+        }
+    }
+    w.line("_ => Ok(veld::server::Prepared::none()),");
+    w.close().close().blank();
+    if svc.endpoints.iter().all(|e| e.rules.ensures.is_empty()) {
+        return;
+    }
+    w.open("fn ensure(&self, prepared: &veld::server::Prepared, result: &serde_json::Value) -> Vec<veld::rules::Violation>");
+    w.open("match prepared.index()");
+    for (i, ep) in svc.endpoints.iter().enumerate() {
+        if !ep.rules.ensures.is_empty() {
+            w.line(format!(
+                "{i} => {}(prepared, result),",
+                block::step9_name(ep)
+            ));
+        }
+    }
+    w.line("_ => Vec::new(),");
+    w.close().close().blank();
 }
 
 fn auth_forwards(w: &mut CodeWriter, n: &Needs) {
@@ -290,6 +379,19 @@ fn auth_forwards(w: &mut CodeWriter, n: &Needs) {
     }
 }
 
+/// Decodes the request, and the facts that step 6 added to `args`; returns the arguments the
+/// service method takes before `ctx`.
+fn decode_request(w: &mut CodeWriter, ep: &Endpoint) -> &'static str {
+    if block::has_facts(ep) {
+        w.line("let request = veld::server::decode_args(args.clone())?;");
+        w.line("let facts = veld::server::decode_args(args)?;");
+        "request, facts"
+    } else {
+        w.line("let request = veld::server::decode_args(args)?;");
+        "request"
+    }
+}
+
 fn call_methods(w: &mut CodeWriter, svc: &Service) {
     let args = "args: serde_json::Map<String, serde_json::Value>";
     let http: Vec<(usize, &Endpoint)> = svc
@@ -310,16 +412,16 @@ fn call_methods(w: &mut CodeWriter, svc: &Service) {
     w.open("match endpoint");
     for (i, ep) in &http {
         w.open(format!("{i} =>"));
-        w.line("let request = veld::server::decode_args(args)?;");
+        let pass = decode_request(w, ep);
         if ep.success.ty.is_some() {
             w.line(format!(
-                "let out = self.service.{}(request, ctx).await?;",
+                "let out = self.service.{}({pass}, ctx).await?;",
                 method(&ep.name)
             ));
             w.line("veld::server::encode_value(&out)");
         } else {
             w.line(format!(
-                "self.service.{}(request, ctx).await?;",
+                "self.service.{}({pass}, ctx).await?;",
                 method(&ep.name)
             ));
             w.line("Ok(serde_json::Value::Null)");
@@ -347,9 +449,9 @@ fn call_sse_method(w: &mut CodeWriter, svc: &Service, args: &str) {
     w.open("match endpoint");
     for (i, ep) in &sse {
         w.open(format!("{i} =>"));
-        w.line("let request = veld::server::decode_args(args)?;");
+        let pass = decode_request(w, ep);
         w.line(format!(
-            "let stream = self.service.{}(request, ctx).await?;",
+            "let stream = self.service.{}({pass}, ctx).await?;",
             method(&ep.name)
         ));
         w.line("Ok(veld::stream::erase_events(stream))");
@@ -395,21 +497,43 @@ fn handler(w: &mut CodeWriter, svc: &Service, n: &Needs) {
     w.line("#[derive(Debug, Clone, Copy)]");
     w.line(format!("pub struct {name}Handler;")).blank();
     w.open(format!("impl {name}Handler"));
-    w.line("/// The handler for `service`, with `hooks`. Mount it with an adapter, for example");
-    w.line("/// `crate::adapters::axum::router(handler)`.");
-    w.open(format!(
-        "pub fn create<S: {name}Service, H: {name}Hooks>(service: S, hooks: H) -> veld::server::Handler<{name}Dispatch<S, H>>"
-    ));
-    w.line(format!(
-        "veld::server::Handler::new({name}Dispatch {{ service, hooks }})"
-    ));
-    w.close();
-    if !n.any() {
-        w.blank();
-        w.line("/// The handler for `service` with the default hooks.");
-        w.open(format!("pub fn plain<S: {name}Service>(service: S) -> veld::server::Handler<{name}Dispatch<S, NoHooks>>"));
-        w.line("Self::create(service, NoHooks)");
+    if svc.facts.is_empty() {
+        w.line(
+            "/// The handler for `service`, with `hooks`. Mount it with an adapter, for example",
+        );
+        w.line("/// `crate::adapters::axum::router(handler)`.");
+        w.open(format!(
+            "pub fn create<S: {name}Service, H: {name}Hooks>(service: S, hooks: H) -> veld::server::Handler<{name}Dispatch<S, H>>"
+        ));
+        w.line(format!(
+            "veld::server::Handler::new({name}Dispatch {{ service, hooks }})"
+        ));
         w.close();
+        if !n.any() {
+            w.blank();
+            w.line("/// The handler for `service` with the default hooks.");
+            w.open(format!("pub fn plain<S: {name}Service>(service: S) -> veld::server::Handler<{name}Dispatch<S, NoHooks>>"));
+            w.line("Self::create(service, NoHooks)");
+            w.close();
+        }
+    } else {
+        let loaders = block::loaders_name(svc);
+        w.line("/// The handler for `service`, with `hooks` and the `loaders` of the facts the endpoint rules");
+        w.line("/// need. Mount it with an adapter, for example `crate::adapters::axum::router(handler)`.");
+        w.open(format!(
+            "pub fn create<S: {name}Service, H: {name}Hooks, L: {loaders}>(service: S, hooks: H, loaders: L) -> veld::server::Handler<{name}Dispatch<S, H, L>>"
+        ));
+        w.line(format!(
+            "veld::server::Handler::new({name}Dispatch {{ service, hooks, loaders }})"
+        ));
+        w.close();
+        if !n.any() {
+            w.blank();
+            w.line("/// The handler for `service` and `loaders` with the default hooks.");
+            w.open(format!("pub fn plain<S: {name}Service, L: {loaders}>(service: S, loaders: L) -> veld::server::Handler<{name}Dispatch<S, NoHooks, L>>"));
+            w.line("Self::create(service, NoHooks, loaders)");
+            w.close();
+        }
     }
     w.close().blank();
 }

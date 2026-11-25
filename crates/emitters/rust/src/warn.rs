@@ -22,10 +22,9 @@ pub fn validation_off(req: &GenRequest<'_>, validate: Option<bool>) -> Vec<GenDi
         let tree = Tree::new(req.ir, "crate", "src", (*group).clone(), false);
         for id in tree.decls() {
             let d = req.ir.decl(*id);
-            if let Some(rule) = d.rules().first() {
-                if !ruled.iter().any(|(name, _)| *name == d.qualified) {
-                    ruled.push((d.qualified.clone(), rule.origin.clone()));
-                }
+            let named = ruled.iter().any(|(name, _)| *name == d.qualified);
+            if let (Some(rule), false) = (d.rules().first(), named) {
+                ruled.push((d.qualified.clone(), rule.origin.clone()));
             }
         }
         for sid in group.iter() {

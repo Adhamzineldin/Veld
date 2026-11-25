@@ -111,7 +111,12 @@ fn constructor(w: &mut CodeWriter, svc: &Service, validate: bool) {
     w.line("/// # Errors");
     w.line("/// `veld::Error::Transport` when no base URL is set.");
     w.open("pub fn new(transport: T, options: veld::client::ClientOptions) -> Result<Self, veld::Error>");
-    w.line(format!("Ok(Self {{ core: veld::client::Core::new(transport, {}, {default}, STD, {validate}, options)? }})", lit(&env)));
+    // A service that reaches invariants has a rules digest (`spec/rules.md` section 9.7): the
+    // client keeps the server's and stops checking locally when it differs from its own.
+    let digest = svc.rules_digest.as_ref().map_or(String::new(), |d| {
+        format!(".with_digest({}, {})", lit(&svc.name), lit(d))
+    });
+    w.line(format!("Ok(Self {{ core: veld::client::Core::new(transport, {}, {default}, STD, {validate}, options)?{digest} }})", lit(&env)));
     w.close().blank();
 }
 

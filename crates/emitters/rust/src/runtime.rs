@@ -23,14 +23,19 @@ pub struct Features {
     /// The crate has declarations with invariants (`spec/rules.md`): the rules runtime is emitted
     /// and the `// #if rules` regions of the runtime files are kept.
     pub rules: bool,
+    /// A served service has endpoint rules (`spec/rules.md` section 9): the server core runs
+    /// steps 6 and 9. Implies `rules`.
+    pub endpoint_rules: bool,
 }
 
 impl Features {
-    /// Whether the region `name` of a runtime file is kept (`// #if rules`, `// #if !rules`).
+    /// Whether the region `name` of a runtime file is kept (`// #if rules`, `// #if !rules`,
+    /// `// #if endpoint_rules`).
     fn region(&self, name: &str) -> bool {
         match name {
             "rules" => self.rules,
             "!rules" => !self.rules,
+            "endpoint_rules" => self.endpoint_rules,
             _ => false,
         }
     }

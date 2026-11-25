@@ -31,6 +31,10 @@ pub enum Fail {
     /// optional value that the compiler proved present and is not. It never happens after
     /// validation; it is reported as `invalid_value`.
     Input,
+    // #if endpoint_rules
+    /// The key of an optional fact reads a value that is absent: there is no such fact.
+    Absent,
+    // #endif
 }
 
 impl From<EvalError> for Fail {
@@ -46,6 +50,9 @@ impl Fail {
         match self {
             Fail::Eval(e) => e.as_str(),
             Fail::Input => "invalid_value",
+            // #if endpoint_rules
+            Fail::Absent => "absent",
+            // #endif
         }
     }
 }
@@ -364,6 +371,84 @@ pub fn some<T>(value: &Option<T>) -> Res<&T> {
     value.as_ref().ok_or(Fail::Input)
 }
 
+// #if endpoint_rules
+/// An optional value read by the key of an optional fact: absent means there is no fact.
+pub fn absent<T>(value: &Option<T>) -> Res<&T> {
+    value.as_ref().ok_or(Fail::Absent)
+}
+
+/// A value as typed JSON (the payload of an `else` clause).
+pub fn json<T: serde::Serialize>(value: &T) -> Res<Value> {
+    serde_json::to_value(value).map_err(|_| Fail::Input)
+}
+
+/// The violation of an endpoint rule, `None` when it holds. Like [`record`], for one rule.
+#[must_use]
+pub fn violated(path: &str, id: &str, name: &str, fields: &[&str], message: &str, verdict: Res<bool>) -> Option<Violation> {
+    let mut out = Vec::new();
+    record(&mut out, path, id, name, fields, message, verdict);
+    out.pop()
+}
+
+/// The clock reading of a request: milliseconds since the epoch.
+#[must_use]
+pub fn clock_ms(now: std::time::SystemTime) -> i64 {
+    match now.duration_since(std::time::UNIX_EPOCH) {
+        Ok(d) => i64::try_from(d.as_millis()).unwrap_or(i64::MAX),
+        Err(e) => i64::try_from(e.duration().as_millis()).map_or(i64::MIN, |n| -n),
+    }
+}
+
+/// The error a failed `require` without `else` answers with: `422 ValidationError` with one issue
+/// and the one violation (`spec/rules.md` sections 7 and 9.3).
+#[must_use]
+pub fn request_rejection(validation_sig: &str, op: &str, violation: Violation) -> super::error::Error {
+    let violations = vec![violation];
+    super::error::Error::Problem(super::error::Problem {
+        sig: validation_sig.to_string(),
+        title: "ValidationError".to_string(),
+        status: 422,
+        op: Some(op.to_string()),
+        data: rejection_data(&violations),
+        schema: None,
+        rulings: Rulings::boxed(violations, false),
+    })
+}
+
+/// The error a failed `require ... else E { .. }` answers with: the declared error `sig` of `ep`
+/// built from the payload (typed JSON by wire name; defaults are applied), carrying the one
+/// violation. The error it builds is checked like any other value of its type: when it breaks one
+/// of its own invariants the server could not build what it promised, and the violations are the
+/// `Err` (empty when the endpoint does not declare the error, which the compiler rules out).
+///
+/// # Errors
+/// The violations of the error's own invariants.
+pub fn else_rejection(
+    ep: &'static super::spec::EndpointSpec,
+    sig: &str,
+    payload: Map<String, Value>,
+    violation: Violation,
+) -> Result<super::error::Error, Vec<Violation>> {
+    let Some(e) = ep.errors.iter().find(|e| e.sig == sig) else {
+        return Err(Vec::new());
+    };
+    let data = e.schema.to_wire(&Value::Object(payload), false, false);
+    let broken = check_wire(e.schema, &data, "error", Mode::Full);
+    if !broken.is_empty() {
+        return Err(broken);
+    }
+    Ok(super::error::Error::Problem(super::error::Problem {
+        sig: e.sig.to_string(),
+        title: e.name.to_string(),
+        status: e.status,
+        op: Some(ep.sig.to_string()),
+        data,
+        schema: Some(e.schema),
+        rulings: Rulings::boxed(vec![violation], false),
+    }))
+}
+
+// #endif
 /// A `decimal` field or literal.
 pub fn dec(text: &str) -> Res<Decimal> {
     Decimal::parse(text).ok_or(Fail::Input)

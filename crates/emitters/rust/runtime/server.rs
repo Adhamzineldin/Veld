@@ -107,7 +107,66 @@ pub struct RequestContext {
     pub headers: Vec<(String, String)>,
     /// Set by the auth hook of an endpoint that needs auth.
     pub principal: Option<Principal>,
+    // #if endpoint_rules
+    /// What step 6 saved for step 9.
+    prepared: Prepared,
+    // #endif
 }
+// #if endpoint_rules
+
+/// What step 6 of an endpoint saved for step 9: the typed parameters, the facts and the clock
+/// reading that its `ensure` statements read. Opaque to everyone but the generated code.
+#[derive(Clone)]
+pub struct Prepared {
+    index: usize,
+    state: Option<Arc<dyn Any + Send + Sync>>,
+}
+
+impl Prepared {
+    /// Nothing to remember.
+    #[must_use]
+    pub fn none() -> Self {
+        Prepared { index: 0, state: None }
+    }
+
+    /// The state of the endpoint `index`.
+    #[must_use]
+    pub fn new<T: Any + Send + Sync>(index: usize, state: T) -> Self {
+        Prepared { index, state: Some(Arc::new(state)) }
+    }
+
+    /// The endpoint the state belongs to.
+    #[must_use]
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    /// The saved state, when it is a `T`.
+    #[must_use]
+    pub fn state<T: Any>(&self) -> Option<&T> {
+        self.state.as_deref().and_then(|s| s.downcast_ref::<T>())
+    }
+}
+
+impl fmt::Debug for Prepared {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Prepared({})", self.index)
+    }
+}
+
+/// Why step 6 stopped the request.
+#[derive(Debug)]
+pub enum Halt {
+    /// Answer with this error: a missing fact, a failed `require`, or whatever a loader returned.
+    /// The violations it carries go to the hook.
+    Error(Error),
+    /// The server could not build the error a `require ... else` promised: `500 Internal`, and
+    /// these violations go to the hook.
+    Broken(Vec<super::rules::Violation>),
+    /// Answer with this response and stop (the test handler's dry run).
+    Early(Response),
+}
+// #endif
 
 impl RequestContext {
     /// The first header named `name` (case-insensitive).
@@ -158,6 +217,36 @@ pub trait Endpoints: Send + Sync + 'static {
     /// request validation off the server says once, when it is created, that they are not enforced.
     fn reaches_rules(&self) -> bool {
         false
+    }
+
+    /// The rules digest of the service, sent as `Veld-Rules` on every response (`spec/rules.md`
+    /// section 9.7).
+    fn digest(&self) -> Option<&'static str> {
+        None
+    }
+    // #endif
+    // #if endpoint_rules
+
+    /// Step 6: the facts, the policies and the `require` statements of `endpoint`, and what step 9
+    /// needs. It adds the loaded facts to `args`. Called once per request, after step 5.
+    fn prepare<'a>(
+        &'a self,
+        _endpoint: usize,
+        _args: &'a mut Map<String, Value>,
+        _ctx: &'a RequestContext,
+    ) -> impl Future<Output = Result<Prepared, Halt>> + Send + 'a {
+        async { Ok(Prepared::none()) }
+    }
+
+    /// Step 9: the violated `ensure` statements for the success value `result` (typed JSON).
+    fn ensure(&self, _prepared: &Prepared, _result: &Value) -> Vec<super::rules::Violation> {
+        Vec::new()
+    }
+
+    /// A principal that replaces authentication and middleware altogether. Only a test handler
+    /// has one.
+    fn trusted_principal(&self, _ctx: &RequestContext) -> Option<Principal> {
+        None
     }
     // #endif
 
@@ -622,7 +711,12 @@ impl<E: Endpoints> Handler<E> {
             .iter()
             .filter(|r| r.method == method)
             .find_map(|r| matches(r, &req.path).map(|c| (r, c)))?;
+        // #if !rules
         Some(self.run(route.index, caps, req).await)
+        // #endif
+        // #if rules
+        Some(self.stamp(self.run(route.index, caps, req).await))
+        // #endif
     }
 
     /// Runs the endpoint named `name` through the same pipeline without choosing it from the
@@ -631,8 +725,23 @@ impl<E: Endpoints> Handler<E> {
     pub async fn invoke(&self, name: &str, req: Request) -> Option<Response> {
         let route = self.inner.routes.iter().find(|r| self.inner.endpoints.endpoints()[r.index].name == name)?;
         let caps = matches(route, &req.path)?;
+        // #if !rules
         Some(self.run(route.index, caps, req).await)
+        // #endif
+        // #if rules
+        Some(self.stamp(self.run(route.index, caps, req).await))
+        // #endif
     }
+    // #if rules
+
+    /// Every response of a service with a rules digest carries it (`spec/rules.md` section 9.7).
+    fn stamp(&self, mut resp: Response) -> Response {
+        if let Some(digest) = self.inner.endpoints.digest() {
+            resp.headers.push(("veld-rules".into(), digest.into()));
+        }
+        resp
+    }
+    // #endif
 
     // @if ws_server
     /// Starts a WebSocket conversation on the endpoint whose `ws` path matches `req.path`; `None`
@@ -723,6 +832,9 @@ impl<E: Endpoints> Handler<E> {
             path: path_without_trailing_slash(&req.path).to_string(),
             headers: req.headers.iter().map(|(k, v)| (k.to_ascii_lowercase(), v.clone())).collect(),
             principal: None,
+            // #if endpoint_rules
+            prepared: Prepared::none(),
+            // #endif
         }
     }
 
@@ -734,6 +846,15 @@ impl<E: Endpoints> Handler<E> {
             Ok(args) => args,
             Err(resp) => return resp,
         };
+        // #if endpoint_rules
+        // Step 6: facts, `require`, and what step 9 needs.
+        let mut args = args;
+        let watch = super::rules::Stopwatch::start();
+        match e.prepare(index, &mut args, &ctx).await {
+            Ok(prepared) => ctx.prepared = prepared,
+            Err(halt) => return self.halted(halt, ep, &ctx, watch.micros()),
+        }
+        // #endif
         // @if sse
         if ep.kind == Kind::Sse {
             return match e.call_sse(index, args, &ctx).await {
@@ -759,6 +880,12 @@ impl<E: Endpoints> Handler<E> {
     ) -> Result<Map<String, Value>, Response> {
         let e = &self.inner.endpoints;
         let std = e.std_sigs();
+        // #if endpoint_rules
+        let trusted = e.trusted_principal(ctx);
+        if trusted.is_some() {
+            ctx.principal = trusted;
+        } else {
+        // #endif
         if let Some(auth) = &ep.auth {
             ctx.principal = self.authenticate(auth, ctx).await;
             if ctx.principal.is_none() {
@@ -770,6 +897,9 @@ impl<E: Endpoints> Handler<E> {
                 return Err(self.failure(&err, ep, ctx));
             }
         }
+        // #if endpoint_rules
+        }
+        // #endif
         let bound = self.bind(ep, caps, req, ctx, ws);
         // #if rules
         if bound.issues.is_empty() && !bound.violations.is_empty() {
@@ -832,11 +962,21 @@ impl<E: Endpoints> Handler<E> {
 
     fn success(&self, ep: &EndpointSpec, value: &Value, ctx: &RequestContext) -> Response {
         let Some(schema) = ep.success else {
+            // #if endpoint_rules
+            if let Some(resp) = self.ensure_rules(ep, value, ctx) {
+                return resp;
+            }
+            // #endif
             return Response { status: ep.status, headers: Vec::new(), body: Body::Empty };
         };
         let wire = schema.to_wire(value, false, false);
         // #if rules
         if let Some(resp) = self.output_rules(ep, schema, &wire, ctx) {
+            return resp;
+        }
+        // #endif
+        // #if endpoint_rules
+        if let Some(resp) = self.ensure_rules(ep, value, ctx) {
             return resp;
         }
         // #endif
@@ -870,6 +1010,54 @@ impl<E: Endpoints> Handler<E> {
         match self.inner.check_output(ep, schema, wire, "result") {
             Ok(()) => None,
             Err(why) => Some(self.failure(&Error::other(why), ep, ctx)),
+        }
+    }
+    // #endif
+    // #if endpoint_rules
+
+    /// Step 9: every `ensure`, on the success value, under the output mode. `Some` replaces the
+    /// response.
+    fn ensure_rules(&self, ep: &EndpointSpec, value: &Value, ctx: &RequestContext) -> Option<Response> {
+        use super::rules::{Outcome, Position, RuleOutput};
+        let mode = self.inner.endpoints.rules_output();
+        if mode == RuleOutput::Off {
+            return None;
+        }
+        let watch = super::rules::Stopwatch::start();
+        let violations = self.inner.endpoints.ensure(&ctx.prepared, value);
+        if violations.is_empty() {
+            return None;
+        }
+        let outcome = if mode == RuleOutput::Strict { Outcome::Rejected } else { Outcome::Audited };
+        for v in &violations {
+            self.inner.report(ep, v, Position::Output, outcome, watch.micros());
+        }
+        if mode == RuleOutput::Strict {
+            return Some(self.failure(&Error::other(format!("{}: the result violates {} ensure statement(s)", ep.name, violations.len())), ep, ctx));
+        }
+        None
+    }
+
+    /// Step 6 stopped the request.
+    fn halted(&self, halt: Halt, ep: &EndpointSpec, ctx: &RequestContext, micros: u64) -> Response {
+        use super::rules::{Outcome, Position};
+        match halt {
+            Halt::Early(resp) => resp,
+            Halt::Error(err) => {
+                if let Error::Problem(p) = &err {
+                    for v in p.violations() {
+                        self.inner.report(ep, v, Position::Input, Outcome::Rejected, micros);
+                    }
+                }
+                self.failure(&err, ep, ctx)
+            }
+            Halt::Broken(violations) => {
+                for v in &violations {
+                    self.inner.report(ep, v, Position::Output, Outcome::Rejected, micros);
+                }
+                let err = Error::other(format!("{}: the declared error of a failed `require` could not be built", ep.name));
+                self.failure(&err, ep, ctx)
+            }
         }
     }
     // #endif

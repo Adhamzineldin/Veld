@@ -166,6 +166,9 @@ pub struct ClientOptions {
     /// Check the invariants of a request body and of a `query` object before sending (default
     /// `true`). A violation is a local `ValidationError`; nothing is sent.
     pub check_rules: bool,
+    /// Called once for every rules digest a server sends that is not this client's own, with
+    /// the service, the client's digest and the server's (`spec/rules.md` section 9.7).
+    pub on_contract_mismatch: Option<Arc<dyn Fn(&ContractMismatch) + Send + Sync>>,
     // #endif
     // @if sse
     /// Reconnect policy of streams (default: none).
@@ -186,6 +189,7 @@ impl Default for ClientOptions {
             timeout: Duration::from_secs(30),
             // #if rules
             check_rules: true,
+            on_contract_mismatch: None,
             // #endif
             // @if sse
             reconnect: None,
@@ -270,6 +274,13 @@ impl ClientOptions {
         self.check_rules = on;
         self
     }
+
+    /// Calls `f` once for every rules digest a server sends that is not this client's own.
+    #[must_use]
+    pub fn on_contract_mismatch(mut self, f: impl Fn(&ContractMismatch) + Send + Sync + 'static) -> Self {
+        self.on_contract_mismatch = Some(Arc::new(f));
+        self
+    }
     // #endif
 
     // @if sse
@@ -311,7 +322,38 @@ pub struct Core<T: Transport> {
     options: ClientOptions,
     std: StdSigs,
     validate: bool,
+    // #if rules
+    digest: Option<Arc<Digest>>,
+    // #endif
 }
+// #if rules
+
+/// A server whose rules are not the ones this client was generated from (`spec/rules.md` 9.7).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContractMismatch {
+    pub service: String,
+    /// The digest this client was generated with.
+    pub client_digest: String,
+    /// The digest the server sent.
+    pub server_digest: String,
+}
+
+/// The digest a client knows and what it has seen of the server's.
+#[derive(Debug)]
+struct Digest {
+    service: &'static str,
+    own: &'static str,
+    seen: std::sync::Mutex<Seen>,
+}
+
+#[derive(Debug, Default)]
+struct Seen {
+    /// The digest of the last response; `None` before the first one or when it had no header.
+    last: Option<String>,
+    /// The other digests the callback has been told about.
+    told: Vec<String>,
+}
+// #endif
 
 impl<T: Transport> Clone for Core<T> {
     fn clone(&self) -> Self {
@@ -321,6 +363,9 @@ impl<T: Transport> Clone for Core<T> {
             options: self.options.clone(),
             std: self.std,
             validate: self.validate,
+            // #if rules
+            digest: self.digest.clone(),
+            // #endif
         }
     }
 }
@@ -358,8 +403,59 @@ impl<T: Transport> Core<T> {
             .or_else(|| default_base.map(str::to_string))
             .ok_or_else(|| Error::Transport(format!("no base URL: pass `base_url`, set {env} or give the contract a base-url")))?;
         let validate = options.validate.unwrap_or(validate_default);
+        // #if !rules
         Ok(Core { transport: Arc::new(transport), base: base.trim_end_matches('/').to_string(), options, std, validate })
+        // #endif
+        // #if rules
+        Ok(Core { transport: Arc::new(transport), base: base.trim_end_matches('/').to_string(), options, std, validate, digest: None })
+        // #endif
     }
+    // #if rules
+
+    /// Gives the client the rules digest of its service: the local checks run only while the
+    /// server answers with the same one (`spec/rules.md` section 9.7).
+    #[must_use]
+    pub fn with_digest(mut self, service: &'static str, own: &'static str) -> Self {
+        self.digest = Some(Arc::new(Digest { service, own, seen: std::sync::Mutex::new(Seen::default()) }));
+        self
+    }
+
+    /// Whether the local checks may reject a request: only while the last response carried this
+    /// client's own digest. Before the first response, or when the header was missing, the server
+    /// decides.
+    fn local_checks(&self) -> bool {
+        match &self.digest {
+            None => true,
+            Some(d) => {
+                let seen = d.seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                seen.last.as_deref() == Some(d.own)
+            }
+        }
+    }
+
+    /// Remembers the digest of a response. A digest that is not this client's own stops the local
+    /// checks and, the first time it is seen, reaches `on_contract_mismatch`.
+    fn observe(&self, headers: &[(String, String)]) {
+        let Some(d) = &self.digest else {
+            return;
+        };
+        let sent = headers.iter().find(|(k, _)| k.eq_ignore_ascii_case("veld-rules")).map(|(_, v)| v.trim().to_string());
+        let news = {
+            let mut seen = d.seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            seen.last.clone_from(&sent);
+            match &sent {
+                Some(s) if s != d.own && !seen.told.contains(s) => {
+                    seen.told.push(s.clone());
+                    sent.clone()
+                }
+                Some(_) | None => None,
+            }
+        };
+        if let (Some(server_digest), Some(f)) = (news, &self.options.on_contract_mismatch) {
+            f(&ContractMismatch { service: d.service.to_string(), client_digest: d.own.to_string(), server_digest });
+        }
+    }
+    // #endif
 
     /// The transport.
     #[must_use]
@@ -446,7 +542,7 @@ impl<T: Transport> Core<T> {
                 issues.extend(p.schema.validate(&wire, &p.location(), true));
             }
             // #if rules
-            if self.validate && self.options.check_rules && issues.is_empty() && matches!(p.binding, Binding::Body | Binding::QueryObject) {
+            if self.validate && self.options.check_rules && self.local_checks() && issues.is_empty() && matches!(p.binding, Binding::Body | Binding::QueryObject) {
                 violations.extend(super::rules::check_wire(p.schema, &wire, &p.location(), super::rules::Mode::Request));
             }
             // #endif
@@ -527,6 +623,9 @@ impl<T: Transport> Core<T> {
     async fn exchange(&self, ep: &EndpointSpec, req: &Value) -> Result<Option<Value>, Error> {
         let built = self.build(ep, req, "application/json")?;
         let resp = self.transport.send(built.request).await?;
+        // #if rules
+        self.observe(&resp.headers);
+        // #endif
         if (200..300).contains(&resp.status) {
             Self::decode_success(ep, &resp.body)
         } else {
@@ -600,6 +699,9 @@ struct Connection {
 /// Opens one connection. A non-2xx response is the typed error of the call.
 async fn connect<T: Transport>(core: Core<T>, ep: &'static EndpointSpec, request: HttpRequest) -> Result<Connection, Error> {
     let resp = core.transport.open(request).await?;
+    // #if rules
+    core.observe(&resp.headers);
+    // #endif
     if (200..300).contains(&resp.status) {
         return Ok(Connection { body: resp.body, parser: SseParser::new(), pending: VecDeque::new() });
     }
@@ -912,7 +1014,7 @@ impl<T: Transport, In: DeserializeOwned, Out: Serialize> WsChannel<T, In, Out> {
                 }
                 // #if rules
                 // A message is an input: it is checked like a request body, before anything is written.
-                if self.core.validate && self.core.options.check_rules {
+                if self.core.validate && self.core.options.check_rules && self.core.local_checks() {
                     let wire = schema.to_wire(&typed, false, false);
                     let violations = super::rules::check_wire(schema, &wire, "message", super::rules::Mode::Request);
                     if !violations.is_empty() {
