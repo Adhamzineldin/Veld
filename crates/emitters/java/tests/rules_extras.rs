@@ -134,3 +134,66 @@ fn the_spring_adapter_answers_the_422_golden() {
         .to_string();
     assert_golden(raw.status, &content_type, &raw.body);
 }
+
+// -- request validation turned off ------------------------------------------------------------
+
+fn no_validate_options(base: &str) -> serde_json::Value {
+    let mut o = options(base, Some("17"));
+    o["validate"] = serde_json::json!(false);
+    o
+}
+
+#[test]
+fn a_server_built_with_validation_off_accepts_a_violating_body_and_reports_it_once() {
+    if !require_javac("a_server_built_with_validation_off") {
+        return;
+    }
+    let ir = compile_contract_file("bookings", "tests/toolchain/contract/rules/bookings.veld");
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = Vec::new();
+    for (role, base) in [(Role::Server, "gen.rs"), (Role::Client, "gen.rc")] {
+        let files = run(&ir, role, all(&ir), vec![], None, no_validate_options(base));
+        sources.extend(write_files(work.path(), &files));
+    }
+    sources.push(repo_root().join("tests/toolchain/java/rules/RuleNoValidate.java"));
+    javac_ok(work.path(), &sources, "17");
+    let out = java_main(work.path(), "veldtest.RuleNoValidate", &[]);
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("OK"),
+        "{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+fn warnings_of(ir: &Ir, options: &serde_json::Value, role: Role) -> Vec<String> {
+    use veld_codegen::{DynGenerator, GenRequest};
+    let req = GenRequest {
+        ir,
+        role,
+        services: all(ir),
+        consumes: vec![],
+        framework: None,
+    };
+    veld_emit_java::Java
+        .warnings_dyn(&req, options)
+        .iter()
+        .map(|w| format!("{}: {}", w.code, w.message))
+        .collect()
+}
+
+#[test]
+fn w0904_is_reported_when_validation_is_off_and_the_target_reaches_rules() {
+    let ir = compile_contract_file("bookings", "tests/toolchain/contract/rules/bookings.veld");
+    for role in [Role::Server, Role::Client] {
+        let off = warnings_of(&ir, &no_validate_options("gen.w"), role);
+        assert_eq!(off.len(), 1, "{off:?}");
+        assert!(off[0].starts_with("W0904: "), "{off:?}");
+        assert!(off[0].contains("Booking"), "{off:?}");
+        assert!(warnings_of(&ir, &options("gen.w", Some("17")), role).is_empty());
+    }
+    let plain = standard_ir();
+    let mut o = options("gen.w", None);
+    o["validate"] = serde_json::json!(false);
+    assert!(warnings_of(&plain, &o, Role::Server).is_empty());
+}

@@ -314,6 +314,27 @@ public final class RuleWalk {
   }
 
   /**
+   * Reports once, when the handler is created, that request validation is off while a request
+   * body, a query object or a WebSocket message reaches a declaration with rules: those rules are
+   * not enforced (spec/rules.md section 5.3).
+   */
+  static void announceUnvalidated(java.util.List<ServerEndpoint> endpoints) {
+    for (ServerEndpoint e : endpoints) {
+      for (EndpointSpec.Param p : e.spec().params()) {
+        boolean carries =
+            p.stream() || p.binding() == EndpointSpec.Binding.BODY || p.binding() == EndpointSpec.Binding.QUERY_OBJECT;
+        if (carries && reachesRules(p.type())) {
+          System.getLogger("veld.rules")
+              .log(
+                  System.Logger.Level.WARNING,
+                  "request validation is off, so the rules of request bodies, query objects and WebSocket messages are not enforced");
+          return;
+        }
+      }
+    }
+  }
+
+  /**
    * Pipeline step 5: the invariants of the bound parameters. Returns the {@code 422} response, or
    * {@code null} when every rule holds.
    */

@@ -143,6 +143,10 @@ impl Generator for Java {
         ])
     }
 
+    fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
+        validation_off_warnings(req, opts)
+    }
+
     fn generate(
         &self,
         req: &GenRequest<'_>,
@@ -191,6 +195,56 @@ impl Generator for Java {
         readme::emit(&mut files, &base, req)?;
         Ok(files)
     }
+}
+
+/// `W0904` (`spec/rules.md` section 5.3): with `validate = false` request validation is off, and
+/// with it the rules on what callers send. Reported when the target emits a declaration with
+/// rules or an endpoint with rules, naming the first one. Empty when validation is on.
+fn validation_off_warnings(req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
+    if opts.validate != Some(false) {
+        return Vec::new();
+    }
+    let Ok(base) = base_package(req, opts) else {
+        return Vec::new();
+    };
+    let runtime_package = runtime::package(&base);
+    let mut ruled: Vec<(String, veld_ir::Origin)> = Vec::new();
+    for sid in &req.services {
+        let svc = req.ir.service(*sid);
+        for ep in svc.endpoints.iter().filter(|e| !e.rules.is_empty()) {
+            if let Some(origin) = ep.rules.first_origin() {
+                ruled.push((format!("{}.{}", svc.name, ep.name), origin.clone()));
+            }
+        }
+    }
+    for group in [&req.services, &req.consumes] {
+        if group.is_empty() {
+            continue;
+        }
+        let tree = Tree::new(req.ir, &base, &runtime_package, group.clone());
+        for id in tree.decls() {
+            let d = req.ir.decl(*id);
+            if let Some(rule) = d.rules().first()
+                && !ruled.iter().any(|(name, _)| *name == d.qualified)
+            {
+                ruled.push((d.qualified.clone(), rule.origin.clone()));
+            }
+        }
+    }
+    let Some((first, origin)) = ruled.first() else {
+        return Vec::new();
+    };
+    let more = match ruled.len() {
+        1 => String::new(),
+        n => format!(" and {} more", n - 1),
+    };
+    vec![GenDiagnostic {
+        code: "W0904",
+        message: format!(
+            "request validation is off (`validate = false`), so the rules of `{first}`{more} are not enforced on requests, WebSocket messages or by the client's local check"
+        ),
+        origin: Some(origin.clone()),
+    }]
 }
 
 /// Whether a declaration the tree emits has invariants, reachable from a service or not.

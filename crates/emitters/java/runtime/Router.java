@@ -61,6 +61,9 @@ public final class Router implements VeldHandler {
     assertHooks(endpoints, hooks);
     // #if rules
     RuleWalk.announce(hooks.rulesOutput());
+    if (!hooks.validateRequests()) {
+      RuleWalk.announceUnvalidated(endpoints);
+    }
     // #endif
     List<Route> routes = new ArrayList<>();
     for (ServerEndpoint e : endpoints) {
