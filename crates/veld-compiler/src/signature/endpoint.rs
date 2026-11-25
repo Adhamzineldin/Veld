@@ -10,11 +10,13 @@
 //! its payload and the message are not part of the id. In `ExprShape` a parameter is
 //! `{ "param": name }` and a fact is `{ "fact": name }`, both by name.
 
-use veld_ir::Decl;
+use std::collections::BTreeSet;
+
 use veld_ir::rules::Expr;
+use veld_ir::{Decl, Ir, ServiceId};
 
 use super::rules::shape;
-use super::{canonical, hex16, obj, text};
+use super::{Json, canonical, hex16, obj, text};
 
 /// The endpoint a statement belongs to.
 #[derive(Debug, Clone, Copy)]
@@ -83,5 +85,38 @@ pub fn endpoint_rule_id(
     )
 }
 
+/// The rules digest of a service (`spec/rules.md` section 9.7): the first 16 hex characters of
+/// the SHA-256 of the RFC 8785 JSON array of the sorted, distinct rule ids of every invariant of
+/// every declaration its endpoints reach. `None` when it reaches no invariant.
+///
+/// What an endpoint reaches is what `Ir::reachable_decls` says: parameters, the success value
+/// and the errors, with their fields, parents and union arms. Facts are values of the
+/// application that a client never sees, so they are not part of it.
+#[must_use]
+pub fn rules_digest(ir: &Ir, service: ServiceId) -> Option<String> {
+    let ids: BTreeSet<&str> = ir
+        .reachable_decls(&[service])
+        .into_iter()
+        .flat_map(|d| ir.decl(d).rules())
+        .map(|r| r.id.as_str())
+        .collect();
+    if ids.is_empty() {
+        return None;
+    }
+    let list = Json::Arr(ids.into_iter().map(text).collect());
+    Some(hex16(canonical(&list).as_bytes()))
+}
+
+/// Sets `rules_digest` on every service of `ir`.
+pub fn fill_rules_digests(ir: &mut Ir) {
+    let digests: Vec<Option<String>> = ir.services.iter().map(|s| rules_digest(ir, s.id)).collect();
+    for (s, d) in ir.services.iter_mut().zip(digests) {
+        s.rules_digest = d;
+    }
+}
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod digest_tests;

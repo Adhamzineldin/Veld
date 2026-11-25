@@ -54,14 +54,16 @@ pub fn lower(
     }
     signature::rule_ids(&mut decls, &packages);
     let services = lw.services(&decls);
-    Ir {
+    let mut ir = Ir {
         ir_version: veld_ir::IR_VERSION.to_string(),
         packages,
         decls,
         services,
         consumes: lw.consumes(consumes),
         examples: lw.examples(),
-    }
+    };
+    signature::fill_rules_digests(&mut ir);
+    ir
 }
 
 /// Indices of declarations to emit, sorted by qualified name.

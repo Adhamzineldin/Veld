@@ -10,7 +10,10 @@ mod rules;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-pub use endpoint::{EndpointRef, StatementKind, endpoint_rule_bytes, endpoint_rule_id};
+pub use endpoint::{
+    EndpointRef, StatementKind, endpoint_rule_bytes, endpoint_rule_id, fill_rules_digests,
+    rules_digest,
+};
 pub use rules::{rule_id, rule_ids};
 use sha2::{Digest, Sha256};
 use veld_ir::{Decl, DeclKind, Method, Package, PathSegment, Type};
