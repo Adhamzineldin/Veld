@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::checker::Checker;
 use super::{ancestors, ast_fields, depth, unresolved_fields};
-use crate::diagnostics::{Diagnostic, Span};
+use crate::diagnostics::{Diagnostic, Span, has_errors};
 use crate::semantic::{DKind, Program, RField};
 use crate::syntax::ast;
 use veld_ir::rules::{Expr, ExprType};
@@ -78,11 +78,24 @@ fn check_field(
         ep: None,
     };
     let want = ExprType::Type(field.ty.clone());
-    let typed = c.expr(src, Some(&want))?;
     let name = &f.name.name;
-    let expr = c.fit(typed, &want, src.span, |found, expected| {
-        format!("derived field `{name}` is `{expected}`, its expression is `{found}`")
-    })?;
+    let typed = c.expr(src, Some(&want)).and_then(|typed| {
+        c.fit(typed, &want, src.span, |found, expected| {
+            format!("derived field `{name}` is `{expected}`, its expression is `{found}`")
+        })
+    });
+    let Some(expr) = typed else {
+        // A derived field must never disappear quietly: without any error the IR would just
+        // lower it to a field that nobody computes.
+        if !has_errors(c.diags) {
+            c.err(
+                "E0902",
+                format!("derived field `{name}` could not be typed"),
+                src.span,
+            );
+        }
+        return None;
+    };
     if depth::json_depth(&expr) > depth::MAX_EXPR_JSON_DEPTH {
         c.err(
             "E0005",

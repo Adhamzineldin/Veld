@@ -894,12 +894,14 @@ impl Parser<'_> {
         Some((None, Some(self.parse_expr()?)))
     }
 
-    /// A name that is not `true`, `false` or `null`, a parenthesis, `!` or a `-` that is not the
-    /// sign of a literal: these start an expression, not a literal.
+    /// A name that is not `true`, `false` or `null`, a parenthesis, `!`, a `-` that is not the
+    /// sign of a literal, a list that is not empty: these start an expression, not a literal.
     fn starts_expression_not_literal(&self) -> bool {
         match self.peek() {
             Tok::Ident(w) => !matches!(w.as_str(), "true" | "false" | "null"),
             Tok::LParen | Tok::Bang | Tok::Minus => true,
+            // Only the empty list `[]` is a literal.
+            Tok::LBracket => !matches!(self.tok_at(1), Tok::RBracket),
             _ => false,
         }
     }
