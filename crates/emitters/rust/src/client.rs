@@ -3,7 +3,9 @@
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic, naming};
 use veld_ir::{Endpoint, Service};
 
-use crate::endpoints::{self, Kind, endpoint_statics, request_name, request_struct, std_sigs};
+use crate::endpoints::{
+    self, Kind, client_endpoint_statics, client_request_struct, request_name, std_sigs,
+};
 use crate::models::with_imports;
 use crate::tree::Tree;
 use crate::types::{Ctx, rust_type};
@@ -60,9 +62,9 @@ fn service_file(
     w.line(format!("//! The client of the `{}` service.", svc.name))
         .blank();
     for ep in &svc.endpoints {
-        request_struct(w, ctx, ep);
+        client_request_struct(w, ctx, ep);
     }
-    endpoint_statics(w, ctx, svc);
+    client_endpoint_statics(w, ctx, svc);
     std_sigs(w, ctx.tree);
     let name = format!("{}Client", type_name(&svc.name));
     client_type(w, svc, &name);
@@ -128,7 +130,9 @@ fn constructor(w: &mut CodeWriter, svc: &Service, validate: bool) {
 
 fn http_method(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint, index: usize) {
     endpoints::method_docs(w, ep);
-    let params = endpoints::request_params(ep).count() > 0;
+    crate::conditional::client_docs(w, ep);
+    let params =
+        endpoints::request_params(ep).count() > 0 || crate::conditional::has_client_fields(ep);
     let arg = if params {
         format!(", request: {}", request_name(ep))
     } else {

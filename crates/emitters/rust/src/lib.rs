@@ -7,6 +7,7 @@
 
 pub mod block;
 pub mod client;
+pub mod conditional;
 pub mod endpoints;
 pub mod events;
 pub mod guards;
@@ -87,7 +88,10 @@ fn client_frameworks() -> Vec<FrameworkInfo> {
 /// What the generator supports: everything. A server generates events (phase E1); a client
 /// supports the feature by generating nothing for it (`spec/events.md` section 14).
 fn all_capabilities() -> Capabilities {
-    Capabilities::all_except(&[]).with(Feature::RulesRollout)
+    Capabilities::all_except(&[])
+        .with(Feature::RulesRollout)
+        .with(Feature::RulesVersion)
+        .with(Feature::Idempotency)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -248,13 +252,19 @@ impl Generator for Rust {
             ));
         }
         refuse_ws_blocks(req)?;
+        conditional::check(req.ir, &used)?;
         if opts.testing == Some(true) && req.role != Role::Server {
             return Err(vec![GenDiagnostic::new(
                 "E0802",
                 "invalid options for generator `rust`: `testing` is an option of the server role",
             )]);
         }
-        let endpoint_rules = server && block::served_has_blocks(req.ir, &req.services);
+        let testing = opts.testing == Some(true);
+        let idempotency = server && conditional::any_idempotent(req.ir, &served_http(req));
+        // The test handler of a service that is only idempotent runs the steps of the pipeline
+        // too: it needs the endpoint rules runtime.
+        let endpoint_rules =
+            server && (block::served_has_blocks(req.ir, &req.services) || (testing && idempotency));
         // A policy is generated, in either role, for an `allow` of a generated service: its
         // functions use the rules runtime.
         let policies = used.iter().any(|s| {
@@ -265,10 +275,13 @@ impl Generator for Rust {
                 .any(|e| !e.rules.allows.is_empty())
         });
         let guards = server
-            && req
-                .services
-                .iter()
-                .any(|s| guards::svc_has_guards(req.ir.service(*s)));
+            && req.services.iter().any(|s| {
+                let svc = req.ir.service(*s);
+                guards::svc_has_guards(svc) || svc.endpoints.iter().any(conditional::has_guard)
+            });
+        let etag = server && conditional::any_version(req.ir, &served_http(req));
+        let version = etag
+            || conditional::any_guard(req.ir, if server { &req.consumes } else { &req.services });
         // A declaration that no endpoint reaches is emitted too, and it calls `vr::audit` for its
         // audited rules: the rollout regions are kept for every audited rule the crate has.
         let rollout = used_features.contains(&Feature::RulesRollout) || crate_has_audited(req);
@@ -282,6 +295,10 @@ impl Generator for Rust {
                 .any(|s| events::serves_http(req.ir.service(*s)));
         let f = Features {
             events: main_tree(req).uses_events(),
+            version,
+            etag,
+            idempotency,
+            conditional: etag || idempotency,
             rules,
             endpoint_rules,
             guards,
@@ -308,7 +325,8 @@ impl Generator for Rust {
         let main = main_tree(req)
             .with_validate(validate)
             .with_rules(rules)
-            .with_rollout(rollout);
+            .with_rollout(rollout)
+            .with_idempotency(idempotency);
         models::emit(&mut files, &main)?;
         policies::emit(&mut files, &main)?;
         if !files.contains("src/prelude.rs") {
@@ -346,6 +364,15 @@ impl Generator for Rust {
         package::emit_lib(&mut files, &packages, has_clients, &f, req.role)?;
         Ok(files)
     }
+}
+
+/// The services of a server that have an HTTP surface.
+fn served_http(req: &GenRequest<'_>) -> Vec<ServiceId> {
+    req.services
+        .iter()
+        .copied()
+        .filter(|s| events::serves_http(req.ir.service(*s)))
+        .collect()
 }
 
 /// `E0801` for an endpoint block on a `ws` endpoint that a server serves: a conversation has no

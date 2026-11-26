@@ -40,10 +40,24 @@ pub fn request_params(ep: &Endpoint) -> impl Iterator<Item = &veld_ir::Param> {
     ep.params.iter().filter(|p| !p.stream)
 }
 
-/// Emits the request struct of one endpoint.
+/// Emits the request struct of one endpoint (the server's: it has the declared parameters only).
 pub fn request_struct(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint) {
+    write_request(w, ctx, ep, false);
+}
+
+/// Emits the request struct of one endpoint for a client: after the declared parameters it has
+/// `if_match` and `idempotency_key` where the endpoint takes them (`spec/rules.md` section 11.12).
+pub fn client_request_struct(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint) {
+    write_request(w, ctx, ep, true);
+}
+
+fn write_request(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint, client: bool) {
     let params: Vec<_> = request_params(ep).collect();
-    let all_optional = params.iter().all(|p| p.optional);
+    let key = client
+        .then_some(())
+        .and_then(|()| crate::conditional::key_of(ep));
+    let all_optional =
+        params.iter().all(|p| p.optional) && key.is_none_or(|(_, required)| !required);
     w.line(format!("/// The parameters of `{}`.", ep.name));
     let default = if all_optional { "Default, " } else { "" };
     w.line(format!(
@@ -73,6 +87,9 @@ pub fn request_struct(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint) {
             }
         ));
     }
+    if client {
+        crate::conditional::client_fields(w, ctx, ep);
+    }
     w.close().blank();
 }
 
@@ -99,8 +116,17 @@ fn opt_str(s: Option<&str>) -> String {
     s.map_or("None".to_string(), |s| format!("Some({})", lit(s)))
 }
 
-/// Emits `pub static ENDPOINTS: [sp::EndpointSpec; N]` for the service.
+/// Emits `pub static ENDPOINTS: [sp::EndpointSpec; N]` for the service (the server's).
 pub fn endpoint_statics(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
+    write_statics(w, ctx, svc, false);
+}
+
+/// Emits `ENDPOINTS` for a client: the guard and the key are header parameters of its requests.
+pub fn client_endpoint_statics(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
+    write_statics(w, ctx, svc, true);
+}
+
+fn write_statics(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, client: bool) {
     w.line(format!(
         "/// The endpoints of `{}`, in declaration order.",
         svc.name
@@ -113,13 +139,13 @@ pub fn endpoint_statics(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
         " [",
     );
     for ep in &svc.endpoints {
-        endpoint_spec(w, ctx, ep);
+        endpoint_spec(w, ctx, ep, client);
     }
     w.close_with("];");
     w.blank();
 }
 
-fn endpoint_spec(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint) {
+fn endpoint_spec(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint, client: bool) {
     w.open("sp::EndpointSpec");
     w.line(format!("name: {},", lit(&ep.name)));
     w.line(format!("method: {},", lit(ep.method.as_str())));
@@ -148,6 +174,9 @@ fn endpoint_spec(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint) {
         w.line(format!("optional: {},", p.optional));
         w.line(format!("stream: {},", p.stream));
         w.close_with("},");
+    }
+    if client {
+        crate::conditional::client_params(w, ctx, ep);
     }
     w.close_with("],");
     match &ep.success.ty {

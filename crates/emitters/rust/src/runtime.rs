@@ -38,6 +38,18 @@ pub struct Features {
     /// A served service publishes or subscribes (`spec/events.md`): `src/veld/events.rs` is
     /// emitted.
     pub events: bool,
+    /// A generated service has an endpoint with a version guard, or a served one answers with a
+    /// model that has a version field (`spec/rules.md` section 11.7): `src/veld/conditional.rs`
+    /// (`IfMatch`, the `ETag`) is emitted.
+    pub version: bool,
+    /// A served endpoint reads `If-Match` or writes an `ETag`: the server core does. Implies
+    /// `version` and `conditional`.
+    pub etag: bool,
+    /// A served service has an `@idempotent` endpoint (`spec/rules.md` section 11.8):
+    /// `src/veld/idempotency.rs` is emitted. Implies `conditional`.
+    pub idempotency: bool,
+    /// The server core says, for each endpoint, what it owes to `@version` and `@idempotent`.
+    pub conditional: bool,
 }
 
 impl Features {
@@ -66,6 +78,11 @@ impl Features {
             "ws_server" => self.ws_server,
             "ws_client" => self.ws_client,
             "axum" => self.axum,
+            "rules" => self.rules,
+            "version" => self.version,
+            "etag" => self.etag,
+            "idempotency" => self.idempotency,
+            "conditional" => self.conditional,
             "reqwest" => self.reqwest,
             "ureq" => self.ureq,
             _ => false,
@@ -106,6 +123,8 @@ const RULES_NUM: &str = include_str!("../../../veld-rules/src/helpers/num.rs");
 const RULES_TEXT: &str = include_str!("../../../veld-rules/src/helpers/text.rs");
 const CANONICAL: &str = include_str!("../runtime/canonical.rs");
 const CLIENT: &str = include_str!("../runtime/client.rs");
+const CONDITIONAL: &str = include_str!("../runtime/conditional.rs");
+const IDEMPOTENCY: &str = include_str!("../runtime/idempotency.rs");
 const ERROR: &str = include_str!("../runtime/error.rs");
 const EVENTS: &str = include_str!("../runtime/events.rs");
 const PAGE: &str = include_str!("../runtime/page.rs");
@@ -130,8 +149,10 @@ pub fn mod_rs(f: &Features) -> String {
     for (name, on) in [
         ("canonical", true),
         ("client", f.client),
+        ("conditional", f.version),
         ("error", true),
         ("events", f.events),
+        ("idempotency", f.idempotency),
         ("page", true),
         ("regex", true),
         ("rules", f.rules),
@@ -167,6 +188,8 @@ pub fn emit(files: &mut FileSet, f: &Features) -> Result<(), Vec<GenDiagnostic>>
     };
     put("src/veld/canonical.rs", CANONICAL, true)?;
     put("src/veld/client.rs", CLIENT, f.client)?;
+    put("src/veld/conditional.rs", CONDITIONAL, f.version)?;
+    put("src/veld/idempotency.rs", IDEMPOTENCY, f.idempotency)?;
     put("src/veld/error.rs", ERROR, true)?;
     put("src/veld/events.rs", EVENTS, f.events)?;
     put("src/veld/page.rs", PAGE, true)?;

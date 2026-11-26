@@ -421,6 +421,7 @@ fn step6(
     for a in &ep.rules.allows {
         guards::allow(w, ctx, &plan, index, a, &sc)?;
     }
+    crate::conditional::version_guard(w, ctx, index, ep)?;
     guards::transition_guard(w, ctx, index, ep)?;
     w.open("if enforce");
     for r in &ep.rules.requires {
@@ -709,6 +710,7 @@ fn finish6(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, index: usize, e
         w.line("args.extend(m);");
         w.close();
         guards::hand_over_transition(w, ep);
+        crate::conditional::hand_over_version(w, ep);
         if saved {
             w.line("if !enforce { return Ok(veld::server::Prepared::none()); }");
             w.line(format!(

@@ -31,6 +31,9 @@ pub struct Tree<'a> {
     /// True when the crate has an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1): the test
     /// handler then answers with `Veld-Test-Audited`.
     pub rollout: bool,
+    /// True when the crate has an `@idempotent` endpoint (`spec/rules.md` section 11.8): every
+    /// `Conditional` of the server core has the `idempotency` member.
+    pub idempotency: bool,
     /// True when some service of the tree publishes or subscribes: the tree then emits the events
     /// of its channels (`spec/events.md` section 14).
     events: bool,
@@ -66,6 +69,7 @@ impl<'a> Tree<'a> {
             validate: true,
             rules: false,
             rollout: false,
+            idempotency: false,
             events: false,
         }
     }
@@ -133,6 +137,13 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn with_rollout(mut self, rollout: bool) -> Self {
         self.rollout = rollout;
+        self
+    }
+
+    /// Sets whether the crate has an `@idempotent` endpoint.
+    #[must_use]
+    pub fn with_idempotency(mut self, idempotency: bool) -> Self {
+        self.idempotency = idempotency;
         self
     }
 

@@ -26,6 +26,10 @@ pub(crate) struct Needs {
     basic: bool,
     api_key: bool,
     middleware: Vec<String>,
+    /// An `@idempotent` endpoint: the hooks give the store.
+    idempotency: bool,
+    /// An `@idempotent` endpoint whose keys are scoped to the caller: the hooks give the caller text.
+    caller: bool,
 }
 
 pub(crate) fn needs(svc: &Service) -> Needs {
@@ -34,6 +38,8 @@ pub(crate) fn needs(svc: &Service) -> Needs {
         basic: false,
         api_key: false,
         middleware: Vec::new(),
+        idempotency: crate::conditional::svc_idempotent(svc),
+        caller: crate::conditional::svc_needs_caller(svc),
     };
     for ep in &svc.endpoints {
         match ep.auth.kind {
@@ -53,7 +59,7 @@ pub(crate) fn needs(svc: &Service) -> Needs {
 
 impl Needs {
     pub(crate) fn any(&self) -> bool {
-        self.bearer || self.basic || self.api_key || !self.middleware.is_empty()
+        self.bearer || self.basic || self.api_key || !self.middleware.is_empty() || self.idempotency
     }
 }
 
@@ -150,11 +156,12 @@ fn service_trait(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     for ep in &svc.endpoints {
         endpoints::method_docs(w, ep);
         block::transition_docs(w, ep);
+        crate::conditional::version_docs(w, ep);
         if endpoints::kind(ep) == Kind::Ws {
             let (incoming, outgoing) = endpoints::ws_types(ctx, ep);
             w.line(format!("fn {}(&self, request: {}, ctx: {}, ws: veld::server::WsSession<{incoming}, {outgoing}>) -> impl std::future::Future<Output = Result<(), veld::Error>> + Send;", method(&ep.name), request_name(ep), context_type()));
         } else {
-            w.line(format!("fn {}(&self, request: {}{}{}, ctx: {}) -> impl std::future::Future<Output = Result<{}, veld::Error>> + Send;", method(&ep.name), request_name(ep), block::facts_param(ep), block::transition_param(ctx, ep), context_type(), success_type(ctx, ep)));
+            w.line(format!("fn {}(&self, request: {}{}{}{}, ctx: {}) -> impl std::future::Future<Output = Result<{}, veld::Error>> + Send;", method(&ep.name), request_name(ep), block::facts_param(ep), block::transition_param(ctx, ep), crate::conditional::version_param(ctx, ep), context_type(), success_type(ctx, ep)));
         }
         w.blank();
     }
@@ -232,6 +239,9 @@ fn hooks_trait(
         w.line("/// audited). It cannot change the response.");
         w.line("fn on_rule_violation(&self, _event: &veld::rules::RuleEvent) {}");
     }
+    if n.idempotency {
+        idempotency_hooks(w, n, typed);
+    }
     if block::has_block(svc) {
         w.blank();
         w.line("/// The clock of the endpoint rules (`now`): read once per request, before the facts are");
@@ -283,7 +293,7 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
     };
     w.open(format!("pub struct {name}Dispatch<{decl}>"));
     // The test handler of a service with endpoint rules reaches into its dispatch.
-    let vis = if block::has_block(svc) {
+    let vis = if block::has_block(svc) || n.idempotency {
         "pub(crate) "
     } else {
         ""
@@ -317,6 +327,10 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
     }
     if block::has_block(svc) {
         block_methods(w, svc);
+    }
+    conditional_method(w, tree, svc);
+    if n.idempotency {
+        idempotency_forwards(w, n, typed);
     }
     auth_forwards(w, n, typed);
     call_methods(w, svc);
@@ -466,7 +480,18 @@ fn auth_forwards(w: &mut CodeWriter, n: &Needs, typed: Option<&str>) {
 /// Decodes the request, and the facts that step 6 added to `args`; returns the arguments the
 /// service method takes before `ctx`.
 fn decode_request(w: &mut CodeWriter, ep: &Endpoint) -> &'static str {
-    if ep.rules.transition.is_some() {
+    if ep.rules.version.is_some() {
+        w.line("let request = veld::server::decode_args(args.clone())?;");
+        w.line("let facts = veld::server::decode_args(args.clone())?;");
+        if ep.rules.transition.is_some() {
+            w.line("let transition = veld::server::decode_key(&args, \"transition\")?;");
+            w.line("let version = veld::server::decode_key(&args, \"version\")?;");
+            "request, facts, transition, version"
+        } else {
+            w.line("let version = veld::server::decode_key(&args, \"version\")?;");
+            "request, facts, version"
+        }
+    } else if ep.rules.transition.is_some() {
         w.line("let request = veld::server::decode_args(args.clone())?;");
         w.line("let facts = veld::server::decode_args(args.clone())?;");
         w.line("let transition = veld::server::decode_key(&args, \"transition\")?;");
@@ -624,5 +649,88 @@ fn handler(w: &mut CodeWriter, svc: &Service, n: &Needs) {
             w.close();
         }
     }
+    w.close().blank();
+}
+
+/// The members of the hooks of a service with an `@idempotent` endpoint: the store, and the caller
+/// text when a key is scoped to the caller. The types require them, so a server without them does
+/// not build (`spec/rules.md` section 11.12).
+fn idempotency_hooks(w: &mut CodeWriter, n: &Needs, typed: Option<&str>) {
+    w.blank();
+    w.line("/// The store of the idempotency keys of the `@idempotent` endpoints. Implement");
+    w.line("/// `veld::idempotency::IdempotencyStore` over your database, or use");
+    w.line("/// `veld::idempotency::MemoryIdempotencyStore` in tests.");
+    w.line("type IdempotencyStore: veld::idempotency::IdempotencyStore;");
+    w.blank();
+    w.line("/// The store the `@idempotent` endpoints use.");
+    w.line("fn idempotency_store(&self) -> &Self::IdempotencyStore;");
+    if n.caller {
+        let principal = typed.map_or_else(|| "veld::server::Principal".to_string(), str::to_string);
+        w.blank();
+        w.line("/// The text that tells callers apart: the scope of an idempotency key includes it, so that one");
+        w.line("/// caller's key never replays another caller's answer. Two callers must not give the same text.");
+        w.line(format!(
+            "fn idempotency_caller(&self, principal: &{principal}, ctx: &veld::server::RequestContext) -> String;"
+        ));
+    }
+}
+
+/// `conditional` of a dispatch: what each endpoint owes to `@version` and `@idempotent`.
+fn conditional_method(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service) {
+    let arms: Vec<(usize, &Endpoint)> = svc
+        .endpoints
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| {
+            crate::conditional::serves_version(tree.ir, e) || crate::conditional::is_idempotent(e)
+        })
+        .collect();
+    if arms.is_empty() {
+        return;
+    }
+    w.open("fn conditional(&self, endpoint: usize) -> veld::server::Conditional");
+    w.open("match endpoint");
+    for (i, ep) in arms {
+        let etag = tree.ir.etag_field(ep).map_or("None".to_string(), |f| {
+            format!("Some({})", crate::util::lit(&f.wire))
+        });
+        let mut members = format!("guard: {}, etag: {etag}", crate::conditional::has_guard(ep));
+        if tree.idempotency {
+            let idem = ep.idempotency.as_ref().map_or("None".to_string(), |i| {
+                format!(
+                    "Some(veld::server::Idempotent {{ header: {}, required: {}, caller: {} }})",
+                    crate::util::lit(&i.header),
+                    i.required,
+                    i.caller
+                )
+            });
+            members.push_str(&format!(", idempotency: {idem}"));
+        }
+        w.line(format!("{i} => veld::server::Conditional {{ {members} }},"));
+    }
+    w.line("_ => veld::server::Conditional::NONE,");
+    w.close().close().blank();
+}
+
+/// The forwards of a dispatch to the store and the caller hook of the hooks.
+fn idempotency_forwards(w: &mut CodeWriter, n: &Needs, typed: Option<&str>) {
+    if n.caller {
+        w.open("fn idem_caller(&self, ctx: &veld::server::RequestContext) -> String");
+        match typed {
+            Some(ty) => w.line(format!("ctx.principal::<{ty}>().map_or_else(String::new, |p| self.hooks.idempotency_caller(p, ctx))")),
+            None => w.line("ctx.principal.as_ref().map_or_else(String::new, |p| self.hooks.idempotency_caller(p, ctx))"),
+        };
+        w.close().blank();
+    }
+    w.open("fn idem_begin<'a>(&'a self, _endpoint: usize, scope: &'a str, key: &'a str, fingerprint: &'a str, _ctx: &'a veld::server::RequestContext) -> impl std::future::Future<Output = Result<veld::idempotency::Begin, veld::Error>> + Send + 'a");
+    w.line("veld::idempotency::IdempotencyStore::begin(self.hooks.idempotency_store(), scope, key, fingerprint)");
+    w.close().blank();
+    w.open("fn idem_complete<'a>(&'a self, scope: &'a str, key: &'a str, answer: veld::idempotency::StoredAnswer) -> impl std::future::Future<Output = Result<(), veld::Error>> + Send + 'a");
+    w.line("veld::idempotency::IdempotencyStore::complete(self.hooks.idempotency_store(), scope, key, answer)");
+    w.close().blank();
+    w.open("fn idem_release<'a>(&'a self, scope: &'a str, key: &'a str) -> impl std::future::Future<Output = Result<(), veld::Error>> + Send + 'a");
+    w.line(
+        "veld::idempotency::IdempotencyStore::release(self.hooks.idempotency_store(), scope, key)",
+    );
     w.close().blank();
 }

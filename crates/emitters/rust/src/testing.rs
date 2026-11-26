@@ -47,7 +47,7 @@ pub fn emit(
     }
     for sid in &tree.services {
         let svc = tree.ir.service(*sid);
-        if !block::has_block(svc) {
+        if !block::has_block(svc) && !crate::conditional::svc_idempotent(svc) {
             continue;
         }
         let here = format!(
@@ -197,6 +197,7 @@ fn dispatch(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, name: &str) {
         "impl<S: {name}Service, H: {name}Hooks> Endpoints for {name}TestDispatch<S, H>"
     ));
     delegates(w);
+    conditional(w, ctx, svc);
     audited(w, ctx, svc);
     prepare(w, svc);
     trusted(w, ctx, svc);
@@ -218,6 +219,44 @@ fn audited(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
         w.line("self.inner.ensure_audited(prepared, result)");
         w.close().blank();
     }
+}
+
+/// `@version` and `@idempotent` in the test handler: what each endpoint owes is the production
+/// dispatch's; the store is a memory store of the request, filled from `Veld-Test-Idempotency`, and
+/// the caller text is the one of section 11.10 (`spec/rules.md`).
+fn conditional(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
+    let any = svc.endpoints.iter().any(|e| {
+        crate::conditional::serves_version(ctx.tree.ir, e) || crate::conditional::is_idempotent(e)
+    });
+    if !any {
+        return;
+    }
+    w.open("fn conditional(&self, endpoint: usize) -> veld::server::Conditional");
+    w.line("self.inner.conditional(endpoint)");
+    w.close().blank();
+    if !crate::conditional::svc_idempotent(svc) {
+        return;
+    }
+    w.open("fn idem_caller(&self, ctx: &RequestContext) -> String");
+    w.line("match header_json(ctx, \"veld-test-principal\") {");
+    w.line("    Ok(Some(principal)) => veld::canonical::canonical(&principal),");
+    w.line("    Ok(None) | Err(_) => \"caller\".to_string(),");
+    w.line("}");
+    w.close().blank();
+    w.open("fn idem_begin<'a>(&'a self, endpoint: usize, scope: &'a str, key: &'a str, fingerprint: &'a str, ctx: &'a RequestContext) -> impl std::future::Future<Output = Result<veld::idempotency::Begin, veld::Error>> + Send + 'a");
+    w.line("let etag = self.inner.conditional(endpoint).etag;");
+    w.open("let begun = match self.inner.endpoints().get(endpoint)");
+    w.line("Some(ep) => veld::idempotency::seeded_begin(ep, etag, ctx.header(\"veld-test-idempotency\"), (scope, key, fingerprint)),");
+    w.line("None => Err(veld::Error::other(\"not an endpoint\")),");
+    w.close_with("};");
+    w.line("std::future::ready(begun)");
+    w.close().blank();
+    w.open("fn idem_complete<'a>(&'a self, _scope: &'a str, _key: &'a str, _answer: veld::idempotency::StoredAnswer) -> impl std::future::Future<Output = Result<(), veld::Error>> + Send + 'a");
+    w.line("std::future::ready(Ok(()))");
+    w.close().blank();
+    w.open("fn idem_release<'a>(&'a self, _scope: &'a str, _key: &'a str) -> impl std::future::Future<Output = Result<(), veld::Error>> + Send + 'a");
+    w.line("std::future::ready(Ok(()))");
+    w.close().blank();
 }
 
 fn delegates(w: &mut CodeWriter) {
@@ -261,19 +300,29 @@ fn prepare(w: &mut CodeWriter, svc: &Service) {
     w.line("let enforce = self.inner.hooks.validate_requests();");
     w.open("let now = match ctx.header(\"veld-test-now\")");
     w.line("Some(text) => veld::rules::instant::parse_datetime(text).ok_or_else(|| Halt::Error(veld::Error::other(\"the header Veld-Test-Now is not an RFC 3339 time\")))?,");
-    w.line("None => veld::rules::clock_ms(self.inner.hooks.clock(ctx)),");
+    // A service without endpoint rules has no clock hook.
+    w.line(if block::has_block(svc) {
+        "None => veld::rules::clock_ms(self.inner.hooks.clock(ctx)),"
+    } else {
+        "None => veld::rules::clock_ms(std::time::SystemTime::now()),"
+    });
     w.close_with("};");
-    w.open("let prepared = match endpoint");
-    for (i, ep) in svc.endpoints.iter().enumerate() {
-        if block::ep_has_block(ep) {
-            w.line(format!(
-                "{i} => {}({pass}now, enforce, args, ctx).await?,",
-                block::step6_name(ep)
-            ));
+    if block::has_block(svc) {
+        w.open("let prepared = match endpoint");
+        for (i, ep) in svc.endpoints.iter().enumerate() {
+            if block::ep_has_block(ep) {
+                w.line(format!(
+                    "{i} => {}({pass}now, enforce, args, ctx).await?,",
+                    block::step6_name(ep)
+                ));
+            }
         }
+        w.line("_ => Prepared::none(),");
+        w.close_with("};");
+    } else {
+        w.line("let _ = (endpoint, enforce, &args);");
+        w.line("let prepared = Prepared::none();");
     }
-    w.line("_ => Prepared::none(),");
-    w.close_with("};");
     w.open("if ctx.header(\"veld-test-dry-run\") == Some(\"1\")");
     w.line("return Err(Halt::Early(Response { status: 204, headers: vec![(\"veld-test-passed\".to_string(), \"1\".to_string())], body: Body::Empty }));");
     w.close();

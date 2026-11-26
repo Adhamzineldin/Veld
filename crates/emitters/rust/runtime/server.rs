@@ -98,6 +98,47 @@ impl fmt::Debug for Principal {
     }
 }
 
+// @if conditional
+/// What an endpoint owes to `@version` and `@idempotent` (`spec/rules.md` sections 11.7 to 11.12).
+/// The generated dispatch says it for each endpoint; the core does the rest.
+#[derive(Debug, Clone, Copy)]
+pub struct Conditional {
+    /// The endpoint has a version guard: `If-Match` is read, its syntax checked and the handler
+    /// gets the version that was compared.
+    pub guard: bool,
+    /// The wire name of the version field of the success model: its value is the `ETag`.
+    pub etag: Option<&'static str>,
+    // @if idempotency
+    /// `@idempotent`.
+    pub idempotency: Option<Idempotent>,
+    // @end
+}
+
+// @if idempotency
+/// `@idempotent` on an endpoint.
+#[derive(Debug, Clone, Copy)]
+pub struct Idempotent {
+    /// The header of the key.
+    pub header: &'static str,
+    /// A request without the header is `422`.
+    pub required: bool,
+    /// The scope of a key includes the caller.
+    pub caller: bool,
+}
+
+// @end
+impl Conditional {
+    /// An endpoint with neither.
+    pub const NONE: Conditional = Conditional {
+        guard: false,
+        etag: None,
+        // @if idempotency
+        idempotency: None,
+        // @end
+    };
+}
+
+// @end
 /// What a service method and a hook can see of the request.
 #[derive(Debug, Clone)]
 pub struct RequestContext {
@@ -107,6 +148,10 @@ pub struct RequestContext {
     pub headers: Vec<(String, String)>,
     /// Set by the auth hook of an endpoint that needs auth.
     pub principal: Option<Principal>,
+    // @if conditional
+    /// What the endpoint says about `If-Match`, `ETag` and the idempotency key.
+    conditional: Conditional,
+    // @end
     // #if endpoint_rules
     /// What step 6 saved for step 9.
     prepared: Prepared,
@@ -233,6 +278,22 @@ impl RequestContext {
         self.principal.as_ref().and_then(Principal::get::<T>)
     }
 }
+// @if etag
+
+impl RequestContext {
+    /// What `If-Match` says, for an endpoint with a version guard (step 5 has refused a header that
+    /// is malformed). `None` without the header and for an endpoint without a guard. For generated
+    /// code.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn if_match(&self) -> Option<super::conditional::IfMatch<i64>> {
+        if !self.conditional.guard {
+            return None;
+        }
+        super::conditional::parse_if_match(self.header("if-match")?)
+    }
+}
+// @end
 
 fn header<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
     headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
@@ -319,6 +380,48 @@ pub trait Endpoints: Send + Sync + 'static {
 
     /// Observes every error that becomes `Internal`. It cannot change the response.
     fn on_error(&self, _err: &Error, _ctx: &RequestContext) {}
+    // @if conditional
+
+    /// What `endpoint` owes to `@version` and `@idempotent`.
+    fn conditional(&self, _endpoint: usize) -> Conditional {
+        Conditional::NONE
+    }
+    // @if idempotency
+
+    /// The caller text of the scope of an idempotency key: what the application's hook makes of
+    /// the principal.
+    fn idem_caller(&self, _ctx: &RequestContext) -> String {
+        String::new()
+    }
+
+    /// Asks the store about a key (`endpoint` is the index of the endpoint, for a test handler).
+    fn idem_begin<'a>(
+        &'a self,
+        _endpoint: usize,
+        _scope: &'a str,
+        _key: &'a str,
+        _fingerprint: &'a str,
+        _ctx: &'a RequestContext,
+    ) -> impl Future<Output = Result<super::idempotency::Begin, Error>> + Send + 'a {
+        async { Err(Error::other("the service has no idempotency store")) }
+    }
+
+    /// Stores the answer of a started request.
+    fn idem_complete<'a>(
+        &'a self,
+        _scope: &'a str,
+        _key: &'a str,
+        _answer: super::idempotency::StoredAnswer,
+    ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
+        async { Ok(()) }
+    }
+
+    /// Removes the entry of a started request.
+    fn idem_release<'a>(&'a self, _scope: &'a str, _key: &'a str) -> impl Future<Output = Result<(), Error>> + Send + 'a {
+        async { Ok(()) }
+    }
+    // @end
+    // @end
 
     fn auth_bearer<'a>(
         &'a self,
@@ -668,6 +771,39 @@ fn stamp_audited(mut resp: Response, log: &AuditLog) -> Response {
 }
 
 // #endif
+// @if idempotency
+/// A key that this request holds.
+struct Started {
+    scope: String,
+    key: String,
+}
+
+/// What a response keeps in the store: the status, the bytes and the headers that matter.
+fn stored_of(resp: &Response) -> super::idempotency::StoredAnswer {
+    let find = |name: &str| resp.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.clone());
+    super::idempotency::StoredAnswer {
+        status: resp.status,
+        body: if let Body::Bytes(bytes) = &resp.body { bytes.clone() } else { Vec::new() },
+        content_type: find("content-type"),
+        etag: find("etag"),
+        location: find("location"),
+    }
+}
+
+/// A stored answer sent again, with `Veld-Idempotent-Replay: true`.
+fn replay(answer: super::idempotency::StoredAnswer) -> Response {
+    let mut headers = Vec::new();
+    for (name, value) in [("content-type", answer.content_type), ("etag", answer.etag), ("location", answer.location)] {
+        if let Some(value) = value {
+            headers.push((name.to_string(), value));
+        }
+    }
+    headers.push(("veld-idempotent-replay".to_string(), "true".to_string()));
+    let body = if answer.body.is_empty() { Body::Empty } else { Body::Bytes(answer.body) };
+    Response { status: answer.status, headers, body }
+}
+
+// @end
 fn parse_query(qs: &str) -> BTreeMap<String, Vec<String>> {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for pair in qs.split('&').filter(|p| !p.is_empty()) {
@@ -1009,6 +1145,9 @@ impl<E: Endpoints> Handler<E> {
             path: path_without_trailing_slash(&req.path).to_string(),
             headers: req.headers.iter().map(|(k, v)| (k.to_ascii_lowercase(), v.clone())).collect(),
             principal: None,
+            // @if conditional
+            conditional: Conditional::NONE,
+            // @end
             // #if endpoint_rules
             prepared: Prepared::none(),
             // #endif
@@ -1039,10 +1178,28 @@ impl<E: Endpoints> Handler<E> {
         // #if rollout
         ctx.audit = audit;
         // #endif
+        // @if conditional
+        ctx.conditional = e.conditional(index);
+        // @end
         let args = match self.guard(ep, &caps, &req, &mut ctx, false).await {
             Ok(args) => args,
             Err(resp) => return resp,
         };
+        // @if idempotency
+        let started = match self.idem_start(index, ep, &args, &ctx).await {
+            Ok(started) => started,
+            Err(resp) => return resp,
+        };
+        let resp = self.run_after_guard(index, args, ctx.clone()).await;
+        self.idem_finish(started, resp, &ctx).await
+    }
+
+    /// Steps 6 to 9 and the answer: what runs once an idempotency key is held.
+    #[allow(unused_mut)]
+    async fn run_after_guard(&self, index: usize, args: Map<String, Value>, mut ctx: RequestContext) -> Response {
+        let e = &self.inner.endpoints;
+        let ep = &e.endpoints()[index];
+        // @end
         // #if endpoint_rules
         // Step 6: facts, `require`, and what step 9 needs.
         let mut args = args;
@@ -1104,6 +1261,9 @@ impl<E: Endpoints> Handler<E> {
         }
         // #endif
         let bound = self.bind(ep, caps, req, ctx, ws);
+        // @if conditional
+        let headers = Self::header_issues(ctx);
+        // @end
         // #if rollout
         self.inner.report_audited(
             ep,
@@ -1113,6 +1273,11 @@ impl<E: Endpoints> Handler<E> {
             (None, Some(&ctx.audit)),
         );
         // #endif
+        // @if conditional
+        if !headers.is_empty() {
+            return Err(self.refused(ep, headers, bound));
+        }
+        // @end
         // #if rules
         if bound.issues.is_empty() && !bound.violations.is_empty() {
             return Err(self.rejection(ep, bound.violations, bound.micros));
@@ -1204,12 +1369,142 @@ impl<E: Endpoints> Handler<E> {
                 return self.failure(&err, ep, ctx);
             }
         }
+        // @if !etag
         Response {
             status: ep.status,
             headers: vec![("content-type".into(), "application/json".into())],
             body: Body::Bytes(serde_json::to_vec(&wire).unwrap_or_default()),
         }
+        // @end
+        // @if etag
+        let mut resp = Response {
+            status: ep.status,
+            headers: vec![("content-type".into(), "application/json".into())],
+            body: Body::Bytes(serde_json::to_vec(&wire).unwrap_or_default()),
+        };
+        // The `ETag` of a success whose type is a model with a version field (section 11.10).
+        if let Some(tag) = ctx.conditional.etag.and_then(|field| super::conditional::etag_of(&wire, field)) {
+            resp.headers.push(("etag".into(), tag));
+        }
+        resp
+        // @end
     }
+    // @if conditional
+
+    /// The issues of the two headers the core reads: `If-Match` of an endpoint with a version
+    /// guard and the key of an `@idempotent` one. They are not rule violations.
+    fn header_issues(ctx: &RequestContext) -> Vec<Issue> {
+        let mut out = Vec::new();
+        // @if etag
+        if let Some(text) = ctx.header("if-match").filter(|_| ctx.conditional.guard) {
+            if super::conditional::parse_if_match(text).is_none() {
+                out.push(Issue {
+                    path: "header.If-Match".into(),
+                    code: "type".into(),
+                    message: super::conditional::IF_MATCH_MESSAGE.into(),
+                });
+            }
+        }
+        // @end
+        // @if idempotency
+        if let Some(idem) = ctx.conditional.idempotency {
+            let path = format!("header.{}", idem.header);
+            match ctx.header(idem.header) {
+                Some(key) if !super::idempotency::is_valid_key(key) => {
+                    out.push(Issue { path, code: "type".into(), message: super::idempotency::KEY_MESSAGE.into() });
+                }
+                None if idem.required => out.push(Issue { path, code: "required".into(), message: "is required".into() }),
+                Some(_) | None => {}
+            }
+        }
+        // @end
+        out
+    }
+
+    /// Step 5 found a malformed `If-Match` or key: `422 ValidationError`, the header issues first,
+    /// then what else step 5 found. The violations of a rule stay.
+    fn refused(&self, ep: &EndpointSpec, headers: Vec<Issue>, bound: Bound) -> Response {
+        let shape_ok = bound.issues.is_empty();
+        let mut issues = headers;
+        issues.extend(bound.issues);
+        // @if rules
+        if shape_ok && !bound.violations.is_empty() {
+            let mut problem = self.inner.reject_input(ep, bound.violations, bound.micros);
+            if let Value::Object(data) = &mut problem.data {
+                if let Some(Value::Array(list)) = data.get_mut("issues") {
+                    let mut all: Vec<Value> = issues.iter().filter_map(|i| serde_json::to_value(i).ok()).collect();
+                    all.append(list);
+                    *list = all;
+                }
+            }
+            return Response {
+                status: problem.status,
+                headers: vec![("content-type".into(), "application/problem+json".into())],
+                body: Body::Bytes(problem.to_text().into_bytes()),
+            };
+        }
+        // @end
+        let _ = shape_ok;
+        error_response(self.inner.endpoints.std_sigs().validation, "ValidationError", 422, ep.sig, issues_json(&issues))
+    }
+    // @end
+    // @if idempotency
+
+    /// After step 5, for an `@idempotent` endpoint and a request with its key: asks the store.
+    /// `Ok(Some)` when the request is to run (the entry is held), `Err` with the answer when it
+    /// is not: a replay, a conflict or a failed store.
+    async fn idem_start(&self, index: usize, ep: &EndpointSpec, args: &Map<String, Value>, ctx: &RequestContext) -> Result<Option<Started>, Response> {
+        use super::idempotency::{Begin, OTHER_MESSAGE, RUNNING_MESSAGE, fingerprint};
+        let Some(idem) = ctx.conditional.idempotency else {
+            return Ok(None);
+        };
+        let Some(key) = ctx.header(idem.header) else {
+            return Ok(None);
+        };
+        let e = &self.inner.endpoints;
+        let mut params = Map::new();
+        for p in ep.params.iter().filter(|p| !p.stream) {
+            if let Some(typed) = args.get(p.name) {
+                params.insert(p.name.to_string(), p.schema.to_wire(typed, true, false));
+            }
+        }
+        let fingerprint = fingerprint(&params);
+        let scope = if idem.caller { format!("{}\n{}", ep.sig, e.idem_caller(ctx)) } else { ep.sig.to_string() };
+        match e.idem_begin(index, &scope, key, &fingerprint, ctx).await {
+            Ok(Begin::Started) => Ok(Some(Started { scope, key: key.to_string() })),
+            Ok(Begin::Replay(answer)) => Err(replay(answer)),
+            Ok(Begin::Running) => Err(self.conflict(ep, RUNNING_MESSAGE, ctx)),
+            Ok(Begin::Other) => Err(self.conflict(ep, OTHER_MESSAGE, ctx)),
+            Err(err) => {
+                // Running without the store could run a request twice: the request does not run.
+                let failed = Error::other(format!("{}: the idempotency store failed: {err}", ep.name));
+                Err(self.failure(&failed, ep, ctx))
+            }
+        }
+    }
+
+    /// The `409 Conflict` of a key that cannot be used now.
+    fn conflict(&self, ep: &EndpointSpec, message: &str, ctx: &RequestContext) -> Response {
+        match ep.errors.iter().find(|d| d.status == 409 && d.name == "Conflict") {
+            Some(d) => error_response(d.sig, d.name, 409, ep.sig, serde_json::json!({ "message": message })),
+            None => self.failure(&Error::other(format!("{}: the endpoint does not declare `Conflict`", ep.name)), ep, ctx),
+        }
+    }
+
+    /// The answer is below `500`: it is stored; otherwise the entry is removed. A store that fails
+    /// here does not change the answer: the failure goes to `on_error`.
+    async fn idem_finish(&self, started: Option<Started>, resp: Response, ctx: &RequestContext) -> Response {
+        let Some(Started { scope, key }) = started else {
+            return resp;
+        };
+        let e = &self.inner.endpoints;
+        let done = if resp.status < 500 { e.idem_complete(&scope, &key, stored_of(&resp)).await } else { e.idem_release(&scope, &key).await };
+        if let Err(err) = done {
+            e.on_error(&err, ctx);
+        }
+        resp
+    }
+    // @end
 
     // #if rules
     /// Step 5 failed: `422 ValidationError` with one issue and one violation per broken rule.
