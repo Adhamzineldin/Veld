@@ -1,0 +1,15 @@
+---
+source: crates/emitters/node/tests/rollout.rs
+expression: "client.paths().collect::<Vec<_>>().join(\"\\n\")"
+---
+README.md
+bookings/client.ts
+bookings/errors/bookings.ts
+bookings/models/bookings.ts
+clients.ts
+index.ts
+package.json
+prelude.ts
+runtime/rollout.ts
+runtime/rules.ts
+runtime/veld.ts

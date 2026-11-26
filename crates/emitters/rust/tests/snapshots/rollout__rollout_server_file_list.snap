@@ -1,0 +1,14 @@
+---
+source: crates/emitters/rust/tests/rollout.rs
+expression: "paths.join(\"\\n\")"
+---
+Cargo.toml
+README.md
+src/adapters/axum.rs
+src/adapters/mod.rs
+src/lib.rs
+src/prelude.rs
+src/rollout/mod.rs
+src/rollout/parties_server.rs
+src/rollout/parties_test_server.rs
+src/rollout/rollout.rs

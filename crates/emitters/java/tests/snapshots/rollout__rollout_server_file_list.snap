@@ -1,0 +1,30 @@
+---
+source: crates/emitters/java/tests/rollout.rs
+expression: "paths.join(\"\\n\")"
+---
+README.md
+gen/p/adapters/JdkHttpServerAdapter.java
+gen/p/bk/bk/Booking.java
+gen/p/bk/bk/Mixed.java
+gen/p/bk/bk/Party.java
+gen/p/bk/bk/Receipt.java
+gen/p/bk/bk/Room.java
+gen/p/bk/bk/RoomClosed.java
+gen/p/bk/bk/RoomFull.java
+gen/p/bk/bk/Strict.java
+gen/p/bk/server/BookingRequest.java
+gen/p/bk/server/EnforcedFacts.java
+gen/p/bk/server/EnforcedRequest.java
+gen/p/bk/server/MixedRequest.java
+gen/p/bk/server/PartiesFactLoaders.java
+gen/p/bk/server/PartiesHandler.java
+gen/p/bk/server/PartiesHooks.java
+gen/p/bk/server/PartiesService.java
+gen/p/bk/server/PartiesTestHandler.java
+gen/p/bk/server/ReceiptRequest.java
+gen/p/bk/server/WatchedFacts.java
+gen/p/bk/server/WatchedRequest.java
+gen/p/prelude/Internal.java
+gen/p/prelude/NotFound.java
+gen/p/prelude/ValidationError.java
+gen/p/prelude/ValidationIssue.java
