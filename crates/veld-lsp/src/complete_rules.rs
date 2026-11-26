@@ -215,7 +215,9 @@ impl Cx<'_> {
         let ix = self.ix();
         let before = s.toks.get(..dot).unwrap_or(&[]);
         let other = match before.last() {
-            Some(t) if t.is("==") || t.is("!=") => path_before(before, before.len()),
+            Some(t) if t.is("==") || t.is("!=") => {
+                path_before(before, before.len().saturating_sub(1))
+            }
             Some(t) if t.is("[") || t.is(",") => {
                 let open = list_open(before);
                 let word = open
@@ -314,11 +316,14 @@ impl Cx<'_> {
 
     fn in_record(&self, s: &Site, name: &str) -> Option<Vec<CompletionItem>> {
         let st = s.stmt_toks();
-        if st.is_empty() {
+        if s.first() != Some("rule") {
+            // A field line: nothing to complete, but a new line may start a rule.
             return s.line_start.then(|| words_items(&["rule"]));
         }
-        if s.first() != Some("rule") {
-            return None;
+        if s.line_start && st.last().is_some_and(ends_operand) && s.opens.is_empty() {
+            let mut out = words_items(&["rule"]);
+            out.extend(operator_items(&["message"]));
+            return Some(out);
         }
         let Some(colon) = st.iter().position(|t| t.is(":")) else {
             return Some(Vec::new());
@@ -345,15 +350,17 @@ impl Cx<'_> {
 
     fn in_enum(&self, s: &Site, name: &str) -> Option<Vec<CompletionItem>> {
         let st = s.stmt_toks();
-        let Some(first) = st.first() else {
+        let (Some(first), Some(last)) = (st.first(), st.last()) else {
             return s.line_start.then(|| words_items(&["flow", "final"]));
         };
-        let last = st.last()?;
         let wants_state = match first.text.as_str() {
             "flow" => last.is("flow") || last.is("->"),
             "final" => last.is("final") || last.is(","),
-            _ => return None,
+            _ => return s.line_start.then(|| words_items(&["flow", "final"])),
         };
+        if s.line_start && ends_operand(last) {
+            return Some(words_items(&["flow", "final"]));
+        }
         let ix = self.ix();
         let decl = ix
             .decls
@@ -651,17 +658,33 @@ impl Cx<'_> {
 
     fn in_example(&self, s: &Site) -> Option<Vec<CompletionItem>> {
         let st = s.stmt_toks();
-        let Some(first) = st.first() else {
-            let mut out = words_items(&["given", "as", "at", "ifMatch", "key"]);
-            out.extend(self.endpoint_items(None));
-            return Some(out);
+        let (Some(first), Some(last)) = (st.first(), st.last()) else {
+            return Some(self.example_starts(false));
         };
-        let last = st.last()?;
+        if s.line_start && s.opens.is_empty() && (ends_operand(last) || last.is("}")) {
+            return Some(self.example_starts(last.is(")")));
+        }
         Some(match first.text.as_str() {
             "given" => self.given_items(st, last),
             "as" | "at" | "ifMatch" | "key" => Vec::new(),
             _ => self.call_items(s, st, last),
         })
+    }
+
+    /// The words that start a line of an example: the givens and the call.
+    fn example_starts(&self, after_call: bool) -> Vec<CompletionItem> {
+        let mut out = words_items(&["given", "as", "at", "ifMatch", "key"]);
+        out.extend(self.endpoint_items(None));
+        if after_call {
+            out.extend(words_items(&["returns"]));
+            out.push(snippet(
+                "->",
+                CompletionItemKind::OPERATOR,
+                "-> outcome",
+                "-> $0",
+            ));
+        }
+        out
     }
 
     fn given_items(&self, st: &[Tk], last: &Tk) -> Vec<CompletionItem> {

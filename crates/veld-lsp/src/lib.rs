@@ -19,6 +19,8 @@ pub mod nav;
 pub mod outline;
 pub mod query;
 pub mod rfind;
+#[cfg(test)]
+mod rules_tests;
 mod scan;
 mod scope;
 pub mod server;

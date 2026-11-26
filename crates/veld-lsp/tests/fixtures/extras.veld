@@ -1,0 +1,45 @@
+/// The most guests a booking may hold.
+const MAX_GUESTS: int = 6
+
+enum Tier { basic, gold }
+
+/// A night of a stay.
+model Stay {
+  nights: int @min(1)
+}
+
+/// Someone who stays.
+model Guest {
+  name: string
+  nickname?: string
+  tier: Tier = .basic
+  tags: string[]
+  stays: Stay[]
+
+  rule nameNotEmpty: len(name) > 0
+  @rollout(audit)
+  rule nickFits: has(nickname) implies len(nickname) <= 20
+  rule goldHasTags: tier == .gold implies len(tags) > 0
+  rule staysShort: all(stays, s => s.nights <= 30)
+  rule fewLongStays: count(stays, s => s.nights > 7) <= MAX_GUESTS
+  rule nameShape: matches(name, "^[A-Z]")
+  rule tierIsKnown: tier in [.basic, .gold]
+}
+
+/// The staff.
+model Admin {
+  id: uuid
+  roles: string[]
+}
+
+principal Admin as admin
+
+service Guests at "/guests" {
+  get "/{id}" getGuest(id: uuid) -> Guest {
+    fact guest: Guest = id
+    fact spouse?: Guest = id
+    ensure unchanged: result.name == old(guest.name)
+    require has(spouse) implies spouse.tier == .gold
+    require admin.id != id
+  }
+}
