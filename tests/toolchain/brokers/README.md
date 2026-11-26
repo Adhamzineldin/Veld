@@ -48,9 +48,22 @@ programs print `events kafka ok` and `events rabbitmq ok` when every row holds. 
 takes about 40 seconds (one row keeps a delivery running for nine seconds, longer than the
 smallest session timeout of the broker).
 
-## Java
+## Java (`crates/emitters/java`)
 
-(The Java agent adds its section here.)
+| | |
+|---|---|
+| Programs | `tests/toolchain/java/brokers/EventsKafka.java` (`kafka-clients` 4.1.2) and `EventsRabbitmq.java` (`amqp-client` 5.27.1) |
+| Runner | `cargo test -p veld-emit-java --test brokers` |
+| Generated with | `messaging = ["kafka", "rabbitmq"]` on `tests/events/delivery.veld`, compiled with `javac --release 17 -Xlint:all -Werror` |
+
+The Java target writes no build file, so the jars come from `~/.m2/repository` (`kafka-clients`
+4.1.2, `amqp-client` 5.27.1 and `slf4j-api` 2.0.17) or from `VELD_KAFKA_CLIENTS_JAR`,
+`VELD_AMQP_CLIENT_JAR` and `VELD_SLF4J_JAR`; to fetch them with Maven:
+`mvn dependency:get -Dartifact=org.apache.kafka:kafka-clients:4.1.2` (and the other two). The adapters
+and both programs are always compiled with the jars, even when no broker runs; without the jars the
+tests are skipped unless `VELD_REQUIRE_TOOLCHAINS=1`. The programs print `events kafka ok` and
+`events rabbitmq ok`. The Kafka program takes about 40 seconds (one row keeps a delivery running for
+nine seconds, longer than the session timeout of 6 seconds that it sets).
 
 ## Rust
 
