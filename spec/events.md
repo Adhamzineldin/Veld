@@ -1,6 +1,6 @@
 # Veld events — v1
 
-Status: **DRAFT. Phase E1 is implemented in the IR, the compiler, the reference evaluator, the tools and the Node server generator (`spec/targets/typescript.md` section 5f); the Java and Rust server generators do not emit events yet and refuse them with `E0801`.** It is written first so that the compiler, the reference evaluator and the three generators are built from one text. Section 18 lists what each phase builds; section 20 lists what the owner decided and what is still open.
+Status: **DRAFT. Phase E1 is implemented in the IR, the compiler, the reference evaluator, the tools and the three server generators. Phase E2 is implemented outside the generators (the annotations of §10.2, `called once`, the IR and the feature, the reference of §10.3 to §10.5, `veld test` offline and live, `fmt` and `diff`); a generator that has not built it refuses the three annotations with `E0801`.** It is written first so that the compiler, the reference evaluator and the three generators are built from one text. Section 18 lists what each phase builds; section 20 lists what the owner decided and what is still open.
 
 This file extends `spec/language.md`, `spec/ir.md` and `spec/rules.md`. Where it is silent, those files apply.
 
@@ -81,7 +81,7 @@ channel BookingEvents {
 - **`@topic("name")`** is the name producer and consumer agree on, so it lives in the contract. Without it the topic is `<package>.<Channel>`; for a registry package the leading `@` is dropped and `/` becomes `.` (`@acme/billing` gives `acme.billing.<Channel>`). A topic MUST match `[A-Za-z0-9._-]{1,200}`, MUST NOT be `.` or `..`, and MUST NOT end in `.dlq`, which is kept for dead letters (`E1003`). Two channels of one workspace MUST NOT have the same topic (`E1004`).
 - **`key f`** names the field that orders the stream. Every carried event MUST have a required field named `f`, with the same type in all of them, and that type MUST be `string`, `uuid`, `int` or `long` (`E1005`). The **key text** of an event is that field's value: a `string` as it is, a `uuid` in lowercase, an `int` or `long` in decimal digits. An empty `string` key is a violation at publish time (§7). A channel has at most one `key` (`E1005`).
 - A channel without `key` makes no promise about order.
-- `@retry`, `@deadLetter` and `@ordered` on a channel belong to §10.2. Until they are built they are unknown annotations (`E0601`).
+- `@retry`, `@deadLetter` and `@ordered` on a channel belong to §10.2.
 
 ## 5. Services
 
@@ -364,6 +364,21 @@ A service that publishes or subscribes to a channel with one of the three annota
 - **`veld test --live`** builds the envelope of each event example with the reference encoder (§6.3) and sends it to every test handler that subscribes to the example's channel. It compares the outcome, the handlers that were called and the violations with the reference evaluator's. `called once` sends two deliveries and expects a count of 1; `called` expects at least 1 from one delivery; `not called` expects 0. A generated consumer checks constraints, which the reference evaluator does not (§12): an example that expects `rejected` and is not rejected offline for that reason is run live and reported as "live only" offline.
 - **The broker tests** are toolchain tests against real brokers in containers (`apache/kafka-native`, `rabbitmq`), and run only when `VELD_KAFKA` and `VELD_RABBITMQ` name them; `VELD_REQUIRE_BROKERS=1` turns a skip into a failure. They cover every row of §10.1 for each target, and one cross-target run per broker: a Node producer and a Java consumer with only `messaging` changed.
 
+### 10.10 What the reference settled
+
+The text above left these open; the compiler, the reference and the tools chose as follows, and the generators follow.
+
+- **The checks of §10.2.** `max` is an integer literal from 0 to 100; `backoff` is the word `fixed` or `exponential`; each argument is written once, in either order; `max` is required. `@deadLetter` and `@ordered` take no argument. Everything else is `E0602`, with the annotation as the span.
+- **`<topic>.dlq` and `E1004`.** The dead-letter topic of a channel is entered in the table of topics that `E1004` checks. Since a topic never ends in `.dlq` (`E1003`), it can never equal the topic of another channel; the entry changes nothing today and keeps the table whole.
+- **`W1003`** is reported at the `@retry` annotation, for a channel of a service or library package; a channel of a registry package is not the author's to fix and stays silent.
+- **`events_delivery` and `E0801`.** The gate points at the name of the first channel, in the order of the service's `publishes` lines and then of its subscriptions, that has one of the three annotations: the annotations have no position of their own in the IR.
+- **`called once`.** `once` is read after `called`, after `not called` and after `rejected`, so that the checker can say `E1010` for the last two. Offline, `called once` is `called` (§10.9), and the example prints as it was written.
+- **A copy that fails again (§10.5).** A member of the original named `veldreason`, `veldgroup`, `veldattempts`, `veldissues` or `veldviolations` is replaced by the new one, or removed when the new copy has no list for it: a copy describes its own failure and never an earlier one. Every other member is kept; the whole object is written as canonical JSON.
+- **The lists of the copy (§10.5).** `veldissues` is the canonical JSON of a list of `{ "path", "code", "message" }` (the `ValidationIssue` of the prelude); `veldviolations` is the canonical JSON of a list of the violations of `spec/rules.md` §7 (`rule`, `path`, `fields`, `message`, and `error` for an evaluation error). `veldattempts` is the number of runs of the handler.
+- **The retry settlement (§10.4).** A message that step 2 ignores is acknowledged and nothing else. A rejected message is acknowledged and, with `@deadLetter`, copied once with `veldattempts` 0, whatever `@retry` says. The runs of the handler are counted from 1; `final` of `onHandlerError` is false for every failure of a channel without `@retry`, because the transport delivers the message again. `tests/wire/events/retry.json` holds the table.
+- **Offline `rejected` and constraints (§10.9, §12).** The reference does not check constraints. An event example that expects `rejected`, is delivered offline, and has a value that breaks a `@min`, `@max` or `@length`, or has a field with `@pattern` or `@format` (which the reference cannot decide), is reported as `skip … (live only: …)` and does not fail the run. Every other mismatch fails as before.
+- **The live run (§10.9).** The test handler's probe MAY list `"subscribes": { "<Service>": ["<topic>", …] }`; without it, or without a subscriber of the topic, the event examples of that channel are skipped. The message is the canonical bytes of the reference encoder (without its checks for a value a publisher would refuse), with `id` `veld-test-1`, the `source` of the first service that publishes the channel and the time `2026-01-01T00:00:00Z`; the headers are `Content-Type` (the media type of §6.2), `Veld-Test-Topic`, `Veld-Test-Key` (the `subject` of the message, when it has one) and `Veld-Test-Deliveries`. An example with a `called once` line is delivered twice, the others once. The answer's `violations` are objects with at least `rule` and `path`; they are compared as a set of those two. The comparison is: the outcome (`handled` when a subscription of the handler has an `on` line for the event, `ignored` when none has, `rejected` for what the reference rejects, and for what breaks a constraint), the reason, the violations of a `rule` rejection, the set of handlers that ran (restricted to the services the handler lists), and then every `expect` line of a service the handler lists (`called` at least one run, `called once` exactly one, `not called` none). A line about another service is not judged. `deadLetters` is read and not compared.
+
 ## 11. The outbox and `emits` (phase E3)
 
 `flow pending -> paid emits BookingPaid` says the event is part of that move. `BookingPaid` MUST be carried by a channel the service publishes.
@@ -392,7 +407,7 @@ example "an event that breaks its rule reaches no handler" {
 - An example constrains only the handlers it names. A handler it does not name may or may not be called.
 - **`veld test`** runs event examples in the reference evaluator: it applies steps 3 and 4 of §8 to the filled-in event with matching digests and works out which handlers of which subscriptions are called. It does not run handlers.
 - **The reference evaluator checks types and required fields in step 3, not constraints** (`@min`, `@length`, `@pattern`), as it does not for the parameters of a call (`spec/rules.md` §12.3). A written value that breaks a constraint is therefore not rejected offline, while a generated consumer rejects it as `shape`. Such an example belongs to the live run of E2.
-- Running event examples against live services (`--live`), and `called once` with a second delivery of the same event, arrive with the inbox in E2.
+- Running event examples against live services (`--live`), and `called once` with a second delivery of the same event, are phase E2 and are specified in §10.9.
 
 ## 13. In the IR
 
@@ -473,11 +488,12 @@ A change to an event is judged for both sides of the stream: consumers generated
 | `E1007` | The group of a subscription is not a legal group name |
 | `E1008` | An `on` line names an event the channel does not carry or names an event twice, or the subscription has no `on` line |
 | `E1009` | A subscription to a channel of this workspace that no service publishes |
-| `E1010` | An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, or `rejected` is combined with `called` |
+| `E1010` | An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected` |
 | `W1001` | A published channel that nobody in the workspace subscribes to |
 | `W1002` | An event of a published channel that no subscription handles |
+| `W1003` | A channel has `@retry` and no `@deadLetter` (§10.2) |
 
-`E0501` now also says: a service with endpoints needs `at`. `E0509` now also covers handler names.
+`E0501` now also says: a service with endpoints needs `at`. `E0509` now also covers handler names. `E0602` now also covers the annotations of §10.2: one on something that is not a channel, one written twice, a missing or out-of-range `max`, an unknown `backoff` or another argument, and an argument on `@deadLetter` or `@ordered`.
 
 ## 18. Phases
 
@@ -487,7 +503,7 @@ A change to an event is judged for both sides of the stream: consumers generated
 | **E2** | §10: the Kafka and RabbitMQ adapters, `@retry`, `@deadLetter`, `@ordered`, the inbox, live event examples | A Node producer and a Java consumer talk over both brokers with only the configuration changed, for the rows of §10.1 |
 | **E3** | §11 and §16: the outbox, the relay, `emits`, event-aware `diff`, the AsyncAPI export | A crash between commit, relay publish, handler and acknowledgement loses no committed event; duplicates are tolerated |
 
-Until its phase is built, a construct of a later phase is rejected: `emits` with `E0003`, the annotations of §10.2 with `E0601`.
+Until its phase is built, a construct of a later phase is rejected: `emits` with `E0003`. The annotations of §10.2 are accepted by the compiler; a generator that has not built phase E2 refuses a service that uses one with `E0801` (§10.8).
 
 E1 needs no configuration: the application passes a transport. A broker adapter is chosen with the target option `messaging` (§10.7).
 
@@ -496,7 +512,7 @@ E1 needs no configuration: the application passes a transport. A broker adapter 
 - **Annotations stand before `channel`**, like every other annotation, and not inside its braces.
 - **A consumer does not require the publisher's signature** (§8). The proposal said a consumer "checks the signature"; taken literally that would reject every message after any change to an event, including the addition of an optional field, which the proposal also calls safe.
 - **`veldrules`** is new: it carries the stale-client rule of `spec/rules.md` §9.7 over to consumers.
-- **`expect … called once`** waits for the inbox (E2). In E1 an example describes one delivery.
+- **`expect … called once`** is phase E2 (§10.9). In E1 an example describes one delivery.
 - **`messaging` is an option of a server target** (`[server.options]`, §10.7), not a key of `[service]`: a service may have a Node server and a Java server, and each chooses its adapters. Addresses and credentials are the application's, given to the adapter as a configured client of the library.
 - **Java uses the plain clients** (`kafka-clients`, `amqp-client`) under Spring too, so that both Java servers share one adapter. The proposal named Spring Kafka and Spring AMQP.
 - **`@retry` is carried out by the generated consumer** (§10.4), not by each broker in its own way, so one test on the memory transport covers it for every broker.
