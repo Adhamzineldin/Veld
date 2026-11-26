@@ -424,6 +424,16 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, or `rejected` is combined with `called`",
     ),
+    e(
+        "E1301",
+        C,
+        "A message catalog is not a flat table of strings, or its file name is not a language tag",
+    ),
+    e(
+        "E1310",
+        C,
+        "`@retain` is wrong: the duration, the `since` field, `then`, or `anonymize` without a `@pii` field",
+    ),
     w("W0001", C, "Doc comment is not attached to anything"),
     w("W0201", C, "Unused import"),
     w("W0202", C, "Declaration shadows a prelude declaration"),
@@ -462,6 +472,12 @@ pub const CODES: &[CodeInfo] = &[
         "W1002",
         C,
         "An event of a published channel that no subscription handles",
+    ),
+    w("W1301", C, "A message catalog has a key that no rule of the member has"),
+    w(
+        "W1302",
+        C,
+        "A message catalog lacks the message of a rule of the member",
     ),
     l(
         "L0001",
