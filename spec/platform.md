@@ -225,14 +225,14 @@ policy ManageBooking(user: User, booking: Booking) {
 flagged = "when" "flag" "(" STRING ")" ;      // after a rule, a require, an ensure, a permit, a forbid, a flow
 ```
 
-- `when flag("f")` is a suffix of one statement: an invariant, a `require` (after its `else`), an `ensure`, a `permit` or `forbid` clause (after its own `when`), and a `flow` with one edge. It says the statement exists only while the flag `f` is on. It is not an expression: `flag` cannot be called inside one. A flag name is 1 to 64 characters of `A-Z a-z 0-9 _ . -`, starting with a letter (`E0940`, also for the suffix on anything else and for a `flow` with more than one edge).
+- `when flag("f")` is a suffix of one statement: an invariant, a `require` (after its `else`), an `ensure`, a `permit` or `forbid` clause (after its own `when`), and a `flow` with one edge. It says the statement exists only while the flag `f` is on. It is not an expression: `flag` cannot be called inside one. A flag name is 1 to 64 characters of `A-Z a-z 0-9 _ . -`, starting with a letter (`E0937`, also for the suffix on anything else and for a `flow` with more than one edge).
 - **The provider.** The hooks object of a server whose contract uses flags requires `flags`, an interface with one operation: `isOn(name, context)`, where the context has the principal (absent without one), the caller's tenant text (absent without one) and the operation signature. A memory provider is generated for tests.
 - **One reading per request.** The server asks for each flag at most once per request, the first time a statement with it is reached, and uses that answer until the response is sent.
 - **Off** means the statement is not there: not evaluated, not reported, and for a `flow`, not an edge. **On** means it is an ordinary statement.
 - **When the provider fails**, the statement that restricts applies and the one that grants does not: an invariant, a `require`, an `ensure` and a `forbid` count as on; a `permit` and a `flow` count as off. The failure goes to `onError`.
 - **Clients.** A client has no provider. It skips flagged invariants in its local check, as it skips audited ones, and the rules digest leaves them out. `can<Endpoint>` and the policy functions take an optional last argument, a function from a flag name to a boolean; without it they decide as a failing provider does. `nextStates` lists flagged edges too: the server still decides.
 - **Events.** A flagged invariant of an event is evaluated by publisher and consumer with a context that has no principal.
-- **Examples.** `given flag "shortStays"` turns a flag on for the example; `given flag "shortStays" off` says off, which is also what a flag the example does not name is. A flag name no statement uses is `E0952`.
+- **Examples.** `given flag "shortStays"` turns a flag on for the example; `given flag "shortStays" off` says off, which is also what a flag the example does not name is. A flag name that no statement of the workspace uses is `E0938`.
 - **Tools.** `veld check` ends its summary with the flags the workspace uses and how many statements each gates; `--graph=json` has them under `flags`. `veld diff`: a new statement that restricts and is flagged is **possibly breaking** with the text "breaking once the flag `f` is on"; adding a flag to a statement that restricts is compatible and removing it is judged as adding the statement; for a statement that grants it is the other way round. `--prove` asks its questions with every flag on.
 - The flag is not part of a rule id. **IR:** `"flag": "shortStays"` on a `Rule`, an `EndpointRequire`, an `EndpointEnsure`, a `PolicyClause` and a flow, omitted when absent. The feature is `rules_flags`, opt-in.
 
@@ -283,7 +283,8 @@ Added to section 6: the deadline starts at step 1 and can end any later step; a 
 | `E0935` | `after` is wrong: on a `flow` with several edges, twice for one edge, or not a positive constant duration |
 | `E0936` | `since` is wrong: missing on a timed edge, present on another, several sources, or not a required `datetime` field of the fact |
 | `W0933` | A timed edge that no `transition` takes |
-| `E0940` | `when flag(…)` is wrong: a bad name, or on a statement that cannot have it |
+| `E0937` | `when flag(…)` is wrong: a bad name, or on a statement that cannot have it |
+| `E0938` | `given flag "x"` in an example names a flag that no statement of the workspace uses |
 
 ## 16. What P2 chose
 
