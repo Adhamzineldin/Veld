@@ -1,0 +1,64 @@
+// The contract of the redaction goldens (`spec/rules.md` section 19.3), compiled as the package
+// `guests`.
+
+model Address {
+  street: string @pii
+  city: string
+  geo?: Geo
+}
+
+model Geo {
+  lat: decimal @pii
+  lng: decimal @pii
+}
+
+model Guest {
+  id: uuid
+  name: string @pii
+  phone?: string @pii
+  password: string @secret
+  both: string @pii @secret
+  nickname: string
+  home: Address
+  work?: Address
+  past: Address[]
+  byYear: Map<string, Address>
+  secretHome: Address @pii
+}
+
+model Staff extends Guest {
+  badge: string @secret
+}
+
+model Card {
+  number: string @secret
+  brand: string
+}
+
+model Wire {
+  iban: string @pii
+  note: string
+}
+
+union Payment { card: Card, wire: Wire }
+
+model Order {
+  id: uuid
+  guest: Guest
+  pay: Payment
+  guests: Page<Guest>
+  payments: Payment[]
+}
+
+error Rejected 422 {
+  reason: string
+  who: string @pii
+}
+
+event GuestRegistered {
+  guestId: uuid
+  email: string @pii
+  at: datetime
+}
+
+channel GuestEvents { carries GuestRegistered }

@@ -1,0 +1,658 @@
+{
+  "package": "guests",
+  "contract": "tests/wire/redaction/contract.veld",
+  "cases": [
+    {
+      "name": "every kind of field",
+      "type": "Guest",
+      "note": "A nested model, an optional one, a list, a map, a field that is itself @pii (secretHome: the whole value goes, one path), a field with both annotations.",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "password": "hunter2",
+        "both": "x",
+        "nickname": "g1",
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "geo": {
+            "lat": "30.04",
+            "lng": "31.23"
+          }
+        },
+        "past": [
+          {
+            "street": "3 Old Rd",
+            "city": "Alexandria"
+          },
+          {
+            "street": "4 Port Rd",
+            "city": "Suez",
+            "geo": {
+              "lat": "30.04",
+              "lng": "31.23"
+            }
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Lake St",
+            "city": "Aswan"
+          },
+          "2025": {
+            "street": "6 Hill St",
+            "city": "Luxor"
+          }
+        },
+        "secretHome": {
+          "street": "7 Hidden Ln",
+          "city": "Dahab",
+          "geo": {
+            "lat": "30.04",
+            "lng": "31.23"
+          }
+        },
+        "phone": "+201000000000",
+        "work": {
+          "street": "2 Tahrir Sq",
+          "city": "Giza"
+        }
+      },
+      "redacted": "{\"byYear\":{\"2024\":{\"city\":\"Aswan\"},\"2025\":{\"city\":\"Luxor\"}},\"home\":{\"city\":\"Cairo\",\"geo\":{}},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"nickname\":\"g1\",\"past\":[{\"city\":\"Alexandria\"},{\"city\":\"Suez\",\"geo\":{}}],\"work\":{\"city\":\"Giza\"}}",
+      "paths": [
+        "$.both",
+        "$.byYear.2024.street",
+        "$.byYear.2025.street",
+        "$.home.geo.lat",
+        "$.home.geo.lng",
+        "$.home.street",
+        "$.name",
+        "$.password",
+        "$.past[0].street",
+        "$.past[1].geo.lat",
+        "$.past[1].geo.lng",
+        "$.past[1].street",
+        "$.phone",
+        "$.secretHome",
+        "$.work.street"
+      ]
+    },
+    {
+      "name": "optional fields the value lacks are not listed",
+      "type": "Guest",
+      "note": "No phone, no work, no geo: only what is there is listed.",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "name": "Guest 2",
+        "password": "hunter2",
+        "both": "x",
+        "nickname": "g2",
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo"
+        },
+        "past": [],
+        "byYear": {},
+        "secretHome": {
+          "street": "7 Hidden Ln",
+          "city": "Dahab",
+          "geo": {
+            "lat": "30.04",
+            "lng": "31.23"
+          }
+        }
+      },
+      "redacted": "{\"byYear\":{},\"home\":{\"city\":\"Cairo\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000002\",\"nickname\":\"g2\",\"past\":[]}",
+      "paths": [
+        "$.both",
+        "$.home.street",
+        "$.name",
+        "$.password",
+        "$.secretHome"
+      ]
+    },
+    {
+      "name": "a marked field with the value null is left out and listed",
+      "type": "Guest",
+      "note": "null is a value: the member is removed.",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000003",
+        "name": "Guest 3",
+        "password": "hunter2",
+        "both": "x",
+        "nickname": "g3",
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "geo": {
+            "lat": "30.04",
+            "lng": "31.23"
+          }
+        },
+        "past": [
+          {
+            "street": "3 Old Rd",
+            "city": "Alexandria"
+          },
+          {
+            "street": "4 Port Rd",
+            "city": "Suez",
+            "geo": {
+              "lat": "30.04",
+              "lng": "31.23"
+            }
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Lake St",
+            "city": "Aswan"
+          },
+          "2025": {
+            "street": "6 Hill St",
+            "city": "Luxor"
+          }
+        },
+        "secretHome": {
+          "street": "7 Hidden Ln",
+          "city": "Dahab",
+          "geo": {
+            "lat": "30.04",
+            "lng": "31.23"
+          }
+        },
+        "phone": null,
+        "work": {
+          "street": "2 Tahrir Sq",
+          "city": "Giza"
+        }
+      },
+      "redacted": "{\"byYear\":{\"2024\":{\"city\":\"Aswan\"},\"2025\":{\"city\":\"Luxor\"}},\"home\":{\"city\":\"Cairo\",\"geo\":{}},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000003\",\"nickname\":\"g3\",\"past\":[{\"city\":\"Alexandria\"},{\"city\":\"Suez\",\"geo\":{}}],\"work\":{\"city\":\"Giza\"}}",
+      "paths": [
+        "$.both",
+        "$.byYear.2024.street",
+        "$.byYear.2025.street",
+        "$.home.geo.lat",
+        "$.home.geo.lng",
+        "$.home.street",
+        "$.name",
+        "$.password",
+        "$.past[0].street",
+        "$.past[1].geo.lat",
+        "$.past[1].geo.lng",
+        "$.past[1].street",
+        "$.phone",
+        "$.secretHome",
+        "$.work.street"
+      ]
+    },
+    {
+      "name": "a member the declaration does not know is kept",
+      "type": "Guest",
+      "note": "The contract does not decide what else a value holds.",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000004",
+        "name": "Guest 4",
+        "password": "hunter2",
+        "both": "x",
+        "nickname": "g4",
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "geo": {
+            "lat": "30.04",
+            "lng": "31.23"
+          }
+        },
+        "past": [
+          {
+            "street": "3 Old Rd",
+            "city": "Alexandria"
+          },
+          {
+            "street": "4 Port Rd",
+            "city": "Suez",
+            "geo": {
+              "lat": "30.04",
+              "lng": "31.23"
+            }
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Lake St",
+            "city": "Aswan"
+          },
+          "2025": {
+            "street": "6 Hill St",
+            "city": "Luxor"
+          }
+        },
+        "secretHome": {
+          "street": "7 Hidden Ln",
+          "city": "Dahab",
+          "geo": {
+            "lat": "30.04",
+            "lng": "31.23"
+          }
+        },
+        "phone": "+201000000000",
+        "work": {
+          "street": "2 Tahrir Sq",
+          "city": "Giza"
+        },
+        "extra": {
+          "kept": true
+        }
+      },
+      "redacted": "{\"byYear\":{\"2024\":{\"city\":\"Aswan\"},\"2025\":{\"city\":\"Luxor\"}},\"extra\":{\"kept\":true},\"home\":{\"city\":\"Cairo\",\"geo\":{}},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000004\",\"nickname\":\"g4\",\"past\":[{\"city\":\"Alexandria\"},{\"city\":\"Suez\",\"geo\":{}}],\"work\":{\"city\":\"Giza\"}}",
+      "paths": [
+        "$.both",
+        "$.byYear.2024.street",
+        "$.byYear.2025.street",
+        "$.home.geo.lat",
+        "$.home.geo.lng",
+        "$.home.street",
+        "$.name",
+        "$.password",
+        "$.past[0].street",
+        "$.past[1].geo.lat",
+        "$.past[1].geo.lng",
+        "$.past[1].street",
+        "$.phone",
+        "$.secretHome",
+        "$.work.street"
+      ]
+    },
+    {
+      "name": "an inherited field and an own one",
+      "type": "Staff",
+      "note": "Staff extends Guest: both are checked.",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000005",
+        "name": "Guest 5",
+        "password": "hunter2",
+        "both": "x",
+        "nickname": "g5",
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "geo": {
+            "lat": "30.04",
+            "lng": "31.23"
+          }
+        },
+        "past": [
+          {
+            "street": "3 Old Rd",
+            "city": "Alexandria"
+          },
+          {
+            "street": "4 Port Rd",
+            "city": "Suez",
+            "geo": {
+              "lat": "30.04",
+              "lng": "31.23"
+            }
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Lake St",
+            "city": "Aswan"
+          },
+          "2025": {
+            "street": "6 Hill St",
+            "city": "Luxor"
+          }
+        },
+        "secretHome": {
+          "street": "7 Hidden Ln",
+          "city": "Dahab",
+          "geo": {
+            "lat": "30.04",
+            "lng": "31.23"
+          }
+        },
+        "phone": "+201000000000",
+        "work": {
+          "street": "2 Tahrir Sq",
+          "city": "Giza"
+        },
+        "badge": "B-77"
+      },
+      "redacted": "{\"byYear\":{\"2024\":{\"city\":\"Aswan\"},\"2025\":{\"city\":\"Luxor\"}},\"home\":{\"city\":\"Cairo\",\"geo\":{}},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000005\",\"nickname\":\"g5\",\"past\":[{\"city\":\"Alexandria\"},{\"city\":\"Suez\",\"geo\":{}}],\"work\":{\"city\":\"Giza\"}}",
+      "paths": [
+        "$.badge",
+        "$.both",
+        "$.byYear.2024.street",
+        "$.byYear.2025.street",
+        "$.home.geo.lat",
+        "$.home.geo.lng",
+        "$.home.street",
+        "$.name",
+        "$.password",
+        "$.past[0].street",
+        "$.past[1].geo.lat",
+        "$.past[1].geo.lng",
+        "$.past[1].street",
+        "$.phone",
+        "$.secretHome",
+        "$.work.street"
+      ]
+    },
+    {
+      "name": "a union arm is chosen by its discriminator",
+      "type": "Order",
+      "note": "The arm card has a @secret field, the arm wire a @pii one; a page keeps its other members.",
+      "value": {
+        "id": "0b5c9c3e-2222-4a5b-8c9d-000000000001",
+        "guest": {
+          "id": "0b5c9c3e-1111-4a5b-8c9d-000000000006",
+          "name": "Guest 6",
+          "password": "hunter2",
+          "both": "x",
+          "nickname": "g6",
+          "home": {
+            "street": "1 Nile St",
+            "city": "Cairo"
+          },
+          "past": [],
+          "byYear": {},
+          "secretHome": {
+            "street": "7 Hidden Ln",
+            "city": "Dahab",
+            "geo": {
+              "lat": "30.04",
+              "lng": "31.23"
+            }
+          }
+        },
+        "pay": {
+          "kind": "card",
+          "number": "4111111111111111",
+          "brand": "visa"
+        },
+        "guests": {
+          "items": [
+            {
+              "id": "0b5c9c3e-1111-4a5b-8c9d-000000000007",
+              "name": "Guest 7",
+              "password": "hunter2",
+              "both": "x",
+              "nickname": "g7",
+              "home": {
+                "street": "1 Nile St",
+                "city": "Cairo"
+              },
+              "past": [],
+              "byYear": {},
+              "secretHome": {
+                "street": "7 Hidden Ln",
+                "city": "Dahab",
+                "geo": {
+                  "lat": "30.04",
+                  "lng": "31.23"
+                }
+              }
+            },
+            {
+              "id": "0b5c9c3e-1111-4a5b-8c9d-000000000008",
+              "name": "Guest 8",
+              "password": "hunter2",
+              "both": "x",
+              "nickname": "g8",
+              "home": {
+                "street": "1 Nile St",
+                "city": "Cairo"
+              },
+              "past": [],
+              "byYear": {},
+              "secretHome": {
+                "street": "7 Hidden Ln",
+                "city": "Dahab",
+                "geo": {
+                  "lat": "30.04",
+                  "lng": "31.23"
+                }
+              }
+            }
+          ],
+          "size": 2
+        },
+        "payments": [
+          {
+            "kind": "card",
+            "number": "4111111111111111",
+            "brand": "visa"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG380019000500000000263180002",
+            "note": "rent"
+          }
+        ]
+      },
+      "redacted": "{\"guest\":{\"byYear\":{},\"home\":{\"city\":\"Cairo\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000006\",\"nickname\":\"g6\",\"past\":[]},\"guests\":{\"items\":[{\"byYear\":{},\"home\":{\"city\":\"Cairo\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000007\",\"nickname\":\"g7\",\"past\":[]},{\"byYear\":{},\"home\":{\"city\":\"Cairo\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000008\",\"nickname\":\"g8\",\"past\":[]}],\"size\":2},\"id\":\"0b5c9c3e-2222-4a5b-8c9d-000000000001\",\"pay\":{\"brand\":\"visa\",\"kind\":\"card\"},\"payments\":[{\"brand\":\"visa\",\"kind\":\"card\"},{\"kind\":\"wire\",\"note\":\"rent\"}]}",
+      "paths": [
+        "$.guest.both",
+        "$.guest.home.street",
+        "$.guest.name",
+        "$.guest.password",
+        "$.guest.secretHome",
+        "$.guests.items[0].both",
+        "$.guests.items[0].home.street",
+        "$.guests.items[0].name",
+        "$.guests.items[0].password",
+        "$.guests.items[0].secretHome",
+        "$.guests.items[1].both",
+        "$.guests.items[1].home.street",
+        "$.guests.items[1].name",
+        "$.guests.items[1].password",
+        "$.guests.items[1].secretHome",
+        "$.pay.number",
+        "$.payments[0].number",
+        "$.payments[1].iban"
+      ]
+    },
+    {
+      "name": "a page with no items",
+      "type": "Order",
+      "note": "No items, no path under items.",
+      "value": {
+        "id": "0b5c9c3e-2222-4a5b-8c9d-000000000002",
+        "guest": {
+          "id": "0b5c9c3e-1111-4a5b-8c9d-000000000009",
+          "name": "Guest 9",
+          "password": "hunter2",
+          "both": "x",
+          "nickname": "g9",
+          "home": {
+            "street": "1 Nile St",
+            "city": "Cairo"
+          },
+          "past": [],
+          "byYear": {},
+          "secretHome": {
+            "street": "7 Hidden Ln",
+            "city": "Dahab",
+            "geo": {
+              "lat": "30.04",
+              "lng": "31.23"
+            }
+          }
+        },
+        "pay": {
+          "kind": "wire",
+          "iban": "EG380019000500000000263180002",
+          "note": "rent"
+        },
+        "guests": {
+          "size": 0
+        },
+        "payments": []
+      },
+      "redacted": "{\"guest\":{\"byYear\":{},\"home\":{\"city\":\"Cairo\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000009\",\"nickname\":\"g9\",\"past\":[]},\"guests\":{\"size\":0},\"id\":\"0b5c9c3e-2222-4a5b-8c9d-000000000002\",\"pay\":{\"kind\":\"wire\",\"note\":\"rent\"},\"payments\":[]}",
+      "paths": [
+        "$.guest.both",
+        "$.guest.home.street",
+        "$.guest.name",
+        "$.guest.password",
+        "$.guest.secretHome",
+        "$.pay.iban"
+      ]
+    },
+    {
+      "name": "an error",
+      "type": "Rejected",
+      "note": "",
+      "value": {
+        "reason": "name taken",
+        "who": "Amira Hassan"
+      },
+      "redacted": "{\"reason\":\"name taken\"}",
+      "paths": [
+        "$.who"
+      ]
+    },
+    {
+      "name": "an event",
+      "type": "GuestRegistered",
+      "note": "",
+      "value": {
+        "guestId": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "email": "a@example.com",
+        "at": "2026-06-10T12:00:00Z"
+      },
+      "redacted": "{\"at\":\"2026-06-10T12:00:00Z\",\"guestId\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\"}",
+      "paths": [
+        "$.email"
+      ]
+    },
+    {
+      "name": "nothing to leave out",
+      "type": "Address",
+      "note": "The value comes back as it was, with no path.",
+      "value": {
+        "city": "Cairo"
+      },
+      "redacted": "{\"city\":\"Cairo\"}",
+      "paths": []
+    },
+    {
+      "name": "paths are sorted as bytes",
+      "type": "Order",
+      "note": "[10] comes before [2]: the order is the bytes of the paths, not the order of the list.",
+      "value": {
+        "id": "0b5c9c3e-2222-4a5b-8c9d-000000000003",
+        "guest": {
+          "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+          "name": "Guest 1",
+          "password": "hunter2",
+          "both": "x",
+          "nickname": "g1",
+          "home": {
+            "street": "1 Nile St",
+            "city": "Cairo"
+          },
+          "past": [],
+          "byYear": {},
+          "secretHome": {
+            "street": "7 Hidden Ln",
+            "city": "Dahab",
+            "geo": {
+              "lat": "30.04",
+              "lng": "31.23"
+            }
+          }
+        },
+        "pay": {
+          "kind": "card",
+          "number": "4111111111111111",
+          "brand": "visa"
+        },
+        "guests": {
+          "items": [],
+          "size": 0
+        },
+        "payments": [
+          {
+            "kind": "wire",
+            "iban": "EG380019000500000000263180002",
+            "note": "n0"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG380019000500000000263180002",
+            "note": "n1"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG380019000500000000263180002",
+            "note": "n2"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG380019000500000000263180002",
+            "note": "n3"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG380019000500000000263180002",
+            "note": "n4"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG380019000500000000263180002",
+            "note": "n5"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG380019000500000000263180002",
+            "note": "n6"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG380019000500000000263180002",
+            "note": "n7"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG380019000500000000263180002",
+            "note": "n8"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG380019000500000000263180002",
+            "note": "n9"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG380019000500000000263180002",
+            "note": "n10"
+          }
+        ]
+      },
+      "redacted": "{\"guest\":{\"byYear\":{},\"home\":{\"city\":\"Cairo\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"nickname\":\"g1\",\"past\":[]},\"guests\":{\"items\":[],\"size\":0},\"id\":\"0b5c9c3e-2222-4a5b-8c9d-000000000003\",\"pay\":{\"brand\":\"visa\",\"kind\":\"card\"},\"payments\":[{\"kind\":\"wire\",\"note\":\"n0\"},{\"kind\":\"wire\",\"note\":\"n1\"},{\"kind\":\"wire\",\"note\":\"n2\"},{\"kind\":\"wire\",\"note\":\"n3\"},{\"kind\":\"wire\",\"note\":\"n4\"},{\"kind\":\"wire\",\"note\":\"n5\"},{\"kind\":\"wire\",\"note\":\"n6\"},{\"kind\":\"wire\",\"note\":\"n7\"},{\"kind\":\"wire\",\"note\":\"n8\"},{\"kind\":\"wire\",\"note\":\"n9\"},{\"kind\":\"wire\",\"note\":\"n10\"}]}",
+      "paths": [
+        "$.guest.both",
+        "$.guest.home.street",
+        "$.guest.name",
+        "$.guest.password",
+        "$.guest.secretHome",
+        "$.pay.number",
+        "$.payments[0].iban",
+        "$.payments[10].iban",
+        "$.payments[1].iban",
+        "$.payments[2].iban",
+        "$.payments[3].iban",
+        "$.payments[4].iban",
+        "$.payments[5].iban",
+        "$.payments[6].iban",
+        "$.payments[7].iban",
+        "$.payments[8].iban",
+        "$.payments[9].iban"
+      ]
+    }
+  ]
+}
