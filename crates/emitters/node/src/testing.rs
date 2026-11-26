@@ -431,7 +431,11 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
         write_flags(w, fc, idempotent);
     }
     let emits = crate::outbox::service_emits(svc);
-    let memory_outbox = format!("new {}.MemoryOutbox()", fc.events_ns());
+    let memory_outbox = if emits {
+        format!("new {}.MemoryOutbox()", fc.events_ns())
+    } else {
+        String::new()
+    };
     let mut per_request: Vec<(&str, &str)> = Vec::new();
     if emits {
         // Every request gets an outbox of its own: the events it wrote are the header of the answer.
