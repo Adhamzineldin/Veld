@@ -447,7 +447,7 @@ final       = "final" IDENT { "," IDENT } ;
 transition  = "transition" path ":" IDENT { "," IDENT } "->" IDENT ;
 ```
 
-`flow` and `final` are recognised by the lookahead of §2.2, so an enum may still have variants named `flow` and `final`. `flow a -> b emits Event` belongs to events and is rejected with `E0003` until they exist.
+`flow` and `final` are recognised by the lookahead of §2.2, so an enum may still have variants named `flow` and `final`. `flow a -> b emits Event` belongs to events (`spec/events.md` §11): the event is part of the move, and is no part of the transition's id or of the enum's signature.
 
 ### 10.1 The machine
 

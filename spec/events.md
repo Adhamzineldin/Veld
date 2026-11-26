@@ -1,6 +1,6 @@
 # Veld events — v1
 
-Status: **DRAFT. Phase E1 is implemented in the IR, the compiler, the reference evaluator, the tools and the three server generators. Phase E2 is implemented outside the generators (the annotations of §10.2, `called once`, the IR and the feature, the reference of §10.3 to §10.5, `veld test` offline and live, `fmt` and `diff`); a generator that has not built it refuses the three annotations with `E0801`.** It is written first so that the compiler, the reference evaluator and the three generators are built from one text. Section 18 lists what each phase builds; section 20 lists what the owner decided and what is still open.
+Status: **DRAFT. Phase E1 is implemented in the IR, the compiler, the reference evaluator, the tools and the three server generators. Phase E2 is implemented outside the generators (the annotations of §10.2, `called once`, the IR and the feature, the reference of §10.3 to §10.5, `veld test` offline and live, `fmt` and `diff`); a generator that has not built it refuses the three annotations with `E0801`. Phase E3 is implemented outside the generators in part (`emits` and the outbox of §11, with the reference of §11.2; `expect emitted`; `veld diff` of §16 and `veld export asyncapi` as §16 settles them); a generator that has not built the outbox refuses `emits` with `E0801`.** It is written first so that the compiler, the reference evaluator and the three generators are built from one text. Section 18 lists what each phase builds; section 20 lists what the owner decided and what is still open.
 
 This file extends `spec/language.md`, `spec/ir.md` and `spec/rules.md`. Where it is silent, those files apply.
 
@@ -25,7 +25,7 @@ Every new word is **contextual** (`spec/rules.md` §2.2): a keyword only where t
 event channel carries key publishes subscribes on called rejected
 ```
 
-`emits`, `given` and `expect` are already contextual words of `spec/rules.md`.
+`emits`, `given` and `expect` are already contextual words of `spec/rules.md`. Phase E3 adds `emitted`, which is a word only after `expect` in a call example.
 
 ```ebnf
 decl          = { doc } { annotation } ( … | event | channel ) ;
@@ -39,9 +39,10 @@ publishes     = "publishes" typeref { "," typeref } ;
 subscribes    = "subscribes" typeref "as" STRING "{" { on } "}" ;
 on            = { doc } "on" typeref "->" IDENT ;
 
-flow          = "flow" IDENT "->" IDENT { "->" IDENT } [ "emits" typeref ] ;          (* §11 *)
+flow          = "flow" IDENT "->" IDENT { "->" IDENT } [ "emits" IDENT ] ;          (* §11 *)
 
 example       = "example" STRING "{" ( call_example | event_example ) "}" ;           (* §12 *)
+emitted       = "expect" "emitted" typeref | "expect" "not" "emitted" ;                (* §11.1: after the call of a call example *)
 event_example = "given" "event" typeref record [ "on" typeref ] expectation { expectation } ;
 expectation   = "expect" ( typeref "." IDENT [ "not" ] "called" | "rejected" ) ;
 ```
@@ -409,9 +410,23 @@ The names are in TypeScript spelling; Java and Rust use the same words in their 
 - **The server checks the handler.** After a success of such an endpoint the event MUST have been written exactly once. A success without it, or with it twice, answers `500 Internal` and goes to `onError`: the state changed without its event, and nobody should find that out from a missing receipt. A handler that answers an error need not have written.
 - **The relay** is `run<Service>OutboxRelay(outbox, transport, options)`: it takes up to `limit` (default 100) pending entries, publishes each with the options of its channel (§10.6), in the order `pending` gave them, and calls `done` after the transport accepted it. It stops at the first entry that fails and answers how many it sent, so the order of a key is kept; the failure goes to the `onError` of its options. The application runs it in a loop or from a job.
 - An endpoint whose move emits needs no transport: a service may write to the outbox in one process and relay from another.
-- **Examples.** A call example of such an endpoint with `returns` MAY say `expect emitted BookingPaid` or `expect not emitted`, which is checked live only: the reference evaluator does not run handlers. The test handler (`testing = true`) gives every request a memory outbox and adds the header `Veld-Test-Emitted`, the names of the events written, to its answer.
+- **Examples.** A call example of such an endpoint with `returns` MAY say `expect emitted BookingPaid` or `expect not emitted`, which is checked live only: the reference evaluator does not run handlers (§11.2 says what is allowed where). The test handler (`testing = true`) gives every request a memory outbox and adds the header `Veld-Test-Emitted`, the names of the events written, to its answer.
 - **IR.** A flow gains `"emits": DeclId` and an `EndpointTransition` gains `"emits": [ { "event": DeclId, "channel": <index into Ir.channels> } ]`, each omitted when absent. A service with such an endpoint uses the feature `events_outbox`, opt-in.
 - `E1011`: `emits` on a `flow` with several edges, an `emits` that names no event, or a transition over an emitting edge in a service that publishes no channel carrying that event.
+
+### 11.2 What the compiler, the reference and the tools settled
+
+The text above left these open; the compiler, the reference (`veld_rules::outbox`) and the tools chose as follows, and the generators follow.
+
+- **`emits` is one name.** `emits Event` names an event as seen from the module of the enum (a name of the module, or an import); the grammar of §2 and §11 is `emits IDENT`. It is read only on the line of its `flow`, so a variant named `emits` on the next line is still a variant. `E1011` also covers a **repeated edge** whose `emits` differs from the first declaration of that edge (`W0930` says the edge is declared twice, and the first declaration is the one that counts).
+- **`emits` is part of no id.** The id of a transition (`spec/rules.md` §10.2) names the guard and does not change when a flow gains or loses `emits`; neither does the signature of the enum. A stored id stays valid.
+- **One move can emit several events.** `transition x.status: pending, paid -> cancelled` takes two edges, and each can emit another event. `EndpointTransition.emits` lists the events of every edge it takes, once each, in the order of the edges of the enum, each with the channel its service sends it on (the first of the service's `publishes` lines whose channel carries it). `emit` has one function per entry. **What the handler must write is what the edge taken emits**: the edge from the value the field had (the `from` of `transition`, §10.2 of `spec/rules.md`) to the target. `veld_rules::outbox::expected_events` gives it. A flow without `emits` writes nothing, and a move over such an edge is not checked.
+- **The check after the handler** is exact: every expected event once, and nothing else. A missing event, an event twice and an event the edge does not emit are each `500 Internal` and go to `onError`. `check_written` is the reference and `tests/wire/events/outbox.json` (`written`) the table. A handler that answered an error is not checked.
+- **`events_outbox`.** Used by a service with an endpoint whose `transition` has a non-empty `emits`; `E0801` points at that `transition`. It is a feature of the generated server: a client of the service, and a server that only calls it (`consumes`), do not use it and keep their bytes.
+- **The outbox entry.** `veld_rules::outbox::save_of` is steps 1 to 5 of §7 for one emitted event and gives `topic`, `key` (the `subject` of the message, or none) and `bytes`; it is the envelope encoder, so the bytes are those of `tests/wire/events/envelopes.json` for the same id and clock. It refuses a channel the service does not publish. `entries` of `tests/wire/events/outbox.json` is the table. The `id` of an entry is the application's own; the reference `MemoryOutbox` counts from `"1"`.
+- **The relay** is `veld_rules::outbox::relay` over the entries `pending(limit)` answered and a script of what the transport and `done` do (`tests/wire/events/README.md`, `relay`). `sent` is the number of entries the transport accepted, so an entry whose `done` failed is counted and stays pending; it will be sent again, which is the at-least-once of §1. A process that ends between the publish and `done` reports nothing. The options of the channel (§10.6) go to the transport with every `publish` and change nothing else.
+- **`expect emitted E` and `expect not emitted`** stand after the call of a call example, one `expect emitted` line per event. `expect emitted` needs the outcome `ok`, a `returns` line (only a handler that succeeded writes) and an event the endpoint's `transition` can emit, each once; `expect not emitted` stands alone and is allowed with any outcome. The endpoint must have a `transition` that emits. Everything else is `E1010`. The IR key is `Example.emitted` (§13). The lines are **live only**: offline an example that passes its outcome is reported `skip … (live only: …)`; a wrong outcome still fails.
+- **`Veld-Test-Emitted`** is the response header of the test handler. Its value is the declaration names of the events written to the request's memory outbox, separated by `,` without spaces, in the order written; it is **absent** when nothing was written, and is on every answer of an endpoint whose `transition` emits. `veld test --live` compares it with the example as a set: `expect emitted A` and `expect emitted B` say it is exactly `A,B` in any order, `expect not emitted` says it is absent. An example with `returns` makes the test handler skip the application's handler (`Veld-Test-Result`, `spec/rules.md` §12.4), so nothing is written: the handler then does not run the check after the handler, and the header names the events the edge taken emits (`expected_events`), that is, what a handler that succeeded must have written. Without `returns` the real handler runs, its writes are what the header lists, and the check after the handler applies.
 
 ## 12. Examples and `veld test`
 
@@ -456,6 +471,9 @@ Service += { "publishes": [ { "channel": <index into Ir.channels>,
                                   "origin": Origin } ] }        // source order
 Example += { "event": { "decl": DeclId, "channel": <index>, "value": ExampleValue },
              "expect": [ { "service": ServiceId, "handler": "sendReceipt", "called": true } ] | "rejected" }
+Example += { "emitted": [ DeclId ] }                            // §11.1: `expect emitted E`; `[]` for `expect not emitted`; omitted when absent
+Flow    += { "emits": DeclId }                                  // §11; omitted when absent
+EndpointTransition += { "emits": [ { "event": DeclId, "channel": <index into Ir.channels> } ] }   // §11; omitted when empty
 ```
 
 - `Service.prefix` is the empty string for a service without `at`.
@@ -530,7 +548,7 @@ The new channel decides when two changes meet: `max` lowered while `@deadLetter`
 | `E1007` | The group of a subscription is not a legal group name |
 | `E1008` | An `on` line names an event the channel does not carry or names an event twice, or the subscription has no `on` line |
 | `E1009` | A subscription to a channel of this workspace that no service publishes |
-| `E1010` | An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected` |
+| `E1010` | An example whose `expect` lines are not well formed. An event example: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected`. A call example: `expect emitted` on an endpoint whose transition emits nothing, naming an event it does not emit, twice, without `ok` and `returns`, or combined with `expect not emitted` |
 | `W1001` | A published channel that nobody in the workspace subscribes to |
 | `W1002` | An event of a published channel that no subscription handles |
 | `W1003` | A channel has `@retry` and no `@deadLetter`: a message whose retries are used up is gone |
@@ -546,7 +564,7 @@ The new channel decides when two changes meet: `max` lowered while `@deadLetter`
 | **E2** | §10: the Kafka and RabbitMQ adapters, `@retry`, `@deadLetter`, `@ordered`, the inbox, live event examples | A Node producer and a Java consumer talk over both brokers with only the configuration changed, for the rows of §10.1 |
 | **E3** | §11 and §16: the outbox, the relay, `emits`, event-aware `diff`, the AsyncAPI export | A crash between commit, relay publish, handler and acknowledgement loses no committed event; duplicates are tolerated |
 
-Until its phase is built, a construct of a later phase is rejected: `emits` with `E0003`. The annotations of §10.2 are accepted by the compiler; a generator that has not built phase E2 refuses a service that uses one with `E0801` (§10.8).
+Phase E3 is built outside the generators: `emits` is accepted by the compiler (it was `E0003` before), and a generator that has not built the outbox refuses a service with an emitting `transition` with `E0801` (§11.2). The annotations of §10.2 are accepted by the compiler; a generator that has not built phase E2 refuses a service that uses one with `E0801` (§10.8).
 
 E1 needs no configuration: the application passes a transport. A broker adapter is chosen with the target option `messaging` (§10.7).
 
