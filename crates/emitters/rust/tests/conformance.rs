@@ -280,6 +280,13 @@ fn rust_generates_audited_rules() {
     veld_emit_conformance::check_rollout_is_generated(&Rust).unwrap();
 }
 
+/// Derived fields (`spec/rules.md` section 17.2): until Rust implements them, it refuses a
+/// contract with one with `E0801`, as a server and as a client.
+#[test]
+fn rust_refuses_derived_fields() {
+    veld_emit_conformance::check_derived_is_refused(&Rust).unwrap();
+}
+
 /// The shared checks hold a generator that does not support state machines and policies to
 /// `E0801`. Rust supports them, so both checks must now notice that it does.
 #[test]
