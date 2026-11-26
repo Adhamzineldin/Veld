@@ -203,6 +203,8 @@ impl Lowerer<'_, '_> {
                     id,
                     name: self.prog.packages[old].name.clone(),
                     kind: self.prog.packages[old].kind,
+                    messages: std::collections::BTreeMap::new(),
+                    messages_dir: None,
                 }
             })
             .collect()

@@ -9,6 +9,11 @@ mod event;
 mod policy;
 mod rules;
 
+/// Message keys (`spec/platform.md` section 22): computed from the rule ids, written down once in
+/// `veld_ir::message_keys` so that a generator, which never depends on the compiler, reads the
+/// same function.
+pub use veld_ir::message_keys;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 

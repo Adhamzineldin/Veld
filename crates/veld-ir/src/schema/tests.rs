@@ -484,6 +484,8 @@ fn full_ir() -> Ir {
             id: PackageId(i as u32),
             name: format!("p{i}"),
             kind,
+            messages: Default::default(),
+            messages_dir: None,
         })
         .collect();
     Ir {

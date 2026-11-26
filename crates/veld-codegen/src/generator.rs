@@ -336,6 +336,7 @@ fn first_use(
                 | Feature::Page
                 | Feature::Bytes
                 | Feature::Events
+                | Feature::Messages
                 | Feature::RulesRollout
                 | Feature::RulesInvariants => false,
             };
@@ -364,6 +365,11 @@ fn first_use(
                 return Some(ep.origin.clone());
             }
         }
+    }
+    if feature == Feature::Messages {
+        return services
+            .iter()
+            .find_map(|s| ir.package(ir.service(*s).package).first_catalog_origin());
     }
     if feature == Feature::Events {
         return req
@@ -487,6 +493,8 @@ mod tests {
                 id: PackageId(0),
                 name: "a".into(),
                 kind: PackageKind::Service,
+                messages: Default::default(),
+                messages_dir: None,
             }],
             decls: vec![],
             services: vec![Service {

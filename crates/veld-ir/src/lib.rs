@@ -10,6 +10,7 @@ use std::fmt;
 
 pub mod endpoint_rules;
 pub mod exposure;
+pub mod message_keys;
 pub mod rules;
 pub mod schema;
 pub mod suggest;
@@ -300,6 +301,9 @@ impl Ir {
         }
         for sid in services {
             let s = self.service(*sid);
+            if !self.package(s.package).messages.is_empty() {
+                f.insert(Feature::Messages);
+            }
             for ep in &s.endpoints {
                 if ep.auth.kind != AuthKind::None {
                     f.insert(Feature::Auth);
@@ -364,6 +368,29 @@ pub struct Package {
     pub id: PackageId,
     pub name: String,
     pub kind: PackageKind,
+    /// The message catalogs of the member (`spec/platform.md` section 22): language tag, then
+    /// message key, then text. Sorted. Omitted from the JSON when the member has none.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub messages: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
+    /// The directory of the catalogs, relative to the member (`messages`), so that a diagnostic can
+    /// name a catalog file. Omitted when there is no catalog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messages_dir: Option<String>,
+}
+
+impl Package {
+    /// The place of the first catalog file (`<messages_dir>/<tag>.toml`), the origin that
+    /// `E0801` names when a generator cannot use catalogs. `None` without a catalog.
+    #[must_use]
+    pub fn first_catalog_origin(&self) -> Option<Origin> {
+        let tag = self.messages.keys().next()?;
+        let dir = self.messages_dir.as_deref().unwrap_or("messages");
+        Some(Origin {
+            file: format!("{dir}/{tag}.toml"),
+            line: 1,
+            col: 1,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1133,6 +1160,9 @@ pub enum Feature {
     Idempotency,
     /// `publishes` or `subscribes` (`spec/events.md` section 13).
     Events,
+    /// A member with message catalogs (`spec/platform.md` section 22). Opt-in: a generator that
+    /// does not declare it would send the contract's text where a catalog was meant to be used.
+    Messages,
 }
 
 impl Feature {
@@ -1145,12 +1175,13 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 3] = [
+    pub const OPT_IN: [Feature; 4] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
+        Feature::Messages,
     ];
-    pub const ALL: [Feature; 18] = [
+    pub const ALL: [Feature; 19] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1169,6 +1200,7 @@ impl Feature {
         Feature::RulesVersion,
         Feature::Idempotency,
         Feature::Events,
+        Feature::Messages,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1191,6 +1223,7 @@ impl Feature {
             Feature::RulesVersion => "rules_version",
             Feature::Idempotency => "idempotency",
             Feature::Events => "events",
+            Feature::Messages => "messages",
         }
     }
     #[must_use]

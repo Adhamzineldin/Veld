@@ -213,6 +213,8 @@ pub const DEFS: &[Def] = &[
             ("id", T::Ref("PackageId")),
             ("name", T::Str),
             ("kind", T::Ref("PackageKind")),
+            ("messages", T::Optional(&T::Map(&T::Map(&T::Str)))),
+            ("messages_dir", T::Optional(&T::Str)),
         ],
     ),
     Def::Strings(
@@ -743,6 +745,7 @@ pub const DEFS: &[Def] = &[
             "rules_version",
             "idempotency",
             "events",
+            "messages",
         ],
     ),
     Def::Strings("Role", &["server", "client"]),

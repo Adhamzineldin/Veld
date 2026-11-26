@@ -27,6 +27,8 @@ mod services;
 mod tests;
 mod typeck;
 #[cfg(test)]
+mod message_key_tests;
+#[cfg(test)]
 mod pii_tests;
 #[cfg(test)]
 mod version_tests;
