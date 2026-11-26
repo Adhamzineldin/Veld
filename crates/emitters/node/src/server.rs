@@ -52,6 +52,7 @@ fn write_service(
     diags: &mut Vec<GenDiagnostic>,
 ) {
     for ep in &svc.endpoints {
+        veld_emit_typescript::version::reserved_names(svc, ep, diags);
         let request = names.get(svc.id, &ep.name);
         write_request_type(w, fc, &request, ep);
         w.blank();

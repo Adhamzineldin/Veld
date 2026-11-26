@@ -153,7 +153,8 @@ fn package_model(tree: &Tree<'_>, names: &RequestNames, pkg: PackageId) -> Packa
                 stream,
                 ws: ep.method == Method::Ws,
                 message,
-                empty_request: ep.params.iter().all(|p| p.stream),
+                empty_request: ep.params.iter().all(|p| p.stream)
+                    && !crate::version::needs_request(ep),
             });
         }
         services.push(ServiceModel {

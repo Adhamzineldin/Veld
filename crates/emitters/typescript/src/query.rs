@@ -49,7 +49,7 @@ fn is_stream(ep: &Endpoint) -> bool {
 }
 
 fn has_empty_request(ep: &Endpoint) -> bool {
-    ep.params.iter().all(|p| p.stream)
+    ep.params.iter().all(|p| p.stream) && !crate::version::needs_request(ep)
 }
 
 /// The union of the declared error classes of `ep` and the two transport failures.

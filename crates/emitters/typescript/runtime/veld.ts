@@ -2387,13 +2387,13 @@ function sha256Hex(bytes: readonly number[]): string {
 /**
  * The fingerprint of a request: the first 16 hex characters of the SHA-256 of the RFC 8785 JSON of
  * the bound parameters in wire form, keyed by parameter name (defaults applied, absent optionals
- * left out). The header of the key is not a parameter.
+ * left out, values normalised as `canonicalOf` does: a uuid in lower case, a datetime in UTC). The header of the key is not a parameter.
  */
 function fingerprintOf(ep: EndpointSpec, bound: Bound): string {
   const wire: Record<string, unknown> = {};
   for (const p of ep.params) {
     const v = p.s ? undefined : bound.value[p.name];
-    if (v !== undefined) wire[p.name] = toWire(p.t, v);
+    if (v !== undefined) wire[p.name] = mapValue(p.t, v, { dir: 'to', request: false, normalize: true });
   }
   return sha256Hex(utf8Bytes(canonical(wire))).slice(0, 16);
 }
