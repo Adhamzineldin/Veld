@@ -140,3 +140,9 @@ The Rust target declares `rules_flags` but:
 - **The client's retry on `429`** does not sit inside the call's timeout (each of the two requests has its own): 9.2 says inside.
 - The test handler takes the caller from `Veld-Test-Principal` also for an `@auth(none)` endpoint.
 - Not tested: the limiter's start-up notice; a `@tenant` member of a query object; the examples on Spring.
+
+# Platform P4 part 1, "no message repeats a value" (Node is in, 26 Nov)
+
+The Node agent found one message that repeats a value outside its own crates:
+- **The reference and Rust**: the consumer's step-1 message for a wrong `datacontenttype` quotes the value (`crates/veld-rules/src/envelope/consume.rs` near line 125; `crates/emitters/rust/runtime/events.rs` near line 1824). Node now says `is not application/json`. Make the reference and Rust say the same fixed text (and Java, if it quotes it), and update any golden that holds the old text.
+- Capture option: Node compiles the capture in only with the generator option `capture-violations` (so existing output keeps its bytes) and has a hooks member to turn it off. `spec/rules.md` 17.3 calls it "a server option, off by default": Java and Rust use the same option name and the same two levels.
