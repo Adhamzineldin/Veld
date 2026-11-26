@@ -355,6 +355,13 @@ fn rust_refuses_tenancy_as_a_server() {
     veld_emit_conformance::check_tenancy_is_refused(&Rust).unwrap();
 }
 
+/// `audit` is opt-in (`spec/platform.md` section 4): the Rust server refuses an `@audited`
+/// endpoint.
+#[test]
+fn rust_refuses_audit_as_a_server() {
+    veld_emit_conformance::check_audit_is_refused(&Rust).unwrap();
+}
+
 /// Message catalogs (`spec/platform.md` section 22): until the Rust generator implements them, it
 /// refuses a member that has catalogs with `E0801`, in every role.
 #[test]

@@ -177,6 +177,14 @@ fn node_and_typescript_refuse_tenancy_as_a_server_only() {
     veld_emit_conformance::check_tenancy_is_refused(&TypeScript).unwrap();
 }
 
+/// `audit` is opt-in (`spec/platform.md` section 4): the Node server refuses an `@audited`
+/// endpoint; the TypeScript client is not asked.
+#[test]
+fn node_and_typescript_refuse_audit_as_a_server_only() {
+    veld_emit_conformance::check_audit_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_audit_is_refused(&TypeScript).unwrap();
+}
+
 /// Message catalogs (`spec/platform.md` section 22): until a generator implements them, the Node
 /// server and the TypeScript client both refuse a member that has catalogs with `E0801`, at the
 /// first catalog file, and make no files.

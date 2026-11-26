@@ -103,6 +103,40 @@ service Bookings at \"/bookings\" {
 }
 ";
 
+/// `@audited` on an endpoint: the first use is the endpoint line.
+const AUDITED_SOURCE: &str = "model Room {
+  id: uuid
+}
+
+service Rooms at \"/rooms\" {
+  @audited
+  get \"/{id}\" getRoom(id: uuid) -> Room
+}
+";
+
+/// `@audited` on a service only: it reaches the endpoint, whose line is the first use.
+const AUDITED_SERVICE_SOURCE: &str = "model Room {
+  id: uuid
+}
+
+@audited
+service Rooms at \"/rooms\" {
+  get \"/{id}\" getRoom(id: uuid) -> Room
+}
+";
+
+/// `@audited` on a `ws` endpoint, which is `E0801` in every generator in this version: the
+/// feature is refused at the endpoint like any other use.
+const AUDITED_WS_SOURCE: &str = "model Msg {
+  text: string
+}
+
+service Chat at \"/chat\" {
+  @audited
+  ws \"/room\" room(body: stream Msg) -> stream Msg
+}
+";
+
 fn line_of(source: &str, needle: &str) -> u32 {
     source
         .lines()
@@ -185,6 +219,36 @@ fn tenant_line(source: &str, _needle: &str) -> u32 {
 /// A description of the first role and contract for which the generator does not behave so.
 pub fn check_tenancy_is_refused(generator: &dyn DynGenerator) -> Result<(), String> {
     refused_by_servers(generator, Feature::Tenancy, &compiled_tenancy_contracts())
+}
+
+/// The contracts that use `audit`, with the line of the first endpoint that is audited.
+///
+/// # Panics
+/// When a contract of this crate does not compile.
+#[must_use]
+pub fn compiled_audit_contracts() -> Vec<(Ir, u32)> {
+    [
+        ("compiled_audited", AUDITED_SOURCE, "get \"/{id}\""),
+        (
+            "compiled_audited_service",
+            AUDITED_SERVICE_SOURCE,
+            "get \"/{id}\"",
+        ),
+        ("compiled_audited_ws", AUDITED_WS_SOURCE, "ws \"/room\""),
+    ]
+    .iter()
+    .map(|(name, source, needle)| (compile(name, source), line_of(source, needle)))
+    .collect()
+}
+
+/// The generator must not declare `audit` and must refuse a contract with an audited endpoint as
+/// a server (see [`check_visibility_is_refused`]); a client is not asked. A generator that does
+/// declare it must still refuse the `ws` endpoint of the third contract.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_audit_is_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    refused_by_servers(generator, Feature::Audit, &compiled_audit_contracts())
 }
 
 fn request(ir: &Ir, role: Role) -> GenRequest<'_> {
