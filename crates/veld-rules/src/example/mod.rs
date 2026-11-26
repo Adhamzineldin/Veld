@@ -15,7 +15,8 @@ use std::collections::BTreeMap;
 
 use serde_json::Value as Json;
 use veld_ir::{
-    AuthKind, DeclId, Endpoint, Example, ExampleOutcome, ExampleValue, Ir, Service, ServiceId, Type,
+    AuthKind, DeclId, DeclKind, Endpoint, Example, ExampleIfMatch, ExampleOutcome, ExampleValue,
+    Ir, KeyStore, Service, ServiceId, Type,
 };
 
 pub use self::event::{
@@ -28,7 +29,9 @@ pub use self::report::{ExampleReport, Mismatch, Verdict, describe_actual, descri
 use crate::check::{Options, check_type};
 use crate::error::InputError;
 use crate::helpers::instant::parse_datetime;
+use crate::idempotency::{IdempotencyKey, StoreState, StoredAnswer};
 use crate::pipeline::{OutputMode, Pipeline, Request, RunError};
+use crate::version::IfMatch;
 
 /// The clock of an example without `at`.
 pub const DEFAULT_CLOCK: &str = "2026-01-01T00:00:00Z";
@@ -189,7 +192,9 @@ pub fn fill_example(ir: &Ir, ex: &Example) -> Result<FilledExample, ExampleError
     let principal = b.principal()?;
     let params = b.params()?;
     let result = b.returns()?;
+    let key = b.key()?;
     let expected = b.expected()?;
+    let caller = b.caller(principal.as_ref());
     Ok(FilledExample {
         name: ex.name.clone(),
         service: service.id,
@@ -200,6 +205,9 @@ pub fn fill_example(ir: &Ir, ex: &Example) -> Result<FilledExample, ExampleError
             principal,
             now: clock_ms,
             result,
+            if_match: b.if_match(),
+            key,
+            caller,
         },
         clock,
         expected,
@@ -372,6 +380,90 @@ impl Build<'_> {
         Ok(Some(full))
     }
 
+    /// The `If-Match` header of an example: `*` or `"3"` (`spec/rules.md` section 11.9).
+    fn if_match(&self) -> Option<String> {
+        let line = self.ex.if_match.as_ref()?;
+        let value = match line {
+            ExampleIfMatch::Any => IfMatch::Any,
+            ExampleIfMatch::Version(v) => IfMatch::Version(v.parse().ok()?),
+        };
+        Some(value.header())
+    }
+
+    /// The text the application gives for the caller: the principal, when the endpoint has auth
+    /// and its keys are scoped to the caller.
+    fn caller(&self, principal: Option<&Json>) -> Option<String> {
+        self.endpoint.idempotency.as_ref().filter(|i| i.caller)?;
+        Some(principal.map_or_else(
+            || "caller".to_owned(),
+            |p| veld_codegen::canonical::canonical(p),
+        ))
+    }
+
+    /// The `key` line: the header, and what the store holds for it. A stored answer is a value
+    /// like any other, so what the line leaves out is filled in (section 12.2).
+    fn key(&mut self) -> Result<Option<IdempotencyKey>, ExampleError> {
+        let Some(line) = &self.ex.key else {
+            return Ok(None);
+        };
+        let store = match &line.store {
+            KeyStore::New => StoreState::Empty,
+            KeyStore::Other => StoreState::Other,
+            KeyStore::Running => StoreState::Running,
+            KeyStore::Stored(outcome) => StoreState::Stored(self.stored(outcome)?),
+        };
+        Ok(Some(IdempotencyKey {
+            value: line.value.clone(),
+            store,
+        }))
+    }
+
+    fn stored(&mut self, outcome: &ExampleOutcome) -> Result<StoredAnswer, ExampleError> {
+        let (status, error, ty, given) = match outcome {
+            ExampleOutcome::Ok(v) => {
+                let ty = self.endpoint.success.ty.clone();
+                let given = v.as_ref().map(|v| self.resolve(v)).transpose()?;
+                (self.endpoint.success.status, None, ty, given)
+            }
+            ExampleOutcome::Error(e) => {
+                let given = e.pattern.as_ref().map(|v| self.resolve(v)).transpose()?;
+                let (name, status) = self.error_of(e.decl);
+                (status, Some(name), Some(Type::Decl(e.decl)), given)
+            }
+        };
+        let body = match ty {
+            Some(ty) => {
+                self.filler.begin();
+                let none = veld_ir::Constraints::default();
+                Some(self.filler.fill(&ty, &none, given.as_ref(), "$")?)
+            }
+            None => None,
+        };
+        Ok(StoredAnswer {
+            status,
+            error,
+            body,
+        })
+    }
+
+    /// The name and the status an endpoint answers with for an error declaration.
+    fn error_of(&self, decl: DeclId) -> (String, u16) {
+        let name = self.ir.decls.get(decl.index()).map(|d| d.name.clone());
+        let declared = self.endpoint.errors.iter().find(|e| e.decl == decl);
+        let default = self.ir.decls.get(decl.index()).and_then(|d| match &d.kind {
+            DeclKind::Error(e) => e.default_status,
+            DeclKind::Model(_)
+            | DeclKind::Enum(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_)
+            | DeclKind::Event(_) => None,
+        });
+        (
+            name.unwrap_or_default(),
+            declared.map(|e| e.status).or(default).unwrap_or(0),
+        )
+    }
+
     fn expected(&self) -> Result<Expected, ExampleError> {
         let pattern = |v: &Option<ExampleValue>| v.as_ref().map(|v| self.resolve(v)).transpose();
         let outcome = self
@@ -442,13 +534,8 @@ pub fn run_example(ir: &Ir, ex: &Example) -> Result<ExampleReport, ExampleError>
     let (service, endpoint) = locate(ir, ex)?;
     let reported = Pipeline::new(ir, service, &ex.endpoint)?
         .run_reported(&filled.request, OutputMode::Strict)?;
-    let verdict = report::compare(
-        ir,
-        endpoint,
-        &filled.expected,
-        &reported.outcome,
-        filled.request.result.as_ref(),
-    );
+    let result = reported.body.as_ref().or(filled.request.result.as_ref());
+    let verdict = report::compare(ir, endpoint, &filled.expected, &reported.outcome, result);
     Ok(ExampleReport {
         name: ex.name.clone(),
         verdict,

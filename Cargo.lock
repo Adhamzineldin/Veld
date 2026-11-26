@@ -1736,6 +1736,7 @@ version = "2.0.0-beta.1"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "veld-codegen",
  "veld-compiler",

@@ -19,10 +19,15 @@ use crate::check::{Options, Violation, check_decl_audited, check_type_audited};
 use crate::error::{Failure, InputError};
 use crate::eval::{Env, SavedOld, eval};
 use crate::helpers::num::EvalError;
+use crate::idempotency::{
+    IdempotencyKey, OTHER_MESSAGE, RUNNING_MESSAGE, StoreEffect, StoreState, StoredAnswer,
+    is_valid_key,
+};
 use crate::machine;
 use crate::old::save_old;
 use crate::policy::{NOT_PERMITTED, eval_policy};
 use crate::value::Value;
+use crate::version::{self, IfMatch, parse_if_match};
 
 /// Everything the pipeline needs to know about one request.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -40,6 +45,14 @@ pub struct Request {
     /// What the handler returned, in wire form. Without it [`Pipeline::run`] stops before the
     /// handler.
     pub result: Option<Json>,
+    /// The `If-Match` header as sent (`*` or `"3"`), when the request has one. An endpoint with no
+    /// version guard ignores it (`spec/rules.md` section 11.9).
+    pub if_match: Option<String>,
+    /// The idempotency header and what the store holds for it. An endpoint that is not
+    /// `@idempotent` ignores it (`spec/rules.md` section 11.8).
+    pub key: Option<IdempotencyKey>,
+    /// The text the application gives for the caller; part of the scope of a key.
+    pub caller: Option<String>,
 }
 
 /// The error the server answers with.
@@ -89,6 +102,20 @@ pub struct Reported {
     pub audited: Vec<Violation>,
     /// Violations of enforced output rules that did not reject because the mode is `audit`.
     pub hook: Vec<Violation>,
+    /// True when the answer is a stored one that was sent again (`Veld-Idempotent-Replay: true`):
+    /// no fact was loaded and the handler was not called.
+    pub replayed: bool,
+    /// What the store holds for the key afterwards (`spec/rules.md` section 11.9).
+    pub store: StoreEffect,
+    /// The version that was checked and that the handler receives: the one `If-Match` sent. `None`
+    /// when the header was absent or `*`, and when no check was reached.
+    pub checked_version: Option<i64>,
+    /// The body of a success: the handler's result as checked (defaults applied), or the body of a
+    /// replayed success. `None` for an error, an endpoint without a body and a run that stopped
+    /// before the handler.
+    pub body: Option<Json>,
+    /// The `ETag` of a success whose type is a model with a `@version` field.
+    pub etag: Option<String>,
 }
 
 /// Why the pipeline could not give an outcome: the input is not what the IR describes.
@@ -107,6 +134,9 @@ pub enum RunError {
 pub enum Before<'a> {
     /// A step failed: this is the answer.
     Rejected(ErrorAnswer),
+    /// The key had a stored answer: it is sent again, and nothing else runs (`spec/rules.md`
+    /// section 11.9).
+    Replayed(StoredAnswer),
     /// Everything passed; the handler may run.
     Ready(Prepared<'a>),
 }
@@ -120,6 +150,7 @@ pub struct Prepared<'a> {
     now: i64,
     old: Vec<SavedOld>,
     principal: Option<Json>,
+    checked_version: Option<i64>,
 }
 
 /// One endpoint, ready to process requests.
@@ -127,6 +158,35 @@ pub struct Prepared<'a> {
 pub struct Pipeline<'a> {
     ir: &'a Ir,
     endpoint: &'a Endpoint,
+}
+
+/// Steps 8 and 9: the outcome, what went to the hook, and the body of a success.
+#[derive(Debug, Clone, PartialEq)]
+pub struct After {
+    pub outcome: Outcome,
+    pub hook: Vec<Violation>,
+    /// The result as checked; `None` when the handler's result was refused.
+    pub body: Option<Json>,
+}
+
+impl After {
+    fn new(outcome: Outcome, hook: Vec<Violation>, body: Option<Json>) -> Self {
+        After {
+            outcome,
+            hook,
+            body,
+        }
+    }
+}
+
+/// What the store says about the key of a request (`spec/rules.md` section 11.9).
+enum Lookup {
+    /// The endpoint is not `@idempotent`, or the request has no key.
+    NoKey,
+    /// The store knows nothing: the request runs and its answer is stored.
+    NewKey,
+    Replay(StoredAnswer),
+    Conflict(ErrorAnswer),
 }
 
 /// The verdict of one rule expression.
@@ -167,25 +227,85 @@ impl<'a> Pipeline<'a> {
     /// [`RunError`] when the parameters, facts or result do not have the shape the IR says.
     pub fn run_reported(&self, request: &Request, mode: OutputMode) -> Result<Reported, RunError> {
         let mut audited = Vec::new();
-        let outcome = match self.before_audited(request, &mut audited)? {
-            Before::Rejected(answer) => Outcome::Error(answer),
-            Before::Ready(prepared) => match &request.result {
-                Some(result) => {
-                    let after = prepared.after_into(result, mode, &mut audited)?;
-                    return Ok(Reported {
-                        outcome: after.0,
-                        audited,
-                        hook: after.1,
-                    });
-                }
-                None => Outcome::Passes,
-            },
-        };
-        Ok(Reported {
-            outcome,
-            audited,
+        let (before, fresh) = self.before_full(request, &mut audited)?;
+        let mut reported = Reported {
+            outcome: Outcome::Passes,
+            audited: Vec::new(),
             hook: Vec::new(),
-        })
+            replayed: false,
+            store: StoreEffect::Untouched,
+            checked_version: None,
+            body: None,
+            etag: None,
+        };
+        match before {
+            Before::Rejected(answer) => reported.outcome = Outcome::Error(answer),
+            Before::Replayed(stored) => {
+                reported.outcome = self.replayed(&stored)?;
+                reported.replayed = true;
+                reported.body = stored.body;
+            }
+            Before::Ready(prepared) => {
+                reported.checked_version = prepared.checked_version;
+                match &request.result {
+                    Some(result) => {
+                        let after = prepared.after_full(result, mode, &mut audited)?;
+                        reported.outcome = after.outcome;
+                        reported.hook = after.hook;
+                        reported.body = after.body;
+                    }
+                    None => reported.store = StoreEffect::Running,
+                }
+            }
+        }
+        reported.etag = reported
+            .body
+            .as_ref()
+            .filter(|_| matches!(reported.outcome, Outcome::Passes))
+            .and_then(|b| version::etag(self.ir, self.endpoint, b));
+        if fresh {
+            reported.store =
+                self.store_effect(&reported.outcome, reported.store, reported.body.as_ref());
+        } else {
+            reported.store = StoreEffect::Untouched;
+        }
+        reported.audited = audited;
+        Ok(reported)
+    }
+
+    /// What the store holds for a new key once the request has its outcome: the answer when it is
+    /// below `500`, nothing when it is not, and "running" while the handler has not answered.
+    fn store_effect(
+        &self,
+        outcome: &Outcome,
+        ran: StoreEffect,
+        body: Option<&Json>,
+    ) -> StoreEffect {
+        match outcome {
+            Outcome::Error(a) if a.status >= 500 => StoreEffect::Removed,
+            Outcome::Error(a) => StoreEffect::Stored(StoredAnswer {
+                status: a.status,
+                error: Some(a.name.clone()),
+                body: Some(a.data.clone()),
+            }),
+            Outcome::Passes if ran == StoreEffect::Running => StoreEffect::Running,
+            Outcome::Passes => StoreEffect::Stored(StoredAnswer {
+                status: self.endpoint.success.status,
+                error: None,
+                body: body.cloned(),
+            }),
+        }
+    }
+
+    /// The outcome of a stored answer that is sent again.
+    fn replayed(&self, stored: &StoredAnswer) -> Result<Outcome, RunError> {
+        let Some(name) = &stored.error else {
+            return Ok(Outcome::Passes);
+        };
+        let data = stored.body.clone().unwrap_or_else(|| json!({}));
+        let mut answer = self.answer(name, stored.status, data, Vec::new(), Vec::new())?;
+        answer.status = stored.status;
+        Ok(Outcome::Error(answer))
     }
 
     /// Steps 5 and 6: invariants on the parameters, the facts, the `require` statements, and
@@ -206,10 +326,37 @@ impl<'a> Pipeline<'a> {
         request: &Request,
         audited: &mut Vec<Violation>,
     ) -> Result<Before<'a>, RunError> {
+        self.before_full(request, audited).map(|(before, _)| before)
+    }
+
+    /// Like [`Pipeline::before_audited`], and whether the request had a new key when it ended: the
+    /// store then holds its answer (`spec/rules.md` section 11.9).
+    fn before_full(
+        &self,
+        request: &Request,
+        audited: &mut Vec<Violation>,
+    ) -> Result<(Before<'a>, bool), RunError> {
         let params = match self.bind(request, audited)? {
             ControlFlow::Continue(params) => params,
-            ControlFlow::Break(answer) => return Ok(Before::Rejected(answer)),
+            ControlFlow::Break(answer) => return Ok((Before::Rejected(answer), false)),
         };
+        let fresh = match self.lookup(request)? {
+            Lookup::NewKey => true,
+            Lookup::NoKey => false,
+            Lookup::Replay(stored) => return Ok((Before::Replayed(stored), false)),
+            Lookup::Conflict(answer) => return Ok((Before::Rejected(answer), false)),
+        };
+        let before = self.prepare(request, params, audited)?;
+        Ok((before, fresh))
+    }
+
+    /// Step 6, from the facts on.
+    fn prepare(
+        &self,
+        request: &Request,
+        params: BTreeMap<String, Json>,
+        audited: &mut Vec<Violation>,
+    ) -> Result<Before<'a>, RunError> {
         let mut env = Env::new(self.ir);
         env.params = params;
         env.principal.clone_from(&request.principal);
@@ -218,6 +365,10 @@ impl<'a> Pipeline<'a> {
             return Ok(Before::Rejected(answer));
         }
         if let Some(answer) = self.policies(&env, request.now)? {
+            return Ok(Before::Rejected(answer));
+        }
+        let sent = self.if_match(request);
+        if let Some(answer) = self.version_guard(&env, sent)? {
             return Ok(Before::Rejected(answer));
         }
         if let Some(answer) = self.guard(&env)? {
@@ -240,6 +391,10 @@ impl<'a> Pipeline<'a> {
             now: request.now,
             principal: request.principal.clone(),
             old,
+            checked_version: match sent {
+                Some(IfMatch::Version(n)) if self.endpoint.rules.version.is_some() => Some(n),
+                Some(IfMatch::Version(_) | IfMatch::Any) | None => None,
+            },
         }))
     }
 
@@ -273,26 +428,124 @@ impl<'a> Pipeline<'a> {
             audited.extend(checked.audited.into_iter().map(|v| reroot(v, &p.name)));
             params.insert(p.name.clone(), full);
         }
-        if found.is_empty() {
+        let headers = self.header_issues(request);
+        if found.is_empty() && headers.is_empty() {
             Ok(ControlFlow::Continue(params))
         } else {
-            Ok(ControlFlow::Break(self.validation_error(found)?))
+            Ok(ControlFlow::Break(self.validation_answer(headers, found)?))
         }
+    }
+
+    /// The issues of the two headers this crate reads (`spec/rules.md` section 11.9): a malformed
+    /// `If-Match` on an endpoint with a version guard, and a malformed or missing key on an
+    /// `@idempotent` endpoint. They are not rule violations and carry no `violations`.
+    fn header_issues(&self, request: &Request) -> Vec<Json> {
+        let mut issues = Vec::new();
+        let at = |name: &str| format!("header.{name}");
+        let sent = request.if_match.as_deref();
+        if self.endpoint.rules.version.is_some()
+            && sent.is_some_and(|t| parse_if_match(t).is_none())
+        {
+            let message = version::IF_MATCH_MESSAGE;
+            issues.push(json!({ "path": at("If-Match"), "code": "type", "message": message }));
+        }
+        if let Some(idem) = &self.endpoint.idempotency {
+            match &request.key {
+                Some(k) if !is_valid_key(&k.value) => {
+                    let message = crate::idempotency::KEY_MESSAGE;
+                    issues.push(
+                        json!({ "path": at(&idem.header), "code": "type", "message": message }),
+                    );
+                }
+                None if idem.required => {
+                    issues.push(json!({ "path": at(&idem.header), "code": "required", "message": "is required" }));
+                }
+                Some(_) | None => {}
+            }
+        }
+        issues
+    }
+
+    /// What the store says about the key of the request, once step 5 has passed.
+    fn lookup(&self, request: &Request) -> Result<Lookup, RunError> {
+        let (Some(_), Some(key)) = (&self.endpoint.idempotency, &request.key) else {
+            return Ok(Lookup::NoKey);
+        };
+        let message = match &key.store {
+            StoreState::Empty => return Ok(Lookup::NewKey),
+            StoreState::Stored(stored) => return Ok(Lookup::Replay(stored.clone())),
+            StoreState::Other => OTHER_MESSAGE,
+            StoreState::Running => RUNNING_MESSAGE,
+        };
+        let data = json!({ "message": message });
+        let answer = self.answer("Conflict", 409, data, Vec::new(), Vec::new())?;
+        Ok(Lookup::Conflict(answer))
+    }
+
+    /// What `If-Match` says, when the endpoint has a guard and the request has the header. A
+    /// malformed header was refused at step 5.
+    fn if_match(&self, request: &Request) -> Option<IfMatch> {
+        self.endpoint.rules.version.as_ref()?;
+        request.if_match.as_deref().and_then(parse_if_match)
+    }
+
+    /// The version guard (`spec/rules.md` sections 11.7 and 11.9): after the policies and before the
+    /// transition, `412 PreconditionFailed` when the version the caller sent is not the one the
+    /// fact has. `*`, no header and a fact that is absent pass.
+    fn version_guard(
+        &self,
+        env: &Env<'_>,
+        sent: Option<IfMatch>,
+    ) -> Result<Option<ErrorAnswer>, RunError> {
+        let (Some(rule), Some(IfMatch::Version(expected))) = (&self.endpoint.rules.version, sent)
+        else {
+            return Ok(None);
+        };
+        let Some(fact) = env.facts.get(&rule.fact) else {
+            return Ok(None);
+        };
+        let missing = || {
+            InputError::Ir(format!(
+                "fact `{}` has no version `{}`",
+                rule.fact, rule.wire
+            ))
+        };
+        let actual = version::version_of(fact, &rule.wire).ok_or_else(missing)?;
+        if actual == expected {
+            return Ok(None);
+        }
+        let violation = Violation {
+            rule_name: "version".to_owned(),
+            rule_id: rule.id.clone(),
+            path: "request".to_owned(),
+            fields: Vec::new(),
+            message: "violates rule version".to_owned(),
+            error: None,
+        };
+        let data = json!({ "expected": expected.to_string(), "actual": actual.to_string() });
+        self.answer("PreconditionFailed", 412, data, vec![violation], Vec::new())
+            .map(Some)
     }
 
     /// `422 ValidationError` with one issue per violation (section 7).
     fn validation_error(&self, violations: Vec<Violation>) -> Result<ErrorAnswer, RunError> {
-        let issues: Vec<Json> = violations
-            .iter()
-            .map(|v| {
-                let code = if v.error.is_some() {
-                    "rule_error"
-                } else {
-                    "rule"
-                };
-                json!({ "path": v.path, "code": code, "message": v.message })
-            })
-            .collect();
+        self.validation_answer(Vec::new(), violations)
+    }
+
+    /// Like [`Self::validation_error`], with the issues of malformed headers first.
+    fn validation_answer(
+        &self,
+        mut issues: Vec<Json>,
+        violations: Vec<Violation>,
+    ) -> Result<ErrorAnswer, RunError> {
+        issues.extend(violations.iter().map(|v| {
+            let code = if v.error.is_some() {
+                "rule_error"
+            } else {
+                "rule"
+            };
+            json!({ "path": v.path, "code": code, "message": v.message })
+        }));
         let data = json!({ "issues": issues });
         self.answer("ValidationError", 422, data, violations, Vec::new())
     }
@@ -556,9 +809,28 @@ impl Prepared<'_> {
         mode: OutputMode,
         audited: &mut Vec<Violation>,
     ) -> Result<(Outcome, Vec<Violation>), RunError> {
+        let after = self.after_full(result, mode, audited)?;
+        Ok((after.outcome, after.hook))
+    }
+
+    /// Like [`Prepared::after_into`], and the body of the success: the result as checked, with the
+    /// defaults of its fields applied.
+    ///
+    /// # Errors
+    /// [`RunError`] when the result does not have the shape of the success type.
+    pub fn after_full(
+        &self,
+        result: &Json,
+        mode: OutputMode,
+        audited: &mut Vec<Violation>,
+    ) -> Result<After, RunError> {
         let p = &self.pipeline;
         if mode == OutputMode::Off {
-            return Ok((Outcome::Passes, Vec::new()));
+            return Ok(After::new(
+                Outcome::Passes,
+                Vec::new(),
+                Some(result.clone()),
+            ));
         }
         let mut env = Env::new(p.ir);
         env.params.clone_from(&self.params);
@@ -579,16 +851,16 @@ impl Prepared<'_> {
             audited.extend(checked.audited.into_iter().map(|v| reroot(v, "result")));
             hook.extend(checked.violations.into_iter().map(|v| reroot(v, "result")));
             if !hook.is_empty() && mode == OutputMode::Strict {
-                return internal(p, hook).map(|o| (o, Vec::new()));
+                return internal(p, hook).map(|o| After::new(o, Vec::new(), None));
             }
             env.result = Some(full);
         }
         hook.extend(self.ensures(&env, result, audited)?);
+        let body = Some(env.result.clone().unwrap_or_else(|| result.clone()));
         if hook.is_empty() || mode == OutputMode::Audit {
-            let outcome = Outcome::Passes;
-            return Ok((outcome, hook));
+            return Ok(After::new(Outcome::Passes, hook, body));
         }
-        internal(p, hook).map(|o| (o, Vec::new()))
+        internal(p, hook).map(|o| After::new(o, Vec::new(), None))
     }
 
     /// Step 9: every `ensure` in source order, then the target state. The violations of enforced
