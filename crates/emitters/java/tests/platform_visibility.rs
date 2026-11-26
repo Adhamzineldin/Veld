@@ -216,3 +216,41 @@ fn visibility_does_not_depend_on_request_validation() {
         &["unvalidated"],
     );
 }
+
+/// A message the server sends over a WebSocket is shown to the caller and checked for another tenant
+/// like any answer. The `jdk` framework has no WebSocket server, so the contract is generated for
+/// `spring` and the driver compiles everything but the adapters (the router takes a frame from any
+/// socket); no Spring is needed.
+#[test]
+fn a_websocket_message_is_shown_and_checked() {
+    if !require_javac("a_websocket_message_is_shown_and_checked") {
+        return;
+    }
+    let ir = compile_path(
+        "tests/toolchain/java/platform_p1/shapes_ws.veld",
+        "shapesws",
+    );
+    let all = ir.services.iter().map(|s| s.id).collect();
+    let files = run(
+        &ir,
+        Role::Server,
+        all,
+        vec![],
+        Some("spring"),
+        options("gen.b", Some("17")),
+    );
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = write_files(work.path(), &files);
+    sources.retain(|p| !p.to_string_lossy().contains("/adapters/"));
+    sources.push(driver("ShapesWs"));
+    for release in releases() {
+        javac_ok(work.path(), &sources, release);
+    }
+    let out = java_main(work.path(), "veldtest.ShapesWs", &[]);
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("OK"),
+        "ShapesWs failed:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

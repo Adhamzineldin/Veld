@@ -1,0 +1,28 @@
+// A message the server sends over a WebSocket is shown to the caller and checked for another
+// tenant like any answer (spec/platform.md sections 2 and 3). Compiled as the package `shapesws` by
+// ShapesWs.java (Java only: the JDK adapter has no WebSocket server).
+
+model User {
+  id: uuid
+  roles: string[]
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+model Ping {
+  text: string
+}
+
+model Msg {
+  id: uuid
+  tenantId: uuid @tenant
+  text: string
+  // Only support sees it.
+  note?: string @visible(when: "support" in user.roles)
+}
+
+@auth(bearer)
+service Chat at "/chat" {
+  ws "/room" room(body: stream Ping) -> stream Msg
+}
