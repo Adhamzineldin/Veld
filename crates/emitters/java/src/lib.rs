@@ -284,7 +284,21 @@ impl Generator for Java {
             tenancy: p1.tenancy,
             audit: p1.audit,
             limits_server: p1.limits,
-            limits: false,
+            // A client that gets `429` waits and sends again (a server's consumed clients too).
+            limits: !(if req.role == Role::Client {
+                &req.services
+            } else {
+                &req.consumes
+            })
+            .is_empty()
+                && req
+                    .ir
+                    .http_features_used(if req.role == Role::Client {
+                        &req.services
+                    } else {
+                        &req.consumes
+                    })
+                    .contains(&Feature::Limits),
             tenant_events: tree.events && p1.tenant_events,
             // A declaration with a `@tenant` field, of the tree or of a consumed service: a request
             // may lack it (`spec/platform.md` section 3).

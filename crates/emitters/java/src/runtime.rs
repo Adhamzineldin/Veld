@@ -35,6 +35,8 @@ const TIMEOUT_FILES: &[&str] = &["Deadline"];
 const FLAG_FILES: &[&str] = &["Flags"];
 /// The platform phase P1 state and features (`spec/targets/java.md` section 17).
 const PLATFORM_FILES: &[&str] = &["Platform"];
+/// The limiter of rate limits and the memory limiter (`spec/platform.md` section 5).
+const LIMIT_FILES: &[&str] = &["Limiter", "MemoryLimiter"];
 /// The audit event, its failure and the redaction (`spec/platform.md` section 4, `spec/rules.md`
 /// section 19.3).
 const AUDIT_FILES: &[&str] = &["AuditEvent", "AuditFailure", "Redact"];
@@ -106,6 +108,8 @@ runtime_files!(
     "Issue",
     "Json",
     "JsonParser",
+    "Limiter",
+    "MemoryLimiter",
     "JsonWriter",
     "MemoryIdempotencyStore",
     "MemoryOutbox",
@@ -367,6 +371,7 @@ pub fn emit_with(
             && (flags.events || !EVENT_FILES.contains(&name))
             && (flags.events || flags.conditional || flags.audit || !CANON_FILES.contains(&name))
             && (flags.audit || !AUDIT_FILES.contains(&name))
+            && (flags.limits_server || !LIMIT_FILES.contains(&name))
             && (flags.derived || !DERIVED_FILES.contains(&name))
             && (flags.conditional || !CONDITIONAL_FILES.contains(&name))
             && (flags.preconditions || !PRECONDITION_FILES.contains(&name))
@@ -425,6 +430,13 @@ pub fn emit_with(
         "marks_derived" => flags.marks() && flags.derived,
         "visibility" => flags.visibility,
         "tenancy" => flags.tenancy,
+        "limits_server" => flags.limits_server,
+        "limits" => flags.limits,
+        "not_limits" => !flags.limits,
+        "preconditions_limits" => flags.preconditions && flags.limits,
+        "preconditions_not_limits" => flags.preconditions && !flags.limits,
+        "limits_runtimecfg" => flags.limits && flags.runtime_config,
+        "tenant_support" => flags.tenancy || flags.limits_server,
         "audit" => flags.audit,
         "declared_of" => flags.shapes() || flags.audit,
         "not_audit" => !flags.audit,

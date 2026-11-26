@@ -48,6 +48,23 @@ public final class Platform {
     Json wireOf(Object caller) {
       return type.isInstance(caller) ? wire.apply(caller) : null;
     }
+    // #if tenant_support
+
+    /** The type of the {@code @tenant} field of the model. */
+    TenantKind tenantKind() {
+      for (Schema.Field f : schema.resolve().fields) {
+        if (f.wire().equals(tenant)) {
+          return switch (f.type().resolve().kind) {
+            case UUID -> TenantKind.UUID;
+            case INT -> TenantKind.INT;
+            case LONG -> TenantKind.LONG;
+            default -> TenantKind.STRING;
+          };
+        }
+      }
+      return TenantKind.STRING;
+    }
+    // #endif
   }
 
   /**
@@ -536,9 +553,9 @@ public final class Platform {
 
   // #endif
 
-  // #if tenancy
+  // #if tenant_support
 
-  // -- tenancy ---------------------------------------------------------------------------------
+  // -- the tenant of the caller ----------------------------------------------------------------
 
   /** The type of a {@code @tenant} field: how two values of it are compared and written. */
   public enum TenantKind {
@@ -550,18 +567,6 @@ public final class Platform {
     INT,
     /** A {@code long}: a decimal string, compared by its number. */
     LONG
-  }
-
-  private static final Map<Schema, Boolean> TENANTS = Collections.synchronizedMap(new IdentityHashMap<>());
-
-  /** Whether a value of {@code schema} can hold a tenant-scoped value. */
-  static boolean reachesTenant(Schema schema) {
-    Boolean known = TENANTS.get(schema);
-    if (known == null) {
-      known = search(schema, new IdentityHashMap<>(), s -> s.marks != null && s.marks.tenantWire != null);
-      TENANTS.put(schema, known);
-    }
-    return known;
   }
 
   /**
@@ -577,24 +582,6 @@ public final class Platform {
     Json wire = principal.wireOf(ctx.principal());
     Json tenant = wire instanceof Json.Obj obj ? obj.get(principal.tenant) : null;
     return tenant == null || tenant instanceof Json.Null ? null : tenant;
-  }
-
-  /** Whether the tenant {@code have} of a value is the caller's tenant {@code caller}, as values of {@code kind}. */
-  static boolean sameTenant(TenantKind kind, Json have, Json caller) {
-    try {
-      switch (kind) {
-        case UUID:
-          return have instanceof Json.Str a
-              && caller instanceof Json.Str b
-              && java.util.UUID.fromString(a.value()).equals(java.util.UUID.fromString(b.value()));
-        case STRING:
-          return have instanceof Json.Str a && caller instanceof Json.Str b && a.value().equals(b.value());
-        default:
-          return number(have).compareTo(number(caller)) == 0;
-      }
-    } catch (IllegalArgumentException | ArithmeticException err) {
-      return false;
-    }
   }
 
   private static java.math.BigDecimal number(Json v) {
@@ -619,6 +606,39 @@ public final class Platform {
       case LONG -> value instanceof Json.Str text ? text.value() : number(value).toBigInteger().toString();
       case INT -> number(value).toBigInteger().toString();
     };
+  }
+
+  // #endif
+  // #if tenancy
+
+  private static final Map<Schema, Boolean> TENANTS = Collections.synchronizedMap(new IdentityHashMap<>());
+
+  /** Whether a value of {@code schema} can hold a tenant-scoped value. */
+  static boolean reachesTenant(Schema schema) {
+    Boolean known = TENANTS.get(schema);
+    if (known == null) {
+      known = search(schema, new IdentityHashMap<>(), s -> s.marks != null && s.marks.tenantWire != null);
+      TENANTS.put(schema, known);
+    }
+    return known;
+  }
+
+  /** Whether the tenant {@code have} of a value is the caller's tenant {@code caller}, as values of {@code kind}. */
+  static boolean sameTenant(TenantKind kind, Json have, Json caller) {
+    try {
+      switch (kind) {
+        case UUID:
+          return have instanceof Json.Str a
+              && caller instanceof Json.Str b
+              && java.util.UUID.fromString(a.value()).equals(java.util.UUID.fromString(b.value()));
+        case STRING:
+          return have instanceof Json.Str a && caller instanceof Json.Str b && a.value().equals(b.value());
+        default:
+          return number(have).compareTo(number(caller)) == 0;
+      }
+    } catch (IllegalArgumentException | ArithmeticException err) {
+      return false;
+    }
   }
 
   /**
@@ -1034,6 +1054,132 @@ public final class Platform {
       return Json.array(listed);
     }
     return Json.of(String.valueOf(value));
+  }
+  // #endif
+  // #if limits_server
+
+  // -- rate limits -----------------------------------------------------------------------------
+
+  /** Whose calls a limit counts together (spec/platform.md section 5). */
+  public enum By {
+    /** One count per caller: the caller-identity hook names it. */
+    USER("user"),
+    /** One count per tenant of the caller. */
+    TENANT("tenant"),
+    /** One count per client address: the address hook names it. */
+    IP("ip");
+
+    final String word;
+
+    By(String word) {
+      this.word = word;
+    }
+  }
+
+  /** The limit of one endpoint: {@code count} calls in a window of {@code windowSeconds} per {@code by}. */
+  public static final class Limit {
+    final long count;
+    final long windowSeconds;
+    final By by;
+
+    Limit(long count, long windowSeconds, By by) {
+      this.count = count;
+      this.windowSeconds = windowSeconds;
+      this.by = by;
+    }
+  }
+
+  /** {@code @limit(count, per: window, by: by)}: the window in seconds. */
+  public static Limit limit(long count, long windowSeconds, By by) {
+    return new Limit(count, windowSeconds, by);
+  }
+
+  /** The limiter of a server that was given none: it says so once, because it counts per process. */
+  static Limiter memoryLimiter() {
+    System.getLogger("veld.limits")
+        .log(
+            System.Logger.Level.WARNING,
+            "no limiter was given: the memory limiter counts per process, so a limit holds per process");
+    return new MemoryLimiter();
+  }
+
+  /**
+   * The limit of the endpoint, after authentication and before the middleware (spec/platform.md
+   * section 5): counts the call and answers {@code 429 TooManyRequests} with {@code retryAfter} and
+   * the {@code Retry-After} header when the limiter refuses it, else {@code null}. A limiter or a hook
+   * that fails lets the call through, and {@code onError} hears of it.
+   */
+  static VeldResponse limited(HandlerHooks hooks, EndpointSpec spec, RequestContext ctx) {
+    Limit limit = hooks.limit(spec.sig());
+    if (limit == null) {
+      return null;
+    }
+    Limiter.Decision decision;
+    try {
+      String key = spec.sig() + "|" + limit.by.word + "|" + identity(hooks, limit.by, ctx);
+      decision = hooks.limiter().take(key, limit.count, limit.windowSeconds);
+      if (decision == null) {
+        throw new IllegalStateException("the limiter gave no answer");
+      }
+    } catch (InterruptedException err) {
+      Thread.currentThread().interrupt();
+      report(hooks, ctx, err);
+      return null;
+    } catch (Exception | StackOverflowError err) {
+      report(hooks, ctx, err);
+      return null;
+    }
+    return decision.allowed() ? null : tooMany(spec, decision.retryAfterSeconds());
+  }
+
+  /** The text that stands for the caller: what the application's hook says, or the tenant of the principal. */
+  private static String identity(HandlerHooks hooks, By by, RequestContext ctx) throws Exception {
+    String text;
+    switch (by) {
+      case USER -> text = hooks.limitCaller().caller(ctx.principal(), ctx);
+      case IP -> text = hooks.address().address(ctx);
+      default -> {
+        Json tenant = callerTenant(hooks, ctx);
+        // A caller whose principal has no tenant is counted with the others that have none.
+        text = tenant == null ? "" : tenantText(hooks.principal().tenantKind(), tenant);
+      }
+    }
+    if (text == null) {
+      throw new IllegalStateException("the hook that names the " + by.word + " returned no text");
+    }
+    return text;
+  }
+
+  /** The prelude's {@code 429 TooManyRequests}: {@code retryAfter} in seconds, and the header with the same number. */
+  private static VeldResponse tooMany(EndpointSpec spec, long seconds) {
+    for (EndpointSpec.Declared d : spec.errors()) {
+      if (d.status() == 429) {
+        Json data = Json.object().put("retryAfter", Json.of(seconds)).build();
+        VeldResponse answer = Router.problem(d.sig(), "TooManyRequests", 429, spec.sig(), data);
+        Map<String, String> headers = new LinkedHashMap<>(answer.headers());
+        headers.put("retry-after", Long.toString(seconds));
+        return new VeldResponse(429, headers, answer.body());
+      }
+    }
+    Json data = Json.object().put("retryAfter", Json.of(seconds)).build();
+    VeldResponse answer = Router.problem("about:blank", "TooManyRequests", 429, spec.sig(), data);
+    Map<String, String> headers = new LinkedHashMap<>(answer.headers());
+    headers.put("retry-after", Long.toString(seconds));
+    return new VeldResponse(429, headers, answer.body());
+  }
+
+  /** The servers' check at start-up: a hook an endpoint's limit needs. */
+  static void assertHooks(HandlerHooks hooks, EndpointSpec spec) {
+    Limit limit = hooks.limit(spec.sig());
+    if (limit == null) {
+      return;
+    }
+    if (limit.by == By.USER && hooks.limitCaller() == null) {
+      throw new IllegalStateException(spec.name() + ": hooks.caller is required");
+    }
+    if (limit.by == By.IP && hooks.address() == null) {
+      throw new IllegalStateException(spec.name() + ": hooks.address is required");
+    }
   }
   // #endif
 }

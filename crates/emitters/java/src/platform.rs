@@ -96,6 +96,39 @@ pub fn service_audited(svc: &Service) -> bool {
     svc.endpoints.iter().any(|e| e.audited)
 }
 
+/// The hooks the limits of a service need: the caller-identity hook (`by: user`) and the address
+/// hook (`by: ip`).
+#[must_use]
+pub fn limit_needs(svc: &Service) -> (bool, bool) {
+    let by = |subject: veld_ir::LimitSubject| {
+        svc.endpoints
+            .iter()
+            .any(|e| e.limit.is_some_and(|l| l.by == subject))
+    };
+    (
+        by(veld_ir::LimitSubject::User),
+        by(veld_ir::LimitSubject::Ip),
+    )
+}
+
+/// Whether the service has an endpoint with a `@limit`.
+#[must_use]
+pub fn service_limited(svc: &Service) -> bool {
+    svc.endpoints.iter().any(|e| e.limit.is_some())
+}
+
+/// `limiter(limiter)`: the hooks of a service with a limit take the limiter that counts the calls
+/// (`spec/platform.md` section 5); without one the server counts in memory, per process.
+pub fn write_limiter(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, class: &str) {
+    let limiter = fc.rt("Limiter");
+    w.line("/** The limiter that counts the calls of the endpoints with a `@limit` (`spec/platform.md` section 5). Without one the server counts in memory, per process, and says so once. */");
+    w.open(format!("public {class} limiter({limiter} value)"));
+    w.line("builder.limiter(value);");
+    w.line("return this;");
+    w.close();
+    w.blank();
+}
+
 /// The refusals of platform phase P1: an audited endpoint that streams (`sse`) or is a `ws`
 /// endpoint is `E0801` at the endpoint (`spec/platform.md` section 9.1): a stream has no single
 /// answer to record.
@@ -271,6 +304,35 @@ pub fn registrations(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<String> {
             .map_or_else(|| "null".to_string(), |f| java_str(&f.wire));
         out.push(format!(
             "builder.principal({platform}.principal({class}.class, {class}::toWire, {tenant}, {class}.SCHEMA));"
+        ));
+    }
+    let limits: Vec<String> = svc
+        .endpoints
+        .iter()
+        .filter_map(|ep| {
+            ep.limit.map(|l| {
+                let by = match l.by {
+                    veld_ir::LimitSubject::User => "USER",
+                    veld_ir::LimitSubject::Tenant => "TENANT",
+                    veld_ir::LimitSubject::Ip => "IP",
+                };
+                format!(
+                    "{}.entry({}, {}.limit({}L, {}L, {}.By.{by}))",
+                    fc.name("java.util.Map"),
+                    java_str(&ep.sig),
+                    fc.rt("Platform"),
+                    l.count,
+                    l.per.seconds(),
+                    fc.rt("Platform"),
+                )
+            })
+        })
+        .collect();
+    if !limits.is_empty() {
+        let map = fc.name("java.util.Map");
+        out.push(format!(
+            "builder.limits({map}.ofEntries({}));",
+            limits.join(", ")
         ));
     }
     let entries: Vec<String> = svc

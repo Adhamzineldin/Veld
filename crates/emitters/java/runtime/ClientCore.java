@@ -99,7 +99,12 @@ public final class ClientCore {
   public Json call(EndpointSpec ep, Json.Obj params) {
     check(ep, params);
     HttpRequest request = buildRequest(ep, params, "application/json", Map.of());
+    // #if limits
+    return decode(ep, sendLimited(ep, request));
+    // #endif
+    // #if not_limits
     return decode(ep, send(ep, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)));
+    // #endif
   }
   // #if preconditions
 
@@ -111,7 +116,14 @@ public final class ClientCore {
   public Json call(EndpointSpec ep, Json.Obj params, Map<String, String> extra) {
     check(ep, params);
     HttpRequest request = buildRequest(ep, params, "application/json", extra);
+    // #endif
+    // #if preconditions_limits
+    return decode(ep, sendLimited(ep, request));
+    // #endif
+    // #if preconditions_not_limits
     return decode(ep, send(ep, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)));
+    // #endif
+    // #if preconditions
   }
 
   /**
@@ -363,6 +375,54 @@ public final class ClientCore {
       throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " was interrupted", e);
     }
   }
+  // #if limits
+
+  private final java.util.Set<String> retrying = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+  /**
+   * Tells the core that the endpoint with this operation signature has a limit and is a {@code get} or
+   * {@code @idempotent} (spec/platform.md section 5): a call that gets {@code 429} with {@code
+   * retryAfter} waits that long and sends again, once.
+   */
+  public void retryOnLimit(String sig) {
+    retrying.add(sig);
+  }
+
+  /** Sends the request; a {@code 429} with {@code retryAfter} of an endpoint that may be repeated is waited out and sent again, once. */
+  private HttpResponse<String> sendLimited(EndpointSpec ep, HttpRequest request) {
+    HttpResponse<String> first = send(ep, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    if (first.statusCode() != 429 || !options.retryOnLimit() || !retrying.contains(ep.sig())) {
+      return first;
+    }
+    long seconds = retryAfter(first.body());
+    if (seconds < 0) {
+      return first;
+    }
+    try {
+      options.sleeper().sleep(seconds * 1000L);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " was interrupted", e);
+    }
+    // The same request, so the same idempotency key.
+    return send(ep, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+  }
+
+  /** The {@code retryAfter} of the {@code data} of a problem document, in seconds, or -1 when it has none. */
+  private static long retryAfter(String body) {
+    try {
+      if (Json.parse(body) instanceof Json.Obj problem
+          && problem.get("data") instanceof Json.Obj data
+          && data.get("retryAfter") instanceof Json.Num seconds
+          && seconds.value() >= 0) {
+        return (long) seconds.value();
+      }
+    } catch (Json.ParseException e) {
+      return -1;
+    }
+    return -1;
+  }
+  // #endif
   // #if timeouts
 
   private final java.util.Map<String, Long> deadlines = new java.util.concurrent.ConcurrentHashMap<>();

@@ -38,6 +38,10 @@ public final class ClientOptions {
   // #if timeouts
   private final boolean timeoutSet;
   // #endif
+  // #if limits
+  private final boolean retryOnLimit;
+  private final Sleeper sleeper;
+  // #endif
   // #if rules
   private final boolean localRules;
   private final java.util.function.Consumer<ContractMismatch> onContractMismatch;
@@ -58,6 +62,10 @@ public final class ClientOptions {
     // #if timeouts
     this.timeoutSet = b.timeoutSet;
     // #endif
+    // #if limits
+    this.retryOnLimit = b.retryOnLimit;
+    this.sleeper = b.sleeper;
+    // #endif
     // #if rules
     this.localRules = b.localRules;
     this.onContractMismatch = b.onContractMismatch;
@@ -67,6 +75,15 @@ public final class ClientOptions {
     // veld:end
   }
 
+  // #if limits
+  /** Waits for {@code millis} milliseconds: a client that gets {@code 429} waits through this, so a test does not. */
+  @FunctionalInterface
+  public interface Sleeper {
+    /** Waits. */
+    void sleep(long millis) throws InterruptedException;
+  }
+
+  // #endif
   /** Options with everything at its default. */
   public static ClientOptions defaults() {
     return builder().build();
@@ -96,6 +113,10 @@ public final class ClientOptions {
   // #endif
   // #if timeouts_runtimecfg
     b.timeoutSet = timeoutSet;
+  // #endif
+  // #if limits_runtimecfg
+    b.retryOnLimit = retryOnLimit;
+    b.sleeper = sleeper;
   // #endif
   // #if runtimecfg_rules
     b.localRules = localRules;
@@ -129,6 +150,16 @@ public final class ClientOptions {
     return apiKey;
   }
 
+  // #if limits
+  boolean retryOnLimit() {
+    return retryOnLimit;
+  }
+
+  Sleeper sleeper() {
+    return sleeper;
+  }
+
+  // #endif
   boolean validate(boolean fallback) {
     return validate == null ? fallback : validate;
   }
@@ -172,6 +203,10 @@ public final class ClientOptions {
     private Duration timeout = Duration.ofSeconds(30);
     // #if timeouts
     private boolean timeoutSet;
+    // #endif
+    // #if limits
+    private boolean retryOnLimit = true;
+    private Sleeper sleeper = Thread::sleep;
     // #endif
     // #if rules
     private boolean localRules = true;
@@ -278,6 +313,24 @@ public final class ClientOptions {
     }
     // veld:end
 
+    // #if limits
+    /**
+     * Whether a call that gets {@code 429} with {@code retryAfter} waits that long and sends again,
+     * once, when the endpoint is a {@code get} or {@code @idempotent} (default true). With {@code
+     * false} the typed error is raised at once.
+     */
+    public Builder retryOnLimit(boolean value) {
+      this.retryOnLimit = value;
+      return this;
+    }
+
+    /** What the client waits through before it sends again after a {@code 429} (default {@code Thread.sleep}). */
+    public Builder sleeper(Sleeper value) {
+      this.sleeper = value;
+      return this;
+    }
+
+    // #endif
     /** The finished options. */
     public ClientOptions build() {
       return new ClientOptions(this);

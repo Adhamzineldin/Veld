@@ -138,6 +138,9 @@ public final class Router implements VeldHandler {
         throw new IllegalStateException(e.spec().name() + ": hooks.flags is required");
       }
       // #endif
+      // #if limits_server
+      Platform.assertHooks(hooks, e.spec());
+      // #endif
     }
   }
 
@@ -603,6 +606,13 @@ public final class Router implements VeldHandler {
         return out;
       }
     }
+    // #if limits_server
+    VeldResponse limited = Platform.limited(hooks, spec, ctx);
+    if (limited != null) {
+      out.failure = limited;
+      return out;
+    }
+    // #endif
     for (String name : route.endpoint().middleware()) {
       hooks.middleware(name).run(ctx);
     }

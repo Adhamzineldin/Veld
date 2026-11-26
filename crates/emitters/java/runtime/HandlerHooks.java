@@ -67,6 +67,22 @@ public final class HandlerHooks {
   }
 
   // #endif
+  // #if limits_server
+  /** Tells the address of the client of a request, as text, for the limits {@code by: ip}. */
+  @FunctionalInterface
+  public interface AddressHook {
+    /** Returns the address text; only the application knows which proxy header to trust. */
+    String address(RequestContext ctx) throws Exception;
+  }
+
+  /** Tells who the caller is, as text, for the limits {@code by: user}. */
+  @FunctionalInterface
+  public interface CallerHook {
+    /** Returns the caller text; the same caller must always give the same text. */
+    String caller(Object principal, RequestContext ctx) throws Exception;
+  }
+
+  // #endif
   // #if conditional
   /**
    * The caller of a request, as text, for the scope of an idempotency key. The scope of a key
@@ -112,6 +128,12 @@ public final class HandlerHooks {
   private final AuditHook auditHook;
   private final Map<String, Platform.Audited> audited;
   // #endif
+  // #if limits_server
+  private final Limiter limiter;
+  private final AddressHook address;
+  private final CallerHook limitCaller;
+  private final Map<String, Platform.Limit> limits;
+  // #endif
 
   private HandlerHooks(Builder b) {
     this.bearer = b.bearer;
@@ -146,6 +168,13 @@ public final class HandlerHooks {
     // #if audit
     this.auditHook = b.auditHook;
     this.audited = Map.copyOf(b.audited);
+    // #endif
+    // #if limits_server
+    this.limits = Map.copyOf(b.limits);
+    // The limiter of a server that has a limit and was given none is the memory limiter, with a notice.
+    this.limiter = b.limiter == null && !b.limits.isEmpty() ? Platform.memoryLimiter() : b.limiter;
+    this.address = b.address;
+    this.limitCaller = b.limitCaller;
     // #endif
   }
 
@@ -232,6 +261,25 @@ public final class HandlerHooks {
   /** What the service says about the audited endpoint with this operation signature, or {@code null}. */
   Platform.Audited audited(String sig) {
     return audited.get(sig);
+  }
+  // #endif
+  // #if limits_server
+
+  Limiter limiter() {
+    return limiter;
+  }
+
+  AddressHook address() {
+    return address;
+  }
+
+  CallerHook limitCaller() {
+    return limitCaller;
+  }
+
+  /** The limit of the endpoint with this operation signature, or {@code null}. */
+  Platform.Limit limit(String sig) {
+    return limits.get(sig);
   }
   // #endif
   // #if testing_platform
@@ -332,6 +380,12 @@ public final class HandlerHooks {
     // #if audit
     private AuditHook auditHook;
     private final Map<String, Platform.Audited> audited = new LinkedHashMap<>();
+    // #endif
+    // #if limits_server
+    private Limiter limiter;
+    private AddressHook address;
+    private CallerHook limitCaller;
+    private final Map<String, Platform.Limit> limits = new LinkedHashMap<>();
     // #endif
 
     private Builder() {}
@@ -488,6 +542,32 @@ public final class HandlerHooks {
     /** The audited endpoints and what an event needs to know of each, by operation signature. */
     public Builder audited(Map<String, Platform.Audited> byOperation) {
       this.audited.putAll(byOperation);
+      return this;
+    }
+
+    // #endif
+    // #if limits_server
+    /** The limiter of the limits; without one the server counts in memory, per process. */
+    public Builder limiter(Limiter value) {
+      this.limiter = value;
+      return this;
+    }
+
+    /** Tells the address of the client, for the limits {@code by: ip}. */
+    public Builder address(AddressHook hook) {
+      this.address = hook;
+      return this;
+    }
+
+    /** Tells who the caller is, for the limits {@code by: user}. */
+    public Builder limitCaller(CallerHook hook) {
+      this.limitCaller = hook;
+      return this;
+    }
+
+    /** The limits of the endpoints, by operation signature. */
+    public Builder limits(Map<String, Platform.Limit> byOperation) {
+      this.limits.putAll(byOperation);
       return this;
     }
 

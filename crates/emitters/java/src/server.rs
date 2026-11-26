@@ -280,7 +280,12 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
         }
     }
     auth.sort_unstable();
-    let (needs_store, needs_caller) = conditional::hooks_needed(svc);
+    let (needs_store, needs_idempotency_caller) = conditional::hooks_needed(svc);
+    // A limit `by: user` asks the caller-identity hook that idempotency uses; a service with a
+    // limit and no `@idempotent` endpoint that needs it gets the same hook of its own
+    // (`spec/platform.md` section 9.2).
+    let (limit_user, limit_ip) = crate::platform::limit_needs(svc);
+    let needs_caller = needs_idempotency_caller || limit_user;
     let idempotency: Vec<&str> = [
         needs_store.then_some("store"),
         needs_caller.then_some("caller"),
@@ -299,6 +304,7 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
             .chain(needs_flags.then(|| "flags".to_string()))
             .chain(needs_outbox.then(|| "outbox".to_string()))
             .chain(needs_audit.then(|| "audit".to_string()))
+            .chain(limit_ip.then(|| "address".to_string()))
             .collect(),
     );
     let principal = match (&svc.principal, fc.tree.policies, auth.is_empty()) {
@@ -360,7 +366,12 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
     }
     if needs_caller {
         let param = params[first + usize::from(needs_store)].clone();
-        out.push(caller_hook(fc, &hooks, principal.as_deref(), param));
+        out.push(caller_hook(
+            fc,
+            &hooks,
+            principal.as_deref(),
+            (param, needs_idempotency_caller, limit_user),
+        ));
     }
     if needs_flags {
         let param = params[first + usize::from(needs_store) + usize::from(needs_caller)].clone();
@@ -388,6 +399,22 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
             ty: format!("{hooks}.AuditHook"),
             register: format!("builder.audit({});", params[at]),
             doc: "the audit log: where the event of every audited request goes (`spec/platform.md` section 4)"
+                .to_string(),
+            iface: Vec::new(),
+        });
+    }
+    if limit_ip {
+        let at = first
+            + usize::from(needs_store)
+            + usize::from(needs_caller)
+            + usize::from(needs_flags)
+            + usize::from(needs_outbox)
+            + usize::from(needs_audit);
+        out.push(Hook {
+            param: params[at].clone(),
+            ty: format!("{hooks}.AddressHook"),
+            register: format!("builder.address({});", params[at]),
+            doc: "the address of the client of a request, as text, for the limits `by: ip` (only the application knows which proxy header to trust)"
                 .to_string(),
             iface: Vec::new(),
         });
@@ -481,28 +508,64 @@ fn flags_hook(fc: &mut FileCtx<'_, '_>, svc: &Service, param: String) -> Hook {
     }
 }
 
-/// The hook that tells who the caller is, for the scope of an idempotency key: typed with the
-/// principal's model when the service has one.
+/// The hook that tells who the caller is: for the scope of an idempotency key (`idempotent`), for the
+/// limits `by: user` (`limited`), or for both. Typed with the principal's model when the service has
+/// one.
 fn caller_hook(
     fc: &mut FileCtx<'_, '_>,
     hooks: &str,
     principal: Option<&str>,
-    param: String,
+    (param, idempotent, limited): (String, bool, bool),
 ) -> Hook {
-    let doc = "who the caller is, as text, for the scope of an idempotency key".to_string();
+    let doc = match (idempotent, limited) {
+        (true, true) => "who the caller is, as text, for the scope of an idempotency key and for the limits `by: user`",
+        (true, false) => "who the caller is, as text, for the scope of an idempotency key",
+        (false, _) => "who the caller is, as text, for the limits `by: user`",
+    }
+    .to_string();
+    let typed = |param: &str, class: &str| {
+        let mut out = Vec::new();
+        if idempotent {
+            out.push(format!(
+                "builder.idempotencyCaller((principal, ctx) -> {param}.caller(({class}) principal, ctx));"
+            ));
+        }
+        if limited {
+            // A hook that is not there stays missing, so that the server does not start (`null`).
+            out.push(format!(
+                "builder.limitCaller({param} == null ? null : (principal, ctx) -> {param}.caller(({class}) principal, ctx));"
+            ));
+        }
+        out.join("\n")
+    };
+    let untyped = |param: &str| {
+        let mut out = Vec::new();
+        if idempotent {
+            out.push(format!("builder.idempotencyCaller({param});"));
+        }
+        if limited {
+            out.push(format!(
+                "builder.limitCaller({param} == null ? null : {param}::caller);"
+            ));
+        }
+        out.join("\n")
+    };
     match principal {
         Some(class) => {
             let ctx = fc.rt("RequestContext");
+            let name = if idempotent {
+                "IdempotencyCaller"
+            } else {
+                "Caller"
+            };
             Hook {
-                ty: "IdempotencyCaller".to_string(),
-                register: format!(
-                    "builder.idempotencyCaller((principal, ctx) -> {param}.caller(({class}) principal, ctx));"
-                ),
+                ty: name.to_string(),
+                register: typed(&param, class),
                 doc,
                 iface: vec![
                     format!("/** The caller hook: returns the text that stands for the caller (a `{class}`). */"),
                     "@FunctionalInterface".to_string(),
-                    "public interface IdempotencyCaller {".to_string(),
+                    format!("public interface {name} {{"),
                     "  /** Returns the caller text; the same caller must always give the same text. */".to_string(),
                     format!("  String caller({class} principal, {ctx} ctx) throws Exception;"),
                     "}".to_string(),
@@ -511,8 +574,12 @@ fn caller_hook(
             }
         }
         None => Hook {
-            ty: format!("{hooks}.IdempotencyCaller"),
-            register: format!("builder.idempotencyCaller({param});"),
+            ty: if idempotent {
+                format!("{hooks}.IdempotencyCaller")
+            } else {
+                format!("{hooks}.CallerHook")
+            },
+            register: untyped(&param),
             doc,
             iface: Vec::new(),
             param,
@@ -575,7 +642,9 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
         .collect();
     w.open(format!("public {class}({})", sig.join(", ")));
     for h in &required {
-        w.line(h.register.clone());
+        for statement in h.register.lines() {
+            w.line(statement);
+        }
     }
     for line in crate::platform::registrations(fc, svc) {
         w.line(line);
@@ -632,6 +701,9 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     w.blank();
     if fc.tree.rules {
         write_rule_hooks(w, fc, class);
+    }
+    if crate::platform::service_limited(svc) {
+        crate::platform::write_limiter(w, fc, class);
     }
     if build_call(fc) != "hooks.build()" {
         write_build_with_config(w, fc);
@@ -1116,6 +1188,10 @@ pub(crate) fn needs_hooks(tree: &Tree<'_>, svc: &Service) -> bool {
         || crate::flags::service_uses(tree, svc)
         || outbox::service_emits(svc)
         || crate::platform::service_audited(svc)
+        || {
+            let (user, ip) = crate::platform::limit_needs(svc);
+            user || ip
+        }
 }
 
 /// The services of the tree as the framework adapters see them, in tree order.
