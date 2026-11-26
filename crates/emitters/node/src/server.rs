@@ -4,6 +4,7 @@ use veld_codegen::naming;
 use veld_codegen::runtime_config::{RULES_OUTPUT, RuntimeModel};
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_emit_typescript::client::{RequestNames, write_request_type, write_spec_fields};
+use veld_emit_typescript::derived;
 use veld_emit_typescript::tree::{FileCtx, Tree};
 use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{add_file, doc_comment, method_key, prop_key, ts_str};
@@ -108,8 +109,9 @@ fn write_interface(
     w.open(format!("export interface {name}Service<Ctx = {ctx}>"));
     for ep in &svc.endpoints {
         doc_comment(w, ep.docs.as_deref(), ep.deprecated.as_deref());
+        // What the handler returns: a derived field is optional, the runtime computes it.
         let ret = match &ep.success.ty {
-            Some(t) => ts_type(fc, t),
+            Some(t) => derived::shaped_type(fc, t, derived::Shape::Output),
             None => "void".to_string(),
         };
         let key = method_key(&ep.name);
@@ -142,7 +144,7 @@ fn ws_types(fc: &mut FileCtx<'_, '_>, ep: &Endpoint) -> (String, String) {
         None => "never".to_string(),
     };
     let outgoing = match &ep.success.ty {
-        Some(t) => ts_type(fc, t),
+        Some(t) => derived::shaped_type(fc, t, derived::Shape::Output),
         None => "never".to_string(),
     };
     (incoming, outgoing)

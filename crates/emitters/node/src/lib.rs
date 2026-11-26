@@ -74,6 +74,7 @@ impl Generator for Node {
             .with(veld_ir::Feature::RulesRollout)
             .with(veld_ir::Feature::RulesVersion)
             .with(veld_ir::Feature::Idempotency)
+            .with(veld_ir::Feature::RulesDerived)
             .with(veld_ir::Feature::EventsDelivery)
     }
 

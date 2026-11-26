@@ -13,8 +13,10 @@ use veld_emit_typescript::policy::app_value;
 use veld_emit_typescript::tree::FileCtx;
 use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{method_key, prop_key, ts_str};
+use veld_emit_typescript::validate::schema_expr;
 use veld_ir::{
-    Endpoint, EndpointEnsure, EndpointFact, EndpointRequire, ExprType, Scalar, Service, Type,
+    Constraints, Endpoint, EndpointEnsure, EndpointFact, EndpointRequire, ExprType, Scalar,
+    Service, Type,
 };
 
 /// Whether an endpoint has any statement.
@@ -262,6 +264,11 @@ fn write_fact(
         None => {
             w.line(format!("load: (_key, ctx) => {loader}(ctx),"));
         }
+    }
+    // A fact is given its derived fields once it is loaded (`spec/rules.md` section 17.2).
+    if fc.tree.ir.type_reaches_derived(&fact.ty) {
+        let schema = schema_expr(fc, &fact.ty, &Constraints::default());
+        w.line(format!("schema: {schema},"));
     }
     w.close_with("},");
 }
