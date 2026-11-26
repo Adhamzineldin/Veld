@@ -1,0 +1,184 @@
+// @idempotent (spec/rules.md 11.8 and 11.9). The examples are the vectors: every server target and
+// the reference evaluator must give exactly the stated outcome.
+//
+// This file waits under a `.pending` suffix until a generator implements `idempotency`; the
+// reference evaluator runs it already (crates/veld-rules/tests/examples.rs). What an example cannot
+// state: the fingerprint of a request, the scope of a key (an example states what the store holds
+// for the scope its request maps to, so one example cannot show that a key of another caller is not
+// replayed), what the store holds afterwards, and the header Veld-Idempotent-Replay.
+
+model Room {
+  id: uuid
+  capacity: int
+}
+
+model NewBooking {
+  guests: int
+  rule atLeastOne: guests >= 1
+}
+
+model Booking {
+  id: uuid
+  guests: int
+}
+
+model Shelf {
+  id: uuid
+  name: string
+  @version
+  revision: long
+}
+
+model Rename { name: string }
+
+error RoomFull 409 { capacity: int }
+
+service Bookings at "/bookings" {
+  /// The key is optional: a request without one is not idempotent.
+  @idempotent
+  post "/" book(body: NewBooking) -> 201 Booking | RoomFull {
+    fact room: Room
+    require body.guests <= room.capacity else RoomFull { capacity: room.capacity }
+  }
+
+  @idempotent(required: true)
+  post "/paid" pay(body: NewBooking) -> 201 Booking
+
+  @idempotent(header: "X-Request-Id")
+  put "/{id}" replace(id: uuid, body: NewBooking) -> Booking
+
+  @idempotent
+  delete "/{id}" cancel(id: uuid) -> 204
+
+  @auth(bearer)
+  @idempotent(required: true, header: "Idempotency-Token")
+  post "/mine" bookMine(body: NewBooking) -> 201 Booking
+
+  @idempotent
+  put "/rooms/{id}" saveRoom(id: uuid, body: Rename) -> Shelf {
+    fact shelf: Shelf = id
+  }
+}
+
+// --- a key the store does not know ---
+
+example "a new key runs the request" {
+  given room = { capacity: 9 }
+  key "k-1"
+  book(body: { guests: 2 }) returns { guests: 2 } -> ok
+}
+
+example "a new key does not change what the rules say" {
+  given room = { capacity: 1 }
+  key "k-2"
+  book(body: { guests: 2 }) -> RoomFull { capacity: 1 }
+}
+
+example "a request without a key is not idempotent" {
+  given room = absent
+  book(body: { guests: 2 }) -> NotFound
+}
+
+// --- a stored answer is sent again, and nothing else runs ---
+
+example "a stored error is sent again" {
+  given room = { capacity: 9 }
+  key "k-3" stored RoomFull { capacity: 2 }
+  book(body: { guests: 3 }) -> RoomFull { capacity: 2 }
+}
+
+example "a stored success is sent again" {
+  key "k-4" stored ok { guests: 2 }
+  book(body: { guests: 2 }) -> ok { guests: 2 }
+}
+
+example "no fact is loaded for a replay" {
+  given room = absent
+  key "k-5" stored ok { guests: 2 }
+  book(body: { guests: 2 }) -> ok { guests: 2 }
+}
+
+example "a stored answer without a body is sent again" {
+  key "k-6" stored ok
+  cancel(id: "00000000-0000-4000-8000-000000000001") -> ok
+}
+
+example "a stored answer of an implicit error is sent again" {
+  key "k-7" stored NotFound { resource: "room" }
+  book(body: { guests: 2 }) -> NotFound { resource: "room" }
+}
+
+example "an authenticated endpoint replays too" {
+  key "k-8" stored ok { guests: 4 }
+  bookMine(body: { guests: 4 }) -> ok { guests: 4 }
+}
+
+// --- a key in use is a conflict ---
+
+example "the same key with other parameters is a conflict" {
+  key "k-9" other
+  book(body: { guests: 3 }) -> Conflict { message: "this idempotency key was used with other parameters" }
+}
+
+example "a key whose first request is still running is a conflict" {
+  key "k-10" running
+  book(body: { guests: 2 }) -> Conflict { message: "a request with this idempotency key is still running" }
+}
+
+example "a conflict loads no fact either" {
+  given room = absent
+  key "k-11" other
+  book(body: { guests: 2 }) -> Conflict
+}
+
+// --- the key itself ---
+
+example "a required key that is missing is refused" {
+  pay(body: { guests: 2 }) -> ValidationError { issues: [{ path: "header.Idempotency-Key", code: "required", message: "is required" }] }
+}
+
+example "a required key that is there runs the request" {
+  key "k-12"
+  pay(body: { guests: 2 }) returns { guests: 2 } -> ok
+}
+
+example "a required key has the name the annotation gives" {
+  bookMine(body: { guests: 2 }) -> ValidationError { issues: [{ path: "header.Idempotency-Token", code: "required", message: "is required" }] }
+}
+
+example "another header name works like the default" {
+  key "k-13" stored ok { guests: 2 }
+  replace(id: "00000000-0000-4000-8000-000000000001", body: { guests: 2 }) -> ok { guests: 2 }
+}
+
+// --- where the lookup stands among the steps ---
+
+example "a request that is not valid is refused before the store is asked" {
+  key "k-14" stored ok { guests: 2 }
+  book(body: { guests: 0 }) -> ValidationError
+}
+
+example "a missing key and an invalid body are both refused" {
+  pay(body: { guests: 0 }) -> ValidationError
+}
+
+example "a replay comes before the version guard" {
+  given shelf = { revision: 4 }
+  ifMatch 3
+  key "k-15" stored ok { name: "Blue" }
+  saveRoom(id: shelf.id, body: { name: "Blue" }) -> ok { name: "Blue" }
+}
+
+example "a conflict comes before the version guard" {
+  given shelf = { revision: 4 }
+  ifMatch 3
+  key "k-16" other
+  saveRoom(id: shelf.id, body: { name: "Blue" }) -> Conflict
+}
+
+example "a new key leaves the version guard to answer" {
+  given shelf = { revision: 4 }
+  ifMatch 3
+  key "k-17"
+  saveRoom(id: shelf.id, body: { name: "Blue" }) -> PreconditionFailed { expected: 3, actual: 4 }
+}

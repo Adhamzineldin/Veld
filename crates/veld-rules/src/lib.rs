@@ -19,6 +19,7 @@ mod error;
 mod eval;
 pub mod example;
 pub mod helpers;
+pub mod idempotency;
 pub mod machine;
 mod old;
 mod ops;
@@ -26,6 +27,7 @@ mod pipeline;
 pub mod policy;
 mod value;
 pub mod vectors;
+pub mod version;
 mod wire;
 
 #[cfg(test)]
@@ -41,13 +43,18 @@ pub use example::{
     run_event_example, run_example,
 };
 pub use helpers::num::EvalError;
+pub use idempotency::{
+    IdempotencyKey, Scope, StoreEffect, StoreState, StoredAnswer, fingerprint, is_valid_key,
+};
 pub use machine::{is_final, next_states};
 pub use old::save_old;
 pub use pipeline::{
-    Before, ErrorAnswer, Outcome, OutputMode, Pipeline, Prepared, Reported, Request, RunError,
+    After, Before, ErrorAnswer, Outcome, OutputMode, Pipeline, Prepared, Reported, Request,
+    RunError,
 };
 pub use policy::{NOT_PERMITTED, PolicyVerdict, eval_policy};
 pub use value::Value;
+pub use version::{IfMatch, etag, parse_if_match};
 pub use wire::{format_date, format_datetime, format_time};
 
 /// The IR version whose rules this crate evaluates.
