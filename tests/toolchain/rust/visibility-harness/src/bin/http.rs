@@ -6,7 +6,7 @@
 //! output `off`). The program prints `visibility http ok`.
 
 use serde_json::json;
-use visibility_harness::{ALICE, OPENS_MS, Servers, send, serve};
+use visibility_harness::{ALICE, OPENS_MS, Servers, first_frame, send, serve};
 
 fn phone(doc: &serde_json::Value) -> bool {
     doc["guest"].get("phone").is_some()
@@ -86,6 +86,12 @@ fn a_declared_error(s: &Servers) {
     *s.world.divisor.lock().unwrap() = 1;
 }
 
+/// A stream item is shown to the caller too.
+fn a_stream_item(s: &Servers) {
+    assert!(first_frame(&s.desk, "alice").contains("\"phone\""));
+    assert!(!first_frame(&s.desk, "bob").contains("\"phone\""));
+}
+
 /// An endpoint with no caller drops every `@visible` field; a request with no token is `401`.
 fn no_caller(s: &Servers) {
     let a = send(&s.notices, "GET", "/notices/00000000-0000-4000-8000-000000000001", None);
@@ -107,6 +113,7 @@ fn main() {
         the_clock_of_the_request(&s);
         an_ensure_sees_the_field(&s, off);
         a_declared_error(&s);
+        a_stream_item(&s);
         no_caller(&s);
     }
     println!("visibility http ok");

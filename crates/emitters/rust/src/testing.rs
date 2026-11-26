@@ -226,6 +226,11 @@ fn dispatch(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, name: &str) {
     platform_clock(w, ctx, svc);
     prepare(w, svc, crate::platform::svc_uses(ctx.tree.ir, svc));
     trusted(w, ctx, svc);
+    if crate::platform::emits_caller_tenant(ctx.tree, svc) {
+        w.open("fn caller_tenant(&self, ctx: &RequestContext) -> Option<veld::platform::Tenant>");
+        w.line("self.inner.caller_tenant(ctx)");
+        w.close().blank();
+    }
     if crate::server::principal_has_derived(ctx.tree, svc) {
         w.open("fn complete_principal(&self, ctx: &mut RequestContext) -> Result<(), Vec<veld::rules::Violation>>");
         w.line("self.inner.complete_principal(ctx)");

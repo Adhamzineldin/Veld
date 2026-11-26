@@ -2760,7 +2760,7 @@ impl<E: Endpoints> Handler<E> {
         if decision.allowed {
             return None;
         }
-        let Some(declared) = ep.errors.iter().find(|d| d.status == 429) else {
+        let Some(declared) = ep.errors.iter().find(|d| d.status == 429 && d.name == "TooManyRequests") else {
             e.on_error(&Error::other(format!("{}: the endpoint does not declare `TooManyRequests`", ep.name)), ctx);
             return None;
         };

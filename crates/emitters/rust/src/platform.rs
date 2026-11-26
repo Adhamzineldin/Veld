@@ -322,6 +322,19 @@ pub fn tenant_mark(m: &Model) -> String {
     }
 }
 
+/// Whether the dispatch of the service has `caller_tenant`: it uses a feature of P1, has typed hooks
+/// and a principal whose model has a `@tenant` field.
+#[must_use]
+pub fn emits_caller_tenant(tree: &Tree<'_>, svc: &Service) -> bool {
+    (tree.p1.tenancy || tree.p1.limits)
+        && svc_uses(tree.ir, svc)
+        && svc_reads_caller(tree.ir, svc)
+        && svc
+            .principal
+            .as_ref()
+            .is_some_and(|p| tree.ir.decl(p.decl).tenant_field().is_some())
+}
+
 /// `caller_tenant` of a dispatch whose service has a principal with a `@tenant` field: the tenant
 /// of the caller, read from the typed principal (`ty` is its Rust type).
 pub fn emit_caller_tenant(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, ty: &str) {

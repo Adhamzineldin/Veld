@@ -12,7 +12,7 @@ use guests_server::guests::guests::{Booking, Guest, User};
 use guests_server::guests::notices_server::{NoticesHandler, NoticesService, PublicBookingRequest};
 use guests_server::runtime_config::{GuestsServerRuntime, RuleOutputMode};
 use guests_server::veld::server::{Body, Handler, Request, RequestContext};
-use guests_server::veld::stream::EventStream;
+use guests_server::veld::stream::{EventStream, SseEvent, iter};
 use guests_server::veld::{Error, Page};
 
 pub const ALICE: &str = "00000000-0000-4000-8000-0000000000a1";
@@ -72,7 +72,8 @@ impl DeskService for Impl {
     }
 
     async fn live_bookings(&self, _request: LiveBookingsRequest, _ctx: &RequestContext) -> Result<EventStream<Booking>, Error> {
-        Err(Error::other("the harness does not stream"))
+        let items: Vec<Result<SseEvent<Booking>, Error>> = vec![Ok(SseEvent::of(booking(&self.0, ID, ALICE)))];
+        Ok(Box::pin(iter(items)))
     }
 }
 
@@ -146,6 +147,17 @@ pub fn serve(validate: bool, off: bool) -> Servers {
 pub struct Answer {
     pub status: u16,
     pub doc: serde_json::Value,
+}
+
+/// The first frame of the stream of `liveBookings` for `token`, as text.
+pub fn first_frame(handler: &Handler<guests_server::guests::desk_server::DeskDispatch<Impl, Hooks, Impl>>, token: &str) -> String {
+    let headers = vec![("authorization".to_string(), format!("Bearer {token}"))];
+    let request = Request { method: "GET".into(), path: "/desk/live".into(), query: String::new(), headers, body: Vec::new() };
+    let response = guests_server::veld::block_on(handler.handle(request)).expect("a route");
+    match response.body {
+        Body::Sse(mut frames) => String::from_utf8(guests_server::veld::block_on(guests_server::veld::stream::next(&mut frames)).expect("a frame")).unwrap(),
+        _ => panic!("a stream"),
+    }
 }
 
 /// Sends a GET (or a POST without a body) to `handler` as `token` and reads the JSON answer.

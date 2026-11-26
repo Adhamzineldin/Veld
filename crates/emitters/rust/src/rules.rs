@@ -1124,7 +1124,7 @@ fn derived_statement(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl, f: &Field,
     if reached.readonly_nested
         || reads
             .iter()
-            .any(|r| d.fields().iter().any(|o| &o.name == r && o.readonly))
+            .any(|r| d.fields().iter().any(|o| &o.name == r && o.server_set()))
     {
         conditions.push("mode != vr::Mode::Request".to_string());
     }

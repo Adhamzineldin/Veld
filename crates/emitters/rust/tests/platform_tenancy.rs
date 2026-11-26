@@ -95,6 +95,12 @@ fn the_schemas_the_facts_and_the_dispatch_have_the_feature() {
     ] {
         assert!(core.contains(word), "{word}");
     }
+    // The test handler has the caller's tenant too: the principal it decodes is the caller.
+    let testing = server(&ir, true);
+    assert!(
+        text(&testing, "src/bookings/tenants_test_server.rs")
+            .contains("self.inner.caller_tenant(ctx)")
+    );
     let client = gen_client(&ir, "bookings-client", None);
     assert!(text(&client, "src/bookings/bookings.rs").contains("tenant: true,"));
     for (path, bytes) in client.iter() {

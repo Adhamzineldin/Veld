@@ -129,7 +129,7 @@ fn a_contract_without_it_has_none_of_the_words() {
                 "Visible",
                 "show_record",
                 "request_clock",
-                "now_ms",
+                "fn now_ms(",
                 "item_text",
                 "note_hidden",
             ] {

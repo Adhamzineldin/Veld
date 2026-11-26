@@ -4,10 +4,6 @@
 //! (and the answer its status and error). The contract is the goldens' own with
 //! `@limit(10, per: minute, by: user)` added to `payBooking`, so that the case of the limiter runs.
 //! Usage: `audit-goldens <cases.json>`; prints `audit goldens ok: <n>`.
-//!
-//! One difference is known and printed: a `Page` is sent with its `total` (a `long`) as text, the
-//! form of every `long` on the wire (`spec/language.md` section 5), and the audit event carries the
-//! result as it was sent, so the case of the page expects `"total":"1"` where the golden has `1`.
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
@@ -180,19 +176,11 @@ fn request(case: &Value) -> Request {
     Request { method: r["method"].as_str().unwrap().into(), path: r["path"].as_str().unwrap().into(), query: query.join("&"), headers, body }
 }
 
-/// The `total` of a page is text in what is sent: the golden's number becomes the text of its digits.
-fn as_sent(want: &mut Value, noted: &mut bool) {
-    if let Some(total) = want["result"].get("total").filter(|t| t.is_number()).cloned() {
-        want["result"]["total"] = Value::String(total.to_string());
-        *noted = true;
-    }
-}
-
 fn main() {
     let path = std::env::args().nth(1).expect("the path of cases.json");
     let file: Value = serde_json::from_str(&std::fs::read_to_string(&path).expect("cases.json")).expect("JSON");
     let cases = file["cases"].as_array().expect("cases");
-    let mut known = 0;
+    let mut failures: Vec<String> = Vec::new();
     for case in cases {
         let name = case["name"].as_str().unwrap_or("?");
         let world = Arc::new(World::default());
@@ -220,16 +208,13 @@ fn main() {
             None => assert!(events.is_empty(), "{name}: an endpoint that is not audited has no event: {events:?}"),
             Some(golden) => {
                 assert_eq!(events.len(), 1, "{name}: one event");
-                let mut want: Value = serde_json::from_str(golden).unwrap();
-                let mut noted = false;
-                as_sent(&mut want, &mut noted);
-                if noted {
-                    known += 1;
-                    println!("known difference ({name}): the `total` of a page is text on the wire of this server");
+                let want: Value = serde_json::from_str(golden).unwrap();
+                if events[0] != text(&want) {
+                    failures.push(format!("{name}: the bytes of the event\n  got  {}\n  want {}", events[0], text(&want)));
                 }
-                assert_eq!(events[0], text(&want), "{name}: the bytes of the event");
             }
         }
     }
-    println!("audit goldens ok: {} (known differences: {known})", cases.len());
+    assert!(failures.is_empty(), "{} cases differ:\n{}", failures.len(), failures.join("\n"));
+    println!("audit goldens ok: {}", cases.len());
 }

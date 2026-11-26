@@ -194,7 +194,7 @@ impl Walker<'_> {
                 .iter()
                 .find(|f| f.name == step.name)?;
             pattern = pattern.map(|base| join(&base, &field.wire));
-            if nested && field.readonly {
+            if nested && field.server_set() {
                 self.out.readonly_nested = true;
             }
             let below = nested || pattern.as_deref().is_some_and(|s| s.contains('.'));
