@@ -123,6 +123,7 @@ fn param_field(name: &str, ty: &Type) -> RField {
         pii: false,
         secret: false,
         visible: false,
+        tenant: false,
         inherited_from: None,
         constraints: veld_ir::Constraints::default(),
         example: None,

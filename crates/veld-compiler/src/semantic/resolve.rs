@@ -864,6 +864,7 @@ fn build_field(
         pii: a.pii,
         secret: a.secret,
         visible: a.visible.is_some(),
+        tenant: a.tenant,
         inherited_from: None,
         constraints: a.constraints.clone(),
         example,

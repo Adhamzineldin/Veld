@@ -251,6 +251,8 @@ fn field(name: &str, ty: Type, lit: Literal) -> Field {
         secret: true,
         visible: Some(int_lit(1)),
         visible_principal: Some(DeclId(0)),
+        tenant: true,
+        tenant_id: Some("veld:p/m.B.tenant@0".into()),
         inherited_from: Some(DeclId(0)),
         constraints: Constraints {
             min: Some(0.0),

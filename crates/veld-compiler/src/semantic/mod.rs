@@ -44,6 +44,8 @@ mod service_levels;
 mod service_levels_tests;
 mod services;
 #[cfg(test)]
+mod tenant_tests;
+#[cfg(test)]
 mod tests;
 mod timed;
 #[cfg(test)]
@@ -140,6 +142,8 @@ pub struct RField {
     /// `@visible(when: e)` (`spec/platform.md` section 2). Its checked expression is in
     /// [`Resolved::own_visible`] of the declaration that wrote it.
     pub visible: bool,
+    /// `@tenant` (`spec/platform.md` section 3).
+    pub tenant: bool,
     pub inherited_from: Option<usize>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -379,8 +383,10 @@ pub fn analyze_lenient<'a>(
     rules::check(&mut prog, diags);
     rules::check_policies(&mut prog, diags);
     rules::check_visible(&mut prog, diags);
+    rules::check_tenant(&prog, diags);
     services::analyze(&mut prog, diags);
     rules::check_visible_endpoints(&prog, diags);
+    rules::check_tenant_services(&prog, diags);
     rules::check_sagas(&mut prog, consumes, diags);
     timed::check_unused_edges(&prog, diags);
     examples::check(&mut prog, diags);

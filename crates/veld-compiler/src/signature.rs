@@ -24,7 +24,9 @@ pub use endpoint::{
 };
 pub use event::{event_rules_digest, fill_event_digests};
 pub use policy::{policy_bytes, policy_id};
-pub use rules::{derived_bytes, derived_id, derived_ids, rule_id, rule_ids};
+pub use rules::{
+    derived_bytes, derived_id, derived_ids, rule_id, rule_ids, tenant_bytes, tenant_id, tenant_ids,
+};
 use sha2::{Digest, Sha256};
 use veld_ir::{Decl, DeclKind, Method, Package, PathSegment, Type};
 

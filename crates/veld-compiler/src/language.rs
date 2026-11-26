@@ -200,7 +200,7 @@ const DEPRECATABLE: [Target; 12] = [
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 27] = [
+pub const ANNOTATIONS: [AnnotationSpec; 28] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -362,6 +362,12 @@ pub const ANNOTATIONS: [AnnotationSpec; 27] = [
         targets: &[Field],
         args: ArgShape::Visible,
         usage: "@visible(when: user.id == ownerId)",
+    },
+    AnnotationSpec {
+        name: "tenant",
+        targets: &[Field],
+        args: ArgShape::None,
+        usage: "@tenant",
     },
 ];
 

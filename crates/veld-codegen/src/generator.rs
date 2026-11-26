@@ -309,6 +309,7 @@ pub fn checked_features(ir: &Ir, req: &GenRequest<'_>) -> std::collections::BTre
     // section 1), so it is not asked.
     if req.role == Role::Client {
         used.remove(&Feature::Visibility);
+        used.remove(&Feature::Tenancy);
     }
     if req.role == Role::Server && !ir.retention_plan(&req.services).is_empty() {
         used.insert(Feature::Retention);
@@ -367,6 +368,7 @@ fn first_use(
                 | Feature::Messages
                 | Feature::Retention
                 | Feature::Visibility
+                | Feature::Tenancy
                 | Feature::RulesRollout
                 | Feature::RulesDerived
                 | Feature::RulesInvariants => false,
@@ -435,6 +437,11 @@ fn first_use(
     }
     if feature == Feature::Visibility {
         return first_visible_origin(ir, &searched(ir, services, req));
+    }
+    if feature == Feature::Tenancy {
+        let mut ids = searched(ir, services, req);
+        ids.extend(ir.fact_type_decls(services));
+        return first_tenant_origin(ir, &ids);
     }
     if feature == Feature::RulesTransitions {
         return first_machine_origin(ir, &searched(ir, services, req));
@@ -512,6 +519,18 @@ fn first_visible_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
         .iter()
         .flat_map(|id| ir.decl(*id).fields().iter())
         .filter(|f| f.visible.is_some())
+        .map(|f| &f.origin)
+        .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+        .cloned()
+}
+
+/// The origin of the first `@tenant` field (`spec/platform.md` section 3) of the declarations, in
+/// source order.
+fn first_tenant_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .flat_map(|id| ir.decl(*id).fields().iter())
+        .filter(|f| f.tenant)
         .map(|f| &f.origin)
         .min_by_key(|o| (o.file.as_str(), o.line, o.col))
         .cloned()

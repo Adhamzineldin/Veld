@@ -317,7 +317,7 @@ impl Checker<'_, '_, '_> {
         let mut ty = match start {
             Start::Var(ty) => ty,
             Start::Field(f) => {
-                self.note_read(&f.name, f.readonly);
+                self.note_read(&f.name, f.readonly || f.tenant);
                 bounded = f.constraints.max_len.is_some();
                 any_optional |= f.optional;
                 self.require_present(f.optional, &key, flat.root.span, in_has)?;

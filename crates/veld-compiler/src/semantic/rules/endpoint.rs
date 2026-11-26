@@ -152,6 +152,7 @@ pub(super) fn scope_field(
         pii: false,
         secret: false,
         visible: false,
+        tenant: false,
         inherited_from: None,
         constraints,
         example: None,

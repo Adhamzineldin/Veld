@@ -45,6 +45,8 @@ fn plain(name: &str) -> Field {
         secret: false,
         visible: None,
         visible_principal: None,
+        tenant: false,
+        tenant_id: None,
         inherited_from: None,
         constraints: Constraints::default(),
         example: None,

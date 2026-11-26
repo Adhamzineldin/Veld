@@ -324,10 +324,14 @@ impl<'p> Cx<'p, '_, '_> {
         later: &[&str],
         level: usize,
     ) -> bool {
-        if field.readonly {
+        if field.readonly || field.tenant {
             self.err(
                 "E1201",
-                format!("field `{}` is `@readonly`: the server sets it", field.name),
+                format!(
+                    "field `{}` is `@{}`: the server sets it",
+                    field.name,
+                    if field.readonly { "readonly" } else { "tenant" }
+                ),
                 f.name.span,
             );
             return false;
@@ -359,7 +363,7 @@ impl<'p> Cx<'p, '_, '_> {
         let mut ok = true;
         for f in fields
             .iter()
-            .filter(|f| !f.optional && f.default.is_none() && !f.readonly)
+            .filter(|f| !f.optional && f.default.is_none() && !f.readonly && !f.tenant)
         {
             if !given.contains_key(f.name.as_str()) {
                 self.err(

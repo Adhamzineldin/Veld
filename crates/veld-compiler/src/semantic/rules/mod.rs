@@ -19,6 +19,7 @@ mod saga;
 mod saga_args;
 mod saga_const;
 mod since;
+mod tenant;
 #[cfg(test)]
 mod tests;
 mod transition;
@@ -41,6 +42,7 @@ pub(crate) use endpoint::{
 pub(super) use policy::check_policies;
 pub(super) use saga::check as check_sagas;
 pub(crate) use saga::{RArg, RCall, RObjectField, RSaga, RStep, RValue};
+pub(super) use tenant::{check as check_tenant, check_services as check_tenant_services};
 pub(crate) use transition::RTransition;
 use veld_ir::Rollout;
 use veld_ir::rules::Expr;

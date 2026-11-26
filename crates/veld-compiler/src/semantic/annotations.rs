@@ -29,6 +29,8 @@ pub struct Anns<'a> {
     /// `@pii` and `@secret` on a field (`spec/rules.md` section 19.3).
     pub pii: bool,
     pub secret: bool,
+    /// `@tenant` on a field (`spec/platform.md` section 3).
+    pub tenant: bool,
     /// `@idempotent` on an endpoint.
     pub idempotent: Option<Idempotent>,
     /// `@retry` on a channel.
@@ -142,7 +144,15 @@ fn hidden_from(spec: &language::AnnotationSpec, target: Target) -> bool {
     // unknown annotation on a model or a service reads as it did before they existed.
     let own_target_only = matches!(
         spec.name,
-        "version" | "idempotent" | "timeout" | "slo" | "pii" | "secret" | "retain" | "visible"
+        "version"
+            | "idempotent"
+            | "timeout"
+            | "slo"
+            | "pii"
+            | "secret"
+            | "retain"
+            | "visible"
+            | "tenant"
     );
     (!events_only(&target) && spec.targets.iter().all(events_only))
         || (!rules_only(&target) && spec.targets.iter().all(rules_only))
@@ -158,7 +168,7 @@ fn unknown(a: &Annotation, target: Target) -> Diagnostic {
     // misspelling of one of them is still answered with `did you mean`.
     let known: Vec<String> = visible
         .iter()
-        .filter(|s| !matches!(s.name, "pii" | "secret" | "retain" | "visible"))
+        .filter(|s| !matches!(s.name, "pii" | "secret" | "retain" | "visible" | "tenant"))
         .map(|s| format!("@{}", s.name))
         .collect();
     Diagnostic::error(
@@ -282,6 +292,7 @@ fn apply<'a>(
         "ordered" => out.ordered = true,
         "pii" => out.pii = true,
         "secret" => out.secret = true,
+        "tenant" => out.tenant = true,
         "version" => {
             require_type(
                 ty,

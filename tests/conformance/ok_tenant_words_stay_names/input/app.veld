@@ -1,0 +1,6 @@
+// `tenant` is an ordinary name.
+
+model Lease {
+  tenant: string
+  landlord: string
+}

@@ -192,7 +192,7 @@ fn principal_field(name: &str, decl: usize) -> RField {
 }
 
 /// The declarations a type reaches, with unions and everything a declaration's fields reach.
-fn closure(prog: &Program<'_>, start: Vec<usize>) -> Vec<usize> {
+pub(super) fn closure(prog: &Program<'_>, start: Vec<usize>) -> Vec<usize> {
     let mut seen: BTreeSet<usize> = BTreeSet::new();
     let mut stack = start;
     while let Some(i) = stack.pop() {

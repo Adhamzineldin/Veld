@@ -58,6 +58,55 @@ pub fn derived_ids(decls: &mut [Decl], packages: &[Package]) {
     }
 }
 
+/// Fills the `tenant_id` of every `@tenant` field (`spec/platform.md` section 3). An inherited
+/// field has the id it has in the declaration that wrote it.
+pub fn tenant_ids(decls: &mut [Decl], packages: &[Package]) {
+    let ids: Vec<Vec<Option<String>>> = decls
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            d.fields()
+                .iter()
+                .map(|f| {
+                    f.tenant.then(|| {
+                        let from = f.inherited_from.map_or(i, veld_ir::DeclId::index);
+                        tenant_id(decls, packages, from, &f.wire)
+                    })
+                })
+                .collect()
+        })
+        .collect();
+    for (d, ids) in decls.iter_mut().zip(ids) {
+        for (field, id) in fields_mut(d).iter_mut().zip(ids) {
+            field.tenant_id = id;
+        }
+    }
+}
+
+/// The id of the `@tenant` field with wire name `wire`, written by `decls[declarer]`:
+/// `veld:<package>/<Model>.tenant@<hex16>`.
+#[must_use]
+pub fn tenant_id(decls: &[Decl], packages: &[Package], declarer: usize, wire: &str) -> String {
+    let d = &decls[declarer];
+    format!(
+        "veld:{}/{}.tenant@{}",
+        packages[d.package.index()].name,
+        d.name,
+        hex16(tenant_bytes(decls, declarer, wire).as_bytes())
+    )
+}
+
+/// The bytes the id of a tenant field hashes: the canonical JSON of
+/// `{ "d": qualified model name, "k": "tenant", "n": wire name }`.
+#[must_use]
+pub fn tenant_bytes(decls: &[Decl], declarer: usize, wire: &str) -> String {
+    canonical(&obj(vec![
+        ("d", text(&decls[declarer].qualified)),
+        ("k", text("tenant")),
+        ("n", text(wire)),
+    ]))
+}
+
 fn fields_mut(d: &mut Decl) -> &mut [veld_ir::Field] {
     match &mut d.kind {
         veld_ir::DeclKind::Model(m) => &mut m.fields,

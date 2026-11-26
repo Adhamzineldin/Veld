@@ -70,6 +70,7 @@ pub fn lower(
     }
     signature::rule_ids(&mut decls, &packages);
     signature::derived_ids(&mut decls, &packages);
+    signature::tenant_ids(&mut decls, &packages);
     let services = lw.services(&decls);
     let policies = lw.policies(&decls);
     let mut ir = Ir {
@@ -258,6 +259,9 @@ impl Lowerer<'_, '_> {
             secret: f.secret,
             visible,
             visible_principal,
+            tenant: f.tenant,
+            // The id needs every declaration in place: `signature::tenant_ids` fills it.
+            tenant_id: f.tenant.then(String::new),
             inherited_from: f.inherited_from.map(|d| self.decl_id(d)),
             constraints: f.constraints.clone(),
             example: f.example.clone(),

@@ -456,6 +456,11 @@ pub const CODES: &[CodeInfo] = &[
         "`@visible` is wrong: a field that is not optional, a package without a principal, an expression that does not type, or a field an event reaches",
     ),
     e(
+        "E1110",
+        C,
+        "`@tenant` is wrong: two in one model, an optional field or a type that cannot be a tenant, a field of an error, a derived field, a principal without one, or a tenant-scoped endpoint without auth",
+    ),
+    e(
         "E1201",
         C,
         "A step or a `compensate` of a saga names a service that is not consumed, an endpoint that does not exist or cannot be called (a stream or `ws`), or arguments that do not fit",
