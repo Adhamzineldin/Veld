@@ -12,13 +12,19 @@ use std::fs;
 use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::time::{Duration, Instant};
 
 use common::*;
 use serde_json::{Value, json};
 use tempfile::TempDir;
-use veld_test_support::ProcessTree;
+use veld_test_support::{BUILD_LIMIT, ProcessTree, RUN_LIMIT, run_limited};
+
+/// Runs a command with a time limit; on expiry the process tree is killed and the test fails
+/// with the command line and the time.
+fn limited(cmd: &mut Command, limit: Duration) -> std::process::Output {
+    run_limited(cmd, limit).unwrap_or_else(|e| panic!("{e}"))
+}
 
 // ---------------------------------------------------------------------------
 // Toolchain
@@ -37,15 +43,12 @@ impl Npm {
             }
             None => Command::new(if cfg!(windows) { "npm.cmd" } else { "npm" }),
         };
-        let out = cmd
-            .args(args)
+        cmd.args(args)
             .current_dir(dir)
             .env("npm_config_audit", "false")
             .env("npm_config_fund", "false")
-            .env("npm_config_update_notifier", "false")
-            .stdin(Stdio::null())
-            .output()
-            .unwrap_or_else(|e| panic!("cannot start npm: {e}"));
+            .env("npm_config_update_notifier", "false");
+        let out = limited(&mut cmd, BUILD_LIMIT);
         assert!(
             out.status.success(),
             "npm {args:?} failed in {}\n{}\n{}",
@@ -57,19 +60,18 @@ impl Npm {
 }
 
 fn ok(cmd: &mut Command) -> bool {
-    cmd.stdin(Stdio::null())
-        .output()
-        .is_ok_and(|o| o.status.success())
+    run_limited(cmd, RUN_LIMIT).is_ok_and(|o| o.status.success())
 }
 
 fn find_npm() -> Result<Npm, String> {
     if !ok(Command::new("node").arg("--version")) {
         return Err("`node` is not on PATH".into());
     }
-    let probe = Command::new("node")
-        .args(["-p", "process.execPath"])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let probe = run_limited(
+        Command::new("node").args(["-p", "process.execPath"]),
+        RUN_LIMIT,
+    )
+    .map_err(|e| e.to_string())?;
     let exe = PathBuf::from(String::from_utf8_lossy(&probe.stdout).trim());
     let dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
     let candidates = [
@@ -281,11 +283,12 @@ fn install_and_typecheck(npm: &Npm, apps: &[PathBuf]) {
         npm.run(app, &["ci"]);
     }
     for app in apps {
-        let tsc = Command::new("node")
-            .args(["node_modules/typescript/bin/tsc", "--noEmit"])
-            .current_dir(app)
-            .output()
-            .unwrap();
+        let tsc = limited(
+            Command::new("node")
+                .args(["node_modules/typescript/bin/tsc", "--noEmit"])
+                .current_dir(app),
+            BUILD_LIMIT,
+        );
         assert!(
             tsc.status.success(),
             "tsc --noEmit failed in {}\n{}{}",
@@ -301,7 +304,7 @@ fn run_render_test(app: &Path, envs: &[(&str, String)]) {
     for (k, v) in envs {
         cmd.env(k, v);
     }
-    let out = cmd.output().unwrap();
+    let out = limited(&mut cmd, RUN_LIMIT);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
         out.status.success() && stdout.contains("render ok"),
@@ -315,12 +318,13 @@ fn rust_catalog_lookup_against_the_axum_server() {
     let (guard, root) = copy_example("rust-catalog");
     veld(&root).arg("generate").assert().success();
     let target = repo_root().join("target/rust-catalog-e2e");
-    let build = Command::new(env!("CARGO"))
-        .args(["build", "--locked", "--bins", "--target-dir"])
-        .arg(&target)
-        .current_dir(&root)
-        .output()
-        .unwrap();
+    let build = limited(
+        Command::new(env!("CARGO"))
+            .args(["build", "--locked", "--bins", "--target-dir"])
+            .arg(&target)
+            .current_dir(&root),
+        BUILD_LIMIT,
+    );
     assert!(
         build.status.success(),
         "{}",
@@ -339,11 +343,12 @@ fn rust_catalog_lookup_against_the_axum_server() {
         guard.path(),
     );
     let lookup = |isbn: &str| {
-        Command::new(binary("lookup"))
-            .env("CATALOG_URL", url(port))
-            .arg(isbn)
-            .output()
-            .unwrap()
+        limited(
+            Command::new(binary("lookup"))
+                .env("CATALOG_URL", url(port))
+                .arg(isbn),
+            RUN_LIMIT,
+        )
     };
     let found = lookup("9780141439518");
     assert!(
@@ -455,10 +460,10 @@ fn bookings_server_enforces_the_contract_rules() {
     bookings_over_http(&base, &created.1);
 
     // The same through the generated client, including the local check.
-    let out = node_ts(&web, "test/client.ts")
-        .env("VELD_BOOKINGS_URL", &base)
-        .output()
-        .unwrap();
+    let out = limited(
+        node_ts(&web, "test/client.ts").env("VELD_BOOKINGS_URL", &base),
+        RUN_LIMIT,
+    );
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(
         out.status.success() && text.contains("client ok"),
@@ -690,11 +695,12 @@ fn library_package_services_share_types_and_errors() {
     assert_eq!((second.0, second.1["paid"].clone()), (200, json!(true)));
 
     // The typed client script (`web`) does the same through `@veld/web`.
-    let out = node_ts(&apps[2], "src/report.ts")
-        .env("VELD_ORDERS_URL", &orders)
-        .env("VELD_INVOICES_URL", &invoices)
-        .output()
-        .unwrap();
+    let out = limited(
+        node_ts(&apps[2], "src/report.ts")
+            .env("VELD_ORDERS_URL", &orders)
+            .env("VELD_INVOICES_URL", &invoices),
+        RUN_LIMIT,
+    );
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(
         out.status.success(),
@@ -735,12 +741,13 @@ fn compile_java(service: &Path, out: &Path) {
     let args = out.join("sources.args");
     fs::write(&args, sources.join("\n")).unwrap();
     let classes = out.join("classes");
-    let res = Command::new("javac")
-        .args(["--release", "17", "-d"])
-        .arg(&classes)
-        .arg(format!("@{}", args.display()))
-        .output()
-        .unwrap();
+    let res = limited(
+        Command::new("javac")
+            .args(["--release", "17", "-d"])
+            .arg(&classes)
+            .arg(format!("@{}", args.display())),
+        BUILD_LIMIT,
+    );
     assert!(
         res.status.success(),
         "javac failed\n{}{}",
