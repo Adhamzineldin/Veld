@@ -15,14 +15,20 @@ pub fn render(base: &str, req: &GenRequest<'_>) -> String {
     );
     t.push_str("Add this directory to your source path. It needs only the JDK (no other dependency).\n\n```java\n");
     for sid in &req.services {
-        let name = naming::pascal(&req.ir.service(*sid).name);
+        let svc = req.ir.service(*sid);
+        let name = naming::pascal(&svc.name);
         match req.role {
             Role::Client => t.push_str(&format!(
                 "import {base}.client.{name}Client;\n// var client = new {name}Client();\n"
             )),
-            Role::Server => t.push_str(&format!(
-                "import {base}.server.{name}Service;\n// implement {name}Service and serve it with {base}.server.{name}Handler\n"
-            )),
+            Role::Server => {
+                if crate::events::serves_http(svc) {
+                    t.push_str(&format!(
+                        "import {base}.server.{name}Service;\n// implement {name}Service and serve it with {base}.server.{name}Handler\n"
+                    ));
+                }
+                t.push_str(&crate::events::readme_lines(base, svc));
+            }
         }
     }
     t.push_str("```\n\n");

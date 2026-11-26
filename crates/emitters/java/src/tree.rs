@@ -38,6 +38,9 @@ pub struct Tree<'a> {
     /// output then carries `Audit` and the `rollout` regions of the runtime, and the test handler
     /// answers with `Veld-Test-Audited`.
     pub rollout: bool,
+    /// True when a service of the tree publishes or subscribes: the tree then also emits the events
+    /// of its channels and the declarations only they reach (`spec/events.md` section 14).
+    pub events: bool,
     decls: Vec<DeclId>,
 }
 
@@ -66,8 +69,23 @@ impl<'a> Tree<'a> {
             testing: false,
             policies: false,
             rollout: false,
+            events: false,
             decls: set.into_iter().collect(),
         }
+    }
+
+    /// Also emits the events of the tree's services and the declarations only they reach. The
+    /// server target calls it for its own tree; a client and a consumed service never do, because
+    /// a client generates nothing for events (`spec/events.md` section 14).
+    #[must_use]
+    pub fn with_events(mut self) -> Self {
+        let ir = self.ir;
+        let mut set: BTreeSet<DeclId> = self.decls.iter().copied().collect();
+        set.extend(ir.events_of(&self.services));
+        set.extend(ir.event_reachable_decls(&self.services));
+        self.events = self.services.iter().any(|s| ir.service(*s).uses_events());
+        self.decls = set.into_iter().collect();
+        self
     }
 
     /// Sets whether the generated code validates requests at run time by default.

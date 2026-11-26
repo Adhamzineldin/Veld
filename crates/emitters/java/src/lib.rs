@@ -8,6 +8,7 @@
 pub mod can;
 pub mod client;
 pub mod endpoint;
+pub mod events;
 pub mod frameworks;
 pub mod machine;
 pub mod models;
@@ -55,14 +56,11 @@ pub struct Options {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Java;
 
-/// What the generator supports for `role`. A server does not serve events yet (phase E1) and says
-/// so with `E0801`; a client supports the feature by generating nothing for it
+/// What the generator supports for `role`: everything. A server generates events
+/// (`spec/targets/java.md` section 12); a client supports the feature by generating nothing for it
 /// (`spec/events.md` section 14).
-fn events_capabilities(role: Role) -> Capabilities {
-    match role {
-        Role::Server => Capabilities::all_except(&[Feature::Events]).with(Feature::RulesRollout),
-        Role::Client => Capabilities::all_except(&[]).with(Feature::RulesRollout),
-    }
+fn events_capabilities(_role: Role) -> Capabilities {
+    Capabilities::all_except(&[]).with(Feature::RulesRollout)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -178,13 +176,22 @@ impl Generator for Java {
         let streaming = runtime::Streaming::of(&features);
         let tree = Tree::new(req.ir, &base, &runtime_package, req.services.clone())
             .with_validate(opts.validate != Some(false));
+        // A server also emits the events of its services; a client generates nothing for them.
+        let tree = if req.role == Role::Server {
+            tree.with_events()
+        } else {
+            tree
+        };
         let endpoint = req.role == Role::Server
             && req
                 .ir
                 .features_used(&req.services)
                 .contains(&Feature::RulesEndpoint);
+        // The events runtime reports violations and needs the rule classes, so a server with
+        // events carries them also for events without a rule.
         let rules = features.contains(&Feature::RulesInvariants)
             || features.contains(&Feature::RulesEndpoint)
+            || tree.events
             || declares_rules(&tree)
             || (req.role == Role::Server
                 && req.consumes.iter().any(|sid| {
@@ -206,6 +213,7 @@ impl Generator for Java {
             machine: endpoint && endpoint::services_have_transition(req.ir, &req.services),
             policies,
             rollout,
+            events: tree.events,
         };
         runtime::emit_with(&mut files, &base, streaming, flags)?;
         let tree = tree
@@ -223,6 +231,7 @@ impl Generator for Java {
                 };
                 frameworks::emit(&mut files, &model, profile)?;
                 server::emit(&mut files, &tree)?;
+                events::emit(&mut files, &tree)?;
                 emit_consumed(
                     &mut files,
                     req,
