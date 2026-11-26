@@ -107,6 +107,37 @@ service Depot at "/depot" {
 }
 "#;
 
+/// A principal with a derived field that nothing reads: its hooks are the untyped ones of
+/// `HandlerHooks`, and every kind of authentication still completes the principal.
+const UNTYPED: &str = r#"
+model Caller {
+  id: uuid
+  level: int
+  cap: int = level * 10
+}
+
+principal Caller
+
+model Pong {
+  ok: bool
+}
+
+@auth(basic)
+service Basics at "/basics" {
+  get "/ping" ping() -> Pong
+}
+
+@auth(apiKey(header: "X-API-Key"))
+service Keys at "/keys" {
+  get "/ping" ping() -> Pong
+}
+
+@auth(bearer)
+service Bearers at "/bearers" {
+  get "/ping" ping() -> Pong
+}
+"#;
+
 /// An event with a derived field, published by one service and consumed by another.
 const SALES: &str = r#"
 event Sold {
@@ -648,6 +679,12 @@ fn every_contract_with_derived_fields_compiles_with_every_warning_on() {
         extra_ir(),
         sales_ir(),
         chain_ir(),
+        align_ir(),
+        compile_source(
+            UNTYPED.to_string(),
+            "untyped",
+            "the untyped principal contract",
+        ),
         core_ir(),
     ];
     irs.extend(conformance_irs());
