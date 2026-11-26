@@ -133,3 +133,10 @@ The Rust target declares `rules_flags` but:
 - A flagged invariant on a WebSocket message or an SSE item is not evaluated (no flag view there). Java has the same gap for incoming WebSocket messages.
 - A service whose only rules are flagged invariants gets no test handler, so `Veld-Test-Flags` cannot reach it.
 - No test for the metric of a panicking handler.
+
+# Platform P1 in Java: what differs from Node and 9.2 (26 Nov)
+
+- **A `Page`'s `total` in the audit event.** The golden (and the wire) has it as a JSON number; the Java audit event writes it as a string of digits, and the driver `AuditGoldens.java` converts it for `pageBookings` so the case passes. The event must carry the result as it is sent: fix the event, then remove the conversion from the driver.
+- **The client's retry on `429`** does not sit inside the call's timeout (each of the two requests has its own): 9.2 says inside.
+- The test handler takes the caller from `Veld-Test-Principal` also for an `@auth(none)` endpoint.
+- Not tested: the limiter's start-up notice; a `@tenant` member of a query object; the examples on Spring.

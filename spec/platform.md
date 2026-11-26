@@ -229,7 +229,7 @@ Written after the Node generator built the four features (`spec/targets/typescri
 - **A failing `address` or caller hook is a failing limiter**: the call is allowed and `onError` hears of it.
 - **The test handler has no limits**, and a due-moves run (section 10.1) is neither limited nor audited: it is not a request.
 - **A `@tenant` field in a request**: the request may leave it out, a rule that reads it is skipped for a request, and the idempotency fingerprint does not include it.
-- **A replayed idempotent answer** is audited with the hidden fields of the answer as it was stored.
+- **A replayed idempotent answer** is sent as it was stored, which is as it was first sent, already without its hidden fields. Its audit event has an empty `hidden`: a stored answer does not keep what was dropped.
 - **The client retries a `429` once**, inside its own timeout, only when the body carries a numeric `retryAfter`.
 
 ---
