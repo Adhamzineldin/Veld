@@ -6,16 +6,35 @@ use std::future::Future;
 use std::sync::Mutex;
 
 use super::error::Error;
+// @if server
 use super::server::Principal;
+// @end
 
 /// What a provider is told about the request that asks: the principal (none without one), the
 /// caller's tenant text (none without one, tenancy is not generated yet) and the whole operation
-/// signature of the endpoint (the signature of the event for an event).
+/// signature of the endpoint (the signature of the event for an event). A crate without a server
+/// core (a service that only publishes or subscribes) has no `principal`: no caller is ever known.
 #[derive(Debug, Clone)]
 pub struct FlagContext {
+    // @if server
     pub principal: Option<Principal>,
+    // @end
     pub tenant: Option<String>,
     pub operation: String,
+}
+
+impl FlagContext {
+    /// The context of an event's flags: no principal, no tenant, the signature of the event.
+    #[must_use]
+    pub fn of_event(operation: &str) -> Self {
+        FlagContext {
+            // @if server
+            principal: None,
+            // @end
+            tenant: None,
+            operation: operation.to_string(),
+        }
+    }
 }
 
 /// Answers whether a flag is on. The server asks each flag an endpoint can reach once per request,

@@ -296,7 +296,10 @@ impl Generator for Rust {
                 let svc = req.ir.service(*s);
                 guards::svc_has_guards(svc) || svc.endpoints.iter().any(conditional::has_guard)
             });
+        // A flagged invariant of an event: the publisher and the consumer take a provider.
+        let event_flags = server && flags::events_flagged(&main_tree(req));
         let flags = used_features.contains(&Feature::RulesFlags)
+            || event_flags
             || req
                 .ir
                 .http_features_used(&req.consumes)
@@ -320,9 +323,10 @@ impl Generator for Rust {
             });
         let flags_server = server
             && flags
-            && served_http(req).iter().any(|s| {
-                flags::svc_reads_flags(&main_tree(req).with_flags(true), req.ir.service(*s))
-            });
+            && (event_flags
+                || served_http(req).iter().any(|s| {
+                    flags::svc_reads_flags(&main_tree(req).with_flags(true), req.ir.service(*s))
+                }));
         let etag = server && conditional::any_version(req.ir, &served_http(req));
         let version = etag
             || conditional::any_guard(req.ir, if server { &req.consumes } else { &req.services });
@@ -358,6 +362,7 @@ impl Generator for Rust {
             slo,
             timeouts,
             flags,
+            event_flags,
             flags_server: server && flags_server,
             policies,
             rollout,

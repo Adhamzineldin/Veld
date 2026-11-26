@@ -347,6 +347,24 @@ impl<'a> Tree<'a> {
         }
         false
     }
+
+    /// The flags of the flagged invariants of a declaration and of every declaration it reaches,
+    /// sorted (`spec/platform.md` section 11: what a publisher or a consumer reads for an event).
+    #[must_use]
+    pub fn flags_reached_from(&self, id: DeclId) -> BTreeSet<String> {
+        let mut seen = BTreeSet::new();
+        let mut out = BTreeSet::new();
+        let mut stack = vec![id];
+        while let Some(next) = stack.pop() {
+            if !seen.insert(next) {
+                continue;
+            }
+            let d = self.ir.decl(next);
+            out.extend(d.rules().iter().filter_map(|r| r.flag.clone()));
+            refs(d, &mut stack);
+        }
+        out
+    }
 }
 
 /// Whether a declaration belongs to the prelude package.

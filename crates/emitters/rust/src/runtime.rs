@@ -60,9 +60,13 @@ pub struct Features {
     /// of the runtime (the readings of a request, `vr::flag_on`, `vr::invariant_on`) are kept.
     /// Implies `rules`.
     pub flags: bool,
-    /// A served endpoint can reach a flag: `src/veld/flags.rs` (the provider) is emitted and the
-    /// hooks name one.
+    /// A served endpoint can reach a flag, or an event has a flagged invariant: `src/veld/flags.rs`
+    /// (the provider) is emitted. Implies `flags`.
     pub flags_server: bool,
+    /// An event of a served service has a flagged invariant (`spec/platform.md` section 11): the
+    /// `// @if event_flags` regions of `src/veld/events.rs` (the provider in the options of the
+    /// publisher and the consumer, `EventDef::flags`) are kept. Implies `flags` and `flags_server`.
+    pub event_flags: bool,
     /// A served endpoint has a service level (`@slo`, `spec/platform.md` section 13): the server
     /// calls the metrics hook.
     pub slo: bool,
@@ -119,6 +123,7 @@ impl Features {
             "idempotency" => self.idempotency,
             "conditional" => self.conditional,
             "derived" => self.derived,
+            "event_flags" => self.event_flags,
             "timed" => self.timed,
             "timeouts" => self.timeouts,
             "slo" => self.slo && self.server,

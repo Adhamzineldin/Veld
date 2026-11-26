@@ -21,6 +21,10 @@ use serde_json::{Map, Value};
 use super::canonical::{canonical, canonical_bytes};
 use super::error::{Error, Issue};
 use super::schema::{Rules, Scalar, Schema};
+// @if event_flags
+use super::flags::{FlagContext, FlagProvider};
+use super::rules::{FlagView, Reading};
+// @end
 
 /// A boxed, sendable future: what the object-safe transport traits return.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -456,6 +460,10 @@ pub struct EventDef {
     pub schema: &'static Schema,
     /// The rules digest (`veldrules`), or `None` when the event reaches no enforced invariant.
     pub digest: Option<&'static str>,
+    // @if event_flags
+    /// The flags of the invariants of the event, sorted: read once per message.
+    pub flags: &'static [&'static str],
+    // @end
 }
 
 /// One channel as the generated code describes it to the publisher.
@@ -508,6 +516,10 @@ pub struct PublishedEvent {
 }
 
 type Hook<T> = Arc<dyn Fn(&T) + Send + Sync>;
+// @if event_flags
+/// A provider of flags with its type erased, so that the options need no type parameter.
+type FlagReader = Arc<dyn Fn(String, FlagContext) -> BoxFuture<'static, Result<bool, Error>> + Send + Sync>;
+// @end
 // #if rules
 type RuleHook = Hook<super::rules::RuleEvent>;
 // #endif
@@ -518,6 +530,35 @@ fn call_hook<T>(hook: Option<&Hook<T>>, event: &T) {
         let _ = catch_unwind(AssertUnwindSafe(|| f(event)));
     }
 }
+// @if event_flags
+
+fn flag_reader<P: FlagProvider>(provider: Arc<P>) -> FlagReader {
+    Arc::new(move |name, context| {
+        let provider = Arc::clone(&provider);
+        Box::pin(async move { provider.is_on(&name, &context).await })
+    })
+}
+
+/// The readings of one message (`spec/platform.md` section 11): every flag of the event, once, with
+/// a context that has no principal and the signature of the event as the operation. `None`
+/// without a provider: the flagged invariants are then not evaluated. A provider that fails is a
+/// `Failed` reading (the invariant counts as on) and the error goes to `on_flag_error`.
+async fn read_flags(reader: Option<&FlagReader>, on_error: Option<&Hook<Error>>, def: &EventDef) -> Option<FlagView> {
+    let reader = reader?;
+    let mut view = FlagView::new();
+    for name in def.flags {
+        match reader((*name).to_string(), FlagContext::of_event(def.sig)).await {
+            Ok(true) => view.insert(name, Reading::On),
+            Ok(false) => view.insert(name, Reading::Off),
+            Err(err) => {
+                call_hook(on_error, &err);
+                view.insert(name, Reading::Failed);
+            }
+        }
+    }
+    Some(view)
+}
+// @end
 
 /// `veld:pkg/Name@hash` -> `veld:pkg/Name`.
 fn type_name(sig: &str) -> &str {
@@ -747,6 +788,10 @@ pub struct PublisherOptions {
     // #if rules
     on_rule_violation: Option<RuleHook>,
     // #endif
+    // @if event_flags
+    flags: Option<FlagReader>,
+    on_flag_error: Option<Hook<Error>>,
+    // @end
 }
 
 impl PublisherOptions {
@@ -779,6 +824,23 @@ impl PublisherOptions {
         self
     }
     // #endif
+    // @if event_flags
+
+    /// The provider of the flags of the invariants (`spec/platform.md` section 11): read once per
+    /// event, with no principal. Without one the flagged invariants are not evaluated.
+    #[must_use]
+    pub fn flags<P: FlagProvider>(mut self, provider: Arc<P>) -> Self {
+        self.flags = Some(flag_reader(provider));
+        self
+    }
+
+    /// Hears a provider that failed: its flags count as on.
+    #[must_use]
+    pub fn on_flag_error(mut self, f: impl Fn(&Error) + Send + Sync + 'static) -> Self {
+        self.on_flag_error = Some(Arc::new(f));
+        self
+    }
+    // @end
 }
 
 /// What a generated publisher hands the pipeline.
@@ -866,6 +928,9 @@ fn prepare<E: Serialize>(
     channel: &ChannelDef,
     def: &EventDef,
     event: &E,
+    // @if event_flags
+    readings: &Option<FlagView>,
+    // @end
 ) -> Result<(Value, Option<String>), Error> {
     let typed = serde_json::to_value(event).map_err(|e| Error::other(format!("veld events: {e}")))?;
     let mut wire = def.schema.to_wire(&typed, false, false);
@@ -888,7 +953,12 @@ fn prepare<E: Serialize>(
     }
     // #if rules
     let hook = ctx.options.on_rule_violation.as_ref();
+    // @if event_flags
+    let violations = super::rules::with_view(readings.as_ref(), || run_rules(def, &wire, hook, super::rules::Position::Output));
+    // @end
+    // @if !event_flags
     let violations = run_rules(def, &wire, hook, super::rules::Position::Output);
+    // @end
     if !violations.is_empty() {
         let issues: Vec<Issue> = violations.iter().map(Violation::issue).collect();
         return Err(ctx.validation(def, &issues, violations));
@@ -931,7 +1001,13 @@ pub async fn publish_event_with<E: Serialize + Sync>(
     def: &EventDef,
     event: &E,
 ) -> Result<PublishedEvent, Error> {
+    // @if event_flags
+    let readings = read_flags(ctx.options.flags.as_ref(), ctx.options.on_flag_error.as_ref(), def).await;
+    let (wire, subject) = prepare(ctx, channel, def, event, &readings)?;
+    // @end
+    // @if !event_flags
     let (wire, subject) = prepare(ctx, channel, def, event)?;
+    // @end
     let id = ctx.options.new_id.as_ref().map_or_else(random_id, |f| f());
     if id.is_empty() {
         return Err(Error::other("veld events: the id source returned an empty id"));
@@ -1041,6 +1117,10 @@ pub struct ConsumerOptions {
     // #if rules
     on_rule_violation: Option<RuleHook>,
     // #endif
+    // @if event_flags
+    flags: Option<FlagReader>,
+    on_flag_error: Option<Hook<Error>>,
+    // @end
 }
 
 impl ConsumerOptions {
@@ -1112,6 +1192,23 @@ impl ConsumerOptions {
         self
     }
     // #endif
+    // @if event_flags
+
+    /// The provider of the flags of the invariants (`spec/platform.md` section 11): read once per
+    /// message, with no principal. Without one the flagged invariants are not evaluated.
+    #[must_use]
+    pub fn flags<P: FlagProvider>(mut self, provider: Arc<P>) -> Self {
+        self.flags = Some(flag_reader(provider));
+        self
+    }
+
+    /// Hears a provider that failed: its flags count as on.
+    #[must_use]
+    pub fn on_flag_error(mut self, f: impl Fn(&Error) + Send + Sync + 'static) -> Self {
+        self.on_flag_error = Some(Arc::new(f));
+        self
+    }
+    // @end
 }
 
 /// The function a consumer waits with: milliseconds to a future.
@@ -1508,7 +1605,13 @@ async fn decode(c: &Consumer, message: &TransportMessage, def: &EventDef, env: &
     // #if rules
     let hook = c.options.on_rule_violation.as_ref();
     let violations = if env.veldrules.as_deref() == def.digest {
+        // @if event_flags
+        let readings = read_flags(c.options.flags.as_ref(), c.options.on_flag_error.as_ref(), def).await;
+        super::rules::with_view(readings.as_ref(), || run_rules(def, &env.data, hook, super::rules::Position::Input))
+        // @end
+        // @if !event_flags
         run_rules(def, &env.data, hook, super::rules::Position::Input)
+        // @end
     } else {
         // @if derived
         // The invariants are not run, but a derived field that cannot be computed means that the

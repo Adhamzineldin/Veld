@@ -145,6 +145,13 @@ fn write_event_def(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, id: DeclId) {
     ));
     w.line(format!("schema: &{},", ctx.tree.schema_path(id, ctx.here)));
     w.line(format!("digest: {digest},"));
+    if crate::flags::events_flagged(ctx.tree) {
+        let names: Vec<String> = crate::flags::event_flags(ctx.tree, id)
+            .iter()
+            .map(|n| lit(n))
+            .collect();
+        w.line(format!("flags: &[{}],", names.join(", ")));
+    }
     w.close_with("};");
     w.blank();
 }

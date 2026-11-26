@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use veld_codegen::CodeWriter;
-use veld_ir::{DeclKind, Endpoint, Ir, Service};
+use veld_ir::{DeclId, DeclKind, Endpoint, Ir, Service};
 
 use crate::tree::Tree;
 use crate::util::lit;
@@ -52,6 +52,25 @@ pub(crate) fn transition_edge_flags(ir: &Ir, ep: &Endpoint) -> Vec<String> {
         | DeclKind::Const(_)
         | DeclKind::Event(_) => Vec::new(),
     }
+}
+
+/// The flags a publisher and a consumer read once per message of an event, sorted: those of the
+/// flagged invariants of the event and of every declaration it reaches.
+#[must_use]
+pub fn event_flags(tree: &Tree<'_>, event: DeclId) -> Vec<String> {
+    tree.flags_reached_from(event).into_iter().collect()
+}
+
+/// Whether some event the tree emits has a flagged invariant: the events runtime then has the
+/// provider in its options (`// @if event_flags`) and every `EventDef` has `flags`.
+#[must_use]
+pub fn events_flagged(tree: &Tree<'_>) -> bool {
+    tree.uses_events()
+        && tree
+            .ir
+            .events_of(&tree.services)
+            .into_iter()
+            .any(|id| !event_flags(tree, id).is_empty())
 }
 
 /// The flags an endpoint may touch, sorted: what the server reads once per request.
