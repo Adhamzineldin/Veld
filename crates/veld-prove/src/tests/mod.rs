@@ -50,5 +50,6 @@ pub fn solver(test: &str) -> Option<Solver> {
 mod canned;
 mod encoder;
 mod pin;
+mod questions;
 mod soundness;
 mod units;

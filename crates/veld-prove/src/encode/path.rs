@@ -108,6 +108,22 @@ impl Problem<'_> {
         };
         let wires = Self::wires(p);
         let name = path_name(&key, &wires, VarKind::Value);
+        if let Some(seen) = self.vars.get(&name) {
+            // In a `diff` the same field is read by the old and the new rule; if its type
+            // changed, they do not talk about the same value.
+            let same = seen.sort == sort
+                && match (&seen.ty, ty) {
+                    (Some(Type::Scalar(a)), Type::Scalar(b)) => a == b,
+                    (Some(Type::Scalar(_)), _) | (_, Type::Scalar(_)) => false,
+                    _ => true,
+                };
+            if !same {
+                return unsupported(format!(
+                    "`{}` has a different type in the two contracts",
+                    name.replace('#', " ")
+                ));
+            }
+        }
         if !self.vars.contains_key(&name) {
             let range = self.domain_of(ty);
             let variants = self.variants_of(ty);
