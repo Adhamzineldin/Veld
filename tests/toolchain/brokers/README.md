@@ -67,4 +67,16 @@ nine seconds, longer than the session timeout of 6 seconds that it sets).
 
 ## Rust
 
-(The Rust agent adds its section here.)
+| | |
+|---|---|
+| Programs | `tests/toolchain/rust/brokers/kafka.rs` (`rdkafka` 0.38, librdkafka built by `cmake-build`) and `rabbitmq.rs` (`lapin` 4.13) |
+| Runner | `cargo test -p veld-emit-rust --test brokers` |
+| Generated with | `messaging = ["kafka", "rabbitmq"]` on `tests/events/delivery.veld`, whose topic is renamed for every run (the programs read it from `VELD_TOPIC`) |
+
+The generated crate and the programs are always built (`cargo build`, and `clippy -D warnings` on the
+generated crate), even when no broker is named; the first build compiles librdkafka and needs
+`cmake`, a C and a C++ compiler (nothing else: the adapter is built without `libz`, `zstd` and
+`ssl`). A program runs when its variable is set and prints `kafka ok` or `rabbitmq ok`; without
+the variable it prints `SKIPPED`, and with `VELD_REQUIRE_BROKERS=1` it fails. The Kafka program
+takes about 50 seconds: one row keeps a delivery running for nine seconds with
+`max.poll.interval.ms` at six, then waits ten seconds for the commit.

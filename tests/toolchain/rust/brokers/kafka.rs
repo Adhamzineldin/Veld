@@ -153,6 +153,45 @@ async fn before_the_group_subscribed_and_two_consumers(servers: &str) {
     t.close().await;
 }
 
+/// A delivery that outlives `max.poll.interval.ms`: the consumer pauses its partitions and keeps
+/// polling, so it keeps its place in the group, delivers the message once, and commits it.
+async fn a_long_delivery_keeps_the_place_in_the_group(servers: &str) {
+    let topic = fresh("veld-long");
+    create_topics(servers, &[&topic], 1).await;
+    let mut cfg = config(servers);
+    cfg.set("max.poll.interval.ms", "6000").set("session.timeout.ms", "6000");
+    let t = KafkaTransport::new(cfg.clone()).redelivery(Redelivery { initial_ms: 100, max_ms: 400 });
+    let group = fresh("g");
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let deliver: events_server::veld::events::Deliver = Arc::new(move |m| {
+        let tx = tx.clone();
+        Box::pin(async move {
+            let _ = tx.send(m);
+            tokio::time::sleep(Duration::from_secs(9)).await;
+            Outcome::Done
+        })
+    });
+    let sub = t.subscribe(&topic, &group, deliver, ChannelOptions::NONE).await.unwrap();
+    t.publish(&topic, None, b"slow", ChannelOptions::NONE).await.unwrap();
+    t.publish(&topic, None, b"after", ChannelOptions::NONE).await.unwrap();
+    let mut seen = Vec::new();
+    while let Some(m) = next(&mut rx, 25_000).await {
+        seen.push((text(&m), m.attempt));
+        if seen.len() == 2 {
+            break;
+        }
+    }
+    assert_eq!(seen, vec![("slow".to_string(), 1), ("after".to_string(), 1)], "each once: the group was not left");
+    // Wait for the second delivery to finish and commit, then a new consumer of the group reads nothing.
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    sub.close().await;
+    let (deliver, mut again) = collector(always_done());
+    let sub = KafkaTransport::new(cfg).subscribe(&topic, &group, deliver, ChannelOptions::NONE).await.unwrap();
+    assert!(next(&mut again, 3_000).await.is_none(), "both records were committed");
+    sub.close().await;
+    t.close().await;
+}
+
 struct Failing;
 
 impl FulfilmentEventHandlers for Failing {
@@ -208,6 +247,7 @@ async fn main() {
     order_per_key_and_ordered(&servers).await;
     a_failed_handler_is_delivered_again(&servers).await;
     before_the_group_subscribed_and_two_consumers(&servers).await;
+    a_long_delivery_keeps_the_place_in_the_group(&servers).await;
     the_dead_letter_topic(&servers).await;
     close_stops_everything(&servers).await;
     println!("kafka ok");
