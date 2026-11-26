@@ -1549,3 +1549,342 @@ fn mixed(tsc_path: &Path, edition: &str, _target: &str) {
 fn a_service_with_endpoint_rules_and_subscriptions_has_one_test_handler_that_answers_both() {
     matrix(mixed);
 }
+
+// ---- phase E3: the outbox (`spec/events.md` section 11) ----------------------------------------
+
+const OUTBOX: &str = "tests/events/outbox.veld.pending";
+const OUTBOX_GOLDEN: &str = "tests/wire/events/outbox.json";
+
+/// The first position of `needle` in `text` at or after `from`.
+fn find_from(text: &str, needle: &str, from: usize) -> Option<usize> {
+    text.get(from..)?.find(needle).map(|i| i + from)
+}
+
+/// The text of `contract` with, for each of `events`, a probe move added to `service`: a state
+/// machine `Zz<Event>State` with one edge that emits the event, a model, and an endpoint
+/// `zz<Event>` whose handler the driver writes the event from. `channel` is moved to the front of
+/// the `publishes` lines of the service, because the event goes to the first channel of the
+/// service that carries it, and a service without `at` gets one. Returns the text and the path
+/// prefix of the service.
+fn probe_contract(
+    contract: &str,
+    service: &str,
+    channel: &str,
+    events: &[&str],
+) -> (String, String) {
+    let header = format!("service {service}");
+    let at = contract
+        .find(&header)
+        .expect("the service is in the contract");
+    let open = find_from(contract, "{", at).expect("the service has a body");
+    let line_end = contract[at..open].to_string();
+    let (head, prefix) = match line_end.find(" at \"") {
+        Some(i) => {
+            let rest = &line_end[i + 5..];
+            let prefix = rest[..rest.find('"').expect("a quoted path")].to_string();
+            (line_end.clone(), prefix)
+        }
+        None => (
+            format!("{} at \"/zz\" ", line_end.trim_end()),
+            "/zz".to_string(),
+        ),
+    };
+    // The end of the body: the brace that closes the one at `open`.
+    let mut depth = 0usize;
+    let mut close = open;
+    for (i, ch) in contract[open..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = open + i;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let body = &contract[open + 1..close];
+    let mut channels = vec![channel.to_string()];
+    let mut kept = Vec::new();
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if let Some(list) = trimmed.strip_prefix("publishes ") {
+            for name in list.split(',').map(str::trim).filter(|n| !n.is_empty()) {
+                if !channels.iter().any(|c| c == name) {
+                    channels.push(name.to_string());
+                }
+            }
+        } else {
+            kept.push(line.to_string());
+        }
+    }
+    let mut moves = String::new();
+    let mut machines = String::new();
+    for e in events {
+        moves.push_str(&format!(
+            "  post \"/zz/{{id}}/{e}\" zz{e}(id: uuid) -> Zz{e}Box {{\n    fact zz{e}: Zz{e}Box = id\n    transition zz{e}.state: a -> b\n  }}\n"
+        ));
+        machines.push_str(&format!(
+            "\nenum Zz{e}State {{\n  a, b\n  flow a -> b emits {e}\n  final b\n}}\n\nmodel Zz{e}Box {{\n  id: uuid\n  state: Zz{e}State\n}}\n"
+        ));
+    }
+    let text = format!(
+        "{}{head}{{\n  publishes {}\n{}\n{moves}}}{}{machines}",
+        &contract[..at],
+        channels.join(", "),
+        kept.join("\n"),
+        &contract[close + 1..],
+    );
+    (text, prefix)
+}
+
+/// The cases of `entries` in `outbox.json`, grouped by contract, service and channel.
+fn outbox_entry_groups() -> BTreeMap<(String, String, String), Vec<Value>> {
+    let golden: Value = serde_json::from_str(&read(OUTBOX_GOLDEN)).unwrap();
+    let mut groups: BTreeMap<(String, String, String), Vec<Value>> = BTreeMap::new();
+    for case in golden["entries"].as_array().unwrap() {
+        let key = |k: &str| case[k].as_str().unwrap().to_owned();
+        groups
+            .entry((key("contract"), key("service"), key("channel")))
+            .or_default()
+            .push(case.clone());
+    }
+    groups
+}
+
+/// Every `entries` case of the golden through the generated `emit`: a probe move per event is added
+/// to the service of the case, and the driver checks the topic, the key and the bytes the outbox
+/// received.
+fn outbox_entries(tsc_path: &Path, edition: &str, _target: &str) {
+    let groups = outbox_entry_groups();
+    assert!(groups.len() >= 5, "{} groups", groups.len());
+    for ((contract, service, channel), cases) in groups {
+        let mut events: Vec<&str> = cases.iter().map(|c| c["event"].as_str().unwrap()).collect();
+        events.sort_unstable();
+        events.dedup();
+        let (text, at) = probe_contract(&read(&contract), &service, &channel, &events);
+        let ir = compile_text(text);
+        let guard = scratch("events-outbox-wire-");
+        let work = guard.path();
+        build_with(
+            work,
+            tsc_path,
+            &ir,
+            &[service.as_str()],
+            &["events_outbox_wire.ts"],
+            edition,
+            &typescript_option(edition),
+        );
+        let listed: Vec<Value> = cases
+            .iter()
+            .map(|c| {
+                json!({
+                    "name": c["name"], "event": c["event"],
+                    "method": camel(c["event"].as_str().unwrap()),
+                    "id": c["id"], "time": c["time"], "value": c["value"],
+                    "topic": c["topic"], "key": c["key"], "canonical": c["canonical"],
+                })
+            })
+            .collect();
+        write_json(
+            &work.join("cases.json"),
+            &json!({ "service": service, "at": at, "cases": listed }),
+        );
+        assert!(
+            node(work, "events_outbox_wire").contains("events outbox wire ok"),
+            "{contract} / {service} / {channel}"
+        );
+    }
+}
+
+#[test]
+fn the_entries_of_the_outbox_goldens_come_out_of_the_generated_emit() {
+    matrix(outbox_entries);
+}
+
+/// The relay and `written` cases of the goldens through the generated relay and the generated
+/// check.
+fn outbox_relay(tsc_path: &Path, edition: &str, _target: &str) {
+    let ir = compile_text(read(OUTBOX));
+    let guard = scratch("events-outbox-relay-");
+    let work = guard.path();
+    build_with(
+        work,
+        tsc_path,
+        &ir,
+        &["Bookings", "Notifications"],
+        &["events_outbox_relay.ts"],
+        edition,
+        &typescript_option(edition),
+    );
+    std::fs::copy(repo_root().join(OUTBOX_GOLDEN), work.join("outbox.json")).unwrap();
+    assert!(node(work, "events_outbox_relay").contains("events outbox relay ok"));
+}
+
+#[test]
+fn the_relay_and_written_goldens_hold_for_the_generated_relay_and_check() {
+    matrix(outbox_relay);
+}
+
+/// The moves of the outbox contract over the production handler, and the relay with the memory
+/// transport and a subscriber.
+fn outbox_http(tsc_path: &Path, edition: &str, _target: &str) {
+    let ir = compile_text(read(OUTBOX));
+    let guard = scratch("events-outbox-http-");
+    let work = guard.path();
+    build_with(
+        work,
+        tsc_path,
+        &ir,
+        &["Bookings", "Notifications"],
+        &["events_outbox_http.ts"],
+        edition,
+        &typescript_option(edition),
+    );
+    assert!(node(work, "events_outbox_http").contains("events outbox http ok"));
+}
+
+#[test]
+fn an_emitting_move_writes_to_the_outbox_and_the_relay_publishes_it() {
+    matrix(outbox_http);
+}
+
+/// The call examples of the outbox contract (`expect emitted`, `expect not emitted`) and its event
+/// examples through the generated test handlers and the shared live run.
+fn outbox_examples(tsc_path: &Path, edition: &str, _target: &str) {
+    let ir = compile_text(read(OUTBOX));
+    let guard = scratch("events-outbox-live-");
+    let work = guard.path();
+    build_with(
+        work,
+        tsc_path,
+        &ir,
+        &["Bookings", "Notifications"],
+        &["events_outbox_serve.ts"],
+        edition,
+        &json!({ "typescript": edition, "testing": true }),
+    );
+    let served = common::toolchain::Live::start(work, "events_outbox_serve.js");
+    let passed = common::toolchain::run_examples(&served.url, &ir);
+    assert_eq!(passed, ir.examples.len());
+    assert_eq!(ir.examples.len(), 10, "every example ran, none was skipped");
+    let emitted = ir.examples.iter().filter(|e| e.emitted.is_some()).count();
+    assert_eq!(emitted, 5, "the examples with an `expect emitted` line");
+}
+
+#[test]
+fn the_examples_of_the_outbox_contract_pass_live_against_the_generated_test_handlers() {
+    matrix(outbox_examples);
+}
+
+// ---- phase E3: the generated files ---------------------------------------------------------------
+
+fn outbox_files(options: &Value) -> veld_codegen::FileSet {
+    let ir = compile_text(read(OUTBOX));
+    gen_server_services_fw(
+        &ir,
+        &["Bookings", "Notifications"],
+        options,
+        Some("express"),
+    )
+}
+
+#[test]
+fn snapshot_of_the_files_of_the_outbox_contract() {
+    let files = outbox_files(&json!({ "testing": true }));
+    insta::assert_snapshot!("events_outbox_file_list", file_list(&files));
+    insta::assert_snapshot!(
+        "events_outbox_events",
+        text(&files, "server/bookings-events.ts")
+    );
+    insta::assert_snapshot!("events_outbox_server", text(&files, "server/bookings.ts"));
+    insta::assert_snapshot!(
+        "events_outbox_test_handler",
+        text(&files, "server/bookings-test-handler.ts")
+    );
+    insta::assert_snapshot!("events_outbox_runtime", text(&files, "runtime/events.ts"));
+}
+
+#[test]
+fn the_outbox_exists_only_for_a_contract_with_an_emitting_move() {
+    let with = outbox_files(&json!({}));
+    let runtime = text(&with, "runtime/events.ts");
+    for word in ["prepareEvent", "emitEvent", "MemoryOutbox", "relayOutbox"] {
+        assert!(runtime.contains(word), "{word}");
+    }
+    let server = text(&with, "server/bookings.ts");
+    assert!(server.contains("outbox: veldEvents.Outbox;"));
+    assert!(server.contains("pay(req: PayRequest & PayFacts & PayTransition & PayEmit"));
+    // The move that emits nothing gets no `emit`.
+    assert!(server.contains("refund(req: RefundRequest & RefundFacts & RefundTransition,"));
+    assert!(server.contains("emits: { edges: { pending: ['BookingPaid'] }, make: makePayEmit },"));
+    assert!(
+        server.contains("emits: { edges: { pending: ['BookingCancelled'], paid: ['RefundDue'] }, make: makeCancelEmit },")
+    );
+    let events = text(&with, "server/bookings-events.ts");
+    assert!(events.contains("export function runBookingsOutboxRelay("));
+    assert!(events.contains("export function makePayEmit("));
+    // The same contract without `emits`: no word of the outbox anywhere.
+    let ir = compile_text(
+        read(OUTBOX)
+            .replace(" emits BookingPaid", "")
+            .replace(" emits BookingCancelled", "")
+            .replace(" emits RefundDue", ""),
+    );
+    let without = gen_server_services_fw(
+        &ir,
+        &["Bookings", "Notifications"],
+        &json!({}),
+        Some("express"),
+    );
+    for (path, bytes) in without.iter() {
+        let source = String::from_utf8_lossy(bytes);
+        for word in [
+            "Outbox",
+            "outbox",
+            "emitEvent",
+            "prepareEvent",
+            "checkWritten",
+            "EmitSession",
+        ] {
+            assert!(!source.contains(word), "`{word}` is in {path}");
+        }
+    }
+    // The events runtime of a contract with events and no emit keeps `publishEvent` in one piece.
+    assert!(text(&without, "runtime/events.ts").contains("export async function publishEvent("));
+}
+
+#[test]
+fn the_relay_hands_the_transport_the_options_of_the_channel() {
+    let annotated = read(OUTBOX).replace(
+        "@topic(\"shop.bookings.v1\")\nchannel BookingEvents",
+        "@topic(\"shop.bookings.v1\") @ordered @deadLetter\nchannel BookingEvents",
+    );
+    let ir = compile_text(annotated);
+    let files = gen_server_services_fw(
+        &ir,
+        &["Bookings", "Notifications"],
+        &json!({}),
+        Some("express"),
+    );
+    let events = text(&files, "server/bookings-events.ts");
+    assert!(
+        events.contains("'shop.bookings.v1': { ordered: true, deadLetter: true },"),
+        "{events}"
+    );
+    assert!(
+        events.contains("'shop.refunds.v1': { ordered: false, deadLetter: false },"),
+        "{events}"
+    );
+}
+
+#[test]
+fn a_parameter_called_emit_on_a_move_that_emits_is_e0801() {
+    let text = read(OUTBOX).replace("pay(id: uuid)", "pay(id: uuid, emit: int)");
+    let ir = compile_text(text);
+    let err = generate_with(&ir, &["Bookings", "Notifications"], &Value::Null).unwrap_err();
+    assert!(err.iter().all(|d| d.code == "E0801"), "{err:?}");
+    assert!(err[0].message.contains("`emit`"), "{}", err[0].message);
+}
