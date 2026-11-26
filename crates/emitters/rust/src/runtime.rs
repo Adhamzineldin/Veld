@@ -56,6 +56,9 @@ pub struct Features {
     /// The target has a runtime config (`spec/runtime-config.md`): `src/veld/config.rs` (the
     /// engine of its check) is emitted, next to `src/runtime_config.rs`.
     pub config: bool,
+    /// A served endpoint takes a timed edge (`spec/platform.md` section 10): the due check of the
+    /// guard and the due-moves runner. Implies `guards`.
+    pub timed: bool,
     /// The target option `messaging` names Kafka (`spec/events.md` section 10.7):
     /// `src/adapters/kafka.rs` and the `rdkafka` dependency.
     pub kafka: bool,
@@ -80,6 +83,7 @@ impl Features {
             "rollout" => self.rollout,
             "!rollout" => !self.rollout,
             "derived" => self.derived,
+            "timed" => self.timed,
             "rollout_endpoint" => self.rollout && self.endpoint_rules,
             "rules_plain" => self.rules && !self.rollout,
             _ => false,
@@ -100,6 +104,7 @@ impl Features {
             "idempotency" => self.idempotency,
             "conditional" => self.conditional,
             "derived" => self.derived,
+            "timed" => self.timed,
             "reqwest" => self.reqwest,
             "ureq" => self.ureq,
             _ => false,

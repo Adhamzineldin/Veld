@@ -119,7 +119,7 @@ fn service_file(
         svc,
         &n,
         ctx.tree.validate,
-        ctx.tree.rules,
+        (ctx.tree.rules, ctx.tree.timed),
         typed.as_deref(),
     );
     if !svc.facts.is_empty() {
@@ -128,6 +128,9 @@ fn service_file(
     block::steps(w, ctx, svc)?;
     dispatch(w, ctx.tree, svc, &n, typed.as_deref());
     handler(w, ctx.tree, svc, &n);
+    if ctx.tree.timed {
+        crate::timed::emit(w, ctx.tree.ir, svc);
+    }
     Ok(())
 }
 
@@ -179,7 +182,7 @@ fn hooks_trait(
     svc: &Service,
     n: &Needs,
     validate: bool,
-    rules: bool,
+    (rules, ctx_timed): (bool, bool),
     typed: Option<&str>,
 ) {
     let name = service_type(svc);
@@ -240,6 +243,15 @@ fn hooks_trait(
     }
     if n.idempotency {
         idempotency_hooks(w, n, typed);
+    }
+    if ctx_timed && crate::timed::svc_timed(svc) {
+        w.blank();
+        w.line("/// The principal of the due-moves runner (`spec/platform.md` section 10.1): the caller of a");
+        w.line("/// timed move. The default is none; an endpoint with authentication needs one, or the run");
+        w.line("/// does not start.");
+        w.open(format!("fn timer_principal<'a>(&'a self) -> impl std::future::Future<Output = Option<{}>> + Send + 'a", typed.unwrap_or("veld::server::Principal")));
+        w.line("async { None }");
+        w.close();
     }
     if block::has_block(svc) {
         w.blank();
@@ -328,9 +340,12 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
         rules_forwards(w, tree, svc);
     }
     if block::has_block(svc) {
-        block_methods(w, svc);
+        block_methods(w, svc, tree.timed);
     }
     conditional_method(w, tree, svc);
+    if tree.timed && crate::timed::svc_timed(svc) {
+        timer_forwards(w, typed);
+    }
     complete_principal_method(w, tree, svc, typed);
     if n.idempotency {
         idempotency_forwards(w, n, typed);
@@ -362,13 +377,28 @@ fn rules_forwards(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service) {
     }
 }
 
+/// The forwards of a dispatch to the timer hooks of the hooks.
+fn timer_forwards(w: &mut CodeWriter, typed: Option<&str>) {
+    allow_async(w, typed);
+    w.open("fn timer_principal<'a>(&'a self) -> impl std::future::Future<Output = Option<veld::server::Principal>> + Send + 'a");
+    w.line(forward("timer_principal()", typed));
+    w.close().blank();
+    w.open("fn timer_clock(&self, ctx: &veld::server::RequestContext) -> std::time::SystemTime");
+    w.line("self.hooks.clock(ctx)");
+    w.close().blank();
+}
+
 /// `prepare` and `ensure` of a dispatch whose service has endpoint rules.
-fn block_methods(w: &mut CodeWriter, svc: &Service) {
+fn block_methods(w: &mut CodeWriter, svc: &Service, tree_timed: bool) {
     let loaders = !svc.facts.is_empty();
     let pass = if loaders { "&self.loaders, " } else { "" };
     w.open("async fn prepare(&self, endpoint: usize, args: &mut serde_json::Map<String, serde_json::Value>, ctx: &veld::server::RequestContext) -> Result<veld::server::Prepared, veld::server::Halt>");
     w.line("let enforce = self.hooks.validate_requests();");
-    w.line("let now = veld::rules::clock_ms(self.hooks.clock(ctx));");
+    if tree_timed {
+        w.line("let now = veld::rules::clock_ms(ctx.timer_now().unwrap_or_else(|| self.hooks.clock(ctx)));");
+    } else {
+        w.line("let now = veld::rules::clock_ms(self.hooks.clock(ctx));");
+    }
     w.open("match endpoint");
     for (i, ep) in svc.endpoints.iter().enumerate() {
         if block::ep_has_block(ep) {

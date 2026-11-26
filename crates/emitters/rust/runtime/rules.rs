@@ -566,6 +566,16 @@ pub fn denial(verdict: Res<Result<(), String>>) -> Option<String> {
     }
 }
 // #endif
+// #if timed
+
+/// Whether a value that entered its state at `since` (datetime text) has waited `after_ms` by `now`
+/// (milliseconds): exactly `after_ms` is due, one millisecond less is not, and a `since` in the
+/// future or one that is not a datetime is not due (`spec/platform.md` section 10).
+#[must_use]
+pub fn due(now: i64, since: &str, after_ms: i64) -> bool {
+    instant::parse_datetime(since).is_some_and(|s| now.checked_sub(s).is_some_and(|waited| waited >= after_ms))
+}
+// #endif
 // #if policies
 
 /// The system clock as milliseconds since the epoch: what `now` is for a policy called outside a

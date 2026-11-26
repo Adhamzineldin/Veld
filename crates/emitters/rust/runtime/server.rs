@@ -160,6 +160,11 @@ pub struct RequestContext {
     /// The audited rules this request reported (`@rollout(audit)`).
     audit: AuditLog,
     // #endif
+    // @if timed
+    /// Set for a call of the due-moves runner (`spec/platform.md` section 10.1): the caller is the
+    /// timer's, no authentication and no middleware run, and `now` is the run's.
+    timer: Option<TimerCall>,
+    // @end
     // @if derived
     /// The derived fields of each bound parameter that have no value (patterns, step 5): what
     /// the statements of an endpoint block that read one must skip (`spec/rules.md` 17.2).
@@ -368,6 +373,19 @@ pub trait Endpoints: Send + Sync + 'static {
         None
     }
     // #endif
+    // @if timed
+
+    /// The principal of the due-moves runner (`hooks.timer_principal()`): `None` when the hooks
+    /// give none.
+    fn timer_principal<'a>(&'a self) -> impl Future<Output = Option<Principal>> + Send + 'a {
+        async { None }
+    }
+
+    /// The clock of the hooks, for a run that is given no `now`.
+    fn timer_clock(&self, _ctx: &RequestContext) -> std::time::SystemTime {
+        std::time::SystemTime::now()
+    }
+    // @end
     // @if derived
 
     /// Gives the principal its derived fields, once per request after authentication and
@@ -961,6 +979,154 @@ fn coerce_many(s: &Schema, raw: &[String]) -> Value {
     }
 }
 
+// @if timed
+/// The caller of a due move: the principal the application gives its timer and the clock reading
+/// of the run (`spec/platform.md` section 10.1).
+#[derive(Debug, Clone)]
+pub struct TimerCall {
+    pub principal: Option<Principal>,
+    pub now: std::time::SystemTime,
+}
+
+impl RequestContext {
+    /// The clock reading of the run that makes this call, when the request is a due move.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn timer_now(&self) -> Option<std::time::SystemTime> {
+        self.timer.as_ref().map(|t| t.now)
+    }
+}
+
+/// What one call of the due-moves runner came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DueOutcome {
+    /// The pipeline answered with a success.
+    Moved,
+    /// `409 InvalidTransition`: another request moved the value first, which is expected.
+    Refused,
+    /// Any other answer.
+    Failed,
+}
+
+/// The counts of one endpoint in a [`DueReport`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DueCounts {
+    /// Calls the loader gave and the runner made.
+    pub ran: usize,
+    pub moved: usize,
+    /// Calls refused with `InvalidTransition`.
+    pub refused: usize,
+    /// Calls that failed, and loaders that failed.
+    pub failed: usize,
+}
+
+/// The report of a run: one entry per endpoint with a timed transition, by endpoint name.
+pub type DueReport = BTreeMap<String, DueCounts>;
+
+fn due_text(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Null => String::new(),
+        Value::Array(_) | Value::Object(_) => super::canonical::canonical(v),
+        other => other.to_string(),
+    }
+}
+
+fn due_push(query: &mut Vec<(String, String)>, key: &str, wire: &Value) {
+    match wire {
+        Value::Null => {}
+        Value::Array(items) => query.extend(items.iter().map(|i| (key.to_string(), due_text(i)))),
+        other => query.push((key.to_string(), due_text(other))),
+    }
+}
+
+/// The wire request of a call of `ep` whose parameters are `args` (the typed JSON of its request
+/// struct, by name): what the due-moves runner runs through the pipeline in process.
+#[doc(hidden)]
+#[must_use]
+pub fn due_request(ep: &EndpointSpec, args: &Map<String, Value>) -> Request {
+    let mut path = ep.path.to_string();
+    let mut query: Vec<(String, String)> = Vec::new();
+    let mut headers: Vec<(String, String)> = Vec::new();
+    let mut body = Vec::new();
+    for p in ep.params.iter().filter(|p| !p.stream) {
+        let Some(typed) = args.get(p.name).filter(|v| !v.is_null()) else {
+            continue;
+        };
+        let wire = p.schema.to_wire(typed, true, false);
+        match p.binding {
+            Binding::Path => path = path.replace(&format!("{{{}}}", p.name), &super::util::pct_encode(&due_text(&wire))),
+            Binding::Query => due_push(&mut query, p.name, &wire),
+            Binding::QueryObject => {
+                for (k, v) in wire.as_object().into_iter().flatten() {
+                    due_push(&mut query, k, v);
+                }
+            }
+            Binding::Header => headers.push((p.header.unwrap_or(p.name).to_string(), due_text(&wire))),
+            Binding::Body => {
+                body = super::canonical::canonical(&wire).into_bytes();
+                headers.push(("content-type".to_string(), "application/json".to_string()));
+            }
+        }
+    }
+    query.sort_by(|a, b| a.0.cmp(&b.0));
+    let pairs: Vec<String> = query
+        .iter()
+        .map(|(k, v)| format!("{}={}", super::util::pct_encode(k), super::util::pct_encode(v)))
+        .collect();
+    Request { method: ep.method.to_string(), path, query: pairs.join("&"), headers, body }
+}
+
+impl<E: Endpoints> Handler<E> {
+    /// A context for the loaders of the due-moves runner: the endpoint's own method and path, no
+    /// principal and no headers.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn timer_context(&self, name: &str) -> Option<RequestContext> {
+        let ep = self.inner.endpoints.endpoints().iter().find(|ep| ep.name == name)?;
+        Some(self.context(ep, &Request { method: ep.method.to_string(), path: ep.path.to_string(), ..Request::default() }))
+    }
+
+    /// Runs one call of the endpoint `name` with the parameters `args` through steps 4 to 10 in
+    /// process, as the caller `call` names (no step 2, no middleware: there is no request). A
+    /// failure goes to `on_error`.
+    #[doc(hidden)]
+    pub async fn due_move(&self, name: &str, args: &Map<String, Value>, call: TimerCall) -> DueOutcome {
+        let e = &self.inner.endpoints;
+        let Some(route) = self.inner.routes.iter().find(|r| e.endpoints()[r.index].name == name) else {
+            return DueOutcome::Failed;
+        };
+        let ep = &e.endpoints()[route.index];
+        let req = due_request(ep, args);
+        let Some(caps) = matches(route, &req.path) else {
+            return DueOutcome::Failed;
+        };
+        let mut ctx = self.context(ep, &req);
+        ctx.principal = call.principal.clone();
+        ctx.timer = Some(call);
+        let resp = self.run_ctx(route.index, caps, req, ctx.clone()).await;
+        if resp.status < 300 {
+            return DueOutcome::Moved;
+        }
+        let refused = resp.status == 409
+            && if let Body::Bytes(bytes) = &resp.body {
+                serde_json::from_slice::<Value>(bytes)
+                    .ok()
+                    .and_then(|doc| doc.get("type").and_then(Value::as_str).map(str::to_string))
+                    .is_some_and(|ty| ep.errors.iter().any(|er| er.name == "InvalidTransition" && er.sig == ty))
+            } else {
+                false
+            };
+        if refused {
+            return DueOutcome::Refused;
+        }
+        if resp.status < 500 {
+            e.on_error(&Error::other(format!("{name}: a due move was answered {}", resp.status)), &ctx);
+        }
+        DueOutcome::Failed
+    }
+}
+// @end
 /// Collects what binding finds.
 struct Bound {
     value: Map<String, Value>,
@@ -1309,12 +1475,16 @@ impl<E: Endpoints> Handler<E> {
             // #if rollout
             audit: AuditLog::default(),
             // #endif
+            // @if timed
+            timer: None,
+            // @end
             // @if derived
             absent: BTreeMap::new(),
             // @end
         }
     }
 
+    // @if !timed
     // #if !rollout
     async fn run(&self, index: usize, caps: Vec<(String, String)>, req: Request) -> Response {
     // #endif
@@ -1339,6 +1509,42 @@ impl<E: Endpoints> Handler<E> {
         // @if conditional
         ctx.conditional = e.conditional(index);
         // @end
+    // @end
+    // @if timed
+    async fn run(&self, index: usize, caps: Vec<(String, String)>, req: Request) -> Response {
+        // #if !rollout
+        let ctx = self.context(&self.inner.endpoints.endpoints()[index], &req);
+        self.run_ctx(index, caps, req, ctx).await
+        // #endif
+        // #if rollout
+        self.run_logged(index, caps, req).await
+        // #endif
+    }
+
+    // #if rollout
+    /// `run` for a server that listens to audited rules: the audit log of the request is stamped on
+    /// the answer of a test handler.
+    async fn run_logged(&self, index: usize, caps: Vec<(String, String)>, req: Request) -> Response {
+        let audit = AuditLog::default();
+        let mut ctx = self.context(&self.inner.endpoints.endpoints()[index], &req);
+        ctx.audit = audit.clone();
+        let resp = self.run_ctx(index, caps, req, ctx).await;
+        if self.inner.endpoints.test_audited() {
+            return stamp_audited(resp, &audit);
+        }
+        resp
+    }
+    // #endif
+
+    /// The pipeline from the guard on, for a context that is ready.
+    #[allow(unused_mut)]
+    async fn run_ctx(&self, index: usize, caps: Vec<(String, String)>, req: Request, mut ctx: RequestContext) -> Response {
+        let e = &self.inner.endpoints;
+        let ep = &e.endpoints()[index];
+        // @if conditional
+        ctx.conditional = e.conditional(index);
+        // @end
+    // @end
         let args = match self.guard(ep, &caps, &req, &mut ctx, false).await {
             Ok(args) => args,
             Err(resp) => return resp,
@@ -1402,7 +1608,14 @@ impl<E: Endpoints> Handler<E> {
         let std = e.std_sigs();
         // #if endpoint_rules
         let trusted = e.trusted_principal(ctx);
+        // @if timed
+        if ctx.timer.is_some() {
+            // A call of the due-moves runner: the principal is the timer's, set by the runner.
+        } else if trusted.is_some() {
+        // @end
+        // @if !timed
         if trusted.is_some() {
+        // @end
             ctx.principal = trusted;
         } else {
         // #endif

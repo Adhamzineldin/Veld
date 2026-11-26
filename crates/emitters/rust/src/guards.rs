@@ -185,10 +185,49 @@ pub fn transition_guard(
         lit(&t.id)
     ));
     w.close();
+    due_check(w, ctx, index, (t, fact), (machine, &field, &ty))?;
     w.line(format!(
         "let transition = vr::Transition {{ field: {field}.to_string(), from: transition_from, to: {ty}::{} }};",
         variant(&t.to)
     ));
+    Ok(())
+}
+
+/// The due check of a timed transition (`spec/platform.md` section 10): after the state check, the
+/// value must have been in its state for the edge's `after`, else `409 InvalidTransition` with the
+/// message `violates rule transition: not due`.
+fn due_check(
+    w: &mut CodeWriter,
+    ctx: &Ctx<'_, '_>,
+    index: usize,
+    (t, fact): (&EndpointTransition, &veld_ir::EndpointFact),
+    (machine, field, ty): (&veld_ir::Enum, &str, &str),
+) -> Result<(), String> {
+    if !t.is_timed() {
+        return Ok(());
+    }
+    let [source] = t.from.as_slice() else {
+        return Err("a timed `transition` has exactly one source".to_string());
+    };
+    let after = machine
+        .flows
+        .iter()
+        .find(|f| &f.from == source && f.to == t.to)
+        .and_then(|f| f.after_ms.as_deref())
+        .and_then(|ms| ms.parse::<i64>().ok())
+        .ok_or("the edge of a timed `transition` is not timed")?;
+    let since = t.since.iter().fold(fact_local(&fact.name), |acc, s| {
+        format!("{acc}.{}", snake(&s.name))
+    });
+    w.open(format!("if !vr::due(now, &{since}, {after}_i64)"));
+    w.line(format!(
+        "return Err(vr::refusal(&ENDPOINTS[{index}], {}, &[(\"field\", {field}), (\"from\", transition_from.wire()), (\"to\", {})], vr::guard_violation({}, &[], \"violates rule transition: not due\")));",
+        lit(&prelude_sig(ctx, "InvalidTransition")),
+        lit(&variant_wire(machine, &t.to)?),
+        lit(&t.id)
+    ));
+    w.close();
+    let _ = ty;
     Ok(())
 }
 

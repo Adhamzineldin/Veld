@@ -20,6 +20,7 @@ pub mod rules;
 pub mod runtime;
 pub mod server;
 pub mod testing;
+pub mod timed;
 pub mod tree;
 pub mod types;
 pub mod util;
@@ -100,6 +101,7 @@ fn all_capabilities() -> Capabilities {
         .with(Feature::Idempotency)
         .with(Feature::RulesDerived)
         .with(Feature::EventsDelivery)
+        .with(Feature::RulesTimed)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -290,6 +292,14 @@ impl Generator for Rust {
                 let svc = req.ir.service(*s);
                 guards::svc_has_guards(svc) || svc.endpoints.iter().any(conditional::has_guard)
             });
+        let timed = server
+            && served_http(req).iter().any(|s| {
+                req.ir
+                    .service(*s)
+                    .endpoints
+                    .iter()
+                    .any(|e| e.rules.transition.as_ref().is_some_and(|t| t.is_timed()))
+            });
         let etag = server && conditional::any_version(req.ir, &served_http(req));
         let version = etag
             || conditional::any_guard(req.ir, if server { &req.consumes } else { &req.services });
@@ -320,6 +330,7 @@ impl Generator for Rust {
             rules,
             endpoint_rules,
             guards,
+            timed,
             policies,
             rollout,
             server: serving,
@@ -357,6 +368,7 @@ impl Generator for Rust {
             .with_rollout(rollout)
             .with_derived(derived)
             .with_idempotency(idempotency)
+            .with_timed(timed)
             .with_runtime(runtime);
         if let Some(model) = &model {
             config::emit(&mut files, model, req.ir, req.role, tr)?;

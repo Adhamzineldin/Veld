@@ -370,8 +370,8 @@ fn rust_refuses_sagas() {
 }
 
 #[test]
-fn rust_refuses_timed_moves() {
-    veld_emit_conformance::check_timed_is_refused(&Rust).unwrap();
+fn rust_generates_timed_moves() {
+    veld_emit_conformance::check_timed_is_generated(&Rust).unwrap();
 }
 
 #[test]

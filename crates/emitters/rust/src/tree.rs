@@ -37,6 +37,9 @@ pub struct Tree<'a> {
     /// True when the crate has an `@idempotent` endpoint (`spec/rules.md` section 11.8): every
     /// `Conditional` of the server core has the `idempotency` member.
     pub idempotency: bool,
+    /// True when a served endpoint takes a timed edge (`spec/platform.md` section 10): the
+    /// generated step 6 reads the clock of the due-moves run.
+    pub timed: bool,
     /// The runtime config of the target (`spec/runtime-config.md`), when it has settings: the
     /// server entry of every served service takes it.
     pub runtime: Option<crate::config::RuntimeCfg>,
@@ -77,6 +80,7 @@ impl<'a> Tree<'a> {
             rollout: false,
             derived: false,
             idempotency: false,
+            timed: false,
             runtime: None,
             events: false,
         }
@@ -162,6 +166,12 @@ impl<'a> Tree<'a> {
     }
 
     /// Sets whether the crate has an `@idempotent` endpoint.
+    #[must_use]
+    pub fn with_timed(mut self, timed: bool) -> Self {
+        self.timed = timed;
+        self
+    }
+
     #[must_use]
     pub fn with_idempotency(mut self, idempotency: bool) -> Self {
         self.idempotency = idempotency;

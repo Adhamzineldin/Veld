@@ -193,6 +193,36 @@ fn machine_helpers(w: &mut CodeWriter, name: &str, e: &Enum) {
         w.line(format!("matches!(self, {})", finals.join(" | ")));
     }
     w.close();
+    timed_moves_fn(w, name, e);
+}
+
+/// `timed_moves()` of a machine with a timed edge (`spec/platform.md` section 10.1): the source,
+/// the target and the milliseconds of each timed edge, in the order of the edges. Server and client
+/// have it; the server decides whether a move is due.
+fn timed_moves_fn(w: &mut CodeWriter, name: &str, e: &Enum) {
+    let moves: Vec<String> = e
+        .flows
+        .iter()
+        .filter_map(|f| {
+            let ms = f.after_ms.as_deref()?.parse::<i64>().ok()?;
+            Some(format!(
+                "({name}::{}, {name}::{}, {ms})",
+                variant(&f.from),
+                variant(&f.to)
+            ))
+        })
+        .collect();
+    if moves.is_empty() {
+        return;
+    }
+    w.blank();
+    w.line("/// The timed edges: `(from, to, milliseconds)` in the order of the `flow` lines. A move is due");
+    w.line("/// when the value has been in `from` for that long; the server decides (`spec/platform.md` 10.1).");
+    w.open(format!(
+        "pub const fn timed_moves() -> &'static [({name}, {name}, i64)]"
+    ));
+    w.line(format!("&[{}]", moves.join(", ")));
+    w.close();
 }
 
 fn decl_impl(w: &mut CodeWriter, d: &Decl, name: &str) {
