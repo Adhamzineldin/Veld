@@ -116,6 +116,50 @@ const FLAG_CASES: [(&str, &str, &str); 3] = [
     ("compiled_flag_flow", FLAG_FLOW_SOURCE, "enum Phase"),
 ];
 
+/// `@timeout` on an endpoint: the first use is the endpoint line.
+const TIMEOUT_SOURCE: &str = "model Room {
+  id: uuid
+}
+
+service Rooms at \"/rooms\" {
+  @timeout(seconds(2))
+  get \"/{id}\" getRoom(id: uuid) -> Room
+}
+";
+
+/// `@timeout` on a service only: it reaches the endpoint, whose line is the first use.
+const TIMEOUT_SERVICE_SOURCE: &str = "model Room {
+  id: uuid
+}
+
+@timeout(minutes(1))
+service Rooms at \"/rooms\" {
+  get \"/{id}\" getRoom(id: uuid) -> Room
+}
+";
+
+/// `@slo` on an endpoint: the first use is the endpoint line.
+const SLO_SOURCE: &str = "model Room {
+  id: uuid
+}
+
+service Rooms at \"/rooms\" {
+  @slo(p99: ms(300), errors: 0.1)
+  get \"/{id}\" getRoom(id: uuid) -> Room
+}
+";
+
+/// `@slo` on a service only.
+const SLO_SERVICE_SOURCE: &str = "model Room {
+  id: uuid
+}
+
+@slo(errors: 1)
+service Rooms at \"/rooms\" {
+  get \"/{id}\" getRoom(id: uuid) -> Room
+}
+";
+
 fn compiled(cases: &[(&str, &str, &str)]) -> Vec<(Ir, u32)> {
     cases
         .iter()
@@ -137,6 +181,52 @@ fn compiled(cases: &[(&str, &str, &str)]) -> Vec<(Ir, u32)> {
 #[must_use]
 pub fn compiled_timed_contracts() -> Vec<(Ir, u32)> {
     compiled(&TIMED_CASES)
+}
+
+/// The contracts that use `timeouts`, with the line of the first endpoint that has a deadline.
+///
+/// # Panics
+/// When a contract of this crate does not compile.
+#[must_use]
+pub fn compiled_timeout_contracts() -> Vec<(Ir, u32)> {
+    compiled(&[
+        ("compiled_timeout", TIMEOUT_SOURCE, "get \"/{id}\""),
+        (
+            "compiled_timeout_service",
+            TIMEOUT_SERVICE_SOURCE,
+            "get \"/{id}\"",
+        ),
+    ])
+}
+
+/// The contracts that use `slo`, with the line of the first endpoint that has an objective.
+///
+/// # Panics
+/// When a contract of this crate does not compile.
+#[must_use]
+pub fn compiled_slo_contracts() -> Vec<(Ir, u32)> {
+    compiled(&[
+        ("compiled_slo", SLO_SOURCE, "get \"/{id}\""),
+        ("compiled_slo_service", SLO_SERVICE_SOURCE, "get \"/{id}\""),
+    ])
+}
+
+/// The generator must not declare `timeouts` and must refuse a contract with a deadline, in every
+/// role (see [`check_timed_is_refused`]).
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_timeouts_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    all_refused(generator, Feature::Timeouts, &compiled_timeout_contracts())
+}
+
+/// The generator must not declare `slo` and must refuse a contract with a service level, in every
+/// role (see [`check_timed_is_refused`]).
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_slo_is_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    all_refused(generator, Feature::Slo, &compiled_slo_contracts())
 }
 
 /// The contracts that use `rules_flags`, with the line of the first use in each.
@@ -235,6 +325,24 @@ mod tests {
         for (ir, _) in compiled_timed_contracts() {
             let used = ir.features_used(&[ServiceId(0)]);
             assert!(used.contains(&Feature::RulesTimed), "{used:?}");
+        }
+    }
+
+    #[test]
+    fn each_deadline_and_service_level_contract_uses_its_feature_and_the_gate_points_at_it() {
+        let all = Capabilities::all_except(&[]);
+        for (feature, contracts) in [
+            (Feature::Timeouts, compiled_timeout_contracts()),
+            (Feature::Slo, compiled_slo_contracts()),
+        ] {
+            for (ir, line) in contracts {
+                let used = ir.features_used(&[ServiceId(0)]);
+                assert!(used.contains(&feature), "{used:?}");
+                let found = gate(&ir, &all);
+                assert_eq!(found.len(), 1, "{found:?}");
+                assert_eq!(found[0].origin.as_ref().map(|o| o.line), Some(line));
+                assert!(gate(&ir, &all.clone().with(feature)).is_empty());
+            }
         }
     }
 

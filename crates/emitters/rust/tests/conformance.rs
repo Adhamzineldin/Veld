@@ -313,3 +313,9 @@ fn rust_refuses_timed_moves() {
 fn rust_refuses_flags() {
     veld_emit_conformance::check_flags_are_refused(&Rust).unwrap();
 }
+
+#[test]
+fn rust_refuses_deadlines_and_service_levels() {
+    veld_emit_conformance::check_timeouts_are_refused(&Rust).unwrap();
+    veld_emit_conformance::check_slo_is_refused(&Rust).unwrap();
+}

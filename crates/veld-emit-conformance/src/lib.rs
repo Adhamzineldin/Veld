@@ -34,8 +34,9 @@ pub use events::{
 };
 pub use fixtures::{FIXTURES, Fixture};
 pub use platform_p2::{
-    check_flags_are_refused, check_timed_is_refused, compiled_flag_contracts,
-    compiled_timed_contracts,
+    check_flags_are_refused, check_slo_is_refused, check_timed_is_refused,
+    check_timeouts_are_refused, compiled_flag_contracts, compiled_slo_contracts,
+    compiled_timed_contracts, compiled_timeout_contracts,
 };
 pub use rollout::{
     check_rollout_is_generated, check_rollout_is_refused, compiled_rollout_contracts,
