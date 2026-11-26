@@ -15,6 +15,7 @@ use veld_ir::Ir;
 
 const CONTRACT: &str = "tests/toolchain/contract/platform_p1/audit.veld";
 const GOLDEN_CONTRACT: &str = "tests/wire/audit/contract.veld";
+const GOLDEN_CASES: &str = "tests/wire/audit/cases.json";
 const REDACTION_CONTRACT: &str = "tests/wire/redaction/contract.veld";
 const REDACTION_CASES: &str = "tests/wire/redaction/cases.json";
 const DRIVERS: &str = "tests/toolchain/java/platform_p1";
@@ -236,5 +237,31 @@ fn the_audit_log_does_not_depend_on_request_validation() {
         "AuditHttp",
         None,
         &["unvalidated"],
+    );
+}
+
+/// The 17 cases of `tests/wire/audit/cases.json` through the generated server with the stubs of each
+/// case, the canonical bytes of the event compared. The contract has no `@limit` and the case of the
+/// limiter needs one, so `payBooking` is given `@limit(10, per: minute, by: user)` here: it changes no
+/// operation signature (the expected events are compared byte for byte), and the limiter of the
+/// program answers what the case says.
+#[test]
+fn every_case_of_the_audit_goldens_gives_the_event_of_the_reference() {
+    if !require_javac("every_case_of_the_audit_goldens") {
+        return;
+    }
+    let text = std::fs::read_to_string(repo_root().join(GOLDEN_CONTRACT)).unwrap();
+    let limited = text.replacen(
+        "  @audited\n  post \"/{id}/pay\" payBooking",
+        "  @audited\n  @limit(10, per: minute, by: user)\n  post \"/{id}/pay\" payBooking",
+        1,
+    );
+    assert_ne!(limited, text, "the limit was added");
+    let ir = compile_source(limited, "bookings", GOLDEN_CONTRACT);
+    run_driver(
+        &generate(&ir, Role::Server, "gen.b", false),
+        "AuditGoldens",
+        Some(GOLDEN_CASES),
+        &[],
     );
 }
