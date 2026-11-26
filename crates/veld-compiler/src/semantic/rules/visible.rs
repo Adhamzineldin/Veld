@@ -20,6 +20,8 @@ use veld_ir::{DeclId, Type};
 #[derive(Debug, Clone)]
 pub struct RVisible {
     pub expr: Expr,
+    /// The principal model of the package, as an index into `Program::decls`.
+    pub principal: usize,
     pub span: Span,
 }
 
@@ -175,6 +177,7 @@ fn type_expression(
     }
     Some(RVisible {
         expr,
+        principal: principal.decl,
         span: src.span,
     })
 }

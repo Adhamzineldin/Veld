@@ -410,7 +410,12 @@ impl Values<'_, '_, '_> {
                 ok = false;
                 continue;
             }
-            match self.value(&f.value, &field.ty) {
+            let value = if self.says_absent(&f.value) {
+                self.absent_member(field, f)
+            } else {
+                self.value(&f.value, &field.ty)
+            };
+            match value {
                 Some(value) => out.push(ExampleField {
                     name: field.name.clone(),
                     wire: field.wire.clone(),
@@ -420,6 +425,33 @@ impl Values<'_, '_, '_> {
             }
         }
         ok.then_some(ExampleValue::Object(out))
+    }
+
+    /// `field: absent` in a pattern (`spec/platform.md` section 2): the word `absent` alone,
+    /// unless the example has a given of that name.
+    fn says_absent(&self, v: &ast::Value) -> bool {
+        matches!(&v.kind, ValueKind::Path(p) if p.len() == 1 && p[0].name == "absent")
+            && self.pattern
+            && !self.givens.iter().any(|(n, _)| n == "absent")
+    }
+
+    /// The value `absent` of an optional member; a required one is always there.
+    fn absent_member(
+        &mut self,
+        field: &crate::semantic::RField,
+        f: &ast::ValueField,
+    ) -> Option<ExampleValue> {
+        if !field.optional {
+            self.err(
+                format!(
+                    "`{}` is not optional, so it is always there and cannot be `absent`",
+                    f.name.name
+                ),
+                f.value.span,
+            );
+            return None;
+        }
+        Some(ExampleValue::Absent(veld_ir::rules::Always))
     }
 
     /// A union value names its arm with the discriminator, as it does on the wire.

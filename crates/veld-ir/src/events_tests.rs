@@ -206,6 +206,7 @@ fn field(name: &str, ty: Type) -> Field {
         pii: false,
         secret: false,
         visible: None,
+        visible_principal: None,
         inherited_from: None,
         constraints: Constraints::default(),
         example: None,

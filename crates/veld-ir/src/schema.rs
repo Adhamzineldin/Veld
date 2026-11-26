@@ -145,6 +145,7 @@ const FIELD: Fields = &[
     ("pii", T::Optional(&T::Bool)),
     ("secret", T::Optional(&T::Bool)),
     ("visible", T::Optional(&EXPR)),
+    ("visible_principal", T::Optional(&DECL_ID)),
     ("inherited_from", T::Nullable(&DECL_ID)),
     ("constraints", T::Ref("Constraints")),
     ("example", T::Nullable(&T::Ref("Literal"))),
@@ -637,6 +638,7 @@ pub const DEFS: &[Def] = &[
             ("ref", T::Ref("ExampleRef")),
             ("object", T::List(&T::Ref("ExampleField"))),
             ("list", T::List(&T::Ref("ExampleValue"))),
+            ("absent", T::Bool),
         ],
     ),
     Def::Object(

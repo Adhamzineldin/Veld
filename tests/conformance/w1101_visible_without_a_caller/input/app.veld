@@ -1,0 +1,18 @@
+// An endpoint with no caller of the principal type never sends a @visible field.
+
+model User {
+  id: uuid
+  roles: string[]
+}
+
+principal User
+
+model Booking {
+  guestId: uuid
+  guestPhone?: string @visible(when: user.id == guestId)
+}
+
+@auth(none)
+service Public at "/public" {
+  get "/{id}" getBooking(id: uuid) -> Booking
+}

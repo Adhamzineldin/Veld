@@ -346,6 +346,17 @@ impl Ir {
             .any(|id| self.decl(id).has_derived())
     }
 
+    /// True when a value of the type can have a `@visible` field: on the declaration of the
+    /// type or on any declaration it reaches (`spec/platform.md` section 2).
+    #[must_use]
+    pub fn type_reaches_visible(&self, ty: &Type) -> bool {
+        let mut stack = Vec::new();
+        ty.collect_decls(&mut stack);
+        self.close_over(stack)
+            .into_iter()
+            .any(|id| self.decl(id).fields().iter().any(|f| f.visible.is_some()))
+    }
+
     /// The types of the facts and the principal of the services and everything those reach,
     /// sorted by id. No endpoint reaches them (`reachable_decls` leaves them out), but the
     /// application hands the server values of them.
@@ -877,6 +888,11 @@ pub struct Field {
     /// contract without the annotation is unchanged. Not part of any signature.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible: Option<Expr>,
+    /// The principal model `visible` was checked against (`spec/platform.md` section 2): the
+    /// caller it reads is a value of this model. Present exactly when `visible` is. A server
+    /// whose principal is another model has no caller of that type, and hides the field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible_principal: Option<DeclId>,
     pub inherited_from: Option<DeclId>,
     pub constraints: Constraints,
     pub example: Option<Literal>,

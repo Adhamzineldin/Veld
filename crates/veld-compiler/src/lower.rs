@@ -237,11 +237,12 @@ impl Lowerer<'_, '_> {
             .then(|| self.prog.decls[writer].res.own_derived.get(&f.name))
             .flatten()
             .map(|r| self.remap_expr(&r.expr));
-        let visible = f
+        let own_visible = f
             .visible
             .then(|| self.prog.decls[writer].res.own_visible.get(&f.name))
-            .flatten()
-            .map(|r| self.remap_expr(&r.expr));
+            .flatten();
+        let visible = own_visible.map(|r| self.remap_expr(&r.expr));
+        let visible_principal = own_visible.map(|r| self.decl_id(r.principal));
         Field {
             name: f.name.clone(),
             wire: f.wire.clone(),
@@ -256,6 +257,7 @@ impl Lowerer<'_, '_> {
             pii: f.pii,
             secret: f.secret,
             visible,
+            visible_principal,
             inherited_from: f.inherited_from.map(|d| self.decl_id(d)),
             constraints: f.constraints.clone(),
             example: f.example.clone(),

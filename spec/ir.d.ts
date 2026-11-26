@@ -162,6 +162,7 @@ export interface Field {
   pii?: boolean;
   secret?: boolean;
   visible?: Expr;
+  visible_principal?: DeclId;
   inherited_from: DeclId | null;
   constraints: Constraints;
   example: Literal | null;
@@ -486,6 +487,7 @@ export type ExampleValue =
   | { ref: ExampleRef }
   | { object: ExampleField[] }
   | { list: ExampleValue[] }
+  | { absent: boolean }
 
 export interface ExampleRef {
   given: string;

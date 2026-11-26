@@ -1,0 +1,6 @@
+// `visible` and `when` are ordinary names.
+
+model Light {
+  visible: bool
+  when: string
+}

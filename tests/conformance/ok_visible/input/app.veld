@@ -1,0 +1,31 @@
+// @visible with the caller, the fields of the declaration and the clock.
+
+model User {
+  id: uuid
+  roles: string[]
+}
+
+principal User as caller
+
+model Booking {
+  guestId: uuid
+  opensAt: datetime
+  guestPhone?: string @visible(when: caller.id == guestId || "support" in caller.roles)
+  early?: string @visible(when: now >= opensAt)
+  note?: string @visible(when: has(note) && len(note) > 0)
+}
+
+model Vip extends Booking {
+  badge?: string @visible(when: "support" in caller.roles)
+}
+
+error Refused 409 {
+  reason: string
+  who?: string @visible(when: "support" in caller.roles)
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  get "/{id}" getBooking(id: uuid) -> Booking | Refused
+  get "/" listBookings() -> Page<Vip>
+}

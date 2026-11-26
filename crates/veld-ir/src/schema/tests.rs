@@ -250,6 +250,7 @@ fn field(name: &str, ty: Type, lit: Literal) -> Field {
         pii: true,
         secret: true,
         visible: Some(int_lit(1)),
+        visible_principal: Some(DeclId(0)),
         inherited_from: Some(DeclId(0)),
         constraints: Constraints {
             min: Some(0.0),
