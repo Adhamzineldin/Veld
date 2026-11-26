@@ -5,7 +5,15 @@
 //! reference evaluator of `veld-rules` has confirmed it. It links no solver and knows no syntax:
 //! it reads the IR and nothing else.
 
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::wildcard_enum_match_arm
+    )
+)]
 
 pub mod confirm;
 pub mod diff;
