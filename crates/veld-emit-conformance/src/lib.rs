@@ -17,6 +17,7 @@ mod event_rollout;
 mod events;
 mod fixtures;
 mod rollout;
+mod version;
 
 use std::collections::BTreeMap;
 
@@ -33,6 +34,10 @@ pub use events::{
 pub use fixtures::{FIXTURES, Fixture};
 pub use rollout::{
     check_rollout_is_generated, check_rollout_is_refused, compiled_rollout_contracts,
+};
+pub use version::{
+    check_idempotency_is_generated, check_idempotency_is_refused, check_version_is_generated,
+    check_version_is_refused, compiled_idempotency_contracts, compiled_version_contracts,
 };
 
 /// Compiles one contract as the single service package `app`.
@@ -878,9 +883,10 @@ mod tests {
         let covered: Vec<Feature> = FIXTURES.iter().filter_map(|f| f.feature).collect();
         // `consts` is never reported by `features_used` (see fixtures.rs), so it has no fixture.
         // The rules features have no fixture until the language has rule syntax; `ir_with_rule`
-        // covers `rules_invariants` by hand. `rules_rollout` is covered by `compiled_rollout_contracts`.
+        // covers `rules_invariants` by hand. The opt-in features have contracts of their own:
+        // `compiled_rollout_contracts`, `compiled_version_contracts`, `compiled_idempotency_contracts`.
         for feature in Feature::ALL.into_iter().filter(|f| {
-            *f != Feature::Consts && *f != Feature::RulesRollout && !Feature::RULES.contains(f)
+            *f != Feature::Consts && !Feature::OPT_IN.contains(f) && !Feature::RULES.contains(f)
         }) {
             assert!(
                 covered.contains(&feature),

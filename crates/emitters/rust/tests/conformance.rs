@@ -295,3 +295,11 @@ fn rust_supports_state_machines_and_policies_so_the_refusal_checks_fail() {
         "Rust must declare `rules_policies`"
     );
 }
+
+/// `@version` and `@idempotent` (`spec/rules.md` sections 11.7 to 11.9): until the Rust generator
+/// implements them, it refuses a contract that uses either with `E0801`, in every role.
+#[test]
+fn rust_refuses_version_and_idempotency() {
+    veld_emit_conformance::check_version_is_refused(&Rust).unwrap();
+    veld_emit_conformance::check_idempotency_is_refused(&Rust).unwrap();
+}

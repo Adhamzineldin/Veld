@@ -101,3 +101,14 @@ fn node_and_typescript_generate_audited_rules() {
     veld_emit_conformance::check_rollout_is_generated(&Node).unwrap();
     veld_emit_conformance::check_rollout_is_generated(&TypeScript).unwrap();
 }
+
+/// `@version` and `@idempotent` (`spec/rules.md` sections 11.7 to 11.9): until a generator
+/// implements them, the Node server and the TypeScript client both refuse a contract that uses
+/// either with `E0801`, at the first use, and make no files.
+#[test]
+fn node_and_typescript_refuse_version_and_idempotency() {
+    veld_emit_conformance::check_version_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_idempotency_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_version_is_refused(&TypeScript).unwrap();
+    veld_emit_conformance::check_idempotency_is_refused(&TypeScript).unwrap();
+}
