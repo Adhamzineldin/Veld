@@ -56,11 +56,21 @@ service Orders at \"/orders\" {
 ";
 
 /// The contracts that use `rules_derived`, each with the text of the line of the first derived
-/// field.
-const CASES: [(&str, &str, &str); 3] = [
-    ("compiled_derived_body", BODY_SOURCE, "total: decimal"),
-    ("compiled_derived_fact", FACT_SOURCE, "free: int"),
-    ("compiled_derived_error", ERROR_SOURCE, "left: decimal"),
+/// field, and whether only a server uses the feature: a client never sees a fact.
+const CASES: [(&str, &str, &str, bool); 3] = [
+    (
+        "compiled_derived_body",
+        BODY_SOURCE,
+        "total: decimal",
+        false,
+    ),
+    ("compiled_derived_fact", FACT_SOURCE, "free: int", true),
+    (
+        "compiled_derived_error",
+        ERROR_SOURCE,
+        "left: decimal",
+        false,
+    ),
 ];
 
 /// The contracts that use `rules_derived`, with the line of the first derived field in each.
@@ -71,7 +81,7 @@ const CASES: [(&str, &str, &str); 3] = [
 pub fn compiled_derived_contracts() -> Vec<(Ir, u32)> {
     CASES
         .iter()
-        .map(|(name, source, needle)| {
+        .map(|(name, source, needle, _)| {
             let line = source
                 .lines()
                 .position(|l| l.contains(needle))
@@ -80,6 +90,11 @@ pub fn compiled_derived_contracts() -> Vec<(Ir, u32)> {
             (compile(name, source), line)
         })
         .collect()
+}
+
+/// True for the contracts that only a server uses the feature for (the derived field is on a fact).
+fn server_only(index: usize) -> bool {
+    CASES.get(index).is_some_and(|c| c.3)
 }
 
 fn request(ir: &Ir, role: Role) -> GenRequest<'_> {
@@ -99,13 +114,16 @@ fn request(ir: &Ir, role: Role) -> GenRequest<'_> {
 /// # Errors
 /// A description of the first role and contract for which the generator does not behave so.
 pub fn check_derived_is_refused(generator: &dyn DynGenerator) -> Result<(), String> {
-    for (ir, line) in compiled_derived_contracts() {
+    for (index, (ir, line)) in compiled_derived_contracts().into_iter().enumerate() {
         for role in generator.roles() {
             if generator
                 .capabilities(*role)
                 .supports(Feature::RulesDerived)
             {
                 return Err(format!("{}: declares `rules_derived`", role.name()));
+            }
+            if *role == Role::Client && server_only(index) {
+                continue;
             }
             refuses(generator, &ir, *role, line)
                 .map_err(|e| format!("{} / line {line}: {e}", role.name()))?;
@@ -202,6 +220,18 @@ mod tests {
     }
 
     /// A client sees a derived field too: it reads the value, and its form helper computes it.
+    #[test]
+    fn a_client_is_not_asked_about_a_fact_it_never_sees() {
+        let all = Capabilities::all_except(&[]);
+        let contracts = compiled_derived_contracts();
+        let (ir, _) = &contracts[1];
+        assert!(check_capabilities(ir, &request(ir, Role::Client), &all).is_empty());
+        assert_eq!(
+            check_capabilities(ir, &request(ir, Role::Server), &all).len(),
+            1
+        );
+    }
+
     #[test]
     fn a_client_is_refused_as_well() {
         let all = Capabilities::all_except(&[]);

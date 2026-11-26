@@ -298,7 +298,18 @@ pub fn checked_features(ir: &Ir, req: &GenRequest<'_>) -> std::collections::BTre
         from_events.retain(|f| *f == Feature::Events);
     }
     used.extend(from_events);
+    if req.role == Role::Client && !reaches_derived(ir, &all) {
+        // A client never sees a fact or the principal: only what an endpoint reaches counts.
+        used.remove(&Feature::RulesDerived);
+    }
     used
+}
+
+/// True when an endpoint of `services` reaches a model with a derived field.
+fn reaches_derived(ir: &Ir, services: &[ServiceId]) -> bool {
+    ir.reachable_decls(services)
+        .into_iter()
+        .any(|id| ir.decl(id).has_derived())
 }
 
 /// Where a feature is first used: an endpoint for endpoint-level features, a declaration otherwise.
@@ -377,7 +388,9 @@ fn first_use(
     }
     if feature == Feature::RulesDerived {
         let mut ids = searched(ir, services, req);
-        ids.extend(ir.fact_decls(services));
+        if req.role == Role::Server {
+            ids.extend(ir.fact_decls(services));
+        }
         return first_derived_origin(ir, &ids);
     }
     if feature == Feature::RulesTransitions {
