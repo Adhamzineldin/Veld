@@ -102,7 +102,7 @@ fn refused(
             role.name()
         ));
     }
-    match generator.generate_dyn(req, &serde_json::Value::Null) {
+    match generator.generate_dyn(req, &crate::options()) {
         Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => Ok(()),
         other => Err(format!(
             "{}: generate did not answer E0801: {other:?}",
@@ -119,7 +119,7 @@ fn untouched(
     if !gate.is_empty() {
         return Err(format!("client: the gate reported {gate:?}"));
     }
-    match generator.generate_dyn(req, &serde_json::Value::Null) {
+    match generator.generate_dyn(req, &crate::options()) {
         Ok(files) if !files.is_empty() => Ok(()),
         other => Err(format!("client: generate did not make files: {other:?}")),
     }
@@ -142,7 +142,7 @@ pub fn check_retention_is_generated(generator: &dyn DynGenerator) -> Result<(), 
         if !gate.is_empty() {
             return Err(format!("{}: the gate reported {gate:?}", role.name()));
         }
-        match generator.generate_dyn(&req, &serde_json::Value::Null) {
+        match generator.generate_dyn(&req, &crate::options()) {
             Ok(files) if !files.is_empty() => {}
             other => {
                 return Err(format!(

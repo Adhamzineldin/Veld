@@ -111,7 +111,7 @@ fn refuses(
             "the gate reported {gate:?}, wanted one E0801 for `events_delivery` at line {line}"
         ));
     }
-    match generator.generate_dyn(&req, &serde_json::Value::Null) {
+    match generator.generate_dyn(&req, &crate::options()) {
         Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => Ok(()),
         other => Err(format!("generate did not answer E0801: {other:?}")),
     }
@@ -164,7 +164,7 @@ fn request(ir: &Ir, role: Role) -> GenRequest<'_> {
 
 fn generate(generator: &dyn DynGenerator, ir: &Ir, role: Role) -> Result<FileSet, String> {
     generator
-        .generate_dyn(&request(ir, role), &serde_json::Value::Null)
+        .generate_dyn(&request(ir, role), &crate::options())
         .map_err(|d| format!("generation failed: {d:?}"))
 }
 

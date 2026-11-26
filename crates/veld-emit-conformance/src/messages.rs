@@ -91,7 +91,7 @@ pub fn check_messages_is_refused(generator: &dyn DynGenerator) -> Result<(), Str
                 role.name()
             ));
         }
-        match generator.generate_dyn(&req, &serde_json::Value::Null) {
+        match generator.generate_dyn(&req, &crate::options()) {
             Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
             other => {
                 return Err(format!(
@@ -121,7 +121,7 @@ pub fn check_messages_are_generated(generator: &dyn DynGenerator) -> Result<(), 
         if !gate.is_empty() {
             return Err(format!("{}: the gate reported {gate:?}", role.name()));
         }
-        match generator.generate_dyn(&req, &serde_json::Value::Null) {
+        match generator.generate_dyn(&req, &crate::options()) {
             Ok(files) if !files.is_empty() => {}
             other => {
                 return Err(format!(
