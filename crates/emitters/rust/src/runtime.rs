@@ -59,6 +59,10 @@ pub struct Features {
     /// The target option `messaging` names Kafka (`spec/events.md` section 10.7):
     /// `src/adapters/kafka.rs` and the `rdkafka` dependency.
     pub kafka: bool,
+    /// The test handler (`testing = true`) of a service that subscribes serves
+    /// `POST /__veld/test/event` (`spec/events.md` section 10.9): the crate needs `axum`, also when
+    /// no service has an HTTP surface.
+    pub test_events: bool,
     /// The same for RabbitMQ: `src/adapters/rabbitmq.rs` and `lapin`.
     pub rabbitmq: bool,
 }

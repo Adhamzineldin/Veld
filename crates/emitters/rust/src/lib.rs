@@ -336,6 +336,12 @@ impl Generator for Rust {
             ureq: tr.ureq,
             config: model.is_some(),
             derived,
+            test_events: server
+                && testing
+                && req
+                    .services
+                    .iter()
+                    .any(|s| !req.ir.service(*s).subscriptions.is_empty()),
             kafka: chosen.contains(&brokers::Broker::Kafka),
             rabbitmq: chosen.contains(&brokers::Broker::RabbitMq),
         };

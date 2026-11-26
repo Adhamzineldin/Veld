@@ -111,7 +111,7 @@ pub fn emit_cargo(files: &mut FileSet, name: &str, f: &Features) -> Result<(), V
     }
     // The broker adapters wait, spawn and signal with tokio.
     if f.kafka || f.rabbitmq {
-        for feature in ["\"rt\"", "\"sync\"", "\"time\""] {
+        for feature in ["\"macros\"", "\"rt\"", "\"sync\"", "\"time\""] {
             if !tokio.contains(&feature) {
                 tokio.push(feature);
             }
@@ -127,7 +127,7 @@ pub fn emit_cargo(files: &mut FileSet, name: &str, f: &Features) -> Result<(), V
     if f.sse {
         deps.insert("futures-core", "\"0.3\"");
     }
-    if f.axum {
+    if f.axum || f.test_events {
         deps.insert(
             "axum",
             if f.ws_server {

@@ -14,7 +14,7 @@ use crate::models::with_imports;
 use crate::server::{mode_in_runtime, needs, service_mod, service_type};
 use crate::tree::Tree;
 use crate::types::{Ctx, rust_type, schema_ref};
-use crate::util::{add_file, lit, method, module};
+use crate::util::{add_file, lit, method, module, snake};
 
 /// The module of the test handler of a service.
 #[must_use]
@@ -47,7 +47,8 @@ pub fn emit(
     }
     for sid in &tree.services {
         let svc = tree.ir.service(*sid);
-        if !block::has_block(svc) && !crate::conditional::svc_idempotent(svc) {
+        let blocks = block::has_block(svc) || crate::conditional::svc_idempotent(svc);
+        if !blocks && svc.subscriptions.is_empty() {
             continue;
         }
         let here = format!(
@@ -63,7 +64,11 @@ pub fn emit(
             svc.name
         ));
         w.line(WARNING).blank();
-        write_file(&mut w, &ctx, svc);
+        if blocks {
+            write_file(&mut w, &ctx, svc);
+        } else {
+            write_events_only(&mut w, &ctx, svc);
+        }
         let path = format!(
             "{}/{}/{}.rs",
             tree.dir,
@@ -110,7 +115,21 @@ fn write_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     test_hooks(w, ctx.tree, svc, &name);
     dispatch(w, ctx, svc, &name);
     handler(w, ctx.tree, svc, &name);
-    probe(w, svc, &name);
+    probe(w, ctx, svc, &name);
+    if !svc.subscriptions.is_empty() {
+        event_endpoint(w, ctx, svc);
+    }
+}
+
+/// The test handler of a service that subscribes and has no endpoint rules: it takes no
+/// application and answers the probe and `POST /__veld/test/event` (`spec/events.md` section 10.9).
+fn write_events_only(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
+    probe_body(w, svc, &topics(ctx.tree.ir, svc));
+    w.line("/// The routes of the test handler: `GET /__veld/test` and `POST /__veld/test/event`.");
+    w.open("pub fn router() -> ::axum::Router");
+    w.line("::axum::Router::new().route(\"/__veld/test\", ::axum::routing::get(|| async { ([(::axum::http::header::CONTENT_TYPE, \"application/json\")], probe()) })).route(\"/__veld/test/event\", ::axum::routing::post(event))");
+    w.close().blank();
+    event_endpoint(w, ctx, svc);
 }
 
 fn helpers(w: &mut CodeWriter, facts: bool) {
@@ -457,7 +476,19 @@ fn test_hooks(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, name: &str) {
     }
 }
 
-fn probe(w: &mut CodeWriter, svc: &Service, name: &str) {
+/// The topics the service subscribes to, sorted.
+fn topics(ctx_ir: &veld_ir::Ir, svc: &Service) -> Vec<String> {
+    let mut out: Vec<String> = svc
+        .subscriptions
+        .iter()
+        .map(|s| ctx_ir.channel(s.channel).topic.clone())
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn probe_body(w: &mut CodeWriter, svc: &Service, topics: &[String]) {
     let digest = svc
         .rules_digest
         .as_ref()
@@ -465,20 +496,165 @@ fn probe(w: &mut CodeWriter, svc: &Service, name: &str) {
     w.line(
         "/// The body of `GET /__veld/test`: it tells a test handler from a production server and",
     );
-    w.line("/// holds the rules digests of its service.");
+    w.line("/// holds the rules digests of its service, and the topics it subscribes to.");
     w.open("pub fn probe() -> String");
+    let subscribes = if svc.subscriptions.is_empty() {
+        String::new()
+    } else {
+        let list: Vec<String> = topics.iter().map(|x| format!("\"{x}\"")).collect();
+        format!(",\"subscribes\":{{\"{}\":[{}]}}", svc.name, list.join(","))
+    };
     w.line(format!(
         "{}.to_string()",
         lit(&format!(
-            "{{\"veldTestHandler\":1,\"digests\":{{\"{}\":{digest}}}}}",
+            "{{\"veldTestHandler\":1,\"digests\":{{\"{}\":{digest}}}{subscribes}}}",
             svc.name
         ))
     ));
     w.close().blank();
+}
+
+fn probe(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, name: &str) {
+    probe_body(w, svc, &topics(ctx.tree.ir, svc));
     w.line("/// The routes of the test handler: the endpoints and `GET /__veld/test`.");
     w.open(format!(
         "pub fn router<S: {name}Service, H: {name}Hooks>(handler: Handler<{name}TestDispatch<S, H>>) -> ::axum::Router"
     ));
-    w.line("crate::adapters::axum::router(handler).route(\"/__veld/test\", ::axum::routing::get(|| async { ([(::axum::http::header::CONTENT_TYPE, \"application/json\")], probe()) }))");
+    let event = if svc.subscriptions.is_empty() {
+        ""
+    } else {
+        ".route(\"/__veld/test/event\", ::axum::routing::post(event))"
+    };
+    w.line(format!("crate::adapters::axum::router(handler).route(\"/__veld/test\", ::axum::routing::get(|| async {{ ([(::axum::http::header::CONTENT_TYPE, \"application/json\")], probe()) }})){event}"));
+    w.close().blank();
+}
+
+/// `POST /__veld/test/event` (`spec/events.md` section 10.9): the service's own subscriber, over a
+/// fresh memory transport and a fresh memory inbox, with a `sleep` that does not wait and handlers
+/// that only count. The application's handlers are not called.
+fn event_endpoint(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
+    let name = crate::util::type_name(&svc.name);
+    let events = format!(
+        "{}::{}::{}",
+        ctx.tree.root,
+        ctx.tree.pkg_mod(svc.package),
+        crate::events::events_mod(svc)
+    );
+    let handlers: Vec<&veld_ir::Handler> = svc
+        .subscriptions
+        .iter()
+        .flat_map(|s| s.handlers.iter())
+        .collect();
+    w.line(
+        "/// What the test handler answers to an event: the JSON of `spec/events.md` section 10.9.",
+    );
+    w.line("#[derive(Debug, Clone, PartialEq)]");
+    w.open("pub struct EventOutcome");
+    w.line("/// `handled`, `ignored` or `rejected`.");
+    w.line("pub outcome: &'static str,");
+    w.line("/// `malformed`, `shape` or `rule` for a rejected message.");
+    w.line("pub reason: Option<&'static str>,");
+    w.line("/// How often each `Service.handler` ran.");
+    w.line("pub called: std::collections::BTreeMap<String, u64>,");
+    w.line("/// The violations of a rejected message: `rule`, `path`, `fields`, `message`.");
+    w.line("pub violations: Vec<serde_json::Value>,");
+    w.line("/// The copies published to `<topic>.dlq`.");
+    w.line("pub dead_letters: u64,");
+    w.close().blank();
+    w.open("impl EventOutcome");
+    w.line("/// The body of the answer.");
+    w.open("pub fn to_json(&self) -> serde_json::Value");
+    w.line("serde_json::json!({ \"outcome\": self.outcome, \"reason\": self.reason, \"called\": self.called, \"violations\": self.violations, \"deadLetters\": self.dead_letters })");
+    w.close();
+    w.close().blank();
+    w.line("/// The handlers of the test handler: each one counts its calls and returns.");
+    w.line("struct Counting(std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, u64>>>);");
+    w.blank();
+    w.open("impl Counting");
+    w.open("fn count(&self, handler: &str)");
+    w.line("let mut calls = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);");
+    w.line("*calls.entry(handler.to_string()).or_insert(0) += 1;");
+    w.close();
+    w.close().blank();
+    w.open(format!("impl {events}::{name}EventHandlers for Counting"));
+    for (i, h) in handlers.iter().enumerate() {
+        if i > 0 {
+            w.blank();
+        }
+        w.open(format!(
+            "fn {}(&self, _event: {}, _meta: veld::events::EventMeta) -> impl std::future::Future<Output = Result<(), veld::Error>> + Send",
+            snake(&h.name),
+            ctx.tree.type_path(h.event, ctx.here)
+        ));
+        w.line(format!(
+            "self.count({});",
+            lit(&format!("{}.{}", svc.name, h.name))
+        ));
+        w.line("std::future::ready(Ok(()))");
+        w.close();
+    }
+    w.close().blank();
+    w.line("/// Every handler of the service, as `Service.handler`.");
+    w.open_with("const HANDLERS: &[&str] = &[", "");
+    for h in &handlers {
+        w.line(format!("{},", lit(&format!("{}.{}", svc.name, h.name))));
+    }
+    w.close_with("];");
+    w.blank();
+    w.line("/// Delivers `bytes` to the subscriber of this service `deliveries` times (1 or 2), over a fresh");
+    w.line("/// memory transport with a fresh inbox, and says what happened.");
+    w.line("///");
+    w.line("/// # Errors");
+    w.line("/// The transport's own error.");
+    w.open("pub async fn deliver_event(topic: &str, key: Option<&str>, deliveries: u8, bytes: &[u8]) -> Result<EventOutcome, veld::Error>");
+    w.line("use std::sync::{Arc, Mutex, PoisonError};");
+    w.line("let transport = Arc::new(veld::events::MemoryTransport::new());");
+    w.line("let calls = Arc::new(Mutex::new(std::collections::BTreeMap::new()));");
+    w.line("let rejected: Arc<Mutex<Option<veld::events::EventRejected>>> = Arc::new(Mutex::new(None));");
+    w.line("let copies = Arc::new(std::sync::atomic::AtomicU64::new(0));");
+    w.line("for handler in HANDLERS {");
+    w.line("    calls.lock().unwrap_or_else(PoisonError::into_inner).insert((*handler).to_string(), 0u64);");
+    w.line("}");
+    w.line("let seen = Arc::clone(&rejected);");
+    w.line("let options = veld::events::ConsumerOptions::new()");
+    w.line("    .inbox(Arc::new(veld::events::MemoryInbox::new()))");
+    w.line("    .sleep(|_| Box::pin(std::future::ready(())))");
+    w.line("    .on_event_rejected(move |e| { let mut first = seen.lock().unwrap_or_else(PoisonError::into_inner); if first.is_none() { *first = Some(e.clone()); } });");
+    w.line(format!(
+        "let handle = {events}::subscribe_{}_events(transport.clone(), Arc::new(Counting(Arc::clone(&calls))), options).await?;",
+        snake(&svc.name)
+    ));
+    w.line("let counted = Arc::clone(&copies);");
+    w.line("let dead: veld::events::Deliver = Arc::new(move |_| { counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst); Box::pin(std::future::ready(veld::events::Outcome::Done)) });");
+    w.line("use veld::events::Transport;");
+    w.line("let listener = transport.subscribe(&format!(\"{topic}.dlq\"), \"veld-test\", dead, veld::events::ChannelOptions::NONE).await?;");
+    w.open("for _ in 0..deliveries.clamp(1, 2)");
+    w.line("transport.publish(topic, key, bytes, veld::events::ChannelOptions::NONE).await?;");
+    w.close();
+    w.line("transport.idle().await;");
+    w.line("handle.close().await;");
+    w.line("listener.close().await;");
+    w.line("let called = calls.lock().unwrap_or_else(PoisonError::into_inner).clone();");
+    w.line("let first = rejected.lock().unwrap_or_else(PoisonError::into_inner).take();");
+    w.line("let (outcome, reason, violations) = match first {");
+    w.line("    Some(e) => (\"rejected\", Some(e.reason.as_str()), e.violations.iter().map(|v| serde_json::json!({ \"rule\": v.rule, \"path\": v.path, \"fields\": v.fields, \"message\": v.message })).collect()),");
+    w.line("    None if called.values().any(|n| *n > 0) => (\"handled\", None, Vec::new()),");
+    w.line("    None => (\"ignored\", None, Vec::new()),");
+    w.line("};");
+    w.line("Ok(EventOutcome { outcome, reason, called, violations, dead_letters: copies.load(std::sync::atomic::Ordering::SeqCst) })");
+    w.close().blank();
+    w.line("/// `POST /__veld/test/event`: the body is the message, the headers are `Veld-Test-Topic`,");
+    w.line("/// `Veld-Test-Key` and `Veld-Test-Deliveries`. A request without a topic is `400`.");
+    w.open("async fn event(headers: ::axum::http::HeaderMap, body: ::axum::body::Bytes) -> ::axum::response::Response");
+    w.line("use ::axum::response::IntoResponse;");
+    w.line("let text = |name: &str| headers.get(name).and_then(|v| v.to_str().ok()).map(str::to_string);");
+    w.line("let Some(topic) = text(\"veld-test-topic\") else { return (::axum::http::StatusCode::BAD_REQUEST, \"Veld-Test-Topic is missing\").into_response() };");
+    w.line("let deliveries = text(\"veld-test-deliveries\").and_then(|n| n.parse::<u8>().ok()).unwrap_or(1);");
+    w.open(
+        "match deliver_event(&topic, text(\"veld-test-key\").as_deref(), deliveries, &body).await",
+    );
+    w.line("Ok(outcome) => ([(::axum::http::header::CONTENT_TYPE, \"application/json\")], outcome.to_json().to_string()).into_response(),");
+    w.line("Err(e) => (::axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),");
+    w.close();
     w.close().blank();
 }
