@@ -15,6 +15,7 @@ use std::fmt::Write as _;
 pub use endpoint::{
     EndpointRef, StatementKind, TransitionRef, endpoint_rule_bytes, endpoint_rule_id,
     fill_rules_digests, rules_digest, transition_rule_bytes, transition_rule_id,
+    version_rule_bytes, version_rule_id,
 };
 pub use event::{event_rules_digest, fill_event_digests};
 pub use policy::{policy_bytes, policy_id};

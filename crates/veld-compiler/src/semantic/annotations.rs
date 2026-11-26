@@ -23,7 +23,23 @@ pub struct Anns<'a> {
     pub topic: Option<String>,
     /// `@rollout(audit)` on a rule, a `require` or an `ensure`.
     pub rollout: Option<Rollout>,
+    /// `@version` on a field.
+    pub version: Option<Span>,
+    /// `@idempotent` on an endpoint.
+    pub idempotent: Option<Idempotent>,
 }
+
+/// What `@idempotent(header: "Name", required: true)` says (`spec/rules.md` section 11.8).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Idempotent {
+    /// The header, `None` for the default `Idempotency-Key`.
+    pub header: Option<String>,
+    pub required: bool,
+    pub span: Span,
+}
+
+/// The header of `@idempotent` without a `header:` argument.
+pub const DEFAULT_IDEMPOTENCY_HEADER: &str = "Idempotency-Key";
 
 #[must_use]
 pub fn target_name(t: Target) -> &'static str {
@@ -206,12 +222,21 @@ fn apply<'a>(
         ("header", _) => out.header = Some((one_string(args)?, a.span)),
         ("topic", _) => out.topic = Some(one_string(args)?),
         ("rollout", _) => out.rollout = Some(rollout_arg(args)?),
+        ("idempotent", _) => out.idempotent = Some(idempotent_args(args, a.span)?),
         ("auth", _) => out.auth = Some(auth_arg(args)?.declared()),
         ("middleware", _) => out.middleware = Some(idents(args)?),
         _ => {}
     }
     match spec.name {
         "readonly" => out.readonly = true,
+        "version" => {
+            require_type(
+                ty,
+                is_integer,
+                "`@version` applies to `int` and `long` fields",
+            )?;
+            out.version = Some(a.span);
+        }
         "query" => out.query = Some(a.span),
         _ => {}
     }
@@ -239,6 +264,10 @@ fn is_string(t: &Type) -> bool {
 
 fn is_numeric(t: &Type) -> bool {
     matches!(t, Type::Scalar(s) if s.is_numeric())
+}
+
+fn is_integer(t: &Type) -> bool {
+    matches!(t, Type::Scalar(Scalar::Int | Scalar::Long))
 }
 
 fn is_sized(t: &Type) -> bool {
@@ -339,6 +368,68 @@ fn rollout_arg(args: &[Arg]) -> Result<Rollout, String> {
             Err("expected the word `audit`".to_string())
         }
     }
+}
+
+/// `@idempotent`, `@idempotent(header: "Name")`, `@idempotent(required: true)` or both, in either
+/// order (`spec/rules.md` section 11.8). The header must be an HTTP token that no part of Veld owns.
+fn idempotent_args(args: &[Arg], span: Span) -> Result<Idempotent, String> {
+    let mut out = Idempotent {
+        header: None,
+        required: false,
+        span,
+    };
+    let (mut saw_header, mut saw_required) = (false, false);
+    for a in args {
+        let key = a.name.as_ref().map(|n| n.name.as_str());
+        let kind = literal_of(a).map(|l| &l.kind);
+        match (key, kind) {
+            (Some("header"), Some(LitKind::Str(h))) => {
+                once_only(&mut saw_header, "header")?;
+                out.header = Some(idempotency_header(h)?);
+            }
+            (Some("required"), Some(LitKind::Bool(b))) => {
+                once_only(&mut saw_required, "required")?;
+                out.required = *b;
+            }
+            _ => {
+                return Err(
+                    "expected `header: \"Name\"` and/or `required: true` or `required: false`"
+                        .to_string(),
+                );
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn once_only(seen: &mut bool, name: &str) -> Result<(), String> {
+    if std::mem::replace(seen, true) {
+        return Err(format!("`{name}:` is given more than once"));
+    }
+    Ok(())
+}
+
+/// Headers Veld or HTTP already uses: a key cannot take their place.
+const RESERVED_HEADERS: [&str; 7] = [
+    "authorization",
+    "content-type",
+    "content-length",
+    "accept",
+    "host",
+    "if-match",
+    "etag",
+];
+
+fn idempotency_header(h: &str) -> Result<String, String> {
+    let token = |c: char| c.is_ascii_alphanumeric() || "!#$%&'*+-.^_`|~".contains(c);
+    if h.is_empty() || !h.chars().all(token) {
+        return Err(format!("`{h}` is not a header name"));
+    }
+    let lower = h.to_ascii_lowercase();
+    if RESERVED_HEADERS.contains(&lower.as_str()) || lower.starts_with("veld-") {
+        return Err(format!("`{h}` is a header that Veld or HTTP already uses"));
+    }
+    Ok(h.to_string())
 }
 
 fn auth_arg(args: &[Arg]) -> Result<Auth, String> {

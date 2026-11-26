@@ -132,6 +132,35 @@ pub fn transition_rule_id(at: &EndpointRef<'_>, t: &TransitionRef<'_>) -> String
     )
 }
 
+/// The canonical JSON that the id of a version guard hashes (`spec/rules.md` section 11.9):
+/// `{ "d": "<qualified service>.<endpoint>", "k": "version", "f": "<fact>", "p": [<wire names
+/// of the path to the version field>] }`.
+#[must_use]
+pub fn version_rule_bytes(at: &EndpointRef<'_>, fact: &str, path: &[String]) -> String {
+    let qualified = format!(
+        "{}:{}.{}.{}",
+        at.package, at.module, at.service, at.endpoint
+    );
+    canonical(&obj(vec![
+        ("d", text(&qualified)),
+        ("k", text("version")),
+        ("f", text(fact)),
+        ("p", Json::Arr(path.iter().map(|p| text(p)).collect())),
+    ]))
+}
+
+/// The id of a version guard: `veld:<package>/<Service>.<endpoint>.version@<hex16>`.
+#[must_use]
+pub fn version_rule_id(at: &EndpointRef<'_>, fact: &str, path: &[String]) -> String {
+    format!(
+        "veld:{}/{}.{}.version@{}",
+        at.package,
+        at.service,
+        at.endpoint,
+        hex16(version_rule_bytes(at, fact, path).as_bytes())
+    )
+}
+
 /// The rules digest of a service (`spec/rules.md` section 9.7): the first 16 hex characters of
 /// the SHA-256 of the RFC 8785 JSON array of the sorted, distinct rule ids of every invariant of
 /// every declaration its endpoints reach. `None` when it reaches no invariant. An audited invariant

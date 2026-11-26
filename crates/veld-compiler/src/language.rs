@@ -18,7 +18,7 @@ pub const METHOD_WORDS: [&str; 8] = [
 /// Contextual words of the rules language (`spec/rules.md` section 2.2). Each is a keyword only
 /// where the grammar expects it and an ordinary identifier everywhere else, so a field, variant,
 /// parameter, endpoint or declaration may carry any of them. The reserved list never grows.
-pub const CONTEXTUAL_RULE_WORDS: [&str; 29] = [
+pub const CONTEXTUAL_RULE_WORDS: [&str; 34] = [
     "rule",
     "message",
     "implies",
@@ -48,6 +48,11 @@ pub const CONTEXTUAL_RULE_WORDS: [&str; 29] = [
     "absent",
     "returns",
     "ok",
+    "ifMatch",
+    "any",
+    "stored",
+    "other",
+    "running",
 ];
 
 /// Contextual words of events (`spec/events.md` section 2). `emits`, `given` and `expect` are rule
@@ -141,6 +146,8 @@ pub enum ArgShape {
     Format,
     /// The word `audit`.
     Rollout,
+    /// Nothing, or `header: "Name"` and `required: true|false` in either order.
+    Idempotent,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -162,7 +169,7 @@ const DEPRECATABLE: [Target; 12] = [
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 16] = [
+pub const ANNOTATIONS: [AnnotationSpec; 18] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -259,6 +266,18 @@ pub const ANNOTATIONS: [AnnotationSpec; 16] = [
         args: ArgShape::Rollout,
         usage: "@rollout(audit)",
     },
+    AnnotationSpec {
+        name: "version",
+        targets: &[Field],
+        args: ArgShape::None,
+        usage: "@version",
+    },
+    AnnotationSpec {
+        name: "idempotent",
+        targets: &[Endpoint],
+        args: ArgShape::Idempotent,
+        usage: "@idempotent(header: \"Idempotency-Key\", required: true)",
+    },
 ];
 
 /// Looks an annotation up by name.
@@ -285,6 +304,7 @@ error TooManyRequests 429 { retryAfter?: int }
 error Internal 500        { message?: string }
 model ValidationIssue     { path: string, code: string, message: string }
 error InvalidTransition 409 { field: string, from: string, to: string }
+error PreconditionFailed 412 { expected: long, actual: long }
 ";
 
 /// Name of the reserved prelude package.
@@ -364,7 +384,7 @@ mod tests {
     #[test]
     fn spec_serializes_and_lists_every_annotation() {
         let json = serde_json::to_value(spec()).map(|v| v["annotations"].as_array().map(Vec::len));
-        assert_eq!(json.ok().flatten(), Some(16));
+        assert_eq!(json.ok().flatten(), Some(18));
     }
 
     #[test]

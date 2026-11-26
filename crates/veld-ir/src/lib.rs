@@ -17,7 +17,8 @@ pub use endpoint_rules::{
     ElseError, ElseField, EndpointAllow, EndpointEnsure, EndpointFact, EndpointRequire,
     EndpointRules, EndpointTransition, EndpointVersion, EventExpect, Example, ExampleArg,
     ExampleErrorOutcome, ExampleEvent, ExampleField, ExampleGiven, ExampleIfMatch, ExampleKey,
-    ExampleOutcome, ExampleRef, ExampleValue, ExpectedCall, KeyStore, Policy, PolicyClause, PolicyEffect, PolicyParam, ServiceFact, ServicePrincipal,
+    ExampleOutcome, ExampleRef, ExampleValue, ExpectedCall, KeyStore, Policy, PolicyClause,
+    PolicyEffect, PolicyParam, ServiceFact, ServicePrincipal,
 };
 pub use rules::{
     Always, BinExpr, Builtin, CallExpr, EnumLit, Expr, ExprKind, ExprLit, ExprType, Op, PathRef,

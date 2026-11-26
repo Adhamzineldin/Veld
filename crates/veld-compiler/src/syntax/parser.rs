@@ -17,6 +17,8 @@ mod event;
 mod event_tests;
 mod example;
 mod expr;
+#[cfg(test)]
+mod idempotency_tests;
 mod machine;
 mod policy;
 #[cfg(test)]

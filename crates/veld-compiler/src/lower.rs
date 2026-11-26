@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagnostics::{FileId, SourceMap, Span};
 use crate::semantic::{DKind, DeclInfo, REndpoint, RField, ServiceInfo};
-use crate::semantic::{Program, ROutcome};
+use crate::semantic::{Program, RKeyStore, ROutcome};
 use crate::signature;
 use crate::syntax::ast::doc_text;
 use veld_ir::{
@@ -102,6 +102,10 @@ fn included_decls(prog: &Program<'_>) -> Vec<usize> {
     }
     for ex in &prog.examples {
         if let ROutcome::Error(decl, _) = &ex.outcome {
+            stack.push(*decl);
+        }
+        if let Some(RKeyStore::Stored(ROutcome::Error(decl, _))) = ex.key.as_ref().map(|k| &k.store)
+        {
             stack.push(*decl);
         }
     }
@@ -220,7 +224,7 @@ impl Lowerer<'_, '_> {
             optional: f.optional,
             default: f.default.clone(),
             readonly: f.readonly,
-            version: false,
+            version: f.version,
             inherited_from: f.inherited_from.map(|d| self.decl_id(d)),
             constraints: f.constraints.clone(),
             example: f.example.clone(),
@@ -402,7 +406,12 @@ impl Lowerer<'_, '_> {
             },
             errors,
             rules: self.endpoint_rules(e, s, pkg, decls),
-            idempotency: None,
+            idempotency: e.idempotent.as_ref().map(|i| veld_ir::Idempotency {
+                header: i.header.clone(),
+                required: i.required,
+                caller: e.auth.kind != veld_ir::AuthKind::None,
+                origin: self.origin(i.span, s.module),
+            }),
             origin: self.origin(e.span, s.module),
         }
     }

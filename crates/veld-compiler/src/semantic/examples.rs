@@ -5,6 +5,7 @@
 //! runs (section 12.2), so nothing here requires a field, a parameter or a given.
 
 mod events;
+mod idempotency;
 mod values;
 
 use std::collections::BTreeMap;
@@ -32,9 +33,29 @@ pub struct RExample {
     pub now: Option<String>,
     pub args: Vec<(String, ExampleValue)>,
     pub returns: Option<ExampleValue>,
+    /// `ifMatch 3` or `ifMatch any`.
+    pub if_match: Option<veld_ir::ExampleIfMatch>,
+    /// The `key` line.
+    pub key: Option<RKey>,
     pub outcome: ROutcome,
     pub docs: Option<String>,
     pub span: Span,
+}
+
+/// A checked `key` line (`spec/rules.md` section 11.9).
+#[derive(Debug, Clone)]
+pub struct RKey {
+    pub value: String,
+    pub store: RKeyStore,
+}
+
+/// What the line says the store holds.
+#[derive(Debug, Clone)]
+pub enum RKeyStore {
+    New,
+    Stored(ROutcome),
+    Other,
+    Running,
 }
 
 /// A checked event example (`spec/events.md` section 12).
@@ -227,9 +248,12 @@ fn check_example(
     let now = v.clock(ex.at.as_ref());
     let args = v.args(call, ep);
     let returns = v.returns(call, ep);
+    let if_match = v.if_match(call.if_match.as_ref(), ep);
+    let key = v.key(call.key.as_deref(), ep);
     let outcome = v.outcome(call, ep);
     // Every part is checked before the first failure is acted on, so one run reports them all.
     let (now, args, returns, outcome) = (now?, args?, returns?, outcome?);
+    let (if_match, key) = (if_match?, key?);
     ok.then(|| RExample {
         name: ex.name.value.clone(),
         pkg,
@@ -241,6 +265,8 @@ fn check_example(
         now,
         args,
         returns,
+        if_match,
+        key,
         outcome,
         docs: doc_text(&ex.docs),
         span: ex.span,

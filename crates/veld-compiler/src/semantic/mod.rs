@@ -26,6 +26,8 @@ mod services;
 #[cfg(test)]
 mod tests;
 mod typeck;
+#[cfg(test)]
+mod version_tests;
 
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -36,7 +38,7 @@ pub use events::{
     ChannelEntry, ChannelInfo, RChannel, RChannelKey, RHandler, RSubscription, legal_name,
     topic_is_legal,
 };
-pub use examples::{REventExample, REventExpect, RExample, ROutcome};
+pub use examples::{REventExample, REventExpect, RExample, RKey, RKeyStore, ROutcome};
 pub use policy::{PolicyEntry, PolicyInfo, RClause, RPolicy, RPolicyParam, RPrincipal};
 pub use rules::RRule;
 pub(crate) use rules::{RAllow, RBlock, RElse, REnsure, RRequire, RTransition};
@@ -98,6 +100,8 @@ pub struct RField {
     pub optional: bool,
     pub default: Option<Literal>,
     pub readonly: bool,
+    /// `@version` (`spec/rules.md` section 11.7).
+    pub version: bool,
     pub inherited_from: Option<usize>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -192,6 +196,17 @@ pub struct REndpoint {
     pub errors: Vec<(u16, usize)>,
     /// The checked endpoint block (`spec/rules.md` section 9); empty without one.
     pub rules: RBlock,
+    /// `@idempotent` (`spec/rules.md` section 11.8).
+    pub idempotent: Option<RIdempotent>,
+    pub span: Span,
+}
+
+/// A checked `@idempotent`.
+#[derive(Debug, Clone)]
+pub struct RIdempotent {
+    pub header: String,
+    pub required: bool,
+    /// The annotation.
     pub span: Span,
 }
 

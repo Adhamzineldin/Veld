@@ -644,12 +644,42 @@ pub struct ExampleAt {
 /// `[Service.]endpoint(arg: value, ..) [returns value] -> outcome`
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExampleCall {
+    /// `ifMatch 3` or `ifMatch any`, before the call.
+    pub if_match: Option<IfMatchLine>,
+    /// `key "k" ..`, before the call.
+    pub key: Option<Box<KeyLine>>,
     pub service: Option<Ident>,
     pub endpoint: Ident,
     pub args: Vec<ExampleArgument>,
     pub returns: Option<Value>,
     pub outcome: Outcome,
     pub span: Span,
+}
+
+/// `ifMatch 3` or `ifMatch any` (`spec/rules.md` section 11.9).
+#[derive(Debug, Clone, PartialEq)]
+pub struct IfMatchLine {
+    /// The version, or `None` for `any`.
+    pub version: Option<i64>,
+    pub span: Span,
+}
+
+/// `key "k" [stored outcome | other | running]` (`spec/rules.md` section 11.9).
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeyLine {
+    pub key: StrLit,
+    pub store: KeyStoreLine,
+    pub span: Span,
+}
+
+/// What the line says the idempotency store holds for the key.
+#[derive(Debug, Clone, PartialEq)]
+pub enum KeyStoreLine {
+    /// Nothing: the line is the key alone.
+    New,
+    Stored(Outcome),
+    Other,
+    Running,
 }
 
 #[derive(Debug, Clone, PartialEq)]

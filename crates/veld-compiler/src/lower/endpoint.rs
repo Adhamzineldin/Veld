@@ -7,7 +7,7 @@ use crate::semantic::{RElse, REndpoint, REnsure, RRequire, RTransition, ServiceI
 use crate::signature::{self, EndpointRef, StatementKind, TransitionRef};
 use veld_ir::endpoint_rules::{
     ElseError, ElseField, EndpointEnsure, EndpointFact, EndpointRequire, EndpointRules,
-    EndpointTransition, ServiceFact,
+    EndpointTransition, EndpointVersion, ServiceFact,
 };
 use veld_ir::{Decl, Type};
 
@@ -55,7 +55,16 @@ impl Lowerer<'_, '_> {
             facts: facts.collect(),
             requires: requires.collect(),
             ensures: ensures.collect(),
-            version: None,
+            version: e.rules.version.as_ref().map(|v| {
+                let path = [v.wire.clone()];
+                EndpointVersion {
+                    id: signature::version_rule_id(&at, &v.fact, &path),
+                    fact: v.fact.clone(),
+                    field: v.field.clone(),
+                    wire: v.wire.clone(),
+                    origin: self.origin(v.span, s.module),
+                }
+            }),
         }
     }
 
