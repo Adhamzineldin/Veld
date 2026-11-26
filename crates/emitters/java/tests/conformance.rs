@@ -173,11 +173,11 @@ fn java_generates_deadlines_and_service_levels() {
     veld_emit_conformance::check_slo_is_generated(&Java).unwrap();
 }
 
-/// `visibility` is opt-in (`spec/platform.md` section 2): the Java server refuses a `@visible`
-/// field; the Java client is not asked.
+/// `visibility` is opt-in (`spec/platform.md` section 2): the Java server declares it and generates
+/// a `@visible` field; the Java client is not asked and still generates.
 #[test]
-fn java_refuses_visibility_as_a_server() {
-    veld_emit_conformance::check_visibility_is_refused(&Java).unwrap();
+fn java_generates_visibility() {
+    veld_emit_conformance::check_visibility_is_generated(&Java).unwrap();
 }
 
 /// `tenancy` is opt-in (`spec/platform.md` section 3): Java refuses a `@tenant` field, as a server
