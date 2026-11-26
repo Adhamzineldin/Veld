@@ -13,6 +13,7 @@ use veld_ir::{Binding, Endpoint, Ir, Method, Param};
 use veld_rules::FilledExample;
 
 use crate::b64;
+use crate::conditional;
 use crate::error::LiveError;
 
 /// The header that carries the facts: base64url of a JSON object.
@@ -93,6 +94,7 @@ pub fn build_request(
     }
     headers.push(("Accept".to_owned(), "application/json".to_owned()));
     headers.extend(test_headers(filled, dry_run));
+    headers.extend(conditional::headers(ir, endpoint, &filled.request));
     Ok(HttpRequest {
         method: endpoint.method.as_str().to_owned(),
         target: bound.target,
