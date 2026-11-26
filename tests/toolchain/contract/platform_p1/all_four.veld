@@ -1,0 +1,51 @@
+// The four features of platform phase P1 in one small contract (spec/platform.md sections 2 to 5):
+// field visibility, tenancy, the audit log and rate limits. The snapshot test of the Node target
+// compiles it as a server (the framework adapters too) and as a client.
+
+model User {
+  id: uuid
+  roles: string[]
+  email: string @pii
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  tenantId: uuid @tenant
+  guestId: uuid
+  title: string
+  // Only the guest and support see the phone; it is left out of the audit event as well.
+  phone?: string @pii @visible(when: user.id == guestId || "support" in user.roles)
+  card?: string @secret
+}
+
+error Refused 409 {
+  reason: string
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  // Visibility, tenancy of the fact and of the result, the audit log and a limit per caller.
+  @audited
+  @limit(10, per: minute, by: user)
+  get "/{id}" getBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+  }
+
+  // A limit per tenant and a declared error.
+  @audited
+  @limit(100, per: hour, by: tenant)
+  post "/{id}/pay" pay(id: uuid, body: Booking) -> Booking | Refused {
+    fact booking: Booking = id
+    require booking.title == body.title else Refused { reason: "title" }
+  }
+
+  // A limit per address, and a list whose items are filtered and checked.
+  @limit(5, per: second, by: ip)
+  get "/" listBookings() -> Booking[]
+
+  // A stream: its items are filtered and checked too, and it has no limit (there is no call to count).
+  get "/live" live() -> stream Booking
+}
