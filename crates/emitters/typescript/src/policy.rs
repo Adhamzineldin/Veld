@@ -134,12 +134,34 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
             if n > 0 {
                 w.blank();
             }
+            if let Some(d) = flag_name_clash(policy) {
+                return Err(vec![d]);
+            }
             write_policy(&mut w, &mut fc, policy, name);
         }
         add_file(files, &format!("{module}.ts"), fc.finish(&w.finish()))?;
         modules.push(module);
     }
     Ok(modules)
+}
+
+/// A policy with a flagged clause takes `flags` as its last argument and reads `veldFlags`: a
+/// parameter of either name would be shadowed, so it is refused (`E0801`).
+fn flag_name_clash(policy: &Policy) -> Option<GenDiagnostic> {
+    if !policy.clauses.iter().any(|c| c.flag.is_some()) {
+        return None;
+    }
+    let clash = policy
+        .params
+        .iter()
+        .find(|p| matches!(p.name.as_str(), "flags" | "veldFlags"))?;
+    Some(GenDiagnostic::new(
+        "E0801",
+        format!(
+            "policy `{}`: a parameter called `{}` clashes with the flags the generated function takes",
+            policy.name, clash.name
+        ),
+    ))
 }
 
 fn write_policy(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, policy: &Policy, name: &str) {

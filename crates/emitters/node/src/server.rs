@@ -135,6 +135,18 @@ fn write_due_moves(
     w.line(format!("loaders: {name}DueLoaders;"));
     w.close();
     w.blank();
+    write_due_runner(w, fc, (svc, runtime), &timed);
+}
+
+/// `run<Service>DueMoves(impl, hooks, options, runtime?)`: builds the endpoint descriptions and
+/// hands the loaders to the runtime's `runDueMoves`.
+fn write_due_runner(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    (svc, runtime): (&Service, Option<&RuntimeModel>),
+    timed: &[(&Endpoint, &str)],
+) {
+    let name = naming::pascal(&svc.name);
     let report = fc.rt("DueReport");
     let runtime_param = match runtime {
         Some(m) => {
@@ -175,7 +187,7 @@ fn write_due_moves(
     ));
     let target = fc.rt("DueTarget");
     w.open_with(format!("const targets: {target}[] ="), " [");
-    for (ep, after) in &timed {
+    for (ep, after) in timed {
         let key = method_key(&ep.name);
         w.line(format!(
             "{{ endpoint: {}, afterMs: {after}, load: (before, limit, ctx) => options.loaders.{key}(before, limit, ctx) }},",

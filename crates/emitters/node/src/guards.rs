@@ -208,7 +208,10 @@ fn transition_step(
         };
         w.line(format!("found: (result: {result}) => String({state}),"));
     }
-    write_due(w, fc, printer, sig, mv);
+    if !write_due(w, fc, printer, sig, mv) {
+        diags.push(unsupported(site, "the due check of a timed transition"));
+        return;
+    }
     write_flagged_edges(w, mv);
     w.line(format!("otherwise: {{ sig: {class}.sig }},"));
     w.close_with("},");
@@ -246,10 +249,10 @@ fn write_due(
     printer: &EndpointPrinter<'_>,
     sig: &Sig,
     mv: &Move<'_>,
-) {
+) -> bool {
     let t = mv.transition;
     if t.since.is_empty() {
-        return;
+        return true;
     }
     let after = t.from.first().and_then(|source| {
         mv.machine
@@ -260,13 +263,14 @@ fn write_due(
     });
     let since = printer.field_code(&Root::Fact(t.fact.clone()), &t.since);
     let (Some(after), Some(since)) = (after, since) else {
-        return;
+        return false;
     };
     let ns = fc.rules_ns();
     w.open_with("due:", " {");
     w.line(format!("afterMs: {after}n,"));
     w.line(format!("since: ({}) => {ns}.toDatetime({since}),", sig.f));
     w.close_with("},");
+    true
 }
 
 /// The members after `ensures` in the `rules` of an endpoint description: the caller's name in

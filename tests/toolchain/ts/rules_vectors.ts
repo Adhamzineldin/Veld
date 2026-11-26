@@ -79,6 +79,12 @@ function run(c: Case): { violations: veld.Violation[]; computed: Record<string, 
   ];
   // The partial check of a client has no provider: it skips every flagged invariant. Any other check
   // runs with the readings of the case, as a server's request would have them.
+  if (flagging === undefined && ((c.flags ?? []).length > 0 || c.provider !== undefined)) {
+    throw new Error('the case names flags, but the generated package has no runtime/flags.ts');
+  }
+  if (flagging === undefined && ((c.flags ?? []).length > 0 || c.provider !== undefined)) {
+    throw new Error('the case names flags, but the generated package has no runtime/flags.ts');
+  }
   const reading = (name: string): 'on' | 'off' | 'failed' =>
     c.provider === 'failed' ? 'failed' : (c.flags ?? []).includes(name) ? 'on' : 'off';
   const violations =

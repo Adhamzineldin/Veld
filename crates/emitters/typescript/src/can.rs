@@ -164,6 +164,22 @@ pub fn write_can(
     }
     diags.extend(notes.iter().map(|n| unsupported("typescript", svc, ep, n)));
     let flagged = takes_flags(fc.tree.ir, ep);
+    if flagged {
+        let names = given
+            .facts
+            .iter()
+            .map(|(_, n)| n)
+            .chain(given.principal.iter().map(|(n, _)| n))
+            .chain(given.params.iter().map(|(_, n)| n));
+        if names.into_iter().any(|n| n == "flags" || n == "veldFlags") {
+            diags.push(unsupported(
+                "typescript",
+                svc,
+                ep,
+                "a parameter or a fact called `flags` or `veldFlags` next to the flags argument of `can<Endpoint>`",
+            ));
+        }
+    }
     let mut signature = signature(fc, &given);
     if flagged {
         if !signature.is_empty() {
