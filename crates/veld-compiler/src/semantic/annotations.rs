@@ -107,8 +107,12 @@ pub fn parse<'a>(
 fn hidden_from(spec: &language::AnnotationSpec, target: Target) -> bool {
     let events_only = |t: &Target| matches!(t, Target::Channel | Target::Event);
     let rules_only = |t: &Target| matches!(t, Target::Rule | Target::Require | Target::Ensure);
+    // `@version` and `@idempotent` are suggested only where they apply, so that the help of an
+    // unknown annotation on a model or a service reads as it did before they existed.
+    let own_target_only = matches!(spec.name, "version" | "idempotent");
     (!events_only(&target) && spec.targets.iter().all(events_only))
         || (!rules_only(&target) && spec.targets.iter().all(rules_only))
+        || (own_target_only && !spec.targets.contains(&target))
 }
 
 fn unknown(a: &Annotation, target: Target) -> Diagnostic {

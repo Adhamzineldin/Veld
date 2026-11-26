@@ -212,6 +212,7 @@ pub(crate) fn check_block(
         ep.success_ty.clone()
     };
     transition::reserved_name(e, diags);
+    super::version::reserved_name(prog, module, e, diags);
     let principal = principal_scope(prog, module, ep);
     principal_param_clash(e, principal.as_ref(), diags);
     let mut bc = BlockChecker {
