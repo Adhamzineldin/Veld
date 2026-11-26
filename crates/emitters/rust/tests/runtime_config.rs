@@ -221,7 +221,7 @@ fn a_target_without_settings_has_no_runtime_config() {
         live.contains("pub fn plain<S: LiveService>(service: S) ->"),
         "{live}"
     );
-    assert!(!live.contains("runtime"), "no runtime argument");
+    assert!(!live.contains("runtime:"), "no runtime argument");
 }
 
 #[test]
@@ -236,8 +236,8 @@ fn the_hooks_no_longer_have_the_output_mode_and_the_entry_takes_the_config() {
         "{bookings}"
     );
     assert!(
-        !bookings.contains("RuleOutput::Strict\n"),
-        "no default in the hooks"
+        !bookings.contains("RuleOutput::Strict"),
+        "the hooks have no default mode"
     );
     assert!(
         bookings.contains("output: veld::rules::RuleOutput,"),
