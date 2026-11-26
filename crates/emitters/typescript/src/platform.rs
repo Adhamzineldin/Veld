@@ -118,7 +118,7 @@ pub fn tenant_kind(ty: &Type) -> &'static str {
         Type::Scalar(Scalar::Uuid) => "uuid",
         Type::Scalar(Scalar::Int) => "int",
         Type::Scalar(Scalar::Long) => "long",
-        _ => "string",
+        Type::Scalar(_) | Type::List(_) | Type::Map(_) | Type::Page(_) | Type::Decl(_) => "string",
     }
 }
 

@@ -3168,6 +3168,21 @@ function showNode(schema: Schema, v: unknown, path: string, caller: Caller | und
 }
 
 /**
+ * `value` as a caller is sent it, and the wire paths of what was dropped (without the `$`, sorted,
+ * without duplicates): the function of the goldens of `tests/wire/visibility`. `value` is in source form.
+ */
+export function showValue(
+  schema: Schema,
+  value: unknown,
+  caller: Caller | undefined,
+  now: bigint,
+): { value: unknown; hidden: string[] } {
+  const hidden: string[] = [];
+  const shown = showNode(schema, value, '', caller, now, hidden);
+  return { value: shown, hidden: [...new Set(hidden)].sort() };
+}
+
+/**
  * What a caller is sent: `value`, an answer of type `schema` (a result, the data of a declared
  * error, a stream item), without the fields the caller may not see. It runs after the output rules
  * and after the tenant check, and the `ETag` was taken before. What it dropped is kept for the audit event.

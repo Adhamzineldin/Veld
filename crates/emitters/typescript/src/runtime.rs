@@ -245,7 +245,7 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "version_guard" => g.version && g.endpoint_rules,
         "idempotency" => g.idempotency,
         // `EarlyResponse` for a contract with `@idempotent` and no endpoint rules: the test handler needs it.
-        "idempotency_only" => g.idempotency && !g.endpoint_rules,
+        "idempotency_only" => (g.idempotency || g.platform()) && !g.endpoint_rules,
         // The two header checks of step 5.
         "headers" => g.version || g.idempotency,
         // The part of `headerRefusal` that merges the issues of a rule.
@@ -257,8 +257,8 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "derived" => g.derived,
         "not_derived" => !g.derived,
         // `EarlyResponse` exists when there are endpoint rules or an `@idempotent` endpoint.
-        "derived_early" => g.derived && (g.endpoint_rules || g.idempotency),
-        "derived_plain" => g.derived && !(g.endpoint_rules || g.idempotency),
+        "derived_early" => g.derived && (g.endpoint_rules || g.idempotency || g.platform()),
+        "derived_plain" => g.derived && !(g.endpoint_rules || g.idempotency || g.platform()),
         // The same, inside a region of the invariants or of endpoint rules.
         "rules_not_derived" => g.rules && !g.derived,
         "endpoint_rules_derived" => g.endpoint_rules && g.derived,
@@ -494,6 +494,7 @@ mod tests {
                 slo: bits & 2048 != 0,
                 flags: bits & 4096 != 0,
                 outbox: bits & 8192 != 0,
+                ..Gates::default()
             };
             let text = source_gated(gates).unwrap();
             assert!(!text.contains("// #"), "{gates:?}");
@@ -693,5 +694,89 @@ mod tests {
         assert!(!policies.contains("checkTransition"));
         // Each switches the endpoint machinery on.
         assert!(machine.contains("EndpointRuleSet") && policies.contains("EndpointRuleSet"));
+    }
+
+    /// Platform phase P1 (`spec/platform.md` sections 2 to 5): the regions of the four features
+    /// pair up in every combination of them with the other features, and a build without them
+    /// has none of their words.
+    #[test]
+    fn the_platform_regions_pair_up_in_every_combination() {
+        for bits in 0u32..(1 << 12) {
+            let b = |i: u32| bits & (1 << i) != 0;
+            let gates = Gates {
+                visibility: b(0),
+                tenancy: b(1),
+                audit: b(2),
+                limits: b(3),
+                limits_server: b(4),
+                endpoint_rules: b(5),
+                idempotency: b(6),
+                derived: b(7),
+                timeouts: b(8),
+                slo: b(9),
+                version: b(10),
+                flags: b(11),
+                ..Gates::default()
+            };
+            assert!(source_gated(gates).is_ok(), "{gates:?}");
+        }
+    }
+
+    #[test]
+    fn a_build_without_the_platform_features_has_none_of_their_words() {
+        let all_old = source_gated(Gates {
+            rules: true,
+            endpoint_rules: true,
+            transitions: true,
+            policies: true,
+            rollout: true,
+            version: true,
+            idempotency: true,
+            derived: true,
+            timed: true,
+            outbox: true,
+            timeouts: true,
+            slo: true,
+            flags: true,
+            runtime_config: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in [
+            "PlatformState",
+            "platformOpen",
+            "callerOf",
+            "showNode",
+            "showSent",
+            "visibleTo",
+            "showValue",
+            "tenantViolations",
+            "withAudit",
+            "redactNode",
+            "MemoryLimiter",
+            "takeLimit",
+        ] {
+            assert!(!all_old.contains(word), "`{word}` leaked into the runtime");
+        }
+    }
+
+    #[test]
+    fn each_platform_feature_has_its_own_words_only() {
+        let visibility = source_gated(Gates {
+            visibility: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in ["showNode", "visibleTo", "platformOpen"] {
+            assert!(visibility.contains(word), "`{word}` is missing");
+        }
+        for word in ["withAudit", "MemoryLimiter", "tenantViolations"] {
+            assert!(
+                !visibility.contains(word),
+                "`{word}` is in a visibility build"
+            );
+        }
+        // The caller's field values are read by the rules helpers, so the helpers come too.
+        assert!(visibility.contains("RuleViolationEvent"));
     }
 }
