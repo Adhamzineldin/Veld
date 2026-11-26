@@ -9,12 +9,13 @@ mod events;
 mod examples;
 mod policy;
 mod rules;
+mod saga;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagnostics::{FileId, SourceMap, Span};
 use crate::semantic::{DKind, DeclInfo, REndpoint, RField, ServiceInfo};
-use crate::semantic::{Program, RKeyStore, ROutcome};
+use crate::semantic::{Program, RKeyStore, ROutcome, RSagaAnswer};
 use crate::signature;
 use crate::syntax::ast::doc_text;
 use veld_ir::{
@@ -107,6 +108,15 @@ fn included_decls(prog: &Program<'_>) -> Vec<usize> {
         if let Some(RKeyStore::Stored(ROutcome::Error(decl, _))) = ex.key.as_ref().map(|k| &k.store)
         {
             stack.push(*decl);
+        }
+        for (_, a) in ex
+            .saga
+            .iter()
+            .flat_map(|s| s.steps.iter().chain(s.undos.iter()))
+        {
+            if let RSagaAnswer::Answer(ROutcome::Error(decl, _)) = a {
+                stack.push(*decl);
+            }
         }
     }
     for p in prog.policies.iter().filter_map(|p| p.res.as_ref()) {
@@ -412,7 +422,7 @@ impl Lowerer<'_, '_> {
                 caller: e.auth.kind != veld_ir::AuthKind::None,
                 origin: self.origin(i.span, s.module),
             }),
-            saga: None,
+            saga: e.saga.as_ref().map(|g| self.saga(g, s)),
             origin: self.origin(e.span, s.module),
         }
     }

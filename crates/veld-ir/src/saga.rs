@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Expr, Origin, ServiceId};
+use crate::{DeclId, Expr, Origin, ServiceId};
 
 /// The saga of an endpoint (`Endpoint::saga`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -19,6 +19,11 @@ pub struct Saga {
     /// as a decimal string (a `long`).
     #[serde(with = "ms_text")]
     pub timeout_ms: i64,
+    /// The errors the saga writes in its own responses, by declaration: when a step fails with
+    /// one of them, the saga answers that error as the step did (`spec/platform.md` section
+    /// 18, "The answer"). Any other error becomes `SagaFailed`. Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub passes: Vec<DeclId>,
 }
 
 /// `step name = call [compensate call]`.
@@ -57,8 +62,8 @@ pub struct SagaArg {
 pub enum SagaValue {
     Expr(Expr),
     Object {
-        /// The fields that are given, in source order. A field that is optional and not given is
-        /// not in the list.
+        /// The fields that are given, in the order of the fields of the model. A field that is
+        /// optional or has a default and is not given is not in the list.
         object: Vec<SagaField>,
     },
 }

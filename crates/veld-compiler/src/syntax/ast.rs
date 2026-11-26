@@ -420,7 +420,81 @@ pub struct Endpoint {
     pub responses: Option<Responses>,
     /// The `{ ... }` block of endpoint rules (`spec/rules.md` section 9).
     pub block: Option<EndpointBlock>,
-    /// From the method to the closing `}` of the block, or to the end of the responses.
+    /// `saga post ..`: the steps of a saga (`spec/platform.md` section 17). A saga endpoint has no
+    /// `block`.
+    pub saga: Option<SagaDecl>,
+    /// From the method (from `saga`, for a saga) to the closing `}` of the block, or to the end
+    /// of the responses.
+    pub span: Span,
+}
+
+/// The `saga` word of an endpoint and the block that follows its head.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SagaDecl {
+    /// The `saga` word.
+    pub word: Span,
+    pub steps: Vec<SagaStepDecl>,
+    pub timeout: Option<SagaTimeoutDecl>,
+    /// `{ .. }`, or the word alone when the block is missing.
+    pub span: Span,
+}
+
+/// `step name = call [compensate call]`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SagaStepDecl {
+    pub name: Ident,
+    pub call: SagaCallDecl,
+    pub compensate: Option<SagaCallDecl>,
+    pub span: Span,
+}
+
+/// `Service.endpoint(name: value, ..)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SagaCallDecl {
+    pub service: Ident,
+    pub endpoint: Ident,
+    pub args: Vec<SagaArgDecl>,
+    pub span: Span,
+}
+
+/// `name: value`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SagaArgDecl {
+    pub name: Ident,
+    pub value: SagaValueDecl,
+}
+
+/// An argument value: an expression, or `{ field: value, .. }`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SagaValueDecl {
+    Expr(Expr),
+    Object {
+        fields: Vec<SagaFieldDecl>,
+        span: Span,
+    },
+}
+
+impl SagaValueDecl {
+    #[must_use]
+    pub fn span(&self) -> Span {
+        match self {
+            SagaValueDecl::Expr(e) => e.span,
+            SagaValueDecl::Object { span, .. } => *span,
+        }
+    }
+}
+
+/// `name: value` inside an object value.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SagaFieldDecl {
+    pub name: Ident,
+    pub value: SagaValueDecl,
+}
+
+/// `timeout expr`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SagaTimeoutDecl {
+    pub expr: Expr,
     pub span: Span,
 }
 
@@ -570,8 +644,52 @@ pub struct Example {
     pub principal: Option<ExampleAs>,
     pub at: Option<ExampleAt>,
     pub body: ExampleBody,
+    /// `given step` and `given undo` lines, and `expect compensated` or `expect stuck`
+    /// (`spec/platform.md` section 18). `None` in an example that has none.
+    pub saga: Option<SagaExampleLines>,
     /// From the `example` keyword to the closing `}`.
     pub span: Span,
+}
+
+/// The saga lines of a call example.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SagaExampleLines {
+    /// `given step s = ..` and `given undo s = ..`, in source order.
+    pub givens: Vec<SagaGivenLine>,
+    pub expect: Option<SagaExpectLine>,
+}
+
+/// `given step s = <value | Error { .. } | unavailable>` or `given undo s = <ok | Error { .. } |
+/// unavailable>`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SagaGivenLine {
+    /// True for `given undo`.
+    pub undo: bool,
+    pub step: Ident,
+    pub answer: SagaAnswerLine,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SagaAnswerLine {
+    Unavailable(Span),
+    /// A value (a step's success), `ok` or an error: written like an outcome.
+    Outcome(Outcome),
+    /// The value of a step's success.
+    Value(Value),
+}
+
+/// `expect compensated a, b` or `expect stuck`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SagaExpectLine {
+    pub kind: SagaExpectKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SagaExpectKind {
+    Compensated(Vec<Ident>),
+    Stuck,
 }
 
 /// What an example is about: one call, or one delivery of an event.

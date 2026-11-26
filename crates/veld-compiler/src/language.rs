@@ -69,6 +69,21 @@ pub const CONTEXTUAL_EVENT_WORDS: [&str; 9] = [
     "rejected",
 ];
 
+/// Contextual words of sagas (`spec/platform.md` section 17): `saga` before `post` at the start of
+/// a service member, `step`, `compensate` and `timeout` inside its block, and `undo`,
+/// `unavailable`, `compensated` and `stuck` in an example. `given`, `expect` and `ok` are rule
+/// words already. Each is a keyword only where the grammar expects it.
+pub const CONTEXTUAL_SAGA_WORDS: [&str; 8] = [
+    "saga",
+    "step",
+    "compensate",
+    "timeout",
+    "undo",
+    "unavailable",
+    "compensated",
+    "stuck",
+];
+
 /// Words that start a declaration.
 pub const DECL_KEYWORDS: [&str; 6] = ["model", "enum", "error", "union", "service", "const"];
 
@@ -305,6 +320,7 @@ error Internal 500        { message?: string }
 model ValidationIssue     { path: string, code: string, message: string }
 error InvalidTransition 409 { field: string, from: string, to: string }
 error PreconditionFailed 412 { expected: long, actual: long }
+error SagaFailed 502 { step: string, compensated: bool }
 ";
 
 /// Name of the reserved prelude package.
@@ -331,6 +347,8 @@ pub struct LanguageSpec {
     pub rule_words: Vec<&'static str>,
     /// Contextual words of events (`spec/events.md` section 2).
     pub event_words: Vec<&'static str>,
+    /// Contextual words of sagas (`spec/platform.md` section 17).
+    pub saga_words: Vec<&'static str>,
     pub scalars: Vec<&'static str>,
     pub generics: Vec<&'static str>,
     pub annotations: Vec<AnnotationOut>,
@@ -345,6 +363,7 @@ pub fn spec() -> LanguageSpec {
         contextual: METHOD_WORDS.to_vec(),
         rule_words: CONTEXTUAL_RULE_WORDS.to_vec(),
         event_words: CONTEXTUAL_EVENT_WORDS.to_vec(),
+        saga_words: CONTEXTUAL_SAGA_WORDS.to_vec(),
         scalars: SCALARS.to_vec(),
         generics: GENERICS.to_vec(),
         annotations,
@@ -394,6 +413,15 @@ mod tests {
             assert!(is_valid_ident(w), "{w}");
         }
         assert_eq!(spec().rule_words.len(), CONTEXTUAL_RULE_WORDS.len());
+    }
+
+    #[test]
+    fn saga_words_are_contextual_never_reserved() {
+        for w in CONTEXTUAL_SAGA_WORDS {
+            assert!(!is_reserved(w), "{w}");
+            assert!(is_valid_ident(w), "{w}");
+        }
+        assert_eq!(spec().saga_words.len(), CONTEXTUAL_SAGA_WORDS.len());
     }
 
     #[test]

@@ -205,7 +205,7 @@
         },
         {
           "name": "support.class.error.veld",
-          "match": "\\b(BadRequest|Unauthorized|Forbidden|NotFound|Conflict|ValidationError|TooManyRequests|Internal|InvalidTransition|PreconditionFailed)\\b"
+          "match": "\\b(BadRequest|Unauthorized|Forbidden|NotFound|Conflict|ValidationError|TooManyRequests|Internal|InvalidTransition|PreconditionFailed|SagaFailed)\\b"
         },
         {
           "name": "entity.name.type.reference.veld",

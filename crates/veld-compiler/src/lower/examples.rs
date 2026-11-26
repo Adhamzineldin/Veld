@@ -3,11 +3,11 @@
 use std::collections::BTreeMap;
 
 use super::Lowerer;
-use crate::semantic::{RExample, RKeyStore, ROutcome};
-use veld_ir::ServiceId;
+use crate::semantic::{RExample, RKeyStore, ROutcome, RSagaAnswer, RSagaExample, RSagaExpect};
 use veld_ir::endpoint_rules::{
     Example, ExampleArg, ExampleErrorOutcome, ExampleGiven, ExampleKey, ExampleOutcome, KeyStore,
 };
+use veld_ir::{ExampleSaga, SagaAnswer, SagaExpect, SagaGiven, ServiceId};
 
 impl Lowerer<'_, '_> {
     /// Every example, by package and then name. The IR holds only what was written: what an
@@ -33,6 +33,29 @@ impl Lowerer<'_, '_> {
         out.extend(self.event_examples(&ids));
         out.sort_by(|a, b| (a.package, &a.name).cmp(&(b.package, &b.name)));
         out
+    }
+
+    /// The saga lines of an example.
+    fn example_saga(&self, s: &RSagaExample) -> ExampleSaga {
+        let given = |list: &[(String, RSagaAnswer)]| -> Vec<SagaGiven> {
+            list.iter()
+                .map(|(step, a)| SagaGiven {
+                    step: step.clone(),
+                    answer: match a {
+                        RSagaAnswer::Unavailable => SagaAnswer::Unavailable,
+                        RSagaAnswer::Answer(o) => SagaAnswer::Answer(self.outcome(o)),
+                    },
+                })
+                .collect()
+        };
+        ExampleSaga {
+            steps: given(&s.steps),
+            undos: given(&s.undos),
+            expect: s.expect.as_ref().map(|e| match e {
+                RSagaExpect::Compensated(steps) => SagaExpect::Compensated(steps.clone()),
+                RSagaExpect::Stuck => SagaExpect::Stuck,
+            }),
+        }
     }
 
     fn outcome(&self, o: &ROutcome) -> ExampleOutcome {
@@ -80,7 +103,7 @@ impl Lowerer<'_, '_> {
                     RKeyStore::Stored(o) => KeyStore::Stored(self.outcome(o)),
                 },
             }),
-            saga: None,
+            saga: ex.saga.as_ref().map(|s| self.example_saga(s)),
             outcome: Some(self.outcome(&ex.outcome)),
             docs: ex.docs.clone(),
             event: None,

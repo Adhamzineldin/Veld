@@ -424,6 +424,21 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, or `rejected` is combined with `called`",
     ),
+    e(
+        "E1201",
+        C,
+        "A step or a `compensate` of a saga names a service that is not consumed, an endpoint that does not exist or cannot be called (a stream or `ws`), or arguments that do not fit",
+    ),
+    e(
+        "E1202",
+        C,
+        "The endpoint of a step or of a `compensate` is not `@idempotent`",
+    ),
+    e(
+        "E1203",
+        C,
+        "A saga is not well formed: two steps with one name, a step called like a parameter, an expression that reads a later step, a last step whose type is not the success type, a missing or wrong `timeout`, a saga without a step, or a statement of an endpoint block in it",
+    ),
     w("W0001", C, "Doc comment is not attached to anything"),
     w("W0201", C, "Unused import"),
     w("W0202", C, "Declaration shadows a prelude declaration"),
@@ -462,6 +477,11 @@ pub const CODES: &[CodeInfo] = &[
         "W1002",
         C,
         "An event of a published channel that no subscription handles",
+    ),
+    w(
+        "W1201",
+        C,
+        "A step of a saga that is not the last has no `compensate`: once it has run, the saga cannot be undone past it",
     ),
     l(
         "L0001",

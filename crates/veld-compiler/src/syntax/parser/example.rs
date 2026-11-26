@@ -7,7 +7,7 @@ use super::Parser;
 use crate::diagnostics::Span;
 use crate::syntax::ast::{
     Doc, Example, ExampleArgument, ExampleAs, ExampleAt, ExampleBody, ExampleCall, Given, Ident,
-    IfMatchLine, KeyLine, KeyStoreLine, Outcome, Value, ValueField, ValueKind,
+    IfMatchLine, KeyLine, KeyStoreLine, Outcome, SagaExampleLines, Value, ValueField, ValueKind,
 };
 use crate::syntax::lexer::Tok;
 
@@ -31,8 +31,13 @@ impl Parser<'_> {
             return self.event_example_rest(docs, name, kw);
         }
         let mut givens = Vec::new();
-        while self.is_given_start() {
-            givens.push(self.parse_given()?);
+        let mut saga = SagaExampleLines::default();
+        while self.is_given_start() || self.is_saga_given_start() {
+            if self.is_saga_given_start() {
+                saga.givens.push(self.parse_saga_given()?);
+            } else {
+                givens.push(self.parse_given()?);
+            }
         }
         let principal = if self.at_word("as") {
             let start = self.advance().span;
@@ -55,7 +60,11 @@ impl Parser<'_> {
             None
         };
         let call = self.parse_call_line()?;
+        if self.is_saga_expect_start() {
+            saga.expect = Some(self.parse_saga_expect()?);
+        }
         let close = self.expect(&Tok::RBrace, "`}` to close the example")?;
+        let has_saga = !saga.givens.is_empty() || saga.expect.is_some();
         Some(Example {
             docs,
             name,
@@ -63,6 +72,7 @@ impl Parser<'_> {
             principal,
             at,
             body: ExampleBody::Call(call),
+            saga: has_saga.then_some(saga),
             span: kw.to(close),
         })
     }
@@ -200,7 +210,7 @@ impl Parser<'_> {
 
     /// `ok` or an error name, and a value. After `stored` the call line follows, which could be
     /// read as a value that is a name, so there the value must start on the line of the outcome.
-    fn parse_outcome(&mut self, same_line: bool) -> Option<Outcome> {
+    pub(super) fn parse_outcome(&mut self, same_line: bool) -> Option<Outcome> {
         let start = self.span();
         let error = if self.at_word("ok") {
             self.advance();
@@ -208,7 +218,8 @@ impl Parser<'_> {
         } else {
             Some(self.parse_typeref()?)
         };
-        let value_here = !same_line || !self.newline_between(self.prev_end(), self.span().start);
+        let value_here = (!same_line || !self.newline_between(self.prev_end(), self.span().start))
+            && !self.is_saga_expect_start();
         let value = if self.starts_value() && value_here {
             Some(self.parse_value()?)
         } else {

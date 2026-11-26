@@ -317,6 +317,7 @@ impl Parser<'_> {
             principal: None,
             at: None,
             body: ExampleBody::Event(event),
+            saga: None,
             span: kw.to(close),
         })
     }

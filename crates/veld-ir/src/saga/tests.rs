@@ -86,6 +86,7 @@ pub(crate) fn sample_saga() -> Saga {
             },
         ],
         timeout_ms: 300_000,
+        passes: vec![DeclId(4)],
     }
 }
 

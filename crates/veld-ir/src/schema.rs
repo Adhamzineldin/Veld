@@ -630,6 +630,7 @@ pub const DEFS: &[Def] = &[
         &[
             ("steps", T::List(&T::Ref("SagaStep"))),
             ("timeout_ms", T::Str),
+            ("passes", T::Optional(&T::List(&DECL_ID))),
         ],
     ),
     Def::Object(

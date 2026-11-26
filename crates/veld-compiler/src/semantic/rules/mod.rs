@@ -14,6 +14,9 @@ mod endpoint_tests;
 mod ops;
 mod paths;
 mod policy;
+mod saga;
+mod saga_args;
+mod saga_const;
 #[cfg(test)]
 mod tests;
 mod transition;
@@ -32,6 +35,8 @@ pub(crate) use endpoint::{
     has_bare_require, has_required_fact, has_transition,
 };
 pub(super) use policy::check_policies;
+pub(super) use saga::check as check_sagas;
+pub(crate) use saga::{RArg, RCall, RObjectField, RSaga, RStep, RValue};
 pub(crate) use transition::RTransition;
 use veld_ir::Rollout;
 use veld_ir::rules::Expr;

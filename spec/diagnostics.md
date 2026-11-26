@@ -105,6 +105,9 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E1008` | error | veld-compiler | An `on` line names an event the channel does not carry or names an event twice, or the subscription has no `on` line |
 | `E1009` | error | veld-compiler | A subscription to a channel of this workspace that no service publishes |
 | `E1010` | error | veld-compiler | An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, or `rejected` is combined with `called` |
+| `E1201` | error | veld-compiler | A step or a `compensate` of a saga names a service that is not consumed, an endpoint that does not exist or cannot be called (a stream or `ws`), or arguments that do not fit |
+| `E1202` | error | veld-compiler | The endpoint of a step or of a `compensate` is not `@idempotent` |
+| `E1203` | error | veld-compiler | A saga is not well formed: two steps with one name, a step called like a parameter, an expression that reads a later step, a last step whose type is not the success type, a missing or wrong `timeout`, a saga without a step, or a statement of an endpoint block in it |
 | `W0001` | warning | veld-compiler | Doc comment is not attached to anything |
 | `W0201` | warning | veld-compiler | Unused import |
 | `W0202` | warning | veld-compiler | Declaration shadows a prelude declaration |
@@ -120,6 +123,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `W0970` | warning | veld-prove | `--prove`: some questions ended unknown or unsupported |
 | `W1001` | warning | veld-compiler | A published channel that nobody in the workspace subscribes to |
 | `W1002` | warning | veld-compiler | An event of a published channel that no subscription handles |
+| `W1201` | warning | veld-compiler | A step of a saga that is not the last has no `compensate`: once it has run, the saga cannot be undone past it |
 | `L0001` | lint | veld-tools | `unused-model`: declaration is never used by any endpoint, model or constant |
 | `L0002` | lint | veld-tools | `empty-service`: service has no endpoints |
 | `L0003` | lint | veld-tools | `empty-model`: model has no fields |
