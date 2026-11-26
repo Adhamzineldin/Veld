@@ -1204,7 +1204,7 @@ Where this section was silent, these choices hold.
 
 ## 19. Extras (Phase 6)
 
-Three small things that do not depend on each other. None is built yet.
+Three small things that do not depend on each other. 19.1 and 19.2 are implemented (`veld test --coverage`, `veld export rules`); 19.3 is not built yet.
 
 ### 19.1 `veld test --coverage`
 
@@ -1229,6 +1229,16 @@ coverage: 31 of 38 rules held and violated (81%)
 - `--fail-under N` (0 to 100) makes the run exit 1 when the percentage is below `N`. Without it the exit code is that of the examples.
 - `--coverage` works with and without `--live`: coverage comes from the reference evaluation either way.
 
+Where the text above is silent, the tool does this:
+
+- **Labels.** A unit is named `<package>/<Declaration>.<rule>` for an invariant (the declaration that declares it, not one that inherits it), and `<package>/<Service>.<endpoint> <kind> <name>` for an endpoint statement: `require <name>`, `ensure <name>`, `allow <Policy>` and `transition <from>, <from> -> <to>`. A `require` or `ensure` without a name is `require #N` or `ensure #N`, N counting from 1 among the statements of that kind of the endpoint. Two `allow` lines of one policy have the same label.
+- **Layout.** The label is padded with spaces to the longest label of the report, then three spaces, then the words. Lines are indented by two spaces.
+- **What is missing.** `never evaluated` when no example evaluated the unit. When it was evaluated but not both ways: `never violated` (held only), `never held` (violated only); for an `allow` `never denied` and `never permitted`; for a `transition` `never illegal` and `never legal`.
+- **Which examples count.** Every example the run selected, failed ones included: the evaluator evaluated the same rules. An example that cannot be run (`E0950` to `E0953`) counts nothing. Event examples count the invariants of the declarations the event reaches.
+- **Which units count.** The units of the packages the selection (`-p`, `--workspace`) names, whatever `--filter` and the file arguments say: they narrow the examples, not the rules, so a narrower run has a lower percentage. A unit is counted once, by its rule id (an `allow` line by its position). The invariants of a declaration that only a `fact` or a policy mentions, and that no endpoint reaches, are not counted. The version guard of §11.7 and the idempotency check of §11.8 are not units.
+- **Evaluation.** A rule the pipeline does not reach (an earlier check rejected the request), an invariant that reads a `@readonly` field of a request, and the check of the defaults of a loaded fact are not evaluations. An evaluation error counts as violated.
+- **The run.** With `--coverage` the report is printed even when no example ran, and `--fail-under` then fails a workspace that has rules. A failing example fails the run as before, whatever the percentage. The report goes to standard output and is not hidden by `--quiet`. `veld test` has no machine-readable output, so there is no JSON form of the report.
+
 ### 19.2 `veld export rules`
 
 `veld export rules [-o FILE]` writes the rule book of the workspace as Markdown, for people who do not read contracts. It is written as `veld export openapi` writes its file: the user owns it.
@@ -1242,6 +1252,17 @@ The document is deterministic and has, per service package in name order:
 5. **The examples** of the package, by name, each with its outcome.
 
 An audited rule (§17.1) is marked "audited, not enforced". A deprecated rule is marked so. The export of a workspace without rules says that it has none.
+
+Where the text above is silent, the tool writes this:
+
+- **Document.** `# Rule book`, then per package `## Package \`name\``, then `### Declarations`, `### State machines`, `### Policies`, `### Endpoints` and `### Examples`, each only when it has something. Sections are separated by one blank line. A package with nothing in any part is left out. The sentence of a workspace without rules is `This workspace has no rules.` under the title.
+- **Declarations.** `#### Name (model|error|event)`, its doc comment, then one line per own rule (an inherited rule is shown with the declaration that declares it): `- <message or name>: \`<expression>\``, and the rule's doc comment on the lines under it, indented by two spaces. Marks follow the expression: ` (audited, not enforced)`, ` (deprecated)` or ` (deprecated: <reason>)`. Declarations of library packages are not listed: the rule book is per service package.
+- **State machines.** `#### Name`, the doc comment, the table `| From | To |` with the moves in declaration order, and `Final states: a, b`.
+- **Policies.** `#### Name(param, param)`, the doc comment, then `- permit when \`expr\`` and `- forbid when \`expr\`: <message>` in order.
+- **Endpoints.** Only those with a `fact`, `allow`, `transition`, `require` or `ensure`: `#### METHOD /full/path (Service.endpoint)`, the doc comment, then the bullets `Loads`, `Who may call it`, `Move`, `Requires` and `Promises`, the last two with one nested bullet per statement: `<message, else name, else "require #N">: \`expr\`, answers \`Error\`` (`ValidationError` for a `require` without `else`) and, for an `ensure`, no error. An `allow` is written `Policy(args)`, with the caller written `principal`.
+- **Examples.** `- <name>: ok`, or the name of the error the example expects, or `rejected`, or the handlers an event example expects to be (or not be) called. Examples are in source order.
+- **Expressions** are printed by the printer of the OpenAPI export and of `veld diff`, which prints the semantics of the IR (and not the source text of a file), with the parentheses precedence needs; for the rules of a contract that `veld fmt` has formatted it gives the same text.
+- **Flags.** `-o FILE` and `--force` as for `veld export openapi`; `--service NAME` (repeatable) limits the book to the packages of those services and to their endpoints. `veld export` has no `-p`.
 
 ### 19.3 `@pii` and `@secret`
 
