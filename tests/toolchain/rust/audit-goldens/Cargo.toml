@@ -1,0 +1,15 @@
+[package]
+name = "audit-goldens"
+version = "0.0.0"
+edition = "2021"
+publish = false
+default-run = "audit-goldens"
+
+[[bin]]
+name = "audit-goldens"
+path = "src/main.rs"
+
+[dependencies]
+bookings-server = { path = "../server" }
+bookings-client = { path = "../client" }
+serde_json = "1"
