@@ -123,5 +123,5 @@ fn doubles_become_exact_reals() {
     assert_eq!(exact_real(0.0).as_deref(), Some("0.0"));
     assert_eq!(exact_real(f64::NAN), None);
     let tenth = exact_real(0.1).unwrap();
-    assert!(tenth.starts_with("(/ 3602879701896397.0"), "{tenth}");
+    assert!(tenth.starts_with("(/ 7205759403792794.0"), "{tenth}");
 }
