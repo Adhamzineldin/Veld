@@ -253,7 +253,11 @@ fn write_record(
     open_record(w, "public", &name, &comps, &implements);
     write_sig(w, d, "public static final ");
     w.blank();
-    let checked = rules::schema_suffix(d, &name);
+    let checked = format!(
+        "{}{}",
+        rules::schema_suffix(d, &name),
+        crate::platform::schema_suffix(fc, d, &name)
+    );
     write_object_schema(w, fc, fields, "public static final ", &checked);
     w.blank();
     write_wire_methods(w, fc, &name, fields, &idents);
@@ -266,6 +270,10 @@ fn write_record(
     if crate::derived::has_derived(d) {
         w.blank();
         crate::derived::write_members(w, fc, d, &name)?;
+    }
+    if crate::platform::has_members(fc, d) {
+        w.blank();
+        crate::platform::write_members(w, fc, d, &name)?;
     }
     w.close();
     Ok(())
@@ -561,7 +569,11 @@ fn write_error(
         ));
     }
     w.blank();
-    let checked = rules::schema_suffix(d, &name);
+    let checked = format!(
+        "{}{}",
+        rules::schema_suffix(d, &name),
+        crate::platform::schema_suffix(fc, d, &name)
+    );
     write_object_schema(w, fc, fields, "public static final ", &checked);
     w.blank();
     w.line("/** The error payload. */");
@@ -608,6 +620,10 @@ fn write_error(
     if crate::derived::has_derived(d) {
         w.blank();
         crate::derived::write_members(w, fc, d, "Data")?;
+    }
+    if crate::platform::has_members(fc, d) {
+        w.blank();
+        crate::platform::write_members(w, fc, d, "Data")?;
     }
     w.close();
     Ok(())

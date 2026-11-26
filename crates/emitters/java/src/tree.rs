@@ -44,6 +44,9 @@ pub struct Tree<'a> {
     /// The typed runtime config of the target, when it has one: a server entry then takes it as
     /// its last argument, and a server with `rules.output` takes the mode from it.
     pub runtime_config: Option<crate::config::Info>,
+    /// What a server of the tree uses of platform phase P1 (visibility, tenancy, the audit log,
+    /// rate limits). Nothing for a client and for a consumed service.
+    pub platform: crate::platform::Uses,
     decls: Vec<DeclId>,
 }
 
@@ -74,6 +77,7 @@ impl<'a> Tree<'a> {
             rollout: false,
             events: false,
             runtime_config: None,
+            platform: crate::platform::Uses::default(),
             decls: set.into_iter().collect(),
         }
     }
@@ -124,6 +128,13 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn with_runtime(mut self, info: Option<crate::config::Info>) -> Self {
         self.runtime_config = info;
+        self
+    }
+
+    /// Sets what the tree's server uses of platform phase P1.
+    #[must_use]
+    pub fn with_platform(mut self, platform: crate::platform::Uses) -> Self {
+        self.platform = platform;
         self
     }
 

@@ -91,6 +91,10 @@ public final class HandlerHooks {
   private volatile Flags.Source flagSource;
   private final Map<String, java.util.List<String>> flagNames;
   // #endif
+  // #if platform
+  private volatile java.util.function.ToLongFunction<RequestContext> clock;
+  private final Platform.Principal principal;
+  // #endif
 
   private HandlerHooks(Builder b) {
     this.bearer = b.bearer;
@@ -117,6 +121,10 @@ public final class HandlerHooks {
     // #if flags
     this.flagSource = b.flagSource;
     this.flagNames = Map.copyOf(b.flagNames);
+    // #endif
+    // #if platform
+    this.clock = b.clock;
+    this.principal = b.principal;
     // #endif
   }
 
@@ -181,6 +189,25 @@ public final class HandlerHooks {
     return flagNames.getOrDefault(sig, java.util.List.of());
   }
   // #endif
+  // #if platform
+
+  /** The clock of the request in epoch milliseconds, or {@code null} for the system clock. */
+  java.util.function.ToLongFunction<RequestContext> clock() {
+    return clock;
+  }
+
+  /** The principal's model of the service, or {@code null}. */
+  Platform.Principal principal() {
+    return principal;
+  }
+  // #endif
+  // #if testing_platform
+
+  /** The test handler reads the clock of the request from {@code Veld-Test-Now}. */
+  void setClock(java.util.function.ToLongFunction<RequestContext> value) {
+    this.clock = value;
+  }
+  // #endif
   // #if rules
 
   RuleWalk.OutputMode rulesOutput() {
@@ -229,6 +256,10 @@ public final class HandlerHooks {
     b.idempotencyStore = idempotencyStore;
     b.idempotencyCaller = idempotencyCaller;
     // #endif
+    // #if testing_platform
+    b.clock = clock;
+    b.principal = principal;
+    // #endif
     // #if testing_rules
     return b.build();
   }
@@ -260,6 +291,10 @@ public final class HandlerHooks {
     // #if flags
     private Flags.Source flagSource;
     private final Map<String, java.util.List<String>> flagNames = new LinkedHashMap<>();
+    // #endif
+    // #if platform
+    private java.util.function.ToLongFunction<RequestContext> clock;
+    private Platform.Principal principal;
     // #endif
 
     private Builder() {}
@@ -351,6 +386,10 @@ public final class HandlerHooks {
       this.flagSource = other.flagSource;
       this.flagNames.putAll(other.flagNames);
       // #endif
+      // #if platform_conditional
+      this.clock = other.clock;
+      this.principal = other.principal;
+      // #endif
       // #if conditional_rules
       this.rulesOutput = other.rulesOutput;
       this.ruleHook = other.ruleHook;
@@ -384,6 +423,20 @@ public final class HandlerHooks {
     public Builder flags(Flags.Provider provider, Map<String, java.util.List<String>> byOperation) {
       this.flagSource = provider == null ? null : (name, request, context) -> provider.isOn(name, context);
       this.flagNames.putAll(byOperation);
+      return this;
+    }
+
+    // #endif
+    // #if platform
+    /** The clock of a request, read once when the request is matched (default: the system clock). */
+    public Builder clock(java.util.function.ToLongFunction<RequestContext> value) {
+      this.clock = value;
+      return this;
+    }
+
+    /** The principal's model of the service: what visibility, tenancy and the audit event read of the caller. */
+    public Builder principal(Platform.Principal value) {
+      this.principal = value;
       return this;
     }
 

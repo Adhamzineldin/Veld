@@ -75,6 +75,28 @@ public final class RequestContext {
     return flagView;
   }
   // #endif
+  // #if platform
+
+  private volatile Platform.State platformState;
+
+  void setPlatform(Platform.State state) {
+    this.platformState = state;
+  }
+
+  /** What the platform features keep for this request: the clock reading, the dropped paths, the audit trail. */
+  Platform.State platform() {
+    return platformState;
+  }
+
+  /**
+   * The clock reading of this request in epoch milliseconds: the one the router took when it
+   * matched the request, else {@code clock}'s.
+   */
+  public long clockReading(java.util.function.ToLongFunction<RequestContext> clock) {
+    Platform.State state = platformState;
+    return state != null ? state.now() : clock.applyAsLong(this);
+  }
+  // #endif
   // #if timeouts
 
   private volatile Deadline bound;

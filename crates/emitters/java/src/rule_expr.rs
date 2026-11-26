@@ -97,6 +97,31 @@ impl<'f, 't, 'a> JavaExpr<'f, 't, 'a> {
         }
     }
 
+    /// A printer for the `@visible` expressions of the fields of `this` (`spec/platform.md` section
+    /// 2): the fields of the value (`v`), the caller of the principal model `principal` (`principal`)
+    /// and `now` (`long`, epoch milliseconds).
+    pub fn for_visibility(fc: &'f mut FileCtx<'t, 'a>, this: DeclId, principal: DeclId) -> Self {
+        let ir = fc.tree.ir;
+        let scope = EndpointScope {
+            principal: Some(ScopeVar {
+                name: ir.decl(principal).name.clone(),
+                code: "principal".to_string(),
+                ty: Type::Decl(principal),
+                optional: false,
+            }),
+            ..EndpointScope::default()
+        };
+        Self {
+            fc,
+            ir,
+            this: Some(this),
+            scope: Some(scope),
+            olds: Vec::new(),
+            vars: Vec::new(),
+            unsupported: Vec::new(),
+        }
+    }
+
     /// The file the printer writes imports into.
     pub fn file(&mut self) -> &mut FileCtx<'t, 'a> {
         self.fc

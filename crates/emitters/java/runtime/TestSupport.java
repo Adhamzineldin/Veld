@@ -60,6 +60,13 @@ public final class TestSupport {
   }
 
   // #endif
+  // #if testing_platform
+  /** The platform features read the clock of the request from {@code Veld-Test-Now}, like the rules do. */
+  public static void platform(HandlerHooks hooks) {
+    hooks.setClock(TestSupport::now);
+  }
+
+  // #endif
   /**
    * The wire value of a fact the request carries, or empty when the fact is absent (missing from
    * the object, or {@code null}).

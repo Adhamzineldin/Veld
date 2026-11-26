@@ -437,8 +437,14 @@ fn write_start(w: &mut CodeWriter, printer: &mut JavaExpr<'_, '_, '_>, site: &Si
     let (validation, not_found) = factories(printer.file());
     let request = site.request;
     w.line(format!("{request} request = {request}.fromWire(params);"));
+    // The clock is read once per request, by the router, when the request is matched.
+    let now = if crate::platform::service_uses(printer.file().tree.ir, site.svc) {
+        "ctx.clockReading(clock)"
+    } else {
+        "clock.applyAsLong(ctx)"
+    };
     w.line(format!(
-        "{rules}.Run run = {rules}.start(hooks, {spec}, issues -> {validation}, resource -> {not_found}, clock.applyAsLong(ctx));"
+        "{rules}.Run run = {rules}.start(hooks, {spec}, issues -> {validation}, resource -> {not_found}, {now});"
     ));
     w.line("long now = run.now();");
 }

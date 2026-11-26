@@ -33,6 +33,8 @@ const SLO_FILES: &[&str] = &["Metric"];
 const TIMEOUT_FILES: &[&str] = &["Deadline"];
 /// The provider and the readings of the flags (`spec/platform.md` section 11).
 const FLAG_FILES: &[&str] = &["Flags"];
+/// The platform phase P1 state and features (`spec/targets/java.md` section 17).
+const PLATFORM_FILES: &[&str] = &["Platform"];
 /// The runtime classes of the policies (`spec/targets/java.md` section 11).
 const POLICY_FILES: &[&str] = &["Policy"];
 /// The runtime class of audited rules (`@rollout(audit)`, `spec/rules.md` section 17.1).
@@ -107,6 +109,7 @@ runtime_files!(
     "Outbox",
     "OutboxEntry",
     "Page",
+    "Platform",
     "Policy",
     "Reconnect",
     "RequestContext",
@@ -297,6 +300,39 @@ pub struct Flags {
     /// and the `// #if runtimecfg` regions. Without it a client keeps the environment fallback of
     /// before, so a target without settings keeps its bytes.
     pub runtime_config: bool,
+    /// Field visibility (`visibility`, `spec/platform.md` section 2): a server's answers can reach a
+    /// `@visible` field.
+    pub visibility: bool,
+    /// Tenancy (`tenancy`, section 3): a server's answers or facts can be tenant-scoped. Needs `rules`.
+    pub tenancy: bool,
+    /// The audit log (`audit`, section 4): an endpoint of a server is `@audited`.
+    pub audit: bool,
+    /// Rate limits of a server (`limits`, section 5): an endpoint has a `@limit`.
+    pub limits_server: bool,
+    /// Rate limits of a client: the call waits and sends again on a `429`.
+    pub limits: bool,
+    /// A declaration of the tree has a `@tenant` field (a client's request may lack it).
+    pub tenant_fields: bool,
+}
+
+impl Flags {
+    /// Any platform phase P1 feature of a server: `Platform` and the per-request state.
+    #[must_use]
+    pub fn platform(&self) -> bool {
+        self.visibility || self.tenancy || self.audit || self.limits_server
+    }
+
+    /// The answers of a server are shaped (visibility, the tenant check).
+    #[must_use]
+    pub fn shapes(&self) -> bool {
+        self.visibility || self.tenancy
+    }
+
+    /// An object schema carries platform marks.
+    #[must_use]
+    pub fn marks(&self) -> bool {
+        self.visibility || self.tenancy || self.audit
+    }
 }
 
 /// Like [`emit`], with the endpoint rules and test handler parts switched by `flags`.
@@ -326,6 +362,7 @@ pub fn emit_with(
             && (flags.conditional || !CONDITIONAL_FILES.contains(&name))
             && (flags.preconditions || !PRECONDITION_FILES.contains(&name))
             && (flags.runtime_config || !RUNTIME_CONFIG_FILES.contains(&name))
+            && (flags.platform() || !PLATFORM_FILES.contains(&name))
     };
     let enabled = |region: &str| match region {
         "rules" => flags.rules,
@@ -372,6 +409,24 @@ pub fn emit_with(
         "runtimecfg" => flags.runtime_config,
         "legacy" => !flags.runtime_config,
         "runtimecfg_rules" => flags.runtime_config && flags.rules,
+        "platform" => flags.platform(),
+        "shapes" => flags.shapes(),
+        "marks" => flags.marks(),
+        "marks_rules" => flags.marks() && flags.rules,
+        "marks_derived" => flags.marks() && flags.derived,
+        "visibility" => flags.visibility,
+        "platform_conditional" => flags.platform() && flags.conditional,
+        "testing_platform" => flags.testing && flags.platform(),
+        "fin_flags" => flags.flags && !flags.platform(),
+        "fin_platform_flags" => flags.flags && flags.platform(),
+        "fin_platform" => flags.platform() && !flags.flags,
+        "sse_flags" => flags.flags && !flags.platform(),
+        "sse_no_flags" => !flags.flags && !flags.platform(),
+        "sse_platform_flags" => flags.flags && flags.platform(),
+        "sse_platform" => flags.platform() && !flags.flags,
+        "shapes_endpoint" => flags.shapes() && flags.endpoint,
+        "not_shapes_endpoint" => flags.endpoint && !flags.shapes(),
+        "not_shapes" => !flags.shapes(),
         _ => false,
     };
     for (name, source) in RUNTIME.iter().filter(|(name, _)| wanted(name)) {

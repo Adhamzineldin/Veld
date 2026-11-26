@@ -243,6 +243,27 @@ public final class Schema {
   }
 
   // #endif
+  // #if marks
+  /** The platform marks of this object schema (spec/platform.md sections 2 and 3), or {@code null}. */
+  Platform.Marks marks;
+
+  /** A copy of this object schema with the platform marks of its declaration. */
+  public Schema marked(Platform.Marks value) {
+    Schema copy = withBounds(bounds);
+    // #endif
+    // #if marks_rules
+    copy.check = check;
+    // #endif
+    // #if marks_derived
+    copy.derive = derive;
+    copy.derivedWires = derivedWires;
+    // #endif
+    // #if marks
+    copy.marks = value;
+    return copy;
+  }
+
+  // #endif
   /** Follows references until a concrete node is reached. */
   Schema resolve() {
     Schema cur = this;

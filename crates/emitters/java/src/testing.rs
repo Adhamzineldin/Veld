@@ -26,7 +26,9 @@ pub fn wanted(ir: &Ir, testing: bool, svc: &Service) -> bool {
 /// Whether the test handler of a service answers its HTTP endpoints too: it has endpoint rules, a
 /// guard, a key or an `ETag`. A service that only subscribes has a test handler with no application.
 fn http_wanted(ir: &Ir, svc: &Service) -> bool {
-    service_has_rules(svc) || conditional::service_uses(ir, svc)
+    service_has_rules(svc)
+        || conditional::service_uses(ir, svc)
+        || crate::platform::service_uses(ir, svc)
 }
 
 /// What the event endpoint of a test handler does, for its Javadoc.
@@ -259,6 +261,9 @@ fn write_create_body(
     }
     if crate::flags::service_uses(fc.tree, svc) {
         w.line(format!("{support}.flags(built);"));
+    }
+    if crate::platform::service_uses(fc.tree.ir, svc) {
+        w.line(format!("{support}.platform(built);"));
     }
     let given = if has_loaders { "new Loaders(), " } else { "" };
     let clock = if service_has_rules(svc) {

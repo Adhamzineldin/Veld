@@ -524,11 +524,12 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     w.line(format!(
         "private final {hooks}.Builder builder = {hooks}.builder(){off};"
     ));
-    let clock = if endpoint::service_has_rules(svc) {
-        Some(fc.name("java.time.Clock"))
-    } else {
-        None
-    };
+    let clock =
+        if endpoint::service_has_rules(svc) || crate::platform::service_uses(fc.tree.ir, svc) {
+            Some(fc.name("java.time.Clock"))
+        } else {
+            None
+        };
     if let Some(clock) = &clock {
         w.line(format!("private {clock} clock = {clock}.systemUTC();"));
     }
@@ -558,6 +559,9 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     w.open(format!("public {class}({})", sig.join(", ")));
     for h in &required {
         w.line(h.register.clone());
+    }
+    for line in crate::platform::registrations(fc, svc) {
+        w.line(line);
     }
     let deadlines: Vec<String> = svc
         .endpoints
@@ -722,7 +726,10 @@ fn write_handler(
     };
     // A service with a guard, a key or an `ETag` lists its endpoints in a method of its own too: the
     // test handler builds the same endpoints (`spec/targets/java.md` section 9.5).
-    if rules || conditional::service_uses(fc.tree.ir, svc) {
+    if rules
+        || conditional::service_uses(fc.tree.ir, svc)
+        || crate::platform::service_uses(fc.tree.ir, svc)
+    {
         write_create_with_endpoints(w, fc, &site, pass, rules);
         w.blank();
         write_endpoints_method(w, fc, &site, &given, rules, &mut problems);

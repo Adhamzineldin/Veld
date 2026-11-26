@@ -18,6 +18,7 @@ pub mod frameworks;
 pub mod machine;
 pub mod models;
 pub mod outbox;
+pub mod platform;
 pub mod policy;
 pub mod readme;
 pub mod rule_expr;
@@ -74,8 +75,8 @@ pub struct Java;
 /// What the generator supports for `role`: everything. A server generates events
 /// (`spec/targets/java.md` section 12); a client supports the feature by generating nothing for it
 /// (`spec/events.md` section 14).
-fn events_capabilities(_role: Role) -> Capabilities {
-    Capabilities::all_except(&[])
+fn events_capabilities(role: Role) -> Capabilities {
+    let caps = Capabilities::all_except(&[])
         .with(Feature::RulesRollout)
         .with(Feature::RulesVersion)
         .with(Feature::Idempotency)
@@ -85,7 +86,11 @@ fn events_capabilities(_role: Role) -> Capabilities {
         .with(Feature::Slo)
         .with(Feature::Timeouts)
         .with(Feature::RulesFlags)
-        .with(Feature::EventsOutbox)
+        .with(Feature::EventsOutbox);
+    match role {
+        Role::Server => caps,
+        Role::Client => caps,
+    }
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -231,7 +236,19 @@ impl Generator for Java {
                 && req.consumes.iter().any(|sid| {
                     declares_derived(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
                 }));
-        let policies = features.contains(&Feature::RulesPolicies);
+        // What a server uses of platform phase P1; a service that uses it and has a principal gets
+        // typed hooks (the caller is a value of the principal's model), as a service with policies.
+        let p1 = if req.role == Role::Server {
+            platform::uses(req.ir, &req.services)
+        } else {
+            platform::Uses::default()
+        };
+        let typed_principal = req.role == Role::Server
+            && req.services.iter().any(|s| {
+                let svc = req.ir.service(*s);
+                svc.principal.is_some() && platform::service_uses(req.ir, svc)
+            });
+        let policies = features.contains(&Feature::RulesPolicies) || typed_principal;
         // A declaration that no endpoint reaches is emitted too, and it calls `Audit` for its audited
         // rules: the class is emitted for every audited rule the output has, reached or not.
         let rollout = features.contains(&Feature::RulesRollout)
@@ -254,13 +271,20 @@ impl Generator for Java {
         let conditional_server =
             req.role == Role::Server && conditional::services_use(req.ir, &req.services);
         let flags = runtime::Flags {
-            rules: rules || policies || rollout || output_mode || derived,
+            rules: rules || policies || rollout || output_mode || derived || p1.tenancy,
+            visibility: p1.visibility,
+            tenancy: p1.tenancy,
+            audit: p1.audit,
+            limits_server: p1.limits,
+            limits: false,
+            tenant_fields: false,
             derived,
             runtime_config: runtime_config.is_some(),
             endpoint,
             // A service that has endpoint rules, or only a guard, a key or an `ETag`, gets a test
             // handler (`spec/rules.md` 11.12).
-            testing: (endpoint || conditional_server || subscribing) && opts.testing == Some(true),
+            testing: (endpoint || conditional_server || subscribing || p1.any())
+                && opts.testing == Some(true),
             machine: endpoint && endpoint::services_have_transition(req.ir, &req.services),
             timed: endpoint && machine::services_have_timed(req.ir, &req.services),
             slo: req.role == Role::Server && slo::services_have_slo(req.ir, &req.services),
@@ -306,8 +330,9 @@ impl Generator for Java {
             .with_runtime(runtime_config.clone())
             .with_rules(flags.rules)
             .with_testing(flags.testing)
-            .with_policies(uses_policies(req.ir, &req.services))
-            .with_rollout(flags.rollout);
+            .with_policies(uses_policies(req.ir, &req.services) || typed_principal)
+            .with_rollout(flags.rollout)
+            .with_platform(p1);
         models::emit(&mut files, &tree)?;
         match req.role {
             Role::Client => client::emit(&mut files, &tree)?,

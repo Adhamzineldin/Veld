@@ -319,6 +319,10 @@ public final class Router implements VeldHandler {
     // #if flags
     Flags.View enclosing = Flags.current();
     // #endif
+    // #if platform
+    Platform.State enclosingState = Platform.current();
+    Platform.open(hooks, ctx, null);
+    // #endif
     try {
       Guarded guarded = guard(route, match, request, ctx, false);
       if (guarded.failure != null) {
@@ -340,9 +344,18 @@ public final class Router implements VeldHandler {
       return success(ep, ep.call().call(params, ctx));
     } catch (Exception | StackOverflowError err) {
       return failure(err, spec, ctx);
-      // #if flags
+      // #if fin_flags
     } finally {
       Flags.restore(enclosing);
+      // #endif
+      // #if fin_platform_flags
+    } finally {
+      Flags.restore(enclosing);
+      Platform.install(enclosingState);
+      // #endif
+      // #if fin_platform
+    } finally {
+      Platform.install(enclosingState);
       // #endif
     }
   }
@@ -613,13 +626,21 @@ public final class Router implements VeldHandler {
     EndpointSpec spec = ep.spec();
     Stream<String> frames = SseFrames.open(
         source,
-        // #if flags
+        // #if sse_flags
         event -> Flags.with(ctx.flags(), () -> sseFrame(spec, event)),
         err -> Flags.with(ctx.flags(), () -> SseEvent.frame(failure(err, spec, ctx).body(), null, "error", null)));
         // #endif
-        // #if no_flags
+        // #if sse_no_flags
         event -> sseFrame(spec, event),
         err -> SseEvent.frame(failure(err, spec, ctx).body(), null, "error", null));
+        // #endif
+        // #if sse_platform_flags
+        event -> Platform.with(ctx.platform(), () -> Flags.with(ctx.flags(), () -> sseFrame(spec, event))),
+        err -> Platform.with(ctx.platform(), () -> Flags.with(ctx.flags(), () -> SseEvent.frame(failure(err, spec, ctx).body(), null, "error", null))));
+        // #endif
+        // #if sse_platform
+        event -> Platform.with(ctx.platform(), () -> sseFrame(spec, event)),
+        err -> Platform.with(ctx.platform(), () -> SseEvent.frame(failure(err, spec, ctx).body(), null, "error", null)));
         // #endif
     Map<String, String> headers = Map.of(
         "content-type", "text/event-stream", "cache-control", "no-cache", "x-accel-buffering", "no");
@@ -642,6 +663,9 @@ public final class Router implements VeldHandler {
     }
     // #if rules
     RuleWalk.checkItem(spec, hooks, wire);
+    // #endif
+    // #if visibility
+    wire = Platform.shown(spec.success(), wire, Platform.current().ctx());
     // #endif
     return SseEvent.frame(Wire.canonicalOf(spec.success(), wire), event.id(), event.event(), event.retry());
   }
@@ -836,6 +860,11 @@ public final class Router implements VeldHandler {
     if (etag != null) {
       headers.put("etag", etag);
     }
+    // #endif
+    // #if visibility
+    wire = Platform.shown(spec.success(), wire, Platform.current().ctx());
+    // #endif
+    // #if conditional
     return new VeldResponse(spec.status(), headers, wire.write());
     // #endif
     // #if plain
@@ -847,7 +876,14 @@ public final class Router implements VeldHandler {
     // #if endpoint
     EndpointRules.discard();
     if (err instanceof EndpointRules.Early early) {
+      // #endif
+      // #if shapes_endpoint
+      return shaped(spec, early.response());
+      // #endif
+      // #if not_shapes_endpoint
       return early.response();
+      // #endif
+      // #if endpoint
     }
     // #endif
     // #if early
@@ -880,7 +916,12 @@ public final class Router implements VeldHandler {
             return broken;
           }
           // #endif
+          // #if shapes
+          return shaped(spec, problem(d.sig(), ve.title(), d.status(), spec.sig(), data));
+          // #endif
+          // #if not_shapes
           return problem(d.sig(), ve.title(), d.status(), spec.sig(), data);
+          // #endif
         }
       }
     }
@@ -900,6 +941,13 @@ public final class Router implements VeldHandler {
     return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
   }
 
+  // #if shapes
+  /** A declared error about to be sent: its data is checked for another tenant's values and shown to the caller. */
+  private VeldResponse shaped(EndpointSpec spec, VeldResponse response) {
+    return Platform.errorAnswer(hooks, spec, response, std);
+  }
+
+  // #endif
   static VeldResponse problem(String sig, String title, int status, String op, Json data) {
     Json body = Json.object()
         .put("type", Json.of(sig))
