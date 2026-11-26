@@ -42,7 +42,12 @@ pub fn retention_report(ir: &Ir) -> String {
         models.sort_by(|a, b| a.name.cmp(&b.name));
         let _ = write!(out, "\n## Package `{}`\n", p.name);
         for d in models {
-            model_section(&mut out, ir, d, index.get(&d.id).map_or(&[][..], Vec::as_slice));
+            model_section(
+                &mut out,
+                ir,
+                d,
+                index.get(&d.id).map_or(&[][..], Vec::as_slice),
+            );
         }
     }
     if !any {

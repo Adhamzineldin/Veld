@@ -76,7 +76,11 @@ fn every_case_gives_the_golden_bytes_and_paths() {
             .find(|d| d.name == case["type"].as_str().unwrap())
             .unwrap_or_else(|| panic!("{name}: no such declaration"));
         let got = redact_decl(&ir, decl, &case["value"]).unwrap();
-        assert_eq!(bytes(&got.value), case["redacted"].as_str().unwrap(), "{name}");
+        assert_eq!(
+            bytes(&got.value),
+            case["redacted"].as_str().unwrap(),
+            "{name}"
+        );
         assert_eq!(got.paths, paths_of(&case), "{name}");
     }
 }

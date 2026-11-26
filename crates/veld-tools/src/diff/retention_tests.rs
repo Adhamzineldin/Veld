@@ -39,14 +39,23 @@ fn a_shorter_duration_is_possibly_breaking_and_a_longer_one_is_not() {
 #[test]
 fn another_since_field_is_possibly_breaking() {
     let other = "@retain(days(30), since: seen, then: anonymize)";
-    assert_eq!(kinds(&guest(D30), &guest(other)), [(RetentionSinceChanged, P)]);
+    assert_eq!(
+        kinds(&guest(D30), &guest(other)),
+        [(RetentionSinceChanged, P)]
+    );
 }
 
 #[test]
 fn anonymize_to_delete_is_possibly_breaking_and_delete_to_anonymize_is_not() {
     let delete = "@retain(days(30), since: at, then: delete)";
-    assert_eq!(kinds(&guest(D30), &guest(delete)), [(RetentionThenChanged, P)]);
-    assert_eq!(kinds(&guest(delete), &guest(D30)), [(RetentionThenChanged, N)]);
+    assert_eq!(
+        kinds(&guest(D30), &guest(delete)),
+        [(RetentionThenChanged, P)]
+    );
+    assert_eq!(
+        kinds(&guest(delete), &guest(D30)),
+        [(RetentionThenChanged, N)]
+    );
 }
 
 #[test]

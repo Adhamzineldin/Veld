@@ -16,7 +16,9 @@ model Guest {
 ";
 
 fn with_service(models: &str) -> String {
-    format!("{models}\n@auth(bearer)\nservice Guests at \"/guests\" {{\n  get \"/\" list() -> Guest\n}}\n")
+    format!(
+        "{models}\n@auth(bearer)\nservice Guests at \"/guests\" {{\n  get \"/\" list() -> Guest\n}}\n"
+    )
 }
 
 fn model(ir: &Ir, name: &str) -> veld_ir::Model {
@@ -58,16 +60,27 @@ fn since_is_the_wire_name_of_the_field() {
 
 #[test]
 fn a_contract_without_it_has_no_retain_key_and_the_same_signature() {
-    let plain = GUEST.replace("@retain(days(30), since: checkedOutAt, then: anonymize)\n", "");
+    let plain = GUEST.replace(
+        "@retain(days(30), since: checkedOutAt, then: anonymize)\n",
+        "",
+    );
     let (a, b) = (build(&with_service(GUEST)), build(&with_service(&plain)));
     assert!(!serde_json::to_string(&b).unwrap().contains("retain"));
-    let sig = |ir: &Ir| ir.decls.iter().find(|d| d.name == "Guest").unwrap().sig.clone();
+    let sig = |ir: &Ir| {
+        ir.decls
+            .iter()
+            .find(|d| d.name == "Guest")
+            .unwrap()
+            .sig
+            .clone()
+    };
     assert_eq!(sig(&a), sig(&b));
 }
 
 #[test]
 fn delete_needs_no_pii_field_and_a_date_will_do() {
-    let src = "@retain(days(1), since: day, then: delete)\nmodel Log {\n  id: uuid\n  day: date\n}\n";
+    let src =
+        "@retain(days(1), since: day, then: delete)\nmodel Log {\n  id: uuid\n  day: date\n}\n";
     assert_eq!(codes(src), Vec::<&str>::new());
 }
 
@@ -148,9 +161,11 @@ fn it_stands_on_a_model_only() {
 
 #[test]
 fn the_word_stays_an_ordinary_name() {
-    assert!(one("model A { retain: string\n since: string\n then: string\n days: int }\n")
-        .ir
-        .is_some());
+    assert!(
+        one("model A { retain: string\n since: string\n then: string\n days: int }\n")
+            .ir
+            .is_some()
+    );
 }
 
 // ---- the plan ----------------------------------------------------------------------------------
@@ -164,12 +179,26 @@ fn the_plan_lists_the_models_by_name_with_the_pii_fields_for_anonymize() {
     let plan = ir.retention_plan(&[ServiceId(0)]);
     let got: Vec<_> = plan
         .iter()
-        .map(|e| (e.model.as_str(), e.after_ms, e.since.as_str(), e.then, e.fields.clone()))
+        .map(|e| {
+            (
+                e.model.as_str(),
+                e.after_ms,
+                e.since.as_str(),
+                e.then,
+                e.fields.clone(),
+            )
+        })
         .collect();
     assert_eq!(
         got,
         [
-            ("app:app.Booking", 2 * 86_400_000, "closedAt", RetainThen::Delete, vec![]),
+            (
+                "app:app.Booking",
+                2 * 86_400_000,
+                "closedAt",
+                RetainThen::Delete,
+                vec![]
+            ),
             (
                 "app:app.Guest",
                 30 * 86_400_000,
@@ -185,11 +214,17 @@ fn the_plan_lists_the_models_by_name_with_the_pii_fields_for_anonymize() {
 fn a_member_without_retained_models_has_an_empty_plan_and_does_not_use_the_feature() {
     let ir = build("model A { x: string @pii }\nservice S at \"/s\" { get \"/\" f() -> A }\n");
     assert!(ir.retention_plan(&[ServiceId(0)]).is_empty());
-    assert!(!ir.features_used(&[ServiceId(0)]).contains(&Feature::Retention));
+    assert!(
+        !ir.features_used(&[ServiceId(0)])
+            .contains(&Feature::Retention)
+    );
 }
 
 #[test]
 fn a_member_with_a_retained_model_uses_the_feature() {
     let ir = build(&with_service(GUEST));
-    assert!(ir.features_used(&[ServiceId(0)]).contains(&Feature::Retention));
+    assert!(
+        ir.features_used(&[ServiceId(0)])
+            .contains(&Feature::Retention)
+    );
 }

@@ -58,7 +58,9 @@ fn is_range(tag: &str) -> bool {
         .is_some_and(|p| (1..=8).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_lowercase()));
     primary
         && parts.all(|s| {
-            (1..=8).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+            (1..=8).contains(&s.len())
+                && s.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
         })
 }
 

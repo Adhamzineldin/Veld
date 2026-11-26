@@ -416,10 +416,22 @@ fn retain_args(args: &[Arg], span: Span, diags: &mut Vec<Diagnostic>) -> Option<
     let (mut after, mut since, mut then) = (None, None, None);
     for a in args {
         match a.name.as_ref().map(|n| n.name.as_str()) {
-            None => take_once(&mut after, retain_days(a, diags), a.span, "the duration", diags),
+            None => take_once(
+                &mut after,
+                retain_days(a, diags),
+                a.span,
+                "the duration",
+                diags,
+            ),
             Some("since") => match &a.value {
                 ArgValue::Ident(i) => {
-                    take_once(&mut since, Some((i.name.clone(), i.span)), a.span, "`since:`", diags);
+                    take_once(
+                        &mut since,
+                        Some((i.name.clone(), i.span)),
+                        a.span,
+                        "`since:`",
+                        diags,
+                    );
                 }
                 ArgValue::Literal(_) | ArgValue::Call { .. } => {
                     diags.push(retain_error(a.span, "`since:` names a field of the model"));
@@ -465,7 +477,10 @@ fn take_once<T>(
     diags: &mut Vec<Diagnostic>,
 ) {
     if slot.is_some() {
-        diags.push(retain_error(span, format!("{what} is given more than once")));
+        diags.push(retain_error(
+            span,
+            format!("{what} is given more than once"),
+        ));
     } else if value.is_some() {
         *slot = value;
     }
@@ -478,12 +493,18 @@ fn retain_days(a: &Arg, diags: &mut Vec<Diagnostic>) -> Option<(i64, Span)> {
         None
     };
     let ArgValue::Call { name, args } = &a.value else {
-        return fail(diags, "the first argument is a duration of whole days: `days(30)`");
+        return fail(
+            diags,
+            "the first argument is a duration of whole days: `days(30)`",
+        );
     };
     if name.name != "days" {
         return fail(
             diags,
-            &format!("`{}(..)` is not a whole number of days: write `days(n)`", name.name),
+            &format!(
+                "`{}(..)` is not a whole number of days: write `days(n)`",
+                name.name
+            ),
         );
     }
     let n = match args.as_slice() {

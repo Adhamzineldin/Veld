@@ -1,8 +1,8 @@
 //! Message keys (`spec/platform.md` section 22): the key of every kind of rule, and which keys a
 //! member's catalog may use.
 
-use crate::testing::ir as build;
 use crate::signature::message_keys as keys;
+use crate::testing::ir as build;
 use veld_ir::Ir;
 
 const SRC: &str = r#"
@@ -118,7 +118,12 @@ fn the_key_is_the_id_of_the_rule_without_its_hash() {
 fn unnamed_statements_share_one_key_per_kind() {
     let ir = ir();
     let ep = &ir.services[0].endpoints[0];
-    let unnamed: Vec<_> = ep.rules.requires.iter().filter(|r| r.name.is_none()).collect();
+    let unnamed: Vec<_> = ep
+        .rules
+        .requires
+        .iter()
+        .filter(|r| r.name.is_none())
+        .collect();
     assert_eq!(unnamed.len(), 2);
     for r in unnamed {
         assert_eq!(
@@ -140,7 +145,10 @@ fn a_transition_and_a_version_guard_have_the_fixed_keys() {
     let t = id_of(&ir, |r| r.transition.as_ref().map(|t| t.id.clone()));
     let v = id_of(&ir, |r| r.version.as_ref().map(|v| v.id.clone()));
     assert!(!t.is_empty() && !v.is_empty());
-    assert_eq!(ir.violation_key(&t, None).as_deref(), Some("veld/transition"));
+    assert_eq!(
+        ir.violation_key(&t, None).as_deref(),
+        Some("veld/transition")
+    );
     assert_eq!(ir.violation_key(&v, None).as_deref(), Some("veld/version"));
 }
 
@@ -178,8 +186,10 @@ fn the_fixed_keys_are_four_and_sorted() {
 #[test]
 fn a_catalog_may_translate_every_rule_of_the_member_and_only_those() {
     let ir = ir();
-    let keys: Vec<(String, Option<String>)> =
-        ir.catalog_keys(ir.services[0].package).into_iter().collect();
+    let keys: Vec<(String, Option<String>)> = ir
+        .catalog_keys(ir.services[0].package)
+        .into_iter()
+        .collect();
     let text = |k: &str| {
         keys.iter()
             .find(|(key, _)| key == k)
@@ -199,10 +209,18 @@ fn a_catalog_may_translate_every_rule_of_the_member_and_only_those() {
         text("app/Manage.forbid1"),
         Some(Some("A suspended account cannot manage bookings".into()))
     );
-    assert_eq!(text("app/Manage.forbid2"), None, "a forbid without a message has no key");
+    assert_eq!(
+        text("app/Manage.forbid2"),
+        None,
+        "a forbid without a message has no key"
+    );
     assert_eq!(
         text("app/Manage.forbid3"),
         Some(Some("Banned and suspended".into()))
     );
-    assert_eq!(text("veld/transition"), None, "the fixed keys are valid but not listed");
+    assert_eq!(
+        text("veld/transition"),
+        None,
+        "the fixed keys are valid but not listed"
+    );
 }

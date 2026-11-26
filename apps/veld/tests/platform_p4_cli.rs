@@ -54,7 +54,9 @@ fn export_retention_prints_the_inventory() {
             "- Kept: 30 days after `seenAt`, then anonymized (`name`)",
         ))
         .stdout(predicate::str::contains("- Kept: kept without limit"))
-        .stdout(predicate::str::contains("`GET /p4/{id}` (`P4Guests.getErasable`)"));
+        .stdout(predicate::str::contains(
+            "`GET /p4/{id}` (`P4Guests.getErasable`)",
+        ));
 }
 
 #[test]
@@ -108,9 +110,8 @@ fn lint_levels_apply_to_the_new_rules() {
 
 #[test]
 fn a_wrong_retain_is_e1310() {
-    let tmp = project(
-        "@retain(days(0), since: nope, then: delete)\nmodel P4Bad {\n  at: datetime\n}\n",
-    );
+    let tmp =
+        project("@retain(days(0), since: nope, then: delete)\nmodel P4Bad {\n  at: datetime\n}\n");
     veld(tmp.path())
         .arg("check")
         .assert()
@@ -183,7 +184,11 @@ fn a_catalog_that_is_not_a_flat_table_is_e1301() {
 fn a_named_messages_directory_that_is_missing_is_an_error() {
     let tmp = project(RULES);
     let toml = fs::read_to_string(tmp.path().join("veld.toml")).unwrap();
-    write(tmp.path(), "veld.toml", &toml.replacen("[service]", "[service]\nmessages = \"texts\"", 1));
+    write(
+        tmp.path(),
+        "veld.toml",
+        &toml.replacen("[service]", "[service]\nmessages = \"texts\"", 1),
+    );
     veld(tmp.path())
         .arg("check")
         .assert()

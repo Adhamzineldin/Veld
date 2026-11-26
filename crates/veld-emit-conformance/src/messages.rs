@@ -33,7 +33,10 @@ pub const CATALOG_FILE: &str = "messages/ar.toml";
 pub fn compiled_messages_contract() -> Ir {
     let mut ir = compile("compiled_messages", SOURCE);
     let key = "app/Room.atLeastOne".to_owned();
-    let catalogs = [("ar", "إقامة ليلة واحدة على الأقل"), ("pt-br", "Pelo menos uma noite")];
+    let catalogs = [
+        ("ar", "إقامة ليلة واحدة على الأقل"),
+        ("pt-br", "Pelo menos uma noite"),
+    ];
     for p in ir.packages.iter_mut().filter(|p| p.name == "app") {
         for (tag, text) in catalogs {
             p.messages
@@ -141,9 +144,16 @@ mod tests {
     #[test]
     fn only_a_member_with_catalogs_uses_the_feature() {
         let ir = compiled_messages_contract();
-        assert!(ir.features_used(&[ServiceId(0)]).contains(&Feature::Messages));
+        assert!(
+            ir.features_used(&[ServiceId(0)])
+                .contains(&Feature::Messages)
+        );
         let bare = compile("bare_messages", SOURCE);
-        assert!(!bare.features_used(&[ServiceId(0)]).contains(&Feature::Messages));
+        assert!(
+            !bare
+                .features_used(&[ServiceId(0)])
+                .contains(&Feature::Messages)
+        );
     }
 
     /// The gate names the catalog file, and a generator that opts in is let through.

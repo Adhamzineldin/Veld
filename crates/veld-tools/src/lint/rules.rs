@@ -34,7 +34,13 @@ impl Raw {
     }
 }
 
-pub(super) fn push(out: &mut Vec<Raw>, rule: &'static str, subject: String, message: String, o: &Origin) {
+pub(super) fn push(
+    out: &mut Vec<Raw>,
+    rule: &'static str,
+    subject: String,
+    message: String,
+    o: &Origin,
+) {
     out.push(Raw {
         rule,
         subject,

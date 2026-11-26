@@ -43,6 +43,7 @@ fn the_extensions_mark_exactly_the_annotated_properties() {
 
 #[test]
 fn a_contract_without_them_exports_no_extension() {
-    let text = doc("model A { x: string }\nservice S at \"/s\" { get \"/\" f() -> A }\n").to_string();
+    let text =
+        doc("model A { x: string }\nservice S at \"/s\" { get \"/\" f() -> A }\n").to_string();
     assert!(!text.contains("x-veld-pii") && !text.contains("x-veld-secret"));
 }

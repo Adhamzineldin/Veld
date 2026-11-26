@@ -63,7 +63,14 @@ pub fn check_retention_is_refused(generator: &dyn DynGenerator) -> Result<(), St
         let req = request(&ir, *role);
         let gate = check_capabilities(&ir, &req, &caps);
         match role {
-            Role::Server => refused(generator, *role, &req, &gate, caps.supports(Feature::Retention), line)?,
+            Role::Server => refused(
+                generator,
+                *role,
+                &req,
+                &gate,
+                caps.supports(Feature::Retention),
+                line,
+            )?,
             Role::Client => untouched(generator, &req, &gate)?,
         }
     }
@@ -162,11 +169,16 @@ mod tests {
         let client = checked_features(&ir, &request(&ir, Role::Client));
         assert!(server.contains(&Feature::Retention), "{server:?}");
         assert!(!client.contains(&Feature::Retention), "{client:?}");
-        let bare = compile("bare_retention", &SOURCE.replace(
-            "@retain(days(30), since: checkedOutAt, then: anonymize)\n",
-            "",
-        ));
-        assert!(!checked_features(&bare, &request(&bare, Role::Server)).contains(&Feature::Retention));
+        let bare = compile(
+            "bare_retention",
+            &SOURCE.replace(
+                "@retain(days(30), since: checkedOutAt, then: anonymize)\n",
+                "",
+            ),
+        );
+        assert!(
+            !checked_features(&bare, &request(&bare, Role::Server)).contains(&Feature::Retention)
+        );
     }
 
     /// A service that only calls the retained one does not use retention itself.
@@ -190,6 +202,13 @@ mod tests {
         assert_eq!(found[0].origin.as_ref().map(|o| o.line), Some(line));
         let with = all.with(Feature::Retention);
         assert!(check_capabilities(&ir, &server, &with).is_empty());
-        assert!(check_capabilities(&ir, &request(&ir, Role::Client), &Capabilities::all_except(&[])).is_empty());
+        assert!(
+            check_capabilities(
+                &ir,
+                &request(&ir, Role::Client),
+                &Capabilities::all_except(&[])
+            )
+            .is_empty()
+        );
     }
 }

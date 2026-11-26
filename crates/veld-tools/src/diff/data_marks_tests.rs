@@ -37,7 +37,10 @@ fn adding_or_removing_secret_is_non_breaking() {
 fn moving_from_pii_to_secret_reports_both_and_breaks_nothing() {
     let got = kinds(&model("@pii"), &model("@secret"));
     assert_eq!(got, [(PiiRemoved, N), (SecretAdded, N)]);
-    assert!(!has_breaking(&diff(&ir(&model("@pii")), &ir(&model("@secret")))));
+    assert!(!has_breaking(&diff(
+        &ir(&model("@pii")),
+        &ir(&model("@secret"))
+    )));
 }
 
 #[test]

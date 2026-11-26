@@ -473,7 +473,11 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "An event of a published channel that no subscription handles",
     ),
-    w("W1301", C, "A message catalog has a key that no rule of the member has"),
+    w(
+        "W1301",
+        C,
+        "A message catalog has a key that no rule of the member has",
+    ),
     w(
         "W1302",
         C,

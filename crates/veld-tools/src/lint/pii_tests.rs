@@ -52,13 +52,11 @@ fn it_reaches_nested_models_declared_errors_and_pages() {
     let nested =
         format!("{GUEST}service S at \"/s\" {{\n  @auth(none)\n  get \"/\" f() -> Wrapper\n}}");
     assert_eq!(subjects(&nested, "pii-without-auth"), ["S.f"]);
-    let error = format!(
-        "{GUEST}service S at \"/s\" {{\n  @auth(none)\n  get \"/\" f() -> int | Leak\n}}"
-    );
+    let error =
+        format!("{GUEST}service S at \"/s\" {{\n  @auth(none)\n  get \"/\" f() -> int | Leak\n}}");
     assert_eq!(subjects(&error, "pii-without-auth"), ["S.f"]);
-    let page = format!(
-        "{GUEST}service S at \"/s\" {{\n  @auth(none)\n  get \"/\" f() -> Page<Guest>\n}}"
-    );
+    let page =
+        format!("{GUEST}service S at \"/s\" {{\n  @auth(none)\n  get \"/\" f() -> Page<Guest>\n}}");
     assert_eq!(subjects(&page, "pii-without-auth"), ["S.f"]);
 }
 
@@ -78,7 +76,11 @@ fn a_secret_field_of_a_response_is_reported_once_and_with_the_usual_fix() {
     assert_eq!(subjects(&src, "secret-in-output"), ["Guest.password"]);
     let issue = &found(&src, "secret-in-output")[0];
     assert_eq!(issue.code, "L0016");
-    assert!(issue.message.contains("separate model"), "{}", issue.message);
+    assert!(
+        issue.message.contains("separate model"),
+        "{}",
+        issue.message
+    );
     assert!(issue.message.contains("S.f"), "{}", issue.message);
 }
 
@@ -173,6 +175,10 @@ fn the_retention_level_is_configurable() {
     let off: BTreeMap<String, LintLevel> =
         [("pii-without-retention".to_string(), LintLevel::Off)].into();
     let cfg = LintConfig::from_levels(off.iter()).unwrap();
-    assert!(lint(&ir, &cfg).iter().all(|i| i.rule != "pii-without-retention"));
+    assert!(
+        lint(&ir, &cfg)
+            .iter()
+            .all(|i| i.rule != "pii-without-retention")
+    );
     assert!(rule_names().contains(&("pii-without-retention", "L0017")));
 }

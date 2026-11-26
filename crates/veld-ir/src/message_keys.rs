@@ -106,7 +106,12 @@ impl Ir {
             }
         };
         let mut decls = self.member_decls(&services);
-        decls.extend(self.decls.iter().filter(|d| d.package == package).map(|d| d.id));
+        decls.extend(
+            self.decls
+                .iter()
+                .filter(|d| d.package == package)
+                .map(|d| d.id),
+        );
         for id in decls {
             for r in self.decl(id).rules() {
                 put(rule_key(&r.id), r.message.as_ref());
@@ -133,7 +138,10 @@ impl Ir {
         );
         for i in policies {
             let p = &self.policies[i];
-            let forbids = p.clauses.iter().filter(|c| c.effect == PolicyEffect::Forbid);
+            let forbids = p
+                .clauses
+                .iter()
+                .filter(|c| c.effect == PolicyEffect::Forbid);
             for (n, c) in forbids.enumerate() {
                 if c.message.is_some() {
                     put(forbid_key(&p.id, n + 1), c.message.as_ref());

@@ -61,7 +61,11 @@ fn ir() -> Ir {
         &BTreeMap::new(),
         &catalogs(),
     );
-    assert!(out.diagnostics.iter().all(|d| !d.is_error()), "{}", out.render());
+    assert!(
+        out.diagnostics.iter().all(|d| !d.is_error()),
+        "{}",
+        out.render()
+    );
     out.ir.unwrap()
 }
 
@@ -71,7 +75,11 @@ fn cases() -> Json {
 }
 
 fn package(ir: &Ir) -> PackageId {
-    ir.packages.iter().find(|p| p.name == "bookings").unwrap().id
+    ir.packages
+        .iter()
+        .find(|p| p.name == "bookings")
+        .unwrap()
+        .id
 }
 
 fn opt(v: &Json) -> Option<&str> {
@@ -101,7 +109,15 @@ fn the_fixture_has_two_catalogs_and_warns_only_about_what_they_lack() {
     assert_eq!(codes, ["W1302", "W1302"], "{}", out.render());
     let ir = out.ir.unwrap();
     let langs: Vec<&str> = ir.packages[0].messages.keys().map(String::as_str).collect();
-    assert_eq!(langs, cases()["languages"].as_array().unwrap().iter().map(|l| l.as_str().unwrap()).collect::<Vec<_>>());
+    assert_eq!(
+        langs,
+        cases()["languages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| l.as_str().unwrap())
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -155,11 +171,8 @@ fn content_language_is_set_when_some_message_came_from_a_catalog() {
     let pkg = package(&ir);
     let from_catalog = localize(&ir, pkg, Some("ar"), "veld/not-permitted", "not permitted");
     let from_contract = localize(&ir, pkg, Some("ar"), "veld/version", "x");
-    assert_eq!(content_language(&[from_contract.clone()]), None);
-    assert_eq!(
-        content_language(&[from_contract, from_catalog]),
-        Some("ar")
-    );
+    assert_eq!(content_language(std::slice::from_ref(&from_contract)), None);
+    assert_eq!(content_language(&[from_contract, from_catalog]), Some("ar"));
     assert_eq!(content_language(&[] as &[Localized]), None);
 }
 

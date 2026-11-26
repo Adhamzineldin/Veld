@@ -82,8 +82,13 @@ fn the_document_is_deterministic() {
 
 #[test]
 fn a_workspace_without_personal_data_says_so() {
-    let text = retention_report(&ir("model A { x: int }\nservice S at \"/s\" { get \"/\" f() -> A }\n"));
-    assert!(text.ends_with("No model holds a `@pii` or `@secret` field.\n"), "{text}");
+    let text = retention_report(&ir(
+        "model A { x: int }\nservice S at \"/s\" { get \"/\" f() -> A }\n",
+    ));
+    assert!(
+        text.ends_with("No model holds a `@pii` or `@secret` field.\n"),
+        "{text}"
+    );
     assert!(text.starts_with("# Data inventory\n"));
 }
 

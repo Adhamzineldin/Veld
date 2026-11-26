@@ -78,7 +78,19 @@ fn language_tags_are_lower_case_subtags_of_a_primary_language() {
     for ok in ["ar", "fr", "pt-br", "zh-hant-tw", "ar-eg", "haw"] {
         assert!(is_language_tag(ok), "{ok}");
     }
-    for bad in ["", "a", "AR", "pt-BR", "pt_br", "arabic", "ar-", "-ar", "ar--eg", "ar-abcdefghi", "ar eg"] {
+    for bad in [
+        "",
+        "a",
+        "AR",
+        "pt-BR",
+        "pt_br",
+        "arabic",
+        "ar-",
+        "-ar",
+        "ar--eg",
+        "ar-abcdefghi",
+        "ar eg",
+    ] {
         assert!(!is_language_tag(bad), "{bad:?}");
     }
 }
@@ -115,7 +127,10 @@ fn no_catalog_is_the_same_output_as_before() {
 
 #[test]
 fn the_ir_keeps_the_catalogs_sorted_with_their_directory() {
-    let out = run(&[("pt-br.toml", "\"veld/version\" = \"versao\"\n"), ("ar.toml", AR)]);
+    let out = run(&[
+        ("pt-br.toml", "\"veld/version\" = \"versao\"\n"),
+        ("ar.toml", AR),
+    ]);
     let ir = out.ir.unwrap();
     let p = &ir.packages.iter().find(|p| p.name == "bookings").unwrap();
     let tags: Vec<&str> = p.messages.keys().map(String::as_str).collect();
@@ -135,7 +150,9 @@ fn a_member_with_catalogs_uses_the_messages_feature() {
     let ir = run(&[("ar.toml", AR)]).ir.unwrap();
     let all: Vec<_> = ir.services.iter().map(|s| s.id).collect();
     assert!(ir.features_used(&all).contains(&Feature::Messages));
-    let bare = compile_prefixed(&input(), None, &BTreeMap::new()).ir.unwrap();
+    let bare = compile_prefixed(&input(), None, &BTreeMap::new())
+        .ir
+        .unwrap();
     assert!(!bare.features_used(&all).contains(&Feature::Messages));
 }
 
@@ -171,7 +188,10 @@ fn a_value_that_is_not_a_string_is_e1301_at_its_key() {
     let text = out.render();
     assert!(text.contains("ar.toml"), "{text}");
     assert!(out.ir.is_none());
-    assert_eq!(codes(&run(&[("ar.toml", "[section]\nk = \"v\"\n")])), ["E1301"]);
+    assert_eq!(
+        codes(&run(&[("ar.toml", "[section]\nk = \"v\"\n")])),
+        ["E1301"]
+    );
     assert_eq!(codes(&run(&[("ar.toml", "x = = 1")])), ["E1301"]);
 }
 

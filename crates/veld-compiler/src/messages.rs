@@ -75,7 +75,12 @@ pub fn parse_catalog(text: &str) -> Result<BTreeMap<String, String>, CatalogErro
             toml::Value::String(s) => {
                 out.insert(key, s);
             }
-            other => {
+            other @ (toml::Value::Integer(_)
+            | toml::Value::Float(_)
+            | toml::Value::Boolean(_)
+            | toml::Value::Datetime(_)
+            | toml::Value::Array(_)
+            | toml::Value::Table(_)) => {
                 let at = key_range(text, &key);
                 return Err(CatalogError {
                     message: format!(
@@ -171,10 +176,15 @@ fn read_member(package: &str, member: &MemberCatalogs, out: &mut CompileOutput) 
             out.diagnostics.push(
                 Diagnostic::error(
                     "E1301",
-                    format!("`{}` is not the name of a catalog: `{tag}` is not a language tag", f.name),
+                    format!(
+                        "`{}` is not the name of a catalog: `{tag}` is not a language tag",
+                        f.name
+                    ),
                     Span::new(file, 0, 0),
                 )
-                .with_help("name the file after a lower case language tag: `ar.toml`, `pt-br.toml`"),
+                .with_help(
+                    "name the file after a lower case language tag: `ar.toml`, `pt-br.toml`",
+                ),
             );
             continue;
         }
@@ -243,7 +253,10 @@ fn check_catalog(r: &Read, valid: &Valid, diags: &mut Vec<Diagnostic>) {
         diags.push(
             Diagnostic::warning(
                 "W1301",
-                format!("catalog `{}` has the key `{key}`, which no rule of the member has", r.tag),
+                format!(
+                    "catalog `{}` has the key `{key}`, which no rule of the member has",
+                    r.tag
+                ),
                 Span::new(r.file, at.start, at.end),
             )
             .did_you_mean(key, valid.all.iter().map(String::as_str), None),

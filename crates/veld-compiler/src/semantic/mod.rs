@@ -14,6 +14,10 @@ mod inherit;
 mod machine;
 #[cfg(test)]
 mod machine_tests;
+#[cfg(test)]
+mod message_key_tests;
+#[cfg(test)]
+mod pii_tests;
 mod policy;
 #[cfg(test)]
 mod policy_tests;
@@ -29,10 +33,6 @@ mod services;
 #[cfg(test)]
 mod tests;
 mod typeck;
-#[cfg(test)]
-mod message_key_tests;
-#[cfg(test)]
-mod pii_tests;
 #[cfg(test)]
 mod version_tests;
 

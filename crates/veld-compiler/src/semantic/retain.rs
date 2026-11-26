@@ -50,7 +50,9 @@ pub(super) fn check(d: &DeclInfo<'_>, diags: &mut Vec<Diagnostic>) {
                 ),
                 r.span,
             )
-            .with_help("mark the fields that hold personal data with `@pii`, or use `then: delete`"),
+            .with_help(
+                "mark the fields that hold personal data with `@pii`, or use `then: delete`",
+            ),
         );
     }
 }

@@ -194,11 +194,7 @@ fn the_messages_directory_of_a_service_defaults_to_messages_next_to_the_member()
 
 #[test]
 fn the_messages_key_names_another_directory_and_a_library_has_none() {
-    let p = load(
-        "[service]\nname = \"s\"\nmessages = \"./texts/\"\n",
-        &[],
-    )
-    .unwrap();
+    let p = load("[service]\nname = \"s\"\nmessages = \"./texts/\"\n", &[]).unwrap();
     let m = p.package("s").unwrap().messages.clone().unwrap();
     assert_eq!((m.name.as_str(), m.explicit), ("texts", true));
     assert_eq!(m.dir, normalize(&root().join("texts")));
