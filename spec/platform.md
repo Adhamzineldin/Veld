@@ -45,7 +45,7 @@ model Booking {
 }
 ```
 
-- `@tenant` stands on a field of a model, with no argument. A model has at most one, its own or inherited; the field MUST be required and of type `uuid`, `string`, `int` or `long` (`E1110`). A model with one is **tenant-scoped**.
+- `@tenant` stands on a field of a model, with no argument. A model has at most one, its own or inherited; the field MUST be of type `uuid`, `string`, `int` or `long` (`E1110`), and MUST be required unless the model is the principal's own model, whose `@tenant` field MAY be optional so that a caller can have no tenant (below). A model with one is **tenant-scoped**.
 - **The caller's tenant** is the value of the `@tenant` field of the principal. A service that loads or returns a tenant-scoped model MUST have a principal whose model has a `@tenant` field of the same type, and every such endpoint MUST have auth (`E1110`).
 - **A `@tenant` field is set by the server, never by the caller.** It behaves as `@readonly` does: a request does not carry it, and the application sets it from the caller.
 - **Facts.** After a fact of a tenant-scoped model is loaded, its tenant is compared with the caller's. A fact of another tenant is treated as **not found**: `404 NotFound` with the fact's name for a required fact, absent for an optional one. It is never `403`, so a caller cannot learn that another tenant's record exists. The loader gets the caller in its context as today and should query by tenant; the check is there for the loader that does not.
