@@ -1,0 +1,43 @@
+model Hold { id: uuid }
+model Booking { id: uuid }
+model Req { roomId: uuid, note?: string }
+error RoomFull 409 { capacity: int }
+
+service Rooms at "/rooms" {
+  @idempotent
+  post "/hold" hold(body: Req) -> Hold | RoomFull
+
+  @idempotent
+  post "/release/{id}" release(id: uuid) -> 204
+
+  post "/loose" loose(body: Req) -> Hold
+
+  get "/watch" watch() -> stream Hold
+}
+
+service Bookings at "/bookings" {
+  @idempotent
+  post "/confirm/{id}" confirm(id: uuid) -> Booking
+}
+
+service Checkout at "/checkout" {
+  /// Holds a room, then confirms the booking.
+  saga post "/" checkout(body: Req) -> Booking | RoomFull {
+    step hold    = Rooms.hold(body: { roomId: body.roomId }) compensate Rooms.release(id: hold.id)
+    step confirm = Bookings.confirm(id: hold.id)
+    timeout minutes(5)
+  }
+}
+
+example "a refused room" {
+  given step hold = RoomFull { capacity: 2 }
+  key "k-1"
+  checkout(body: { roomId: "00000000-0000-4000-8000-000000000001" }) -> RoomFull { capacity: 2 }
+}
+
+example "a failing last step undoes the first" {
+  given step confirm = NotFound
+  key "k-2"
+  checkout(body: { roomId: "00000000-0000-4000-8000-000000000001" }) -> SagaFailed { step: "confirm", compensated: true }
+  expect compensated hold
+}
