@@ -2390,7 +2390,7 @@ function referenceDatetime(v: string): string {
   return Number.isNaN(ms) ? v : new Date(ms).toISOString().replace('.000Z', 'Z');
 }
 
-/** The wire form of a value in the normal form of the reference evaluator: a uuid in lower case, a datetime as above. */
+/** The wire form of a value in the normal form of the reference evaluator: a uuid in lower case, a datetime as above, a long as the decimal text of its value (`007` is `7`, `-0` is `0`). */
 function normalForm(s: Schema, v: unknown): unknown {
   const t = resolve(s);
   switch (t.k) {
@@ -2398,6 +2398,8 @@ function normalForm(s: Schema, v: unknown): unknown {
       return typeof v === 'string' ? v.toLowerCase() : v;
     case 'datetime':
       return typeof v === 'string' && RE_DATETIME.test(v) ? referenceDatetime(v) : v;
+    case 'long':
+      return typeof v === 'string' && RE_LONG.test(v) ? BigInt(v).toString() : v;
     case 'list':
       return Array.isArray(v) ? v.map((x) => normalForm(t.of, x)) : v;
     case 'map': {
@@ -2535,7 +2537,13 @@ async function settle(lease: Lease, res: VeldResponse | null): Promise<VeldRespo
       if (contentType !== undefined) answer.contentType = contentType;
       if (etag !== undefined) answer.etag = etag;
       if (location !== undefined) answer.location = location;
-      await store.complete(scope, key, answer);
+      try {
+        await store.complete(scope, key, answer);
+      } catch (err) {
+        // A `complete` that fails must not leave the entry running: the key is released.
+        storeFailed(lease, err);
+        await store.release(scope, key);
+      }
     } else if (done) {
       await store.release(scope, key);
     }

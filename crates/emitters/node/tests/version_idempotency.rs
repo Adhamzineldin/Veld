@@ -392,6 +392,38 @@ fn the_fingerprints_are_the_ones_of_the_reference_evaluator() {
     );
 }
 
+/// Every case of `tests/wire/idempotency/fingerprints.json` (115 cases, the values the reference
+/// printed) through the production handler: the fingerprint, `same_as`, `differs_from` and the
+/// requests that are `rejected`. The contract has a derived field, so it needs `rules_derived`.
+#[test]
+fn every_case_of_the_fingerprint_goldens_gives_the_fingerprint_of_the_reference() {
+    let Some(tsc) = tsc_path() else { return };
+    let ir = compile_path("tests/wire/idempotency/fingerprints.veld");
+    for (edition, _) in TARGETS {
+        let guard = scratch("fingerprint-goldens-");
+        let work = guard.path();
+        build_service(
+            work,
+            &tsc,
+            &ir,
+            "Fingerprints",
+            &["idempotency_goldens.ts"],
+            edition,
+        );
+        std::fs::copy(
+            repo_root().join("tests/wire/idempotency/fingerprints.json"),
+            work.join("fingerprints.json"),
+        )
+        .unwrap();
+        run(
+            std::process::Command::new("node")
+                .arg("out/idempotency_goldens.js")
+                .current_dir(work),
+            "node idempotency_goldens.js",
+        );
+    }
+}
+
 /// `validate = false` switches off neither the guard nor the syntax of `If-Match` and of the key.
 #[test]
 fn validate_false_keeps_the_guard_and_the_key() {
