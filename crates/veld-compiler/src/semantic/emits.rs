@@ -78,10 +78,10 @@ pub(super) fn attach(
             .iter()
             .filter(|f| f.to == t.to && t.from.contains(&f.from))
         {
-            if let Some(e) = f.emits.as_ref().and_then(|e| e.event) {
-                if !events.contains(&e) {
-                    events.push(e);
-                }
+            if let Some(e) = f.emits.as_ref().and_then(|e| e.event)
+                && !events.contains(&e)
+            {
+                events.push(e);
             }
         }
         for event in events {

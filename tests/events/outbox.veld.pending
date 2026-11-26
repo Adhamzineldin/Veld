@@ -1,0 +1,140 @@
+// The outbox and `emits` (spec/events.md section 11). A state machine whose moves emit events, an
+// endpoint for each move, and the examples that say what a call writes to the outbox.
+//
+// Offline the reference evaluator runs no handler, so every example with an `expect emitted` or
+// `expect not emitted` line passes its outcome and is reported as "live only"; `veld test --live`
+// compares the line with the `Veld-Test-Emitted` header of the test handler. The suffix `.pending`
+// keeps the file out of `cargo test -p veld-rules --test events` until the generators pass it;
+// `cargo test -p veld-rules --test outbox` runs it through the reference.
+
+event BookingPaid {
+  bookingId: uuid
+  amount: decimal
+  rule positive: amount >= 0
+}
+
+event BookingCancelled {
+  bookingId: uuid
+  reason?: string
+}
+
+event RefundDue {
+  bookingId: uuid
+}
+
+@topic("shop.bookings.v1")
+channel BookingEvents {
+  carries BookingPaid, BookingCancelled
+  key bookingId
+}
+
+@topic("shop.refunds.v1")
+channel RefundEvents {
+  carries RefundDue
+  key bookingId
+}
+
+enum Status {
+  pending, paid, cancelled, refunded
+  flow pending -> paid emits BookingPaid
+  flow pending -> cancelled emits BookingCancelled
+  flow paid -> cancelled emits RefundDue
+  flow paid -> refunded
+  final cancelled, refunded
+}
+
+model Booking {
+  id: uuid
+  status: Status
+  total: decimal
+}
+
+service Bookings at "/bookings" {
+  publishes BookingEvents, RefundEvents
+
+  // One edge, one event.
+  post "/{id}/pay" pay(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+  }
+
+  // Two sources, and each edge has its own event: what is written depends on the current state.
+  post "/{id}/cancel" cancel(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending, paid -> cancelled
+  }
+
+  // The edge emits nothing.
+  post "/{id}/refund" refund(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: paid -> refunded
+  }
+}
+
+service Notifications {
+  subscribes BookingEvents as "notifications" {
+    on BookingPaid -> sendReceipt
+    on BookingCancelled -> sendApology
+  }
+}
+
+// --- what a call writes to the outbox (live only offline) ---
+
+example "paying a pending booking writes BookingPaid" {
+  given booking = { status: .pending }
+  pay() returns { status: .paid } -> ok
+  expect emitted BookingPaid
+}
+
+example "cancelling a pending booking writes BookingCancelled" {
+  given booking = { status: .pending }
+  cancel() returns { status: .cancelled } -> ok
+  expect emitted BookingCancelled
+}
+
+example "cancelling a paid booking writes RefundDue, and nothing else" {
+  given booking = { status: .paid }
+  cancel() returns { status: .cancelled } -> ok
+  expect emitted RefundDue
+}
+
+example "a move that is refused writes nothing" {
+  given booking = { status: .paid }
+  pay() -> InvalidTransition
+  expect not emitted
+}
+
+example "a cancelled booking cannot be cancelled again and writes nothing" {
+  given booking = { status: .cancelled }
+  cancel() -> InvalidTransition
+  expect not emitted
+}
+
+// --- the same moves without the lines: they are ordinary examples ---
+
+example "paying works" {
+  given booking = { status: .pending }
+  pay() returns { status: .paid } -> ok
+}
+
+example "a paid booking is refunded" {
+  given booking = { status: .paid }
+  refund() returns { status: .refunded } -> ok
+}
+
+example "a refunded booking cannot be paid" {
+  given booking = { status: .refunded }
+  pay() -> InvalidTransition
+}
+
+// --- the event itself is an ordinary event example ---
+
+example "a paid booking sends a receipt" {
+  given event BookingPaid { amount: 120.00 }
+  expect Notifications.sendReceipt called
+}
+
+example "a negative amount is rejected" {
+  given event BookingPaid { amount: -1.00 }
+  expect rejected
+}

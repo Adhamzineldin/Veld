@@ -55,7 +55,12 @@ fn status(ir: &Ir) -> veld_ir::Enum {
         .iter()
         .find_map(|d| match &d.kind {
             DeclKind::Enum(e) if d.name == "Status" => Some(e.clone()),
-            _ => None,
+            DeclKind::Enum(_)
+            | DeclKind::Model(_)
+            | DeclKind::Error(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_)
+            | DeclKind::Event(_) => None,
         })
         .expect("Status")
 }
