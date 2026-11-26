@@ -88,8 +88,8 @@ fn events_capabilities(role: Role) -> Capabilities {
         .with(Feature::RulesFlags)
         .with(Feature::EventsOutbox);
     match role {
-        Role::Server => caps.with(Feature::Visibility),
-        Role::Client => caps,
+        Role::Server => caps.with(Feature::Visibility).with(Feature::Tenancy),
+        Role::Client => caps.with(Feature::Tenancy),
     }
 }
 

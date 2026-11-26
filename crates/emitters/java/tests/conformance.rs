@@ -180,11 +180,11 @@ fn java_generates_visibility() {
     veld_emit_conformance::check_visibility_is_generated(&Java).unwrap();
 }
 
-/// `tenancy` is opt-in (`spec/platform.md` section 3): Java refuses a `@tenant` field, as a server
-/// and, when an endpoint returns one, as a client.
+/// `tenancy` is opt-in (`spec/platform.md` section 3): Java generates a `@tenant` field, as a
+/// server and, when an endpoint returns one, as a client.
 #[test]
-fn java_refuses_tenancy_as_a_server() {
-    veld_emit_conformance::check_tenancy_is_refused(&Java).unwrap();
+fn java_generates_tenancy() {
+    veld_emit_conformance::check_tenancy_is_generated(&Java).unwrap();
 }
 
 /// `audit` is opt-in (`spec/platform.md` section 4): the Java server refuses an `@audited`
