@@ -53,12 +53,16 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Install Z3 for the `--prove` tests
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y z3
       # The registry e2e needs Go and the PostgreSQL server binaries; the `registry` job runs it on
       # Linux with both installed, so the macOS and Windows runners leave it to that job.
       - name: Test (the toolchain tests must run, not skip)
         run: cargo test --workspace ${{ runner.os != 'Linux' && '-- --skip _against_the_real_registry' || '' }}
         env:
           VELD_REQUIRE_TOOLCHAINS: "1"
+          VELD_REQUIRE_SOLVER: ${{ runner.os == 'Linux' && '1' || '' }}
 
   java17:
     name: generated Java runs on a JDK 17 JVM

@@ -412,6 +412,24 @@ What else changes while a rule is audited:
 
 **Generated servers do not support it yet.** The code generators have not learned `@rollout(audit)`. A contract with an audited rule stops `veld generate` with error `E0801` at the rule, so a server never enforces a rule you meant to watch. Today the annotation works in `veld check`, `veld test`, `veld diff`, `veld fmt` and the OpenAPI export.
 
+## Asking a solver: `veld check --prove`
+
+Rules can contradict each other, and an example cannot show it: an example needs a value, and a contradiction has none. `veld check --prove` hands the rules to an SMT solver (Z3 or cvc5; Veld links none) and asks three questions:
+
+- Can the invariants of a model all hold together with its `@min`, `@max` and `@length`? If not, `E0970` names the rules of the unsatisfiable core.
+- Can a `require` pass, given the invariants of the parameters and the `require` lines before it?
+- Does a policy permit anybody?
+
+```text
+error[E0970]: no value of `Booking` can exist: its rules and constraints contradict each other
+ --> demo/hello.veld:1:7
+  = note: unsatisfiable core: rule `endAfterStart` (demo/hello.veld:5), rule `endBeforeStart` (demo/hello.veld:6)
+```
+
+`veld diff --prove` asks, for each rule that changed, whether the old rule accepted a value the new one rejects. A value the solver finds is shown only after the reference evaluator has confirmed it; otherwise the answer is *unknown*. Every question ends as *proved*, *counterexample*, *unknown* or *unsupported*; *unknown* and *unsupported* are listed (`W0970`) and never turned into a pass or a failure.
+
+The solver is `--solver <path>`, then `VELD_SOLVER`, then `z3` and `cvc5` on `PATH`; `--prove-timeout <seconds>` limits each question (5 by default). Without a solver, `--prove` says so in one line and the check goes on. Floats, the content of strings, `matches`, comprehensions, `sum` and `now` are left open, so a proved contradiction holds however much was left open, while a value found for an open question may not be real and is confirmed first. The answers are about the rules of the contract, not about handlers, data or deployed code. The exact fragment is in [`spec/rules.md`](../../spec/rules.md) section 18.
+
 ## What belongs in the contract
 
 Put a rule in the contract when it is about the data or the call and can be said with the fields you have: ranges, relations between fields, "this must exist and be open", a limit that depends on a loaded record, a promise about the result.
@@ -433,7 +451,7 @@ A browser can read this header from another origin only if the server sends `Acc
 
 ## What is not supported yet
 
-- **Optimistic concurrency and idempotency** (`@version`, `@idempotent`), **derived fields** and **`veld check --prove`**: they are designed in [`spec/rules.md`](../../spec/rules.md) (sections 11.7, 11.8, 17.2 and 18) and not implemented. Do not use them in a contract today.
+- **Optimistic concurrency and idempotency** (`@version`, `@idempotent`) and **derived fields**: they are designed in [`spec/rules.md`](../../spec/rules.md) (sections 11.7, 11.8 and 17.2) and not implemented. Do not use them in a contract today.
 - **Rolling a rule out** (`@rollout(audit)`): the compiler and the tools know it, the generators do not (see above). A contract that uses it cannot be generated yet.
 - **Events** (messaging with Kafka and RabbitMQ): designed in [`spec/events.md`](../../spec/events.md), not implemented.
 - **Generators**: everything in this guide is enforced by the TypeScript client and the Node server, by Java (client, JDK server and Spring) and by Rust (client and axum server). The code in this guide is TypeScript; the Java and Rust shapes are in their target pages below. A generator that cannot enforce a rule, a plugin for example, stops with error `E0801`. It never generates code that ignores a rule.
