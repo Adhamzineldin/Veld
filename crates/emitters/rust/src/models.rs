@@ -83,6 +83,9 @@ fn emit_decl(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl) -> Result<(), Vec<
         // the declaration in its tree (`Tree::with_events`).
         DeclKind::Event(e) => emit_model(w, ctx, d, &event_model(e), None),
     }
+    if ctx.tree.derived && d.has_derived() {
+        crate::rules::emit_derived(w, ctx, d)?;
+    }
     if ctx.tree.rules && !d.rules().is_empty() {
         match &d.kind {
             DeclKind::Model(m) => return crate::rules::emit(w, ctx, d, m),
@@ -228,6 +231,13 @@ fn emit_model(
     for f in &m.fields {
         doc(w, f.docs.as_deref());
         deprecated(w, f.deprecated.as_ref());
+        if f.derived.is_some() {
+            if f.docs.is_some() {
+                w.line("///");
+            }
+            w.line("/// **Derived** (`spec/rules.md` section 17.2): the server computes it. What a caller sends,");
+            w.line("/// and what a handler puts here, is replaced; write any value of the type as a stand-in.");
+        }
         let ident = snake(&f.name);
         let mut attrs = Vec::new();
         if bare(&ident) != f.wire {
@@ -279,6 +289,9 @@ fn model_schema(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl, m: &Model) {
             default.map_or("None".to_string(), |j| format!("Some({})", lit(&j)))
         ));
         w.line(format!("readonly: {},", f.readonly));
+        if ctx.tree.derived {
+            w.line(format!("derived: {},", f.derived.is_some()));
+        }
         w.close_with("},");
     }
     w.close_with("],");
@@ -289,6 +302,14 @@ fn model_schema(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl, m: &Model) {
             format!("Some(veld::rules::run::<{}>)", type_name(&d.name))
         };
         w.line(format!("invariants: {check},"));
+    }
+    if ctx.tree.derived {
+        let derive = if d.has_derived() {
+            format!("Some(veld::rules::derive_object::<{}>)", type_name(&d.name))
+        } else {
+            "None".to_string()
+        };
+        w.line(format!("derive: {derive},"));
     }
     w.close_with("});");
     w.blank();

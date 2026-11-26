@@ -93,6 +93,7 @@ fn all_capabilities() -> Capabilities {
         .with(Feature::RulesRollout)
         .with(Feature::RulesVersion)
         .with(Feature::Idempotency)
+        .with(Feature::RulesDerived)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -289,7 +290,9 @@ impl Generator for Rust {
         // audited rules: the rollout regions are kept for every audited rule the crate has.
         let rollout = used_features.contains(&Feature::RulesRollout) || crate_has_audited(req);
         // A runtime config with `rules.output` needs the rules runtime to carry the mode.
+        let derived = crate_has_derived(req);
         let rules = crate_has_rules(req)
+            || derived
             || endpoint_rules
             || policies
             || rollout
@@ -325,6 +328,7 @@ impl Generator for Rust {
             reqwest: tr.reqwest,
             ureq: tr.ureq,
             config: model.is_some(),
+            derived,
         };
         let mut files = FileSet::new();
         runtime::emit(&mut files, &f)?;
@@ -336,6 +340,7 @@ impl Generator for Rust {
             .with_validate(validate)
             .with_rules(rules)
             .with_rollout(rollout)
+            .with_derived(derived)
             .with_idempotency(idempotency)
             .with_runtime(runtime);
         if let Some(model) = &model {
@@ -374,7 +379,7 @@ impl Generator for Rust {
             client::emit(&mut files, &main, tr)?;
         }
         let packages = package::emit_modules(&mut files, &main, &mods)?;
-        let has_clients = emit_consumed(&mut files, req, tr, validate, rules)?;
+        let has_clients = emit_consumed(&mut files, req, tr, (validate, rules, derived))?;
         package::emit_lib(&mut files, &packages, has_clients, &f, req.role)?;
         Ok(files)
     }
@@ -438,6 +443,23 @@ fn crate_has_rules(req: &GenRequest<'_>) -> bool {
         })
 }
 
+/// Whether any declaration that the crate emits has a derived field. The flag is per crate: with
+/// it, every schema says which of its fields are derived.
+fn crate_has_derived(req: &GenRequest<'_>) -> bool {
+    let main = main_tree(req);
+    main.has_derived()
+        || req.consumes.iter().any(|sid| {
+            Tree::new(
+                req.ir,
+                "crate::clients::x",
+                "src/clients/x",
+                vec![*sid],
+                false,
+            )
+            .has_derived()
+        })
+}
+
 /// Whether any declaration that the crate emits has an audited invariant (`@rollout(audit)`).
 fn crate_has_audited(req: &GenRequest<'_>) -> bool {
     let main = main_tree(req);
@@ -459,8 +481,7 @@ fn emit_consumed(
     files: &mut FileSet,
     req: &GenRequest<'_>,
     tr: Transports,
-    validate: bool,
-    rules: bool,
+    (validate, rules, derived): (bool, bool, bool),
 ) -> Result<bool, Vec<GenDiagnostic>> {
     if req.consumes.is_empty() {
         return Ok(false);
@@ -473,7 +494,8 @@ fn emit_consumed(
         let dir = format!("src/clients/{dir_name}");
         let tree = Tree::new(req.ir, &root, &dir, vec![*sid], false)
             .with_validate(validate)
-            .with_rules(rules);
+            .with_rules(rules)
+            .with_derived(derived);
         models::emit(files, &tree)?;
         policies::emit(files, &tree)?;
         client::emit(files, &tree, tr)?;

@@ -608,6 +608,13 @@ trait RuleSink: Send + Sync + fmt::Debug {
     /// The error that rejects an input whose rules are violated: a `ValidationError` with the
     /// violations. The hook gets them.
     fn reject_input(&self, ep: &EndpointSpec, violations: Vec<super::rules::Violation>, micros: u64) -> Problem;
+    // @if derived
+
+    /// An output value (typed form) with its derived fields computed, before its rules and before
+    /// it is written: `Err` says why it must not be sent (`strict`, and a derived field could not
+    /// be computed). The violations go to the hook either way; `off` computes and reports nothing.
+    fn derive_output(&self, ep: &EndpointSpec, schema: &Schema, typed: &Value, what: &str) -> Result<Value, String>;
+    // @end
     // #endif
     // #if rollout
 
@@ -682,7 +689,12 @@ impl<E: Endpoints> RuleSink for Inner<E> {
             return if mode == RuleOutput::Strict { Err(format!("{}: {what} failed validation: {issues:?}", ep.name)) } else { Ok(()) };
         }
         let watch = super::rules::Stopwatch::start();
+        // @if !derived
         let violations = super::rules::check_wire(schema, wire, "$", Mode::Full);
+        // @end
+        // @if derived
+        let violations = super::rules::check_computed(schema, wire, "$", Mode::Full);
+        // @end
         let micros = watch.micros();
         if violations.is_empty() {
             return Ok(());
@@ -696,6 +708,28 @@ impl<E: Endpoints> RuleSink for Inner<E> {
         }
         Ok(())
     }
+
+    // @if derived
+    fn derive_output(&self, ep: &EndpointSpec, schema: &Schema, typed: &Value, what: &str) -> Result<Value, String> {
+        use super::rules::{Mode, Outcome, Position, RuleOutput};
+        let mut value = typed.clone();
+        let mut found = Vec::new();
+        let watch = super::rules::Stopwatch::start();
+        super::rules::derive_walk(schema, &mut value, "$", Mode::Full, &mut found);
+        let mode = self.endpoints.rules_output();
+        if found.is_empty() || mode == RuleOutput::Off {
+            return Ok(value);
+        }
+        let outcome = if mode == RuleOutput::Strict { Outcome::Rejected } else { Outcome::Audited };
+        for v in &found {
+            self.report(ep, v, Position::Output, outcome, watch.micros());
+        }
+        if mode == RuleOutput::Strict {
+            return Err(format!("{}: {} derived field(s) of the {what} could not be computed", ep.name, found.len()));
+        }
+        Ok(value)
+    }
+    // @end
 
     fn reject_input(&self, ep: &EndpointSpec, violations: Vec<super::rules::Violation>, micros: u64) -> Problem {
         for v in &violations {
@@ -941,6 +975,24 @@ impl Bound {
 }
 // #endif
 
+// @if derived
+impl Bound {
+    /// The typed value of a body or query object with its derived fields computed (step 5, after
+    /// the defaults, before the invariants). With the check on, the violations of a derived field
+    /// that could not be computed come from the check of `rules`; with it off they are collected
+    /// here, because the value cannot be handed to the handler without them.
+    fn derived(&mut self, p: &ParamSpec, wire: &Value) -> Value {
+        let mut typed = p.schema.from_wire(wire, true);
+        let mut found = Vec::new();
+        super::rules::derive_walk(p.schema, &mut typed, &p.location(), super::rules::Mode::Request, &mut found);
+        if !self.check {
+            self.violations.extend(found);
+        }
+        typed
+    }
+}
+// @end
+
 impl Bound {
     fn required(&mut self, p: &ParamSpec) {
         self.issues.push(Issue { path: p.location(), code: "required".into(), message: "is required".into() });
@@ -972,6 +1024,9 @@ impl Bound {
             }
         }
         let wire = Value::Object(wire);
+        // @if derived
+        let wire = p.schema.without_derived(&wire);
+        // @end
         let issues = if self.check { p.schema.validate(&wire, &p.location(), true) } else { Vec::new() };
         // #if rules
         if self.check && issues.is_empty() {
@@ -979,7 +1034,13 @@ impl Bound {
         }
         // #endif
         if issues.is_empty() {
+            // @if !derived
             self.value.insert(p.name.to_string(), p.schema.from_wire(&wire, true));
+            // @end
+            // @if derived
+            let typed = self.derived(p, &wire);
+            self.value.insert(p.name.to_string(), typed);
+            // @end
         }
         self.issues.extend(issues);
     }
@@ -995,6 +1056,9 @@ impl Bound {
             self.issues.push(Issue { path: "body".into(), code: "json".into(), message: "body is not valid JSON".into() });
             return;
         };
+        // @if derived
+        let raw = p.schema.without_derived(&raw);
+        // @end
         let issues = if self.check { p.schema.validate(&raw, "body", true) } else { Vec::new() };
         // #if rules
         if self.check && issues.is_empty() {
@@ -1002,7 +1066,13 @@ impl Bound {
         }
         // #endif
         if issues.is_empty() {
+            // @if !derived
             self.value.insert(p.name.to_string(), p.schema.from_wire(&raw, true));
+            // @end
+            // @if derived
+            let typed = self.derived(p, &raw);
+            self.value.insert(p.name.to_string(), typed);
+            // @end
         }
         self.issues.extend(issues);
     }
@@ -1410,6 +1480,13 @@ impl<E: Endpoints> Handler<E> {
             // #endif
             return Response { status: ep.status, headers: Vec::new(), body: Body::Empty };
         };
+        // @if derived
+        let completed = match self.inner.derive_output(ep, schema, value, "result") {
+            Ok(v) => v,
+            Err(why) => return self.failure(&Error::other(why), ep, ctx),
+        };
+        let value = &completed;
+        // @end
         let wire = schema.to_wire(value, false, false);
         // #if rules
         if let Some(resp) = self.output_rules(ep, schema, &wire, ctx) {
@@ -1696,6 +1773,17 @@ impl<E: Endpoints> Handler<E> {
                 }
                 // #endif
                 if let Some(d) = ep.errors.iter().find(|d| d.sig == p.sig) {
+                    // @if derived
+                    // A declared error is an output: its derived fields are computed first.
+                    let data = match self.inner.derive_output(ep, d.schema, &d.schema.from_wire(&p.data, false), "declared error") {
+                        Ok(typed) => d.schema.to_wire(&typed, false, false),
+                        Err(why) => {
+                            e.on_error(&Error::other(why), ctx);
+                            return problem(std.internal, "Internal", 500, serde_json::json!({}));
+                        }
+                    };
+                    let p = &Problem { data, ..p.clone() };
+                    // @end
                     // #if rules
                     // A declared error is an output: its own rules are checked like a result's.
                     // #endif
@@ -1726,6 +1814,10 @@ impl<E: Endpoints> Handler<E> {
     // @if sse
     fn frame(&self, ep: &EndpointSpec, ev: &SseEvent<Value>) -> Result<Vec<u8>, Error> {
         let schema = ep.success.ok_or_else(|| Error::other(format!("{}: a stream needs an item type", ep.name)))?;
+        // @if derived
+        let item = self.inner.derive_output(ep, schema, &ev.data, "stream item").map_err(Error::other)?;
+        let ev = &SseEvent { data: item, ..ev.clone() };
+        // @end
         // #if rules
         // A stream item is an output: in `strict` a violating item is not sent.
         // #endif
@@ -1937,6 +2029,9 @@ impl<In: DeserializeOwned, Out: Serialize> WsSession<In, Out> {
         let Ok(wire) = serde_json::from_str::<Value>(&text) else {
             return Some(Err(invalid("json", "message is not valid JSON")));
         };
+        // @if derived
+        let wire = schema.without_derived(&wire);
+        // @end
         if self.validate_in {
             let issues = schema.validate(&wire, "message", true);
             if !issues.is_empty() {
@@ -1956,7 +2051,18 @@ impl<In: DeserializeOwned, Out: Serialize> WsSession<In, Out> {
             }
             // #endif
         }
+        // @if !derived
         Some(serde_json::from_value(schema.from_wire(&wire, true)).map_err(|e| invalid("type", &e.to_string())))
+        // @end
+        // @if derived
+        let mut typed = schema.from_wire(&wire, true);
+        let mut found = Vec::new();
+        super::rules::derive_walk(schema, &mut typed, "message", super::rules::Mode::Request, &mut found);
+        if !found.is_empty() {
+            return Some(Err(Error::Problem(self.io.rules.reject_input(self.ep, found, 0))));
+        }
+        Some(serde_json::from_value(typed).map_err(|e| invalid("type", &e.to_string())))
+        // @end
     }
 
     /// Sends a message to the client: `{"data": <canonical JSON>}`.
@@ -1968,6 +2074,9 @@ impl<In: DeserializeOwned, Out: Serialize> WsSession<In, Out> {
         let typed = serde_json::to_value(&message).map_err(Error::other)?;
         let data = match self.outgoing {
             Some(schema) => {
+                // @if derived
+                let typed = self.io.rules.derive_output(self.ep, schema, &typed, "message").map_err(Error::other)?;
+                // @end
                 if self.validate_out {
                     let issues = schema.validate(&schema.to_wire(&typed, false, false), "$", false);
                     if !issues.is_empty() {

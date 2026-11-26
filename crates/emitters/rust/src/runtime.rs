@@ -50,6 +50,9 @@ pub struct Features {
     pub idempotency: bool,
     /// The server core says, for each endpoint, what it owes to `@version` and `@idempotent`.
     pub conditional: bool,
+    /// A declaration of the crate has a derived field (`spec/rules.md` section 17.2): the schemas
+    /// say which fields are derived and the rules runtime computes them. Implies `rules`.
+    pub derived: bool,
     /// The target has a runtime config (`spec/runtime-config.md`): `src/veld/config.rs` (the
     /// engine of its check) is emitted, next to `src/runtime_config.rs`.
     pub config: bool,
@@ -67,6 +70,7 @@ impl Features {
             "policies" => self.policies,
             "rollout" => self.rollout,
             "!rollout" => !self.rollout,
+            "derived" => self.derived,
             "rollout_endpoint" => self.rollout && self.endpoint_rules,
             "rules_plain" => self.rules && !self.rollout,
             _ => false,
@@ -86,6 +90,7 @@ impl Features {
             "etag" => self.etag,
             "idempotency" => self.idempotency,
             "conditional" => self.conditional,
+            "derived" => self.derived,
             "reqwest" => self.reqwest,
             "ureq" => self.ureq,
             _ => false,

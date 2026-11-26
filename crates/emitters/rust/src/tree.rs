@@ -31,6 +31,9 @@ pub struct Tree<'a> {
     /// True when the crate has an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1): the test
     /// handler then answers with `Veld-Test-Audited`.
     pub rollout: bool,
+    /// True when the crate has a derived field (`spec/rules.md` section 17.2): every schema then
+    /// says which of its fields are derived and carries its `derive` function (or `None`).
+    pub derived: bool,
     /// True when the crate has an `@idempotent` endpoint (`spec/rules.md` section 11.8): every
     /// `Conditional` of the server core has the `idempotency` member.
     pub idempotency: bool,
@@ -72,6 +75,7 @@ impl<'a> Tree<'a> {
             validate: true,
             rules: false,
             rollout: false,
+            derived: false,
             idempotency: false,
             runtime: None,
             events: false,
@@ -104,6 +108,12 @@ impl<'a> Tree<'a> {
         self.decls
             .iter()
             .any(|id| !self.ir.decl(*id).rules().is_empty())
+    }
+
+    /// Whether any declaration of the tree has a derived field.
+    #[must_use]
+    pub fn has_derived(&self) -> bool {
+        self.decls.iter().any(|id| self.ir.decl(*id).has_derived())
     }
 
     /// Whether any declaration of the tree has an audited invariant (`@rollout(audit)`).
@@ -141,6 +151,13 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn with_rollout(mut self, rollout: bool) -> Self {
         self.rollout = rollout;
+        self
+    }
+
+    /// Sets whether the crate has a derived field.
+    #[must_use]
+    pub fn with_derived(mut self, derived: bool) -> Self {
+        self.derived = derived;
         self
     }
 

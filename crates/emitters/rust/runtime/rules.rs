@@ -178,16 +178,47 @@ pub trait Invariants {
     /// Evaluates this declaration's own rules, in list order, and appends the violations. `path`
     /// is the path of this value. Nested values are visited by the schema walk, not here.
     fn check_rules(&self, mode: Mode, path: &str, out: &mut Vec<Violation>);
+
+    // @if derived
+    /// Like [`Self::check_rules`] for a value whose derived fields in `absent` (wire names) could
+    /// not be computed: a rule that reads one of them is skipped, the cause is already reported
+    /// (`spec/rules.md` section 17.2). A declaration with derived fields overrides it.
+    fn check_rules_absent(&self, mode: Mode, path: &str, absent: &[&str], out: &mut Vec<Violation>) {
+        let _ = absent;
+        self.check_rules(mode, path, out);
+    }
+    // @end
 }
 
 /// What the schema calls for every object of a declaration with rules: reads the object from its
 /// typed JSON form and evaluates its own rules. An object that cannot be read is skipped (the
 /// shape error is reported by validation, never as a violation).
+// @if !derived
 pub fn run<T: Invariants + DeserializeOwned>(node: &Value, mode: Mode, path: &str, out: &mut Vec<Violation>) {
     if let Ok(value) = serde_json::from_value::<T>(node.clone()) {
         value.check_rules(mode, path, out);
     }
 }
+// @end
+// @if derived
+pub fn run<T: Invariants + DeserializeOwned + super::error::VeldDecl>(node: &Value, mode: Mode, path: &str, out: &mut Vec<Violation>) {
+    let mut read = node.clone();
+    let mut absent: Vec<&str> = Vec::new();
+    if let (Some(model), Value::Object(map)) = (T::schema().model(), &mut read) {
+        for f in model.fields.iter().filter(|f| f.derived) {
+            // A derived field that could not be computed: a stand-in is read, and no rule that
+            // reads it is evaluated.
+            if !map.contains_key(f.wire) {
+                absent.push(f.wire);
+                map.insert(f.wire.to_string(), stand_in(f.schema));
+            }
+        }
+    }
+    if let Ok(value) = serde_json::from_value::<T>(read) {
+        value.check_rules_absent(mode, path, &absent, out);
+    }
+}
+// @end
 
 /// Records the outcome of one rule: nothing when it holds, a violation when it does not or could
 /// not be evaluated.
@@ -215,8 +246,17 @@ pub fn record(out: &mut Vec<Violation>, path: &str, id: &str, name: &str, fields
 #[must_use]
 pub fn check_wire(schema: &Schema, wire: &Value, path: &str, mode: Mode) -> Vec<Violation> {
     let filled = if mode == Mode::Request { fill_readonly(schema, wire, 0) } else { wire.clone() };
+    // @if !derived
     let typed = schema.from_wire(&filled, false);
     let mut out = Vec::new();
+    // @end
+    // @if derived
+    // The derived fields are computed first (a value the caller sent for one is replaced), then the
+    // invariants read them; the violations of the derived fields come first.
+    let mut typed = schema.from_wire(&filled, false);
+    let mut out = Vec::new();
+    derive_walk(schema, &mut typed, path, mode, &mut out);
+    // @end
     walk(schema, &typed, path, mode, &mut out);
     out
 }
@@ -389,7 +429,14 @@ pub fn else_rejection(
         return Err(Vec::new());
     };
     let data = e.schema.to_wire(&Value::Object(payload), false, false);
+    // @if !derived
     let broken = check_wire(e.schema, &data, "error", Mode::Full);
+    // @end
+    // @if derived
+    // The error is an output: its derived fields are computed before its own rules are checked.
+    let (data, mut broken) = complete_wire(e.schema, &data, "error");
+    broken.extend(check_computed(e.schema, &data, "error", Mode::Full));
+    // @end
     if !broken.is_empty() {
         return Err(broken);
     }
@@ -673,3 +720,221 @@ pub fn audit_wire(schema: &Schema, wire: &Value, path: &str, mode: Mode) -> Vec<
     SINK.with(|sink| sink.borrow_mut().take()).unwrap_or_default()
 }
 // #endif
+// @if derived
+
+// ---------------------------------------------------------------------------
+// Derived fields (`spec/rules.md` section 17.2)
+// ---------------------------------------------------------------------------
+
+/// The derived fields of one object of a generated declaration.
+pub trait Derive {
+    /// Computes the derived fields of this value, in dependency order. Each value is written to
+    /// `self` (so the next one can read it) and to `node`, the typed JSON of the object; a field
+    /// that could not be computed is left out of `node`. `path` is the path of this value.
+    fn derive_fields(&mut self, node: &mut serde_json::Map<String, Value>, mode: Mode, path: &str, out: &mut Vec<Violation>);
+}
+
+/// What the schema calls for every object of a declaration with derived fields: reads the object
+/// (a value that was there for a derived field is not believed: a stand-in is read), computes
+/// the derived fields and writes them back.
+pub fn derive_object<T: Derive + DeserializeOwned + super::error::VeldDecl>(node: &mut Value, mode: Mode, path: &str, out: &mut Vec<Violation>) {
+    let (Value::Object(map), Some(model)) = (node, T::schema().model()) else {
+        return;
+    };
+    for f in model.fields.iter().filter(|f| f.derived) {
+        map.remove(f.wire);
+    }
+    let mut read = map.clone();
+    for f in model.fields.iter().filter(|f| f.derived) {
+        read.insert(f.wire.to_string(), stand_in(f.schema));
+    }
+    if let Ok(mut value) = serde_json::from_value::<T>(Value::Object(read)) {
+        value.derive_fields(map, mode, path, out);
+    }
+}
+
+/// A stand-in of the shape of `schema`, in typed form: what is read where a derived value is not
+/// (yet) there. It is never evaluated by a rule.
+fn stand_in(schema: &Schema) -> Value {
+    schema.from_wire(&placeholder(schema, 0), false)
+}
+
+/// The value of a derived field that was computed, `None` when it could not be: an evaluation
+/// error is one violation (its rule is the id of the field, `error` is set); a field that reads
+/// another one that has no value stays without one and without a second violation.
+pub fn derived<T>(out: &mut Vec<Violation>, path: &str, id: &str, name: &str, fields: &[&str], verdict: Res<T>) -> Option<T> {
+    match verdict {
+        Ok(v) => Some(v),
+        Err(Fail::Eval(e)) => {
+            out.push(Violation {
+                rule: id.to_string(),
+                path: path.to_string(),
+                fields: fields.iter().map(|f| (*f).to_string()).collect(),
+                message: format!("field {name} could not be computed"),
+                error: Some(e.as_str().to_string()),
+            });
+            None
+        }
+        Err(_) => None,
+    }
+}
+
+/// Writes a computed value into the typed JSON of its object.
+pub fn put<T: serde::Serialize>(node: &mut serde_json::Map<String, Value>, wire: &str, value: &T) {
+    node.insert(wire.to_string(), serde_json::to_value(value).unwrap_or(Value::Null));
+}
+
+/// A `date` as `YYYY-MM-DD` (days since the epoch).
+#[must_use]
+pub fn format_date(days: i64) -> String {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// A `time` as `HH:MM:SS`, with `.mmm` when the milliseconds are not zero.
+#[must_use]
+pub fn format_time(ms_of_day: i64) -> String {
+    let ms = ms_of_day.rem_euclid(instant::MS_PER_DAY);
+    let (h, m, s, f) = (ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000);
+    if f == 0 { format!("{h:02}:{m:02}:{s:02}") } else { format!("{h:02}:{m:02}:{s:02}.{f:03}") }
+}
+
+/// A `datetime` as `YYYY-MM-DDTHH:MM:SS[.mmm]Z` (milliseconds since the epoch).
+#[must_use]
+pub fn format_datetime(ms: i64) -> String {
+    format!("{}T{}Z", format_date(ms.div_euclid(instant::MS_PER_DAY)), format_time(ms))
+}
+
+/// Computes the derived fields of every value inside `v` (typed form) and then of `v`, so that
+/// an expression reads values that are complete: list items, map values, page items and union
+/// arms first, the fields of an object in declaration order, then the object itself.
+pub fn derive_walk(schema: &Schema, v: &mut Value, path: &str, mode: Mode, out: &mut Vec<Violation>) {
+    match schema {
+        Schema::Scalar(..) | Schema::Enum(_) => {}
+        Schema::List(of, _) => {
+            for (i, x) in v.as_array_mut().into_iter().flatten().enumerate() {
+                derive_walk(of, x, &format!("{path}[{i}]"), mode, out);
+            }
+        }
+        Schema::Map(of, _) => {
+            for (k, x) in v.as_object_mut().into_iter().flatten() {
+                derive_walk(of, x, &format!("{path}.{k}"), mode, out);
+            }
+        }
+        Schema::Page(of) => {
+            if let Some(items) = v.get_mut("items") {
+                derive_walk(&Schema::List(of, super::schema::Rules::NONE), items, &format!("{path}.items"), mode, out);
+            }
+        }
+        Schema::Model(m) => {
+            for f in m.fields.iter().filter(|f| !f.derived) {
+                if let Some(x) = v.get_mut(f.wire) {
+                    derive_walk(f.schema, x, &format!("{path}.{}", f.wire), mode, out);
+                }
+            }
+            if let Some(derive) = m.derive {
+                derive(v, mode, path, out);
+            }
+        }
+        Schema::Union(u) => {
+            let label = v.get(u.discriminator).and_then(Value::as_str).map(str::to_string);
+            if let Some((_, arm)) = label.and_then(|l| u.arms.iter().find(|(name, _)| *name == l)) {
+                derive_walk(arm, v, path, mode, out);
+            }
+        }
+    }
+}
+
+/// A stand-in of its shape for every derived member that is absent, at every depth: a value that
+/// had a derived field fail is still read by serde as the struct that has the field.
+fn fill_derived(schema: &Schema, v: &mut Value) {
+    match schema {
+        Schema::Scalar(..) | Schema::Enum(_) => {}
+        Schema::List(of, _) => v.as_array_mut().into_iter().flatten().for_each(|x| fill_derived(of, x)),
+        Schema::Map(of, _) => v.as_object_mut().into_iter().flat_map(serde_json::Map::values_mut).for_each(|x| fill_derived(of, x)),
+        Schema::Page(of) => {
+            if let Some(items) = v.get_mut("items") {
+                fill_derived(&Schema::List(of, super::schema::Rules::NONE), items);
+            }
+        }
+        Schema::Model(m) => {
+            if let Value::Object(map) = v {
+                for f in m.fields {
+                    if !f.derived {
+                        if let Some(x) = map.get_mut(f.wire) {
+                            fill_derived(f.schema, x);
+                        }
+                    } else if !map.contains_key(f.wire) {
+                        map.insert(f.wire.to_string(), stand_in(f.schema));
+                    }
+                }
+            }
+        }
+        Schema::Union(u) => {
+            let label = v.get(u.discriminator).and_then(Value::as_str).map(str::to_string);
+            if let Some((_, arm)) = label.and_then(|l| u.arms.iter().find(|(name, _)| *name == l)) {
+                fill_derived(arm, v);
+            }
+        }
+    }
+}
+
+/// `Order::derive`: computes the derived fields of a value and of everything inside it, and
+/// returns the violations of the ones that could not be computed (they keep the value they had).
+pub fn derive_value<T: serde::Serialize + DeserializeOwned + super::error::VeldDecl>(value: &mut T, mode: Mode) -> Vec<Violation> {
+    let mut typed = serde_json::to_value(&*value).unwrap_or(Value::Null);
+    let mut out = Vec::new();
+    derive_walk(T::schema(), &mut typed, "$", mode, &mut out);
+    fill_derived(T::schema(), &mut typed);
+    if let Ok(computed) = serde_json::from_value::<T>(typed) {
+        *value = computed;
+    }
+    out
+}
+
+/// A value the application handed over (a fact, the principal) with its derived fields computed:
+/// the violations, when one could not be, are `Err`.
+///
+/// # Errors
+/// The violations of the derived fields that could not be computed.
+pub fn complete_with<T: serde::Serialize + DeserializeOwned>(schema: &Schema, value: &mut T) -> Result<(), Vec<Violation>> {
+    let mut typed = serde_json::to_value(&*value).unwrap_or(Value::Null);
+    let mut out = Vec::new();
+    derive_walk(schema, &mut typed, "$", Mode::Full, &mut out);
+    if !out.is_empty() {
+        return Err(out);
+    }
+    if let Ok(computed) = serde_json::from_value::<T>(typed) {
+        *value = computed;
+    }
+    Ok(())
+}
+
+/// A wire value of an output with its derived fields computed, and the violations of the ones
+/// that could not be.
+#[must_use]
+pub fn complete_wire(schema: &Schema, wire: &Value, path: &str) -> (Value, Vec<Violation>) {
+    let mut typed = schema.from_wire(wire, false);
+    let mut out = Vec::new();
+    derive_walk(schema, &mut typed, path, Mode::Full, &mut out);
+    (schema.to_wire(&typed, false, false), out)
+}
+
+/// Like [`check_wire`] for a value whose derived fields are computed already (an output): the
+/// invariants only.
+#[must_use]
+pub fn check_computed(schema: &Schema, wire: &Value, path: &str, mode: Mode) -> Vec<Violation> {
+    let typed = schema.from_wire(wire, false);
+    let mut out = Vec::new();
+    walk(schema, &typed, path, mode, &mut out);
+    out
+}
+// @end

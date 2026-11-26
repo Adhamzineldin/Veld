@@ -15,7 +15,7 @@ use crate::endpoints::{self, Kind};
 use crate::guards;
 use crate::policies::Plan;
 use crate::rules::{RustPrinter, Scope, fact_ident, mark_old};
-use crate::types::{Ctx, rust_type};
+use crate::types::{Ctx, rust_type, schema_ref};
 use crate::util::{bare, doc, lit, method, snake, type_name, unsupported};
 
 /// Whether an endpoint has a block.
@@ -411,6 +411,19 @@ fn step6(
         let ty = guards::principal_type(ctx, svc)
             .ok_or("the endpoint reads the principal, which the package does not declare")?;
         guards::bind_principal(w, &ty);
+        if ctx.tree.derived
+            && svc
+                .principal
+                .as_ref()
+                .is_some_and(|p| ctx.tree.ir.decl(p.decl).has_derived())
+        {
+            // The principal is given its derived fields when it is handed to the block.
+            w.line("let mut principal_value = principal.clone();");
+            w.line(format!(
+                "vr::complete_with(<{ty} as veld::VeldDecl>::schema(), &mut principal_value).map_err(Halt::Broken)?;"
+            ));
+            w.line("let principal = &principal_value;");
+        }
     }
     for f in &ep.rules.facts {
         load_fact(w, ctx, svc, f, &sc)?;
@@ -540,6 +553,19 @@ fn load_fact(
         (Some((key, kt)), true) => load.optional_keyed(w, &key, &kt),
         (None, false) => load.required_keyless(w),
         (None, true) => load.optional_keyless(w),
+    }
+    if ctx.tree.derived && ctx.tree.ir.type_reaches_derived(&f.ty) {
+        // A fact is given its derived fields once it is loaded (`spec/rules.md` section 17.2); one
+        // that cannot be computed is the application's mistake: `500 Internal`.
+        w.line(format!(
+            "let mut loaded_{} = loaded_{};",
+            load.ident, load.ident
+        ));
+        w.line(format!(
+            "vr::complete_with({}, &mut loaded_{}).map_err(Halt::Broken)?;",
+            schema_ref(ctx, &f.ty, &veld_ir::Constraints::default()),
+            load.ident
+        ));
     }
     w.line(format!("let fact_{} = &loaded_{};", load.ident, load.ident));
     Ok(())

@@ -9,11 +9,11 @@ use veld_codegen::{
     CodeWriter, ExprPrinter, GenDiagnostic, Printed, ValueKind, naming, print_expr,
 };
 use veld_ir::{
-    BinExpr, Builtin, CallExpr, Decl, Expr, ExprKind, ExprLit, ExprType, Ir, Model, Op, PathRef,
-    QuantExpr, Quantifier, Root, Rule, Type,
+    BinExpr, Builtin, CallExpr, Decl, Expr, ExprKind, ExprLit, ExprType, Field, Ir, Model, Op,
+    PathRef, QuantExpr, Quantifier, Root, Rule, Type,
 };
 
-use crate::types::Ctx;
+use crate::types::{Ctx, rust_type};
 use crate::util::{doc, lit, snake, type_name, unsupported, variant};
 
 const OR: u8 = 2;
@@ -882,28 +882,59 @@ pub fn emit(
     w.line("veld::rules::check_value(self, veld::rules::Mode::Request)");
     w.close();
     w.close().blank();
+    let derived: Vec<&Field> = if ctx.tree.derived {
+        d.derived_fields()
+    } else {
+        Vec::new()
+    };
     w.open(format!("impl veld::rules::Invariants for {name}"));
+    if !derived.is_empty() {
+        // A rule that reads a derived field that could not be computed is skipped.
+        w.open("fn check_rules(&self, mode: veld::rules::Mode, path: &str, out: &mut Vec<veld::rules::Violation>)");
+        w.line("self.check_rules_absent(mode, path, &[], out);");
+        w.close().blank();
+    }
     w.line(
         "#[allow(clippy::all, unused_variables, unused_parens, unused_braces, unused_comparisons)]",
     );
-    w.open("fn check_rules(&self, mode: veld::rules::Mode, path: &str, out: &mut Vec<veld::rules::Violation>)");
+    if derived.is_empty() {
+        w.open("fn check_rules(&self, mode: veld::rules::Mode, path: &str, out: &mut Vec<veld::rules::Violation>)");
+    } else {
+        w.open("fn check_rules_absent(&self, mode: veld::rules::Mode, path: &str, absent: &[&str], out: &mut Vec<veld::rules::Violation>)");
+    }
     w.line("use veld::rules as vr;");
     for ((rule, c), body) in m.rules.iter().zip(&consts).zip(&bodies) {
-        rule_statement(w, m, rule, c, body);
+        rule_statement(w, m, rule, c, (body, &derived));
     }
     w.close().close().blank();
     Ok(())
 }
 
-fn rule_statement(w: &mut CodeWriter, m: &Model, rule: &Rule, id_const: &str, body: &str) {
+fn rule_statement(
+    w: &mut CodeWriter,
+    m: &Model,
+    rule: &Rule,
+    id_const: &str,
+    (body, derived): (&str, &[&Field]),
+) {
     let fields: Vec<String> = wire_names(m, rule).iter().map(|f| lit(f)).collect();
     let message = rule
         .message
         .clone()
         .unwrap_or_else(|| format!("violates rule {}", rule.name));
     w.line(format!("// {}", rule.name));
+    // The conditions of the rule: not in a request when it reads a read-only field, and not when
+    // it reads a derived field that has no value.
+    let mut conditions: Vec<String> = Vec::new();
     if rule.reads_readonly {
-        w.open("if mode != vr::Mode::Request");
+        conditions.push("mode != vr::Mode::Request".to_string());
+    }
+    for f in derived.iter().filter(|f| rule.reads.contains(&f.name)) {
+        conditions.push(format!("!absent.contains(&{})", lit(&f.wire)));
+    }
+    let guarded = !conditions.is_empty();
+    if guarded {
+        w.open(format!("if {}", conditions.join(" && ")));
     }
     if rule.is_audited() {
         // An audited rule reports to the sink of a server and is skipped when there is none, so a
@@ -922,8 +953,173 @@ fn rule_statement(w: &mut CodeWriter, m: &Model, rule: &Rule, id_const: &str, bo
             lit(&message)
         ));
     }
-    if rule.reads_readonly {
+    if guarded {
         w.close();
+    }
+}
+
+/// The `ok_<field>` local of a derived field: whether it has a value.
+fn ok_ident(f: &Field) -> String {
+    format!("ok_{}", snake(&f.name).trim_start_matches("r#"))
+}
+
+/// The value of a derived expression as the field's type: the widening the language allows at
+/// the root, then the conversion from the value form to the field.
+fn derived_value(
+    ctx: &Ctx<'_, '_>,
+    f: &Field,
+    expr: &Expr,
+) -> Result<String, String> {
+    let mut printer = RustPrinter::new(ctx);
+    let mut printed = print_expr(&mut printer, expr);
+    let ty = ExprType::Type(f.ty.clone());
+    let (from, to) = (printer.kind(&expr.t), printer.kind(&ty));
+    if from != to {
+        printed = printer.widen(printed, &expr.t, &ty);
+    }
+    if let Some(what) = printer.unsupported.first() {
+        return Err(format!("derived field `{}`: {what}", f.name));
+    }
+    let atom = printed.at(Printed::ATOM);
+    Ok(match to {
+        ValueKind::Bool
+        | ValueKind::Int
+        | ValueKind::Long
+        | ValueKind::Float
+        | ValueKind::Enum => printed.code,
+        ValueKind::String | ValueKind::Uuid | ValueKind::Decimal => format!("{atom}.to_string()"),
+        ValueKind::Date => format!("vr::format_date({})", printed.code),
+        ValueKind::Datetime => format!("vr::format_datetime({})", printed.code),
+        ValueKind::Time => format!("vr::format_time({})", printed.code),
+        ValueKind::Duration
+        | ValueKind::Bytes
+        | ValueKind::Json
+        | ValueKind::Model
+        | ValueKind::List
+        | ValueKind::Map
+        | ValueKind::Page => {
+            return Err(format!(
+                "derived field `{}`: a derived value of this type is not supported",
+                f.name
+            ));
+        }
+    })
+}
+
+/// The wire names of the fields of `d` that `names` (source names) stand for.
+fn wires_of(d: &Decl, names: &[String]) -> Vec<String> {
+    names
+        .iter()
+        .map(|n| {
+            d.fields()
+                .iter()
+                .find(|f| &f.name == n)
+                .map_or_else(|| n.clone(), |f| f.wire.clone())
+        })
+        .collect()
+}
+
+/// Emits `derive`, `derive_request` and the `Derive` impl of a declaration with derived fields
+/// (`spec/rules.md` section 17.2).
+///
+/// # Errors
+/// `E0801` when a derived expression, or the type of a derived field, cannot be expressed.
+pub fn emit_derived(
+    w: &mut CodeWriter,
+    ctx: &Ctx<'_, '_>,
+    d: &Decl,
+) -> Result<(), Vec<GenDiagnostic>> {
+    let name = type_name(&d.name);
+    let fields = d.derived_fields();
+    let mut bodies = Vec::new();
+    for f in &fields {
+        let Some(expr) = &f.derived else { continue };
+        bodies.push(
+            derived_value(ctx, f, expr)
+                .map_err(|e| unsupported(format!("generator `rust`: {}: {e}", d.name)))?,
+        );
+    }
+    w.open(format!("impl {name}"));
+    w.line("/// Computes the derived fields of this value and of everything inside it, in dependency");
+    w.line("/// order (`spec/rules.md` section 17.2): the code the server runs, so that a form can show");
+    w.line("/// them while the user types. Returns one violation for each field that could not be");
+    w.line("/// computed; such a field keeps the value it had.");
+    w.open("pub fn derive(&mut self) -> Vec<veld::rules::Violation>");
+    w.line("veld::rules::derive_value(self, veld::rules::Mode::Full)");
+    w.close().blank();
+    w.line("/// Like [`Self::derive`], for a value in request position: a derived field that reads a");
+    w.line("/// `@readonly` field is left alone.");
+    w.open("pub fn derive_request(&mut self) -> Vec<veld::rules::Violation>");
+    w.line("veld::rules::derive_value(self, veld::rules::Mode::Request)");
+    w.close();
+    w.close().blank();
+    w.open(format!("impl veld::rules::Derive for {name}"));
+    w.line(
+        "#[allow(clippy::all, unused_variables, unused_parens, unused_braces, unused_comparisons)]",
+    );
+    w.open("fn derive_fields(&mut self, node: &mut serde_json::Map<String, serde_json::Value>, mode: veld::rules::Mode, path: &str, out: &mut Vec<veld::rules::Violation>)");
+    w.line("use veld::rules as vr;");
+    for (f, body) in fields.iter().zip(&bodies) {
+        derived_statement(w, ctx, d, f, body);
+    }
+    w.close().close().blank();
+    Ok(())
+}
+
+fn derived_statement(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl, f: &Field, body: &str) {
+    let reads = f.derived_reads();
+    let id = f.derived_id.clone().unwrap_or_default();
+    let ident = snake(&f.name);
+    let ty = rust_type(ctx, &f.ty, false);
+    let wire_reads: Vec<String> = wires_of(d, &reads).iter().map(|r| lit(r)).collect();
+    // Blocked: it reads a derived field that has no value, or (in a request) a read-only field.
+    let mut conditions: Vec<String> = Vec::new();
+    if reads.iter().any(|r| d.fields().iter().any(|o| &o.name == r && o.readonly)) {
+        conditions.push("mode != vr::Mode::Request".to_string());
+    }
+    for r in &reads {
+        if let Some(o) = d.fields().iter().find(|o| &o.name == r && o.derived.is_some()) {
+            conditions.push(ok_ident(o));
+        }
+    }
+    w.line(format!("// {}", f.name));
+    let guarded = !conditions.is_empty();
+    if guarded {
+        w.line(format!("let {} = if {} {{", ok_ident(f), conditions.join(" && ")));
+        w.indent();
+        w.line("match");
+    } else {
+        w.line(format!("let {} = match", ok_ident(f)));
+    }
+    w.indent();
+    w.line(format!(
+        "vr::derived(out, path, {}, {}, &[{}], (|| -> vr::Res<{ty}> {{ Ok({body}) }})())",
+        lit(&id),
+        lit(&f.name),
+        wire_reads.join(", ")
+    ));
+    w.dedent();
+    w.line("{");
+    w.indent();
+    w.line("Some(v) => {");
+    w.indent();
+    w.line(format!("self.{ident} = v;"));
+    w.line(format!("vr::put(node, {}, &self.{ident});", lit(&f.wire)));
+    w.line("true");
+    w.dedent();
+    w.line("}");
+    w.line("None => false,");
+    w.dedent();
+    if guarded {
+        w.line("}");
+        w.dedent();
+        w.line("} else {");
+        w.indent();
+        w.line("false");
+        w.dedent();
+        w.line("};");
+    } else {
+        w.line("};");
     }
 }
 

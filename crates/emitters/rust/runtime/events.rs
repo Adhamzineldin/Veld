@@ -838,6 +838,18 @@ fn prepare<E: Serialize>(
 ) -> Result<(Value, Option<String>), Error> {
     let typed = serde_json::to_value(event).map_err(|e| Error::other(format!("veld events: {e}")))?;
     let mut wire = def.schema.to_wire(&typed, false, false);
+    // @if derived
+    // A publisher computes the derived fields of an event before its invariants; one that cannot be
+    // computed stops the publish like a violated invariant (`spec/rules.md` section 17.2).
+    let (computed, failed) = super::rules::complete_wire(def.schema, &wire, "$");
+    wire = computed;
+    if !failed.is_empty() {
+        let micros = 0;
+        report(ctx.options.on_rule_violation.as_ref(), def, (super::rules::Position::Output, super::rules::Outcome::Rejected), &failed, micros);
+        let issues: Vec<Issue> = failed.iter().map(Violation::issue).collect();
+        return Err(ctx.validation(def, &issues, failed));
+    }
+    // @end
     canon_scalars(def.schema, &mut wire);
     let issues = def.schema.validate(&wire, "$", false);
     if !issues.is_empty() {
@@ -1221,6 +1233,10 @@ async fn consume(c: &Consumer, message: TransportMessage) -> Outcome {
     let Some(binding) = c.sub.on.iter().find(|b| type_name(b.def.sig) == type_name(&env.r#type)) else {
         return Outcome::Done;
     };
+    // @if derived
+    // A consumer does not believe a derived value in the message: it computes its own.
+    let env = Envelope { data: binding.def.schema.without_derived(&env.data), ..env };
+    // @end
     if let Some(outcome) = decode(c, &message, binding.def, &env) {
         return outcome;
     }
@@ -1233,7 +1249,13 @@ async fn consume(c: &Consumer, message: TransportMessage) -> Outcome {
         time: env.time.clone(),
         attempt: message.attempt,
     };
+    // @if !derived
     let typed = binding.def.schema.from_wire(&env.data, false);
+    // @end
+    // @if derived
+    let mut typed = binding.def.schema.from_wire(&env.data, false);
+    super::rules::derive_walk(binding.def.schema, &mut typed, "$", super::rules::Mode::Full, &mut Vec::new());
+    // @end
     match (binding.run)(typed, meta.clone()).await {
         Run::Done => Outcome::Done,
         Run::Failed(error) => {

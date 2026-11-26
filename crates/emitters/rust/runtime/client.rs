@@ -1019,7 +1019,13 @@ impl<T: Transport, In: DeserializeOwned, Out: Serialize> WsChannel<T, In, Out> {
                     }
                 }
                 // #endif
+                // @if !derived
                 String::from_utf8_lossy(&schema.canonical_typed(&typed)).into_owned()
+                // @end
+                // @if derived
+                // A message carries no derived value: the server computes it.
+                String::from_utf8_lossy(&super::canonical::canonical_bytes(&schema.without_derived(&schema.to_wire(&typed, false, true)))).into_owned()
+                // @end
             }
             None => super::canonical::canonical(&typed),
         };

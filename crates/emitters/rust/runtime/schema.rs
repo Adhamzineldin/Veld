@@ -105,6 +105,10 @@ pub struct Field {
     /// The default as JSON text, applied when the field is absent.
     pub default: Option<&'static str>,
     pub readonly: bool,
+    // #if derived
+    /// The field is derived (`spec/rules.md` section 17.2): the server computes it, nobody supplies it.
+    pub derived: bool,
+    // #endif
 }
 
 /// A model or an error.
@@ -116,6 +120,10 @@ pub struct ModelSchema {
     // #if rules
     /// Evaluates the invariants of one object of this declaration (typed JSON form), if it has any.
     pub invariants: Option<fn(&Value, super::rules::Mode, &str, &mut Vec<super::rules::Violation>)>,
+    // #endif
+    // #if derived
+    /// Computes the derived fields of one object of this declaration (typed JSON form), if it has any.
+    pub derive: Option<fn(&mut Value, super::rules::Mode, &str, &mut Vec<super::rules::Violation>)>,
     // #endif
 }
 
@@ -170,9 +178,10 @@ struct Opts {
     request: bool,
     /// Canonical mode: datetimes are UTC and uuids lower case.
     normalize: bool,
-    /// With `normalize`: a datetime has its fraction as `.fff`, cut at the millisecond, and only
-    /// when the milliseconds are not zero (`spec/ir.md` section 5.3, the form of the events and
-    /// of the idempotency fingerprint).
+    /// With `normalize`: the idempotency fingerprint form. A datetime has its fraction as `.fff`,
+    /// cut at the millisecond, and only when the milliseconds are not zero (the form of the
+    /// events); the derived fields the server computed are kept, which a request that is sent
+    /// leaves out.
     millis: bool,
 }
 
@@ -262,6 +271,51 @@ impl Schema {
             Schema::Union(u) => map_union(u, v, o),
         }
     }
+
+    // @if derived
+
+    /// A wire value without its derived members, at every depth: what a caller sent for a derived
+    /// field is dropped before the value is validated, whatever it is (`spec/rules.md` section 17.2).
+    #[must_use]
+    pub fn without_derived(&self, wire: &Value) -> Value {
+        match (self, wire) {
+            (Schema::List(of, _), Value::Array(a)) => Value::Array(a.iter().map(|x| of.without_derived(x)).collect()),
+            (Schema::Map(of, _), Value::Object(m)) => {
+                Value::Object(m.iter().map(|(k, x)| (k.clone(), of.without_derived(x))).collect())
+            }
+            (Schema::Page(of), Value::Object(m)) => {
+                let mut out = m.clone();
+                if let Some(items) = m.get("items") {
+                    out.insert("items".into(), Schema::List(of, Rules::NONE).without_derived(items));
+                }
+                Value::Object(out)
+            }
+            (Schema::Model(model), Value::Object(obj)) => {
+                let mut out = Map::new();
+                for (k, x) in obj {
+                    match model.fields.iter().find(|f| f.wire == k) {
+                        Some(f) if f.derived => {}
+                        Some(f) => {
+                            out.insert(k.clone(), f.schema.without_derived(x));
+                        }
+                        None => {
+                            out.insert(k.clone(), x.clone());
+                        }
+                    }
+                }
+                Value::Object(out)
+            }
+            (Schema::Union(u), Value::Object(_)) => {
+                let label = wire.get(u.discriminator).and_then(Value::as_str);
+                match label.and_then(|l| u.arms.iter().find(|(name, _)| *name == l)) {
+                    Some((_, arm)) => arm.without_derived(wire),
+                    None => wire.clone(),
+                }
+            }
+            _ => wire.clone(),
+        }
+    }
+    // @end
 
     /// The issues of a wire value (empty when it is valid). `path` names the root (`body`,
     /// `query.limit`, `$`); `request` lets read-only fields be absent.
@@ -378,6 +432,21 @@ fn map_model(m: &ModelSchema, v: &Value, o: Opts) -> Value {
             }
             continue;
         }
+        // @if derived
+        if f.derived {
+            // Nobody supplies a derived value: a request leaves it out of what is sent (the
+            // fingerprint keeps what the server computed); a value read stands in for itself or,
+            // when absent, for a placeholder of its shape, which the server replaces.
+            if o.dir == Dir::To && o.request && !o.millis {
+                continue;
+            }
+            if o.dir == Dir::From && !obj.contains_key(f.wire) {
+                let wire = placeholder(f.schema, 0);
+                out.insert(f.wire.to_string(), f.schema.map(&wire, Opts { request: false, ..o }));
+                continue;
+            }
+        }
+        // @end
         let mut x = obj.get(f.wire).filter(|x| is_json(f.schema) || !x.is_null()).cloned();
         if x.is_none() {
             x = f.default.and_then(|d| serde_json::from_str(d).ok());
@@ -476,10 +545,19 @@ fn check_model(m: &ModelSchema, v: &Value, path: &str, request: bool, out: &mut 
         let at = format!("{path}.{}", f.wire);
         match obj.get(f.wire) {
             None => {
+                // @if !derived
                 if !f.optional && f.default.is_none() && !(request && f.readonly) {
+                // @end
+                // @if derived
+                if !f.optional && f.default.is_none() && !(request && f.readonly) && !f.derived {
+                // @end
                     push(out, &at, "required", "is required".into());
                 }
             }
+            // @if derived
+            // A derived value is not constrained: nobody supplies it.
+            Some(_) if f.derived => {}
+            // @end
             Some(x) => check(f.schema, x, &at, request, out),
         }
     }
