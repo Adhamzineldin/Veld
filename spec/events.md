@@ -366,11 +366,37 @@ A service that publishes or subscribes to a channel with one of the three annota
 
 ## 11. The outbox and `emits` (phase E3)
 
-`flow pending -> paid emits BookingPaid` says the event is part of that move. `BookingPaid` MUST be carried by a channel the service publishes.
+```veld
+enum BookingStatus {
+  pending, paid, cancelled
+  flow pending -> paid emits BookingPaid
+  flow pending -> cancelled after hours(24) emits BookingCancelled
+}
+```
 
-- The generated server gives the handler of an endpoint with such a transition an **outbox** to write the event to. The handler MUST call it inside the transaction that changes the state. The outbox is an interface the application implements over its own store: `save(topic, key, bytes)` and, for the relay, `pending(limit)` and `done(entry)`.
+```ebnf
+flow = "flow" IDENT "->" IDENT { "->" IDENT } [ "after" expr ] [ "emits" IDENT ] ;
+```
+
+`flow pending -> paid emits BookingPaid` says the event is part of that move. `emits` is a contextual word and stands on a `flow` with one edge (`E1011` otherwise).
+
+- **Who must be able to send it.** Every endpoint whose `transition` takes that edge belongs to a service that MUST publish a channel which carries the event (`E1011`). When several of its channels carry it, the first in the service's `publishes` order is the one.
+- The generated server gives the handler of such an endpoint an **outbox** to write the event to. The handler MUST call it inside the transaction that changes the state. The outbox is an interface the application implements over its own store: `save(topic, key, bytes)` and, for the relay, `pending(limit)` and `done(entry)`.
 - A generated **relay** reads pending entries and publishes them. A relay can publish an entry twice (it can crash between the publish and `done`), which is why delivery is at least once and consumers need §10.3.
 - An outbox closes the gap between "the state changed" and "the event was sent" only when the application's implementation really shares the transaction. Veld cannot check that, and says so.
+
+### 11.1 The generated pieces
+
+The names are in TypeScript spelling; Java and Rust use the same words in their casing.
+
+- **`Outbox`** is `save(topic, key | none, bytes)`, `pending(limit) -> [entry]` and `done(entry)`. An `entry` is `{ id, topic, key | none, bytes }`; `id` is the application's own and opaque. `MemoryOutbox` is generated for tests. The hooks object of a server with an emitting endpoint requires `outbox`.
+- **The handler** of an endpoint whose transition has `emits` receives `emit`, next to the facts and the transition: one typed function per event the move emits (`emit.bookingPaid(event)`). Calling it runs steps 1 to 5 of publishing (§7: shape, invariants, key, envelope, bytes; the id source and the clock are the hooks') and then `outbox.save`. Nothing is sent to a transport. A violation raises the typed error, as in a publisher, and the handler's transaction should end with it.
+- **The server checks the handler.** After a success of such an endpoint the event MUST have been written exactly once. A success without it, or with it twice, answers `500 Internal` and goes to `onError`: the state changed without its event, and nobody should find that out from a missing receipt. A handler that answers an error need not have written.
+- **The relay** is `run<Service>OutboxRelay(outbox, transport, options)`: it takes up to `limit` (default 100) pending entries, publishes each with the options of its channel (§10.6), in the order `pending` gave them, and calls `done` after the transport accepted it. It stops at the first entry that fails and answers how many it sent, so the order of a key is kept; the failure goes to the `onError` of its options. The application runs it in a loop or from a job.
+- An endpoint whose move emits needs no transport: a service may write to the outbox in one process and relay from another.
+- **Examples.** A call example of such an endpoint with `returns` MAY say `expect emitted BookingPaid` or `expect not emitted`, which is checked live only: the reference evaluator does not run handlers. The test handler (`testing = true`) gives every request a memory outbox and adds the header `Veld-Test-Emitted`, the names of the events written, to its answer.
+- **IR.** A flow gains `"emits": DeclId` and an `EndpointTransition` gains `"emits": [ { "event": DeclId, "channel": <index into Ir.channels> } ]`, each omitted when absent. A service with such an endpoint uses the feature `events_outbox`, opt-in.
+- `E1011`: `emits` on a `flow` with several edges, an `emits` that names no event, or a transition over an emitting edge in a service that publishes no channel carrying that event.
 
 ## 12. Examples and `veld test`
 
@@ -476,6 +502,8 @@ A change to an event is judged for both sides of the stream: consumers generated
 | `E1010` | An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, or `rejected` is combined with `called` |
 | `W1001` | A published channel that nobody in the workspace subscribes to |
 | `W1002` | An event of a published channel that no subscription handles |
+| `W1003` | A channel has `@retry` and no `@deadLetter`: a message whose retries are used up is gone |
+| `E1011` | `emits` is wrong: on a flow with several edges, not an event, or a transition whose service publishes no channel that carries it |
 
 `E0501` now also says: a service with endpoints needs `at`. `E0509` now also covers handler names.
 
