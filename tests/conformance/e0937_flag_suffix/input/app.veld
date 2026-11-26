@@ -1,0 +1,25 @@
+// `when flag("name")` is the suffix of an invariant, a `require`, an `ensure`, a `permit`, a
+// `forbid` and a `flow` with one edge. A name is 1 to 64 characters of A-Z a-z 0-9 _ . -, starting
+// with a letter.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid -> cancelled when flag("chain")
+  flow paid -> pending when flag("1bad")
+  final cancelled when flag("final")
+}
+
+model Booking {
+  id: uuid
+  status: Status
+  guests: int
+  rule a: guests > 0 when flag("has space")
+  rule b: guests < 9 when flag("")
+}
+
+service Bookings at "/bookings" {
+  post "/{id}/a" book(id: uuid) -> 204 {
+    fact booking: Booking = id when flag("onFact")
+    transition booking.status: pending -> paid when flag("onTransition")
+  }
+}
