@@ -196,11 +196,11 @@ fn java_generates_audit_and_refuses_an_audited_stream() {
     veld_emit_conformance::check_audited_ws_is_refused(&Java).unwrap();
 }
 
-/// `limits` is opt-in (`spec/platform.md` section 5): Java refuses an endpoint with `@limit`, as
-/// a server and as a client.
+/// `limits` is opt-in (`spec/platform.md` section 5): Java generates an endpoint with `@limit`, as
+/// a server (which counts) and as a client (which waits and sends again).
 #[test]
-fn java_refuses_limits() {
-    veld_emit_conformance::check_limits_are_refused(&Java).unwrap();
+fn java_generates_limits() {
+    veld_emit_conformance::check_limits_are_generated(&Java).unwrap();
 }
 
 /// Message catalogs (`spec/platform.md` section 22): until Java implements them, it refuses a

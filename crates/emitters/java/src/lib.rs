@@ -91,8 +91,9 @@ fn events_capabilities(role: Role) -> Capabilities {
         Role::Server => caps
             .with(Feature::Visibility)
             .with(Feature::Tenancy)
-            .with(Feature::Audit),
-        Role::Client => caps.with(Feature::Tenancy),
+            .with(Feature::Audit)
+            .with(Feature::Limits),
+        Role::Client => caps.with(Feature::Tenancy).with(Feature::Limits),
     }
 }
 
