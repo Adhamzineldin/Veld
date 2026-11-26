@@ -187,11 +187,13 @@ fn java_generates_tenancy() {
     veld_emit_conformance::check_tenancy_is_generated(&Java).unwrap();
 }
 
-/// `audit` is opt-in (`spec/platform.md` section 4): the Java server refuses an `@audited`
-/// endpoint.
+/// `audit` is opt-in (`spec/platform.md` section 4): the Java server declares it and generates an
+/// audited endpoint (and still refuses an audited `ws` endpoint at the endpoint); the Java client is
+/// not asked and still generates.
 #[test]
-fn java_refuses_audit_as_a_server() {
-    veld_emit_conformance::check_audit_is_refused(&Java).unwrap();
+fn java_generates_audit_and_refuses_an_audited_stream() {
+    veld_emit_conformance::check_audit_is_generated(&Java).unwrap();
+    veld_emit_conformance::check_audited_ws_is_refused(&Java).unwrap();
 }
 
 /// `limits` is opt-in (`spec/platform.md` section 5): Java refuses an endpoint with `@limit`, as
