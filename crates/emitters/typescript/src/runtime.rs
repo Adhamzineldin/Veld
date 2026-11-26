@@ -92,6 +92,12 @@ pub struct Gates {
     /// A tenant-scoped value that a server loads or sends (`spec/platform.md` section 3): the
     /// `tenancy` regions. The refusal is reported like an output violation, so they need `rules`.
     pub tenancy: bool,
+    /// A declaration with a `@tenant` field, in a client or a server: the schema mark that says a
+    /// request may lack it.
+    pub tenant_fields: bool,
+    /// An event with a `@tenant` field (`spec/platform.md` section 3): `veldtenant` in the
+    /// envelope of `runtime/events.ts`.
+    pub tenant_events: bool,
     /// An audited endpoint of a server (`spec/platform.md` section 4): the `audit` regions.
     pub audit: bool,
     /// An endpoint with a `@limit` (`spec/platform.md` section 5): the client's wait on `429`.
@@ -143,6 +149,8 @@ impl Gates {
             flags: self.flags || other.flags,
             visibility: self.visibility || other.visibility,
             tenancy: self.tenancy || other.tenancy,
+            tenant_fields: self.tenant_fields || other.tenant_fields,
+            tenant_events: self.tenant_events || other.tenant_events,
             audit: self.audit || other.audit,
             limits: self.limits || other.limits,
             limits_server: self.limits_server || other.limits_server,
@@ -215,6 +223,11 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "visibility" => g.visibility,
         "not_visibility" => !g.visibility,
         "tenancy" => g.tenancy,
+        "tenant_fields" => g.tenant_fields,
+        "not_tenant_fields" => !g.tenant_fields,
+        "idempotency_tenant" => g.idempotency && g.tenant_fields,
+        "tenancy_facts" => g.endpoint_rules && g.tenancy,
+        "audit_facts" => g.endpoint_rules && g.audit,
         "audit" => g.audit,
         "limits" => g.limits,
         "limits_server" => g.limits_server,
@@ -701,9 +714,11 @@ mod tests {
     /// has none of their words.
     #[test]
     fn the_platform_regions_pair_up_in_every_combination() {
-        for bits in 0u32..(1 << 12) {
+        for bits in 0u32..(1 << 14) {
             let b = |i: u32| bits & (1 << i) != 0;
             let gates = Gates {
+                tenant_fields: b(12),
+                tenant_events: b(13),
                 visibility: b(0),
                 tenancy: b(1),
                 audit: b(2),
@@ -753,6 +768,8 @@ mod tests {
             "tenantViolations",
             "withAudit",
             "redactNode",
+            "checkResultTenant",
+            "factKept",
             "MemoryLimiter",
             "takeLimit",
         ] {

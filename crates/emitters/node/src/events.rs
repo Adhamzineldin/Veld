@@ -42,6 +42,9 @@ pub fn runtime_source(tree: &Tree<'_>) -> Result<String, GateError> {
         "not_flags" => !gates.flags,
         "flags_rules" => gates.flags && gates.rules,
         "not_flags_rules" => gates.rules && !gates.flags,
+        // `veldtenant` (`spec/platform.md` section 3) and what a build without it has.
+        "tenant_events" => gates.tenant_events,
+        "not_tenant_events" => !gates.tenant_events,
         _ => false,
     })
 }
@@ -146,6 +149,15 @@ fn write_event_def(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, id: DeclId) {
     if fc.tree.uses_flags() && !flags.is_empty() {
         let list: Vec<String> = flags.iter().map(|f| ts_str(f)).collect();
         w.line(format!("flags: [{}],", list.join(", ")));
+    }
+    if fc.tree.uses_tenant_events()
+        && let Some(f) = decl.tenant_field()
+    {
+        w.line(format!(
+            "tenant: {{ wire: {}, kind: {} }},",
+            ts_str(&f.wire),
+            ts_str(veld_emit_typescript::platform::tenant_kind(&f.ty))
+        ));
     }
     w.close_with("};");
 }

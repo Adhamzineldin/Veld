@@ -39,6 +39,8 @@ pub struct Tree<'a> {
     flags: bool,
     visibility: bool,
     tenancy: bool,
+    tenant_fields: bool,
+    tenant_events: bool,
     audit: bool,
     limits: bool,
     limits_server: bool,
@@ -120,6 +122,8 @@ impl<'a> Tree<'a> {
             flags,
             visibility: false,
             tenancy: false,
+            tenant_fields: set.iter().any(|id| ir.decl(*id).tenant_field().is_some()),
+            tenant_events: false,
             audit: false,
             limits,
             limits_server: false,
@@ -161,6 +165,11 @@ impl<'a> Tree<'a> {
             })
         });
         self.platform_p1();
+        self.tenant_fields = set.iter().any(|id| ir.decl(*id).tenant_field().is_some());
+        self.tenant_events = ir
+            .events_of(&self.services)
+            .into_iter()
+            .any(|id| ir.decl(id).tenant_field().is_some());
         self.derived = self.derived || set.iter().any(|id| ir.decl(*id).has_derived());
         self.rules =
             self.rules || self.derived || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
@@ -217,6 +226,20 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn uses_tenancy(&self) -> bool {
         self.tenancy
+    }
+
+    /// Whether a declaration of the tree has a `@tenant` field (`spec/platform.md` section 3): a
+    /// request may lack it and keeps it as received (`FieldSchema.st`), in a client and a server.
+    #[must_use]
+    pub fn uses_tenant_fields(&self) -> bool {
+        self.tenant_fields
+    }
+
+    /// Whether an event the server publishes or subscribes to has a `@tenant` field
+    /// (`spec/platform.md` section 3): its envelope carries `veldtenant`.
+    #[must_use]
+    pub fn uses_tenant_events(&self) -> bool {
+        self.tenant_events
     }
 
     /// Whether a server tree has an audited endpoint (`spec/platform.md` section 4): the `audit`
@@ -318,6 +341,8 @@ impl<'a> Tree<'a> {
             flags: self.flags,
             visibility: self.visibility,
             tenancy: self.tenancy,
+            tenant_fields: self.tenant_fields,
+            tenant_events: self.tenant_events,
             audit: self.audit,
             limits: self.limits,
             limits_server: self.limits_server,

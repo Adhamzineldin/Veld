@@ -95,6 +95,11 @@ fn field_expr(fc: &mut FileCtx<'_, '_>, f: &Field) -> String {
     if f.readonly {
         parts.push("ro: true".to_string());
     }
+    if f.tenant {
+        // Set by the server, like a `@readonly` field: a request may lack it, but one that carries
+        // it is kept as received (`spec/platform.md` section 9.1).
+        parts.push("st: true".to_string());
+    }
     format!("{{ {} }},", parts.join(", "))
 }
 

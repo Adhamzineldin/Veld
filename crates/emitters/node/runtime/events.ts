@@ -240,6 +240,10 @@ export interface EventDef {
   /** The flags of the invariants an event may reach: read once per message, before its invariants run. */
   readonly flags?: readonly string[];
   // #endif
+  // #if tenant_events
+  /** The `@tenant` field of the event (wire name and type): its text is the attribute `veldtenant`. */
+  readonly tenant?: { readonly wire: string; readonly kind: 'uuid' | 'string' | 'int' | 'long' };
+  // #endif
 }
 
 /** One channel as the generated code describes it to the publisher. */
@@ -289,6 +293,10 @@ export interface EventMeta {
   readonly time: string | undefined;
   /** The delivery attempt, 1 for the first. */
   readonly attempt: number;
+  // #if tenant_events
+  /** The tenant text the publisher wrote (`veldtenant`), absent for an event without a `@tenant` field. A consumer does not check it. */
+  readonly veldtenant: string | undefined;
+  // #endif
 }
 
 /** What a publisher call returns: the message it sent, without the data. */
@@ -303,6 +311,22 @@ export interface PublishedEvent {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+// #if tenant_events
+
+/**
+ * The text of the tenant of an event (`spec/platform.md` section 3): a `string` as it is, a `uuid`
+ * in lowercase, an `int` or a `long` in decimal digits. `undefined` for an event without a tenant.
+ */
+function tenantTextOf(def: EventDef, wire: unknown): string | undefined {
+  const t = def.tenant;
+  if (t === undefined || typeof wire !== 'object' || wire === null) return undefined;
+  const v = (wire as Record<string, unknown>)[t.wire];
+  if (v === undefined || v === null) return undefined;
+  if (t.kind === 'uuid') return typeof v === 'string' ? v.toLowerCase() : undefined;
+  if (t.kind === 'string') return typeof v === 'string' ? v : undefined;
+  return typeof v === 'string' || typeof v === 'number' || typeof v === 'bigint' ? String(v) : undefined;
+}
+// #endif
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -613,6 +637,10 @@ async function prepareEvent(ctx: PrepareContext, channel: ChannelDef, def: Event
   };
   if (subject !== null) envelope['subject'] = subject;
   if (def.digest !== null) envelope['veldrules'] = def.digest;
+  // #if tenant_events
+  const tenant = tenantTextOf(def, wire);
+  if (tenant !== undefined) envelope['veldtenant'] = tenant;
+  // #endif
   const options: ChannelOptions = { ordered: channel.ordered === true, deadLetter: channel.deadLetter === true };
   // #if not_outbox
   await ctx.transport.publish(channel.topic, subject, encodeUtf8(canonical(envelope)), options);
@@ -889,6 +917,9 @@ interface Envelope {
   readonly subject: string | undefined;
   readonly time: string | undefined;
   readonly veldrules: string | undefined;
+  // #if tenant_events
+  readonly veldtenant: string | undefined;
+  // #endif
   readonly data: Record<string, unknown>;
 }
 
@@ -906,7 +937,12 @@ function parseEnvelope(bytes: Uint8Array): Envelope | string {
     const v = json[name];
     if (typeof v !== 'string' || v === '') return `\`${name}\` is missing, empty or not a string`;
   }
+  // #if tenant_events
+  for (const name of ['subject', 'time', 'datacontenttype', 'veldrules', 'veldtenant']) {
+    // #endif
+    // #if not_tenant_events
   for (const name of ['subject', 'time', 'datacontenttype', 'veldrules']) {
+    // #endif
     if (json[name] !== undefined && typeof json[name] !== 'string') return `\`${name}\` is not a string`;
   }
   const contentType = json['datacontenttype'];
@@ -921,6 +957,9 @@ function parseEnvelope(bytes: Uint8Array): Envelope | string {
     subject: json['subject'] as string | undefined,
     time: json['time'] as string | undefined,
     veldrules: json['veldrules'] as string | undefined,
+    // #if tenant_events
+    veldtenant: json['veldtenant'] as string | undefined,
+    // #endif
     data,
   };
 }
@@ -1133,6 +1172,9 @@ async function handle(c: Consumer, message: TransportMessage, binding: EventBind
       subject: env.subject,
       time: env.time,
       attempt: message.attempt + run - 1,
+      // #if tenant_events
+      veldtenant: env.veldtenant,
+      // #endif
     };
     try {
       await runOnce(c, binding, env, meta);

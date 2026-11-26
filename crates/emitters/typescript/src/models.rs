@@ -144,7 +144,8 @@ fn write_fields(
         .filter(|f| !own_only || f.inherited_from.is_none())
     {
         doc_comment(w, f.docs.as_deref(), f.deprecated.as_deref());
-        let ro = if f.readonly { "readonly " } else { "" };
+        // A `@tenant` field is set by the server, as a `@readonly` field is (`spec/platform.md` section 9.1).
+        let ro = if f.server_set() { "readonly " } else { "" };
         let opt = if f.optional { "?" } else { "" };
         let ty = ts_type(fc, &f.ty);
         w.line(format!("{ro}{}{opt}: {ty};", prop_key(&f.name)));

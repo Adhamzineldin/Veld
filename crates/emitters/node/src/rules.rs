@@ -345,7 +345,10 @@ fn write_fact(
         }
     }
     // A fact is given its derived fields once it is loaded (`spec/rules.md` section 17.2).
-    if fc.tree.ir.type_reaches_derived(&fact.ty) {
+    let tenant = fc.tree.uses_tenancy() && fc.tree.ir.type_reaches_tenant(&fact.ty);
+    // The audit event holds the fact in wire form, and a fact of another tenant is not found.
+    let audited = fc.tree.uses_audit() && site.ep.audited;
+    if fc.tree.ir.type_reaches_derived(&fact.ty) || tenant || audited {
         let schema = schema_expr(fc, &fact.ty, &Constraints::default());
         w.line(format!("schema: {schema},"));
     }

@@ -148,6 +148,17 @@ pub fn endpoint_members(fc: &mut FileCtx<'_, '_>, svc: &Service, ep: &Endpoint) 
     if fc.tree.uses_visibility() && answers(ep).iter().any(|t| ir.type_reaches_visible(t)) {
         out.push("visible: true,".to_string());
     }
+    if fc.tree.uses_tenancy()
+        && endpoint_reaches_tenant(ir, ep)
+        && let Some(p) = &svc.principal
+        && let Some(field) = ir.decl(p.decl).tenant_field()
+    {
+        out.push(format!(
+            "tenant: {{ n: {}, k: {} }},",
+            ts_str(&field.name),
+            ts_str(tenant_kind(&field.ty))
+        ));
+    }
     out
 }
 

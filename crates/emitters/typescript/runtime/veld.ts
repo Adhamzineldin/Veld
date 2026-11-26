@@ -53,6 +53,10 @@ interface Bounds {
   /** The generated function of a declaration with `@visible` fields (see `showNode`). */
   show?: ShowFn;
   // #endif
+  // #if tenancy
+  /** The `@tenant` field of a tenant-scoped declaration (see `tenantNode`). */
+  tn?: TenantField;
+  // #endif
 }
 
 export interface FieldSchema {
@@ -70,6 +74,10 @@ export interface FieldSchema {
   // #if derived
   /** Derived (`spec/rules.md` section 17.2): computed, never supplied, never required of a value. */
   dv?: boolean;
+  // #endif
+  // #if tenant_fields
+  /** Set by the server (`@tenant`): a request may lack it, and one that carries it is kept as received. */
+  st?: boolean;
   // #endif
 }
 
@@ -453,7 +461,12 @@ function checkObject(s: Schema & { k: 'object' }, v: unknown, path: string, out:
     const x = v[key];
     const at = `${path}.${key}`;
     if (x === undefined) {
+      // #if tenant_fields
+      if (!f.o && f.d === undefined && !(o.request && (f.ro || f.st === true))) push(out, at, 'required', 'is required');
+      // #endif
+      // #if not_tenant_fields
       if (!f.o && f.d === undefined && !(o.request && f.ro)) push(out, at, 'required', 'is required');
+      // #endif
       continue;
     }
     check(f.t, x, at, out, o);
@@ -1221,7 +1234,7 @@ export interface FactStep {
   /** Calls the application's loader. It resolves to `null` or `undefined` when nothing is found. */
   load: (key: never, ctx: RequestContext) => Promise<unknown>;
   // #endif
-  // #if endpoint_rules_derived
+  // #if fact_schema
   /** The schema of the fact's type, when a value of it has derived fields (`spec/rules.md` section 17.2). */
   schema?: Schema;
   // #endif
@@ -1436,6 +1449,13 @@ async function prepare(
       // #endif
       // #if endpoint_rules_plain
       f[step.name] = loaded;
+      // #endif
+      // #if facts_platform
+      if (!factKept(ep, step, f[step.name], ctx, hooks)) {
+        delete f[step.name];
+        if (!step.optional) return problem(std.notFound ?? 'about:blank', 'NotFound', 404, ep.sig, { resource: step.name });
+        continue;
+      }
       // #endif
       // #if endpoint_rules
     } else if (!step.optional) {
@@ -2460,6 +2480,10 @@ export interface ServerEndpoint extends EndpointSpec {
   /** An answer of the endpoint (a result, a declared error, a stream item) can reach a `@visible` field. */
   visible?: boolean;
   // #endif
+  // #if tenancy
+  /** The field of the principal that holds the caller's tenant: an answer or a fact of the endpoint can be tenant-scoped. */
+  tenant?: TenantSpec;
+  // #endif
 }
 
 /** Signatures of the prelude errors the router itself raises. */
@@ -2752,6 +2776,10 @@ function failure(err: unknown, ep: ServerEndpoint, ctx: RequestContext, std: Std
     const refused = checkErrorRules(ep, declared, err.data, std, hooks);
     if (refused !== null) return refused;
     // #endif
+    // #if tenancy
+    const foreign = checkErrorTenant(ep, declared, err.data, std, hooks);
+    if (foreign !== null) return foreign;
+    // #endif
     // #if visibility
     (err as { data: unknown }).data = showSent(ep, declared.schema, err.data, hooks);
     // #endif
@@ -2950,6 +2978,10 @@ async function runCore(
     // #if endpoint_rules
     const unmet = prepared === null ? null : checkEnsures(ep, prepared, bound.value, result, std, hooks);
     if (unmet !== null) return unmet;
+    // #endif
+    // #if tenancy
+    const foreign = checkResultTenant(ep, result, std, hooks);
+    if (foreign !== null) return foreign;
     // #endif
     // #if not_version
     return success(ep, result, hooks);
@@ -3195,6 +3227,168 @@ function showSent(ep: ServerEndpoint, schema: Schema | null, value: unknown, hoo
   const shown = showNode(schema, value, '', callerOf(ep, state?.ctx), now, hidden);
   state?.hidden.push(...hidden);
   return shown;
+}
+// #endif
+// #if facts_platform
+
+/**
+ * A fact that was loaded and is given its schema: the tenant check (a fact of another tenant is
+ * not found) and the audit trail (the fact in wire form, as the handler gets it).
+ */
+function factKept(ep: ServerEndpoint, step: FactStep, value: unknown, ctx: RequestContext, hooks: HandlerHooks): boolean {
+  // #endif
+  // #if tenancy_facts
+  if (ep.tenant !== undefined && step.schema !== undefined) {
+    const found: Violation[] = [];
+    tenantNode(step.schema, value, '$', callerTenant(ep, ctx), found);
+    if (found.length > 0) return false;
+  }
+  // #endif
+  // #if audit_facts
+  if (hooks.platform !== undefined && step.schema !== undefined) hooks.platform.facts[step.name] = toWire(step.schema, value);
+  // #endif
+  // #if facts_platform
+  void ep;
+  void ctx;
+  void hooks;
+  return true;
+}
+// #endif
+// #if tenancy
+
+// ---------------------------------------------------------------------------
+// Tenancy (spec/platform.md section 3)
+// ---------------------------------------------------------------------------
+
+export type TenantKind = 'uuid' | 'string' | 'int' | 'long';
+
+/** The `@tenant` field of a tenant-scoped declaration: its names, its id (the rule `onRuleViolation` hears) and its type. */
+export interface TenantField {
+  n: string;
+  w?: string;
+  id: string;
+  k: TenantKind;
+}
+
+/** Where the caller's tenant is: the field of the principal (source name) and its type. */
+export interface TenantSpec {
+  n: string;
+  k: TenantKind;
+}
+
+/** The tenant of the caller: the value of the `@tenant` field of its principal, absent when there is none. */
+function callerTenant(ep: ServerEndpoint, ctx: RequestContext | undefined): unknown {
+  const who = ctx?.principal;
+  if (ep.tenant === undefined || !isObject(who)) return undefined;
+  const t = who[ep.tenant.n];
+  return t === null ? undefined : t;
+}
+
+/** The text of a tenant value: what the envelope attribute `veldtenant` and the key of a limit carry. */
+export function tenantText(k: TenantKind, v: unknown): string | undefined {
+  if (v === undefined || v === null) return undefined;
+  switch (k) {
+    case 'uuid':
+      return typeof v === 'string' ? v.toLowerCase() : undefined;
+    case 'string':
+    case 'long':
+      return typeof v === 'string' ? v : typeof v === 'number' || typeof v === 'bigint' ? String(v) : undefined;
+    case 'int':
+      return typeof v === 'number' ? String(v) : undefined;
+  }
+}
+
+/** Whether a value with the tenant `have` is the caller's: both have one and they are equal as values of the field's type. */
+function sameTenant(k: TenantKind, have: unknown, caller: unknown): boolean {
+  if (have === undefined || have === null || caller === undefined || caller === null) return false;
+  try {
+    switch (k) {
+      case 'uuid':
+        return typeof have === 'string' && typeof caller === 'string' && have.toLowerCase() === caller.toLowerCase();
+      case 'string':
+        return have === caller;
+      case 'int':
+        return typeof have === 'number' && have === caller;
+      case 'long':
+        return BigInt(have as string) === BigInt(caller as string);
+    }
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Every tenant-scoped value of `v` (a record whose declaration has a `@tenant` field), at any
+ * depth, that is not the caller's: one violation of the tenant rule each, at the path of the value.
+ * A value with no tenant, and a caller with none, belong to nobody.
+ */
+function tenantNode(schema: Schema, v: unknown, path: string, caller: unknown, out: Violation[]): void {
+  const s = resolve(schema);
+  switch (s.k) {
+    case 'object': {
+      if (!isObject(v)) return;
+      if (s.tn !== undefined && !sameTenant(s.tn.k, v[s.tn.n], caller)) {
+        out.push({ rule: s.tn.id, path, fields: [s.tn.w ?? s.tn.n], message: 'violates rule tenant' });
+      }
+      for (const f of s.fields) {
+        const x = v[f.n];
+        if (x !== undefined && x !== null) tenantNode(f.t, x, `${path}.${f.w ?? f.n}`, caller, out);
+      }
+      return;
+    }
+    case 'union': {
+      const label = isObject(v) ? v[s.d] : undefined;
+      const arm = typeof label === 'string' && Object.prototype.hasOwnProperty.call(s.arms, label) ? s.arms[label] : undefined;
+      if (arm !== undefined) tenantNode(arm, v, path, caller, out);
+      return;
+    }
+    case 'list':
+      if (Array.isArray(v)) v.forEach((x, i) => tenantNode(s.of, x, `${path}[${i}]`, caller, out));
+      return;
+    case 'map':
+      if (isObject(v)) for (const k of Object.keys(v)) tenantNode(s.of, v[k], `${path}.${k}`, caller, out);
+      return;
+    case 'page':
+      if (isObject(v)) tenantNode({ k: 'list', of: s.of }, v['items'], `${path}.items`, caller, out);
+      return;
+    default:
+  }
+}
+
+/** The tenant-scoped values of an answer that are not the caller's, at the path `root` (`result`, `error`, `item`). */
+function foreignOf(ep: ServerEndpoint, schema: Schema | null, value: unknown, root: string, hooks: HandlerHooks): Violation[] {
+  const found: Violation[] = [];
+  if (ep.tenant === undefined || schema === null || value === undefined) return found;
+  tenantNode(schema, value, root, callerTenant(ep, hooks.platform?.ctx), found);
+  return found;
+}
+
+/** After the output rules: a result with a value of another tenant is `500 Internal`, reported as a violation of the tenant rule. No output mode turns it off. */
+function checkResultTenant(ep: ServerEndpoint, result: unknown, std: StdSigs, hooks: HandlerHooks): VeldResponse | null {
+  if (ep.stream === true) return null;
+  const started = nowMicros();
+  const found = foreignOf(ep, ep.success, result, 'result', hooks);
+  if (found.length === 0) return null;
+  ruleEvent(hooks, ep, 'output', 'rejected', found, started);
+  return problem(std.internal, 'Internal', 500, ep.sig, {});
+}
+
+/** The data of a declared error is an answer too. */
+function checkErrorTenant(ep: ServerEndpoint, declared: ErrorSpec, data: unknown, std: StdSigs, hooks: HandlerHooks): VeldResponse | null {
+  const started = nowMicros();
+  const found = foreignOf(ep, declared.schema, data, 'error', hooks);
+  if (found.length === 0) return null;
+  ruleEvent(hooks, ep, 'output', 'rejected', found, started);
+  return problem(std.internal, 'Internal', 500, ep.sig, {});
+}
+
+/** A stream item (or a WebSocket message) of another tenant is not sent: this throws, and the stream ends as it does on any server failure. */
+function checkItemTenant(ep: ServerEndpoint, what: string, item: unknown, hooks: HandlerHooks): void {
+  const started = nowMicros();
+  const found = foreignOf(ep, ep.success, item, 'item', hooks);
+  if (found.length === 0) return;
+  ruleEvent(hooks, ep, 'output', 'rejected', found, started);
+  throw new Error(`${ep.name}: ${what} holds a value of another tenant`);
 }
 // #endif
 // #if run_fn
@@ -3642,6 +3836,14 @@ function normalForm(s: Schema, v: unknown): unknown {
       const out: Record<string, unknown> = { ...v };
       for (const f of t.fields) {
         const key = f.w ?? f.n;
+        // #endif
+        // #if idempotency_tenant
+        if (f.st === true) {
+          delete out[key];
+          continue;
+        }
+        // #endif
+        // #if idempotency
         if (out[key] !== undefined) out[key] = normalForm(f.t, out[key]);
       }
       return out;
@@ -3908,6 +4110,9 @@ function sseItem(ep: ServerEndpoint, item: unknown, hooks: HandlerHooks): string
   // #if rules
   checkItemRules(ep, 'stream item', value, hooks);
   // #endif
+  // #if tenancy
+  checkItemTenant(ep, 'stream item', value, hooks);
+  // #endif
   // #if visibility
   return sseFrame(canonicalOf(ep.success, showSent(ep, ep.success, value, hooks)), ev === null ? {} : ev.options);
   // #endif
@@ -4065,6 +4270,9 @@ function wsSession(
       }
       // #if rules
       checkItemRules(ep, 'message', message, hooks);
+      // #endif
+      // #if tenancy
+      checkItemTenant(ep, 'message', message, hooks);
       // #endif
       // #if visibility
       sock.send(`{"data":${canonicalOf(ep.success, showSent(ep, ep.success, message, hooks))}}`);
