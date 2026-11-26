@@ -12,6 +12,7 @@
 pub mod audited;
 pub mod b64;
 pub mod conditional;
+pub mod coverage;
 mod error;
 mod fuzz;
 mod judge;
