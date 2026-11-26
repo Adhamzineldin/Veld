@@ -157,7 +157,7 @@ fn paths_read_accessors_and_unbox_what_can_be_null() {
     assert_eq!(code(&field("count", sc(Scalar::Int))), "(int) v.count()");
     assert_eq!(
         code(&field("stamp", sc(Scalar::Datetime))),
-        "Rules.instantMs(v.stamp())"
+        "Rules.toDatetime(v.stamp())"
     );
     assert_eq!(
         code(&field("day", sc(Scalar::Date))),
@@ -291,7 +291,7 @@ fn comparisons_use_the_exact_form_of_each_type() {
     let at = || field("stamp", sc(Scalar::Datetime));
     assert_eq!(
         code(&cmp(Op::Gt, at(), at())),
-        "Rules.instantMs(v.stamp()) > Rules.instantMs(v.stamp())"
+        "Rules.toDatetime(v.stamp()) > Rules.toDatetime(v.stamp())"
     );
 }
 
@@ -305,12 +305,12 @@ fn time_and_duration_arithmetic_is_checked_long_arithmetic() {
     let diff = bin(Op::Sub, at(), at(), ExprType::Duration);
     assert_eq!(
         code(&diff),
-        "Rules.subLong(Rules.instantMs(v.stamp()), Rules.instantMs(v.stamp()))"
+        "Rules.subLong(Rules.toDatetime(v.stamp()), Rules.toDatetime(v.stamp()))"
     );
     let later = bin(Op::Add, at(), days, sc(Scalar::Datetime));
     assert_eq!(
         code(&later),
-        "Rules.addLong(Rules.instantMs(v.stamp()), Rules.days(v.big()))"
+        "Rules.addLong(Rules.toDatetime(v.stamp()), Rules.days(v.big()))"
     );
     let dates = bin(Op::Sub, day(), day(), ExprType::Duration);
     assert_eq!(
@@ -331,7 +331,7 @@ fn built_ins_print_natively_where_java_is_exact() {
     let text = |s: &str| ex(sc(Scalar::String), ExprKind::Lit(ExprLit::String(s.into())));
     assert_eq!(
         code(&call(Builtin::Len, vec![name()], int_t())),
-        "Rules.len(v.name())"
+        "Rules.lenString(v.name())"
     );
     let tags = field(
         "tags",

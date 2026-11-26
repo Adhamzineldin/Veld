@@ -119,7 +119,7 @@ fn a_datetime_is_converted_where_it_is_read_and_now_is_a_local() {
     let past = bin(Op::Ge, start, now(), sc(Scalar::Bool));
     assert_eq!(
         code(&past),
-        "Rules.instantMs(request.body().stamp()) >= now"
+        "Rules.toDatetime(request.body().stamp()) >= now"
     );
 }
 
@@ -166,7 +166,7 @@ fn the_principal_is_a_local_of_the_generated_type_of_its_model() {
         vec![step("stamp", false)],
         sc(Scalar::Datetime),
     );
-    assert_eq!(code(&stamp), "Rules.instantMs(principal.stamp())");
+    assert_eq!(code(&stamp), "Rules.toDatetime(principal.stamp())");
     let nick = path(
         Root::Principal,
         vec![step("nick", true)],
@@ -208,7 +208,7 @@ fn result_is_the_value_the_handler_returned() {
         vec![step("stamp", false)],
         sc(Scalar::Datetime),
     );
-    assert_eq!(code(&stamp), "Rules.instantMs(result.stamp())");
+    assert_eq!(code(&stamp), "Rules.toDatetime(result.stamp())");
 }
 
 #[test]
@@ -272,7 +272,7 @@ fn a_plain_path_is_given_to_a_loader_as_the_developer_sees_it() {
     );
     assert_eq!(
         printer.app_value(&later).as_deref(),
-        Some("Instant.ofEpochMilli(Rules.addLong(Rules.instantMs(request.body().stamp()), 1))")
+        Some("Instant.ofEpochMilli(Rules.addLong(Rules.toDatetime(request.body().stamp()), 1))")
     );
 }
 

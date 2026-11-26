@@ -534,7 +534,7 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
         let (prefixes, boxed) = self.walk(path);
         let code = prefixes.last().cloned().unwrap_or_default();
         match self.kind(ty) {
-            ValueKind::Datetime => self.call_helper("instantMs", &[&Printed::atom(code)]),
+            ValueKind::Datetime => self.call_helper("toDatetime", &[&Printed::atom(code)]),
             ValueKind::Date => self.call_helper("toDate", &[&Printed::atom(code)]),
             ValueKind::Time => self.call_helper("toTime", &[&Printed::atom(code)]),
             ValueKind::Int if boxed => Printed::new(format!("(int) {code}"), UNARY),
@@ -675,7 +675,7 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
         };
         match (f, args.as_slice()) {
             (Builtin::Len, [a]) => match first {
-                ValueKind::String => self.call_helper("len", &[a]),
+                ValueKind::String => self.call_helper("lenString", &[a]),
                 ValueKind::List | ValueKind::Map => {
                     Printed::atom(format!("{}.size()", a.at(Printed::ATOM)))
                 }

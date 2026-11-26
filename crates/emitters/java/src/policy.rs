@@ -434,7 +434,7 @@ service S at "/s" {
         );
         // A parameter is read by its name; a datetime is converted where it is read.
         assert!(
-            text.contains("Policy.permits(() -> Rules.instantMs(since) < now)"),
+            text.contains("Policy.permits(() -> Rules.toDatetime(since) < now)"),
             "{text}"
         );
         assert!(text.contains("Rules.in(user.roles(), \"admin\")"), "{text}");
