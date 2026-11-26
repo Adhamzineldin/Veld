@@ -108,11 +108,11 @@ fn java_enforces_every_rules_feature() {
     ]);
 }
 
-/// Events (`spec/events.md`): the server refuses a service that publishes or subscribes with
-/// `E0801`, and the client generates the same files with and without events.
+/// Events (`spec/events.md`): the server generates a service that publishes or subscribes, and
+/// the client generates the same files with and without events.
 #[test]
-fn java_server_refuses_events_and_the_client_ignores_them() {
-    veld_emit_conformance::check_events_are_refused(&Java).unwrap();
+fn java_server_generates_events_and_the_client_ignores_them() {
+    veld_emit_conformance::check_events_are_generated(&Java).unwrap();
     veld_emit_conformance::check_events_are_ignored_by_clients(&Java).unwrap();
 }
 
