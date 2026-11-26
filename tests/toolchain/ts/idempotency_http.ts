@@ -100,8 +100,15 @@ const loaders: srv.BookingsFactLoaders = {
 function hooks(store: srv.veld.IdempotencyStore): srv.BookingsHooks {
   return {
     facts: loaders,
-    idempotency: { store, caller: (principal) => String((principal as { name: string }).name) },
-    auth: { bearer: async (token) => (token === 'alice' || token === 'bob' ? { name: token } : null) },
+    idempotency: {
+      store,
+      caller: (principal) => {
+        const name = String((principal as { name: string }).name);
+        if (name === 'carol') throw new Error('the caller hook failed');
+        return name;
+      },
+    },
+    auth: { bearer: async (token) => (token === 'alice' || token === 'bob' || token === 'carol' ? { name: token } : null) },
     onError: (err) => errors.push(err),
   };
 }
@@ -389,6 +396,16 @@ async function main(): Promise<void> {
   assert.match(scopes[1] ?? '', /\nbob$/);
   assert.equal(scopes[0], scopes[2]);
 
+  // A failing `caller` hook is a failing `begin` (spec/rules.md 11.12): 500 Internal, reported to
+  // onError, the handler does not run and the store is not asked.
+  reset();
+  spy.log.length = 0;
+  const failing = await mine('carol', 't-9');
+  assert.equal(failing.status, 500);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(spy.log, []);
+  assert.equal(errors.length, 1);
+
   // An answer without a body (204) is stored and replayed too.
   reset();
   const del = (key: string): Promise<Answer> => send(url, 'DELETE', `/bookings/${ID}`, { headers: { 'idempotency-key': key } });
@@ -422,7 +439,14 @@ async function main(): Promise<void> {
   const unsaved = await book(url, 'f-2', 2);
   assert.equal(unsaved.status, 201, 'the answer is sent as it is');
   assert.equal(errors.length, 2);
+  // A `complete` that failed must not leave the entry running: the key was released, so the same
+  // key runs again instead of answering `409 still running`.
+  assert.deepEqual(spy.log.filter((e) => e.key === 'f-2').map((e) => e.op), ['begin', 'complete', 'release']);
   spy.failComplete = false;
+  const again = await book(url, 'f-2', 2);
+  assert.equal(again.status, 201, 'the released key is free');
+  assert.notEqual(again.replay, 'true');
+  assert.deepEqual(calls, ['book', 'book']);
   spy.failRelease = true;
   failures = 1;
   const unreleased = await book(url, 'f-3', 7);
