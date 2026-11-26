@@ -43,6 +43,8 @@ pub struct Tree<'a> {
     tenant_events: bool,
     audit: bool,
     capture: bool,
+    messages: bool,
+    messages_server: bool,
     limits: bool,
     limits_server: bool,
     events: bool,
@@ -101,6 +103,9 @@ impl<'a> Tree<'a> {
         let timeouts = endpoints().any(|ep| ep.timeout_ms.is_some());
         let flags = uses_flags(ir, &set, &services);
         let limits = endpoints().any(|ep| ep.limit.is_some());
+        let messages = services
+            .iter()
+            .any(|s| !ir.package(ir.service(*s).package).messages.is_empty());
         Self {
             ir,
             root: root.to_string(),
@@ -127,6 +132,8 @@ impl<'a> Tree<'a> {
             tenant_events: false,
             audit: false,
             capture: false,
+            messages,
+            messages_server: false,
             limits,
             limits_server: false,
             events: false,
@@ -167,6 +174,7 @@ impl<'a> Tree<'a> {
             })
         });
         self.platform_p1();
+        self.messages_server = self.messages;
         self.tenant_fields = set.iter().any(|id| ir.decl(*id).tenant_field().is_some());
         self.tenant_events = ir
             .events_of(&self.services)
@@ -268,6 +276,21 @@ impl<'a> Tree<'a> {
         self.capture
     }
 
+    /// Whether a member the tree's services belong to has message catalogs (`spec/platform.md`
+    /// section 22): its catalogs are emitted as data (`messages.ts`). The regions of the runtime
+    /// that use them (`Gates::messages`) need rules too, because only a violation has a message key.
+    #[must_use]
+    pub fn uses_messages(&self) -> bool {
+        self.messages
+    }
+
+    /// Whether a server tree has message catalogs: the language of each request is chosen and its
+    /// messages are written in it (`Gates::messages_server`).
+    #[must_use]
+    pub fn uses_messages_server(&self) -> bool {
+        self.messages_server
+    }
+
     /// Whether an endpoint of the tree has a `@limit` (`spec/platform.md` section 5): the client
     /// waits and sends again on `429`.
     #[must_use]
@@ -364,6 +387,8 @@ impl<'a> Tree<'a> {
             tenant_events: self.tenant_events,
             audit: self.audit,
             capture: self.capture,
+            messages: self.messages && self.rules,
+            messages_server: self.messages_server && self.rules,
             limits: self.limits,
             limits_server: self.limits_server,
             runtime_config: self.runtime_config,

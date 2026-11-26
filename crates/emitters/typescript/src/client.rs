@@ -306,6 +306,13 @@ fn write_constructor(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service
         w.line(format!("service: {},", ts_str(&svc.name)));
         w.line(format!("digest: {},", ts_str(digest)));
     }
+    // The violations of the local check carry the key of their message (`spec/platform.md` 22).
+    if fc.tree.uses_rules()
+        && let Some(module) = crate::messages::client_keys(fc.tree, svc.package)
+    {
+        fc.import(&module, "messageKeys", true);
+        w.line("keys: messageKeys,");
+    }
     w.close_with("});");
     w.close();
 }

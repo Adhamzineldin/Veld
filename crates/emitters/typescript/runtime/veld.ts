@@ -5,6 +5,14 @@
 import type { RuleMode, Violation } from './rules';
 export type { EvalErrorKind, RuleMode, Violation } from './rules';
 // #endif
+// #if messages
+declare module './rules' {
+  interface Violation {
+    /** The key of the message in the catalogs of the member (spec/platform.md section 22): the same for every violation of one rule. */
+    messageKey?: string;
+  }
+}
+// #endif
 // #if rollout
 import { beginAudit, endAudit, stashAudited, takeStashed } from './rollout';
 // #endif
@@ -861,10 +869,90 @@ function decodeViolations(raw: unknown): Violation[] | undefined {
     };
     const e = x['error'];
     if (e === 'overflow' || e === 'division_by_zero' || e === 'non_finite') v.error = e;
+    // #endif
+    // #if messages
+    if (typeof x['messageKey'] === 'string') v.messageKey = x['messageKey'];
+    // #endif
+    // #if rules
     out.push(v);
   }
   return out;
 }
+
+// #endif
+// #if messages
+/** The message catalogs of a member: language tag, then message key, then text (spec/platform.md section 22). */
+export type MessageCatalogs = Readonly<Record<string, Readonly<Record<string, string>>>>;
+
+const RE_LANGUAGE_RANGE = /^[a-z]{1,8}(?:-[a-z0-9]{1,8})*$/;
+const RE_QUALITY = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
+const lower = (s: string): string => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+
+/** The `q` of the parameters of one entry of `Accept-Language`: 1 when there is none, `undefined` when it is not a number from 0 to 1. */
+function qualityOf(params: readonly string[]): number | undefined {
+  for (const raw of params) {
+    const at = raw.indexOf('=');
+    if (at < 0 || lower(raw.slice(0, at).trim()) !== 'q') continue;
+    const text = raw.slice(at + 1).trim();
+    if (!RE_QUALITY.test(text)) return undefined;
+    const q = Number(text);
+    return q >= 0 && q <= 1 ? q : undefined;
+  }
+  return 1;
+}
+
+/**
+ * The language tags of an `Accept-Language` value, lower case, best first. An entry is dropped when
+ * its tag is `*`, when its quality is `0` or is not a number from 0 to 1, or when its tag is not a
+ * language range; the rest keep the header's order among entries of one quality.
+ */
+export function acceptedLanguages(header: string): string[] {
+  const entries: { q: number; tag: string }[] = [];
+  for (const item of header.split(',')) {
+    const parts = item.split(';');
+    const tag = lower((parts.shift() ?? '').trim());
+    const q = qualityOf(parts);
+    if (q !== undefined && q > 0 && RE_LANGUAGE_RANGE.test(tag)) entries.push({ q, tag });
+  }
+  return entries.sort((a, b) => b.q - a.q).map((e) => e.tag);
+}
+
+/**
+ * The first language of `header`, in order of preference, that `available` has a catalog for. A tag
+ * matches the catalog of the same tag and then the one of its primary language (`pt-br` matches
+ * `pt-br`, then `pt`); `pt` does not match a catalog `pt-br`. `undefined` for no header, a header
+ * with nothing usable and a header that matches nothing: the contract's text is used.
+ */
+export function chooseLanguage(header: string | null | undefined, available: readonly string[]): string | undefined {
+  if (header === undefined || header === null) return undefined;
+  for (const tag of acceptedLanguages(header)) {
+    const primary = tag.split('-')[0] ?? tag;
+    for (const candidate of [tag, primary]) if (available.includes(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+/** The text of `key` in the catalog of `language`, and that language; the `fallback` and no language when the catalog lacks the key. */
+export function catalogText(
+  catalogs: MessageCatalogs,
+  language: string | undefined,
+  key: string,
+  fallback: string,
+): { text: string; language?: string } {
+  const text = language === undefined ? undefined : catalogs[language]?.[key];
+  return text === undefined || language === undefined ? { text: fallback } : { text, language };
+}
+
+/** The `messageKey` of the violations of a client's local check. */
+function keyLocal(keys: Readonly<Record<string, string>> | undefined, out: Violation[]): void {
+  if (keys === undefined) return;
+  for (const v of out) {
+    const key = keys[v.rule];
+    if (key !== undefined && v.messageKey === undefined) v.messageKey = key;
+  }
+}
+// #endif
+// #if rules
 
 function nowMicros(): number {
   const perf = (globalThis as { performance?: { now(): number } }).performance;
@@ -881,6 +969,9 @@ function ruleEvent(
 ): void {
   if (!hooks.onRuleViolation) return;
   const elapsedMicros = Math.max(0, Math.round(nowMicros() - startedMicros));
+  // #endif
+  // #if messages_server
+  violations = violations.map((v) => keyed(hooks, v));
   // #endif
   // #if capture
   const capture = captureOf(hooks);
@@ -993,7 +1084,14 @@ function checkInputRules(ep: EndpointSpec, bound: Bound, std: StdSigs, hooks: Ha
     const failed = bound.derived ?? [];
     if (failed.length === 0) return null;
     ruleEvent(hooks, ep, 'input', 'rejected', failed, nowMicros());
+// #endif
+// #if derived_not_messages
     return rulesProblem(ep, failed, std);
+// #endif
+// #if derived_messages
+    return answerRules(hooks, ep, failed, std);
+// #endif
+// #if derived
   }
 // #endif
 // #if rules
@@ -1019,7 +1117,14 @@ function checkInputRules(ep: EndpointSpec, bound: Bound, std: StdSigs, hooks: Ha
   // #if rules
   if (violations.length === 0) return null;
   ruleEvent(hooks, ep, 'input', 'rejected', violations, started);
+// #endif
+// #if rules_not_messages
   return rulesProblem(ep, violations, std);
+// #endif
+// #if messages_server
+  return answerRules(hooks, ep, violations, std);
+// #endif
+// #if rules
 }
 
 /** A message a client sends on a WebSocket is an input: the invariants of its decoded value. */
@@ -1073,7 +1178,14 @@ function checkMessageRules(
   // #if rules
   if (violations.length === 0) return null;
   ruleEvent(hooks, ep, 'input', 'rejected', violations, started);
+// #endif
+// #if rules_not_messages
   return rulesProblem(ep, violations, std);
+// #endif
+// #if messages_server
+  return answerRules(hooks, ep, violations, std);
+// #endif
+// #if rules
 }
 
 const REACHES_RULES = new WeakMap<object, boolean>();
@@ -1541,7 +1653,14 @@ async function prepare(
     }
     const violation = stepViolation(step, verdict);
     ruleEvent(hooks, ep, 'input', 'rejected', [violation], started);
+    // #endif
+    // #if endpoint_not_messages
     return rulesProblem(ep, [violation], std);
+    // #endif
+    // #if endpoint_messages
+    return answerRules(hooks, ep, [violation], std);
+    // #endif
+    // #if endpoint_rules
   }
   // #endif
   // #if flags_endpoint_rules
@@ -1672,6 +1791,12 @@ function refusal(
 export interface PolicyVerdict {
   permitted: boolean;
   message?: string;
+  // #endif
+  // #if policies_messages
+  /** The message key of the `forbid` that denied, when it has a message (spec/platform.md section 22). */
+  key?: string;
+  // #endif
+  // #if policies
 }
 
 /** A `permit` clause: a clause that cannot be evaluated does not permit. */
@@ -1768,11 +1893,28 @@ function checkAllows(
       verdict = { permitted: false };
     }
     if (verdict.permitted) continue;
+    // #endif
+    // #if policies_not_messages
     const message = verdict.message ?? 'not permitted';
     const violation: Violation = { rule: step.id, path: 'request', fields: [...step.fields], message };
     return refusal(ep, ctx, std, hooks, { sig: step.otherwise.sig, data: { message }, violation, started });
+    // #endif
+    // #if policies_messages
+    const denied = denial(hooks, step, verdict);
+    return refusal(ep, ctx, std, hooks, { sig: step.otherwise.sig, data: { message: denied.message }, violation: denied, started });
+    // #endif
+    // #if policies
   }
   return null;
+}
+// #endif
+// #if policies_messages
+
+/** The violation of a denial, in the language of the request: the key of the `forbid` that was true when it has a message, else the fixed one. */
+function denial(hooks: HandlerHooks, step: AllowStep, verdict: PolicyVerdict): Violation {
+  const base: Violation = { rule: step.id, path: 'request', fields: [...step.fields], message: verdict.message ?? 'not permitted' };
+  const key = verdict.message !== undefined && verdict.key !== undefined ? verdict.key : hooks.messages?.fixed.notPermitted;
+  return localizeViolation(hooks, base, key);
 }
 // #endif
 // #if transitions
@@ -2020,7 +2162,18 @@ function checkDue(
     due = false;
   }
   if (due) return null;
+  // #endif
+  // #if timed_not_messages
   const violation: Violation = { rule: step.id, path: 'request', fields: [], message: 'violates rule transition: not due' };
+  // #endif
+  // #if timed_messages
+  const violation = localizeViolation(
+    hooks,
+    { rule: step.id, path: 'request', fields: [], message: 'violates rule transition: not due' },
+    hooks.messages?.fixed.transitionNotDue,
+  );
+  // #endif
+  // #if timed
   const data = { field: step.field, from: step.current(scope.f as never), to: step.to };
   return refusal(ep, ctx, std, hooks, { sig: step.otherwise.sig, data, violation, started });
 }
@@ -2464,6 +2617,12 @@ export interface HandlerHooks {
   /** What the capture of the request that is running has so far: set by the router core, never by the application. */
   captureState?: CaptureState;
   // #endif
+  // #if messages_server
+  /** The catalogs and keys of the member: set by `create<Service>Handler`, never by the application. */
+  messages?: MessageSupport;
+  /** The language of the request that is running: set by the router core. */
+  messageState?: MessageState;
+  // #endif
   // #if limits_server
   /** Counts the calls of the endpoints with a `@limit`. Default: a memory limiter, which counts per process and says so once (spec/platform.md section 5). */
   limiter?: Limiter;
@@ -2865,7 +3024,17 @@ function failure(err: unknown, ep: ServerEndpoint, ctx: RequestContext, std: Std
       const data = toWire(declared.schema, err.data);
       // #endif
       // #if endpoint_rules
+      // #endif
+      // #if endpoint_not_messages
       return problemWithViolations(declared.sig, err.title, declared.status, ep.sig, data, err.violations);
+      // #endif
+      // #if endpoint_messages
+      return withContentLanguage(
+        hooks,
+        problemWithViolations(declared.sig, err.title, declared.status, ep.sig, data, err.violations.map((v) => localizeViolation(hooks, v))),
+      );
+      // #endif
+      // #if endpoint_rules
     }
     // #endif
     // #if visibility
@@ -3045,6 +3214,9 @@ async function runCore(
   // #endif
   // #if capture
   hooks = withCapture(hooks, ep, ctx);
+  // #endif
+  // #if messages_server
+  hooks = withMessages(hooks, ctx);
   // #endif
   try {
     const bound = await guard(r, m, req, ctx, std, hooks, false);
@@ -3865,6 +4037,75 @@ function captureOf(hooks: HandlerHooks): ViolationCapture | undefined {
     }
     return undefined;
   }
+}
+// #endif
+// #if messages_server
+
+// ---------------------------------------------------------------------------
+// Message catalogs (spec/platform.md section 22)
+// ---------------------------------------------------------------------------
+
+/** What `create<Service>Handler` takes from `messages.ts`. */
+export interface MessageSupport {
+  catalogs: MessageCatalogs;
+  /** The `messageKey` of each rule id. */
+  keys: Readonly<Record<string, string>>;
+  /** The keys of the texts the runtime writes itself. */
+  fixed: {
+    readonly transition: string;
+    readonly transitionNotDue: string;
+    readonly version: string;
+    readonly notPermitted: string;
+  };
+}
+
+/** The language of the request that is running, and the language of the catalog a message of its answer came from. */
+export interface MessageState {
+  language?: string;
+  used?: string;
+}
+
+/** Reads `Accept-Language` once per request. */
+function withMessages(hooks: HandlerHooks, ctx: RequestContext): HandlerHooks {
+  const support = hooks.messages;
+  if (support === undefined) return hooks;
+  const header = ctx.headers['accept-language'];
+  const language = chooseLanguage(Array.isArray(header) ? header.join(',') : header, Object.keys(support.catalogs));
+  return { ...hooks, messageState: language === undefined ? {} : { language } };
+}
+
+/** The violation with its `messageKey` and its text as the contract wrote it: what the hook of the application hears. */
+function keyed(hooks: HandlerHooks, v: Violation): Violation {
+  const key = hooks.messages?.keys[v.rule];
+  return v.messageKey !== undefined || key === undefined ? v : { ...v, messageKey: key };
+}
+
+/**
+ * The violation as the answer carries it: its `messageKey`, and its text in the language of the
+ * request when the catalog of that language has the key. An evaluation error is not translated.
+ * `key` is the key of a text the runtime writes itself, which is not the one of the rule's id.
+ */
+function localizeViolation(hooks: HandlerHooks, v: Violation, key?: string): Violation {
+  const support = hooks.messages;
+  if (support === undefined || v.messageKey !== undefined) return v;
+  const messageKey = key ?? support.keys[v.rule];
+  if (messageKey === undefined) return v;
+  const state = hooks.messageState;
+  if (v.error !== undefined || state === undefined) return { ...v, messageKey };
+  const found = catalogText(support.catalogs, state.language, messageKey, v.message);
+  if (found.language !== undefined) state.used = found.language;
+  return { ...v, message: found.text, messageKey };
+}
+
+/** `Content-Language`, when a message of the answer came from a catalog. */
+function withContentLanguage(hooks: HandlerHooks, res: VeldResponse): VeldResponse {
+  const used = hooks.messageState?.used;
+  return used === undefined ? res : { ...res, headers: { ...res.headers, 'content-language': used } };
+}
+
+/** The `422` of rule violations, in the language of the request. */
+function answerRules(hooks: HandlerHooks, ep: EndpointSpec, violations: readonly Violation[], std: StdSigs): VeldResponse {
+  return withContentLanguage(hooks, rulesProblem(ep, violations.map((v) => localizeViolation(hooks, v)), std));
 }
 // #endif
 // #if limits_server
@@ -4987,7 +5228,14 @@ async function runWs(
     const failed: Violation[] = [];
     const message = deriveNode(incomingSchema, fromWire(incomingSchema, raw, { request: true }), 'message', failed, false);
     // With request validation on, `checkMessageRules` has refused a failure already.
+    // #endif
+    // #if derived_not_messages
     if (failed.length > 0) return fail(rulesProblem(ep, failed, std));
+    // #endif
+    // #if derived_messages
+    if (failed.length > 0) return fail(answerRules(hooks, ep, failed, std));
+    // #endif
+    // #if derived
     inbox.push(message);
     // #endif
   };
@@ -5314,6 +5562,10 @@ export interface ClientDefaults {
   /** The rules digest of the service this client was generated from (spec/rules.md section 9.7). */
   digest?: string;
   // #endif
+  // #if messages
+  /** The message key of each rule id, from `messages.ts` (spec/platform.md section 22). */
+  keys?: Readonly<Record<string, string>>;
+  // #endif
 }
 
 // #if not_runtime_config
@@ -5570,6 +5822,11 @@ export class ClientCore {
 
   private rejectLocally(ep: EndpointSpec, out: Violation[]): void {
     if (out.length === 0 || !this.rulesTrusted()) return;
+    // #endif
+    // #if messages
+    keyLocal(this.defaults.keys, out);
+    // #endif
+    // #if rules
     const err = this.defaults.validation(ruleIssues(out));
     err.violations = out;
     err.local = true;

@@ -229,7 +229,7 @@ fn write_due_runner(
     w.close_with("];");
     let std = std_sigs(fc);
     let run = fc.rt("runDueMoves");
-    let hooks = handler_hooks(fc.tree.validate, runtime);
+    let hooks = handler_hooks(fc, runtime);
     w.line(format!(
         "return {run}(endpoints, {std}, {hooks}, targets, options);"
     ));
@@ -766,14 +766,15 @@ fn write_factory(
     }
     let std = std_sigs(fc);
     let create = fc.rt("createHandler");
-    let hooks = handler_hooks(fc.tree.validate, runtime);
+    let hooks = handler_hooks(fc, runtime);
     w.line(format!("return {create}(endpoints, {std}, {hooks});"));
     w.close();
 }
 
 /// The hooks `createHandler` receives: the hooks, with `validateRequests: false` when the target
 /// skips request validation and `rules.output` from the checked runtime config.
-fn handler_hooks(validate: bool, runtime: Option<&RuntimeModel>) -> String {
+fn handler_hooks(fc: &mut FileCtx<'_, '_>, runtime: Option<&RuntimeModel>) -> String {
+    let validate = fc.tree.validate;
     let mut parts = Vec::new();
     if !validate {
         parts.push("validateRequests: false".to_string());
@@ -788,6 +789,17 @@ fn handler_hooks(validate: bool, runtime: Option<&RuntimeModel>) -> String {
         parts.push(format!(
             "rules: {{ output: config.rules?.output{default} }}"
         ));
+    }
+    // The catalogs and the keys of the member, from `messages.ts` (`spec/platform.md` section 22).
+    if fc.tree.uses_messages_server() && fc.tree.uses_rules() {
+        let module = veld_emit_typescript::messages::module(fc.tree, fc.tree.packages()[0]);
+        for name in ["fixedMessageKeys", "messageKeys", "messages"] {
+            fc.import(&module, name, true);
+        }
+        parts.push(
+            "messages: { catalogs: messages, keys: messageKeys, fixed: fixedMessageKeys }"
+                .to_string(),
+        );
     }
     if parts.len() == 1 {
         return "hooks".to_string();

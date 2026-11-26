@@ -104,6 +104,12 @@ pub struct Gates {
     /// regions, and the redaction the audit log shares (`redact`). It needs the per-request state
     /// of the platform (`platform`), because the capture's `now` is the clock `prepare` reads.
     pub capture: bool,
+    /// A member with message catalogs and rules (`spec/platform.md` section 22): `messageKey` on a
+    /// violation, the language helpers and the client's keys.
+    pub messages: bool,
+    /// The same in a server: the language of each request, the translated messages and
+    /// `Content-Language`.
+    pub messages_server: bool,
     /// An endpoint with a `@limit` (`spec/platform.md` section 5): the client's wait on `429`.
     pub limits: bool,
     /// An endpoint of a server with a `@limit`: the limiter and its hooks.
@@ -133,7 +139,8 @@ impl Gates {
                 || self.derived
                 || self.visibility
                 || self.tenancy
-                || self.capture,
+                || self.capture
+                || self.messages,
             endpoint_rules,
             transitions,
             ..self
@@ -158,6 +165,8 @@ impl Gates {
             tenant_events: self.tenant_events || other.tenant_events,
             audit: self.audit || other.audit,
             capture: self.capture || other.capture,
+            messages: self.messages || other.messages,
+            messages_server: self.messages_server || other.messages_server,
             limits: self.limits || other.limits,
             limits_server: self.limits_server || other.limits_server,
             policies: self.policies || other.policies,
@@ -243,6 +252,18 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "redact" => g.audit || g.capture,
         "rules_not_capture" => g.rules && !g.capture,
         "capture_facts" => g.endpoint_rules && g.capture,
+        // Message catalogs (`spec/platform.md` section 22) and the lines a build without them keeps.
+        "messages" => g.messages,
+        "messages_server" => g.messages_server,
+        "rules_not_messages" => g.rules && !g.messages_server,
+        "derived_messages" => g.derived && g.messages_server,
+        "derived_not_messages" => g.derived && !g.messages_server,
+        "endpoint_messages" => g.endpoint_rules && g.messages_server,
+        "endpoint_not_messages" => g.endpoint_rules && !g.messages_server,
+        "policies_messages" => g.policies && g.messages_server,
+        "policies_not_messages" => g.policies && !g.messages_server,
+        "timed_messages" => g.timed && g.messages_server,
+        "timed_not_messages" => g.timed && !g.messages_server,
         "limits" => g.limits,
         "limits_server" => g.limits_server,
         "not_limits" => !g.limits,
@@ -927,6 +948,98 @@ mod tests {
         // The line of the event a build without captures keeps.
         assert!(plain.contains("hooks.onRuleViolation({ rule: violation.rule"));
         assert!(!capture.contains("hooks.onRuleViolation({ rule: violation.rule"));
+    }
+
+    /// Message catalogs (`spec/platform.md` section 22): the regions pair up next to every other
+    /// feature, and nothing else sees their words.
+    #[test]
+    fn the_message_regions_pair_up_in_every_combination() {
+        for bits in 0u32..(1 << 12) {
+            let b = |i: u32| bits & (1 << i) != 0;
+            let gates = Gates {
+                messages: b(0) || b(1),
+                messages_server: b(1),
+                rules: b(2),
+                endpoint_rules: b(3),
+                transitions: b(4),
+                policies: b(5),
+                timed: b(6),
+                derived: b(7),
+                capture: b(8),
+                audit: b(9),
+                version: b(10),
+                flags: b(11),
+                ..Gates::default()
+            };
+            assert!(source_gated(gates).is_ok(), "{gates:?}");
+        }
+    }
+
+    #[test]
+    fn catalogs_add_their_regions_and_nothing_else_sees_them() {
+        let words = [
+            "MessageCatalogs",
+            "acceptedLanguages",
+            "chooseLanguage",
+            "catalogText",
+            "keyLocal",
+            "messageKey",
+        ];
+        let server_words = [
+            "MessageSupport",
+            "MessageState",
+            "withMessages",
+            "localizeViolation",
+            "withContentLanguage",
+            "answerRules",
+            "content-language",
+        ];
+        let everything_else = source_gated(Gates {
+            rules: true,
+            endpoint_rules: true,
+            transitions: true,
+            policies: true,
+            timed: true,
+            derived: true,
+            capture: true,
+            audit: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words.iter().chain(&server_words) {
+            assert!(
+                !everything_else.contains(word),
+                "`{word}` leaked into the runtime"
+            );
+        }
+        // A client: the language helpers and the keys of the local check, not the server's.
+        let client = source_gated(Gates {
+            messages: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(client.contains(word), "`{word}` is missing from a client");
+        }
+        for word in server_words {
+            assert!(!client.contains(word), "`{word}` is in a client");
+        }
+        // A server with policies and timed moves has the denial and the not-due key.
+        let server = source_gated(Gates {
+            messages: true,
+            messages_server: true,
+            policies: true,
+            timed: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in server_words {
+            assert!(server.contains(word), "`{word}` is missing from a server");
+        }
+        assert!(server.contains("function denial(") && server.contains("transitionNotDue"));
+        // Without catalogs the lines of the answer are the ones of before.
+        assert!(everything_else.contains("return rulesProblem(ep, violations, std);"));
+        assert!(!server.contains("return rulesProblem(ep, violations, std);"));
     }
 
     #[test]

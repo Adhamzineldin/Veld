@@ -238,6 +238,7 @@ fn write_clauses(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, policy: &Policy, 
     let mut printer = EndpointPrinter::new(fc.tree.ir, &ns, scope);
     let (permits, forbids) = (fc.rt("permits"), fc.rt("forbids"));
     let mut permit_code = Vec::new();
+    let mut forbids_seen = 0;
     for clause in &policy.clauses {
         let code = printer.print(&clause.expr);
         // A flagged clause exists only while its flag is on; a failing provider keeps a `forbid`
@@ -253,14 +254,23 @@ fn write_clauses(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, policy: &Policy, 
                 None => format!("{permits}(() => {code})"),
             }),
             PolicyEffect::Forbid => {
+                forbids_seen += 1;
                 let test = match on(true) {
                     Some(on) => format!("{on} && {forbids}(() => {code})"),
                     None => format!("{forbids}(() => {code})"),
                 };
-                let message = clause
+                let mut message = clause
                     .message
                     .as_deref()
                     .map_or_else(String::new, |m| format!(", message: {}", ts_str(m)));
+                // A catalog translates the message of a `forbid` by the key of that clause
+                // (`spec/platform.md` section 22): the verdict carries it.
+                if clause.message.is_some()
+                    && fc.tree.uses_messages_server()
+                    && let Some(key) = fc.tree.ir.violation_key(&policy.id, Some(forbids_seen))
+                {
+                    message.push_str(&format!(", key: {}", ts_str(&key)));
+                }
                 // Every `forbid` is asked first, in source order: the first one that is true ends
                 // the verdict with its message.
                 w.line(format!(

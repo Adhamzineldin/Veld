@@ -91,6 +91,7 @@ impl Generator for Node {
             .with(veld_ir::Feature::Tenancy)
             .with(veld_ir::Feature::Audit)
             .with(veld_ir::Feature::Limits)
+            .with(veld_ir::Feature::Messages)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
@@ -127,6 +128,7 @@ impl Generator for Node {
         let mut modules = models::emit(&mut files, &tree)?;
         modules.extend(veld_emit_typescript::policy::emit(&mut files, &tree)?);
         modules.extend(server::emit(&mut files, &tree, runtime_model.as_ref())?);
+        veld_emit_typescript::messages::emit(&mut files, &tree)?;
         modules.extend(events::emit(&mut files, &tree)?);
         modules.extend(brokers::emit(&mut files, &brokers)?);
         modules.push("server/adapters".to_string());
@@ -152,6 +154,7 @@ impl Generator for Node {
         testing::emit(&mut files, &tree, opts.testing == Some(true))?;
         modules.sort();
         let mut extra = extra;
+        extra.extend(veld_emit_typescript::messages::exports(&tree, ""));
         if tree.uses_events() {
             extra.push("export * as veldEvents from './runtime/events';".to_string());
         }
@@ -213,7 +216,8 @@ fn emit_consumed(
         gates = gates.union(tree.gates());
         let modules = emit_client_tree(files, &tree)?;
         entries.extend(clients::entries(&tree));
-        barrel::write(files, &root, &modules, &[], false)?;
+        let extra = veld_emit_typescript::messages::exports(&tree, &root);
+        barrel::write(files, &root, &modules, &extra, false)?;
         let ns = naming::escape(Lang::Ts, &naming::camel(&svc.name));
         lines.push(format!("export * as {ns} from './clients/{dir}/index';"));
     }

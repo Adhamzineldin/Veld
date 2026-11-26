@@ -14,6 +14,7 @@ pub mod derived;
 pub mod expr;
 pub mod frameworks;
 pub mod machine;
+pub mod messages;
 pub mod models;
 pub mod package;
 pub mod platform;
@@ -164,6 +165,7 @@ pub fn emit_client_tree(
     let mut modules = models::emit(files, tree)?;
     modules.extend(policy::emit(files, tree)?);
     modules.extend(client::emit(files, tree)?);
+    messages::emit(files, tree)?;
     modules.sort();
     Ok(modules)
 }
@@ -203,6 +205,7 @@ impl Generator for TypeScript {
             .with(veld_ir::Feature::Slo)
             .with(veld_ir::Feature::Tenancy)
             .with(veld_ir::Feature::Limits)
+            .with(veld_ir::Feature::Messages)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
@@ -245,7 +248,13 @@ impl Generator for TypeScript {
                 )?;
             }
         }
-        barrel::write(&mut files, "", &modules, &[], true)?;
+        barrel::write(
+            &mut files,
+            "",
+            &modules,
+            &messages::exports(&tree, ""),
+            true,
+        )?;
         package::emit(
             &mut files,
             opts.package_name.as_deref(),

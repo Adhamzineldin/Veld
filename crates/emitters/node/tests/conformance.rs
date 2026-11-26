@@ -201,13 +201,12 @@ fn node_and_typescript_generate_limits() {
     veld_emit_conformance::check_limits_are_generated(&TypeScript).unwrap();
 }
 
-/// Message catalogs (`spec/platform.md` section 22): until a generator implements them, the Node
-/// server and the TypeScript client both refuse a member that has catalogs with `E0801`, at the
-/// first catalog file, and make no files.
+/// Message catalogs (`spec/platform.md` section 22): the Node server and the TypeScript client
+/// both declare `messages` and generate a member that has catalogs.
 #[test]
-fn node_and_typescript_refuse_message_catalogs() {
-    veld_emit_conformance::check_messages_is_refused(&Node).unwrap();
-    veld_emit_conformance::check_messages_is_refused(&TypeScript).unwrap();
+fn node_and_typescript_generate_message_catalogs() {
+    veld_emit_conformance::check_messages_are_generated(&Node).unwrap();
+    veld_emit_conformance::check_messages_are_generated(&TypeScript).unwrap();
 }
 
 /// Retention (`spec/platform.md` section 23): until a generator implements it, the Node server
