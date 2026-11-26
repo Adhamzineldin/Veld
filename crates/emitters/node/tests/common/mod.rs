@@ -146,6 +146,25 @@ pub fn gen_server_with(
     gen_server_fw(ir, service, consumes, options, None)
 }
 
+/// Server files for several services of one package, with target options.
+pub fn gen_servers_with(
+    ir: &Ir,
+    services: &[&str],
+    consumes: &[&str],
+    options: &serde_json::Value,
+) -> FileSet {
+    let consumed = consumes.iter().map(|n| service_id(ir, n)).collect();
+    run(
+        &Node,
+        ir,
+        Role::Server,
+        services.iter().map(|n| service_id(ir, n)).collect(),
+        consumed,
+        options,
+        None,
+    )
+}
+
 /// Server files for `service`, with clients for `consumes`, target options and a framework.
 pub fn gen_server_fw(
     ir: &Ir,

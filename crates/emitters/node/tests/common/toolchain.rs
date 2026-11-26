@@ -13,7 +13,7 @@ use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
 use veld_ir::{Ir, PackageKind};
 use veld_project::output::{WriteOptions, write};
 
-use super::{TARGETS, gen_client_with, gen_server_with, repo_root, typescript_option};
+use super::{TARGETS, gen_client_with, gen_servers_with, repo_root, typescript_option};
 
 /// Compiles the contract at `path` (relative to the repository root) as the package `bookings`.
 pub fn compile_path(path: &str) -> Ir {
@@ -109,21 +109,42 @@ pub fn build_service(
     drivers: &[&str],
     edition: &str,
 ) {
+    build_services(work, tsc, ir, &[service], drivers, edition, &json!({}));
+}
+
+/// Like [`build_service`] for several services of one package at once, with more target options
+/// (`extra` is merged over `typescript` and `testing`; the client takes its `validate` only).
+pub fn build_services(
+    work: &Path,
+    tsc: &Path,
+    ir: &Ir,
+    services: &[&str],
+    drivers: &[&str],
+    edition: &str,
+    extra: &serde_json::Value,
+) {
     let target = TARGETS
         .iter()
         .find(|(e, _)| *e == edition)
         .map_or("ES2020", |(_, t)| *t);
     let opts = WriteOptions::default();
-    let option = json!({ "typescript": edition, "testing": true });
+    let mut option = json!({ "typescript": edition, "testing": true });
+    let mut client_option = typescript_option(edition);
+    for (key, value) in extra.as_object().into_iter().flatten() {
+        option[key] = value.clone();
+        if key == "validate" {
+            client_option[key] = value.clone();
+        }
+    }
     write(
         &work.join("server"),
-        &gen_server_with(ir, service, &[], &option),
+        &gen_servers_with(ir, services, &[], &option),
         &opts,
     )
     .unwrap();
     write(
         &work.join("client"),
-        &gen_client_with(ir, &typescript_option(edition)),
+        &gen_client_with(ir, &client_option),
         &opts,
     )
     .unwrap();

@@ -1,0 +1,26 @@
+// A small contract with both annotations (spec/rules.md sections 11.7 to 11.12): the snapshots of the
+// generated server, test handler and client are taken from it.
+
+model Shelf {
+  id: uuid
+  name: string
+  @version
+  revision: long
+}
+
+model Rename { name: string }
+
+service Shelves at "/shelves" {
+  /// Renames a shelf. `If-Match` guards the write; the key makes a retry safe.
+  @idempotent
+  put "/{id}" rename(id: uuid, body: Rename) -> Shelf {
+    fact shelf: Shelf = id
+  }
+
+  /// The key is required and travels in a header of its own.
+  @idempotent(required: true, header: "X-Request-Id")
+  post "/" create(body: Rename) -> 201 Shelf
+
+  /// No guard: the answer carries the `ETag` all the same.
+  get "/{id}" getShelf(id: uuid) -> Shelf | NotFound
+}
