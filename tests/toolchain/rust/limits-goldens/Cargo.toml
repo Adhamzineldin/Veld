@@ -1,0 +1,15 @@
+[package]
+name = "limits-goldens"
+version = "0.0.0"
+edition = "2021"
+publish = false
+default-run = "limits-goldens"
+
+[[bin]]
+name = "limits-goldens"
+path = "src/main.rs"
+
+[dependencies]
+bookings-server = { path = "../server" }
+bookings-client = { path = "../client" }
+serde_json = "1"

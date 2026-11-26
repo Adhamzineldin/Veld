@@ -1,0 +1,18 @@
+[package]
+name = "limits-harness"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "limits-http"
+path = "src/bin/http.rs"
+
+[[bin]]
+name = "limits-client"
+path = "src/bin/client.rs"
+
+[dependencies]
+bookings-server = { path = "../server" }
+bookings-client = { path = "../client" }
+serde_json = "1"
