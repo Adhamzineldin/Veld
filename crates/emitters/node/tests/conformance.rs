@@ -173,12 +173,13 @@ fn node_generates_visibility_and_typescript_is_not_asked() {
     veld_emit_conformance::check_visibility_is_generated(&TypeScript).unwrap();
 }
 
-/// `tenancy` is opt-in (`spec/platform.md` section 3): the Node server refuses a `@tenant` field,
-/// and the TypeScript client one that an endpoint returns (a request does not carry it).
+/// `tenancy` is opt-in (`spec/platform.md` section 3): the Node server declares it and generates
+/// a `@tenant` field that it loads, returns or publishes, and the TypeScript client declares it for
+/// a model that an endpoint returns (a request does not carry the field).
 #[test]
-fn node_and_typescript_refuse_tenancy_as_a_server_only() {
-    veld_emit_conformance::check_tenancy_is_refused(&Node).unwrap();
-    veld_emit_conformance::check_tenancy_is_refused(&TypeScript).unwrap();
+fn node_and_typescript_generate_tenancy() {
+    veld_emit_conformance::check_tenancy_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_tenancy_is_generated(&TypeScript).unwrap();
 }
 
 /// `audit` is opt-in (`spec/platform.md` section 4): the Node server refuses an `@audited`
