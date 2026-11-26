@@ -597,10 +597,15 @@ pub const CODES: &[CodeInfo] = &[
         T,
         "`pii-without-retention`: a model with a `@pii` field and no `@retain`",
     ),
+    l(
+        "L0018",
+        T,
+        "`post-moves-state-as-created`: a `post` whose `transition` answers the fact's own type with the default `201`",
+    ),
 ];
 
 /// Lint rule names by code, in code order. The names are what `[lint]` in `veld.toml` uses.
-pub const LINT_RULES: [(&str, &str); 17] = [
+pub const LINT_RULES: [(&str, &str); 18] = [
     ("L0001", "unused-model"),
     ("L0002", "empty-service"),
     ("L0003", "empty-model"),
@@ -618,6 +623,7 @@ pub const LINT_RULES: [(&str, &str); 17] = [
     ("L0015", "pii-without-auth"),
     ("L0016", "secret-in-output"),
     ("L0017", "pii-without-retention"),
+    ("L0018", "post-moves-state-as-created"),
 ];
 
 /// The entry for `code`, if it is documented.

@@ -1059,6 +1059,10 @@
         "pii-without-retention": {
           "$ref": "#/$defs/lintLevel",
           "description": "Lint rule L0017."
+        },
+        "post-moves-state-as-created": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0018."
         }
       },
       "description": "Lint rule levels (`off`, `warn`, `error`). Every rule defaults to `warn`; `veld check` reports them."

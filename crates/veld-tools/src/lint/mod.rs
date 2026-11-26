@@ -14,6 +14,9 @@ mod auth_tests;
 mod config;
 #[cfg(test)]
 mod event_tests;
+mod moves;
+#[cfg(test)]
+mod moves_tests;
 mod naming;
 mod pii;
 #[cfg(test)]

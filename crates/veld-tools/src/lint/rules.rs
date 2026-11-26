@@ -67,6 +67,7 @@ pub(super) fn run(ir: &Ir, out: &mut Vec<Raw>) {
     missing_description(&services, out);
     auth_required(&services, out);
     super::pii::run(ir, out);
+    super::moves::run(ir, &services, out);
     deprecations(&user, &services, out);
     naming(&user, &services, out);
     file_naming(ir, &user, &services, out);

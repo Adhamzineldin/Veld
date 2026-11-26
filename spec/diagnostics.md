@@ -154,3 +154,4 @@ never reused. The ranges are listed in `language.md` section 9.
 | `L0015` | lint | veld-tools | `pii-without-auth`: an endpoint with no auth can answer with a `@pii` field |
 | `L0016` | lint | veld-tools | `secret-in-output`: a `@secret` field that a response, a declared error, a stream item or an event can contain |
 | `L0017` | lint | veld-tools | `pii-without-retention`: a model with a `@pii` field and no `@retain` |
+| `L0018` | lint | veld-tools | `post-moves-state-as-created`: a `post` whose `transition` answers the fact's own type with the default `201` |
