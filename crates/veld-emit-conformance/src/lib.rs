@@ -16,6 +16,7 @@
 mod event_rollout;
 mod events;
 mod fixtures;
+mod platform_p2;
 mod rollout;
 mod version;
 
@@ -32,6 +33,7 @@ pub use events::{
     compiled_events_contract,
 };
 pub use fixtures::{FIXTURES, Fixture};
+pub use platform_p2::{check_timed_is_refused, compiled_timed_contracts};
 pub use rollout::{
     check_rollout_is_generated, check_rollout_is_refused, compiled_rollout_contracts,
 };

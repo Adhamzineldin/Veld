@@ -112,3 +112,10 @@ fn node_and_typescript_refuse_version_and_idempotency() {
     veld_emit_conformance::check_version_is_refused(&TypeScript).unwrap();
     veld_emit_conformance::check_idempotency_is_refused(&TypeScript).unwrap();
 }
+
+/// `rules_timed` is opt-in: Node and TypeScript refuse a timed edge or a timed transition.
+#[test]
+fn node_and_typescript_refuse_timed_moves() {
+    veld_emit_conformance::check_timed_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_timed_is_refused(&TypeScript).unwrap();
+}

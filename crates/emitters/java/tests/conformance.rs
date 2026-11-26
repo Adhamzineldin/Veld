@@ -130,3 +130,8 @@ fn java_refuses_version_and_idempotency() {
     veld_emit_conformance::check_version_is_refused(&Java).unwrap();
     veld_emit_conformance::check_idempotency_is_refused(&Java).unwrap();
 }
+
+#[test]
+fn java_refuses_timed_moves() {
+    veld_emit_conformance::check_timed_is_refused(&Java).unwrap();
+}
