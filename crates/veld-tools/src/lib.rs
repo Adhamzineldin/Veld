@@ -11,6 +11,7 @@ pub mod gate;
 pub mod lint;
 pub mod openapi;
 pub mod rulebook;
+pub mod runtime_schema;
 
 pub use deps::{DepGraph, DepsFormat, deps, deps_with_owners};
 pub use diff::{
@@ -20,6 +21,7 @@ pub use fmt::format;
 pub use gate::{GateDecision, GatePolicy, GateResult, breaking_gate};
 pub use openapi::openapi;
 pub use rulebook::{NO_RULES, rule_book};
+pub use runtime_schema::runtime_schema;
 
 #[cfg(test)]
 pub(crate) mod testutil {
