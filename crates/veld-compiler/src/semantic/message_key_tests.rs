@@ -171,7 +171,7 @@ fn a_policy_denial_has_the_key_of_its_forbid_or_not_permitted() {
 }
 
 #[test]
-fn the_fixed_keys_are_four_and_sorted() {
+fn the_fixed_keys_are_the_four_of_the_spec() {
     assert_eq!(
         keys::FIXED,
         [

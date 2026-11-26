@@ -29,7 +29,7 @@ pub const TRANSITION_NOT_DUE: &str = "veld/transition-not-due";
 pub const VERSION: &str = "veld/version";
 /// The text of a denial that no `forbid` message explains.
 pub const NOT_PERMITTED: &str = "veld/not-permitted";
-/// The four fixed keys, sorted.
+/// The four fixed keys, in the order of the table above.
 pub const FIXED: [&str; 4] = [TRANSITION, TRANSITION_NOT_DUE, VERSION, NOT_PERMITTED];
 
 /// The key of a rule whose id is `veld:<package>/<rest>@<hex16>`. `None` for a string of another

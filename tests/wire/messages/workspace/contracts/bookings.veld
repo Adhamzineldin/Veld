@@ -37,8 +37,8 @@ policy Manage(user: User, booking: Booking) {
   forbid when user.suspended
     message "A suspended account cannot manage bookings"
   forbid when user.banned
-  forbid when user.suspended && user.banned
-    message "A banned and suspended account"
+  forbid when booking.status == .cancelled
+    message "A cancelled booking cannot be managed"
 }
 
 @auth(bearer)

@@ -199,8 +199,8 @@
     {
       "header": "ar",
       "key": "bookings/Manage.forbid3",
-      "default": "A banned and suspended account",
-      "text": "A banned and suspended account",
+      "default": "A cancelled booking cannot be managed",
+      "text": "A cancelled booking cannot be managed",
       "language": null,
       "note": "a forbid whose catalog entry is missing"
     },
@@ -322,7 +322,7 @@
     "bookings/Bookings.pay.notZero": "The amount must be positive",
     "bookings/Bookings.pay.require": "The amount is too large",
     "bookings/Manage.forbid1": "A suspended account cannot manage bookings",
-    "bookings/Manage.forbid3": "A banned and suspended account"
+    "bookings/Manage.forbid3": "A cancelled booking cannot be managed"
   },
   "fixedKeys": [
     "veld/transition",

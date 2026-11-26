@@ -93,7 +93,14 @@ fn an_inherited_field_keeps_its_flags() {
 fn they_change_no_signature() {
     let with = build("model A { x: string @pii\n y: string @secret }\n");
     let without = build("model A { x: string\n y: string }\n");
-    assert_eq!(with.decls[1].sig, without.decls[1].sig);
+    let sig = |ir: &veld_ir::Ir| {
+        ir.decls
+            .iter()
+            .find(|d| d.name == "A")
+            .map(|d| d.sig.clone())
+    };
+    assert!(sig(&with).is_some());
+    assert_eq!(sig(&with), sig(&without));
 }
 
 #[test]

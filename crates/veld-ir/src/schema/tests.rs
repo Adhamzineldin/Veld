@@ -244,8 +244,8 @@ fn field(name: &str, ty: Type, lit: Literal) -> Field {
         default: Some(lit.clone()),
         readonly: false,
         version: true,
-        pii: false,
-        secret: false,
+        pii: true,
+        secret: true,
         inherited_from: Some(DeclId(0)),
         constraints: Constraints {
             min: Some(0.0),
@@ -490,8 +490,12 @@ fn full_ir() -> Ir {
             id: PackageId(i as u32),
             name: format!("p{i}"),
             kind,
-            messages: Default::default(),
-            messages_dir: None,
+            messages: [(
+                "ar".to_owned(),
+                [("p/m.B.r".to_owned(), "m".to_owned())].into(),
+            )]
+            .into(),
+            messages_dir: Some("messages".into()),
         })
         .collect();
     Ir {

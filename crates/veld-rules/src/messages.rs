@@ -132,7 +132,9 @@ pub fn localize(
 }
 
 /// [`localize`] for a violation of a rule. An evaluation error is not translated: its text is
-/// not the author's, but it has its `messageKey`. `None` when the rule id has no key.
+/// not the author's, but it has its `messageKey`. `None` when the rule id has no key. For the
+/// violation of a policy (`403`), which carries the policy's id, use [`localize_denial`]: this
+/// function does not know which `forbid` denied and answers `veld/not-permitted`.
 #[must_use]
 pub fn localize_violation(
     ir: &Ir,
