@@ -170,8 +170,11 @@ fn error_responses(ir: &Ir, ep: &Endpoint) -> BTreeMap<u16, Value> {
 
 fn responses(ir: &Ir, ep: &Endpoint) -> Value {
     let mut m = Map::new();
-    m.insert(ep.success.status.to_string(), success_response(ir, ep));
-    for (status, r) in error_responses(ir, ep) {
+    let mut success = success_response(ir, ep);
+    super::conditional::success_headers(ir, ep, &mut success);
+    m.insert(ep.success.status.to_string(), success);
+    for (status, mut r) in error_responses(ir, ep) {
+        super::conditional::error_headers(ep, status, &mut r);
         m.insert(status.to_string(), r);
     }
     Value::Object(m)
@@ -193,7 +196,8 @@ pub(super) fn operation(ir: &Ir, svc: &Service, ep: &Endpoint) -> Value {
     if ep.deprecated.is_some() {
         o.insert("deprecated".into(), Value::Bool(true));
     }
-    let params = parameters(ir, ep);
+    let mut params = parameters(ir, ep);
+    params.extend(super::conditional::headers(ep));
     if !params.is_empty() {
         o.insert("parameters".into(), Value::Array(params));
     }
