@@ -114,9 +114,26 @@ Events, channels, `publishes` and `subscribes` are described in `spec/events.md`
 
 A `Rule` (an invariant of a model, an error or an event), an `EndpointRequire` and an `EndpointEnsure` carry `"rollout": "audit"` when the source has `@rollout(audit)` (`spec/rules.md` §17.1). The key is **omitted from the JSON when the rule is enforced**, so the IR of a contract without the annotation is unchanged. The rule id and the signature of the declaration do not depend on it. A service that reaches an audited invariant (of a model or an error its endpoints reach) or has an audited `require` or `ensure` uses the feature `rules_rollout`; so does a service that publishes or subscribes to a channel whose event has an audited invariant, on the event or on a declaration the event reaches (`spec/rules.md` §17.1; a client generates nothing for events and is not concerned); a generator that does not declare it reports `E0801` at the first audited rule. The `rules_digest` of a service and of an event covers only the invariants that are enforced, and a service whose reached invariants are all audited has none.
 
+### 3.5 Versions and idempotent endpoints
+
+`@version` and `@idempotent` (`spec/rules.md` §11.7 to §11.9) add four keys, each **omitted from the JSON when absent**, so the IR of a contract without the annotations is unchanged:
+
+```jsonc
+Field         += { "version": true }                       // the @version field of a model (never false: the key is left out)
+EndpointRules += { "version": { "id": "veld:<pkg>/<Service>.<endpoint>.version@<hex16>",
+                                "fact": "room", "field": "revision", "wire": "rev", "origin": Origin } }
+Endpoint      += { "idempotency": { "header": "Idempotency-Key", "required": false, "caller": true, "origin": Origin } }
+Example       += { "if_match": "any" | { "version": "3" },
+                   "key": { "value": "k-1", "store": "other" | "running" | { "stored": ExampleOutcome } } }
+```
+
+`EndpointRules.version` is the guard: the first fact, in declaration order, whose type is a model with a `version` field (an optional fact too: when it is absent there is nothing to compare). `id` is the rule id of §11.9; `field` and `wire` name the version field of the fact's model. `Idempotency.caller` is true when the endpoint's effective auth is not `none`: the scope of a key then includes the caller. `ExampleKey.store` is left out when the line is the key alone (the store holds nothing for it). The errors of the two features are in `Endpoint.errors` like any other: `PreconditionFailed` (412) with a guard, `Conflict` (409) with `@idempotent`, and `ValidationError` (422) with either, because a malformed header is refused with it. They are not declared by the author and they appear in the IR only when a contract reaches them, like `InvalidTransition`. No declaration signature and no operation signature depends on either annotation.
+
+A service uses the feature `rules_version` when an endpoint has a guard **or** answers with a model that has a `version` field (the `ETag`), and `idempotency` when an endpoint has `idempotency`. Both are opt-in, like `rules_rollout`: `Capabilities::all_except` does not hand them out and a generator adds them with `Capabilities::with` once it implements them; until then it reports `E0801` at the first use (the fact of a guard, the endpoint that only owes an `ETag`, the `@idempotent` line). A guard is not a statement: an endpoint that has only a guard and no other statement does not use `rules_endpoint` on that account (a guard needs a fact, so it always has one).
+
 ## 4. Capabilities
 
-The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`, `rules_rollout`, `events`, …). A feature that changes what a rule means (`rules_rollout`) is opt-in: `Capabilities::all_except` does not hand it out, and a generator adds it with `Capabilities::with` once it implements it. Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.
+The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`, `rules_rollout`, `rules_version`, `idempotency`, `events`, …). A feature that changes what a rule means or what a request does (`rules_rollout`, `rules_version`, `idempotency`) is opt-in: `Capabilities::all_except` does not hand it out, and a generator adds it with `Capabilities::with` once it implements it. Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.
 
 ## 5. Identity signatures (normative)
 

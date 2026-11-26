@@ -42,6 +42,7 @@ fact require else ensure old now result
 flow final emits transition
 policy permit forbid when allow principal
 example given absent returns ok expect
+ifMatch any stored other running
 ```
 
 Disambiguation, with at most three tokens of lookahead:
@@ -53,6 +54,10 @@ Disambiguation, with at most three tokens of lookahead:
 | enum body | `final` IDENT on the same line | a final statement (§10). Otherwise `final` is a variant. |
 | after an expression | `in` or `implies` followed by `:` or `?` | the start of a member named `in` or `implies`, not an operator. |
 | top level | `policy` IDENT `(`, `principal` IDENT, `example` STRING | declarations (§11, §12). |
+| example body | `ifMatch` followed by an integer or a name | the `ifMatch` line (§11.9). Followed by `(` it is the call of an endpoint called `ifMatch`. |
+| example body | `key` followed by a string | the `key` line (§11.9). Otherwise `key` is a name. |
+| after `key` STRING | `stored`, `other` or `running` followed by a name | the word. Followed by `(` or `.` it is a call, so an endpoint may be called `stored`. |
+| after `stored` and its outcome | a value on the line of the outcome | the value of the outcome. A name on the next line is the call. |
 
 The single source of truth for these words is `crates/veld-compiler/src/language.rs` (`CONTEXTUAL_RULE_WORDS`); the editor grammars are generated from it.
 
@@ -590,7 +595,7 @@ The code is `L0014`: `L0005` is `missing-description` since v2.0 and codes are n
 
 ### 11.9 Version and idempotency: the exact behaviour, examples and the test handler
 
-**Status: draft, not implemented.** Sections 11.7 and 11.8 say what the two annotations are for. This section fixes what a server does, so that an example can state it and three generators can be held to it.
+**Status: implemented outside the generators.** The language, the checks, the IR, the reference evaluator (`crates/veld-rules`), `veld test`, `veld fmt`, `veld diff`, the OpenAPI export and the language server know both annotations. No generator implements them yet: `rules_version` and `idempotency` are opt-in features (§13), so a generator that does not declare them reports `E0801` at the first use. Sections 11.7 and 11.8 say what the two annotations are for. This section fixes what a server does, so that an example can state it and three generators can be held to it. §11.10 records what the implementation chose where the text was silent, and §11.11 how the tools judge the two annotations.
 
 **`@version`**
 
@@ -637,6 +642,54 @@ The code is `L0014`: `L0005` is `missing-description` since v2.0 and codes are n
 - The test handler takes the store's state for the request from the header `Veld-Test-Idempotency`: unpadded base64url of `{ "state": "stored", "status": 409, "type": "<error signature>" | null, "data": { … } }`, `{ "state": "other" }` or `{ "state": "running" }`. Without the header the store is empty. The key itself travels in its ordinary header.
 - Capability flags: `rules_version` and `idempotency`, each `E0801` in a generator that does not implement it.
 
+### 11.10 What the implementation chose where the text was silent
+
+**`@version`**
+
+- A `@version` field is required (not `field?`): an optional one is `E0602`, like a field of an error or an event, and a second one in a model, an inherited one counted (reported once, at the own field). `@version` may stand on a `@readonly` field.
+- The guard is the first fact, in declaration order, whose type is a model with a version field. An optional fact counts; when it is absent there is nothing to compare and the request passes. The path of the rule id is the one wire name of the field.
+- A parameter bound to `If-Match` on an endpoint with a guard is `E0602`: the guard reads the header itself.
+- `expected` and `actual` are `long` and therefore decimal strings on the wire, also when the version field is an `int`.
+- A version tag is `0`, or a digit from 1 to 9 followed by digits, no sign, within `long`. `"03"`, `"-1"`, `W/"3"`, a list, a number beyond `long` and a header with spaces around it are malformed. A malformed `If-Match` on an endpoint with a guard is refused at step 5 with the issue `{ "path": "header.If-Match", "code": "type", "message": "must be * or one strong entity tag holding a version, such as \"3\"" }`, next to the other issues of that step, header issues first. It carries no `violations`: it is not a rule. An endpoint without a guard ignores the header.
+- `validate = false` turns off neither the guard nor the syntax of `If-Match` and of the key: they are part of what the endpoint does, not validation of its parameters.
+- `*`, like no header, hands the handler no version to write against. A version is handed over only when the caller sent a tag and it matched.
+- The `ETag` is on the success whose type is the model itself (not a list, a `Page` or a union), whatever the 2xx status, and on a replayed success. `rules_version` is used by a service with a guard and by one that has such an endpoint; the first use is the fact of the guard, or the endpoint for a response that only owes the `ETag`.
+
+**`@idempotent`**
+
+- The arguments are `header:` (a non-empty HTTP token, each given once) and `required:`. `E0602` for a header that is not a token, for `Authorization`, `Content-Type`, `Content-Length`, `Accept`, `Host`, `If-Match`, `ETag`, `Veld-*`, for one that an `@header` parameter or the `apiKey` of the endpoint uses (compared without case), and on a stream or `ws` endpoint: there is no single answer to store. `get` is allowed.
+- A key is 1 to 255 characters of visible ASCII (0x21 to 0x7E). Another key is refused at step 5 with `{ "path": "header.<Name>", "code": "type", "message": "must be 1 to 255 visible ASCII characters" }`, and a required key that is missing with `{ "path": "header.<Name>", "code": "required", "message": "is required" }`, without `violations`. These come before the store is asked, so a request that is not valid is never replayed.
+- The message of the `409 Conflict` is `this idempotency key was used with other parameters` for another fingerprint and `a request with this idempotency key is still running` for a request that has not finished. The error is the prelude's own `Conflict 409 { message: string }`; the endpoint declares it implicitly, as it declares `ValidationError`.
+- A replayed answer carries no `violations`; for a success it is the stored body, with the `ETag` of that body. A replay does not check `If-Match` and does not evaluate any rule: the lookup is before step 6. The answers stored are the success and every error below 500, those of step 6 included (`404`, `403`, `412`, `422` of a `require`); a `500` removes the entry.
+- In an example, the value after `stored` is the stored body in full: what it leaves out is filled in (§12.2), and the outcome of the call is compared with it as a pattern. `stored ok` without a value stores a filled-in value of the success type. `stored` of an error whose status is 500 or more is `E0952`, because such an answer is never stored. A `stored` value must start on the line of its outcome. A replay is compared with the stored body, not with `returns`.
+- The scope of a key includes the caller only when the endpoint's effective auth is not `none`. An example states what the store holds for the scope of its request, so it cannot show that the key of another caller is not replayed; the tests of each generator do.
+- The caller text, when the application does not give it (the reference evaluator, the test handler), is the RFC 8785 JSON of the principal, or `caller`.
+- An offline run without `returns` stops before the handler: the entry of a new key is still "running" (the reference evaluator says so in `Reported.store`).
+
+**The reference evaluator** (`veld_rules`): `Request` has `if_match`, `key` and `caller`; `Reported` has `replayed`, `store` (`Untouched`, `Stored`, `Removed`, `Running`), `checked_version`, `body` and `etag`; `parse_if_match`, `etag`, `fingerprint` and `Scope::of` are public. The pipeline asks the store after step 5 and runs the version guard after the policies and before the transition.
+
+### 11.11 `veld diff`, the export and the language server
+
+`veld diff` judges each change by what it does to a caller built against the old contract:
+
+| Change | Verdict | Why |
+|---|---|---|
+| `@version` added to a field (`VersionAdded`) | non-breaking | responses gain an `ETag`; a request without `If-Match` is not checked |
+| `@version` removed (`VersionRemoved`) | breaking | a caller that sends `If-Match` loses the protection of its write, and the `ETag` is gone |
+| another field is the version (`VersionFieldChanged`) | breaking | the tags callers hold count something else |
+| an endpoint gets a guard (`GuardAdded`) | non-breaking | only a request that sends `If-Match` is checked |
+| an endpoint loses its guard (`GuardRemoved`) | breaking | `If-Match` is ignored: a write the caller thought protected is not |
+| the guard compares another fact or field (`GuardChanged`) | breaking | the tags are compared with something else |
+| `@idempotent` added (`IdempotencyAdded`) | non-breaking, breaking with `required: true` | a request without the key is as before, unless it is now `422` |
+| `@idempotent` removed (`IdempotencyRemoved`) | breaking | a retry with the same key runs again |
+| `required` becomes true (`IdempotencyRequiredChanged`) | breaking | a request without the key is `422` |
+| `required` becomes false | non-breaking | |
+| the header changes (`IdempotencyHeaderChanged`) | breaking | callers send the old header, which is ignored, or `422` when it is required |
+
+The `PreconditionFailed`, `Conflict` and `ValidationError` that a feature adds to or takes from an endpoint belong to its change and are not reported again as `ErrorAdded` or `ErrorRemoved`; an error the author adds next to them is.
+
+The OpenAPI export adds, for a guard, an optional `If-Match` header parameter and `x-veld-version` (`id`, `fact`, `field`) on the operation, and `x-veld-version` (the wire name) on the model; for `@idempotent`, the header parameter (`required` as written, a string of 1 to 255 characters), `x-veld-idempotent` (`header`, `required`, `caller`) and a `Veld-Idempotent-Replay` response header on the success and on every answer below 500; for a response that is a model with a version field, an `ETag` response header. The `412` and `409` responses are the endpoint's errors. A contract without the annotations exports the same bytes. The language server offers `@version` in a model body and `@idempotent` (and its arguments `header` and `required`) in a service body, and says what each does on hover.
+
 ## 12. Examples and `veld test` (Phase 2)
 
 An example states what one call does. It is documentation that runs.
@@ -661,7 +714,8 @@ example "the booking starts as pending" {
 ```
 
 ```ebnf
-example  = { doc } "example" STRING "{" { given } [ "as" value ] [ "at" STRING ] call "}" ;
+example  = { doc } "example" STRING "{" { given } [ "as" value ] [ "at" STRING ]
+           [ "ifMatch" ( INT | "any" ) ] [ key ] call "}" ;      (* ifMatch and key: §11.9 *)
 given    = "given" IDENT "=" ( value | "absent" ) ;
 call     = [ IDENT "." ] IDENT "(" [ IDENT ":" value { "," IDENT ":" value } [","] ] ")"
            [ "returns" value ] "->" outcome ;
@@ -714,7 +768,7 @@ A filled-in value must be valid. If an invariant is violated and at least one fi
 
 - **`veld test`** runs every example of the workspace (`-p member`, `--filter text`) against the reference evaluator (`crates/veld-rules`): it applies steps 5 and 6 of the pipeline with the given facts, principal and clock, and, when the example has `returns`, steps 8 and 9 in `strict` mode. No server, no network, milliseconds. It exits with 1 when an example fails and prints, per failure, the expected and the actual outcome with the violations. An example that expects `ok` with a pattern but has no `returns` cannot be checked offline; it is reported as skipped, with the reason, and does not fail the run.
 - **`veld test --live <base-url>`** sends each example as a real request to a running **test handler** (§12.4) and compares the status, the error and the patterns. An example writes down only part of an answer, so an answer that agrees with it is also held to the reference evaluator: when the evaluator answers the same request with an error, the server MUST give that whole error: the problem document of §7 with the media type `application/problem+json`, the same `type`, `title`, status and `operation`, the same payload and the same `violations`, each with the same `rule`, `path`, `fields`, `message` and `error`. Violations and issues are compared in order, or as a set when a parameter of the endpoint contains a map (§5.2). Every answer of a service that has a rules digest, a dry-run pass included, MUST carry it in `Veld-Rules` (§9.7). An example without `returns` runs the application's real handler, so `ok { … }` checks what it actually answered; with `--dry-run` such an example stops before the handler (§12.4).
-- **`--fuzz N`** (with `--live`; `N` from 1 to 100000; `--seed S` to repeat a run) builds `N` requests per endpoint from the types, constraints and rules, valid and invalid, works out the expected outcome with the reference evaluator, and fails on any difference, compared as for an example. A failure prints the seed and the request in example syntax. A run that cannot go on, because the server stopped answering, fails and still reports what it found before. An endpoint whose every request ended in the same error is named, because nothing after that check was reached.
+- **`--fuzz N`** (with `--live`; `N` from 1 to 100000; `--seed S` to repeat a run) builds `N` requests per endpoint from the types, constraints and rules, valid and invalid, works out the expected outcome with the reference evaluator, and fails on any difference, compared as for an example. A failure prints the seed and the request in example syntax. A request of `--fuzz` sends no `If-Match` and no key, so an endpoint whose key is required answers `422` to every one of them and is named as an endpoint that ends one way. A run that cannot go on, because the server stopped answering, fails and still reports what it found before. An endpoint whose every request ended in the same error is named, because nothing after that check was reached.
 - **Boundaries.** The boundary requests belong to `--fuzz`, not to a plain `--live` run: they are the first requests of a fuzz run. Every comparison of a number, a time or a length with a constant in a rule yields requests at the bound and one step on each side.
 
 ### 12.4 The test handler
@@ -728,6 +782,7 @@ A test must hand a server its facts, its principal and its clock. The production
 - **The request a live example sends** is the one a generated client would send (the endpoint's path without a trailing slash, path parameters percent-encoded, query pairs sorted by key, `Accept: application/json`, and the body in wire form), plus the test headers: `Veld-Test-Facts` is always there and is the unpadded base64url of a compact JSON object, `null` for an absent fact; `Veld-Test-Principal` and `Veld-Test-Result` are the unpadded base64url of the wire JSON and appear only when the example has `as` or `returns`; `Veld-Test-Now` is the clock as plain RFC 3339 text.
 - **The answer** is judged like this: an error must be a problem document whose `type` is the error's declaration signature, with the status the endpoint declares for it; a success must have exactly the endpoint's success status.
 - **Audited rules** (`@rollout(audit)`, §17.1). When a request made the server report audited rules to `onRuleViolation`, the answer of the test handler has the response header `Veld-Test-Audited`: the unpadded base64url of a compact JSON array with one entry per report, each with the members of a `violations` entry (§7): `rule`, `path`, `fields`, `message` and, for an evaluation error, `error`. The array holds at most the first 100 reports, and the header is absent when there is none. It is on every kind of answer: a success, an error, and the `204` of a dry run (which then lists the rules of steps 5 and 6 only). `veld test --live` compares the entries with what the reference evaluator reports for the same example, as a set of `(rule, path, error)`, fails the example when they differ, and prints them under the example as the offline run does; when the reference reports more than 100 it only requires every entry of the header to be one of them. `--fuzz` does not compare the header.
+- **Version and idempotency** (§11.7 to §11.9). A live example sends `If-Match` (`*` or `"3"`) and the idempotency header with the key of its `key` line, and for a store that is not empty `Veld-Test-Idempotency`; the test handler uses that state instead of the application's store, and an absent header is an empty store. The caller text of a key is the RFC 8785 JSON of the principal of `Veld-Test-Principal`, or `caller` when the request has none; the application's hook is not called. An answer is also held to the headers of the reference evaluator: `Veld-Idempotent-Replay: true` on a stored answer that was sent again and on no other answer, and `ETag` on a success whose type is a model with a version field, equal to the version of what the handler returned (or of the stored body). `veld test --live` reports a difference like any other.
 - It MUST NOT be mounted in production. The generated file says so at its top, and creating the handler reports it once.
 
 ### 12.5 Examples are the vectors for endpoint rules
@@ -775,7 +830,8 @@ Builtin = "len|matches|starts_with|ends_with|contains|days|hours|minutes|seconds
 
 - Both operands of a `bin` have the same type, except `in` (element and collection) and the datetime and duration combinations of §3.4. Every other difference was resolved by a `widen` node.
 - A `const` is already replaced by its `lit`. An `int` or `long` literal is stored in its final type.
-- `Feature` gains `rules_invariants`, `rules_endpoint`, `rules_transitions` and `rules_policies`, and later `rules_rollout` (§17.1).
+- `Feature` gains `rules_invariants`, `rules_endpoint`, `rules_transitions` and `rules_policies`, and later `rules_rollout` (§17.1), `rules_version` and `idempotency` (§11.9). The last three are opt-in.
+- `Field` gains `"version": true`, `EndpointRules` gains `"version"`, `Endpoint` gains `"idempotency"` and `Example` gains `"if_match"` and `"key"` (`spec/ir.md` §3.5). Each is omitted from the JSON when absent.
 - `Rule`, `EndpointRequire` and `EndpointEnsure` gain `"rollout": "audit"` for an audited rule (§17.1). It is omitted from the JSON when the rule is enforced.
 - **One-time change to existing output:** `ir_version` becomes `1.1`: every stored IR (`veld.lock.ir.json`, IR and OpenAPI snapshots) changes by its version line. The prelude gains `error InvalidTransition 409 { field: string, from: string, to: string }`, which changes nothing stored, because a declaration appears in an IR only when a contract reaches it.
 
@@ -845,7 +901,7 @@ Range `E09xx` (errors) and `W09xx` (warnings). Codes are never reused.
 | `E0924` | `ensure` on an endpoint whose success is a stream |
 | `E0950` | Duplicate example name; unknown or ambiguous endpoint in an example |
 | `E0951` | `given` names something that is not a fact of the called endpoint |
-| `E0952` | A value in an example does not fit the type it is used at |
+| `E0952` | A value in an example does not fit the type it is used at; an `ifMatch` line on an endpoint with no version guard, a `key` line on an endpoint that is not `@idempotent`, a key that is not 1 to 255 visible ASCII characters, a `stored` answer with a status of 500 or more or one the endpoint cannot give |
 | `E0953` | A value the example leaves out cannot be filled in, or the filled-in value breaks an invariant |
 
 | `E0930` | A `flow` or `final` names something that is not a variant of the enum |
@@ -886,7 +942,7 @@ tests/rules/<group>/<name>.json      cases for it
 
 - `expect` is the list of violations, compared as a set of `(rule name, path, fields, error)`. `[]` means the value is valid. Messages and rule ids are covered by snapshots, not by vectors.
 - A case with `"request": true` checks the value in request position (§5.2). A case with `"partial": true` runs the partial check and applies to TypeScript and the reference evaluator only.
-- A case may have an `"audited"` list of the same shape as `expect`, for the violations of **audited** rules (`@rollout(audit)`, §17.1). `expect` then holds only the violations of enforced rules, the ones that reject, and an audited violation is never in it. A missing `"audited"` means none. A target that evaluates rules on the server side (it reports to `onRuleViolation`) compares both lists, as sets. A target that only checks on a client compares `expect` alone and reports nothing audited, because a client skips audited rules, in `"partial": true` cases too. The vectors of audited rules are in `tests/rules/core/rollout*` and `tests/rules/endpoints/rollout*.veld`.
+- A case may have an `"audited"` list of the same shape as `expect`, for the violations of **audited** rules (`@rollout(audit)`, §17.1). `expect` then holds only the violations of enforced rules, the ones that reject, and an audited violation is never in it. A missing `"audited"` means none. A target that evaluates rules on the server side (it reports to `onRuleViolation`) compares both lists, as sets. A target that only checks on a client compares `expect` alone and reports nothing audited, because a client skips audited rules, in `"partial": true` cases too. The vectors of audited rules are in `tests/rules/core/rollout*` and `tests/rules/endpoints/rollout*.veld`. The vectors of §11.7 to §11.9 are `tests/rules/endpoints/version.veld.pending` (19 examples) and `idempotency.veld.pending` (21): they wait under a `.pending` suffix until a generator declares `rules_version` or `idempotency`, and the reference evaluator runs them already (`crates/veld-rules/tests/version_idempotency.rs`). A vector cannot state a malformed `If-Match`, the `ETag` of a response, the version the handler receives, the fingerprint of a request, what the store holds afterwards, or that a key of another caller is not replayed; the tests of the reference evaluator state the first five, and the generators' own tests the last.
 - A case may have `"output": "off"`: the case is a value in response position (no `"request": true`) checked by a server whose output mode is `off` (§5.3). Nothing is evaluated, so `expect` and `audited` are both empty and a server reports nothing, an audited rule included. A case with `"request": true` ignores the key, because input rules are evaluated in every mode. A target that only checks on a client has no output mode and skips these cases.
 - The starter set MUST cover, at least: code-point length with astral characters; `int` and `long` overflow at both bounds, including a `long` beyond 2^53; truncating division and remainder with negative operands; division by zero; decimal equality across scales and exact decimal arithmetic; float non-finite results; datetime offsets and sub-millisecond digits; `date` differences; duration overflow; `uuid` case; enum literals and `in`; every short-circuit form of §3.6; `all`, `any`, `count` and `sum` on empty and non-empty lists; nested models, lists, maps, pages and union arms; inherited rules; `@readonly` in request position; defaults applied before rules.
 
