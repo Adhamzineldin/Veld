@@ -17,6 +17,7 @@ mod event_rollout;
 mod events;
 mod fixtures;
 mod rollout;
+mod sagas;
 mod version;
 
 use std::collections::BTreeMap;
@@ -35,6 +36,7 @@ pub use fixtures::{FIXTURES, Fixture};
 pub use rollout::{
     check_rollout_is_generated, check_rollout_is_refused, compiled_rollout_contracts,
 };
+pub use sagas::{check_sagas_are_generated, check_sagas_are_refused, compiled_saga_contracts};
 pub use version::{
     check_idempotency_is_generated, check_idempotency_is_refused, check_version_is_generated,
     check_version_is_refused, compiled_idempotency_contracts, compiled_version_contracts,

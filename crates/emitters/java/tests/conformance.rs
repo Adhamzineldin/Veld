@@ -130,3 +130,10 @@ fn java_refuses_version_and_idempotency() {
     veld_emit_conformance::check_version_is_refused(&Java).unwrap();
     veld_emit_conformance::check_idempotency_is_refused(&Java).unwrap();
 }
+
+/// Sagas (`spec/platform.md` sections 17 and 18): until Java declares `sagas`, a contract with a
+/// `saga post` endpoint is refused with `E0801` at the endpoint, in every role.
+#[test]
+fn java_refuses_sagas() {
+    veld_emit_conformance::check_sagas_are_refused(&Java).unwrap();
+}

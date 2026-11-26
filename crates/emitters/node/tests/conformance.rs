@@ -112,3 +112,11 @@ fn node_and_typescript_refuse_version_and_idempotency() {
     veld_emit_conformance::check_version_is_refused(&TypeScript).unwrap();
     veld_emit_conformance::check_idempotency_is_refused(&TypeScript).unwrap();
 }
+
+/// Sagas (`spec/platform.md` sections 17 and 18): until a generator declares `sagas`, a contract
+/// with a `saga post` endpoint is refused with `E0801` at the endpoint, in every role.
+#[test]
+fn node_and_typescript_refuse_sagas() {
+    veld_emit_conformance::check_sagas_are_refused(&Node).unwrap();
+    veld_emit_conformance::check_sagas_are_refused(&TypeScript).unwrap();
+}
