@@ -1,0 +1,333 @@
+{
+  "package": "bookings",
+  "workspace": "tests/wire/messages/workspace",
+  "languages": [
+    "ar",
+    "pt-br"
+  ],
+  "headers": [
+    {
+      "header": null,
+      "language": null
+    },
+    {
+      "header": "",
+      "language": null
+    },
+    {
+      "header": "ar",
+      "language": "ar"
+    },
+    {
+      "header": "AR",
+      "language": "ar"
+    },
+    {
+      "header": "ar-EG",
+      "language": "ar"
+    },
+    {
+      "header": "ar-EG,ar;q=0.9,pt-BR;q=0.8",
+      "language": "ar"
+    },
+    {
+      "header": "pt-BR",
+      "language": "pt-br"
+    },
+    {
+      "header": "pt-br",
+      "language": "pt-br"
+    },
+    {
+      "header": "pt",
+      "language": null
+    },
+    {
+      "header": "pt-PT",
+      "language": null
+    },
+    {
+      "header": "fr, ar;q=0.5",
+      "language": "ar"
+    },
+    {
+      "header": "fr, de",
+      "language": null
+    },
+    {
+      "header": "*",
+      "language": null
+    },
+    {
+      "header": "*, ar;q=0.1",
+      "language": "ar"
+    },
+    {
+      "header": "ar;q=0, pt-br",
+      "language": "pt-br"
+    },
+    {
+      "header": "ar;q=0",
+      "language": null
+    },
+    {
+      "header": "pt-br;q=0.7, ar;q=0.9",
+      "language": "ar"
+    },
+    {
+      "header": "pt-br, ar",
+      "language": "pt-br"
+    },
+    {
+      "header": "ar;q=abc, pt-br",
+      "language": "pt-br"
+    },
+    {
+      "header": "ar;q=1.5",
+      "language": null
+    },
+    {
+      "header": "ar;q=1.5, pt-br",
+      "language": "pt-br"
+    },
+    {
+      "header": ";;;",
+      "language": null
+    },
+    {
+      "header": "ar_EG",
+      "language": null
+    },
+    {
+      "header": " ar , pt-br ",
+      "language": "ar"
+    },
+    {
+      "header": "x-klingon, ar",
+      "language": "ar"
+    },
+    {
+      "header": "ar; q=0.4, pt-br; Q=0.5",
+      "language": "pt-br"
+    },
+    {
+      "header": "ar;q=0.5;level=1",
+      "language": "ar"
+    },
+    {
+      "header": "pt-br;q=0.001, ar;q=0.0",
+      "language": "pt-br"
+    },
+    {
+      "header": "zh-Hant-TW, pt-BR",
+      "language": "pt-br"
+    }
+  ],
+  "messages": [
+    {
+      "header": "ar",
+      "key": "bookings/Booking.endAfterStart",
+      "default": "A booking must end after it starts",
+      "text": "يجب أن تنتهي الإقامة بعد بدايتها",
+      "language": "ar",
+      "note": "a catalog with the key"
+    },
+    {
+      "header": "pt-BR",
+      "key": "bookings/Booking.endAfterStart",
+      "default": "A booking must end after it starts",
+      "text": "A reserva deve terminar depois de começar",
+      "language": "pt-br",
+      "note": "a tag matches the catalog of the same tag, case does not matter"
+    },
+    {
+      "header": "pt-BR",
+      "key": "bookings/Bookings.pay.notZero",
+      "default": "The amount must be positive",
+      "text": "The amount must be positive",
+      "language": null,
+      "note": "the chosen catalog lacks the key: the contract's text, and no catalog is used"
+    },
+    {
+      "header": "ar",
+      "key": "veld/version",
+      "default": "the version is not the current one",
+      "text": "the version is not the current one",
+      "language": null,
+      "note": "same, for a fixed text"
+    },
+    {
+      "header": "pt-br",
+      "key": "veld/version",
+      "default": "the version is not the current one",
+      "text": "A versão mudou",
+      "language": "pt-br",
+      "note": "a fixed text with a translation"
+    },
+    {
+      "header": null,
+      "key": "bookings/Booking.endAfterStart",
+      "default": "A booking must end after it starts",
+      "text": "A booking must end after it starts",
+      "language": null,
+      "note": "no header"
+    },
+    {
+      "header": "fr",
+      "key": "bookings/Booking.endAfterStart",
+      "default": "A booking must end after it starts",
+      "text": "A booking must end after it starts",
+      "language": null,
+      "note": "no catalog for the language"
+    },
+    {
+      "header": "pt",
+      "key": "bookings/Booking.endAfterStart",
+      "default": "A booking must end after it starts",
+      "text": "A booking must end after it starts",
+      "language": null,
+      "note": "pt does not match a catalog pt-br"
+    },
+    {
+      "header": "ar-EG",
+      "key": "veld/not-permitted",
+      "default": "not permitted",
+      "text": "غير مسموح",
+      "language": "ar",
+      "note": "a tag with a region matches the catalog of its primary language"
+    },
+    {
+      "header": "ar",
+      "key": "bookings/Manage.forbid3",
+      "default": "A banned and suspended account",
+      "text": "A banned and suspended account",
+      "language": null,
+      "note": "a forbid whose catalog entry is missing"
+    },
+    {
+      "header": "ar",
+      "key": "bookings/Manage.forbid1",
+      "default": "A suspended account cannot manage bookings",
+      "text": "لا يمكن لحساب موقوف إدارة الحجوزات",
+      "language": "ar",
+      "note": "a forbid with a translation"
+    },
+    {
+      "header": "ar;q=0.2, pt-br",
+      "key": "veld/transition",
+      "default": "the move is not allowed",
+      "text": "Esta transição não é permitida",
+      "language": "pt-br",
+      "note": "quality decides, not position"
+    },
+    {
+      "header": "ar",
+      "key": "nobody/X.y",
+      "default": "a text",
+      "text": "a text",
+      "language": null,
+      "note": "a key that is in no rule keeps the text"
+    },
+    {
+      "header": "ar",
+      "key": "bookings/Bookings.pay.require",
+      "default": "The amount is too large",
+      "text": "المبلغ كبير جدا",
+      "language": "ar",
+      "note": "an unnamed require has the shared key"
+    },
+    {
+      "header": "ar",
+      "key": "bookings/Bookings.pay.ensure",
+      "default": "The revision never goes down",
+      "text": "The revision never goes down",
+      "language": null,
+      "note": "a rule the catalog lacks"
+    }
+  ],
+  "keys": [
+    {
+      "what": "invariant endAfterStart of Booking",
+      "kind": "invariant",
+      "decl": "Booking",
+      "name": "endAfterStart",
+      "key": "bookings/Booking.endAfterStart"
+    },
+    {
+      "what": "invariant without a message",
+      "kind": "invariant",
+      "decl": "Booking",
+      "name": "totalKnown",
+      "key": "bookings/Booking.totalKnown"
+    },
+    {
+      "what": "named require",
+      "kind": "require",
+      "endpoint": "pay",
+      "name": "notZero",
+      "key": "bookings/Bookings.pay.notZero"
+    },
+    {
+      "what": "unnamed require",
+      "kind": "require",
+      "endpoint": "pay",
+      "name": null,
+      "key": "bookings/Bookings.pay.require"
+    },
+    {
+      "what": "unnamed ensure",
+      "kind": "ensure",
+      "endpoint": "pay",
+      "name": null,
+      "key": "bookings/Bookings.pay.ensure"
+    },
+    {
+      "what": "the transition guard",
+      "kind": "transition",
+      "endpoint": "pay",
+      "key": "veld/transition"
+    },
+    {
+      "what": "the version guard",
+      "kind": "version",
+      "endpoint": "pay",
+      "key": "veld/version"
+    },
+    {
+      "what": "a denial by the first forbid",
+      "kind": "denial",
+      "policy": "Manage",
+      "forbid": 1,
+      "key": "bookings/Manage.forbid1"
+    },
+    {
+      "what": "a denial by the third forbid (the second has no message)",
+      "kind": "denial",
+      "policy": "Manage",
+      "forbid": 3,
+      "key": "bookings/Manage.forbid3"
+    },
+    {
+      "what": "a denial no forbid with a message explains",
+      "kind": "denial",
+      "policy": "Manage",
+      "forbid": null,
+      "key": "veld/not-permitted"
+    }
+  ],
+  "catalogKeys": {
+    "bookings/Booking.endAfterStart": "A booking must end after it starts",
+    "bookings/Booking.totalKnown": null,
+    "bookings/Bookings.pay.ensure": "The revision never goes down",
+    "bookings/Bookings.pay.notZero": "The amount must be positive",
+    "bookings/Bookings.pay.require": "The amount is too large",
+    "bookings/Manage.forbid1": "A suspended account cannot manage bookings",
+    "bookings/Manage.forbid3": "A banned and suspended account"
+  },
+  "fixedKeys": [
+    "veld/transition",
+    "veld/transition-not-due",
+    "veld/version",
+    "veld/not-permitted"
+  ]
+}

@@ -38,7 +38,7 @@ policy Manage(user: User, booking: Booking) {
   forbid when user.suspended
     message "A suspended account cannot manage bookings"
   forbid when user.banned
-  forbid when user.suspended and user.banned
+  forbid when user.suspended && user.banned
     message "Banned and suspended"
 }
 

@@ -21,6 +21,7 @@ pub mod example;
 pub mod helpers;
 pub mod idempotency;
 pub mod machine;
+pub mod messages;
 mod old;
 mod ops;
 mod pipeline;
