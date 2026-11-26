@@ -70,6 +70,46 @@ pub fn service_audits(tree: &Tree<'_>, svc: &Service) -> bool {
             .any(|ep| ep.audited && !ep.success.stream)
 }
 
+/// Whether an endpoint of the service has a limit by `by`.
+fn service_limits_by(tree: &Tree<'_>, svc: &Service, by: veld_ir::LimitSubject) -> bool {
+    tree.uses_limits_server()
+        && svc
+            .endpoints
+            .iter()
+            .any(|ep| ep.limit.is_some_and(|l| l.by == by))
+}
+
+/// Whether the hooks of the service require `address` (`by: ip`, `spec/platform.md` section 5).
+#[must_use]
+pub fn service_needs_address(tree: &Tree<'_>, svc: &Service) -> bool {
+    service_limits_by(tree, svc, veld_ir::LimitSubject::Ip)
+}
+
+/// Whether the hooks of the service require `caller` (`by: user`): the hook of the caller's
+/// identity that `@idempotent` shares, when an endpoint of the service needs it for its own key
+/// (`idempotency.caller`); otherwise a hook of its own, next to `limiter`.
+#[must_use]
+pub fn service_needs_limit_caller(tree: &Tree<'_>, svc: &Service) -> bool {
+    service_limits_by(tree, svc, veld_ir::LimitSubject::User)
+        && !svc
+            .endpoints
+            .iter()
+            .any(|ep| ep.idempotency.as_ref().is_some_and(|i| i.caller))
+}
+
+/// Whether the hooks of the service have members of the limits.
+#[must_use]
+pub fn service_has_limits(tree: &Tree<'_>, svc: &Service) -> bool {
+    tree.uses_limits_server() && svc.endpoints.iter().any(|ep| ep.limit.is_some())
+}
+
+/// Whether the hooks of the service must be given (they have a member that is required): the
+/// factory has no default, and a Nest module needs them.
+#[must_use]
+pub fn service_limit_hooks_required(tree: &Tree<'_>, svc: &Service) -> bool {
+    service_needs_address(tree, svc) || service_needs_limit_caller(tree, svc)
+}
+
 /// Whether the hooks of the service take a clock: endpoint rules read it, and so does every
 /// feature of platform phase P1.
 #[must_use]

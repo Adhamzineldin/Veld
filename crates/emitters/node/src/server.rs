@@ -442,6 +442,7 @@ fn write_hooks(
         ));
     }
     write_idempotency_hook(w, fc, svc, (&ctx, &who));
+    write_limit_hooks(w, fc, svc, (&ctx, &who));
     if !auth.is_empty() {
         w.open("auth:");
         for (name, ty) in &auth {
@@ -506,6 +507,36 @@ fn write_idempotency_hook(
         ));
     } else {
         w.line(format!("idempotency: {{ store: {store} }};"));
+    }
+}
+
+/// `limiter`, `address` and `caller` of a service with a `@limit` (`spec/platform.md` section 5).
+/// `address` (`by: ip`) and `caller` (`by: user`, unless `idempotency.caller` is there already) are
+/// required by the type, so a server that needs one and has none does not compile; the runtime
+/// checks it again when the handler is created.
+fn write_limit_hooks(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    svc: &Service,
+    (ctx, who): (&str, &str),
+) {
+    if !rules::service_has_limits(fc.tree, svc) {
+        return;
+    }
+    let limiter = fc.rt("Limiter");
+    w.line("/** Counts the calls of the endpoints with a `@limit`. Without one a memory limiter is used, which counts per process, and says so once at start-up. */");
+    w.line(format!("limiter?: {limiter};"));
+    if rules::service_needs_address(fc.tree, svc) {
+        w.line("/** The client address of a request, for `by: ip`: only the application knows which proxy header to trust. */");
+        w.line(format!(
+            "address: (ctx: {ctx}) => string | Promise<string>;"
+        ));
+    }
+    if rules::service_needs_limit_caller(fc.tree, svc) {
+        w.line("/** Who the caller is, as a text, for `by: user`. */");
+        w.line(format!(
+            "caller: (principal: {who}, ctx: {ctx}) => string | Promise<string>;"
+        ));
     }
 }
 
@@ -665,6 +696,7 @@ fn write_factory(
         && !rules::service_is_idempotent(svc)
         && !rules::service_uses_flags(fc.tree, svc)
         && !rules::service_audits(fc.tree, svc)
+        && !rules::service_limit_hooks_required(fc.tree, svc)
         && !outbox::service_emits(svc)
         && !runtime_required
     {
@@ -762,6 +794,7 @@ pub(crate) fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
     let endpoint_rules = fc.tree.uses_endpoint_rules();
     let conflict = fc.tree.uses_idempotency();
     let deadline = fc.tree.uses_timeouts();
+    let limits = fc.tree.uses_limits_server();
     let mut sig = |name: &str| match fc.tree.prelude_decl(name) {
         Some(id) => format!("{}.sig", fc.value_ref(id)),
         None => "'about:blank'".to_string(),
@@ -776,6 +809,9 @@ pub(crate) fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
     }
     if deadline {
         out.push_str(&format!(", deadline: {}", sig("DeadlineExceeded")));
+    }
+    if limits {
+        out.push_str(&format!(", tooMany: {}", sig("TooManyRequests")));
     }
     format!("{{ {out} }}")
 }
@@ -836,6 +872,7 @@ pub fn models(tree: &Tree<'_>) -> Vec<ServiceModel> {
                     || !svc.facts.is_empty()
                     || rules::service_is_idempotent(svc)
                     || rules::service_audits(tree, svc)
+                    || rules::service_limit_hooks_required(tree, svc)
                     || rules::service_uses_flags(tree, svc),
                 endpoints: endpoints.into_iter().map(|(_, e)| e).collect(),
             }

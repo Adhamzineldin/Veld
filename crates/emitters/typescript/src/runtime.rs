@@ -231,6 +231,15 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "audit" => g.audit,
         "limits" => g.limits,
         "limits_server" => g.limits_server,
+        "not_limits" => !g.limits,
+        "limits_rules" => g.limits && g.rules,
+        "tenant_types" => g.tenancy || g.limits_server,
+        // The caller hook of a limit: the one of the idempotency store when there is one, else its own.
+        "limits_idempotency" => g.limits_server && g.idempotency,
+        "limits_plain_hooks" => g.limits_server && !g.idempotency,
+        // The step of the pipeline, between authentication and the middleware, in both layouts of `guard`.
+        "limits_plain" => g.limits_server && !g.timed,
+        "limits_timed" => g.limits_server && g.timed,
         "platform" => g.platform(),
         "not_platform" => !g.platform(),
         // The clock of the hooks: endpoint rules read it, and so does every platform feature.
@@ -831,5 +840,60 @@ mod tests {
         .unwrap();
         assert!(bounded.contains("withAudit(bound(run))"));
         assert!(audit.contains("withAudit(run)") && !audit.contains("bound(run)"));
+    }
+
+    #[test]
+    fn limits_add_the_limiter_to_a_server_and_the_wait_to_a_client() {
+        let server = source_gated(Gates {
+            limits: true,
+            limits_server: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in [
+            "MemoryLimiter",
+            "takeLimit",
+            "withLimiter",
+            "sendLimited",
+            "tenantText",
+        ] {
+            assert!(server.contains(word), "`{word}` is missing");
+        }
+        let client = source_gated(Gates {
+            limits: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(client.contains("sendLimited") && client.contains("retryOnLimit"));
+        for word in ["MemoryLimiter", "takeLimit", "tenantText", "withAudit"] {
+            assert!(!client.contains(word), "`{word}` is in a client build");
+        }
+        // The caller of a limit is the one of the idempotency store, when there is one.
+        let shared = source_gated(Gates {
+            limits_server: true,
+            idempotency: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(shared.contains("hooks.idempotency?.caller ?? hooks.caller"));
+        assert!(
+            server.contains("return hooks.caller;")
+                && !server.contains("hooks.idempotency?.caller")
+        );
+        // Both layouts of `guard` have the step between authentication and the middleware.
+        for timed in [false, true] {
+            let text = source_gated(Gates {
+                limits_server: true,
+                timed,
+                ..Gates::default()
+            })
+            .unwrap();
+            let at = text.find("const limited = await takeLimit(").unwrap();
+            let auth = text
+                .find("authenticate(ep.auth, ctx, hooks.auth ?? {})")
+                .unwrap();
+            let middleware = text.rfind("hooks.middleware?.[name]?.(ctx)").unwrap();
+            assert!(auth < at && at < middleware, "timed = {timed}");
+        }
     }
 }

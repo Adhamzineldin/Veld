@@ -211,6 +211,14 @@ pub fn write_spec_fields(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, ep: &Endp
     if let Some(ms) = &ep.timeout_ms {
         w.line(format!("timeoutMs: {ms},"));
     }
+    // A client that is refused with `429` waits and sends again, once, a `get` or an `@idempotent`
+    // call (`spec/platform.md` section 5).
+    if fc.tree.uses_limits()
+        && ep.limit.is_some()
+        && (ep.method == veld_ir::Method::Get || ep.idempotency.is_some())
+    {
+        w.line("retryOnLimit: true,");
+    }
 }
 
 fn write_list(w: &mut CodeWriter, key: &str, items: Vec<String>) {

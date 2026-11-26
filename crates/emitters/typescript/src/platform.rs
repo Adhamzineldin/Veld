@@ -163,7 +163,32 @@ pub fn endpoint_members(fc: &mut FileCtx<'_, '_>, svc: &Service, ep: &Endpoint) 
     if fc.tree.uses_audit() && ep.audited && !ep.success.stream {
         out.push(audit_member(fc, svc, ep));
     }
+    if fc.tree.uses_limits_server()
+        && let Some(limit) = &ep.limit
+    {
+        out.push(limit_member(ir, svc, limit));
+    }
     out
+}
+
+/// `limit: { count, seconds, by, tenant? }`: the limit of an endpoint (`spec/platform.md` section 5).
+fn limit_member(ir: &veld_ir::Ir, svc: &Service, limit: &veld_ir::Limit) -> String {
+    let mut parts = vec![
+        format!("count: {}", limit.count),
+        format!("seconds: {}", limit.per.seconds()),
+        format!("by: {}", ts_str(limit.by.word())),
+    ];
+    if limit.by == veld_ir::LimitSubject::Tenant
+        && let Some(p) = &svc.principal
+        && let Some(field) = ir.decl(p.decl).tenant_field()
+    {
+        parts.push(format!(
+            "tenant: {{ n: {}, k: {} }}",
+            ts_str(&field.name),
+            ts_str(tenant_kind(&field.ty))
+        ));
+    }
+    format!("limit: {{ {} }},", parts.join(", "))
 }
 
 /// `audit: { authenticated, principal?, errors }`: what the audit event of an endpoint needs.

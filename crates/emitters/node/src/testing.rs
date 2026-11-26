@@ -15,7 +15,8 @@ use veld_ir::{Constraints, Service, Type};
 
 use crate::events;
 use crate::rules::{
-    loaders_name, service_audits, service_has_builder, service_is_idempotent, service_uses_flags,
+    loaders_name, service_audits, service_has_builder, service_has_limits, service_is_idempotent,
+    service_uses_flags,
 };
 use crate::server::{builder_name, module_of, std_sigs};
 
@@ -491,6 +492,11 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     if flagged {
         omitted.push_str(" | 'flags'");
     }
+    // An example cannot state a limit, so the test handler counts nothing (`spec/platform.md` section 9.1).
+    let limited = service_has_limits(fc.tree, svc);
+    if limited {
+        omitted.push_str(" | 'limiter' | 'address' | 'caller'");
+    }
     let audits = service_audits(fc.tree, svc);
     let audit_hook = if audits {
         omitted.push_str(" | 'audit'");
@@ -529,7 +535,7 @@ function open(ep: {endpoint}): {endpoint} {{
   }};
   const copy: {endpoint} = {{ ...ep, middleware: {middleware}, call }};
   delete copy.auth;
-  return copy;
+{unlimit}  return copy;
 }}
 
 /**
@@ -554,6 +560,7 @@ export function create{name}TestHandler(impl: {name}Service, hooks: {name}TestHo
   return Object.assign(handler, {{ ws: inner.ws }});
 }}",
         builder = builder_name(svc),
+        unlimit = if limited { "  delete copy.limit;\n" } else { "" },
         middleware = if completes { "['veld-test-principal']" } else { "[]" },
         inner = inner_handler(fc, &create, &std, &per_request, (completes, audits)),
         key = ts_str(&svc.name),

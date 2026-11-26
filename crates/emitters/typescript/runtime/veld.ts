@@ -2277,6 +2277,10 @@ export interface EndpointSpec {
   /** `@timeout`: the deadline of a request in milliseconds. A server answers `504` after it; a client uses it as the default timeout of a call. */
   timeoutMs?: number;
   // #endif
+  // #if limits
+  /** The endpoint has a `@limit` and is a `get` or `@idempotent`: a client that is refused with `retryAfter` waits and sends again, once. */
+  retryOnLimit?: boolean;
+  // #endif
 }
 
 function paramLoc(p: ParamSpec): string {
@@ -2423,6 +2427,14 @@ export interface HandlerHooks {
   /** What the platform features keep of the request that is running: set by the router core, never by the application. */
   platform?: PlatformState;
   // #endif
+  // #if limits_server
+  /** Counts the calls of the endpoints with a `@limit`. Default: a memory limiter, which counts per process and says so once (spec/platform.md section 5). */
+  limiter?: Limiter;
+  /** The client address of a request, for `by: ip`: only the application knows which proxy header to trust. */
+  address?: (ctx: RequestContext) => string | Promise<string>;
+  /** Who the caller is, as a text, for `by: user`. A server with `@idempotent` endpoints shares `idempotency.caller`. */
+  caller?: (principal: unknown, ctx: RequestContext) => string | Promise<string>;
+  // #endif
   // #if audit
   /** Called once for every request that matched an audited endpoint, after its outcome is known and before the answer is written (spec/platform.md section 4). */
   audit?: (event: AuditEvent) => void | Promise<void>;
@@ -2496,6 +2508,10 @@ export interface ServerEndpoint extends EndpointSpec {
   /** The endpoint is audited: what its event needs to know (spec/platform.md section 4). */
   audit?: AuditSpec;
   // #endif
+  // #if limits_server
+  /** `@limit`: how many calls of one key in one window, and whose calls are counted together. */
+  limit?: LimitSpec;
+  // #endif
 }
 
 /** Signatures of the prelude errors the router itself raises. */
@@ -2511,6 +2527,9 @@ export interface StdSigs {
   // #endif
   // #if timeouts
   deadline?: string;
+  // #endif
+  // #if limits_server
+  tooMany?: string;
   // #endif
 }
 
@@ -2845,6 +2864,12 @@ async function guard(
     ctx.principal = await authenticate(ep.auth, ctx, hooks.auth ?? {});
     if (ctx.principal === null) return problem(std.unauthorized, 'Unauthorized', 401, ep.sig, {});
   }
+  // #endif
+  // #if limits_plain
+  const limited = await takeLimit(ep, ctx, std, hooks);
+  if (limited !== null) return limited;
+  // #endif
+  // #if not_timed
   for (const name of ep.middleware) await hooks.middleware?.[name]?.(ctx);
   // #endif
   // #if timed
@@ -2860,6 +2885,12 @@ async function guard(
       ctx.principal = await authenticate(ep.auth, ctx, hooks.auth ?? {});
       if (ctx.principal === null) return problem(std.unauthorized, 'Unauthorized', 401, ep.sig, {});
     }
+    // #endif
+    // #if limits_timed
+    const limited = await takeLimit(ep, ctx, std, hooks);
+    if (limited !== null) return limited;
+    // #endif
+    // #if timed
     for (const name of ep.middleware) await hooks.middleware?.[name]?.(ctx);
   }
   // #endif
@@ -3273,34 +3304,13 @@ function factKept(ep: ServerEndpoint, step: FactStep, value: unknown, ctx: Reque
   return true;
 }
 // #endif
-// #if tenancy
-
-// ---------------------------------------------------------------------------
-// Tenancy (spec/platform.md section 3)
-// ---------------------------------------------------------------------------
-
+// #if tenant_types
 export type TenantKind = 'uuid' | 'string' | 'int' | 'long';
-
-/** The `@tenant` field of a tenant-scoped declaration: its names, its id (the rule `onRuleViolation` hears) and its type. */
-export interface TenantField {
-  n: string;
-  w?: string;
-  id: string;
-  k: TenantKind;
-}
 
 /** Where the caller's tenant is: the field of the principal (source name) and its type. */
 export interface TenantSpec {
   n: string;
   k: TenantKind;
-}
-
-/** The tenant of the caller: the value of the `@tenant` field of its principal, absent when there is none. */
-function callerTenant(ep: ServerEndpoint, ctx: RequestContext | undefined): unknown {
-  const who = ctx?.principal;
-  if (ep.tenant === undefined || !isObject(who)) return undefined;
-  const t = who[ep.tenant.n];
-  return t === null ? undefined : t;
 }
 
 /** The text of a tenant value: what the envelope attribute `veldtenant` and the key of a limit carry. */
@@ -3315,6 +3325,28 @@ export function tenantText(k: TenantKind, v: unknown): string | undefined {
     case 'int':
       return typeof v === 'number' ? String(v) : undefined;
   }
+}
+// #endif
+// #if tenancy
+
+// ---------------------------------------------------------------------------
+// Tenancy (spec/platform.md section 3)
+// ---------------------------------------------------------------------------
+
+/** The `@tenant` field of a tenant-scoped declaration: its names, its id (the rule `onRuleViolation` hears) and its type. */
+export interface TenantField {
+  n: string;
+  w?: string;
+  id: string;
+  k: TenantKind;
+}
+
+/** The tenant of the caller: the value of the `@tenant` field of its principal, absent when there is none. */
+function callerTenant(ep: ServerEndpoint, ctx: RequestContext | undefined): unknown {
+  const who = ctx?.principal;
+  if (ep.tenant === undefined || !isObject(who)) return undefined;
+  const t = who[ep.tenant.n];
+  return t === null ? undefined : t;
 }
 
 /** Whether a value with the tenant `have` is the caller's: both have one and they are equal as values of the field's type. */
@@ -3643,6 +3675,175 @@ function withAudit(go: RunFn): RunFn {
     await recordAudit(r.ep, res, own);
     return res;
   };
+}
+// #endif
+// #if limits_server
+
+// ---------------------------------------------------------------------------
+// Rate limits (spec/platform.md section 5)
+// ---------------------------------------------------------------------------
+
+/** What a limiter answers: whether the call is allowed, and when to try again (0 for an allowed call). */
+export interface LimitDecision {
+  allowed: boolean;
+  retryAfterSeconds: number;
+}
+
+/**
+ * Counts calls. An implementation MUST allow at most `limit` calls of one `key` in any window it
+ * defines of `windowSeconds`. `key` is the operation signature, the subject and the identity,
+ * joined with `|` (`veld_rules::limits::key`).
+ */
+export interface Limiter {
+  take(key: string, limit: number, windowSeconds: number): LimitDecision | Promise<LimitDecision>;
+}
+
+export interface MemoryLimiterOptions {
+  /** The clock, in milliseconds. Default: the system clock. */
+  now?: () => number;
+}
+
+interface LimitWindow {
+  start: number;
+  calls: number;
+}
+
+/**
+ * The memory limiter: a fixed window per key that starts with the first call of the key that finds
+ * no open window. A window is open from its start up to, not including, its start plus its length;
+ * a refused call does not count; `retryAfterSeconds` is the time left rounded up to whole seconds,
+ * at least 1 (`veld_rules::limits::MemoryLimiter`). It counts per process.
+ */
+export class MemoryLimiter implements Limiter {
+  private readonly windows = new Map<string, LimitWindow>();
+  private readonly clock: () => number;
+
+  constructor(options: MemoryLimiterOptions = {}) {
+    this.clock = options.now ?? ((): number => Date.now());
+  }
+
+  take(key: string, limit: number, windowSeconds: number): LimitDecision {
+    const now = this.clock();
+    const length = windowSeconds * 1000;
+    const known = this.windows.get(key);
+    const window: LimitWindow = known !== undefined && now < known.start + length ? known : { start: now, calls: 0 };
+    let decision: LimitDecision;
+    if (window.calls < limit) {
+      window.calls += 1;
+      decision = { allowed: true, retryAfterSeconds: 0 };
+    } else {
+      const left = Math.min(Math.max(window.start + length - now, 1), Math.max(length, 1));
+      decision = { allowed: false, retryAfterSeconds: Math.floor((left + 999) / 1000) };
+    }
+    this.windows.set(key, window);
+    if (this.windows.size > 10000) this.sweep(now);
+    return decision;
+  }
+
+  /** Forgets the windows that are over, so that the keys of callers that never came back do not pile up. */
+  private sweep(now: number): void {
+    for (const [key, w] of this.windows) {
+      if (now - w.start > 86_400_000) this.windows.delete(key);
+    }
+  }
+}
+
+/** Whose calls a limit counts together. */
+export type LimitSubject = 'user' | 'tenant' | 'ip';
+
+/** What the generator says of the limit of an endpoint. */
+export interface LimitSpec {
+  count: number;
+  /** The window, in seconds. */
+  seconds: number;
+  by: LimitSubject;
+  /** For `by: 'tenant'`: where the caller's tenant is, in the principal. */
+  tenant?: TenantSpec;
+}
+// #endif
+// #if limits_idempotency
+
+/** The hook that says who the caller is: the one of the idempotency store, or the one of the limits. */
+function callerHook(hooks: HandlerHooks): HandlerHooks['caller'] {
+  return (hooks.idempotency?.caller ?? hooks.caller) as HandlerHooks['caller'];
+}
+// #endif
+// #if limits_plain_hooks
+
+function callerHook(hooks: HandlerHooks): HandlerHooks['caller'] {
+  return hooks.caller;
+}
+// #endif
+// #if limits_server
+
+/** The text that stands for the caller in the key of a limit. */
+async function limitIdentity(ep: ServerEndpoint, limit: LimitSpec, ctx: RequestContext, hooks: HandlerHooks): Promise<string> {
+  switch (limit.by) {
+    case 'user': {
+      const caller = callerHook(hooks);
+      if (caller === undefined) throw new Error(`${ep.name}: hooks.caller is required`);
+      return await caller(ctx.principal, ctx);
+    }
+    case 'tenant': {
+      // A caller whose principal has no tenant has the empty identity: all of them are counted together.
+      const who = ctx.principal;
+      if (limit.tenant === undefined || typeof who !== 'object' || who === null) return '';
+      return tenantText(limit.tenant.k, (who as Record<string, unknown>)[limit.tenant.n]) ?? '';
+    }
+    case 'ip': {
+      if (hooks.address === undefined) throw new Error(`${ep.name}: hooks.address is required`);
+      return await hooks.address(ctx);
+    }
+  }
+}
+
+/** The `429 TooManyRequests` of a refused call, with `retryAfter` in seconds and the header `Retry-After`. */
+function tooManyAnswer(ep: ServerEndpoint, ctx: RequestContext, std: StdSigs, hooks: HandlerHooks, seconds: number): VeldResponse {
+  const spec = ep.errors.find((e) => e.sig === std.tooMany);
+  if (spec === undefined) return problem(std.internal, 'Internal', 500, ep.sig, {});
+  const err = spec.create({ retryAfter: seconds }, { status: spec.status, op: ep.sig });
+  const res = failure(err, ep, ctx, std, hooks);
+  return { ...res, headers: { ...res.headers, 'retry-after': String(seconds) } };
+}
+
+/**
+ * The limit of an endpoint, after authentication and before the middleware: a refused call costs
+ * nothing more. A limiter (or a hook that names the caller) that fails lets the call through, and
+ * the failure goes to `onError`: a limiter that is down must not take the service down with it.
+ */
+async function takeLimit(ep: ServerEndpoint, ctx: RequestContext, std: StdSigs, hooks: HandlerHooks): Promise<VeldResponse | null> {
+  const limit = ep.limit;
+  const limiter = hooks.limiter;
+  if (limit === undefined || limiter === undefined) return null;
+  let decision: LimitDecision;
+  try {
+    const identity = await limitIdentity(ep, limit, ctx, hooks);
+    decision = await limiter.take(`${ep.sig}|${limit.by}|${identity}`, limit.count, limit.seconds);
+  } catch (err) {
+    try {
+      hooks.onError?.(err, ctx);
+    } catch {
+      // A failing hook must not change the answer.
+    }
+    return null;
+  }
+  return decision.allowed ? null : tooManyAnswer(ep, ctx, std, hooks, decision.retryAfterSeconds);
+}
+
+/** The hooks with the limiter the application gave, or a memory limiter and one notice that it counts per process. */
+function withLimiter(endpoints: readonly ServerEndpoint[], hooks: HandlerHooks): HandlerHooks {
+  if (hooks.limiter !== undefined || !endpoints.some((ep) => ep.limit !== undefined)) return hooks;
+  const log = (globalThis as { console?: { warn?: (message: string) => void } }).console;
+  log?.warn?.('veld: no limiter was given: the calls of the endpoints with @limit are counted in memory, per process');
+  return { ...hooks, limiter: new MemoryLimiter() };
+}
+
+/** The hooks a limit needs, checked when the handler is created: a server that needs one and has none does not start. */
+function assertLimitHooks(ep: ServerEndpoint, hooks: HandlerHooks): void {
+  const limit = ep.limit;
+  if (limit === undefined) return;
+  if (limit.by === 'ip' && hooks.address === undefined) throw new Error(`${ep.name}: hooks.address is required`);
+  if (limit.by === 'user' && callerHook(hooks) === undefined) throw new Error(`${ep.name}: hooks.caller is required`);
 }
 // #endif
 // #if run_fn
@@ -4635,6 +4836,9 @@ function assertHooks(endpoints: readonly ServerEndpoint[], hooks: HandlerHooks):
       throw new Error(`${ep.name}: hooks.flags is required`);
     }
     // #endif
+    // #if limits_server
+    assertLimitHooks(ep, hooks);
+    // #endif
     // #if audit
     if (ep.audit !== undefined && hooks.audit === undefined) {
       throw new Error(`${ep.name}: hooks.audit is required`);
@@ -4657,6 +4861,9 @@ function assertHooks(endpoints: readonly ServerEndpoint[], hooks: HandlerHooks):
 /** Builds a handler from endpoint descriptions. Matching is exact; literal routes beat parameterised ones. */
 export function createHandler(endpoints: readonly ServerEndpoint[], std: StdSigs, hooks: HandlerHooks): VeldHandler {
   assertHooks(endpoints, hooks);
+  // #if limits_server
+  hooks = withLimiter(endpoints, hooks);
+  // #endif
   // #if rules
   reportRuleMode(hooks, endpoints);
   const run = (r: Route, m: RegExpExecArray, req: VeldRequest, sigs: StdSigs, opts: HandlerHooks): Promise<VeldResponse> =>
@@ -4776,6 +4983,15 @@ export interface ClientOptions {
   };
   /** Validate requests (and outgoing WebSocket messages) before sending them. Default: true. */
   validate?: boolean;
+  // #if limits
+  /**
+   * Wait and send again, once, when a `get` or an `@idempotent` call is refused with `429` and
+   * `retryAfter` (spec/platform.md section 5). Default: true. Other calls raise the typed error at once.
+   */
+  retryOnLimit?: boolean;
+  /** How the client waits before it sends again: milliseconds. Default: a timer, which an abort ends. A test passes one that does not wait. */
+  sleep?: (ms: number) => Promise<void>;
+  // #endif
   // #if rules
   /** Check the invariants of a request body and query object before sending. Default: true. */
   rules?: boolean;
@@ -5064,6 +5280,31 @@ interface TextDecoderLike {
 
 type WsEvent = { ok: unknown } | { err: unknown };
 
+// #if limits
+/** The `retryAfter` (seconds) of the data of a `429` problem document, or `undefined` when it has none. */
+function retryAfterOf(text: string): number | undefined {
+  try {
+    const doc = JSON.parse(text) as unknown;
+    const data = isObject(doc) ? doc['data'] : undefined;
+    const seconds = isObject(data) ? data['retryAfter'] : undefined;
+    return typeof seconds === 'number' && Number.isFinite(seconds) ? seconds : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The answer that was read, as one that can be read again. */
+function readAgain(res: FetchResponse, text: string): FetchResponse {
+  const out: FetchResponse = { status: res.status, text: () => Promise.resolve(text) };
+  // #endif
+  // #if limits_rules
+  if (res.headers !== undefined) out.headers = res.headers;
+  // #endif
+  // #if limits
+  return out;
+}
+
+// #endif
 export class ClientCore {
   private readonly baseUrl: string;
   private readonly doFetch: FetchLike;
@@ -5180,7 +5421,12 @@ export class ClientCore {
     if (limit !== null) init = { ...init, signal: limit.signal };
     try {
     // #endif
+    // #if limits
+    const res = await this.sendLimited(ep, req, init);
+    // #endif
+    // #if not_limits
     const res = await this.send(ep, req, init, {});
+    // #endif
     // #if rules
     this.observe(res);
     // #endif
@@ -5470,6 +5716,29 @@ export class ClientCore {
     return out;
   }
 
+  // #if limits
+  /**
+   * `send`, and once more after `retryAfter` seconds when the server refused the call with `429`
+   * and the endpoint is a `get` or `@idempotent` (spec/platform.md section 5). Anything else is
+   * answered as it came, so the typed error is raised at once.
+   */
+  private async sendLimited(ep: EndpointSpec, req: Record<string, unknown>, init: CallInit): Promise<FetchResponse> {
+    const first = await this.send(ep, req, init, {});
+    if (first.status !== 429 || ep.retryOnLimit !== true || this.opts.retryOnLimit === false) return first;
+    let text: string;
+    try {
+      text = await first.text();
+    } catch (cause) {
+      throw new VeldTransportError(`${ep.method} ${ep.path}: could not read the response`, cause);
+    }
+    const seconds = retryAfterOf(text);
+    if (seconds === undefined) return readAgain(first, text);
+    const ms = Math.max(0, seconds) * 1000;
+    await (this.opts.sleep === undefined ? sleep(ms, init.signal) : this.opts.sleep(ms));
+    return this.send(ep, req, init, {});
+  }
+
+  // #endif
   private async send(
     ep: EndpointSpec,
     req: Record<string, unknown>,
