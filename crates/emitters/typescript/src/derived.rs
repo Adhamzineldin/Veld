@@ -36,7 +36,9 @@ fn to_source(fc: &mut FileCtx<'_, '_>, ty: &Type, code: &str) -> String {
             let item = to_source(fc, inner, "x");
             format!("Object.fromEntries(Object.entries({code}).map(([k, x]) => [k, {item}]))")
         }
-        _ => code.to_owned(),
+        Type::Scalar(_) | Type::List(_) | Type::Map(_) | Type::Page(_) | Type::Decl(_) => {
+            code.to_owned()
+        }
     }
 }
 
