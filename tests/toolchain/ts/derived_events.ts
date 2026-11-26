@@ -37,7 +37,8 @@ async function main(): Promise<void> {
   const given: InvoicedOutput = { id: ID, net: 10, tax: 2, gross: 999 };
   const sent = await biller.invoices.invoiced(given);
   await memory.idle();
-  const data = (JSON.parse(wire[0] ?? '{}') as { data: { gross: number } }).data;
+  const firstEnvelope = JSON.parse(wire[0] ?? '{}') as { data: { gross: number } };
+  const data = firstEnvelope.data;
   assert.equal(data.gross, 12, 'the message carries the computed value');
   assert.deepEqual(heard, [{ gross: 12, net: 10 }]);
   assert.equal(given.gross, 999, 'the application value is not changed');
@@ -70,16 +71,12 @@ async function main(): Promise<void> {
 
   // The subscriber does not believe the message: it computes `gross` again, and a malformed value
   // there is not a shape error.
+  // Built from a real message, so the rules digest matches and the invariants run too.
   const envelope = (gross: unknown): Uint8Array =>
     new TextEncoder().encode(
       JSON.stringify({
-        specversion: '1.0',
+        ...firstEnvelope,
         id: `raw-${String(heard.length)}`,
-        source: 'veld:bookings/Biller',
-        type: sent.type,
-        time: '2026-06-10T12:00:00Z',
-        datacontenttype: 'application/json',
-        subject: ID,
         data: { id: ID, net: 30, tax: 3, gross },
       }),
     );

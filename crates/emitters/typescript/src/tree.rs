@@ -71,7 +71,11 @@ impl<'a> Tree<'a> {
         };
         let transitions = endpoints().any(|ep| ep.rules.transition.is_some());
         let policies = endpoints().any(|ep| ep.rules.first_policy_origin().is_some());
-        let derived = set.iter().any(|id| ir.decl(*id).has_derived());
+        let derived = set.iter().any(|id| ir.decl(*id).has_derived())
+            || ir
+                .fact_decls(&services)
+                .into_iter()
+                .any(|id| ir.decl(id).has_derived());
         let rules =
             endpoint_rules || derived || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
         let rollout = set

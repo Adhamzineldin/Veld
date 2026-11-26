@@ -133,10 +133,10 @@ fn generates(
         return Err(format!("the gate reported {gate:?}"));
     }
     let first = generator
-        .generate_dyn(&req, &serde_json::Value::Null)
+        .generate_dyn(&req, &crate::options())
         .map_err(|d| format!("generation failed: {d:?}"))?;
     let second = generator
-        .generate_dyn(&req, &serde_json::Value::Null)
+        .generate_dyn(&req, &crate::options())
         .map_err(|d| format!("the second generation failed: {d:?}"))?;
     if first.is_empty() || first != second {
         return Err("no files, or two runs gave different files".to_owned());

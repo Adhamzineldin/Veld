@@ -210,3 +210,40 @@ fn a_declaration_called_like_a_generated_type_is_refused_with_e0801() {
         assert!(err[0].origin.is_some(), "{err:?}");
     }
 }
+
+/// A derived field next to a state machine, a version guard with an `@idempotent` endpoint, and
+/// an audited rule: the runtime of each combination compiles under `tsc --strict` for both
+/// editions (the regions of derived fields pair up with every other region). Nothing is run.
+#[test]
+fn derived_fields_compile_next_to_transitions_versions_and_audited_rules() {
+    let Some(tsc) = tsc_path() else { return };
+    let cases = [
+        (
+            "tests/rules/endpoints/transitions.veld",
+            "model Payment {\n  amount: decimal",
+            "model Payment {\n  amount: decimal\n  copy: decimal = amount",
+            "Bookings",
+        ),
+        (
+            "tests/rules/endpoints/version.veld.pending",
+            "model Rename { name: string }",
+            "model Rename {\n  name: string\n  shout: string = name\n}",
+            "Rooms",
+        ),
+        (
+            "tests/rules/endpoints/rollout.veld",
+            "model Party {\n  roomId: uuid\n  guests: int @min(1)",
+            "model Party {\n  roomId: uuid\n  guests: int @min(1)\n  twice: int = guests * 2",
+            "Parties",
+        ),
+    ];
+    for (path, from, to, service) in cases {
+        let text = std::fs::read_to_string(repo_root().join(path)).unwrap();
+        assert!(text.contains(from), "{path}");
+        let ir = compile_text(text.replacen(from, to, 1));
+        for (edition, _) in TARGETS {
+            let guard = scratch("derived-combo-");
+            build_service(guard.path(), &tsc, &ir, service, &[], edition);
+        }
+    }
+}

@@ -374,7 +374,7 @@ fn write_ws_method(
         None => "never".to_string(),
     };
     let outgoing = match ep.params.iter().find(|p| p.stream) {
-        Some(p) => ts_type(fc, &p.ty),
+        Some(p) => derived::shaped_type(fc, &p.ty, derived::Shape::Input),
         None => "never".to_string(),
     };
     let init = fc.rt("WsInit");
