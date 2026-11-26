@@ -94,12 +94,11 @@ pub struct Table {
     pub not_a_setting: Template,
     /// `<path> must be an object`, around the path.
     pub not_an_object: Template,
+    /// The path of the problem with a whole value that is not an object.
+    pub root_path: &'static str,
     /// The problem of a whole value that is not an object.
     pub root_not_an_object: &'static str,
 }
-
-/// The path of the problem with the whole value.
-const ROOT_PATH: &str = "runtime config";
 
 enum Position {
     Leaf,
@@ -153,7 +152,7 @@ impl Table {
         match value {
             Value::Object(map) => self.walk(map, &mut Vec::new(), &mut found, &mut problems),
             Value::Null => {}
-            _ => problems.push(self.problem(ROOT_PATH, self.root_not_an_object.to_string())),
+            _ => problems.push(self.problem(self.root_path, self.root_not_an_object.to_string())),
         }
         self.finish(&found, problems, &BTreeSet::new())
     }

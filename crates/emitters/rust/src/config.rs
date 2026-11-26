@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 
 use veld_codegen::runtime_config::{self as rc, RuntimeModel, Setting, SettingKind};
-use veld_codegen::{CodeWriter, FileSet, GenDiagnostic, Role};
+use veld_codegen::{CodeWriter, FileSet, GenDiagnostic, Role, naming};
 use veld_ir::{Ir, Service, ServiceId};
 
 use crate::client::{Transports, client_mod};
@@ -164,38 +164,52 @@ fn imports(w: &mut CodeWriter) {
         .blank();
 }
 
+fn variant_of(value: &str) -> String {
+    naming::pascal(value)
+}
+
 fn output_mode(w: &mut CodeWriter) {
+    let values = rc::RULE_OUTPUT_VALUES;
     w.line("/// How a server treats a violated invariant of its own output (`rules.output`).");
     w.line("#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]");
-    w.line("#[serde(rename_all = \"lowercase\")]");
     w.open("pub enum RuleOutputMode");
-    w.line("/// Answer `500 Internal`; the violation goes to the hook. The default.");
-    w.line("#[default]");
-    w.line("Strict,");
-    w.line("/// Send the response unchanged; the violation goes to the hook.");
-    w.line("Audit,");
-    w.line("/// Do not check the output rules.");
-    w.line("Off,");
+    for v in values {
+        match *v {
+            rc::RULE_OUTPUT_DEFAULT => {
+                w.line(format!("/// `{v}`: the default."));
+                w.line("#[default]");
+            }
+            _ => {
+                w.line(format!("/// `{v}`."));
+            }
+        }
+        w.line(format!("#[serde(rename = {})]", lit(v)));
+        w.line(format!("{},", variant_of(v)));
+    }
     w.close().blank();
     w.open("impl RuleOutputMode");
     w.open("fn text(self) -> &'static str");
     w.open("match self");
-    w.line("RuleOutputMode::Strict => \"strict\",");
-    w.line("RuleOutputMode::Audit => \"audit\",");
-    w.line("RuleOutputMode::Off => \"off\",");
+    for v in values {
+        w.line(format!("RuleOutputMode::{} => {},", variant_of(v), lit(v)));
+    }
     w.close().close().blank();
     w.open("fn parse(text: &str) -> Self");
     w.open("match text");
-    w.line("\"audit\" => RuleOutputMode::Audit,");
-    w.line("\"off\" => RuleOutputMode::Off,");
-    w.line("_ => RuleOutputMode::Strict,");
+    for v in values.iter().filter(|v| **v != rc::RULE_OUTPUT_DEFAULT) {
+        w.line(format!("{} => RuleOutputMode::{},", lit(v), variant_of(v)));
+    }
+    w.line("_ => RuleOutputMode::default(),");
     w.close().close().close().blank();
     w.open("impl From<RuleOutputMode> for crate::veld::rules::RuleOutput");
     w.open("fn from(mode: RuleOutputMode) -> Self");
     w.open("match mode");
-    w.line("RuleOutputMode::Strict => crate::veld::rules::RuleOutput::Strict,");
-    w.line("RuleOutputMode::Audit => crate::veld::rules::RuleOutput::Audit,");
-    w.line("RuleOutputMode::Off => crate::veld::rules::RuleOutput::Off,");
+    for v in values {
+        w.line(format!(
+            "RuleOutputMode::{0} => crate::veld::rules::RuleOutput::{0},",
+            variant_of(v)
+        ));
+    }
     w.close().close().close().blank();
 }
 
@@ -206,7 +220,11 @@ fn structs(w: &mut CodeWriter, model: &RuntimeModel, svcs: &[ServiceEntry<'_>], 
         w.line("#[derive(Debug, Clone, Default, serde::Deserialize)]");
         w.line("#[serde(default, deny_unknown_fields)]");
         w.open("pub struct RulesSettings");
-        w.line("/// `rules.output`: default `strict`.");
+        w.line(format!(
+            "/// `{}`: default `{}`.",
+            rc::RULES_OUTPUT,
+            rc::RULE_OUTPUT_DEFAULT
+        ));
         w.line("pub output: RuleOutputMode,");
         w.close().blank();
     }
@@ -298,6 +316,7 @@ fn table(w: &mut CodeWriter, model: &RuntimeModel) {
         "not_an_object: {},",
         tuple(template(rc::not_an_object))
     ));
+    w.line(format!("root_path: {},", lit(rc::ROOT_PATH)));
     w.line(format!(
         "root_not_an_object: {},",
         lit(&rc::not_an_object(rc::ROOT_PATH))
@@ -383,7 +402,10 @@ fn from_values_fn(w: &mut CodeWriter, model: &RuntimeModel, svcs: &[ServiceEntry
     w.line("let get = |path: &str| values.get(path).cloned().unwrap_or_default();");
     w.open("Self");
     if model.setting(rc::RULES_OUTPUT).is_some() {
-        w.line("rules: RulesSettings { output: RuleOutputMode::parse(&get(\"rules.output\")) },");
+        w.line(format!(
+            "rules: RulesSettings {{ output: RuleOutputMode::parse(&get({})) }},",
+            lit(rc::RULES_OUTPUT)
+        ));
     }
     if !svcs.is_empty() {
         w.open(format!("services: {prefix}Services"));

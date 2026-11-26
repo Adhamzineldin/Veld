@@ -41,6 +41,7 @@ const TABLE: Table = Table {
     error_prefix: "invalid runtime config: ",
     not_a_setting: ("", " is not a setting"),
     not_an_object: ("", " must be an object"),
+    root_path: "runtime config",
     root_not_an_object: "runtime config must be an object",
 };
 

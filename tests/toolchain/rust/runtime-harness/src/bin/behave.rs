@@ -91,8 +91,11 @@ fn the_output_mode_comes_from_the_runtime_config() {
 }
 
 /// A transport that records what it is asked to send.
+/// A request as recorded: the URL and the headers.
+type Sent = (String, Vec<(String, String)>);
+
 #[derive(Clone, Default)]
-struct Rec(Arc<Mutex<Vec<(String, Vec<(String, String)>)>>>);
+struct Rec(Arc<Mutex<Vec<Sent>>>);
 
 impl Transport for Rec {
     fn send(&self, req: HttpRequest) -> impl Future<Output = Result<HttpResponse, Error>> + Send {

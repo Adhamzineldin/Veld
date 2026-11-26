@@ -204,6 +204,29 @@ fn the_settings_of_the_four_targets_are_those_of_the_models_of_the_goldens() {
     }
 }
 
+/// The values of `rules.output` and the mode type are those of the shared module, in its order.
+#[test]
+fn the_output_mode_enum_has_the_values_of_the_shared_module() {
+    let ir = contracts();
+    let t = targets(&ir);
+    let orders = text(
+        &t.iter().find(|(d, _)| *d == "orders").unwrap().1,
+        "src/runtime_config.rs",
+    );
+    let mut at = 0;
+    for v in veld_codegen::runtime_config::RULE_OUTPUT_VALUES {
+        let literal = format!("#[serde(rename = {v:?})]");
+        let found = orders[at..].find(&literal);
+        assert!(found.is_some(), "{literal} in order");
+        at += found.unwrap() + literal.len();
+    }
+    let default = veld_codegen::runtime_config::RULE_OUTPUT_DEFAULT;
+    assert!(
+        orders.contains(&format!("#[default]\n    #[serde(rename = {default:?})]")),
+        "{orders}"
+    );
+}
+
 #[test]
 fn a_target_without_settings_has_no_runtime_config() {
     // A server without rules that consumes nothing keeps its bytes: no module, no engine.
@@ -254,7 +277,7 @@ fn the_hooks_no_longer_have_the_output_mode_and_the_entry_takes_the_config() {
         "no required path, so optional: {orders}"
     );
     // The server of `card-service` has services only: it checks the config and keeps the hooks.
-    let cards = text(files("card_service"), "src/cards/cards_server.rs");
+    let cards = text(files("card_service"), "src/card_service/cards_server.rs");
     assert!(
         cards.contains("runtime: &crate::runtime_config::CardServiceRuntime"),
         "{cards}"
