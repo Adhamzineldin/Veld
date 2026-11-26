@@ -235,11 +235,10 @@ impl Printer<'_> {
         let key = layout::decl_key(d);
         self.leading(key, 0);
         self.docs(&d.docs, 0);
-        match &d.kind {
-            DeclKind::Channel(_) => {
-                self.annotations_own_lines(&channel_annotations(&d.annotations), 0);
-            }
-            _ => self.annotations_own_lines(&d.annotations, 0),
+        if matches!(d.kind, DeclKind::Channel(_)) {
+            self.annotations_own_lines(&channel_annotations(&d.annotations), 0);
+        } else {
+            self.annotations_own_lines(&d.annotations, 0);
         }
         match &d.kind {
             DeclKind::Model(m) => {
