@@ -12,6 +12,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+pub mod audit;
 mod builtins;
 mod check;
 pub mod coverage;
@@ -59,7 +60,7 @@ pub use machine::{TimedEndpoint, is_final, next_states, timed_endpoints, timed_m
 pub use old::save_old;
 pub use pipeline::{
     After, Before, ErrorAnswer, Outcome, OutputMode, Pipeline, Prepared, Reported, Request,
-    RunError,
+    RunError, Trail,
 };
 pub use policy::{NOT_PERMITTED, PolicyVerdict, eval_policy};
 pub use redact::{Redacted, redact_decl, redact_decl_at, redact_type, redact_type_at};

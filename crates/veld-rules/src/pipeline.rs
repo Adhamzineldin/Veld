@@ -126,6 +126,20 @@ pub struct Reported {
     /// the `hidden` list of an audit event (`spec/platform.md` section 4). Empty for a replayed
     /// answer: the stored one was filtered when it was first sent.
     pub hidden: Vec<String>,
+    /// What the request had reached when it ended (`spec/platform.md` section 4).
+    pub trail: Trail,
+}
+
+/// What a request had reached when it ended: what the audit event records of it
+/// (`spec/platform.md` section 4).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Trail {
+    /// The bound parameters, with their defaults, once step 4 had passed. `None` for a request
+    /// that ended before: nothing was bound.
+    pub parameters: Option<BTreeMap<String, Json>>,
+    /// The facts that were loaded, in wire form with their defaults and derived fields, by name:
+    /// those loaded before the request ended. An optional fact that was absent is not here.
+    pub facts: BTreeMap<String, Json>,
 }
 
 /// Why the pipeline could not give an outcome: the input is not what the IR describes.
@@ -251,7 +265,8 @@ impl<'a> Pipeline<'a> {
     /// [`RunError`] when the parameters, facts or result do not have the shape the IR says.
     pub fn run_reported(&self, request: &Request, mode: OutputMode) -> Result<Reported, RunError> {
         let mut audited = Vec::new();
-        let (before, stage) = self.before_full(request, &mut audited)?;
+        let mut trail = Trail::default();
+        let (before, stage) = self.before_full(request, &mut audited, &mut trail)?;
         let fresh = stage.fresh;
         let mut reported = Reported {
             outcome: Outcome::Passes,
@@ -264,6 +279,7 @@ impl<'a> Pipeline<'a> {
             etag: None,
             fingerprint: stage.fingerprint,
             hidden: Vec::new(),
+            trail,
         };
         match before {
             Before::Rejected(answer) => reported.outcome = Outcome::Error(answer),
@@ -376,6 +392,49 @@ impl<'a> Pipeline<'a> {
         let caller = self.tenant_of(principal);
         let found = crate::tenant::refused(self.ir, ty, value, caller.as_ref(), "fact")?;
         Ok(!found.is_empty())
+    }
+
+    /// The audit event of a request that ran through the pipeline and ended as `reported` says
+    /// (`spec/platform.md` section 4): [`crate::audit::event`] with what the pipeline knows.
+    ///
+    /// # Errors
+    /// [`RunError`] when a value does not have the shape of its type.
+    pub fn audit_event(&self, request: &Request, reported: &Reported) -> Result<Json, RunError> {
+        let (status, error) = match &reported.outcome {
+            Outcome::Passes => (self.endpoint.success.status, None),
+            Outcome::Error(a) => (a.status, Some(a.name.as_str())),
+        };
+        let result: Option<(veld_ir::Type, &Json)> = match &reported.outcome {
+            Outcome::Passes => match (&self.endpoint.success, reported.body.as_ref()) {
+                (s, Some(body)) if !s.stream => s.ty.clone().map(|t| (t, body)),
+                (_, _) => None,
+            },
+            Outcome::Error(a) if !crate::audit::is_prelude(self.ir, a.decl) => {
+                Some((veld_ir::Type::Decl(a.decl), &a.data))
+            }
+            Outcome::Error(_) => None,
+        };
+        let result = result.as_ref().map(|(t, v)| (t, *v));
+        let caller = request
+            .principal
+            .as_ref()
+            .filter(|_| self.endpoint.auth.kind != veld_ir::AuthKind::None);
+        let ended = crate::audit::Ended {
+            time_ms: request.now,
+            principal: caller,
+            status,
+            error,
+            parameters: reported.trail.parameters.as_ref(),
+            facts: &reported.trail.facts,
+            result,
+            hidden: &reported.hidden,
+        };
+        Ok(crate::audit::event(
+            self.ir,
+            self.endpoint,
+            self.principal,
+            &ended,
+        )?)
     }
 
     /// Visibility (`spec/platform.md` section 2), after the output rules: the body of a success
@@ -508,7 +567,8 @@ impl<'a> Pipeline<'a> {
         request: &Request,
         audited: &mut Vec<Violation>,
     ) -> Result<Before<'a>, RunError> {
-        self.before_full(request, audited).map(|(before, _)| before)
+        self.before_full(request, audited, &mut Trail::default())
+            .map(|(before, _)| before)
     }
 
     /// Like [`Pipeline::before_audited`], and whether the request had a new key when it ended: the
@@ -517,8 +577,9 @@ impl<'a> Pipeline<'a> {
         &self,
         request: &Request,
         audited: &mut Vec<Violation>,
+        trail: &mut Trail,
     ) -> Result<(Before<'a>, Stage), RunError> {
-        let params = match self.bind(request, audited)? {
+        let params = match self.bind(request, audited, trail)? {
             ControlFlow::Continue(params) => params,
             ControlFlow::Break(answer) => return Ok((Before::Rejected(answer), Stage::default())),
         };
@@ -536,7 +597,7 @@ impl<'a> Pipeline<'a> {
             Lookup::Replay(stored) => return Ok((Before::Replayed(stored), stage)),
             Lookup::Conflict(answer) => return Ok((Before::Rejected(answer), stage)),
         }
-        let before = self.prepare(request, params, audited)?;
+        let before = self.prepare(request, params, audited, trail)?;
         Ok((before, stage))
     }
 
@@ -546,30 +607,43 @@ impl<'a> Pipeline<'a> {
         request: &Request,
         params: BTreeMap<String, Json>,
         audited: &mut Vec<Violation>,
+        trail: &mut Trail,
     ) -> Result<Before<'a>, RunError> {
         let mut env = Env::new(self.ir);
         env.params = params;
         env.now = Some(request.now);
+        let before = self.prepare_in(&mut env, request, audited);
+        trail.facts = std::mem::take(&mut env.facts);
+        before
+    }
+
+    /// Step 6 with the environment of the request, so that what was loaded survives a refusal.
+    fn prepare_in(
+        &self,
+        env: &mut Env<'a>,
+        request: &Request,
+        audited: &mut Vec<Violation>,
+    ) -> Result<Before<'a>, RunError> {
         let (principal, broken) = self.complete_principal(request.principal.as_ref())?;
         if !broken.is_empty() {
             let answer = self.answer("Internal", 500, json!({}), Vec::new(), broken)?;
             return Ok(Before::Rejected(answer));
         }
         env.principal.clone_from(&principal);
-        if let Some(answer) = self.load_facts(&mut env, request)? {
+        if let Some(answer) = self.load_facts(env, request)? {
             return Ok(Before::Rejected(answer));
         }
-        if let Some(answer) = self.policies(&env, request.now)? {
+        if let Some(answer) = self.policies(env, request.now)? {
             return Ok(Before::Rejected(answer));
         }
         let sent = self.if_match(request);
-        if let Some(answer) = self.version_guard(&env, sent)? {
+        if let Some(answer) = self.version_guard(env, sent)? {
             return Ok(Before::Rejected(answer));
         }
-        if let Some(answer) = self.guard(&env)? {
+        if let Some(answer) = self.guard(env)? {
             return Ok(Before::Rejected(answer));
         }
-        if let Some(answer) = self.requires(&env, audited)? {
+        if let Some(answer) = self.requires(env, audited)? {
             return Ok(Before::Rejected(answer));
         }
         let ensures: Vec<&Expr> = self
@@ -579,7 +653,7 @@ impl<'a> Pipeline<'a> {
             .iter()
             .map(|e| &e.expr)
             .collect();
-        let old = save_old(&env, &ensures)?;
+        let old = save_old(env, &ensures)?;
         let compared = self
             .endpoint
             .rules
@@ -588,7 +662,7 @@ impl<'a> Pipeline<'a> {
             .is_some_and(|v| env.facts.contains_key(&v.fact));
         Ok(Before::Ready(Prepared {
             pipeline: *self,
-            params: env.params,
+            params: std::mem::take(&mut env.params),
             now: request.now,
             principal,
             old,
@@ -632,6 +706,7 @@ impl<'a> Pipeline<'a> {
         &self,
         request: &Request,
         audited: &mut Vec<Violation>,
+        trail: &mut Trail,
     ) -> Result<ControlFlow<ErrorAnswer, BTreeMap<String, Json>>, RunError> {
         let opts = Options {
             request: true,
@@ -656,6 +731,7 @@ impl<'a> Pipeline<'a> {
             audited.extend(checked.audited.into_iter().map(|v| reroot(v, &p.name)));
             params.insert(p.name.clone(), full);
         }
+        trail.parameters = Some(params.clone());
         let headers = self.header_issues(request);
         if found.is_empty() && headers.is_empty() {
             Ok(ControlFlow::Continue(params))
