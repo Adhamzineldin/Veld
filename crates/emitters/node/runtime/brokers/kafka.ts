@@ -148,6 +148,8 @@ export class KafkaTransport implements Transport {
     payload: EachMessagePayload,
   ): Promise<void> {
     const { topic, partition, message, heartbeat } = payload;
+    // A failed heartbeat of an earlier delivery was a rebalance; the group has been joined again since.
+    running.lost = false;
     const key = message.key === null ? null : message.key.toString('utf8');
     const bytes = message.value === null ? new Uint8Array(0) : new Uint8Array(message.value);
     const timer = setInterval(() => {
