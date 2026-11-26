@@ -98,6 +98,17 @@ fn the_open_parts_of_a_question_are_recorded() {
 }
 
 #[test]
+fn a_derived_field_is_an_open_part_and_a_plain_field_is_not() {
+    // The solver may pick any value for `b`: the server computes it from `a`.
+    let derived = "model D { a: int\n b: int = a + 1\n rule r: b < 0 }";
+    assert_eq!(open_of(derived, "D"), vec![OpenPart::Derived]);
+    // The fields the expression reads are not open themselves.
+    let reads = "model D { a: int\n b: int = a + 1\n rule r: a < 0 }";
+    assert!(open_of(reads, "D").is_empty());
+    assert_eq!(OpenPart::Derived.name(), "derived field");
+}
+
+#[test]
 fn an_enum_is_a_finite_set_and_in_is_a_disjunction() {
     let text = problem_of(
         "enum Status { pending, paid, shipped }\n\

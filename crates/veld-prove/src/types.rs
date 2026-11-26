@@ -112,6 +112,9 @@ pub enum OpenPart {
     Now,
     Membership,
     PatternFormat,
+    /// A derived field (`spec/rules.md` section 17.2): the server computes it from the other
+    /// fields, and the encoding lets the solver pick any value of its type.
+    Derived,
 }
 
 impl OpenPart {
@@ -127,6 +130,7 @@ impl OpenPart {
             OpenPart::Now => "now",
             OpenPart::Membership => "membership in a list or map",
             OpenPart::PatternFormat => "pattern and format of a string",
+            OpenPart::Derived => "derived field",
         }
     }
 }
