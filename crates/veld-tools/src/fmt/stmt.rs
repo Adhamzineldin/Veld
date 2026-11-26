@@ -4,8 +4,9 @@
 //! call is one line; with `returns` the call, `returns` and the outcome take a line each.
 
 use veld_compiler::syntax::ast::{
-    Else, EventExample, Example, ExampleCall, ExpectKind, Expectation, Given, Outcome,
-    PolicyClause, PolicyDecl, PrincipalDecl, Stmt, TransitionStmt, Value, ValueKind,
+    Else, EventExample, Example, ExampleCall, ExpectKind, Expectation, Given, IfMatchLine, KeyLine,
+    KeyStoreLine, Outcome, PolicyClause, PolicyDecl, PrincipalDecl, Stmt, TransitionStmt, Value,
+    ValueKind,
 };
 
 use super::expr::expr_text;
@@ -188,6 +189,25 @@ fn outcome_text(o: &Outcome) -> String {
         s.push_str(&value_text(v));
     }
     s
+}
+
+/// `ifMatch 3` or `ifMatch any`.
+pub(super) fn if_match_line(i: &IfMatchLine) -> String {
+    match i.version {
+        Some(n) => format!("ifMatch {n}"),
+        None => "ifMatch any".to_string(),
+    }
+}
+
+/// `key "k"` and what the store holds.
+pub(super) fn key_line(k: &KeyLine) -> String {
+    let key = quote(&k.key.value);
+    match &k.store {
+        KeyStoreLine::New => format!("key {key}"),
+        KeyStoreLine::Other => format!("key {key} other"),
+        KeyStoreLine::Running => format!("key {key} running"),
+        KeyStoreLine::Stored(o) => format!("key {key} stored {}", outcome_text(o)),
+    }
 }
 
 /// The call of an example, indented by `ind`.
