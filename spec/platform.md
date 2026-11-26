@@ -218,6 +218,20 @@ Built as drafted; each point below fills a gap or fixes a form the draft could n
 - **OpenAPI.** The operation has `"x-veld-limit": { "count": 10, "per": "minute", "by": "user" }`; its `429` answer has the header `Retry-After` (integer, at least 1).
 - **For the generators.** `Limiter` has `take(key, limit, windowSeconds) -> { allowed, retryAfterSeconds }`; the hooks object takes `limiter`, `address` (for `by: ip`) and the caller-identity hook that idempotency uses; the memory limiter says so once when it is used. `retryOnLimit: false` turns the client's wait off.
 
+
+### 9.2 What the first generator settled
+
+Written after the Node generator built the four features (`spec/targets/typescript.md` 5k has the detail); the other targets mirror it.
+
+- **The caller hook of `@limit(by: user)`.** A service that already has the idempotency caller hook (`spec/rules.md` 11.12) uses that one for its limits too. A service with such a limit and no `@idempotent` endpoint that needs a caller gets the same function as a hook of its own, `caller(principal, context)`. The idempotency hooks do not change.
+- **The clock is read once per request**, when the request is matched, and that reading is the `time` of the audit event, the `now` of visibility and of the rules.
+- **The audit hook wraps everything after the match**, the deadline and the idempotency settlement included: a `504` and a pipeline that throws are recorded. `parameters` are those of step 4, kept even when step 5 then refuses the request.
+- **A failing `address` or caller hook is a failing limiter**: the call is allowed and `onError` hears of it.
+- **The test handler has no limits**, and a due-moves run (section 10.1) is neither limited nor audited: it is not a request.
+- **A `@tenant` field in a request**: the request may leave it out, a rule that reads it is skipped for a request, and the idempotency fingerprint does not include it.
+- **A replayed idempotent answer** is audited with the hidden fields of the answer as it was stored.
+- **The client retries a `429` once**, inside its own timeout, only when the body carries a numeric `retryAfter`.
+
 ---
 
 # Phase P2: time, flags and service levels
