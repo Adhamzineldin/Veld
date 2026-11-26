@@ -27,6 +27,7 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
             .services
             .iter()
             .filter(|s| tree.ir.service(**s).package == pkg)
+            .filter(|s| crate::events::serves_http(tree.ir.service(**s)))
         {
             let svc = tree.ir.service(*sid);
             let refused = endpoint::refusals(svc);
@@ -666,6 +667,9 @@ pub fn service_models(tree: &Tree<'_>) -> Vec<ServiceModel> {
     let mut out = Vec::new();
     for sid in &tree.services {
         let svc = tree.ir.service(*sid);
+        if !crate::events::serves_http(svc) {
+            continue;
+        }
         let pkg = svc.package;
         let dir = tree
             .pkg_package(pkg)

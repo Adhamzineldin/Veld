@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{
-    Const, Decl, DeclId, DeclKind, Enum, ErrorDecl, Field, Literal, Model, Scalar, Type, Union,
+    Const, Decl, DeclId, DeclKind, Enum, ErrorDecl, Field, Literal, Scalar, Type, Union,
 };
 
 use crate::rules;
@@ -53,12 +53,12 @@ fn render(
     let mut fc = FileCtx::new(tree, package, name);
     let mut w = CodeWriter::new();
     match &d.kind {
-        DeclKind::Model(m) => write_model(&mut w, &mut fc, d, m)?,
+        DeclKind::Model(m) => write_record(&mut w, &mut fc, d, &m.fields)?,
+        DeclKind::Event(e) => write_record(&mut w, &mut fc, d, &e.fields)?,
         DeclKind::Enum(e) => write_enum(&mut w, &mut fc, d, e),
         DeclKind::Union(u) => write_union(&mut w, &mut fc, d, u),
         DeclKind::Error(e) => write_error(&mut w, &mut fc, d, e)?,
-        // Events are not emitted in phase E1 (`spec/events.md` section 14).
-        DeclKind::Const(_) | DeclKind::Event(_) => {}
+        DeclKind::Const(_) => {}
     }
     Ok(fc.finish(&w.finish()))
 }
@@ -229,15 +229,15 @@ fn write_codec_and_canonical(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name:
     w.close();
 }
 
-fn write_model(
+fn write_record(
     w: &mut CodeWriter,
     fc: &mut FileCtx<'_, '_>,
     d: &Decl,
-    m: &Model,
+    fields: &[Field],
 ) -> Result<(), Vec<GenDiagnostic>> {
     let name = type_name(d);
-    let idents = field_idents(&m.fields);
-    head_docs(w, d, &field_params(&m.fields, &idents));
+    let idents = field_idents(fields);
+    head_docs(w, d, &field_params(fields, &idents));
     let unions: Vec<String> = fc
         .tree
         .unions_of(d.id)
@@ -249,14 +249,14 @@ fn write_model(
     } else {
         format!(" implements {}", unions.join(", "))
     };
-    let comps = components(fc, &m.fields, &idents);
+    let comps = components(fc, fields, &idents);
     open_record(w, "public", &name, &comps, &implements);
     write_sig(w, d, "public static final ");
     w.blank();
     let checked = rules::schema_suffix(d, &name);
-    write_object_schema(w, fc, &m.fields, "public static final ", &checked);
+    write_object_schema(w, fc, fields, "public static final ", &checked);
     w.blank();
-    write_wire_methods(w, fc, &name, &m.fields, &idents);
+    write_wire_methods(w, fc, &name, fields, &idents);
     w.blank();
     write_codec_and_canonical(w, fc, &name);
     if rules::has_rules(d) {

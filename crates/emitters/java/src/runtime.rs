@@ -29,6 +29,9 @@ const MACHINE_FILES: &[&str] = &["Transition"];
 const POLICY_FILES: &[&str] = &["Policy"];
 /// The runtime class of audited rules (`@rollout(audit)`, `spec/rules.md` section 17.1).
 const ROLLOUT_FILES: &[&str] = &["Audit"];
+/// The runtime classes of events (`spec/events.md` sections 6 to 9), emitted only for a server that
+/// publishes or subscribes. They need the rule classes (`Flags::rules`).
+const EVENT_FILES: &[&str] = &["Events", "MemoryTransport", "Transport"];
 
 /// The package the embedded adapter sources declare. It is replaced by `<base>.adapters`.
 const ADAPTER_PACKAGE: &str = "dev.veld.adapters";
@@ -49,11 +52,13 @@ runtime_files!(
     "DigestHandler",
     "EndpointRules",
     "EndpointSpec",
+    "Events",
     "HandlerHooks",
     "Issue",
     "Json",
     "JsonParser",
     "JsonWriter",
+    "MemoryTransport",
     "Page",
     "Policy",
     "Reconnect",
@@ -71,6 +76,7 @@ runtime_files!(
     "SseStream",
     "TestSupport",
     "Transition",
+    "Transport",
     "UntypedError",
     "Veld",
     "VeldError",
@@ -212,6 +218,8 @@ pub struct Flags {
     pub policies: bool,
     /// Audited rules (`// #if rollout` regions and `Audit`). Needs `rules`.
     pub rollout: bool,
+    /// Events (`Events`, `MemoryTransport`, `Transport`). Needs `rules`.
+    pub events: bool,
 }
 
 /// Like [`emit`], with the endpoint rules and test handler parts switched by `flags`.
@@ -230,6 +238,7 @@ pub fn emit_with(
             && (flags.machine || !MACHINE_FILES.contains(&name))
             && (flags.policies || !POLICY_FILES.contains(&name))
             && (flags.rollout || !ROLLOUT_FILES.contains(&name))
+            && (flags.events || !EVENT_FILES.contains(&name))
     };
     let enabled = |region: &str| match region {
         "rules" => flags.rules,
