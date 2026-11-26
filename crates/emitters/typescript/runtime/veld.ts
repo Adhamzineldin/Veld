@@ -2384,16 +2384,59 @@ function sha256Hex(bytes: readonly number[]): string {
   return h.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('');
 }
 
+/** A datetime in UTC with `.mmm` only when it is not zero: the form of the reference evaluator (`.250Z`, where `canonicalOf` has `.25Z`). */
+function referenceDatetime(v: string): string {
+  const ms = Date.parse(v);
+  return Number.isNaN(ms) ? v : new Date(ms).toISOString().replace('.000Z', 'Z');
+}
+
+/** The wire form of a value in the normal form of the reference evaluator: a uuid in lower case, a datetime as above. */
+function normalForm(s: Schema, v: unknown): unknown {
+  const t = resolve(s);
+  switch (t.k) {
+    case 'uuid':
+      return typeof v === 'string' ? v.toLowerCase() : v;
+    case 'datetime':
+      return typeof v === 'string' && RE_DATETIME.test(v) ? referenceDatetime(v) : v;
+    case 'list':
+      return Array.isArray(v) ? v.map((x) => normalForm(t.of, x)) : v;
+    case 'map': {
+      if (!isObject(v)) return v;
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(v)) out[k] = normalForm(t.of, v[k]);
+      return out;
+    }
+    case 'page':
+      return isObject(v) ? { ...v, items: normalForm({ k: 'list', of: t.of }, v['items']) } : v;
+    case 'object': {
+      if (!isObject(v)) return v;
+      const out: Record<string, unknown> = { ...v };
+      for (const f of t.fields) {
+        const key = f.w ?? f.n;
+        if (out[key] !== undefined) out[key] = normalForm(f.t, out[key]);
+      }
+      return out;
+    }
+    case 'union': {
+      const label = isObject(v) ? v[t.d] : undefined;
+      const arm = typeof label === 'string' && Object.prototype.hasOwnProperty.call(t.arms, label) ? t.arms[label] : undefined;
+      return arm === undefined ? v : normalForm(arm, v);
+    }
+    default:
+      return v;
+  }
+}
+
 /**
  * The fingerprint of a request: the first 16 hex characters of the SHA-256 of the RFC 8785 JSON of
  * the bound parameters in wire form, keyed by parameter name (defaults applied, absent optionals
- * left out, values normalised as `canonicalOf` does: a uuid in lower case, a datetime in UTC). The header of the key is not a parameter.
+ * left out, a uuid in lower case, a datetime in UTC). The header of the key is not a parameter.
  */
 function fingerprintOf(ep: EndpointSpec, bound: Bound): string {
   const wire: Record<string, unknown> = {};
   for (const p of ep.params) {
     const v = p.s ? undefined : bound.value[p.name];
-    if (v !== undefined) wire[p.name] = mapValue(p.t, v, { dir: 'to', request: false, normalize: true });
+    if (v !== undefined) wire[p.name] = normalForm(p.t, toWire(p.t, v));
   }
   return sha256Hex(utf8Bytes(canonical(wire))).slice(0, 16);
 }

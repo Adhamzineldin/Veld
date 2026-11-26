@@ -4,6 +4,7 @@
 // so the generated runtime computes the same fingerprints as the Rust reference. Expects `./server`
 // generated from the contract in crates/emitters/node/tests/version_idempotency.rs (service `F`).
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import * as srv from './server/index';
 
 const ID = '00000000-0000-4000-8000-000000000001';
@@ -26,6 +27,9 @@ const handler = srv.createFHandler(
       return req.body;
     },
     async ping() {
+      return { n: 1, note: 'none' };
+    },
+    async stamp() {
       return { n: 1, note: 'none' };
     },
   },
@@ -61,6 +65,19 @@ async function main(): Promise<void> {
   const lower = await call('PUT', `/f/${MIXED}`, 'e', { n: 1 });
   assert.equal(await call('PUT', `/f/${MIXED.toUpperCase()}`, 'f', { n: 1 }), lower);
   assert.notEqual(lower, 'bc508ee59e0a79b7');
+  // A datetime is in the form of the reference evaluator: UTC, `.mmm` only when it is not zero, so
+  // every way to write the same instant gives one fingerprint, and `.25` is `.250`.
+  const instant = createHash('sha256').update('{"instant":"2026-01-01T10:00:00.250Z"}').digest('hex').slice(0, 16);
+  const stamp = async (value: string, key: string): Promise<string | undefined> => {
+    const res = await handler({ method: 'POST', path: '/f/stamp', query: `instant=${value}`, headers: { 'idempotency-key': key } });
+    assert.equal(res?.status, 201, `${value}: ${String(res?.body)}`);
+    return seen[seen.length - 1]?.fingerprint;
+  };
+  assert.equal(await stamp('2026-01-01T10:00:00.25Z', 'h'), instant);
+  assert.equal(await stamp('2026-01-01T10:00:00.250Z', 'i'), instant);
+  assert.equal(await stamp('2026-01-01T11:00:00.250%2B01:00', 'j'), instant);
+  const whole = createHash('sha256').update('{"instant":"2026-01-01T10:00:00Z"}').digest('hex').slice(0, 16);
+  assert.equal(await stamp('2026-01-01T10:00:00.000Z', 'k'), whole);
   // Another value is another fingerprint.
   assert.notEqual(await call('PUT', `/f/${ID}`, 'g', { n: 2 }), 'bc508ee59e0a79b7');
   console.log('idempotency fingerprint ok');

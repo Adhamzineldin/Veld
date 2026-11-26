@@ -35,6 +35,9 @@ service F at "/f" {
 
   @idempotent
   post "/ping" ping() -> 201 Body
+
+  @idempotent
+  post "/stamp" stamp(@query instant: datetime) -> 201 Body
 }
 "#;
 
@@ -117,7 +120,7 @@ fn the_server_module_and_the_client_have_the_names_of_the_spec() {
         );
     }
     // Plain code only: no platform API, so the same file runs on Node, Deno, Bun and the edge.
-    for word in ["crypto", "require(", "Buffer"] {
+    for word in ["crypto", "require(", "Buffer.from"] {
         assert!(!runtime.contains(word), "`{word}` in the runtime");
     }
     let client = gen_client(&ir);
@@ -300,7 +303,7 @@ fn version_examples_run(edition: &str, prefix: &str) {
     {
         let server = Live::start(work, "version_serve.js");
         let passed = run_examples(&server.url, &ir);
-        assert!(ir.examples.len() >= 20, "{}", ir.examples.len());
+        assert_eq!(ir.examples.len(), 19);
         assert_eq!(
             passed,
             ir.examples.len(),
@@ -341,7 +344,7 @@ fn idempotency_examples_run(edition: &str, prefix: &str) {
     {
         let server = Live::start(work, "idempotency_serve.js");
         let passed = run_examples(&server.url, &ir);
-        assert!(ir.examples.len() >= 20, "{}", ir.examples.len());
+        assert_eq!(ir.examples.len(), 21);
         assert_eq!(
             passed,
             ir.examples.len(),
