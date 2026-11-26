@@ -142,6 +142,15 @@ fn a_rule_on_a_declaration_no_endpoint_reaches_still_counts() {
 }
 
 #[test]
+fn a_derived_field_counts_like_a_rule() {
+    let src = "model Line {\n qty: int\n price: int\n total: int = qty * price\n}\nservice Plain at \"/p\" {\n post \"/\" create(body: Line) -> 201 Line\n}\n";
+    let ir = ir_of(&[("plain", src)]);
+    assert!(contract_has_rules(&ir, &ids(&ir, "plain")));
+    let m = RuntimeModel::new(&ir, "plain", Role::Server, &ids(&ir, "plain"), &[]).unwrap();
+    assert_eq!(paths(m.settings()), ["rules.output"]);
+}
+
+#[test]
 fn a_client_has_a_url_for_each_service_it_covers_and_never_an_output_mode() {
     let ir = world();
     let mut all = ids(&ir, "bookings");

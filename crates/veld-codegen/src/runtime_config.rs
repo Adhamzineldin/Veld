@@ -287,7 +287,8 @@ fn port_ok(text: &str) -> bool {
 
 /// Whether the contract of `services` "has rules" in the sense of `spec/rules.md` 5.3, which
 /// decides whether a server has the output mode: an endpoint of the services has a statement or a
-/// version guard, or a declaration they emit has an invariant. The declarations are those the
+/// version guard, or a declaration they emit has an invariant or a derived field (`rules.md` 17.2: a failing
+/// derived field is handled under the output mode). The declarations are those the
 /// services' endpoints reach, every non-event declaration of the services' own packages (reached
 /// or not), the prelude, the events of the services and what those reach. It is the predicate the
 /// TypeScript and Node generators use for `uses_rules`. The services a target only *consumes* do
@@ -315,7 +316,10 @@ pub fn contract_has_rules(ir: &Ir, services: &[ServiceId]) -> bool {
             set.insert(d.id);
         }
     }
-    set.iter().any(|id| !ir.decl(*id).rules().is_empty())
+    set.iter().any(|id| {
+        let d = ir.decl(*id);
+        !d.rules().is_empty() || d.has_derived()
+    })
 }
 
 /// The settings of a target, in path order; empty when the target has none. A client target has
