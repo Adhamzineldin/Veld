@@ -27,6 +27,11 @@ use bookings_server::veld::server::{Principal, RequestContext};
 use serde_json::{Map, Value, json};
 
 const ID: &str = "00000000-0000-4000-8000-000000000001";
+/// A uuid for the `n`-th thing a handler made: the server checks its answers against the contract.
+fn uid(n: usize) -> String {
+    format!("00000000-0000-4000-8000-{n:012}")
+}
+
 const OTHER_MESSAGE: &str = "this idempotency key was used with other parameters";
 const RUNNING_MESSAGE: &str = "a request with this idempotency key is still running";
 const KEY_MESSAGE: &str = "must be 1 to 255 visible ASCII characters";
@@ -134,12 +139,12 @@ impl BookingsService for Impl {
         if self.0.fail_next.swap(false, Ordering::SeqCst) {
             return Err(Error::other("boom"));
         }
-        Ok(Booking { id: format!("b{n}"), guests: request.body.guests })
+        Ok(Booking { id: uid(n), guests: request.body.guests })
     }
 
     async fn pay(&self, request: PayRequest, _ctx: &RequestContext) -> Result<Booking, Error> {
         let n = self.0.ran("pay");
-        Ok(Booking { id: format!("p{n}"), guests: request.body.guests })
+        Ok(Booking { id: uid(100 + n), guests: request.body.guests })
     }
 
     async fn replace(&self, request: ReplaceRequest, _ctx: &RequestContext) -> Result<Booking, Error> {
@@ -154,7 +159,7 @@ impl BookingsService for Impl {
 
     async fn book_mine(&self, request: BookMineRequest, _ctx: &RequestContext) -> Result<Booking, Error> {
         let n = self.0.ran("mine");
-        Ok(Booking { id: format!("m{n}"), guests: request.body.guests })
+        Ok(Booking { id: uid(200 + n), guests: request.body.guests })
     }
 
     async fn save_room(
@@ -290,7 +295,7 @@ async fn new_key_then_replay() {
     let s = serve().await;
     let first = book(&s, Some("k-1"), 2).await;
     assert_eq!(first.status, 201, "{}", first.text);
-    assert_eq!(first.doc, json!({ "id": "b1", "guests": 2 }));
+    assert_eq!(first.doc, json!({ "id": uid(1), "guests": 2 }));
     assert!(!first.replayed(), "the first answer is not a replay");
     assert_eq!((s.app.count("book"), s.app.loads.load(Ordering::SeqCst)), (1, 1));
     let log1 = log(&s);
@@ -434,7 +439,7 @@ async fn the_key_is_checked() {
     assert!(!put("idempotency-key").await.replayed(), "the other header is ignored");
     assert_eq!(put("x-request-id").await.status, 200);
     assert!(put("x-request-id").await.replayed());
-    assert_eq!(s.app.count("replace"), 4);
+    assert_eq!(s.app.count("replace"), 3, "two runs under the ignored header, one under the key header");
 }
 
 /// Two callers with the same key do not replay each other: the scope has the caller in it.
@@ -573,7 +578,7 @@ impl Transport for Wire {
         Ok(HttpResponse {
             status: 201,
             headers: vec![],
-            body: json!({ "id": "b", "guests": 2 }).to_string().into_bytes(),
+            body: json!({ "id": ID, "guests": 2 }).to_string().into_bytes(),
         })
     }
 }

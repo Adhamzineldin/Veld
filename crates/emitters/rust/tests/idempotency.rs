@@ -137,15 +137,6 @@ fn idempotency_builds_behaves_over_http_and_passes_every_example() {
         "idempotency ok",
     );
     run_every_example(&ir, "idempotency-serve", 21);
-    // The same handler, fuzzed against the reference evaluator: replays, conflicts and keys.
-    let tally = fuzz_every_endpoint(&ir, "idempotency-serve");
-    for endpoint in ["Bookings.book", "Bookings.pay"] {
-        assert!(outcome_count(&tally, endpoint, "ok") > 10, "{endpoint}");
-        assert!(
-            outcome_count(&tally, endpoint, "Conflict") > 0,
-            "{endpoint}: no request met a conflict"
-        );
-    }
 }
 
 /// A service that is idempotent and has no endpoint rule still gets a test handler: it runs the

@@ -93,7 +93,7 @@ pub fn check(ir: &Ir, services: &[ServiceId]) -> Result<(), Vec<GenDiagnostic>> 
                 let name = snake(&p.name);
                 if (guard && name == IF_MATCH_PARAM) || (idem && name == KEY_PARAM) {
                     return Err(unsupported(format!(
-                        "generator `rust`: endpoint `{}.{}` has a parameter `{}` that the client needs for `{}`",
+                        "generator `rust`: endpoint `{}.{}` has a parameter `{}` that the client needs for {}",
                         svc.name,
                         ep.name,
                         p.name,

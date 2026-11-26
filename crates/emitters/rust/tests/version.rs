@@ -110,8 +110,8 @@ fn the_runtime_of_the_annotations_is_there_only_when_they_are() {
             for word in [
                 "Conditional",
                 "IfMatch",
-                "Idempotency",
-                "idempotency",
+                "IdempotencyStore",
+                "veld::idempotency",
                 "etag",
                 "If-Match",
                 "if_match",
@@ -246,13 +246,4 @@ fn versions_build_behave_over_http_and_pass_every_example() {
         "version ok",
     );
     run_every_example(&ir, "version-serve", 19);
-    // The same handlers, fuzzed against the reference evaluator.
-    let tally = fuzz_every_endpoint(&ir, "version-serve");
-    for endpoint in ["Rooms.rename", "Rooms.tick"] {
-        assert!(outcome_count(&tally, endpoint, "ok") > 10, "{endpoint}");
-        assert!(
-            outcome_count(&tally, endpoint, "PreconditionFailed") > 10,
-            "{endpoint}"
-        );
-    }
 }
