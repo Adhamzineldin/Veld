@@ -17,7 +17,7 @@ import { OrdersClient } from './copy_a/orders/client';
 import { createOrdersQueries, ordersMutations, ordersQueries } from './copy_a/orders/queries';
 import type { OrdersGetOrderError } from './copy_a/orders/queries';
 import type { FetchInit } from './copy_a/runtime/veld';
-import { hooks, impl } from './roundtrip';
+import { hooks, impl, runtime } from './roundtrip';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -76,7 +76,7 @@ function useFetched<T>(options: { queryKey: readonly unknown[]; queryFn: (ctx: {
 
 async function main(): Promise<void> {
   const app = express();
-  app.use(srv.toExpress(srv.createOrdersHandler(impl, hooks)));
+  app.use(srv.toExpress(srv.createOrdersHandler(impl, hooks, runtime)));
   const server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;

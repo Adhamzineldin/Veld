@@ -23,6 +23,9 @@ const BANNED_ID = '22222222-2222-4222-8222-222222222222';
 // Implementations
 // ---------------------------------------------------------------------------
 
+/** The settings of the server: it consumes the Iam service, so it needs its address. */
+export const runtime: srv.ApiRuntime = { services: { iam: { url: 'http://iam.test' } } };
+
 const store = new Map<string, srv.Order>();
 const thrown: unknown[] = [];
 let rateLimitCalls = 0;
@@ -299,7 +302,7 @@ export async function scenario(label: string, base: string): Promise<void> {
 async function main(): Promise<void> {
   // 1. no body parser: the adapter reads the stream
   const app1 = count(express());
-  app1.use(srv.toExpress(srv.createOrdersHandler(impl, hooks)));
+  app1.use(srv.toExpress(srv.createOrdersHandler(impl, hooks, runtime)));
   const s1 = http.createServer(app1);
   const base1 = await listen(s1);
   await scenario('stream', base1);
@@ -307,7 +310,7 @@ async function main(): Promise<void> {
   // 2. express.json() ran first: the adapter reads req.body
   const app2 = count(express());
   app2.use(express.json());
-  app2.use(srv.toExpress(srv.createOrdersHandler(impl, hooks)));
+  app2.use(srv.toExpress(srv.createOrdersHandler(impl, hooks, runtime)));
   const s2 = http.createServer(app2);
   const base2 = await listen(s2);
   await scenario('json-parser', base2);
@@ -316,13 +319,13 @@ async function main(): Promise<void> {
   assert.equal((await raw(`${base1}/nothing`)).status, 404);
 
   // 3. plain node:http adapter
-  const s3 = http.createServer(srv.toNodeHttp(srv.createOrdersHandler(impl, hooks)));
+  const s3 = http.createServer(srv.toNodeHttp(srv.createOrdersHandler(impl, hooks, runtime)));
   const base3 = await listen(s3);
   assert.equal((await raw(`${base3}/orders/health`)).status, 204);
   assert.equal((await raw(`${base3}/missing`)).status, 404);
 
   // 4. Fastify and Hono adapters, driven with structural fakes
-  const handler = srv.createOrdersHandler(impl, hooks);
+  const handler = srv.createOrdersHandler(impl, hooks, runtime);
   const sent: { status?: number; headers: Record<string, string>; payload?: unknown } = { headers: {} };
   const reply = {
     code(n: number): unknown {
@@ -359,8 +362,9 @@ async function main(): Promise<void> {
     assert.deepEqual(e.data, { reason: 'spam' });
     return true;
   });
-  const envLess = () => new srv.iam.IamClient({ fetch: async () => ({ status: 200, text: async () => '{}' }) });
-  assert.ok(envLess(), 'baked-in base URL is used when nothing else is given');
+  // A client without an address is refused: there is no environment variable and no baked-in URL.
+  const noUrl = () => new srv.iam.IamClient({ fetch: async () => ({ status: 200, text: async () => '{}' }) } as never);
+  assert.throws(noUrl, (e: unknown) => e instanceof srv.VeldTransportError && /no base URL/.test(e.message));
 
   process.stdout.write('roundtrip ok\n');
   process.exit(0);

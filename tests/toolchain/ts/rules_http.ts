@@ -45,7 +45,7 @@ async function main(): Promise<void> {
     srv.createBookingsHandler(impl, { onRuleViolation: (e) => events.push(e) }),
   );
   const audit = await listen(
-    srv.createBookingsHandler(impl, { rules: { output: 'audit' }, onRuleViolation: (e) => events.push(e) }),
+    srv.createBookingsHandler(impl, { onRuleViolation: (e) => events.push(e) }, { rules: { output: 'audit' } }),
   );
 
   // The 422 problem document has both data.issues and the top-level violations member.

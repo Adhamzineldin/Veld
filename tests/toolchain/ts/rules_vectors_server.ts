@@ -44,7 +44,7 @@ const impl = new Proxy(
 ) as unknown as gen.VectorsService;
 
 const strict = gen.createVectorsHandler(impl, { onRuleViolation: (e) => events.push(e) });
-const off = gen.createVectorsHandler(impl, { rules: { output: 'off' }, onRuleViolation: (e) => events.push(e) });
+const off = gen.createVectorsHandler(impl, { onRuleViolation: (e) => events.push(e) }, { rules: { output: 'off' } });
 
 /** The path of the value that carries the rule: `body.rows[1]` and `result.rows[1]` are `$.rows[1]`. */
 function valuePath(path: string): string {

@@ -75,9 +75,9 @@ async function main(): Promise<void> {
   const events: RuleViolationEvent[] = [];
   const strict = await listen(srv.createBookingsHandler(impl, { facts: loaders, onRuleViolation: (e) => events.push(e) }));
   const audit = await listen(
-    srv.createBookingsHandler(impl, { facts: loaders, rules: { output: 'audit' }, onRuleViolation: (e) => events.push(e) }),
+    srv.createBookingsHandler(impl, { facts: loaders, onRuleViolation: (e) => events.push(e) }, { rules: { output: 'audit' } }),
   );
-  const off = await listen(srv.createBookingsHandler(impl, { facts: loaders, rules: { output: 'off' } }));
+  const off = await listen(srv.createBookingsHandler(impl, { facts: loaders }, { rules: { output: 'off' } }));
 
   // The helpers: the states that can follow a state, in declaration order of the edges, and finals.
   assert.deepEqual(srv.Status.nextStates('pending'), ['paid', 'cancelled']);

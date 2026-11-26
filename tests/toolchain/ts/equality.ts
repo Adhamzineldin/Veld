@@ -107,19 +107,20 @@ assert.deepEqual(Object.keys(decoded), ['amount', 'currency']);
 assert.equal(A.Money.sig, sigs.a['decl:orders:catalog.Money']);
 assert.equal(A.OutOfStock.sig, sigs.a['decl:orders:orders.OutOfStock']);
 
-// createClients: one client per service from one set of options, with per-service overrides.
+// createClients: one client per service, each with its URL from the runtime config, all with the same options.
 void (async () => {
   const urls: string[] = [];
   const spy = (async (url: string) => {
     urls.push(url);
     throw new Error('offline');
   }) as unknown as A.veld.FetchLike;
-  const api = A.createClients({ baseUrl: 'http://orders.test', fetch: spy }, { iam: { baseUrl: 'http://iam.test', fetch: spy } });
+  const runtime: A.WebRuntime = { services: { iam: { url: 'http://iam.test' }, orders: { url: 'http://orders.test/' } } };
+  const api = A.createClients(runtime, { fetch: spy });
   assert.deepEqual(Object.keys(api).sort(), ['iam', 'orders']);
   assert.ok(api.orders instanceof OrdersClient && api.iam instanceof IamClient);
   await assert.rejects(api.orders.health({}), A.VeldTransportError);
   await assert.rejects(api.iam.getUser({ id: '11111111-1111-4111-8111-111111111111' }), A.VeldTransportError);
-  assert.ok(urls[0]?.startsWith('http://orders.test/'), String(urls[0]));
+  assert.ok(urls[0]?.startsWith('http://orders.test/') && !urls[0].startsWith('http://orders.test//'), String(urls[0]));
   assert.ok(urls[1]?.startsWith('http://iam.test/'), String(urls[1]));
   process.stdout.write('equality ok\n');
 })();

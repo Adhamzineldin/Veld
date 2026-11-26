@@ -109,10 +109,10 @@ async function main(): Promise<void> {
     }),
   );
   const audit = await listen(
-    srv.createBookingsHandler(impl, { facts: loaders, clock: () => NOW, rules: { output: 'audit' }, onRuleViolation: (e) => events.push(e) }),
+    srv.createBookingsHandler(impl, { facts: loaders, clock: () => NOW, onRuleViolation: (e) => events.push(e) }, { rules: { output: 'audit' } }),
   );
   const off = await listen(
-    srv.createBookingsHandler(impl, { facts: loaders, clock: () => NOW, rules: { output: 'off' }, onRuleViolation: (e) => events.push(e) }),
+    srv.createBookingsHandler(impl, { facts: loaders, clock: () => NOW, onRuleViolation: (e) => events.push(e) }, { rules: { output: 'off' } }),
   );
 
   // A success carries the digest, and the clock was read once.

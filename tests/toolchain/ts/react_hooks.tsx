@@ -12,7 +12,7 @@ import * as cli from './copy_a/index';
 import { OrdersClient } from './copy_a/orders/client';
 import { VeldProvider, useCreateOrder, useGetOrder, useHealth, useOrdersClient } from './copy_a/orders/react';
 import type { FetchInit } from './copy_a/runtime/veld';
-import { hooks, impl } from './roundtrip';
+import { hooks, impl, runtime } from './roundtrip';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -47,7 +47,7 @@ const peek = <T,>(s: Seen<T>): T | undefined => s.current;
 
 async function main(): Promise<void> {
   const app = express();
-  app.use(srv.toExpress(srv.createOrdersHandler(impl, hooks)));
+  app.use(srv.toExpress(srv.createOrdersHandler(impl, hooks, runtime)));
   const server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
