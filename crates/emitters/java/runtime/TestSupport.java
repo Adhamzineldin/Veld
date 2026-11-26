@@ -67,10 +67,22 @@ public final class TestSupport {
     return "1".equals(ctx.header("Veld-Test-Dry-Run"));
   }
 
+  // #if endpoint
   /** The response of a dry run that passed: {@code 204} and {@code Veld-Test-Passed: 1}. */
   public static EndpointRules.Early passed() {
     return new EndpointRules.Early(new VeldResponse(204, Map.of("Veld-Test-Passed", "1"), null));
   }
+  // #endif
+  // #if early
+
+  /**
+   * The response of a dry run that passed: {@code 204} and {@code Veld-Test-Passed: 1}. A server
+   * without endpoint rules ends the request through {@code Conditions.Early}.
+   */
+  public static Conditions.Early passed() {
+    return new Conditions.Early(new VeldResponse(204, Map.of("Veld-Test-Passed", "1"), null));
+  }
+  // #endif
 
   /**
    * The endpoint without authentication and middleware: the principal comes from

@@ -5,7 +5,7 @@
 //! authentication or middleware. Nothing in the production classes reads a test header.
 
 use veld_codegen::{CodeWriter, GenDiagnostic};
-use veld_ir::{Endpoint, Service};
+use veld_ir::{Endpoint, Ir, Service};
 
 use crate::conditional;
 use crate::endpoint::{loaders_name, service_has_rules};
@@ -15,10 +15,11 @@ use crate::tree::FileCtx;
 use crate::types::{codec_expr, java_type, schema_expr};
 use crate::util::{doc_comment, java_str, member_ident, unique};
 
-/// Whether a service gets a test handler.
+/// Whether a service gets a test handler: it has endpoint rules, or an endpoint with a guard, an
+/// idempotency key or an `ETag` (`spec/rules.md` section 11.12: `veld test --live` must reach it).
 #[must_use]
-pub fn wanted(testing: bool, svc: &Service) -> bool {
-    testing && service_has_rules(svc)
+pub fn wanted(ir: &Ir, testing: bool, svc: &Service) -> bool {
+    testing && (service_has_rules(svc) || conditional::service_uses(ir, svc))
 }
 
 /// Writes `<Service>TestHandler`.
@@ -92,8 +93,13 @@ fn write_create_body(
         ));
     }
     let given = if has_loaders { "new Loaders(), " } else { "" };
+    let clock = if service_has_rules(svc) {
+        format!(", {support}::now")
+    } else {
+        String::new()
+    };
     w.line(format!(
-        "{list}<{endpoint}> endpoints = {base}Handler.endpoints(new Stub(impl), {given}built, {support}::now);"
+        "{list}<{endpoint}> endpoints = {base}Handler.endpoints(new Stub(impl), {given}built{clock});"
     ));
     w.line(format!("{list}<{endpoint}> open = new {array_list}<>();"));
     let principal = match (&svc.principal, fc.tree.policies) {

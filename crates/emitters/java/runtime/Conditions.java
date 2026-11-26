@@ -142,4 +142,26 @@ public record Conditions(String etag, boolean guard, Idempotency idempotency) {
     }
     return null;
   }
+  // #if early
+
+  /**
+   * Thrown by a test handler to end a request with a response that is already built (a dry run).
+   * A server that has endpoint rules uses {@code EndpointRules.Early} for this.
+   */
+  public static final class Early extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+    private final transient VeldResponse response;
+
+    /** Ends the request with {@code response}. */
+    public Early(VeldResponse response) {
+      super("the request ends with status " + response.status(), null, false, false);
+      this.response = response;
+    }
+
+    /** The response. */
+    public VeldResponse response() {
+      return response;
+    }
+  }
+  // #endif
 }

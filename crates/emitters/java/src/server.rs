@@ -56,7 +56,7 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
                 let found = write_handler(w, fc, &names, svc, class, &base);
                 problems.borrow_mut().extend(found);
             })?;
-            if crate::testing::wanted(tree.testing, svc) {
+            if crate::testing::wanted(tree.ir, tree.testing, svc) {
                 put("TestHandler", &|w, fc, class| {
                     let found =
                         crate::testing::write_test_handler(w, fc, &names, svc, class, &base);
@@ -536,10 +536,12 @@ fn write_handler(
         endpoint: &endpoint,
         list: &list,
     };
-    if rules {
-        write_create_with_rules(w, fc, &site, pass);
+    // A service with a guard, a key or an `ETag` lists its endpoints in a method of its own too: the
+    // test handler builds the same endpoints (`spec/targets/java.md` section 9.5).
+    if rules || conditional::service_uses(fc.tree.ir, svc) {
+        write_create_with_endpoints(w, fc, &site, pass, rules);
         w.blank();
-        write_endpoints_method(w, fc, &site, &given, &mut problems);
+        write_endpoints_method(w, fc, &site, &given, rules, &mut problems);
     } else {
         problems.extend(write_create_plain(w, fc, &site));
     }
@@ -650,20 +652,28 @@ impl Entry<'_> {
     }
 }
 
-/// The body of `create` for a service whose endpoints have rules: the clock and the hooks are
-/// read once and handed to `endpoints(...)`, which the test handler calls too.
-fn write_create_with_rules(
+/// The body of `create` for a service whose endpoints have rules, or a guard, a key or an `ETag`:
+/// the hooks (and, with rules, the clock) are read once and handed to `endpoints(...)`, which the
+/// test handler calls too.
+fn write_create_with_endpoints(
     w: &mut CodeWriter,
     fc: &mut FileCtx<'_, '_>,
     site: &EndpointsSite<'_>,
     pass: &str,
+    rules: bool,
 ) {
-    let (built, clock) = (fc.rt("HandlerHooks"), fc.name("java.time.Clock"));
+    let built = fc.rt("HandlerHooks");
     let (router, list) = (fc.rt("Router"), site.list);
     w.line(format!("{built} built = {};", build_call(fc)));
-    w.line(format!("{clock} clock = hooks.clock();"));
+    let clock = if rules {
+        let clock = fc.name("java.time.Clock");
+        w.line(format!("{clock} clock = hooks.clock();"));
+        ", ctx -> clock.millis()"
+    } else {
+        ""
+    };
     w.line(format!(
-        "{list}<{}> endpoints = endpoints({pass}, built, ctx -> clock.millis());",
+        "{list}<{}> endpoints = endpoints({pass}, built{clock});",
         site.endpoint
     ));
     let std = std_sigs(fc);
@@ -725,16 +735,22 @@ fn write_endpoints_method(
     fc: &mut FileCtx<'_, '_>,
     site: &EndpointsSite<'_>,
     given: &str,
+    rules: bool,
     problems: &mut Vec<GenDiagnostic>,
 ) {
-    let (hooks, ctx, to_long) = (
-        fc.rt("HandlerHooks"),
-        fc.rt("RequestContext"),
-        fc.name("java.util.function.ToLongFunction"),
-    );
+    let hooks = fc.rt("HandlerHooks");
+    let clock = if rules {
+        let (ctx, to_long) = (
+            fc.rt("RequestContext"),
+            fc.name("java.util.function.ToLongFunction"),
+        );
+        format!(", {to_long}<{ctx}> clock")
+    } else {
+        String::new()
+    };
     w.line("/** The endpoints of the service; the test handler reuses them. */");
     w.open(format!(
-        "static {}<{}> endpoints({given}, {hooks} hooks, {to_long}<{ctx}> clock)",
+        "static {}<{}> endpoints({given}, {hooks} hooks{clock})",
         site.list, site.endpoint
     ));
     open_call(w, format!("return {}.of", site.list));

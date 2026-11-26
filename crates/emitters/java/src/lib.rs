@@ -220,17 +220,20 @@ impl Generator for Java {
         let output_mode = runtime_config
             .as_ref()
             .is_some_and(config::Info::has_rules_output);
+        let conditional_server =
+            req.role == Role::Server && conditional::services_use(req.ir, &req.services);
         let flags = runtime::Flags {
             rules: rules || policies || rollout || output_mode,
             runtime_config: runtime_config.is_some(),
             endpoint,
-            testing: endpoint && opts.testing == Some(true),
+            // A service that has endpoint rules, or only a guard, a key or an `ETag`, gets a test
+            // handler (`spec/rules.md` 11.12).
+            testing: (endpoint || conditional_server) && opts.testing == Some(true),
             machine: endpoint && endpoint::services_have_transition(req.ir, &req.services),
             policies,
             rollout,
             events: tree.events,
-            conditional: req.role == Role::Server
-                && conditional::services_use(req.ir, &req.services),
+            conditional: conditional_server,
             preconditions: conditional::services_use(
                 req.ir,
                 if req.role == Role::Client {

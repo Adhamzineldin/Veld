@@ -606,6 +606,11 @@ public final class Router implements VeldHandler {
       return early.response();
     }
     // #endif
+    // #if early
+    if (err instanceof Conditions.Early early) {
+      return early.response();
+    }
+    // #endif
     // #if rules
     if (err instanceof RuleWalk.Rejected) {
       return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
