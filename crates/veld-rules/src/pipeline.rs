@@ -121,6 +121,11 @@ pub struct Reported {
     /// applied and an optional parameter that was not sent left out. Only for an `@idempotent`
     /// endpoint whose request passed step 5.
     pub fingerprint: Option<String>,
+    /// The wire paths that `@visible` dropped from the body of the answer or from the data of a
+    /// declared error, without the `$` (`guestPhone`, `items[0].guestPhone`), sorted. These are
+    /// the `hidden` list of an audit event (`spec/platform.md` section 4). Empty for a replayed
+    /// answer: the stored one was filtered when it was first sent.
+    pub hidden: Vec<String>,
 }
 
 /// Why the pipeline could not give an outcome: the input is not what the IR describes.
@@ -258,6 +263,7 @@ impl<'a> Pipeline<'a> {
             body: None,
             etag: None,
             fingerprint: stage.fingerprint,
+            hidden: Vec::new(),
         };
         match before {
             Before::Rejected(answer) => reported.outcome = Outcome::Error(answer),
@@ -284,6 +290,9 @@ impl<'a> Pipeline<'a> {
             .as_ref()
             .filter(|_| matches!(reported.outcome, Outcome::Passes))
             .and_then(|b| version::etag(self.ir, self.endpoint, b));
+        if !reported.replayed {
+            self.show(request, &mut reported)?;
+        }
         if fresh {
             reported.store =
                 self.store_effect(&reported.outcome, reported.store, reported.body.as_ref());
@@ -292,6 +301,83 @@ impl<'a> Pipeline<'a> {
         }
         reported.audited = audited;
         Ok(reported)
+    }
+
+    /// Visibility (`spec/platform.md` section 2), after the output rules: the body of a success
+    /// and the data of a declared error lose the fields the caller may not see. The `ETag` was
+    /// taken before, from the whole value.
+    fn show(&self, request: &Request, reported: &mut Reported) -> Result<(), RunError> {
+        let mut hidden = Vec::new();
+        match &mut reported.outcome {
+            Outcome::Passes => {
+                if let (Some(ty), Some(body)) = (
+                    self.endpoint
+                        .success
+                        .ty
+                        .as_ref()
+                        .filter(|_| !self.endpoint.success.stream),
+                    reported.body.as_mut(),
+                ) {
+                    hidden.extend(self.show_value(request, ty, body)?);
+                }
+            }
+            Outcome::Error(answer) => {
+                let ty = veld_ir::Type::Decl(answer.decl);
+                hidden.extend(self.show_value(request, &ty, &mut answer.data)?);
+            }
+        }
+        hidden.sort();
+        hidden.dedup();
+        reported.hidden = hidden;
+        Ok(())
+    }
+
+    /// Applies visibility to `value` in place and returns the unrooted paths it dropped. A type
+    /// that reaches no `@visible` field is not touched, whatever the value looks like.
+    fn show_value(
+        &self,
+        request: &Request,
+        ty: &veld_ir::Type,
+        value: &mut Json,
+    ) -> Result<Vec<String>, RunError> {
+        if !self.ir.type_reaches_visible(ty) {
+            return Ok(Vec::new());
+        }
+        let shown = self.shown(request, ty, value)?;
+        *value = shown.value;
+        Ok(shown
+            .hidden
+            .iter()
+            .map(|p| crate::visibility::unrooted(p))
+            .collect())
+    }
+
+    /// `value`, a response, a declared error's data or a stream item of type `ty`, as the caller
+    /// of `request` may see it: the reference of what a server sends. For a stream item `ty` is
+    /// the type of the endpoint's stream.
+    ///
+    /// # Errors
+    /// [`RunError`] when `value` does not have the shape of `ty`.
+    pub fn shown(
+        &self,
+        request: &Request,
+        ty: &veld_ir::Type,
+        value: &Json,
+    ) -> Result<crate::visibility::Shown, RunError> {
+        let (principal, _) = self.complete_principal(request.principal.as_ref())?;
+        let caller = match (self.principal, principal.as_ref()) {
+            (Some(model), Some(p)) if self.endpoint.auth.kind != veld_ir::AuthKind::None => {
+                crate::visibility::Caller::of(model, p)
+            }
+            _ => crate::visibility::Caller::none(),
+        };
+        Ok(crate::visibility::apply_visibility_type(
+            self.ir,
+            ty,
+            value,
+            caller,
+            request.now,
+        )?)
     }
 
     /// What the store holds for a new key once the request has its outcome: the answer when it is

@@ -272,6 +272,9 @@ pub(super) fn resolve_value(
                 .collect();
             Json::Array(out?)
         }
+        // A pattern says `absent` with `null`: the wire never carries a `null` member
+        // (`spec/platform.md` section 2).
+        ExampleValue::Absent(_) => Json::Null,
     })
 }
 

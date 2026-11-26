@@ -214,6 +214,7 @@ mod tests {
 
     fn reported(replayed: bool, etag: Option<&str>) -> Reported {
         Reported {
+            hidden: Vec::new(),
             outcome: veld_rules::Outcome::Passes,
             audited: Vec::new(),
             hook: Vec::new(),
