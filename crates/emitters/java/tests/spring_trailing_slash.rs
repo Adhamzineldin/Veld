@@ -54,7 +54,7 @@ fn the_spring_adapter_and_the_jdk_server_treat_a_trailing_slash_alike() {
     // The JDK server.
     let work = tempfile::tempdir().unwrap();
     let mut sources = write_files(work.path(), &files(None));
-    sources.push(repo_root().join("tests/toolchain/java/slash/SlashJdk.java"));
+    sources.push(repo_root().join("tests/toolchain/java/rules/SlashJdk.java"));
     javac_ok(work.path(), &sources, "17");
     let args: Vec<&str> = REQUESTS.iter().flat_map(|(m, p, b)| [*m, *p, *b]).collect();
     let out = java_main(work.path(), "veldtest.SlashJdk", &args);
@@ -72,7 +72,7 @@ fn the_spring_adapter_and_the_jdk_server_treat_a_trailing_slash_alike() {
     let app = start_spring(
         "spring-slash",
         &files(Some("spring")),
-        &["slash/spring/App.java"],
+        &["rules/spring-slash/App.java"],
         "/items/count",
         &[],
     );

@@ -45,7 +45,7 @@ fn a_request_without_its_required_readonly_field_is_decoded_and_one_with_it_igno
     );
     let work = tempfile::tempdir().unwrap();
     let mut sources = write_files(work.path(), &files);
-    sources.push(repo_root().join("tests/toolchain/java/readonly/ReadonlyJdk.java"));
+    sources.push(repo_root().join("tests/toolchain/java/rules/ReadonlyJdk.java"));
     javac_ok(work.path(), &sources, "17");
     let without = r#"{"title":"x"}"#;
     let with = format!(r#"{{"id":"{SENT}","title":"x"}}"#);
