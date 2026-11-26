@@ -316,11 +316,11 @@ fn rust_server_generates_events_and_the_client_ignores_them() {
     veld_emit_conformance::check_events_are_ignored_by_clients(&Rust).unwrap();
 }
 
-/// `@retry`, `@deadLetter` and `@ordered` (`spec/events.md` section 10.8): the Rust server has not
-/// built them and refuses a service that uses one with `E0801`; the client keeps its bytes.
+/// `@retry`, `@deadLetter` and `@ordered` (`spec/events.md` section 10.8): the Rust server
+/// declares `events_delivery` and generates a service that uses one; the client keeps its bytes.
 #[test]
-fn rust_server_refuses_channel_annotations_and_the_client_ignores_them() {
-    veld_emit_conformance::check_events_delivery_is_refused(&Rust).unwrap();
+fn rust_server_generates_channel_annotations_and_the_client_ignores_them() {
+    veld_emit_conformance::check_events_delivery_is_generated(&Rust).unwrap();
     veld_emit_conformance::check_events_delivery_is_ignored_by_clients(&Rust).unwrap();
 }
 
