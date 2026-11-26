@@ -993,3 +993,142 @@ fn an_enforced_rule_is_not_an_audited_report() {
     let ir = rollout();
     assert!(reference_reports(&ir, AUDITED_ENFORCED).is_empty());
 }
+
+// --- If-Match and the idempotency key (spec/rules.md sections 11.7 to 11.9) ---------------------
+
+const CONDITIONAL: &str = r#"
+model Room {
+  id: uuid
+  name: string
+  @version
+  revision: long
+}
+error RoomFull 409 { capacity: int }
+service S at "/s" {
+  @idempotent(header: "X-Req")
+  put "/{id}" save(id: uuid, body: Room) -> Room | RoomFull {
+    fact room: Room = id
+  }
+}
+example "a stale tag" {
+  given room = { revision: 4 }
+  ifMatch 3
+  key "k-1"
+  save(id: room.id, body: { name: "x" }) -> PreconditionFailed { expected: 3, actual: 4 }
+}
+example "a stored answer" {
+  given room = { revision: 4 }
+  key "k-2" stored RoomFull { capacity: 2 }
+  save(id: room.id, body: { name: "x" }) -> RoomFull { capacity: 2 }
+}
+example "a stored success" {
+  given room = { revision: 4 }
+  key "k-3" stored ok { name: "x", revision: 7 }
+  save(id: room.id, body: { name: "x" }) -> ok { revision: 7 }
+}
+"#;
+
+fn conditional_ir() -> Ir {
+    compile_text(CONDITIONAL)
+}
+
+fn problem_of(ir: &Ir, decl: &str, status: u16, data: &Value) -> String {
+    let operation = ir.services[0]
+        .endpoints
+        .iter()
+        .find(|e| e.name == "save")
+        .unwrap()
+        .sig
+        .clone();
+    json!({ "type": sig_of(ir, decl), "title": decl, "status": status, "operation": operation, "data": data }).to_string()
+}
+
+#[test]
+fn a_live_request_carries_if_match_the_key_and_what_the_store_holds() {
+    let ir = conditional_ir();
+    let fake = serve(|_| reply(500, "{}"));
+    run_live(&fake, &ir, "a stale tag", false);
+    run_live(&fake, &ir, "a stored answer", false);
+    let sent = fake.requests();
+    assert_eq!(sent.len(), 2);
+    // A tag and a new key: `If-Match`, the header the annotation names, and no store header.
+    assert_eq!(sent[0].headers["if-match"], "\"3\"");
+    assert_eq!(sent[0].headers["x-req"], "k-1");
+    assert!(!sent[0].headers.contains_key("veld-test-idempotency"));
+    // A stored answer: the store header, in the form of section 11.9.
+    assert!(!sent[1].headers.contains_key("if-match"));
+    assert_eq!(sent[1].headers["x-req"], "k-2");
+    let state: Value =
+        serde_json::from_slice(&b64::decode(&sent[1].headers["veld-test-idempotency"]).unwrap())
+            .unwrap();
+    assert_eq!(state["state"], "stored");
+    assert_eq!(state["status"], 409);
+    assert_eq!(state["type"], json!(sig_of(&ir, "RoomFull")));
+    assert_eq!(state["data"], json!({ "capacity": 2 }));
+}
+
+fn problem_reply(body: &str, replay: bool) -> Reply {
+    let mut headers = vec![("Content-Type", "application/problem+json".to_owned())];
+    if replay {
+        headers.push(("Veld-Idempotent-Replay", "true".to_owned()));
+    }
+    Reply {
+        status: 409,
+        headers,
+        body: body.to_owned(),
+    }
+}
+
+fn ok_reply(body: &str, etag: Option<&str>) -> Reply {
+    let mut headers = vec![
+        ("Content-Type", "application/json".to_owned()),
+        ("Veld-Idempotent-Replay", "true".to_owned()),
+    ];
+    if let Some(t) = etag {
+        headers.push(("ETag", t.to_owned()));
+    }
+    Reply {
+        status: 200,
+        headers,
+        body: body.to_owned(),
+    }
+}
+
+#[test]
+fn a_replay_must_say_so_and_a_success_must_carry_its_etag() {
+    let ir = conditional_ir();
+    let full = problem_of(&ir, "RoomFull", 409, &json!({ "capacity": 2 }));
+    let said = {
+        let b = full.clone();
+        serve(move |_| problem_reply(&b, true))
+    };
+    assert!(run_live(&said, &ir, "a stored answer", false).passed());
+    let silent = {
+        let b = full.clone();
+        serve(move |_| problem_reply(&b, false))
+    };
+    let report = run_live(&silent, &ir, "a stored answer", false);
+    assert!(!report.passed(), "{report}");
+    assert!(
+        report.to_string().contains("Veld-Idempotent-Replay"),
+        "{report}"
+    );
+    // A stored success is sent again with the ETag of the stored body.
+    let body =
+        json!({ "id": "00000000-0000-4000-8000-000000000001", "name": "x", "revision": "7" })
+            .to_string();
+    let tagged = {
+        let b = body.clone();
+        serve(move |_| ok_reply(&b, Some("\"7\"")))
+    };
+    assert!(run_live(&tagged, &ir, "a stored success", false).passed());
+    let untagged = {
+        let b = body.clone();
+        serve(move |_| ok_reply(&b, None))
+    };
+    let report = run_live(&untagged, &ir, "a stored success", false);
+    assert!(
+        !report.passed() && report.to_string().contains("ETag"),
+        "{report}"
+    );
+}

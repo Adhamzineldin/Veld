@@ -11,6 +11,7 @@ use veld_rules::{
 };
 
 use crate::audited;
+use crate::conditional;
 use crate::error::LiveError;
 use crate::judge::{Answer, judge};
 use crate::outcome::{Called, describe_answer, judge_outcome};
@@ -169,6 +170,13 @@ impl Live {
             && let Some(mismatch) = reported
                 .as_ref()
                 .and_then(|r| against_reference(ir, &filled, &r.outcome, &answer))
+        {
+            report.verdict = Verdict::Failed(mismatch);
+        }
+        if report.passed()
+            && let Some(mismatch) = reported
+                .as_ref()
+                .and_then(|r| conditional::differences(r, &answer))
         {
             report.verdict = Verdict::Failed(mismatch);
         }
