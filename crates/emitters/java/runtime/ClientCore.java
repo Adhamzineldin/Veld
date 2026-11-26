@@ -84,6 +84,34 @@ public final class ClientCore {
     HttpRequest request = buildRequest(ep, params, "application/json", Map.of());
     return decode(ep, send(ep, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)));
   }
+  // #if preconditions
+
+  /**
+   * Performs a call that also sends the headers of {@link #conditional}: {@code If-Match} and the
+   * idempotency key. They are not parameters, so they are neither validated nor part of the
+   * request's wire form.
+   */
+  public Json call(EndpointSpec ep, Json.Obj params, Map<String, String> extra) {
+    check(ep, params);
+    HttpRequest request = buildRequest(ep, params, "application/json", extra);
+    return decode(ep, send(ep, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)));
+  }
+
+  /**
+   * The headers of {@code ifMatch} and of the idempotency key, for the ones that are not
+   * {@code null}. The client sends what it is given and checks neither.
+   */
+  public static Map<String, String> conditional(IfMatch ifMatch, String keyHeader, String key) {
+    Map<String, String> out = new java.util.LinkedHashMap<>();
+    if (ifMatch != null) {
+      out.put("If-Match", ifMatch.header());
+    }
+    if (key != null) {
+      out.put(keyHeader, key);
+    }
+    return out;
+  }
+  // #endif
 
   private void check(EndpointSpec ep, Json.Obj params) {
     if (options.validate(defaults.validate())) {

@@ -251,6 +251,34 @@ public final class EndpointRules {
     }
 
     // #endif
+    // #if conditional
+    /**
+     * The version guard (spec/rules.md section 11.9): when the request carried an {@code If-Match}
+     * tag and the guarded fact is present, the tag must be the fact's current version, else the
+     * request ends with {@code 412 PreconditionFailed} (the message names {@code expected}, the
+     * caller's version, and {@code actual}). {@code *} and no header pass. The result is the version
+     * that was checked, for the handler, or {@code null} when nothing was compared. It runs whether
+     * or not request validation is on; like a transition it is a guard, not an atomic guarantee.
+     */
+    public Long version(
+        RequestContext ctx,
+        String id,
+        Long actual,
+        java.util.function.BiFunction<Long, Long, VeldError> stale) {
+      Long expected = ctx.ifMatchVersion();
+      if (expected == null || actual == null) {
+        return null;
+      }
+      if (expected.longValue() == actual.longValue()) {
+        return expected;
+      }
+      List<Violation> found = List.of(new Violation(id, "request", List.of(), "violates rule version", null));
+      RuleWalk.report(hooks, spec, RuleWalk.Position.INPUT, RuleWalk.Outcome.REJECTED, found, started);
+      VeldError error = stale.apply(expected, actual);
+      throw early(error, error.status(), found);
+    }
+
+    // #endif
     /** One {@code ensure}: checked after the handler, once the result's invariants hold. */
     public void ensure(String id, String name, List<String> fields, String message, BooleanSupplier holds) {
       if (active()) {

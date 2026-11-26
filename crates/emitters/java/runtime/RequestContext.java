@@ -48,6 +48,20 @@ public final class RequestContext {
   void setPrincipal(Object value) {
     this.principal = value;
   }
+  // #if conditional
+
+  private volatile Long ifMatchVersion;
+
+  /** Records the version of the {@code If-Match} tag the request carried (step 5). */
+  void setIfMatchVersion(Long value) {
+    this.ifMatchVersion = value;
+  }
+
+  /** The version of the tag the request carried, or {@code null}: no header, or {@code *}. */
+  Long ifMatchVersion() {
+    return ifMatchVersion;
+  }
+  // #endif
 
   /** The framework's request object (for example an {@code HttpExchange}). */
   public Object raw() {

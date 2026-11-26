@@ -24,7 +24,11 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
             .filter(|s| tree.ir.service(**s).package == pkg)
         {
             let svc = tree.ir.service(*sid);
-            emit_requests(files, tree, &package, &names, svc)?;
+            let refused = crate::conditional::refusals(svc);
+            if !refused.is_empty() {
+                return Err(refused);
+            }
+            emit_requests(files, tree, &package, (&names, true), svc)?;
             let class = class_name(svc);
             let mut fc = FileCtx::new(tree, &package, &class);
             let mut w = CodeWriter::new();
@@ -150,14 +154,16 @@ fn write_method(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, request: &str, ep:
     };
     endpoint_docs(w, ep);
     w.open(format!("public {ret} {method}({request} request)"));
+    let call = match crate::conditional::client_headers(fc, ep) {
+        Some(headers) => format!("core.call({konst}, request.toWire(), {headers})"),
+        None => format!("core.call({konst}, request.toWire())"),
+    };
     match decode {
-        Some(c) => w.line(format!(
-            "return {c}.decode(core.call({konst}, request.toWire()));"
-        )),
-        None => w.line(format!("core.call({konst}, request.toWire());")),
+        Some(c) => w.line(format!("return {c}.decode({call});")),
+        None => w.line(format!("{call};")),
     };
     w.close();
-    if ep.params.is_empty() {
+    if ep.params.is_empty() && crate::conditional::client_headers(fc, ep).is_none() {
         w.blank();
         w.line(format!("/** Calls `{}` without parameters. */", ep.name));
         w.open(format!("public {ret} {method}()"));

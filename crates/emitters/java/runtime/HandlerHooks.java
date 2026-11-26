@@ -41,6 +41,18 @@ public final class HandlerHooks {
     void onError(Throwable error, RequestContext ctx);
   }
 
+  // #if conditional
+  /**
+   * The caller of a request, as text, for the scope of an idempotency key. The scope of a key
+   * includes the caller only for an endpoint with authentication.
+   */
+  @FunctionalInterface
+  public interface IdempotencyCaller {
+    /** Returns the caller text; the same caller must always give the same text. */
+    String caller(Object principal, RequestContext ctx) throws Exception;
+  }
+
+  // #endif
   private final BearerAuth bearer;
   private final BasicAuth basic;
   private final ApiKeyAuth apiKey;
@@ -51,6 +63,10 @@ public final class HandlerHooks {
   // #if rules
   private final RuleWalk.OutputMode rulesOutput;
   private final RuleWalk.Hook ruleHook;
+  // #endif
+  // #if conditional
+  private final IdempotencyStore idempotencyStore;
+  private final IdempotencyCaller idempotencyCaller;
   // #endif
 
   private HandlerHooks(Builder b) {
@@ -64,6 +80,10 @@ public final class HandlerHooks {
     // #if rules
     this.rulesOutput = b.rulesOutput;
     this.ruleHook = b.ruleHook;
+    // #endif
+    // #if conditional
+    this.idempotencyStore = b.idempotencyStore;
+    this.idempotencyCaller = b.idempotencyCaller;
     // #endif
   }
 
@@ -109,6 +129,21 @@ public final class HandlerHooks {
     return ruleHook;
   }
   // #endif
+  // #if conditional
+
+  IdempotencyStore idempotencyStore() {
+    return idempotencyStore;
+  }
+
+  IdempotencyCaller idempotencyCaller() {
+    return idempotencyCaller;
+  }
+
+  /** These hooks with another idempotency store and caller (the test handler brings its own). */
+  public HandlerHooks withIdempotency(IdempotencyStore store, IdempotencyCaller caller) {
+    return builder().copyOf(this).idempotencyStore(store).idempotencyCaller(caller).build();
+  }
+  // #endif
 
   /** Builds {@link HandlerHooks}. */
   public static final class Builder {
@@ -122,6 +157,10 @@ public final class HandlerHooks {
     // #if rules
     private RuleWalk.OutputMode rulesOutput = RuleWalk.OutputMode.STRICT;
     private RuleWalk.Hook ruleHook;
+    // #endif
+    // #if conditional
+    private IdempotencyStore idempotencyStore;
+    private IdempotencyCaller idempotencyCaller;
     // #endif
 
     private Builder() {}
@@ -182,6 +221,38 @@ public final class HandlerHooks {
     /** Observes every violated rule; a failing hook never changes the response. */
     public Builder onRuleViolation(RuleWalk.Hook hook) {
       this.ruleHook = hook;
+      return this;
+    }
+
+    // #endif
+    // #if conditional
+    /** The store of the {@code @idempotent} endpoints. */
+    public Builder idempotencyStore(IdempotencyStore store) {
+      this.idempotencyStore = store;
+      return this;
+    }
+
+    /** Tells who the caller is, for the scope of an idempotency key. */
+    public Builder idempotencyCaller(IdempotencyCaller hook) {
+      this.idempotencyCaller = hook;
+      return this;
+    }
+
+    /** Starts from the hooks of {@code other}. */
+    Builder copyOf(HandlerHooks other) {
+      this.bearer = other.bearer;
+      this.basic = other.basic;
+      this.apiKey = other.apiKey;
+      this.middleware.putAll(other.middleware);
+      this.onError = other.onError;
+      this.validateResponses = other.validateResponses;
+      this.validateRequests = other.validateRequests;
+      // #endif
+      // #if conditional_rules
+      this.rulesOutput = other.rulesOutput;
+      this.ruleHook = other.ruleHook;
+      // #endif
+      // #if conditional
       return this;
     }
 

@@ -7,6 +7,7 @@
 
 pub mod can;
 pub mod client;
+pub mod conditional;
 pub mod endpoint;
 pub mod events;
 pub mod frameworks;
@@ -60,7 +61,10 @@ pub struct Java;
 /// (`spec/targets/java.md` section 12); a client supports the feature by generating nothing for it
 /// (`spec/events.md` section 14).
 fn events_capabilities(_role: Role) -> Capabilities {
-    Capabilities::all_except(&[]).with(Feature::RulesRollout)
+    Capabilities::all_except(&[])
+        .with(Feature::RulesRollout)
+        .with(Feature::RulesVersion)
+        .with(Feature::Idempotency)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -214,6 +218,16 @@ impl Generator for Java {
             policies,
             rollout,
             events: tree.events,
+            conditional: req.role == Role::Server
+                && conditional::services_use(req.ir, &req.services),
+            preconditions: conditional::services_use(
+                req.ir,
+                if req.role == Role::Client {
+                    &req.services
+                } else {
+                    &req.consumes
+                },
+            ),
         };
         runtime::emit_with(&mut files, &base, streaming, flags)?;
         let tree = tree

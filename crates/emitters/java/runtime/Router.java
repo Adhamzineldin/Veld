@@ -45,6 +45,9 @@ public final class Router implements VeldHandler {
   private final List<Route> routes;
   private final StdSigs std;
   private final HandlerHooks hooks;
+  // #if conditional
+  private Map<String, Conditions> conditions = Map.of();
+  // #endif
 
   private Router(List<Route> routes, StdSigs std, HandlerHooks hooks) {
     this.routes = routes;
@@ -58,6 +61,20 @@ public final class Router implements VeldHandler {
    * @throws IllegalStateException when a hook an endpoint needs was not provided
    */
   public static VeldHandler create(List<ServerEndpoint> endpoints, StdSigs std, HandlerHooks hooks) {
+    // #if conditional
+    return create(endpoints, Map.of(), std, hooks);
+  }
+
+  /**
+   * Builds a handler from endpoint descriptions and the conditional headers of the endpoints that
+   * have them, by operation signature.
+   *
+   * @throws IllegalStateException when a hook an endpoint needs was not provided
+   */
+  public static VeldHandler create(
+      List<ServerEndpoint> endpoints, Map<String, Conditions> conditions, StdSigs std, HandlerHooks hooks) {
+    assertConditions(endpoints, conditions, hooks);
+    // #endif
     assertHooks(endpoints, hooks);
     // #if rules
     RuleWalk.announce(hooks.rulesOutput());
@@ -70,8 +87,34 @@ public final class Router implements VeldHandler {
       routes.add(compile(e));
     }
     routes.sort((a, b) -> Integer.compare(a.names().size(), b.names().size()));
+    // #if conditional
+    Router router = new Router(List.copyOf(routes), std, hooks);
+    router.conditions = Map.copyOf(conditions);
+    return router;
+    // #endif
+    // #if plain
     return new Router(List.copyOf(routes), std, hooks);
+    // #endif
   }
+  // #if conditional
+
+  /** An {@code @idempotent} endpoint needs the store, and the caller hook when its scope has one. */
+  private static void assertConditions(
+      List<ServerEndpoint> endpoints, Map<String, Conditions> conditions, HandlerHooks hooks) {
+    for (ServerEndpoint e : endpoints) {
+      Conditions c = conditions.get(e.spec().sig());
+      if (c == null || c.idempotency() == null) {
+        continue;
+      }
+      if (hooks.idempotencyStore() == null) {
+        throw new IllegalStateException(e.spec().name() + ": the idempotency store is required");
+      }
+      if (c.idempotency().caller() && hooks.idempotencyCaller() == null) {
+        throw new IllegalStateException(e.spec().name() + ": the idempotency caller hook is required");
+      }
+    }
+  }
+  // #endif
 
   private static void assertHooks(List<ServerEndpoint> endpoints, HandlerHooks hooks) {
     for (ServerEndpoint e : endpoints) {
@@ -161,11 +204,137 @@ public final class Router implements VeldHandler {
         return startSse(ep, ep.sse().call(params, ctx), ctx);
       }
       // veld:end
+      // #if conditional
+      Conditions found = conditions.get(spec.sig());
+      String key = found == null ? null : found.key(ctx);
+      if (key != null) {
+        return idempotent(route, found, key, guarded.bound, ctx, params);
+      }
+      // #endif
       return success(ep, ep.call().call(params, ctx));
     } catch (Exception | StackOverflowError err) {
       return failure(err, spec, ctx);
     }
   }
+  // #if conditional
+
+  /**
+   * Step 5b: a request with an idempotency key asks the store before anything else runs. A new key
+   * runs the rest of the pipeline and keeps its answer when it is below 500; a key with an answer
+   * sends it again; a key that is running or was used for other parameters is {@code 409}.
+   */
+  private VeldResponse idempotent(
+      Route route, Conditions conditions, String key, Bound bound, RequestContext ctx, Json.Obj params)
+      throws Exception {
+    ServerEndpoint ep = route.endpoint();
+    EndpointSpec spec = ep.spec();
+    Conditions.Idempotency idem = conditions.idempotency();
+    final String scope;
+    if (idem.caller()) {
+      String who = hooks.idempotencyCaller().caller(ctx.principal(), ctx);
+      if (who == null) {
+        throw new IllegalStateException(spec.name() + ": the idempotency caller hook returned no text");
+      }
+      scope = spec.sig() + "\n" + who;
+    } else {
+      scope = spec.sig();
+    }
+    IdempotencyStore store = hooks.idempotencyStore();
+    IdempotencyStore.Begin begun = store.begin(scope, key, fingerprint(bound));
+    if (begun instanceof IdempotencyStore.Begin.Replay replay) {
+      return replayed(replay.answer());
+    }
+    if (!(begun instanceof IdempotencyStore.Begin.Started)) {
+      String message = begun instanceof IdempotencyStore.Begin.Running
+          ? Conditions.RUNNING_MESSAGE
+          : Conditions.OTHER_MESSAGE;
+      Json data = Json.object().put("message", Json.of(message)).build();
+      return problem(idem.conflictSig(), "Conflict", idem.conflictStatus(), spec.sig(), data);
+    }
+    boolean settled = false;
+    try {
+      VeldResponse response;
+      try {
+        response = success(ep, ep.call().call(params, ctx));
+      } catch (Exception | StackOverflowError err) {
+        response = failure(err, spec, ctx);
+      }
+      settle(store, scope, key, response, ctx);
+      settled = true;
+      return response;
+    } finally {
+      if (!settled) {
+        try {
+          store.release(scope, key);
+        } catch (Exception | StackOverflowError err) {
+          observe(err, ctx);
+        }
+      }
+    }
+  }
+
+  /** Keeps the answer when it is below 500 and forgets the key otherwise; a failing store is only reported. */
+  private void settle(IdempotencyStore store, String scope, String key, VeldResponse response, RequestContext ctx) {
+    try {
+      if (response.status() < 500) {
+        store.complete(scope, key, stored(response));
+      } else {
+        store.release(scope, key);
+      }
+    } catch (Exception | StackOverflowError err) {
+      observe(err, ctx);
+    }
+  }
+
+  private void observe(Throwable err, RequestContext ctx) {
+    try {
+      if (hooks.onError() != null) {
+        hooks.onError().onError(err, ctx);
+      }
+    } catch (RuntimeException ignored) {
+      // A failing hook must not change the response.
+    }
+  }
+
+  private static StoredAnswer stored(VeldResponse response) {
+    byte[] body = response.body() == null ? new byte[0] : response.body().getBytes(StandardCharsets.UTF_8);
+    Map<String, String> headers = response.headers();
+    return new StoredAnswer(
+        response.status(), body, headers.get("content-type"), headers.get("etag"), headers.get("location"));
+  }
+
+  /** A stored answer sent again, marked with {@code Veld-Idempotent-Replay: true}. */
+  private static VeldResponse replayed(StoredAnswer answer) {
+    Map<String, String> headers = new LinkedHashMap<>();
+    if (answer.contentType() != null) {
+      headers.put("content-type", answer.contentType());
+    }
+    if (answer.etag() != null) {
+      headers.put("etag", answer.etag());
+    }
+    if (answer.location() != null) {
+      headers.put("location", answer.location());
+    }
+    headers.put("veld-idempotent-replay", "true");
+    String body = answer.body().length == 0 ? null : new String(answer.body(), StandardCharsets.UTF_8);
+    return new VeldResponse(answer.status(), headers, body);
+  }
+
+  /** The first 16 hex characters of the SHA-256 of the canonical JSON of the bound parameters. */
+  private static String fingerprint(Bound bound) {
+    try {
+      byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+          .digest(new Json.Obj(bound.canonical).canonical().getBytes(StandardCharsets.UTF_8));
+      StringBuilder out = new StringBuilder();
+      for (int i = 0; i < 8; i++) {
+        out.append(Character.forDigit((digest[i] >> 4) & 0xf, 16)).append(Character.forDigit(digest[i] & 0xf, 16));
+      }
+      return out.toString();
+    } catch (java.security.NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-256 is not available", e);
+    }
+  }
+  // #endif
 
   /** The outcome of the part of the pipeline every transport shares: a response, or the bound values. */
   private static final class Guarded {
@@ -189,6 +358,12 @@ public final class Router implements VeldHandler {
       hooks.middleware(name).run(ctx);
     }
     out.bound = bind(route, match, request, ctx, ws, hooks.validateRequests());
+    // #if conditional
+    Conditions held = conditions.get(spec.sig());
+    if (held != null) {
+      out.bound.issues.addAll(0, held.issues(ctx));
+    }
+    // #endif
     if (!out.bound.issues.isEmpty()) {
       out.failure = problem(std.validation(), "ValidationError", 422, spec.sig(), issuesData(out.bound.issues));
     }
@@ -402,7 +577,19 @@ public final class Router implements VeldHandler {
         throw new IllegalStateException(spec.name() + ": response failed validation: " + issues);
       }
     }
+    // #if conditional
+    Map<String, String> headers = new LinkedHashMap<>();
+    headers.put("content-type", "application/json");
+    Conditions owed = conditions.get(spec.sig());
+    String etag = owed == null ? null : owed.etagOf(wire);
+    if (etag != null) {
+      headers.put("etag", etag);
+    }
+    return new VeldResponse(spec.status(), headers, wire.write());
+    // #endif
+    // #if plain
     return new VeldResponse(spec.status(), Map.of("content-type", "application/json"), wire.write());
+    // #endif
   }
 
   private VeldResponse failure(Throwable err, EndpointSpec spec, RequestContext ctx) {
@@ -479,6 +666,10 @@ public final class Router implements VeldHandler {
     boolean check = true;
     final Map<String, Json> values = new LinkedHashMap<>();
     final List<Issue> issues = new ArrayList<>();
+    // #if conditional
+    /** The parameters as the fingerprint of an idempotency key sees them: defaults applied, no placeholders. */
+    final Map<String, Json> canonical = new LinkedHashMap<>();
+    // #endif
   }
 
   private static Bound bind(Route r, Matcher m, VeldRequest req, RequestContext ctx, boolean ws, boolean check) {
@@ -523,6 +714,9 @@ public final class Router implements VeldHandler {
     List<Issue> issues = b.check ? Wire.validate(p.type(), v, loc, false) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
+      // #if conditional
+      b.canonical.put(p.name(), v);
+      // #endif
       b.values.put(p.name(), v);
     }
   }
@@ -543,6 +737,9 @@ public final class Router implements VeldHandler {
     List<Issue> issues = b.check ? Wire.validate(p.type(), obj, p.location(), true) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
+      // #if conditional
+      b.canonical.put(p.name(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST));
+      // #endif
       b.values.put(p.name(), Wire.fillReadonly(p.type(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST)));
     }
   }
@@ -568,6 +765,9 @@ public final class Router implements VeldHandler {
     List<Issue> issues = b.check ? Wire.validate(p.type(), raw, "body", true) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
+      // #if conditional
+      b.canonical.put(p.name(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST));
+      // #endif
       b.values.put(p.name(), Wire.fillReadonly(p.type(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST)));
     }
   }

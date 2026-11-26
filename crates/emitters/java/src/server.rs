@@ -7,6 +7,7 @@ use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{AuthKind, Endpoint, Service};
 
+use crate::conditional;
 use crate::endpoint;
 use crate::frameworks::{EndpointKind, EndpointModel, ServiceModel};
 use crate::machine;
@@ -30,11 +31,12 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
             .filter(|s| crate::events::serves_http(tree.ir.service(**s)))
         {
             let svc = tree.ir.service(*sid);
-            let refused = endpoint::refusals(svc);
+            let mut refused = endpoint::refusals(svc);
+            refused.extend(conditional::refusals(svc));
             if !refused.is_empty() {
                 return Err(refused);
             }
-            emit_requests(files, tree, &package, &names, svc)?;
+            emit_requests(files, tree, &package, (&names, false), svc)?;
             emit_facts(files, tree, &package, &names, svc)?;
             let base = naming::pascal(&svc.name);
             let problems = RefCell::new(Vec::new());
@@ -120,10 +122,23 @@ fn write_interface(
         if i > 0 {
             w.blank();
         }
-        if ep.rules.transition.is_some() {
-            endpoint_docs_note(w, ep, machine::TRANSITION_NOTE);
-        } else {
+        let notes: Vec<&str> = [
+            ep.rules
+                .version
+                .is_some()
+                .then_some(conditional::VERSION_NOTE),
+            ep.rules
+                .transition
+                .is_some()
+                .then_some(machine::TRANSITION_NOTE),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        if notes.is_empty() {
             endpoint_docs(w, ep);
+        } else {
+            endpoint_docs_note(w, ep, &notes.join("\n\n"));
         }
         let request = names.get(svc.id, &ep.name);
         w.line(signature(fc, ep, &request, &ctx));
@@ -138,6 +153,9 @@ fn request_params(fc: &mut FileCtx<'_, '_>, ep: &Endpoint, request: &str, ctx: &
     if !ep.rules.facts.is_empty() {
         params.push(format!("{} facts", endpoint::facts_name(request)));
     }
+    if let Some(ty) = conditional::version_type(fc, ep) {
+        params.push(format!("{ty} version"));
+    }
     if let Some(t) = &ep.rules.transition {
         params.push(format!("{} transition", machine::transition_type(fc, t)));
     }
@@ -151,6 +169,9 @@ pub(crate) fn extra_args(ep: &Endpoint) -> String {
     let mut out = String::new();
     if !ep.rules.facts.is_empty() {
         out.push_str("facts, ");
+    }
+    if ep.rules.version.is_some() {
+        out.push_str("version, ");
     }
     if ep.rules.transition.is_some() {
         out.push_str("transition, ");
@@ -220,10 +241,19 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
         }
     }
     auth.sort_unstable();
+    let (needs_store, needs_caller) = conditional::hooks_needed(svc);
+    let idempotency: Vec<&str> = [
+        needs_store.then_some("store"),
+        needs_caller.then_some("caller"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
     let params = unique(
         auth.iter()
             .map(|a| a.0.to_string())
             .chain(middleware.iter().map(|m| member_ident(m)))
+            .chain(idempotency.iter().map(|n| (*n).to_string()))
             .collect(),
     );
     let principal = match (&svc.principal, fc.tree.policies, auth.is_empty()) {
@@ -264,7 +294,61 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
             iface: Vec::new(),
         });
     }
+    let first = auth.len() + middleware.len();
+    if needs_store {
+        out.push(Hook {
+            param: params[first].clone(),
+            ty: fc.rt("IdempotencyStore"),
+            register: format!("builder.idempotencyStore({});", params[first]),
+            doc: "the store of the `@idempotent` endpoints (`MemoryIdempotencyStore` for tests)"
+                .to_string(),
+            iface: Vec::new(),
+        });
+    }
+    if needs_caller {
+        let param = params[first + usize::from(needs_store)].clone();
+        out.push(caller_hook(fc, &hooks, principal.as_deref(), param));
+    }
     out
+}
+
+/// The hook that tells who the caller is, for the scope of an idempotency key: typed with the
+/// principal's model when the service has one.
+fn caller_hook(
+    fc: &mut FileCtx<'_, '_>,
+    hooks: &str,
+    principal: Option<&str>,
+    param: String,
+) -> Hook {
+    let doc = "who the caller is, as text, for the scope of an idempotency key".to_string();
+    match principal {
+        Some(class) => {
+            let ctx = fc.rt("RequestContext");
+            Hook {
+                ty: "IdempotencyCaller".to_string(),
+                register: format!(
+                    "builder.idempotencyCaller((principal, ctx) -> {param}.caller(({class}) principal, ctx));"
+                ),
+                doc,
+                iface: vec![
+                    format!("/** The caller hook: returns the text that stands for the caller (a `{class}`). */"),
+                    "@FunctionalInterface".to_string(),
+                    "public interface IdempotencyCaller {".to_string(),
+                    "  /** Returns the caller text; the same caller must always give the same text. */".to_string(),
+                    format!("  String caller({class} principal, {ctx} ctx) throws Exception;"),
+                    "}".to_string(),
+                ],
+                param,
+            }
+        }
+        None => Hook {
+            ty: format!("{hooks}.IdempotencyCaller"),
+            register: format!("builder.idempotencyCaller({param});"),
+            doc,
+            iface: Vec::new(),
+            param,
+        },
+    }
 }
 
 fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, class: &str) {
@@ -434,6 +518,10 @@ fn write_handler(
     } else {
         problems.extend(write_create_plain(w, fc, &site));
     }
+    if conditional::service_uses(fc.tree.ir, svc) {
+        w.blank();
+        conditional::write_conditions(w, fc, svc);
+    }
     w.close();
     problems
 }
@@ -455,7 +543,8 @@ fn write_create_with_rules(
         site.endpoint
     ));
     let std = std_sigs(fc);
-    let create = format!("{router}.create(endpoints, {std}, built)");
+    let args = conditional::router_args(fc.tree.ir, site.svc);
+    let create = format!("{router}.create({args}, {std}, built)");
     w.line(format!("return {};", wrap_digest(fc, site.svc, &create)));
     w.close();
 }
@@ -478,7 +567,8 @@ fn write_create_plain(
     }
     end_call(w);
     let std = std_sigs(fc);
-    let create = format!("{router}.create(endpoints, {std}, hooks.build())");
+    let args = conditional::router_args(fc.tree.ir, svc);
+    let create = format!("{router}.create({args}, {std}, hooks.build())");
     w.line(format!("return {};", wrap_digest(fc, svc, &create)));
     w.close();
     problems
@@ -659,6 +749,7 @@ pub(crate) fn needs_hooks(svc: &Service) -> bool {
     svc.endpoints
         .iter()
         .any(|e| auth_kind_name(e.auth.kind).is_some() || !e.middleware.is_empty())
+        || conditional::hooks_needed(svc).0
 }
 
 /// The services of the tree as the framework adapters see them, in tree order.

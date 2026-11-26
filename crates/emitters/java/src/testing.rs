@@ -7,6 +7,7 @@
 use veld_codegen::{CodeWriter, GenDiagnostic};
 use veld_ir::{Endpoint, Service};
 
+use crate::conditional;
 use crate::endpoint::{loaders_name, service_has_rules};
 use crate::server::{extra_args, needs_hooks, signature, std_sigs};
 use crate::spec::{RequestNames, is_sse, is_ws, method_name};
@@ -82,6 +83,12 @@ fn write_create_body(
     let (list, array_list) = (fc.name("java.util.List"), fc.name("java.util.ArrayList"));
     w.line(format!("{support}.notice({});", java_str(&svc.name)));
     w.line(format!("{} built = hooks.build();", fc.rt("HandlerHooks")));
+    let uses = conditional::service_uses(fc.tree.ir, svc);
+    if conditional::hooks_needed(svc).0 {
+        w.line(format!(
+            "built = built.withIdempotency({support}.store({base}Handler.conditions()), {support}.caller());"
+        ));
+    }
     let given = if has_loaders { "new Loaders(), " } else { "" };
     w.line(format!(
         "{list}<{endpoint}> endpoints = {base}Handler.endpoints(new Stub(impl), {given}built, {support}::now);"
@@ -102,7 +109,12 @@ fn write_create_body(
         "for ({endpoint} e : endpoints) {{ open.add({support}.endpoint(e{principal})); }}"
     ));
     let std = std_sigs(fc);
-    let created = format!("{router}.create({list}.copyOf(open), {std}, built)");
+    let conditions = if uses {
+        format!("{base}Handler.conditions(), ")
+    } else {
+        String::new()
+    };
+    let created = format!("{router}.create({list}.copyOf(open), {conditions}{std}, built)");
     let wrapped = match (&svc.rules_digest, fc.tree.rules) {
         (Some(digest), true) => format!(
             "{}.wrap({created}, {})",

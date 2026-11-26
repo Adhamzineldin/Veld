@@ -29,6 +29,16 @@ const MACHINE_FILES: &[&str] = &["Transition"];
 const POLICY_FILES: &[&str] = &["Policy"];
 /// The runtime class of audited rules (`@rollout(audit)`, `spec/rules.md` section 17.1).
 const ROLLOUT_FILES: &[&str] = &["Audit"];
+/// The runtime classes of a server with `@version` or `@idempotent` endpoints
+/// (`spec/targets/java.md` section 13).
+const CONDITIONAL_FILES: &[&str] = &[
+    "Conditions",
+    "IdempotencyStore",
+    "MemoryIdempotencyStore",
+    "StoredAnswer",
+];
+/// The runtime class of the `If-Match` of a client call (`spec/targets/java.md` section 13).
+const PRECONDITION_FILES: &[&str] = &["IfMatch"];
 /// The runtime classes of events (`spec/events.md` sections 6 to 9), emitted only for a server that
 /// publishes or subscribes. They need the rule classes (`Flags::rules`).
 const EVENT_FILES: &[&str] = &["Events", "MemoryTransport", "Transport"];
@@ -49,15 +59,19 @@ runtime_files!(
     "ClientDefaults",
     "ClientOptions",
     "Codec",
+    "Conditions",
     "DigestHandler",
     "EndpointRules",
     "EndpointSpec",
     "Events",
     "HandlerHooks",
+    "IdempotencyStore",
+    "IfMatch",
     "Issue",
     "Json",
     "JsonParser",
     "JsonWriter",
+    "MemoryIdempotencyStore",
     "MemoryTransport",
     "Page",
     "Policy",
@@ -74,6 +88,7 @@ runtime_files!(
     "SseOptions",
     "SseParser",
     "SseStream",
+    "StoredAnswer",
     "TestSupport",
     "Transition",
     "Transport",
@@ -220,6 +235,12 @@ pub struct Flags {
     pub rollout: bool,
     /// Events (`Events`, `MemoryTransport`, `Transport`). Needs `rules`.
     pub events: bool,
+    /// `@version` and `@idempotent` on the server side: `Conditions`, the store classes and the
+    /// `// #if conditional` regions. A server only.
+    pub conditional: bool,
+    /// `If-Match` and the idempotency key on a client call: `IfMatch` and the
+    /// `// #if preconditions` regions.
+    pub preconditions: bool,
 }
 
 /// Like [`emit`], with the endpoint rules and test handler parts switched by `flags`.
@@ -239,6 +260,8 @@ pub fn emit_with(
             && (flags.policies || !POLICY_FILES.contains(&name))
             && (flags.rollout || !ROLLOUT_FILES.contains(&name))
             && (flags.events || !EVENT_FILES.contains(&name))
+            && (flags.conditional || !CONDITIONAL_FILES.contains(&name))
+            && (flags.preconditions || !PRECONDITION_FILES.contains(&name))
     };
     let enabled = |region: &str| match region {
         "rules" => flags.rules,
@@ -247,6 +270,12 @@ pub fn emit_with(
         "machine" => flags.machine,
         "policies" => flags.policies,
         "rollout" => flags.rollout,
+        "conditional" => flags.conditional,
+        "plain" => !flags.conditional,
+        "conditional_rules" => flags.conditional && flags.rules,
+        "preconditions" => flags.preconditions,
+        "testing_conditional" => flags.testing && flags.conditional,
+        "testing_plain" => !(flags.testing && flags.conditional),
         _ => false,
     };
     for (name, source) in RUNTIME.iter().filter(|(name, _)| wanted(name)) {

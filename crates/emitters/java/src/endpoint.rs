@@ -7,6 +7,7 @@
 use veld_codegen::{CodeWriter, GenDiagnostic, print_expr};
 use veld_ir::{AuthKind, Endpoint, EndpointFact, EndpointRequire, Ir, Service, ServiceId, Type};
 
+use crate::conditional;
 use crate::machine;
 use crate::policy;
 use crate::rule_expr::{EndpointScope, JavaExpr, ScopeVar, rule_value_type};
@@ -54,7 +55,7 @@ pub fn loaders_name(service: &str) -> String {
 }
 
 /// The fact record components and loader methods are named like the facts.
-fn fact_idents(facts: &[EndpointFact]) -> Vec<String> {
+pub(crate) fn fact_idents(facts: &[EndpointFact]) -> Vec<String> {
     unique(facts.iter().map(|f| member_ident(&f.name)).collect())
 }
 
@@ -380,6 +381,7 @@ pub fn write_call_body(
         write_fact(w, &mut printer, site, (fact, ident, &method), &mut diags);
     }
     policy::write_allows(w, &mut printer, site, &mut diags);
+    conditional::write_guard(w, &mut printer, site, &mut diags);
     machine::write_guard(w, &mut printer, site, &mut diags);
     for r in &ep.rules.requires {
         write_require(w, &mut printer, site, r, &mut diags);

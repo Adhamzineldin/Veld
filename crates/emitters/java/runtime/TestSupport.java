@@ -131,15 +131,185 @@ public final class TestSupport {
               .build();
           return Optional.of(new VeldResponse(200, Map.of("content-type", "application/json"), body.write()));
         }
+        // #if testing_conditional
+        return withStore(request, () -> inner.handle(request));
+        // #endif
+        // #if testing_plain
         return inner.handle(request);
+        // #endif
       }
 
       @Override
       public Optional<VeldResponse> invoke(String endpoint, VeldRequest request) {
+        // #if testing_conditional
+        return withStore(request, () -> inner.invoke(endpoint, request));
+        // #endif
+        // #if testing_plain
         return inner.invoke(endpoint, request);
+        // #endif
       }
     };
   }
+  // #if testing_conditional
+
+  /** The request header that tells the test handler what the idempotency store holds for the key. */
+  public static final String IDEMPOTENCY_HEADER = "Veld-Test-Idempotency";
+
+  /** What the request said about the store, and the store built from it once it is asked. */
+  private static final class RequestState {
+    final String header;
+    IdempotencyStore store;
+
+    RequestState(String header) {
+      this.header = header;
+    }
+  }
+
+  private static final ThreadLocal<RequestState> REQUEST_STATE = new ThreadLocal<>();
+
+  /**
+   * The store of a test handler: every request gets a fresh memory store, and what
+   * {@code Veld-Test-Idempotency} says (spec/rules.md section 11.9) is in it under the
+   * fingerprint of the request, or under another one for {@code other}. Pass it to
+   * {@link HandlerHooks#withIdempotency}.
+   *
+   * @param conditions the conditional headers of the service by operation signature, for the
+   *     {@code ETag} of a stored success
+   */
+  public static IdempotencyStore store(Map<String, Conditions> conditions) {
+    return new IdempotencyStore() {
+      @Override
+      public Begin begin(String scope, String key, String fingerprint) throws Exception {
+        return current().begin(scope, key, fingerprint);
+      }
+
+      @Override
+      public void complete(String scope, String key, StoredAnswer answer) throws Exception {
+        current().complete(scope, key, answer);
+      }
+
+      @Override
+      public void release(String scope, String key) throws Exception {
+        current().release(scope, key);
+      }
+
+      private IdempotencyStore current() {
+        RequestState state = REQUEST_STATE.get();
+        if (state == null) {
+          throw new IllegalStateException("the test handler's store is used outside a request");
+        }
+        if (state.store == null) {
+          state.store = new SeededStore(state.header, conditions);
+        }
+        return state.store;
+      }
+    };
+  }
+
+  /**
+   * The caller of a test request: the canonical JSON of {@code Veld-Test-Principal}, or
+   * {@code caller} when the request has none (spec/rules.md section 11.10). The application's hook
+   * is not called.
+   */
+  public static HandlerHooks.IdempotencyCaller caller() {
+    return (principal, ctx) -> {
+      Json wire = json(ctx, "Veld-Test-Principal");
+      return wire == null ? "caller" : wire.canonical();
+    };
+  }
+
+  private static Optional<VeldResponse> withStore(
+      VeldRequest request, java.util.function.Supplier<Optional<VeldResponse>> call) {
+    REQUEST_STATE.set(new RequestState(header(request, IDEMPOTENCY_HEADER)));
+    try {
+      return call.get();
+    } finally {
+      REQUEST_STATE.remove();
+    }
+  }
+
+  private static String header(VeldRequest request, String name) {
+    for (Map.Entry<String, List<String>> e : request.headers().entrySet()) {
+      if (e.getKey() != null && e.getKey().equalsIgnoreCase(name) && !e.getValue().isEmpty()) {
+        return e.getValue().get(0);
+      }
+    }
+    return null;
+  }
+
+  /** A memory store that starts with what the request says it holds for the key it is about to ask for. */
+  private static final class SeededStore implements IdempotencyStore {
+    private final MemoryIdempotencyStore memory = new MemoryIdempotencyStore();
+    private final Map<String, Conditions> conditions;
+    private Json.Obj state;
+
+    SeededStore(String header, Map<String, Conditions> conditions) {
+      this.conditions = conditions;
+      if (header != null && !header.isEmpty()) {
+        byte[] bytes = Base64.getUrlDecoder().decode(header);
+        this.state = Json.parse(new String(bytes, StandardCharsets.UTF_8)).asObject();
+      }
+    }
+
+    @Override
+    public Begin begin(String scope, String key, String fingerprint) throws Exception {
+      Json.Obj seeded = state;
+      state = null;
+      if (seeded == null) {
+        return memory.begin(scope, key, fingerprint);
+      }
+      String kind = seeded.get("state").asString();
+      if (kind.equals("other")) {
+        return new Begin.Other();
+      }
+      if (kind.equals("running")) {
+        return new Begin.Running();
+      }
+      return new Begin.Replay(answer(scope, seeded, conditions));
+    }
+
+    @Override
+    public void complete(String scope, String key, StoredAnswer answer) throws Exception {
+      memory.complete(scope, key, answer);
+    }
+
+    @Override
+    public void release(String scope, String key) throws Exception {
+      memory.release(scope, key);
+    }
+  }
+
+  /**
+   * The answer a stored state stands for: the problem document of an error (its title is the name
+   * in its signature, its operation the one the scope starts with) or the body of a success.
+   */
+  private static StoredAnswer answer(String scope, Json.Obj seeded, Map<String, Conditions> conditions) {
+    int status = (int) ((Json.Num) seeded.get("status")).value();
+    Json data = seeded.get("data");
+    Json type = seeded.get("type");
+    if (type instanceof Json.Str sig) {
+      String name = sig.value().substring(sig.value().lastIndexOf('/') + 1, sig.value().indexOf('@'));
+      int cut = scope.indexOf('\n');
+      Json body = Json.object()
+          .put("type", Json.of(sig.value()))
+          .put("title", Json.of(name))
+          .put("status", Json.of((long) status))
+          .put("operation", Json.of(cut < 0 ? scope : scope.substring(0, cut)))
+          .put("data", data == null ? Json.object().build() : data)
+          .build();
+      return new StoredAnswer(
+          status, body.write().getBytes(StandardCharsets.UTF_8), "application/problem+json", null, null);
+    }
+    if (data == null || data instanceof Json.Null) {
+      return new StoredAnswer(status, new byte[0], null, null, null);
+    }
+    int cut = scope.indexOf('\n');
+    Conditions owed = conditions.get(cut < 0 ? scope : scope.substring(0, cut));
+    String etag = owed == null ? null : owed.etagOf(data);
+    return new StoredAnswer(
+        status, data.write().getBytes(StandardCharsets.UTF_8), "application/json", etag, null);
+  }
+  // #endif
   // #if rollout
 
   /** The most audited reports a test handler sends in {@code Veld-Test-Audited}. */
