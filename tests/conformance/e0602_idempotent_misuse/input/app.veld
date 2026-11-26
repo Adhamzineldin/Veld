@@ -1,0 +1,43 @@
+// `@idempotent` and its arguments (spec/rules.md section 11.8).
+
+model M { a: int }
+
+@idempotent
+service Whole at "/whole" {
+  get "/" f() -> M
+}
+
+service S at "/s" {
+  @idempotent("k")
+  post "/a" a(body: M) -> 201 M
+
+  @idempotent(header: "")
+  post "/b" b(body: M) -> 201 M
+
+  @idempotent(header: "Bad Name")
+  post "/c" c(body: M) -> 201 M
+
+  @idempotent(header: "Authorization")
+  post "/d" d(body: M) -> 201 M
+
+  @idempotent(header: "Veld-Test-Facts")
+  post "/e" e(body: M) -> 201 M
+
+  @idempotent(required: "yes")
+  post "/f" f(body: M) -> 201 M
+
+  @idempotent(retry: true)
+  post "/g" g(body: M) -> 201 M
+
+  @idempotent(required: true, required: false)
+  post "/h" h(body: M) -> 201 M
+
+  @idempotent(header: "X-Tenant")
+  post "/i" i(body: M, @header("x-tenant") tenant: string) -> 201 M
+
+  @idempotent
+  get "/feed" feed() -> stream M
+
+  @idempotent
+  ws "/chat" chat(body: stream M) -> stream M
+}

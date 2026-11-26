@@ -1,0 +1,58 @@
+// `@version` (spec/rules.md sections 11.7 and 11.9): the version field of a model, the
+// `If-Match` guard of an endpoint whose first fact is such a model, and `ifMatch` in examples.
+// The prelude error PreconditionFailed is in the IR only because this contract reaches it.
+
+model Stamped {
+  /// Counts the writes of the row.
+  @version
+  revision: long
+}
+
+model Room extends Stamped {
+  id: uuid
+  name: string
+  capacity: int
+}
+
+model Rename { name: string }
+
+error RoomFull 409 { capacity: int }
+
+service Rooms at "/rooms" {
+  /// No block: the answer carries ETag "<revision>".
+  get "/{id}" getRoom(id: uuid) -> Room | NotFound
+
+  /// The guard compares If-Match with the revision of the fact.
+  put "/{id}" rename(id: uuid, body: Rename) -> Room | RoomFull | PreconditionFailed {
+    fact room: Room = id
+    require body.name != "" else RoomFull { capacity: room.capacity }
+  }
+
+  /// An optional fact: no row, nothing to compare.
+  patch "/{id}" touch(id: uuid) -> Room {
+    fact maybe?: Room = id
+  }
+}
+
+example "a stale tag is refused" {
+  given room = { revision: 4 }
+  ifMatch 3
+  rename(id: "00000000-0000-4000-8000-000000000001", body: { name: "Blue" }) -> PreconditionFailed { expected: 3, actual: 4 }
+}
+
+example "the current tag passes" {
+  given room = { revision: 4 }
+  ifMatch 4
+  rename(id: "00000000-0000-4000-8000-000000000001", body: { name: "Blue" }) -> ok
+}
+
+example "a star passes" {
+  given room = { revision: 4 }
+  ifMatch any
+  rename(id: "00000000-0000-4000-8000-000000000001", body: { name: "Blue" }) -> ok
+}
+
+example "no header, no check" {
+  given room = { revision: 4 }
+  rename(id: "00000000-0000-4000-8000-000000000001", body: { name: "Blue" }) -> ok
+}

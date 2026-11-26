@@ -54,7 +54,12 @@
     "expect",
     "absent",
     "returns",
-    "ok"
+    "ok",
+    "ifMatch",
+    "any",
+    "stored",
+    "other",
+    "running"
   ],
   "event_words": [
     "event",
@@ -234,7 +239,23 @@
       ],
       "args": "rollout",
       "usage": "@rollout(audit)"
+    },
+    {
+      "name": "version",
+      "targets": [
+        "field"
+      ],
+      "args": "none",
+      "usage": "@version"
+    },
+    {
+      "name": "idempotent",
+      "targets": [
+        "endpoint"
+      ],
+      "args": "idempotent",
+      "usage": "@idempotent(header: \"Idempotency-Key\", required: true)"
     }
   ],
-  "prelude": "error BadRequest 400      { message: string }\nerror Unauthorized 401    { message?: string }\nerror Forbidden 403       { message?: string }\nerror NotFound 404        { resource?: string }\nerror Conflict 409        { message: string }\nerror ValidationError 422 { issues: ValidationIssue[] }\nerror TooManyRequests 429 { retryAfter?: int }\nerror Internal 500        { message?: string }\nmodel ValidationIssue     { path: string, code: string, message: string }\nerror InvalidTransition 409 { field: string, from: string, to: string }\n"
+  "prelude": "error BadRequest 400      { message: string }\nerror Unauthorized 401    { message?: string }\nerror Forbidden 403       { message?: string }\nerror NotFound 404        { resource?: string }\nerror Conflict 409        { message: string }\nerror ValidationError 422 { issues: ValidationIssue[] }\nerror TooManyRequests 429 { retryAfter?: int }\nerror Internal 500        { message?: string }\nmodel ValidationIssue     { path: string, code: string, message: string }\nerror InvalidTransition 409 { field: string, from: string, to: string }\nerror PreconditionFailed 412 { expected: long, actual: long }\n"
 }

@@ -1,0 +1,49 @@
+// `ifMatch` needs a version guard and `key` needs `@idempotent` (spec/rules.md section 11.9).
+
+model Room {
+  id: uuid
+  @version
+  revision: long
+}
+
+error RoomFull 409 { capacity: int }
+error Broken 503 { message: string }
+
+service Rooms at "/rooms" {
+  get "/{id}" plain(id: uuid) -> Room
+
+  @idempotent
+  put "/{id}" save(id: uuid) -> Room | RoomFull | Broken {
+    fact room: Room = id
+  }
+}
+
+example "ifMatch without a guard" {
+  ifMatch 1
+  plain(id: "00000000-0000-4000-8000-000000000001") -> ok
+}
+
+example "key without @idempotent" {
+  key "k"
+  plain(id: "00000000-0000-4000-8000-000000000001") -> ok
+}
+
+example "an empty key" {
+  key ""
+  save(id: "00000000-0000-4000-8000-000000000001") -> ok
+}
+
+example "a key with a space" {
+  key "two words"
+  save(id: "00000000-0000-4000-8000-000000000001") -> ok
+}
+
+example "a stored answer that is never stored" {
+  key "k" stored Broken
+  save(id: "00000000-0000-4000-8000-000000000001") -> Broken
+}
+
+example "a stored error the endpoint cannot answer with" {
+  key "k" stored TooManyRequests
+  save(id: "00000000-0000-4000-8000-000000000001") -> Conflict
+}

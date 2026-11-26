@@ -151,6 +151,7 @@ export interface Field {
   optional: boolean;
   default: Literal | null;
   readonly: boolean;
+  version?: boolean;
   inherited_from: DeclId | null;
   constraints: Constraints;
   example: Literal | null;
@@ -293,6 +294,22 @@ export interface EndpointRules {
   ensures: EndpointEnsure[];
   transition?: EndpointTransition;
   allows?: EndpointAllow[];
+  version?: EndpointVersion;
+}
+
+export interface EndpointVersion {
+  id: string;
+  fact: string;
+  field: string;
+  wire: string;
+  origin: Origin;
+}
+
+export interface Idempotency {
+  header: string;
+  required: boolean;
+  caller: boolean;
+  origin: Origin;
 }
 
 export interface EndpointTransition {
@@ -403,6 +420,8 @@ export interface Example {
   now: string | null;
   args: ExampleArg[];
   returns: ExampleValue | null;
+  if_match?: ExampleIfMatch;
+  key?: ExampleKey;
   outcome?: ExampleOutcome;
   event?: ExampleEvent;
   expect?: EventExpect;
@@ -444,6 +463,23 @@ export interface ExampleField {
   name: string;
   wire: string;
   value: ExampleValue;
+}
+
+export type ExampleIfMatch = "any" | IfMatchVersion;
+
+export interface IfMatchVersion {
+  version: string;
+}
+
+export interface ExampleKey {
+  value: string;
+  store?: KeyStore;
+}
+
+export type KeyStore = "other" | "running" | KeyStored;
+
+export interface KeyStored {
+  stored: ExampleOutcome;
 }
 
 export interface ExampleEvent {
@@ -531,6 +567,7 @@ export interface Endpoint {
   success: Success;
   errors: ErrorResponse[];
   rules?: EndpointRules;
+  idempotency?: Idempotency;
   origin: Origin;
 }
 
@@ -564,7 +601,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "events";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "events";
 
 export type Role = "server" | "client";
 
