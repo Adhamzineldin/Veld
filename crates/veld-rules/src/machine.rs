@@ -206,9 +206,15 @@ pub(crate) fn guard(
         None => fact.clone(),
     };
     let current = read_state(t, &full, &t.fact)?;
+    // A source counts only while its edge to the target exists: an edge behind a flag that is
+    // off is gone (`spec/platform.md` section 11). Without flags every pair is an edge.
+    let machine = machine_of(ir, t)?;
     let mut sources = Vec::with_capacity(t.from.len());
     for s in &t.from {
-        sources.push(wire_of(ir, t, s)?);
+        let edge = machine.flows.iter().any(|f| f.from == *s && f.to == t.to);
+        if edge {
+            sources.push(wire_of(ir, t, s)?);
+        }
     }
     let to = wire_of(ir, t, &t.to)?;
     let data = json!({ "field": field_path(t), "from": current, "to": to });
