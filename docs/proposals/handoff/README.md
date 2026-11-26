@@ -1,5 +1,7 @@
 # Session handoff: rules and events, 26 Nov 2026, 05:40
 
+> **Continued on Fedora, 26 Nov 2026.** The three `saved/*` branches are merged into `feat/rules-and-events` (their work was complete and compiled). The rules every agent follows on the Fedora machine are in `agents-on-fedora.md` next to this file; the briefs written there are `brief-version-idempotent-generators.md`, `brief-phase6-tools.md` and `brief-events-e2-compiler.md`. The repository sits on the Windows disk (slow through FUSE), so agents build in worktrees under `~/veld-work/` on the native disk. `git push origin` over SSH fails on that machine; the push goes over HTTPS with the `gh` login. The status file has the state of every item.
+
 Written when the owner moved the work from Windows to Fedora. A new session reads this file first, then `docs/proposals/rules-and-events-status.md` (the checklist, with every item and every decision) and `CLAUDE.md`.
 
 ## Where everything is
