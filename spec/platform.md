@@ -252,6 +252,26 @@ flagged = "when" "flag" "(" STRING ")" ;      // after a rule, a require, an ens
 - **Tools.** `veld check` ends its summary with the flags the workspace uses and how many statements each gates; `--graph=json` has them under `flags`. `veld diff`: a new statement that restricts and is flagged is **possibly breaking** with the text "breaking once the flag `f` is on"; adding a flag to a statement that restricts is compatible and removing it is judged as adding the statement; for a statement that grants it is the other way round. `--prove` asks its questions with every flag on.
 - The flag is not part of a rule id. **IR:** `"flag": "shortStays"` on a `Rule`, an `EndpointRequire`, an `EndpointEnsure`, a `PolicyClause` and a flow, omitted when absent. The feature is `rules_flags`, opt-in.
 
+### 11.1 What the implementation chose where the text was silent
+
+- **Where the suffix stands.** Last on its statement, after the `message` when there is one: `rule r: e message "m" when flag("f")`, `require e else E { .. } message "m" when flag("f")`, `permit when e message "m" when flag("f")`, `flow a -> b after d when flag("f")` (`after` first). The formatter prints it at the end of the last line of the statement. `when`, `flag` and `off` are contextual: `when flag (` is a suffix, `when: T` is a field.
+- **A flag and an edge.** An edge declared twice is `W0930` whatever the flags say, and the first declaration decides (§10.2). A flagged `flow` with `after` is a flagged timed edge.
+- **`given flag`.** `given flag "name"` and `given flag "name" off` are `given` lines and may stand among the other `given` lines. The last line about a name decides, so `off` after an `on` turns it off again. A name no statement of the workspace uses is `E0938`, also with `off`. An example with `given flag` is a call example; an event example has no flags, and a flagged invariant of an event is off in it.
+- **The reference evaluator** takes the flags as a `FlagState`: `FlagState::on(names)` or `FlagState::ProviderFailed`. `FlagState::resolve(&ir)` is the contract as one request sees it: every statement that is off is removed and every statement that stays loses its flag, so a flag is read exactly once and the pipeline needs no flag logic of its own. The shared vectors say `"flags": ["name"]` and `"provider": "failed"` in a case. The partial check of a client has no provider and so ignores `flags`: it skips every flagged invariant.
+- **The test handler** reads the flags that are on from the request header `Veld-Test-Flags` (base64url of a JSON array of names), as it reads `Veld-Test-Now`; without it every flag is off. A fuzz request sends none.
+- **`veld check`** prints `flags: name (N statements), ...` after its summary, and `--graph=json` has `"flags": { "name": { "invariants": 1, "requires": 0, "ensures": 0, "permits": 0, "forbids": 0, "flows": 0 } }`, absent when there is no flag.
+- **`veld diff`.** A statement that has a flag on either side is judged on its own and left out of the ordinary comparison. What matters is what the statement does to a caller:
+
+  | Change | restricts (an invariant on a request, `require`, `forbid`) | grants (`permit`, `flow`) | guarantees (`ensure`, an invariant on a response) |
+  |---|---|---|---|
+  | a flagged statement is added | possibly breaking: "breaking once the flag `f` is on" | compatible | compatible |
+  | a flag is put on a statement | compatible | breaking for a `flow`, possibly breaking for a `permit` | compatible |
+  | the flag is taken off a statement | judged as adding it | compatible | compatible |
+  | a flagged statement is removed | compatible | possibly breaking | compatible |
+  | the flag changes from `f` to `g` | possibly breaking | possibly breaking | compatible |
+
+- **`--prove`** never reads a flag: every statement counts as present, which is what "every flag on" asks. The rules digest leaves a flagged invariant out, as it leaves an audited one out.
+
 ## 12. Deadlines: `@timeout`
 
 ```veld
