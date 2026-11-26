@@ -79,3 +79,26 @@ fn the_hooks_of_the_four_features_are_required_by_type() {
     );
     assert!(hooks.contains("limiter(Limiter value)"), "{hooks}");
 }
+
+/// The four features of P1 next to the four of P2 and an idempotency key (`p1_with_p2.veld`: a
+/// deadline, a service level, flags, a timed edge): the regions of the runtime that meet in the router
+/// pair up and the output compiles with every warning on, in both roles, with and without the test
+/// handler.
+#[test]
+fn the_features_of_p1_and_p2_compile_together_with_every_warning_on() {
+    if !require_javac("the_features_of_p1_and_p2_compile_together") {
+        return;
+    }
+    let ir = compile_path("tests/toolchain/java/platform_p1/p1_with_p2.veld", "mega");
+    for (role, package, testing) in [
+        (Role::Server, "gen.b", false),
+        (Role::Server, "gen.b", true),
+        (Role::Client, "gen.c", false),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let sources = write_files(dir.path(), &generate(&ir, role, package, testing, None));
+        for release in releases() {
+            javac_ok(dir.path(), &sources, release);
+        }
+    }
+}

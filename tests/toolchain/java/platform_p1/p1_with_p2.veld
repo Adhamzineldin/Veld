@@ -1,0 +1,49 @@
+// All of P1 next to all of P2 and an idempotency key, in one small contract.
+model User {
+  id: uuid
+  email: string @pii
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+enum Phase {
+  draft, live, archived
+  flow draft -> live
+  flow live -> archived after hours(1) when flag("archiving")
+  final archived
+}
+
+model Room {
+  id: uuid
+  tenantId: uuid @tenant
+  open: bool
+  guests: int
+  phase: Phase = .draft
+  liveSince: datetime
+  secretCode?: string @secret @visible(when: user.id == id)
+  rule small: guests <= 6 when flag("smallGroups")
+}
+
+@slo(p99: ms(300), errors: 0.1)
+@auth(bearer)
+service Rooms at "/rooms" {
+  @audited
+  @limit(5, per: minute, by: user)
+  @timeout(seconds(2))
+  @idempotent
+  post "/{id}/archive" archive(id: uuid) -> Room {
+    fact room: Room = id
+    require room.open when flag("openOnly")
+    transition room.phase: live -> archived since room.liveSince
+  }
+
+  @audited
+  @limit(50, per: minute, by: tenant)
+  get "/{id}" getRoom(id: uuid) -> Room
+
+  @limit(5, per: second, by: ip)
+  get "/" listRooms() -> Room[]
+
+  get "/live" liveRooms() -> stream Room
+}

@@ -56,6 +56,8 @@ public final class TenancyHttp {
   private static volatile boolean open = false;
   /** The tenant the body of the last {@code createBooking} carried. */
   private static volatile UUID carried;
+  /** An application that does not set the tenant and answers with the body as it got it. */
+  private static volatile boolean echo;
 
   private static Booking made(UUID tenant, String title) {
     return new Booking(ID, tenant, title, open);
@@ -95,6 +97,9 @@ public final class TenancyHttp {
     @Override
     public Booking createBooking(CreateBookingRequest request, RequestContext ctx) {
       carried = request.body().tenantId();
+      if (echo) {
+        return request.body();
+      }
       // The application sets the tenant from the caller.
       return new Booking(request.body().id(), ((User) ctx.principal()).tenantId(), request.body().title(), true);
     }
@@ -237,6 +242,15 @@ public final class TenancyHttp {
     check(kept.status() == 200, "a request that carries the member is accepted: " + kept.status() + " " + kept.body());
     check(THEIRS.equals(carried), "the member is kept as received: " + carried);
     check(mine.equals(body(kept).get("tenantId").asString()), "and the application still sets the tenant");
+
+    // A single result of another tenant is never sent either: an application that leaves the tenant
+    // as the request carried it answers 500 and the caller never sees the value.
+    echo = true;
+    VeldResponse echoed = send(handler, "POST", "/tenants", mine, carrying);
+    internal(echoed, "a result of another tenant");
+    check(events.size() == 1 && events.get(0).violation().path().equals("result"), "the path of a result: " + events);
+    events.clear();
+    echo = false;
 
     // A stream item of another tenant is not sent: the stream ends as on any server failure.
     VeldResponse live = send(handler, "GET", "/tenants/live", mine, null);
