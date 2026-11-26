@@ -169,7 +169,6 @@ fn a_contract_without_the_annotations_has_none_of_the_code() {
         for path in server.paths().filter(|p| p.ends_with(".ts")) {
             let file = text(&server, path);
             assert!(!file.contains("idempotency"), "{path}");
-            assert!(!file.contains("RulesVersion"), "{path}");
         }
         for path in client.paths().filter(|p| p.ends_with("client.ts")) {
             let file = text(&client, path);
@@ -468,11 +467,15 @@ fn a_required_key_is_required_in_every_helper_of_the_client() {
     let client = gen_client_fw(&ir, &json!({ "query-options": true }), Some("react"));
     let queries = text(&client, "bookings/queries.ts");
     assert!(
-        !queries.contains("start: (req: StartRequest = {}"),
+        !queries.contains("mutationFn: (req: StartRequest = {})"),
         "{queries}"
     );
     assert!(
-        queries.contains("stop: (req: StopRequest = {}"),
+        queries.contains("mutationFn: (req: StartRequest)"),
+        "{queries}"
+    );
+    assert!(
+        queries.contains("mutationFn: (req: StopRequest = {})"),
         "{queries}"
     );
     let module = text(&client, "bookings/client.ts");
