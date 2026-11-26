@@ -1,0 +1,25 @@
+// What follows `=`: one literal is a default (a negative number included), anything else is an
+// expression and makes the field derived. No keyword.
+
+enum Mode { fast, slow }
+
+model Settings {
+  a: int
+  retries: int = 3
+  floor: int = -1
+  ratio: float = -0.5
+  mode: Mode = .fast
+  name: string = "x"
+  flag: bool = true
+  tags: string[] = []
+  nothing?: string
+  twice: int = a * 2
+  minus: int = -a
+  plus: int = a + 1
+  positive: bool = a > 0
+  twoParts: int = (1 + 1)
+}
+
+service S at "/s" {
+  get "/" f() -> Settings
+}

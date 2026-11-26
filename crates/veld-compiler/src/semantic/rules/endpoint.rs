@@ -137,6 +137,7 @@ fn scope_field(name: &str, ty: &Type, optional: bool, constraints: Constraints) 
         ty: ty.clone(),
         optional,
         default: None,
+        derived: false,
         readonly: false,
         version: false,
         inherited_from: None,
@@ -643,7 +644,9 @@ impl BlockChecker<'_, '_, '_> {
             .res
             .fields
             .iter()
-            .filter(|f| !f.optional && f.default.is_none() && !seen.contains(f.name.as_str()))
+            .filter(|f| {
+                !f.optional && f.default.is_none() && !f.derived && !seen.contains(f.name.as_str())
+            })
             .map(|f| f.name.as_str())
             .collect();
         if !missing.is_empty() {

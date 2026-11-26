@@ -85,7 +85,7 @@ impl Parser<'_> {
     }
 
     /// The binary operator at the cursor with its precedence (higher binds tighter).
-    fn binary_op(&self) -> Option<(BinOp, u8)> {
+    pub(super) fn binary_op(&self) -> Option<(BinOp, u8)> {
         let op = match self.peek() {
             Tok::OrOr => BinOp::Or,
             Tok::AndAnd => BinOp::And,

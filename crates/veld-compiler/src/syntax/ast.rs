@@ -154,6 +154,9 @@ pub struct Field {
     pub optional: bool,
     pub ty: TypeExpr,
     pub default: Option<Literal>,
+    /// `= expr` where `expr` is not a literal: a derived field (`spec/rules.md` section 17.2).
+    /// Never set together with `default`.
+    pub derived: Option<Expr>,
     pub span: Span,
 }
 

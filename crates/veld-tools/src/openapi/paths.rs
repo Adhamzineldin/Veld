@@ -68,6 +68,8 @@ fn query_object_params(ir: &Ir, p: &Param) -> Vec<Value> {
     ir.decl(*id)
         .fields()
         .iter()
+        // A derived field is computed by the server: a caller never sends it.
+        .filter(|f| f.derived.is_none())
         .map(|f| {
             let required = !f.optional && f.default.is_none();
             let mut o = Map::new();

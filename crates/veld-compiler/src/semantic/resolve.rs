@@ -825,6 +825,9 @@ fn build_field(
         .default
         .as_ref()
         .and_then(|lit| convert(prog, &ty, lit, diags));
+    if f.derived.is_some() {
+        check_derived_shape(f, a, diags);
+    }
     if f.optional && f.default.is_some() {
         diags.push(
             Diagnostic::error(
@@ -856,12 +859,37 @@ fn build_field(
         default,
         readonly: a.readonly,
         version: a.version.is_some(),
+        derived: f.derived.is_some(),
         inherited_from: None,
         constraints: a.constraints.clone(),
         example,
         docs: doc_text(&f.docs),
         deprecated: a.deprecated.clone(),
         span: f.name.span,
+    }
+}
+
+/// `E0961`: a derived field is required, and has no `@readonly` and no `@example`
+/// (`spec/rules.md` section 17.2).
+fn check_derived_shape(f: &ast::Field, a: &Anns<'_>, diags: &mut Vec<Diagnostic>) {
+    let mut bad = |what: &str| {
+        diags.push(
+            Diagnostic::error(
+                "E0961",
+                format!("derived field `{}` {what}", f.name.name),
+                f.span,
+            )
+            .with_help("nobody supplies a derived value: the server computes it"),
+        );
+    };
+    if f.optional {
+        bad("cannot be optional");
+    }
+    if a.readonly {
+        bad("cannot be `@readonly`");
+    }
+    if a.example.is_some() {
+        bad("cannot have an `@example`");
     }
 }
 

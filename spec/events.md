@@ -123,7 +123,7 @@ The three checks run after every other check, and only when none of those report
 
 - An event has a declaration signature, computed like every other (`spec/ir.md` §5.1), with the local shape `{ "k": "event", "f": [ … ] }`. An event and a model with the same fields therefore have different signatures.
 - A rule is not part of the signature, as on a model (`spec/rules.md` §6): adding or changing a rule of an event changes its rules digest and leaves its signature alone.
-- The **rules digest of an event** is `hex16( sha256( RFC 8785 JSON array of the sorted, distinct rule ids of every invariant the event reaches ) )`, the formula of `spec/rules.md` §9.7 applied to one event. An event that reaches no invariant has none.
+- The **rules digest of an event** is `hex16( sha256( RFC 8785 JSON array of the sorted, distinct rule ids of every invariant the event reaches ) )`, the formula of `spec/rules.md` §9.7 applied to one event. The ids of the derived fields it reaches (`spec/rules.md` §17.2) are in the array too, so changing the expression of one changes the digest. An event that reaches no invariant and no derived field has none.
 - An event **reaches** its own rules and those of every declaration its fields refer to, through optional types, lists, maps and the arms of a union, and through the parents of a model, to any depth.
 - The rules digest of a **service** (`spec/rules.md` §9.7) does not change: it does not include the rules of events, because a client of the service never checks an event.
 - Both are computed only in `veld-compiler::signature` and embedded verbatim by generators.

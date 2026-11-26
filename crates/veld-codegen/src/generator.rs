@@ -298,7 +298,18 @@ pub fn checked_features(ir: &Ir, req: &GenRequest<'_>) -> std::collections::BTre
         from_events.retain(|f| *f == Feature::Events);
     }
     used.extend(from_events);
+    if req.role == Role::Client && !reaches_derived(ir, &all) {
+        // A client never sees a fact or the principal: only what an endpoint reaches counts.
+        used.remove(&Feature::RulesDerived);
+    }
     used
+}
+
+/// True when an endpoint of `services` reaches a model with a derived field.
+fn reaches_derived(ir: &Ir, services: &[ServiceId]) -> bool {
+    ir.reachable_decls(services)
+        .into_iter()
+        .any(|id| ir.decl(id).has_derived())
 }
 
 /// Where a feature is first used: an endpoint for endpoint-level features, a declaration otherwise.
@@ -338,6 +349,7 @@ fn first_use(
                 | Feature::Events
                 | Feature::EventsDelivery
                 | Feature::RulesRollout
+                | Feature::RulesDerived
                 | Feature::RulesInvariants => false,
             };
             if hit {
@@ -381,6 +393,13 @@ fn first_use(
     if feature == Feature::RulesInvariants {
         return first_rule_origin(ir, &searched(ir, services, req));
     }
+    if feature == Feature::RulesDerived {
+        let mut ids = searched(ir, services, req);
+        if req.role == Role::Server {
+            ids.extend(ir.fact_decls(services));
+        }
+        return first_derived_origin(ir, &ids);
+    }
     if feature == Feature::RulesTransitions {
         return first_machine_origin(ir, &searched(ir, services, req));
     }
@@ -415,6 +434,18 @@ fn first_machine_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
         .map(|id| ir.decl(id))
         .find(|d| matches!(&d.kind, DeclKind::Enum(e) if e.is_state_machine()))
         .map(|d| d.origin.clone())
+}
+
+/// The origin of the first derived field (`spec/rules.md` section 17.2) of the declarations, in
+/// source order.
+fn first_derived_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .flat_map(|id| ir.decl(*id).fields().iter())
+        .filter(|f| f.derived.is_some())
+        .map(|f| &f.origin)
+        .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+        .cloned()
 }
 
 /// The origin of the first invariant of the first reachable declaration that has one.

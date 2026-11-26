@@ -26,6 +26,7 @@ pub(super) fn check_event_example(
             module,
             diags,
             givens: Vec::new(),
+            pattern: false,
         };
         v.value(&ev.value, ty)
     });

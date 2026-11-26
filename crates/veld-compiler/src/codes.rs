@@ -362,12 +362,18 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E0952",
         C,
-        "A value in an example does not fit the type it is used at",
+        "A value in an example does not fit the type it is used at, or writes a derived field",
     ),
     e(
         "E0953",
         "veld-rules",
         "A value an example leaves out cannot be filled in, or the filled-in value breaks an invariant",
+    ),
+    e("E0960", C, "Derived fields depend on each other in a cycle"),
+    e(
+        "E0961",
+        C,
+        "A derived field is optional, or has `@readonly` or `@example`",
     ),
     e(
         "E0970",

@@ -1,0 +1,13 @@
+// A derived field is required, and has no `@readonly` and no `@example`.
+
+model M {
+  a: int
+  maybe?: int = a + 1
+  @readonly
+  fixed: int = a + 1
+  @example(3)
+  shown: int = a + 1
+  fine: int = a + 1
+}
+
+service S at "/s" { get "/" f() -> M }

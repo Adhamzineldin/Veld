@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use veld_ir::{Const, Decl, DeclKind, Enum, Field, Ir, PackageKind, Union};
 
+use super::expr_text::expr_text;
 use super::usage::{Role, Usage};
 use super::{Change, ChangeKind, Ctx, push_constraint_changes};
 
@@ -156,8 +157,10 @@ fn wire_map(fields: &[Field]) -> BTreeMap<&str, &Field> {
     fields.iter().map(|f| (f.wire.as_str(), f)).collect()
 }
 
+/// A caller must send the field. A derived field is never sent: the server computes it
+/// (`spec/rules.md` section 17.2).
 fn request_required(f: &Field) -> bool {
-    !f.optional && f.default.is_none()
+    !f.optional && f.default.is_none() && f.derived.is_none()
 }
 
 fn diff_fields(
@@ -194,11 +197,11 @@ fn diff_fields(
                 format!("required field `{w}` was added to a request type"),
             ));
         } else {
-            out.push(Change::non_breaking(
-                ChangeKind::FieldAdded,
-                q,
-                format!("field `{w}` was added"),
-            ));
+            let what = match &n.derived {
+                Some(e) => format!("derived field `{w}` was added: `{}`", expr_text(e)),
+                None => format!("field `{w}` was added"),
+            };
+            out.push(Change::non_breaking(ChangeKind::FieldAdded, q, what));
         }
     }
 }
@@ -236,6 +239,7 @@ fn diff_field(
             format!("field `{w}` became optional"),
         ));
     }
+    diff_derived(q, pair, role, out);
     push_constraint_changes(
         out,
         q,
@@ -250,6 +254,57 @@ fn diff_field(
         (&o.deprecated, &n.deprecated),
         out,
     );
+}
+
+/// A field that became derived, stopped being derived, or whose expression changed
+/// (`spec/rules.md` section 17.2).
+///
+/// - A changed expression is possibly breaking, as a changed rule is: consumers may rely on the
+///   values the old one gave, and the tool cannot tell what the new one does to them.
+/// - A field that became derived is possibly breaking where callers send the type: what they sent
+///   is now ignored, without an error. Otherwise nothing a consumer sees changes.
+/// - A field that stopped being derived is not breaking by itself: a response keeps its field.
+///   Where callers send the type, it became required, which `FieldBecameRequired` reports.
+fn diff_derived(q: &str, pair: (&Field, &Field), role: Role, out: &mut Vec<Change>) {
+    let (o, n) = pair;
+    let w = &o.wire;
+    match (&o.derived, &n.derived) {
+        (Some(a), Some(b)) if o.derived_id != n.derived_id => {
+            out.push(Change::possibly_breaking(
+                ChangeKind::DerivedChanged,
+                q,
+                format!(
+                    "possibly breaking: derived field `{w}` changed from `{}` to `{}`; \
+                     consumers may rely on the values it had, and the tool cannot tell what \
+                     the new expression does to them",
+                    expr_text(a),
+                    expr_text(b)
+                ),
+            ));
+        }
+        (None, Some(e)) => {
+            let message = format!(
+                "field `{w}` became derived: the server computes it as `{}`{}",
+                expr_text(e),
+                if role.request {
+                    ", and a value a caller sends for it is now ignored"
+                } else {
+                    ""
+                }
+            );
+            out.push(if role.request {
+                Change::possibly_breaking(ChangeKind::FieldBecameDerived, q, message)
+            } else {
+                Change::non_breaking(ChangeKind::FieldBecameDerived, q, message)
+            });
+        }
+        (Some(_), None) => out.push(Change::non_breaking(
+            ChangeKind::FieldNoLongerDerived,
+            q,
+            format!("field `{w}` is no longer derived: the handler must supply it"),
+        )),
+        (Some(_), Some(_)) | (None, None) => {}
+    }
 }
 
 fn diff_enum(q: &str, o: &Enum, n: &Enum, role: Role, out: &mut Vec<Change>) {

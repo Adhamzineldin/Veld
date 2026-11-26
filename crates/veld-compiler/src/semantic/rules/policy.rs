@@ -117,6 +117,7 @@ fn param_field(name: &str, ty: &Type) -> RField {
         ty: ty.clone(),
         optional: false,
         default: None,
+        derived: false,
         readonly: false,
         version: false,
         inherited_from: None,

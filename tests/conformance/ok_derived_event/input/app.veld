@@ -1,0 +1,36 @@
+// An event with derived fields (spec/rules.md section 17.2): the publisher computes them, a
+// subscriber reads them, and the rules digest of the event covers their ids.
+
+event OrderPlaced {
+  orderId: uuid
+  net: int
+  tax: int
+  gross: int = net + tax
+  unit: int = net / tax
+  rule positive: gross > 0
+}
+
+event OrderShipped {
+  orderId: uuid
+  boxes: int
+  weight: int = boxes * 12
+}
+
+@topic("shop.orders.v1")
+channel Orders {
+  carries OrderPlaced, OrderShipped
+  key orderId
+}
+
+@auth(none)
+service Shop at "/shop" {
+  publishes Orders
+  get "/ping" ping() -> 204
+}
+
+service Billing {
+  subscribes Orders as "billing" {
+    on OrderPlaced -> bill
+    on OrderShipped -> pack
+  }
+}

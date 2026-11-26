@@ -120,6 +120,9 @@ pub enum ChangeKind {
     IdempotencyRemoved,
     IdempotencyHeaderChanged,
     IdempotencyRequiredChanged,
+    DerivedChanged,
+    FieldBecameDerived,
+    FieldNoLongerDerived,
 }
 
 /// One difference between the old and the new contract.
@@ -318,6 +321,8 @@ mod changed_tests;
 mod conditional_tests;
 #[cfg(test)]
 mod delivery_tests;
+#[cfg(test)]
+mod derived_tests;
 #[cfg(test)]
 mod event_tests;
 #[cfg(test)]

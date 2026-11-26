@@ -20,6 +20,9 @@ pub(super) struct Values<'p, 'a, 'd> {
     pub diags: &'d mut Vec<Diagnostic>,
     /// The givens seen so far: the name and the type, or `None` for `absent`.
     pub givens: Vec<(String, Option<Type>)>,
+    /// The value being checked is a pattern the outcome is compared with (after `ok` or an
+    /// error): a derived field may be named there, to say what it is computed to be.
+    pub pattern: bool,
 }
 
 impl Values<'_, '_, '_> {
@@ -193,7 +196,7 @@ impl Values<'_, '_, '_> {
                 None => None,
                 Some(v) => {
                     let ty = self.success(ep, v.span)?;
-                    Some(self.value(v, &ty)?)
+                    Some(self.pattern_value(v, &ty)?)
                 }
             };
             return Some(ROutcome::Ok(value));
@@ -202,7 +205,7 @@ impl Values<'_, '_, '_> {
         let decl = self.answerable(&ty, te, ep)?;
         let pattern = match &o.value {
             None => None,
-            Some(v) => Some(self.value(v, &ty)?),
+            Some(v) => Some(self.pattern_value(v, &ty)?),
         };
         Some(ROutcome::Error(decl, pattern))
     }
@@ -238,6 +241,14 @@ impl Values<'_, '_, '_> {
     }
 
     // ---- values -----------------------------------------------------------------------
+
+    /// A value that an outcome is compared with: derived fields may be named in it.
+    fn pattern_value(&mut self, v: &ast::Value, ty: &Type) -> Option<ExampleValue> {
+        let before = std::mem::replace(&mut self.pattern, true);
+        let out = self.value(v, ty);
+        self.pattern = before;
+        out
+    }
 
     pub fn value(&mut self, v: &ast::Value, ty: &Type) -> Option<ExampleValue> {
         match &v.kind {
@@ -377,6 +388,20 @@ impl Values<'_, '_, '_> {
                 ok = false;
                 continue;
             };
+            if field.derived && !self.pattern {
+                let diag = Diagnostic::error(
+                    "E0952",
+                    format!(
+                        "`{}` is a derived field: it is computed, an example cannot write it",
+                        f.name.name
+                    ),
+                    f.name.span,
+                )
+                .with_help("leave it out; after `ok` or an error you may name it to say what it computes to");
+                self.diags.push(diag);
+                ok = false;
+                continue;
+            }
             if out.iter().any(|o| o.name == field.name) {
                 self.err(
                     format!("field `{}` is given twice", f.name.name),

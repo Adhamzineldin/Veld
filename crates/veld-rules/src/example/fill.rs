@@ -180,6 +180,11 @@ impl<'a> Filler<'a> {
     ) -> Result<Json, ExampleError> {
         let mut out = given.cloned().unwrap_or_default();
         for f in decl.fields() {
+            if f.derived.is_some() {
+                // Computed, never filled in (`spec/rules.md` sections 12.2 and 17.2).
+                out.remove(&f.wire);
+                continue;
+            }
             let child = format!("{path}.{}", f.wire);
             if let Some(v) = out.get(&f.wire).cloned() {
                 let filled = self.fill(&f.ty, &f.constraints, Some(&v), &child)?;

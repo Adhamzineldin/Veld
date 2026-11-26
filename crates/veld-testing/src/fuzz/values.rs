@@ -124,6 +124,12 @@ impl<'a> Gen<'a> {
     fn model(&mut self, decl: &Decl) -> Result<Json, Skip> {
         let mut out = Map::new();
         for f in decl.fields() {
+            // A derived field is computed by the server and written nowhere (`spec/rules.md`
+            // section 17.2): a value made for it would be thrown away, and an `example` block
+            // that names it does not compile.
+            if f.derived.is_some() {
+                continue;
+            }
             if let Some(v) = self.field(f)? {
                 out.insert(f.wire.clone(), v);
             }
@@ -310,6 +316,64 @@ impl<'a> Gen<'a> {
             &hex[17..20],
             &hex[20..32]
         )
+    }
+}
+
+/// Removes every derived field from `value`, a value of type `ty`, wherever it stands: in a nested
+/// model, a list, a map, a page or a union arm. What a repair or a boundary wrote into one is
+/// dropped, so the request holds only what a caller may send and the reference pipeline computes
+/// the rest.
+pub(crate) fn strip_derived(ir: &Ir, ty: &Type, value: &mut Json) {
+    match ty {
+        Type::Scalar(_) => {}
+        Type::List(t) => {
+            for item in value.as_array_mut().into_iter().flatten() {
+                strip_derived(ir, t, item);
+            }
+        }
+        Type::Map(t) => {
+            for item in value.as_object_mut().into_iter().flat_map(Map::values_mut) {
+                strip_derived(ir, t, item);
+            }
+        }
+        Type::Page(t) => {
+            if let Some(items) = value.get_mut("items") {
+                strip_derived(ir, &Type::List(t.clone()), items);
+            }
+        }
+        Type::Decl(id) => {
+            if let Some(decl) = ir.decls.get(id.index()) {
+                strip_decl(ir, decl, value);
+            }
+        }
+    }
+}
+
+fn strip_decl(ir: &Ir, decl: &Decl, value: &mut Json) {
+    match &decl.kind {
+        DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Event(_) => {
+            let Some(obj) = value.as_object_mut() else {
+                return;
+            };
+            for f in decl.fields() {
+                if f.derived.is_some() {
+                    obj.remove(&f.wire);
+                } else if let Some(child) = obj.get_mut(&f.wire) {
+                    strip_derived(ir, &f.ty, child);
+                }
+            }
+        }
+        DeclKind::Union(u) => {
+            let label = value
+                .get(&u.discriminator)
+                .and_then(Json::as_str)
+                .map(str::to_owned);
+            let arm = u.arms.iter().find(|a| Some(&a.label) == label.as_ref());
+            if let Some(arm) = arm.and_then(|a| ir.decls.get(a.decl.index())) {
+                strip_decl(ir, arm, value);
+            }
+        }
+        DeclKind::Enum(_) | DeclKind::Const(_) => {}
     }
 }
 

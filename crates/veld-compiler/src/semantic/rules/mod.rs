@@ -8,6 +8,7 @@ mod checker;
 mod depth;
 #[cfg(test)]
 mod depth_tests;
+mod derived;
 mod endpoint;
 #[cfg(test)]
 mod endpoint_tests;
@@ -27,6 +28,7 @@ use crate::diagnostics::{Diagnostic, Span, has_errors};
 use crate::language::Target;
 use crate::syntax::ast::{self, DeclKind, doc_text};
 use checker::Checker;
+pub use derived::RDerived;
 pub(crate) use endpoint::{
     RAllow, RBlock, RElse, REnsure, RRequire, check_block, check_service_facts, has_allow,
     has_bare_require, has_required_fact, has_transition,
@@ -60,8 +62,12 @@ pub fn check(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
     let results: Vec<Vec<RRule>> = (0..prog.decls.len())
         .map(|i| check_decl(prog, i, diags))
         .collect();
-    for (d, r) in prog.decls.iter_mut().zip(results) {
+    let derived: Vec<_> = (0..prog.decls.len())
+        .map(|i| derived::check_derived(prog, i, diags))
+        .collect();
+    for ((d, r), dv) in prog.decls.iter_mut().zip(results).zip(derived) {
         d.res.own_rules = r;
+        d.res.own_derived = dv;
     }
 }
 

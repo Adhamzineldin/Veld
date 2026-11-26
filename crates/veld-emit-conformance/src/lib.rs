@@ -13,6 +13,7 @@
 // This crate is test support: it panics on purpose, with a report, when a check fails.
 #![allow(clippy::panic)]
 
+mod derived;
 mod event_rollout;
 mod events;
 mod events_delivery;
@@ -25,6 +26,9 @@ use std::collections::BTreeMap;
 use veld_codegen::{DynGenerator, FileSet, GenRequest, Role, check_capabilities, checked_features};
 use veld_ir::{Feature, Ir, ServiceId};
 
+pub use derived::{
+    check_derived_is_generated, check_derived_is_refused, compiled_derived_contracts,
+};
 pub use event_rollout::{
     EventRolloutContract, compiled_event_rollout_contracts, without_the_annotation,
 };

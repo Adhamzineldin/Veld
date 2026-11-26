@@ -164,8 +164,16 @@ pub(super) fn field_schema(ir: &Ir, f: &Field) -> Value {
         if f.deprecated.is_some() {
             m.insert("deprecated".into(), Value::Bool(true));
         }
-        if f.readonly {
+        if f.readonly || f.derived.is_some() {
             m.insert("readOnly".into(), Value::Bool(true));
+        }
+        if let Some(e) = &f.derived {
+            // The expression, as the contract reads it (`spec/rules.md` section 17.2): the server
+            // computes the value, so a request never carries it and a response always does.
+            m.insert(
+                "x-veld-derived".into(),
+                Value::from(crate::diff::expr_text::expr_text(e)),
+            );
         }
         put(
             m,

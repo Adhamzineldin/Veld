@@ -244,6 +244,8 @@ fn field(name: &str, ty: Type, lit: Literal) -> Field {
         default: Some(lit.clone()),
         readonly: false,
         version: true,
+        derived: Some(int_lit(1)),
+        derived_id: Some("veld:p/m.B.f@0".into()),
         inherited_from: Some(DeclId(0)),
         constraints: Constraints {
             min: Some(0.0),

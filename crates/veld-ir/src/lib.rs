@@ -310,6 +310,42 @@ impl Ir {
         }
     }
 
+    /// True when a derived field is on the type of a fact or on the principal of one of the
+    /// services, or on anything those reach: a value the application loads is given its derived
+    /// fields too (`spec/rules.md` section 17.2), though no endpoint reaches it.
+    fn facts_have_derived(&self, services: &[ServiceId]) -> bool {
+        self.fact_decls(services)
+            .into_iter()
+            .any(|id| self.decl(id).has_derived())
+    }
+
+    /// True when a value of the type has a derived field: on the declaration of the type or on
+    /// any declaration it reaches through field types, parents and union arms.
+    #[must_use]
+    pub fn type_reaches_derived(&self, ty: &Type) -> bool {
+        let mut stack = Vec::new();
+        ty.collect_decls(&mut stack);
+        self.close_over(stack)
+            .into_iter()
+            .any(|id| self.decl(id).has_derived())
+    }
+
+    /// The types of the facts and the principal of the services and everything those reach,
+    /// sorted by id. No endpoint reaches them (`reachable_decls` leaves them out), but the
+    /// application hands the server values of them.
+    #[must_use]
+    pub fn fact_decls(&self, services: &[ServiceId]) -> Vec<DeclId> {
+        let mut stack = Vec::new();
+        for sid in services {
+            let s = self.service(*sid);
+            for fact in &s.facts {
+                fact.ty.collect_decls(&mut stack);
+            }
+            stack.extend(s.principal.iter().map(|p| p.decl));
+        }
+        self.close_over(stack)
+    }
+
     /// Features of the endpoints of the services and the declarations they reach, without what
     /// only events use. A server that merely calls a service (`consumes`) uses these.
     #[must_use]
@@ -317,6 +353,9 @@ impl Ir {
         let mut f = BTreeSet::new();
         for id in self.reachable_decls(services) {
             self.decl_features(id, &mut f);
+        }
+        if self.facts_have_derived(services) {
+            f.insert(Feature::RulesDerived);
         }
         for sid in services {
             let s = self.service(*sid);
@@ -467,6 +506,36 @@ impl Decl {
             DeclKind::Event(e) => &e.fields,
             DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => &[],
         }
+    }
+
+    /// The derived fields of the declaration in the order their values are computed
+    /// (`spec/rules.md` section 17.2): a field after every derived field it reads, and in
+    /// declaration order among fields that do not depend on each other. Inherited fields come
+    /// first, as they do in [`Decl::fields`]. A cycle (the compiler refuses it, `E0960`) does
+    /// not loop: what is left comes last, in declaration order.
+    #[must_use]
+    pub fn derived_fields(&self) -> Vec<&Field> {
+        let mut left: Vec<&Field> = self
+            .fields()
+            .iter()
+            .filter(|f| f.derived.is_some())
+            .collect();
+        let mut out: Vec<&Field> = Vec::with_capacity(left.len());
+        while !left.is_empty() {
+            let ready = left.iter().position(|f| {
+                f.derived_reads()
+                    .iter()
+                    .all(|r| !left.iter().any(|o| o.name == *r && !std::ptr::eq(*o, *f)))
+            });
+            out.push(left.remove(ready.unwrap_or(0)));
+        }
+        out
+    }
+
+    /// True when a field of the declaration is derived.
+    #[must_use]
+    pub fn has_derived(&self) -> bool {
+        self.fields().iter().any(|f| f.derived.is_some())
     }
 
     #[must_use]
@@ -694,6 +763,15 @@ pub struct Field {
     /// when false, so the IR of a contract without the annotation is unchanged.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub version: bool,
+    /// The expression of a derived field (`spec/rules.md` section 17.2): `total: decimal =
+    /// subtotal - discount`. Omitted from the JSON when the field is not derived, so the IR of a
+    /// contract without derived fields is the same bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived: Option<Expr>,
+    /// The identity of a derived field (`spec/rules.md` sections 6 and 17.2), set exactly when
+    /// `derived` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived_id: Option<String>,
     pub inherited_from: Option<DeclId>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -816,8 +894,23 @@ fn rule_features(rules: &[Rule], f: &mut BTreeSet<Feature>) {
 /// The features the type and the constraints of a field use.
 fn field_features(fld: &Field, f: &mut BTreeSet<Feature>) {
     fld.ty.features(f);
+    if fld.derived.is_some() {
+        f.insert(Feature::RulesDerived);
+    }
     if !fld.constraints.is_empty() {
         f.insert(Feature::Constraints);
+    }
+}
+
+impl Field {
+    /// Source names of the fields of the declaration that the derived expression reads, first
+    /// use first. Empty when the field is not derived.
+    #[must_use]
+    pub fn derived_reads(&self) -> Vec<String> {
+        self.derived
+            .as_ref()
+            .map(|e| e.self_reads())
+            .unwrap_or_default()
     }
 }
 
@@ -1189,6 +1282,9 @@ pub enum Feature {
     RulesVersion,
     /// `@idempotent` (`spec/rules.md` section 11.8).
     Idempotency,
+    /// A derived field: `total: decimal = subtotal - discount` (`spec/rules.md` section 17.2).
+    /// A generator that does not know it would leave the field without a value.
+    RulesDerived,
     /// `publishes` or `subscribes` (`spec/events.md` section 13).
     Events,
     /// `@retry`, `@deadLetter` or `@ordered` on a channel that a service publishes or subscribes
@@ -1206,13 +1302,14 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 4] = [
+    pub const OPT_IN: [Feature; 5] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
+        Feature::RulesDerived,
         Feature::EventsDelivery,
     ];
-    pub const ALL: [Feature; 19] = [
+    pub const ALL: [Feature; 20] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1230,6 +1327,7 @@ impl Feature {
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
+        Feature::RulesDerived,
         Feature::Events,
         Feature::EventsDelivery,
     ];
@@ -1253,6 +1351,7 @@ impl Feature {
             Feature::RulesRollout => "rules_rollout",
             Feature::RulesVersion => "rules_version",
             Feature::Idempotency => "idempotency",
+            Feature::RulesDerived => "rules_derived",
             Feature::Events => "events",
             Feature::EventsDelivery => "events_delivery",
         }
@@ -1296,6 +1395,8 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod derived_tests;
 #[cfg(test)]
 mod events_tests;
 

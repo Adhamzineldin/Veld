@@ -1,0 +1,14 @@
+// The expression of a derived field must fit the type of the field by the widening rules.
+
+model M {
+  a: int
+  name: string
+  fine: long = a
+  big: long
+  narrow: int = big
+  text: string = a
+  flag: bool = a + 1
+  yes: decimal = a > 0
+}
+
+service S at "/s" { get "/" f() -> M }

@@ -131,6 +131,13 @@ fn java_generates_audited_rules() {
     veld_emit_conformance::check_rollout_is_generated(&Java).unwrap();
 }
 
+/// Derived fields (`spec/rules.md` section 17.2): until Java implements them, it refuses a contract
+/// with one with `E0801`, as a server and as a client.
+#[test]
+fn java_refuses_derived_fields() {
+    veld_emit_conformance::check_derived_is_refused(&Java).unwrap();
+}
+
 /// `@version` and `@idempotent` (`spec/rules.md` sections 11.7 to 11.12): Java declares
 /// `rules_version` and `idempotency` as a server and as a client, so the contracts that use either
 /// pass the gate and generate.

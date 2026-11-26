@@ -1,0 +1,9 @@
+// A derived field reads an optional field only under a guard (spec/rules.md section 3.6).
+
+model M {
+  a?: int
+  b: int = a + 1
+  c: bool = has(a) && a > 0
+}
+
+service S at "/s" { get "/" f() -> M }

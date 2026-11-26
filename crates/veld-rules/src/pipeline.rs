@@ -15,7 +15,7 @@ use std::ops::ControlFlow;
 use serde_json::{Map, Value as Json, json};
 use veld_ir::{DeclId, DeclKind, ElseError, Endpoint, EndpointFact, Expr, Ir, Policy, Service};
 
-use crate::check::{Options, Violation, check_decl_audited, check_type_audited};
+use crate::check::{Options, Violation, check_decl_audited, check_type_audited, complete_type};
 use crate::coverage::allow_key;
 use crate::error::{Failure, InputError};
 use crate::eval::{Env, SavedOld, eval};
@@ -163,6 +163,8 @@ pub struct Prepared<'a> {
 pub struct Pipeline<'a> {
     ir: &'a Ir,
     endpoint: &'a Endpoint,
+    /// The model of the principal of the package, when it declares one.
+    principal: Option<DeclId>,
 }
 
 /// Steps 8 and 9: the outcome, what went to the hook, and the body of a success.
@@ -220,7 +222,11 @@ impl<'a> Pipeline<'a> {
             service: service.name.clone(),
             endpoint: endpoint.to_owned(),
         })?;
-        Ok(Pipeline { ir, endpoint })
+        Ok(Pipeline {
+            ir,
+            endpoint,
+            principal: service.principal.as_ref().map(|p| p.decl),
+        })
     }
 
     /// Runs the whole pipeline: steps 5 and 6, and, when `request.result` is given, steps 8
@@ -382,8 +388,13 @@ impl<'a> Pipeline<'a> {
     ) -> Result<Before<'a>, RunError> {
         let mut env = Env::new(self.ir);
         env.params = params;
-        env.principal.clone_from(&request.principal);
         env.now = Some(request.now);
+        let (principal, broken) = self.complete_principal(request.principal.as_ref())?;
+        if !broken.is_empty() {
+            let answer = self.answer("Internal", 500, json!({}), Vec::new(), broken)?;
+            return Ok(Before::Rejected(answer));
+        }
+        env.principal.clone_from(&principal);
         if let Some(answer) = self.load_facts(&mut env, request)? {
             return Ok(Before::Rejected(answer));
         }
@@ -418,13 +429,40 @@ impl<'a> Pipeline<'a> {
             pipeline: *self,
             params: env.params,
             now: request.now,
-            principal: request.principal.clone(),
+            principal,
             old,
             checked_version: match sent {
                 Some(IfMatch::Version(n)) if compared => Some(n),
                 Some(IfMatch::Version(_) | IfMatch::Any) | None => None,
             },
         }))
+    }
+
+    /// A value handed over by the application, with its defaults and derived fields
+    /// (`spec/rules.md` section 17.2), and the derived fields that could not be computed. A
+    /// contract with no derived field leaves the value exactly as it is.
+    fn complete(
+        &self,
+        ty: &veld_ir::Type,
+        value: &Json,
+    ) -> Result<(Json, Vec<Violation>), RunError> {
+        if !self.ir.type_reaches_derived(ty) {
+            return Ok((value.clone(), Vec::new()));
+        }
+        Ok(complete_type(self.ir, ty, value, Options::default())?)
+    }
+
+    fn complete_principal(
+        &self,
+        principal: Option<&Json>,
+    ) -> Result<(Option<Json>, Vec<Violation>), RunError> {
+        match (principal, self.principal) {
+            (Some(p), Some(decl)) => {
+                let (full, broken) = self.complete(&veld_ir::Type::Decl(decl), p)?;
+                Ok((Some(full), broken))
+            }
+            (p, _) => Ok((p.cloned(), Vec::new())),
+        }
     }
 
     // ---- step 5 ----------------------------------------------------------------------
@@ -594,7 +632,14 @@ impl<'a> Pipeline<'a> {
             };
             match value {
                 Some(v) => {
-                    env.facts.insert(fact.name.clone(), v.clone());
+                    // A fact has its defaults and its derived fields once it is loaded (17.2).
+                    let (v, broken) = self.complete(&fact.ty, v)?;
+                    if !broken.is_empty() {
+                        return self
+                            .answer("Internal", 500, json!({}), Vec::new(), broken)
+                            .map(Some);
+                    }
+                    env.facts.insert(fact.name.clone(), v);
                 }
                 None if fact.optional => {}
                 None => {
@@ -863,7 +908,7 @@ impl Prepared<'_> {
             return Ok(After::new(
                 Outcome::Passes,
                 Vec::new(),
-                Some(result.clone()),
+                Some(self.derived_only(result)),
             ));
         }
         let mut env = Env::new(p.ir);
@@ -895,6 +940,25 @@ impl Prepared<'_> {
             return Ok(After::new(Outcome::Passes, hook, body));
         }
         internal(p, hook).map(|o| After::new(o, Vec::new(), None))
+    }
+
+    /// The result with its derived fields computed, for the output mode `off`: they are values,
+    /// not rules (`spec/rules.md` section 17.2). A result that does not have the shape of the
+    /// success type is passed through, like any other.
+    fn derived_only(&self, result: &Json) -> Json {
+        let p = &self.pipeline;
+        match p
+            .endpoint
+            .success
+            .ty
+            .as_ref()
+            .filter(|_| !p.endpoint.success.stream)
+        {
+            Some(ty) => p
+                .complete(ty, result)
+                .map_or_else(|_| result.clone(), |(full, _)| full),
+            None => result.clone(),
+        }
     }
 
     /// Step 9: every `ensure` in source order, then the target state. The violations of enforced

@@ -108,6 +108,11 @@ impl Problem<'_> {
         };
         let wires = Self::wires(p);
         let name = path_name(&key, &wires, VarKind::Value);
+        if field_at(self.ir, &spec.ty, &p.steps).is_some_and(|f| f.derived.is_some()) {
+            // Left open: a satisfiable problem stays satisfiable, so a proved contradiction is
+            // still a contradiction; a claim about every value is not made (`diff`).
+            self.open.insert(OpenPart::Derived);
+        }
         if let Some(seen) = self.vars.get(&name) {
             // In a `diff` the same field is read by the old and the new rule; if its type
             // changed, they do not talk about the same value.

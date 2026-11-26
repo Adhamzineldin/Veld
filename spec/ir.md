@@ -127,6 +127,13 @@ Example       += { "if_match": "any" | { "version": "3" },
                    "key": { "value": "k-1", "store": "other" | "running" | { "stored": ExampleOutcome } } }
 ```
 
+A derived field (`spec/rules.md` §17.2: `total: decimal = subtotal - discount`) adds two keys to `Field`, each **omitted when absent**, so the IR of a contract without derived fields is the same bytes. The feature `rules_derived` is opt-in: a generator that does not declare it reports `E0801` at the first derived field.
+
+```jsonc
+Field += { "derived": Expr,                                 // the expression, typed as in a rule; the type of the field
+           "derived_id": "veld:<pkg>/<Decl>.<wire>@<hex16>" } // the identity of §17.2; an inherited field keeps the id of its parent
+```
+
 `EndpointRules.version` is the guard: the first fact, in declaration order, whose type is a model with a `version` field (an optional fact too: when it is absent there is nothing to compare). `id` is the rule id of §11.9; `field` and `wire` name the version field of the fact's model. `Idempotency.caller` is true when the endpoint's effective auth is not `none`: the scope of a key then includes the caller. `ExampleKey.store` is left out when the line is the key alone (the store holds nothing for it). The errors of the two features are in `Endpoint.errors` like any other: `PreconditionFailed` (412) with a guard, `Conflict` (409) with `@idempotent`, and `ValidationError` (422) with either, because a malformed header is refused with it. They are not declared by the author and they appear in the IR only when a contract reaches them, like `InvalidTransition`. No declaration signature and no operation signature depends on either annotation.
 
 A service uses the feature `rules_version` when an endpoint has a guard **or** answers with a model that has a `version` field (the `ETag`), and `idempotency` when an endpoint has `idempotency`. Both are opt-in, like `rules_rollout`: `Capabilities::all_except` does not hand them out and a generator adds them with `Capabilities::with` once it implements them; until then it reports `E0801` at the first use (the fact of a guard, the endpoint that only owes an `ETag`, the `@idempotent` line). A guard is not a statement: an endpoint that has only a guard and no other statement does not use `rules_endpoint` on that account (a guard needs a fact, so it always has one).
