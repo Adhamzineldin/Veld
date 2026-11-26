@@ -251,6 +251,9 @@ An unknown annotation is `E0601`. Annotations with the wrong arguments or the wr
 | `@rollout(audit)` | invariant, `require`, `ensure` | The rule is evaluated and reported and never rejects (`spec/rules.md` §17.1). `E0602` anywhere else. |
 | `@version` | one `int` or `long` field of a model | The version of the model: the `ETag` of a response and what `If-Match` is compared with (`spec/rules.md` §11.7). `E0602` on another type, an optional field, a field of an error or an event, or a second one. |
 | `@idempotent` / `@idempotent(header: "Name", required: true)` | endpoint | The endpoint answers a request once per key (`spec/rules.md` §11.8). `E0602` on a stream or `ws` endpoint, or for a header that is not a token, that Veld or HTTP uses (`Authorization`, `Content-Type`, `Content-Length`, `Accept`, `Host`, `If-Match`, `ETag`, `Veld-*`) or that the endpoint's own parameters or `apiKey` already use. |
+| `@retry(max: n, backoff: fixed \| exponential)` | channel | How often a consumer handles a message again after its handler failed: `max` is 0 to 100 and required, `backoff` defaults to `exponential` (`spec/events.md` §10.2). `E0602` anywhere else, written twice, or with another argument. |
+| `@deadLetter` | channel | A rejected message, and a message whose retries are used up, is copied to `<topic>.dlq` (`spec/events.md` §10.2, §10.5). Takes no argument. |
+| `@ordered` | channel | One total order across keys (`spec/events.md` §10.2). Takes no argument. |
 
 ### 7.1 Regex subset
 The allowed syntax is literal characters, `.`, classes `[...]`, `\d \w \s`, the quantifiers `* + ? {n,m}`, groups `( )`, alternation `|`, and the anchors `^ $`. Lookaround and backreferences are `E0603`, because every target must enforce the same pattern.

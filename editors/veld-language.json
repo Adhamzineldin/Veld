@@ -70,7 +70,8 @@
     "subscribes",
     "on",
     "called",
-    "rejected"
+    "rejected",
+    "once"
   ],
   "scalars": [
     "string",
@@ -229,6 +230,30 @@
       ],
       "args": "one_string",
       "usage": "@topic(\"name\")"
+    },
+    {
+      "name": "retry",
+      "targets": [
+        "channel"
+      ],
+      "args": "retry",
+      "usage": "@retry(max: 5, backoff: exponential)"
+    },
+    {
+      "name": "deadLetter",
+      "targets": [
+        "channel"
+      ],
+      "args": "none",
+      "usage": "@deadLetter"
+    },
+    {
+      "name": "ordered",
+      "targets": [
+        "channel"
+      ],
+      "args": "none",
+      "usage": "@ordered"
     },
     {
       "name": "rollout",

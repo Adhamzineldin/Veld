@@ -3,6 +3,8 @@
 
 pub mod annotations;
 mod collect;
+#[cfg(test)]
+mod delivery_tests;
 mod events;
 #[cfg(test)]
 mod events_groundwork_tests;

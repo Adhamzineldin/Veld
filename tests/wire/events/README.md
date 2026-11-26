@@ -1,11 +1,13 @@
 # Event envelope goldens
 
-The bytes of an event message (`spec/events.md` sections 6 to 8). The Node, Java and Rust generators must each reproduce them, and each must decode the others'. The reference is `veld_rules::envelope` (`crates/veld-rules/src/envelope`); its test `crates/veld-rules/tests/envelope.rs` runs every file here.
+The bytes of an event message (`spec/events.md` sections 6 to 8). The Node, Java and Rust generators must each reproduce them, and each must decode the others'. The reference is `veld_rules::envelope` (`crates/veld-rules/src/envelope`); its tests `crates/veld-rules/tests/envelope.rs` (the first three files) and `crates/veld-rules/tests/dead_letter.rs` (the last two) run every file here.
 
 | File | What it is |
 |---|---|
 | `envelopes.json` | The publish goldens: an array of cases. |
 | `consume.json` | The consume goldens: what a consumer does with a message. |
+| `dead-letter.json` | The dead-letter copy goldens (phase E2, section 10.5): the bytes of the copy. |
+| `retry.json` | The retry goldens (phase E2, section 10.4): how often the handler runs, what is copied, what the transport is told. |
 | `edges.veld` | The contract of the edge cases. The other contract is `tests/events/bookings.veld`. |
 
 Every contract is compiled as the package `bookings`. The package is part of `source` (`veld:bookings/Bookings`) and of `type`, which is the declaration signature.
@@ -48,6 +50,37 @@ What the cases cover: a default applied (`nights`), a default inside a nested va
 | `delivered, other type hash` | The handler is called; the hash of `type` differs from the consumer's own signature, so `onContractMismatch` is called |
 
 Messages are written as ordinary JSON text, not in canonical form: a consumer must accept any JSON.
+
+## `dead-letter.json`
+
+```json
+{ "name": "…", "original": "{…}", "reason": "shape", "group": "notifications", "attempts": 0,
+  "issues": [ { "path": "$.amount", "code": "type", "message": "…" } ],
+  "violations": [ { "rule": "veld:bookings/…@…", "path": "$", "fields": ["amount"], "message": "…", "error": "division_by_zero" } ],
+  "copy": "{…}" }
+```
+
+A generator's test gives the dead-letter function of its consumer the bytes `original`, the `reason`, the `group` of the consumer, the number of `attempts` (runs of the handler, 0 for a rejected message) and the `issues` and `violations`, and requires the bytes `copy` (UTF-8, compared as bytes). `issues` are the `ValidationIssue` of the prelude (`path`, `code`, `message`); a violation is the object of `spec/rules.md` section 7 (`rule`, `path`, `fields`, `message`, and `error` only for an evaluation error). `veldissues` and `veldviolations` are written only when the list is not empty, each as a string that holds the canonical JSON of the list.
+
+A case with `originalHex` and `copyHex` has bytes that are not UTF-8. What is not a JSON object is copied as it is, whatever it is. A member of the original named `veldreason`, `veldgroup`, `veldattempts`, `veldissues` or `veldviolations` is replaced, or removed when the copy has no list for it, so that a copy which fails again describes its own failure. Every other member is kept, and the object is written as canonical JSON.
+
+The key of the copy is the key of the original message and is not part of the bytes.
+
+What the cases cover: text that is not JSON, an array, a string, a number, `null`, bytes that are not UTF-8 and an empty message (all copied as they are); an object that is not an envelope; each reason; issues, violations, an evaluation error and both lists together; members the consumer does not know; whitespace and member order; text that is not ASCII and escaped text; quotes, backslashes and line breaks inside the list strings; a copy that fails again; numbers written as canonical JSON numbers; an empty object.
+
+## `retry.json`
+
+```json
+{ "name": "…", "retry": { "max": 3, "backoff": "exponential" } | null, "deadLetter": true,
+  "delayMs": 1000, "maxDelayMs": 60000, "transportAttempt": 1,
+  "results": ["failed", "returned"],
+  "expect": { "runs": 2, "failures": [ { "attempt": 1, "last": false } ], "waitsMs": [1000],
+              "copy": null, "copyAttempts": 0, "answer": "done", "answerIfCopyFails": "done" } }
+```
+
+Section 10.4 as a table. `results[i]` is what run `i + 1` of the handler comes to (`returned` or `failed`); a run without an entry takes the last one, and an empty list is a handler that returns. A generator's test builds a consumer with the channel's `@retry` and `@deadLetter`, a `sleep` that records the wait it was asked for, the options `retryDelayMs` and `retryMaxDelayMs` and a handler that does `results`, delivers the message with the attempt `transportAttempt`, and requires: the number of handler `runs`; one entry of `failures` per failed run, with the `meta.attempt` of the run and `last` (the `final` of `onHandlerError`); the waits in `waitsMs`; the `copy` published to the dead-letter topic (its reason, or `null`) with the `copyAttempts` it carries; and the `answer` to the transport (`done` or `again`). `answerIfCopyFails` is the answer when publishing the copy fails (section 10.5).
+
+A case with `rejected` (`malformed`, `shape` or `rule`) is a message that step 1, 3 or 4 rejects: no run, acknowledged, copied with that reason when the channel has `@deadLetter`. A case with `ignored` is a message of step 2: acknowledged and nothing else.
 
 ## Rules
 

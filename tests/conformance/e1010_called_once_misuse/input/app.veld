@@ -1,0 +1,29 @@
+// `once` follows `called` only (spec/events.md section 10.9): `not called once` and `rejected once`
+// are `E1010`.
+
+event Paid { id: uuid }
+channel Payments { carries Paid }
+
+service Publisher { publishes Payments }
+
+service Consumer {
+  subscribes Payments as "g" {
+    on Paid -> handle
+  }
+}
+
+example "not called once" {
+  given event Paid { }
+  expect Consumer.handle not called once
+}
+
+example "rejected once" {
+  given event Paid { }
+  expect rejected once
+}
+
+example "rejected, and a handler called once" {
+  given event Paid { }
+  expect rejected
+  expect Consumer.handle called once
+}

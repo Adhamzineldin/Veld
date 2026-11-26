@@ -57,7 +57,7 @@ pub const CONTEXTUAL_RULE_WORDS: [&str; 34] = [
 
 /// Contextual words of events (`spec/events.md` section 2). `emits`, `given` and `expect` are rule
 /// words already. Each is a keyword only where the grammar expects it; the reserved list never grows.
-pub const CONTEXTUAL_EVENT_WORDS: [&str; 9] = [
+pub const CONTEXTUAL_EVENT_WORDS: [&str; 10] = [
     "event",
     "channel",
     "carries",
@@ -67,6 +67,7 @@ pub const CONTEXTUAL_EVENT_WORDS: [&str; 9] = [
     "on",
     "called",
     "rejected",
+    "once",
 ];
 
 /// Words that start a declaration.
@@ -148,6 +149,8 @@ pub enum ArgShape {
     Rollout,
     /// Nothing, or `header: "Name"` and `required: true|false` in either order.
     Idempotent,
+    /// `max: n` and, optionally, `backoff: fixed | exponential`.
+    Retry,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -169,7 +172,7 @@ const DEPRECATABLE: [Target; 12] = [
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 18] = [
+pub const ANNOTATIONS: [AnnotationSpec; 21] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -259,6 +262,24 @@ pub const ANNOTATIONS: [AnnotationSpec; 18] = [
         targets: &[Channel],
         args: ArgShape::OneString,
         usage: "@topic(\"name\")",
+    },
+    AnnotationSpec {
+        name: "retry",
+        targets: &[Channel],
+        args: ArgShape::Retry,
+        usage: "@retry(max: 5, backoff: exponential)",
+    },
+    AnnotationSpec {
+        name: "deadLetter",
+        targets: &[Channel],
+        args: ArgShape::None,
+        usage: "@deadLetter",
+    },
+    AnnotationSpec {
+        name: "ordered",
+        targets: &[Channel],
+        args: ArgShape::None,
+        usage: "@ordered",
     },
     AnnotationSpec {
         name: "rollout",

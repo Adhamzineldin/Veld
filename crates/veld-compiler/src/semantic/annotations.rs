@@ -27,6 +27,12 @@ pub struct Anns<'a> {
     pub version: Option<Span>,
     /// `@idempotent` on an endpoint.
     pub idempotent: Option<Idempotent>,
+    /// `@retry` on a channel.
+    pub retry: Option<veld_ir::Retry>,
+    /// `@deadLetter` on a channel.
+    pub dead_letter: bool,
+    /// `@ordered` on a channel.
+    pub ordered: bool,
 }
 
 /// What `@idempotent(header: "Name", required: true)` says (`spec/rules.md` section 11.8).
@@ -227,12 +233,15 @@ fn apply<'a>(
         ("topic", _) => out.topic = Some(one_string(args)?),
         ("rollout", _) => out.rollout = Some(rollout_arg(args)?),
         ("idempotent", _) => out.idempotent = Some(idempotent_args(args, a.span)?),
+        ("retry", _) => out.retry = Some(retry_args(args)?),
         ("auth", _) => out.auth = Some(auth_arg(args)?.declared()),
         ("middleware", _) => out.middleware = Some(idents(args)?),
         _ => {}
     }
     match spec.name {
         "readonly" => out.readonly = true,
+        "deadLetter" => out.dead_letter = true,
+        "ordered" => out.ordered = true,
         "version" => {
             require_type(
                 ty,
@@ -404,6 +413,68 @@ fn idempotent_args(args: &[Arg], span: Span) -> Result<Idempotent, String> {
         }
     }
     Ok(out)
+}
+
+/// The most a `@retry` may ask for (`spec/events.md` section 10.2).
+pub const RETRY_MAX: u64 = 100;
+
+/// `@retry(max: n, backoff: fixed | exponential)`: `max` is 0 to 100 and required, `backoff`
+/// defaults to `exponential`, each is given once.
+fn retry_args(args: &[Arg]) -> Result<veld_ir::Retry, String> {
+    const USAGE: &str =
+        "expected `max: n` and, optionally, `backoff: fixed` or `backoff: exponential`";
+    let (mut max, mut backoff) = (None, None);
+    for a in args {
+        let key = a.name.as_ref().map(|n| n.name.as_str());
+        match (key, &a.value) {
+            (Some("max"), ArgValue::Literal(l)) => {
+                once_slot(&max, "max")?;
+                max = Some(retry_max(&l.kind)?);
+            }
+            (Some("backoff"), ArgValue::Ident(i)) => {
+                once_slot(&backoff, "backoff")?;
+                backoff = Some(match i.name.as_str() {
+                    "fixed" => veld_ir::Backoff::Fixed,
+                    "exponential" => veld_ir::Backoff::Exponential,
+                    other => {
+                        return Err(format!(
+                            "unknown backoff `{other}`; use `fixed` or `exponential`"
+                        ));
+                    }
+                });
+            }
+            _ => return Err(USAGE.to_string()),
+        }
+    }
+    let Some(max) = max else {
+        return Err("`@retry` needs `max: n`".to_string());
+    };
+    Ok(veld_ir::Retry {
+        max,
+        backoff: backoff.unwrap_or(veld_ir::Backoff::Exponential),
+    })
+}
+
+fn once_slot<T>(slot: &Option<T>, name: &str) -> Result<(), String> {
+    if slot.is_some() {
+        return Err(format!("`{name}:` is given more than once"));
+    }
+    Ok(())
+}
+
+fn retry_max(kind: &LitKind) -> Result<u32, String> {
+    match kind {
+        LitKind::Int(n) if (0..=RETRY_MAX as i64).contains(n) => {
+            u32::try_from(*n).map_err(|_| "`max` is out of range".to_string())
+        }
+        LitKind::Int(n) => Err(format!("`max: {n}` is out of range; use 0 to {RETRY_MAX}")),
+        LitKind::Str(_)
+        | LitKind::Float(_)
+        | LitKind::Bool(_)
+        | LitKind::Null
+        | LitKind::Variant(_)
+        | LitKind::EmptyList => Err("`max` must be an integer from 0 to 100".to_string()),
+    }
 }
 
 fn once_only(seen: &mut bool, name: &str) -> Result<(), String> {

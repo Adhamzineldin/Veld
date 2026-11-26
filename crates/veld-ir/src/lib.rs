@@ -213,12 +213,33 @@ impl Ir {
         if services.iter().any(|s| self.service(*s).uses_events()) {
             f.insert(Feature::Events);
         }
+        if services
+            .iter()
+            .any(|s| self.first_delivery_origin(*s).is_some())
+        {
+            f.insert(Feature::EventsDelivery);
+        }
         let mut ids = self.events_of(services);
         ids.extend(self.event_reachable_decls(services));
         for id in ids {
             self.decl_features(id, &mut f);
         }
         f
+    }
+
+    /// The origin of the first channel with `@retry`, `@deadLetter` or `@ordered` that the
+    /// service publishes to or subscribes to: its `publishes` lines first, in source order, then
+    /// its subscriptions. This is where the gate of `events_delivery` points.
+    #[must_use]
+    pub fn first_delivery_origin(&self, service: ServiceId) -> Option<&Origin> {
+        let s = self.service(service);
+        let published = s.publishes.iter().map(|p| p.channel);
+        let subscribed = s.subscriptions.iter().map(|x| x.channel);
+        published
+            .chain(subscribed)
+            .map(|c| self.channel(c))
+            .find(|c| c.has_delivery_options())
+            .map(|c| &c.origin)
     }
 
     /// Every declaration of the workspace that is not in the prelude and is
@@ -496,7 +517,52 @@ pub struct Channel {
     pub key: Option<ChannelKey>,
     pub docs: Option<String>,
     pub deprecated: Option<String>,
+    /// `@retry(max: n, backoff: ..)` (`spec/events.md` section 10.2). Omitted when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry: Option<Retry>,
+    /// `@deadLetter`. Omitted when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dead_letter: bool,
+    /// `@ordered`. Omitted when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ordered: bool,
     pub origin: Origin,
+}
+
+impl Channel {
+    /// True when the channel has one of the three annotations of `spec/events.md` section 10.2:
+    /// a service that publishes or subscribes to it uses the feature `events_delivery`.
+    #[must_use]
+    pub fn has_delivery_options(&self) -> bool {
+        self.retry.is_some() || self.dead_letter || self.ordered
+    }
+}
+
+/// `@retry(max: n, backoff: fixed | exponential)`: how often a consumer handles a message again
+/// after its handler failed (`spec/events.md` section 10.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Retry {
+    /// 0 to 100.
+    pub max: u32,
+    pub backoff: Backoff,
+}
+
+/// The wait between two runs of a handler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Backoff {
+    Fixed,
+    Exponential,
+}
+
+impl Backoff {
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Backoff::Fixed => "fixed",
+            Backoff::Exponential => "exponential",
+        }
+    }
 }
 
 /// The `key` of a channel: the field that orders the stream.
@@ -1125,6 +1191,9 @@ pub enum Feature {
     Idempotency,
     /// `publishes` or `subscribes` (`spec/events.md` section 13).
     Events,
+    /// `@retry`, `@deadLetter` or `@ordered` on a channel that a service publishes or subscribes
+    /// to (`spec/events.md` section 10.8).
+    EventsDelivery,
 }
 
 impl Feature {
@@ -1137,12 +1206,13 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 3] = [
+    pub const OPT_IN: [Feature; 4] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
+        Feature::EventsDelivery,
     ];
-    pub const ALL: [Feature; 18] = [
+    pub const ALL: [Feature; 19] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1161,6 +1231,7 @@ impl Feature {
         Feature::RulesVersion,
         Feature::Idempotency,
         Feature::Events,
+        Feature::EventsDelivery,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1183,6 +1254,7 @@ impl Feature {
             Feature::RulesVersion => "rules_version",
             Feature::Idempotency => "idempotency",
             Feature::Events => "events",
+            Feature::EventsDelivery => "events_delivery",
         }
     }
     #[must_use]
@@ -1226,3 +1298,6 @@ mod tests {
 
 #[cfg(test)]
 mod events_tests;
+
+#[cfg(test)]
+mod delivery_tests;

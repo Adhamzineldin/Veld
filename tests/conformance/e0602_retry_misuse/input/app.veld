@@ -1,0 +1,62 @@
+// `@retry`, `@deadLetter` and `@ordered` (spec/events.md section 10.2): a wrong place, a repeat,
+// a missing or out-of-range `max`, an unknown `backoff`, other arguments, and arguments on the
+// other two. Every channel below is wrong in one way.
+
+event Paid { id: uuid }
+
+@retry
+channel NoArguments { carries Paid }
+
+@retry()
+channel EmptyArguments { carries Paid }
+
+@retry(backoff: fixed)
+channel NoMax { carries Paid }
+
+@retry(max: 101)
+channel TooMany { carries Paid }
+
+@retry(max: -1)
+channel Negative { carries Paid }
+
+@retry(max: 2.5)
+channel NotAnInteger { carries Paid }
+
+@retry(max: "3")
+channel AString { carries Paid }
+
+@retry(3)
+channel Positional { carries Paid }
+
+@retry(max: 3, backoff: linear)
+channel UnknownBackoff { carries Paid }
+
+@retry(max: 3, backoff: "fixed")
+channel BackoffAString { carries Paid }
+
+@retry(max: 3, max: 4)
+channel MaxTwice { carries Paid }
+
+@retry(max: 3, backoff: fixed, backoff: exponential)
+channel BackoffTwice { carries Paid }
+
+@retry(max: 3, delay: 5)
+channel OtherArgument { carries Paid }
+
+@retry(max: 3)
+@retry(max: 4)
+channel RetryTwice { carries Paid }
+
+@deadLetter
+@deadLetter
+channel DeadLetterTwice { carries Paid }
+
+@ordered
+@ordered
+channel OrderedTwice { carries Paid }
+
+@deadLetter(true)
+channel DeadLetterWithArgument { carries Paid }
+
+@ordered(key)
+channel OrderedWithArgument { carries Paid }

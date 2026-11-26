@@ -281,19 +281,75 @@ fn a_rejection_is_reported_with_its_reason() {
 }
 
 #[test]
-fn live_skips_event_examples_and_sends_nothing_for_them() {
+fn live_skips_event_examples_when_the_handler_lists_no_subscribes_and_sends_nothing_for_them() {
     let tmp = with_events(str::to_owned);
     let fake = AlwaysPass::start();
     let url = fake.url();
     veld(tmp.path())
-        .args(["test", "--live", url.as_str(), "--dry-run", "--filter", "payment"])
+        .args([
+            "test",
+            "--live",
+            url.as_str(),
+            "--dry-run",
+            "--filter",
+            "payment",
+        ])
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "skip a payment reaches the receipt handler (live event examples arrive with a later phase)",
+            "skip a payment reaches the receipt handler (the test handler at",
+        ))
+        .stdout(predicate::str::contains(
+            "does not serve events (its probe has no `subscribes`))",
         ))
         .stdout(predicate::str::contains("2 skipped"))
         .stdout(predicate::str::contains("FAIL").not());
+}
+
+const LIMITED: &str = r#"event Order { quantity: int @max(10) }
+channel Orders { carries Order }
+service Shop { publishes Orders }
+service Fulfilment { subscribes Orders as "f" { on Order -> reserve } }
+
+example "an order of eleven is rejected" {
+  given event Order { quantity: 11 }
+  expect rejected
+}
+
+example "an order of three is reserved" {
+  given event Order { quantity: 3 }
+  expect Fulfilment.reserve called once
+}
+"#;
+
+#[test]
+fn a_rejection_because_of_a_constraint_is_live_only_offline_and_does_not_fail() {
+    let tmp = project_with(LIMITED);
+    veld(tmp.path())
+        .arg("test")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "skip an order of eleven is rejected (live only: `$.quantity` breaks `@max(10)`",
+        ))
+        .stdout(predicate::str::contains(
+            "ok   an order of three is reserved",
+        ))
+        .stdout(predicate::str::contains("1 passed, 1 skipped"))
+        .stdout(predicate::str::contains("FAIL").not());
+}
+
+#[test]
+fn a_rejection_that_nothing_explains_still_fails_offline() {
+    let tmp = project_with(&LIMITED.replace("quantity: 11", "quantity: 9"));
+    veld(tmp.path())
+        .arg("test")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "FAIL an order of eleven is rejected",
+        ))
+        .stdout(predicate::str::contains("expected: rejected"));
 }
 
 #[test]

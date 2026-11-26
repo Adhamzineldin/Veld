@@ -77,8 +77,8 @@ pub struct REventExample {
 #[derive(Debug, Clone)]
 pub enum REventExpect {
     Rejected,
-    /// (service index, handler name, whether it is expected to be called).
-    Calls(Vec<(usize, String, bool)>),
+    /// (service index, handler name, whether it is expected to be called, whether `once`).
+    Calls(Vec<(usize, String, bool, bool)>),
 }
 
 #[derive(Debug, Clone)]

@@ -142,10 +142,18 @@ fn check_expectations(
         );
         return None;
     }
+    if let Some(once) = rejected.and_then(|r| r.once) {
+        diags.push(Diagnostic::error(
+            "E1010",
+            "`once` goes with `called`, not with `rejected`",
+            once,
+        ));
+        return None;
+    }
     if rejected.is_some() {
         return Some(REventExpect::Rejected);
     }
-    let mut out: Vec<(usize, String, bool)> = Vec::new();
+    let mut out: Vec<(usize, String, bool, bool)> = Vec::new();
     let mut seen: BTreeSet<(usize, String)> = BTreeSet::new();
     let mut ok = true;
     for e in &ev.expects {
@@ -157,6 +165,15 @@ fn check_expectations(
         else {
             continue;
         };
+        if let (true, Some(once)) = (*not, e.once) {
+            diags.push(Diagnostic::error(
+                "E1010",
+                "`not called once` says nothing: write `not called`",
+                once,
+            ));
+            ok = false;
+            continue;
+        }
         let Some(s) = pick_service(prog, module, channel, service, handler, diags) else {
             ok = false;
             continue;
@@ -170,7 +187,7 @@ fn check_expectations(
             ok = false;
             continue;
         }
-        out.push((s, handler.name.clone(), !not));
+        out.push((s, handler.name.clone(), !not, e.once.is_some()));
     }
     ok.then_some(REventExpect::Calls(out))
 }

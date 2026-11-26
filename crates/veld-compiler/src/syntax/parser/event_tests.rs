@@ -91,7 +91,7 @@ fn an_event_example_has_a_record_a_channel_and_expectations() {
 
 #[test]
 fn the_new_words_stay_ordinary_names() {
-    let src = "model event { channel: string, carries: int, key: int, on: int }\nmodel channel { event: event }\nenum E { publishes, subscribes, called, rejected }\nservice key at \"/k\" {\n get \"/a\" publishes(on: int) -> event\n get \"/b\" subscribes()\n}\nexample \"given an event fact\" { given event = absent\n  publishes(on: 1) -> ok }";
+    let src = "model event { channel: string, carries: int, key: int, on: int, once: int }\nmodel channel { event: event }\nenum E { publishes, subscribes, called, rejected, once }\nservice key at \"/k\" {\n get \"/a\" publishes(on: int) -> event\n get \"/b\" subscribes()\n}\nexample \"given an event fact\" { given event = absent\n  publishes(on: 1) -> ok }";
     let r = clean(src);
     assert_eq!(r.file.decls.len(), 4);
     assert!(matches!(r.file.examples[0].body, ExampleBody::Call(_)));
@@ -183,4 +183,45 @@ fn a_service_with_neither_at_nor_a_brace_is_still_an_error() {
 fn flow_emits_stays_rejected() {
     let r = p("enum S { a, b\n flow a -> b emits Paid\n}");
     assert!(r.diagnostics.iter().any(|d| d.code == "E0003"));
+}
+
+#[test]
+fn called_once_is_parsed_and_once_stays_a_name_elsewhere() {
+    let r = clean(
+        "example \"x\" { given event Paid { }\n expect N.send called once\n expect N.other called\n expect N.third not called }",
+    );
+    let ExampleBody::Event(e) = &r.file.examples[0].body else {
+        panic!("not an event example")
+    };
+    assert!(e.expects[0].once.is_some());
+    assert!(e.expects[1].once.is_none());
+    assert!(e.expects[2].once.is_none());
+    assert!(matches!(
+        e.expects[0].kind,
+        ExpectKind::Called { not: false, .. }
+    ));
+    // `once` is a name: a service, a handler and a field may have it.
+    let r = clean("example \"y\" { given event Paid { once: 1 }\n expect once.once called once }");
+    let ExampleBody::Event(e) = &r.file.examples[0].body else {
+        panic!("not an event example")
+    };
+    assert!(e.expects[0].once.is_some());
+    assert!(
+        matches!(&e.expects[0].kind, ExpectKind::Called { service, handler, .. }
+        if service.name == "once" && handler.name == "once")
+    );
+}
+
+#[test]
+fn once_after_not_called_and_after_rejected_parses_so_the_checker_can_say_e1010() {
+    let r = clean("example \"x\" { given event Paid { }\n expect N.send not called once }");
+    let ExampleBody::Event(e) = &r.file.examples[0].body else {
+        panic!("not an event example")
+    };
+    assert!(e.expects[0].once.is_some());
+    let r = clean("example \"x\" { given event Paid { }\n expect rejected once }");
+    let ExampleBody::Event(e) = &r.file.examples[0].body else {
+        panic!("not an event example")
+    };
+    assert!(e.expects[0].once.is_some());
 }

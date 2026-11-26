@@ -604,10 +604,13 @@ pub struct EventExample {
     pub span: Span,
 }
 
-/// `expect S.handler [not] called` or `expect rejected`.
+/// `expect S.handler [not] called [once]` or `expect rejected`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expectation {
     pub kind: ExpectKind,
+    /// The word `once` after `called` (`spec/events.md` section 10.9); the checker reports it
+    /// where it is not allowed.
+    pub once: Option<Span>,
     pub span: Span,
 }
 

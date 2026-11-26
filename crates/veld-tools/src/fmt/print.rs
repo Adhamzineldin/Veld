@@ -235,7 +235,11 @@ impl Printer<'_> {
         let key = layout::decl_key(d);
         self.leading(key, 0);
         self.docs(&d.docs, 0);
-        self.annotations_own_lines(&d.annotations, 0);
+        if matches!(d.kind, DeclKind::Channel(_)) {
+            self.annotations_own_lines(&channel_annotations(&d.annotations), 0);
+        } else {
+            self.annotations_own_lines(&d.annotations, 0);
+        }
         match &d.kind {
             DeclKind::Model(m) => {
                 let ext = m
@@ -659,4 +663,22 @@ fn method_word(m: HttpMethod) -> &'static str {
         HttpMethod::Options => "options",
         HttpMethod::Ws => "ws",
     }
+}
+
+/// The order of the annotations of a channel (`spec/events.md` section 15): `@topic`, `@retry`,
+/// `@deadLetter`, `@ordered`. The four take the places that the four had, so a channel with any
+/// other annotation (`@deprecated`) keeps it where it was.
+fn channel_annotations(anns: &[Annotation]) -> Vec<Annotation> {
+    const ORDER: [&str; 4] = ["topic", "retry", "deadLetter", "ordered"];
+    let rank = |a: &Annotation| ORDER.iter().position(|n| *n == a.name.name);
+    let mut slots: Vec<usize> = (0..anns.len())
+        .filter(|i| rank(&anns[*i]).is_some())
+        .collect();
+    let mut known: Vec<&Annotation> = slots.iter().map(|i| &anns[*i]).collect();
+    known.sort_by_key(|a| rank(a));
+    let mut out: Vec<Annotation> = anns.to_vec();
+    for (slot, a) in slots.drain(..).zip(known) {
+        out[slot] = a.clone();
+    }
+    out
 }

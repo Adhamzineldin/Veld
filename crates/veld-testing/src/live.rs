@@ -1,10 +1,10 @@
 //! Running examples against a live test handler (`spec/rules.md` section 12.4).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use serde_json::Value as Json;
-use veld_ir::{Example, Ir};
+use veld_ir::{Example, Ir, ServiceId};
 use veld_rules::{
     ExampleReport, FilledExample, Mismatch, Outcome, OutputMode, Pipeline, Reported, Request,
     Verdict, Violation, describe_actual, fill_example,
@@ -17,6 +17,9 @@ use crate::judge::{Answer, judge};
 use crate::outcome::{Called, describe_answer, judge_outcome};
 use crate::request::{HttpRequest, PROBE_PATH, build_request};
 
+/// What a probe says: the services it serves and, for events, the topics they subscribe to.
+type Probed = (BTreeSet<String>, Option<BTreeMap<String, Vec<String>>>);
+
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A server that has been probed and found to be a test handler.
@@ -27,6 +30,9 @@ pub struct Live {
     agent: ureq::Agent,
     /// The services the handler said it serves: the keys of the probe's `digests`.
     services: BTreeSet<String>,
+    /// The probe's `subscribes`: the topics each service subscribes to. `None` when the probe
+    /// has no such member (a test handler that was generated before events).
+    subscribes: Option<BTreeMap<String, Vec<String>>>,
 }
 
 impl Live {
@@ -46,8 +52,11 @@ impl Live {
                 .timeout(TIMEOUT)
                 .build(),
             services: BTreeSet::new(),
+            subscribes: None,
         };
-        live.services = live.probe()?;
+        let (services, subscribes) = live.probe()?;
+        live.services = services;
+        live.subscribes = subscribes;
         Ok(live)
     }
 
@@ -64,9 +73,30 @@ impl Live {
         self.services.contains(name)
     }
 
+    /// Whether the probe listed `subscribes` (`spec/events.md` section 10.9).
+    #[must_use]
+    pub fn serves_events(&self) -> bool {
+        self.subscribes.is_some()
+    }
+
+    /// The services of `ir` that the test handler said subscribe to `topic`.
+    pub(crate) fn subscribers_of(&self, ir: &Ir, topic: &str) -> BTreeSet<ServiceId> {
+        let topics = self.subscribes.iter().flatten();
+        let names: BTreeSet<&str> = topics
+            .filter(|(_, topics)| topics.iter().any(|t| t == topic))
+            .map(|(service, _)| service.as_str())
+            .collect();
+        ir.services
+            .iter()
+            .filter(|s| names.contains(s.name.as_str()))
+            .map(|s| s.id)
+            .collect()
+    }
+
     /// The answer MUST be `{ "veldTestHandler": 1, "digests": { "<Service>": .. } }`: anything
-    /// else may be a production server, which must never be sent test headers.
-    fn probe(&self) -> Result<BTreeSet<String>, LiveError> {
+    /// else may be a production server, which must never be sent test headers. It MAY say
+    /// `"subscribes": { "<Service>": ["<topic>", ..] }` (`spec/events.md` section 10.9).
+    fn probe(&self) -> Result<Probed, LiveError> {
         let probe = HttpRequest {
             method: "GET".to_owned(),
             target: PROBE_PATH.to_owned(),
@@ -98,7 +128,7 @@ impl Live {
                 "the answer of `GET {url}` has no `digests` object naming its services"
             ))
         })?;
-        Ok(digests.keys().cloned().collect())
+        Ok((digests.keys().cloned().collect(), subscribes_of(&body)))
     }
 
     /// Sends one request and returns whatever the server answered, including `4xx` and `5xx`.
@@ -137,15 +167,7 @@ impl Live {
     /// connection fails.
     pub fn run_example(&self, ir: &Ir, ex: &Example) -> Result<ExampleReport, LiveError> {
         if ex.event.is_some() {
-            // Nothing is sent: live event examples need the inbox and a broker (spec/events.md 12).
-            return Ok(ExampleReport {
-                name: ex.name.clone(),
-                verdict: Verdict::Skipped(
-                    "live event examples arrive with a later phase".to_owned(),
-                ),
-                outcome: None,
-                audited: Vec::new(),
-            });
+            return crate::events::run(self, ir, ex);
         }
         let filled = fill_example(ir, ex)?;
         if let Some(service) = ir.services.get(filled.service.index())
@@ -262,6 +284,22 @@ fn against_reference(
         actual: describe_answer(ir, answer),
         differences,
     })
+}
+
+/// The `subscribes` member of a probe: `None` when it is missing or is not an object of lists of
+/// strings.
+fn subscribes_of(body: &Json) -> Option<BTreeMap<String, Vec<String>>> {
+    let map = body.get("subscribes")?.as_object()?;
+    map.iter()
+        .map(|(service, topics)| {
+            let topics = topics.as_array()?;
+            let topics: Option<Vec<String>> = topics
+                .iter()
+                .map(|t| t.as_str().map(str::to_owned))
+                .collect();
+            Some((service.clone(), topics?))
+        })
+        .collect()
 }
 
 fn read_answer(resp: ureq::Response) -> Answer {

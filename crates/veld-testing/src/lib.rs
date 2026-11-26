@@ -14,6 +14,7 @@ pub mod b64;
 pub mod conditional;
 pub mod coverage;
 mod error;
+mod events;
 mod fuzz;
 mod judge;
 mod live;
@@ -23,6 +24,7 @@ mod request;
 mod violation;
 
 pub use error::LiveError;
+pub use events::{DELIVERIES, EVENT_PATH, EventAnswer, KEY, TOPIC};
 pub use fuzz::{
     EndpointReport, FuzzError, FuzzMismatch, FuzzOptions, FuzzReport, GenerateError, Generated,
     fuzz, generate, render_example,

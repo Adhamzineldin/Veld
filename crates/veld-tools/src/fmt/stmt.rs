@@ -247,7 +247,7 @@ pub(super) fn given_event_line(e: &EventExample) -> String {
     s
 }
 
-/// `expect S.handler [not] called` or `expect rejected`.
+/// `expect S.handler [not] called [once]` or `expect rejected`.
 pub(super) fn expect_line(x: &Expectation) -> String {
     match &x.kind {
         ExpectKind::Rejected => "expect rejected".to_string(),
@@ -256,10 +256,11 @@ pub(super) fn expect_line(x: &Expectation) -> String {
             handler,
             not,
         } => format!(
-            "expect {}.{}{} called",
+            "expect {}.{}{} called{}",
             service.name,
             handler.name,
-            if *not { " not" } else { "" }
+            if *not { " not" } else { "" },
+            if x.once.is_some() { " once" } else { "" }
         ),
     }
 }
