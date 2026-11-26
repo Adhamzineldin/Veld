@@ -43,6 +43,10 @@ const PRECONDITION_FILES: &[&str] = &["IfMatch"];
 /// publishes or subscribes. They need the rule classes (`Flags::rules`).
 const EVENT_FILES: &[&str] = &["Events", "MemoryTransport", "Transport"];
 
+/// The runtime classes of the typed runtime config (`spec/targets/java.md` section 14): the check
+/// and its error. A target that has a runtime config only.
+const RUNTIME_CONFIG_FILES: &[&str] = &["RuntimeCheck", "VeldConfigException"];
+
 /// The package the embedded adapter sources declare. It is replaced by `<base>.adapters`.
 const ADAPTER_PACKAGE: &str = "dev.veld.adapters";
 
@@ -81,6 +85,7 @@ runtime_files!(
     "RuleWalk",
     "Router",
     "Rules",
+    "RuntimeCheck",
     "Schema",
     "ServerEndpoint",
     "SseEvent",
@@ -94,6 +99,7 @@ runtime_files!(
     "Transport",
     "UntypedError",
     "Veld",
+    "VeldConfigException",
     "VeldError",
     "VeldHandler",
     "VeldHttpError",
@@ -241,6 +247,10 @@ pub struct Flags {
     /// `If-Match` and the idempotency key on a client call: `IfMatch` and the
     /// `// #if preconditions` regions.
     pub preconditions: bool,
+    /// The typed runtime config (`spec/runtime-config.md`): `RuntimeCheck`, `VeldConfigException`
+    /// and the `// #if runtimecfg` regions. Without it a client keeps the environment fallback of
+    /// before, so a target without settings keeps its bytes.
+    pub runtime_config: bool,
 }
 
 /// Like [`emit`], with the endpoint rules and test handler parts switched by `flags`.
@@ -262,6 +272,7 @@ pub fn emit_with(
             && (flags.events || !EVENT_FILES.contains(&name))
             && (flags.conditional || !CONDITIONAL_FILES.contains(&name))
             && (flags.preconditions || !PRECONDITION_FILES.contains(&name))
+            && (flags.runtime_config || !RUNTIME_CONFIG_FILES.contains(&name))
     };
     let enabled = |region: &str| match region {
         "rules" => flags.rules,
@@ -277,6 +288,9 @@ pub fn emit_with(
         "preconditions" => flags.preconditions,
         "testing_conditional" => flags.testing && flags.conditional,
         "testing_plain" => !(flags.testing && flags.conditional),
+        "runtimecfg" => flags.runtime_config,
+        "legacy" => !flags.runtime_config,
+        "runtimecfg_rules" => flags.runtime_config && flags.rules,
         _ => false,
     };
     for (name, source) in RUNTIME.iter().filter(|(name, _)| wanted(name)) {

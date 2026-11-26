@@ -51,6 +51,14 @@ impl FrameworkAdapter<ServerModel> for Spring {
                 )?;
             }
         }
+        if let Some(info) = &model.runtime {
+            let class = info.properties_name();
+            add_file(
+                &mut files,
+                &java_path(&info.adapter_package, &class),
+                properties(info, &class),
+            )?;
+        }
         for svc in &model.services {
             let class = controller_class(svc);
             add_file(
@@ -71,14 +79,15 @@ impl FrameworkAdapter<ServerModel> for Spring {
     }
 }
 
-/// The constructor that builds the shared handler from the service bean and the hooks bean.
+/// The constructor that builds the shared handler from the service bean and the hooks bean. With a
+/// runtime config it also takes the properties bean and hands `toRuntime()` to the entry.
 fn write_ctor(
     w: &mut CodeWriter,
     imp: &mut Imports,
     svc: &ServiceModel,
     class: &str,
     (service, hooks, handler_factory): (&str, &str, &str),
-    loaders: Option<&str>,
+    (loaders, properties): (Option<&str>, Option<&str>),
 ) {
     let (given, pass) = match loaders {
         Some(l) => (
@@ -87,19 +96,33 @@ fn write_ctor(
         ),
         None => (format!("{service} service, "), "service"),
     };
+    let (param, arg) = match properties {
+        Some(p) => (format!(", {p} properties"), ", properties.toRuntime()"),
+        None => (String::new(), ""),
+    };
     if svc.needs_hooks {
-        w.open(format!("public {class}({given}{hooks} hooks)"));
+        w.open(format!("public {class}({given}{hooks} hooks{param})"));
         w.line(format!(
-            "this.handler = {handler_factory}.create({pass}, hooks);"
+            "this.handler = {handler_factory}.create({pass}, hooks{arg});"
         ));
     } else {
         let provider = imp.name("org.springframework.beans.factory.ObjectProvider");
-        w.open(format!("public {class}({given}{provider}<{hooks}> hooks)"));
+        w.open(format!(
+            "public {class}({given}{provider}<{hooks}> hooks{param})"
+        ));
         w.line(format!(
-            "this.handler = {handler_factory}.create({pass}, hooks.getIfAvailable({hooks}::new));"
+            "this.handler = {handler_factory}.create({pass}, hooks.getIfAvailable({hooks}::new){arg});"
         ));
     }
     w.close();
+}
+
+/// The properties class of the runtime config, as the type name to import.
+fn properties_type(imp: &mut Imports, model: &ServerModel) -> Option<String> {
+    model
+        .runtime
+        .as_ref()
+        .map(|i| imp.name(&format!("{}.{}", i.adapter_package, i.properties_name())))
 }
 
 fn controller_class(svc: &ServiceModel) -> String {
@@ -152,6 +175,7 @@ fn controller(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
         .as_ref()
         .map(|l| imp.name(&format!("{server}.{l}")));
     let veld = imp.name(&format!("{}.VeldHandler", runtime::package(&model.base)));
+    let props = properties_type(&mut imp, model);
     let rest_controller = imp.name(&format!("{MVC}.RestController"));
     let mut w = CodeWriter::new();
     w.line(format!(
@@ -177,7 +201,7 @@ fn controller(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
         svc,
         class,
         (&service, &hooks, &handler_factory),
-        loaders.as_deref(),
+        (loaders.as_deref(), props.as_deref()),
     );
     for ep in svc.endpoints.iter().filter(|e| e.kind != EndpointKind::Ws) {
         w.blank();
@@ -244,6 +268,7 @@ fn ws_config(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
         .as_ref()
         .map(|l| imp.name(&format!("{server}.{l}")));
     let veld = imp.name(&format!("{}.VeldHandler", runtime::package(&model.base)));
+    let props = properties_type(&mut imp, model);
     let bridge = imp.name(&format!(
         "{}.SpringWebSocketAdapter",
         runtime::adapter_package(&model.base)
@@ -277,7 +302,7 @@ fn ws_config(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
         svc,
         class,
         (&service, &hooks, &handler_factory),
-        loaders.as_deref(),
+        (loaders.as_deref(), props.as_deref()),
     );
     w.blank();
     w.line("@Override");
@@ -293,6 +318,105 @@ fn ws_config(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
     imp.finish(&w.finish())
 }
 
+/// `<Target>RuntimeProperties`: a `@ConfigurationProperties` class that binds the settings from
+/// `application.yml`, profiles or a config server under the prefix `runtime-prefix`, and hands them
+/// to `<Target>Runtime.fromMap` through `toRuntime()`, so the one check runs.
+fn properties(info: &crate::config::Info, class: &str) -> String {
+    let mut imp = Imports::new(&info.adapter_package, class);
+    let runtime = imp.name(&info.type_fqn());
+    let component = imp.name("org.springframework.stereotype.Component");
+    let bound = imp.name("org.springframework.boot.context.properties.ConfigurationProperties");
+    let (map, tree_map) = (imp.name("java.util.Map"), imp.name("java.util.TreeMap"));
+    let has_urls = info.model.urls().next().is_some();
+    let has_output = info.has_rules_output();
+    let mut w = CodeWriter::new();
+    w.line(format!(
+        "/** The settings of the runtime config of the target `{}`, bound from the properties below `{}` (for example `{}.services.<service>.url`). `toRuntime()` runs the check. */",
+        info.model.target(),
+        info.prefix,
+        info.prefix
+    ));
+    w.line(format!("@{component}"));
+    w.line(format!(
+        "@{bound}(prefix = {}, ignoreUnknownFields = false)",
+        java_str(&info.prefix)
+    ));
+    w.open(format!("public class {class}"));
+    if has_urls {
+        w.line(format!(
+            "private final {map}<String, Service> services = new {tree_map}<>();"
+        ));
+    }
+    if has_output {
+        w.line("private final Rules rules = new Rules();");
+    }
+    if has_urls {
+        w.blank();
+        w.line("/** One service: the URL of its base. */");
+        w.open("public static class Service");
+        w.line("private String url;");
+        w.blank();
+        w.line("/** The base URL of the service. */");
+        w.open("public String getUrl()");
+        w.line("return url;");
+        w.close();
+        w.blank();
+        w.line("/** Sets the base URL of the service. */");
+        w.open("public void setUrl(String url)");
+        w.line("this.url = url;");
+        w.close();
+        w.close();
+        w.blank();
+        w.line("/** The services by name, as the workspace spells it. */");
+        w.open(format!("public {map}<String, Service> getServices()"));
+        w.line("return services;");
+        w.close();
+    }
+    if has_output {
+        w.blank();
+        w.line("/** The rules settings. */");
+        w.open("public static class Rules");
+        w.line("private String output;");
+        w.blank();
+        w.line("/** What happens when a rule is violated by the server's own output. */");
+        w.open("public String getOutput()");
+        w.line("return output;");
+        w.close();
+        w.blank();
+        w.line("/** Sets the output mode. */");
+        w.open("public void setOutput(String output)");
+        w.line("this.output = output;");
+        w.close();
+        w.close();
+        w.blank();
+        w.line("/** The rules settings. */");
+        w.open("public Rules getRules()");
+        w.line("return rules;");
+        w.close();
+    }
+    w.blank();
+    w.line("/** The runtime config these properties describe. It throws a `VeldConfigException` with every problem when they are not valid. */");
+    w.open(format!("public {runtime} toRuntime()"));
+    w.line(format!(
+        "{map}<String, String> values = new {tree_map}<>();"
+    ));
+    if has_urls {
+        w.line(
+            "services.forEach((name, service) -> { if (service.getUrl() != null) { values.put(\"services.\" + name + \".url\", service.getUrl()); } });",
+        );
+    }
+    if has_output {
+        w.line(format!(
+            "if (rules.getOutput() != null) {{ values.put({}, rules.getOutput()); }}",
+            java_str(veld_codegen::runtime_config::RULES_OUTPUT)
+        ));
+    }
+    w.line(format!("return {runtime}.fromMap(values);"));
+    w.close();
+    w.close();
+    imp.finish(&w.finish())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -301,6 +425,7 @@ mod tests {
     fn a_controller_maps_each_endpoint_at_its_real_path() {
         let model = ServerModel {
             base: "a.b".into(),
+            runtime: None,
             services: vec![ServiceModel {
                 name: "Orders".into(),
                 server_package: "a.b.orders.server".into(),
@@ -347,6 +472,7 @@ mod tests {
         };
         ServerModel {
             base: "a.b".into(),
+            runtime: None,
             services: vec![ServiceModel {
                 name: "Live".into(),
                 server_package: "a.b.live.server".into(),

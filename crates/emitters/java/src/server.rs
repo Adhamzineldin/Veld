@@ -419,6 +419,9 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     if fc.tree.rules {
         write_rule_hooks(w, fc, class);
     }
+    if build_call(fc) != "hooks.build()" {
+        write_build_with_config(w, fc);
+    }
     if let Some(clock) = &clock {
         w.line("/** The clock `now` reads in endpoint rules, once per request (default: the system clock). */");
         w.open(format!("public {class} clock({clock} value)"));
@@ -437,17 +440,38 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     w.close();
 }
 
-/// The rule options of the hooks: the output mode and the violation hook (`spec/rules.md` 5.3).
-fn write_rule_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, class: &str) {
-    let walk = fc.rt("RuleWalk");
-    w.line("/** What happens when a rule is violated by this server's own output: `STRICT` (default) answers `500 Internal`, `AUDIT` sends the response and reports, `OFF` skips the check. */");
-    w.open(format!(
-        "public {class} rulesOutput({walk}.OutputMode mode)"
-    ));
-    w.line("builder.rulesOutput(mode);");
-    w.line("return this;");
+/// `build(config)`: the hooks with the rule output mode of the runtime config.
+fn write_build_with_config(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>) {
+    let hooks = fc.rt("HandlerHooks");
+    let ty = fc
+        .tree
+        .runtime_config
+        .as_ref()
+        .map(|i| i.type_fqn())
+        .unwrap_or_default();
+    let ty = fc.name(&ty);
+    w.line("/** The hooks with the rule output mode of the runtime config. */");
+    w.open(format!("{hooks} build({ty} config)"));
+    w.line("builder.rulesOutput(config.rulesOutput());");
+    w.line("return builder.build();");
     w.close();
     w.blank();
+}
+
+/// The rule options of the hooks: the output mode (a target without a runtime config that has the
+/// mode; with one, the mode is `rules.output` of the config) and the violation hook (`spec/rules.md` 5.3).
+fn write_rule_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, class: &str) {
+    let walk = fc.rt("RuleWalk");
+    if build_call(fc) == "hooks.build()" {
+        w.line("/** What happens when a rule is violated by this server's own output: `STRICT` (default) answers `500 Internal`, `AUDIT` sends the response and reports, `OFF` skips the check. */");
+        w.open(format!(
+            "public {class} rulesOutput({walk}.OutputMode mode)"
+        ));
+        w.line("builder.rulesOutput(mode);");
+        w.line("return this;");
+        w.close();
+        w.blank();
+    }
     w.line("/** Observes every violated rule; a failing hook never changes the response. */");
     w.open(format!("public {class} onRuleViolation({walk}.Hook hook)"));
     w.line("builder.onRuleViolation(hook);");
@@ -494,17 +518,18 @@ fn write_handler(
         Some(l) => (format!("{service} impl, {l} loaders"), "impl, loaders"),
         None => (format!("{service} impl"), "impl"),
     };
-    if !needs_hooks {
-        w.line("/** Builds the handler with default hooks. */");
-        w.open(format!("public static {handler} create({given})"));
-        w.line(format!("return create({pass}, new {hooks_class}());"));
-        w.close();
-        w.blank();
-    }
-    w.line("/** Builds the handler. */");
-    w.open(format!(
-        "public static {handler} create({given}, {hooks_class} hooks)"
-    ));
+    let entry = Entry {
+        handler: &handler,
+        given: &given,
+        pass,
+        hooks_class: &hooks_class,
+        needs_hooks,
+        docs: (
+            "Builds the handler with default hooks.",
+            "Builds the handler.",
+        ),
+    };
+    entry.write_head(w, fc);
     let site = EndpointsSite {
         names,
         svc,
@@ -526,6 +551,105 @@ fn write_handler(
     problems
 }
 
+/// The call that builds the `HandlerHooks` of an entry: with a runtime config that has the rule
+/// output mode, the mode comes from it (`spec/runtime-config.md` section 5).
+pub(crate) fn build_call(fc: &FileCtx<'_, '_>) -> &'static str {
+    if fc
+        .tree
+        .runtime_config
+        .as_ref()
+        .is_some_and(crate::config::Info::has_rules_output)
+        && fc.tree.rules
+    {
+        "hooks.build(config)"
+    } else {
+        "hooks.build()"
+    }
+}
+
+/// The `create` methods of a handler: `create(impl[, loaders])`, `create(impl, hooks)` and, when
+/// the target has a typed runtime config, the same with the config as the last argument. The
+/// config is optional exactly when it has no required path. The check of the config runs first.
+pub(crate) struct Entry<'a> {
+    /// The handler type returned.
+    pub handler: &'a str,
+    /// The service parameters (`OrdersService impl, OrdersFactLoaders loaders`).
+    pub given: &'a str,
+    /// The same as arguments of a call.
+    pub pass: &'a str,
+    /// The hooks class of the service.
+    pub hooks_class: &'a str,
+    /// Whether the endpoints need hooks (without it, `create(impl)` builds default hooks).
+    pub needs_hooks: bool,
+    /// The doc of the shortcut and of the main method.
+    pub docs: (&'a str, &'a str),
+}
+
+impl Entry<'_> {
+    /// Writes the shortcut methods and the head of the main method (up to and including the check of
+    /// the config); the caller writes the body and closes the method.
+    pub(crate) fn write_head(&self, w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>) {
+        let Some(info) = fc.tree.runtime_config.clone() else {
+            return self.write_plain(w);
+        };
+        let ty = fc.name(&info.type_fqn());
+        let (handler, given, pass, hooks) = (self.handler, self.given, self.pass, self.hooks_class);
+        let optional = !info.model.has_required();
+        if optional && !self.needs_hooks {
+            w.line(format!("/** {} */", self.docs.0));
+            w.open(format!("public static {handler} create({given})"));
+            w.line(format!("return create({pass}, new {hooks}(), null);"));
+            w.close();
+            w.blank();
+        }
+        if optional {
+            w.line(format!(
+                "/** {} The runtime config has no required path, so it takes its defaults. */",
+                self.docs.1
+            ));
+            w.open(format!(
+                "public static {handler} create({given}, {hooks} hooks)"
+            ));
+            w.line(format!("return create({pass}, hooks, null);"));
+            w.close();
+            w.blank();
+        }
+        if !self.needs_hooks {
+            w.line(format!("/** {} */", self.docs.0));
+            w.open(format!(
+                "public static {handler} create({given}, {ty} runtime)"
+            ));
+            w.line(format!("return create({pass}, new {hooks}(), runtime);"));
+            w.close();
+            w.blank();
+        }
+        w.line(format!(
+            "/** {} The runtime config is checked first: `null` means no value, which fails when a path is required. */",
+            self.docs.1
+        ));
+        w.open(format!(
+            "public static {handler} create({given}, {hooks} hooks, {ty} runtime)"
+        ));
+        w.line(format!("{ty} config = {ty}.ensure(runtime);"));
+    }
+
+    /// The methods of a target without a runtime config: the bytes of before.
+    fn write_plain(&self, w: &mut CodeWriter) {
+        let (handler, given, pass, hooks) = (self.handler, self.given, self.pass, self.hooks_class);
+        if !self.needs_hooks {
+            w.line(format!("/** {} */", self.docs.0));
+            w.open(format!("public static {handler} create({given})"));
+            w.line(format!("return create({pass}, new {hooks}());"));
+            w.close();
+            w.blank();
+        }
+        w.line(format!("/** {} */", self.docs.1));
+        w.open(format!(
+            "public static {handler} create({given}, {hooks} hooks)"
+        ));
+    }
+}
+
 /// The body of `create` for a service whose endpoints have rules: the clock and the hooks are
 /// read once and handed to `endpoints(...)`, which the test handler calls too.
 fn write_create_with_rules(
@@ -536,7 +660,7 @@ fn write_create_with_rules(
 ) {
     let (built, clock) = (fc.rt("HandlerHooks"), fc.name("java.time.Clock"));
     let (router, list) = (fc.rt("Router"), site.list);
-    w.line(format!("{built} built = hooks.build();"));
+    w.line(format!("{built} built = {};", build_call(fc)));
     w.line(format!("{clock} clock = hooks.clock();"));
     w.line(format!(
         "{list}<{}> endpoints = endpoints({pass}, built, ctx -> clock.millis());",
@@ -568,7 +692,7 @@ fn write_create_plain(
     end_call(w);
     let std = std_sigs(fc);
     let args = conditional::router_args(fc.tree.ir, svc);
-    let create = format!("{router}.create({args}, {std}, hooks.build())");
+    let create = format!("{router}.create({args}, {std}, {})", build_call(fc));
     w.line(format!("return {};", wrap_digest(fc, svc, &create)));
     w.close();
     problems

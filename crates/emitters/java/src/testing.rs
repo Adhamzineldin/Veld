@@ -9,7 +9,7 @@ use veld_ir::{Endpoint, Service};
 
 use crate::conditional;
 use crate::endpoint::{loaders_name, service_has_rules};
-use crate::server::{extra_args, needs_hooks, signature, std_sigs};
+use crate::server::{Entry, build_call, extra_args, needs_hooks, signature, std_sigs};
 use crate::spec::{RequestNames, is_sse, is_ws, method_name};
 use crate::tree::FileCtx;
 use crate::types::{codec_expr, java_type, schema_expr};
@@ -46,17 +46,18 @@ pub fn write_test_handler(
     w.open(format!("public final class {class}"));
     w.line(format!("private {class}() {{}}"));
     w.blank();
-    if !needs_hooks(svc) {
-        w.line("/** Builds the test handler with default hooks. */");
-        w.open(format!("public static {handler} create({service} impl)"));
-        w.line(format!("return create(impl, new {hooks}());"));
-        w.close();
-        w.blank();
-    }
-    w.line("/** Builds the test handler. The auth hooks of `hooks` are never called and may be `null`. */");
-    w.open(format!(
-        "public static {handler} create({service} impl, {hooks} hooks)"
-    ));
+    let entry = Entry {
+        handler: &handler,
+        given: &format!("{service} impl"),
+        pass: "impl",
+        hooks_class: &hooks,
+        needs_hooks: needs_hooks(svc),
+        docs: (
+            "Builds the test handler with default hooks.",
+            "Builds the test handler. The auth hooks of `hooks` are never called and may be `null`.",
+        ),
+    };
+    entry.write_head(w, fc);
     write_create_body(w, fc, svc, base, loaders.is_some());
     w.close();
     if let Some(l) = &loaders {
@@ -82,7 +83,8 @@ fn write_create_body(
     let endpoint = fc.rt("ServerEndpoint");
     let (list, array_list) = (fc.name("java.util.List"), fc.name("java.util.ArrayList"));
     w.line(format!("{support}.notice({});", java_str(&svc.name)));
-    w.line(format!("{} built = hooks.build();", fc.rt("HandlerHooks")));
+    let built = build_call(fc);
+    w.line(format!("{} built = {built};", fc.rt("HandlerHooks")));
     let uses = conditional::service_uses(fc.tree.ir, svc);
     if conditional::hooks_needed(svc).0 {
         w.line(format!(

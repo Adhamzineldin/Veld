@@ -74,6 +74,31 @@ public final class ClientOptions {
   String baseUrl() {
     return baseUrl;
   }
+  // #if runtimecfg
+
+  /** These options with another base URL (the runtime config gives each client its own). */
+  public ClientOptions withBaseUrl(String value) {
+    Builder b = new Builder();
+    b.baseUrl = value;
+    b.httpClient = httpClient;
+    b.headers = headers;
+    b.bearer = bearer;
+    b.basic = basic;
+    b.apiKey = apiKey;
+    b.validate = validate;
+    b.timeout = timeout;
+  // #endif
+  // #if runtimecfg_rules
+    b.localRules = localRules;
+    b.onContractMismatch = onContractMismatch;
+  // #endif
+  // #if runtimecfg
+  // veld:streaming
+    b.reconnect = reconnect;
+  // veld:end
+    return b.build();
+  }
+  // #endif
 
   HttpClient httpClient() {
     return httpClient;
@@ -139,7 +164,12 @@ public final class ClientOptions {
 
     private Builder() {}
 
+    // #if legacy
     /** The base URL; overrides the {@code VELD_<SERVICE>_URL} variable and the contract's default. */
+    // #endif
+    // #if runtimecfg
+    /** The base URL of the service. A client requires it. */
+    // #endif
     public Builder baseUrl(String value) {
       this.baseUrl = value;
       return this;

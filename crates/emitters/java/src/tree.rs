@@ -7,7 +7,7 @@ use veld_ir::{Decl, DeclId, DeclKind, Ir, PackageId, PackageKind, ServiceId};
 use crate::util::{self, HEADER};
 
 /// Package names directly below a tree's base that the generator itself uses.
-const RESERVED_DIRS: &[&str] = &["adapters", "clients", "prelude", "runtime"];
+const RESERVED_DIRS: &[&str] = &["adapters", "clients", "prelude", "runtime", "runtimeconfig"];
 
 /// A set of generated packages rooted at one Java package.
 ///
@@ -41,6 +41,9 @@ pub struct Tree<'a> {
     /// True when a service of the tree publishes or subscribes: the tree then also emits the events
     /// of its channels and the declarations only they reach (`spec/events.md` section 14).
     pub events: bool,
+    /// The typed runtime config of the target, when it has one: a server entry then takes it as
+    /// its last argument, and a server with `rules.output` takes the mode from it.
+    pub runtime_config: Option<crate::config::Info>,
     decls: Vec<DeclId>,
 }
 
@@ -70,6 +73,7 @@ impl<'a> Tree<'a> {
             policies: false,
             rollout: false,
             events: false,
+            runtime_config: None,
             decls: set.into_iter().collect(),
         }
     }
@@ -113,6 +117,13 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn with_rollout(mut self, rollout: bool) -> Self {
         self.rollout = rollout;
+        self
+    }
+
+    /// Sets the runtime config of the target.
+    #[must_use]
+    pub fn with_runtime(mut self, info: Option<crate::config::Info>) -> Self {
+        self.runtime_config = info;
         self
     }
 

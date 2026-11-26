@@ -8,6 +8,7 @@
 pub mod can;
 pub mod client;
 pub mod conditional;
+pub mod config;
 pub mod endpoint;
 pub mod events;
 pub mod frameworks;
@@ -41,7 +42,7 @@ pub const JAVA_VERSIONS: [&str; 2] = ["17", "21"];
 
 /// Options of the `java` generator.
 #[derive(Debug, Default, Clone, Deserialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Options {
     /// The base Java package. Default: `dev.veld.generated.<package of the first service>`.
     pub package: Option<String>,
@@ -51,6 +52,9 @@ pub struct Options {
     /// that takes facts, principal, clock and result from request headers. It must never be
     /// mounted in production. Default: `false`.
     pub testing: Option<bool>,
+    /// The prefix of the Spring properties of the runtime config (`veld.services.iam.url`), for
+    /// the `spring` framework. Default: `veld`.
+    pub runtime_prefix: Option<String>,
 }
 
 /// The Java generator (roles `server` and `client`).
@@ -173,6 +177,7 @@ impl Generator for Java {
         check_framework_features(req, profile)?;
         let base = base_package(req, opts)?;
         let runtime_package = runtime::package(&base);
+        let runtime_config = runtime_config_of(req, opts, profile, &base)?;
         let mut files = FileSet::new();
         let mut used = req.services.clone();
         used.extend(req.consumes.iter().copied());
@@ -210,8 +215,14 @@ impl Generator for Java {
                 && req.consumes.iter().any(|sid| {
                     declares_audited(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
                 }));
+        // The output mode of the runtime config is the mode of the rule classes: a target that has
+        // `rules.output` carries them, whatever the generator's own predicate says.
+        let output_mode = runtime_config
+            .as_ref()
+            .is_some_and(config::Info::has_rules_output);
         let flags = runtime::Flags {
-            rules: rules || policies || rollout,
+            rules: rules || policies || rollout || output_mode,
+            runtime_config: runtime_config.is_some(),
             endpoint,
             testing: endpoint && opts.testing == Some(true),
             machine: endpoint && endpoint::services_have_transition(req.ir, &req.services),
@@ -231,6 +242,7 @@ impl Generator for Java {
         };
         runtime::emit_with(&mut files, &base, streaming, flags)?;
         let tree = tree
+            .with_runtime(runtime_config.clone())
             .with_rules(flags.rules)
             .with_testing(flags.testing)
             .with_policies(uses_policies(req.ir, &req.services))
@@ -242,6 +254,7 @@ impl Generator for Java {
                 let model = frameworks::ServerModel {
                     base: base.clone(),
                     services: server::service_models(&tree),
+                    runtime: runtime_config.clone(),
                 };
                 frameworks::emit(&mut files, &model, profile)?;
                 server::emit(&mut files, &tree)?;
@@ -256,9 +269,47 @@ impl Generator for Java {
                 )?;
             }
         }
-        readme::emit(&mut files, &base, req)?;
+        if let Some(info) = &runtime_config {
+            let clients = config::client_refs(req, &info.model, &base, &runtime_package);
+            config::emit(&mut files, &tree, info, &clients)?;
+        }
+        readme::emit(&mut files, &base, req, runtime_config.as_ref())?;
         Ok(files)
     }
+}
+
+/// The runtime config of the target (`spec/runtime-config.md`), or `None` when the target has no
+/// setting and keeps the bytes it had.
+fn runtime_config_of(
+    req: &GenRequest<'_>,
+    opts: &Options,
+    profile: &Profile,
+    base: &str,
+) -> Result<Option<config::Info>, Vec<GenDiagnostic>> {
+    let prefix = opts
+        .runtime_prefix
+        .as_deref()
+        .unwrap_or(config::DEFAULT_PREFIX);
+    if !config::valid_prefix(prefix) {
+        return Err(vec![GenDiagnostic::new(
+            "E0802",
+            format!(
+                "invalid options for generator `java`: `runtime-prefix` is `{prefix}`, which is not a Spring property prefix (lower-case words of letters and digits, joined by `.` or `-`)"
+            ),
+        )]);
+    }
+    let model = veld_codegen::runtime_config::RuntimeModel::for_request(req, profile)
+        .map_err(|d| vec![d])?;
+    Ok(model.map(|m| config::Info::new(m, base, prefix)))
+}
+
+/// The base package of the client tree of a consumed service: `<base>.clients.<service>`.
+pub(crate) fn consumed_base(base: &str, svc: &veld_ir::Service) -> String {
+    let mut dir = util::segment(&naming::snake(&svc.name));
+    if dir.is_empty() {
+        dir.push('_');
+    }
+    format!("{base}.clients.{dir}")
 }
 
 /// `W0904` (`spec/rules.md` section 5.3): with `validate = false` request validation is off, and
@@ -346,13 +397,9 @@ fn emit_consumed(
 ) -> Result<(), Vec<GenDiagnostic>> {
     for sid in &req.consumes {
         let svc = req.ir.service(*sid);
-        let mut dir = util::segment(&naming::snake(&svc.name));
-        if dir.is_empty() {
-            dir.push('_');
-        }
         let tree = Tree::new(
             req.ir,
-            &format!("{base}.clients.{dir}"),
+            &consumed_base(base, svc),
             runtime_package,
             vec![*sid],
         )

@@ -1,0 +1,334 @@
+package dev.veld.runtime;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+/**
+ * The check of a typed runtime config (spec/runtime-config.md section 4). A generated {@code
+ * <Target>Runtime} describes its settings and the texts of its messages, and every way of building
+ * it ends here: the check collects every problem and fails once with a {@link VeldConfigException}.
+ */
+public final class RuntimeCheck {
+
+  /**
+   * One setting.
+   *
+   * @param path the path, such as {@code services.iam.url}
+   * @param url whether the value is an absolute {@code http} or {@code https} URL; else it is one
+   *     of {@code values}
+   * @param required whether the setting must have a value
+   * @param fallback the value used when an optional setting is absent, or {@code null}
+   * @param values the allowed values of a list setting
+   * @param missing the message when a required value is absent or empty
+   * @param wrong the message when the value is not valid
+   */
+  public record Setting(
+      String path,
+      boolean url,
+      boolean required,
+      String fallback,
+      List<String> values,
+      String missing,
+      String wrong) {}
+
+  /**
+   * The texts that do not belong to one setting. A template has {@code {path}} (and {@code {name}})
+   * where the path (and the variable name) go.
+   *
+   * @param notASetting the message for a key that is not a setting
+   * @param notAnObject the message for a value that is not an object where an object belongs
+   * @param missingEnv the message for a required path whose environment variable is not set
+   * @param prefix the start of the text of the whole error
+   * @param root the path used for a problem with the whole value
+   */
+  public record Texts(
+      String notASetting, String notAnObject, String missingEnv, String prefix, String root) {}
+
+  private final List<List<String>> segments = new ArrayList<>();
+  private final List<Setting> settings;
+  private final Texts texts;
+
+  /** Creates the check of {@code settings}, which are in path order. */
+  public RuntimeCheck(List<Setting> settings, Texts texts) {
+    this.settings = List.copyOf(settings);
+    this.texts = texts;
+    for (Setting s : settings) {
+      segments.add(List.of(s.path().split("\\.", -1)));
+    }
+  }
+
+  /**
+   * Checks a nested value: the maps, lists and strings a JSON or YAML parser gives. {@code null}
+   * and an absent value are the same.
+   *
+   * @return the value of every setting that has one, by path
+   * @throws VeldConfigException with every problem
+   */
+  public Map<String, String> value(Object value) {
+    List<VeldConfigException.Problem> problems = new ArrayList<>();
+    Map<String, Object> found = new TreeMap<>();
+    if (value instanceof Map<?, ?> map) {
+      walk(map, new ArrayList<>(), found, problems);
+    } else if (value != null) {
+      problems.add(problem(texts.root(), texts.notAnObject()));
+    }
+    return finish(found, problems, Set.of());
+  }
+
+  /**
+   * Checks a flat map from path to text, such as a {@code Properties} file.
+   *
+   * @return the value of every setting that has one, by path
+   * @throws VeldConfigException with every problem
+   */
+  public Map<String, String> map(Map<String, String> map) {
+    List<VeldConfigException.Problem> problems = new ArrayList<>();
+    Map<String, Object> found = new TreeMap<>();
+    for (Map.Entry<String, String> e : map.entrySet()) {
+      if (indexOf(e.getKey()) >= 0) {
+        found.put(e.getKey(), e.getValue());
+      } else {
+        problems.add(problem(e.getKey(), texts.notASetting()));
+      }
+    }
+    return finish(found, problems, Set.of());
+  }
+
+  /**
+   * Checks the settings read from environment variables. A variable that is not set and one that is
+   * empty are the same.
+   *
+   * @param names the name of the variable of each path
+   * @param env the environment
+   * @return the value of every setting that has one, by path
+   * @throws VeldConfigException with every problem
+   */
+  public Map<String, String> env(Map<String, String> names, Map<String, String> env) {
+    List<VeldConfigException.Problem> problems = new ArrayList<>();
+    Map<String, Object> found = new TreeMap<>();
+    Set<String> reported = new HashSet<>();
+    for (String path : names.keySet()) {
+      if (indexOf(path) < 0) {
+        problems.add(problem(path, texts.notASetting()));
+      }
+    }
+    for (Setting s : settings) {
+      String name = names.get(s.path());
+      if (name == null) {
+        continue;
+      }
+      String text = env.get(name);
+      if (text != null && !text.isEmpty()) {
+        found.put(s.path(), text);
+      } else if (s.required()) {
+        String message = texts.missingEnv().replace("{path}", s.path()).replace("{name}", name);
+        problems.add(new VeldConfigException.Problem(s.path(), message));
+        reported.add(s.path());
+      }
+    }
+    return finish(found, problems, reported);
+  }
+
+  private VeldConfigException.Problem problem(String path, String template) {
+    return new VeldConfigException.Problem(path, template.replace("{path}", path));
+  }
+
+  private int indexOf(String path) {
+    for (int i = 0; i < settings.size(); i++) {
+      if (settings.get(i).path().equals(path)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private void walk(
+      Map<?, ?> map,
+      List<String> prefix,
+      Map<String, Object> found,
+      List<VeldConfigException.Problem> problems) {
+    for (Map.Entry<?, ?> e : map.entrySet()) {
+      prefix.add(String.valueOf(e.getKey()));
+      String path = String.join(".", prefix);
+      switch (position(prefix)) {
+        case LEAF -> found.put(path, e.getValue());
+        case UNKNOWN -> problems.add(problem(path, texts.notASetting()));
+        case BRANCH -> {
+          if (e.getValue() instanceof Map<?, ?> inner) {
+            walk(inner, prefix, found, problems);
+          } else if (e.getValue() != null) {
+            problems.add(problem(path, texts.notAnObject()));
+          }
+        }
+      }
+      prefix.remove(prefix.size() - 1);
+    }
+  }
+
+  private enum Position {
+    LEAF,
+    BRANCH,
+    UNKNOWN
+  }
+
+  private Position position(List<String> prefix) {
+    boolean branch = false;
+    for (List<String> s : segments) {
+      if (s.equals(prefix)) {
+        return Position.LEAF;
+      }
+      branch |= s.size() > prefix.size() && s.subList(0, prefix.size()).equals(prefix);
+    }
+    return branch ? Position.BRANCH : Position.UNKNOWN;
+  }
+
+  private Map<String, String> finish(
+      Map<String, Object> found, List<VeldConfigException.Problem> problems, Set<String> reported) {
+    Map<String, String> values = new TreeMap<>();
+    for (Setting s : settings) {
+      if (reported.contains(s.path())) {
+        continue;
+      }
+      Object raw = found.get(s.path());
+      String text = null;
+      boolean bad = false;
+      boolean gone = false;
+      if (raw == null) {
+        gone = true;
+      } else if (raw instanceof String t) {
+        text = t;
+      } else {
+        bad = true;
+      }
+      if (gone) {
+        if (s.required()) {
+          problems.add(new VeldConfigException.Problem(s.path(), s.missing()));
+        } else if (s.fallback() != null) {
+          values.put(s.path(), s.fallback());
+        }
+      } else if (bad) {
+        problems.add(new VeldConfigException.Problem(s.path(), s.wrong()));
+      } else if (text.isEmpty() && s.required()) {
+        problems.add(new VeldConfigException.Problem(s.path(), s.missing()));
+      } else {
+        String ok = s.url() ? normalizeUrl(text) : (s.values().contains(text) ? text : null);
+        if (ok == null) {
+          problems.add(new VeldConfigException.Problem(s.path(), s.wrong()));
+        } else {
+          values.put(s.path(), ok);
+        }
+      }
+    }
+    if (problems.isEmpty()) {
+      return values;
+    }
+    problems.sort(
+        (a, b) -> {
+          int byPath = a.path().compareTo(b.path());
+          return byPath != 0 ? byPath : a.message().compareTo(b.message());
+        });
+    StringBuilder text = new StringBuilder(texts.prefix());
+    for (int i = 0; i < problems.size(); i++) {
+      text.append(i == 0 ? "" : "; ").append(problems.get(i).message());
+    }
+    throw new VeldConfigException(text.toString(), problems);
+  }
+
+  /**
+   * The URL rule: visible ASCII only, the scheme {@code http://} or {@code https://} in any case, a
+   * non-empty host of letters, digits, {@code -}, {@code .} or {@code _} (or a bracketed IPv6
+   * address), an optional user part before the last {@code @}, and an optional port of one to five
+   * digits, at most 65535.
+   *
+   * @return the URL without its trailing {@code /} characters, or {@code null} when it is not valid
+   */
+  public static String normalizeUrl(String text) {
+    for (int i = 0; i < text.length(); i++) {
+      char c = text.charAt(i);
+      if (c < '!' || c > '~') {
+        return null;
+      }
+    }
+    int start = schemeLength(text);
+    if (start < 0) {
+      return null;
+    }
+    int end = start;
+    while (end < text.length() && "/?#".indexOf(text.charAt(end)) < 0) {
+      end++;
+    }
+    String authority = text.substring(start, end);
+    String hostPort = authority.substring(authority.lastIndexOf('@') + 1);
+    if (!hostAndPortOk(hostPort)) {
+      return null;
+    }
+    int last = text.length();
+    while (last > 0 && text.charAt(last - 1) == '/') {
+      last--;
+    }
+    return text.substring(0, last);
+  }
+
+  private static int schemeLength(String text) {
+    for (String scheme : Arrays.asList("https://", "http://")) {
+      if (text.regionMatches(true, 0, scheme, 0, scheme.length())) {
+        return scheme.length();
+      }
+    }
+    return -1;
+  }
+
+  private static boolean hostAndPortOk(String hostPort) {
+    if (hostPort.startsWith("[")) {
+      int close = hostPort.indexOf(']');
+      if (close < 0) {
+        return false;
+      }
+      String addr = hostPort.substring(1, close);
+      String after = hostPort.substring(close + 1);
+      boolean addrOk = !addr.isEmpty();
+      for (int i = 0; i < addr.length(); i++) {
+        char c = addr.charAt(i);
+        addrOk &= Character.digit(c, 16) >= 0 || c == ':' || c == '.';
+      }
+      return addrOk && (after.isEmpty() || portOk(after));
+    }
+    int colon = hostPort.indexOf(':');
+    String host = colon < 0 ? hostPort : hostPort.substring(0, colon);
+    boolean hostOk = !host.isEmpty();
+    for (int i = 0; i < host.length(); i++) {
+      char c = host.charAt(i);
+      hostOk &= (c >= '0' && c <= '9')
+          || (c >= 'a' && c <= 'z')
+          || (c >= 'A' && c <= 'Z')
+          || c == '-'
+          || c == '.'
+          || c == '_';
+    }
+    return hostOk && (colon < 0 || portOk(hostPort.substring(colon)));
+  }
+
+  private static boolean portOk(String text) {
+    if (!text.startsWith(":")) {
+      return false;
+    }
+    String digits = text.substring(1);
+    if (digits.isEmpty() || digits.length() > 5) {
+      return false;
+    }
+    int n = 0;
+    for (int i = 0; i < digits.length(); i++) {
+      char c = digits.charAt(i);
+      if (c < '0' || c > '9') {
+        return false;
+      }
+      n = n * 10 + (c - '0');
+    }
+    return n <= 65535;
+  }
+}

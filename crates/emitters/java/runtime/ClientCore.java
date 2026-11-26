@@ -40,6 +40,7 @@ public final class ClientCore {
   private final java.util.Set<String> mismatched = java.util.concurrent.ConcurrentHashMap.newKeySet();
   // #endif
 
+  // #if legacy
   /**
    * Creates the core. The base URL is the first of: the option, the environment variable, the
    * contract's {@code base-url}.
@@ -60,6 +61,22 @@ public final class ClientCore {
       throw new VeldTransportError("no base URL: pass baseUrl or set " + defaults.envVar());
     }
     this.baseUrl = base.replaceAll("/+$", "");
+  // #endif
+  // #if runtimecfg
+  /**
+   * Creates the core. The base URL is the {@code baseUrl} option, which a client requires.
+   *
+   * @throws VeldTransportError when the option is not set
+   */
+  public ClientCore(ClientOptions options, ClientDefaults defaults) {
+    this.options = options;
+    this.defaults = defaults;
+    String base = options.baseUrl();
+    if (base == null) {
+      throw new VeldTransportError("no base URL: pass the baseUrl option");
+    }
+    this.baseUrl = base.replaceAll("/+$", "");
+  // #endif
     this.http = options.httpClient() != null ? options.httpClient() : defaultClient();
   }
 

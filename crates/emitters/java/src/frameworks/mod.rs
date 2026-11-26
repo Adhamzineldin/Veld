@@ -19,6 +19,9 @@ pub struct ServerModel {
     pub base: String,
     /// One entry per service, for adapters that register routes with their framework.
     pub services: Vec<ServiceModel>,
+    /// The typed runtime config of the target, when it has one: every entry takes it as its last
+    /// argument (`spec/runtime-config.md` section 3.2).
+    pub runtime: Option<crate::config::Info>,
 }
 
 /// One service as a framework adapter sees it.
@@ -156,6 +159,7 @@ mod tests {
         let model = ServerModel {
             base: "a.b".into(),
             services: Vec::new(),
+            runtime: None,
         };
         let paths = |framework: Option<&str>| {
             let fw = infos();
