@@ -182,6 +182,10 @@ pub(super) fn field_schema(ir: &Ir, f: &Field) -> Value {
         if f.secret {
             m.insert("x-veld-secret".into(), Value::Bool(true));
         }
+        // `spec/platform.md` section 2: the field may be left out of a response for some callers.
+        if f.visible.is_some() {
+            m.insert("x-veld-visible".into(), Value::Bool(true));
+        }
         put(
             m,
             "default",

@@ -24,6 +24,7 @@ mod rules;
 mod saga;
 mod service_levels;
 mod usage;
+mod visibility;
 
 pub use changed::{ChangedRule, RuleSite, changed_rules};
 use serde::Serialize;
@@ -145,6 +146,9 @@ pub enum ChangeKind {
     RetentionLengthened,
     RetentionSinceChanged,
     RetentionThenChanged,
+    VisibleAdded,
+    VisibleChanged,
+    VisibleRemoved,
 }
 
 /// One difference between the old and the new contract.
@@ -344,6 +348,7 @@ fn diff_plain(old: &Ir, new: &Ir) -> Vec<Change> {
     conditional::diff_version_fields(&ctx, &mut out);
     data_marks::diff_data_marks(&ctx, &mut out);
     retention::diff_retention(&ctx, &mut out);
+    visibility::diff_visibility(&ctx, &mut out);
     rules::diff_decl_rules(&ctx, &usage, &mut out);
     endpoints::diff_endpoints(&ctx, &mut out);
     events::diff_events(&ctx, &mut out);
@@ -379,3 +384,5 @@ mod service_levels_tests;
 mod tests;
 #[cfg(test)]
 mod timed_tests;
+#[cfg(test)]
+mod visibility_tests;
