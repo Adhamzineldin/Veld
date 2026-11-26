@@ -287,10 +287,10 @@ pub struct GenerateArgs {
     /// Regenerate whenever a .veld file or veld.toml changes
     #[arg(long)]
     pub watch: bool,
-    /// Fail on breaking changes instead of prompting (for CI)
+    /// Fail on breaking or possibly breaking changes (a changed rule) instead of prompting (for CI)
     #[arg(long, conflicts_with = "accept_breaking")]
     pub strict: bool,
-    /// Continue past breaking changes without asking
+    /// Continue past breaking or possibly breaking changes without asking
     #[arg(long)]
     pub accept_breaking: bool,
     /// Run `veld setup` after generating

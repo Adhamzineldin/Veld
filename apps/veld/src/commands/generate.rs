@@ -131,7 +131,14 @@ fn breaking_gate(ui: &Ui, done: &Compiled, args: &GenerateArgs) -> Result<Option
             Err(e) => Err(e),
         },
         GateDecision::Block => {
-            ui.error("breaking changes since the last generate; nothing was written");
+            let what = if gate.breaking().is_empty() {
+                "possibly breaking changes (the tool cannot tell their direction)"
+            } else {
+                "breaking changes"
+            };
+            ui.error(&format!(
+                "{what} since the last generate; nothing was written"
+            ));
             eprintln!(
                 "{}",
                 render::hint(

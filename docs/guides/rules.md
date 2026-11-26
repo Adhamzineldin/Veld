@@ -412,6 +412,10 @@ What else changes while a rule is audited:
 
 **Generated servers do not support it yet.** The code generators have not learned `@rollout(audit)`. A contract with an audited rule stops `veld generate` with error `E0801` at the rule, so a server never enforces a rule you meant to watch. Today the annotation works in `veld check`, `veld test`, `veld diff`, `veld fmt` and the OpenAPI export.
 
+## Changing a rule
+
+A rule whose expression you change can make requests fail that used to pass, or the other way round. Veld cannot tell which. `veld generate` therefore stops on a changed rule like on a breaking change: it lists it under "possibly breaking changes", asks on a terminal, fails off a terminal or with `--strict`, and goes on with `--accept-breaking`. `veld diff --strict` treats it the same way. Adding an event, a channel, a publisher or a subscriber does not stop anything.
+
 ## Asking a solver: `veld check --prove`
 
 Rules can contradict each other, and an example cannot show it: an example needs a value, and a contradiction has none. `veld check --prove` hands the rules to an SMT solver (Z3 or cvc5; Veld links none) and asks three questions:

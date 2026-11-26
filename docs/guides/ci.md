@@ -21,7 +21,7 @@ size of the change. `[lint]` and `[hooks]` live in the root `veld.toml`; `[hooks
 runs once per `veld generate` from the root directory, whatever members were selected. See
 [Workspaces](workspaces.md).
 
-> **Never prompts.** On a terminal, `veld generate` asks before it writes over a breaking change.
+> **Never prompts.** On a terminal, `veld generate` asks before it writes over a breaking change or a possibly breaking one (a rule that changed).
 > In CI there is no terminal, so it fails instead; `veld generate --strict` makes that explicit and
 > `--accept-breaking` continues. `veld generate --check` and `--dry-run` only report the breaking
 > list (on stderr) and never block. `veld doctor` diagnoses a
@@ -137,7 +137,7 @@ expression changes. Expressions are printed back as Veld text, old and new, in t
 
 Without a solver the tool cannot tell whether a changed expression is tighter or looser, so it
 reports it as **possibly breaking** with both expressions, and never guesses. `--strict` fails on
-possibly breaking changes too: passing a tightened rule silently is the worse error. A declaration
+possibly breaking changes too: passing a tightened rule silently is the worse error. `veld generate` stops on them as well, like on a breaking change: it asks on a terminal, fails off a terminal or with `--strict`, and `--accept-breaking` continues. Its message says that the change is only possibly breaking and that the tool cannot tell the direction. A declaration
 that no endpoint reaches is treated as used in both requests and responses.
 
 ## A GitHub Actions workflow

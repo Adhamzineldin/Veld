@@ -20,9 +20,9 @@ pub struct GateResult {
 /// How the caller wants breaking changes handled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct GatePolicy {
-    /// `--strict`: breaking changes always block.
+    /// `--strict`: breaking and possibly breaking changes always block.
     pub strict: bool,
-    /// `--accept-breaking`: breaking changes never block.
+    /// `--accept-breaking`: breaking and possibly breaking changes never block.
     pub accept_breaking: bool,
     /// Whether stdin and stderr are a terminal that can be asked.
     pub interactive: bool,
@@ -58,11 +58,21 @@ impl GateResult {
             .collect()
     }
 
+    /// The changes the tool cannot judge: a rule whose expression changed, or a non-additive
+    /// change to an event, a channel or a subscription.
     #[must_use]
-    pub fn has_breaking(&self) -> bool {
+    pub fn possibly_breaking(&self) -> Vec<&Change> {
         self.changes
             .iter()
-            .any(|c| c.severity == Severity::Breaking)
+            .filter(|c| c.severity == Severity::PossiblyBreaking)
+            .collect()
+    }
+
+    /// Whether a change stops `generate`: a definite or a possible break (`Severity::fails_check`,
+    /// the same test as `veld diff --strict`).
+    #[must_use]
+    pub fn has_breaking(&self) -> bool {
+        self.changes.iter().any(|c| c.severity.fails_check())
     }
 
     /// The decision for `policy`. `strict` wins over everything, then `accept_breaking`; an
@@ -82,8 +92,9 @@ impl GateResult {
         }
     }
 
-    /// The text `generate` prints: the breaking changes, then a count of the other changes.
-    /// Empty when nothing changed.
+    /// The text `generate` prints: the breaking changes, the possibly breaking ones (told apart,
+    /// because the tool cannot say which way they go), then a count of the other changes. Empty
+    /// when nothing changed.
     #[must_use]
     pub fn report(&self) -> String {
         let mut out = String::new();
@@ -91,6 +102,16 @@ impl GateResult {
         if !breaking.is_empty() {
             out.push_str(&format!("breaking changes ({}):\n", breaking.len()));
             for c in &breaking {
+                out.push_str(&format!("  - {}: {}\n", c.subject, c.message));
+            }
+        }
+        let possible = self.possibly_breaking();
+        if !possible.is_empty() {
+            out.push_str(&format!(
+                "possibly breaking changes ({}); the tool cannot tell whether they break existing code (a rule that changed may be stricter or looser):\n",
+                possible.len()
+            ));
+            for c in &possible {
                 out.push_str(&format!("  - {}: {}\n", c.subject, c.message));
             }
         }
@@ -172,5 +193,78 @@ mod tests {
         };
         assert_eq!(g.decide(strict), GateDecision::Block, "strict wins");
         assert!(g.report().starts_with("breaking changes (1):"));
+    }
+
+    const RULED: &str = "model A { id: int\n rule positive: id > 0 }\nservice S at \"/s\" { post \"/\" f(body: A) -> 204 }\n";
+
+    #[test]
+    fn a_changed_rule_stops_generate_like_a_breaking_change() {
+        let g = breaking_gate(&ir(RULED), &ir(&RULED.replace("id > 0", "id > 5")));
+        assert!(g.breaking().is_empty(), "{:?}", g.changes);
+        assert_eq!(g.possibly_breaking().len(), 1, "{:?}", g.changes);
+        assert!(g.has_breaking());
+        let p = GatePolicy::default();
+        assert_eq!(g.decide(p), GateDecision::Block, "unattended runs block");
+        let ask = GatePolicy {
+            interactive: true,
+            ..p
+        };
+        assert_eq!(g.decide(ask), GateDecision::Prompt);
+        let accept = GatePolicy {
+            accept_breaking: true,
+            ..p
+        };
+        assert_eq!(g.decide(accept), GateDecision::Proceed);
+        let strict = GatePolicy {
+            strict: true,
+            ..accept
+        };
+        assert_eq!(g.decide(strict), GateDecision::Block, "strict wins");
+    }
+
+    #[test]
+    fn the_report_tells_a_possible_break_from_a_definite_one() {
+        let g = breaking_gate(&ir(RULED), &ir(&RULED.replace("id > 0", "id > 5")));
+        let text = g.report();
+        assert!(text.starts_with("possibly breaking changes (1);"), "{text}");
+        assert!(text.contains("cannot tell"), "{text}");
+        assert!(!text.contains("\nbreaking changes"), "{text}");
+        // Both kinds at once: the definite ones come first, each under its own heading.
+        let both = breaking_gate(
+            &ir(RULED),
+            &ir(&RULED
+                .replace("id > 0", "id > 5")
+                .replace("at \"/s\"", "at \"/t\"")),
+        );
+        let text = both.report();
+        assert!(text.starts_with("breaking changes ("), "{text}");
+        assert!(text.contains("\npossibly breaking changes ("), "{text}");
+    }
+
+    #[test]
+    fn an_added_event_channel_publisher_or_subscriber_does_not_stop_generate() {
+        let old = "event Paid { id: uuid }\nchannel C { carries Paid }\nservice P at \"/p\" {\n  publishes C\n  get \"/\" ping() -> 204\n}\n";
+        let new = "event Paid { id: uuid }\nevent New { id: uuid }\n\
+             channel C { carries Paid }\nchannel D { carries New }\n\
+             service P at \"/p\" {\n  publishes C, D\n  get \"/\" ping() -> 204\n}\n\
+             service S {\n  subscribes C as \"g\" {\n    on Paid -> a\n  }\n}\n";
+        let g = breaking_gate(&ir(old), &ir(new));
+        assert!(!g.changes.is_empty(), "the additions are reported");
+        assert!(!g.has_breaking(), "{:?}", g.changes);
+        assert_eq!(g.decide(GatePolicy::default()), GateDecision::Proceed);
+        let strict = GatePolicy {
+            strict: true,
+            ..GatePolicy::default()
+        };
+        assert_eq!(g.decide(strict), GateDecision::Proceed);
+    }
+
+    #[test]
+    fn a_changed_event_stops_generate() {
+        let old = "event Paid { id: uuid }\nchannel C { carries Paid }\n";
+        let new = "event Paid { id: uuid\n note?: string }\nchannel C { carries Paid }\n";
+        let g = breaking_gate(&ir(old), &ir(new));
+        assert_eq!(g.possibly_breaking().len(), 1, "{:?}", g.changes);
+        assert_eq!(g.decide(GatePolicy::default()), GateDecision::Block);
     }
 }
