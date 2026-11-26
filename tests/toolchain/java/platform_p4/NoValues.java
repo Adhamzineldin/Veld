@@ -319,7 +319,7 @@ public final class NoValues {
     try (Fake fake = new Fake(418, "{\"detail\": \"" + MARKER + "\"}")) {
       refused("a status that is not declared", () -> fake.client().byName(new gen.c.bookings.client.ByNameRequest(MARKER)));
     }
-    try (Fake fake = new Fake(200, "{}", 10)) {
+    try (Fake fake = new Fake(200, "{}", 300, 5)) {
       refused("a timeout", () -> fake.client().byName(new gen.c.bookings.client.ByNameRequest(MARKER)));
     }
     // A client built with no address says so without the value.
@@ -338,11 +338,14 @@ public final class NoValues {
   private static final class Fake implements AutoCloseable {
     private final com.sun.net.httpserver.HttpServer http;
 
+    private final long timeoutMillis;
+
     Fake(int status, String body) throws java.io.IOException {
-      this(status, body, 0);
+      this(status, body, 0, 5_000);
     }
 
-    Fake(int status, String body, long delayMillis) throws java.io.IOException {
+    Fake(int status, String body, long delayMillis, long timeoutMillis) throws java.io.IOException {
+      this.timeoutMillis = timeoutMillis;
       http = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
       http.createContext("/", exchange -> {
         try {
@@ -366,7 +369,7 @@ public final class NoValues {
       return new gen.c.bookings.client.ProbeClient(gen.c.runtime.ClientOptions.builder()
           .baseUrl(url)
           .bearer(() -> "me")
-          .timeout(java.time.Duration.ofMillis(5))
+          .timeout(java.time.Duration.ofMillis(timeoutMillis))
           .build());
     }
 

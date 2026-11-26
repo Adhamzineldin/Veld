@@ -264,14 +264,16 @@ public final class CaptureHttp {
     check(res.status() == 422 && EVENTS.isEmpty(), "no hook, no event");
 
     // A hook that throws never changes the answer.
+    FAILURES.clear();
     BookingsHooks throwing = new BookingsHooks((token, ctx) -> USER)
         .clock(clockAt(NOW))
+        .onError((e, ctx) -> FAILURES.add(e))
         .onRuleViolation(e -> {
           throw new IllegalStateException("the hook failed");
         });
     res = send(BookingsHandler.create(new Impl(), LOADERS, throwing), "POST", "/bookings", null, stay(), true);
     check(res.status() == 422, "a hook that throws does not change the answer");
-    check(FAILURES.isEmpty(), "nothing went to onError: " + FAILURES);
+    check(FAILURES.isEmpty(), "a failing hook of the application is ignored, not reported: " + FAILURES);
 
     // What from_violation reads.
     Files.writeString(Path.of("captures.json"), Json.array(WRITTEN).write(), StandardCharsets.UTF_8);
