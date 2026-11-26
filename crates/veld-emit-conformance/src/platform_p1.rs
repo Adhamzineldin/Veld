@@ -49,6 +49,60 @@ service Bookings at \"/bookings\" {
 }
 ";
 
+/// A tenant-scoped model that an endpoint returns: the first use is the `@tenant` field.
+const TENANT_SOURCE: &str = "model User {
+  id: uuid
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  tenantId: uuid @tenant
+}
+
+@auth(bearer)
+service Bookings at \"/bookings\" {
+  get \"/{id}\" getBooking(id: uuid) -> Booking
+}
+";
+
+/// A tenant-scoped model that an endpoint only loads as a fact.
+const TENANT_FACT_SOURCE: &str = "model User {
+  id: uuid
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  tenantId: uuid @tenant
+}
+
+@auth(bearer)
+service Bookings at \"/bookings\" {
+  post \"/{id}/touch\" touch(id: uuid) -> 204 {
+    fact booking: Booking = id
+  }
+}
+";
+
+/// An event with a `@tenant` field: the server publishes it with `veldtenant`.
+const TENANT_EVENT_SOURCE: &str = "event BookingPaid {
+  tenantId: uuid @tenant
+  bookingId: uuid
+}
+
+channel PaidEvents { carries BookingPaid }
+
+service Bookings at \"/bookings\" {
+  publishes PaidEvents
+  get \"/\" ping() -> 204
+}
+";
+
 fn line_of(source: &str, needle: &str) -> u32 {
     source
         .lines()
@@ -85,6 +139,52 @@ pub fn check_visibility_is_refused(generator: &dyn DynGenerator) -> Result<(), S
         Feature::Visibility,
         &compiled_visibility_contracts(),
     )
+}
+
+/// The contracts that use `tenancy`, with the line of the first use in each.
+///
+/// # Panics
+/// When a contract of this crate does not compile.
+#[must_use]
+pub fn compiled_tenancy_contracts() -> Vec<(Ir, u32)> {
+    [
+        ("compiled_tenant", TENANT_SOURCE, "tenantId: uuid @tenant\n"),
+        (
+            "compiled_tenant_fact",
+            TENANT_FACT_SOURCE,
+            "tenantId: uuid @tenant\n",
+        ),
+        (
+            "compiled_tenant_event",
+            TENANT_EVENT_SOURCE,
+            "tenantId: uuid @tenant",
+        ),
+    ]
+    .iter()
+    .map(|(name, source, needle)| (compile(name, source), tenant_line(source, needle)))
+    .collect()
+}
+
+/// The line of the `@tenant` field of the model or event: the last one in the source, after the
+/// principal's, which no generator needs to implement anything for.
+fn tenant_line(source: &str, _needle: &str) -> u32 {
+    let at = source
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| l.contains("@tenant"))
+        .map(|(i, _)| i)
+        .last();
+    at.and_then(|i| u32::try_from(i + 1).ok()).unwrap_or(0)
+}
+
+/// The generator must not declare `tenancy` and must refuse a contract with a `@tenant` field that
+/// a server loads, returns or publishes, as a server (see [`check_visibility_is_refused`]); a
+/// client is not asked.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_tenancy_is_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    refused_by_servers(generator, Feature::Tenancy, &compiled_tenancy_contracts())
 }
 
 fn request(ir: &Ir, role: Role) -> GenRequest<'_> {
@@ -156,6 +256,18 @@ mod tests {
         for (ir, _) in compiled_visibility_contracts() {
             let used = ir.features_used(&[ServiceId(0)]);
             assert!(used.contains(&Feature::Visibility), "{used:?}");
+        }
+    }
+
+    #[test]
+    fn each_tenancy_contract_uses_the_feature_as_a_server() {
+        for (ir, _) in compiled_tenancy_contracts() {
+            let req = request(&ir, Role::Server);
+            let gate = check_capabilities(&ir, &req, &veld_codegen::Capabilities::all_except(&[]));
+            assert!(
+                gate.iter().any(|d| d.message.contains("`tenancy`")),
+                "{gate:?}"
+            );
         }
     }
 

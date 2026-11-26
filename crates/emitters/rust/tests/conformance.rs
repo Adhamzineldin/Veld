@@ -349,6 +349,12 @@ fn rust_refuses_visibility_as_a_server() {
     veld_emit_conformance::check_visibility_is_refused(&Rust).unwrap();
 }
 
+/// `tenancy` is opt-in (`spec/platform.md` section 3): the Rust server refuses a `@tenant` field.
+#[test]
+fn rust_refuses_tenancy_as_a_server() {
+    veld_emit_conformance::check_tenancy_is_refused(&Rust).unwrap();
+}
+
 /// Message catalogs (`spec/platform.md` section 22): until the Rust generator implements them, it
 /// refuses a member that has catalogs with `E0801`, in every role.
 #[test]

@@ -180,6 +180,12 @@ fn java_refuses_visibility_as_a_server() {
     veld_emit_conformance::check_visibility_is_refused(&Java).unwrap();
 }
 
+/// `tenancy` is opt-in (`spec/platform.md` section 3): the Java server refuses a `@tenant` field.
+#[test]
+fn java_refuses_tenancy_as_a_server() {
+    veld_emit_conformance::check_tenancy_is_refused(&Java).unwrap();
+}
+
 /// Message catalogs (`spec/platform.md` section 22): until Java implements them, it refuses a
 /// member that has catalogs with `E0801`, as a server and as a client.
 #[test]
