@@ -950,3 +950,432 @@ fn the_java_server_declares_events_for_every_framework_and_generates_them() {
         );
     }
 }
+
+// ---- phase E2: the dead-letter and retry goldens ---------------------------------------------
+
+const DELIVERY: &str = "tests/events/delivery.veld";
+
+/// The server of `services` with `extra` target options (`testing`, `messaging`).
+fn generate_with(ir: &Ir, services: &[&str], extra: &Value, release: &str) -> FileSet {
+    let mut opts = options(BASE, Some(release));
+    for (k, v) in extra.as_object().cloned().unwrap_or_default() {
+        opts[k] = v;
+    }
+    run(
+        ir,
+        Role::Server,
+        services.iter().map(|n| service_id(ir, n)).collect(),
+        vec![],
+        None,
+        opts,
+    )
+}
+
+/// Like `build`, with target options.
+fn build_with(work: &Path, ir: &Ir, drivers: &[&str], release: &str, extra: &Value) {
+    let names = all_services(ir);
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    let files = generate_with(ir, &names, extra, release);
+    let mut sources = write_files(work, &files);
+    for d in drivers {
+        sources.push(driver_dir().join(d));
+    }
+    javac_ok(work, &sources, release);
+}
+
+/// The messages the retry cases deliver: the first publish golden of `BookingPaid` as it is, with a
+/// number where step 3 wants a decimal, with a zero where step 4 wants a positive amount, with a
+/// `type` no `on` line names, and as text that is not JSON.
+fn retry_messages() -> Value {
+    let cases = read_json("tests/wire/events/envelopes.json");
+    let valid = cases[0]["canonical"].as_str().unwrap().to_owned();
+    let with = |change: &dyn Fn(&mut Value)| {
+        let mut m: Value = serde_json::from_str(&valid).unwrap();
+        change(&mut m);
+        m.to_string()
+    };
+    json!({
+        "valid": valid,
+        "shape": with(&|m| m["data"]["amount"] = json!(120)),
+        "rule": with(&|m| m["data"]["amount"] = json!("0.00")),
+        "ignored": with(&|m| m["type"] = json!("veld:bookings/SomethingElse@0000000000000000")),
+        "malformed": "this is not json",
+    })
+}
+
+fn golden_hex(case: &Value, text: &str, hex_name: &str) -> String {
+    match case.get(hex_name).and_then(Value::as_str) {
+        Some(h) => h.to_owned(),
+        None => hex(case[text].as_str().unwrap().as_bytes()),
+    }
+}
+
+fn check_dead_letter(cases: &[Value], got: &Value) {
+    let got = got.as_array().unwrap();
+    assert_eq!(got.len(), cases.len());
+    for (case, got) in cases.iter().zip(got) {
+        assert_eq!(got["name"], case["name"]);
+        assert_eq!(
+            got["hex"].as_str().unwrap(),
+            golden_hex(case, "copy", "copyHex"),
+            "{}: the copy differs from the golden",
+            case["name"]
+        );
+    }
+}
+
+fn check_retry(cases: &[Value], got: &Value) {
+    let got = got.as_array().unwrap();
+    assert_eq!(got.len(), cases.len());
+    for (case, got) in cases.iter().zip(got) {
+        let name = case["name"].as_str().unwrap();
+        let want = &case["expect"];
+        assert_eq!(got["runs"], want["runs"], "{name}: runs");
+        assert_eq!(got["failures"], want["failures"], "{name}: failures");
+        assert_eq!(got["waitsMs"], want["waitsMs"], "{name}: waits");
+        assert_eq!(got["answer"], want["answer"], "{name}: answer");
+        assert_eq!(
+            got["answerIfCopyFails"], want["answerIfCopyFails"],
+            "{name}: answer when the copy cannot be published"
+        );
+        match want["copy"].as_str() {
+            None => assert_eq!(got["copy"], Value::Null, "{name}: no copy"),
+            Some(reason) => {
+                assert_eq!(got["copy"]["reason"], json!(reason), "{name}: copy reason");
+                assert_eq!(
+                    got["copy"]["attempts"], want["copyAttempts"],
+                    "{name}: veldattempts"
+                );
+                assert_eq!(
+                    got["copy"]["topic"],
+                    json!("shop.bookings.v1.dlq"),
+                    "{name}: the copy goes to <topic>.dlq"
+                );
+                assert_eq!(got["copy"]["key"], json!("k1"), "{name}: the original key");
+            }
+        }
+    }
+}
+
+fn delivery_goldens(release: &str) {
+    let ir = compile_text(read(BOOKINGS));
+    let paid = ir.decls.iter().find(|d| d.name == "BookingPaid").unwrap();
+    let digest = if let veld_ir::DeclKind::Event(e) = &paid.kind {
+        e.rules_digest.clone().unwrap()
+    } else {
+        panic!("BookingPaid is not an event")
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path();
+    build(
+        work,
+        &ir,
+        &all_services(&ir),
+        &["DeliveryWire.java"],
+        release,
+    );
+    let dead = read_json("tests/wire/events/dead-letter.json");
+    let retry = read_json("tests/wire/events/retry.json");
+    write_json(
+        &work.join("cases.json"),
+        &json!({
+            "digest": digest,
+            "topic": channel_named(&ir, "BookingEvents").topic,
+            "group": "ledger",
+            "messages": retry_messages(),
+            "deadLetter": dead,
+            "retry": retry,
+        }),
+    );
+    let out: Value = serde_json::from_str(&run_java(work, "DeliveryWire")).unwrap();
+    check_dead_letter(&dead, &out["deadLetter"]);
+    check_retry(&retry, &out["retry"]);
+}
+
+#[test]
+fn the_generated_consumer_reproduces_the_dead_letter_and_retry_goldens() {
+    each_release(
+        "the_generated_consumer_reproduces_the_dead_letter_and_retry_goldens",
+        &delivery_goldens,
+    );
+}
+
+#[test]
+fn every_member_of_the_retry_goldens_is_read_by_the_driver() {
+    // A golden case the driver cannot run (a new kind of case) must fail here, not silently pass.
+    for case in read_json("tests/wire/events/retry.json") {
+        for key in case.as_object().unwrap().keys() {
+            assert!(
+                [
+                    "name",
+                    "retry",
+                    "deadLetter",
+                    "delayMs",
+                    "maxDelayMs",
+                    "transportAttempt",
+                    "results",
+                    "rejected",
+                    "ignored",
+                    "expect"
+                ]
+                .contains(&key.as_str()),
+                "retry.json has a member the driver does not read: {key}"
+            );
+        }
+    }
+}
+
+// ---- phase E2: two services in one process ---------------------------------------------------
+
+fn delivery_process(release: &str) {
+    let ir = compile_text(read(DELIVERY));
+    let dir = tempfile::tempdir().unwrap();
+    build(
+        dir.path(),
+        &ir,
+        &all_services(&ir),
+        &["DeliveryProcess.java"],
+        release,
+    );
+    assert!(run_java(dir.path(), "DeliveryProcess").contains("events delivery process ok"));
+}
+
+#[test]
+fn retry_dead_letter_and_the_inbox_work_between_generated_services_in_one_process() {
+    each_release(
+        "retry_dead_letter_and_the_inbox_work_between_generated_services_in_one_process",
+        &delivery_process,
+    );
+}
+
+// ---- phase E2: the event examples through the generated test handlers -------------------------
+
+/// Every event example of `path` through the generated test handlers of every service that
+/// subscribes, mounted in one server (`EventsServe.java`), with the shared live runner. Every
+/// example must pass.
+fn live_event_examples(release: &str, path: &str) -> usize {
+    let ir = compile_text(read(path));
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path();
+    build_with(
+        work,
+        &ir,
+        &["EventsServe.java"],
+        release,
+        &json!({ "testing": true }),
+    );
+    let tree = tree(&ir);
+    let handlers: Vec<String> = ir
+        .services
+        .iter()
+        .filter(|s| !s.subscriptions.is_empty())
+        .map(|s| {
+            format!(
+                "{}.{}TestHandler",
+                tree.api_package(s.package, "server"),
+                pascal(&s.name)
+            )
+        })
+        .collect();
+    assert!(!handlers.is_empty(), "{path}: no service subscribes");
+    let args: Vec<&str> = handlers.iter().map(String::as_str).collect();
+    let served = common::live::Running::start(work, "veldtest.EventsServe", &args);
+    let live = veld_testing::Live::connect(&served.url, true).unwrap();
+    let mut run = 0;
+    for ex in ir.examples.iter().filter(|e| e.event.is_some()) {
+        let report = live.run_example(&ir, ex).unwrap();
+        assert!(
+            report.passed(),
+            "{path}: \"{}\" did not pass live: {report}",
+            ex.name
+        );
+        run += 1;
+    }
+    run
+}
+
+#[test]
+fn every_event_example_passes_live_against_the_generated_test_handlers() {
+    each_release(
+        "every_event_example_passes_live_against_the_generated_test_handlers",
+        &|release| {
+            assert_eq!(live_event_examples(release, DELIVERY), 4);
+            assert_eq!(live_event_examples(release, BOOKINGS), 11);
+        },
+    );
+}
+
+#[test]
+fn a_service_that_subscribes_has_a_test_handler_only_with_the_option() {
+    let ir = compile_text(read(BOOKINGS));
+    let plain = generate_with(&ir, &SERVICES, &json!({}), "17");
+    assert!(
+        plain
+            .paths()
+            .all(|p| !p.contains("TestHandler") && !p.ends_with("/TestSupport.java"))
+    );
+    let testing = generate_with(&ir, &SERVICES, &json!({ "testing": true }), "17");
+    for name in ["Notifications", "Ledger"] {
+        let t = text(
+            &testing,
+            &format!("gen/e/bookings/server/{name}TestHandler.java"),
+        );
+        assert!(t.contains("public static VeldHandler create()"), "{t}");
+        assert!(t.contains("TestSupport.events("), "{t}");
+    }
+    // Bookings only publishes and has no endpoint rule: no test handler.
+    assert!(
+        testing
+            .get("gen/e/bookings/server/BookingsTestHandler.java")
+            .is_none()
+    );
+    let support = text(&testing, "gen/e/runtime/TestSupport.java");
+    assert!(support.contains("/__veld/test/event"), "{support}");
+}
+
+// ---- phase E2: the files, the option `messaging` ----------------------------------------------
+
+fn delivery_files(extra: &Value) -> FileSet {
+    let ir = compile_text(read(DELIVERY));
+    generate_with(&ir, &["Orders", "Fulfilment", "Billing"], extra, "17")
+}
+
+#[test]
+fn snapshot_of_the_event_files_of_a_contract_with_all_three_annotations() {
+    let files = delivery_files(&json!({ "testing": true }));
+    insta::assert_snapshot!("events_delivery_file_list", file_list(&files));
+    insta::assert_snapshot!(
+        "events_delivery_publisher",
+        text(&files, "gen/e/bookings/server/OrdersPublisher.java")
+    );
+    insta::assert_snapshot!(
+        "events_delivery_subscriber",
+        text(&files, "gen/e/bookings/server/FulfilmentSubscriber.java")
+    );
+    insta::assert_snapshot!(
+        "events_delivery_subscriber_billing",
+        text(&files, "gen/e/bookings/server/BillingSubscriber.java")
+    );
+    insta::assert_snapshot!(
+        "events_delivery_test_handler",
+        text(&files, "gen/e/bookings/server/FulfilmentTestHandler.java")
+    );
+    insta::assert_snapshot!(
+        "events_delivery_runtime",
+        text(&files, "gen/e/runtime/Events.java")
+    );
+    insta::assert_snapshot!(
+        "events_delivery_transport",
+        text(&files, "gen/e/runtime/Transport.java")
+    );
+}
+
+#[test]
+fn a_channel_without_annotations_keeps_its_three_argument_literals() {
+    let ir = compile_text(read(BOOKINGS));
+    let files = generate_with(&ir, &SERVICES, &json!({}), "17");
+    let publisher = text(&files, "gen/e/bookings/server/BookingsPublisher.java");
+    assert!(!publisher.contains("true"), "{publisher}");
+    let subscriber = text(&files, "gen/e/bookings/server/NotificationsSubscriber.java");
+    assert!(!subscriber.contains("RetryPolicy"), "{subscriber}");
+    let annotated = delivery_files(&json!({}));
+    let publisher = text(&annotated, "gen/e/bookings/server/OrdersPublisher.java");
+    assert!(
+        publisher.contains("KeyKind.UUID, true, true)"),
+        "{publisher}"
+    );
+    let subscriber = text(&annotated, "gen/e/bookings/server/BillingSubscriber.java");
+    assert!(
+        subscriber.contains("new Events.RetryPolicy(3, Events.Backoff.EXPONENTIAL), true, true)"),
+        "{subscriber}"
+    );
+}
+
+#[test]
+fn snapshot_of_the_broker_adapters() {
+    let files = delivery_files(&json!({ "messaging": ["rabbitmq", "kafka"] }));
+    insta::assert_snapshot!(
+        "events_kafka_adapter",
+        text(&files, "gen/e/adapters/KafkaTransport.java")
+    );
+    insta::assert_snapshot!(
+        "events_rabbitmq_adapter",
+        text(&files, "gen/e/adapters/RabbitMqTransport.java")
+    );
+    insta::assert_snapshot!("events_adapters_readme", text(&files, "gen/e/README.md"));
+}
+
+#[test]
+fn the_option_messaging_chooses_the_adapters_and_nothing_else_changes() {
+    let base = delivery_files(&json!({}));
+    assert!(
+        base.paths()
+            .all(|p| !p.contains("KafkaTransport") && !p.contains("RabbitMqTransport"))
+    );
+    assert!(!text(&base, "gen/e/README.md").contains("kafka-clients"));
+    let kafka = delivery_files(&json!({ "messaging": "kafka" }));
+    assert!(kafka.get("gen/e/adapters/KafkaTransport.java").is_some());
+    assert!(kafka.get("gen/e/adapters/RabbitMqTransport.java").is_none());
+    assert!(text(&kafka, "gen/e/README.md").contains("org.apache.kafka:kafka-clients"));
+    assert!(!text(&kafka, "gen/e/README.md").contains("amqp-client"));
+    let both = delivery_files(&json!({ "messaging": ["rabbitmq", "kafka", "kafka"] }));
+    assert!(both.get("gen/e/adapters/KafkaTransport.java").is_some());
+    assert!(both.get("gen/e/adapters/RabbitMqTransport.java").is_some());
+    // Only the adapters and the README differ from the contract without the option.
+    for (path, bytes) in base.iter() {
+        if path != "gen/e/README.md" {
+            assert_eq!(both.get(path), Some(bytes), "{path} changed");
+        }
+    }
+    let none = delivery_files(&json!({ "messaging": [] }));
+    assert_eq!(none, base, "an empty list asks for nothing");
+    // Only the adapters import a library.
+    for (path, bytes) in both.iter() {
+        let text = String::from_utf8_lossy(bytes);
+        let library = text.contains("org.apache.kafka") || text.contains("com.rabbitmq");
+        assert_eq!(
+            library,
+            path.ends_with("KafkaTransport.java") || path.ends_with("RabbitMqTransport.java"),
+            "{path}"
+        );
+    }
+}
+
+fn messaging_error(
+    extra: Value,
+    role: Role,
+    services: &[&str],
+) -> Vec<veld_codegen::GenDiagnostic> {
+    use veld_codegen::{DynGenerator, GenRequest};
+    let ir = compile_text(read(DELIVERY));
+    let mut opts = options(BASE, Some("17"));
+    for (k, v) in extra.as_object().cloned().unwrap_or_default() {
+        opts[k] = v;
+    }
+    let req = GenRequest {
+        ir: &ir,
+        role,
+        services: services.iter().map(|n| service_id(&ir, n)).collect(),
+        consumes: vec![],
+        framework: None,
+    };
+    veld_emit_java::Java.generate_dyn(&req, &opts).unwrap_err()
+}
+
+#[test]
+fn a_wrong_messaging_option_is_e0802() {
+    let all = ["Orders", "Fulfilment", "Billing"];
+    for bad in [json!("pulsar"), json!(["kafka", "nats"]), json!(3)] {
+        let d = messaging_error(json!({ "messaging": bad }), Role::Server, &all);
+        assert!(
+            d.iter().all(|d| d.code == "E0802") && !d.is_empty(),
+            "{bad}: {d:?}"
+        );
+    }
+    // A client has no events: the option is wrong there.
+    let d = messaging_error(json!({ "messaging": "kafka" }), Role::Client, &all);
+    assert!(
+        !d.is_empty() && d.iter().all(|d| d.code == "E0802"),
+        "{d:?}"
+    );
+}
