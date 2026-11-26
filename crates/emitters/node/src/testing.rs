@@ -13,6 +13,7 @@ use veld_emit_typescript::util::{add_file, method_key, ts_str};
 use veld_emit_typescript::validate::schema_expr;
 use veld_ir::{Constraints, Service, Type};
 
+use crate::events;
 use crate::rules::{loaders_name, service_has_builder, service_is_idempotent};
 use crate::server::{builder_name, module_of, std_sigs};
 
@@ -35,21 +36,25 @@ const WARNING: &str = "//
 // that once.
 //";
 
-/// Writes `server/<service>-test-handler.ts` for every service with endpoint rules, when the
-/// option is on.
+/// Writes `server/<service>-test-handler.ts` for every service with endpoint rules or with
+/// subscriptions, when the option is on.
 pub fn emit(files: &mut FileSet, tree: &Tree<'_>, testing: bool) -> Result<(), Vec<GenDiagnostic>> {
     if !testing {
         return Ok(());
     }
     for sid in &tree.services {
         let svc = tree.ir.service(*sid);
-        if !service_has_builder(svc) {
+        if !service_has_builder(svc) && svc.subscriptions.is_empty() {
             continue;
         }
         let module = module(tree, svc);
         let mut fc = FileCtx::new(tree, &module);
         let mut w = CodeWriter::new();
-        write_handler(&mut w, &mut fc, svc);
+        if service_has_builder(svc) {
+            write_handler(&mut w, &mut fc, svc);
+        } else {
+            write_events_only_handler(&mut w, &mut fc, svc);
+        }
         let text = fc.finish(&w.finish());
         let text = text.replacen('\n', &format!("\n{WARNING}\n"), 1);
         add_file(files, &format!("{module}.ts"), text)?;
@@ -312,6 +317,7 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
         fc.import(&prod, &loaders_name(&name), false);
     }
     write_helpers(w, fc, svc);
+    write_events(w, fc, svc);
     let idempotent = service_is_idempotent(svc);
     if idempotent {
         write_idempotency(w, fc);
@@ -372,15 +378,227 @@ export function create{name}TestHandler(impl: {name}Service, hooks: {name}TestHo
   {inner}
   const handler = async (req: Parameters<{handler}>[0]) => {{
     if (req.method.toUpperCase() === 'GET' && req.path === '/__veld/test') {{
-      const body = JSON.stringify({{ veldTestHandler: 1, digests: {{ {key}: {digest} }} }});
+      const body = JSON.stringify({{ veldTestHandler: 1, digests: {{ {key}: {digest} }}{subscribes} }});
       return {{ status: 200, headers: {{ 'content-type': 'application/json' }}, body }};
     }}
-    {answer}
+    {event_branch}{answer}
   }};
   return Object.assign(handler, {{ ws: inner.ws }});
 }}",
         builder = builder_name(svc),
         inner = inner_handler(fc, &create, &std, idempotent),
         key = ts_str(&svc.name),
+        subscribes = subscribes_member(fc.tree, svc),
+        event_branch = event_branch(svc),
+    ));
+}
+
+// ---- events (`spec/events.md` section 10.9) ---------------------------------------------------
+
+/// The path a test handler that has subscribers answers to take one message.
+const EVENT_PATH: &str = "/__veld/test/event";
+
+/// `, subscribes: { "Service": ["topic", ...] }` for the probe of a service that subscribes, and
+/// nothing for one that does not.
+fn subscribes_member(tree: &Tree<'_>, svc: &Service) -> String {
+    if svc.subscriptions.is_empty() {
+        return String::new();
+    }
+    let mut topics: Vec<String> = svc
+        .subscriptions
+        .iter()
+        .map(|s| ts_str(&tree.ir.channel(s.channel).topic))
+        .collect();
+    topics.sort();
+    topics.dedup();
+    format!(
+        ", subscribes: {{ {}: [{}] }}",
+        ts_str(&svc.name),
+        topics.join(", ")
+    )
+}
+
+/// The line of the handler that gives the event endpoint its requests.
+fn event_branch(svc: &Service) -> String {
+    if svc.subscriptions.is_empty() {
+        return String::new();
+    }
+    format!(
+        "if (req.method.toUpperCase() === 'POST' && req.path === '{EVENT_PATH}') return testEvent(req);\n    "
+    )
+}
+
+/// `Service.handler` of every `on` line of the service, in source order.
+fn handler_names(svc: &Service) -> Vec<String> {
+    svc.subscriptions
+        .iter()
+        .flat_map(|sub| {
+            sub.handlers
+                .iter()
+                .map(|h| format!("{}.{}", svc.name, h.name))
+        })
+        .collect()
+}
+
+/// The event endpoint of the test handler of a service that subscribes: it delivers the message
+/// that many times to the generated consumer over a fresh memory transport, with a fresh memory
+/// inbox, a `sleep` that does not wait and handlers that only count. The application's handlers
+/// are not called.
+fn write_events(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
+    if svc.subscriptions.is_empty() {
+        return;
+    }
+    let name = naming::pascal(&svc.name);
+    let module = events::module_of(fc.tree, svc);
+    fc.import(&module, &format!("subscribe{name}Events"), true);
+    let ns = fc.events_ns();
+    let request = fc.rt("VeldRequest");
+    let response = fc.rt("VeldResponse");
+    let names: Vec<String> = handler_names(svc).iter().map(|n| ts_str(n)).collect();
+    let handlers: Vec<String> = svc
+        .subscriptions
+        .iter()
+        .flat_map(|sub| sub.handlers.iter())
+        .map(|h| {
+            format!(
+                "{}: counting(called, {}),",
+                method_key(&h.name),
+                ts_str(&format!("{}.{}", svc.name, h.name))
+            )
+        })
+        .collect();
+    w.line(format!(
+        "/** `Service.handler` of every `on` line of `{name}`. */
+const handlerNames: readonly string[] = [{names}];
+
+/** A handler that only counts its runs. */
+function counting(called: Record<string, number>, name: string): () => void {{
+  return () => {{
+    called[name] = (called[name] ?? 0) + 1;
+  }};
+}}
+
+/** A header of the event request, by its lower-case name. */
+function eventHeader(req: {request}, name: string): string | undefined {{
+  for (const key of Object.keys(req.headers)) {{
+    if (key.toLowerCase() !== name) continue;
+    const v = req.headers[key];
+    return Array.isArray(v) ? v[0] : v;
+  }}
+  return undefined;
+}}
+
+/** The bytes of the message: the raw body when the adapter has it, the JSON of the parsed body otherwise. */
+async function eventBytes(req: {request}): Promise<Uint8Array> {{
+  const text = req.text !== undefined ? await req.text() : typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? null);
+  const Encoder = (globalThis as {{ TextEncoder?: new () => {{ encode(text: string): Uint8Array }} }}).TextEncoder;
+  if (Encoder === undefined) throw new Error('veld test handler: this runtime has no TextEncoder');
+  return new Encoder().encode(text);
+}}
+
+/** The memory transport, counting what is published to a dead-letter topic. */
+class CountingTransport extends {ns}.MemoryTransport {{
+  copies = 0;
+
+  publish(topic: string, key: string | null, bytes: Uint8Array): Promise<void> {{
+    if (topic.endsWith('.dlq')) this.copies += 1;
+    return super.publish(topic, key, bytes);
+  }}
+}}
+
+/**
+ * `POST {EVENT_PATH}` (spec/events.md section 10.9): the body is the message, `Veld-Test-Topic`
+ * its topic, `Veld-Test-Key` its key and `Veld-Test-Deliveries` how often it is delivered (1 or 2).
+ */
+async function testEvent(req: {request}): Promise<{response}> {{
+  const reply = (status: number, value: unknown): {response} => ({{
+    status,
+    headers: {{ 'content-type': 'application/json' }},
+    body: JSON.stringify(value),
+  }});
+  const topic = eventHeader(req, 'veld-test-topic');
+  if (topic === undefined) return reply(400, {{ error: 'Veld-Test-Topic is missing' }});
+  const key = eventHeader(req, 'veld-test-key') ?? null;
+  const deliveries = eventHeader(req, 'veld-test-deliveries') === '2' ? 2 : 1;
+  const bytes = await eventBytes(req);
+  const called: Record<string, number> = {{}};
+  for (const n of handlerNames) called[n] = 0;
+  const rejected: {ns}.EventRejected[] = [];
+  const transport = new CountingTransport();
+  const handle = await subscribe{name}Events(
+    transport,
+    {{
+      {handlers}
+    }},
+    {{
+      inbox: new {ns}.MemoryInbox(),
+      sleep: () => Promise.resolve(),
+      onEventRejected: (e) => {{
+        rejected.push(e);
+      }},
+    }},
+  );
+  try {{
+    for (let i = 0; i < deliveries; i += 1) {{
+      await transport.publish(topic, key, bytes);
+      await transport.idle();
+    }}
+  }} finally {{
+    await handle.close();
+  }}
+  const first = rejected[0];
+  const ran = handlerNames.some((n) => (called[n] ?? 0) > 0);
+  return reply(200, {{
+    outcome: first !== undefined ? 'rejected' : ran ? 'handled' : 'ignored',
+    reason: first === undefined ? null : first.reason,
+    called,
+    violations: (first === undefined ? [] : first.violations).map((v) => ({{
+      rule: v.rule,
+      path: v.path,
+      fields: v.fields,
+      message: v.message,
+    }})),
+    deadLetters: transport.copies,
+  }});
+}}",
+        names = names.join(", "),
+        handlers = handlers.join("\n      "),
+    ));
+    w.blank();
+}
+
+/// The test handler of a service that subscribes and has no endpoint rules: it answers the probe
+/// and the event endpoint, and nothing else. It takes no application, because it calls none.
+fn write_events_only_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
+    let name = naming::pascal(&svc.name);
+    write_events(w, fc, svc);
+    let handler = fc.rt("VeldHandler");
+    let request = fc.rt("VeldRequest");
+    let response = fc.rt("VeldResponse");
+    let digest = match svc.rules_digest.as_deref() {
+        Some(d) => ts_str(d),
+        None => "null".to_string(),
+    };
+    w.line(format!(
+        "/**
+ * The test handler of `{name}` (spec/events.md section 10.9): `GET /__veld/test` answers with the
+ * topics it subscribes to, and `POST {EVENT_PATH}` delivers a message to its generated consumer.
+ * The application's handlers are not called. NEVER mount it in production.
+ */
+export function create{name}TestHandler(): {handler} {{
+  const log = (globalThis as {{ console?: {{ warn?: (message: string) => void }} }}).console;
+  log?.warn?.('veld: the TEST HANDLER of {name} is active: it takes messages from request headers. Never mount it in production.');
+  const handler = async (req: {request}): Promise<{response} | null> => {{
+    if (req.method.toUpperCase() === 'GET' && req.path === '/__veld/test') {{
+      const body = JSON.stringify({{ veldTestHandler: 1, digests: {{ {key}: {digest} }}{subscribes} }});
+      return {{ status: 200, headers: {{ 'content-type': 'application/json' }}, body }};
+    }}
+    {event_branch}return null;
+  }};
+  return Object.assign(handler, {{ ws: () => Promise.resolve(false) }});
+}}",
+        key = ts_str(&svc.name),
+        subscribes = subscribes_member(fc.tree, svc),
+        event_branch = event_branch(svc),
     ));
 }

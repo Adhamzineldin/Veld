@@ -35,7 +35,7 @@ pub fn runtime_source(tree: &Tree<'_>) -> Result<String, GateError> {
 }
 
 /// Module path (root-relative, no extension) of the events of a service.
-fn module_of(tree: &Tree<'_>, svc: &Service) -> String {
+pub(crate) fn module_of(tree: &Tree<'_>, svc: &Service) -> String {
     format!("{}server/{}-events", tree.root, naming::kebab(&svc.name))
 }
 
