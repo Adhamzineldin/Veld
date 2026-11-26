@@ -658,9 +658,14 @@ export function deriveValue(schema: Schema, draft: unknown, path = '$', out: Vio
   return deriveNode(schema, draft, path, out, true);
 }
 
-/** A value of a client as its local check sees it: defaults applied, derived fields computed. */
-function withDerived(schema: Schema, value: unknown, path: string, out: Violation[]): unknown {
-  return deriveNode(schema, withDefaults(schema, value), path, out, false);
+/**
+ * A value of a client as its local check sees it: defaults applied, derived fields computed. A
+ * `request` is read the way the server reads it: a `@readonly` member is absent there, so client
+ * and server compute the same.
+ */
+function withDerived(schema: Schema, value: unknown, path: string, out: Violation[], request = false): unknown {
+  const wire = toWire(schema, value);
+  return deriveNode(schema, fromWire(schema, wire, { request }), path, out, false);
 }
 
 /** What the wire carries from a client: the value as `toWire` gives it, without the derived fields. */
@@ -934,8 +939,20 @@ function checkInputRulesIn(ep: EndpointSpec, bound: Bound, std: StdSigs, hooks: 
 // #if not_flags_rules
 function checkInputRules(ep: EndpointSpec, bound: Bound, std: StdSigs, hooks: HandlerHooks): VeldResponse | null {
 // #endif
-// #if rules
+// #if rules_not_derived
   if (hooks.validateRequests === false) return null;
+// #endif
+// #if derived
+  if (hooks.validateRequests === false) {
+    // No rule is checked, but a derived field that cannot be computed is the caller's fault: the
+    // handler's type promises the value (`spec/rules.md` section 17.2).
+    const failed = bound.derived ?? [];
+    if (failed.length === 0) return null;
+    ruleEvent(hooks, ep, 'input', 'rejected', failed, nowMicros());
+    return rulesProblem(ep, failed, std);
+  }
+// #endif
+// #if rules
   const started = nowMicros();
   const violations: Violation[] = [];
   // #endif
@@ -1381,16 +1398,8 @@ async function prepare(
   const p = bound.value;
   const f: Record<string, unknown> = {};
   // #endif
-  // #if policies_plain
+  // #if policies
   if (rules.principal !== undefined) f[rules.principal] = ctx.principal;
-  // #endif
-  // #if policies_derived
-  if (rules.principal !== undefined) {
-    const bad: Violation[] = [];
-    f[rules.principal] =
-      rules.principalSchema === undefined ? ctx.principal : deriveNode(rules.principalSchema, ctx.principal, '$', bad, true);
-    if (bad.length > 0) return loadedFailed(ep, bad, std, hooks, started);
-  }
   // #endif
   // #if endpoint_rules
   for (const step of rules.facts) {
@@ -1622,10 +1631,6 @@ export interface EndpointRuleSet {
    * rules read (`f`) under this name, and taken out again before the handler gets the facts.
    */
   principal?: string;
-  // #endif
-  // #if policies_derived
-  /** The schema of the principal's type, when a value of it has derived fields (`spec/rules.md` section 17.2). */
-  principalSchema?: Schema;
   // #endif
   // #if policies
   /** The `allow` lines, in source order. */
@@ -2297,6 +2302,13 @@ export interface ServerEndpoint extends EndpointSpec {
   /** `<package>/<Service>`: the `veld.service` attribute of the metric of a request. */
   service?: string;
   // #endif
+  // #if derived
+  /**
+   * The schema of the principal's type, when a value of it has derived fields (`spec/rules.md`
+   * section 17.2): the principal is completed once per request, right after authentication.
+   */
+  principalSchema?: Schema;
+  // #endif
   // #if endpoint_rules
   /** The facts, `require`, `old` and `ensure` of the endpoint block. */
   rules?: EndpointRuleSet;
@@ -2658,6 +2670,14 @@ async function guard(
       if (ctx.principal === null) return problem(std.unauthorized, 'Unauthorized', 401, ep.sig, {});
     }
     for (const name of ep.middleware) await hooks.middleware?.[name]?.(ctx);
+  }
+  // #endif
+  // #if derived
+  if (ep.principalSchema !== undefined && ctx.principal !== undefined && ctx.principal !== null) {
+    const started = nowMicros();
+    const bad: Violation[] = [];
+    ctx.principal = deriveNode(ep.principalSchema, ctx.principal, '$', bad, true);
+    if (bad.length > 0) return loadedFailed(ep, bad, std, hooks, started);
   }
   // #endif
   const bound = await bind(r, m, req, ctx.headers, ws, hooks.validateRequests !== false);
@@ -3787,7 +3807,11 @@ async function runWs(
     inbox.push(fromWire(incomingSchema, raw, { request: true }));
     // #endif
     // #if derived
-    inbox.push(deriveNode(incomingSchema, fromWire(incomingSchema, raw, { request: true }), 'message', [], false));
+    const failed: Violation[] = [];
+    const message = deriveNode(incomingSchema, fromWire(incomingSchema, raw, { request: true }), 'message', failed, false);
+    // With request validation on, `checkMessageRules` has refused a failure already.
+    if (failed.length > 0) return fail(rulesProblem(ep, failed, std));
+    inbox.push(message);
     // #endif
   };
   // Frames that arrive while auth and middleware run are held back, so they are never read by an
@@ -4286,7 +4310,7 @@ export class ClientCore {
       const v = req[p.name];
       // #endif
       // #if derived
-      if (v !== undefined) walkRules(p.t, withDerived(p.t, v, paramLoc(p), out), paramLoc(p), 'request', out);
+      if (v !== undefined) walkRules(p.t, withDerived(p.t, v, paramLoc(p), out, true), paramLoc(p), 'request', out);
       // #endif
       // #if rules_not_derived
       if (v !== undefined) walkRules(p.t, withDefaults(p.t, v), paramLoc(p), 'request', out);
@@ -4302,7 +4326,7 @@ export class ClientCore {
     const out: Violation[] = [];
     // #endif
     // #if derived
-    walkRules(schema, withDerived(schema, message, 'message', out), 'message', 'request', out);
+    walkRules(schema, withDerived(schema, message, 'message', out, true), 'message', 'request', out);
     // #endif
     // #if rules_not_derived
     walkRules(schema, withDefaults(schema, message), 'message', 'request', out);

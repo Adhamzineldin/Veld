@@ -202,8 +202,6 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "rules_not_derived" => g.rules && !g.derived,
         "endpoint_rules_derived" => g.endpoint_rules && g.derived,
         "endpoint_rules_plain" => g.endpoint_rules && !g.derived,
-        "policies_derived" => g.policies && g.derived,
-        "policies_plain" => g.policies && !g.derived,
         // The text of the rule values: endpoint rules print them, and so do derived fields.
         "text_forms" => g.endpoint_rules || g.derived,
         // The client's address: the option alone, or the option, the environment and the contract.
@@ -386,6 +384,7 @@ mod tests {
             "toWireSend",
             "DeriveFn",
             "withDerived",
+            "principalSchema",
         ];
         let plain = source_with(true, true).unwrap();
         for word in words {
@@ -409,8 +408,11 @@ mod tests {
             ..Gates::default()
         })
         .unwrap();
+        // The principal is completed in `guard` (every endpoint), so even a server with no endpoint
+        // rule has the schema member and the failure answer.
         assert!(all.contains("loadedFailed") && all.contains("principalSchema"));
-        assert!(!derived.contains("loadedFailed") && !derived.contains("principalSchema"));
+        assert!(derived.contains("loadedFailed") && derived.contains("principalSchema"));
+        assert!(!plain.contains("loadedFailed"));
     }
 
     #[test]

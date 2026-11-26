@@ -73,12 +73,54 @@ fn decoded_principal(fc: &mut FileCtx<'_, '_>, svc: &Service) -> String {
     format!("{}({schema}, principal)", fc.rt("fromWire"))
 }
 
+/// Whether the production pipeline completes the principal of `svc` (its type has derived fields):
+/// the test handler then hands it over in a middleware, before the completion, and `prime` leaves
+/// it alone (spec/targets/typescript.md 5i).
+fn completes_principal(fc: &FileCtx<'_, '_>, svc: &Service) -> bool {
+    fc.tree.uses_derived()
+        && svc
+            .principal
+            .as_ref()
+            .is_some_and(|p| fc.tree.ir.type_reaches_derived(&Type::Decl(p.decl)))
+}
+
+/// `prime`: the clock and the principal of the request, as the test sent them. When the pipeline
+/// completes the principal, the middleware `veld-test-principal` sets it before the completion and
+/// `prime` only reads the clock.
+fn prime_functions(ctx: &str, principal: &str, completes: bool) -> String {
+    let clock = "  const now = header(ctx, 'veld-test-now');
+  return now === undefined ? new Date() : new Date(now);
+}";
+    if completes {
+        format!(
+            "/** The principal of the request, as the test sent it: the production pipeline completes it afterwards. */
+async function primePrincipal(ctx: {ctx}): Promise<void> {{
+  const principal = decode(header(ctx, 'veld-test-principal'));
+  if (principal !== undefined) ctx.principal = {principal};
+}}
+
+/** The clock of the request, as the test sent it. */
+function prime(ctx: {ctx}): Date {{
+{clock}"
+        )
+    } else {
+        format!(
+            "/** The clock and the principal of the request, as the test sent them. */
+function prime(ctx: {ctx}): Date {{
+  const principal = decode(header(ctx, 'veld-test-principal'));
+  if (principal !== undefined) ctx.principal = {principal};
+{clock}"
+        )
+    }
+}
+
 fn write_helpers(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     let ctx = fc.rt("RequestContext");
     let base64 = fc.rt("base64Decode");
     let schema = fc.rt("Schema");
     let from_wire = fc.rt("fromWire");
     let principal = decoded_principal(fc, svc);
+    let prime = prime_functions(&ctx, &principal, completes_principal(fc, svc));
     w.line(format!(
         "function header(ctx: {ctx}, name: string): string | undefined {{
   const v = ctx.headers[name];
@@ -112,13 +154,7 @@ async function testFact<T>(ctx: {ctx}, name: string, schema: {schema}): Promise<
   return wire === undefined || wire === null ? undefined : ({from_wire}(schema, wire) as T);
 }}
 
-/** The clock and the principal of the request, as the test sent them. */
-function prime(ctx: {ctx}): Date {{
-  const principal = decode(header(ctx, 'veld-test-principal'));
-  if (principal !== undefined) ctx.principal = {principal};
-  const now = header(ctx, 'veld-test-now');
-  return now === undefined ? new Date() : new Date(now);
-}}"
+{prime}"
     ));
     w.blank();
 }
@@ -320,13 +356,17 @@ fn inner_handler(
     create: &str,
     std: &str,
     per_request: &[(&str, &str)],
+    completes: bool,
 ) -> String {
     let ctx = fc.rt("RequestContext");
-    let clock = if fc.tree.uses_endpoint_rules() {
+    let mut clock = if fc.tree.uses_endpoint_rules() {
         format!(", clock: (ctx: {ctx}) => prime(ctx)")
     } else {
         String::new()
     };
+    if completes {
+        clock.push_str(", middleware: { 'veld-test-principal': primePrincipal }");
+    }
     if per_request.is_empty() {
         return format!("const inner = {create}(endpoints, {std}, {{ ...hooks{clock} }});");
     }
@@ -390,6 +430,7 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
         Some(d) => ts_str(d),
         None => "null".to_string(),
     };
+    let completes = completes_principal(fc, svc);
     let loaders_arg = if svc.facts.is_empty() {
         ""
     } else {
@@ -428,7 +469,7 @@ function open(ep: {endpoint}): {endpoint} {{
     if (wire === undefined) return ep.call(req, ctx, session);
     return ep.success === null ? undefined : {from_wire}(ep.success, wire);
   }};
-  const copy: {endpoint} = {{ ...ep, middleware: [], call }};
+  const copy: {endpoint} = {{ ...ep, middleware: {middleware}, call }};
   delete copy.auth;
   return copy;
 }}
@@ -455,7 +496,8 @@ export function create{name}TestHandler(impl: {name}Service, hooks: {name}TestHo
   return Object.assign(handler, {{ ws: inner.ws }});
 }}",
         builder = builder_name(svc),
-        inner = inner_handler(fc, &create, &std, &per_request),
+        middleware = if completes { "['veld-test-principal']" } else { "[]" },
+        inner = inner_handler(fc, &create, &std, &per_request, completes),
         key = ts_str(&svc.name),
         subscribes = subscribes_member(fc.tree, svc),
         event_branch = event_branch(svc),

@@ -69,6 +69,40 @@ fn derived_fields_behave_over_http_es2022() {
     http_run("es2022", "derived-http-2022-");
 }
 
+/// With `validate = false` no rule is checked, but a derived field that cannot be computed is
+/// still a `422` with that field's violation, and the handler is not called.
+fn no_validate_run(edition: &str, prefix: &str) {
+    let Some(tsc) = tsc_path() else { return };
+    let ir = compile_path(SHOP);
+    let guard = scratch(prefix);
+    let work = guard.path();
+    build_services(
+        work,
+        &tsc,
+        &ir,
+        &["Shop"],
+        &["derived_no_validate.ts"],
+        edition,
+        &json!({ "validate": false }),
+    );
+    run(
+        std::process::Command::new("node")
+            .arg("out/derived_no_validate.js")
+            .current_dir(work),
+        "node derived_no_validate.js",
+    );
+}
+
+#[test]
+fn a_derived_field_that_fails_is_a_422_with_validation_off_es2020() {
+    no_validate_run("es2020", "derived-novalidate-2020-");
+}
+
+#[test]
+fn a_derived_field_that_fails_is_a_422_with_validation_off_es2022() {
+    no_validate_run("es2022", "derived-novalidate-2022-");
+}
+
 const EVENTS: &str = "tests/toolchain/contract/derived/events.veld";
 
 /// Two generated services in one process: the publisher computes the derived fields of an event,

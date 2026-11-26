@@ -29,6 +29,8 @@ model User {
   id: uuid
   name: string
   tag: string = name
+  level: int
+  share: int = 100 / level
 }
 
 principal User
@@ -42,6 +44,16 @@ model Receipt {
   amount: int
   fee: int
   net: int = amount - fee
+}
+
+// A derived field that reads a `@readonly` member: absent in a request, on the server and in the
+// client's local check alike.
+model Draft {
+  serial: int @readonly
+  qty: int
+  double: int = qty * 2
+  next: int = serial + 1
+  rule afterSerial: next > 0 message "the serial must be positive"
 }
 
 error NotEnough 402 {
@@ -60,6 +72,8 @@ service Shop at "/shop" {
     require body.payable <= wallet.available else NotEnough { needed: body.payable, have: wallet.available }
     ensure result.net >= 0
   }
+
+  post "/drafts" saveDraft(body: Draft) -> 201 Draft
 
   get "/receipts" receipts(@query count: int) -> stream Receipt
 

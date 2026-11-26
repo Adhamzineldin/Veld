@@ -8,7 +8,8 @@ use veld_emit_typescript::derived;
 use veld_emit_typescript::tree::{FileCtx, Tree};
 use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{add_file, doc_comment, method_key, prop_key, ts_str};
-use veld_ir::{AuthKind, DeclKind, Endpoint, Ir, Method, Service};
+use veld_emit_typescript::validate::schema_expr;
+use veld_ir::{AuthKind, Constraints, DeclKind, Endpoint, Ir, Method, Service};
 
 use crate::events;
 use crate::frameworks::{EndpointModel, ServiceModel};
@@ -491,6 +492,14 @@ fn write_endpoint(
             "service: {},",
             ts_str(&format!("{package}/{}", svc.name))
         ));
+    }
+    if let Some(p) = svc.principal.as_ref().filter(|_| fc.tree.uses_derived()) {
+        let ty = veld_ir::Type::Decl(p.decl);
+        if fc.tree.ir.type_reaches_derived(&ty) {
+            // The principal is completed once per request, after authentication (spec 5i).
+            let schema = schema_expr(fc, &ty, &Constraints::default());
+            w.line(format!("principalSchema: {schema},"));
+        }
     }
     let request = names.get(svc.id, &ep.name);
     let req = impl_request(ep, &request);

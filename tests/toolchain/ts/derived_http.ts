@@ -14,15 +14,19 @@ const WALLET = '00000000-0000-4000-8000-000000000002';
 // The application: it records what it was given, and answers with a derived value of its own
 // that the server must replace.
 let cartGiven: srv.Cart | undefined;
+// The principal the handler of `createCart` found in its context: that endpoint's rules never read it.
+let cartCaller: unknown;
 let payGiven: (srv.PayRequest & srv.PayFacts) | undefined;
+let draftGiven: unknown;
 let calls = 0;
 let fee = 30;
 const wallets = new Map<string, srv.WalletOutput>();
 
 const impl: srv.ShopService = {
-  async createCart(req) {
+  async createCart(req, ctx) {
     calls += 1;
     cartGiven = req.body;
+    cartCaller = ctx.principal;
     // The handler's own derived values are replaced on the way out.
     return { items: req.body.items, coupon: req.body.coupon, subtotal: 111, payable: 222 };
   },
@@ -30,6 +34,11 @@ const impl: srv.ShopService = {
     calls += 1;
     payGiven = req;
     return { id: req.id, amount: 100, fee, net: 999 };
+  },
+  async saveDraft(req) {
+    calls += 1;
+    draftGiven = req.body;
+    return { serial: 1, qty: req.body.qty };
   },
   async *receipts(req) {
     for (let i = 0; i < req.count; i += 1) yield { id: ID, amount: 10 * (i + 1), fee: 3, net: 999 };
@@ -50,7 +59,13 @@ const hooks = {
   facts: loaders,
   auth: {
     bearer: async (token: string): Promise<srv.UserOutput | null> =>
-      token === 'alice' ? { id: ID, name: 'alice' } : token === 'nobody' ? { id: ID, name: '' } : null,
+      token === 'alice'
+        ? { id: ID, name: 'alice', level: 4 }
+        : token === 'nobody'
+          ? { id: ID, name: '', level: 4 }
+          : token === 'broken'
+            ? { id: ID, name: 'broken', level: 0 }
+            : null,
   },
 };
 
@@ -104,6 +119,8 @@ function recording(handler: VeldHandler): VeldHandler {
 
 function reset(): void {
   cartGiven = undefined;
+  cartCaller = undefined;
+  draftGiven = undefined;
   payGiven = undefined;
   calls = 0;
   fee = 30;
@@ -208,6 +225,25 @@ async function main(): Promise<void> {
   r = await post(`/shop/pay/${WALLET}`, { items: [{ price: 30, qty: 2 }] }, 'nobody');
   assert.equal(r.status, 403, 'the empty name makes an empty tag: the policy does not permit');
 
+  // The principal is completed once per request, after authentication, for every endpoint: the
+  // handler of `createCart` (no rule reads the principal there) gets the completed value.
+  reset();
+  r = await post('/shop/carts', { items: [{ price: 3, qty: 2 }] }, 'alice');
+  assert.equal(r.status, 201, r.text);
+  assert.deepEqual(cartCaller, { id: ID, name: 'alice', level: 4, tag: 'alice', share: 25 }, 'ctx.principal is the completed one');
+  // The one the rules read is the same value, and the handler of `pay` sees it too.
+  // A principal whose derived field cannot be computed is the application's mistake: 500, reported,
+  // on an endpoint whose rules do not read the principal as well.
+  reset();
+  events.length = 0;
+  r = await post('/shop/carts', { items: [{ price: 3, qty: 2 }] }, 'broken');
+  assert.equal(r.status, 500, r.text);
+  assert.equal(calls, 0, 'the handler is not called');
+  assert.equal(events[0]?.position, 'output');
+  assert.equal(events[0]?.outcome, 'rejected');
+  assert.match(events[0]?.violation.rule ?? '', /^veld:bookings\/User\.share@[0-9a-f]{16}$/);
+  assert.equal(events[0]?.violation.error, 'division_by_zero');
+
   // --- a declared error the handler raised, and a stream ----------------------------------------
   reset();
   r = await call(server.url, 'alice', 'GET', '/shop/refuse');
@@ -255,6 +291,20 @@ async function main(): Promise<void> {
   assert.equal(refused.local, true);
   assert.match(refused.violations[0]?.rule ?? '', /Cart\.payableFits@/);
   assert.equal(sent.length, 0, 'nothing was sent');
+
+  // A `@readonly` member is absent in a request: the server drops what was sent for `serial`, so
+  // `next` (which reads it) is absent and its rule is skipped. The local check reads the request the
+  // same way, so the client does not refuse what the server accepts.
+  reset();
+  sent.length = 0;
+  const unsaved = { serial: -5, qty: 2 } as unknown as cli.DraftInput;
+  const saved = await client.saveDraft({ body: unsaved });
+  assert.equal(saved.qty, 2);
+  assert.equal(sent.length, 1, 'the draft was sent, not refused locally');
+  const gotDraft = draftGiven as { qty?: number; double?: number; next?: number; serial?: number };
+  assert.equal(gotDraft.double, 4, 'the server computed `double`');
+  assert.equal(gotDraft.serial, undefined, 'a `@readonly` member sent in a request is dropped');
+  assert.equal(gotDraft.next, undefined, '`next` reads it, so it stays absent');
 
   // A derived value of a response is kept as it came: the client never recomputes.
   const echo = new cli.ShopClient({
