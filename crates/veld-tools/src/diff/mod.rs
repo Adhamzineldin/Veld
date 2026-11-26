@@ -18,6 +18,7 @@ mod events;
 pub(crate) mod expr_text;
 mod flags;
 mod rules;
+mod service_levels;
 mod usage;
 
 pub use changed::{ChangedRule, RuleSite, changed_rules};
@@ -93,6 +94,8 @@ pub enum ChangeKind {
     FlowAdded,
     FlowTimingChanged,
     FlagChanged,
+    TimeoutChanged,
+    SloChanged,
     TransitionChanged,
     EventAdded,
     EventRemoved,
@@ -330,6 +333,8 @@ mod flags_tests;
 mod rollout_tests;
 #[cfg(test)]
 mod rule_tests;
+#[cfg(test)]
+mod service_levels_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

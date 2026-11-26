@@ -164,7 +164,9 @@ pub(super) fn implied_error(q: &str, o: &Endpoint, n: &Endpoint) -> bool {
     }
     let guard = o.rules.version.is_some() != n.rules.version.is_some();
     let key = o.idempotency.is_some() != n.idempotency.is_some();
+    let deadline = o.timeout_ms.is_some() != n.timeout_ms.is_some();
     match name {
+        "DeadlineExceeded" => deadline,
         "PreconditionFailed" => guard,
         "Conflict" => key,
         "ValidationError" => guard || key,
