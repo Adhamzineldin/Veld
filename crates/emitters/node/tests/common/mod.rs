@@ -302,6 +302,16 @@ pub fn streaming_ir() -> Ir {
 
 /// Server files for several services of one package.
 pub fn gen_server_services(ir: &Ir, services: &[&str], options: &serde_json::Value) -> FileSet {
+    gen_server_services_fw(ir, services, options, None)
+}
+
+/// Server files for several services of one package, with a framework.
+pub fn gen_server_services_fw(
+    ir: &Ir,
+    services: &[&str],
+    options: &serde_json::Value,
+    framework: Option<&str>,
+) -> FileSet {
     let ids = services.iter().map(|n| service_id(ir, n)).collect();
-    run(&Node, ir, Role::Server, ids, vec![], options, None)
+    run(&Node, ir, Role::Server, ids, vec![], options, framework)
 }
