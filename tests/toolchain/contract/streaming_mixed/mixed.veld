@@ -1,0 +1,19 @@
+/// One item of the feed.
+model Tick {
+  n: int
+}
+
+/// A plain model.
+model Note {
+  text: string
+}
+
+/// A service with a Server-Sent Events endpoint.
+service Feed at "/feed" {
+  get "/ticks" ticks(@query count: int) -> stream Tick
+}
+
+/// A service of the same package without any streaming endpoint.
+service Notes at "/notes" {
+  get "/{id}" fetch(id: string) -> Note
+}

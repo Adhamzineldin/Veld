@@ -376,13 +376,16 @@ pub trait Endpoints: Send + Sync + 'static {
     // @end
 
     // @if sse
-    /// Calls a server-sent-events endpoint; the stream's items are typed JSON.
+    /// Calls a server-sent-events endpoint; the stream's items are typed JSON. A service without
+    /// such an endpoint keeps this default, so a crate with SSE compiles for every service.
     fn call_sse<'a>(
         &'a self,
-        endpoint: usize,
-        args: Map<String, Value>,
-        ctx: &'a RequestContext,
-    ) -> impl Future<Output = Result<EventStream<Value>, Error>> + Send + 'a;
+        _endpoint: usize,
+        _args: Map<String, Value>,
+        _ctx: &'a RequestContext,
+    ) -> impl Future<Output = Result<EventStream<Value>, Error>> + Send + 'a {
+        async { Err(Error::other("not a server-sent-events endpoint")) }
+    }
     // @end
 }
 
