@@ -27,6 +27,8 @@ mod services;
 mod tests;
 mod typeck;
 #[cfg(test)]
+mod pii_tests;
+#[cfg(test)]
 mod version_tests;
 
 use std::cell::Cell;
@@ -102,6 +104,9 @@ pub struct RField {
     pub readonly: bool,
     /// `@version` (`spec/rules.md` section 11.7).
     pub version: bool,
+    /// `@pii` and `@secret` (`spec/rules.md` section 19.3).
+    pub pii: bool,
+    pub secret: bool,
     pub inherited_from: Option<usize>,
     pub constraints: Constraints,
     pub example: Option<Literal>,

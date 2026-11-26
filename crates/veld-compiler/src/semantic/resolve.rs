@@ -856,6 +856,8 @@ fn build_field(
         default,
         readonly: a.readonly,
         version: a.version.is_some(),
+        pii: a.pii,
+        secret: a.secret,
         inherited_from: None,
         constraints: a.constraints.clone(),
         example,

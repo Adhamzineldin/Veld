@@ -65,6 +65,8 @@ pub fn field(name: &str, ty: Type) -> Field {
         default: None,
         readonly: false,
         version: false,
+        pii: false,
+        secret: false,
         inherited_from: None,
         constraints: Constraints::default(),
         example: None,

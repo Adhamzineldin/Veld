@@ -169,7 +169,7 @@ const DEPRECATABLE: [Target; 12] = [
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 18] = [
+pub const ANNOTATIONS: [AnnotationSpec; 20] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -277,6 +277,18 @@ pub const ANNOTATIONS: [AnnotationSpec; 18] = [
         targets: &[Endpoint],
         args: ArgShape::Idempotent,
         usage: "@idempotent(header: \"Idempotency-Key\", required: true)",
+    },
+    AnnotationSpec {
+        name: "pii",
+        targets: &[Field],
+        args: ArgShape::None,
+        usage: "@pii",
+    },
+    AnnotationSpec {
+        name: "secret",
+        targets: &[Field],
+        args: ArgShape::None,
+        usage: "@secret",
     },
 ];
 

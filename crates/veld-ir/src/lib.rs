@@ -628,6 +628,13 @@ pub struct Field {
     /// when false, so the IR of a contract without the annotation is unchanged.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub version: bool,
+    /// `@pii` (`spec/rules.md` section 19.3): the field holds personal data. Omitted from the
+    /// JSON when false, so the IR of a contract without the annotation is unchanged.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pii: bool,
+    /// `@secret` (`spec/rules.md` section 19.3): the value must never be shown. Omitted when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub secret: bool,
     pub inherited_from: Option<DeclId>,
     pub constraints: Constraints,
     pub example: Option<Literal>,

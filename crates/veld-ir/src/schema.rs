@@ -139,6 +139,8 @@ const FIELD: Fields = &[
     ("default", T::Nullable(&T::Ref("Literal"))),
     ("readonly", T::Bool),
     ("version", T::Optional(&T::Bool)),
+    ("pii", T::Optional(&T::Bool)),
+    ("secret", T::Optional(&T::Bool)),
     ("inherited_from", T::Nullable(&DECL_ID)),
     ("constraints", T::Ref("Constraints")),
     ("example", T::Nullable(&T::Ref("Literal"))),

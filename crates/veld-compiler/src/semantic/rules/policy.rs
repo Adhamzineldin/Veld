@@ -119,6 +119,8 @@ fn param_field(name: &str, ty: &Type) -> RField {
         default: None,
         readonly: false,
         version: false,
+        pii: false,
+        secret: false,
         inherited_from: None,
         constraints: veld_ir::Constraints::default(),
         example: None,

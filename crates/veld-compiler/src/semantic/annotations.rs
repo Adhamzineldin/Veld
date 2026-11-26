@@ -25,6 +25,9 @@ pub struct Anns<'a> {
     pub rollout: Option<Rollout>,
     /// `@version` on a field.
     pub version: Option<Span>,
+    /// `@pii` and `@secret` on a field (`spec/rules.md` section 19.3).
+    pub pii: bool,
+    pub secret: bool,
     /// `@idempotent` on an endpoint.
     pub idempotent: Option<Idempotent>,
 }
@@ -109,7 +112,10 @@ fn hidden_from(spec: &language::AnnotationSpec, target: Target) -> bool {
     let rules_only = |t: &Target| matches!(t, Target::Rule | Target::Require | Target::Ensure);
     // `@version` and `@idempotent` are suggested only where they apply, so that the help of an
     // unknown annotation on a model or a service reads as it did before they existed.
-    let own_target_only = matches!(spec.name, "version" | "idempotent");
+    let own_target_only = matches!(
+        spec.name,
+        "version" | "idempotent" | "pii" | "secret" | "retain"
+    );
     (!events_only(&target) && spec.targets.iter().all(events_only))
         || (!rules_only(&target) && spec.targets.iter().all(rules_only))
         || (own_target_only && !spec.targets.contains(&target))
@@ -233,6 +239,8 @@ fn apply<'a>(
     }
     match spec.name {
         "readonly" => out.readonly = true,
+        "pii" => out.pii = true,
+        "secret" => out.secret = true,
         "version" => {
             require_type(
                 ty,

@@ -139,6 +139,8 @@ fn scope_field(name: &str, ty: &Type, optional: bool, constraints: Constraints) 
         default: None,
         readonly: false,
         version: false,
+        pii: false,
+        secret: false,
         inherited_from: None,
         constraints,
         example: None,

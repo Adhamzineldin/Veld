@@ -12,6 +12,8 @@ fn a_field() -> Field {
         default: None,
         readonly: true,
         version: false,
+        pii: false,
+        secret: false,
         inherited_from: None,
         constraints: Constraints::default(),
         example: None,

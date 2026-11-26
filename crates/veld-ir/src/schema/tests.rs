@@ -244,6 +244,8 @@ fn field(name: &str, ty: Type, lit: Literal) -> Field {
         default: Some(lit.clone()),
         readonly: false,
         version: true,
+        pii: false,
+        secret: false,
         inherited_from: Some(DeclId(0)),
         constraints: Constraints {
             min: Some(0.0),
