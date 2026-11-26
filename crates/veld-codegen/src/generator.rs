@@ -336,6 +336,7 @@ fn first_use(
                 | Feature::Page
                 | Feature::Bytes
                 | Feature::Events
+                | Feature::EventsDelivery
                 | Feature::RulesRollout
                 | Feature::RulesInvariants => false,
             };
@@ -370,6 +371,12 @@ fn first_use(
             .services
             .iter()
             .find_map(|s| ir.service(*s).first_event_origin().cloned());
+    }
+    if feature == Feature::EventsDelivery {
+        return req
+            .services
+            .iter()
+            .find_map(|s| ir.first_delivery_origin(*s).cloned());
     }
     if feature == Feature::RulesInvariants {
         return first_rule_origin(ir, &searched(ir, services, req));
@@ -718,6 +725,9 @@ mod tests {
             key: None,
             docs: None,
             deprecated: None,
+            retry: None,
+            dead_letter: false,
+            ordered: false,
             origin: at(5),
         });
         ir.services[0].name = "P".into();
@@ -789,6 +799,29 @@ mod tests {
         let used = ir.features_used(&[ServiceId(0), ServiceId(1)]);
         assert!(!used.contains(&Feature::RulesRollout), "{used:?}");
         assert!(gate(&ir, Role::Server, &[0, 1], &Capabilities::all_except(&[])).is_empty());
+    }
+
+    #[test]
+    fn a_channel_annotation_needs_events_delivery_from_a_publisher_and_a_subscriber() {
+        let mut ir = ir_with_event(false);
+        ir.channels[0].retry = Some(veld_ir::Retry {
+            max: 3,
+            backoff: veld_ir::Backoff::Fixed,
+        });
+        ir.channels[0].origin = at(5);
+        let without = Capabilities::all_except(&[]);
+        assert!(without.supports(Feature::Events) && !without.supports(Feature::EventsDelivery));
+        for who in [0, 1] {
+            let found = gate(&ir, Role::Server, &[who], &without);
+            assert_eq!(found.len(), 1, "{found:?}");
+            assert_eq!(found[0].code, "E0801");
+            assert!(found[0].message.contains("`events_delivery`"));
+            assert_eq!(found[0].origin.as_ref().map(|o| o.line), Some(5));
+            let with = without.clone().with(Feature::EventsDelivery);
+            assert!(gate(&ir, Role::Server, &[who], &with).is_empty());
+        }
+        // A client generates nothing for events and keeps its bytes.
+        assert!(gate(&ir, Role::Client, &[0, 1], &without).is_empty());
     }
 
     #[test]

@@ -377,6 +377,10 @@ pub struct ExpectedCall {
     pub service: ServiceId,
     pub handler: String,
     pub called: bool,
+    /// `called once`: the event is delivered twice and the handler runs once
+    /// (`spec/events.md` section 10.9). Omitted from the JSON when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub once: bool,
 }
 
 impl Serialize for EventExpect {

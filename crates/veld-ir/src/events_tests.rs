@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use crate::endpoint_rules::tests::{origin, sample_event_examples};
 use crate::*;
 
-fn channel() -> Channel {
+pub(crate) fn channel() -> Channel {
     Channel {
         name: "BookingEvents".into(),
         package: PackageId(0),
@@ -21,11 +21,14 @@ fn channel() -> Channel {
         }),
         docs: None,
         deprecated: None,
+        retry: None,
+        dead_letter: false,
+        ordered: false,
         origin: origin(3),
     }
 }
 
-fn service(publishes: Vec<Publication>, subscriptions: Vec<Subscription>) -> Service {
+pub(crate) fn service(publishes: Vec<Publication>, subscriptions: Vec<Subscription>) -> Service {
     Service {
         id: ServiceId(0),
         package: PackageId(0),
@@ -247,7 +250,7 @@ fn publication(channel: u32, line: u32) -> Publication {
 
 /// Decls: 0 Base, 1 Money (extends Base), 2 Paid (a Money field, a list of Tag), 3 Left, 4 Other,
 /// 5 Tag, 6 Unused. Channels: 0 carries Paid and Left, 1 carries Other, 2 carries Left.
-fn world() -> Ir {
+pub(crate) fn world() -> Ir {
     let c = |name: &str, events: Vec<u32>| Channel {
         events: events.into_iter().map(DeclId).collect(),
         name: name.into(),

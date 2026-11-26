@@ -544,6 +544,12 @@ fn full_ir() -> Ir {
             }),
             docs: Some("d".into()),
             deprecated: Some("x".into()),
+            retry: Some(Retry {
+                max: 5,
+                backoff: Backoff::Exponential,
+            }),
+            dead_letter: true,
+            ordered: true,
             origin: origin(),
         }],
     }

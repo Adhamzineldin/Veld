@@ -266,11 +266,13 @@ pub(crate) fn sample_event_examples() -> Vec<Example> {
                 service: ServiceId(0),
                 handler: "sendReceipt".into(),
                 called: true,
+                once: false,
             },
             ExpectedCall {
                 service: ServiceId(0),
                 handler: "sendApology".into(),
                 called: false,
+                once: false,
             },
         ])),
         origin: origin(30),
