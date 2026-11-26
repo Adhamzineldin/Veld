@@ -801,6 +801,12 @@ mod tests {
         assert_eq!(normalize_datetime("2024-05-01T10:00:00.500Z", false).as_deref(), Some("2024-05-01T10:00:00.5Z"));
         assert_eq!(normalize_datetime("2024-12-31T23:30:00-01:00", false).as_deref(), Some("2025-01-01T00:30:00Z"));
         assert!(normalize_datetime("2024-13-01T00:00:00Z", false).is_none());
+        // The fingerprint form: `.fff` only when the milliseconds are not zero, cut at the millisecond.
+        assert_eq!(normalize_datetime("2026-06-10T12:00:00.250Z", true).as_deref(), Some("2026-06-10T12:00:00.250Z"));
+        assert_eq!(normalize_datetime("2026-06-10T12:00:00.25Z", true).as_deref(), Some("2026-06-10T12:00:00.250Z"));
+        assert_eq!(normalize_datetime("2026-06-10T12:00:00.000Z", true).as_deref(), Some("2026-06-10T12:00:00Z"));
+        assert_eq!(normalize_datetime("2026-06-10T14:00:00+02:00", true).as_deref(), Some("2026-06-10T12:00:00Z"));
+        assert_eq!(normalize_datetime("2026-06-10T12:00:00.1239Z", true).as_deref(), Some("2026-06-10T12:00:00.123Z"));
     }
 
     #[test]

@@ -778,12 +778,22 @@ struct Started {
     key: String,
 }
 
+/// What a request that was dropped hands to the store.
+enum Settle {
+    /// Nothing was answered yet: the key goes back.
+    Release,
+    /// The answer exists and is below `500`: it is stored (a drop must not run the request twice).
+    Complete(super::idempotency::StoredAnswer),
+}
+
 /// The key a request holds while it runs. Dropping it while the key is still held (the request
-/// future was dropped or cancelled, the handler panicked) hands `release` to a task of its own:
-/// an entry must not stay "running" because the server gave up (`spec/rules.md` section 11.12).
+/// future was dropped or cancelled, the handler panicked) hands `release`, or `complete` once the
+/// answer exists, to a task of its own: an entry must not stay "running" because the server gave
+/// up (`spec/rules.md` section 11.12).
 struct Hold<E: Endpoints> {
     inner: Arc<Inner<E>>,
     started: Option<Started>,
+    settle: Settle,
 }
 
 impl<E: Endpoints> Drop for Hold<E> {
@@ -792,9 +802,13 @@ impl<E: Endpoints> Drop for Hold<E> {
             return;
         };
         let inner = Arc::clone(&self.inner);
+        let settle = std::mem::replace(&mut self.settle, Settle::Release);
         spawn_release(async move {
             // There is no request left to report a failing store to.
-            let _ = inner.endpoints.idem_release(&scope, &key).await;
+            let _ = match settle {
+                Settle::Release => inner.endpoints.idem_release(&scope, &key).await,
+                Settle::Complete(answer) => inner.endpoints.idem_complete(&scope, &key, answer).await,
+            };
         });
     }
 }
@@ -1234,7 +1248,7 @@ impl<E: Endpoints> Handler<E> {
             Err(resp) => return resp,
         };
         // The hold gives the key back when this future is dropped or the handler panics.
-        let hold = Hold { inner: Arc::clone(&self.inner), started };
+        let hold = Hold { inner: Arc::clone(&self.inner), started, settle: Settle::Release };
         let resp = self.run_after_guard(index, args, ctx.clone()).await;
         self.idem_finish(hold, resp, &ctx).await
     }
@@ -1543,8 +1557,14 @@ impl<E: Endpoints> Handler<E> {
             return resp;
         };
         let e = &self.inner.endpoints;
-        // Still held while the store is asked: a future dropped here gives the key back.
-        let done = if resp.status < 500 { e.idem_complete(&scope, &key, stored_of(&resp)).await } else { e.idem_release(&scope, &key).await };
+        // Still held while the store is asked: a future dropped here settles it the same way.
+        let done = if resp.status < 500 {
+            let answer = stored_of(&resp);
+            hold.settle = Settle::Complete(answer.clone());
+            e.idem_complete(&scope, &key, answer).await
+        } else {
+            e.idem_release(&scope, &key).await
+        };
         hold.started = None;
         if let Err(err) = done {
             e.on_error(&err, ctx);

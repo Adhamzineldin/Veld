@@ -228,6 +228,22 @@ fn rooms_server(ir: &Ir) -> FileSet {
     )
 }
 
+/// The arguments of a handler are in the order of the pipeline: facts, `version`, `transition`
+/// (`spec/rules.md` section 11.12).
+#[test]
+fn a_handler_takes_facts_then_version_then_transition() {
+    let ir = compile_path(VERSION, "rooms");
+    let server = rooms_server(&ir);
+    let body = text(&server, "src/rooms/orders_server.rs");
+    assert!(
+        body.contains("facts: PayOrderFacts, version: Option<i64>, transition: veld::rules::Transition<"),
+        "{body}"
+    );
+    let version = body.find("decode_key(&args, \"version\")").unwrap();
+    let transition = body.find("decode_key(&args, \"transition\")").unwrap();
+    assert!(version < transition);
+}
+
 /// The server (with the test handler) and the client build and pass `clippy -D warnings`; the
 /// production handlers behave over HTTP; all 19 examples pass against the test handler.
 #[test]

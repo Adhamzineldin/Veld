@@ -45,6 +45,8 @@ struct Store {
     fail_begin: AtomicBool,
     fail_complete: AtomicBool,
     fail_release: AtomicBool,
+    /// `complete` never finishes: the request is dropped while its answer is stored.
+    slow_complete: AtomicBool,
 }
 
 struct StoreRef(Arc<Store>);
@@ -74,12 +76,15 @@ impl IdempotencyStore for StoreRef {
     ) -> impl std::future::Future<Output = Result<(), Error>> + Send + 'a {
         let s = &self.0;
         s.log.lock().unwrap().push(format!("complete:{}", answer.status));
-        let done = if s.fail_complete.load(Ordering::SeqCst) {
-            Err(Error::other("cannot complete"))
-        } else {
-            s.inner.complete_now(scope, key, answer)
-        };
-        std::future::ready(done)
+        let fail = s.fail_complete.load(Ordering::SeqCst);
+        let hang = s.slow_complete.swap(false, Ordering::SeqCst);
+        async move {
+            if hang {
+                // The request is dropped before the store has the answer.
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            }
+            if fail { Err(Error::other("cannot complete")) } else { s.inner.complete_now(scope, key, answer) }
+        }
     }
 
     fn release<'a>(
@@ -364,17 +369,21 @@ async fn running() {
     assert_eq!(s.app.count("book"), 1);
 }
 
-/// Sends `book` with a key and drops the request after `ms` milliseconds, as a client that gives up.
-async fn book_and_hang_up(s: &Server, key: &str, ms: u64) {
-    let sent = reqwest::Client::new()
-        .post(format!("{}/bookings", s.base))
-        .header("idempotency-key", key)
-        .header("content-type", "application/json")
-        .body(json!({ "guests": 1 }).to_string())
-        .timeout(std::time::Duration::from_millis(ms))
-        .send()
-        .await;
-    assert!(sent.is_err(), "the request was meant to be abandoned");
+/// The production handler without a network: the request future can be dropped at will.
+fn plain_handler(app: &Arc<App>) -> bookings_server::veld::server::Handler<impl bookings_server::veld::server::Endpoints> {
+    app.capacity.store(9, Ordering::SeqCst);
+    let hooks = Hooks(app.clone(), StoreRef(app.store.clone()));
+    BookingsHandler::create(Impl(app.clone()), hooks, Loaders(app.clone()), None).unwrap()
+}
+
+fn book_request(key: &str) -> bookings_server::veld::server::Request {
+    bookings_server::veld::server::Request {
+        method: "POST".into(),
+        path: "/bookings".into(),
+        query: String::new(),
+        headers: vec![("idempotency-key".into(), key.into()), ("content-type".into(), "application/json".into())],
+        body: json!({ "guests": 1 }).to_string().into_bytes(),
+    }
 }
 
 /// The same key and the same parameters, until the key is not "running" any more (the release is
@@ -390,19 +399,51 @@ async fn book_when_released(s: &Server, key: &str) -> Answer {
     panic!("the key `{key}` stayed running");
 }
 
-/// A request whose future is dropped while the handler runs (the client hangs up) gives its key
-/// back: the same key runs again instead of answering `409` (`spec/rules.md` section 11.12).
+/// A request whose future is dropped while the handler runs (a timeout drops it, as a server does
+/// when the client hangs up) gives its key back: the same key runs again instead of answering
+/// `409` (`spec/rules.md` section 11.12).
 async fn a_dropped_request_releases_its_key() {
-    let s = serve().await;
-    s.app.hold.store(true, Ordering::SeqCst);
-    book_and_hang_up(&s, "gone", 150).await;
-    assert!(s.app.entered.load(Ordering::SeqCst), "the handler had started");
-    s.app.hold.store(false, Ordering::SeqCst);
-    let again = book_when_released(&s, "gone").await;
-    assert_eq!(again.status, 201, "{}", again.text);
-    assert!(!again.replayed(), "nothing was stored by the abandoned request");
-    assert_eq!(s.app.count("book"), 2);
-    assert!(log(&s).iter().any(|l| l == "release"), "{:?}", log(&s));
+    let app = Arc::new(App::default());
+    let handler = plain_handler(&app);
+    app.hold.store(true, Ordering::SeqCst);
+    let timed_out = tokio::time::timeout(std::time::Duration::from_millis(100), handler.handle(book_request("gone"))).await;
+    assert!(timed_out.is_err(), "the handler was still running");
+    assert!(app.entered.load(Ordering::SeqCst), "the handler had started");
+    app.hold.store(false, Ordering::SeqCst);
+    let mut answered = None;
+    for _ in 0..200 {
+        let resp = handler.handle(book_request("gone")).await.unwrap();
+        if resp.status != 409 {
+            answered = Some(resp.status);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_eq!(answered, Some(201), "the key stayed running");
+    assert_eq!(app.count("book"), 2);
+    assert!(app.store.log.lock().unwrap().iter().any(|l| l == "release"));
+}
+
+/// A request dropped after its handler answered (while the answer is being stored) still ends up
+/// stored: the retry replays instead of running the handler a second time.
+async fn a_request_dropped_while_its_answer_is_stored_is_not_run_twice() {
+    let app = Arc::new(App::default());
+    let handler = plain_handler(&app);
+    app.store.slow_complete.store(true, Ordering::SeqCst);
+    let timed_out = tokio::time::timeout(std::time::Duration::from_millis(100), handler.handle(book_request("late"))).await;
+    assert!(timed_out.is_err(), "`complete` was still running");
+    assert_eq!(app.count("book"), 1);
+    let mut status = 0;
+    for _ in 0..200 {
+        let resp = handler.handle(book_request("late")).await.unwrap();
+        status = resp.status;
+        if status != 409 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_eq!(status, 201);
+    assert_eq!(app.count("book"), 1, "the handler ran twice");
 }
 
 /// A handler that panics gives the key back too.
@@ -703,6 +744,7 @@ async fn main() {
     etag_and_no_content().await;
     a_store_that_fails().await;
     a_dropped_request_releases_its_key().await;
+    a_request_dropped_while_its_answer_is_stored_is_not_run_twice().await;
     a_panicking_handler_releases_its_key().await;
     client_headers().await;
     println!("idempotency ok");
