@@ -31,7 +31,7 @@ pub use delivery::{
     wait_ms,
 };
 pub use inbox::MemoryInbox;
-pub use publish::{Inputs, PublishError, encode, encode_unchecked, source_of};
+pub use publish::{Inputs, PublishError, encode, encode_unchecked, encode_with_key, source_of};
 
 /// The media type of a message (`spec/events.md` section 6.2).
 pub const MEDIA_TYPE: &str = "application/cloudevents+json; charset=UTF-8";

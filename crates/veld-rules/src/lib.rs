@@ -24,6 +24,7 @@ pub mod idempotency;
 pub mod machine;
 mod old;
 mod ops;
+pub mod outbox;
 mod pipeline;
 pub mod policy;
 mod value;

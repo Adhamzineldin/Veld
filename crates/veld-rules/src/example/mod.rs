@@ -521,6 +521,19 @@ impl Build<'_> {
     }
 }
 
+/// An example that says what the call writes to the outbox (`spec/events.md` section 11.1)
+/// cannot be judged offline: the reference evaluator runs no handler. When the rest of it
+/// passes, it is reported as skipped, "live only"; a mismatch of the outcome still fails.
+fn live_only_emitted(ex: &Example, verdict: Verdict) -> Verdict {
+    match (&ex.emitted, verdict) {
+        (Some(_), Verdict::Passed) => Verdict::Skipped(
+            "live only: `expect emitted` is checked against a generated server, the reference evaluator runs no handler"
+                .to_owned(),
+        ),
+        (_, other) => other,
+    }
+}
+
 /// Runs an example offline: fills it in, runs the pipeline and compares the outcome with the
 /// expected one (section 12.3).
 ///
@@ -538,6 +551,7 @@ pub fn run_example(ir: &Ir, ex: &Example) -> Result<ExampleReport, ExampleError>
         crate::coverage::armed(|| pipeline.run_reported(&filled.request, OutputMode::Strict))?;
     let result = reported.body.as_ref().or(filled.request.result.as_ref());
     let verdict = report::compare(ir, endpoint, &filled.expected, &reported.outcome, result);
+    let verdict = live_only_emitted(ex, verdict);
     Ok(ExampleReport {
         name: ex.name.clone(),
         verdict,

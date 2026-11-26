@@ -86,6 +86,21 @@ pub fn encode(
     value: &Json,
     inputs: &Inputs<'_>,
 ) -> Result<Vec<u8>, PublishError> {
+    encode_with_key(ir, channel, event, value, inputs).map(|(_, bytes)| bytes)
+}
+
+/// [`encode`], and the key text of the message (its `subject`, `None` for a channel without a
+/// key) next to the bytes: what an outbox entry stores (`spec/events.md` section 11.1).
+///
+/// # Errors
+/// As [`encode`].
+pub fn encode_with_key(
+    ir: &Ir,
+    channel: ChannelId,
+    event: DeclId,
+    value: &Json,
+    inputs: &Inputs<'_>,
+) -> Result<(Option<String>, Vec<u8>), PublishError> {
     let (decl, rules_digest) = carried_event(ir, channel, event)?;
     let mut canonical_value = value.clone();
     super::canon::scalars(ir, &Type::Decl(event), &mut canonical_value);
@@ -95,7 +110,8 @@ pub fn encode(
         return Err(PublishError::Invalid(found));
     }
     let subject = key_text(ir, channel, &data)?;
-    assemble(decl, rules_digest, subject, data, inputs)
+    let bytes = assemble(decl, rules_digest, subject.clone(), data, inputs)?;
+    Ok((subject, bytes))
 }
 
 /// The message a publisher would send, without the checks of section 7: the shape and the
