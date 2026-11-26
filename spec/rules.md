@@ -1044,6 +1044,21 @@ Only *proved* (for the first three questions) and a confirmed *counterexample* (
 - Each question has a time limit (5 seconds by default, `--prove-timeout`). The solver is started with a fixed random seed.
 - The report names the solver and its version, lists the fragment's open parts that the contract uses, and counts the four results. `E0970` findings fail `veld check`; `W0970` reports that some questions ended *unknown* or *unsupported*, with their names.
 
+### 18.4a How the questions are asked
+
+Where this section was silent, these choices hold.
+
+- **One process per run.** All questions of a run go to one solver process as one script: `(push 1)` ... `(pop 1)` per question, each opened by `(echo "Q<i>")`. The exit code of the solver is ignored (Z3 exits 1 when `(get-value)` follows `unsat`). The time limit is set in the solver per `check-sat` (`:timeout` for Z3, `:tlimit-per` for cvc5), and Veld kills the process after the limits of all questions plus 20 seconds; questions without an answer are *unknown*.
+- **Arguments.** A program whose file name contains `cvc5` is started with `--lang smt2 --incremental`; any other program, whatever `--solver` names, with `-in -smt2`. The seed is `0`: `(set-option :random-seed 0)` for Z3, `(set-option :seed 0)` for cvc5. The name and version in the report come from `(get-info :name)` and `(get-info :version)`.
+- **Values.** Strings and uuids are an uninterpreted sort with a length function for strings; a value is turned into a text of the length the solver gave, different for every distinct value. A part of a value no rule reads is filled in with the simplest value that keeps its constraints. `@min`, `@max`, `@length` and `@pattern` are checked by Veld on the value as well, because the evaluator of rules does not look at them. A string with a `@pattern` or `@format` that a rule reads gives *unknown* when the solver answers `sat`.
+- **Evaluation errors** follow short-circuiting: every expression has a value and a condition under which evaluating it is an error, and a rule holds when its condition is false and its value true. No global assertion rules out an overflow or a zero divisor.
+- **First question.** Invariants of nested models and of the items of lists are not part of the question (leaving them out only makes it easier to satisfy). Rules that read a `@readonly` field are included, as on a response. Audited rules (`@rollout(audit)`) never reject and are not assumed, here and in the other questions.
+- **Second question.** A `require` is asked about only if it is enforced. The invariants of the parameters (skipping rules that read a `@readonly` field, as in a request), the constraints of the parameters, and the enforced `require` lines before it are assumed. Facts and the principal are trusted values (sections 9.2 and 11.1): only the domain of their type is assumed, never their constraints or invariants. Policies and `transition` before the `require` are not assumed.
+- **Third question.** The arguments of a policy are trusted values in the same way. A policy with no `permit` is asked too, and is a finding.
+- **Open parts besides the table.** `in` over anything but a literal list (a list field, a map), and the `@pattern` and `@format` of a field a rule reads, are left open and reported as such (`membership in a list or map`, `pattern and format of a string`).
+- **`diff`.** The question covers the invariants of models and errors and the `require` lines of endpoints whose expression changed (a new rule id). It asks for a value that the old rule accepts and the new rule rejects, with the constraints and the parameter invariants of the new contract and the earlier `require` lines of the old endpoint assumed. A field whose type changed between the two contracts is *unsupported*. A tightened rule is breaking where requests meet it, and a note where only responses meet it. A rule proved not tightened is non-breaking where only requests meet it; on responses a looser rule loses a guarantee, so it stays *possibly breaking*. *Unknown* and *unsupported* leave the change as `veld diff` reports it without `--prove`, with the reason added. Policies, `ensure` and state machines are not asked.
+- **Codes.** `E0970` findings fail `veld check`; `W0970` never does and is not counted by `--strict`.
+
 ### 18.5 Codes of sections 17 and 18
 
 | Code | Meaning |
