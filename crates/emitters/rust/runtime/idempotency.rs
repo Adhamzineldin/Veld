@@ -347,7 +347,7 @@ fn seeded_answer(
             Ok(StoredAnswer {
                 status,
                 body: wire.map(|w| serde_json::to_vec(&w).unwrap_or_default()).unwrap_or_default(),
-                content_type: Some("application/json".to_string()).filter(|_| !data.is_null()),
+                content_type: (!data.is_null()).then_some("application/json".to_string()),
                 etag,
                 location: None,
             })
