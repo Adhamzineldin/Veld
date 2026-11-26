@@ -51,6 +51,20 @@ public final class ClientOptions {
     return baseUrl;
   }
 
+  /** These options with another base URL (the runtime config gives each client its own). */
+  public ClientOptions withBaseUrl(String value) {
+    Builder b = new Builder();
+    b.baseUrl = value;
+    b.httpClient = httpClient;
+    b.headers = headers;
+    b.bearer = bearer;
+    b.basic = basic;
+    b.apiKey = apiKey;
+    b.validate = validate;
+    b.timeout = timeout;
+    return b.build();
+  }
+
   HttpClient httpClient() {
     return httpClient;
   }
@@ -93,7 +107,7 @@ public final class ClientOptions {
 
     private Builder() {}
 
-    /** The base URL; overrides the {@code VELD_<SERVICE>_URL} variable and the contract's default. */
+    /** The base URL of the service. A client requires it. */
     public Builder baseUrl(String value) {
       this.baseUrl = value;
       return this;

@@ -11,6 +11,8 @@ import com.nexusbank.transactions.server.TransactionsService;
 // implement TransactionsService and serve it with com.nexusbank.transactions.server.TransactionsHandler
 ```
 
+The deployment values (the URL of each service, the rule output mode) are the runtime config `com.nexusbank.transactions.runtimeconfig.TransactionsApiRuntime`: build it with `builder()`, `fromMap`, `fromEnv` or `fromValue`; every way runs the same check and reports every problem at once.
+
 A server framework adapter (for example `spring`) adds its own files under `<base>.adapters`; they need that framework on the class path.
 
 Values compare with `Veld.same(a, b)` (declaration signature plus canonical bytes), not with `equals`, when they may come from different generated packages.

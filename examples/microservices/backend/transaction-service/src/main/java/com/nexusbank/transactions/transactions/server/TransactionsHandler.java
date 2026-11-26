@@ -11,6 +11,7 @@ import com.nexusbank.transactions.runtime.Router;
 import com.nexusbank.transactions.runtime.Schema;
 import com.nexusbank.transactions.runtime.ServerEndpoint;
 import com.nexusbank.transactions.runtime.VeldHandler;
+import com.nexusbank.transactions.runtimeconfig.TransactionsApiRuntime;
 import com.nexusbank.transactions.transactions.transactions.HistoryFilter;
 import com.nexusbank.transactions.transactions.transactions.InsufficientFunds;
 import com.nexusbank.transactions.transactions.transactions.Transaction;
@@ -73,8 +74,9 @@ public final class TransactionsHandler {
           new EndpointSpec.Declared(422, ValidationError.VELD_SIG, ValidationError.SCHEMA, ValidationError::fromWire),
           new EndpointSpec.Declared(500, Internal.VELD_SIG, Internal.SCHEMA, Internal::fromWire)));
 
-  /** Builds the handler. */
-  public static VeldHandler create(TransactionsService impl, TransactionsHooks hooks) {
+  /** Builds the handler. The runtime config is checked first: `null` means no value, which fails when a path is required. */
+  public static VeldHandler create(TransactionsService impl, TransactionsHooks hooks, TransactionsApiRuntime runtime) {
+    TransactionsApiRuntime config = TransactionsApiRuntime.ensure(runtime);
     List<ServerEndpoint> endpoints = List.of(
         new ServerEndpoint(
             GET_HISTORY,

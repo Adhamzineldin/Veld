@@ -24,23 +24,16 @@ public final class ClientCore {
   private final HttpClient http;
 
   /**
-   * Creates the core. The base URL is the first of: the option, the environment variable, the
-   * contract's {@code base-url}.
+   * Creates the core. The base URL is the {@code baseUrl} option, which a client requires.
    *
-   * @throws VeldTransportError when none of them is set
+   * @throws VeldTransportError when the option is not set
    */
   public ClientCore(ClientOptions options, ClientDefaults defaults) {
     this.options = options;
     this.defaults = defaults;
     String base = options.baseUrl();
     if (base == null) {
-      base = System.getenv(defaults.envVar());
-    }
-    if (base == null) {
-      base = defaults.baseUrl();
-    }
-    if (base == null) {
-      throw new VeldTransportError("no base URL: pass baseUrl or set " + defaults.envVar());
+      throw new VeldTransportError("no base URL: pass the baseUrl option");
     }
     this.baseUrl = base.replaceAll("/+$", "");
     this.http = options.httpClient() != null ? options.httpClient() : defaultClient();
