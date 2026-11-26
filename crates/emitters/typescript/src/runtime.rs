@@ -126,6 +126,8 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "idempotency" => g.idempotency,
         // The two header checks of step 5.
         "headers" => g.version || g.idempotency,
+        // The part of `headerRefusal` that merges the issues of a rule.
+        "headers_rules" => (g.version || g.idempotency) && g.rules,
         // What a build without them has in the same place.
         "not_version" => !g.version,
         "not_idempotency" => !g.idempotency,

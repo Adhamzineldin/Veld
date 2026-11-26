@@ -2509,7 +2509,7 @@ function headerIssues(ep: EndpointSpec, headers: Headers): Issue[] {
  */
 function headerRefusal(ep: EndpointSpec, bound: Bound, lead: Issue[], std: StdSigs, hooks: HandlerHooks): VeldResponse {
   // #endif
-  // #if rules
+  // #if headers_rules
   const refused = checkInputRules(ep, bound, std, hooks);
   if (refused !== null && refused.body !== null) {
     const doc = JSON.parse(refused.body) as { data: { issues: Issue[] } };
@@ -2520,8 +2520,8 @@ function headerRefusal(ep: EndpointSpec, bound: Bound, lead: Issue[], std: StdSi
   // #if headers
   return problem(std.validation, 'ValidationError', 422, ep.sig, { issues: lead });
 }
-// #endif
 
+// #endif
 // ---------------------------------------------------------------------------
 // Server: Server-Sent Events
 // ---------------------------------------------------------------------------
