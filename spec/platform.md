@@ -324,6 +324,58 @@ get "/{id}" getBooking(id: uuid) -> Booking
 - **`veld export slo [-o FILE]`** writes one YAML file of OpenSLO `v1` documents, one `SLO` per stated objective, in package, service and endpoint order: a ratio objective over a 28-day rolling window whose `good` and `total` queries are written for Prometheus over the metric above (`http_server_request_duration_seconds_bucket` and `_count`, selected by `veld_operation`). A latency objective whose threshold is not a bucket boundary the hook's consumer has is the user's to fix: the file is theirs, as for `veld export openapi`. A workspace without `@slo` is `E0803`.
 - **IR.** `Endpoint` gains `"slo": { "p99_ms": "300", "errors": "0.1" }`, omitted when absent. The feature is `slo`, opt-in: a generator declares it when it calls the hook.
 
+### 13.1 What the implementation chose where the text was silent
+
+- **Where it stands and what it takes.** On an endpoint, or on a service as the default of its endpoints that do not stream; an endpoint's own `@slo` replaces the service's, member by member it does not merge. On an endpoint that streams it is `E0602`. The arguments are all named. Each objective once. A latency is a positive constant duration (`ms(300)`, `seconds(1)`, as in section 12.1). `errors` is a number above 0 and below 100. At least one objective. The stated latencies must not decrease from `p50` to `p99`: `p99: ms(300)` with `p95: ms(500)` is `E0602`. `errors` is stored as the shortest decimal text of the number (`0.1`, `1`).
+- **`veld.operation`** in the `metrics` hook is the whole operation signature of the endpoint, `veld:<package>/<Service>.<endpoint>@<hash>`, as the `operation` member of a problem document has it.
+- **OpenAPI.** The operation has `"x-veld-slo": { "p99_ms": 300, "errors": 0.1 }`: the members that are stated, latencies in milliseconds as numbers, `errors` as the number of percent.
+- **`veld diff`.**
+
+  | Change | Judged |
+  |---|---|
+  | an objective is stated, or tightened (a lower latency or error share) | compatible: the server promises more |
+  | an objective is removed, or loosened | possibly breaking: a consumer may rely on the old promise |
+
+- **`veld export slo`.** It takes `-o FILE`, `--service NAME` and `--force` like `veld export openapi`, and writes to stdout without `-o`. The workspace without any `@slo` among the selected services is `E0803` and writes nothing. The document of one objective:
+
+  ```yaml
+  apiVersion: "openslo/v1"
+  kind: "SLO"
+  metadata:
+    name: "bookings-bookings-get-booking-p99"
+    displayName: "bookings/Bookings.getBooking p99"
+  spec:
+    description: "99% of the requests of getBooking answer within 300 ms."
+    service: "bookings-bookings"
+    indicator:
+      metadata:
+        name: "bookings-bookings-get-booking-p99-sli"
+      spec:
+        ratioMetric:
+          counted: true
+          good:
+            metricSource:
+              type: "Prometheus"
+              spec:
+                query: "sum(http_server_request_duration_seconds_bucket{veld_operation=\"<operation>\",le=\"0.3\"})"
+          total:
+            metricSource:
+              type: "Prometheus"
+              spec:
+                query: "sum(http_server_request_duration_seconds_count{veld_operation=\"<operation>\"})"
+    timeWindow:
+      - duration: "28d"
+        isRolling: true
+    budgetingMethod: "Occurrences"
+    objectives:
+      - displayName: "p99 under 300 ms"
+        target: 0.99
+  ```
+
+  - **The queries.** A latency objective `pNN` with `T` milliseconds: `good` is `sum(http_server_request_duration_seconds_bucket{veld_operation="<operation>",le="<T in seconds>"})`, `total` is `sum(http_server_request_duration_seconds_count{veld_operation="<operation>"})`, and the target is `0.5`, `0.9`, `0.95` or `0.99`. `errors: E`: `good` is `sum(http_server_request_duration_seconds_count{veld_operation="<operation>",http_response_status_code!~"5.."})`, `total` is the same count without the status, and the target is `1 - E/100`, worked out on the decimal text so no float reaches the file (`0.1` gives `0.999`). `<T in seconds>` is the shortest decimal: `300` gives `0.3`, `2000` gives `2`. `<operation>` is the whole operation signature. The window is the document's `timeWindow`; the queries are plain sums of the counters, and what the backend does with the window is its own.
+  - **Names.** `<package>-<service>-<endpoint>-<objective>` in lowercase words joined by `-` (`getBooking` is `get-booking`); the objective is `p50`, `p90`, `p95`, `p99` or `errors`. The indicator is the name with `-sli`.
+  - **Order and shape.** One document per objective, separated by `---`, in the order of the IR (package, service, endpoint) and, for an endpoint, `p50`, `p90`, `p95`, `p99`, `errors`. A small YAML writer of the compiler's own writes it: two spaces, every string quoted, numbers and booleans as they are. The same contract gives the same bytes.
+
 ## 14. The pipeline with P2
 
 Added to section 6: the deadline starts at step 1 and can end any later step; a flag is read where its statement stands; `metrics` is called after step 10. `run<Service>DueMoves` enters at step 3.
