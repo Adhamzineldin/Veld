@@ -13,6 +13,7 @@ pub mod audited;
 pub mod b64;
 pub mod conditional;
 pub mod coverage;
+pub mod emitted;
 mod error;
 mod events;
 mod fuzz;
