@@ -473,3 +473,22 @@ fn an_endpoint_that_the_example_cannot_answer_with_precondition_failed_is_e0952(
     );
     assert_eq!(codes(&src), ["E0952"]);
 }
+
+// ---- the reserved name ------------------------------------------------------------------------------
+
+#[test]
+fn a_parameter_or_a_fact_called_version_is_e0920_on_a_guarded_endpoint_only() {
+    let guarded = |params: &str, fact: &str| {
+        rooms(&format!(
+            "  put \"/{{id}}\" save(id: uuid{params}) -> Room {{\n    fact {fact}: Room = id\n  }}"
+        ))
+    };
+    assert_eq!(codes(&guarded("", "version")), ["E0920"]);
+    assert_eq!(codes(&guarded(", @query version: int", "room")), ["E0920"]);
+    assert!(codes(&guarded("", "room")).is_empty());
+    // Without a guard the name is free: the handler gets no version.
+    let plain = rooms("  get \"/{id}\" one(id: uuid, @query version: int) -> Room");
+    assert!(codes(&plain).is_empty());
+    let free_fact = "model Plain { id: uuid }\nservice S at \"/s\" {\n  get \"/{id}\" one(id: uuid) -> Plain {\n    fact version: Plain = id\n  }\n}\n";
+    assert!(codes(free_fact).is_empty());
+}

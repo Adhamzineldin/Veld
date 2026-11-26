@@ -1,0 +1,25 @@
+// On an endpoint with a version guard the handler gets the checked version under the name
+// `version` (spec/rules.md section 11.9), so no parameter and no fact is called that. On an
+// endpoint without a guard the name is free.
+
+model Room {
+  id: uuid
+  @version
+  revision: long
+}
+
+model Plain { id: uuid }
+
+service Rooms at "/rooms" {
+  put "/{id}" fact_named(id: uuid) -> Room {
+    fact version: Room = id
+  }
+
+  put "/{id}/p" parameter_named(id: uuid, @query version: int) -> Room {
+    fact room: Room = id
+  }
+
+  get "/{id}/free" free(id: uuid, @query version: int) -> Plain {
+    fact plain: Plain = id
+  }
+}
