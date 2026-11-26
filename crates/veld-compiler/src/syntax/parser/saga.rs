@@ -40,6 +40,7 @@ impl Parser<'_> {
             );
             return Some(SagaDecl {
                 word,
+                open: word,
                 steps: Vec::new(),
                 timeout: None,
                 span: word,
@@ -70,6 +71,7 @@ impl Parser<'_> {
         };
         Some(SagaDecl {
             word,
+            open,
             steps,
             timeout,
             span: word.to(open.to(close)),

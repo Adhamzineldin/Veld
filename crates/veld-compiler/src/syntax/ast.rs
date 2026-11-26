@@ -433,6 +433,8 @@ pub struct Endpoint {
 pub struct SagaDecl {
     /// The `saga` word.
     pub word: Span,
+    /// The `{` of the block (the `saga` word when the block is missing).
+    pub open: Span,
     pub steps: Vec<SagaStepDecl>,
     pub timeout: Option<SagaTimeoutDecl>,
     /// `{ .. }`, or the word alone when the block is missing.

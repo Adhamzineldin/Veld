@@ -182,6 +182,11 @@ pub(super) fn given_line(g: &Given) -> String {
     format!("given {} = {value}", g.name.name)
 }
 
+/// An outcome as written: `ok`, or an error name, and a value.
+pub(super) fn value_text_of_outcome(o: &Outcome) -> String {
+    outcome_text(o)
+}
+
 fn outcome_text(o: &Outcome) -> String {
     let mut s = o.error.as_ref().map_or_else(|| "ok".to_string(), type_expr);
     if let Some(v) = &o.value {
