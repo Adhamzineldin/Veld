@@ -250,10 +250,10 @@ fn build_java(release: &'static str) -> Result<Java, Unavailable> {
 
     // 2. The test programs against the compiled generated code.
     std::fs::create_dir_all(work.join("tests")).unwrap();
+    // Only the programs directly in this folder belong to this run: every subfolder (`events/`,
+    // `rules/`, `spring/`, ...) holds the programs of other tests, which they compile themselves.
     for f in java_files(&java_dir(), &[]).iter().filter(|p| {
-        !p.starts_with(java_dir().join(".work"))
-            && !p.starts_with(java_dir().join("spring"))
-            && !p.starts_with(java_dir().join("rules"))
+        p.parent() == Some(java_dir().as_path())
     }) {
         std::fs::copy(f, work.join("tests").join(f.file_name().unwrap())).unwrap();
     }
