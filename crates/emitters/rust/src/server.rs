@@ -34,6 +34,8 @@ pub(crate) struct Needs {
     flags: bool,
     /// An endpoint whose move emits an event: the hooks give the outbox.
     outbox: bool,
+    /// An `@audited` endpoint: the hooks record its events.
+    audit: bool,
 }
 
 pub(crate) fn needs(tree: &Tree<'_>, svc: &Service) -> Needs {
@@ -46,6 +48,7 @@ pub(crate) fn needs(tree: &Tree<'_>, svc: &Service) -> Needs {
         caller: crate::conditional::svc_needs_caller(svc),
         flags: crate::flags::svc_reads_flags(tree, svc),
         outbox: crate::outbox::svc_emits(svc),
+        audit: crate::platform::svc_audited(svc),
     };
     for ep in &svc.endpoints {
         match ep.auth.kind {
@@ -72,6 +75,7 @@ impl Needs {
             || self.idempotency
             || self.flags
             || self.outbox
+            || self.audit
     }
 }
 
@@ -271,6 +275,9 @@ fn hooks_trait(
     if n.outbox {
         crate::outbox::hooks(w);
     }
+    if n.audit {
+        crate::platform::audit_hook(w);
+    }
     if svc.endpoints.iter().any(|e| e.slo.is_some()) {
         w.blank();
         w.line("/// Receives the metric of every request that matched an endpoint of this server, once its");
@@ -409,6 +416,9 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
         timer_forwards(w, typed);
     }
     complete_principal_method(w, tree, svc, typed);
+    if n.audit {
+        crate::platform::audit_forwards(w, tree, svc, typed);
+    }
     if n.idempotency {
         idempotency_forwards(w, n, typed);
     }

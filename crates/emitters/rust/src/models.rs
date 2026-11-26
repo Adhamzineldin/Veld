@@ -329,6 +329,9 @@ fn model_schema(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl, m: &Model) {
         if ctx.tree.p1.tenant_fields {
             w.line(format!("tenant: {},", f.tenant));
         }
+        if ctx.tree.p1.pii {
+            w.line(format!("pii: {},", f.pii || f.secret));
+        }
         w.close_with("},");
     }
     w.close_with("],");

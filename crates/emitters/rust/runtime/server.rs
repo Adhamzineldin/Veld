@@ -494,6 +494,26 @@ pub trait Endpoints: Send + Sync + 'static {
         Vec::new()
     }
     // #endif
+    // @if audit_log
+
+    /// What the server tells of an audited endpoint (`spec/platform.md` section 4); `None` for an
+    /// endpoint that is not audited.
+    fn audit_spec(&self, _endpoint: usize) -> Option<super::platform::AuditSpec> {
+        None
+    }
+
+    /// The caller in wire form with the schema of its model, for the audit event; `None` when the
+    /// service has no principal model.
+    fn audit_principal(&self, _ctx: &RequestContext) -> Option<(Value, &'static Schema)> {
+        None
+    }
+
+    /// Records the audit event of a request. A failing hook does not change the answer: the
+    /// failure goes to `on_error`.
+    fn audit<'a>(&'a self, _event: &'a super::platform::AuditEvent) -> impl Future<Output = Result<(), Error>> + Send + 'a {
+        async { Ok(()) }
+    }
+    // @end
     // @if tenant_types
 
     /// The tenant of the caller, read from the principal once authentication has answered
@@ -1788,9 +1808,47 @@ impl<E: Endpoints> Handler<E> {
     }
     // @end
 
+    // @if audit_log
+    /// The pipeline from the guard on, for a context that is ready, and the audit event of an
+    /// audited endpoint: it is recorded once the answer is known and before it is written
+    /// (`spec/platform.md` section 4). It wraps the deadline and the idempotency settlement, so a
+    /// `504` is recorded too.
+    async fn run_ctx(&self, index: usize, caps: Vec<(String, String)>, req: Request, ctx: RequestContext) -> Response {
+        let e = &self.inner.endpoints;
+        let Some(spec) = e.audit_spec(index).filter(|_| !Self::is_timer(&ctx)) else {
+            return self.run_inner(index, caps, req, ctx).await;
+        };
+        let ep = &e.endpoints()[index];
+        let mut hold = AuditHold { inner: Arc::clone(&self.inner), ctx: ctx.clone(), owed: None, ep: index };
+        let resp = self.run_inner(index, caps, req, ctx).await;
+        let bytes = if let Body::Bytes(bytes) = &resp.body { Some(bytes.as_slice()) } else { None };
+        match super::platform::build_event(ep, &spec, &hold.ctx.platform, resp.status, bytes) {
+            Ok(event) => {
+                // From here the event is owed: a future dropped while the hook runs still delivers it.
+                let sent = event.clone();
+                hold.owed = Some(event);
+                let done = e.audit(&sent).await;
+                hold.owed = None;
+                if let Err(err) = done {
+                    e.on_error(&Error::other(format!("veld audit: the hook failed for `{}`: {err}; event {}", ep.name, sent.canonical())), &hold.ctx);
+                }
+            }
+            Err(why) => {
+                e.on_error(&Error::other(format!("veld audit: the event of `{}` could not be built: {why}", ep.name)), &hold.ctx);
+            }
+        }
+        resp
+    }
+
+    // @end
     /// The pipeline from the guard on, for a context that is ready.
     #[allow(unused_mut)]
+    // @if !audit_log
     async fn run_ctx(&self, index: usize, caps: Vec<(String, String)>, req: Request, mut ctx: RequestContext) -> Response {
+    // @end
+    // @if audit_log
+    async fn run_inner(&self, index: usize, caps: Vec<(String, String)>, req: Request, mut ctx: RequestContext) -> Response {
+    // @end
         let e = &self.inner.endpoints;
         let ep = &e.endpoints()[index];
         // @if conditional
@@ -1923,6 +1981,11 @@ impl<E: Endpoints> Handler<E> {
             // @if tenant_types
             ctx.tenant = e.caller_tenant(ctx);
             // @end
+            // @if audit_log
+            if let Some((wire, schema)) = e.audit_principal(ctx) {
+                ctx.platform.note_principal(wire, schema);
+            }
+            // @end
         }
         for name in ep.middleware {
             if let Err(err) = e.middleware(name, ctx).await {
@@ -1971,6 +2034,12 @@ impl<E: Endpoints> Handler<E> {
         // @if conditional
         if !headers.is_empty() {
             return Err(self.refused(ep, headers, bound));
+        }
+        // @end
+        // @if audit_log
+        // Step 4 has passed: the parameters are kept for the audit event, also when step 5 refuses.
+        if bound.issues.is_empty() && e.endpoints().iter().position(|x| std::ptr::eq(x, ep)).is_some_and(|i| e.audit_spec(i).is_some()) {
+            super::platform::note_parameters(ep, &bound.value, &ctx.platform);
         }
         // @end
         // #if rules
@@ -2529,6 +2598,72 @@ impl<E: Endpoints> Handler<E> {
     }
     // @end
 }
+// @if audit_log
+
+/// An audited request. When its answer is decided the event is owed to the hook until the hook
+/// has answered; if the future is dropped (the caller hung up) or the pipeline panics in between,
+/// `Drop` hands the event to a task of its own, so an answer that was decided is always recorded.
+/// A request dropped *before* its answer is decided has no outcome to record and records nothing;
+/// a pipeline that panics is recorded as `500 Internal` and the panic goes on.
+struct AuditHold<E: Endpoints> {
+    inner: Arc<Inner<E>>,
+    ctx: RequestContext,
+    ep: usize,
+    owed: Option<super::platform::AuditEvent>,
+}
+
+impl<E: Endpoints> Drop for AuditHold<E> {
+    fn drop(&mut self) {
+        let event = match self.owed.take() {
+            Some(event) => Some(event),
+            None if std::thread::panicking() => self.panicked(),
+            None => None,
+        };
+        let Some(event) = event else {
+            return;
+        };
+        let (inner, ctx) = (Arc::clone(&self.inner), self.ctx.clone());
+        spawn_audit(async move {
+            if let Err(err) = inner.endpoints.audit(&event).await {
+                inner.endpoints.on_error(&Error::other(format!("veld audit: the hook failed: {err}; event {}", event.canonical())), &ctx);
+            }
+        });
+    }
+}
+
+impl<E: Endpoints> AuditHold<E> {
+    /// The event of a pipeline that panicked: `500 Internal`, with what the request had reached.
+    fn panicked(&self) -> Option<super::platform::AuditEvent> {
+        let e = &self.inner.endpoints;
+        let spec = e.audit_spec(self.ep)?;
+        let ep = e.endpoints().get(self.ep)?;
+        let body = br#"{"type":"","title":"Internal","status":500}"#;
+        super::platform::build_event(ep, &spec, &self.ctx.platform, 500, Some(body)).ok()
+    }
+}
+
+// @if axum
+/// Runs `fut` on the tokio runtime this thread belongs to; with none, on a thread of its own.
+fn spawn_audit<F: Future<Output = ()> + Send + 'static>(fut: F) {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            handle.spawn(fut);
+        }
+        Err(_) => spawn_audit_thread(fut),
+    }
+}
+// @end
+// @if !axum
+fn spawn_audit<F: Future<Output = ()> + Send + 'static>(fut: F) {
+    spawn_audit_thread(fut);
+}
+// @end
+
+/// Drives `fut` on a thread of its own (the executor of `veld::block_on`).
+fn spawn_audit_thread<F: Future<Output = ()> + Send + 'static>(fut: F) {
+    let _ = std::thread::Builder::new().name("veld-audit".into()).spawn(move || super::util::block_on(fut));
+}
+// @end
 // @if platform
 
 impl<E: Endpoints> Handler<E> {
@@ -2542,7 +2677,24 @@ impl<E: Endpoints> Handler<E> {
         let own: Option<std::time::SystemTime> = None;
         // @end
         ctx.now = own.unwrap_or_else(|| self.inner.endpoints.request_clock(ctx));
+        // @if audit_log
+        ctx.platform.note_now(ctx.now);
+        // @end
     }
+    // @if audit_log
+
+    /// Whether this is a call of the due-moves runner: the server calling itself, which is neither
+    /// limited nor audited.
+    fn is_timer(ctx: &RequestContext) -> bool {
+        // @if timed
+        ctx.timer.is_some()
+        // @end
+        // @if !timed
+        let _ = ctx;
+        false
+        // @end
+    }
+    // @end
 
     // @if tenancy
 

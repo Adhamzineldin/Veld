@@ -114,6 +114,10 @@ pub struct Field {
     /// from the caller, so a request may lack it (a member it carries is kept as received).
     pub tenant: bool,
     // #endif
+    // #if pii
+    /// The field is marked `@pii` or `@secret`: the audit log leaves its value out.
+    pub pii: bool,
+    // #endif
 }
 
 /// A model or an error.

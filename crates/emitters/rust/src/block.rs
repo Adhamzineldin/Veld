@@ -523,7 +523,7 @@ fn step6(
         // (`veld::server::Endpoints::complete_principal`).
     }
     for f in &ep.rules.facts {
-        load_fact(w, ctx, svc, f, &sc)?;
+        load_fact(w, ctx, svc, f, (&sc, ep.audited))?;
     }
     // The policies and the transition guard run whether or not requests are validated: who may
     // call an endpoint and which move is legal must not depend on a validation option.
@@ -624,7 +624,7 @@ fn load_fact(
     ctx: &Ctx<'_, '_>,
     svc: &Service,
     f: &EndpointFact,
-    sc: &Scope,
+    (sc, audited): (&Scope, bool),
 ) -> Result<(), String> {
     let name = &f.name;
     let key = match &f.key {
@@ -680,6 +680,21 @@ fn load_fact(
             ));
             w.line(format!("return Err(Halt::Error({}));", load.not_found));
             w.close();
+        }
+    }
+    if audited && ctx.tree.p1.audit {
+        // The audit event holds the fact as it was loaded: in wire form, redacted, once it is known
+        // to be the caller's (`spec/platform.md` section 9.1).
+        let schema = schema_ref(ctx, &f.ty, &veld_ir::Constraints::default());
+        let id = &load.ident;
+        let note = format!(
+            "veld::platform::note_fact(ctx, {}, {schema}, v);",
+            lit(name)
+        );
+        if f.optional {
+            w.line(format!("if let Some(v) = &loaded_{id} {{ {note} }}"));
+        } else {
+            w.line(format!("{{ let v = &loaded_{id}; {note} }}"));
         }
     }
     w.line(format!("let fact_{} = &loaded_{};", load.ident, load.ident));

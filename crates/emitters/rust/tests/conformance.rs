@@ -400,11 +400,13 @@ fn rust_generates_tenancy() {
     veld_emit_conformance::check_tenancy_is_generated(&Rust).unwrap();
 }
 
-/// `audit` is opt-in (`spec/platform.md` section 4): the Rust server refuses an `@audited`
+/// `audit` is opt-in (`spec/platform.md` section 4): the Rust server declares it and generates an
+/// audited endpoint and an audited service; an audited `ws` endpoint is still `E0801`, at the
 /// endpoint.
 #[test]
-fn rust_refuses_audit_as_a_server() {
-    veld_emit_conformance::check_audit_is_refused(&Rust).unwrap();
+fn rust_generates_audit_as_a_server() {
+    veld_emit_conformance::check_audit_is_generated(&Rust).unwrap();
+    veld_emit_conformance::check_audited_ws_is_refused(&Rust).unwrap();
 }
 
 /// `limits` is opt-in (`spec/platform.md` section 5): Rust refuses an endpoint with `@limit`, as

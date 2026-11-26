@@ -19,6 +19,10 @@ pub struct State {
     /// The wire paths that visibility dropped from what was sent, without the `$`.
     hidden: Mutex<BTreeSet<String>>,
     // @end
+    // @if audit_log
+    /// What the request had reached when it ended: the trail of its audit event.
+    trail: Mutex<Trail>,
+    // @end
 }
 
 impl State {
@@ -34,6 +38,14 @@ impl State {
     #[must_use]
     pub fn hidden(&self) -> Vec<String> {
         self.hidden.lock().map(|h| h.iter().cloned().collect()).unwrap_or_default()
+    }
+    // @end
+    // @if !visibility
+
+    /// What visibility dropped so far: this server has no `@visible` field to drop.
+    #[must_use]
+    pub fn hidden(&self) -> Vec<String> {
+        Vec::new()
     }
     // @end
 }
@@ -315,6 +327,323 @@ pub fn foreign<T: serde::Serialize>(schema: &Schema, fact: &T, ctx: &super::serv
     };
     let wire = schema.to_wire(&typed, false, false);
     !foreign_values(schema, &wire, ctx.tenant(), "$").is_empty()
+}
+// @end
+
+// @if audit_log
+// ---------------------------------------------------------------------------------------------
+// The audit log (`spec/platform.md` section 4)
+// ---------------------------------------------------------------------------------------------
+
+use serde_json::Map;
+
+use super::spec::EndpointSpec;
+
+/// What the server tells about an audited endpoint (`Endpoints::audit_spec`).
+#[derive(Debug, Clone, Copy)]
+pub struct AuditSpec {
+    /// The signatures of the errors the contract declares itself: only their data is a `result`
+    /// (an error of the prelude has none: its detail is not for a log).
+    pub errors: &'static [&'static str],
+}
+
+/// What happened to a request: `status`, and the name of the error when the answer is one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditOutcome {
+    pub status: u16,
+    pub error: Option<String>,
+}
+
+/// The audit event of one request, the same value in every target (`spec/platform.md` section 4).
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuditEvent {
+    /// The operation signature.
+    pub operation: String,
+    /// The clock reading of the request: `YYYY-MM-DDTHH:MM:SS[.mmm]Z`.
+    pub time: String,
+    /// The caller, without its `@pii` and `@secret` fields; `None` when authentication failed and
+    /// for an endpoint with no authentication.
+    pub principal: Option<Value>,
+    pub outcome: AuditOutcome,
+    /// The parameters of step 4 by name, in wire form.
+    pub parameters: Map<String, Value>,
+    /// The facts loaded when the request ended, by name, in wire form.
+    pub facts: Map<String, Value>,
+    /// The body of the answer as it was sent; `None` for no body and for an error of the prelude.
+    pub result: Option<Value>,
+    /// The wire paths that `@visible` dropped from the result, sorted.
+    pub hidden: Vec<String>,
+    /// The wire paths of every `@pii` and `@secret` value left out, sorted.
+    pub redacted: Vec<String>,
+}
+
+impl AuditEvent {
+    /// The event as JSON: `principal` and `result` are left out when they are absent.
+    #[must_use]
+    pub fn to_json(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("operation".into(), Value::from(self.operation.as_str()));
+        m.insert("time".into(), Value::from(self.time.as_str()));
+        if let Some(principal) = &self.principal {
+            m.insert("principal".into(), principal.clone());
+        }
+        let mut outcome = Map::new();
+        outcome.insert("status".into(), Value::from(self.outcome.status));
+        if let Some(error) = &self.outcome.error {
+            outcome.insert("error".into(), Value::from(error.as_str()));
+        }
+        m.insert("outcome".into(), Value::Object(outcome));
+        m.insert("parameters".into(), Value::Object(self.parameters.clone()));
+        m.insert("facts".into(), Value::Object(self.facts.clone()));
+        if let Some(result) = &self.result {
+            m.insert("result".into(), result.clone());
+        }
+        m.insert("hidden".into(), Value::Array(self.hidden.iter().map(|p| Value::from(p.as_str())).collect()));
+        m.insert("redacted".into(), Value::Array(self.redacted.iter().map(|p| Value::from(p.as_str())).collect()));
+        Value::Object(m)
+    }
+
+    /// The RFC 8785 canonical JSON of the event.
+    #[must_use]
+    pub fn canonical(&self) -> String {
+        super::canonical::canonical(&self.to_json())
+    }
+}
+
+/// What a request had reached when it ended.
+#[derive(Debug, Default)]
+struct Trail {
+    now: Option<std::time::SystemTime>,
+    /// The caller in wire form, with the schema of its model.
+    principal: Option<(Value, &'static Schema)>,
+    parameters: Map<String, Value>,
+    facts: Map<String, Value>,
+    redacted: BTreeSet<String>,
+    /// Why the event cannot be built: a value that does not have the shape of its type cannot be
+    /// known to be clean.
+    broken: Option<String>,
+}
+
+impl State {
+    fn trail<R>(&self, f: impl FnOnce(&mut Trail) -> R) -> Option<R> {
+        self.trail.lock().ok().map(|mut t| f(&mut t))
+    }
+
+    /// The clock reading of the request.
+    pub(crate) fn note_now(&self, now: std::time::SystemTime) {
+        self.trail(|t| t.now = Some(now));
+    }
+
+    /// The caller, as the authentication hook returned it, in wire form.
+    pub(crate) fn note_principal(&self, wire: Value, schema: &'static Schema) {
+        self.trail(|t| t.principal = Some((wire, schema)));
+    }
+}
+
+/// Keeps what a value holds without its marked fields, and lists the paths that were left out.
+fn keep(t: &mut Trail, schema: &Schema, wire: &Value, root: &str) -> Option<Value> {
+    let mut paths = BTreeSet::new();
+    match redact(schema, wire, root, &mut paths) {
+        Ok(kept) => {
+            t.redacted.extend(paths);
+            Some(kept)
+        }
+        Err(why) => {
+            t.broken.get_or_insert(why);
+            None
+        }
+    }
+}
+
+/// Keeps the parameters of step 4 in wire form, redacted, for the audit event of the request.
+pub(crate) fn note_parameters(ep: &EndpointSpec, args: &Map<String, Value>, state: &State) {
+    state.trail(|t| {
+        for p in ep.params.iter().filter(|p| !p.stream) {
+            let Some(typed) = args.get(p.name) else {
+                continue;
+            };
+            let wire = p.schema.to_wire(typed, true, false);
+            if let Some(kept) = keep(t, p.schema, &wire, &format!("parameters.{}", p.name)) {
+                t.parameters.insert(p.name.to_string(), kept);
+            }
+        }
+    });
+}
+
+/// Keeps a fact in wire form, redacted, once it is loaded. For generated code.
+pub fn note_fact<T: serde::Serialize>(ctx: &super::server::RequestContext, name: &str, schema: &Schema, fact: &T) {
+    let Ok(typed) = serde_json::to_value(fact) else {
+        return;
+    };
+    let wire = schema.to_wire(&typed, false, false);
+    ctx.platform.trail(|t| {
+        if let Some(kept) = keep(t, schema, &wire, &format!("facts.{name}")) {
+            t.facts.insert(name.to_string(), kept);
+        }
+    });
+}
+
+/// Whether a field is marked `@pii` or `@secret`.
+fn marked(f: &super::schema::Field) -> bool {
+    // @if pii
+    f.pii
+    // @end
+    // @if !pii
+    {
+        let _ = f;
+        false
+    }
+    // @end
+}
+
+fn mismatch(path: &str, expected: &str, found: &Value) -> String {
+    let kind = match found {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    };
+    format!("{path}: expected {expected}, found {kind}")
+}
+
+/// `wire`, a wire value of `schema`, without every `@pii` and `@secret` field at any depth
+/// (nested models, lists, maps, the `items` of a page, the arm of a union), and the paths of what
+/// was left out (`principal.email`, `parameters.body.card`, `result[1].name`,
+/// `result.items[0].phone`) in `out`. A field is removed whole; members the declaration does not
+/// know are kept. It is `veld_rules::redact_type_at`, written once for the audit log and for the
+/// captures that reuse it.
+///
+/// # Errors
+/// The path and the kinds when the value does not have the shape of its type: a value that cannot
+/// be walked cannot be known to be clean.
+pub fn redact(schema: &Schema, v: &Value, path: &str, out: &mut BTreeSet<String>) -> Result<Value, String> {
+    if v.is_null() {
+        return Ok(Value::Null);
+    }
+    match schema {
+        Schema::Scalar(..) | Schema::Enum(_) => Ok(v.clone()),
+        Schema::List(of, _) => redact_items(of, v, path, out),
+        Schema::Map(of, _) => {
+            let entries = v.as_object().ok_or_else(|| mismatch(path, "object", v))?;
+            let mut kept = Map::new();
+            for (k, e) in entries {
+                kept.insert(k.clone(), redact(of, e, &format!("{path}.{k}"), out)?);
+            }
+            Ok(Value::Object(kept))
+        }
+        Schema::Page(of) => {
+            let obj = v.as_object().ok_or_else(|| mismatch(path, "object", v))?;
+            let mut kept = obj.clone();
+            if let Some(items) = obj.get("items") {
+                kept.insert("items".to_string(), redact_items(of, items, &format!("{path}.items"), out)?);
+            }
+            Ok(Value::Object(kept))
+        }
+        Schema::Model(m) => {
+            let obj = v.as_object().ok_or_else(|| mismatch(path, "object", v))?;
+            let mut kept = obj.clone();
+            for f in m.fields {
+                let Some(child) = obj.get(f.wire) else {
+                    continue;
+                };
+                let here = format!("{path}.{}", f.wire);
+                if marked(f) {
+                    kept.remove(f.wire);
+                    out.insert(here);
+                } else {
+                    kept.insert(f.wire.to_string(), redact(f.schema, child, &here, out)?);
+                }
+            }
+            Ok(Value::Object(kept))
+        }
+        Schema::Union(u) => {
+            let obj = v.as_object().ok_or_else(|| mismatch(path, "object", v))?;
+            let label = obj.get(u.discriminator).and_then(Value::as_str);
+            match label.and_then(|l| u.arms.iter().find(|(name, _)| *name == l)) {
+                Some((_, arm)) => redact(arm, v, path, out),
+                None => Err(format!("{path}: the value names no arm of the union `{}`", u.name)),
+            }
+        }
+    }
+}
+
+fn redact_items(of: &Schema, v: &Value, path: &str, out: &mut BTreeSet<String>) -> Result<Value, String> {
+    let list = v.as_array().ok_or_else(|| mismatch(path, "array", v))?;
+    let mut kept = Vec::with_capacity(list.len());
+    for (i, e) in list.iter().enumerate() {
+        kept.push(redact(of, e, &format!("{path}[{i}]"), out)?);
+    }
+    Ok(Value::Array(kept))
+}
+
+fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (yoe + era * 400 + i64::from(m <= 2), m, d)
+}
+
+/// A datetime as the contract writes one: the fraction only when it is not zero.
+fn format_millis(ms: i64) -> String {
+    let seconds = ms.div_euclid(1000);
+    let millis = ms.rem_euclid(1000);
+    let (y, mo, d) = civil_from_days(seconds.div_euclid(86_400));
+    let rem = seconds.rem_euclid(86_400);
+    let fraction = if millis == 0 { String::new() } else { format!(".{millis:03}") };
+    format!("{y:04}-{mo:02}-{d:02}T{:02}:{:02}:{:02}{fraction}Z", rem / 3600, rem % 3600 / 60, rem % 60)
+}
+
+/// The audit event of a request that ended with `status` and `body` (what was sent): the trail the
+/// request left, the answer it gave, and what visibility dropped.
+///
+/// # Errors
+/// Why the event cannot be built: a value of the trail or the answer that cannot be walked.
+pub(crate) fn build_event(ep: &EndpointSpec, spec: &AuditSpec, state: &State, status: u16, body: Option<&[u8]>) -> Result<AuditEvent, String> {
+    let mut trail = state.trail.lock().map_err(|_| "the trail of the request is poisoned".to_string())?;
+    if let Some(why) = trail.broken.take() {
+        return Err(why);
+    }
+    let now = trail.now.unwrap_or_else(std::time::SystemTime::now);
+    let document: Option<Value> = if status >= 400 { body.and_then(|b| serde_json::from_slice(b).ok()) } else { None };
+    let error = document.as_ref().and_then(|d| d.get("title")).and_then(Value::as_str).map(str::to_string);
+    let mut redacted = trail.redacted.clone();
+    let principal = match (&trail.principal, ep.auth.is_some()) {
+        (Some((wire, schema)), true) => Some(redact(schema, wire, "principal", &mut redacted)?),
+        (_, _) => None,
+    };
+    let result = match (&document, ep.success, body) {
+        (Some(doc), _, _) => {
+            let sig = doc.get("type").and_then(Value::as_str).unwrap_or_default();
+            match (spec.errors.contains(&sig), ep.errors.iter().find(|d| d.sig == sig), doc.get("data")) {
+                (true, Some(d), Some(data)) => Some(redact(d.schema, data, "result", &mut redacted)?),
+                (_, _, _) => None,
+            }
+        }
+        (None, Some(schema), Some(bytes)) if status < 400 && !bytes.is_empty() => {
+            let wire: Value = serde_json::from_slice(bytes).map_err(|e| format!("result: the answer is not JSON: {e}"))?;
+            Some(redact(schema, &wire, "result", &mut redacted)?)
+        }
+        (None, _, _) => None,
+    };
+    let hidden = state.hidden();
+    Ok(AuditEvent {
+        operation: ep.sig.to_string(),
+        time: format_millis(super::rules::clock_ms(now)),
+        principal,
+        outcome: AuditOutcome { status, error },
+        parameters: trail.parameters.clone(),
+        facts: trail.facts.clone(),
+        result,
+        hidden,
+        redacted: redacted.into_iter().collect(),
+    })
 }
 // @end
 

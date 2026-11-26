@@ -101,7 +101,8 @@ const LAPIN: &str = "{ version = \"4\", default-features = false, features = [\"
 /// `Cargo.toml`.
 pub fn emit_cargo(files: &mut FileSet, name: &str, f: &Features) -> Result<(), Vec<GenDiagnostic>> {
     // `time` for the timeouts of the websocket server and the reqwest transport; `rt` for the
-    // task that gives an idempotency key back when a request is dropped (axum already needs tokio).
+    // task that gives an idempotency key back when a request is dropped and the one that delivers an
+    // audit event that was owed to the hook (axum already needs tokio).
     let mut tokio: Vec<&str> = Vec::new();
     if f.axum && f.ws_server || f.reqwest {
         tokio.push("\"time\"");
@@ -109,7 +110,7 @@ pub fn emit_cargo(files: &mut FileSet, name: &str, f: &Features) -> Result<(), V
     if f.timeouts && f.server && !tokio.contains(&"\"time\"") {
         tokio.push("\"time\"");
     }
-    if f.axum && f.idempotency {
+    if f.axum && (f.idempotency || f.audit_log) {
         tokio.push("\"rt\"");
     }
     // The broker adapters wait, spawn and signal with tokio.

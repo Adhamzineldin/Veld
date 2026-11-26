@@ -340,3 +340,52 @@ pub fn emit_caller_tenant(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, ty
     ));
     w.close().blank();
 }
+
+// ---------------------------------------------------------------------------------------------
+// The audit log
+// ---------------------------------------------------------------------------------------------
+
+/// The hook of the audit log: required, so a server without it does not compile.
+pub fn audit_hook(w: &mut CodeWriter) {
+    w.blank();
+    w.line("/// Records the audit event of every request that matched an `@audited` endpoint, once the");
+    w.line("/// answer is known and before it is written (`spec/platform.md` section 4). A failing hook does");
+    w.line("/// not change the answer: the failure goes to `on_error`. Required: a server that audits and");
+    w.line("/// has no hook does not compile.");
+    w.line("fn audit<'a>(&'a self, event: &'a veld::platform::AuditEvent) -> impl std::future::Future<Output = Result<(), veld::Error>> + Send + 'a;");
+}
+
+/// The signatures of the errors an endpoint declares itself (not the prelude's).
+fn own_errors(tree: &Tree<'_>, ep: &Endpoint) -> Vec<String> {
+    ep.errors
+        .iter()
+        .map(|e| tree.ir.decl(e.decl))
+        .filter(|d| !crate::tree::is_prelude(tree.ir, d))
+        .map(|d| lit(&d.sig))
+        .collect()
+}
+
+/// `audit_spec`, `audit_principal` and `audit` of a dispatch whose service has an audited endpoint.
+pub fn audit_forwards(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, typed: Option<&str>) {
+    w.open("fn audit_spec(&self, endpoint: usize) -> Option<veld::platform::AuditSpec>");
+    w.open("match endpoint");
+    for (i, ep) in svc.endpoints.iter().enumerate().filter(|(_, e)| e.audited) {
+        w.line(format!(
+            "{i} => Some(veld::platform::AuditSpec {{ errors: &[{}] }}),",
+            own_errors(tree, ep).join(", ")
+        ));
+    }
+    w.line("_ => None,");
+    w.close().close().blank();
+    if let Some(ty) = typed {
+        w.open("fn audit_principal(&self, ctx: &veld::server::RequestContext) -> Option<(serde_json::Value, &'static veld::schema::Schema)>");
+        w.line(format!("let principal = ctx.principal::<{ty}>()?;"));
+        w.line(format!(
+            "Some((<{ty} as veld::VeldDecl>::to_wire(principal), <{ty} as veld::VeldDecl>::schema()))"
+        ));
+        w.close().blank();
+    }
+    w.open("fn audit<'a>(&'a self, event: &'a veld::platform::AuditEvent) -> impl std::future::Future<Output = Result<(), veld::Error>> + Send + 'a");
+    w.line("self.hooks.audit(event)");
+    w.close().blank();
+}
