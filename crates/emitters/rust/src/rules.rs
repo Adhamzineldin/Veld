@@ -965,11 +965,7 @@ fn ok_ident(f: &Field) -> String {
 
 /// The value of a derived expression as the field's type: the widening the language allows at
 /// the root, then the conversion from the value form to the field.
-fn derived_value(
-    ctx: &Ctx<'_, '_>,
-    f: &Field,
-    expr: &Expr,
-) -> Result<String, String> {
+fn derived_value(ctx: &Ctx<'_, '_>, f: &Field, expr: &Expr) -> Result<String, String> {
     let mut printer = RustPrinter::new(ctx);
     let mut printed = print_expr(&mut printer, expr);
     let ty = ExprType::Type(f.ty.clone());
@@ -982,11 +978,9 @@ fn derived_value(
     }
     let atom = printed.at(Printed::ATOM);
     Ok(match to {
-        ValueKind::Bool
-        | ValueKind::Int
-        | ValueKind::Long
-        | ValueKind::Float
-        | ValueKind::Enum => printed.code,
+        ValueKind::Bool | ValueKind::Int | ValueKind::Long | ValueKind::Float | ValueKind::Enum => {
+            printed.code
+        }
         ValueKind::String | ValueKind::Uuid | ValueKind::Decimal => format!("{atom}.to_string()"),
         ValueKind::Date => format!("vr::format_date({})", printed.code),
         ValueKind::Datetime => format!("vr::format_datetime({})", printed.code),
@@ -1040,14 +1034,18 @@ pub fn emit_derived(
         );
     }
     w.open(format!("impl {name}"));
-    w.line("/// Computes the derived fields of this value and of everything inside it, in dependency");
+    w.line(
+        "/// Computes the derived fields of this value and of everything inside it, in dependency",
+    );
     w.line("/// order (`spec/rules.md` section 17.2): the code the server runs, so that a form can show");
     w.line("/// them while the user types. Returns one violation for each field that could not be");
     w.line("/// computed; such a field holds a stand-in of its type.");
     w.open("pub fn derive(&mut self) -> Vec<veld::rules::Violation>");
     w.line("veld::rules::derive_value(self, veld::rules::Mode::Full)");
     w.close().blank();
-    w.line("/// Like [`Self::derive`], for a value in request position: a derived field that reads a");
+    w.line(
+        "/// Like [`Self::derive`], for a value in request position: a derived field that reads a",
+    );
     w.line("/// `@readonly` field is left alone.");
     w.open("pub fn derive_request(&mut self) -> Vec<veld::rules::Violation>");
     w.line("veld::rules::derive_value(self, veld::rules::Mode::Request)");
@@ -1074,18 +1072,29 @@ fn derived_statement(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl, f: &Field,
     let wire_reads: Vec<String> = wires_of(d, &reads).iter().map(|r| lit(r)).collect();
     // Blocked: it reads a derived field that has no value, or (in a request) a read-only field.
     let mut conditions: Vec<String> = Vec::new();
-    if reads.iter().any(|r| d.fields().iter().any(|o| &o.name == r && o.readonly)) {
+    if reads
+        .iter()
+        .any(|r| d.fields().iter().any(|o| &o.name == r && o.readonly))
+    {
         conditions.push("mode != vr::Mode::Request".to_string());
     }
     for r in &reads {
-        if let Some(o) = d.fields().iter().find(|o| &o.name == r && o.derived.is_some()) {
+        if let Some(o) = d
+            .fields()
+            .iter()
+            .find(|o| &o.name == r && o.derived.is_some())
+        {
             conditions.push(ok_ident(o));
         }
     }
     w.line(format!("// {}", f.name));
     let guarded = !conditions.is_empty();
     if guarded {
-        w.line(format!("let {} = if {} {{", ok_ident(f), conditions.join(" && ")));
+        w.line(format!(
+            "let {} = if {} {{",
+            ok_ident(f),
+            conditions.join(" && ")
+        ));
         w.indent();
         w.line("match");
     } else {

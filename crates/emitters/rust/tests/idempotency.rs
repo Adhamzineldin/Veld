@@ -176,12 +176,17 @@ fn an_idempotent_service_without_rules_has_a_test_handler() {
 /// The contract of the fingerprint goldens, compiled as the file `t.veld` of the package
 /// `bookings` (`tests/wire/idempotency/README.md`).
 fn fingerprints_ir() -> Ir {
-    let text = std::fs::read_to_string(repo_root().join("tests/wire/idempotency/fingerprints.veld")).unwrap();
+    let text =
+        std::fs::read_to_string(repo_root().join("tests/wire/idempotency/fingerprints.veld"))
+            .unwrap();
     let out = compile(&CompileInput {
         packages: vec![PackageInput {
             name: "bookings".into(),
             kind: PackageKind::Service,
-            files: vec![SourceFile { path: "t.veld".into(), text }],
+            files: vec![SourceFile {
+                path: "t.veld".into(),
+                text,
+            }],
             base_url: None,
         }],
         consumes: std::collections::BTreeMap::new(),
@@ -228,16 +233,37 @@ fn the_fingerprint_goldens_pass_through_the_generated_server() {
     if lock.exists() {
         std::fs::copy(&lock, ws.join("Cargo.lock")).unwrap();
     }
-    run_ok(&mut cargo(&ws, &["build", "--workspace", "--bins"]), "cargo build");
     run_ok(
-        &mut cargo(&ws, &["clippy", "--all-targets", "-p", "bookings-server", "--", "-D", "warnings"]),
+        &mut cargo(&ws, &["build", "--workspace", "--bins"]),
+        "cargo build",
+    );
+    run_ok(
+        &mut cargo(
+            &ws,
+            &[
+                "clippy",
+                "--all-targets",
+                "-p",
+                "bookings-server",
+                "--",
+                "-D",
+                "warnings",
+            ],
+        ),
         "cargo clippy",
     );
     let goldens = repo_root().join("tests/wire/idempotency/fingerprints.json");
     let out = run_ok(
         &mut cargo(
             &ws,
-            &["run", "-q", "-p", "fingerprint-harness", "--", &goldens.to_string_lossy()],
+            &[
+                "run",
+                "-q",
+                "-p",
+                "fingerprint-harness",
+                "--",
+                &goldens.to_string_lossy(),
+            ],
         ),
         "the fingerprint harness",
     );

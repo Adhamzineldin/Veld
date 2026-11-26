@@ -236,7 +236,9 @@ fn a_handler_takes_facts_then_version_then_transition() {
     let server = rooms_server(&ir);
     let body = text(&server, "src/rooms/orders_server.rs");
     assert!(
-        body.contains("facts: PayOrderFacts, version: Option<i64>, transition: veld::rules::Transition<"),
+        body.contains(
+            "facts: PayOrderFacts, version: Option<i64>, transition: veld::rules::Transition<"
+        ),
         "{body}"
     );
     let version = body.find("decode_key(&args, \"version\")").unwrap();

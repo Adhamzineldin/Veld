@@ -73,11 +73,11 @@ fn snapshots_of_a_chain_of_derived_fields() {
         server.paths().collect::<Vec<_>>().join("\n")
     );
     insta::assert_snapshot!("derived_models", text(&server, "src/chain/chain.rs"));
+    insta::assert_snapshot!("derived_server", text(&server, "src/chain/shop_server.rs"));
     insta::assert_snapshot!(
-        "derived_server",
-        text(&server, "src/chain/shop_server.rs")
+        "derived_rules_runtime",
+        text(&server, "src/veld/rules/mod.rs")
     );
-    insta::assert_snapshot!("derived_rules_runtime", text(&server, "src/veld/rules/mod.rs"));
     let client = gen_client(&ir, "chain-client", None);
     insta::assert_snapshot!("derived_client_models", text(&client, "src/chain/chain.rs"));
 }
@@ -87,7 +87,10 @@ fn a_derived_field_gets_a_schema_flag_a_derive_function_and_a_public_function() 
     let ir = chain();
     let models = text(&server_of(&ir), "src/chain/chain.rs").to_string();
     // Only the declarations that have a derived field get `derive`; every field says whether it is one.
-    assert!(models.contains("derive: Some(veld::rules::derive_object::<Order>)"), "{models}");
+    assert!(
+        models.contains("derive: Some(veld::rules::derive_object::<Order>)"),
+        "{models}"
+    );
     assert!(models.contains("derive: Some(veld::rules::derive_object::<Line>)"));
     assert!(models.contains("derive: Some(veld::rules::derive_object::<OverLimit>)"));
     assert!(models.contains("derived: true,"));
@@ -120,7 +123,10 @@ fn a_contract_without_derived_fields_has_none_of_it() {
         "check_rules_absent",
         "stand_in",
     ];
-    for files in [server_only_standard(), gen_client(&standard_ir(), "o", None)] {
+    for files in [
+        server_only_standard(),
+        gen_client(&standard_ir(), "o", None),
+    ] {
         for (path, bytes) in files.iter() {
             let s = String::from_utf8_lossy(bytes);
             for word in words {
@@ -152,7 +158,10 @@ fn a_derived_field_without_a_rule_still_brings_the_rules_runtime() {
     );
     assert!(files.get("src/veld/rules/mod.rs").is_some());
     let models = text(&files, "src/rooms/rooms.rs");
-    assert!(models.contains("impl veld::rules::Derive for Room"), "{models}");
+    assert!(
+        models.contains("impl veld::rules::Derive for Room"),
+        "{models}"
+    );
     assert!(!models.contains("impl veld::rules::Invariants for Room"));
 }
 
@@ -195,8 +204,10 @@ fn driver(ir: &Ir) -> String {
     let mut arms = String::new();
     for id in tree.decls() {
         let d = ir.decl(*id);
-        if matches!(d.kind, DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Union(_))
-            && !d.name.is_empty()
+        if matches!(
+            d.kind,
+            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Union(_)
+        ) && !d.name.is_empty()
             && tree.module_path(d) != "crate::prelude"
         {
             let path = tree.type_path(*id, "").replacen("crate", "vec_derived", 1);
@@ -269,7 +280,11 @@ fn the_derived_vectors_pass_through_generated_rust() {
     let all = load_cases(&text).unwrap();
     assert_eq!(all.len(), 22, "the file has 22 cases");
     let cases: Vec<&Case> = all.iter().filter(|c| !c.partial).collect();
-    assert_eq!(cases.len(), 21, "one case is the partial check, which Rust does not have");
+    assert_eq!(
+        cases.len(),
+        21,
+        "one case is the partial check, which Rust does not have"
+    );
     let ir = vector_ir();
     let ws = work_dir().join("derived-vectors-ws");
     let _ = std::fs::remove_dir_all(&ws);
@@ -297,7 +312,14 @@ fn the_derived_vectors_pass_through_generated_rust() {
     let out = run_ok(
         &mut cargo(
             &ws,
-            &["run", "-q", "--bin", "vectors_derived", "--", &file.to_string_lossy()],
+            &[
+                "run",
+                "-q",
+                "--bin",
+                "vectors_derived",
+                "--",
+                &file.to_string_lossy(),
+            ],
         ),
         "the vector driver",
     );
@@ -316,7 +338,11 @@ fn compare_every(cases: &[&Case], lines: &[&str]) -> Vec<String> {
         };
         let produced: Vec<Produced> = doc["violations"]
             .as_array()
-            .map(|a| a.iter().filter_map(|v| serde_json::from_value(v.clone()).ok()).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                    .collect()
+            })
             .unwrap_or_default();
         if let Err(e) = compare_produced(case, &produced) {
             failures.push(format!("{e}"));
@@ -324,7 +350,10 @@ fn compare_every(cases: &[&Case], lines: &[&str]) -> Vec<String> {
         for (path, want) in &case.computed {
             let got = value_at(&doc["wire"], path).unwrap_or(&Value::Null);
             if got != want {
-                failures.push(format!("case `{}`: {path} is {got}, expected {want}", case.name));
+                failures.push(format!(
+                    "case `{}`: {path} is {got}, expected {want}",
+                    case.name
+                ));
             }
         }
     }
