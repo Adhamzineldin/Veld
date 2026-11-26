@@ -186,15 +186,16 @@ Found when the example gained a state machine and policies (25 Nov), most import
 - [i] An audited invariant of an **event** counts: a service that publishes or subscribes to a channel which carries such an event (the rule on the event or on a declaration the event reaches) uses `rules_rollout`, and the `E0801` points at the rule. A client, which generates nothing for events, is not concerned
 - [~] Derived fields (17.2; the owner confirmed the two choices on 25 Nov): outside the generators in progress, then the four generators
 - [i] OpenAPI `x-veld-rules`, `x-veld-facts`, `x-veld-flows`, `x-veld-finals`, `x-veld-transition`; a contract without rules exports the same bytes as before
-- [~] LSP: hover, completion, go-to-definition and outline for rules, inside expressions too (in progress)
+- [i] LSP (26 Nov, never run): hover, completion, go-to-definition, the outline and semantic tokens for rules, endpoint statements, policies, the principal, states and examples, inside expressions too; it reads the syntax tree and the declaration table, so it keeps working on a file that does not compile (not on the broken statement itself). A test feeds it every prefix of the bookings contract. Open: rules of events are not in the outline; a policy behind a `use … as` alias is not followed; derived fields, the E2 annotations and the platform syntax still need their hovers and completions
 - [ ] Playground: live rule evaluation (WASM)
-- [~] `veld test --from-violation`: the tool side in progress; the server option that makes a capture comes with the generators
+- [i] `veld test --from-violation <file>` (26 Nov, never run): reads a violation event with a capture, finds the endpoint by its operation signature and prints the `example` block with the reference evaluator's outcome; the JSON of a capture is in `spec/rules.md` 17.3
+- [ ] The server option that makes a capture, in the Node, Java and Rust generators
 - [ ] Rule benchmark gate in CI
 
 ## Phase 6: extras
 - [~] Spec: `spec/rules.md` section 19 drafted (what `--coverage` counts and prints, `--fail-under`; what the rule book of `veld export rules` contains; `@pii` and `@secret`: no change on the wire, what generated code must leave out, the lints `L0015` `pii-without-auth` and `L0016` `secret-in-output`). No code
-- [~] `veld test --coverage` (in progress)
-- [~] `veld export rules` (in progress)
+- [i] `veld test --coverage` and `--fail-under` (26 Nov, never run): the units, held and violated, the report of 19.1; what the text left open is written into 19.1. No machine-readable output, because `veld test` has none
+- [i] `veld export rules` (26 Nov, never run): the rule book as Markdown; expressions are printed from the IR by the printer `veld diff` and the OpenAPI export use, not by `veld fmt`, which needs source text (19.2 says so). One snapshot to store
 - [ ] `@pii` and `@secret` redaction, lint for `@pii` without auth
 
 ## Events
