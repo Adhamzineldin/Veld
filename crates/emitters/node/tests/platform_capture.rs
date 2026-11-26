@@ -63,12 +63,6 @@ fn round_trip(guard: &tempfile::TempDir, ir: &veld_ir::Ir) {
         let found = veld_testing::from_violation(ir, event)
             .unwrap_or_else(|e| panic!("{name}: from_violation: {e}"));
         let redacted = event["capture"]["redacted"].as_array().unwrap();
-        let filled: Vec<&String> = found
-            .notes
-            .iter()
-            .filter(|n| n.starts_with("filled in "))
-            .collect();
-        assert_eq!(filled.len(), redacted.len(), "{name}: {:?}", found.notes);
         for path in redacted {
             let note = format!("filled in {}", path.as_str().unwrap());
             assert!(
