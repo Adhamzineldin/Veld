@@ -118,3 +118,10 @@ A skipped `allow` would permit, so this one case fails closed: `403 Forbidden`, 
 - The Java drivers for timed moves, flags and derived fields run through the JDK handler only, not Spring.
 - `RuleWalk.java` in the Java runtime has an unused import (`java.util.LinkedHashMap`) from before this work; the import-hygiene test of `spec/targets/java.md` section 7 probably fails on it.
 - A request with a deadline runs on a thread of an unbounded cached pool in Java.
+
+# Two shared test contracts grew after Java used them (26 Nov)
+
+The Node agent added to `tests/toolchain/contract/platform_p2/flags.veld` an endpoint `resizeRoom` (a flagged `ensure` over an `old(...)` operand that divides by the capacity) and to `tests/toolchain/contract/derived/shop.veld` a field `level` and a derived `share` on `User`, a model `Draft` (a `@readonly` member and a derived field that reads it) and an endpoint `saveDraft`.
+- **Java**: the stubs and drivers that implement these two contracts (`tests/toolchain/java/platform_p2/Flags*`, `tests/toolchain/java/derived/DerivedShop*`) no longer implement every endpoint and will not compile. Add `resizeRoom` and `saveDraft`, and the cases the Node drivers have for them (`flags_http.ts`, `derived_http.ts`).
+- **Rust**: the same for its harness crates, where they use these contracts.
+- From now on a target that needs another endpoint in a shared contract adds it for all three, or uses a contract of its own.
