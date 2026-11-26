@@ -155,7 +155,7 @@ pub(crate) fn run(live: &Live, ir: &Ir, ex: &Example) -> Result<ExampleReport, L
         Ok(a) => a,
         Err(why) => return Ok(failed(ex, ir, expect, why, Vec::new())),
     };
-    let wanted = wanted(ir, &filled, &delivery, expect, &served);
+    let wanted = wanted(ir, &filled, &delivery, &served);
     let mut differences = against_reference(&wanted, &got);
     differences.extend(against_expectation(ir, expect, &got, &served));
     if differences.is_empty() {
@@ -280,9 +280,18 @@ fn wanted(
     ir: &Ir,
     filled: &FilledEvent,
     delivery: &Delivery,
-    expect: &EventExpect,
     served: &BTreeSet<ServiceId>,
 ) -> Wanted {
+    // A generated consumer checks the shape and the constraints (step 3) before the invariants
+    // (step 4): a value that breaks a constraint is rejected as `shape` whatever the rules say.
+    if !constraint_findings(ir, filled.event, &filled.value).is_empty() {
+        return Wanted {
+            outcome: "rejected",
+            reason: Some("shape"),
+            violations: None,
+            called: BTreeSet::new(),
+        };
+    }
     match delivery {
         Delivery::Rejected {
             reason, violations, ..
@@ -300,7 +309,7 @@ fn wanted(
             }),
             called: BTreeSet::new(),
         },
-        Delivery::Handled { called } => handled(ir, filled, called, expect, served),
+        Delivery::Handled { called } => handled(ir, filled, called, served),
     }
 }
 
@@ -308,19 +317,8 @@ fn handled(
     ir: &Ir,
     filled: &FilledEvent,
     called: &[(ServiceId, String)],
-    expect: &EventExpect,
     served: &BTreeSet<ServiceId>,
 ) -> Wanted {
-    let findings = constraint_findings(ir, filled.event, &filled.value);
-    let wants_rejection = matches!(expect, EventExpect::Rejected) && !findings.is_empty();
-    if wants_rejection || findings.iter().any(|f| f.decided) {
-        return Wanted {
-            outcome: "rejected",
-            reason: Some("shape"),
-            violations: None,
-            called: BTreeSet::new(),
-        };
-    }
     let handles = served.iter().any(|s| {
         ir.service(*s)
             .subscriptions

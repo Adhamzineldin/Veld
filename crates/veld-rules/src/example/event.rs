@@ -194,9 +194,8 @@ fn live_only(
     }
     let found = super::constraints::findings(ir, filled.event, &filled.value);
     let first = found.first()?;
-    let verb = if first.decided { "breaks" } else { "may break" };
     Some(format!(
-        "live only: `{}` {verb} {}; a generated consumer rejects it as `shape`, the reference evaluator does not check constraints",
+        "live only: `{}` breaks {}; a generated consumer rejects it as `shape`, the reference evaluator does not check constraints",
         first.path, first.what
     ))
 }

@@ -303,9 +303,7 @@ fn constraints(
     r: veld_rules::envelope::Received,
 ) -> Result<veld_rules::envelope::Received, ConsumeError> {
     if opts.constraints
-        && veld_rules::example::constraint_findings(ir, r.event, &r.data)
-            .iter()
-            .any(|f| f.decided)
+        && !veld_rules::example::constraint_findings(ir, r.event, &r.data).is_empty()
     {
         return Err(ConsumeError::Shape("a constraint is broken".into()));
     }

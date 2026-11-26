@@ -286,14 +286,28 @@ fn a_value_that_breaks_a_constraint_and_is_expected_rejected_is_live_only() {
 }
 
 #[test]
-fn a_pattern_cannot_be_decided_offline_and_a_decided_constraint_comes_first() {
+fn a_pattern_and_a_format_are_decided_offline_too() {
     let why = skipped(limited(r#"{ n: 2, s: "b", t: "ab" }"#, "expect rejected"));
-    assert!(
-        why.contains("may break") && why.contains("@pattern"),
-        "{why}"
-    );
+    assert!(why.contains("$.s") && why.contains("@pattern"), "{why}");
+    // The first constraint in field order is the one named.
     let why = skipped(limited(r#"{ n: 12, s: "b", t: "ab" }"#, "expect rejected"));
-    assert!(why.contains("breaks") && why.contains("@max(10)"), "{why}");
+    assert!(why.contains("$.n") && why.contains("@max(10)"), "{why}");
+    let ir = compile_text(
+        "event Mail { to: string @format(email) }\nchannel C { carries Mail }\nservice P { publishes C }\nservice S { subscribes C as \"g\" { on Mail -> h } }\nexample \"bad\" { given event Mail { to: \"nobody\" }\n expect rejected }\nexample \"good\" { given event Mail { to: \"a@b.co\" }\n expect rejected }",
+    );
+    let bad = run_example(&ir, &ir.examples[0]).unwrap().verdict;
+    assert!(skipped(bad).contains("@format(email)"));
+    // Nothing is broken: the example that expects `rejected` fails, as it did before.
+    assert!(matches!(
+        run_example(&ir, &ir.examples[1]).unwrap().verdict,
+        Verdict::Failed(_)
+    ));
+}
+
+#[test]
+fn a_value_that_satisfies_every_constraint_is_not_live_only() {
+    let v = limited(r#"{ n: 2, s: "aaa", t: "ab" }"#, "expect rejected");
+    assert!(matches!(v, Verdict::Failed(_)), "{v:?}");
 }
 
 #[test]
