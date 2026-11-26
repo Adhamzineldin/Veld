@@ -242,6 +242,10 @@ public final class EndpointRules {
       Violation violation = new Violation(id, "request", fields, text, error);
       List<Violation> found = List.of(violation);
       RuleWalk.report(hooks, spec, RuleWalk.Position.INPUT, RuleWalk.Outcome.REJECTED, found, started);
+      // #if messages_server
+      found = Catalogs.answer(found);
+      text = found.get(0).message();
+      // #endif
       if (otherwise == null) {
         List<Issue> issues = List.of(new Issue("request", error == null ? "rule" : "rule_error", text));
         throw early(validation.apply(issues), 422, found);
@@ -313,6 +317,11 @@ public final class EndpointRules {
       }
       List<Violation> found = List.of(new Violation(id, "request", List.of(), "violates rule transition", null));
       RuleWalk.report(hooks, spec, RuleWalk.Position.INPUT, RuleWalk.Outcome.REJECTED, found, started);
+      // #endif
+      // #if machine_messages
+      found = Catalogs.answer(found);
+      // #endif
+      // #if machine
       VeldError error = invalid.get();
       throw early(error, error.status(), found);
     }
@@ -353,8 +362,22 @@ public final class EndpointRules {
         return new Transition<>(field, from, to);
       }
       String text = state ? "violates rule transition: not due" : "violates rule transition";
+      // #endif
+      // #if timed_not_messages
       List<Violation> found = List.of(new Violation(id, "request", List.of(), text, null));
+      // #endif
+      // #if timed_messages
+      // A move that is not due has a key of its own; one from the wrong state has the key of its rule.
+      String dueKey = state ? Catalogs.TRANSITION_NOT_DUE : null;
+      List<Violation> found = List.of(new Violation(id, "request", List.of(), text, null, dueKey));
+      // #endif
+      // #if timed
       RuleWalk.report(hooks, spec, RuleWalk.Position.INPUT, RuleWalk.Outcome.REJECTED, found, started);
+      // #endif
+      // #if timed_messages
+      found = Catalogs.answer(found);
+      // #endif
+      // #if timed
       VeldError error = invalid.get();
       throw early(error, error.status(), found);
     }
@@ -387,8 +410,23 @@ public final class EndpointRules {
         return;
       }
       String text = decided.denial();
+      // #endif
+      // #if policies_not_messages
       List<Violation> found = List.of(new Violation(id, "request", fields, text, null));
+      // #endif
+      // #if policies_messages
+      // The key of the forbid that was true, or the key of a denial no forbid with a message explains.
+      String denialKey = decided.key() == null ? Catalogs.NOT_PERMITTED : decided.key();
+      List<Violation> found = List.of(new Violation(id, "request", fields, text, null, denialKey));
+      // #endif
+      // #if policies
       RuleWalk.report(hooks, spec, RuleWalk.Position.INPUT, RuleWalk.Outcome.REJECTED, found, started);
+      // #endif
+      // #if policies_messages
+      found = Catalogs.answer(found);
+      text = found.get(0).message();
+      // #endif
+      // #if policies
       VeldError error = forbidden.apply(text);
       throw early(error, error.status(), found);
     }
@@ -417,6 +455,11 @@ public final class EndpointRules {
       }
       List<Violation> found = List.of(new Violation(id, "request", List.of(), "violates rule version", null));
       RuleWalk.report(hooks, spec, RuleWalk.Position.INPUT, RuleWalk.Outcome.REJECTED, found, started);
+      // #endif
+      // #if conditional_messages
+      found = Catalogs.answer(found);
+      // #endif
+      // #if conditional
       VeldError error = stale.apply(expected, actual);
       throw early(error, error.status(), found);
     }

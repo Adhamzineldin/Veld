@@ -12,7 +12,12 @@ import java.util.List;
  * @param message the rule's message, or the default message
  * @param error {@code overflow}, {@code division_by_zero} or {@code non_finite} for an evaluation
  *     error, otherwise {@code null}
+// #if messages
+ * @param messageKey the key of the message in a catalog (spec/platform.md section 22), or {@code
+ *     null} when the violation has none
+// #endif
  */
+// #if not_messages
 public record Violation(String rule, String path, List<String> fields, String message, String error) {
   /** Creates a violation (the field list is copied). */
   public Violation {
@@ -52,3 +57,58 @@ public record Violation(String rule, String path, List<String> fields, String me
     return o.get(key) instanceof Json.Str s ? s.value() : "";
   }
 }
+// #endif
+// #if messages
+public record Violation(
+      String rule, String path, List<String> fields, String message, String error, String messageKey) {
+  /** Creates a violation (the field list is copied). */
+  public Violation {
+    fields = List.copyOf(fields);
+  }
+
+  /** Creates a violation without a message key. */
+  public Violation(String rule, String path, List<String> fields, String message, String error) {
+    this(rule, path, fields, message, error, null);
+  }
+
+  /** The violation with {@code key} as its message key. */
+  public Violation withKey(String key) {
+    return new Violation(rule, path, fields, message, error, key);
+  }
+
+  /** The wire form: the entry of the {@code violations} member of a problem document. */
+  public Json toWire() {
+    List<Json> names = new ArrayList<>();
+    for (String f : fields) {
+      names.add(Json.of(f));
+    }
+    return Json.object()
+        .put("rule", Json.of(rule))
+        .put("path", Json.of(path))
+        .put("fields", Json.array(names))
+        .put("message", Json.of(message))
+        .put("error", error == null ? null : Json.of(error))
+        .put("messageKey", messageKey == null ? null : Json.of(messageKey))
+        .build();
+  }
+
+  /** Reads the wire form; a member that is missing or has the wrong type becomes empty. */
+  public static Violation fromWire(Json json) {
+    Json.Obj o = json.asObject();
+    List<String> names = new ArrayList<>();
+    if (o.get("fields") instanceof Json.Arr arr) {
+      for (Json f : arr.items()) {
+        names.add(f.asString());
+      }
+    }
+    return new Violation(
+        text(o, "rule"), text(o, "path"), names, text(o, "message"),
+        o.get("error") instanceof Json.Str s ? s.value() : null,
+        o.get("messageKey") instanceof Json.Str k ? k.value() : null);
+  }
+
+  private static String text(Json.Obj o, String key) {
+    return o.get(key) instanceof Json.Str s ? s.value() : "";
+  }
+}
+// #endif

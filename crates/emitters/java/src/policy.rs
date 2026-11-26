@@ -309,12 +309,22 @@ fn write_clauses(
             origin: Some(policy.origin.clone()),
         });
     }
-    for (code, message) in &forbids {
+    for (n, (code, message)) in forbids.iter().enumerate() {
+        // A `forbid` with a message has a key in the catalogs (`spec/platform.md` section 22): the
+        // `n`th, counting every `forbid` of the policy from 1.
+        let key = message
+            .as_ref()
+            .and(fc.tree.messages_server.then_some(()))
+            .and_then(|()| crate::messages::forbid_key(fc.tree.ir, &policy.id, n + 1));
         let message = message
             .as_deref()
             .map_or_else(|| "null".to_string(), java_str);
         w.open(format!("if ({kit}.forbids(() -> {code}))"));
-        w.line(format!("return {kit}.Verdict.denied({message});"));
+        let call = match key {
+            Some(key) => format!("{kit}.Verdict.denied({message}, {})", java_str(&key)),
+            None => format!("{kit}.Verdict.denied({message})"),
+        };
+        w.line(format!("return {call};"));
         w.close();
     }
     let any: Vec<String> = permits

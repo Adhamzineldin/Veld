@@ -16,6 +16,7 @@ pub mod events;
 pub mod flags;
 pub mod frameworks;
 pub mod machine;
+pub mod messages;
 pub mod models;
 pub mod outbox;
 pub mod platform;
@@ -90,7 +91,8 @@ fn events_capabilities(role: Role) -> Capabilities {
         .with(Feature::Slo)
         .with(Feature::Timeouts)
         .with(Feature::RulesFlags)
-        .with(Feature::EventsOutbox);
+        .with(Feature::EventsOutbox)
+        .with(Feature::Messages);
     match role {
         Role::Server => caps
             .with(Feature::Visibility)
@@ -300,6 +302,15 @@ impl Generator for Java {
                 .any(|s| !req.ir.service(*s).subscriptions.is_empty());
         let conditional_server =
             req.role == Role::Server && conditional::services_use(req.ir, &req.services);
+        let messages_own = tree.uses_messages();
+        let messages_any = messages_own
+            || (req.role == Role::Server
+                && req.consumes.iter().any(|sid| {
+                    Tree::new(req.ir, &base, &runtime_package, vec![*sid]).uses_messages()
+                }));
+        let messages_server = req.role == Role::Server
+            && messages_own
+            && (rules || policies || rollout || output_mode || derived || p1.any());
         let flags = runtime::Flags {
             rules: rules || policies || rollout || output_mode || derived || p1.any(),
             visibility: p1.visibility,
@@ -307,6 +318,10 @@ impl Generator for Java {
             // The capture keeps the parameters and the facts of a request the way the audit log does.
             audit: p1.audit || p1.capture,
             capture: p1.capture,
+            // A member with catalogs: the violations have a `messageKey`, and a server answers in the
+            // language of the request. The consumed clients of a server have catalogs of their own.
+            messages: messages_any,
+            messages_server,
             limits_server: p1.limits,
             // A client that gets `429` waits and sends again (a server's consumed clients too).
             limits: !(if req.role == Role::Client {
@@ -385,8 +400,10 @@ impl Generator for Java {
             .with_testing(flags.testing)
             .with_policies(uses_policies(req.ir, &req.services) || typed_principal)
             .with_rollout(flags.rollout)
-            .with_platform(p1);
+            .with_platform(p1)
+            .with_messages_server(flags.messages_server);
         models::emit(&mut files, &tree)?;
+        messages::emit(&mut files, &tree)?;
         match req.role {
             Role::Client => client::emit(&mut files, &tree)?,
             Role::Server => {
@@ -561,6 +578,7 @@ fn emit_consumed(
         .with_rules(rules)
         .with_policies(uses_policies(req.ir, &[*sid]));
         models::emit(files, &tree)?;
+        messages::emit(files, &tree)?;
         client::emit(files, &tree)?;
     }
     Ok(())

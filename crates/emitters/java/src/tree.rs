@@ -47,6 +47,10 @@ pub struct Tree<'a> {
     /// What a server of the tree uses of platform phase P1 (visibility, tenancy, the audit log,
     /// rate limits). Nothing for a client and for a consumed service.
     pub platform: crate::platform::Uses,
+    /// True for the server's own tree when a package of its services has message catalogs and the
+    /// rule classes are carried: it answers in the language of the request (`spec/targets/java.md`
+    /// section 18.3).
+    pub messages_server: bool,
     decls: Vec<DeclId>,
 }
 
@@ -78,6 +82,7 @@ impl<'a> Tree<'a> {
             events: false,
             runtime_config: None,
             platform: crate::platform::Uses::default(),
+            messages_server: false,
             decls: set.into_iter().collect(),
         }
     }
@@ -135,6 +140,21 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn with_platform(mut self, platform: crate::platform::Uses) -> Self {
         self.platform = platform;
+        self
+    }
+
+    /// Whether a package of the tree's services has message catalogs.
+    #[must_use]
+    pub fn uses_messages(&self) -> bool {
+        self.packages()
+            .into_iter()
+            .any(|p| !self.ir.package(p).messages.is_empty())
+    }
+
+    /// Sets whether the server answers in the language of the request.
+    #[must_use]
+    pub fn with_messages_server(mut self, on: bool) -> Self {
+        self.messages_server = on;
         self
     }
 

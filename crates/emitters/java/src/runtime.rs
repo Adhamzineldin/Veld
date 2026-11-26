@@ -69,6 +69,10 @@ const OUTBOX_FILES: &[&str] = &["Emission", "MemoryOutbox", "Outbox", "OutboxEnt
 /// idempotency key: emitted for a server with events or with `@idempotent`/`@version` endpoints.
 const CANON_FILES: &[&str] = &["Canon"];
 
+/// The message catalogs (`spec/platform.md` section 22): the choice of the language, the text of a
+/// message in it and, for a server with catalogs, the answer in the language of the request.
+const MESSAGE_FILES: &[&str] = &["Catalogs"];
+
 /// The runtime classes of the typed runtime config (`spec/targets/java.md` section 14): the check
 /// and its error. A target that has a runtime config only.
 const RUNTIME_CONFIG_FILES: &[&str] = &["RuntimeCheck", "VeldConfigException"];
@@ -88,6 +92,7 @@ runtime_files!(
     "AuditEvent",
     "AuditFailure",
     "Canon",
+    "Catalogs",
     "ClientCore",
     "ClientDefaults",
     "ClientOptions",
@@ -321,6 +326,12 @@ pub struct Flags {
     /// event of `onRuleViolation` carries the request. Needs `rules` and `audit` (the state that
     /// keeps the parameters and the facts, and the redaction, are the audit log's).
     pub capture: bool,
+    /// Message catalogs (`messages`, `spec/platform.md` section 22): a member of the target has
+    /// catalogs. A violation has a `messageKey`, and `Catalogs` chooses the language.
+    pub messages: bool,
+    /// A server with catalogs and the rule classes: it answers in the language of the request.
+    /// Needs `messages` and `rules`.
+    pub messages_server: bool,
     /// Rate limits of a server (`limits`, section 5): an endpoint has a `@limit`.
     pub limits_server: bool,
     /// Rate limits of a client: the call waits and sends again on a `429`.
@@ -374,6 +385,7 @@ pub fn emit_with(
             && (flags.outbox || !OUTBOX_FILES.contains(&name))
             && (flags.events || !EVENT_FILES.contains(&name))
             && (flags.events || flags.conditional || flags.audit || !CANON_FILES.contains(&name))
+            && (flags.messages || !MESSAGE_FILES.contains(&name))
             && (flags.audit || !AUDIT_FILES.contains(&name))
             && (flags.limits_server || !LIMIT_FILES.contains(&name))
             && (flags.derived || !DERIVED_FILES.contains(&name))
@@ -397,8 +409,23 @@ pub fn emit_with(
         "slo_timeouts" => flags.slo && flags.timeouts,
         "slo_only" => flags.slo && !flags.timeouts,
         "timeouts_only" => flags.timeouts && !flags.slo,
-        "wrapped" => flags.slo || flags.timeouts,
-        "no_wrap" => !(flags.slo || flags.timeouts),
+        "wrapped_plain" => (flags.slo || flags.timeouts) && !flags.messages_server,
+        "no_wrap_plain" => !(flags.slo || flags.timeouts) && !flags.messages_server,
+        "wrapped_messages" => (flags.slo || flags.timeouts) && flags.messages_server,
+        "no_wrap_messages" => !(flags.slo || flags.timeouts) && flags.messages_server,
+        "messages" => flags.messages,
+        "not_messages" => !flags.messages,
+        "messages_server" => flags.messages_server,
+        "not_messages_server" => !flags.messages_server,
+        "messages_rules" => flags.messages && flags.rules,
+        "rules_not_messages" => flags.rules && !flags.messages,
+        "policies_messages" => flags.policies && flags.messages_server,
+        "policies_not_messages" => flags.policies && !flags.messages_server,
+        "machine_messages" => flags.machine && flags.messages_server,
+        "derived_messages" => flags.derived && flags.messages_server,
+        "conditional_messages" => flags.conditional && flags.messages_server,
+        "timed_messages" => flags.timed && flags.messages_server,
+        "timed_not_messages" => flags.timed && !flags.messages_server,
         "timeouts_conditional" => flags.timeouts && flags.conditional,
         "no_timeouts" => !flags.timeouts,
         "timeouts_runtimecfg" => flags.timeouts && flags.runtime_config,
@@ -642,6 +669,60 @@ mod tests {
                     .map(|(_, b)| String::from_utf8_lossy(b).into_owned())
                     .unwrap_or_default();
                 assert_eq!(walk.contains("Platform.captureOf"), capture, "{flags:?}");
+            }
+        }
+    }
+
+    /// The message catalogs (`spec/targets/java.md` section 18.3): the regions of `messages` and
+    /// `messages_server` pair up with every combination of the other gates, no marker survives,
+    /// `Catalogs` is there exactly when a member has catalogs, and what answers in the language of a
+    /// request is there exactly when the server has them and the rule classes.
+    #[test]
+    fn the_regions_of_the_message_catalogs_pair_up_in_every_combination() {
+        for base in older() {
+            for bits in 0..16u32 {
+                let messages = bits & 1 != 0;
+                let server = messages && bits & 2 != 0;
+                let capture = bits & 4 != 0;
+                let flags = Flags {
+                    messages,
+                    messages_server: server,
+                    capture: capture && base.rules,
+                    audit: base.audit || (capture && base.rules),
+                    rules: base.rules || server,
+                    timed: base.timed && bits & 8 == 0,
+                    ..base
+                };
+                let mut files = FileSet::new();
+                emit_with(&mut files, "a.b", Streaming::default(), flags).unwrap();
+                let has = |name: &str| files.paths().any(|p| p.ends_with(name));
+                assert_eq!(has("/runtime/Catalogs.java"), messages, "{flags:?}");
+                for (path, bytes) in files.iter() {
+                    let text = String::from_utf8_lossy(bytes);
+                    assert!(
+                        !text.contains("// #if") && !text.contains("// #endif"),
+                        "{path} in {flags:?}"
+                    );
+                    if !messages {
+                        assert!(
+                            !text.contains("Catalogs") && !text.contains("messageKey"),
+                            "{path} in {flags:?}"
+                        );
+                    }
+                    if !server && path.ends_with("/runtime/RuleWalk.java") {
+                        assert!(!text.contains("Catalogs."), "{path} in {flags:?}");
+                    }
+                }
+                let catalogs = files
+                    .iter()
+                    .find(|(p, _)| p.ends_with("/runtime/Catalogs.java"))
+                    .map(|(_, b)| String::from_utf8_lossy(b).into_owned())
+                    .unwrap_or_default();
+                assert_eq!(
+                    catalogs.contains("static VeldResponse within("),
+                    server,
+                    "{flags:?}"
+                );
             }
         }
     }

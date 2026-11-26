@@ -375,12 +375,29 @@ public final class Router implements VeldHandler {
     return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
   }
   // #endif
-  // #if wrapped
+  // #if wrapped_plain
 
   private VeldResponse pipeline(Route route, Matcher match, VeldRequest request) {
   // #endif
-  // #if no_wrap
+  // #if no_wrap_plain
   private VeldResponse run(Route route, Matcher match, VeldRequest request) {
+  // #endif
+  // #if wrapped_messages
+
+  private VeldResponse pipeline(Route route, Matcher match, VeldRequest request) {
+    return Catalogs.within(hooks, request, () -> localized(route, match, request));
+  }
+
+  /** The pipeline of a request, with its language in force on this thread. */
+  private VeldResponse localized(Route route, Matcher match, VeldRequest request) {
+  // #endif
+  // #if no_wrap_messages
+  private VeldResponse run(Route route, Matcher match, VeldRequest request) {
+    return Catalogs.within(hooks, request, () -> localized(route, match, request));
+  }
+
+  /** The pipeline of a request, with its language in force on this thread. */
+  private VeldResponse localized(Route route, Matcher match, VeldRequest request) {
   // #endif
     ServerEndpoint ep = route.endpoint();
     EndpointSpec spec = ep.spec();

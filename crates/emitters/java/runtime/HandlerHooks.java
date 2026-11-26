@@ -132,6 +132,9 @@ public final class HandlerHooks {
   private final boolean captureViolations;
   private final Map<String, Platform.Captured> captured;
   // #endif
+  // #if messages_server
+  private final Catalogs.Support messages;
+  // #endif
   // #if limits_server
   private final Limiter limiter;
   private final AddressHook address;
@@ -176,6 +179,9 @@ public final class HandlerHooks {
     // #if capture
     this.captureViolations = b.captureViolations;
     this.captured = Map.copyOf(b.captured);
+    // #endif
+    // #if messages_server
+    this.messages = b.messages;
     // #endif
     // #if limits_server
     this.limits = Map.copyOf(b.limits);
@@ -281,6 +287,13 @@ public final class HandlerHooks {
   /** Whether the violations of the endpoint carry a capture: a hook to hear them, and the option not turned off. */
   boolean capturing(String sig) {
     return captured(sig) != null;
+  }
+  // #endif
+  // #if messages_server
+
+  /** The message catalogs of the service and the key of each rule, or {@code null} for a service without them. */
+  Catalogs.Support messages() {
+    return messages;
   }
   // #endif
   // #if limits_server
@@ -404,6 +417,9 @@ public final class HandlerHooks {
     // #if capture
     private boolean captureViolations = true;
     private final Map<String, Platform.Captured> captured = new LinkedHashMap<>();
+    // #endif
+    // #if messages_server
+    private Catalogs.Support messages;
     // #endif
     // #if limits_server
     private Limiter limiter;
@@ -585,6 +601,18 @@ public final class HandlerHooks {
     /** The endpoints that capture and what a capture needs to know of each, by operation signature. */
     public Builder captured(Map<String, Platform.Captured> byOperation) {
       this.captured.putAll(byOperation);
+      return this;
+    }
+
+    // #endif
+    // #if messages_server
+    /**
+     * The message catalogs of the service and the key of every rule (spec/platform.md section 22):
+     * the answers are written in the language of {@code Accept-Language} and every violation has its
+     * {@code messageKey}.
+     */
+    public Builder messages(Catalogs.Support value) {
+      this.messages = value;
       return this;
     }
 

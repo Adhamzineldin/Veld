@@ -203,11 +203,11 @@ fn java_generates_limits() {
     veld_emit_conformance::check_limits_are_generated(&Java).unwrap();
 }
 
-/// Message catalogs (`spec/platform.md` section 22): until Java implements them, it refuses a
-/// member that has catalogs with `E0801`, as a server and as a client.
+/// Message catalogs (`spec/platform.md` section 22): the Java server and client both declare
+/// `messages` and generate a member that has catalogs.
 #[test]
-fn java_refuses_message_catalogs() {
-    veld_emit_conformance::check_messages_is_refused(&Java).unwrap();
+fn java_generates_message_catalogs() {
+    veld_emit_conformance::check_messages_are_generated(&Java).unwrap();
 }
 
 /// Retention (`spec/platform.md` section 23): until Java implements it, its server refuses a

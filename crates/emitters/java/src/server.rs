@@ -649,6 +649,9 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     for line in crate::platform::registrations(fc, svc) {
         w.line(line);
     }
+    for line in crate::messages::registrations(fc, svc) {
+        w.line(line);
+    }
     let deadlines: Vec<String> = svc
         .endpoints
         .iter()

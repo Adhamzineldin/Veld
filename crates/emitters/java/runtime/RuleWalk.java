@@ -325,6 +325,9 @@ public final class RuleWalk {
       return null;
     }
     report(hooks, spec, Position.INPUT, Outcome.REJECTED, found, started);
+    // #if messages_server
+    found = Catalogs.answer(found);
+    // #endif
     // #if conditional_rules
     List<Issue> all = new ArrayList<>(leading);
     all.addAll(issues(found));
@@ -390,6 +393,11 @@ public final class RuleWalk {
       return null;
     }
     report(hooks, spec, Position.INPUT, Outcome.REJECTED, found, System.nanoTime());
+    // #endif
+    // #if derived_messages
+    found = Catalogs.answer(found);
+    // #endif
+    // #if derived
     return Router.problem(
         std.validation(), "ValidationError", 422, spec.sig(), Router.issuesToWire(issues(found)), found);
   }
@@ -467,6 +475,9 @@ public final class RuleWalk {
       return null;
     }
     report(hooks, spec, Position.INPUT, Outcome.REJECTED, found, started);
+    // #if messages_server
+    found = Catalogs.keyed(hooks, found);
+    // #endif
     return Router.problem(
         std.validation(), "ValidationError", 422, spec.sig(), Router.issuesToWire(issues(found)), found);
   }
@@ -501,6 +512,9 @@ public final class RuleWalk {
       return;
     }
     long micros = (System.nanoTime() - started) / 1_000L;
+    // #if messages_server
+    found = Catalogs.keyed(hooks, found);
+    // #endif
     // #if capture
     Json.Obj capture = Platform.captureOf(hooks, spec);
     // #endif

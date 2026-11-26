@@ -150,13 +150,35 @@ public final class ClientCore {
         err.setOp(ep.sig());
         throw err;
       }
-      // #if rules
+      // #if rules_not_messages
       if (options.localRules() && localRulesOn()) {
         RuleWalk.localCheck(ep, params, defaults.validation());
       }
       // #endif
+      // #if messages_rules
+      if (options.localRules() && localRulesOn()) {
+        try {
+          RuleWalk.localCheck(ep, params, defaults.validation());
+        } catch (VeldError err) {
+          Catalogs.keyLocal(messageKeys, err);
+          throw err;
+        }
+      }
+      // #endif
     }
   }
+  // #if messages
+
+  private volatile java.util.Map<String, String> messageKeys = java.util.Map.of();
+
+  /**
+   * Tells the core the {@code messageKey} of each rule of the service (spec/platform.md section 22),
+   * by rule id: the violations of its local check have them.
+   */
+  public void messageKeys(java.util.Map<String, String> keys) {
+    this.messageKeys = java.util.Map.copyOf(keys);
+  }
+  // #endif
   // #if rules
 
   /**

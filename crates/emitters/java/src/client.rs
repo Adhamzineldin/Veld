@@ -121,6 +121,10 @@ fn write_constructor_body(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Se
         // A call that gets `429` with `retryAfter` waits and sends again, once (`spec/platform.md` 5).
         w.line(format!("this.core.retryOnLimit({});", java_str(&ep.sig)));
     }
+    if let Some(line) = crate::messages::client_registration(fc, svc) {
+        // The violations of the local check have the key of their rule (`spec/platform.md` 22).
+        w.line(line);
+    }
     for ep in svc.endpoints.iter().filter(|e| e.timeout_ms.is_some()) {
         // The deadline of an endpoint is the default timeout of its calls (`spec/platform.md` 12).
         let ms = ep.timeout_ms.as_deref().unwrap_or_default();

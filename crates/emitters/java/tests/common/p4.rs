@@ -52,7 +52,22 @@ pub fn run_driver(
     copy: &[(&str, &str)],
     args: &[&str],
 ) -> tempfile::TempDir {
+    run_driver_with(trees, name, copy, &[], args)
+}
+
+/// Like [`run_driver`], and `write` lists files to create in the working directory (`(name there,
+/// contents)`).
+pub fn run_driver_with(
+    trees: &[&FileSet],
+    name: &str,
+    copy: &[(&str, &str)],
+    write: &[(&str, &str)],
+    args: &[&str],
+) -> tempfile::TempDir {
     let work = tempfile::tempdir().unwrap();
+    for (to, text) in write {
+        std::fs::write(work.path().join(to), text).unwrap();
+    }
     let mut sources = Vec::new();
     for tree in trees {
         sources.extend(write_files(work.path(), tree));
