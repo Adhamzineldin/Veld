@@ -74,3 +74,27 @@ fn audited_stays_above_its_endpoint_and_its_service() {
     );
     assert!(out.contains("  @audited\n  get \"/\" f() -> 204"), "{out}");
 }
+
+#[test]
+fn limit_keeps_its_arguments_and_their_order() {
+    let out = stable(
+        "@limit( 100 ,per:hour,by:ip )\nservice S at \"/s\" {\n  @limit(10,   by: user, per: minute)\n  get \"/\" f() -> 204\n}",
+    );
+    assert!(
+        out.starts_with("@limit(100, per: hour, by: ip)\nservice S"),
+        "{out}"
+    );
+    assert!(
+        out.contains("  @limit(10, by: user, per: minute)\n  get \"/\" f() -> 204"),
+        "{out}"
+    );
+}
+
+#[test]
+fn limit_and_its_words_stay_names_where_they_are_names() {
+    let out = stable("model M {\n  limit: int\n  per: string\n  by: string\n}");
+    assert!(
+        out.contains("  limit: int\n") && out.contains("  per: string\n"),
+        "{out}"
+    );
+}

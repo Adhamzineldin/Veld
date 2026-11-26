@@ -20,6 +20,7 @@ mod endpoints;
 mod events;
 pub(crate) mod expr_text;
 mod flags;
+mod limits;
 mod retention;
 mod rules;
 mod saga;
@@ -156,6 +157,7 @@ pub enum ChangeKind {
     TenantRemoved,
     AuditAdded,
     AuditRemoved,
+    LimitChanged,
 }
 
 /// One difference between the old and the new contract.
@@ -380,6 +382,8 @@ mod derived_tests;
 mod event_tests;
 #[cfg(test)]
 mod flags_tests;
+#[cfg(test)]
+mod limits_tests;
 #[cfg(test)]
 mod retention_tests;
 #[cfg(test)]

@@ -166,9 +166,11 @@ pub(super) fn implied_error(q: &str, o: &Endpoint, n: &Endpoint) -> bool {
     let key = o.idempotency.is_some() != n.idempotency.is_some();
     let saga = o.saga.is_some() != n.saga.is_some();
     let deadline = o.timeout_ms.is_some() != n.timeout_ms.is_some();
+    let limit = o.limit.is_some() != n.limit.is_some();
     match name {
         "SagaFailed" => saga,
         "DeadlineExceeded" => deadline,
+        "TooManyRequests" => limit,
         "PreconditionFailed" => guard,
         "Conflict" => key,
         "ValidationError" => guard || key,

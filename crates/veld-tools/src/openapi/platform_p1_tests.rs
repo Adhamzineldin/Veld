@@ -58,3 +58,37 @@ fn a_contract_without_a_tenant_exports_no_extension() {
     let plain = TENANT.replace(" @tenant", "");
     assert!(!doc(&plain).to_string().contains("x-veld-tenant"));
 }
+
+const LIMIT: &str = "model User { id: uuid\n tenantId?: uuid @tenant }\nprincipal User\nmodel Room { id: uuid }\n\
+@auth(bearer)\nservice S at \"/s\" {\n  @limit(10, per: minute, by: user)\n  get \"/\" f() -> Room[]\n  get \"/all\" g() -> Room[]\n}\n";
+
+#[test]
+fn a_limit_carries_x_veld_limit_and_a_429_with_retry_after() {
+    let d = doc(LIMIT);
+    let op = &d["paths"]["/s"]["get"];
+    assert_eq!(
+        op["x-veld-limit"],
+        json!({ "count": 10, "per": "minute", "by": "user" })
+    );
+    let r429 = &op["responses"]["429"];
+    assert!(r429.is_object(), "{op}");
+    assert_eq!(
+        r429["headers"]["Retry-After"]["schema"]["type"],
+        json!("integer")
+    );
+}
+
+#[test]
+fn an_endpoint_without_a_limit_has_neither() {
+    let d = doc(LIMIT);
+    let other = &d["paths"]["/s/all"]["get"];
+    assert!(other.get("x-veld-limit").is_none(), "{other}");
+    assert!(other["responses"].get("429").is_none(), "{other}");
+}
+
+#[test]
+fn a_contract_without_a_limit_exports_no_extension() {
+    let plain = LIMIT.replace("  @limit(10, per: minute, by: user)\n", "");
+    let text = doc(&plain).to_string();
+    assert!(!text.contains("x-veld-limit") && !text.contains("Retry-After"));
+}
