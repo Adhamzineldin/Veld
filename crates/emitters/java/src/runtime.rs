@@ -273,6 +273,7 @@ pub fn emit_with(
         "conditional" => flags.conditional,
         "plain" => !flags.conditional,
         "conditional_rules" => flags.conditional && flags.rules,
+        "plain_rules" => !(flags.conditional && flags.rules),
         "preconditions" => flags.preconditions,
         "testing_conditional" => flags.testing && flags.conditional,
         "testing_plain" => !(flags.testing && flags.conditional),

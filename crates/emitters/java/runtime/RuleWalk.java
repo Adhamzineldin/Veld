@@ -231,6 +231,21 @@ public final class RuleWalk {
    */
   static VeldResponse inputFailure(
       EndpointSpec spec, HandlerHooks hooks, Map<String, Json> bound, Router.StdSigs std) {
+    // #if conditional_rules
+    return inputFailure(spec, hooks, bound, std, List.of());
+  }
+
+  /**
+   * Like {@link #inputFailure(EndpointSpec, HandlerHooks, Map, Router.StdSigs)}, with the issues of
+   * the headers of step 5 first in the issues of the {@code 422} (spec/rules.md section 11.10).
+   */
+  static VeldResponse inputFailure(
+      EndpointSpec spec,
+      HandlerHooks hooks,
+      Map<String, Json> bound,
+      Router.StdSigs std,
+      List<Issue> leading) {
+    // #endif
     long started = System.nanoTime();
     List<Violation> found = new ArrayList<>();
     // #if rollout
@@ -249,8 +264,15 @@ public final class RuleWalk {
       return null;
     }
     report(hooks, spec, Position.INPUT, Outcome.REJECTED, found, started);
+    // #if conditional_rules
+    List<Issue> all = new ArrayList<>(leading);
+    all.addAll(issues(found));
+    return Router.problem(std.validation(), "ValidationError", 422, spec.sig(), Router.issuesToWire(all), found);
+    // #endif
+    // #if plain_rules
     return Router.problem(
         std.validation(), "ValidationError", 422, spec.sig(), Router.issuesToWire(issues(found)), found);
+    // #endif
   }
 
   /**

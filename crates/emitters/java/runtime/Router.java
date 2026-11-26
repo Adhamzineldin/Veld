@@ -360,9 +360,8 @@ public final class Router implements VeldHandler {
     out.bound = bind(route, match, request, ctx, ws, hooks.validateRequests());
     // #if conditional
     Conditions held = conditions.get(spec.sig());
-    if (held != null) {
-      out.bound.issues.addAll(0, held.issues(ctx));
-    }
+    List<Issue> header = held == null ? List.of() : held.issues(ctx);
+    out.bound.issues.addAll(0, header);
     // #endif
     if (!out.bound.issues.isEmpty()) {
       out.failure = problem(std.validation(), "ValidationError", 422, spec.sig(), issuesData(out.bound.issues));
@@ -370,6 +369,14 @@ public final class Router implements VeldHandler {
     // #if rules
     if (out.failure == null && hooks.validateRequests()) {
       out.failure = RuleWalk.inputFailure(spec, hooks, out.bound.values, std);
+    }
+    // #endif
+    // #if conditional_rules
+    if (!header.isEmpty() && out.bound.issues.size() == header.size() && hooks.validateRequests()) {
+      VeldResponse merged = RuleWalk.inputFailure(spec, hooks, out.bound.values, std, header);
+      if (merged != null) {
+        out.failure = merged;
+      }
     }
     // #endif
     return out;
