@@ -409,11 +409,11 @@ fn rust_generates_audit_as_a_server() {
     veld_emit_conformance::check_audited_ws_is_refused(&Rust).unwrap();
 }
 
-/// `limits` is opt-in (`spec/platform.md` section 5): Rust refuses an endpoint with `@limit`, as
-/// a server and as a client.
+/// `limits` is opt-in (`spec/platform.md` section 5): Rust declares it as a server and as a
+/// client (which waits and sends again) and generates an endpoint with `@limit`.
 #[test]
-fn rust_refuses_limits() {
-    veld_emit_conformance::check_limits_are_refused(&Rust).unwrap();
+fn rust_generates_limits() {
+    veld_emit_conformance::check_limits_are_generated(&Rust).unwrap();
 }
 
 /// Message catalogs (`spec/platform.md` section 22): until the Rust generator implements them, it

@@ -647,3 +647,140 @@ pub(crate) fn build_event(ep: &EndpointSpec, spec: &AuditSpec, state: &State, st
 }
 // @end
 
+// @if limits
+// ---------------------------------------------------------------------------------------------
+// Rate limits (`spec/platform.md` section 5)
+// ---------------------------------------------------------------------------------------------
+
+use std::collections::BTreeMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
+/// Whose calls a limit counts together.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LimitBy {
+    User,
+    Tenant,
+    Ip,
+}
+
+impl LimitBy {
+    /// The word of the contract, which is also the `k` of the key.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            LimitBy::User => "user",
+            LimitBy::Tenant => "tenant",
+            LimitBy::Ip => "ip",
+        }
+    }
+}
+
+/// The limit of an endpoint: `@limit(10, per: minute, by: user)`.
+#[derive(Debug, Clone, Copy)]
+pub struct LimitSpec {
+    pub count: u32,
+    pub window_seconds: u32,
+    pub by: LimitBy,
+}
+
+/// What a limiter answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Decision {
+    pub allowed: bool,
+    /// The time left in the window, in whole seconds and at least 1, for a refused call; 0 otherwise.
+    pub retry_after_seconds: u32,
+}
+
+/// The key of a limit: the operation signature, the subject and the identity, joined with `|`.
+#[must_use]
+pub fn limit_key(operation: &str, by: LimitBy, identity: &str) -> String {
+    format!("{operation}|{}|{identity}", by.word())
+}
+
+/// A limiter: it allows at most `limit` calls of one key in any window it defines of
+/// `window_seconds`. Implement it over your store (a database, a cache) for a server that runs on
+/// more than one machine; the memory limiter counts per process.
+pub trait Limiter: Send + Sync + 'static {
+    /// One call of `key`. An `Err` is a failing limiter: the call is allowed and the failure goes
+    /// to `on_error`.
+    fn take<'a>(&'a self, key: &'a str, limit: u32, window_seconds: u32) -> Pin<Box<dyn Future<Output = Result<Decision, super::error::Error>> + Send + 'a>>;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Window {
+    start_ms: i64,
+    calls: u32,
+}
+
+/// The memory limiter: a fixed window per key that starts with the first call of the key that
+/// finds no open window; a window is open from its start up to, not including, its start plus its
+/// length; a refused call does not count (`veld_rules::limits::MemoryLimiter`).
+pub struct MemoryLimiter {
+    clock: Arc<dyn Fn() -> i64 + Send + Sync>,
+    windows: Mutex<BTreeMap<String, Window>>,
+}
+
+impl std::fmt::Debug for MemoryLimiter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("MemoryLimiter")
+    }
+}
+
+impl Default for MemoryLimiter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Windows that ended more than a day ago are swept once there are more than this many.
+const SWEEP_ABOVE: usize = 10_000;
+const DAY_MS: i64 = 86_400_000;
+
+impl MemoryLimiter {
+    /// A limiter on the system clock.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_clock(|| super::rules::clock_ms(std::time::SystemTime::now()))
+    }
+
+    /// A limiter on a clock of its own, in milliseconds since the epoch: a test drives it.
+    #[must_use]
+    pub fn with_clock(clock: impl Fn() -> i64 + Send + Sync + 'static) -> Self {
+        MemoryLimiter { clock: Arc::new(clock), windows: Mutex::new(BTreeMap::new()) }
+    }
+
+    /// One call of `key` at `now_ms`.
+    #[must_use]
+    pub fn take_at(&self, key: &str, limit: u32, window_seconds: u32, now_ms: i64) -> Decision {
+        let length = i64::from(window_seconds).saturating_mul(1000);
+        let Ok(mut windows) = self.windows.lock() else {
+            return Decision { allowed: true, retry_after_seconds: 0 };
+        };
+        if windows.len() > SWEEP_ABOVE {
+            windows.retain(|_, w| now_ms < w.start_ms.saturating_add(length).saturating_add(DAY_MS));
+        }
+        let open = windows.get(key).filter(|w| now_ms < w.start_ms.saturating_add(length)).copied();
+        let mut window = open.unwrap_or(Window { start_ms: now_ms, calls: 0 });
+        let decision = if window.calls < limit {
+            window.calls += 1;
+            Decision { allowed: true, retry_after_seconds: 0 }
+        } else {
+            let left = window.start_ms.saturating_add(length).saturating_sub(now_ms);
+            let seconds = (left.clamp(1, length.max(1)) + 999) / 1000;
+            Decision { allowed: false, retry_after_seconds: u32::try_from(seconds).unwrap_or(u32::MAX) }
+        };
+        windows.insert(key.to_string(), window);
+        decision
+    }
+}
+
+impl Limiter for MemoryLimiter {
+    fn take<'a>(&'a self, key: &'a str, limit: u32, window_seconds: u32) -> Pin<Box<dyn Future<Output = Result<Decision, super::error::Error>> + Send + 'a>> {
+        let now = (self.clock)();
+        Box::pin(std::future::ready(Ok(self.take_at(key, limit, window_seconds, now))))
+    }
+}
+// @end
+

@@ -112,6 +112,7 @@ fn all_capabilities() -> Capabilities {
         .with(Feature::Visibility)
         .with(Feature::Tenancy)
         .with(Feature::Audit)
+        .with(Feature::Limits)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {

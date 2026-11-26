@@ -226,6 +226,12 @@ fn endpoint_spec(
             .map_or("None".to_string(), |m| format!("Some({m})"));
         w.line(format!("timeout_ms: {ms},"));
     }
+    if ctx.tree.p1.limits_client {
+        // A limited call that may be repeated is sent again once, after the wait the `429` asks for.
+        let retry =
+            ep.limit.is_some() && (ep.method == veld_ir::Method::Get || ep.idempotency.is_some());
+        w.line(format!("retry_on_limit: {retry},"));
+    }
     w.close_with("},");
 }
 

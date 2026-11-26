@@ -389,3 +389,102 @@ pub fn audit_forwards(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, typed:
     w.line("self.hooks.audit(event)");
     w.close().blank();
 }
+
+// ---------------------------------------------------------------------------------------------
+// Rate limits
+// ---------------------------------------------------------------------------------------------
+
+/// Whether an endpoint of the service has a limit counted `by` that subject.
+#[must_use]
+pub fn svc_limited_by(svc: &Service, by: veld_ir::LimitSubject) -> bool {
+    svc.endpoints
+        .iter()
+        .any(|e| e.limit.is_some_and(|l| l.by == by))
+}
+
+/// The members of the hooks of a service with a limit: the limiter (optional), the address for a
+/// limit `by: ip` and the caller text for one `by: user` (required: a server without them does not
+/// compile). The caller text of an idempotency key is shared when the service has it.
+pub fn limit_hooks(w: &mut CodeWriter, address: bool, caller: bool, typed: Option<&str>) {
+    w.blank();
+    w.line("/// The limiter of the `@limit` endpoints: `take(key, limit, window_seconds)` answers whether the");
+    w.line("/// call is allowed. The default is none: the server then counts in memory, per process, and says");
+    w.line("/// so once when it starts. A limiter that fails lets the call through; the failure goes to `on_error`.");
+    w.open("fn limiter(&self) -> Option<&dyn veld::platform::Limiter>");
+    w.line("None");
+    w.close();
+    if address {
+        w.blank();
+        w.line("/// The client address of a limit `by: ip`. Only the application knows which proxy header to");
+        w.line("/// trust. Required: a server without it does not compile. An `Err` lets the call through and");
+        w.line("/// goes to `on_error`.");
+        w.line(
+            "fn address(&self, ctx: &veld::server::RequestContext) -> Result<String, veld::Error>;",
+        );
+    }
+    if caller {
+        let principal = typed.map_or_else(|| "veld::server::Principal".to_string(), str::to_string);
+        w.blank();
+        w.line("/// The text that tells callers apart for a limit `by: user`: one count per text. Required: a");
+        w.line("/// server without it does not compile. An `Err` lets the call through and goes to `on_error`.");
+        w.line(format!(
+            "fn caller(&self, principal: &{principal}, ctx: &veld::server::RequestContext) -> Result<String, veld::Error>;"
+        ));
+    }
+}
+
+/// `limit_spec`, `limiter`, `limit_caller` and `limit_address` of a dispatch whose service has a
+/// limit. `shared` says that the caller text is the one of the idempotency keys.
+pub fn limit_forwards(
+    w: &mut CodeWriter,
+    svc: &Service,
+    (address, shared): (bool, bool),
+    typed: Option<&str>,
+) {
+    w.open("fn limit_spec(&self, endpoint: usize) -> Option<veld::platform::LimitSpec>");
+    w.open("match endpoint");
+    for (i, l) in svc
+        .endpoints
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| e.limit.map(|l| (i, l)))
+    {
+        let by = match l.by {
+            veld_ir::LimitSubject::User => "User",
+            veld_ir::LimitSubject::Tenant => "Tenant",
+            veld_ir::LimitSubject::Ip => "Ip",
+        };
+        w.line(format!(
+            "{i} => Some(veld::platform::LimitSpec {{ count: {}, window_seconds: {}, by: veld::platform::LimitBy::{by} }}),",
+            l.count,
+            l.per.seconds()
+        ));
+    }
+    w.line("_ => None,");
+    w.close().close().blank();
+    w.open("fn limiter(&self) -> Option<&dyn veld::platform::Limiter>");
+    w.line("self.hooks.limiter()");
+    w.close().blank();
+    if svc_limited_by(svc, veld_ir::LimitSubject::User) {
+        w.open("fn limit_caller(&self, ctx: &veld::server::RequestContext) -> Result<String, veld::Error>");
+        let principal = typed.map_or_else(
+            || "ctx.principal.as_ref()".to_string(),
+            |ty| format!("ctx.principal::<{ty}>()"),
+        );
+        let call = if shared {
+            "Ok(self.hooks.idempotency_caller(p, ctx))"
+        } else {
+            "self.hooks.caller(p, ctx)"
+        };
+        w.line(format!("match {principal} {{"));
+        w.line(format!("    Some(p) => {call},"));
+        w.line("    None => Err(veld::Error::other(\"the caller is not known: a limit by user needs it\")),");
+        w.line("}");
+        w.close().blank();
+    }
+    if address {
+        w.open("fn limit_address(&self, ctx: &veld::server::RequestContext) -> Result<String, veld::Error>");
+        w.line("self.hooks.address(ctx)");
+        w.close().blank();
+    }
+}

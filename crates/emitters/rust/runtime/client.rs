@@ -70,8 +70,14 @@ pub trait Transport: Send + Sync + 'static {
     // @if sse
     /// Sends one request and returns as soon as the headers are there.
     fn open(&self, req: HttpRequest) -> impl Future<Output = Result<HttpStream, Error>> + Send;
+    // @end
+    // @if sleep
 
     /// Waits; used between reconnect attempts.
+    // @if limits_client
+    ///
+    /// A call that a limit refused is sent again after it too.
+    // @end
     fn sleep(&self, d: Duration) -> impl Future<Output = ()> + Send;
     // @end
 
@@ -145,6 +151,9 @@ impl fmt::Debug for SseOptions {
 // @end
 
 type Supplier<T> = Arc<dyn Fn() -> T + Send + Sync>;
+// @if limits_client
+type Sleeper = Arc<dyn Fn(Duration) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+// @end
 
 /// Options of a generated client.
 #[derive(Clone)]
@@ -166,6 +175,12 @@ pub struct ClientOptions {
     // @if timeouts
     /// Whether the caller set `timeout`: when not, an endpoint with a deadline uses it.
     timeout_set: bool,
+    // @end
+    // @if limits_client
+    /// Wait and send again, once, when an endpoint that may be repeated is answered `429` with
+    /// `retryAfter` (default `true`; `spec/platform.md` section 5).
+    pub retry_on_limit: bool,
+    sleeper: Option<Sleeper>,
     // @end
     // #if rules
     /// Check the invariants of a request body and of a `query` object before sending (default
@@ -195,6 +210,10 @@ impl Default for ClientOptions {
             // @if timeouts
             timeout_set: false,
             // @end
+            // @if limits_client
+            retry_on_limit: true,
+            sleeper: None,
+            // @end
             // #if rules
             check_rules: true,
             on_contract_mismatch: None,
@@ -219,6 +238,28 @@ impl ClientOptions {
         Self::default()
     }
 
+    // @if limits_client
+    /// Turns the wait on `429 TooManyRequests` on or off (on by default): with it off the typed
+    /// error is raised at once.
+    #[must_use]
+    pub fn retry_on_limit(mut self, on: bool) -> Self {
+        self.retry_on_limit = on;
+        self
+    }
+
+    /// How the client waits before it sends a limited call again (default: the transport's sleep).
+    /// A test passes one that returns at once.
+    #[must_use]
+    pub fn sleeper<F, Fut>(mut self, sleep: F) -> Self
+    where
+        F: Fn(Duration) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.sleeper = Some(Arc::new(move |d| Box::pin(sleep(d))));
+        self
+    }
+
+    // @end
     /// Sets the base URL.
     #[must_use]
     pub fn base_url(mut self, url: impl Into<String>) -> Self {
@@ -326,6 +367,15 @@ fn push_query(query: &mut Vec<(String, String)>, key: &str, wire: &Value) {
     }
 }
 
+// @if limits_client
+/// The wait a `429` asks for: the numeric `retryAfter` of its data, in seconds.
+fn retry_after(body: &[u8]) -> Option<Duration> {
+    let doc: Value = serde_json::from_slice(body).ok()?;
+    let seconds = doc.get("data")?.get("retryAfter")?.as_f64()?;
+    Duration::try_from_secs_f64(seconds).ok()
+}
+
+// @end
 /// The part of a client that does not depend on the contract.
 pub struct Core<T: Transport> {
     transport: Arc<T>,
@@ -639,9 +689,43 @@ impl<T: Transport> Core<T> {
         Ok(Some(schema.from_wire(&wire, false)))
     }
 
+    // @if limits_client
+    /// Sends the request; an endpoint that may be repeated (a `get`, an `@idempotent` call) that is
+    /// answered `429` with a numeric `retryAfter` waits that long and sends the same request again,
+    /// once, inside the budget of the call's timeout (`spec/platform.md` section 5). Any other
+    /// answer, a second `429` and a wait that does not fit raise the typed error as before.
+    async fn send_limited(&self, ep: &EndpointSpec, request: HttpRequest) -> Result<HttpResponse, Error> {
+        if !(ep.retry_on_limit && self.options.retry_on_limit) {
+            return self.transport.send(request).await;
+        }
+        let (started, budget) = (std::time::Instant::now(), request.timeout);
+        let resp = self.transport.send(request.clone()).await?;
+        let wait = (resp.status == 429)
+            .then(|| retry_after(&resp.body))
+            .flatten()
+            .filter(|w| *w < budget.saturating_sub(started.elapsed()));
+        let Some(wait) = wait else {
+            return Ok(resp);
+        };
+        let left = budget.saturating_sub(started.elapsed());
+        match &self.options.sleeper {
+            Some(sleep) => sleep(wait).await,
+            None => self.transport.sleep(wait).await,
+        }
+        let mut again = request;
+        again.timeout = left.saturating_sub(wait);
+        self.transport.send(again).await
+    }
+
+    // @end
     async fn exchange(&self, ep: &EndpointSpec, req: &Value) -> Result<Option<Value>, Error> {
         let built = self.build(ep, req, "application/json")?;
+        // @if !limits_client
         let resp = self.transport.send(built.request).await?;
+        // @end
+        // @if limits_client
+        let resp = self.send_limited(ep, built.request).await?;
+        // @end
         // #if rules
         self.observe(&resp.headers);
         // #endif

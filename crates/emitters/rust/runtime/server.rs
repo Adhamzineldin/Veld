@@ -494,6 +494,28 @@ pub trait Endpoints: Send + Sync + 'static {
         Vec::new()
     }
     // #endif
+    // @if limits
+
+    /// The limit of an endpoint (`spec/platform.md` section 5); `None` for an endpoint without one.
+    fn limit_spec(&self, _endpoint: usize) -> Option<super::platform::LimitSpec> {
+        None
+    }
+
+    /// The limiter of the hooks; `None` makes the server count in memory, per process.
+    fn limiter(&self) -> Option<&dyn super::platform::Limiter> {
+        None
+    }
+
+    /// The caller text of a limit `by: user`: what the application's hook makes of the principal.
+    fn limit_caller(&self, _ctx: &RequestContext) -> Result<String, Error> {
+        Ok(String::new())
+    }
+
+    /// The client address of a limit `by: ip`: what the application's hook answers.
+    fn limit_address(&self, _ctx: &RequestContext) -> Result<String, Error> {
+        Ok(String::new())
+    }
+    // @end
     // @if audit_log
 
     /// What the server tells of an audited endpoint (`spec/platform.md` section 4); `None` for an
@@ -742,6 +764,10 @@ fn matches(route: &Route, path: &str) -> Option<Vec<(String, String)>> {
 struct Inner<E> {
     endpoints: E,
     routes: Vec<Route>,
+    // @if limits
+    /// The limiter of a server whose hooks give none.
+    memory: Option<super::platform::MemoryLimiter>,
+    // @end
 }
 // #if rules
 
@@ -1526,7 +1552,19 @@ impl<E: Endpoints> Handler<E> {
         let mut routes: Vec<Route> = endpoints.endpoints().iter().enumerate().map(|(i, ep)| compile(i, ep)).collect();
         // Literal routes before parameterised ones; the declared order breaks ties.
         routes.sort_by_key(|r| (r.params, r.index));
+        // @if !limits
         Handler { inner: Arc::new(Inner { endpoints, routes }) }
+        // @end
+        // @if limits
+        let limited = (0..endpoints.endpoints().len()).any(|i| endpoints.limit_spec(i).is_some());
+        let memory = if limited && endpoints.limiter().is_none() {
+            eprintln!("veld: the hooks give no limiter: rate limits are counted in memory, per process");
+            Some(super::platform::MemoryLimiter::new())
+        } else {
+            None
+        };
+        Handler { inner: Arc::new(Inner { endpoints, routes, memory }) }
+        // @end
     }
 
     /// The generated endpoints (for adapters that register routes).
@@ -1987,6 +2025,11 @@ impl<E: Endpoints> Handler<E> {
             }
             // @end
         }
+        // @if limits
+        if let Some(refused) = self.limited(ep, ctx).await {
+            return Err(refused);
+        }
+        // @end
         for name in ep.middleware {
             if let Err(err) = e.middleware(name, ctx).await {
                 return Err(self.failure(&err, ep, ctx));
@@ -2671,16 +2714,61 @@ impl<E: Endpoints> Handler<E> {
     /// reading is the `now` of everything the request evaluates.
     fn open(&self, ctx: &mut RequestContext) {
         // @if timed
-        let own = ctx.timer_now();
+        ctx.now = ctx.timer_now().unwrap_or_else(|| self.inner.endpoints.request_clock(ctx));
         // @end
         // @if !timed
-        let own: Option<std::time::SystemTime> = None;
+        ctx.now = self.inner.endpoints.request_clock(ctx);
         // @end
-        ctx.now = own.unwrap_or_else(|| self.inner.endpoints.request_clock(ctx));
         // @if audit_log
         ctx.platform.note_now(ctx.now);
         // @end
     }
+    // @if limits
+
+    /// The limit of `ep` (`spec/platform.md` section 5), after authentication and before the
+    /// middleware: `Some` is the `429` of a call the limiter refuses. A limiter or a hook that
+    /// fails lets the call through and the failure goes to `on_error`.
+    async fn limited(&self, ep: &EndpointSpec, ctx: &RequestContext) -> Option<Response> {
+        let e = &self.inner.endpoints;
+        let index = e.endpoints().iter().position(|x| std::ptr::eq(x, ep))?;
+        let spec = e.limit_spec(index)?;
+        let identity = match spec.by {
+            super::platform::LimitBy::User => e.limit_caller(ctx),
+            super::platform::LimitBy::Ip => e.limit_address(ctx),
+            super::platform::LimitBy::Tenant => Ok(ctx.tenant().map(super::platform::Tenant::text).unwrap_or_default()),
+        };
+        let identity = match identity {
+            Ok(identity) => identity,
+            Err(err) => {
+                e.on_error(&err, ctx);
+                return None;
+            }
+        };
+        let limiter: &dyn super::platform::Limiter = match (e.limiter(), &self.inner.memory) {
+            (Some(limiter), _) => limiter,
+            (None, Some(memory)) => memory,
+            (None, None) => return None,
+        };
+        let key = super::platform::limit_key(ep.sig, spec.by, &identity);
+        let decision = match limiter.take(&key, spec.count, spec.window_seconds).await {
+            Ok(decision) => decision,
+            Err(err) => {
+                e.on_error(&err, ctx);
+                return None;
+            }
+        };
+        if decision.allowed {
+            return None;
+        }
+        let Some(declared) = ep.errors.iter().find(|d| d.status == 429) else {
+            e.on_error(&Error::other(format!("{}: the endpoint does not declare `TooManyRequests`", ep.name)), ctx);
+            return None;
+        };
+        let mut resp = error_response(declared.sig, declared.name, 429, ep.sig, serde_json::json!({ "retryAfter": decision.retry_after_seconds }));
+        resp.headers.push(("retry-after".into(), decision.retry_after_seconds.to_string()));
+        Some(resp)
+    }
+    // @end
     // @if audit_log
 
     /// Whether this is a call of the due-moves runner: the server calling itself, which is neither

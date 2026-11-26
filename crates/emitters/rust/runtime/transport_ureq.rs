@@ -5,8 +5,10 @@ use std::io::Read;
 
 use super::client::{HttpRequest, HttpResponse, Transport};
 use super::error::Error;
-// @if sse
+// @if sleep
 use std::time::Duration;
+// @end
+// @if sse
 
 use super::client::HttpStream;
 use super::stream::unfold;
@@ -96,6 +98,8 @@ impl Transport for UreqTransport {
         });
         Ok(HttpStream { status, headers, body: Box::pin(body) })
     }
+    // @end
+    // @if sleep
 
     async fn sleep(&self, d: Duration) {
         std::thread::sleep(d);

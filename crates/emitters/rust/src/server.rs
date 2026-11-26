@@ -36,6 +36,13 @@ pub(crate) struct Needs {
     outbox: bool,
     /// An `@audited` endpoint: the hooks record its events.
     audit: bool,
+    /// An endpoint with a limit `by: ip`: the hooks give the address.
+    address: bool,
+    /// An endpoint with a limit `by: user` and no idempotency caller hook to share: the hooks give
+    /// the caller text of their own.
+    limit_caller: bool,
+    /// An endpoint with a `@limit`: the hooks may give a limiter.
+    limits: bool,
 }
 
 pub(crate) fn needs(tree: &Tree<'_>, svc: &Service) -> Needs {
@@ -49,7 +56,11 @@ pub(crate) fn needs(tree: &Tree<'_>, svc: &Service) -> Needs {
         flags: crate::flags::svc_reads_flags(tree, svc),
         outbox: crate::outbox::svc_emits(svc),
         audit: crate::platform::svc_audited(svc),
+        address: crate::platform::svc_limited_by(svc, veld_ir::LimitSubject::Ip),
+        limit_caller: false,
+        limits: crate::platform::svc_limited(svc),
     };
+    n.limit_caller = !n.caller && crate::platform::svc_limited_by(svc, veld_ir::LimitSubject::User);
     for ep in &svc.endpoints {
         match ep.auth.kind {
             AuthKind::None => {}
@@ -76,6 +87,8 @@ impl Needs {
             || self.flags
             || self.outbox
             || self.audit
+            || self.address
+            || self.limit_caller
     }
 }
 
@@ -278,6 +291,9 @@ fn hooks_trait(
     if n.audit {
         crate::platform::audit_hook(w);
     }
+    if n.limits {
+        crate::platform::limit_hooks(w, n.address, n.limit_caller, typed);
+    }
     if svc.endpoints.iter().any(|e| e.slo.is_some()) {
         w.blank();
         w.line("/// Receives the metric of every request that matched an endpoint of this server, once its");
@@ -418,6 +434,9 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
     complete_principal_method(w, tree, svc, typed);
     if n.audit {
         crate::platform::audit_forwards(w, tree, svc, typed);
+    }
+    if n.limits {
+        crate::platform::limit_forwards(w, svc, (n.address, n.caller), typed);
     }
     if n.idempotency {
         idempotency_forwards(w, n, typed);

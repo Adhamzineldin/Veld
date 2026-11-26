@@ -101,6 +101,11 @@ pub struct EndpointSpec {
     /// The endpoint's `@timeout` in milliseconds (`spec/platform.md` section 12).
     pub timeout_ms: Option<u64>,
     // @end
+    // @if limits_client
+    /// A client sends the call again, once, when it is answered `429` with `retryAfter`: the
+    /// endpoint has a `@limit` and is a `get` or `@idempotent` (`spec/platform.md` section 5).
+    pub retry_on_limit: bool,
+    // @end
 }
 
 /// The signatures of the prelude errors the runtime itself raises.
