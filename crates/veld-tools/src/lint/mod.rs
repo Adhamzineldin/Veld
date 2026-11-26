@@ -15,6 +15,9 @@ mod config;
 #[cfg(test)]
 mod event_tests;
 mod naming;
+mod pii;
+#[cfg(test)]
+mod pii_tests;
 mod rules;
 #[cfg(test)]
 mod tests;

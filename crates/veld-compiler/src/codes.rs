@@ -509,10 +509,20 @@ pub const CODES: &[CodeInfo] = &[
         T,
         "`auth-required`: an endpoint whose auth comes from neither its own `@auth` nor its service's",
     ),
+    l(
+        "L0015",
+        T,
+        "`pii-without-auth`: an endpoint with no auth can answer with a `@pii` field",
+    ),
+    l(
+        "L0016",
+        T,
+        "`secret-in-output`: a `@secret` field that a response, a declared error, a stream item or an event can contain",
+    ),
 ];
 
 /// Lint rule names by code, in code order. The names are what `[lint]` in `veld.toml` uses.
-pub const LINT_RULES: [(&str, &str); 14] = [
+pub const LINT_RULES: [(&str, &str); 16] = [
     ("L0001", "unused-model"),
     ("L0002", "empty-service"),
     ("L0003", "empty-model"),
@@ -527,6 +537,8 @@ pub const LINT_RULES: [(&str, &str); 14] = [
     ("L0012", "variant-name-case"),
     ("L0013", "deprecated-declaration"),
     ("L0014", "auth-required"),
+    ("L0015", "pii-without-auth"),
+    ("L0016", "secret-in-output"),
 ];
 
 /// The entry for `code`, if it is documented.

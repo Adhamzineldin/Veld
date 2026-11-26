@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 pub mod endpoint_rules;
+pub mod exposure;
 pub mod rules;
 pub mod schema;
 pub mod suggest;
