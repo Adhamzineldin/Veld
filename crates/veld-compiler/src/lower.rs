@@ -432,6 +432,7 @@ impl Lowerer<'_, '_> {
             (a.status, &decls[a.decl.index()].sig).cmp(&(b.status, &decls[b.decl.index()].sig))
         });
         Endpoint {
+            audited: e.audited,
             timeout_ms: e.timeout_ms.map(|ms| ms.to_string()),
             slo: e.slo.as_ref().map(|s| {
                 let text = |v: Option<i64>| v.map(|ms| ms.to_string());

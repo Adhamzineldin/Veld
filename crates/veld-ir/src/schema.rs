@@ -173,6 +173,7 @@ const ENDPOINT: Fields = &[
     ("saga", T::Optional(&T::Ref("Saga"))),
     ("timeout_ms", T::Optional(&T::Str)),
     ("slo", T::Optional(&T::Ref("Slo"))),
+    ("audited", T::Optional(&T::Bool)),
     ("origin", ORIGIN),
 ];
 
@@ -871,6 +872,7 @@ pub const DEFS: &[Def] = &[
             "retention",
             "visibility",
             "tenancy",
+            "audit",
         ],
     ),
     Def::Strings("Role", &["server", "client"]),

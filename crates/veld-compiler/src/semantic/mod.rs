@@ -18,6 +18,8 @@ mod flags;
 #[cfg(test)]
 mod flags_tests;
 pub use collect::module_path;
+#[cfg(test)]
+mod audited_tests;
 mod inherit;
 mod machine;
 #[cfg(test)]
@@ -258,6 +260,8 @@ pub struct REndpoint {
     pub timeout_ms: Option<i64>,
     /// `@slo`, from the endpoint or its service (`spec/platform.md` section 13).
     pub slo: Option<service_levels::SloArgs>,
+    /// `@audited`, from the endpoint or its service (`spec/platform.md` section 4).
+    pub audited: bool,
     pub span: Span,
 }
 

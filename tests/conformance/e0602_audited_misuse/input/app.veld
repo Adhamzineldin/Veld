@@ -1,0 +1,15 @@
+// @audited takes no argument, stands once, and only on a service or an endpoint.
+
+model Booking { id: uuid }
+
+@audited
+model Other { id: uuid @audited }
+
+service Bookings at "/bookings" {
+  @audited(true)
+  get "/{id}" getBooking(id: uuid) -> Booking
+
+  @audited
+  @audited
+  get "/" list() -> Booking[]
+}

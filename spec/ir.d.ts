@@ -678,6 +678,7 @@ export interface Endpoint {
   saga?: Saga;
   timeout_ms?: string;
   slo?: Slo;
+  audited?: boolean;
   origin: Origin;
 }
 
@@ -711,7 +712,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "sagas" | "events" | "events_delivery" | "rules_timed" | "rules_flags" | "timeouts" | "slo" | "messages" | "retention" | "visibility" | "tenancy";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "sagas" | "events" | "events_delivery" | "rules_timed" | "rules_flags" | "timeouts" | "slo" | "messages" | "retention" | "visibility" | "tenancy" | "audit";
 
 export type Role = "server" | "client";
 

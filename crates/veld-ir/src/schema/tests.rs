@@ -395,6 +395,7 @@ fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
             errors: Some("0.1".into()),
         }),
         timeout_ms: Some("2000".into()),
+        audited: true,
         name: "op".into(),
         method,
         path: "/x".into(),

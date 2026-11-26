@@ -18,6 +18,7 @@ type RouteKey = (usize, Method, String);
 struct Defaults {
     timeout: Option<service_levels::Timeout>,
     slo: Option<service_levels::SloArgs>,
+    audited: bool,
 }
 
 pub fn analyze(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
@@ -91,6 +92,7 @@ fn analyze_service(
         let svc = Defaults {
             timeout: anns.timeout,
             slo: anns.slo.clone(),
+            audited: anns.audited,
         };
         if let Some(ep) = ctx.endpoint(e, &prefix, (&auth, &middleware, &svc), diags) {
             check_route(prog, pkg, &s.name.name, &ep, routes, diags);
@@ -260,6 +262,7 @@ impl Ctx<'_, '_> {
             saga: None,
             timeout_ms: None,
             slo: None,
+            audited: false,
             span: e.name.span,
         };
         self.responses(e, method, &mut ep, diags);
@@ -795,6 +798,9 @@ impl Ctx<'_, '_> {
         if let (true, Some(s)) = (streams, &anns.slo) {
             refuse("slo", s.span.unwrap_or_else(Span::none), diags);
         }
+        // An endpoint's own `@audited` is kept even where it streams: a generator that implements
+        // the audit log refuses it (`E0801`). A service's `@audited` skips such an endpoint.
+        ep.audited = anns.audited || (svc.audited && !streams);
         if streams {
             return;
         }

@@ -187,6 +187,7 @@ Model   += { "retain": { "after_ms": "2592000000", "since": "checkedOutAt", "the
 `spec/platform.md` sections 2 to 5 add, each **omitted from the JSON when absent** (a contract that uses none of them keeps its IR, its ids and its digests):
 
 ```jsonc
+Endpoint += { "audited": true }               // @audited, on the endpoint or on its service; omitted when false
 Field += { "tenant": true,                       // @tenant: set by the server, never by the caller
            "tenant_id": "veld:app/Booking.tenant@4d83fde944ed8600" }   // present exactly when `tenant` is
 Field += { "visible": Expr,                 // @visible(when: e): bool; roots are `self`, `principal` and `now`
@@ -197,7 +198,7 @@ Field += { "visible": Expr,                 // @visible(when: e): bool; roots ar
 ExampleValue += { "absent": true }   // `field: absent` in a pattern after `ok` or an error: the member is not in the answer
 ```
 
-`tenant_id` is computed in `veld-compiler::signature` (`spec/platform.md` §9.1) and is in no signature. The feature is `tenancy` (opt-in, not asked of a client): any field with `tenant`, and any fact whose type reaches one. A rule that reads a `@tenant` field has `reads_readonly`, as for a `@readonly` field.
+The feature of `audited` is `audit` (opt-in, not asked of a client). `tenant_id` is computed in `veld-compiler::signature` (`spec/platform.md` §9.1) and is in no signature. The feature is `tenancy` (opt-in, not asked of a client): any field with `tenant`, and any fact whose type reaches one. A rule that reads a `@tenant` field has `reads_readonly`, as for a `@readonly` field.
 
 `visible` is a typed rule expression like the body of an invariant, with three roots: `self` (the fields of the declaration), `principal` and `now`. It is not part of any signature or id. `visible_principal` is the model of the principal of the package that declared the field: the spec's `visible` alone cannot say which principal type the caller it reads is, and a server whose own principal is another model has no caller of that type (section 2 of the platform spec). A field that a declaration inherits carries both keys of the field it came from. The feature is `visibility`, opt-in; a client generates nothing for it, so the gate does not ask a client.
 

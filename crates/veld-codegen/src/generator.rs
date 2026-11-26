@@ -310,6 +310,7 @@ pub fn checked_features(ir: &Ir, req: &GenRequest<'_>) -> std::collections::BTre
     if req.role == Role::Client {
         used.remove(&Feature::Visibility);
         used.remove(&Feature::Tenancy);
+        used.remove(&Feature::Audit);
     }
     if req.role == Role::Server && !ir.retention_plan(&req.services).is_empty() {
         used.insert(Feature::Retention);
@@ -357,6 +358,7 @@ fn first_use(
                 Feature::RulesFlags => ir.endpoint_uses_flags(ep),
                 Feature::Timeouts => ep.timeout_ms.is_some(),
                 Feature::Slo => ep.slo.is_some(),
+                Feature::Audit => ep.audited,
                 Feature::RulesPolicies => ep.rules.first_policy_origin().is_some(),
                 Feature::Unions
                 | Feature::Constraints
@@ -598,6 +600,7 @@ mod tests {
         let ep = Endpoint {
             slo: None,
             timeout_ms: None,
+            audited: false,
             name: "feed".into(),
             method: Method::Get,
             path: "/feed".into(),

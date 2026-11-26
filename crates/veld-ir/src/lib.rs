@@ -458,6 +458,9 @@ impl Ir {
                 if ep.slo.is_some() {
                     f.insert(Feature::Slo);
                 }
+                if ep.audited {
+                    f.insert(Feature::Audit);
+                }
                 if ep.rules.transition.is_some() {
                     f.insert(Feature::RulesTransitions);
                 }
@@ -1300,6 +1303,10 @@ pub struct Endpoint {
     /// `@slo` (`spec/platform.md` section 13). Omitted from the JSON when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slo: Option<Slo>,
+    /// `@audited` (`spec/platform.md` section 4): the server records one audit event for every
+    /// request that matched the endpoint. Omitted from the JSON when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub audited: bool,
     pub origin: Origin,
 }
 
@@ -1547,6 +1554,9 @@ pub enum Feature {
     /// declare it would send a value of another tenant. Clients generate nothing for it, so the
     /// gate does not ask them.
     Tenancy,
+    /// `@audited` (`spec/platform.md` section 4). Opt-in: a generator that does not declare it
+    /// would record nothing. Clients generate nothing for it, so the gate does not ask them.
+    Audit,
 }
 
 impl Feature {
@@ -1559,7 +1569,7 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 14] = [
+    pub const OPT_IN: [Feature; 15] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
@@ -1574,8 +1584,9 @@ impl Feature {
         Feature::Retention,
         Feature::Visibility,
         Feature::Tenancy,
+        Feature::Audit,
     ];
-    pub const ALL: [Feature; 29] = [
+    pub const ALL: [Feature; 30] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1605,6 +1616,7 @@ impl Feature {
         Feature::Retention,
         Feature::Visibility,
         Feature::Tenancy,
+        Feature::Audit,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1638,6 +1650,7 @@ impl Feature {
             Feature::Retention => "retention",
             Feature::Visibility => "visibility",
             Feature::Tenancy => "tenancy",
+            Feature::Audit => "audit",
         }
     }
     #[must_use]

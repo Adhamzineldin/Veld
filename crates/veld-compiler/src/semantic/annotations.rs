@@ -31,6 +31,8 @@ pub struct Anns<'a> {
     pub secret: bool,
     /// `@tenant` on a field (`spec/platform.md` section 3).
     pub tenant: bool,
+    /// `@audited` on a service or an endpoint (`spec/platform.md` section 4).
+    pub audited: bool,
     /// `@idempotent` on an endpoint.
     pub idempotent: Option<Idempotent>,
     /// `@retry` on a channel.
@@ -153,6 +155,7 @@ fn hidden_from(spec: &language::AnnotationSpec, target: Target) -> bool {
             | "retain"
             | "visible"
             | "tenant"
+            | "audited"
     );
     (!events_only(&target) && spec.targets.iter().all(events_only))
         || (!rules_only(&target) && spec.targets.iter().all(rules_only))
@@ -168,7 +171,12 @@ fn unknown(a: &Annotation, target: Target) -> Diagnostic {
     // misspelling of one of them is still answered with `did you mean`.
     let known: Vec<String> = visible
         .iter()
-        .filter(|s| !matches!(s.name, "pii" | "secret" | "retain" | "visible" | "tenant"))
+        .filter(|s| {
+            !matches!(
+                s.name,
+                "pii" | "secret" | "retain" | "visible" | "tenant" | "audited"
+            )
+        })
         .map(|s| format!("@{}", s.name))
         .collect();
     Diagnostic::error(
@@ -293,6 +301,7 @@ fn apply<'a>(
         "pii" => out.pii = true,
         "secret" => out.secret = true,
         "tenant" => out.tenant = true,
+        "audited" => out.audited = true,
         "version" => {
             require_type(
                 ty,
