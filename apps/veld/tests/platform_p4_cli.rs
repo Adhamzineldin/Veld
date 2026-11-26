@@ -209,15 +209,20 @@ fn the_default_targets_generate_the_catalogs() {
     assert!(client.contains("'demo/P4Stay.atLeastOne': 'x'"), "{client}");
 }
 
+/// The default server (`node`) implements retention (`spec/targets/typescript.md` section 5l): the
+/// plan and the runner are written next to the generated code, and the client has none of it.
 #[test]
-fn a_generator_that_does_not_implement_retention_refuses_a_server_with_e0801() {
+fn the_default_server_generates_retention() {
     let tmp = project(PERSONAL);
-    veld(tmp.path())
-        .arg("generate")
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("E0801"))
-        .stderr(predicate::str::contains("retention"));
+    veld(tmp.path()).arg("generate").assert().success();
+    let file = fs::read_to_string(tmp.path().join("generated/server/retention.ts")).unwrap();
+    assert!(file.contains("export const retentionPlan"), "{file}");
+    assert!(
+        file.contains("export async function runApiRetention("),
+        "{file}"
+    );
+    assert!(file.contains("fields: ['name'],"), "{file}");
+    assert!(!tmp.path().join("generated/client/retention.ts").exists());
 }
 
 #[test]

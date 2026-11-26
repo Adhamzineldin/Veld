@@ -1,0 +1,48 @@
+// Platform phase P4, part 4: retention (spec/platform.md section 23). The driver
+// `retention_runner.ts` reads `retentionPlan` and runs `runApiRetention` with jobs that record what
+// they are asked; the Rust test compares the plan with `Ir::retention_plan`. Each model says which
+// case it is for.
+
+model Person {
+  id: uuid
+  name: string @pii
+}
+
+// Case: `anonymize` with the `@pii` fields of the model, inherited ones first, and an optional
+// `since` that a value may lack.
+@retain(days(90), since: leftAt, then: anonymize)
+model Staff extends Person {
+  leftAt?: datetime
+  badge: string @pii
+  password: string @secret
+}
+
+// Case: `anonymize` with two `@pii` fields and a required `since`.
+@retain(days(30), since: checkedOutAt, then: anonymize)
+model Guest {
+  id: uuid @readonly
+  name: string @pii
+  phone?: string @pii
+  checkedOutAt: datetime
+}
+
+// Case: `delete`, and a `date` field to count from.
+@retain(days(365), since: closedOn, then: delete)
+model Invoice {
+  id: uuid
+  closedOn: date
+  total: decimal
+}
+
+// Case: a model with no `@retain` is not in the plan.
+model Kept {
+  id: uuid
+  note: string
+}
+
+service Guests at "/guests" {
+  get "/staff/{id}" getStaff(id: uuid) -> Staff
+  get "/{id}" getGuest(id: uuid) -> Guest
+  get "/invoices/{id}" getInvoice(id: uuid) -> Invoice
+  get "/kept/{id}" getKept(id: uuid) -> Kept
+}

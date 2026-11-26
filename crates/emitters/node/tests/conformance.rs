@@ -209,13 +209,13 @@ fn node_and_typescript_generate_message_catalogs() {
     veld_emit_conformance::check_messages_are_generated(&TypeScript).unwrap();
 }
 
-/// Retention (`spec/platform.md` section 23): until a generator implements it, the Node server
-/// refuses a contract with `@retain` models with `E0801`, and the TypeScript client, which has
-/// nothing to generate for it, is not affected.
+/// Retention (`spec/platform.md` section 23): the Node server declares `retention` and generates a
+/// contract with `@retain` models; the TypeScript client, which has nothing to generate for it, is
+/// not affected.
 #[test]
-fn node_refuses_retention_and_typescript_ignores_it() {
-    veld_emit_conformance::check_retention_is_refused(&Node).unwrap();
-    veld_emit_conformance::check_retention_is_refused(&TypeScript).unwrap();
+fn node_generates_retention_and_typescript_ignores_it() {
+    veld_emit_conformance::check_retention_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_retention_is_generated(&TypeScript).unwrap();
 }
 
 /// `emits` and the outbox (`spec/events.md` section 11): the Node server generates a service with

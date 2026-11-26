@@ -12,6 +12,7 @@ mod events;
 mod frameworks;
 mod guards;
 mod outbox;
+mod retention;
 mod rules;
 mod server;
 mod testing;
@@ -92,6 +93,7 @@ impl Generator for Node {
             .with(veld_ir::Feature::Audit)
             .with(veld_ir::Feature::Limits)
             .with(veld_ir::Feature::Messages)
+            .with(veld_ir::Feature::Retention)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
@@ -130,6 +132,7 @@ impl Generator for Node {
         modules.extend(server::emit(&mut files, &tree, runtime_model.as_ref())?);
         veld_emit_typescript::messages::emit(&mut files, &tree)?;
         modules.extend(events::emit(&mut files, &tree)?);
+        modules.extend(retention::emit(&mut files, &tree, profile)?);
         modules.extend(brokers::emit(&mut files, &brokers)?);
         modules.push("server/adapters".to_string());
         let ws = req
