@@ -1144,7 +1144,7 @@ Only *proved* (for the first three questions) and a confirmed *counterexample* (
 | `len` of a string, list or map | A non-negative integer, bounded by `@length` |
 | `@min`, `@max`, `@length` | Assertions |
 | String equality | Equality over an uninterpreted sort |
-| `float`; the content of strings; `matches`; every comprehension and `sum`; `now` | **Left open**: an unconstrained value of the right sort |
+| `float`; the content of strings; `matches`; every comprehension and `sum`; `now`; a derived field (§17.2) | **Left open**: an unconstrained value of the right sort |
 
 - Leaving a part open makes the problem easier to satisfy, never harder. So `unsat` for the opened problem implies `unsat` for the real one: **a proved contradiction stays sound** however much was left open.
 - A value found for an opened problem may not be a real one, which is why every value is confirmed by the evaluator (§18.2).
