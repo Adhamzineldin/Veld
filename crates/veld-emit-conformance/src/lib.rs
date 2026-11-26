@@ -19,6 +19,7 @@ mod events;
 mod events_delivery;
 mod fixtures;
 mod messages;
+mod platform_p1;
 mod platform_p2;
 mod retention;
 mod rollout;
@@ -49,6 +50,7 @@ pub use messages::{
     CATALOG_FILE, check_messages_are_generated, check_messages_is_refused,
     compiled_messages_contract,
 };
+pub use platform_p1::{check_visibility_is_refused, compiled_visibility_contracts};
 pub use platform_p2::{
     check_flags_are_refused, check_slo_is_refused, check_timed_is_refused,
     check_timeouts_are_refused, compiled_flag_contracts, compiled_slo_contracts,

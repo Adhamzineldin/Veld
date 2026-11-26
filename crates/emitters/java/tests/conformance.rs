@@ -173,6 +173,13 @@ fn java_refuses_deadlines_and_service_levels() {
     veld_emit_conformance::check_slo_is_refused(&Java).unwrap();
 }
 
+/// `visibility` is opt-in (`spec/platform.md` section 2): the Java server refuses a `@visible`
+/// field; the Java client is not asked.
+#[test]
+fn java_refuses_visibility_as_a_server() {
+    veld_emit_conformance::check_visibility_is_refused(&Java).unwrap();
+}
+
 /// Message catalogs (`spec/platform.md` section 22): until Java implements them, it refuses a
 /// member that has catalogs with `E0801`, as a server and as a client.
 #[test]

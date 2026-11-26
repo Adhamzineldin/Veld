@@ -161,6 +161,14 @@ fn node_and_typescript_refuse_deadlines_and_service_levels() {
     veld_emit_conformance::check_slo_is_refused(&TypeScript).unwrap();
 }
 
+/// `visibility` is opt-in (`spec/platform.md` section 2): the Node server refuses a `@visible`
+/// field; the TypeScript client has nothing to hide and is not asked.
+#[test]
+fn node_and_typescript_refuse_visibility_as_a_server_only() {
+    veld_emit_conformance::check_visibility_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_visibility_is_refused(&TypeScript).unwrap();
+}
+
 /// Message catalogs (`spec/platform.md` section 22): until a generator implements them, the Node
 /// server and the TypeScript client both refuse a member that has catalogs with `E0801`, at the
 /// first catalog file, and make no files.
