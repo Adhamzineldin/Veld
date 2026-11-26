@@ -20,6 +20,7 @@ mod live;
 mod offline;
 mod outcome;
 mod request;
+mod violation;
 
 pub use error::LiveError;
 pub use fuzz::{
@@ -33,3 +34,4 @@ pub use outcome::{Called, describe_answer, judge_outcome};
 pub use request::{
     DRY_RUN, FACTS, HttpRequest, NOW, PASSED, PRINCIPAL, PROBE_PATH, RESULT, build_request,
 };
+pub use violation::{FromViolation, ViolationError, from_violation};

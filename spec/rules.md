@@ -1098,7 +1098,7 @@ model Order {
     "params": { "id": "00000000-0000-4000-8000-0000000000aa", "body": { "amount": "10.00" } },
     "facts": { "booking": { "guestId": "00000000-0000-4000-8000-0000000000aa", "total": "10.00" }, "coupon": null },
     "principal": { "id": "00000000-0000-4000-8000-0000000000aa", "roles": [] },
-    "now": "2026-06-01T00:00:00.000Z",
+    "now": "2026-06-01T00:00:00Z",
     "redacted": ["facts.booking.card", "principal.password"]
   }
 }

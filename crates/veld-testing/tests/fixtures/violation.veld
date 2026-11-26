@@ -1,0 +1,21 @@
+// A contract for the tests of `veld test --from-violation`.
+
+model Guest {
+  name: string
+  phone: string
+}
+
+model NewStay {
+  guests: int @min(1)
+  start: datetime
+  end: datetime
+  guest: Guest
+
+  rule endAfterStart: end > start
+    message "The stay must end after it starts"
+}
+
+@auth(none)
+service Stays at "/stays" {
+  post "/" createStay(body: NewStay) -> 201 NewStay
+}
