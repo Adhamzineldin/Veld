@@ -11,6 +11,7 @@ use crate::conditional;
 use crate::endpoint;
 use crate::frameworks::{EndpointKind, EndpointModel, ServiceModel};
 use crate::machine;
+use crate::outbox;
 use crate::spec::{
     RequestNames, emit_requests, endpoint_docs, endpoint_docs_note, is_sse, is_ws, method_name,
     spec_const, write_spec_const, ws_incoming,
@@ -36,11 +37,13 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
             let svc = tree.ir.service(*sid);
             let mut refused = endpoint::refusals(svc);
             refused.extend(conditional::refusals(svc));
+            refused.extend(crate::outbox::refusals(svc));
             if !refused.is_empty() {
                 return Err(refused);
             }
             emit_requests(files, tree, &package, (&names, false), svc)?;
             emit_facts(files, tree, &package, &names, svc)?;
+            crate::outbox::emit_files(files, tree, &package, &names, svc)?;
             let base = naming::pascal(&svc.name);
             let problems = RefCell::new(Vec::new());
             let mut put =
@@ -145,6 +148,7 @@ fn write_interface(
                 .transition
                 .is_some()
                 .then_some(machine::TRANSITION_NOTE),
+            outbox::emits(ep).then_some(outbox::EMIT_NOTE),
         ]
         .into_iter()
         .flatten()
@@ -161,7 +165,8 @@ fn write_interface(
 }
 
 /// The request parameter list of a handler method: the request record, then the facts record
-/// when the endpoint has facts, then the `transition` when it has one, then the context.
+/// when the endpoint has facts, then the `version` and the `transition` when it has them, then the
+/// `emit` of a move that emits (`spec/events.md` section 11.1), then the context.
 fn request_params(fc: &mut FileCtx<'_, '_>, ep: &Endpoint, request: &str, ctx: &str) -> String {
     let mut params = vec![format!("{request} request")];
     if !ep.rules.facts.is_empty() {
@@ -173,12 +178,15 @@ fn request_params(fc: &mut FileCtx<'_, '_>, ep: &Endpoint, request: &str, ctx: &
     if let Some(t) = &ep.rules.transition {
         params.push(format!("{} transition", machine::transition_type(fc, t)));
     }
+    if outbox::emits(ep) {
+        params.push(format!("{} emit", outbox::emit_name(request)));
+    }
     params.push(format!("{ctx} ctx"));
     params.join(", ")
 }
 
-/// What follows `request` in a call of a handler method: `facts, transition, `, each when the
-/// endpoint has it.
+/// What follows `request` in a call of a handler method: `facts, version, transition, emit, `, each
+/// when the endpoint has it.
 pub(crate) fn extra_args(ep: &Endpoint) -> String {
     let mut out = String::new();
     if !ep.rules.facts.is_empty() {
@@ -189,6 +197,9 @@ pub(crate) fn extra_args(ep: &Endpoint) -> String {
     }
     if ep.rules.transition.is_some() {
         out.push_str("transition, ");
+    }
+    if outbox::emits(ep) {
+        out.push_str("emit, ");
     }
     out
 }
@@ -278,12 +289,14 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
     .flatten()
     .collect();
     let needs_flags = crate::flags::service_uses(fc.tree, svc);
+    let needs_outbox = outbox::service_emits(svc);
     let params = unique(
         auth.iter()
             .map(|a| a.0.to_string())
             .chain(middleware.iter().map(|m| member_ident(m)))
             .chain(idempotency.iter().map(|n| (*n).to_string()))
             .chain(needs_flags.then(|| "flags".to_string()))
+            .chain(needs_outbox.then(|| "outbox".to_string()))
             .collect(),
     );
     let principal = match (&svc.principal, fc.tree.policies, auth.is_empty()) {
@@ -350,6 +363,17 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
     if needs_flags {
         let param = params[first + usize::from(needs_store) + usize::from(needs_caller)].clone();
         out.push(flags_hook(fc, svc, param));
+    }
+    if needs_outbox {
+        let at =
+            first + usize::from(needs_store) + usize::from(needs_caller) + usize::from(needs_flags);
+        out.push(Hook {
+            param: params[at].clone(),
+            ty: fc.rt("Outbox"),
+            register: format!("this.outbox = {};", params[at]),
+            doc: "the outbox the moves that emit write to (`MemoryOutbox` for tests)".to_string(),
+            iface: Vec::new(),
+        });
     }
     out
 }
@@ -508,6 +532,13 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     if let Some(clock) = &clock {
         w.line(format!("private {clock} clock = {clock}.systemUTC();"));
     }
+    if outbox::service_emits(svc) {
+        let (outbox_ty, events) = (fc.rt("Outbox"), fc.rt("Events"));
+        w.line(format!("private final {outbox_ty} outbox;"));
+        w.line(format!(
+            "private {events}.PublisherOptions events = new {events}.PublisherOptions();"
+        ));
+    }
     w.blank();
     for h in required.iter().filter(|h| !h.iface.is_empty()) {
         for line in &h.iface {
@@ -553,6 +584,9 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     let completes = completed_principal(fc, svc);
     if let Some(decl) = completes {
         write_complete_principal(w, fc, decl);
+    }
+    if outbox::service_emits(svc) {
+        outbox::write_hooks_members(w, fc, svc, class);
     }
     if crate::slo::service_has_slo(svc) {
         crate::slo::write_hook(w, fc, class);
@@ -822,8 +856,17 @@ fn write_create_with_endpoints(
     } else {
         ""
     };
+    let emissions = if outbox::service_emits(site.svc) {
+        w.line(format!(
+            "{}.Source emissions = hooks.emissions();",
+            fc.rt("Emission")
+        ));
+        ", emissions"
+    } else {
+        ""
+    };
     w.line(format!(
-        "{list}<{}> endpoints = endpoints({pass}, built{clock});",
+        "{list}<{}> endpoints = endpoints({pass}, built{clock}{emissions});",
         site.endpoint
     ));
     let std = std_sigs(fc);
@@ -897,6 +940,12 @@ fn write_endpoints_method(
         format!(", {to_long}<{ctx}> clock")
     } else {
         String::new()
+    };
+    let clock = if outbox::service_emits(site.svc) {
+        // A service whose moves emit: where `emit` writes (the test handler brings its own).
+        format!("{clock}, {}.Source emissions", fc.rt("Emission"))
+    } else {
+        clock
     };
     w.line("/** The endpoints of the service; the test handler reuses them. */");
     w.open(format!(
@@ -1041,6 +1090,7 @@ pub(crate) fn needs_hooks(tree: &Tree<'_>, svc: &Service) -> bool {
         .any(|e| auth_kind_name(e.auth.kind).is_some() || !e.middleware.is_empty())
         || conditional::hooks_needed(svc).0
         || crate::flags::service_uses(tree, svc)
+        || outbox::service_emits(svc)
 }
 
 /// The services of the tree as the framework adapters see them, in tree order.

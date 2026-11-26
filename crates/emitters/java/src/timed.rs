@@ -155,8 +155,13 @@ pub fn write_runner(
     w.line(format!("{built} built = {};", build_call(fc)));
     w.line("long now = options.now == null ? hooks.clock().millis() : options.now.toEpochMilli();");
     w.line(format!("{to_long}<{ctx}> clock = ctx -> now;"));
+    let emissions = if crate::outbox::service_emits(svc) {
+        ", hooks.emissions()"
+    } else {
+        ""
+    };
     w.line(format!(
-        "{list}<{endpoint}> endpoints = {base}Handler.endpoints({pass}, built, clock);"
+        "{list}<{endpoint}> endpoints = {base}Handler.endpoints({pass}, built, clock{emissions});"
     ));
     let handler = fc.rt("VeldHandler");
     w.line(format!(

@@ -17,6 +17,7 @@ pub mod flags;
 pub mod frameworks;
 pub mod machine;
 pub mod models;
+pub mod outbox;
 pub mod policy;
 pub mod readme;
 pub mod rule_expr;
@@ -84,6 +85,7 @@ fn events_capabilities(_role: Role) -> Capabilities {
         .with(Feature::Slo)
         .with(Feature::Timeouts)
         .with(Feature::RulesFlags)
+        .with(Feature::EventsOutbox)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {

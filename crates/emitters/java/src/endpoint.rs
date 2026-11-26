@@ -400,6 +400,7 @@ pub fn write_call_body(
         let facts = facts_name(request);
         w.line(format!("{facts} facts = new {facts}({});", args.join(", ")));
     }
+    crate::outbox::write_begin(w, printer.file(), site, &mut diags);
     match encode {
         Some(_) => {
             // `ensure` reads the result with its derived fields; the router computes them again
@@ -418,6 +419,7 @@ pub fn write_call_body(
             w.line(format!("{call};"));
         }
     }
+    crate::outbox::write_check(w, site);
     write_finish(w, &mut printer, site, &ensures, encode, &mut diags);
     diags.extend(printer_problems(&printer, site));
     diags

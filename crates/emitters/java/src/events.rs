@@ -82,7 +82,7 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
 }
 
 /// The channels a service publishes to, once each, in source order.
-fn published(svc: &Service) -> Vec<ChannelId> {
+pub(crate) fn published(svc: &Service) -> Vec<ChannelId> {
     let mut out: Vec<ChannelId> = Vec::new();
     for p in &svc.publishes {
         if !out.contains(&p.channel) {
@@ -137,6 +137,7 @@ fn write_event_defs(
     fc: &mut FileCtx<'_, '_>,
     ids: &[DeclId],
     consts: &[String],
+    vis: &str,
 ) {
     let events = fc.rt("Events");
     for (id, name) in ids.iter().zip(consts) {
@@ -154,7 +155,7 @@ fn write_event_defs(
         };
         let ty = fc.decl(*id);
         w.line(format!(
-            "private static final {events}.EventDef<{ty}> {name} ="
+            "{vis}static final {events}.EventDef<{ty}> {name} ="
         ));
         w.indent().indent();
         w.line(format!(
@@ -196,7 +197,7 @@ fn channel_doc(channel: &Channel) -> String {
 }
 
 /// The names a publisher class uses for the channels it publishes to and the events they carry.
-struct Names {
+pub(crate) struct Names {
     channels: Vec<ChannelId>,
     /// `<NAME>_CHANNEL`, per channel.
     channel_consts: Vec<String>,
@@ -210,7 +211,20 @@ struct Names {
 }
 
 impl Names {
-    fn of(tree: &Tree<'_>, svc: &Service) -> Self {
+    /// The constant that describes `channel`, or `None` when the service does not publish it.
+    pub(crate) fn channel_const(&self, channel: ChannelId) -> Option<&str> {
+        let at = self.channels.iter().position(|c| *c == channel)?;
+        self.channel_consts.get(at).map(String::as_str)
+    }
+
+    /// The constant that describes `event`, or `None` when no channel of the service carries it.
+    pub(crate) fn event_const(&self, event: DeclId) -> Option<&str> {
+        let at = self.ids.iter().position(|e| *e == event)?;
+        self.consts.get(at).map(String::as_str)
+    }
+
+    /// The names of the publisher of `svc`.
+    pub(crate) fn of(tree: &Tree<'_>, svc: &Service) -> Self {
         let ir = tree.ir;
         let channels = published(svc);
         let ids = used_events(svc, tree, true);
@@ -256,8 +270,15 @@ fn write_publisher(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, 
         "private static final String SOURCE = {};",
         java_str(&source)
     ));
-    write_channel_defs(w, ir, &events, &names);
-    write_event_defs(w, fc, &names.ids, &names.consts);
+    // The handler of an emitting move writes with the same descriptions (`<Endpoint>Emit`, same
+    // package), so they are not private there.
+    let vis = if crate::outbox::service_emits(svc) {
+        ""
+    } else {
+        "private "
+    };
+    write_channel_defs(w, ir, &events, &names, vis);
+    write_event_defs(w, fc, &names.ids, &names.consts, vis);
     w.blank();
     for (nested, member) in names.classes.iter().zip(&names.members) {
         w.line(format!("private final {nested} {member};"));
@@ -293,7 +314,13 @@ fn write_publisher(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, 
 }
 
 /// `private static final Events.ChannelDef <NAME>_CHANNEL = ...;` for each channel.
-fn write_channel_defs(w: &mut CodeWriter, ir: &veld_ir::Ir, events: &str, names: &Names) {
+fn write_channel_defs(
+    w: &mut CodeWriter,
+    ir: &veld_ir::Ir,
+    events: &str,
+    names: &Names,
+    vis: &str,
+) {
     for (id, name) in names.channels.iter().zip(&names.channel_consts) {
         let channel = ir.channel(*id);
         let (wire, kind) = match &channel.key {
@@ -310,7 +337,7 @@ fn write_channel_defs(w: &mut CodeWriter, ir: &veld_ir::Ir, events: &str, names:
             String::new()
         };
         w.line(format!(
-            "private static final {events}.ChannelDef {name} = new {events}.ChannelDef({}, {wire}, {kind}{flags});",
+            "{vis}static final {events}.ChannelDef {name} = new {events}.ChannelDef({}, {wire}, {kind}{flags});",
             java_str(&channel.topic)
         ));
     }
@@ -472,7 +499,7 @@ fn write_subscriber(
     );
     w.line("@SuppressWarnings(\"deprecation\")");
     w.open(format!("public final class {class}"));
-    write_event_defs(w, fc, &ids, &consts);
+    write_event_defs(w, fc, &ids, &consts, "private ");
     w.blank();
     w.line(format!("private {class}() {{}}"));
     w.blank();

@@ -266,8 +266,14 @@ fn write_create_body(
     } else {
         String::new()
     };
+    let emissions = if crate::outbox::service_emits(svc) {
+        // Every request gets a memory outbox of its own (`Veld-Test-Emitted`).
+        format!(", {support}.emissions(hooks.events())")
+    } else {
+        String::new()
+    };
     w.line(format!(
-        "{list}<{endpoint}> endpoints = {base}Handler.endpoints(new Stub(impl), {given}built{clock});"
+        "{list}<{endpoint}> endpoints = {base}Handler.endpoints(new Stub(impl), {given}built{clock}{emissions});"
     ));
     w.line(format!("{list}<{endpoint}> open = new {array_list}<>();"));
     let principal = match (&svc.principal, fc.tree.policies) {
@@ -320,6 +326,12 @@ fn write_create_body(
         "{support}.{handler_method}({wrapped}, {collections}.singletonMap({}, {digest}))",
         java_str(&svc.name)
     );
+    // A service whose moves emit answers with `Veld-Test-Emitted` (`spec/events.md` section 11.2).
+    let handler = if crate::outbox::service_emits(svc) {
+        format!("{support}.emitted({handler})")
+    } else {
+        handler
+    };
     if svc.subscriptions.is_empty() {
         w.line(format!("return {handler};"));
     } else {
@@ -411,19 +423,26 @@ fn write_stub_method(
         ));
         let json = fc.rt("Json");
         w.line(format!("{json} supplied = {support}.result(ctx);"));
+        // The application's handler does not run, so nothing is checked and the header names the
+        // events the edge taken emits (`spec/events.md` section 11.2).
+        let skip = if crate::outbox::emits(ep) {
+            "emit.emission().skip(); "
+        } else {
+            ""
+        };
         match &ep.success.ty {
             Some(t) => {
                 let codec = codec_expr(fc, t);
                 let schema = schema_expr(fc, t, &veld_ir::Constraints::default(), false);
                 w.open("if (supplied != null)");
                 w.line(format!(
-                    "return {codec}.decode({wire}.prepare({schema}, supplied, {wire}.Mode.RESPONSE));"
+                    "{skip}return {codec}.decode({wire}.prepare({schema}, supplied, {wire}.Mode.RESPONSE));"
                 ));
                 w.close();
                 w.line(format!("return delegate.{method}(request, {facts}ctx);"));
             }
             None => {
-                w.line("if (supplied != null) { return; }");
+                w.line(format!("if (supplied != null) {{ {skip}return; }}"));
                 w.line(format!("delegate.{method}(request, {facts}ctx);"));
             }
         }
