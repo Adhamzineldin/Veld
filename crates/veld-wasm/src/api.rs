@@ -406,7 +406,7 @@ fn run_target(ir: &Ir, built: &Built, t: &TargetIn) -> Result<FileSet, Vec<Diag>
     if req.services.is_empty() {
         return Err(fail("selects no services (is there a `service` block?)"));
     }
-    let options = job_options(t, &name);
+    let options = veld_codegen::with_target_name(&job_options(t, &name), &name);
     let from = |ds: &[GenDiagnostic]| ds.iter().map(|d| from_gen(d, &name)).collect::<Vec<_>>();
     resolve_profile(generator, &req, &options).map_err(|d| from(&[d]))?;
     let caps = check_capabilities(ir, &req, &generator.capabilities(role));

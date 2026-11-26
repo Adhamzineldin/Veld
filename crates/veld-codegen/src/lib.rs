@@ -12,6 +12,7 @@ pub mod generator;
 pub mod lint;
 pub mod naming;
 pub mod profile;
+pub mod runtime_config;
 pub mod writer;
 
 pub use expr::{ExprPrinter, Printed, ValueKind, element_type, print_expr};
@@ -25,6 +26,7 @@ pub use generator::{
 pub use lint::LintLevel;
 pub use profile::{
     FRAMEWORK_VERSION_KEY, FrameworkAdapter, FrameworkInfo, LanguageInfo, LanguageVersion, Offer,
-    Profile, framework_info, framework_infos, strip_profile_keys,
+    Profile, TARGET_NAME_KEY, framework_info, framework_infos, strip_profile_keys,
+    with_target_name,
 };
 pub use writer::CodeWriter;

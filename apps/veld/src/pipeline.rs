@@ -406,6 +406,20 @@ pub struct Job<'a> {
     options: serde_json::Value,
 }
 
+impl Job<'_> {
+    /// The options the generator receives: the target's, and for a built-in generator its name
+    /// under the reserved key `target-name` (`Profile::target_name`). A plugin gets the options
+    /// as they are: the plugin protocol does not change.
+    fn gen_options(&self) -> serde_json::Value {
+        match self.generator {
+            Generator::Builtin(_) => {
+                veld_codegen::with_target_name(&self.options, &self.target.name)
+            }
+            Generator::Plugin(_) => self.options.clone(),
+        }
+    }
+}
+
 /// A built-in generator, or a plugin that has already completed its handshake.
 enum Generator {
     Builtin(&'static dyn DynGenerator),
@@ -633,7 +647,7 @@ pub fn job_warnings(ir: &Ir, job: &Job<'_>) -> Vec<String> {
     let name = &job.target.name;
     job.generator
         .get()
-        .warnings_dyn(&req, &job.options)
+        .warnings_dyn(&req, &job.gen_options())
         .iter()
         .map(|d| format_diag("warning", d, name))
         .collect()
@@ -654,7 +668,7 @@ pub fn run_job(ir: &Ir, job: &Job<'_>) -> Result<FileSet, Vec<String>> {
             "target `{name}`: selects no services (does its package declare a `service` block?)"
         )]);
     }
-    if let Err(d) = resolve_profile(job.generator.get(), &req, &job.options) {
+    if let Err(d) = resolve_profile(job.generator.get(), &req, &job.gen_options()) {
         return Err(vec![format_gen(&d, name)]);
     }
     let diags = check_capabilities(ir, &req, &job.generator.get().capabilities(job.role));
@@ -663,7 +677,7 @@ pub fn run_job(ir: &Ir, job: &Job<'_>) -> Result<FileSet, Vec<String>> {
     }
     job.generator
         .get()
-        .generate_dyn(&req, &job.options)
+        .generate_dyn(&req, &job.gen_options())
         .map_err(|diags| diags.iter().map(|d| format_gen(d, name)).collect())
 }
 
