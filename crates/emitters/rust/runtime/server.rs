@@ -1530,7 +1530,12 @@ impl<E: Endpoints> Handler<E> {
         // #endif
         // #if rules
         let rules: Arc<dyn RuleSink> = self.inner.clone();
+        // @if !flags
         let io = WsIo { incoming: incoming.clone(), outgoing: outgoing.clone(), rules };
+        // @end
+        // @if flags
+        let io = WsIo { incoming: incoming.clone(), outgoing: outgoing.clone(), rules, flags: super::rules::FlagView::new() };
+        // @end
         // #endif
         let (this, index) = (self.clone(), route.index);
         let conversation = Box::pin(async move { this.run_ws(index, caps, req, io).await });
@@ -1550,7 +1555,12 @@ impl<E: Endpoints> Handler<E> {
                 Body::Bytes(bytes) => (resp.status, bytes),
                 Body::Empty | Body::Sse(_) => (resp.status, Vec::new()),
             },
+            // @if !flags
             Ok(args) => match e.call_ws(index, args, &ctx, io).await {
+            // @end
+            // @if flags
+            Ok(args) => match e.call_ws(index, args, &ctx, io.with_flags(&ctx.flags)).await {
+            // @end
                 Ok(()) => {
                     out.push(WsFrame::Close(1000));
                     out.close();
@@ -2310,7 +2320,12 @@ impl<E: Endpoints> Handler<E> {
         let first = match next(&mut stream).await {
             None => None,
             Some(Err(err)) => return self.failure(&err, ep, &ctx),
+            // @if !flags
             Some(Ok(ev)) => match self.frame(ep, &ev) {
+            // @end
+            // @if flags
+            Some(Ok(ev)) => match super::rules::with_view(Some(&ctx.flags), || self.frame(ep, &ev)) {
+            // @end
                 Ok(frame) => Some(frame),
                 Err(err) => return self.failure(&err, ep, &ctx),
             },
@@ -2326,7 +2341,12 @@ impl<E: Endpoints> Handler<E> {
                 }
                 let ep = &st.handler.inner.endpoints.endpoints()[st.index];
                 let frame = match next(&mut st.stream).await? {
+                    // @if !flags
                     Ok(ev) => st.handler.frame(ep, &ev),
+                    // @end
+                    // @if flags
+                    Ok(ev) => super::rules::with_view(Some(&st.ctx.flags), || st.handler.frame(ep, &ev)),
+                    // @end
                     Err(err) => Err(err),
                 };
                 match frame {
@@ -2381,7 +2401,27 @@ pub struct WsIo {
     // #if rules
     rules: Arc<dyn RuleSink>,
     // #endif
+    // @if flags
+    /// What the upgrade request read of its flags: the checks of the messages run with it in force.
+    flags: super::rules::FlagView,
+    // @end
 }
+// @if flags
+
+impl WsIo {
+    /// The same sides with the readings of the request that opened the conversation.
+    fn with_flags(mut self, view: &super::rules::FlagView) -> Self {
+        self.flags = view.clone();
+        self
+    }
+
+    /// Puts the readings in force until the guard is dropped: the checks of a message are
+    /// synchronous, so it is never held across an `.await`.
+    fn window(&self) -> super::rules::Window {
+        super::rules::enter(&self.flags)
+    }
+}
+// @end
 
 /// Feeds a conversation with the text frames that arrive.
 #[derive(Debug, Clone)]
@@ -2482,6 +2522,9 @@ impl<In: DeserializeOwned, Out: Serialize> WsSession<In, Out> {
     /// `ValidationError` frame whose issue paths start with `message`).
     pub async fn recv(&mut self) -> Option<Result<In, Error>> {
         let text = self.io.incoming.recv().await?;
+        // @if flags
+        let _window = self.io.window();
+        // @end
         let Some(schema) = self.incoming else {
             return Some(Err(invalid("unexpected", "this endpoint does not accept messages")));
         };
@@ -2531,6 +2574,9 @@ impl<In: DeserializeOwned, Out: Serialize> WsSession<In, Out> {
     /// [`Error::Other`] when the message cannot be encoded, or fails validation with
     /// `validate_responses` on.
     pub fn send(&self, message: Out) -> Result<(), Error> {
+        // @if flags
+        let _window = self.io.window();
+        // @end
         let typed = serde_json::to_value(&message).map_err(Error::other)?;
         let data = match self.outgoing {
             Some(schema) => {

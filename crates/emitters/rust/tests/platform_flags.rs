@@ -19,6 +19,7 @@ use veld_rules::vectors::{Case, Produced, compare_produced, load_cases};
 
 const FLAGS: &str = "tests/toolchain/contract/platform_p2/flags.veld";
 const EXAMPLES: &str = "tests/rules/endpoints/flags.veld.pending";
+const STREAMS: &str = "tests/toolchain/contract/platform_p2/flags_streams.veld";
 
 fn flags_ir() -> Ir {
     compile_path(FLAGS, "rooms")
@@ -372,4 +373,45 @@ fn flags_build_behave_over_http_and_pass_every_example() {
         "cargo clippy",
     );
     run_every_example(&ir, "flags-serve", 14);
+}
+
+// ---- flagged invariants on stream items and WebSocket messages ---------------------------------------
+
+/// The items of an SSE stream and the messages of a WebSocket, in both directions, are checked with
+/// the flags the request read (`tests/toolchain/rust/flags-streams-harness`, over real sockets).
+#[test]
+fn a_flagged_invariant_of_a_stream_item_and_a_message_is_evaluated() {
+    let ir = compile_path(STREAMS, "chat");
+    let server = run(
+        &ir,
+        Role::Server,
+        vec![service_id(&ir, "Chat")],
+        vec![],
+        None,
+        json!({ "crate-name": "chat-server" }),
+    );
+    let words = text(&server, "src/veld/server.rs");
+    for word in [
+        "fn with_flags(mut self",
+        "let _window = self.io.window();",
+        "with_view(Some(&st.ctx.flags)",
+    ] {
+        assert!(words.contains(word), "missing `{word}`");
+    }
+    if !cargo_or_skip() {
+        return;
+    }
+    let client = gen_client(&ir, "chat-client", None);
+    let ws = harness_workspace(
+        "flags-streams-ws",
+        &server,
+        &client,
+        "flags-streams-harness",
+    );
+    build_lint_and_run(
+        &ws,
+        ("chat-server", "chat-client", "flags-streams-harness"),
+        &[],
+        "flags streams ok",
+    );
 }

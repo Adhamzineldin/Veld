@@ -123,6 +123,7 @@ impl Features {
             "idempotency" => self.idempotency,
             "conditional" => self.conditional,
             "derived" => self.derived,
+            "flags" => self.flags,
             "event_flags" => self.event_flags,
             "timed" => self.timed,
             "timeouts" => self.timeouts,
