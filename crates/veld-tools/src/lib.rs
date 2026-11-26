@@ -10,6 +10,7 @@ pub mod fmt;
 pub mod gate;
 pub mod lint;
 pub mod openapi;
+mod retention_export;
 
 pub use deps::{DepGraph, DepsFormat, deps, deps_with_owners};
 pub use diff::{
@@ -18,6 +19,10 @@ pub use diff::{
 pub use fmt::format;
 pub use gate::{GateDecision, GatePolicy, GateResult, breaking_gate};
 pub use openapi::openapi;
+pub use retention_export::retention_report;
+
+#[cfg(test)]
+mod retention_export_tests;
 
 #[cfg(test)]
 pub(crate) mod testutil {

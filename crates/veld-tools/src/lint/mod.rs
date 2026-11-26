@@ -95,3 +95,8 @@ pub fn rule_names() -> Vec<(&'static str, &'static str)> {
 pub(crate) fn is_linted(kind: PackageKind) -> bool {
     matches!(kind, PackageKind::Service | PackageKind::Library)
 }
+
+/// [`is_linted`] for the tools that report on the project's own packages only.
+pub(crate) fn is_linted_package(kind: PackageKind) -> bool {
+    is_linted(kind)
+}

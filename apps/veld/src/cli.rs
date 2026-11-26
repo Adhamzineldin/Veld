@@ -421,6 +421,19 @@ pub enum ExportCommand {
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
     },
+    /// The data inventory as Markdown: personal data, how long it is kept, where it travels
+    Retention(FileOut),
+}
+
+/// An export of the whole workspace into one file.
+#[derive(Debug, Args, Default)]
+pub struct FileOut {
+    /// Write to this file instead of stdout
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+    /// Overwrite an existing, different FILE
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// Exports that produce one document.
