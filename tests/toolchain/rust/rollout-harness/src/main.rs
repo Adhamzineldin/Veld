@@ -14,7 +14,8 @@ use audit_server::audit::audit_server::{
     AnnounceRequest, AuditFactLoaders, AuditHandler, AuditHooks, AuditService, BookFacts, BookRequest, EchoRequest,
     TicksRequest,
 };
-use audit_server::veld::rules::{Outcome, Position, RuleEvent, RuleOutput};
+use audit_server::runtime_config::{AuditServerRuntime, RuleOutputMode, RulesSettings};
+use audit_server::veld::rules::{Outcome, Position, RuleEvent};
 use audit_server::veld::server::{RequestContext, WsSession};
 use audit_server::veld::stream::{EventStream, SseEvent, unfold};
 use audit_server::veld::Error;
@@ -76,16 +77,11 @@ impl AuditService for Impl {
 }
 
 struct Hooks {
-    mode: RuleOutput,
     validate: bool,
     events: Events,
 }
 
 impl AuditHooks for Hooks {
-    fn rules_output(&self) -> RuleOutput {
-        self.mode
-    }
-
     fn validate_requests(&self) -> bool {
         self.validate
     }
@@ -100,9 +96,15 @@ struct Server {
     events: Events,
 }
 
-async fn serve(mode: RuleOutput, validate: bool) -> Server {
+async fn serve(mode: RuleOutputMode, validate: bool) -> Server {
     let events: Events = Arc::default();
-    let handler = AuditHandler::create(Impl, Hooks { mode, validate, events: events.clone() }, Loaders);
+    let handler = AuditHandler::create(
+        Impl,
+        Hooks { validate, events: events.clone() },
+        Loaders,
+        Some(&AuditServerRuntime { rules: RulesSettings { output: mode } }),
+    )
+    .unwrap();
     let router = audit_server::adapters::axum::router(handler);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
@@ -143,7 +145,7 @@ fn strings(items: &[&str]) -> Vec<String> {
 }
 
 async fn invariants_requires_and_ensures() {
-    let strict = serve(RuleOutput::Strict, true).await;
+    let strict = serve(RuleOutputMode::Strict, true).await;
     // An audited invariant of the body and of the result: reported, and the request goes on.
     CAPACITY.store(100, Ordering::SeqCst);
     let (status, body) = book(&strict, 7).await;
@@ -184,7 +186,7 @@ async fn invariants_requires_and_ensures() {
 
 async fn modes() {
     // Output mode `off` skips an audited output rule like every output rule; an input rule is evaluated.
-    let off = serve(RuleOutput::Off, true).await;
+    let off = serve(RuleOutputMode::Off, true).await;
     CAPACITY.store(100, Ordering::SeqCst);
     assert_eq!(book(&off, 7).await.0, 201);
     assert_eq!(heard(&off), strings(&["Audited Input Party.smallParty body"]));
@@ -192,13 +194,13 @@ async fn modes() {
     assert!(heard(&off).is_empty());
 
     // `audit` evaluates and reports them too.
-    let audit = serve(RuleOutput::Audit, true).await;
+    let audit = serve(RuleOutputMode::Audit, true).await;
     assert_eq!(book(&audit, 5).await.0, 201);
     assert_eq!(heard(&audit), strings(&["Audited Output Audit.book.ensure request"]));
 
     // With request validation off an audited rule is off exactly where the enforced one would be: the
     // invariants of the body, `require` and `ensure` are not evaluated, the invariants of the result are.
-    let loose = serve(RuleOutput::Strict, false).await;
+    let loose = serve(RuleOutputMode::Strict, false).await;
     CAPACITY.store(2, Ordering::SeqCst);
     assert_eq!(book(&loose, 7).await.0, 201);
     assert_eq!(heard(&loose), strings(&["Audited Output Party.smallParty result"]));
@@ -209,7 +211,7 @@ async fn modes() {
 async fn sse_items() {
     // The items of a stream are outputs: the odd ones break the audited invariant, are sent all the
     // same, and are reported.
-    let sse = serve(RuleOutput::Strict, true).await;
+    let sse = serve(RuleOutputMode::Strict, true).await;
     let response = reqwest::get(format!("{}/audit/ticks?count=4", sse.base)).await.unwrap();
     assert_eq!(response.status().as_u16(), 200);
     let text = response.text().await.unwrap();

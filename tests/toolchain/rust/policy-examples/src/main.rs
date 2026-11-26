@@ -45,7 +45,7 @@ impl BookingsHooks for Hooks {
 
 #[tokio::main]
 async fn main() {
-    let app = router(BookingsTestHandler::create(Stub, Hooks));
+    let app = router(BookingsTestHandler::create(Stub, Hooks, None).unwrap());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     println!("PORT={}", listener.local_addr().unwrap().port());
     axum::serve(listener, app).await.unwrap();

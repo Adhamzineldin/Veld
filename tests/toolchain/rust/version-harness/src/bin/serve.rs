@@ -85,8 +85,8 @@ const PROBE: &str = r#"{"veldTestHandler":1,"digests":{"Rooms":null,"Orders":nul
 
 #[tokio::main]
 async fn main() {
-    let rooms = rooms_server::adapters::axum::router(RoomsTestHandler::plain(Stub));
-    let orders = rooms_server::adapters::axum::router(OrdersTestHandler::create(Stub, Hooks));
+    let rooms = rooms_server::adapters::axum::router(RoomsTestHandler::plain(Stub, None).unwrap());
+    let orders = rooms_server::adapters::axum::router(OrdersTestHandler::create(Stub, Hooks, None).unwrap());
     let app = rooms.merge(orders).route(
         "/__veld/test",
         get(|| async { ([(axum::http::header::CONTENT_TYPE, "application/json")], PROBE) }),
