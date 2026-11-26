@@ -394,10 +394,7 @@ impl Build<'_> {
     /// and its keys are scoped to the caller.
     fn caller(&self, principal: Option<&Json>) -> Option<String> {
         self.endpoint.idempotency.as_ref().filter(|i| i.caller)?;
-        Some(principal.map_or_else(
-            || "caller".to_owned(),
-            |p| veld_codegen::canonical::canonical(p),
-        ))
+        Some(principal.map_or_else(|| "caller".to_owned(), veld_codegen::canonical::canonical))
     }
 
     /// The `key` line: the header, and what the store holds for it. A stored answer is a value
