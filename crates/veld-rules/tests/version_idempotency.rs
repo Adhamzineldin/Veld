@@ -524,7 +524,9 @@ fn fingerprint_of(params: Json) -> Option<String> {
         store: StoreState::Empty,
     });
     let p = pipeline(&ir, "F", "make");
-    p.run_reported(&req, OutputMode::Strict).unwrap().fingerprint
+    p.run_reported(&req, OutputMode::Strict)
+        .unwrap()
+        .fingerprint
 }
 
 #[test]
@@ -566,7 +568,9 @@ fn the_handler_gets_a_version_only_when_a_tag_was_compared() {
     // The optional fact is absent: nothing was compared, so nothing is handed over.
     req.facts.insert("maybe".into(), None);
     assert_eq!(
-        p.run_reported(&req, OutputMode::Strict).unwrap().checked_version,
+        p.run_reported(&req, OutputMode::Strict)
+            .unwrap()
+            .checked_version,
         None
     );
     // Present and equal: the version that was checked.

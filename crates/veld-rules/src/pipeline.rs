@@ -356,7 +356,11 @@ impl<'a> Pipeline<'a> {
         };
         let mut stage = Stage {
             fresh: false,
-            fingerprint: self.endpoint.idempotency.as_ref().map(|_| fingerprint(&params)),
+            fingerprint: self
+                .endpoint
+                .idempotency
+                .as_ref()
+                .map(|_| fingerprint(&params)),
         };
         match self.lookup(request)? {
             Lookup::NewKey => stage.fresh = true,

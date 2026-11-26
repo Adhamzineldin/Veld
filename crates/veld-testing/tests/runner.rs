@@ -1138,8 +1138,9 @@ fn a_dry_run_does_not_stop_a_replay() {
     // A stored answer is sent again before step 6, so with `Veld-Test-Dry-Run: 1` the server still
     // answers the stored success (200 and a body), not `204` and `Veld-Test-Passed`.
     let ir = conditional_ir();
-    let body = json!({ "id": "00000000-0000-4000-8000-000000000001", "name": "x", "revision": "7" })
-        .to_string();
+    let body =
+        json!({ "id": "00000000-0000-4000-8000-000000000001", "name": "x", "revision": "7" })
+            .to_string();
     let replaying = serve(move |_| ok_reply(&body, Some("\"7\"")));
     assert!(run_live(&replaying, &ir, "a stored success", true).passed());
     let sent = replaying.requests();
