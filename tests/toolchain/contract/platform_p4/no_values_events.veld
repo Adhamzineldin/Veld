@@ -1,0 +1,28 @@
+// Platform phase P4, part 1 (events): the rejections of the events runtime never repeat a value.
+// The driver `messages_no_values_events.ts` publishes and delivers the marker string through every
+// path that produces a message: a value of the wrong shape, a violated invariant, a malformed
+// envelope and a message whose content type is another.
+
+event Noted {
+  id: uuid
+  text: string @length(min: 2, max: 8)
+  count: int @min(1) @max(10)
+  rule evenCount: count % 2 == 0
+    message "The count must be even"
+}
+
+@topic("notes.v1")
+channel Notes {
+  carries Noted
+  key id
+}
+
+service Writer {
+  publishes Notes
+}
+
+service Reader {
+  subscribes Notes as "reader" {
+    on Noted -> noted
+  }
+}

@@ -5778,7 +5778,7 @@ export class ClientCore {
     try {
       return await this.doFetch(`${this.baseUrl}${path}${qs === '' ? '' : `?${qs}`}`, fetchInit);
     } catch (cause) {
-      throw retryable(new VeldTransportError(`${ep.method} ${path} failed`, cause));
+      throw retryable(new VeldTransportError(`${ep.method} ${ep.path} failed`, cause));
     }
   }
 

@@ -946,7 +946,7 @@ function parseEnvelope(bytes: Uint8Array): Envelope | string {
     if (json[name] !== undefined && typeof json[name] !== 'string') return `\`${name}\` is not a string`;
   }
   const contentType = json['datacontenttype'];
-  if (contentType !== undefined && contentType !== 'application/json') return `\`datacontenttype\` is \`${String(contentType)}\``;
+  if (contentType !== undefined && contentType !== 'application/json') return '`datacontenttype` is not `application/json`';
   if (Object.prototype.hasOwnProperty.call(json, 'data_base64')) return '`data_base64` is not allowed';
   const data = json['data'];
   if (!isRecord(data)) return '`data` is not an object';

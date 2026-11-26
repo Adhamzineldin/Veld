@@ -1,0 +1,101 @@
+// Platform phase P4, part 1: no message repeats a value (spec/rules.md 19.3). The driver
+// `messages_no_values.ts` sends a marker string through every endpoint and path below and searches
+// every message, detail, title and log text the runtime writes for it. Each endpoint says which
+// paths it is for.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model User {
+  id: uuid
+  suspended: bool
+}
+
+principal User
+
+/// Every kind of validation issue: type, required, enum, bounds, length, pattern, format,
+/// discriminator, a map key and a list item.
+model Card {
+  last4: string @length(min: 4, max: 4)
+}
+
+model Transfer {
+  iban: string
+}
+
+union Payment {
+  card: Card,
+  transfer: Transfer,
+}
+
+model Shape {
+  id: uuid
+  name: string @length(min: 2, max: 8)
+  code: string @pattern("^[A-Z]{3}$")
+  count: int @min(1) @max(10)
+  price: decimal
+  when: datetime
+  status: Status
+  tags: string[]
+  extra: Map<string, int>
+  pay: Payment
+  email: string @format(email)
+  blob: json
+  rule countEven: count % 2 == 0
+    message "The count must be even"
+  rule ratio: 100 / (count - 4) > 5
+}
+
+model Booking {
+  id: uuid
+  status: Status = .pending
+  @version
+  revision: long
+  total: decimal
+}
+
+model Payment2 {
+  amount: decimal
+  note: string
+}
+
+policy Manage(user: User, booking: Booking) {
+  permit when true
+  forbid when user.suspended
+    message "A suspended account cannot manage bookings"
+  forbid when booking.status == .cancelled
+}
+
+@auth(bearer)
+service Probe at "/probe" {
+  // Cases: every validation issue of a body, a type error in a map and a list, a union that names
+  // no arm, an invariant that is violated, one that cannot be evaluated.
+  post "/shapes" shapes(body: Shape) -> Shape
+
+  // Cases: a path parameter, a query parameter, a header that is not what it should be.
+  get "/by/{id}" byId(id: uuid, @query size: int, @header("X-Marker") trace: uuid) -> Shape
+
+  // Cases: a path parameter that is a valid string, so that it reaches the client's transport
+  // errors and the server's `404` with the marker in the address.
+  get "/name/{name}" byName(name: string) -> Shape
+
+  // Cases: a request that is a body of another type, a `require` that fails (named and unnamed), an
+  // `ensure` that fails with the found state, a transition that is not legal, a stale version,
+  // a policy denial with and without a message, a missing idempotency key header.
+  @idempotent
+  post "/{id}/pay" pay(id: uuid, body: Payment2) -> Booking {
+    fact booking: Booking = id
+    allow Manage(user, booking)
+    transition booking.status: pending -> paid
+    require notZero: body.amount > 0
+      message "The amount must be positive"
+    require body.amount < 1000
+    require noteOk: startsWith(body.note, "ok-")
+    ensure result.revision >= 0
+      message "The revision never goes down"
+  }
+}
