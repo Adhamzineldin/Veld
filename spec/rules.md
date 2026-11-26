@@ -1111,6 +1111,16 @@ What the implementation chose where the text above is silent:
 - **The id.** The field's wire name stands in the id text and in the bytes, so renaming a field in source while keeping its wire name keeps the id (as for a rule, §6).
 - **A client.** A client is only gated (`E0801`) for a derived field that an endpoint reaches. A fact or the principal is never seen by a client, so a derived field only they have is the server's.
 
+**Where the three generators differed, and what holds** (settled 26 November 2026, after comparing them with each other and with the reference evaluator):
+
+- **`validate = false` does not switch derived fields off.** Computing a derived field is part of what the server does, not validation of what the caller sent (as for `If-Match` and the idempotency key, §11.10). They are computed, and a request whose derived field cannot be computed is `422 ValidationError` with that field's violation in every setting: a handler is never given a value its type promises and the server could not build.
+- **A read of a derived field that has no value skips**, at any depth: a rule, a `require`, an `ensure`, an `allow`, an `old(...)` or another derived field that reads one, directly or through a nested path or a lambda over a list, is skipped as the reference evaluator skips it. No target evaluates such a read against a stand-in value, and none fails with an error of its own.
+- **A `@readonly` field read in request position is absent at any depth**, not only when it is a field of the same declaration: a derived field that reaches one through a nested value is left absent in a request, with no violation.
+- **A consumed event whose derived field cannot be computed is rejected** with the reason `rule` and that field's violation, whether or not the digests match (§8 of `spec/events.md`): the consumer cannot build the value its handler is promised.
+- **The principal is completed once, for every endpoint.** When the principal's model has derived fields, the server computes them once per request, after authentication, for every endpoint of the service and not only for one whose rules read the caller; that completed value is what the rules see and what the handler sees as the caller. A failure is `500 Internal`, as for a fact.
+- **The public function is called `derive`** in every target (`Order.derive(value)`), in the target's casing.
+- **Which types a derived field may have** is the same in every target: every type but `duration` (a `duration` cannot be turned back into a wire value by every target). A target that cannot compute a derived field of another type has not finished the feature.
+
 ### 17.3 From a violation to an example: `veld test --from-violation`
 
 - The event of `onRuleViolation` (§5.3) does not contain the request, on purpose. A server option, off by default, adds a **capture** to it: the service and endpoint, the parameters in wire form, the facts, the principal and the clock. The documentation of the option says that a capture contains whatever the caller sent.

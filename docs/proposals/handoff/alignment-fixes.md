@@ -38,3 +38,29 @@ Found by comparing the three targets' reports for `@version` and `@idempotent` (
 
 ## Low priority, all targets
 - Two consumed services whose client names collide in `createClients`: TypeScript qualifies with the package, Java appends `_`, Rust reports `E0801`. Pick one (qualifying is the useful one) when someone meets it.
+
+# Derived fields (compared 26 Nov; `spec/rules.md` 17.2, the paragraph "Where the three generators differed", is the rule)
+
+## Node and TypeScript
+- **`validate = false`**: a request whose derived field cannot be computed is `422` with that field's violation. Today `checkInputRules` returns early and the handler gets `undefined` where its type promises a value.
+- **The principal**: complete it once per request after authentication, for every endpoint (today: only when the endpoint's rules read it), and hand the completed value to the handler as `ctx.principal` (today the handler sees the auth hook's own value).
+- **Rename** the public function `compute` to `derive` (`<Decl>.derive(draft, out?)`, `derive<Decl>Derived` and the like), in the generator, the tests, the drivers and `spec/targets/typescript.md` 5i (which says the other targets mirror its names).
+- The client's local check keeps `@readonly` members the server would drop before deriving (`checkRules` uses `withDefaults`), so it can compute a derived value the server would not: treat a `@readonly` input as absent there too.
+
+## Java
+- **`validate = false`**: `422` for a request whose derived field cannot be computed (today: silent, the handler gets `null`).
+- **A nested `@readonly` read in a request** leaves the derived field absent (today a placeholder is read and the handler sees an invented value).
+- **`require`, `allow`, `old`** that read a derived field without a value skip (today they can fail with a `NullPointerException`).
+- **A consumed event** whose derived field cannot be computed is rejected as `rule` whether or not the digests match (today only when they match).
+- **The principal**: completed for every endpoint, not only one with a rule block.
+
+## Rust
+- **A read of a derived field without a value through a nested path skips** (today the stand-in is read: a valid request can get a `422`).
+- **A nested `@readonly` read in a request** leaves the derived field absent (today the stand-in is read).
+- **A consumed event** whose derived field cannot be computed is rejected as `rule` (today the failure is dropped and the handler gets a stand-in).
+- **The principal**: completed for every endpoint and handed to the handler (today: only when the endpoint's rules read it, and the handler sees the auth hook's value).
+- **Types**: a derived field of type bytes, json, list, map, a model or `Page` is `E0801` today; only `duration` may be refused. `spec/targets/rust.md` 16 does not mention `duration`: add it.
+- **A derived field that is absent in a request** (it reads a `@readonly` field) is a stand-in in the handler's struct, which hides that it is missing. Make it visible in the type (`Option`) for exactly those fields, or say in the report why not.
+
+## All three, later
+- A derived field that can be absent in a request (it reaches a `@readonly` field) should be marked so in the type a handler receives. The compiler could say which fields those are (one more key next to `derived`), so that three generators do not each work it out.
