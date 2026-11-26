@@ -41,6 +41,25 @@ fn compiled(input: &CompileInput, what: &str) -> Ir {
     out.ir.unwrap_or_else(|| unreachable!())
 }
 
+/// Compiles `text` as the one file of the package `package`.
+pub fn compile_text(text: &str, package: &str) -> Ir {
+    compiled(
+        &CompileInput {
+            packages: vec![PackageInput {
+                name: package.into(),
+                kind: PackageKind::Service,
+                files: vec![SourceFile {
+                    path: format!("{package}.veld"),
+                    text: text.to_string(),
+                }],
+                base_url: None,
+            }],
+            consumes: BTreeMap::new(),
+        },
+        package,
+    )
+}
+
 /// The orders contract: `orders` consumes `iam`. `orders_pkg` renames the orders package; `patch`
 /// edits its sources.
 pub fn compile_contract(orders_pkg: &str, patch: &dyn Fn(&str) -> String) -> Ir {

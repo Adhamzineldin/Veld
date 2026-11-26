@@ -1,0 +1,22 @@
+[package]
+name = "idempotency-harness"
+version = "0.0.0"
+edition = "2021"
+publish = false
+default-run = "idempotency-harness"
+
+[[bin]]
+name = "idempotency-harness"
+path = "src/main.rs"
+
+[[bin]]
+name = "idempotency-serve"
+path = "src/bin/serve.rs"
+
+[dependencies]
+bookings-server = { path = "../server" }
+bookings-client = { path = "../client" }
+axum = "0.8"
+reqwest = "0.13"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
