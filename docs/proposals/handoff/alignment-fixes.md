@@ -105,3 +105,16 @@ Settled in `spec/platform.md` after the Node work: every flag an endpoint can re
 
 ## The compiler, for all three targets
 - An IR key that marks a derived field which can be absent in a request (it reaches a `@readonly` field), so that the three generators can type it and guard it without each working it out.
+
+# An `allow` that reads a derived field without a value denies (26 Nov; `spec/rules.md` 17.2)
+
+A skipped `allow` would permit, so this one case fails closed: `403 Forbidden`, as for any policy argument that cannot be evaluated (11.3).
+- **Java**: today `Derive.orSkip` skips the `allow` (permitted). Make it a denial; a case in `DerivedAlign.java`.
+- **Rust**: today the stand-in is read (open item above). When that is fixed, an `allow` denies.
+- **Node**: check what `veld.permits` does with an absent derived argument, and add the case to `derived_http.ts`.
+
+# Still open after the Java pass (26 Nov)
+- Flagged invariants on incoming WebSocket messages are not evaluated in Java (no flag view on the socket thread).
+- The Java drivers for timed moves, flags and derived fields run through the JDK handler only, not Spring.
+- `RuleWalk.java` in the Java runtime has an unused import (`java.util.LinkedHashMap`) from before this work; the import-hygiene test of `spec/targets/java.md` section 7 probably fails on it.
+- A request with a deadline runs on a thread of an unbounded cached pool in Java.
