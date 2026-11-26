@@ -1081,6 +1081,48 @@ model Order {
 - `veld test --from-violation <file>` reads one such event as JSON, finds the endpoint by its operation signature, and prints an `example` block: the captured request, and the outcome the reference evaluator gives it. The developer pastes it into the contract. It writes nothing.
 - An event without a capture, an operation the contract does not have, and a capture that does not fit the contract's types are each reported as such, with exit code 1.
 
+**The event and its capture, in JSON.** The event is the one of §5.3 with the same member names (`spec/targets/typescript.md` §5 spells them `rule`, `operation`, `position`, `outcome`, `violation`, `elapsedMicros`), plus one member that exists only when the capture option is on:
+
+```json
+{
+  "rule": "veld:bookings/NewBooking.atMost30Days@3f2a9c41d0e15b77",
+  "operation": "veld:bookings/Bookings.payBooking@…",
+  "position": "input",
+  "outcome": "rejected",
+  "violation": { "rule": "veld:bookings/NewBooking.atMost30Days@3f2a9c41d0e15b77", "path": "$.body", "fields": ["start", "end"], "message": "A stay is at most 30 days" },
+  "elapsedMicros": 41,
+  "capture": {
+    "service": "Bookings",
+    "endpoint": "payBooking",
+    "operation": "veld:bookings/Bookings.payBooking@…",
+    "params": { "id": "00000000-0000-4000-8000-0000000000aa", "body": { "amount": "10.00" } },
+    "facts": { "booking": { "guestId": "00000000-0000-4000-8000-0000000000aa", "total": "10.00" }, "coupon": null },
+    "principal": { "id": "00000000-0000-4000-8000-0000000000aa", "roles": [] },
+    "now": "2026-06-01T00:00:00.000Z",
+    "redacted": ["facts.booking.card", "principal.password"]
+  }
+}
+```
+
+- The tool reads only `capture`; every other member is ignored, so a generator may add members to the event. A `capture` that is `null` or absent is an event without a capture.
+- `capture.operation` is the signature of the endpoint (`spec/ir.md` §5.2), the key the tool finds it by. `service` and `endpoint` are for people and are not read.
+- `params` has one member per parameter of the endpoint that the request had, by parameter name, each in wire form after binding; an optional parameter that was not sent is absent. A parameter of a stream is left out.
+- `facts` has one member per fact the server loaded for the request, by fact name, in wire form, and `null` for a fact the loader did not find. These are the values `Veld-Test-Facts` carries (§12.4). A fact the endpoint declares and `facts` lacks is read as absent.
+- `principal` is the caller in wire form, as `Veld-Test-Principal` carries it, or `null` (or absent) when the request had none.
+- `now` is the clock the server read for the request, as RFC 3339 text, as `Veld-Test-Now` carries it.
+- `redacted` lists the wire paths of the values the capture left out because the field is `@pii` or `@secret` (§19.3), or is empty or absent. A path starts with `params.<name>`, `facts.<name>` or `principal`, and goes on with `.<wire name>` for a field or a map key and `[<index>]` for a list element (`params.body.guests[1].phone`). The member itself is missing from its parent; a list keeps its length.
+
+**What the tool does with it.**
+
+- It looks the endpoint up by `capture.operation` alone, fills in each value named in `redacted` by the rules of §12.2 (the same counters run through the whole example, in the order params, facts, principal), runs the request against the reference evaluator in `strict` mode with no `returns`, and prints the `example` block with every value written out and the outcome the evaluator gives. Standard output holds the block and nothing else, so it can be piped into a file. Everything else goes to standard error, one line each, starting with `note:`.
+- **Filled-in values are named.** One line `note: filled in <path>` per value that was filled in under a path of `redacted`.
+- **Reproduction is checked, not assumed.** When the outcome does not contain the rule of the event (as a violation, or as an audited report), the tool says `note: the example does not reproduce the violation of <rule id>; it ends in <outcome>`, and adds `a value was filled in, so the original values may matter` when `redacted` was not empty. An event whose `position` is `output` is reproducible only with the handler's result, which a capture does not hold, so the tool says `note: the violation is of an output rule; add a returns line with the result the handler gave` and prints the block as it is.
+- **Errors, each exit code 1, nothing written or printed to standard output.**
+  1. *No capture*: `the event has no capture; turn the capture option of the server on`.
+  2. *Unknown operation*: `the contract has no endpoint with the signature <signature>`.
+  3. *A capture that does not fit*: `the capture does not fit the contract: <what>`, where what is one of an unknown parameter, fact or `redacted` path root, a required parameter that is missing and is not redacted, a value of the wrong shape or type, a `now` that is not RFC 3339, or a value that cannot be filled in or cannot be written in the syntax of an example (a `json` value that holds `null`).
+  A file that cannot be read or is not JSON is reported as such, also with exit code 1.
+
 ## 18. `veld check --prove` (Phase 5)
 
 `--prove` asks an SMT solver questions about the rules. It finds contradictions that examples cannot find, because an example needs a value and a contradiction has none.
