@@ -70,10 +70,11 @@ pub fn schema_expr(fc: &mut FileCtx<'_, '_>, ty: &Type, c: &Constraints) -> Stri
     format!("{{ {} }}", parts.join(", "))
 }
 
-/// `pii: true` for a `@pii` or `@secret` field of a server that audits: the audit event leaves its
-/// value out (`spec/platform.md` section 4).
+/// `pii: true` for a `@pii` or `@secret` field of a server that audits or captures: the audit event
+/// and the capture of a violation leave its value out (`spec/platform.md` section 4,
+/// `spec/rules.md` section 17.3).
 fn push_redaction(fc: &FileCtx<'_, '_>, f: &Field, parts: &mut Vec<String>) {
-    if fc.tree.uses_audit() && (f.pii || f.secret) {
+    if (fc.tree.uses_audit() || fc.tree.uses_capture()) && (f.pii || f.secret) {
         parts.push("pii: true".to_string());
     }
 }

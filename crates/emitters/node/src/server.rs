@@ -477,6 +477,10 @@ fn write_hooks(
         let event = fc.rt("RuleViolationEvent");
         w.line(format!("onRuleViolation?: (event: {event}) => void;"));
     }
+    if fc.tree.uses_capture() {
+        w.line("/** Whether the event of `onRuleViolation` carries a `capture` of the request (`spec/rules.md` section 17.3): on unless `false`, because the target was generated with `capture-violations`. A capture contains whatever the caller sent, except the values of `@pii` and `@secret` fields: send it only where such data may go. */");
+        w.line("captureViolations?: boolean;");
+    }
     if !fc.tree.validate {
         w.line("/** This target was generated with `validate = false`: requests are not validated unless this is true. */");
         w.line("validateRequests?: boolean;");

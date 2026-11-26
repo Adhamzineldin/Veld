@@ -79,8 +79,8 @@ export interface FieldSchema {
   /** Set by the server (`@tenant`): a request may lack it, and one that carries it is kept as received. */
   st?: boolean;
   // #endif
-  // #if audit
-  /** `@pii` or `@secret`: the value is left out of an audit event. */
+  // #if redact
+  /** `@pii` or `@secret`: the value is left out of an audit event and of a capture. */
   pii?: boolean;
   // #endif
 }
@@ -782,6 +782,16 @@ export interface RuleViolationEvent {
   outcome: 'rejected' | 'audited';
   violation: Violation;
   elapsedMicros: number;
+  // #endif
+  // #if capture
+  /**
+   * The request that violated the rule, in wire form, without its `@pii` and `@secret` values
+   * (spec/rules.md section 17.3). Present only when the server was generated with
+   * `capture-violations` and `captureViolations` is not `false`.
+   */
+  capture?: ViolationCapture;
+  // #endif
+  // #if rules
 }
 
 export type DeepPartial<T> = T extends readonly (infer U)[]
@@ -871,9 +881,22 @@ function ruleEvent(
 ): void {
   if (!hooks.onRuleViolation) return;
   const elapsedMicros = Math.max(0, Math.round(nowMicros() - startedMicros));
+  // #endif
+  // #if capture
+  const capture = captureOf(hooks);
+  // #endif
+  // #if rules
   for (const violation of violations) {
     try {
+      // #endif
+      // #if rules_not_capture
       hooks.onRuleViolation({ rule: violation.rule, operation: ep.sig, position, outcome, violation, elapsedMicros });
+      // #endif
+      // #if capture
+      const event: RuleViolationEvent = { rule: violation.rule, operation: ep.sig, position, outcome, violation, elapsedMicros };
+      hooks.onRuleViolation(capture === undefined ? event : { ...event, capture });
+      // #endif
+      // #if rules
     } catch {
       // A failing hook must not change the response.
     }
@@ -1466,6 +1489,9 @@ async function prepare(
       return problem(std.notFound ?? 'about:blank', 'NotFound', 404, ep.sig, { resource: step.name });
     }
   }
+  // #endif
+  // #if capture_facts
+  markFactsLoaded(hooks);
   // #endif
   // #if policies
   const denied = checkAllows(ep, rules, ctx, std, hooks, { p, f, now }, started);
@@ -2427,6 +2453,17 @@ export interface HandlerHooks {
   /** What the platform features keep of the request that is running: set by the router core, never by the application. */
   platform?: PlatformState;
   // #endif
+  // #if capture
+  /**
+   * Whether the event of `onRuleViolation` carries a `capture` of the request (spec/rules.md
+   * section 17.3). The server was generated with `capture-violations`, so the default is `true`;
+   * `false` turns it off. A capture contains whatever the caller sent, except the values of `@pii`
+   * and `@secret` fields: send it only where such data may go.
+   */
+  captureViolations?: boolean;
+  /** What the capture of the request that is running has so far: set by the router core, never by the application. */
+  captureState?: CaptureState;
+  // #endif
   // #if limits_server
   /** Counts the calls of the endpoints with a `@limit`. Default: a memory limiter, which counts per process and says so once (spec/platform.md section 5). */
   limiter?: Limiter;
@@ -2495,6 +2532,10 @@ export interface ServerEndpoint extends EndpointSpec {
   // #if platform
   /** The signature of the principal's model, for an endpoint with auth in a service that has a principal: who "the caller" is. */
   caller?: string;
+  // #endif
+  // #if capture
+  /** What the capture of a rule violation needs to know of the endpoint (spec/rules.md section 17.3). */
+  capture?: CaptureSpec;
   // #endif
   // #if visibility
   /** An answer of the endpoint (a result, a declared error, a stream item) can reach a `@visible` field. */
@@ -2921,6 +2962,9 @@ async function guard(
   // #if audit
   auditParameters(ep, bound, hooks);
   // #endif
+  // #if capture
+  captureParameters(hooks, bound);
+  // #endif
   // #if flags
   await readFlags(ep, ctx, hooks);
   // #endif
@@ -2998,6 +3042,9 @@ async function runCore(
   // #endif
   // #if platform
   hooks = platformOpen(hooks, ctx);
+  // #endif
+  // #if capture
+  hooks = withCapture(hooks, ep, ctx);
   // #endif
   try {
     const bound = await guard(r, m, req, ctx, std, hooks, false);
@@ -3309,6 +3356,9 @@ function factKept(ep: ServerEndpoint, step: FactStep, value: unknown, ctx: Reque
   // #if audit_facts
   if (hooks.platform !== undefined && step.schema !== undefined) auditFact(hooks.platform, step.name, step.schema, value);
   // #endif
+  // #if capture_facts
+  if (step.schema !== undefined) captureFact(hooks, step.name, step.schema, value);
+  // #endif
   // #if facts_platform
   void ep;
   void ctx;
@@ -3505,6 +3555,8 @@ export class AuditFailure extends Error {
   }
 }
 
+// #endif
+// #if redact
 function auditMismatch(path: string, expected: string): Error {
   return new Error(`audit: ${path} is not ${expected}: a value that does not have the shape of its type cannot be known to be clean`);
 }
@@ -3560,6 +3612,8 @@ export function redactNode(schema: Schema, v: unknown, path: string, out: string
       return v;
   }
 }
+// #endif
+// #if audit
 
 function noteRedacted(state: PlatformState, paths: string[]): void {
   state.redacted = [...(state.redacted ?? []), ...paths];
@@ -3687,6 +3741,130 @@ function withAudit(go: RunFn): RunFn {
     await recordAudit(r.ep, res, own);
     return res;
   };
+}
+// #endif
+// #if capture
+
+// ---------------------------------------------------------------------------
+// Captures of a rule violation (spec/rules.md section 17.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * The request a violation came from, as `veld test --from-violation` reads it. `params`, `facts`
+ * and `principal` are in wire form, without the values of `@pii` and `@secret` fields (their paths
+ * are in `redacted`, sorted, without duplicates); a fact the loader did not find is `null`.
+ */
+export interface ViolationCapture {
+  service: string;
+  endpoint: string;
+  operation: string;
+  params: Record<string, unknown>;
+  facts: Record<string, unknown>;
+  principal: unknown;
+  now: string;
+  redacted: string[];
+}
+
+/** What the generator says of an endpoint for its captures. */
+export interface CaptureSpec {
+  /** The name of the service block. */
+  service: string;
+  /** The names of the facts of the endpoint: one that was not found is `null` in the capture. */
+  facts: readonly string[];
+  /** The schema of the principal's model, when the service has a principal. */
+  principal?: Schema;
+}
+
+/** What the capture of one request has so far. */
+export interface CaptureState {
+  readonly ep: ServerEndpoint;
+  readonly ctx: RequestContext;
+  params: Record<string, unknown>;
+  facts: Record<string, unknown>;
+  redacted: string[];
+  /** The facts were loaded: one that is not in `facts` was not found. */
+  loaded: boolean;
+  /** Why the capture cannot be built: a value that does not have the shape of its type cannot be known to be clean. */
+  broken?: unknown;
+}
+
+/** Starts the capture of a request. Nothing is kept for a server without an `onRuleViolation` hook or with `captureViolations: false`. */
+function withCapture(hooks: HandlerHooks, ep: ServerEndpoint, ctx: RequestContext): HandlerHooks {
+  if (hooks.onRuleViolation === undefined || hooks.captureViolations === false || ep.capture === undefined) return hooks;
+  return { ...hooks, captureState: { ep, ctx, params: {}, facts: {}, redacted: [], loaded: false } };
+}
+
+/** Step 4 has passed: the parameters as bound, in wire form, without their `@pii` and `@secret` values. */
+function captureParameters(hooks: HandlerHooks, bound: Bound): void {
+  const state = hooks.captureState;
+  if (state === undefined) return;
+  try {
+    for (const p of state.ep.params) {
+      const v = bound.value[p.name];
+      if (p.s === true || v === undefined) continue;
+      const paths: string[] = [];
+      state.params[p.name] = redactNode(p.t, toWire(p.t, v), `params.${p.name}`, paths);
+      state.redacted.push(...paths);
+    }
+  } catch (err) {
+    state.broken = err;
+  }
+}
+
+/** A fact that was loaded and kept: in wire form, as the handler gets it, without its `@pii` and `@secret` values. */
+function captureFact(hooks: HandlerHooks, name: string, schema: Schema, value: unknown): void {
+  const state = hooks.captureState;
+  if (state === undefined) return;
+  try {
+    const paths: string[] = [];
+    state.facts[name] = redactNode(schema, toWire(schema, value), `facts.${name}`, paths);
+    state.redacted.push(...paths);
+  } catch (err) {
+    state.broken = err;
+  }
+}
+
+/** Every fact of the endpoint has been asked for: the ones that are not in the capture were not found. */
+function markFactsLoaded(hooks: HandlerHooks): void {
+  if (hooks.captureState !== undefined) hooks.captureState.loaded = true;
+}
+
+/**
+ * The capture of the request so far, or `undefined` when there is none or it cannot be built (a
+ * value that does not have the shape of its type: `onError` hears why and the event has no
+ * capture, because a value that cannot be walked cannot be known to be clean).
+ */
+function captureOf(hooks: HandlerHooks): ViolationCapture | undefined {
+  const state = hooks.captureState;
+  const spec = state?.ep.capture;
+  if (state === undefined || spec === undefined) return undefined;
+  try {
+    if (state.broken !== undefined) throw state.broken;
+    const facts: Record<string, unknown> = { ...state.facts };
+    if (state.loaded) for (const name of spec.facts) if (!Object.prototype.hasOwnProperty.call(facts, name)) facts[name] = null;
+    const paths: string[] = [...state.redacted];
+    const who = state.ctx.principal;
+    const principal =
+      spec.principal === undefined || who === undefined || who === null ? null : redactNode(spec.principal, toWire(spec.principal, who), 'principal', paths);
+    const at = hooks.platform?.at ?? new Date();
+    return {
+      service: spec.service,
+      endpoint: state.ep.name,
+      operation: state.ep.sig,
+      params: state.params,
+      facts,
+      principal,
+      now: at.toISOString().replace(/\.000Z$/, 'Z'),
+      redacted: [...new Set(paths)].sort(),
+    };
+  } catch (err) {
+    try {
+      hooks.onError?.(err, state.ctx);
+    } catch {
+      // A failing hook must not change the answer.
+    }
+    return undefined;
+  }
 }
 // #endif
 // #if limits_server

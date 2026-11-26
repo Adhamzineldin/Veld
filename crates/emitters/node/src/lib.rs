@@ -45,6 +45,11 @@ pub struct Options {
     /// The broker adapters to generate: `"kafka"`, `"rabbitmq"` or a list of both
     /// (`spec/events.md` section 10.7). Default: none, the memory transport only.
     pub messaging: Option<Messaging>,
+    /// `true` adds a `capture` of the request to the event of `onRuleViolation`: the parameters,
+    /// the facts, the principal and the clock in wire form, without the values of `@pii` and
+    /// `@secret` fields (`spec/rules.md` section 17.3). A capture contains whatever the caller
+    /// sent: leave it off unless the hook sends events somewhere such data may go. Default: `false`.
+    pub capture_violations: Option<bool>,
 }
 
 /// The Node.js server generator.
@@ -110,7 +115,8 @@ impl Generator for Node {
             req.services.clone(),
         )
         .with_validate(opts.validate != Some(false))
-        .with_events();
+        .with_events()
+        .with_capture(opts.capture_violations == Some(true));
         let brokers = brokers::choose(opts.messaging.as_ref(), &tree)?;
         let model = ServerModel {
             adapters_path: "server/adapters.ts".to_string(),

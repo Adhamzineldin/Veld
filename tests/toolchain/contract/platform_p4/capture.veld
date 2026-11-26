@@ -1,0 +1,75 @@
+// Platform phase P4, part 2: the capture of `onRuleViolation` (spec/rules.md 17.3). The driver
+// `capture_http.ts` sends a request to every endpoint below and writes the event the hook heard to
+// a file; the Rust test feeds each file to `veld_testing::from_violation` and runs the example it
+// prints. Each endpoint says which case it is for.
+
+model User {
+  id: uuid
+  // The principal's own `@pii` and `@secret` values: `redacted` lists `principal.email` and
+  // `principal.password`.
+  email: string @pii
+  password: string @secret
+  roles: string[]
+}
+
+principal User
+
+model Guest {
+  name: string
+  phone?: string @pii
+}
+
+model Card {
+  number: string @secret
+  holder: string
+}
+
+model Booking {
+  id: uuid
+  guest: Guest
+  total: decimal
+  card?: Card
+}
+
+model NewStay {
+  guests: int @min(1)
+  start: datetime
+  end: datetime
+  guest: Guest
+  companions: Guest[]
+  rule endAfterStart: end > start
+    message "The stay must end after it starts"
+}
+
+model Payment {
+  amount: decimal
+  card: Card
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  // Case: an input violation (an invariant of the body) with the principal, and `@pii` values at
+  // two depths: `params.body.guest.phone` and `params.body.companions[1].phone`.
+  post "/" create(body: NewStay) -> 201 NewStay
+
+  // Case: a `require` that fails with a fact, an optional fact (found and not found), the
+  // principal, and a `@secret` in the body (`params.body.card.number`) and in the fact
+  // (`facts.booking.card.number`).
+  post "/{id}/pay" pay(id: uuid, body: Payment, @query coupon?: uuid) -> Booking {
+    fact booking: Booking = id
+    fact discount?: Booking = coupon
+    require body.amount <= booking.total
+      message "The amount is more than the booking costs"
+  }
+
+  // Case: an output violation (`ensure`), reported with the parameters, the fact and the principal.
+  get "/{id}/total" total(id: uuid) -> Booking {
+    fact booking: Booking = id
+    ensure result.total >= 0
+      message "The total is never negative"
+  }
+
+  // Case: no auth, no principal (`principal` is `null`), no fact: an invariant of the body.
+  @auth(none)
+  post "/open" openStay(body: NewStay) -> 201 NewStay
+}

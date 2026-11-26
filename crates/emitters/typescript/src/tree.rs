@@ -42,6 +42,7 @@ pub struct Tree<'a> {
     tenant_fields: bool,
     tenant_events: bool,
     audit: bool,
+    capture: bool,
     limits: bool,
     limits_server: bool,
     events: bool,
@@ -125,6 +126,7 @@ impl<'a> Tree<'a> {
             tenant_fields: set.iter().any(|id| ir.decl(*id).tenant_field().is_some()),
             tenant_events: false,
             audit: false,
+            capture: false,
             limits,
             limits_server: false,
             events: false,
@@ -249,6 +251,23 @@ impl<'a> Tree<'a> {
         self.audit
     }
 
+    /// Switches the captures of rule violations on (`spec/rules.md` section 17.3; the target option
+    /// `capture-violations`). They only exist where an event of `onRuleViolation` does: a tree with
+    /// rules or tenancy. Call it after [`Tree::with_events`], which works those out.
+    #[must_use]
+    pub fn with_capture(mut self, on: bool) -> Self {
+        self.capture = on && (self.rules || self.tenancy);
+        self
+    }
+
+    /// Whether the events of `onRuleViolation` of this server tree can carry a capture of the
+    /// request: the `capture` regions, `pii` marks in the schemas and `FactStep.schema` for every
+    /// fact.
+    #[must_use]
+    pub fn uses_capture(&self) -> bool {
+        self.capture
+    }
+
     /// Whether an endpoint of the tree has a `@limit` (`spec/platform.md` section 5): the client
     /// waits and sends again on `429`.
     #[must_use]
@@ -265,7 +284,7 @@ impl<'a> Tree<'a> {
     /// Whether any of the four features of platform phase P1 is enforced by this server tree.
     #[must_use]
     pub fn uses_platform(&self) -> bool {
-        self.visibility || self.tenancy || self.audit || self.limits_server
+        self.visibility || self.tenancy || self.audit || self.limits_server || self.capture
     }
 
     /// Whether a declaration or an endpoint of the tree has a flagged statement (`spec/platform.md`
@@ -344,6 +363,7 @@ impl<'a> Tree<'a> {
             tenant_fields: self.tenant_fields,
             tenant_events: self.tenant_events,
             audit: self.audit,
+            capture: self.capture,
             limits: self.limits,
             limits_server: self.limits_server,
             runtime_config: self.runtime_config,

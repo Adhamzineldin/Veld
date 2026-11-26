@@ -100,6 +100,10 @@ pub struct Gates {
     pub tenant_events: bool,
     /// An audited endpoint of a server (`spec/platform.md` section 4): the `audit` regions.
     pub audit: bool,
+    /// A server generated with `capture-violations` (`spec/rules.md` section 17.3): the `capture`
+    /// regions, and the redaction the audit log shares (`redact`). It needs the per-request state
+    /// of the platform (`platform`), because the capture's `now` is the clock `prepare` reads.
+    pub capture: bool,
     /// An endpoint with a `@limit` (`spec/platform.md` section 5): the client's wait on `429`.
     pub limits: bool,
     /// An endpoint of a server with a `@limit`: the limiter and its hooks.
@@ -114,7 +118,7 @@ impl Gates {
     /// regions (the per-request state, the caller, the clock read once).
     #[must_use]
     pub fn platform(self) -> bool {
-        self.visibility || self.tenancy || self.audit || self.limits_server
+        self.visibility || self.tenancy || self.audit || self.limits_server || self.capture
     }
 
     /// The same gates with everything they build on switched on.
@@ -128,7 +132,8 @@ impl Gates {
                 || self.rollout
                 || self.derived
                 || self.visibility
-                || self.tenancy,
+                || self.tenancy
+                || self.capture,
             endpoint_rules,
             transitions,
             ..self
@@ -152,6 +157,7 @@ impl Gates {
             tenant_fields: self.tenant_fields || other.tenant_fields,
             tenant_events: self.tenant_events || other.tenant_events,
             audit: self.audit || other.audit,
+            capture: self.capture || other.capture,
             limits: self.limits || other.limits,
             limits_server: self.limits_server || other.limits_server,
             policies: self.policies || other.policies,
@@ -231,6 +237,12 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "tenancy_facts" => g.endpoint_rules && g.tenancy,
         "audit_facts" => g.endpoint_rules && g.audit,
         "audit" => g.audit,
+        // Captures of a rule violation (`spec/rules.md` section 17.3), the redaction they share with
+        // the audit log, and the line of the event a build without them keeps.
+        "capture" => g.capture,
+        "redact" => g.audit || g.capture,
+        "rules_not_capture" => g.rules && !g.capture,
+        "capture_facts" => g.endpoint_rules && g.capture,
         "limits" => g.limits,
         "limits_server" => g.limits_server,
         "not_limits" => !g.limits,
@@ -249,8 +261,8 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "endpoint_platform" => g.endpoint_rules && g.platform(),
         "endpoint_plain" => g.endpoint_rules && !g.platform(),
         // `FactStep.schema`: the schema of a fact, for the derived fields, the tenant and the audit event.
-        "fact_schema" => g.endpoint_rules && (g.derived || g.tenancy || g.audit),
-        "facts_platform" => g.endpoint_rules && (g.tenancy || g.audit),
+        "fact_schema" => g.endpoint_rules && (g.derived || g.tenancy || g.audit || g.capture),
+        "facts_platform" => g.endpoint_rules && (g.tenancy || g.audit || g.capture),
         // What wraps `run` in the handler: a deadline, a metric, an audit event.
         "run_fn" => g.timeouts || g.slo || g.audit,
         "execs" => g.timeouts || g.slo || g.audit,
@@ -842,6 +854,79 @@ mod tests {
         .unwrap();
         assert!(bounded.contains("withAudit(bound(run))"));
         assert!(audit.contains("withAudit(run)") && !audit.contains("bound(run)"));
+    }
+
+    /// Captures of a rule violation (`spec/rules.md` section 17.3): the regions pair up next to
+    /// every other feature, and nothing else sees their words.
+    #[test]
+    fn the_capture_regions_pair_up_in_every_combination() {
+        for bits in 0u32..(1 << 13) {
+            let b = |i: u32| bits & (1 << i) != 0;
+            let gates = Gates {
+                capture: true,
+                rules: b(0),
+                endpoint_rules: b(1),
+                transitions: b(2),
+                policies: b(3),
+                derived: b(4),
+                audit: b(5),
+                tenancy: b(6),
+                visibility: b(7),
+                idempotency: b(8),
+                timeouts: b(9),
+                slo: b(10),
+                flags: b(11),
+                limits_server: b(12),
+                ..Gates::default()
+            };
+            assert!(source_gated(gates).is_ok(), "{gates:?}");
+        }
+    }
+
+    #[test]
+    fn captures_add_their_regions_and_nothing_else_sees_them() {
+        let words = [
+            "ViolationCapture",
+            "CaptureSpec",
+            "CaptureState",
+            "withCapture",
+            "captureParameters",
+            "captureFact",
+            "captureOf",
+            "captureViolations",
+        ];
+        let plain = source_gated(Gates {
+            rules: true,
+            endpoint_rules: true,
+            audit: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(!plain.contains(word), "`{word}` leaked into the runtime");
+        }
+        let capture = source_gated(Gates {
+            capture: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(capture.contains(word), "`{word}` is missing");
+        }
+        // The redaction is shared with the audit log, and a capture needs the request's state.
+        assert!(capture.contains("function redactNode(") && capture.contains("PlatformState"));
+        assert!(!capture.contains("withAudit") && !capture.contains("markFactsLoaded"));
+        // Facts are captured where endpoint rules load them.
+        let facts = source_gated(Gates {
+            capture: true,
+            endpoint_rules: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(facts.contains("markFactsLoaded") && facts.contains("factKept"));
+        // The line of the event a build without captures keeps.
+        assert!(plain.contains("hooks.onRuleViolation({ rule: violation.rule"));
+        assert!(!capture.contains("hooks.onRuleViolation({ rule: violation.rule"));
     }
 
     #[test]

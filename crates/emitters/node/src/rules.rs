@@ -398,7 +398,9 @@ fn write_fact(
     let tenant = fc.tree.uses_tenancy() && fc.tree.ir.type_reaches_tenant(&fact.ty);
     // The audit event holds the fact in wire form, and a fact of another tenant is not found.
     let audited = fc.tree.uses_audit() && site.ep.audited;
-    if fc.tree.ir.type_reaches_derived(&fact.ty) || tenant || audited {
+    // A capture of a rule violation holds the facts the server loaded, in wire form.
+    let captured = fc.tree.uses_capture();
+    if fc.tree.ir.type_reaches_derived(&fact.ty) || tenant || audited || captured {
         let schema = schema_expr(fc, &fact.ty, &Constraints::default());
         w.line(format!("schema: {schema},"));
     }

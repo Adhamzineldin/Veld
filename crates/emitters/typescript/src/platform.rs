@@ -168,7 +168,28 @@ pub fn endpoint_members(fc: &mut FileCtx<'_, '_>, svc: &Service, ep: &Endpoint) 
     {
         out.push(limit_member(ir, svc, limit));
     }
+    if fc.tree.uses_capture() {
+        out.push(capture_member(fc, svc, ep));
+    }
     out
+}
+
+/// `capture: { service, facts, principal? }`: what the capture of a rule violation needs to know
+/// of an endpoint (`spec/rules.md` section 17.3). The principal's schema is there for an endpoint
+/// with auth in a service that has a principal, like `caller`.
+fn capture_member(fc: &mut FileCtx<'_, '_>, svc: &Service, ep: &Endpoint) -> String {
+    let facts: Vec<String> = ep.rules.facts.iter().map(|f| ts_str(&f.name)).collect();
+    let mut parts = vec![
+        format!("service: {}", ts_str(&svc.name)),
+        format!("facts: [{}]", facts.join(", ")),
+    ];
+    if ep.auth.kind != AuthKind::None
+        && let Some(p) = &svc.principal
+    {
+        let schema = schema_expr(fc, &Type::Decl(p.decl), &veld_ir::Constraints::default());
+        parts.push(format!("principal: {schema}"));
+    }
+    format!("capture: {{ {} }},", parts.join(", "))
 }
 
 /// `limit: { count, seconds, by, tenant? }`: the limit of an endpoint (`spec/platform.md` section 5).
@@ -224,4 +245,5 @@ pub fn endpoint_uses_platform(tree: &crate::tree::Tree<'_>, ep: &Endpoint) -> bo
         || (tree.uses_tenancy() && endpoint_reaches_tenant(ir, ep))
         || (tree.uses_audit() && ep.audited && !ep.success.stream)
         || (tree.uses_limits_server() && ep.limit.is_some())
+        || tree.uses_capture()
 }
