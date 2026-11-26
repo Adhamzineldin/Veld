@@ -139,6 +139,88 @@ fn scope(svc: &Service, ep: &Endpoint, result: bool) -> Scope {
     }
 }
 
+/// The Rust condition that says that an expression of the endpoint block reads a derived field of
+/// a request parameter that has no value (`spec/rules.md` section 17.2), or `None` when it reads
+/// none (always, without derived fields). `map` is the place of the patterns of step 5:
+/// `ctx.absent` in step 6, `state.absent` in step 9.
+pub(crate) fn absent_condition(
+    ctx: &Ctx<'_, '_>,
+    ep: &Endpoint,
+    exprs: &[&Expr],
+    map: &str,
+) -> Option<String> {
+    if !ctx.tree.derived {
+        return None;
+    }
+    let params: Vec<(String, Type)> = ep
+        .params
+        .iter()
+        .filter(|p| !p.stream)
+        .map(|p| (p.name.clone(), p.ty.clone()))
+        .collect();
+    let mut reads = std::collections::BTreeSet::new();
+    for e in exprs {
+        reads.extend(crate::rules::reach::reach_params(ctx.tree.ir, &params, e).params);
+    }
+    absent_terms(ctx, &reads, map)
+}
+
+/// The condition of an `allow`: its arguments read a derived field without a value, or the policy
+/// reads one inside an argument that is a parameter, or a part of one.
+pub(crate) fn allow_absent_condition(
+    ctx: &Ctx<'_, '_>,
+    ep: &Endpoint,
+    a: &veld_ir::EndpointAllow,
+    map: &str,
+) -> Option<String> {
+    if !ctx.tree.derived {
+        return None;
+    }
+    let params: Vec<(String, Type)> = ep
+        .params
+        .iter()
+        .filter(|p| !p.stream)
+        .map(|p| (p.name.clone(), p.ty.clone()))
+        .collect();
+    let ir = ctx.tree.ir;
+    let mut reads = std::collections::BTreeSet::new();
+    for e in &a.args {
+        reads.extend(crate::rules::reach::reach_params(ir, &params, e).params);
+    }
+    let policy = ir.policies.get(a.policy.index())?;
+    for (arg, pp) in a.args.iter().zip(&policy.params) {
+        let Some((param, prefix)) = crate::rules::reach::param_place(ir, &params, arg) else {
+            continue;
+        };
+        let inside = [(pp.name.clone(), pp.ty.clone())];
+        for clause in &policy.clauses {
+            for (_, pattern) in crate::rules::reach::reach_params(ir, &inside, &clause.expr).params
+            {
+                reads.insert((
+                    param.clone(),
+                    crate::rules::reach::join_pattern(&prefix, &pattern),
+                ));
+            }
+        }
+    }
+    absent_terms(ctx, &reads, map)
+}
+
+fn absent_terms(
+    _ctx: &Ctx<'_, '_>,
+    reads: &std::collections::BTreeSet<(String, String)>,
+    map: &str,
+) -> Option<String> {
+    if reads.is_empty() {
+        return None;
+    }
+    let terms: Vec<String> = reads
+        .iter()
+        .map(|(param, pattern)| format!("vr::absent_in(&{map}, {}, {})", lit(param), lit(pattern)))
+        .collect();
+    Some(terms.join(" || "))
+}
+
 fn has_result(ep: &Endpoint) -> bool {
     ep.success.ty.is_some() && !ep.success.stream
 }
@@ -361,6 +443,9 @@ fn state_struct(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, ep: &Endpo
         w.line(format!("principal: {ty},"));
     }
     w.line("now: i64,");
+    if ctx.tree.derived {
+        w.line("absent: std::collections::BTreeMap<String, Vec<String>>,");
+    }
     w.close().blank();
 }
 
@@ -421,7 +506,7 @@ fn step6(
     // call an endpoint and which move is legal must not depend on a validation option.
     let plan = Plan::new(ctx.tree);
     for a in &ep.rules.allows {
-        guards::allow(w, ctx, &plan, index, a, &sc)?;
+        guards::allow(w, ctx, &plan, (index, ep), a, &sc)?;
     }
     crate::conditional::version_guard(w, ctx, index, ep)?;
     guards::transition_guard(w, ctx, index, ep)?;
@@ -619,17 +704,21 @@ fn require(
         "// require {}",
         r.name.as_deref().unwrap_or("(unnamed)")
     ));
-    w.open(format!(
-        "if let Some(violation) = {}",
-        violated_call(
-            &r.id,
-            r.name.as_deref(),
-            "require",
-            &r.reads,
-            &message,
-            &body
-        )
-    ));
+    // A read of a derived field that has no value skips the statement.
+    let skip = absent_condition(ctx, ep, &[&r.expr], "ctx.absent");
+    let call = violated_call(
+        &r.id,
+        r.name.as_deref(),
+        "require",
+        &r.reads,
+        &message,
+        &body,
+    );
+    let scrutinee = match &skip {
+        Some(c) => format!("(if {c} {{ None }} else {{ {call} }})"),
+        None => call,
+    };
+    w.open(format!("if let Some(violation) = {scrutinee}"));
     match &r.else_error {
         // An audited `require` never answers, with `else E` or without, and its payload is never
         // built: the violation goes to the hook and the request goes on (`spec/rules.md` 17.1).
@@ -702,6 +791,11 @@ fn finish6(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, index: usize, e
     let principal = state_principal(ctx, svc, ep).map_or(String::new(), |_| {
         ", principal: principal.clone()".to_string()
     });
+    let absent = if ctx.tree.derived {
+        ", absent: ctx.absent.clone()"
+    } else {
+        ""
+    };
     if has_facts(ep) {
         let names: Vec<String> = ep
             .rules
@@ -729,7 +823,7 @@ fn finish6(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, index: usize, e
         if saved {
             w.line("if !enforce { return Ok(veld::server::Prepared::none()); }");
             w.line(format!(
-                "Ok(veld::server::Prepared::new({index}, {} {{ request, facts: saved{principal}, now }}))",
+                "Ok(veld::server::Prepared::new({index}, {} {{ request, facts: saved{principal}, now{absent} }}))",
                 state_name(ep)
             ));
             return;
@@ -740,7 +834,7 @@ fn finish6(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, index: usize, e
     } else {
         w.line("if !enforce { return Ok(veld::server::Prepared::none()); }");
         w.line(format!(
-            "Ok(veld::server::Prepared::new({index}, {} {{ request{principal}, now }}))",
+            "Ok(veld::server::Prepared::new({index}, {} {{ request{principal}, now{absent} }}))",
             state_name(ep)
         ));
     }
@@ -821,7 +915,7 @@ fn step9_fn(
         .iter()
         .filter(|e| e.rollout.is_some() == audited)
     {
-        ensure_line(w, ctx, e, &sc)?;
+        ensure_line(w, ctx, ep, e, &sc)?;
     }
     if !audited {
         guards::target_check(w, ctx, ep)?;
@@ -834,6 +928,7 @@ fn step9_fn(
 fn ensure_line(
     w: &mut CodeWriter,
     ctx: &Ctx<'_, '_>,
+    ep: &Endpoint,
     e: &EndpointEnsure,
     sc: &Scope,
 ) -> Result<(), String> {
@@ -848,6 +943,9 @@ fn ensure_line(
         "// ensure {}",
         e.name.as_deref().unwrap_or("(unnamed)")
     ));
+    if let Some(c) = absent_condition(ctx, ep, &[&e.expr], "state.absent") {
+        w.open(format!("if !({c})"));
+    }
     w.line(format!(
         "vr::record(&mut out, \"request\", {}, {}, &[{}], {}, (|| -> vr::Res<bool> {{ Ok({body}) }})());",
         lit(&e.id),
@@ -855,6 +953,9 @@ fn ensure_line(
         fields.join(", "),
         lit(&message)
     ));
+    if absent_condition(ctx, ep, &[&e.expr], "state.absent").is_some() {
+        w.close();
+    }
     Ok(())
 }
 

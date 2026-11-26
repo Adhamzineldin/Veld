@@ -19,8 +19,8 @@ use edges_server::edges::edges::{Gauge, Kit, Line, Me, Order, Paid, Part, Tick, 
 use edges_server::edges::live_server::{FeedRequest, LiveHandler, LiveService};
 use edges_server::edges::receipts_events::{ReceiptsEventHandlers, subscribe_receipts_events};
 use edges_server::edges::shop_server::{
-    ENDPOINTS, GaugeFacts, GaugeRequest, KitRequest, LineRequest, MeRequest, PlaceRequest, ShopFactLoaders, ShopHandler, ShopHooks,
-    ShopService, SpendFacts, SpendRequest,
+    CheckedRequest, ENDPOINTS, GatedRequest, GaugeFacts, GaugeRequest, KitRequest, LineRequest, ManyRequest, MeRequest, PartRequest, PlaceRequest,
+    ShelfRequest, ShopFactLoaders, ShopHandler, ShopHooks, ShopService, SpendFacts, SpendRequest,
 };
 use edges_server::runtime_config::EdgesServerRuntime;
 use edges_server::veld::events::{
@@ -83,6 +83,26 @@ impl ShopService for Impl {
     async fn kit(&self, request: KitRequest, _ctx: &RequestContext) -> Result<Kit, Error> {
         self.0.kits.lock().unwrap().push(request.body.clone());
         Ok(Kit { parts: vec![Part { seq: 1, next: -1 }], bump: -1, serials: -1 })
+    }
+
+    async fn part(&self, _request: PartRequest, _ctx: &RequestContext) -> Result<(), Error> {
+        Ok(())
+    }
+
+    async fn many(&self, _request: ManyRequest, _ctx: &RequestContext) -> Result<(), Error> {
+        Ok(())
+    }
+
+    async fn gated(&self, _request: GatedRequest, _ctx: &RequestContext) -> Result<(), Error> {
+        Ok(())
+    }
+
+    async fn checked(&self, _request: CheckedRequest, _ctx: &RequestContext) -> Result<Part, Error> {
+        Ok(Part { seq: 1, next: -1 })
+    }
+
+    async fn shelf(&self, _request: ShelfRequest, _ctx: &RequestContext) -> Result<(), Error> {
+        Ok(())
     }
 
     async fn me(&self, _request: MeRequest, ctx: &RequestContext) -> Result<Me, Error> {
@@ -316,6 +336,28 @@ async fn a_derived_field_without_a_value_skips_at_any_depth_in_a_request() {
     assert_eq!(heard(&s), Vec::<String>::new());
     // In the answer every field is there: `seq` is 1, so the computed values are real.
     assert_eq!((a.doc["parts"][0]["next"].clone(), a.doc["bump"].clone(), a.doc["serials"].clone()), (json!(2), json!(3), json!(2)));
+}
+
+/// The statements of an endpoint block that read a derived field of a request parameter without a
+/// value (`spec/rules.md` 17.2): a `require` (also over a list parameter), an `ensure` and the
+/// `old(...)` of one skip, so a valid request is answered; an `allow` that reads one denies with
+/// `403 Forbidden`, because a skipped `allow` would permit. A derived field inside the items of a
+/// `Page` is skipped too: the invariant that reads it does not answer `422`.
+async fn endpoint_statements_and_pages_read_a_missing_derived_field() {
+    let s = serve(None).await;
+    let a = post(&s, "/shop/parts", &[], Some(json!({}))).await;
+    assert_eq!(a.status, 204, "a require that reads an absent derived field skips: {}", a.text);
+    let a = post(&s, "/shop/many", &[], Some(json!([{}, {}]))).await;
+    assert_eq!(a.status, 204, "the same through a quantifier over a list parameter: {}", a.text);
+    let a = post(&s, "/shop/gated", &[], Some(json!({}))).await;
+    assert_eq!(a.status, 403, "an allow that reads an absent derived field denies: {}", a.text);
+    assert_eq!(a.doc["data"]["message"], json!("not permitted"));
+    let a = post(&s, "/shop/checked", &[], Some(json!({}))).await;
+    assert_eq!(a.status, 200, "an ensure and an old(...) that read it skip: {}", a.text);
+    let page = json!({ "page": { "items": [{}, {}], "total": 2, "page": 0, "size": 2 } });
+    let a = post(&s, "/shop/shelves", &[], Some(page)).await;
+    assert_eq!(a.status, 204, "a derived field in the items of a page is skipped: {}", a.text);
+    assert_eq!(heard(&s), Vec::<String>::new());
 }
 
 /// The principal is given its derived fields once per request after authentication, for every
@@ -599,6 +641,7 @@ async fn main() {
     facts_the_principal_and_errors_are_computed().await;
     a_fact_that_cannot_be_computed_is_internal().await;
     a_derived_field_without_a_value_skips_at_any_depth_in_a_request().await;
+    endpoint_statements_and_pages_read_a_missing_derived_field().await;
     the_principal_is_completed_for_every_endpoint().await;
     a_stream_item_is_computed().await;
     the_output_mode_decides_what_a_failing_result_does().await;

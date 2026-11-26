@@ -248,8 +248,20 @@ fn collect_absent(schema: &Schema, v: &Value, at: &str, out: &mut std::collectio
                 collect_absent(arm, v, at, out);
             }
         }
-        Schema::Scalar(..) | Schema::Enum(_) | Schema::Map(..) | Schema::Page(_) => {}
+        Schema::Page(of) => {
+            for x in v.get("items").and_then(Value::as_array).into_iter().flatten() {
+                collect_absent(of, x, &format!("{at}[]"), out);
+            }
+        }
+        Schema::Scalar(..) | Schema::Enum(_) | Schema::Map(..) => {}
     }
+}
+
+/// Whether the derived field `pattern` of the bound parameter `param` has no value in a request
+/// (step 5): a statement of an endpoint block that reads it is skipped, an `allow` denies.
+#[must_use]
+pub fn absent_in(map: &std::collections::BTreeMap<String, Vec<String>>, param: &str, pattern: &str) -> bool {
+    map.get(param).is_some_and(|a| is_absent(a, pattern))
 }
 
 /// Whether the derived field named by `pattern` has no value (see [`absent_patterns`]).

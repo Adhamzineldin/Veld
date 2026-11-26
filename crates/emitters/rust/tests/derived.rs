@@ -593,3 +593,54 @@ fn derived_fields_over_http_in_the_client_and_in_events() {
         "derived ok",
     );
 }
+
+/// The statements of an endpoint block that read a derived field of a request parameter without a
+/// value: a `require`, an `ensure` and an `old(...)` skip and an `allow` denies, by the patterns
+/// that step 5 left in the context (`spec/targets/rust.md` section 16).
+#[test]
+fn endpoint_statements_read_the_absent_patterns_of_step_five() {
+    let ir = compile_path(EDGES, "edges");
+    let ids = ir.services.iter().map(|s| s.id).collect();
+    let files = run(
+        &ir,
+        Role::Server,
+        ids,
+        vec![],
+        None,
+        json!({ "crate-name": "edges-server" }),
+    );
+    let shop = text(&files, "src/edges/shop_server.rs");
+    assert!(
+        shop.contains("(if vr::absent_in(&ctx.absent, \"body\", \"next\") { None } else {"),
+        "a require skips: {shop}"
+    );
+    assert!(
+        shop.contains("vr::absent_in(&ctx.absent, \"body\", \"[].next\")"),
+        "a require over a list parameter skips: {shop}"
+    );
+    assert!(
+        shop.contains(
+            "if vr::absent_in(&ctx.absent, \"body\", \"next\") { return Err(vr::Fail::Absent); }"
+        ),
+        "an allow denies: {shop}"
+    );
+    assert!(
+        shop.contains("if !(vr::absent_in(&state.absent, \"body\", \"next\")) {"),
+        "an ensure skips: {shop}"
+    );
+    let server = text(&files, "src/veld/server.rs");
+    assert!(server.contains("ctx.absent = bound.absent.clone();"));
+}
+
+/// A contract without a derived field has none of the words of the carry.
+#[test]
+fn a_contract_without_derived_fields_has_no_absent_context() {
+    let files = gen_server(&standard_ir(), "Orders", &[], "orders-server");
+    for path in files.paths() {
+        let body = text(&files, path);
+        assert!(
+            !body.contains("absent_in") && !body.contains("ctx.absent"),
+            "{path}"
+        );
+    }
+}

@@ -160,6 +160,12 @@ pub struct RequestContext {
     /// The audited rules this request reported (`@rollout(audit)`).
     audit: AuditLog,
     // #endif
+    // @if derived
+    /// The derived fields of each bound parameter that have no value (patterns, step 5): what
+    /// the statements of an endpoint block that read one must skip (`spec/rules.md` 17.2).
+    #[doc(hidden)]
+    pub absent: BTreeMap<String, Vec<String>>,
+    // @end
 }
 // #if rollout
 
@@ -967,6 +973,10 @@ struct Bound {
     // #if rollout
     audited: Vec<super::rules::Violation>,
     // #endif
+    // @if derived
+    /// The patterns of the derived fields without a value of each bound parameter.
+    absent: BTreeMap<String, Vec<String>>,
+    // @end
 }
 // #if rules
 
@@ -996,6 +1006,10 @@ impl Bound {
         let mut typed = p.schema.from_wire(wire, true);
         let mut found = Vec::new();
         super::rules::derive_walk(p.schema, &mut typed, &p.location(), super::rules::Mode::Request, &mut found);
+        let absent = super::rules::absent_patterns(p.schema, &typed);
+        if !absent.is_empty() {
+            self.absent.insert(p.name.to_string(), absent);
+        }
         // A derived field that reads a field the request does not have is left without a value; the
         // handler reads a stand-in for it.
         super::rules::fill_derived(p.schema, &mut typed);
@@ -1295,6 +1309,9 @@ impl<E: Endpoints> Handler<E> {
             // #if rollout
             audit: AuditLog::default(),
             // #endif
+            // @if derived
+            absent: BTreeMap::new(),
+            // @end
         }
     }
 
@@ -1415,6 +1432,9 @@ impl<E: Endpoints> Handler<E> {
         }
         // @end
         let bound = self.bind(ep, caps, req, ctx, ws);
+        // @if derived
+        ctx.absent = bound.absent.clone();
+        // @end
         // @if conditional
         let headers = Self::header_issues(ctx);
         // @end
@@ -1467,6 +1487,9 @@ impl<E: Endpoints> Handler<E> {
             check: self.inner.endpoints.validate_requests(),
             violations: Vec::new(),
             micros: 0,
+            // @if derived
+            absent: BTreeMap::new(),
+            // @end
         // #endif
         // #if rollout
             audited: Vec::new(),

@@ -1184,6 +1184,6 @@ fn derived_statement(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl, f: &Field,
     }
 }
 
-mod reach;
+pub(crate) mod reach;
 #[cfg(test)]
 mod tests;

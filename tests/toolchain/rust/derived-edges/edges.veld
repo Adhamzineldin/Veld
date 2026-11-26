@@ -67,6 +67,22 @@ model Kit {
   serials: int = sum(parts, p => p.seq) + 1
 }
 
+// Statements of an endpoint block that read a derived field of a request parameter without a
+// value: a `require`, an `ensure` and an `old(...)` skip, an `allow` denies.
+policy NextPositive(user: User, part: Part) {
+  permit when part.next > 0
+}
+
+model Cell {
+  seq: int @readonly
+  next: int = seq + 1
+  rule cellNext: next > 0
+}
+
+model Shelf {
+  page: Page<Cell>
+}
+
 model Me {
   limit: int
 }
@@ -94,6 +110,26 @@ service Shop at "/shop" {
   post "/lines" line(body: Line) -> 204
 
   post "/kits" kit(body: Kit) -> 200 Kit
+
+  post "/parts" part(body: Part) -> 204 {
+    require body.next > 0
+  }
+
+  post "/many" many(body: Part[]) -> 204 {
+    require all(body, p => p.next > 0)
+  }
+
+  post "/gated" gated(body: Part) -> 204 {
+    allow NextPositive(user, body)
+  }
+
+  post "/checked" checked(body: Part) -> 200 Part {
+    ensure body.next > 0
+    ensure result.next < old(body.next)
+  }
+
+  // A derived field without a value inside the items of a Page, read by an invariant of the item.
+  post "/shelves" shelf(body: Shelf) -> 204
 
   // No rule: the handler still sees the principal with its derived field.
   post "/me" me() -> 200 Me

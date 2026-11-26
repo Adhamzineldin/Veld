@@ -19,21 +19,27 @@ pub struct Reach {
     pub patterns: BTreeSet<String>,
     /// The expression reads a `@readonly` field of a value below the first level.
     pub readonly_nested: bool,
+    /// The same for the parameters of an endpoint block: `(parameter, pattern)`, where the pattern
+    /// is relative to the parameter's value and a derived field at the first level counts.
+    pub params: BTreeSet<(String, String)>,
 }
 
 /// Where a lambda variable comes from: the pattern of the list it ranges over (when that is a
 /// path) and the type of its elements.
 struct Var {
     name: String,
+    param: Option<String>,
     pattern: Option<String>,
     ty: Option<Type>,
 }
 
 struct Walker<'a> {
     ir: &'a Ir,
-    decl: &'a Decl,
+    decl: Option<&'a Decl>,
     vars: Vec<Var>,
     out: Reach,
+    /// The types of the parameters, when the expression is one of an endpoint block.
+    params: &'a [(String, Type)],
 }
 
 /// What the expression `expr`, an expression of the declaration `decl`, reads below its first
@@ -42,12 +48,52 @@ struct Walker<'a> {
 pub fn reach(ir: &Ir, decl: &Decl, expr: &Expr) -> Reach {
     let mut w = Walker {
         ir,
-        decl,
+        decl: Some(decl),
         vars: Vec::new(),
         out: Reach::default(),
+        params: &[],
     };
     w.expr(expr);
     w.out
+}
+
+/// What an expression of an endpoint block reads of the derived fields of its parameters
+/// (`params`: name and type of each), which may have no value in a request.
+#[must_use]
+pub fn reach_params(ir: &Ir, params: &[(String, Type)], expr: &Expr) -> Reach {
+    let mut w = Walker {
+        ir,
+        decl: None,
+        vars: Vec::new(),
+        out: Reach::default(),
+        params,
+    };
+    w.expr(expr);
+    w.out
+}
+
+/// The parameter and the pattern that a path expression of an endpoint block names (`body`, `""`;
+/// `body.customer`, `customer`), when it can be named.
+#[must_use]
+pub fn param_place(ir: &Ir, params: &[(String, Type)], expr: &Expr) -> Option<(String, String)> {
+    let ExprKind::Path(p) = &expr.e else {
+        return None;
+    };
+    let mut w = Walker {
+        ir,
+        decl: None,
+        vars: Vec::new(),
+        out: Reach::default(),
+        params,
+    };
+    let (pattern, _, owner) = w.resolve(p)?;
+    Some((owner?, pattern))
+}
+
+/// A pattern below another: `join_pattern("items[]", "total")` is `items[].total`.
+#[must_use]
+pub fn join_pattern(base: &str, rest: &str) -> String {
+    join(base, rest)
 }
 
 fn join(base: &str, wire: &str) -> String {
@@ -76,9 +122,10 @@ impl Walker<'_> {
             ExprKind::List(items) => items.iter().for_each(|a| self.expr(a)),
             ExprKind::Quant(q) => {
                 self.expr(&q.list);
-                let (pattern, ty) = self.element_of(&q.list);
+                let (pattern, ty, param) = self.element_of(&q.list);
                 self.vars.push(Var {
                     name: q.var.clone(),
+                    param,
                     pattern,
                     ty,
                 });
@@ -89,13 +136,17 @@ impl Walker<'_> {
     }
 
     /// The pattern and the element type of the list an expression stands for.
-    fn element_of(&mut self, list: &Expr) -> (Option<String>, Option<Type>) {
+    fn element_of(&mut self, list: &Expr) -> (Option<String>, Option<Type>, Option<String>) {
         let ty = match &list.t {
             ExprType::Type(Type::List(t) | Type::Page(t)) => Some((**t).clone()),
             ExprType::Type(_) | ExprType::Duration => None,
         };
+        let mut param = None;
         let pattern = match &list.e {
-            ExprKind::Path(p) => self.resolve(p).map(|(pattern, _)| format!("{pattern}[]")),
+            ExprKind::Path(p) => self.resolve(p).map(|(pattern, _, owner)| {
+                param = owner;
+                format!("{pattern}[]")
+            }),
             ExprKind::Lit(_)
             | ExprKind::Now(_)
             | ExprKind::Not(_)
@@ -108,7 +159,7 @@ impl Walker<'_> {
             | ExprKind::Widen(_)
             | ExprKind::Old(_) => None,
         };
-        (pattern, ty)
+        (pattern, ty, param)
     }
 
     /// Records the reads of a path and gives its pattern and type, when it can be named.
@@ -116,14 +167,21 @@ impl Walker<'_> {
         let _ = self.resolve(p);
     }
 
-    fn resolve(&mut self, p: &PathRef) -> Option<(String, Type)> {
+    fn resolve(&mut self, p: &PathRef) -> Option<(String, Type, Option<String>)> {
+        let mut owner = None;
         let (mut pattern, mut ty, mut nested) = match &p.root {
-            Root::SelfValue => (Some(String::new()), Some(Type::Decl(self.decl.id)), false),
+            Root::SelfValue => (Some(String::new()), Some(Type::Decl(self.decl?.id)), false),
             Root::Var(name) => {
                 let v = self.vars.iter().rev().find(|v| &v.name == name)?;
+                owner = v.param.clone();
                 (v.pattern.clone(), v.ty.clone(), true)
             }
-            Root::Principal | Root::Result | Root::Param(_) | Root::Fact(_) => return None,
+            Root::Param(name) => {
+                let (_, t) = self.params.iter().find(|(n, _)| n == name)?;
+                owner = Some(name.clone());
+                (Some(String::new()), Some(t.clone()), true)
+            }
+            Root::Principal | Root::Result | Root::Fact(_) => return None,
         };
         for step in &p.steps {
             let Some(Type::Decl(id)) = ty.clone() else {
@@ -141,11 +199,18 @@ impl Walker<'_> {
             }
             let below = nested || pattern.as_deref().is_some_and(|s| s.contains('.'));
             if let (true, true, Some(pattern)) = (field.derived.is_some(), below, &pattern) {
-                self.out.patterns.insert(pattern.clone());
+                match &owner {
+                    Some(param) => {
+                        self.out.params.insert((param.clone(), pattern.clone()));
+                    }
+                    None => {
+                        self.out.patterns.insert(pattern.clone());
+                    }
+                }
             }
             ty = Some(field.ty.clone());
             nested = true;
         }
-        Some((pattern?, ty?))
+        Some((pattern?, ty?, owner))
     }
 }

@@ -268,7 +268,7 @@ pub fn allow(
     w: &mut CodeWriter,
     ctx: &Ctx<'_, '_>,
     plan: &Plan,
-    index: usize,
+    (index, ep): (usize, &Endpoint),
     a: &EndpointAllow,
     sc: &Scope,
 ) -> Result<(), String> {
@@ -288,8 +288,14 @@ pub fn allow(
     args.push("now".to_string());
     let reads: Vec<String> = a.reads.iter().map(|r| lit(r)).collect();
     w.line(format!("// allow {}", policy.name));
+    // An argument that reads a derived field without a value cannot be evaluated: it denies
+    // (`spec/rules.md` 11.3, 17.2), where a skipped `allow` would permit.
+    let absent = crate::block::allow_absent_condition(ctx, ep, a, "ctx.absent")
+        .map_or(String::new(), |c| {
+            format!("if {c} {{ return Err(vr::Fail::Absent); }} ")
+        });
     w.open(format!(
-        "if let Some(text) = vr::denial((|| -> vr::Res<Result<(), String>> {{ Ok({verdict}({})) }})())",
+        "if let Some(text) = vr::denial((|| -> vr::Res<Result<(), String>> {{ {absent}Ok({verdict}({})) }})())",
         args.join(", ")
     ));
     w.line(format!(
