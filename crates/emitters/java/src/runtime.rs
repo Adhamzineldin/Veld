@@ -424,6 +424,10 @@ pub fn emit_with(
         "sse_no_flags" => !flags.flags && !flags.platform(),
         "sse_platform_flags" => flags.flags && flags.platform(),
         "sse_platform" => flags.platform() && !flags.flags,
+        "platform_early" => flags.platform() && !flags.endpoint && !flags.conditional,
+        "testing_platform_early" => {
+            flags.testing && flags.platform() && !flags.endpoint && !flags.conditional
+        }
         "shapes_endpoint" => flags.shapes() && flags.endpoint,
         "not_shapes_endpoint" => flags.endpoint && !flags.shapes(),
         "not_shapes" => !flags.shapes(),
@@ -465,6 +469,93 @@ mod tests {
         assert_eq!(strip_regions(SAMPLE, Streaming::default()), "a\ne\n");
         assert_eq!(strip_regions(SAMPLE, SSE), "a\nb\nc\ne\n");
         assert_eq!(strip_regions(SAMPLE, WS), "a\nb\nd\ne\n");
+    }
+
+    /// The gates the older features switch, in the combinations a target really has.
+    fn older() -> Vec<Flags> {
+        let rules = Flags {
+            rules: true,
+            ..Flags::default()
+        };
+        let endpoint = Flags {
+            endpoint: true,
+            testing: true,
+            ..rules
+        };
+        let everything = Flags {
+            machine: true,
+            conditional: true,
+            policies: true,
+            rollout: true,
+            flags: true,
+            derived: true,
+            slo: true,
+            timeouts: true,
+            runtime_config: true,
+            events: true,
+            preconditions: true,
+            ..endpoint
+        };
+        vec![
+            Flags::default(),
+            rules,
+            endpoint,
+            Flags {
+                conditional: true,
+                ..endpoint
+            },
+            Flags {
+                flags: true,
+                ..endpoint
+            },
+            Flags {
+                derived: true,
+                timeouts: true,
+                ..rules
+            },
+            Flags {
+                slo: true,
+                timeouts: true,
+                runtime_config: true,
+                ..rules
+            },
+            everything,
+        ]
+    }
+
+    /// Every combination of the gates of phase P1 with a set of older ones: the regions pair up
+    /// (`gate_regions` accepts the file), no marker survives, and the platform classes are there
+    /// exactly when a platform gate is on.
+    #[test]
+    fn the_regions_of_the_platform_features_pair_up_in_every_combination() {
+        for base in older() {
+            for bits in 0..64u32 {
+                let flags = Flags {
+                    visibility: bits & 1 != 0,
+                    tenancy: bits & 2 != 0,
+                    audit: bits & 4 != 0,
+                    limits_server: bits & 8 != 0,
+                    limits: bits & 16 != 0,
+                    tenant_fields: bits & 32 != 0,
+                    rules: base.rules || bits & 2 != 0,
+                    ..base
+                };
+                let mut files = FileSet::new();
+                emit_with(&mut files, "a.b", Streaming::default(), flags).unwrap();
+                let has_platform = files.paths().any(|p| p.ends_with("/runtime/Platform.java"));
+                assert_eq!(has_platform, flags.platform(), "{flags:?}");
+                for (path, bytes) in files.iter() {
+                    let text = String::from_utf8_lossy(bytes);
+                    assert!(
+                        !text.contains("// #if") && !text.contains("// #endif"),
+                        "{path}"
+                    );
+                    if !flags.platform() {
+                        assert!(!text.contains("Platform."), "{path} in {flags:?}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

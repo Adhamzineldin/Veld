@@ -94,6 +94,26 @@ public final class Platform {
     // #endif
   }
 
+  // #if platform_early
+
+  /** Ends a request with a response that is already built (the dry run of a test handler). */
+  public static final class Early extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+    private final transient VeldResponse response;
+
+    /** Ends the request with {@code response}. */
+    public Early(VeldResponse response) {
+      super("the request ends with status " + response.status(), null, false, false);
+      this.response = response;
+    }
+
+    /** The response. */
+    public VeldResponse response() {
+      return response;
+    }
+  }
+  // #endif
+
   /** The state of the request this thread is running, or {@code null}. */
   static State current() {
     return CURRENT.get();
@@ -214,6 +234,41 @@ public final class Platform {
     } catch (RuntimeException | StackOverflowError err) {
       return false;
     }
+  }
+
+  /**
+   * A record as the generated {@code fromWire} reads it: a member that is {@code null} (a field
+   * with no value, at any depth) is left out, so that a value that holds one can be judged. The
+   * record itself is returned when there is none.
+   */
+  public static Json.Obj decodable(Json.Obj record) {
+    return (Json.Obj) withoutNulls(record);
+  }
+
+  private static Json withoutNulls(Json v) {
+    if (v instanceof Json.Obj obj) {
+      Map<String, Json> kept = new LinkedHashMap<>();
+      boolean changed = false;
+      for (Map.Entry<String, Json> e : obj.fields().entrySet()) {
+        Json child = withoutNulls(e.getValue());
+        changed |= child != e.getValue() || e.getValue() instanceof Json.Null;
+        if (!(child instanceof Json.Null)) {
+          kept.put(e.getKey(), child);
+        }
+      }
+      return changed ? new Json.Obj(kept) : obj;
+    }
+    if (v instanceof Json.Arr arr) {
+      List<Json> kept = new ArrayList<>();
+      boolean changed = false;
+      for (Json x : arr.items()) {
+        Json child = withoutNulls(x);
+        changed |= child != x;
+        kept.add(child);
+      }
+      return changed ? Json.array(kept) : arr;
+    }
+    return v;
   }
 
   private static final Map<Schema, Boolean> SHOWS = Collections.synchronizedMap(new IdentityHashMap<>());

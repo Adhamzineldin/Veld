@@ -160,7 +160,9 @@ fn write_show(
     w.open(format!(
         "static {list}<String> showWire({json}.Obj json, Object caller, long now)"
     ));
-    w.line(format!("{record} v = {record}.fromWire(json);"));
+    w.line(format!(
+        "{record} v = {record}.fromWire({platform}.decodable(json));"
+    ));
     w.line(format!("{list}<String> hide = new {array_list}<>();"));
     for line in lines {
         w.line(line);

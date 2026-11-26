@@ -891,6 +891,11 @@ public final class Router implements VeldHandler {
       return early.response();
     }
     // #endif
+    // #if platform_early
+    if (err instanceof Platform.Early early) {
+      return early.response();
+    }
+    // #endif
     // #if rules
     if (err instanceof RuleWalk.Rejected) {
       // #endif

@@ -111,6 +111,16 @@ public final class TestSupport {
     return new Conditions.Early(new VeldResponse(204, Map.of("Veld-Test-Passed", "1"), null));
   }
   // #endif
+  // #if testing_platform_early
+
+  /**
+   * The response of a dry run that passed: {@code 204} and {@code Veld-Test-Passed: 1}. A server with
+   * neither endpoint rules nor a guard ends the request through {@code Platform.Early}.
+   */
+  public static Platform.Early passed() {
+    return new Platform.Early(new VeldResponse(204, Map.of("Veld-Test-Passed", "1"), null));
+  }
+  // #endif
 
   /**
    * The endpoint without authentication and middleware: the principal comes from
