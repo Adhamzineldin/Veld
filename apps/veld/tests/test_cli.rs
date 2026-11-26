@@ -171,6 +171,50 @@ fn check_is_clean_when_every_example_can_be_filled_in() {
         .stderr(predicate::str::contains("E0953").not());
 }
 
+// --- saga examples -------------------------------------------------------------------------
+
+/// A saga whose first step answers a model that cannot be filled in (`@pattern`, no `@example`),
+/// and an example that writes no answer for the step.
+const SAGA_UNFILLABLE: &str = r#"model Req { roomId: uuid }
+model Hold { code: string @pattern("^[A-Z]{3}$") }
+
+service Rooms at "/rooms" {
+  @auth(none)
+  @idempotent
+  post "/hold" hold(body: Req) -> Hold
+}
+
+service Checkout at "/checkout" {
+  @auth(none)
+  saga post "/" checkout(body: Req) -> Hold {
+    step hold = Rooms.hold(body: { roomId: body.roomId })
+    timeout minutes(5)
+  }
+}
+
+example "a saga with nothing written for its step" {
+  key "k"
+  checkout(body: { roomId: "00000000-0000-4000-8000-000000000001" }) -> ok
+}
+"#;
+
+#[test]
+fn check_treats_a_saga_example_like_any_other_example() {
+    let tmp = project_with(SAGA_UNFILLABLE);
+    veld(tmp.path())
+        .arg("test")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("E0953"));
+    veld(tmp.path())
+        .arg("check")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("error[E0953]"))
+        .stderr(predicate::str::contains("cannot fill in `$.code`"))
+        .stderr(predicate::str::contains("1 example error"));
+}
+
 // --- event examples ------------------------------------------------------------------------
 
 const EVENTS: &str = r#"
