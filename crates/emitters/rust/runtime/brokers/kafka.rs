@@ -326,7 +326,11 @@ fn resume_all(consumer: &Consuming) {
 }
 
 /// Polls the consumer while `work` runs. The partitions are paused, so nothing is expected; a
-/// record that was fetched before the pause took effect is given back with a seek to its offset.
+/// record that was fetched before the pause took effect (or from a partition a rebalance assigned
+/// meanwhile) is given back with a seek to its offset and the partitions are paused again. The
+/// pending `recv()` is polled again at least every half of `max.poll.interval.ms`: `StreamConsumer`
+/// sends itself that wake-up (`rdkafka` 0.38 `stream_consumer.rs`), which is the poll that
+/// librdkafka's liveness check counts.
 async fn polled<T>(consumer: &Consuming, work: impl Future<Output = T>) -> T {
     tokio::pin!(work);
     loop {
@@ -335,6 +339,8 @@ async fn polled<T>(consumer: &Consuming, work: impl Future<Output = T>) -> T {
             stray = consumer.recv() => {
                 if let Ok(m) = stray {
                     let _ = consumer.seek(m.topic(), m.partition(), Offset::Offset(m.offset()), Duration::from_secs(1));
+                    // A rebalance may have assigned partitions that are not paused yet.
+                    pause_all(consumer);
                 } else {
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }

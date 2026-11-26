@@ -425,7 +425,7 @@ fn the_test_handler_of_a_subscriber_serves_the_event_endpoint_and_lists_its_topi
     let on = server_with(&ir, json!({ "testing": true }));
     let file = text(&on, "src/bookings/fulfilment_test_server.rs");
     assert!(
-        file.contains("\"subscribes\":{\"Fulfilment\":[\"shop.orders.v1\"]}"),
+        file.contains(r#"\"subscribes\":{\"Fulfilment\":[\"shop.orders.v1\"]}"#),
         "{file}"
     );
     assert!(
@@ -451,6 +451,56 @@ fn the_test_handler_of_a_subscriber_serves_the_event_endpoint_and_lists_its_topi
             assert_eq!(Some(bytes), on.get(path), "{path}");
         }
     }
+}
+
+/// A service with endpoint rules and a subscription gets one test handler: the pipeline of the
+/// endpoint rules, the event endpoint and a probe that lists `subscribes`; the crate passes
+/// `clippy -D warnings`.
+#[test]
+fn a_service_with_endpoint_rules_and_a_subscription_has_both_in_one_test_handler() {
+    const MIXED: &str = "event Pinged { id: uuid }\nchannel Pings { carries Pinged key id }\nmodel Item { qty: int @min(1) }\nerror Failed 422 {}\nservice Mixed at \"/m\" {\n  publishes Pings\n  subscribes Pings as \"g\" { on Pinged -> heard }\n  post \"/x\" act(body: Item) -> 201 Item | Failed {\n    require body.qty < 100 else Failed\n    ensure result.qty == body.qty\n  }\n}\n";
+    let ir = compile_text(MIXED.to_string());
+    let files = server_with(&ir, json!({ "testing": true }));
+    let file = text(&files, "src/bookings/mixed_test_server.rs");
+    assert!(
+        file.contains("pub struct MixedTestHandler;")
+            && file.contains("pub async fn deliver_event("),
+        "{file}"
+    );
+    assert!(
+        file.contains(r#"\"subscribes\":{\"Mixed\":[\"bookings.Pings\"]}"#),
+        "{file}"
+    );
+    assert!(
+        file.contains(".route(\"/__veld/test/event\", ::axum::routing::post(event))"),
+        "{file}"
+    );
+    if !cargo_or_skip() {
+        return;
+    }
+    let ws = work_dir().join("events-mixed");
+    let _ = std::fs::remove_dir_all(&ws);
+    write_files(&ws.join("server"), &files);
+    std::fs::write(
+        ws.join("Cargo.toml"),
+        "[workspace]\nresolver = \"2\"\nmembers = [\"server\"]\n",
+    )
+    .unwrap();
+    run_ok(
+        &mut cargo(
+            &ws,
+            &[
+                "clippy",
+                "--all-targets",
+                "-p",
+                "events-server",
+                "--",
+                "-D",
+                "warnings",
+            ],
+        ),
+        "cargo clippy",
+    );
 }
 
 // ---- snapshots (the main session stores them) --------------------------------------------------

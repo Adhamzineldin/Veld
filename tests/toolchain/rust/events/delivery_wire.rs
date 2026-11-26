@@ -101,7 +101,8 @@ fn message(def: &Value, case: &Value) -> Vec<u8> {
     };
     let order = "7d1d6c8e-84c8-4b5b-9d87-0a1a2b3c4d5e";
     match (case.get("rejected").and_then(Value::as_str), case.get("ignored")) {
-        (Some("malformed"), _) => b"this is not json".to_vec(),
+        // A JSON object that is not an envelope (no `id`), so that the copy is an object too.
+        (Some("malformed"), _) => br#"{"specversion":"1.0","source":"s","type":"t","data":{}}"#.to_vec(),
         (Some("shape"), _) => envelope(sig, json!({ "orderId": 5 })),
         (Some("rule"), _) => envelope(sig, json!({ "orderId": order, "quantity": 0 })),
         (_, Some(v)) if !v.is_null() => envelope("veld:bookings/NotOneOfOurs@0000000000000000", json!({})),

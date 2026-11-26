@@ -496,7 +496,11 @@ fn probe_body(w: &mut CodeWriter, svc: &Service, topics: &[String]) {
     w.line(
         "/// The body of `GET /__veld/test`: it tells a test handler from a production server and",
     );
-    w.line("/// holds the rules digests of its service, and the topics it subscribes to.");
+    w.line(if svc.subscriptions.is_empty() {
+        "/// holds the rules digests of its service."
+    } else {
+        "/// holds the rules digests of its service, and the topics it subscribes to."
+    });
     w.open("pub fn probe() -> String");
     let subscribes = if svc.subscriptions.is_empty() {
         String::new()

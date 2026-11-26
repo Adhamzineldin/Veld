@@ -216,9 +216,12 @@ fn a_rejected_message_is_acknowledged_and_copied_with_no_attempts() {
     let message = br#"{"specversion":"1.0","id":"x-1","source":"veld:bookings/Orders","type":"veld:bookings/OrderPlaced@0fe34399503b2a2d","data":{"orderId":"7d1d6c8e-84c8-4b5b-9d87-0a1a2b3c4d5e","quantity":"many"}}"#;
     block_on(t.publish(TOPIC, Some(ORDER), message, ChannelOptions::NONE)).unwrap();
     block_on(w.transport.inner.idle());
-    let copies = heard.lock().unwrap().clone();
-    assert_eq!(copies.len(), 1, "the shape failure is copied once");
-    let copy: Value = serde_json::from_slice(&copies[0].1).unwrap();
+    // `Billing` is on the same channel and rejects the message too: one copy for each group.
+    let copies: Vec<Value> = heard.lock().unwrap().iter().map(|c| serde_json::from_slice(&c.1).unwrap()).collect();
+    let mut groups: Vec<&str> = copies.iter().map(|c| c["veldgroup"].as_str().unwrap()).collect();
+    groups.sort_unstable();
+    assert_eq!(groups, ["billing", "fulfilment"], "the shape failure is copied once for each group");
+    let copy = copies.iter().find(|c| c["veldgroup"] == "fulfilment").unwrap().clone();
     assert_eq!((copy["veldreason"].as_str(), copy["veldattempts"].as_u64()), (Some("shape"), Some(0)));
     assert!(copy["veldissues"].as_str().unwrap().contains("quantity"));
     assert_eq!(*w.runs.lock().unwrap(), 0, "no handler ran");

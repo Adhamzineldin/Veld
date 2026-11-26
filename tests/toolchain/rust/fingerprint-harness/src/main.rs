@@ -137,7 +137,7 @@ async fn main() {
     let file = std::env::args().nth(1).expect("the path of fingerprints.json");
     let cases: Vec<Value> = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
     let store = Arc::new(Store::default());
-    let handler = FingerprintsHandler::create(Impl, Hooks(StoreRef(store.clone())));
+    let handler = FingerprintsHandler::create(Impl, Hooks(StoreRef(store.clone())), None).unwrap();
     let router = bookings_server::adapters::axum::router(handler);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());

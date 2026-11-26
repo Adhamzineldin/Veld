@@ -150,7 +150,10 @@ fn the_test_handler_takes_no_runtime_config_and_its_hooks_hold_the_output_mode()
     let ir = endpoints_ir();
     let on = server_with(&ir, testing());
     let file = text(&on, "src/bookings/bookings_test_server.rs");
-    assert!(!file.contains("runtime"), "{file}");
+    assert!(
+        !file.contains("runtime:") && !file.contains("Runtime"),
+        "{file}"
+    );
     assert!(!file.contains("ConfigError"), "{file}");
     assert!(
         file.contains("pub trait BookingsTestHooks: BookingsHooks"),

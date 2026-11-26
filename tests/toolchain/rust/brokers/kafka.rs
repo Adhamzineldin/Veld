@@ -142,11 +142,17 @@ async fn before_the_group_subscribed_and_two_consumers(servers: &str) {
     }
     let group = fresh("g");
     let (d1, mut rx1) = collector(always_done());
-    let (d2, mut rx2) = collector(always_done());
     let s1 = t.subscribe(&topic, &group, d1, ChannelOptions::NONE).await.unwrap();
+    let early = drain(&mut rx1, 4_000).await;
+    assert_eq!(early.len(), 20, "a message published before the group subscribed is read, once");
+    // A second consumer joins the group; what is published now is shared between the two.
+    let (d2, mut rx2) = collector(always_done());
     let s2 = transport(servers).subscribe(&topic, &group, d2, ChannelOptions::NONE).await.unwrap();
+    for i in 0..40 {
+        t.publish(&topic, Some(&format!("key-{i}")), format!("n{i}").as_bytes(), ChannelOptions::NONE).await.unwrap();
+    }
     let (a, b) = (drain(&mut rx1, 4_000).await, drain(&mut rx2, 4_000).await);
-    assert_eq!(a.len() + b.len(), 20, "a message published before the group subscribed is read, once");
+    assert_eq!(a.len() + b.len(), 40, "each message reaches one consumer of the group");
     assert!(!a.is_empty() && !b.is_empty(), "two consumers of one group share the partitions: {} and {}", a.len(), b.len());
     s1.close().await;
     s2.close().await;
