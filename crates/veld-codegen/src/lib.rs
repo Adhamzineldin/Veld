@@ -20,7 +20,7 @@ pub use gate::{GateError, gate_regions};
 pub use generator::resolve_profile;
 pub use generator::{
     Capabilities, DynGenerator, GenDiagnostic, GenRequest, Generator, Role, check_capabilities,
-    check_framework,
+    check_framework, checked_features,
 };
 pub use lint::LintLevel;
 pub use profile::{

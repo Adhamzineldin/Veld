@@ -20,7 +20,7 @@ mod rollout;
 
 use std::collections::BTreeMap;
 
-use veld_codegen::{DynGenerator, FileSet, GenRequest, Role, check_capabilities};
+use veld_codegen::{DynGenerator, FileSet, GenRequest, Role, check_capabilities, checked_features};
 use veld_ir::{Feature, Ir, ServiceId};
 
 pub use event_rollout::{
@@ -760,8 +760,7 @@ fn check_fixture(
     };
     let caps = generator.capabilities(role);
     let gate = check_capabilities(&ir, &req, &caps);
-    let unsupported: Vec<Feature> = ir
-        .features_used(&services)
+    let unsupported: Vec<Feature> = checked_features(&ir, &req)
         .into_iter()
         .filter(|f| !caps.supports(*f))
         .collect();

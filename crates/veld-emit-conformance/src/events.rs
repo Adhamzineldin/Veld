@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn a_server_that_does_not_gate_events_is_caught() {
         let ungated = Leaky {
-            caps: Capabilities::default(),
+            caps: Capabilities::all_except(&[Feature::Events]),
             role: Role::Server,
         };
         let err = check_events_are_refused(&ungated).unwrap_err();

@@ -349,3 +349,36 @@ fn the_publishes_origin_is_the_first_event_origin_and_a_service_lists_its_channe
     );
     assert_eq!(ir.service(ServiceId(2)).first_event_origin(), None);
 }
+
+#[test]
+fn the_features_of_events_and_of_what_they_reach_belong_to_the_service_that_uses_them() {
+    let mut ir = world();
+    let only = |f: &[Feature]| f.iter().copied().collect::<BTreeSet<_>>();
+    assert_eq!(ir.event_features(&[ServiceId(1)]), only(&[Feature::Events]));
+    assert!(ir.event_features(&[ServiceId(2)]).is_empty());
+    // Service 1 handles `Left` (decl 3): a `bytes` field with a constraint and a page.
+    if let DeclKind::Event(e) = &mut ir.decls[3].kind {
+        let mut blob = field("blob", Type::Scalar(Scalar::Bytes));
+        blob.constraints.max_len = Some(4);
+        e.fields.push(blob);
+        e.fields.push(field(
+            "rows",
+            Type::Page(Box::new(Type::Scalar(Scalar::String))),
+        ));
+    }
+    let want = only(&[
+        Feature::Events,
+        Feature::Bytes,
+        Feature::Constraints,
+        Feature::Page,
+    ]);
+    assert_eq!(ir.event_features(&[ServiceId(1)]), want);
+    assert_eq!(ir.features_used(&[ServiceId(1)]), want);
+    // Service 0 reaches `Money` (decl 1) through `Paid`: a declaration an event reaches counts.
+    if let DeclKind::Model(m) = &mut ir.decls[1].kind {
+        m.fields.push(field("raw", Type::Scalar(Scalar::Bytes)));
+    }
+    assert!(ir.event_features(&[ServiceId(0)]).contains(&Feature::Bytes));
+    // A service with no events does not use them.
+    assert!(ir.features_used(&[ServiceId(2)]).is_empty());
+}

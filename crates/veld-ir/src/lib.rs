@@ -202,16 +202,20 @@ impl Ir {
     }
 
     /// The features only the events of the services use: `events` when one of them publishes or
-    /// subscribes, and `rules_rollout` when an event it handles reaches an audited invariant
-    /// (`spec/rules.md` section 17.1). A client generates nothing for events and ignores these.
+    /// subscribes, and, for the events of their channels and everything those reach, what the
+    /// declarations use: unions, constraints, `bytes`, pages, invariants and audited invariants
+    /// (`spec/rules.md` section 17.1). A client generates nothing for events and keeps only
+    /// `events` from these (`check_capabilities`).
     #[must_use]
     pub fn event_features(&self, services: &[ServiceId]) -> BTreeSet<Feature> {
         let mut f = BTreeSet::new();
         if services.iter().any(|s| self.service(*s).uses_events()) {
             f.insert(Feature::Events);
         }
-        if self.first_event_audited_origin(services).is_some() {
-            f.insert(Feature::RulesRollout);
+        let mut ids = self.events_of(services);
+        ids.extend(self.event_reachable_decls(services));
+        for id in ids {
+            self.decl_features(id, &mut f);
         }
         f
     }
@@ -232,55 +236,44 @@ impl Ir {
         f
     }
 
+    /// The features one declaration uses: its kind, its rules and the types and constraints of
+    /// its fields.
+    fn decl_features(&self, id: DeclId, f: &mut BTreeSet<Feature>) {
+        let d = self.decl(id);
+        match &d.kind {
+            DeclKind::Union(_) => {
+                f.insert(Feature::Unions);
+            }
+            DeclKind::Event(e) => {
+                rule_features(&e.rules, f);
+                for fld in &e.fields {
+                    field_features(fld, f);
+                }
+            }
+            DeclKind::Model(m) | DeclKind::Error(ErrorDecl { fields: m, .. }) => {
+                rule_features(&m.rules, f);
+                for fld in &m.fields {
+                    field_features(fld, f);
+                }
+            }
+            DeclKind::Const(_) => {
+                f.insert(Feature::Consts);
+            }
+            DeclKind::Enum(e) => {
+                if e.is_state_machine() {
+                    f.insert(Feature::RulesTransitions);
+                }
+            }
+        }
+    }
+
     /// Features of the endpoints of the services and the declarations they reach, without what
     /// only events use. A server that merely calls a service (`consumes`) uses these.
     #[must_use]
     pub fn http_features_used(&self, services: &[ServiceId]) -> BTreeSet<Feature> {
         let mut f = BTreeSet::new();
-        let decls = self.reachable_decls(services);
-        for id in &decls {
-            let d = self.decl(*id);
-            match &d.kind {
-                DeclKind::Union(_) => {
-                    f.insert(Feature::Unions);
-                }
-                DeclKind::Event(e) => {
-                    if !e.rules.is_empty() {
-                        f.insert(Feature::RulesInvariants);
-                    }
-                    if e.rules.iter().any(Rule::is_audited) {
-                        f.insert(Feature::RulesRollout);
-                    }
-                    for fld in &e.fields {
-                        fld.ty.features(&mut f);
-                        if !fld.constraints.is_empty() {
-                            f.insert(Feature::Constraints);
-                        }
-                    }
-                }
-                DeclKind::Model(m) | DeclKind::Error(ErrorDecl { fields: m, .. }) => {
-                    if !m.rules.is_empty() {
-                        f.insert(Feature::RulesInvariants);
-                    }
-                    if m.rules.iter().any(Rule::is_audited) {
-                        f.insert(Feature::RulesRollout);
-                    }
-                    for fld in &m.fields {
-                        fld.ty.features(&mut f);
-                        if !fld.constraints.is_empty() {
-                            f.insert(Feature::Constraints);
-                        }
-                    }
-                }
-                DeclKind::Const(_) => {
-                    f.insert(Feature::Consts);
-                }
-                DeclKind::Enum(e) => {
-                    if e.is_state_machine() {
-                        f.insert(Feature::RulesTransitions);
-                    }
-                }
-            }
+        for id in self.reachable_decls(services) {
+            self.decl_features(id, &mut f);
         }
         for sid in services {
             let s = self.service(*sid);
@@ -709,6 +702,24 @@ impl Type {
                 t.features(f);
             }
         }
+    }
+}
+
+/// The features the invariants of a declaration use.
+fn rule_features(rules: &[Rule], f: &mut BTreeSet<Feature>) {
+    if !rules.is_empty() {
+        f.insert(Feature::RulesInvariants);
+    }
+    if rules.iter().any(Rule::is_audited) {
+        f.insert(Feature::RulesRollout);
+    }
+}
+
+/// The features the type and the constraints of a field use.
+fn field_features(fld: &Field, f: &mut BTreeSet<Feature>) {
+    fld.ty.features(f);
+    if !fld.constraints.is_empty() {
+        f.insert(Feature::Constraints);
     }
 }
 

@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use serde::de::DeserializeOwned;
-use veld_ir::{DeclKind, Feature, Ir, Origin, ServiceId};
+use veld_ir::{DeclId, DeclKind, Feature, Ir, Origin, ServiceId};
 
 use crate::FileSet;
 use crate::profile::{FrameworkInfo, LanguageInfo, Offer, Profile, strip_profile_keys};
@@ -268,15 +268,8 @@ pub fn check_capabilities(
 ) -> Vec<GenDiagnostic> {
     let mut all = req.services.clone();
     all.extend(req.consumes.iter().copied());
-    // Only the services a target generates count for events; a client generates nothing for them,
-    // so what only an event uses (an audited invariant) does not concern it.
-    let mut used = ir.http_features_used(&all);
-    let mut from_events = ir.event_features(&req.services);
-    if req.role == Role::Client {
-        from_events.remove(&Feature::RulesRollout);
-    }
-    used.extend(from_events);
-    used.into_iter()
+    checked_features(ir, req)
+        .into_iter()
         .filter(|f| !caps.supports(*f))
         .map(|f| GenDiagnostic {
             code: "E0801",
@@ -288,6 +281,24 @@ pub fn check_capabilities(
             origin: first_use(ir, &all, req, f),
         })
         .collect()
+}
+
+/// The features the gate checks for `req`: those of the endpoints of the services and of the
+/// services they consume, and of the events of the services the target generates. Only the
+/// services a target generates count for events; a client generates nothing for them, so of what
+/// events use (an audited invariant, a union, a constraint) only `events` itself concerns it: it
+/// keeps its bytes when a contract gains events.
+#[must_use]
+pub fn checked_features(ir: &Ir, req: &GenRequest<'_>) -> std::collections::BTreeSet<Feature> {
+    let mut all = req.services.clone();
+    all.extend(req.consumes.iter().copied());
+    let mut used = ir.http_features_used(&all);
+    let mut from_events = ir.event_features(&req.services);
+    if req.role == Role::Client {
+        from_events.retain(|f| *f == Feature::Events);
+    }
+    used.extend(from_events);
+    used
 }
 
 /// Where a feature is first used: an endpoint for endpoint-level features, a declaration otherwise.
@@ -347,14 +358,14 @@ fn first_use(
             .find_map(|s| ir.service(*s).first_event_origin().cloned());
     }
     if feature == Feature::RulesInvariants {
-        return first_rule_origin(ir, services);
+        return first_rule_origin(ir, &searched(ir, services, req));
     }
     if feature == Feature::RulesTransitions {
-        return first_machine_origin(ir, services);
+        return first_machine_origin(ir, &searched(ir, services, req));
     }
     let wanted_union = feature == Feature::Unions;
     let wanted_const = feature == Feature::Consts;
-    ir.reachable_decls(services)
+    searched(ir, services, req)
         .into_iter()
         .map(|id| ir.decl(id))
         .find(|d| {
@@ -364,19 +375,32 @@ fn first_use(
         .map(|d| d.origin.clone())
 }
 
+/// The declarations a feature is searched in: the ones the endpoints reach and, for a server, the
+/// events of its channels and what they reach (a union only an event uses has an origin too).
+fn searched(ir: &Ir, services: &[ServiceId], req: &GenRequest<'_>) -> Vec<DeclId> {
+    let mut ids = ir.reachable_decls(services);
+    if req.role == Role::Server {
+        ids.extend(ir.events_of(&req.services));
+        ids.extend(ir.event_reachable_decls(&req.services));
+    }
+    ids
+}
+
 /// The origin of the first reachable enum that is a state machine.
-fn first_machine_origin(ir: &Ir, services: &[ServiceId]) -> Option<Origin> {
-    ir.reachable_decls(services)
-        .into_iter()
+fn first_machine_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .copied()
         .map(|id| ir.decl(id))
         .find(|d| matches!(&d.kind, DeclKind::Enum(e) if e.is_state_machine()))
         .map(|d| d.origin.clone())
 }
 
 /// The origin of the first invariant of the first reachable declaration that has one.
-fn first_rule_origin(ir: &Ir, services: &[ServiceId]) -> Option<Origin> {
-    ir.reachable_decls(services)
-        .into_iter()
+fn first_rule_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .copied()
         .find_map(|id| ir.decl(id).rules().first().map(|r| r.origin.clone()))
 }
 
