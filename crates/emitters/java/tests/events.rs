@@ -229,9 +229,12 @@ fn golden_at(out: &mut Vec<Golden>, contract: &str) -> usize {
 
 fn goldens() -> Vec<Golden> {
     let mut out: Vec<Golden> = Vec::new();
-    for case in read_json("tests/wire/events/envelopes.json") {
-        let i = golden_at(&mut out, case["contract"].as_str().unwrap());
-        out[i].publish.push(case);
+    // `veldtenant` (`spec/platform.md` section 3): the same cases as the envelopes, with a tenant.
+    for file in ["envelopes.json", "tenant.json"] {
+        for case in read_json(&format!("tests/wire/events/{file}")) {
+            let i = golden_at(&mut out, case["contract"].as_str().unwrap());
+            out[i].publish.push(case);
+        }
     }
     for case in read_json("tests/wire/events/consume.json") {
         let i = golden_at(&mut out, case["contract"].as_str().unwrap());
