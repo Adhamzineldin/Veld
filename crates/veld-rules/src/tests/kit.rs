@@ -419,6 +419,7 @@ impl Kit {
                 .iter()
                 .any(|r| fields.iter().any(|f| &f.name == r && f.readonly));
             all_rules.push(Rule {
+                flag: None,
                 id: format!("veld:t/{name}.{rname}@0000000000000000"),
                 name: rname,
                 expr,

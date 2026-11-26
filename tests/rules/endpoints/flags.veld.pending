@@ -1,0 +1,159 @@
+// Flags: when flag("name") on a require, a permit, a forbid and a flow (spec/platform.md section
+// 11). The examples are the vectors: every server target and the reference evaluator must give
+// exactly the stated outcome. A flag an example does not name is off.
+//
+// This file waits under a `.pending` suffix until a generator implements `rules_flags`; the
+// reference evaluator runs it already (crates/veld-rules/tests/platform_p2.rs). What an example
+// cannot state: a failing flag provider, and that a flag is read once per request.
+
+model User {
+  id: uuid
+  roles: string[]
+}
+
+principal User
+
+enum Phase {
+  draft, live, archived
+  flow draft -> live
+  flow live -> archived when flag("archiving")
+  final archived
+}
+
+model Room {
+  id: uuid
+  open: bool
+  capacity: int
+  phase: Phase = .draft
+}
+
+policy Manage(user: User, room: Room) {
+  permit when "staff" in user.roles
+  permit when "beta" in user.roles when flag("betaDesk")
+  forbid when "suspended" in user.roles
+    message "suspended" when flag("lockSuspended")
+}
+
+@auth(bearer)
+service Rooms at "/rooms" {
+  post "/{id}/book" bookRoom(id: uuid) -> Room {
+    fact room: Room = id
+    allow Manage(user, room)
+    require room.capacity > 0
+    require room.open when flag("openOnly")
+  }
+
+  post "/{id}/publish" publishRoom(id: uuid) -> Room {
+    fact room: Room = id
+    allow Manage(user, room)
+    transition room.phase: draft -> live
+  }
+
+  post "/{id}/archive" archiveRoom(id: uuid) -> Room {
+    fact room: Room = id
+    allow Manage(user, room)
+    transition room.phase: live -> archived
+  }
+}
+
+// --- a flagged require ---
+
+example "a flagged require that is off is not evaluated" {
+  given room = { open: false, capacity: 3 }
+  as { roles: ["staff"] }
+  bookRoom(id: room.id) -> ok
+}
+
+example "the same room is refused once the flag is on" {
+  given flag "openOnly"
+  given room = { open: false, capacity: 3 }
+  as { roles: ["staff"] }
+  bookRoom(id: room.id) -> ValidationError
+}
+
+example "an open room passes the flagged require" {
+  given flag "openOnly"
+  given room = { open: true, capacity: 3 }
+  as { roles: ["staff"] }
+  bookRoom(id: room.id) -> ok
+}
+
+example "off can be written" {
+  given flag "openOnly" off
+  given room = { open: false, capacity: 3 }
+  as { roles: ["staff"] }
+  bookRoom(id: room.id) -> ok
+}
+
+example "a require without a flag always applies" {
+  given room = { open: true, capacity: 0 }
+  as { roles: ["staff"] }
+  bookRoom(id: room.id) -> ValidationError
+}
+
+// --- a flagged permit ---
+
+example "a flagged permit that is off permits nobody" {
+  given room = { open: true, capacity: 3 }
+  as { roles: ["beta"] }
+  bookRoom(id: room.id) -> Forbidden { message: "not permitted" }
+}
+
+example "the flagged permit works once the flag is on" {
+  given flag "betaDesk"
+  given room = { open: true, capacity: 3 }
+  as { roles: ["beta"] }
+  bookRoom(id: room.id) -> ok
+}
+
+example "a permit without a flag is not affected" {
+  given room = { open: true, capacity: 3 }
+  as { roles: ["staff"] }
+  bookRoom(id: room.id) -> ok
+}
+
+// --- a flagged forbid ---
+
+example "a flagged forbid that is off forbids nobody" {
+  given room = { open: true, capacity: 3 }
+  as { roles: ["staff", "suspended"] }
+  bookRoom(id: room.id) -> ok
+}
+
+example "the flagged forbid beats a permit once the flag is on" {
+  given flag "lockSuspended"
+  given room = { open: true, capacity: 3 }
+  as { roles: ["staff", "suspended"] }
+  bookRoom(id: room.id) -> Forbidden { message: "suspended" }
+}
+
+// --- a flagged flow ---
+
+example "an edge behind a flag that is off is not an edge" {
+  given room = { phase: .live }
+  as { roles: ["staff"] }
+  archiveRoom(id: room.id) -> InvalidTransition { field: "phase", from: "live", to: "archived" }
+}
+
+example "the edge exists once the flag is on" {
+  given flag "archiving"
+  given room = { phase: .live }
+  as { roles: ["staff"] }
+  archiveRoom(id: room.id) -> ok
+}
+
+example "an edge without a flag is not affected" {
+  given room = { phase: .draft }
+  as { roles: ["staff"] }
+  publishRoom(id: room.id) -> ok
+}
+
+// --- several flags at once ---
+
+example "two flags on at once" {
+  given flag "openOnly"
+  given flag "betaDesk"
+  given room = { open: true, capacity: 3 }
+  as { roles: ["beta"] }
+  bookRoom(id: room.id) -> ok
+}

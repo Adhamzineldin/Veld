@@ -147,6 +147,15 @@ impl Live {
                 audited: Vec::new(),
             });
         }
+        // The reference judges the contract as the example's flags make it (`spec/platform.md`
+        // section 11); the server learns the same flags from `Veld-Test-Flags`.
+        let seen;
+        let ir = if ir.flag_usage().is_empty() {
+            ir
+        } else {
+            seen = veld_rules::FlagState::on(ex.flags.iter().cloned()).resolve(ir);
+            &seen
+        };
         let filled = fill_example(ir, ex)?;
         if let Some(service) = ir.services.get(filled.service.index())
             && !self.serves(&service.name)

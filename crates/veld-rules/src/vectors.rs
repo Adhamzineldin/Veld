@@ -52,9 +52,30 @@ pub struct Case {
     /// evaluated.
     #[serde(default)]
     pub output: Option<String>,
+    /// The flags that are on (`spec/platform.md` section 11). A flag a case does not name is off.
+    #[serde(default)]
+    pub flags: Vec<String>,
+    /// `"failed"`: the flag provider failed, so a statement that restricts applies and one that
+    /// grants does not. `flags` is then ignored.
+    #[serde(default)]
+    pub provider: Option<String>,
 }
 
 impl Case {
+    /// The flag state the case runs under.
+    #[must_use]
+    pub fn flag_state(&self) -> crate::flags::FlagState {
+        if self.partial {
+            // A client has no provider and skips every flagged invariant (`spec/platform.md`
+            // section 11).
+            crate::flags::FlagState::default()
+        } else if self.provider.as_deref() == Some("failed") {
+            crate::flags::FlagState::ProviderFailed
+        } else {
+            crate::flags::FlagState::on(self.flags.iter().cloned())
+        }
+    }
+
     /// True when the case is a response checked by a server whose output mode is `off`.
     #[must_use]
     pub fn output_is_off(&self) -> bool {
@@ -144,6 +165,13 @@ pub enum Mismatch {
 /// # Errors
 /// A [`Mismatch`] that says what differs.
 pub fn run_case(ir: &Ir, case: &Case) -> Result<(), Mismatch> {
+    let seen;
+    let ir = if ir.flag_usage().is_empty() {
+        ir
+    } else {
+        seen = case.flag_state().resolve(ir);
+        &seen
+    };
     let decl = ir
         .decls
         .iter()

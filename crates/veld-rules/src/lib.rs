@@ -18,6 +18,7 @@ pub mod envelope;
 mod error;
 mod eval;
 pub mod example;
+pub mod flags;
 pub mod helpers;
 pub mod idempotency;
 pub mod machine;
@@ -42,6 +43,7 @@ pub use example::{
     describe_expectation, describe_expected, diff_pattern, fill_event_example, fill_example,
     run_event_example, run_example,
 };
+pub use flags::{FlagState, flag_names};
 pub use helpers::num::EvalError;
 pub use idempotency::{
     IdempotencyKey, Scope, StoreEffect, StoreState, StoredAnswer, fingerprint, is_valid_key,
