@@ -44,6 +44,8 @@ mod policy_tests;
 mod event_tests;
 
 #[cfg(test)]
+mod flags_tests;
+#[cfg(test)]
 mod rollout_tests;
 #[cfg(test)]
 mod timed_tests;

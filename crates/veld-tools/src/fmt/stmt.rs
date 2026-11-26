@@ -4,9 +4,9 @@
 //! call is one line; with `returns` the call, `returns` and the outcome take a line each.
 
 use veld_compiler::syntax::ast::{
-    Else, EventExample, Example, ExampleCall, ExpectKind, Expectation, Given, IfMatchLine, KeyLine,
-    KeyStoreLine, Outcome, PolicyClause, PolicyDecl, PrincipalDecl, Stmt, TransitionStmt, Value,
-    ValueKind,
+    Else, EventExample, Example, ExampleCall, ExpectKind, Expectation, FlagSuffix, Given,
+    IfMatchLine, KeyLine, KeyStoreLine, Outcome, PolicyClause, PolicyDecl, PrincipalDecl, Stmt,
+    TransitionStmt, Value, ValueKind,
 };
 
 use super::expr::expr_text;
@@ -57,7 +57,10 @@ pub(super) fn stmt_lines(s: &Stmt, ind: usize) -> Vec<String> {
             if let Some(o) = &r.otherwise {
                 line.push_str(&format!(" else {}", payload_text(o)));
             }
-            with_message(line, r.message.as_ref().map(|m| m.value.as_str()), &p)
+            with_flag(
+                with_message(line, r.message.as_ref().map(|m| m.value.as_str()), &p),
+                r.flag.as_ref(),
+            )
         }
         Stmt::Ensure(e) => {
             let name = e
@@ -65,7 +68,10 @@ pub(super) fn stmt_lines(s: &Stmt, ind: usize) -> Vec<String> {
                 .as_ref()
                 .map_or(String::new(), |n| format!("{}: ", n.name));
             let line = format!("{p}ensure {name}{}", expr_text(&e.expr));
-            with_message(line, e.message.as_ref().map(|m| m.value.as_str()), &p)
+            with_flag(
+                with_message(line, e.message.as_ref().map(|m| m.value.as_str()), &p),
+                e.flag.as_ref(),
+            )
         }
         Stmt::Transition(t) => vec![format!("{p}{}", transition_text(t))],
         Stmt::Allow(a) => {
@@ -73,6 +79,18 @@ pub(super) fn stmt_lines(s: &Stmt, ind: usize) -> Vec<String> {
             vec![format!("{p}allow {}({})", a.policy.name, args.join(", "))]
         }
     }
+}
+
+/// ` when flag("name")` at the end of the last line of a statement (`spec/platform.md` section 11).
+pub(super) fn with_flag(mut lines: Vec<String>, flag: Option<&FlagSuffix>) -> Vec<String> {
+    if let (Some(f), Some(last)) = (flag, lines.last_mut()) {
+        last.push_str(&flag_text(f));
+    }
+    lines
+}
+
+pub(super) fn flag_text(f: &FlagSuffix) -> String {
+    format!(" when flag({})", quote(&f.name))
 }
 
 fn with_message(line: String, message: Option<&str>, p: &str) -> Vec<String> {
@@ -88,7 +106,10 @@ pub(super) fn clause_lines(c: &PolicyClause, ind: usize) -> Vec<String> {
     let p = pad(ind);
     let word = if c.forbid { "forbid" } else { "permit" };
     let line = format!("{p}{word} when {}", expr_text(&c.expr));
-    with_message(line, c.message.as_ref().map(|m| m.value.as_str()), &p)
+    with_flag(
+        with_message(line, c.message.as_ref().map(|m| m.value.as_str()), &p),
+        c.flag.as_ref(),
+    )
 }
 
 /// `policy Name(a: T, b: U)`, the head of the block.
@@ -182,6 +203,13 @@ pub(super) fn value_text(v: &Value) -> String {
 }
 
 pub(super) fn given_line(g: &Given) -> String {
+    if let Some(on) = g.flag {
+        return format!(
+            "given flag {}{}",
+            quote(&g.name.name),
+            if on { "" } else { " off" }
+        );
+    }
     let value = g.value.as_ref().map_or("absent".to_string(), value_text);
     format!("given {} = {value}", g.name.name)
 }

@@ -405,8 +405,12 @@ impl Printer<'_> {
             self.out.push('\n');
         }
         let flows = e.flows.iter().map(|f| {
-            let after = f.after.as_ref().map(|d| format!(" after {}", expr_text(d)));
-            (f.span.start, "flow", " -> ", &f.states, after)
+            let mut suffix = f
+                .after
+                .as_ref()
+                .map_or(String::new(), |d| format!(" after {}", expr_text(d)));
+            suffix.extend(f.flag.as_ref().map(stmt::flag_text));
+            (f.span.start, "flow", " -> ", &f.states, Some(suffix))
         });
         let finals = e
             .finals
