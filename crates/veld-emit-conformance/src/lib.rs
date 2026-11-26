@@ -15,6 +15,7 @@
 
 mod event_rollout;
 mod events;
+mod events_delivery;
 mod fixtures;
 mod rollout;
 mod version;
@@ -30,6 +31,10 @@ pub use event_rollout::{
 pub use events::{
     check_events_are_generated, check_events_are_ignored_by_clients, check_events_are_refused,
     compiled_events_contract,
+};
+pub use events_delivery::{
+    check_events_delivery_is_ignored_by_clients, check_events_delivery_is_refused,
+    compiled_events_delivery_contract,
 };
 pub use fixtures::{FIXTURES, Fixture};
 pub use rollout::{
