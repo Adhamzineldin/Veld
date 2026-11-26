@@ -60,6 +60,8 @@ impl Lowerer<'_, '_> {
                 })
                 .collect(),
             returns: ex.returns.clone(),
+            if_match: None,
+            key: None,
             outcome: Some(match &ex.outcome {
                 ROutcome::Ok(v) => ExampleOutcome::Ok(v.clone()),
                 ROutcome::Error(decl, pattern) => ExampleOutcome::Error(ExampleErrorOutcome {

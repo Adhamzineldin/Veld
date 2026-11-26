@@ -126,6 +126,8 @@ impl Lowerer<'_, '_> {
             now: None,
             args: Vec::new(),
             returns: None,
+            if_match: None,
+            key: None,
             outcome: None,
             docs: ex.docs.clone(),
             event: Some(ExampleEvent {
