@@ -233,8 +233,8 @@ The existing order of `spec/targets/typescript.md` §5 is kept; rule steps are a
 2. auth
 3. middleware
 4. bind and validate path, query, headers and body
-5. **invariants on the bound parameters** → `422 ValidationError` with `violations` (§7)
-6. facts, policies, transition guard, `require`, in that order (§9, §10, §11)
+5. **invariants on the bound parameters** → `422 ValidationError` with `violations` (§7). The same step refuses a malformed `If-Match` or idempotency key, and a required key that is missing, with `422` and no `violations` (§11.9); after it comes the idempotency lookup, which may end the request (§11.9)
+6. facts, policies, version guard, transition guard, `require`, in that order (§9, §10, §11)
 7. the handler
 8. **invariants on the result**, according to the output mode
 9. `ensure` and the target state (§9, §10)
@@ -392,7 +392,7 @@ A fact is a value the rules need and only the application can load: the room bei
 
 ### 9.5 The pipeline, complete
 
-Steps 1 to 5 and 7, 8, 10 are those of §5.3. Step 6 is: read the clock; load the facts in order (`404`); policies (`403`, §11); transition guard (`409`, §10); `require` in order; save every `old(...)`. Step 9 is: `ensure` in source order; the target state of a transition (§10).
+Steps 1 to 5 and 7, 8, 10 are those of §5.3. Step 6 is: read the clock; load the facts in order (`404`); policies (`403`, §11); version guard (`412`, §11.9); transition guard (`409`, §10); `require` in order; save every `old(...)`. Step 9 is: `ensure` in source order; the target state of a transition (§10).
 
 The server's options gain the fact loaders (required by the type system when the service has facts) and a `clock`. The default clock is the system clock.
 
@@ -652,7 +652,8 @@ The code is `L0014`: `L0005` is `missing-description` since v2.0 and codes are n
 - `expected` and `actual` are `long` and therefore decimal strings on the wire, also when the version field is an `int`.
 - A version tag is `0`, or a digit from 1 to 9 followed by digits, no sign, within `long`. `"03"`, `"-1"`, `W/"3"`, a list, a number beyond `long` and a header with spaces around it are malformed. A malformed `If-Match` on an endpoint with a guard is refused at step 5 with the issue `{ "path": "header.If-Match", "code": "type", "message": "must be * or one strong entity tag holding a version, such as \"3\"" }`, next to the other issues of that step, header issues first. It carries no `violations`: it is not a rule. An endpoint without a guard ignores the header.
 - `validate = false` turns off neither the guard nor the syntax of `If-Match` and of the key: they are part of what the endpoint does, not validation of its parameters.
-- `*`, like no header, hands the handler no version to write against. A version is handed over only when the caller sent a tag and it matched.
+- A parameter or a fact called `version` on an endpoint with a guard is `E0920`: the handler gets the checked version under that name, as it gets the transition under `transition`.
+- `*`, like no header, hands the handler no version to write against. A version is handed over only when the caller sent a tag and it was compared: a guarded fact that is absent has nothing to compare and nothing is handed over.
 - The `ETag` is on the success whose type is the model itself (not a list, a `Page` or a union), whatever the 2xx status, and on a replayed success. `rules_version` is used by a service with a guard and by one that has such an endpoint; the first use is the fact of the guard, or the endpoint for a response that only owes the `ETag`.
 
 **`@idempotent`**
@@ -664,7 +665,9 @@ The code is `L0014`: `L0005` is `missing-description` since v2.0 and codes are n
 - In an example, the value after `stored` is the stored body in full: what it leaves out is filled in (§12.2), and the outcome of the call is compared with it as a pattern. `stored ok` without a value stores a filled-in value of the success type. `stored` of an error whose status is 500 or more is `E0952`, because such an answer is never stored. A `stored` value must start on the line of its outcome. A replay is compared with the stored body, not with `returns`.
 - The scope of a key includes the caller only when the endpoint's effective auth is not `none`. An example states what the store holds for the scope of its request, so it cannot show that the key of another caller is not replayed; the tests of each generator do.
 - The caller text, when the application does not give it (the reference evaluator, the test handler), is the RFC 8785 JSON of the principal, or `caller`.
+- The fingerprint is taken from the bound parameters after step 5: defaults are applied, an optional parameter that was not sent is not in the object, an optional member of a body that was not sent is not either (`Reported.fingerprint`; goldens in `crates/veld-rules/src/idempotency.rs` and `tests/version_idempotency.rs`). It is not part of an example: the state of an example says what the store holds for it.
 - An offline run without `returns` stops before the handler: the entry of a new key is still "running" (the reference evaluator says so in `Reported.store`).
+- A dry run (§12.4) stops after step 6, and a replay is answered before it: `Veld-Test-Dry-Run: 1` with a stored answer gets the stored answer, with its status and body, not `204` and `Veld-Test-Passed`. `veld test --live --dry-run` expects that. A stored success without a body is sent to the test handler as `"data": null`.
 
 **The reference evaluator** (`veld_rules`): `Request` has `if_match`, `key` and `caller`; `Reported` has `replayed`, `store` (`Untouched`, `Stored`, `Removed`, `Running`), `checked_version`, `body` and `etag`; `parse_if_match`, `etag`, `fingerprint` and `Scope::of` are public. The pipeline asks the store after step 5 and runs the version guard after the policies and before the transition.
 
@@ -894,7 +897,7 @@ Range `E09xx` (errors) and `W09xx` (warnings). Codes are never reused.
 | `W0902` | Nested comprehension over a list without `@length(max:)` |
 | `W0903` | A rule that reads no field |
 | `W0904` | A target with request validation turned off reaches rules, which it will not enforce (§5.3) |
-| `E0920` | A fact named like a parameter, another fact, the principal, `now` or `result`; a parameter or fact named `transition` on an endpoint that has one |
+| `E0920` | A fact named like a parameter, another fact, the principal, `now` or `result`; a parameter or fact named `transition` on an endpoint that has one, or `version` on an endpoint with a version guard |
 | `E0921` | The error after `else` is not one of the endpoint's declared errors |
 | `E0922` | Two facts with one name but different types, key types or optionality in a service; an unknown or missing field in an `else` payload |
 | `E0923` | A fact read in `ensure` outside `old(...)` |
