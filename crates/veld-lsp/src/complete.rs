@@ -232,33 +232,7 @@ impl Cx<'_> {
 
     /// Names visible in this file: its own declarations, imports and the prelude.
     pub(crate) fn visible(&self) -> BTreeMap<String, usize> {
-        let ix = self.ix();
-        let mut map = BTreeMap::new();
-        for (i, d) in ix.decls.iter().enumerate() {
-            if d.is_prelude() || d.file == self.file {
-                map.insert(d.name.clone(), i);
-            }
-        }
-        let Some(f) = ix.file(self.file) else {
-            return map;
-        };
-        for u in &f.ast.uses {
-            let pkg = u
-                .package
-                .as_ref()
-                .map_or(f.package.as_str(), |p| p.name.as_str());
-            let module = u.module_path();
-            for imp in &u.imports {
-                let hit = ix.decls.iter().position(|d| {
-                    d.package == pkg && d.module == module && d.name == imp.name.name
-                });
-                if let Some(h) = hit {
-                    let local = imp.alias.as_ref().unwrap_or(&imp.name);
-                    map.insert(local.name.clone(), h);
-                }
-            }
-        }
-        map
+        crate::scope::visible_in(self.ix(), self.file)
     }
 
     pub(crate) fn types(&self, pos: TypePos) -> Vec<CompletionItem> {

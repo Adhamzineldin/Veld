@@ -26,7 +26,9 @@ pub fn hover(a: &Analysis, file: FileId, offset: u32) -> Option<HoverText> {
             span: h.span,
         });
     }
-    crate::hover_events::channel_hover(a, file, offset).or_else(|| scalar_at(ix, file, offset))
+    crate::hover_rules::hover(a, file, offset)
+        .or_else(|| crate::hover_events::channel_hover(a, file, offset))
+        .or_else(|| scalar_at(ix, file, offset))
 }
 
 /// Hover for built-in type names (`string`, `Page`, ...), found by scanning the word.
@@ -55,7 +57,7 @@ fn scalar_at(ix: &Index, file: FileId, offset: u32) -> Option<HoverText> {
     Some(HoverText { markdown: md, span })
 }
 
-fn src(ix: &Index, span: Span) -> &str {
+pub(crate) fn src(ix: &Index, span: Span) -> &str {
     ix.sources
         .text(span.file)
         .and_then(|t| t.get(span.start as usize..span.end as usize))
@@ -156,7 +158,7 @@ fn kind_word(d: &DeclEntry) -> &'static str {
     }
 }
 
-fn decl_hover(a: &Analysis, d: &DeclEntry) -> String {
+pub(crate) fn decl_hover(a: &Analysis, d: &DeclEntry) -> String {
     let ix = &a.index;
     let mut out = format!("```veld\n{}\n```\n", header(ix, d));
     if let Some(docs) = &d.docs {
@@ -192,7 +194,7 @@ fn decl_hover(a: &Analysis, d: &DeclEntry) -> String {
     out
 }
 
-fn field_hover(ix: &Index, decl: usize, field: usize) -> Option<String> {
+pub(crate) fn field_hover(ix: &Index, decl: usize, field: usize) -> Option<String> {
     let d = ix.decls.get(decl)?;
     let f = decl_fields(ix, d).get(field)?;
     let resolved = d.fields.iter().find(|r| r.name == f.name.name);
@@ -209,7 +211,7 @@ fn field_hover(ix: &Index, decl: usize, field: usize) -> Option<String> {
     Some(out)
 }
 
-fn variant_hover(ix: &Index, decl: usize, variant: usize) -> Option<String> {
+pub(crate) fn variant_hover(ix: &Index, decl: usize, variant: usize) -> Option<String> {
     let d = ix.decls.get(decl)?;
     let DeclKind::Enum(e) = &ix.decl_ast(d)?.kind else {
         return None;
@@ -251,7 +253,7 @@ fn status_list(ix: &Index, ep: &EndpointEntry) -> String {
     errs.join(", ")
 }
 
-fn endpoint_hover(a: &Analysis, service: usize, endpoint: usize) -> Option<String> {
+pub(crate) fn endpoint_hover(a: &Analysis, service: usize, endpoint: usize) -> Option<String> {
     let ix = &a.index;
     let sd = service_ast(ix, service)?;
     let ast_ep = sd.endpoints.get(endpoint)?;
@@ -303,7 +305,12 @@ impl MethodText for ast::Endpoint {
     }
 }
 
-fn param_hover(ix: &Index, service: usize, endpoint: usize, param: usize) -> Option<String> {
+pub(crate) fn param_hover(
+    ix: &Index,
+    service: usize,
+    endpoint: usize,
+    param: usize,
+) -> Option<String> {
     let sd = service_ast(ix, service)?;
     let ep = sd.endpoints.get(endpoint)?;
     let p = ep.params.get(param)?;

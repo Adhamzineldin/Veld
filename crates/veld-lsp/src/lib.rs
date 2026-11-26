@@ -13,12 +13,17 @@ pub mod context;
 pub mod diag;
 pub mod hover;
 mod hover_events;
+mod hover_rules;
 pub mod nav;
 pub mod outline;
 pub mod query;
+pub mod rfind;
+mod scan;
+mod scope;
 pub mod server;
 pub mod text;
 pub mod uri;
+pub mod words;
 pub mod workspace;
 
 pub use server::{ServerError, capabilities, run_stdio, serve};

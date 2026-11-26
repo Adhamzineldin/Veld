@@ -23,7 +23,11 @@ pub fn location(a: &Analysis, span: Span) -> Option<Location> {
 
 #[must_use]
 pub fn definition(a: &Analysis, file: FileId, offset: u32) -> Option<Location> {
-    let hit = query::symbol_at(&a.index, file, offset)?;
+    let Some(hit) = query::symbol_at(&a.index, file, offset) else {
+        // A name of the rules language: a field, a fact, a policy, a state, an error.
+        let found = crate::rfind::find(a, file, offset)?;
+        return location(a, found.def?);
+    };
     match &hit.symbol {
         Symbol::Package(name) => {
             let first =
