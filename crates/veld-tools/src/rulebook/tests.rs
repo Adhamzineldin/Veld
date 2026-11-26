@@ -205,10 +205,10 @@ fn an_endpoint_without_rules_is_not_listed() {
 }
 
 #[test]
-fn the_examples_are_listed_by_name_with_their_outcome() {
+fn the_examples_are_listed_in_name_order_with_their_outcome() {
     let b = book();
     assert!(
-        b.contains("- a pending booking is paid: ok\n- a party of five is turned away: RoomFull\n"),
+        b.contains("- a party of five is turned away: RoomFull\n- a pending booking is paid: ok\n"),
         "{b}"
     );
 }
@@ -251,4 +251,52 @@ fn a_workspace_without_rules_says_so() {
 fn no_service_selected_means_no_rules() {
     let ir = ir(SRC);
     assert_eq!(rule_book(&ir, &[]), format!("# Rule book\n\n{NO_RULES}\n"));
+}
+
+#[test]
+fn packages_come_in_name_order_and_a_service_limits_the_book() {
+    use std::collections::BTreeMap;
+
+    use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
+    use veld_ir::PackageKind;
+
+    let source = |service: &str| {
+        format!(
+            "model M {{ n: int\n  rule pos: n > 0 }}\nservice {service} at \"/s\" {{ post \"/\" make(body: M) -> M }}\n"
+        )
+    };
+    let package = |name: &str, text: String| PackageInput {
+        name: name.into(),
+        kind: PackageKind::Service,
+        files: vec![SourceFile {
+            path: format!("{name}.veld"),
+            text,
+        }],
+        base_url: None,
+    };
+    let out = compile(&CompileInput {
+        packages: vec![
+            package("zeta", source("SZ")),
+            package("alpha", source("SA")),
+        ],
+        consumes: BTreeMap::new(),
+    });
+    let ir = out.ir.clone().unwrap_or_else(|| panic!("{}", out.render()));
+    let all: Vec<ServiceId> = ir.services.iter().map(|s| s.id).collect();
+    let book = rule_book(&ir, &all);
+    assert!(
+        book.find("## Package `alpha`").unwrap() < book.find("## Package `zeta`").unwrap(),
+        "{book}"
+    );
+    let zeta: Vec<ServiceId> = ir
+        .services
+        .iter()
+        .filter(|s| s.name == "SZ")
+        .map(|s| s.id)
+        .collect();
+    let only = rule_book(&ir, &zeta);
+    assert!(
+        only.contains("## Package `zeta`") && !only.contains("alpha"),
+        "{only}"
+    );
 }

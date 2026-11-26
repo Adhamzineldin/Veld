@@ -341,7 +341,7 @@ fn examples(ir: &Ir, package: PackageId) -> String {
         .filter(|e| e.package == package)
         .map(|e| (e, &e.origin))
         .collect();
-    by_origin(&mut found);
+    found.sort_by(|a, b| (&a.0.name, key(a.1)).cmp(&(&b.0.name, key(b.1))));
     let mut out = String::new();
     for (e, _) in found {
         let _ = writeln!(out, "- {}: {}", e.name, outcome_text(ir, e));

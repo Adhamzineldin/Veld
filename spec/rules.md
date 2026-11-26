@@ -1000,7 +1000,7 @@ tests/rules/<group>/<name>.json      cases for it
 
 ## 17. Lifecycle (Phase 5)
 
-**Status: 17.1 is implemented in the compiler, the tools, the reference evaluator and the four built-in generators (`node`, `typescript`, `java`, `rust`); a generator that does not declare `rules_rollout` refuses it with `E0801`. 17.2, 17.3 and 18 are drafts, not implemented.** Sections 17 and 18 are written before their code, as the rest of this document was.
+**Status: 17.1 is implemented in the compiler, the tools, the reference evaluator and the four built-in generators (`node`, `typescript`, `java`, `rust`); a generator that does not declare `rules_rollout` refuses it with `E0801`. 17.3 is implemented on the side of the tool (`veld test --from-violation`); the server option that produces a capture is not built. 17.2 and 18 are drafts, not implemented.** Sections 17 and 18 are written before their code, as the rest of this document was.
 
 ### 17.1 Rolling a rule out: `@rollout(audit)`
 
@@ -1120,7 +1120,7 @@ model Order {
 - **Errors, each exit code 1, nothing written or printed to standard output.**
   1. *No capture*: `the event has no capture; turn the capture option of the server on`.
   2. *Unknown operation*: `the contract has no endpoint with the signature <signature>`.
-  3. *A capture that does not fit*: `the capture does not fit the contract: <what>`, where what is one of an unknown parameter, fact or `redacted` path root, a required parameter that is missing and is not redacted, a value of the wrong shape or type, a `now` that is not RFC 3339, or a value that cannot be filled in or cannot be written in the syntax of an example (a `json` value that holds `null`).
+  3. *A capture that does not fit*: `the capture does not fit the contract: <what>`, where what is one of an unknown parameter, fact or `redacted` path root, a required value (a parameter, or a field of a parameter, of a fact or of the principal) that the capture lacks and `redacted` does not name, a value of the wrong shape or type, a `now` that is not RFC 3339, or a value that cannot be filled in or cannot be written in the syntax of an example (a `json` value that holds `null`).
   A file that cannot be read or is not JSON is reported as such, also with exit code 1.
 
 ## 18. `veld check --prove` (Phase 5)
@@ -1235,7 +1235,7 @@ Where the text above is silent, the tool does this:
 - **Layout.** The label is padded with spaces to the longest label of the report, then three spaces, then the words. Lines are indented by two spaces.
 - **What is missing.** `never evaluated` when no example evaluated the unit. When it was evaluated but not both ways: `never violated` (held only), `never held` (violated only); for an `allow` `never denied` and `never permitted`; for a `transition` `never illegal` and `never legal`.
 - **Which examples count.** Every example the run selected, failed ones included: the evaluator evaluated the same rules. An example that cannot be run (`E0950` to `E0953`) counts nothing. Event examples count the invariants of the declarations the event reaches.
-- **Which units count.** The units of the packages the selection (`-p`, `--workspace`) names, whatever `--filter` and the file arguments say: they narrow the examples, not the rules, so a narrower run has a lower percentage. A unit is counted once, by its rule id (an `allow` line by its position). The invariants of a declaration that only a `fact` or a policy mentions, and that no endpoint reaches, are not counted. The version guard of §11.7 and the idempotency check of §11.8 are not units.
+- **Which units count.** The units of the packages the selection (`-p`, `--workspace`) names, whatever `--filter` and the file arguments say: they narrow the examples, not the rules, so a narrower run has a lower percentage. A unit is counted once, by its rule id (an `allow` line by its position). The invariants of a declaration that only a `fact` or a policy mentions, and that no endpoint reaches, are not counted. No endpoint reaches an event (§17.1), so the invariants of an event, and of what it reaches, count only when an event example delivers that event. The version guard of §11.7 and the idempotency check of §11.8 are not units.
 - **Evaluation.** A rule the pipeline does not reach (an earlier check rejected the request), an invariant that reads a `@readonly` field of a request, and the check of the defaults of a loaded fact are not evaluations. An evaluation error counts as violated.
 - **The run.** With `--coverage` the report is printed even when no example ran, and `--fail-under` then fails a workspace that has rules. A failing example fails the run as before, whatever the percentage. The report goes to standard output and is not hidden by `--quiet`. `veld test` has no machine-readable output, so there is no JSON form of the report.
 
@@ -1260,8 +1260,8 @@ Where the text above is silent, the tool writes this:
 - **State machines.** `#### Name`, the doc comment, the table `| From | To |` with the moves in declaration order, and `Final states: a, b`.
 - **Policies.** `#### Name(param, param)`, the doc comment, then ``- permit when `expr` `` and ``- forbid when `expr`: <message>`` in order.
 - **Endpoints.** Only those with a `fact`, `allow`, `transition`, `require` or `ensure`: `#### METHOD /full/path (Service.endpoint)`, the doc comment, then the bullets `Loads`, `Who may call it`, `Move`, `Requires` and `Promises`, the last two with one nested bullet per statement: ``<message, else name, else "require #N">: `expr`, answers `Error` `` (`ValidationError` for a `require` without `else`) and, for an `ensure`, no error. An `allow` is written `Policy(args)`, with the caller written `principal`.
-- **Examples.** `- <name>: ok`, or the name of the error the example expects, or `rejected`, or the handlers an event example expects to be (or not be) called. Examples are in source order.
-- **Expressions** are printed by the printer of the OpenAPI export and of `veld diff`, which prints the semantics of the IR (and not the source text of a file), with the parentheses precedence needs; for the rules of a contract that `veld fmt` has formatted it gives the same text.
+- **Examples.** `- <name>: ok`, or the name of the error the example expects, or `rejected`, or the handlers an event example expects to be (or not be) called. Examples are in name order (item 5 of §19.2 says "by name"); everything else is in source order.
+- **Expressions.** The IR keeps no source text, so the book uses the printer of the OpenAPI export and of `veld diff`, not the printer of `veld fmt` (which works on the source). Both give the fewest parentheses that keep the meaning and put spaces around binary operators, and they agree on every expression written that way. They differ where the IR has forgotten the spelling: `not` is always written `not` (never `!`), a number is printed from its value, and the caller of a policy is written `principal` whatever name the endpoint block gave it (`allow ManageBooking(principal, booking)`). The test of the rule book pins the expressions that `veld fmt` prints identically.
 - **Flags.** `-o FILE` and `--force` as for `veld export openapi`; `--service NAME` (repeatable) limits the book to the packages of those services and to their endpoints. `veld export` has no `-p`.
 
 ### 19.3 `@pii` and `@secret`

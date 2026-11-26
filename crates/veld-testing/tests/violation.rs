@@ -269,3 +269,81 @@ fn a_value_that_cannot_be_filled_in_is_reported() {
         other => panic!("{other:?}"),
     }
 }
+
+#[test]
+fn a_required_value_the_capture_lacks_and_redacted_does_not_name_does_not_fit() {
+    let ir = compile_text(FIXTURE);
+    let mut body = full_body();
+    body["guest"].as_object_mut().unwrap().remove("name");
+    for redacted in [json!([]), json!(["params.body.guest.phone"])] {
+        let event = event(&ir, &body, &redacted);
+        match from_violation(&ir, &event) {
+            Err(ViolationError::DoesNotFit(why)) => {
+                assert!(
+                    why.contains("`params.body.guest.name` is required"),
+                    "{why}"
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+    // Named, the same value is filled in.
+    let event = event(&ir, &body, &json!(["params.body.guest.name"]));
+    let found = from_violation(&ir, &event).unwrap();
+    assert_eq!(found.notes, ["filled in params.body.guest.name"]);
+}
+
+const ROOMS: &str = r#"model Room {
+  id: uuid
+  capacity: int @min(1)
+  rule fits: capacity <= 10
+}
+
+@auth(none)
+service Rooms at "/rooms" {
+  post "/{id}/book" book(id: uuid) -> Room {
+    fact room: Room = id
+    require room.capacity >= 2
+  }
+}
+"#;
+
+fn rooms_event(ir: &Ir, room: &Value, redacted: &Value) -> Value {
+    let sig = ir.services[0].endpoints[0].sig.clone();
+    json!({
+        "operation": sig,
+        "capture": {
+            "operation": sig,
+            "params": { "id": "00000000-0000-4000-8000-0000000000aa" },
+            "facts": { "room": room },
+            "now": "2026-06-01T00:00:00Z",
+            "redacted": redacted
+        }
+    })
+}
+
+#[test]
+fn a_fact_is_held_to_the_same_rule() {
+    let ir = compile_text(ROOMS);
+    let whole = json!({ "id": "00000000-0000-4000-8000-0000000000bb", "capacity": 1 });
+    let found = from_violation(&ir, &rooms_event(&ir, &whole, &json!([]))).unwrap();
+    assert!(found.notes.is_empty(), "{:?}", found.notes);
+    assert!(
+        found
+            .block
+            .contains("given room = { id: \"00000000-0000-4000-8000-0000000000bb\", capacity: 1 }"),
+        "{}",
+        found.block
+    );
+
+    let without = json!({ "id": "00000000-0000-4000-8000-0000000000bb" });
+    match from_violation(&ir, &rooms_event(&ir, &without, &json!([]))) {
+        Err(ViolationError::DoesNotFit(why)) => {
+            assert!(why.contains("`facts.room.capacity` is required"), "{why}");
+        }
+        other => panic!("{other:?}"),
+    }
+    let named = rooms_event(&ir, &without, &json!(["facts.room.capacity"]));
+    let found = from_violation(&ir, &named).unwrap();
+    assert_eq!(found.notes[0], "filled in facts.room.capacity");
+}

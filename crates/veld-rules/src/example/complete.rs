@@ -26,8 +26,7 @@ impl<'a> Completer<'a> {
     }
 
     /// `given`, a value of type `ty` in wire form, with everything it leaves out filled in.
-    /// Returns the value and the paths of the values that were filled in, each starting with
-    /// `root` (for example `params.body.guest.phone`).
+    /// Paths start with `root` (for example `params.body.guest.phone`).
     ///
     /// # Errors
     /// [`ExampleError::CannotFill`] when a value cannot be filled in (a string with `@pattern`
@@ -37,13 +36,29 @@ impl<'a> Completer<'a> {
         ty: &Type,
         given: &Json,
         root: &str,
-    ) -> Result<(Json, BTreeSet<String>), ExampleError> {
+    ) -> Result<Completed, ExampleError> {
         self.filler.begin();
         let value = self
             .filler
             .fill(ty, &Constraints::default(), Some(given), root)?;
-        Ok((value, self.filler.filled.clone()))
+        Ok(Completed {
+            value,
+            filled: self.filler.filled.clone(),
+            missing: self.filler.missing.clone(),
+        })
     }
+}
+
+/// A value and what completing it added.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Completed {
+    pub value: Json,
+    /// The paths of every value that was filled in, with the ones that come from `@example` or
+    /// a default.
+    pub filled: BTreeSet<String>,
+    /// The paths of required values that were not there and have no `@example` and no default.
+    /// A tool that was handed a value that should be whole (a capture) reports them.
+    pub missing: BTreeSet<String>,
 }
 
 impl std::fmt::Debug for Completer<'_> {

@@ -38,10 +38,10 @@ pub use check::{Checked, Options, Violation, check_value, check_value_audited, w
 pub use error::{Failure, InputError};
 pub use eval::{Env, SavedOld, eval};
 pub use example::{
-    Completer, DEFAULT_CLOCK, Delivery, Difference, ExampleError, ExampleReport, Expected,
-    FilledEvent, FilledExample, Mismatch, RejectReason, Verdict, deliver, describe_actual,
-    describe_delivery, describe_expectation, describe_expected, diff_pattern, fill_event_example,
-    fill_example, run_event_example, run_example,
+    Completed, Completer, DEFAULT_CLOCK, Delivery, Difference, ExampleError, ExampleReport,
+    Expected, FilledEvent, FilledExample, Mismatch, RejectReason, Verdict, deliver,
+    describe_actual, describe_delivery, describe_expectation, describe_expected, diff_pattern,
+    fill_event_example, fill_example, run_event_example, run_example,
 };
 pub use helpers::num::EvalError;
 pub use idempotency::{

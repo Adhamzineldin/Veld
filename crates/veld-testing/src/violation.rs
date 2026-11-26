@@ -268,7 +268,13 @@ fn request_of(
         let Some(p) = ep.params.iter().find(|p| &p.name == name && !p.stream) else {
             return misfit(format!("`{name}` is not a parameter of {}", ep.name));
         };
-        let (full, paths) = complete(&mut filler, &p.ty, value, &format!("params.{name}"))?;
+        let (full, paths) = complete(
+            &mut filler,
+            &p.ty,
+            value,
+            &format!("params.{name}"),
+            &redacted,
+        )?;
         filled.extend(paths);
         request.params.insert(name.clone(), full);
     }
@@ -284,15 +290,25 @@ fn request_of(
         let full = if value.is_null() {
             None
         } else {
-            let (full, paths) = complete(&mut filler, &f.ty, value, &format!("facts.{name}"))?;
+            let (full, paths) = complete(
+                &mut filler,
+                &f.ty,
+                value,
+                &format!("facts.{name}"),
+                &redacted,
+            )?;
             filled.extend(paths);
             Some(full)
         };
         request.facts.insert(name.clone(), full);
     }
-    request.principal = principal_of(&mut filler, service, &parts.principal, &mut filled)?;
-    let covered = |p: &String| redacted.iter().any(|r| under(p, r));
-    filled.retain(covered);
+    request.principal = principal_of(
+        &mut filler,
+        service,
+        &parts.principal,
+        &redacted,
+        &mut filled,
+    )?;
     Ok((request, filled))
 }
 
@@ -300,6 +316,7 @@ fn principal_of(
     filler: &mut Completer<'_>,
     service: &Service,
     value: &Json,
+    redacted: &[String],
     filled: &mut BTreeSet<String>,
 ) -> Result<Option<Json>, ViolationError> {
     if value.is_null() {
@@ -308,20 +325,31 @@ fn principal_of(
     let Some(p) = &service.principal else {
         return misfit("the capture has a principal and the contract has none");
     };
-    let (full, paths) = complete(filler, &Type::Decl(p.decl), value, "principal")?;
+    let (full, paths) = complete(filler, &Type::Decl(p.decl), value, "principal", redacted)?;
     filled.extend(paths);
     Ok(Some(full))
 }
 
+/// Completes `value`. A required value the capture does not have, and `redacted` does not name,
+/// does not fit the contract. Returns the value and the paths filled in under `redacted`.
 fn complete(
     filler: &mut Completer<'_>,
     ty: &Type,
     value: &Json,
     root: &str,
+    redacted: &[String],
 ) -> Result<(Json, BTreeSet<String>), ViolationError> {
-    filler
+    let done = filler
         .complete(ty, value, root)
-        .map_err(|e| ViolationError::DoesNotFit(e.to_string()))
+        .map_err(|e| ViolationError::DoesNotFit(e.to_string()))?;
+    let named = |p: &String| redacted.iter().any(|r| under(p, r));
+    if let Some(path) = done.missing.iter().find(|p| !named(p)) {
+        return misfit(format!(
+            "`{path}` is required and the capture does not have it, and `redacted` does not name it"
+        ));
+    }
+    let filled = done.filled.into_iter().filter(named).collect();
+    Ok((done.value, filled))
 }
 
 /// True when `path` is `redacted` or lies below it.

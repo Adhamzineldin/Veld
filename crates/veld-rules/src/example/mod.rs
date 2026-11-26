@@ -20,7 +20,7 @@ use veld_ir::{
     Ir, KeyStore, Service, ServiceId, Type,
 };
 
-pub use self::complete::Completer;
+pub use self::complete::{Completed, Completer};
 pub use self::event::{
     Delivery, FilledEvent, RejectReason, deliver, describe_delivery, describe_expectation,
     fill_event_example, run_event_example,

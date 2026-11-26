@@ -39,6 +39,9 @@ pub(super) struct Filler<'a> {
     depth: usize,
     /// The paths (rooted at `$`) of the values filled in since the last [`Filler::begin`].
     pub filled: BTreeSet<String>,
+    /// The part of `filled` that is a required field with no `@example` and no default: a value
+    /// the written one should have had (`Completer` reports it).
+    pub missing: BTreeSet<String>,
 }
 
 impl<'a> Filler<'a> {
@@ -52,12 +55,14 @@ impl<'a> Filler<'a> {
             dates: 0,
             depth: 0,
             filled: BTreeSet::new(),
+            missing: BTreeSet::new(),
         }
     }
 
     /// Starts a new root value: forgets which paths were filled in. The counters go on.
     pub fn begin(&mut self) {
         self.filled.clear();
+        self.missing.clear();
     }
 
     fn cannot(&self, path: &str, reason: &str) -> ExampleError {
@@ -184,6 +189,7 @@ impl<'a> Filler<'a> {
                 out.insert(f.wire.clone(), v);
             } else if !f.optional {
                 self.filled.insert(child.clone());
+                self.missing.insert(child.clone());
                 let v = self.fill(&f.ty, &f.constraints, None, &child)?;
                 out.insert(f.wire.clone(), v);
             }

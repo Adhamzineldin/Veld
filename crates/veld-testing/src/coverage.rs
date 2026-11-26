@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use veld_ir::{DeclId, Example, Ir, Origin};
+use veld_ir::{Decl, DeclId, DeclKind, Example, Ir, Origin};
 use veld_rules::coverage::{UnitEvent, allow_key, collect};
 use veld_rules::run_example;
 
@@ -76,19 +76,35 @@ fn order(u: &Unit) -> (&str, &str, u32, u32, &str) {
     )
 }
 
-/// The declarations whose invariants count: what a service reaches, what its events reach, and
-/// the events the event examples deliver.
+/// The declarations whose invariants count: what a service's endpoints reach, and the events the
+/// event examples deliver with what they reach. No endpoint reaches an event (`spec/rules.md`
+/// section 17.1), so an event without an example adds no unit.
 fn counted_decls(ir: &Ir) -> BTreeSet<DeclId> {
     let services: Vec<_> = ir.services.iter().map(|s| s.id).collect();
     let mut ids: BTreeSet<DeclId> = ir.reachable_decls(&services).into_iter().collect();
-    ids.extend(ir.events_of(&services));
-    ids.extend(ir.event_reachable_decls(&services));
-    ids.extend(
-        ir.examples
-            .iter()
-            .filter_map(|e| e.event.as_ref().map(|v| v.decl)),
-    );
+    let mut stack: Vec<DeclId> = ir
+        .examples
+        .iter()
+        .filter_map(|e| e.event.as_ref().map(|v| v.decl))
+        .collect();
+    while let Some(id) = stack.pop() {
+        if ids.insert(id) {
+            references(ir.decl(id), &mut stack);
+        }
+    }
     ids
+}
+
+/// The declarations `decl` mentions: field types, the parent of a model, the arms of a union.
+fn references(decl: &Decl, out: &mut Vec<DeclId>) {
+    for f in decl.fields() {
+        f.ty.collect_decls(out);
+    }
+    match &decl.kind {
+        DeclKind::Model(m) => out.extend(m.parent),
+        DeclKind::Union(u) => out.extend(u.arms.iter().map(|a| a.decl)),
+        DeclKind::Error(_) | DeclKind::Event(_) | DeclKind::Enum(_) | DeclKind::Const(_) => {}
+    }
 }
 
 fn invariant_units(ir: &Ir) -> impl Iterator<Item = Unit> + '_ {

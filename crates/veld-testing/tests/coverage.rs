@@ -172,3 +172,115 @@ fn packages_the_selection_leaves_out_have_no_units() {
 fn two_runs_give_the_same_report() {
     assert_eq!(coverage_of(FIXTURE).report(), coverage_of(FIXTURE).report());
 }
+
+const EVENTS: &str = r#"model Pong { ok: bool }
+
+event Paid {
+  amount: int
+  rule positive: amount > 0
+}
+
+channel Money { carries Paid }
+
+@auth(none)
+service Api at "/api" {
+  publishes Money
+  get "/ping" ping() -> Pong
+}
+
+service Mailer {
+  subscribes Money as "mailer" { on Paid -> send }
+}
+"#;
+
+#[test]
+fn an_event_no_example_delivers_adds_no_unit() {
+    // No endpoint reaches an event (spec/rules.md section 17.1).
+    let c = coverage_of(EVENTS);
+    assert_eq!(c.report(), ["coverage: no rules"]);
+}
+
+#[test]
+fn the_invariants_of_an_event_an_example_delivers_count() {
+    let examples = r#"
+example "a payment is handled" {
+  given event Paid { amount: 5 }
+  expect Mailer.send called
+}
+
+example "a payment of nothing is rejected" {
+  given event Paid { amount: 0 }
+  expect rejected
+}
+"#;
+    let c = coverage_of(&format!("{EVENTS}{examples}"));
+    assert_eq!(
+        c.report(),
+        ["coverage: 1 of 1 rules held and violated (100%)"]
+    );
+    let one_way = format!(
+        "{EVENTS}{}",
+        examples
+            .split("example \"a payment of nothing")
+            .next()
+            .unwrap()
+    );
+    assert_eq!(
+        coverage_of(&one_way).report(),
+        [
+            "coverage: 0 of 1 rules held and violated (0%)",
+            "  t/Paid.positive   never violated",
+        ]
+    );
+}
+
+/// The packages `beta` and `alpha` (listed in that order), each with one rule and one service;
+/// only `beta` has an example.
+fn two_packages() -> Ir {
+    let source = |service: &str, example: &str| {
+        format!(
+            "model M {{ n: int\n  rule pos: n > 0 }}\nservice {service} at \"/s\" {{ post \"/\" make(body: M) -> M }}\n{example}"
+        )
+    };
+    let package = |name: &str, text: String| PackageInput {
+        name: name.into(),
+        kind: PackageKind::Service,
+        files: vec![SourceFile {
+            path: format!("{name}.veld"),
+            text,
+        }],
+        base_url: None,
+    };
+    let beta = source("SB", "example \"one\" { make(body: { n: 1 }) -> ok }\n");
+    let out = compile(&CompileInput {
+        packages: vec![package("beta", beta), package("alpha", source("SA", ""))],
+        consumes: BTreeMap::new(),
+    });
+    let Some(ir) = out.ir.clone() else {
+        panic!("does not compile:\n{}", out.render());
+    };
+    ir
+}
+
+#[test]
+fn units_are_ordered_by_package_name_and_a_selection_limits_them() {
+    let ir = two_packages();
+    let examples = select(&ir, None);
+    let all = measure(&ir, &examples, &|_| true);
+    assert_eq!(
+        all.report(),
+        [
+            "coverage: 0 of 2 rules held and violated (0%)",
+            "  alpha/M.pos   never evaluated",
+            "  beta/M.pos    never violated",
+        ]
+    );
+    let beta = measure(&ir, &examples, &|p| p == "beta");
+    assert_eq!(
+        beta.report(),
+        [
+            "coverage: 0 of 1 rules held and violated (0%)",
+            "  beta/M.pos   never violated",
+        ]
+    );
+}
