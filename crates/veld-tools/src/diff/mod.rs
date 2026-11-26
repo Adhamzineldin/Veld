@@ -12,6 +12,7 @@
 mod changed;
 mod conditional;
 mod decls;
+mod delivery;
 mod endpoint_rules;
 mod endpoints;
 mod events;
@@ -97,6 +98,13 @@ pub enum ChangeKind {
     ChannelAdded,
     ChannelRemoved,
     ChannelChanged,
+    ChannelRetryAdded,
+    ChannelRetryRemoved,
+    ChannelRetryChanged,
+    ChannelDeadLetterAdded,
+    ChannelDeadLetterRemoved,
+    ChannelOrderedAdded,
+    ChannelOrderedRemoved,
     PublishesAdded,
     PublishesRemoved,
     SubscriptionAdded,
@@ -300,6 +308,7 @@ pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
     rules::diff_decl_rules(&ctx, &usage, &mut out);
     endpoints::diff_endpoints(&ctx, &mut out);
     events::diff_events(&ctx, &mut out);
+    delivery::diff_delivery(&ctx, &mut out);
     out
 }
 
@@ -307,6 +316,8 @@ pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
 mod changed_tests;
 #[cfg(test)]
 mod conditional_tests;
+#[cfg(test)]
+mod delivery_tests;
 #[cfg(test)]
 mod event_tests;
 #[cfg(test)]
