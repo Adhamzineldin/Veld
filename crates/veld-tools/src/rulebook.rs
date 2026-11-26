@@ -110,7 +110,9 @@ fn declarations(ir: &Ir, package: PackageId) -> String {
         let kind = match &d.kind {
             DeclKind::Error(_) => "error",
             DeclKind::Event(_) => "event",
-            _ => "model",
+            DeclKind::Model(_) | DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => {
+                "model"
+            }
         };
         let _ = write!(
             out,

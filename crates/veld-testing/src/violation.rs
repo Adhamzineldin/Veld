@@ -95,9 +95,9 @@ fn rule_of(event: &Json) -> Option<String> {
 
 /// `NewBooking.atMost30Days` out of `veld:bookings/NewBooking.atMost30Days@3f2a…`.
 fn example_name(rule: Option<&str>, endpoint: &str) -> String {
-    let short = rule.and_then(|id| {
+    let short = rule.map(|id| {
         let after = id.rsplit_once('/').map_or(id, |(_, b)| b);
-        Some(after.split('@').next().unwrap_or(after).to_owned())
+        after.split('@').next().unwrap_or(after).to_owned()
     });
     match short {
         Some(s) => format!("violation of {s}"),
@@ -215,10 +215,18 @@ fn parts_of(capture: &Map<String, Json>, redacted: &[String]) -> Result<Parts, V
         let (root, name, rest) = split_root(path)?;
         let tail = steps(rest, path)?;
         match root {
-            "params" => parts.params.get_mut(name).map(|v| remove(v, &tail)),
-            "facts" => parts.facts.get_mut(name).map(|v| remove(v, &tail)),
-            _ => Some(remove(&mut parts.principal, &tail)),
-        };
+            "params" => {
+                if let Some(v) = parts.params.get_mut(name) {
+                    remove(v, &tail);
+                }
+            }
+            "facts" => {
+                if let Some(v) = parts.facts.get_mut(name) {
+                    remove(v, &tail);
+                }
+            }
+            _ => remove(&mut parts.principal, &tail),
+        }
     }
     Ok(parts)
 }
@@ -273,13 +281,12 @@ fn request_of(
         let Some(f) = ep.rules.facts.iter().find(|f| &f.name == name) else {
             return misfit(format!("`{name}` is not a fact of {}", ep.name));
         };
-        let full = match value {
-            Json::Null => None,
-            v => {
-                let (full, paths) = complete(&mut filler, &f.ty, v, &format!("facts.{name}"))?;
-                filled.extend(paths);
-                Some(full)
-            }
+        let full = if value.is_null() {
+            None
+        } else {
+            let (full, paths) = complete(&mut filler, &f.ty, value, &format!("facts.{name}"))?;
+            filled.extend(paths);
+            Some(full)
         };
         request.facts.insert(name.clone(), full);
     }

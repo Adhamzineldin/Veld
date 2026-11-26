@@ -57,7 +57,7 @@ pub enum Command {
     Diff(DiffArgs),
     /// Run the `example` blocks of the contracts, offline or against a live test handler
     Test(TestArgs),
-    /// Export OpenAPI or the compiled IR
+    /// Export OpenAPI, the rule book or the compiled IR
     #[command(subcommand)]
     Export(ExportCommand),
     /// Create and test emitter plugins

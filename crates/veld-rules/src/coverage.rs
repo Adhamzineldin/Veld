@@ -60,10 +60,10 @@ pub fn collect<R>(f: impl FnOnce() -> R) -> (R, Vec<UnitEvent>) {
 pub(crate) fn armed<R>(f: impl FnOnce() -> R) -> R {
     let bump = |by: i64| {
         TAPE.with(|t| {
-            if let Ok(mut t) = t.try_borrow_mut() {
-                if let Some(tape) = t.as_mut() {
-                    tape.armed = u32::try_from(i64::from(tape.armed) + by).unwrap_or(0);
-                }
+            if let Ok(mut t) = t.try_borrow_mut()
+                && let Some(tape) = t.as_mut()
+            {
+                tape.armed = u32::try_from(i64::from(tape.armed) + by).unwrap_or(0);
             }
         });
     };
@@ -83,10 +83,10 @@ pub(crate) fn muted<R>(f: impl FnOnce() -> R) -> R {
     });
     let out = f();
     TAPE.with(|t| {
-        if let (Ok(mut t), Some(armed)) = (t.try_borrow_mut(), saved) {
-            if let Some(tape) = t.as_mut() {
-                tape.armed = armed;
-            }
+        if let (Ok(mut t), Some(armed)) = (t.try_borrow_mut(), saved)
+            && let Some(tape) = t.as_mut()
+        {
+            tape.armed = armed;
         }
     });
     out
@@ -95,10 +95,59 @@ pub(crate) fn muted<R>(f: impl FnOnce() -> R) -> R {
 /// Records that the unit `key` was evaluated. `key` is only built when a tape is running.
 pub(crate) fn record(key: impl FnOnce() -> String, held: bool) {
     TAPE.with(|t| {
-        if let Ok(mut t) = t.try_borrow_mut() {
-            if let Some(tape) = t.as_mut().filter(|tape| tape.armed > 0) {
-                tape.events.push(UnitEvent { key: key(), held });
-            }
+        if let Ok(mut t) = t.try_borrow_mut()
+            && let Some(tape) = t.as_mut().filter(|tape| tape.armed > 0)
+        {
+            tape.events.push(UnitEvent { key: key(), held });
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nothing_is_recorded_without_a_collector() {
+        armed(|| record(|| "a".to_owned(), true));
+        let ((), events) = collect(|| ());
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn only_what_runs_armed_is_recorded_and_muted_code_is_left_out() {
+        let ((), events) = collect(|| {
+            record(|| "outside".to_owned(), true);
+            armed(|| {
+                record(|| "held".to_owned(), true);
+                muted(|| record(|| "filling".to_owned(), true));
+                record(|| "violated".to_owned(), false);
+            });
+        });
+        let keys: Vec<(&str, bool)> = events.iter().map(|e| (e.key.as_str(), e.held)).collect();
+        assert_eq!(keys, [("held", true), ("violated", false)]);
+    }
+
+    #[test]
+    fn a_collector_inside_another_leaves_the_outer_one_intact() {
+        let (inner, outer) = collect(|| {
+            armed(|| record(|| "before".to_owned(), true));
+            let ((), inner) = collect(|| armed(|| record(|| "inner".to_owned(), false)));
+            armed(|| record(|| "after".to_owned(), true));
+            inner
+        });
+        assert_eq!(inner.len(), 1);
+        let keys: Vec<&str> = outer.iter().map(|e| e.key.as_str()).collect();
+        assert_eq!(keys, ["before", "after"]);
+    }
+
+    #[test]
+    fn an_allow_line_is_named_by_its_position() {
+        let origin = Origin {
+            file: "a.veld".to_owned(),
+            line: 3,
+            col: 5,
+        };
+        assert_eq!(allow_key(&origin), "allow@a.veld:3:5");
+    }
 }

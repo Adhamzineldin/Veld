@@ -202,10 +202,12 @@ fn an_operation_the_contract_does_not_have_is_reported() {
     );
 }
 
+type Change = Box<dyn Fn(&mut Value)>;
+
 #[test]
 fn a_capture_that_does_not_fit_the_contract_is_reported() {
     let ir = compile_text(FIXTURE);
-    let cases: Vec<(&str, Box<dyn Fn(&mut Value)>)> = vec![
+    let cases: Vec<(&str, Change)> = vec![
         (
             "an unknown parameter",
             Box::new(|e| e["capture"]["params"]["other"] = json!(1)),
