@@ -57,7 +57,7 @@ pub enum Command {
     Diff(DiffArgs),
     /// Run the `example` blocks of the contracts, offline or against a live test handler
     Test(TestArgs),
-    /// Export OpenAPI or the compiled IR
+    /// Export OpenAPI, OpenSLO or the compiled IR
     #[command(subcommand)]
     Export(ExportCommand),
     /// Create and test emitter plugins
@@ -415,6 +415,8 @@ pub struct TestArgs {
 pub enum ExportCommand {
     /// OpenAPI 3.1 JSON
     Openapi(DocOut),
+    /// The `@slo` of the contracts as OpenSLO v1 YAML
+    Slo(DocOut),
     /// The compiled IR as JSON, for plugin authors
     Ir {
         /// Write to this file instead of stdout

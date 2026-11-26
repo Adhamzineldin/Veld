@@ -1,6 +1,6 @@
-//! `veld export <openapi|ir>`.
+//! `veld export <openapi|slo|ir>`.
 //!
-//! Both exports print to stdout, or to `-o FILE`. A file is written with
+//! Every export print to stdout, or to `-o FILE`. A file is written with
 //! `output::write_unmanaged`: staged and contained like generated output, but never tracked in a
 //! manifest, so `generate` and `clean` leave it alone, and a differing existing file is refused
 //! unless `--force`.
@@ -29,6 +29,15 @@ pub fn run(ui: &Ui, config: Option<&Path>, cmd: &ExportCommand) -> Result<Exit> 
         ExportCommand::Openapi(out) => {
             let value = veld_tools::openapi(ir, &selected_services(ir, &out.service)?);
             document(ui, out, "openapi.json", &pretty(&value)?)
+        }
+        ExportCommand::Slo(out) => {
+            let services = selected_services(ir, &out.service)?;
+            let Some(text) = veld_tools::openslo(ir, &services) else {
+                return Err(user(
+                    "E0803: no endpoint of the selected services has an `@slo`, so there is nothing to export",
+                ));
+            };
+            document(ui, out, "slo.yaml", &text)
         }
     }
 }
