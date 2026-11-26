@@ -396,6 +396,11 @@ fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
         }),
         timeout_ms: Some("2000".into()),
         audited: true,
+        limit: Some(Limit {
+            count: 10,
+            per: LimitWindow::Minute,
+            by: LimitSubject::User,
+        }),
         name: "op".into(),
         method,
         path: "/x".into(),

@@ -461,6 +461,9 @@ impl Ir {
                 if ep.audited {
                     f.insert(Feature::Audit);
                 }
+                if ep.limit.is_some() {
+                    f.insert(Feature::Limits);
+                }
                 if ep.rules.transition.is_some() {
                     f.insert(Feature::RulesTransitions);
                 }
@@ -1307,7 +1310,78 @@ pub struct Endpoint {
     /// request that matched the endpoint. Omitted from the JSON when false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub audited: bool,
+    /// `@limit` (`spec/platform.md` section 5), from the endpoint or its service. Omitted from
+    /// the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<Limit>,
     pub origin: Origin,
+}
+
+/// The rate limit of an endpoint (`spec/platform.md` section 5): `@limit(10, per: minute, by: user)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Limit {
+    /// How many calls one key may make in one window: 1 or more.
+    pub count: u32,
+    pub per: LimitWindow,
+    pub by: LimitSubject,
+}
+
+/// The length of the window of a [`Limit`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitWindow {
+    Second,
+    Minute,
+    Hour,
+    Day,
+}
+
+impl LimitWindow {
+    /// The window in seconds: what a limiter is asked for.
+    #[must_use]
+    pub fn seconds(self) -> u32 {
+        match self {
+            LimitWindow::Second => 1,
+            LimitWindow::Minute => 60,
+            LimitWindow::Hour => 3_600,
+            LimitWindow::Day => 86_400,
+        }
+    }
+
+    /// The word of the contract.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            LimitWindow::Second => "second",
+            LimitWindow::Minute => "minute",
+            LimitWindow::Hour => "hour",
+            LimitWindow::Day => "day",
+        }
+    }
+}
+
+/// Whose calls a [`Limit`] counts together.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitSubject {
+    /// One count per caller (`spec/platform.md` section 5).
+    User,
+    /// One count per tenant of the caller.
+    Tenant,
+    /// One count per client address.
+    Ip,
+}
+
+impl LimitSubject {
+    /// The word of the contract, which is also the `k` of the key.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            LimitSubject::User => "user",
+            LimitSubject::Tenant => "tenant",
+            LimitSubject::Ip => "ip",
+        }
+    }
 }
 
 /// The service level an endpoint states with `@slo` (`spec/platform.md` section 13). Each
@@ -1557,6 +1631,9 @@ pub enum Feature {
     /// `@audited` (`spec/platform.md` section 4). Opt-in: a generator that does not declare it
     /// would record nothing. Clients generate nothing for it, so the gate does not ask them.
     Audit,
+    /// `@limit` (`spec/platform.md` section 5). Opt-in: a generator that does not declare it would
+    /// serve without the limit. A client is asked too: it waits when it is refused.
+    Limits,
 }
 
 impl Feature {
@@ -1569,7 +1646,7 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 15] = [
+    pub const OPT_IN: [Feature; 16] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
@@ -1585,8 +1662,9 @@ impl Feature {
         Feature::Visibility,
         Feature::Tenancy,
         Feature::Audit,
+        Feature::Limits,
     ];
-    pub const ALL: [Feature; 30] = [
+    pub const ALL: [Feature; 31] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1617,6 +1695,7 @@ impl Feature {
         Feature::Visibility,
         Feature::Tenancy,
         Feature::Audit,
+        Feature::Limits,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1651,6 +1730,7 @@ impl Feature {
             Feature::Visibility => "visibility",
             Feature::Tenancy => "tenancy",
             Feature::Audit => "audit",
+            Feature::Limits => "limits",
         }
     }
     #[must_use]

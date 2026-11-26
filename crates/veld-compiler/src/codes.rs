@@ -461,6 +461,11 @@ pub const CODES: &[CodeInfo] = &[
         "`@tenant` is wrong: two in one model, an optional field or a type that cannot be a tenant, a field of an error, a derived field, a principal without one, or a tenant-scoped endpoint without auth",
     ),
     e(
+        "E1120",
+        C,
+        "`@limit` is wrong: two on one endpoint, a bad count, window or subject, or a subject the endpoint cannot supply",
+    ),
+    e(
         "E1201",
         C,
         "A step or a `compensate` of a saga names a service that is not consumed, an endpoint that does not exist or cannot be called (a stream or `ws`), or arguments that do not fit",

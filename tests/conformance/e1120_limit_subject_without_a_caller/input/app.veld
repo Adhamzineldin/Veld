@@ -1,0 +1,21 @@
+// A limit by user needs auth, and a limit by tenant a principal with a tenant.
+
+model Room { id: uuid }
+
+model User {
+  id: uuid
+}
+
+principal User
+
+@auth(none)
+service Public at "/public" {
+  @limit(10, per: minute, by: user)
+  get "/" all() -> Room[]
+}
+
+@auth(bearer)
+service Rooms at "/rooms" {
+  @limit(10, per: minute, by: tenant)
+  get "/" all() -> Room[]
+}

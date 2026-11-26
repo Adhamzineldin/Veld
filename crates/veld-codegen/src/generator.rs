@@ -359,6 +359,7 @@ fn first_use(
                 Feature::Timeouts => ep.timeout_ms.is_some(),
                 Feature::Slo => ep.slo.is_some(),
                 Feature::Audit => ep.audited,
+                Feature::Limits => ep.limit.is_some(),
                 Feature::RulesPolicies => ep.rules.first_policy_origin().is_some(),
                 Feature::Unions
                 | Feature::Constraints
@@ -601,6 +602,7 @@ mod tests {
             slo: None,
             timeout_ms: None,
             audited: false,
+            limit: None,
             name: "feed".into(),
             method: Method::Get,
             path: "/feed".into(),

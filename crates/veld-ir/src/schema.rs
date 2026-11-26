@@ -174,6 +174,7 @@ const ENDPOINT: Fields = &[
     ("timeout_ms", T::Optional(&T::Str)),
     ("slo", T::Optional(&T::Ref("Slo"))),
     ("audited", T::Optional(&T::Bool)),
+    ("limit", T::Optional(&T::Ref("Limit"))),
     ("origin", ORIGIN),
 ];
 
@@ -449,6 +450,16 @@ pub const DEFS: &[Def] = &[
             ("origin", ORIGIN),
         ],
     ),
+    Def::Object(
+        "Limit",
+        &[
+            ("count", T::Num),
+            ("per", T::Ref("LimitWindow")),
+            ("by", T::Ref("LimitSubject")),
+        ],
+    ),
+    Def::Strings("LimitWindow", &["second", "minute", "hour", "day"]),
+    Def::Strings("LimitSubject", &["user", "tenant", "ip"]),
     Def::Object(
         "Slo",
         &[
@@ -873,6 +884,7 @@ pub const DEFS: &[Def] = &[
             "visibility",
             "tenancy",
             "audit",
+            "limits",
         ],
     ),
     Def::Strings("Role", &["server", "client"]),

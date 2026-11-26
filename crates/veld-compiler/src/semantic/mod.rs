@@ -21,6 +21,8 @@ pub use collect::module_path;
 #[cfg(test)]
 mod audited_tests;
 mod inherit;
+#[cfg(test)]
+mod limit_tests;
 mod machine;
 #[cfg(test)]
 mod machine_tests;
@@ -262,6 +264,8 @@ pub struct REndpoint {
     pub slo: Option<service_levels::SloArgs>,
     /// `@audited`, from the endpoint or its service (`spec/platform.md` section 4).
     pub audited: bool,
+    /// `@limit`, from the endpoint or its service (`spec/platform.md` section 5).
+    pub limit: Option<veld_ir::Limit>,
     pub span: Span,
 }
 

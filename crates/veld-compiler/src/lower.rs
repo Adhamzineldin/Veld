@@ -433,6 +433,7 @@ impl Lowerer<'_, '_> {
         });
         Endpoint {
             audited: e.audited,
+            limit: e.limit,
             timeout_ms: e.timeout_ms.map(|ms| ms.to_string()),
             slo: e.slo.as_ref().map(|s| {
                 let text = |v: Option<i64>| v.map(|ms| ms.to_string());
