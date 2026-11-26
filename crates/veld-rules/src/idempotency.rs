@@ -169,9 +169,9 @@ fn prune_decl(ir: &Ir, id: DeclId, value: &mut Json, keep: Option<&str>) {
             };
             let fields = decl.fields();
             obj.retain(|k, _| {
-                Some(k.as_str()) == keep || fields.iter().any(|f| !f.readonly && &f.wire == k)
+                Some(k.as_str()) == keep || fields.iter().any(|f| !f.server_set() && &f.wire == k)
             });
-            for f in fields.iter().filter(|f| !f.readonly) {
+            for f in fields.iter().filter(|f| !f.server_set()) {
                 if let Some(child) = obj.get_mut(&f.wire) {
                     prune(ir, &f.ty, child);
                 }

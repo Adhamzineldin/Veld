@@ -5,7 +5,7 @@ use thiserror::Error;
 use veld_codegen::canonical::canonical_bytes;
 use veld_ir::{ChannelId, DeclId, DeclKind, Ir, Scalar, ServiceId, Type};
 
-use super::{DATA_CONTENT_TYPE, RULES_ATTRIBUTE};
+use super::{DATA_CONTENT_TYPE, RULES_ATTRIBUTE, TENANT_ATTRIBUTE};
 use crate::check::{Options, Violation, check_decl_full};
 use crate::error::InputError;
 use crate::wire::format_datetime;
@@ -137,6 +137,20 @@ fn carried_event(
     }
 }
 
+/// The text of the `@tenant` field of an event, for the attribute `veldtenant`: a `string` as it
+/// is, a `uuid` in lowercase, an `int` or `long` in decimal digits. `None` for an event without
+/// such a field, and for one whose field is absent or not a text or number.
+fn tenant_text(decl: &veld_ir::Decl, data: &Json) -> Option<String> {
+    let field = decl.tenant_field()?;
+    match (&field.ty, data.get(&field.wire)?) {
+        (Type::Scalar(Scalar::String | Scalar::Uuid | Scalar::Long), Json::String(s)) => {
+            Some(s.clone())
+        }
+        (Type::Scalar(Scalar::Int | Scalar::Long), Json::Number(n)) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
 /// Steps 4 and 5 of section 7: the attributes and the canonical bytes.
 fn assemble(
     decl: &veld_ir::Decl,
@@ -163,6 +177,9 @@ fn assemble(
     m.insert("datacontenttype".into(), Json::from(DATA_CONTENT_TYPE));
     if let Some(d) = rules_digest {
         m.insert(RULES_ATTRIBUTE.into(), Json::from(d));
+    }
+    if let Some(t) = tenant_text(decl, &data) {
+        m.insert(TENANT_ATTRIBUTE.into(), Json::from(t));
     }
     m.insert("data".into(), data);
     Ok(canonical_bytes(&Json::Object(m)))

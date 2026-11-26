@@ -1,0 +1,42 @@
+// The contract of the tenant goldens (`spec/platform.md` section 3), compiled as the package
+// `bookings`: an event with a `@tenant` field of each of the four types, and one without.
+
+event BookingPaid {
+  tenantId: uuid @tenant
+  bookingId: uuid
+  amount: decimal
+}
+
+event NoteAdded {
+  account: string @tenant
+  bookingId: uuid
+  note: string
+}
+
+event Counted {
+  shard: int @tenant
+  n: int
+}
+
+event Archived {
+  shard: long @tenant
+  bookingId: uuid
+}
+
+event Plain {
+  bookingId: uuid
+}
+
+@topic("shop.tenants.v1")
+channel TenantEvents {
+  carries BookingPaid, NoteAdded, Archived, Plain
+  key bookingId
+}
+
+channel Unkeyed {
+  carries Counted, Archived
+}
+
+service Bookings at "/bookings" {
+  publishes TenantEvents, Unkeyed
+}

@@ -4,7 +4,7 @@ use serde_json::{Map, Value as Json};
 use thiserror::Error;
 use veld_ir::{DeclId, DeclKind, Ir};
 
-use super::{DATA_CONTENT_TYPE, RULES_ATTRIBUTE, type_name};
+use super::{DATA_CONTENT_TYPE, RULES_ATTRIBUTE, TENANT_ATTRIBUTE, type_name};
 use crate::check::{Options, Violation, check_decl_full};
 
 /// Why a message is not handed to a handler (`spec/events.md` section 8).
@@ -52,6 +52,9 @@ pub struct Received {
     pub time: Option<String>,
     /// The `veldrules` attribute as the publisher wrote it.
     pub veldrules: Option<String>,
+    /// The `veldtenant` attribute: the tenant text of an event with a `@tenant` field
+    /// (`spec/platform.md` section 3). A consumer does not check it against `data`.
+    pub veldtenant: Option<String>,
     /// The event in wire form with the consumer's defaults applied. Fields the consumer does
     /// not know stay in it; a typed consumer ignores them.
     pub data: Json,
@@ -107,7 +110,13 @@ fn envelope(bytes: &[u8]) -> Result<Map<String, Json>, ConsumeError> {
     for name in ["id", "source", "type"] {
         required(&m, name)?;
     }
-    for name in ["subject", "time", "datacontenttype", RULES_ATTRIBUTE] {
+    for name in [
+        "subject",
+        "time",
+        "datacontenttype",
+        RULES_ATTRIBUTE,
+        TENANT_ATTRIBUTE,
+    ] {
         optional(&m, name)?;
     }
     if let Some(Json::String(ct)) = m.get("datacontenttype")
@@ -177,6 +186,7 @@ pub fn decode(ir: &Ir, handled: &[DeclId], bytes: &[u8]) -> Result<Received, Con
         subject: optional(&m, "subject")?,
         time: optional(&m, "time")?,
         veldrules,
+        veldtenant: optional(&m, TENANT_ATTRIBUTE)?,
         data,
         rules_checked,
     })

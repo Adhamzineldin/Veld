@@ -42,6 +42,12 @@ pub(super) struct Filler<'a> {
     /// The part of `filled` that is a required field with no `@example` and no default: a value
     /// the written one should have had (`Completer` reports it).
     pub missing: BTreeSet<String>,
+    /// The tenant of the example's principal (`spec/platform.md` section 3): what a `@tenant`
+    /// field that the example leaves out is filled in with. `None` for a contract without one.
+    pub tenant: Option<Json>,
+    /// While the principal that the example wrote is filled in, an optional `@tenant` field it
+    /// leaves out stays absent: the caller then has no tenant.
+    pub keep_absent_tenant: bool,
 }
 
 impl<'a> Filler<'a> {
@@ -56,6 +62,8 @@ impl<'a> Filler<'a> {
             depth: 0,
             filled: BTreeSet::new(),
             missing: BTreeSet::new(),
+            tenant: None,
+            keep_absent_tenant: false,
         }
     }
 
@@ -189,6 +197,9 @@ impl<'a> Filler<'a> {
             if let Some(v) = out.get(&f.wire).cloned() {
                 let filled = self.fill(&f.ty, &f.constraints, Some(&v), &child)?;
                 out.insert(f.wire.clone(), filled);
+            } else if let Some(t) = self.tenant_for(f) {
+                self.filled.insert(child);
+                out.insert(f.wire.clone(), t);
             } else if let Some(v) = preset(f) {
                 self.filled.insert(child);
                 out.insert(f.wire.clone(), v);
@@ -200,6 +211,14 @@ impl<'a> Filler<'a> {
             }
         }
         Ok(Json::Object(out))
+    }
+
+    /// The tenant to fill a left-out `@tenant` field with (`spec/platform.md` section 3).
+    fn tenant_for(&self, f: &Field) -> Option<Json> {
+        if !f.tenant || (self.keep_absent_tenant && f.optional) {
+            return None;
+        }
+        self.tenant.clone()
     }
 
     // ---- values the example did not write -----------------------------------------------
@@ -317,4 +336,18 @@ fn bounded(c: &Constraints, integer: bool) -> f64 {
         v = if integer { max.floor() } else { max };
     }
     v
+}
+
+/// The tenant of a filled-in principal, and of every left-out `@tenant` field of an example whose
+/// principal does not write one (`spec/platform.md` section 3): a fixed value of the field's
+/// type, so that it does not depend on the order in which values are filled in.
+pub(super) fn default_tenant(ty: &Type) -> Json {
+    match ty {
+        Type::Scalar(Scalar::Uuid) => Json::String("00000000-0000-4000-8000-00000000fe01".into()),
+        Type::Scalar(Scalar::Int) => Json::from(1),
+        Type::Scalar(Scalar::Long) => Json::String("1".into()),
+        Type::Scalar(_) | Type::List(_) | Type::Map(_) | Type::Page(_) | Type::Decl(_) => {
+            Json::String("tenant".into())
+        }
+    }
 }

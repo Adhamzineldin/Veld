@@ -1,0 +1,87 @@
+[
+  {
+    "name": "a uuid tenant",
+    "contract": "tests/wire/events/tenant.veld",
+    "service": "Bookings",
+    "channel": "TenantEvents",
+    "event": "BookingPaid",
+    "id": "0b5c9c3e-6a57-4d0e-9a55-1f0f6c2f7a11",
+    "time": "2026-06-10T12:00:00Z",
+    "value": {
+      "tenantId": "0B5C9C3E-AAAA-4D0E-9A55-1F0F6C2F7A01",
+      "bookingId": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+      "amount": "120.00"
+    },
+    "canonical": "{\"data\":{\"amount\":\"120.00\",\"bookingId\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"tenantId\":\"0b5c9c3e-aaaa-4d0e-9a55-1f0f6c2f7a01\"},\"datacontenttype\":\"application/json\",\"id\":\"0b5c9c3e-6a57-4d0e-9a55-1f0f6c2f7a11\",\"source\":\"veld:bookings/Bookings\",\"specversion\":\"1.0\",\"subject\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"time\":\"2026-06-10T12:00:00Z\",\"type\":\"veld:bookings/BookingPaid@2b82b276d4c24032\",\"veldtenant\":\"0b5c9c3e-aaaa-4d0e-9a55-1f0f6c2f7a01\"}"
+  },
+  {
+    "name": "a string tenant",
+    "contract": "tests/wire/events/tenant.veld",
+    "service": "Bookings",
+    "channel": "TenantEvents",
+    "event": "NoteAdded",
+    "id": "0b5c9c3e-6a57-4d0e-9a55-1f0f6c2f7a12",
+    "time": "2026-06-10T12:00:00Z",
+    "value": {
+      "account": "acme corp",
+      "bookingId": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+      "note": "late arrival"
+    },
+    "canonical": "{\"data\":{\"account\":\"acme corp\",\"bookingId\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"note\":\"late arrival\"},\"datacontenttype\":\"application/json\",\"id\":\"0b5c9c3e-6a57-4d0e-9a55-1f0f6c2f7a12\",\"source\":\"veld:bookings/Bookings\",\"specversion\":\"1.0\",\"subject\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"time\":\"2026-06-10T12:00:00Z\",\"type\":\"veld:bookings/NoteAdded@c41225580b115380\",\"veldtenant\":\"acme corp\"}"
+  },
+  {
+    "name": "an int tenant on a channel without a key",
+    "contract": "tests/wire/events/tenant.veld",
+    "service": "Bookings",
+    "channel": "Unkeyed",
+    "event": "Counted",
+    "id": "0b5c9c3e-6a57-4d0e-9a55-1f0f6c2f7a13",
+    "time": "2026-06-10T12:00:00Z",
+    "value": {
+      "shard": -7,
+      "n": 3
+    },
+    "canonical": "{\"data\":{\"n\":3,\"shard\":-7},\"datacontenttype\":\"application/json\",\"id\":\"0b5c9c3e-6a57-4d0e-9a55-1f0f6c2f7a13\",\"source\":\"veld:bookings/Bookings\",\"specversion\":\"1.0\",\"time\":\"2026-06-10T12:00:00Z\",\"type\":\"veld:bookings/Counted@d54c4cff2a5c50be\",\"veldtenant\":\"-7\"}"
+  },
+  {
+    "name": "a long tenant",
+    "contract": "tests/wire/events/tenant.veld",
+    "service": "Bookings",
+    "channel": "TenantEvents",
+    "event": "Archived",
+    "id": "0b5c9c3e-6a57-4d0e-9a55-1f0f6c2f7a14",
+    "time": "2026-06-10T12:00:02.007Z",
+    "value": {
+      "shard": "9007199254740993",
+      "bookingId": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21"
+    },
+    "canonical": "{\"data\":{\"bookingId\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"shard\":\"9007199254740993\"},\"datacontenttype\":\"application/json\",\"id\":\"0b5c9c3e-6a57-4d0e-9a55-1f0f6c2f7a14\",\"source\":\"veld:bookings/Bookings\",\"specversion\":\"1.0\",\"subject\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"time\":\"2026-06-10T12:00:02.007Z\",\"type\":\"veld:bookings/Archived@6dd5ebef2f212346\",\"veldtenant\":\"9007199254740993\"}"
+  },
+  {
+    "name": "a long tenant on a channel without a key",
+    "contract": "tests/wire/events/tenant.veld",
+    "service": "Bookings",
+    "channel": "Unkeyed",
+    "event": "Archived",
+    "id": "0b5c9c3e-6a57-4d0e-9a55-1f0f6c2f7a15",
+    "time": "2026-06-10T12:00:00Z",
+    "value": {
+      "shard": "1",
+      "bookingId": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21"
+    },
+    "canonical": "{\"data\":{\"bookingId\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"shard\":\"1\"},\"datacontenttype\":\"application/json\",\"id\":\"0b5c9c3e-6a57-4d0e-9a55-1f0f6c2f7a15\",\"source\":\"veld:bookings/Bookings\",\"specversion\":\"1.0\",\"time\":\"2026-06-10T12:00:00Z\",\"type\":\"veld:bookings/Archived@6dd5ebef2f212346\",\"veldtenant\":\"1\"}"
+  },
+  {
+    "name": "an event without a tenant keeps the bytes it had",
+    "contract": "tests/wire/events/tenant.veld",
+    "service": "Bookings",
+    "channel": "TenantEvents",
+    "event": "Plain",
+    "id": "0b5c9c3e-6a57-4d0e-9a55-1f0f6c2f7a16",
+    "time": "2026-06-10T12:00:00Z",
+    "value": {
+      "bookingId": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21"
+    },
+    "canonical": "{\"data\":{\"bookingId\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\"},\"datacontenttype\":\"application/json\",\"id\":\"0b5c9c3e-6a57-4d0e-9a55-1f0f6c2f7a16\",\"source\":\"veld:bookings/Bookings\",\"specversion\":\"1.0\",\"subject\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"time\":\"2026-06-10T12:00:00Z\",\"type\":\"veld:bookings/Plain@9ac039b576fd68d4\"}"
+  }
+]

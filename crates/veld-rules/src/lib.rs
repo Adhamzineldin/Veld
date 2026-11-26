@@ -30,6 +30,7 @@ mod pipeline;
 pub mod policy;
 pub mod redact;
 pub mod saga;
+pub mod tenant;
 mod value;
 pub mod vectors;
 pub mod version;

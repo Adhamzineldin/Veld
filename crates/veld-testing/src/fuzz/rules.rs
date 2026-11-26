@@ -366,7 +366,7 @@ fn walk(ir: &Ir, ty: &Type, at: &Loc, seen: &mut Vec<DeclId>, out: &mut Vec<(Loc
                 out.push((at.clone(), *id));
             }
             seen.push(*id);
-            for f in decl.fields().iter().filter(|f| !f.readonly) {
+            for f in decl.fields().iter().filter(|f| !f.server_set()) {
                 walk(ir, &f.ty, &at.child(Step::Field(f.wire.clone())), seen, out);
             }
             seen.pop();

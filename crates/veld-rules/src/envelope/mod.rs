@@ -42,6 +42,10 @@ pub const DATA_CONTENT_TYPE: &str = "application/json";
 /// The extension attribute that carries the rules digest of the event.
 pub const RULES_ATTRIBUTE: &str = "veldrules";
 
+/// The extension attribute that carries the tenant of an event with a `@tenant` field
+/// (`spec/platform.md` section 3).
+pub const TENANT_ATTRIBUTE: &str = "veldtenant";
+
 /// The declaration signature without its hash: `veld:pkg/Name`.
 pub(crate) fn type_name(sig: &str) -> &str {
     sig.rsplit_once('@').map_or(sig, |(name, _)| name)

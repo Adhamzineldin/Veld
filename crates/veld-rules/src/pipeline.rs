@@ -285,6 +285,7 @@ impl<'a> Pipeline<'a> {
                 }
             }
         }
+        self.guard_tenant(request, &mut reported)?;
         reported.etag = reported
             .body
             .as_ref()
@@ -301,6 +302,80 @@ impl<'a> Pipeline<'a> {
         }
         reported.audited = audited;
         Ok(reported)
+    }
+
+    /// The tenant check of the result (`spec/platform.md` section 3), after the output rules and
+    /// before visibility: a success body or the data of a declared error that holds a value of
+    /// another tenant is never sent. The answer becomes `500 Internal`; the violations, one for
+    /// each such value, are what the hook is told. No output mode turns it off.
+    fn guard_tenant(&self, request: &Request, reported: &mut Reported) -> Result<(), RunError> {
+        if reported.replayed {
+            return Ok(());
+        }
+        let found = match &reported.outcome {
+            Outcome::Passes => match (self.endpoint.success.ty.as_ref(), reported.body.as_ref()) {
+                (Some(ty), Some(body)) if !self.endpoint.success.stream => {
+                    self.refused(request, ty, body, "result")?
+                }
+                _ => Vec::new(),
+            },
+            Outcome::Error(answer) => {
+                let ty = veld_ir::Type::Decl(answer.decl);
+                self.refused(request, &ty, &answer.data, "error")?
+            }
+        };
+        if !found.is_empty() {
+            reported.outcome = internal(self, found)?;
+            reported.body = None;
+        }
+        Ok(())
+    }
+
+    /// The values of `value`, of type `ty`, that are tenant-scoped and not the caller's: the
+    /// tenant check for a response, a declared error's data or a stream item. `root` starts the
+    /// paths of the violations.
+    ///
+    /// # Errors
+    /// [`RunError`] when `value` does not have the shape of `ty`.
+    pub fn refused(
+        &self,
+        request: &Request,
+        ty: &veld_ir::Type,
+        value: &Json,
+        root: &str,
+    ) -> Result<Vec<Violation>, RunError> {
+        if !self.ir.type_reaches_tenant(ty) {
+            return Ok(Vec::new());
+        }
+        let (principal, _) = self.complete_principal(request.principal.as_ref())?;
+        let caller = self.tenant_of(principal.as_ref());
+        Ok(crate::tenant::refused(
+            self.ir,
+            ty,
+            value,
+            caller.as_ref(),
+            root,
+        )?)
+    }
+
+    /// The tenant of the caller, from its principal.
+    fn tenant_of(&self, principal: Option<&Json>) -> Option<Json> {
+        crate::tenant::caller_tenant(self.ir, self.principal?, principal?)
+    }
+
+    /// True when `value`, a loaded fact of type `ty`, holds a value of another tenant.
+    fn is_foreign(
+        &self,
+        ty: &veld_ir::Type,
+        value: &Json,
+        principal: Option<&Json>,
+    ) -> Result<bool, RunError> {
+        if !self.ir.type_reaches_tenant(ty) {
+            return Ok(false);
+        }
+        let caller = self.tenant_of(principal);
+        let found = crate::tenant::refused(self.ir, ty, value, caller.as_ref(), "fact")?;
+        Ok(!found.is_empty())
     }
 
     /// Visibility (`spec/platform.md` section 2), after the output rules: the body of a success
@@ -716,7 +791,8 @@ impl<'a> Pipeline<'a> {
             } else {
                 request.facts.get(&fact.name).and_then(Option::as_ref)
             };
-            match value {
+            // A fact of another tenant is not found (`spec/platform.md` section 3).
+            let value = match value {
                 Some(v) => {
                     // A fact has its defaults and its derived fields once it is loaded (17.2).
                     let (v, broken) = self.complete(&fact.ty, v)?;
@@ -725,6 +801,13 @@ impl<'a> Pipeline<'a> {
                             .answer("Internal", 500, json!({}), Vec::new(), broken)
                             .map(Some);
                     }
+                    let theirs = self.is_foreign(&fact.ty, &v, env.principal.as_ref())?;
+                    (!theirs).then_some(v)
+                }
+                None => None,
+            };
+            match value {
+                Some(v) => {
                     env.facts.insert(fact.name.clone(), v);
                 }
                 None if fact.optional => {}
