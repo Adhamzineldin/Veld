@@ -44,7 +44,7 @@ fn the_derived_examples_compile_strict_and_pass_es2022() {
 /// The production handler over HTTP and the generated client, against the shop contract: a request
 /// whose derived values are replaced and drop what was sent, a fact and a principal, a result, a
 /// declared error and a stream item that are given theirs, output mode `off`, the client's local
-/// check and the public compute function.
+/// check and the public derive function.
 fn http_run(edition: &str, prefix: &str) {
     let Some(tsc) = tsc_path() else { return };
     let ir = compile_path(SHOP);
@@ -142,7 +142,7 @@ fn the_chain_is_computed_in_dependency_order_and_the_schema_carries_the_function
     };
     // `subtotal` is computed before `payable`, which reads it.
     assert!(at("self.subtotal =") < at("self.payable ="));
-    assert!(models.contains("derive: computeCartDerived"));
+    assert!(models.contains("derive: deriveCartDerived"));
     assert!(models.contains("{ n: 'subtotal', t: { k: 'int' }, o: true, dv: true }"));
     // The three positions of a value.
     assert!(models.contains("export type CartOutput = Omit<Cart,"));
@@ -155,8 +155,8 @@ fn the_chain_is_computed_in_dependency_order_and_the_schema_carries_the_function
     assert!(module.contains("Promise<veld.UserOutput") || module.contains("UserOutput"));
     let client = gen_client(&ir);
     assert!(text(&client, "bookings/client.ts").contains("body: CartInput;"));
-    // The compute function of an error is next to its `check` (`static compute`).
-    assert!(text(&server, "errors/bookings.ts").contains("static compute(data:"));
+    // The derive function of an error is next to its `check` (`static derive`).
+    assert!(text(&server, "errors/bookings.ts").contains("static derive(data:"));
 }
 
 #[test]
@@ -172,7 +172,7 @@ fn a_contract_without_derived_fields_has_none_of_the_code() {
                 "deriveValue",
                 "toWireSend",
                 "DeriveFn",
-                "computeDerived",
+                "deriveDerived",
                 "Output = Omit<",
                 "Input = Omit<",
             ] {

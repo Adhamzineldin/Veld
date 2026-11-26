@@ -271,18 +271,18 @@ async function main(): Promise<void> {
   live.close();
 
   // --- the public function: a form shows `payable` while the user types ---------------------------
-  const full = cli.Cart.compute({ items: [{ price: 3, qty: 2 }] });
+  const full = cli.Cart.derive({ items: [{ price: 3, qty: 2 }] });
   assert.equal(full.payable, 6);
   assert.equal(full.items?.[0]?.total, 6);
   assert.equal(full.coupon, 0, 'defaults are applied');
   // A derived field whose inputs are missing stays absent.
-  const draft = cli.Cart.compute({ items: [{ price: 3 }] });
+  const draft = cli.Cart.derive({ items: [{ price: 3 }] });
   assert.equal(draft.items?.[0]?.total, undefined);
   assert.equal(draft.subtotal, undefined);
   assert.equal(draft.payable, undefined);
   // What a draft holds for a derived field is replaced; the draft itself is not changed.
   const original = { price: 1, qty: 2, total: 99 };
-  assert.equal(cli.Line.compute(original).total, 2);
+  assert.equal(cli.Line.derive(original).total, 2);
   assert.equal(original.total, 99);
   // `partial` computes before it checks, so a form sees the violation of a rule on a derived field.
   const form = cli.Cart.partial({ items: [{ price: 3, qty: 2 }], coupon: 100 });
@@ -290,7 +290,7 @@ async function main(): Promise<void> {
   assert.match(form[0]?.rule ?? '', /Cart\.payableFits@/);
   assert.deepEqual(cli.Cart.partial({ items: [{ price: 3 }] }), [], 'a rule that needs an absent field is skipped');
   const out: cli.veld.Violation[] = [];
-  cli.Line.compute({ price: 2000000000, qty: 2 }, out);
+  cli.Line.derive({ price: 2000000000, qty: 2 }, out);
   assert.equal(out.length, 1);
   assert.equal(out[0]?.error, 'overflow');
   console.log('derived over http ok');

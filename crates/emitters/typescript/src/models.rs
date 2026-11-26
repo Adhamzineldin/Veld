@@ -194,7 +194,7 @@ fn write_ruled_companion(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl,
         w.blank();
     }
     if d.has_derived() {
-        derived::write_compute_fn(w, fc, d, &name);
+        derived::write_derive_fn(w, fc, d, &name);
         w.blank();
     }
     let companion = fc.rt("Companion");
@@ -415,7 +415,7 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
         w.blank();
     }
     if d.has_derived() {
-        derived::write_compute_fn(w, fc, d, &data);
+        derived::write_derive_fn(w, fc, d, &data);
         w.blank();
     }
     doc_comment(w, d.docs.as_deref(), d.deprecated.as_deref());
@@ -467,19 +467,19 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
         write_error_rules_members(w, fc, d, &name, &data);
     }
     if d.has_derived() {
-        write_error_compute(w, fc, &name, &data);
+        write_error_derive(w, fc, &name, &data);
     }
     w.close();
 }
 
-/// `static compute(data)` of an error with derived fields: the data with them computed.
-fn write_error_compute(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, data: &str) {
+/// `static derive(data)` of an error with derived fields: the data with them computed.
+fn write_error_derive(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, data: &str) {
     let violation = fc.rt("Violation");
     let partial = fc.rt("DeepPartial");
     let compute = fc.rt("deriveValue");
     w.blank();
     w.open(format!(
-        "static compute(data: {partial}<{data}>, out: {violation}[] = []): {partial}<{data}>"
+        "static derive(data: {partial}<{data}>, out: {violation}[] = []): {partial}<{data}>"
     ));
     w.line(format!(
         "return {compute}({name}.schema, data, '$', out) as {partial}<{data}>;"

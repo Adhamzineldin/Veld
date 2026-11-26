@@ -2,7 +2,7 @@
 //! every declaration with a derived field, one plain function that computes the derived fields of
 //! one value in dependency order. The declaration's schema node carries it as `derive`, and the
 //! runtime's walk (`deriveNode` in `runtime/veld.ts`) calls it after the values nested in the
-//! value are computed; the companion's `compute(draft)` is the public face of the same walk.
+//! value are computed; the companion's `derive(draft)` is the public face of the same walk.
 
 use veld_codegen::CodeWriter;
 use veld_ir::{Decl, Field, Scalar, Type};
@@ -12,10 +12,10 @@ use crate::tree::FileCtx;
 use crate::types::ts_type;
 use crate::util::{ts_str, type_name};
 
-/// The name of the compute function of `d`.
+/// The name of the derive function of `d`.
 #[must_use]
 pub fn fn_name(d: &Decl) -> String {
-    format!("compute{}Derived", type_name(d))
+    format!("derive{}Derived", type_name(d))
 }
 
 /// The code that turns the rule value `code` (the representation of `runtime/rules.ts`) of type
@@ -85,8 +85,8 @@ fn write_field(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, f: &Field
     w.close();
 }
 
-/// Writes the compute function of `d`. `self_ty` is the TypeScript type of the value.
-pub fn write_compute_fn(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, self_ty: &str) {
+/// Writes the derive function of `d`. `self_ty` is the TypeScript type of the value.
+pub fn write_derive_fn(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, self_ty: &str) {
     let violation = fc.rt("Violation");
     let partial = fc.rt("DeepPartial");
     w.line(

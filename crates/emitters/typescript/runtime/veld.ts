@@ -653,7 +653,7 @@ function deriveNode(schema: Schema, v: unknown, path: string, out: Violation[], 
   }
 }
 
-/** `Companion.compute`: a copy of `draft` with its derived fields computed. The failures go to `out`. */
+/** `Companion.derive`: a copy of `draft` with its derived fields computed. The failures go to `out`. */
 export function deriveValue(schema: Schema, draft: unknown, path = '$', out: Violation[] = []): unknown {
   return deriveNode(schema, draft, path, out, true);
 }
@@ -2032,7 +2032,7 @@ export interface Companion<T> {
    * defaults are applied, and a derived field whose inputs are missing stays absent. The
    * failures of expressions are added to `out`.
    */
-  compute(draft: DeepPartial<T>, out?: Violation[]): DeepPartial<T>;
+  derive(draft: DeepPartial<T>, out?: Violation[]): DeepPartial<T>;
   // #endif
 }
 
@@ -2060,7 +2060,7 @@ export function companion<T>(sig: string, base: Schema): Companion<T> {
       const full = withDerived(schema, draft, '$', failed);
       return [...failed, ...checkValue(schema, full, '$', 'partial')];
     },
-    compute: (draft, out = []) => deriveValue(schema, draft, '$', out) as never,
+    derive: (draft, out = []) => deriveValue(schema, draft, '$', out) as never,
     // #endif
     // #if rules_not_derived
     partial: (draft) => checkValue(schema, withDefaults(schema, draft), '$', 'partial'),

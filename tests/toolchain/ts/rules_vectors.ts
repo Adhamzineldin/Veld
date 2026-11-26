@@ -71,7 +71,7 @@ function run(c: Case): { violations: veld.Violation[]; computed: Record<string, 
   const decl = companionOf(c.type);
   const value = veld.fromWire(decl.schema, c.value, { request: c.request === true });
   const failed: veld.Violation[] = [];
-  // What the derived fields of the value are: the same walk the server runs (`Companion.compute`).
+  // What the derived fields of the value are: the same walk the server runs (`Companion.derive`).
   const done = derive === undefined ? value : derive(decl.schema, value, '$', failed);
   const full = (): veld.Violation[] => [
     ...failed,
