@@ -210,7 +210,11 @@ fn write_hooks(
     // A service with a principal resolves its auth hooks to the principal's model, when a
     // statement reads the caller (`spec/rules.md` section 11.1).
     let who = match (&svc.principal, fc.tree.uses_policies()) {
-        (Some(p), true) => ts_type(fc, &veld_ir::Type::Decl(p.decl)),
+        // What an auth hook returns: the derived fields of the principal are optional, the
+        // runtime computes them.
+        (Some(p), true) => {
+            derived::shaped_type(fc, &veld_ir::Type::Decl(p.decl), derived::Shape::Output)
+        }
         _ => "unknown".to_string(),
     };
     let (auth, middleware) = required_hooks(svc, &ctx, &who);

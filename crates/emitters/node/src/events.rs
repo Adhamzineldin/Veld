@@ -281,7 +281,12 @@ fn write_publisher_interface(
         for ev in &channel.events {
             let decl = ir.decl(*ev);
             doc_comment(w, decl.docs.as_deref(), decl.deprecated.as_deref());
-            let ty = fc.type_ref(*ev);
+            // What the publisher takes: a derived field is optional, the runtime computes it.
+            let ty = veld_emit_typescript::derived::shaped_type(
+                fc,
+                &veld_ir::Type::Decl(*ev),
+                veld_emit_typescript::derived::Shape::Output,
+            );
             w.line(format!(
                 "{}(event: {ty}): Promise<{ns}.PublishedEvent>;",
                 method_key(&naming::camel(&decl.name))

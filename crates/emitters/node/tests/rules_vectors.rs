@@ -73,7 +73,38 @@ fn load_groups() -> Vec<Group> {
             });
         }
     }
+    groups.push(pending_group("core", "derived"));
     groups
+}
+
+/// A group whose files still carry the suffix `.pending` (`derived.veld.pending` with
+/// `derived.json.pending`): it waits there until every target declares the feature, and a target
+/// that has built it reads the files by those names (`spec/rules.md` section 17.2).
+fn pending_group(group: &str, stem: &str) -> Group {
+    let dir = rules_dir().join(group);
+    let cases_path = dir.join(format!("{stem}.json.pending"));
+    let text = std::fs::read_to_string(&cases_path)
+        .unwrap_or_else(|e| panic!("{}: {e}", cases_path.display()));
+    Group {
+        name: format!("{group}_{stem}"),
+        source: std::fs::read_to_string(dir.join(format!("{stem}.veld.pending"))).unwrap(),
+        cases: load_cases(&text).unwrap_or_else(|e| panic!("{}: {e}", cases_path.display())),
+        cases_path,
+    }
+}
+
+/// What the generated code computed at the paths of `computed`, against what the case says.
+fn compare_computed(case: &Case, got: &BTreeMap<String, serde_json::Value>) -> Result<(), String> {
+    for (path, want) in &case.computed {
+        let found = got.get(path).unwrap_or(&serde_json::Value::Null);
+        if found != want {
+            return Err(format!(
+                "case `{}`: `{path}` is computed to {found}, wanted {want}",
+                case.name
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Compiles a vector contract as package `t`, with the probe service.
@@ -131,6 +162,8 @@ struct Line {
     name: String,
     #[serde(default)]
     violations: Vec<Produced>,
+    #[serde(default)]
+    computed: BTreeMap<String, serde_json::Value>,
     #[serde(default)]
     error: Option<String>,
 }
@@ -212,6 +245,8 @@ fn vectors_pass(tsc_path: &Path, edition: &str, target: &str) {
                     group.name, case.name
                 ));
             } else if let Err(m) = compare_produced(case, &line.violations) {
+                failures.push(format!("{} / {m}", group.name));
+            } else if let Err(m) = compare_computed(case, &line.computed) {
                 failures.push(format!("{} / {m}", group.name));
             } else {
                 passed += 1;

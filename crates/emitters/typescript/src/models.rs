@@ -38,9 +38,10 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
 }
 
 /// A variant of a state machine that is called like one of its helpers would make two members of
-/// the enum's object with one name: refused (`E0801`) rather than generated wrongly.
+/// the enum's object with one name: refused (`E0801`) rather than generated wrongly. So is a
+/// declaration called like the `Output` or `Input` type of one with derived fields.
 fn helper_clashes(tree: &Tree<'_>) -> Vec<GenDiagnostic> {
-    let mut out = Vec::new();
+    let mut out = shape_clashes(tree);
     for &id in tree.decls() {
         let d = tree.ir.decl(id);
         let DeclKind::Enum(e) = &d.kind else {
@@ -54,6 +55,38 @@ fn helper_clashes(tree: &Tree<'_>) -> Vec<GenDiagnostic> {
                     format!(
                         "enum `{}` is a state machine and has a variant `{}`, which is the name of a generated helper",
                         d.name, v.name
+                    ),
+                );
+                diag.origin = Some(d.origin.clone());
+                out.push(diag);
+            }
+        }
+    }
+    out
+}
+
+/// A declaration whose name is `<Other>Output`, `<Other>Input` or `<Other>DataOutput`, where
+/// `<Other>` has derived fields (or reaches them): the generated type would be declared twice.
+fn shape_clashes(tree: &Tree<'_>) -> Vec<GenDiagnostic> {
+    let names: std::collections::BTreeSet<String> = tree
+        .decls()
+        .iter()
+        .map(|id| type_name(tree.ir.decl(*id)))
+        .collect();
+    let mut out = Vec::new();
+    for &id in tree.decls() {
+        let d = tree.ir.decl(id);
+        if !tree.ir.type_reaches_derived(&veld_ir::Type::Decl(id)) {
+            continue;
+        }
+        for shape in [derived::Shape::Output, derived::Shape::Input] {
+            let made = derived::shape_name(d, shape);
+            if names.contains(&made) {
+                let mut diag = GenDiagnostic::new(
+                    "E0801",
+                    format!(
+                        "`{}` has derived fields, so `{made}` is generated for it, and a declaration is called `{made}`",
+                        d.name
                     ),
                 );
                 diag.origin = Some(d.origin.clone());

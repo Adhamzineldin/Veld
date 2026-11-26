@@ -70,7 +70,37 @@ fn load_groups() -> Vec<Group> {
             cases_path,
         });
     }
+    groups.push(pending_group("derived"));
     groups
+}
+
+/// The group whose files still carry the suffix `.pending` (`derived.veld.pending` with
+/// `derived.json.pending`): a target that has built the feature reads them by those names.
+fn pending_group(stem: &str) -> Group {
+    let cases_path = core_dir().join(format!("{stem}.json.pending"));
+    let text = std::fs::read_to_string(&cases_path).unwrap();
+    let source = std::fs::read_to_string(core_dir().join(format!("{stem}.veld.pending"))).unwrap();
+    Group {
+        name: stem.to_owned(),
+        models: model_names(&source),
+        source,
+        cases: load_cases(&text).unwrap(),
+        cases_path,
+    }
+}
+
+/// What the generated server computed at the paths of `computed`, against what the case says.
+fn compare_computed(case: &Case, got: &BTreeMap<String, serde_json::Value>) -> Result<(), String> {
+    for (path, want) in &case.computed {
+        let found = got.get(path).unwrap_or(&serde_json::Value::Null);
+        if found != want {
+            return Err(format!(
+                "case `{}`: `{path}` is computed to {found}, wanted {want}",
+                case.name
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The service that gives every model an endpoint that takes it and one that answers with it.
@@ -117,6 +147,8 @@ struct Line {
     violations: Vec<Produced>,
     #[serde(default)]
     audited: Vec<Produced>,
+    #[serde(default)]
+    computed: BTreeMap<String, serde_json::Value>,
     #[serde(default)]
     error: Option<String>,
 }
@@ -199,6 +231,7 @@ fn judge(group: &Group, line: &Line, case: &Case) -> Result<(), String> {
     }
     compare_produced(case, &line.violations).map_err(|m| m.to_string())?;
     compare_produced_audited(case, &line.audited).map_err(|m| m.to_string())?;
+    compare_computed(case, &line.computed)?;
     if line.status != wanted_status(case) {
         return Err(format!(
             "case `{}` of {}: the answer is HTTP {}, wanted {}",

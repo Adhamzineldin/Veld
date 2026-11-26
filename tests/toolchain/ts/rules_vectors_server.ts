@@ -22,6 +22,7 @@ interface Case {
   request?: boolean;
   partial?: boolean;
   output?: string;
+  computed?: Record<string, unknown>;
 }
 
 interface Checked {
@@ -36,15 +37,58 @@ function companionOf(type: string): Checked {
 
 const events: veld.RuleViolationEvent[] = [];
 let current: unknown;
+/** The request body the handler of `in<Type>` was given: with its derived fields computed. */
+let seen: unknown;
 
 // The application: `in<Type>` takes the value, `out<Type>` answers with the value of the case.
 const impl = new Proxy(
   {},
-  { get: (_target, name) => async () => (String(name).startsWith('out') ? current : undefined) },
+  {
+    get: (_target, name) => async (req?: { body?: unknown }) => {
+      if (String(name).startsWith('out')) return current;
+      seen = req?.body;
+      return undefined;
+    },
+  },
 ) as unknown as gen.VectorsService;
 
 const strict = gen.createVectorsHandler(impl, { onRuleViolation: (e) => events.push(e) });
 const off = gen.createVectorsHandler(impl, { onRuleViolation: (e) => events.push(e) }, { rules: { output: 'off' } });
+// Nothing is rejected here: the handler is reached by every case, and what it received (a request)
+// or what it answered (a result, output mode `off`) shows what the server computed.
+const lax = gen.createVectorsHandler(impl, { validateRequests: false } as unknown as gen.VectorsHooks, { rules: { output: 'off' } });
+
+/** The value at `$`, `$.name`, `$.items[1].line` of a wire value, `null` when there is none. */
+function valueAt(root: unknown, path: string): unknown {
+  let cur: unknown = root;
+  const steps = path.slice(1).match(/\.[^.[]+|\[\d+\]/g) ?? [];
+  for (const step of steps) {
+    if (cur === null || typeof cur !== 'object') return null;
+    const key = step.startsWith('[') ? Number(step.slice(1, -1)) : step.slice(1);
+    cur = (cur as Record<string | number, unknown>)[key];
+    if (cur === undefined) return null;
+  }
+  return cur ?? null;
+}
+
+/** What the server computed for the derived fields the case names, by the way the case reaches the server. */
+async function computedOf(c: Case, decl: Checked): Promise<Record<string, unknown>> {
+  const paths = Object.keys(c.computed ?? {});
+  if (paths.length === 0) return {};
+  let wire: unknown;
+  if (c.request === true) {
+    seen = undefined;
+    await lax({ method: 'POST', path: `/v/in/${c.type}`, headers: { 'content-type': 'application/json' }, body: c.value });
+    wire = seen === undefined ? undefined : veld.toWire(decl.schema, seen);
+  } else {
+    current = veld.fromWire(decl.schema, c.value);
+    const res = await lax({ method: 'GET', path: `/v/out/${c.type}`, headers: {} });
+    wire = res?.body == null ? undefined : (JSON.parse(res.body) as unknown);
+  }
+  const out: Record<string, unknown> = {};
+  for (const path of paths) out[path] = valueAt(wire, path);
+  return out;
+}
 
 /** The path of the value that carries the rule: `body.rows[1]` and `result.rows[1]` are `$.rows[1]`. */
 function valuePath(path: string): string {
@@ -75,7 +119,8 @@ async function run(c: Case): Promise<unknown> {
     res = await handler({ method: 'GET', path: `/v/out/${c.type}`, headers: {} });
   }
   if (res === null) throw new Error('no route');
-  return { name: c.name, status: res.status, violations: reported('rejected'), audited: reported('audited') };
+  const answer = { name: c.name, status: res.status, violations: reported('rejected'), audited: reported('audited') };
+  return { ...answer, computed: await computedOf(c, decl) };
 }
 
 async function main(): Promise<void> {

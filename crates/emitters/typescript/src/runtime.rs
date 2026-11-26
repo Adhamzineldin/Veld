@@ -324,6 +324,62 @@ mod tests {
     }
 
     #[test]
+    fn derived_fields_add_their_regions_and_nothing_else_sees_them() {
+        let words = [
+            "deriveNode",
+            "deriveValue",
+            "deriveSent",
+            "deriveInput",
+            "toWireSend",
+            "DeriveFn",
+            "withDerived",
+        ];
+        let plain = source_with(true, true).unwrap();
+        for word in words {
+            assert!(!plain.contains(word), "`{word}` leaked into the runtime");
+        }
+        let derived = source_gated(Gates {
+            derived: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(derived.contains(word), "`{word}` is missing");
+        }
+        // A derived field needs the invariant machinery, and nothing of endpoint rules.
+        assert!(derived.contains("checkValue") && !derived.contains("EndpointRuleSet"));
+        // The same functions keep working for a server with endpoint rules.
+        let all = source_gated(Gates {
+            derived: true,
+            endpoint_rules: true,
+            policies: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(all.contains("loadedFailed") && all.contains("principalSchema"));
+        assert!(!derived.contains("loadedFailed") && !derived.contains("principalSchema"));
+    }
+
+    #[test]
+    fn every_combination_with_derived_fields_pairs_up_and_keeps_no_marker() {
+        for bits in 0..512u32 {
+            let gates = Gates {
+                rules: bits & 1 != 0,
+                endpoint_rules: bits & 2 != 0,
+                transitions: bits & 4 != 0,
+                policies: bits & 8 != 0,
+                version: bits & 16 != 0,
+                idempotency: bits & 32 != 0,
+                rollout: bits & 64 != 0,
+                runtime_config: bits & 128 != 0,
+                derived: bits & 256 != 0,
+            };
+            let text = source_gated(gates).unwrap();
+            assert!(!text.contains("// #"), "{gates:?}");
+        }
+    }
+
+    #[test]
     fn a_version_only_contract_has_the_etag_and_no_guard() {
         let etag = source_gated(Gates {
             version: true,

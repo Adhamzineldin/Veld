@@ -104,7 +104,12 @@ pub fn write_loaders(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service
     ));
     w.open(format!("export interface {}", loaders_name(name)));
     for fact in &svc.facts {
-        let ty = ts_type(fc, &fact.ty);
+        // What a loader returns: the derived fields are optional, the runtime computes them.
+        let ty = veld_emit_typescript::derived::shaped_type(
+            fc,
+            &fact.ty,
+            veld_emit_typescript::derived::Shape::Output,
+        );
         let key = match &fact.key {
             Some(k) => format!("key: {}, ", ts_type(fc, k)),
             None => String::new(),
