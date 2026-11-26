@@ -682,6 +682,30 @@ fn the_runtime_computes_the_fingerprints_of_the_reference() {
     );
 }
 
+/// Every case of `tests/wire/idempotency/fingerprints.json` (the reference's values, 115 cases)
+/// through the generated server: the fingerprint `begin` is given, the `rejected` cases, and every
+/// `same_as` and `differs_from`.
+#[test]
+fn every_case_of_the_fingerprint_goldens_runs_through_the_generated_server() {
+    if !require_javac("every_case_of_the_fingerprint_goldens") {
+        return;
+    }
+    let ir = compile_path("tests/wire/idempotency/fingerprints.veld", "bookings");
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = write_files(work.path(), &generate(&ir, Role::Server, None, false));
+    sources.push(repo_root().join("tests/toolchain/java/rules/IdempotencyGoldens.java"));
+    javac_ok(work.path(), &sources, "17");
+    let goldens = repo_root().join("tests/wire/idempotency/fingerprints.json");
+    let goldens = goldens.display().to_string();
+    let out = java_main(work.path(), "veldtest.IdempotencyGoldens", &[&goldens]);
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("OK"),
+        "IdempotencyGoldens failed:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 /// The headers a call sends for `ifMatch` (a version and `*`) and `idempotencyKey`.
 #[test]
 fn the_client_sends_if_match_and_the_key() {

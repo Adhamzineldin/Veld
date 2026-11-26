@@ -319,7 +319,8 @@ fn a_target_without_settings_keeps_its_bytes() {
 #[test]
 fn the_output_mode_exists_only_where_the_model_says_so() {
     // A contract with rules on a consumed service only: the old predicate said "rules", the model
-    // does not give this server a `rules.output`, and its hooks keep `rulesOutput`.
+    // does not give this server a `rules.output`, and no production hooks keep `rulesOutput`
+    // (`spec/runtime-config.md` section 5).
     let ir = workspace(
         vec![
             package("ruled", "Ruled", "ruled", true),
@@ -337,7 +338,57 @@ fn the_output_mode_exists_only_where_the_model_says_so() {
     .unwrap();
     let runtime = text(&files, "gen/k/host/runtimeconfig/HostRuntime.java");
     assert!(!runtime.contains("rulesOutput"), "{runtime}");
-    assert!(text(&files, "gen/k/host/host/server/HostHooks.java").contains("rulesOutput("));
+    assert!(!text(&files, "gen/k/host/host/server/HostHooks.java").contains("rulesOutput"));
+}
+
+#[test]
+fn the_test_handler_takes_no_runtime_config_and_its_mode_is_its_own() {
+    // `spec/runtime-config.md` section 4: the test handler calls no consumed service, so it starts
+    // without an address for one; the output mode is an argument of its own entry.
+    let files = bookings(None, json!({ "testing": true }));
+    let test = text(
+        &files,
+        "gen/k/server/bookings/server/BookingsTestHandler.java",
+    );
+    assert!(!test.contains("BookingsRuntime"), "{test}");
+    assert!(!test.contains("hooks.build(config)"), "{test}");
+    for shape in [
+        "create(BookingsService impl, BookingsHooks hooks)",
+        "create(BookingsService impl, BookingsHooks hooks, RuleWalk.OutputMode rulesOutput)",
+        "hooks.build().withRulesOutput(rulesOutput)",
+    ] {
+        assert!(test.contains(shape), "missing `{shape}`:\n{test}");
+    }
+    let hooks = text(&files, "gen/k/server/bookings/server/BookingsHooks.java");
+    assert!(!hooks.contains("rulesOutput"), "{hooks}");
+    assert!(text(&files, "gen/k/server/runtime/HandlerHooks.java").contains("withRulesOutput"));
+    // Without the option the runtime has no such method.
+    let plain = bookings(None, json!({}));
+    assert!(!text(&plain, "gen/k/server/runtime/HandlerHooks.java").contains("withRulesOutput"));
+}
+
+#[test]
+fn the_clients_class_is_named_after_the_target_in_pascal_case() {
+    // A target called `runtime` is `Runtime` and `Clients`, not `Clients` trimmed to nothing.
+    let ir = bookings_ir();
+    let files = generate(
+        &ir,
+        Role::Client,
+        (&["iam"], &[]),
+        ("runtime", "gen.k.rt", None),
+        json!({}),
+    )
+    .unwrap();
+    assert!(
+        files
+            .get("gen/k/rt/runtimeconfig/RuntimeRuntime.java")
+            .is_some()
+    );
+    assert!(
+        files
+            .get("gen/k/rt/runtimeconfig/RuntimeClients.java")
+            .is_some()
+    );
 }
 
 // -- the goldens ------------------------------------------------------------------------------

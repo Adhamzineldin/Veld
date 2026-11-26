@@ -56,7 +56,10 @@ impl Info {
     /// `<Target>Clients`.
     #[must_use]
     pub fn clients_name(&self) -> String {
-        format!("{}Clients", self.type_name().trim_end_matches("Runtime"))
+        format!(
+            "{}Clients",
+            veld_codegen::runtime_config::pascal_target(self.model.target())
+        )
     }
 
     /// `<Target>RuntimeProperties`.

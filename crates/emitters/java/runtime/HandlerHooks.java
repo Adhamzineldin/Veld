@@ -144,6 +144,29 @@ public final class HandlerHooks {
     return builder().copyOf(this).idempotencyStore(store).idempotencyCaller(caller).build();
   }
   // #endif
+  // #if testing_rules
+
+  /** These hooks with another output mode of the rules (the test handler takes it as an argument). */
+  public HandlerHooks withRulesOutput(RuleWalk.OutputMode mode) {
+    Builder b = builder();
+    b.bearer = bearer;
+    b.basic = basic;
+    b.apiKey = apiKey;
+    b.middleware.putAll(middleware);
+    b.onError = onError;
+    b.validateResponses = validateResponses;
+    b.validateRequests = validateRequests;
+    b.ruleHook = ruleHook;
+    b.rulesOutput = mode == null ? RuleWalk.OutputMode.STRICT : mode;
+    // #endif
+    // #if testing_rules_conditional
+    b.idempotencyStore = idempotencyStore;
+    b.idempotencyCaller = idempotencyCaller;
+    // #endif
+    // #if testing_rules
+    return b.build();
+  }
+  // #endif
 
   /** Builds {@link HandlerHooks}. */
   public static final class Builder {

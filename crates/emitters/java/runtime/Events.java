@@ -4,12 +4,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.time.DateTimeException;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -21,7 +16,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.regex.Pattern;
 
 /**
  * The envelope of an event message (CloudEvents 1.0, structured JSON mode) and the publish and
@@ -30,9 +24,6 @@ import java.util.regex.Pattern;
  */
 public final class Events {
   private Events() {}
-
-  private static final Pattern RE_DATETIME =
-      Pattern.compile("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$");
 
   // -- what the generated code describes ------------------------------------------------------
 
@@ -259,94 +250,6 @@ public final class Events {
     }
   }
 
-  // -- canonical scalars ----------------------------------------------------------------------
-
-  /** A datetime in UTC with {@code Z}, the fraction {@code .fff} only when the milliseconds are not zero. */
-  static String isoMillis(Instant at) {
-    LocalDateTime d = LocalDateTime.ofInstant(at.truncatedTo(ChronoUnit.MILLIS), ZoneOffset.UTC);
-    String base =
-        String.format(
-            Locale.ROOT,
-            "%04d-%02d-%02dT%02d:%02d:%02d",
-            d.getYear(),
-            d.getMonthValue(),
-            d.getDayOfMonth(),
-            d.getHour(),
-            d.getMinute(),
-            d.getSecond());
-    int millis = d.getNano() / 1_000_000;
-    return millis == 0 ? base + "Z" : base + String.format(Locale.ROOT, ".%03dZ", millis);
-  }
-
-  private static String canonDatetime(String v) {
-    if (!RE_DATETIME.matcher(v).matches()) {
-      return v;
-    }
-    try {
-      return isoMillis(OffsetDateTime.parse(v).toInstant());
-    } catch (DateTimeException e) {
-      return v;
-    }
-  }
-
-  /** The canonical scalars of spec/ir.md section 5.3 in a wire value: lowercase uuids, UTC datetimes. */
-  static Json canonScalars(Schema schema, Json v) {
-    Schema s = schema.resolve();
-    switch (s.kind) {
-      case UUID:
-        return v instanceof Json.Str str ? Json.of(str.value().toLowerCase(Locale.ROOT)) : v;
-      case DATETIME:
-        return v instanceof Json.Str str ? Json.of(canonDatetime(str.value())) : v;
-      case LIST:
-        return v instanceof Json.Arr arr ? canonItems(s.of, arr) : v;
-      case MAP:
-        return v instanceof Json.Obj obj ? canonMembers(s.of, obj) : v;
-      case PAGE:
-        return v instanceof Json.Obj obj && obj.get("items") != null
-            ? obj.with("items", canonScalars(Schema.list(s.of), obj.get("items")))
-            : v;
-      case OBJECT:
-        return v instanceof Json.Obj obj ? canonObject(s, obj) : v;
-      case UNION:
-        return canonUnion(s, v);
-      default:
-        return v;
-    }
-  }
-
-  private static Json canonItems(Schema of, Json.Arr arr) {
-    List<Json> items = new ArrayList<>();
-    for (Json item : arr.items()) {
-      items.add(canonScalars(of, item));
-    }
-    return Json.array(items);
-  }
-
-  private static Json canonMembers(Schema of, Json.Obj obj) {
-    Json.Obj out = obj;
-    for (Map.Entry<String, Json> e : obj.fields().entrySet()) {
-      out = out.with(e.getKey(), canonScalars(of, e.getValue()));
-    }
-    return out;
-  }
-
-  private static Json canonObject(Schema s, Json.Obj obj) {
-    Json.Obj out = obj;
-    for (Schema.Field f : s.fields) {
-      Json x = out.get(f.wire());
-      if (x != null) {
-        out = out.with(f.wire(), canonScalars(f.type(), x));
-      }
-    }
-    return out;
-  }
-
-  private static Json canonUnion(Schema s, Json v) {
-    Json label = v instanceof Json.Obj obj ? obj.get(s.discriminator) : null;
-    Schema arm = label instanceof Json.Str str ? s.armFor(str.value()) : null;
-    return arm == null ? v : canonScalars(arm, v);
-  }
-
   // -- invariants -----------------------------------------------------------------------------
 
   private static void report(
@@ -455,7 +358,7 @@ public final class Events {
     Derive.take();
     prepared = Derive.output(def.schema(), prepared);
     // #endif
-    Json wire = canonScalars(def.schema(), prepared);
+    Json wire = Canon.scalars(def.schema(), prepared, false);
     List<Issue> issues = Wire.validate(def.schema(), wire, "$", false);
     if (!issues.isEmpty()) {
       throw invalid(ctx, issues, List.of());
@@ -477,7 +380,7 @@ public final class Events {
     if (at == null) {
       throw new IllegalStateException("the clock returned no time");
     }
-    String time = isoMillis(at);
+    String time = Canon.isoMillis(at);
     Json.Builder envelope =
         Json.object()
             .put("specversion", Json.of("1.0"))

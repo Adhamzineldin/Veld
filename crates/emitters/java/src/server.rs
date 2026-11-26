@@ -458,20 +458,11 @@ fn write_build_with_config(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>) {
     w.blank();
 }
 
-/// The rule options of the hooks: the output mode (a target without a runtime config that has the
-/// mode; with one, the mode is `rules.output` of the config) and the violation hook (`spec/rules.md` 5.3).
+/// The rule options of the hooks: the violation hook (`spec/rules.md` 5.3). No production server
+/// keeps the output mode in its hooks: it is `rules.output` of the runtime config, and a server
+/// without that setting has no output mode (`spec/runtime-config.md` section 5).
 fn write_rule_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, class: &str) {
     let walk = fc.rt("RuleWalk");
-    if build_call(fc) == "hooks.build()" {
-        w.line("/** What happens when a rule is violated by this server's own output: `STRICT` (default) answers `500 Internal`, `AUDIT` sends the response and reports, `OFF` skips the check. */");
-        w.open(format!(
-            "public {class} rulesOutput({walk}.OutputMode mode)"
-        ));
-        w.line("builder.rulesOutput(mode);");
-        w.line("return this;");
-        w.close();
-        w.blank();
-    }
     w.line("/** Observes every violated rule; a failing hook never changes the response. */");
     w.open(format!("public {class} onRuleViolation({walk}.Hook hook)"));
     w.line("builder.onRuleViolation(hook);");
@@ -636,7 +627,7 @@ impl Entry<'_> {
     }
 
     /// The methods of a target without a runtime config: the bytes of before.
-    fn write_plain(&self, w: &mut CodeWriter) {
+    pub(crate) fn write_plain(&self, w: &mut CodeWriter) {
         let (handler, given, pass, hooks) = (self.handler, self.given, self.pass, self.hooks_class);
         if !self.needs_hooks {
             w.line(format!("/** {} */", self.docs.0));

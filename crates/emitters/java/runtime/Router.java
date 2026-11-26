@@ -742,7 +742,7 @@ public final class Router implements VeldHandler {
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
       // #if conditional
-      b.canonical.put(p.name(), v);
+      b.canonical.put(p.name(), Canon.scalars(p.type(), v, true));
       // #endif
       b.values.put(p.name(), v);
     }
@@ -773,10 +773,10 @@ public final class Router implements VeldHandler {
       Json prepared = Derive.input(p.type(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST), p.location());
       // #endif
       // #if no_derived_conditional
-      b.canonical.put(p.name(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST));
+      b.canonical.put(p.name(), Canon.scalars(p.type(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST), true));
       // #endif
       // #if derived_conditional
-      b.canonical.put(p.name(), prepared);
+      b.canonical.put(p.name(), Canon.scalars(p.type(), prepared, true));
       // #endif
       // #if no_derived
       b.values.put(p.name(), Wire.fillReadonly(p.type(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST)));
@@ -812,10 +812,10 @@ public final class Router implements VeldHandler {
       Json prepared = Derive.input(p.type(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST), p.location());
       // #endif
       // #if no_derived_conditional
-      b.canonical.put(p.name(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST));
+      b.canonical.put(p.name(), Canon.scalars(p.type(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST), true));
       // #endif
       // #if derived_conditional
-      b.canonical.put(p.name(), prepared);
+      b.canonical.put(p.name(), Canon.scalars(p.type(), prepared, true));
       // #endif
       // #if no_derived
       b.values.put(p.name(), Wire.fillReadonly(p.type(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST)));
