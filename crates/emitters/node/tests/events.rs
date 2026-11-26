@@ -97,11 +97,32 @@ fn build(
     drivers: &[&str],
     edition: &str,
 ) {
+    build_with(
+        work,
+        tsc_path,
+        ir,
+        services,
+        drivers,
+        edition,
+        &typescript_option(edition),
+    );
+}
+
+/// [`build`] with the target options `options` (`testing`, `messaging`).
+fn build_with(
+    work: &Path,
+    tsc_path: &Path,
+    ir: &Ir,
+    services: &[&str],
+    drivers: &[&str],
+    edition: &str,
+    options: &Value,
+) {
     let target = TARGETS
         .iter()
         .find(|(e, _)| *e == edition)
         .map_or("ES2020", |(_, t)| *t);
-    let files = gen_server_services(ir, services, &typescript_option(edition));
+    let files = gen_server_services(ir, services, options);
     write(&work.join("server"), &files, &WriteOptions::default()).unwrap();
     write_json(
         &work.join("tsconfig.generated.json"),
@@ -916,5 +937,528 @@ fn the_node_server_declares_events_for_every_adapter_and_generates_them() {
         let files =
             gen_server_services_fw(&ir, &SERVICES, &serde_json::Value::Null, Some(&info.id));
         assert!(files.get("runtime/events.ts").is_some(), "{}", info.id);
+    }
+}
+
+// ---- phase E2: the dead-letter and retry goldens ---------------------------------------------
+
+const DELIVERY: &str = "tests/events/delivery.veld";
+
+/// A message the retry cases deliver: the first publish golden of `BookingPaid`, as it is, with
+/// a number where step 3 wants a decimal, with a zero where step 4 wants a positive amount, with
+/// a `type` no `on` line names, and as text that is not JSON.
+fn retry_messages() -> Value {
+    let cases = read_json("tests/wire/events/envelopes.json");
+    let valid = cases[0]["canonical"].as_str().unwrap().to_owned();
+    let with = |change: &dyn Fn(&mut Value)| {
+        let mut m: Value = serde_json::from_str(&valid).unwrap();
+        change(&mut m);
+        m.to_string()
+    };
+    json!({
+        "valid": valid,
+        "shape": with(&|m| m["data"]["amount"] = json!(120)),
+        "rule": with(&|m| m["data"]["amount"] = json!("0.00")),
+        "ignored": with(&|m| m["type"] = json!("veld:bookings/SomethingElse@0000000000000000")),
+        "malformed": "this is not json",
+    })
+}
+
+fn delivery_goldens(tsc_path: &Path, edition: &str, _target: &str) {
+    let ir = compile_text(read(BOOKINGS));
+    let paid = ir.decls.iter().find(|d| d.name == "BookingPaid").unwrap();
+    let digest = if let veld_ir::DeclKind::Event(e) = &paid.kind {
+        e.rules_digest.clone().unwrap()
+    } else {
+        panic!("BookingPaid is not an event")
+    };
+    let guard = scratch("events-delivery-wire-");
+    let work = guard.path();
+    let names: Vec<&str> = ir.services.iter().map(|s| s.name.as_str()).collect();
+    build(
+        work,
+        tsc_path,
+        &ir,
+        &names,
+        &["events_delivery_wire.ts"],
+        edition,
+    );
+    let dead = read_json("tests/wire/events/dead-letter.json");
+    let retry = read_json("tests/wire/events/retry.json");
+    write_json(
+        &work.join("cases.json"),
+        &json!({
+            "digest": digest,
+            "topic": channel_named(&ir, "BookingEvents").topic,
+            "group": "ledger",
+            "messages": retry_messages(),
+            "deadLetter": dead,
+            "retry": retry,
+        }),
+    );
+    let out: Value = serde_json::from_str(&node(work, "events_delivery_wire")).unwrap();
+    check_dead_letter(&dead, &out["deadLetter"]);
+    check_retry(&retry, &out["retry"]);
+}
+
+/// The bytes a golden case names: `x` as text, or `xHex` as hex.
+fn golden_hex(case: &Value, text: &str, hex_name: &str) -> String {
+    match case.get(hex_name).and_then(Value::as_str) {
+        Some(h) => h.to_owned(),
+        None => hex(case[text].as_str().unwrap().as_bytes()),
+    }
+}
+
+fn check_dead_letter(cases: &[Value], got: &Value) {
+    let got = got.as_array().unwrap();
+    assert_eq!(got.len(), cases.len());
+    for (case, got) in cases.iter().zip(got) {
+        let name = case["name"].as_str().unwrap();
+        assert_eq!(got["name"], case["name"]);
+        assert_eq!(
+            got["hex"].as_str().unwrap(),
+            golden_hex(case, "copy", "copyHex"),
+            "{name}: the copy differs from the golden"
+        );
+    }
+}
+
+fn check_retry(cases: &[Value], got: &Value) {
+    let got = got.as_array().unwrap();
+    assert_eq!(got.len(), cases.len());
+    for (case, got) in cases.iter().zip(got) {
+        let name = case["name"].as_str().unwrap();
+        let want = &case["expect"];
+        assert_eq!(got["runs"], want["runs"], "{name}: runs");
+        assert_eq!(got["failures"], want["failures"], "{name}: failures");
+        assert_eq!(got["waitsMs"], want["waitsMs"], "{name}: waits");
+        assert_eq!(got["answer"], want["answer"], "{name}: answer");
+        assert_eq!(
+            got["answerIfCopyFails"], want["answerIfCopyFails"],
+            "{name}: answer when the copy cannot be published"
+        );
+        match want["copy"].as_str() {
+            None => assert_eq!(got["copy"], Value::Null, "{name}: no copy"),
+            Some(reason) => {
+                assert_eq!(got["copy"]["reason"], json!(reason), "{name}: copy reason");
+                assert_eq!(
+                    got["copy"]["attempts"], want["copyAttempts"],
+                    "{name}: veldattempts"
+                );
+                assert_eq!(
+                    got["copy"]["topic"],
+                    json!("shop.bookings.v1.dlq"),
+                    "{name}: the copy goes to <topic>.dlq"
+                );
+                assert_eq!(got["copy"]["key"], json!("k1"), "{name}: the original key");
+            }
+        }
+    }
+}
+
+#[test]
+fn the_generated_consumer_reproduces_the_dead_letter_and_retry_goldens() {
+    matrix(delivery_goldens);
+}
+
+#[test]
+fn every_retry_case_of_the_golden_is_run_and_the_driver_covers_every_kind_of_case() {
+    // A golden case the driver cannot run (a new kind of case) must fail here, not silently pass.
+    for case in read_json("tests/wire/events/retry.json") {
+        let keys: Vec<&str> = case
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        for key in keys {
+            assert!(
+                [
+                    "name",
+                    "retry",
+                    "deadLetter",
+                    "delayMs",
+                    "maxDelayMs",
+                    "transportAttempt",
+                    "results",
+                    "rejected",
+                    "ignored",
+                    "expect"
+                ]
+                .contains(&key),
+                "retry.json has a member the driver does not read: {key}"
+            );
+        }
+    }
+}
+
+// ---- phase E2: two services in one process ---------------------------------------------------
+
+fn delivery_process(tsc_path: &Path, edition: &str, _target: &str) {
+    let ir = compile_text(read(DELIVERY));
+    let guard = scratch("events-delivery-process-");
+    let work = guard.path();
+    let names: Vec<&str> = ir.services.iter().map(|s| s.name.as_str()).collect();
+    build(
+        work,
+        tsc_path,
+        &ir,
+        &names,
+        &["events_delivery_process.ts"],
+        edition,
+    );
+    assert!(node(work, "events_delivery_process").contains("events delivery process ok"));
+}
+
+#[test]
+fn retry_dead_letter_and_the_inbox_work_between_two_generated_services_in_one_process() {
+    matrix(delivery_process);
+}
+
+// ---- phase E2: the event examples through the generated test handlers -------------------------
+
+/// A running `events_serve` driver; killed when dropped.
+struct Served {
+    tree: veld_test_support::ProcessTree,
+    url: String,
+}
+
+impl Served {
+    fn start(work: &Path, module: &str, factory: &str) -> Served {
+        use std::io::{BufRead, BufReader};
+        use std::process::Stdio;
+        let mut cmd = Command::new("node");
+        cmd.args(["out/events_serve.js", module, factory])
+            .current_dir(work)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        let mut tree =
+            veld_test_support::ProcessTree::spawn(&mut cmd).expect("cannot start the handler");
+        let mut line = String::new();
+        BufReader::new(tree.child_mut().stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        let port = line
+            .trim()
+            .strip_prefix("PORT=")
+            .unwrap_or_else(|| panic!("the handler did not report a port: {line:?}"));
+        Served {
+            url: format!("http://127.0.0.1:{port}"),
+            tree,
+        }
+    }
+}
+
+impl Drop for Served {
+    fn drop(&mut self) {
+        self.tree.kill_tree();
+    }
+}
+
+/// Every event example of `path` through the test handler of every service that subscribes, one
+/// server each, with the shared live runner. An example passes when no handler fails it and at
+/// least one passes it: a handler without a subscriber of the topic skips it, and the line of
+/// another service is not judged. Nothing may be skipped by every handler.
+fn live_event_examples(tsc_path: &Path, edition: &str, path: &str) -> usize {
+    let ir = compile_text(read(path));
+    let guard = scratch("events-live-");
+    let work = guard.path();
+    let names: Vec<&str> = ir.services.iter().map(|s| s.name.as_str()).collect();
+    build_with(
+        work,
+        tsc_path,
+        &ir,
+        &names,
+        &["events_serve.ts"],
+        edition,
+        &json!({ "typescript": edition, "testing": true }),
+    );
+    let servers: Vec<Served> = ir
+        .services
+        .iter()
+        .filter(|s| !s.subscriptions.is_empty())
+        .map(|s| {
+            Served::start(
+                work,
+                &format!("./server/server/{}-test-handler", kebab(&s.name)),
+                &format!("create{}TestHandler", pascal(&s.name)),
+            )
+        })
+        .collect();
+    assert!(!servers.is_empty(), "{path}: no service subscribes");
+    let lives: Vec<veld_testing::Live> = servers
+        .iter()
+        .map(|s| veld_testing::Live::connect(&s.url, true).unwrap())
+        .collect();
+    let mut run = 0;
+    for ex in ir.examples.iter().filter(|e| e.event.is_some()) {
+        let (mut passed, mut failures) = (0, Vec::new());
+        for live in &lives {
+            let report = live.run_example(&ir, ex).unwrap();
+            match &report.verdict {
+                veld_rules::Verdict::Passed => passed += 1,
+                veld_rules::Verdict::Skipped(_) => {}
+                veld_rules::Verdict::Failed(_) => failures.push(format!("{report}")),
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "{path}: \"{}\" failed live:\n{}",
+            ex.name,
+            failures.join("\n")
+        );
+        assert!(
+            passed > 0,
+            "{path}: \"{}\" was skipped by every test handler",
+            ex.name
+        );
+        run += 1;
+    }
+    run
+}
+
+fn live_examples_of_both_contracts(tsc_path: &Path, edition: &str, _target: &str) {
+    assert_eq!(live_event_examples(tsc_path, edition, DELIVERY), 4);
+    assert_eq!(live_event_examples(tsc_path, edition, BOOKINGS), 11);
+}
+
+#[test]
+fn every_event_example_passes_live_against_the_generated_test_handlers() {
+    matrix(live_examples_of_both_contracts);
+}
+
+// ---- phase E2: the generated files -----------------------------------------------------------
+
+fn delivery_files(options: &Value) -> veld_codegen::FileSet {
+    let ir = compile_text(read(DELIVERY));
+    gen_server_services_fw(
+        &ir,
+        &["Orders", "Fulfilment", "Billing"],
+        options,
+        Some("express"),
+    )
+}
+
+#[test]
+fn snapshot_of_the_event_files_of_a_contract_with_all_three_annotations() {
+    let files = delivery_files(&json!({ "testing": true }));
+    insta::assert_snapshot!("events_delivery_file_list", file_list(&files));
+    insta::assert_snapshot!(
+        "events_delivery_publisher",
+        text(&files, "server/orders-events.ts")
+    );
+    insta::assert_snapshot!(
+        "events_delivery_subscriber",
+        text(&files, "server/fulfilment-events.ts")
+    );
+    insta::assert_snapshot!(
+        "events_delivery_subscriber_billing",
+        text(&files, "server/billing-events.ts")
+    );
+    insta::assert_snapshot!(
+        "events_delivery_test_handler",
+        text(&files, "server/fulfilment-test-handler.ts")
+    );
+    insta::assert_snapshot!("events_delivery_runtime", text(&files, "runtime/events.ts"));
+}
+
+#[test]
+fn snapshot_of_the_broker_adapters_and_the_manifest_they_change() {
+    let files = delivery_files(&json!({ "messaging": ["rabbitmq", "kafka"] }));
+    insta::assert_snapshot!("events_kafka_adapter", text(&files, "server/kafka.ts"));
+    insta::assert_snapshot!(
+        "events_rabbitmq_adapter",
+        text(&files, "server/rabbitmq.ts")
+    );
+    insta::assert_snapshot!("events_adapters_package_json", text(&files, "package.json"));
+    insta::assert_snapshot!("events_adapters_file_list", file_list(&files));
+}
+
+#[test]
+fn the_annotations_of_a_channel_are_in_its_files_and_only_in_the_files_of_channels_that_have_them()
+{
+    let delivery = delivery_files(&json!({}));
+    let publisher = text(&delivery, "server/orders-events.ts");
+    assert!(
+        publisher.contains("ordered: true, deadLetter: true }"),
+        "{publisher}"
+    );
+    let subscriber = text(&delivery, "server/fulfilment-events.ts");
+    assert!(subscriber.contains("retry: { max: 3, backoff: 'exponential' },"));
+    assert!(subscriber.contains("deadLetter: true,") && subscriber.contains("ordered: true,"));
+    // The bookings channels have none of the three: their files do not mention them.
+    let bookings = bookings_files("express");
+    for path in bookings.paths().filter(|p| p.ends_with("-events.ts")) {
+        let source = text(&bookings, path);
+        for word in ["retry:", "deadLetter", "ordered"] {
+            assert!(!source.contains(word), "{path} mentions {word}");
+        }
+    }
+}
+
+#[test]
+fn the_event_files_are_the_same_for_every_adapter_with_the_annotations_and_the_brokers() {
+    let options = json!({ "testing": true, "messaging": ["kafka", "rabbitmq"] });
+    let ir = compile_text(read(DELIVERY));
+    let names = ["Orders", "Fulfilment", "Billing"];
+    let reference = gen_server_services_fw(&ir, &names, &options, Some("express"));
+    for fw in ["fastify", "hono", "node-http", "nest"] {
+        let files = gen_server_services_fw(&ir, &names, &options, Some(fw));
+        for path in reference.paths().filter(|p| {
+            p.starts_with("runtime/")
+                || p.starts_with("events/")
+                || p.ends_with("-events.ts")
+                || p.ends_with("-test-handler.ts")
+                || *p == "server/kafka.ts"
+                || *p == "server/rabbitmq.ts"
+        }) {
+            assert_eq!(files.get(path), reference.get(path), "{path} with `{fw}`");
+        }
+    }
+}
+
+// ---- phase E2: the option `messaging` ---------------------------------------------------------
+
+fn generate_with(
+    ir: &Ir,
+    services: &[&str],
+    options: &Value,
+) -> Result<veld_codegen::FileSet, Vec<veld_codegen::GenDiagnostic>> {
+    use veld_codegen::{DynGenerator, GenRequest, Role};
+    let req = GenRequest {
+        ir,
+        role: Role::Server,
+        services: services.iter().map(|n| service_id(ir, n)).collect(),
+        consumes: vec![],
+        framework: Some("express".into()),
+    };
+    veld_emit_node::Node.generate_dyn(&req, options)
+}
+
+#[test]
+fn messaging_names_the_adapters_and_nothing_else_changes() {
+    let ir = compile_text(read(DELIVERY));
+    let names = ["Orders", "Fulfilment", "Billing"];
+    let plain = generate_with(&ir, &names, &Value::Null).unwrap();
+    for value in [
+        json!("kafka"),
+        json!("rabbitmq"),
+        json!(["kafka", "rabbitmq"]),
+        json!(["rabbitmq", "kafka", "kafka"]),
+    ] {
+        let files = generate_with(&ir, &names, &json!({ "messaging": value })).unwrap();
+        let kafka = value.to_string().contains("kafka");
+        let rabbit = value.to_string().contains("rabbitmq");
+        assert_eq!(files.get("server/kafka.ts").is_some(), kafka, "{value}");
+        assert_eq!(files.get("server/rabbitmq.ts").is_some(), rabbit, "{value}");
+        let manifest = text(&files, "package.json");
+        assert_eq!(
+            manifest.contains("\"kafkajs\""),
+            kafka,
+            "{value}: {manifest}"
+        );
+        assert_eq!(
+            manifest.contains("\"amqplib\""),
+            rabbit,
+            "{value}: {manifest}"
+        );
+        // Only the adapter's file imports its library.
+        for (path, bytes) in files.iter() {
+            let source = String::from_utf8_lossy(bytes);
+            assert_eq!(
+                source.contains("from 'kafkajs'"),
+                path == "server/kafka.ts",
+                "{path}"
+            );
+            assert!(!source.contains("require("), "{path}");
+        }
+        // Every other generated file is what it was without the option.
+        for (path, bytes) in plain.iter() {
+            if matches!(path, "package.json" | "index.ts") {
+                continue;
+            }
+            assert_eq!(files.get(path), Some(bytes), "{path}");
+        }
+        let barrel = text(&files, "index.ts");
+        assert_eq!(barrel.contains("./server/kafka'"), kafka, "{value}");
+        assert_eq!(barrel.contains("./server/rabbitmq'"), rabbit, "{value}");
+    }
+    assert!(plain.get("server/kafka.ts").is_none() && plain.get("server/rabbitmq.ts").is_none());
+    let manifest = text(&plain, "package.json");
+    assert!(
+        !manifest.contains("kafkajs") && !manifest.contains("amqplib"),
+        "{manifest}"
+    );
+}
+
+#[test]
+fn an_unknown_broker_and_a_wrong_value_are_e0802() {
+    let ir = compile_text(read(DELIVERY));
+    let names = ["Orders", "Fulfilment", "Billing"];
+    for value in [
+        json!("nats"),
+        json!(["kafka", "nats"]),
+        json!(3),
+        json!([1]),
+    ] {
+        let err = generate_with(&ir, &names, &json!({ "messaging": value })).unwrap_err();
+        assert_eq!(err[0].code, "E0802", "{value}");
+    }
+    let err = generate_with(&ir, &names, &json!({ "messaging": "pulsar" })).unwrap_err();
+    assert!(err[0].message.contains("pulsar"), "{}", err[0].message);
+}
+
+#[test]
+fn messaging_on_a_target_without_events_is_e0802() {
+    let ir = standard_ir();
+    let err = generate_with(&ir, &["Orders"], &json!({ "messaging": "kafka" })).unwrap_err();
+    assert_eq!(err[0].code, "E0802");
+    assert!(
+        err[0].message.contains("publishes or subscribes"),
+        "{}",
+        err[0].message
+    );
+    // An empty list asks for nothing.
+    assert!(generate_with(&ir, &["Orders"], &json!({ "messaging": [] })).is_ok());
+}
+
+#[test]
+fn messaging_is_accepted_when_one_service_of_the_target_subscribes() {
+    let ir = compile_text(read(BOOKINGS));
+    assert!(generate_with(&ir, &["Notifications"], &json!({ "messaging": "kafka" })).is_ok());
+}
+
+// ---- phase E2: the test handler's files -------------------------------------------------------
+
+#[test]
+fn a_subscriber_gets_a_test_handler_with_the_event_endpoint_and_a_publisher_does_not() {
+    let ir = compile_text(read(BOOKINGS));
+    let options = json!({ "testing": true });
+    let files = gen_server_services_fw(&ir, &SERVICES, &options, Some("express"));
+    for service in ["notifications", "ledger"] {
+        let handler = text(&files, &format!("server/{service}-test-handler.ts"));
+        assert!(handler.contains("'/__veld/test/event'"), "{service}");
+        assert!(handler.contains("subscribes: {"), "{service}");
+        assert!(handler.contains("export function create"), "{service}");
+    }
+    assert!(
+        text(&files, "server/ledger-test-handler.ts")
+            .contains("subscribes: { 'Ledger': ['shop.bookings.v1'] }")
+    );
+    assert!(files.get("server/bookings-test-handler.ts").is_none());
+    // Without the option no service gets one.
+    let none = gen_server_services_fw(&ir, &SERVICES, &Value::Null, Some("express"));
+    assert!(none.paths().all(|p| !p.contains("test-handler")));
+}
+
+#[test]
+fn a_contract_without_subscriptions_keeps_its_test_handler_bytes() {
+    let ir = rules_ir();
+    let with = gen_server_with(&ir, "Bookings", &[], &json!({ "testing": true }));
+    for (path, bytes) in with.iter().filter(|(p, _)| p.contains("test-handler")) {
+        let source = String::from_utf8_lossy(bytes);
+        assert!(!source.contains("/__veld/test/event"), "{path}");
+        assert!(!source.contains("subscribes"), "{path}");
     }
 }
