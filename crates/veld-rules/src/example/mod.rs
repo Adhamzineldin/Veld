@@ -529,8 +529,9 @@ pub fn run_example(ir: &Ir, ex: &Example) -> Result<ExampleReport, ExampleError>
     }
     let filled = fill_example(ir, ex)?;
     let (service, endpoint) = locate(ir, ex)?;
-    let reported = Pipeline::new(ir, service, &ex.endpoint)?
-        .run_reported(&filled.request, OutputMode::Strict)?;
+    let pipeline = Pipeline::new(ir, service, &ex.endpoint)?;
+    let reported =
+        crate::coverage::armed(|| pipeline.run_reported(&filled.request, OutputMode::Strict))?;
     let result = reported.body.as_ref().or(filled.request.result.as_ref());
     let verdict = report::compare(ir, endpoint, &filled.expected, &reported.outcome, result);
     Ok(ExampleReport {

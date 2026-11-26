@@ -121,7 +121,7 @@ pub(crate) fn guard(
         .map(|f| &f.ty);
     let full = match ty {
         Some(ty) => {
-            check_type(ir, ty, fact, Options::default())
+            crate::coverage::muted(|| check_type(ir, ty, fact, Options::default()))
                 .map_err(|e| e.at_path(&t.fact))?
                 .0
         }

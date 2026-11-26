@@ -397,6 +397,11 @@ impl Cx<'_> {
             } else {
                 &mut out.violations
             };
+            match &verdict {
+                Ok(Value::Bool(b)) => crate::coverage::record(|| rule.id.clone(), *b),
+                Err(Failure::Eval(_)) => crate::coverage::record(|| rule.id.clone(), false),
+                Ok(_) | Err(Failure::Input(_)) => {}
+            }
             match verdict {
                 Ok(Value::Bool(true)) => {}
                 Ok(Value::Bool(false)) => sink.push(violation(decl, rule, path, None)),

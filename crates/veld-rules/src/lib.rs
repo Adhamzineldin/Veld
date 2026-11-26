@@ -14,6 +14,7 @@
 
 mod builtins;
 mod check;
+pub mod coverage;
 pub mod envelope;
 mod error;
 mod eval;

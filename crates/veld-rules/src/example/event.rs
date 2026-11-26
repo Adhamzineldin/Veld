@@ -161,7 +161,8 @@ pub fn fill_event_example(ir: &Ir, ex: &Example) -> Result<FilledEvent, ExampleE
 /// not an error: it is [`Verdict::Failed`].
 pub fn run_event_example(ir: &Ir, ex: &Example) -> Result<ExampleReport, ExampleError> {
     let filled = fill_event_example(ir, ex)?;
-    let delivery = deliver(ir, filled.channel, filled.event, &filled.value);
+    let delivery =
+        crate::coverage::armed(|| deliver(ir, filled.channel, filled.event, &filled.value));
     let expect = ex.expect.as_ref().ok_or_else(|| ExampleError::WrongForm {
         example: ex.name.clone(),
         reason: "an event example has no `expect` line".to_owned(),

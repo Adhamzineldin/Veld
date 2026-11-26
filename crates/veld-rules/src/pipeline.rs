@@ -16,6 +16,7 @@ use serde_json::{Map, Value as Json, json};
 use veld_ir::{DeclId, DeclKind, ElseError, Endpoint, EndpointFact, Expr, Ir, Policy, Service};
 
 use crate::check::{Options, Violation, check_decl_audited, check_type_audited};
+use crate::coverage::allow_key;
 use crate::error::{Failure, InputError};
 use crate::eval::{Env, SavedOld, eval};
 use crate::helpers::num::EvalError;
@@ -618,10 +619,12 @@ impl<'a> Pipeline<'a> {
                 Some(args) => args,
                 // An argument that cannot be evaluated fails closed.
                 None => {
+                    crate::coverage::record(|| allow_key(&a.origin), false);
                     return self.forbidden(policy, &a.reads, NOT_PERMITTED).map(Some);
                 }
             };
             let verdict = eval_policy(self.ir, policy, &args, now)?;
+            crate::coverage::record(|| allow_key(&a.origin), verdict.permitted);
             if !verdict.permitted {
                 let text = verdict.denial_message();
                 return self.forbidden(policy, &a.reads, text).map(Some);
@@ -658,7 +661,9 @@ impl<'a> Pipeline<'a> {
         let Some(fact) = env.facts.get(&t.fact) else {
             return Err(InputError::NotAvailable("the fact of a transition").into());
         };
-        match machine::guard(self.ir, self.endpoint, t, fact)? {
+        let guarded = machine::guard(self.ir, self.endpoint, t, fact)?;
+        crate::coverage::record(|| t.id.clone(), guarded.is_none());
+        match guarded {
             None => Ok(None),
             Some(refusal) => {
                 let violations = vec![refusal.violation];
@@ -681,6 +686,7 @@ impl<'a> Pipeline<'a> {
     ) -> Result<Option<ErrorAnswer>, RunError> {
         for r in &self.endpoint.rules.requires {
             let verdict = verdict(env, &r.expr)?;
+            crate::coverage::record(|| r.id.clone(), matches!(verdict, Verdict::Holds));
             if matches!(verdict, Verdict::Holds) {
                 continue;
             }
@@ -903,6 +909,7 @@ impl Prepared<'_> {
         let mut hook = Vec::new();
         for e in &p.endpoint.rules.ensures {
             let verdict = verdict(env, &e.expr)?;
+            crate::coverage::record(|| e.id.clone(), matches!(verdict, Verdict::Holds));
             if matches!(verdict, Verdict::Holds) {
                 continue;
             }
