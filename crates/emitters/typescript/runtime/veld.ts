@@ -1162,6 +1162,10 @@ async function prepare(
   const denied = checkAllows(ep, rules, ctx, std, hooks, { p, f, now }, started);
   if (denied !== null) return denied;
   // #endif
+  // #if version_guard
+  const stale = checkVersion(ep, rules, ctx, std, hooks, { f, started });
+  if (stale !== null) return stale;
+  // #endif
   // #if transitions
   const illegal = checkTransition(ep, rules, ctx, std, hooks, { p, f }, started);
   if (illegal !== null) return illegal;
@@ -1552,6 +1556,16 @@ export interface EndpointSpec {
   errors: readonly ErrorSpec[];
   /** `-> stream T`: Server-Sent Events on `GET`, server-to-client messages on `WS`. */
   stream?: boolean;
+  // #if version
+  /** The endpoint has an `If-Match` guard: a client may send `ifMatch` (spec/rules.md section 11.7). */
+  ifMatch?: boolean;
+  /** The source name of the version field of the model the success answers with: the value of its `ETag`. */
+  etag?: string;
+  // #endif
+  // #if idempotency
+  /** `@idempotent`: the header of the key and what the server does with it (spec/rules.md section 11.8). */
+  idempotency?: IdempotencySpec;
+  // #endif
 }
 
 function paramLoc(p: ParamSpec): string {
@@ -1684,6 +1698,10 @@ export interface HandlerHooks {
   /** The server's clock, read once per request before the facts load. Default: the system clock. */
   clock?: (ctx: RequestContext) => Date;
   // #endif
+  // #if idempotency
+  /** The store of `@idempotent` endpoints, and who the caller is for the scope of a key (spec/rules.md section 11.12). */
+  idempotency?: IdempotencyHooks;
+  // #endif
 }
 
 export interface ServerEndpoint extends EndpointSpec {
@@ -1707,6 +1725,9 @@ export interface StdSigs {
   internal: string;
   // #if endpoint_rules
   notFound?: string;
+  // #endif
+  // #if idempotency
+  conflict?: string;
   // #endif
 }
 
@@ -2012,6 +2033,10 @@ async function guard(
   if (bound.issues.length > 0) {
     return problem(std.validation, 'ValidationError', 422, ep.sig, { issues: bound.issues });
   }
+  // #if headers
+  const lead = headerIssues(ep, ctx.headers);
+  if (lead.length > 0) return headerRefusal(ep, bound, lead, std, hooks);
+  // #endif
   // #if rules
   const refused = checkInputRules(ep, bound, std, hooks);
   if (refused !== null) return refused;
@@ -2023,6 +2048,8 @@ function isResponse(x: Bound | VeldResponse): x is VeldResponse {
   return 'status' in x;
 }
 
+// #if idempotency
+/** One request: the pipeline, and the idempotency store around it (spec/rules.md section 11.9). */
 async function run(
   r: Route,
   m: RegExpExecArray,
@@ -2030,6 +2057,37 @@ async function run(
   std: StdSigs,
   hooks: HandlerHooks,
 ): Promise<VeldResponse> {
+  const lease: Lease = {};
+  let res: VeldResponse;
+  try {
+    res = await runCore(r, m, req, std, hooks, lease);
+  } catch (err) {
+    await settle(lease, null).catch(() => undefined);
+    throw err;
+  }
+  return settle(lease, res);
+}
+
+// #endif
+// #if not_idempotency
+async function run(
+  r: Route,
+  m: RegExpExecArray,
+  req: VeldRequest,
+  std: StdSigs,
+  hooks: HandlerHooks,
+): Promise<VeldResponse> {
+// #endif
+// #if idempotency
+async function runCore(
+  r: Route,
+  m: RegExpExecArray,
+  req: VeldRequest,
+  std: StdSigs,
+  hooks: HandlerHooks,
+  lease: Lease,
+): Promise<VeldResponse> {
+// #endif
   const ep = r.ep;
   const ctx = contextOf(ep, req, lowerHeaders(req.headers));
   // #if rollout
@@ -2038,6 +2096,10 @@ async function run(
   try {
     const bound = await guard(r, m, req, ctx, std, hooks, false);
     if (isResponse(bound)) return bound;
+    // #if idempotency
+    const answered = await beginIdempotency(ep, bound, ctx, std, { hooks, lease });
+    if (answered !== null) return answered;
+    // #endif
     // #if endpoint_rules
     const prepared = await prepare(ep, bound, ctx, std, hooks);
     if (prepared !== null && 'status' in prepared) return prepared;
@@ -2055,11 +2117,410 @@ async function run(
     const unmet = prepared === null ? null : checkEnsures(ep, prepared, bound.value, result, std, hooks);
     if (unmet !== null) return unmet;
     // #endif
+    // #if not_version
     return success(ep, result, hooks);
+    // #endif
+    // #if version
+    return withEtag(ep, success(ep, result, hooks), result);
+    // #endif
   } catch (err) {
     return failure(err, ep, ctx, std, hooks);
   }
 }
+
+// #if version
+
+// ---------------------------------------------------------------------------
+// Optimistic concurrency: If-Match and ETag (spec/rules.md sections 11.7 and 11.9)
+// ---------------------------------------------------------------------------
+
+const IF_MATCH_MESSAGE = 'must be * or one strong entity tag holding a version, such as "3"';
+
+/** The largest `long`. */
+const MAX_LONG = 9223372036854775807n;
+
+/**
+ * Reads an `If-Match` value: `*`, or the digits of one strong entity tag that holds a version
+ * (`"0"`, or a digit from 1 to 9 and more digits, within `long`). `null` for anything else: a weak
+ * tag, a list, a sign, a leading zero, spaces.
+ */
+function parseIfMatch(text: string): '*' | { digits: string } | null {
+  if (text === '*') return '*';
+  const m = /^"(0|[1-9][0-9]*)"$/.exec(text);
+  const digits = m?.[1];
+  return digits !== undefined && BigInt(digits) <= MAX_LONG ? { digits } : null;
+}
+
+/** The header a client writes for `ifMatch`: `*`, or the version as a strong entity tag. */
+function ifMatchText(v: unknown): string {
+  return v === '*' ? '*' : `"${scalarString(v)}"`;
+}
+
+/** The step 5 issue of a malformed `If-Match` on an endpoint with a guard. No other endpoint reads the header. */
+function ifMatchIssues(ep: EndpointSpec, headers: Headers): Issue[] {
+  const sent = firstHeader(headers, 'if-match');
+  if (ep.ifMatch !== true || sent === undefined || parseIfMatch(sent) !== null) return [];
+  return [{ path: 'header.If-Match', code: 'type', message: IF_MATCH_MESSAGE }];
+}
+
+/** `ETag: "<version>"` on a success whose type is the model that has the version field. */
+function withEtag(ep: EndpointSpec, res: VeldResponse, result: unknown): VeldResponse {
+  if (ep.etag === undefined || !isObject(result)) return res;
+  const held = result[ep.etag];
+  if (typeof held !== 'number' && typeof held !== 'string') return res;
+  return { ...res, headers: { ...res.headers, etag: `"${held}"` } };
+}
+// #endif
+// #if version_guard
+
+/** The version guard of an endpoint (`fact room: Room`, `Room` has a `@version` field). */
+export interface VersionStep {
+  /** The rule's id. */
+  id: string;
+  /** The fact that is compared. */
+  fact: string;
+  /** The version field of the fact's model, by its source name. */
+  field: string;
+  /** The declared error that answers a stale tag: `PreconditionFailed`. */
+  otherwise: { sig: string };
+}
+
+export interface EndpointRuleSet {
+  version?: VersionStep;
+}
+
+/**
+ * Step 6, after the policies and before the transition guard: `412 PreconditionFailed` when the
+ * caller sent a tag that is not the version the fact holds. `*`, no header and an absent fact
+ * pass. A tag that was compared is handed to the handler as `version`. This runs even when
+ * request validation is off. A malformed `If-Match` was refused at step 5.
+ *
+ * The check is a guard, not an atomic guarantee: a second request can change the row after it.
+ * The handler writes conditionally and answers `PreconditionFailed` itself when the row has moved.
+ */
+function checkVersion(
+  ep: ServerEndpoint,
+  rules: EndpointRuleSet,
+  ctx: RequestContext,
+  std: StdSigs,
+  hooks: HandlerHooks,
+  at: { f: Record<string, unknown>; started: number },
+): VeldResponse | null {
+  const step = rules.version;
+  const sent = step === undefined ? null : parseIfMatch(firstHeader(ctx.headers, 'if-match') ?? '');
+  if (step === undefined || sent === null || sent === '*') return null;
+  const fact = at.f[step.fact];
+  if (!isObject(fact)) return null;
+  const held = fact[step.field];
+  const actual = String(held);
+  if (actual === sent.digits) {
+    at.f['version'] = typeof held === 'number' ? Number(sent.digits) : sent.digits;
+    return null;
+  }
+  const violation: Violation = { rule: step.id, path: 'request', fields: [], message: 'violates rule version' };
+  const data = { expected: sent.digits, actual };
+  return refusal(ep, ctx, std, hooks, { sig: step.otherwise.sig, data, violation, started: at.started });
+}
+// #endif
+// #if idempotency
+
+// ---------------------------------------------------------------------------
+// Idempotent endpoints (spec/rules.md sections 11.8, 11.9 and 11.12)
+// ---------------------------------------------------------------------------
+
+/** `@idempotent` on an endpoint. */
+export interface IdempotencySpec {
+  /** The request header that carries the key. */
+  header: string;
+  /** A request without the header is `422 ValidationError`. */
+  required: boolean;
+  /** The scope of a key includes the caller (the endpoint has auth). */
+  caller: boolean;
+}
+
+/** What the store keeps of an answer: enough to send it again. */
+export interface StoredAnswer {
+  status: number;
+  /** The bytes that were sent, `null` for an answer without a body. */
+  body: string | null;
+  contentType?: string;
+  etag?: string;
+  location?: string;
+}
+
+/** What the store says about a key. */
+export type IdempotencyBegin =
+  | { state: 'started' }
+  | { state: 'replay'; answer: StoredAnswer }
+  | { state: 'running' }
+  | { state: 'other' };
+
+/**
+ * Where idempotency keys live. Implement it over a shared database or cache; how long an entry is
+ * kept is the store's business.
+ *
+ * `begin` is atomic: of two concurrent calls for a key the store does not know, exactly one gets
+ * `started`. A key held with another fingerprint is `other`, whether its request is running or its
+ * answer is stored. `scope` is one opaque text: the operation signature and, for an endpoint with
+ * auth, a line feed and the caller.
+ */
+export interface IdempotencyStore {
+  begin(scope: string, key: string, fingerprint: string): Promise<IdempotencyBegin>;
+  /** Stores the answer of a request `begin` started. */
+  complete(scope: string, key: string, answer: StoredAnswer): Promise<void>;
+  /** Removes the entry of a request `begin` started: its answer is not stored. */
+  release(scope: string, key: string): Promise<void>;
+}
+
+/** The hooks of a server with an `@idempotent` endpoint. */
+export interface IdempotencyHooks {
+  store: IdempotencyStore;
+  /** Who the caller is, as text, for the scope of a key. Needed by an endpoint with auth. */
+  caller?: (principal: never, ctx: RequestContext) => string | Promise<string>;
+}
+
+/** An `IdempotencyStore` in memory. It keeps every entry for as long as it lives: for tests. */
+export class MemoryIdempotencyStore implements IdempotencyStore {
+  private readonly entries = new Map<string, { fingerprint: string; answer?: StoredAnswer }>();
+
+  begin(scope: string, key: string, fingerprint: string): Promise<IdempotencyBegin> {
+    const id = JSON.stringify([scope, key]);
+    const held = this.entries.get(id);
+    if (held === undefined) {
+      this.entries.set(id, { fingerprint });
+      return Promise.resolve({ state: 'started' });
+    }
+    if (held.fingerprint !== fingerprint) return Promise.resolve({ state: 'other' });
+    return Promise.resolve(held.answer === undefined ? { state: 'running' } : { state: 'replay', answer: held.answer });
+  }
+
+  complete(scope: string, key: string, answer: StoredAnswer): Promise<void> {
+    const held = this.entries.get(JSON.stringify([scope, key]));
+    if (held !== undefined) held.answer = answer;
+    return Promise.resolve();
+  }
+
+  release(scope: string, key: string): Promise<void> {
+    this.entries.delete(JSON.stringify([scope, key]));
+    return Promise.resolve();
+  }
+}
+
+const SHA256_K: readonly number[] = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+];
+
+function rotr(x: number, n: number): number {
+  return (x >>> n) | (x << (32 - n));
+}
+
+function wordAt(a: readonly number[], i: number): number {
+  return a[i] ?? 0;
+}
+
+/** The message schedule of one 64-byte block. */
+function schedule(m: readonly number[], at: number): number[] {
+  const w: number[] = [];
+  for (let t = 0; t < 64; t++) {
+    if (t < 16) {
+      const i = at + 4 * t;
+      w.push((wordAt(m, i) << 24) | (wordAt(m, i + 1) << 16) | (wordAt(m, i + 2) << 8) | wordAt(m, i + 3));
+    } else {
+      const a = wordAt(w, t - 15);
+      const b = wordAt(w, t - 2);
+      const s0 = rotr(a, 7) ^ rotr(a, 18) ^ (a >>> 3);
+      const s1 = rotr(b, 17) ^ rotr(b, 19) ^ (b >>> 10);
+      w.push((wordAt(w, t - 16) + s0 + wordAt(w, t - 7) + s1) | 0);
+    }
+  }
+  return w;
+}
+
+/** SHA-256 of `bytes` as 64 lowercase hex characters. Plain code, so it runs wherever the runtime does. */
+function sha256Hex(bytes: readonly number[]): string {
+  const h = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  const m = [...bytes, 0x80];
+  while (m.length % 64 !== 56) m.push(0);
+  const bits = bytes.length * 8;
+  for (const word of [Math.floor(bits / 0x100000000), bits >>> 0]) {
+    for (let s = 24; s >= 0; s -= 8) m.push((word >>> s) & 255);
+  }
+  for (let at = 0; at < m.length; at += 64) {
+    const w = schedule(m, at);
+    let [a, b, c, d, e, f, g, k] = h.map((x) => x | 0) as [number, number, number, number, number, number, number, number];
+    for (let t = 0; t < 64; t++) {
+      const t1 = (k + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + wordAt(SHA256_K, t) + wordAt(w, t)) | 0;
+      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      [k, g, f, e, d, c, b, a] = [g, f, e, (d + t1) | 0, c, b, a, (t1 + t2) | 0];
+    }
+    [a, b, c, d, e, f, g, k].forEach((x, i) => {
+      h[i] = (wordAt(h, i) + x) | 0;
+    });
+  }
+  return h.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('');
+}
+
+/**
+ * The fingerprint of a request: the first 16 hex characters of the SHA-256 of the RFC 8785 JSON of
+ * the bound parameters in wire form, keyed by parameter name (defaults applied, absent optionals
+ * left out). The header of the key is not a parameter.
+ */
+function fingerprintOf(ep: EndpointSpec, bound: Bound): string {
+  const wire: Record<string, unknown> = {};
+  for (const p of ep.params) {
+    const v = p.s ? undefined : bound.value[p.name];
+    if (v !== undefined) wire[p.name] = toWire(p.t, v);
+  }
+  return sha256Hex(utf8Bytes(canonical(wire))).slice(0, 16);
+}
+
+const KEY_PATTERN = /^[\x21-\x7e]{1,255}$/;
+
+/** The step 5 issues of the key: malformed, or missing on a `required` endpoint. */
+function keyIssues(ep: EndpointSpec, headers: Headers): Issue[] {
+  const spec = ep.idempotency;
+  if (spec === undefined) return [];
+  const sent = firstHeader(headers, spec.header);
+  const path = `header.${spec.header}`;
+  if (sent === undefined) return spec.required ? [{ path, code: 'required', message: 'is required' }] : [];
+  return KEY_PATTERN.test(sent) ? [] : [{ path, code: 'type', message: 'must be 1 to 255 visible ASCII characters' }];
+}
+
+/** What a request that `begin` started owes the store when it ends. */
+interface Lease {
+  store?: IdempotencyStore;
+  scope?: string;
+  key?: string;
+  ctx?: RequestContext;
+  hooks?: HandlerHooks;
+}
+
+const OTHER_PARAMETERS = 'this idempotency key was used with other parameters';
+const STILL_RUNNING = 'a request with this idempotency key is still running';
+
+function storeFailed(lease: Lease, err: unknown): void {
+  try {
+    if (lease.ctx !== undefined) lease.hooks?.onError?.(err, lease.ctx);
+  } catch {
+    // A failing hook must not change the response.
+  }
+}
+
+function replayOf(a: StoredAnswer): VeldResponse {
+  const headers: Record<string, string> = {};
+  if (a.contentType !== undefined) headers['content-type'] = a.contentType;
+  if (a.etag !== undefined) headers['etag'] = a.etag;
+  if (a.location !== undefined) headers['location'] = a.location;
+  headers['veld-idempotent-replay'] = 'true';
+  return { status: a.status, headers, body: a.body };
+}
+
+/**
+ * After step 5 and before any fact is loaded: asks the store about the key. `null` lets the
+ * request run (no key, or a new one: the lease is taken). A stored answer is sent again with
+ * `Veld-Idempotent-Replay: true`; a key in use is `409 Conflict`. A store that fails is
+ * `500 Internal` and the handler does not run: running without it could run a request twice.
+ */
+async function beginIdempotency(
+  ep: ServerEndpoint,
+  bound: Bound,
+  ctx: RequestContext,
+  std: StdSigs,
+  run: { hooks: HandlerHooks; lease: Lease },
+): Promise<VeldResponse | null> {
+  const spec = ep.idempotency;
+  const key = spec === undefined ? undefined : firstHeader(ctx.headers, spec.header);
+  const idem = run.hooks.idempotency;
+  if (spec === undefined || key === undefined || idem === undefined) return null;
+  const lease: Lease = { store: idem.store, key, ctx, hooks: run.hooks };
+  let outcome: IdempotencyBegin;
+  try {
+    const who = spec.caller && idem.caller !== undefined ? `\n${await idem.caller(ctx.principal as never, ctx)}` : '';
+    lease.scope = `${ep.sig}${who}`;
+    outcome = await idem.store.begin(lease.scope, key, fingerprintOf(ep, bound));
+  } catch (err) {
+    storeFailed(lease, err);
+    return problem(std.internal, 'Internal', 500, ep.sig, {});
+  }
+  switch (outcome.state) {
+    case 'started':
+      Object.assign(run.lease, lease);
+      return null;
+    case 'replay':
+      return replayOf(outcome.answer);
+    case 'running':
+      return problem(std.conflict ?? 'about:blank', 'Conflict', 409, ep.sig, { message: STILL_RUNNING });
+    case 'other':
+      return problem(std.conflict ?? 'about:blank', 'Conflict', 409, ep.sig, { message: OTHER_PARAMETERS });
+  }
+}
+
+/** The request is over with `res`: stores the answer below `500`, removes the entry otherwise. */
+async function settle(lease: Lease, res: VeldResponse | null): Promise<VeldResponse> {
+  const { store, scope, key } = lease;
+  const done = store !== undefined && scope !== undefined && key !== undefined;
+  try {
+    if (done && res !== null && res.status < 500) {
+      const answer: StoredAnswer = { status: res.status, body: res.body };
+      const contentType = res.headers['content-type'];
+      const etag = res.headers['etag'];
+      const location = res.headers['location'];
+      if (contentType !== undefined) answer.contentType = contentType;
+      if (etag !== undefined) answer.etag = etag;
+      if (location !== undefined) answer.location = location;
+      await store.complete(scope, key, answer);
+    } else if (done) {
+      await store.release(scope, key);
+    }
+  } catch (err) {
+    storeFailed(lease, err);
+  }
+  if (res === null) throw new Error('the request ended without an answer');
+  return res;
+}
+// #endif
+// #if headers
+
+/** The step 5 issues of the headers the runtime itself reads: `If-Match` and the idempotency key. */
+function headerIssues(ep: EndpointSpec, headers: Headers): Issue[] {
+  const out: Issue[] = [];
+  // #endif
+  // #if version
+  out.push(...ifMatchIssues(ep, headers));
+  // #endif
+  // #if idempotency
+  out.push(...keyIssues(ep, headers));
+  // #endif
+  // #if headers
+  return out;
+}
+
+/**
+ * `422 ValidationError` for a malformed header: its issues come first, then the issues of any rule
+ * the body breaks. A header issue is not a rule, so it carries no violation of its own. It is
+ * refused even when request validation is off.
+ */
+function headerRefusal(ep: EndpointSpec, bound: Bound, lead: Issue[], std: StdSigs, hooks: HandlerHooks): VeldResponse {
+  // #endif
+  // #if rules
+  const refused = checkInputRules(ep, bound, std, hooks);
+  if (refused !== null && refused.body !== null) {
+    const doc = JSON.parse(refused.body) as { data: { issues: Issue[] } };
+    doc.data.issues = [...lead, ...doc.data.issues];
+    return { ...refused, body: JSON.stringify(doc) };
+  }
+  // #endif
+  // #if headers
+  return problem(std.validation, 'ValidationError', 422, ep.sig, { issues: lead });
+}
+// #endif
 
 // ---------------------------------------------------------------------------
 // Server: Server-Sent Events
@@ -2354,6 +2815,12 @@ function assertHooks(endpoints: readonly ServerEndpoint[], hooks: HandlerHooks):
     for (const name of ep.middleware) {
       if (!hooks.middleware?.[name]) throw new Error(`${ep.name}: hooks.middleware.${name} is required`);
     }
+    // #if idempotency
+    if (ep.idempotency !== undefined) {
+      if (!hooks.idempotency?.store) throw new Error(`${ep.name}: hooks.idempotency.store is required`);
+      if (ep.idempotency.caller && !hooks.idempotency.caller) throw new Error(`${ep.name}: hooks.idempotency.caller is required`);
+    }
+    // #endif
   }
 }
 
@@ -3051,6 +3518,14 @@ export class ClientCore {
       const v = req[p.name];
       if (p.binding === 'header' && v !== undefined) out[p.header ?? p.name] = scalarString(v);
     }
+    // #if version
+    if (ep.ifMatch === true && req['ifMatch'] !== undefined) out['If-Match'] = ifMatchText(req['ifMatch']);
+    // #endif
+    // #if idempotency
+    if (ep.idempotency !== undefined && req['idempotencyKey'] !== undefined) {
+      out[ep.idempotency.header] = scalarString(req['idempotencyKey']);
+    }
+    // #endif
     const auth = this.opts.auth;
     if (ep.auth?.kind === 'bearer' && auth?.bearer) out['authorization'] = `Bearer ${await auth.bearer()}`;
     if (ep.auth?.kind === 'basic' && auth?.basic) {

@@ -13,7 +13,7 @@ use veld_emit_typescript::util::{add_file, method_key, ts_str};
 use veld_emit_typescript::validate::schema_expr;
 use veld_ir::{Constraints, Service, Type};
 
-use crate::rules::{loaders_name, service_has_rules};
+use crate::rules::{loaders_name, service_has_builder, service_is_idempotent};
 use crate::server::{builder_name, module_of, std_sigs};
 
 /// Root-relative module path of the test handler of a service.
@@ -43,7 +43,7 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>, testing: bool) -> Result<(), V
     }
     for sid in &tree.services {
         let svc = tree.ir.service(*sid);
-        if !service_has_rules(svc) {
+        if !service_has_builder(svc) {
             continue;
         }
         let module = module(tree, svc);
@@ -118,6 +118,108 @@ function prime(ctx: {ctx}): Date {{
     w.blank();
 }
 
+/// The part of the test handler that gives a request the idempotency store of its header
+/// (`spec/rules.md` sections 11.9 and 11.12). Only a service with an `@idempotent` endpoint has it.
+fn write_idempotency(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>) {
+    let store = fc.rt("IdempotencyStore");
+    let memory = fc.rt("MemoryIdempotencyStore");
+    let begin = fc.rt("IdempotencyBegin");
+    let answer = fc.rt("StoredAnswer");
+    let endpoint = fc.rt("ServerEndpoint");
+    let from_wire = fc.rt("fromWire");
+    let canonical = fc.rt("canonical");
+    let request = fc.rt("VeldRequest");
+    let ctx = fc.rt("RequestContext");
+    let hooks = fc.rt("IdempotencyHooks");
+    w.line(format!(
+        "function requestHeader(req: {request}, name: string): string | undefined {{
+  for (const key of Object.keys(req.headers)) {{
+    if (key.toLowerCase() !== name) continue;
+    const v = req.headers[key];
+    return Array.isArray(v) ? v[0] : v;
+  }}
+  return undefined;
+}}
+
+/** What `Veld-Test-Idempotency` says the store holds for the key of the request. */
+interface StoreState {{
+  state?: string;
+  status?: number;
+  type?: string | null;
+  data?: unknown;
+}}
+
+/** The stored answer of a `stored` state: an error as a problem document, a success as its body. */
+function storedAnswer(ep: {endpoint} | undefined, state: StoreState): {answer} {{
+  const status = state.status ?? 200;
+  const type = state.type ?? null;
+  if (ep === undefined) return {{ status, body: null }};
+  if (type !== null) {{
+    const spec = ep.errors.find((e) => e.sig === type);
+    const data = state.data ?? {{}};
+    const title = spec === undefined ? 'Error' : spec.create({from_wire}(spec.schema, data), {{ status, op: ep.sig }}).title;
+    const body = JSON.stringify({{ type, title, status, operation: ep.sig, data }});
+    return {{ status, body, contentType: 'application/problem+json' }};
+  }}
+  if (state.data === null || state.data === undefined) return {{ status, body: null }};
+  const out: {answer} = {{ status, body: JSON.stringify(state.data), contentType: 'application/json' }};
+  const value = ep.success === null ? undefined : ({from_wire}(ep.success, state.data) as Record<string, unknown>);
+  const held = ep.etag === undefined || value === undefined ? undefined : value[ep.etag];
+  if (typeof held === 'number' || typeof held === 'string') out.etag = `\"${{held}}\"`;
+  return out;
+}}
+
+/**
+ * The store of one request: it answers `begin` as `Veld-Test-Idempotency` says (nothing, a stored
+ * answer, another fingerprint, a request still running) and otherwise works like the memory store.
+ */
+class TestStore implements {store} {{
+  private readonly memory = new {memory}();
+
+  constructor(
+    private readonly state: StoreState | undefined,
+    private readonly endpoints: readonly {endpoint}[],
+  ) {{}}
+
+  begin(scope: string, key: string, fingerprint: string): Promise<{begin}> {{
+    switch (this.state?.state) {{
+      case 'stored': {{
+        const sig = scope.split('\\n')[0];
+        return Promise.resolve({{ state: 'replay', answer: storedAnswer(this.endpoints.find((e) => e.sig === sig), this.state) }});
+      }}
+      case 'other':
+        return Promise.resolve({{ state: 'other' }});
+      case 'running':
+        return Promise.resolve({{ state: 'running' }});
+      default:
+        return this.memory.begin(scope, key, fingerprint);
+    }}
+  }}
+
+  complete(scope: string, key: string, answer: {answer}): Promise<void> {{
+    return this.memory.complete(scope, key, answer);
+  }}
+
+  release(scope: string, key: string): Promise<void> {{
+    return this.memory.release(scope, key);
+  }}
+}}
+
+/** The caller text of the test handler: the wire JSON of `Veld-Test-Principal` in canonical form, or `caller`. */
+function testCaller(_principal: never, ctx: {ctx}): string {{
+  const who = decode(header(ctx, 'veld-test-principal'));
+  return who === undefined ? 'caller' : {canonical}(who);
+}}
+
+function idempotencyOf(req: {request}, endpoints: readonly {endpoint}[]): {hooks} {{
+  const raw = decode(requestHeader(req, 'veld-test-idempotency'));
+  const state = typeof raw === 'object' && raw !== null ? (raw as StoreState) : undefined;
+  return {{ store: new TestStore(state, endpoints), caller: testCaller }};
+}}"
+    ));
+    w.blank();
+}
+
 fn write_loaders(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, name: &str) {
     if svc.facts.is_empty() {
         return;
@@ -168,6 +270,30 @@ function auditedHeader(found: readonly {violation}[]): string {{
     )
 }
 
+/// `const inner = ...`: the production handler built from the endpoints of the test handler. A
+/// service with an `@idempotent` endpoint builds one per request, because the store of a request
+/// comes from its header.
+fn inner_handler(fc: &mut FileCtx<'_, '_>, create: &str, std: &str, idempotent: bool) -> String {
+    let ctx = fc.rt("RequestContext");
+    let clock = if fc.tree.uses_endpoint_rules() {
+        format!(", clock: (ctx: {ctx}) => prime(ctx)")
+    } else {
+        String::new()
+    };
+    if !idempotent {
+        return format!("const inner = {create}(endpoints, {std}, {{ ...hooks{clock} }});");
+    }
+    let handler = fc.rt("VeldHandler");
+    let request = fc.rt("VeldRequest");
+    format!(
+        "const base = {create}(endpoints, {std}, {{ ...hooks{clock}, idempotency: idempotencyOf({{ headers: {{}}, method: 'GET', path: '/' }}, endpoints) }});
+  const inner: {handler} = Object.assign(
+    (req: {request}) => {create}(endpoints, {std}, {{ ...hooks{clock}, idempotency: idempotencyOf(req, endpoints) }})(req),
+    {{ ws: base.ws }},
+  );"
+    )
+}
+
 fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     let name = naming::pascal(&svc.name);
     let prod = module_of(fc.tree, svc);
@@ -178,11 +304,14 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
         fc.import(&prod, &loaders_name(&name), false);
     }
     write_helpers(w, fc, svc);
+    let idempotent = service_is_idempotent(svc);
+    if idempotent {
+        write_idempotency(w, fc);
+    }
     write_loaders(w, fc, svc, &name);
     let answer = write_audited(w, fc);
     let handler = fc.rt("VeldHandler");
     let endpoint = fc.rt("ServerEndpoint");
-    let ctx = fc.rt("RequestContext");
     let early = fc.rt("EarlyResponse");
     let from_wire = fc.rt("fromWire");
     let create = fc.rt("createHandler");
@@ -196,9 +325,14 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     } else {
         ", loaders"
     };
+    let omitted = if idempotent {
+        "'facts' | 'clock' | 'auth' | 'middleware' | 'idempotency'"
+    } else {
+        "'facts' | 'clock' | 'auth' | 'middleware'"
+    };
     w.line(format!(
         "/** What the test handler of `{name}` takes from the hooks: the observers of the production hooks. */
-export type {name}TestHooks = Omit<{name}Hooks, 'facts' | 'clock' | 'auth' | 'middleware'>;
+export type {name}TestHooks = Omit<{name}Hooks, {omitted}>;
 
 /** Takes the endpoint apart from authentication and the application's handler. */
 function open(ep: {endpoint}): {endpoint} {{
@@ -227,7 +361,7 @@ export function create{name}TestHandler(impl: {name}Service, hooks: {name}TestHo
   const log = (globalThis as {{ console?: {{ warn?: (message: string) => void }} }}).console;
   log?.warn?.('veld: the TEST HANDLER of {name} is active: it takes facts, principal, clock and results from request headers. Never mount it in production.');
   const endpoints = {builder}(impl{loaders_arg}).map(open);
-  const inner = {create}(endpoints, {std}, {{ ...hooks, clock: (ctx: {ctx}) => prime(ctx) }});
+  {inner}
   const handler = async (req: Parameters<{handler}>[0]) => {{
     if (req.method.toUpperCase() === 'GET' && req.path === '/__veld/test') {{
       const body = JSON.stringify({{ veldTestHandler: 1, digests: {{ {key}: {digest} }} }});
@@ -238,6 +372,7 @@ export function create{name}TestHandler(impl: {name}Service, hooks: {name}TestHo
   return Object.assign(handler, {{ ws: inner.ws }});
 }}",
         builder = builder_name(svc),
+        inner = inner_handler(fc, &create, &std, idempotent),
         key = ts_str(&svc.name),
     ));
 }

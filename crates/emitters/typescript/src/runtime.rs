@@ -57,6 +57,11 @@ pub struct Gates {
     pub policies: bool,
     /// An audited rule: the `rollout` regions and `runtime/rollout.ts`.
     pub rollout: bool,
+    /// A `@version` guard or a response that carries an `ETag`: the `version` regions
+    /// (`spec/rules.md` section 11.7).
+    pub version: bool,
+    /// An `@idempotent` endpoint: the `idempotency` regions (`spec/rules.md` section 11.8).
+    pub idempotency: bool,
 }
 
 impl Gates {
@@ -80,6 +85,8 @@ impl Gates {
             transitions: self.transitions || other.transitions,
             policies: self.policies || other.policies,
             rollout: self.rollout || other.rollout,
+            version: self.version || other.version,
+            idempotency: self.idempotency || other.idempotency,
         }
     }
 }
@@ -112,7 +119,16 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "transitions" => g.transitions,
         "policies" => g.policies,
         // The code the transition guard and `allow` share.
-        "guards" => g.transitions || g.policies,
+        "guards" => g.transitions || g.policies || (g.version && g.endpoint_rules),
+        "version" => g.version,
+        // The server's guard needs the endpoint machinery (a guard has a fact).
+        "version_guard" => g.version && g.endpoint_rules,
+        "idempotency" => g.idempotency,
+        // The two header checks of step 5.
+        "headers" => g.version || g.idempotency,
+        // What a build without them has in the same place.
+        "not_version" => !g.version,
+        "not_idempotency" => !g.idempotency,
         _ => false,
     })
 }
@@ -209,6 +225,82 @@ mod tests {
         let mut files = FileSet::new();
         emit_with(&mut files, false, true).unwrap();
         assert!(files.get("runtime/rules.ts").is_some());
+    }
+
+    #[test]
+    fn version_and_idempotency_add_their_regions_and_nothing_else_sees_them() {
+        let plain = source_with(true, true).unwrap();
+        for word in [
+            "parseIfMatch",
+            "withEtag",
+            "checkVersion",
+            "IdempotencyStore",
+            "MemoryIdempotencyStore",
+            "sha256Hex",
+            "headerIssues",
+            "runCore",
+        ] {
+            assert!(!plain.contains(word), "`{word}` leaked into the runtime");
+        }
+        let version = source_gated(Gates {
+            version: true,
+            endpoint_rules: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in [
+            "parseIfMatch",
+            "withEtag",
+            "checkVersion",
+            "headerIssues",
+            "refusal",
+        ] {
+            assert!(version.contains(word), "`{word}` is missing");
+        }
+        assert!(!version.contains("IdempotencyStore") && !version.contains("runCore"));
+        let idempotency = source_gated(Gates {
+            idempotency: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in [
+            "IdempotencyStore",
+            "MemoryIdempotencyStore",
+            "sha256Hex",
+            "runCore",
+            "headerIssues",
+        ] {
+            assert!(idempotency.contains(word), "`{word}` is missing");
+        }
+        assert!(!idempotency.contains("parseIfMatch") && !idempotency.contains("checkVersion"));
+    }
+
+    #[test]
+    fn the_new_regions_pair_up_in_every_combination() {
+        for bits in 0..64u32 {
+            let gates = Gates {
+                rules: bits & 1 != 0,
+                endpoint_rules: bits & 2 != 0,
+                transitions: bits & 4 != 0,
+                policies: bits & 8 != 0,
+                version: bits & 16 != 0,
+                idempotency: bits & 32 != 0,
+                ..Gates::default()
+            };
+            assert!(source_gated(gates).is_ok(), "{gates:?}");
+        }
+    }
+
+    #[test]
+    fn a_version_only_contract_has_the_etag_and_no_guard() {
+        let etag = source_gated(Gates {
+            version: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(etag.contains("withEtag") && etag.contains("ifMatchText"));
+        // The guard needs the endpoint machinery; an `ETag` alone does not.
+        assert!(!etag.contains("checkVersion") && !etag.contains("EndpointRuleSet"));
     }
 
     #[test]

@@ -15,6 +15,7 @@ use crate::tree::{FileCtx, Tree};
 use crate::types::ts_type;
 use crate::util::{add_file, doc_comment, method_key, prop_key, ts_str};
 use crate::validate::schema_expr;
+use crate::version;
 
 /// Names of request interfaces. `<Endpoint>Request`, prefixed by the service name
 /// when two services of the same set would otherwise collide.
@@ -81,6 +82,31 @@ pub fn write_request_type(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &s
         let opt = if p.optional { "?" } else { "" };
         let ty = ts_type(fc, &p.ty);
         w.line(format!("{}{opt}: {ty};", prop_key(&p.name)));
+    }
+    w.close();
+}
+
+/// The request type of a client method: the one of the server, and `ifMatch` and `idempotencyKey`
+/// after the declared parameters when the endpoint has a guard or is `@idempotent`.
+fn write_client_request_type(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    name: &str,
+    ep: &Endpoint,
+) {
+    let extras = version::client_members(fc, ep);
+    if extras.is_empty() {
+        write_request_type(w, fc, name, ep);
+        return;
+    }
+    w.open(format!("export interface {name}"));
+    for p in ep.params.iter().filter(|p| !p.stream) {
+        let opt = if p.optional { "?" } else { "" };
+        let ty = ts_type(fc, &p.ty);
+        w.line(format!("{}{opt}: {ty};", prop_key(&p.name)));
+    }
+    for line in extras {
+        w.line(line);
     }
     w.close();
 }
@@ -161,6 +187,7 @@ pub fn write_spec_fields(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, ep: &Endp
         })
         .collect();
     write_list(w, "errors", errors);
+    version::write_spec_members(w, fc.tree.ir, ep);
 }
 
 fn write_list(w: &mut CodeWriter, key: &str, items: Vec<String>) {
@@ -191,7 +218,8 @@ fn write_service(
 ) {
     for ep in &svc.endpoints {
         let name = names.get(svc.id, &ep.name);
-        write_request_type(w, fc, &name, ep);
+        version::reserved_names(svc, ep, diags);
+        write_client_request_type(w, fc, &name, ep);
         w.blank();
         write_op(w, fc, svc, ep);
         w.blank();
@@ -269,7 +297,7 @@ fn write_method(
         Some(t) => ts_type(fc, t),
         None => "void".to_string(),
     };
-    let default = if ep.params.iter().all(|p| p.stream) {
+    let default = if ep.params.iter().all(|p| p.stream) && !version::needs_request(ep) {
         " = {}"
     } else {
         ""

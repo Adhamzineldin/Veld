@@ -29,6 +29,8 @@ pub struct Tree<'a> {
     transitions: bool,
     policies: bool,
     rollout: bool,
+    version: bool,
+    idempotency: bool,
     events: bool,
     decls: Vec<DeclId>,
 }
@@ -72,6 +74,9 @@ impl<'a> Tree<'a> {
             .iter()
             .any(|id| ir.decl(*id).rules().iter().any(veld_ir::Rule::is_audited))
             || endpoints().any(|ep| ep.rules.first_audited_origin().is_some());
+        let version =
+            endpoints().any(|ep| ep.rules.version.is_some() || ir.etag_field(ep).is_some());
+        let idempotency = endpoints().any(|ep| ep.idempotency.is_some());
         Self {
             ir,
             root: root.to_string(),
@@ -84,6 +89,8 @@ impl<'a> Tree<'a> {
             transitions,
             policies,
             rollout,
+            version,
+            idempotency,
             events: false,
             decls: set.into_iter().collect(),
         }
@@ -165,7 +172,23 @@ impl<'a> Tree<'a> {
             transitions: self.transitions,
             policies: self.policies,
             rollout: self.rollout,
+            version: self.version,
+            idempotency: self.idempotency,
         }
+    }
+
+    /// Whether an endpoint of the tree's services has an `If-Match` guard or answers with a model
+    /// that has a `@version` field (`spec/rules.md` section 11.7): the `version` regions.
+    #[must_use]
+    pub fn uses_version(&self) -> bool {
+        self.version
+    }
+
+    /// Whether an endpoint of the tree's services is `@idempotent` (`spec/rules.md` section 11.8):
+    /// the `idempotency` regions, the store and the `idempotency` hook.
+    #[must_use]
+    pub fn uses_idempotency(&self) -> bool {
+        self.idempotency
     }
 
     /// Module path of the audit sink: next to the runtime module, without extension.

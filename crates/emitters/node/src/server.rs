@@ -56,6 +56,7 @@ fn write_service(
         write_request_type(w, fc, &request, ep);
         w.blank();
         rules::write_facts_type(w, fc, &request, ep);
+        guards::write_version_type(w, fc, &request, ep);
         guards::write_transition_type(w, fc, &request, ep);
     }
     write_interface(w, fc, names, svc);
@@ -74,6 +75,9 @@ fn impl_request(ep: &Endpoint, request: &str) -> String {
     let mut parts = vec![request.to_string()];
     if !ep.rules.facts.is_empty() {
         parts.push(rules::facts_name(request));
+    }
+    if ep.rules.version.is_some() {
+        parts.push(guards::version_name(request));
     }
     if ep.rules.transition.is_some() {
         parts.push(guards::transition_name(request));
@@ -206,6 +210,7 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
         w.line("/** The server's clock, read once per request before the facts load. Default: the system clock. */");
         w.line(format!("clock?: (ctx: {ctx}) => Date;"));
     }
+    write_idempotency_hook(w, fc, svc, (&ctx, &who));
     if !auth.is_empty() {
         w.open("auth:");
         for (name, ty) in &auth {
@@ -237,6 +242,33 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
         w.line("validateRequests?: boolean;");
     }
     w.close();
+}
+
+/// `idempotency: { store, caller }` in the hooks of a service with an `@idempotent` endpoint
+/// (`spec/rules.md` section 11.12). The type requires what the endpoints need, so a server that
+/// lacks it does not compile; the runtime checks it again when the handler is created.
+fn write_idempotency_hook(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    svc: &Service,
+    (ctx, who): (&str, &str),
+) {
+    if !rules::service_is_idempotent(svc) {
+        return;
+    }
+    let store = fc.rt("IdempotencyStore");
+    w.line("/** Where the keys of the `@idempotent` endpoints live, and who the caller is for the scope of a key. */");
+    let caller = svc
+        .endpoints
+        .iter()
+        .any(|ep| ep.idempotency.as_ref().is_some_and(|i| i.caller));
+    if caller {
+        w.line(format!(
+            "idempotency: {{ store: {store}; caller: (principal: {who}, ctx: {ctx}) => string | Promise<string> }};"
+        ));
+    } else {
+        w.line(format!("idempotency: {{ store: {store} }};"));
+    }
 }
 
 /// Where the writers of one service put their output: the body and the declarations that must
@@ -364,12 +396,16 @@ fn write_factory(
     let name = naming::pascal(&svc.name);
     let ctx = fc.rt("RequestContext");
     let (auth, middleware) = required_hooks(svc, &ctx, "unknown");
-    let default = if auth.is_empty() && middleware.is_empty() && svc.facts.is_empty() {
+    let default = if auth.is_empty()
+        && middleware.is_empty()
+        && svc.facts.is_empty()
+        && !rules::service_is_idempotent(svc)
+    {
         " = {}"
     } else {
         ""
     };
-    let ruled = rules::service_has_rules(svc);
+    let ruled = rules::service_has_builder(svc);
     if ruled {
         write_builder(w, fc, names, svc, diags);
     }
@@ -420,16 +456,20 @@ fn write_factory(
 
 pub(crate) fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
     let endpoint_rules = fc.tree.uses_endpoint_rules();
+    let conflict = fc.tree.uses_idempotency();
     let mut sig = |name: &str| match fc.tree.prelude_decl(name) {
         Some(id) => format!("{}.sig", fc.value_ref(id)),
         None => "'about:blank'".to_string(),
     };
     let (u, v, i) = (sig("Unauthorized"), sig("ValidationError"), sig("Internal"));
+    let mut out = format!("unauthorized: {u}, validation: {v}, internal: {i}");
     if endpoint_rules {
-        let n = sig("NotFound");
-        return format!("{{ unauthorized: {u}, validation: {v}, internal: {i}, notFound: {n} }}");
+        out.push_str(&format!(", notFound: {}", sig("NotFound")));
     }
-    format!("{{ unauthorized: {u}, validation: {v}, internal: {i} }}")
+    if conflict {
+        out.push_str(&format!(", conflict: {}", sig("Conflict")));
+    }
+    format!("{{ {out} }}")
 }
 
 /// Nest's route syntax: `{id}` becomes `:id`, and the ends carry no slash.
@@ -483,7 +523,10 @@ pub fn models(tree: &Tree<'_>) -> Vec<ServiceModel> {
                 file: naming::kebab(&svc.name),
                 module: module_of(tree, svc),
                 prefix: nest_path(prefix),
-                hooks_required: !auth.is_empty() || !middleware.is_empty() || !svc.facts.is_empty(),
+                hooks_required: !auth.is_empty()
+                    || !middleware.is_empty()
+                    || !svc.facts.is_empty()
+                    || rules::service_is_idempotent(svc),
                 endpoints: endpoints.into_iter().map(|(_, e)| e).collect(),
             }
         })

@@ -23,6 +23,7 @@ pub mod tree;
 pub mod types;
 pub mod util;
 pub mod validate;
+pub mod version;
 
 use serde::Deserialize;
 use veld_codegen::{
@@ -187,7 +188,10 @@ impl Generator for TypeScript {
 
     fn capabilities(&self, _role: Role) -> Capabilities {
         // A client skips audited rules in the local check and in `partial` (`spec/rules.md` 17.1).
-        Capabilities::all_except(&UNSUPPORTED).with(veld_ir::Feature::RulesRollout)
+        Capabilities::all_except(&UNSUPPORTED)
+            .with(veld_ir::Feature::RulesRollout)
+            .with(veld_ir::Feature::RulesVersion)
+            .with(veld_ir::Feature::Idempotency)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {

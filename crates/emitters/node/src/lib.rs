@@ -63,7 +63,10 @@ impl Generator for Node {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        Capabilities::all_except(&[]).with(veld_ir::Feature::RulesRollout)
+        Capabilities::all_except(&[])
+            .with(veld_ir::Feature::RulesRollout)
+            .with(veld_ir::Feature::RulesVersion)
+            .with(veld_ir::Feature::Idempotency)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {

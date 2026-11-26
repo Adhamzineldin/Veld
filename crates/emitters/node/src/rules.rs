@@ -30,6 +30,25 @@ pub fn service_has_rules(svc: &Service) -> bool {
     svc.endpoints.iter().any(endpoint_has_rules)
 }
 
+/// Whether an endpoint is `@idempotent`.
+#[must_use]
+pub fn endpoint_is_idempotent(ep: &Endpoint) -> bool {
+    ep.idempotency.is_some()
+}
+
+/// Whether the service has an `@idempotent` endpoint: its hooks need an `idempotency` member.
+#[must_use]
+pub fn service_is_idempotent(svc: &Service) -> bool {
+    svc.endpoints.iter().any(endpoint_is_idempotent)
+}
+
+/// Whether the service gets an endpoints builder (and, with `testing`, a test handler): it has
+/// endpoint rules or an `@idempotent` endpoint.
+#[must_use]
+pub fn service_has_builder(svc: &Service) -> bool {
+    service_has_rules(svc) || service_is_idempotent(svc)
+}
+
 /// The type of the loaded facts of an endpoint: `CreateBookingFacts` for `CreateBookingRequest`.
 #[must_use]
 pub fn facts_name(request: &str) -> String {

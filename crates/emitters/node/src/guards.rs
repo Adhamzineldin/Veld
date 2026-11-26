@@ -18,6 +18,41 @@ use crate::rules::{Sig, Site, unsupported};
 /// What the doc comment of the `transition` the handler receives says.
 const TRANSITION_NOTE: &str = "The move this call makes, as the server checked it before it called the handler: the wire path of the state field (`field`), the state it held (`from`) and the state this call moves it to (`to`).\n\nThe check is a guard, not an atomic guarantee: a second request can change the row after it. Apply the change with a conditional write (compare-and-swap or a row lock, in your own transaction) that only matches while the row still holds `from`, and answer `InvalidTransition` yourself when that write finds another value.";
 
+/// What the doc comment of the `version` the handler receives says.
+const VERSION_NOTE: &str = "The version the caller sent in `If-Match` and the server compared with the fact before it called the handler. It is absent when the header was absent or `*`, and when the guarded fact is absent.\n\nThe check is a guard, not an atomic guarantee: a second request can change the row after it. Write conditionally (compare-and-swap or a row lock, in your own transaction) so that the write only matches while the row still holds this version, and answer `PreconditionFailed` yourself when that write finds another value.";
+
+/// The type of the `version` the handler of `request` receives: `RenameRoomVersion`.
+#[must_use]
+pub fn version_name(request: &str) -> String {
+    format!(
+        "{}Version",
+        request.strip_suffix("Request").unwrap_or(request)
+    )
+}
+
+/// `export interface RenameRoomVersion { version?: string; }`: what the handler gets of an
+/// `If-Match` besides the parameters and the facts.
+pub fn write_version_type(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    request: &str,
+    ep: &Endpoint,
+) {
+    let Some(field) = veld_emit_typescript::version::guard_field(fc.tree.ir, ep) else {
+        return;
+    };
+    let ty = ts_type(fc, &field.ty);
+    w.line(format!(
+        "/** The checked `If-Match` of `{}`, handed to the handler with the parameters and the facts. */",
+        ep.name
+    ));
+    w.open(format!("export interface {}", version_name(request)));
+    doc_comment(w, Some(VERSION_NOTE), None);
+    w.line(format!("version?: {ty};"));
+    w.close();
+    w.blank();
+}
+
 /// The type of the `transition` the handler of `request` receives: `PayBookingTransition`.
 #[must_use]
 pub fn transition_name(request: &str) -> String {
@@ -120,6 +155,30 @@ fn allow_step(
     w.close_with("},");
 }
 
+fn version_step(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    site: &Site<'_>,
+    diags: &mut Vec<GenDiagnostic>,
+) {
+    let Some(guard) = &site.ep.rules.version else {
+        return;
+    };
+    let Some(class) = prelude_error(fc, site, "PreconditionFailed") else {
+        diags.push(unsupported(
+            site,
+            "a version guard without `PreconditionFailed`",
+        ));
+        return;
+    };
+    w.open_with("version:", " {");
+    w.line(format!("id: {},", ts_str(&guard.id)));
+    w.line(format!("fact: {},", ts_str(&guard.fact)));
+    w.line(format!("field: {},", ts_str(&guard.field)));
+    w.line(format!("otherwise: {{ sig: {class}.sig }},"));
+    w.close_with("},");
+}
+
 fn transition_step(
     w: &mut CodeWriter,
     fc: &mut FileCtx<'_, '_>,
@@ -177,6 +236,7 @@ pub fn write_members(
         }
         w.close_with("],");
     }
+    version_step(w, fc, site, diags);
     if let Some(mv) = mv {
         transition_step(w, fc, printer, (site, sig), (mv, found), diags);
     }
