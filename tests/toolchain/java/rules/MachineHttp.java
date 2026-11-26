@@ -105,9 +105,11 @@ public final class MachineHttp {
   }
 
   private static HttpServer serve(RuleWalk.OutputMode mode, List<RuleWalk.Event> events) throws Exception {
-    BookingsHooks hooks = new BookingsHooks().rulesOutput(mode).onRuleViolation(events::add);
+    BookingsHooks hooks = new BookingsHooks().onRuleViolation(events::add);
     return JdkHttpServerAdapter.listen(
-        BookingsHandler.create(new Impl(), new Loaders(), hooks), new InetSocketAddress("127.0.0.1", 0));
+        BookingsHandler.create(
+            new Impl(), new Loaders(), hooks, gen.b.runtimeconfig.GenBRuntime.builder().rulesOutput(mode).build()),
+        new InetSocketAddress("127.0.0.1", 0));
   }
 
   private static String pay(String amount) {

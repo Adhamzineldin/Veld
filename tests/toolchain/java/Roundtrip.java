@@ -103,9 +103,23 @@ public final class Roundtrip {
     iam.stop(0);
   }
 
-  /** The contract bakes in the Iam base URL; Orders has none, so constructing its client fails. */
+  /** A client requires `baseUrl`, and `GenAClients.create` gives each client its URL. */
   private static void noBaseUrl() {
-    Check.that(new gen.a.clients.iam.iam.client.IamClient() != null, "baked-in base URL is used when nothing else is given");
-    Check.thrown(gen.ca.runtime.VeldTransportError.class, "no base URL", () -> new gen.ca.orders.client.OrdersClient());
+    Check.thrown(
+        gen.ca.runtime.VeldTransportError.class,
+        "no base URL",
+        () -> new gen.ca.orders.client.OrdersClient(gen.ca.runtime.ClientOptions.defaults()));
+    var runtime = gen.a.runtimeconfig.GenARuntime.builder().iamUrl("http://127.0.0.1:1//").build();
+    Check.equal("http://127.0.0.1:1", runtime.iamUrl(), "a trailing slash is dropped");
+    Check.that(
+        gen.a.runtimeconfig.GenAClients.create(runtime).iam() != null,
+        "createClients builds the client of each consumed service");
+    var failure =
+        Check.thrown(
+            gen.a.runtime.VeldConfigException.class,
+            "required url",
+            () -> gen.a.runtimeconfig.GenARuntime.builder().build());
+    Check.equal(
+        "invalid runtime config: services.iam.url is missing", failure.getMessage(), "the check names the path");
   }
 }

@@ -84,7 +84,10 @@ fn assert_generates(contracts: &[Ir]) {
                 "{}: the gate reported {gate:?}",
                 role.name()
             );
-            if let Err(d) = Java.generate_dyn(&req, &serde_json::Value::Null) {
+            if let Err(d) = Java.generate_dyn(
+                &req,
+                &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+            ) {
                 panic!("{}: generate failed: {d:?}", role.name());
             }
         }

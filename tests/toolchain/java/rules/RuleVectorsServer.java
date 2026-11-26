@@ -44,7 +44,6 @@ public final class RuleVectorsServer {
     Class<?> service = Class.forName("gen.v.t.server.VectorsService");
     Class<?> hooksClass = Class.forName("gen.v.t.server.VectorsHooks");
     Object hooks = hooksClass.getConstructor().newInstance();
-    hooks = hooksClass.getMethod("rulesOutput", RuleWalk.OutputMode.class).invoke(hooks, mode);
     hooks = hooksClass.getMethod("onRuleViolation", RuleWalk.Hook.class).invoke(hooks, (RuleWalk.Hook) events::add);
     hooks = hooksClass.getMethod("onError", HandlerHooks.ErrorHook.class).invoke(hooks, (HandlerHooks.ErrorHook) (e, ctx) -> failure = String.valueOf(e));
     Object impl = Proxy.newProxyInstance(
@@ -52,7 +51,11 @@ public final class RuleVectorsServer {
         new Class<?>[] {service},
         (proxy, method, args) -> method.getName().startsWith("out") ? decode(method.getName().substring(3)) : null);
     Class<?> handlerClass = Class.forName("gen.v.t.server.VectorsHandler");
-    return (VeldHandler) handlerClass.getMethod("create", service, hooksClass).invoke(null, impl, hooks);
+    Class<?> runtimeClass = Class.forName("gen.v.runtimeconfig.GenVRuntime");
+    Object runtimeBuilder = runtimeClass.getMethod("builder").invoke(null);
+    runtimeBuilder = runtimeBuilder.getClass().getMethod("rulesOutput", RuleWalk.OutputMode.class).invoke(runtimeBuilder, mode);
+    Object config = runtimeBuilder.getClass().getMethod("build").invoke(runtimeBuilder);
+    return (VeldHandler) handlerClass.getMethod("create", service, hooksClass, runtimeClass).invoke(null, impl, hooks, config);
   }
 
   /** The value of the case as the generated type {@code type}. */

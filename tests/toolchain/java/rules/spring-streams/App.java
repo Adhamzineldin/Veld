@@ -9,21 +9,19 @@ import gen.rs.live.server.NotesRequest;
 import gen.rs.live.server.ReadingsRequest;
 import gen.rs.live.server.SeatsRequest;
 import gen.rs.runtime.RequestContext;
-import gen.rs.runtime.RuleWalk;
 import gen.rs.runtime.SseEvent;
 import gen.rs.runtime.WsSession;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
 /**
  * The streams contract with rules on Spring: an SSE stream and a WebSocket whose server and client
- * messages have invariants. {@code --veld.mode=audit} or {@code off} sets the output mode; the
+ * messages have invariants. {@code --veld.rules.output=audit} or {@code off} sets the output mode; the
  * violations the hook saw are listed at {@code /__events}.
  */
 @SpringBootApplication(scanBasePackages = {"veldtest", "gen.rs.adapters"})
@@ -57,9 +55,8 @@ public class App {
   }
 
   @Bean
-  LiveHooks liveHooks(@Value("${veld.mode:strict}") String mode) {
+  LiveHooks liveHooks() {
     return new LiveHooks()
-        .rulesOutput(RuleWalk.OutputMode.valueOf(mode.toUpperCase(java.util.Locale.ROOT)))
         .onRuleViolation(e -> EVENTS.add(e.position() + " " + e.outcome()));
   }
 }

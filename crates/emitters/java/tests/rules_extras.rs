@@ -224,7 +224,11 @@ fn stream_items_and_websocket_messages_are_checked_through_the_spring_adapter() 
         ),
         ("off", vec!["INPUT REJECTED"]),
     ] {
-        let app = run_spring(&work, "/__events", &[&format!("--veld.mode={mode}")]);
+        let app = run_spring(
+            &work,
+            "/__events",
+            &[&format!("--veld.rules.output={mode}")],
+        );
         let port = app.port.to_string();
         let out = java_main(driver.path(), "veldtest.RuleStreamsWs", &[&port, mode]);
         assert!(

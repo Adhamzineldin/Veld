@@ -80,7 +80,7 @@ pub fn package(base: &str) -> String {
 
 /// The member name of a setting: its path in camel case without `services` (`iamUrl`,
 /// `rulesOutput`).
-fn member_names(model: &RuntimeModel) -> Vec<String> {
+pub fn member_names(model: &RuntimeModel) -> Vec<String> {
     unique(
         model
             .settings()

@@ -141,10 +141,17 @@ pub fn releases() -> Vec<&'static str> {
 
 /// Target options with the base package and, when given, the Java release.
 pub fn options(package: &str, release: Option<&str>) -> serde_json::Value {
-    match release {
+    let value = match release {
         Some(r) => serde_json::json!({ "package": package, "java": r }),
         None => serde_json::json!({ "package": package }),
-    }
+    };
+    veld_codegen::with_target_name(&value, &target_name(package))
+}
+
+/// The name of the target a test generates for: its package with `-` for `.` (`gen.a` is `gen-a`,
+/// so the runtime config is `GenARuntime`).
+pub fn target_name(package: &str) -> String {
+    package.replace('.', "-")
 }
 
 /// Client files for every service of the IR, in the Java package `package`.

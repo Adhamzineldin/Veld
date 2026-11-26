@@ -63,9 +63,11 @@ public final class RuleRoundtrip {
   }
 
   private static HttpServer serve(RuleWalk.OutputMode mode, List<RuleWalk.Event> events) throws Exception {
-    BookingsHooks hooks = new BookingsHooks().rulesOutput(mode).onRuleViolation(events::add);
+    BookingsHooks hooks = new BookingsHooks().onRuleViolation(events::add);
     return gen.rs.adapters.JdkHttpServerAdapter.listen(
-        BookingsHandler.create(new Impl(), hooks), new InetSocketAddress("127.0.0.1", 0));
+        BookingsHandler.create(
+            new Impl(), hooks, gen.rs.runtimeconfig.GenRsRuntime.builder().rulesOutput(mode).build()),
+        new InetSocketAddress("127.0.0.1", 0));
   }
 
   private static String url(HttpServer server) {

@@ -42,7 +42,10 @@ fn generate(
         framework: framework.map(str::to_string),
     };
     generator
-        .generate_dyn(&req, &serde_json::Value::Null)
+        .generate_dyn(
+            &req,
+            &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+        )
         .map_err(|d| format!("{d:?}"))
 }
 

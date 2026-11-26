@@ -52,7 +52,10 @@ public final class RuleStreamsSse {
   private static LiveClient serve(RuleWalk.OutputMode mode, List<RuleWalk.Event> events, List<HttpServer> servers)
       throws Exception {
     HttpServer server = JdkHttpServerAdapter.listen(
-        LiveHandler.create(new Impl(), new LiveHooks().rulesOutput(mode).onRuleViolation(events::add)),
+        LiveHandler.create(
+            new Impl(),
+            new LiveHooks().onRuleViolation(events::add),
+            gen.rs.runtimeconfig.GenRsRuntime.builder().rulesOutput(mode).build()),
         new InetSocketAddress("127.0.0.1", 0));
     servers.add(server);
     return new LiveClient(

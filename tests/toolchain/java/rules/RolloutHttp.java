@@ -59,8 +59,14 @@ public final class RolloutHttp {
   }
 
   private static HttpServer serve(AuditHooks hooks) throws Exception {
+    return serve(hooks, RuleWalk.OutputMode.STRICT);
+  }
+
+  private static HttpServer serve(AuditHooks hooks, RuleWalk.OutputMode mode) throws Exception {
     return JdkHttpServerAdapter.listen(
-        AuditHandler.create(new Impl(), new Loaders(), hooks), new InetSocketAddress("127.0.0.1", 0));
+        AuditHandler.create(
+            new Impl(), new Loaders(), hooks, gen.r.runtimeconfig.GenRRuntime.builder().rulesOutput(mode).build()),
+        new InetSocketAddress("127.0.0.1", 0));
   }
 
   private record Answer(int status, String body) {}
@@ -151,7 +157,7 @@ public final class RolloutHttp {
 
     // Output mode off skips an audited output rule like every output rule; an input rule is evaluated.
     List<RuleWalk.Event> offEvents = Collections.synchronizedList(new ArrayList<>());
-    HttpServer off = serve(new AuditHooks().rulesOutput(RuleWalk.OutputMode.OFF).onRuleViolation(offEvents::add));
+    HttpServer off = serve(new AuditHooks().onRuleViolation(offEvents::add), RuleWalk.OutputMode.OFF);
     try {
       capacity = 100;
       same(201, book(off, 7).status(), "off");
@@ -165,7 +171,7 @@ public final class RolloutHttp {
 
     // `audit` evaluates and reports them too.
     List<RuleWalk.Event> auditEvents = Collections.synchronizedList(new ArrayList<>());
-    HttpServer audit = serve(new AuditHooks().rulesOutput(RuleWalk.OutputMode.AUDIT).onRuleViolation(auditEvents::add));
+    HttpServer audit = serve(new AuditHooks().onRuleViolation(auditEvents::add), RuleWalk.OutputMode.AUDIT);
     try {
       same(201, book(audit, 5).status(), "audit");
       same(List.of("AUDITED OUTPUT Audit.book.ensure request"), heard(auditEvents), "audit mode");
