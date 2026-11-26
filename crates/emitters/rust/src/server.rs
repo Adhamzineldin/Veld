@@ -331,6 +331,7 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
         block_methods(w, svc);
     }
     conditional_method(w, tree, svc);
+    complete_principal_method(w, tree, svc, typed);
     if n.idempotency {
         idempotency_forwards(w, n, typed);
     }
@@ -420,15 +421,48 @@ fn audited_ensure(w: &mut CodeWriter, svc: &Service) {
 /// reads it or calls a policy (`spec/rules.md` section 11.1). A principal that nothing reads
 /// changes no bytes.
 pub(crate) fn typed_principal(ctx: &Ctx<'_, '_>, svc: &Service) -> Option<String> {
-    if svc
-        .endpoints
-        .iter()
-        .any(|e| e.rules.first_policy_origin().is_some())
+    if principal_has_derived(ctx.tree, svc)
+        || svc
+            .endpoints
+            .iter()
+            .any(|e| e.rules.first_policy_origin().is_some())
     {
         crate::guards::principal_type(ctx, svc)
     } else {
         None
     }
+}
+
+/// Whether the principal's model of the service has derived fields: the server completes the
+/// principal for every endpoint, so the hooks return the model itself (`spec/rules.md` 17.2).
+pub(crate) fn principal_has_derived(tree: &Tree<'_>, svc: &Service) -> bool {
+    tree.derived
+        && svc
+            .principal
+            .as_ref()
+            .is_some_and(|p| tree.ir.decl(p.decl).has_derived())
+}
+
+/// `complete_principal` of a dispatch whose principal model has derived fields.
+fn complete_principal_method(
+    w: &mut CodeWriter,
+    tree: &Tree<'_>,
+    svc: &Service,
+    typed: Option<&str>,
+) {
+    let Some(ty) = typed.filter(|_| principal_has_derived(tree, svc)) else {
+        return;
+    };
+    w.open("fn complete_principal(&self, ctx: &mut veld::server::RequestContext) -> Result<(), Vec<veld::rules::Violation>>");
+    w.line(format!(
+        "let Some(mut principal) = ctx.principal::<{ty}>().cloned() else {{ return Ok(()) }};"
+    ));
+    w.line(format!(
+        "veld::rules::complete_with(<{ty} as veld::VeldDecl>::schema(), &mut principal)?;"
+    ));
+    w.line("ctx.principal = Some(veld::server::Principal::new(principal));");
+    w.line("Ok(())");
+    w.close().blank();
 }
 
 /// The call of a hook of the service: as it is, or wrapped into the untyped principal of the core.

@@ -362,6 +362,17 @@ pub trait Endpoints: Send + Sync + 'static {
         None
     }
     // #endif
+    // @if derived
+
+    /// Gives the principal its derived fields, once per request after authentication and
+    /// middleware, for every endpoint of a service whose principal model has some
+    /// (`spec/rules.md` section 17.2): the completed value replaces the one the hook returned, so
+    /// the rules and the handler see it. The violations of a field that could not be computed are
+    /// `Err`.
+    fn complete_principal(&self, _ctx: &mut RequestContext) -> Result<(), Vec<super::rules::Violation>> {
+        Ok(())
+    }
+    // @end
     // #if rollout
 
     /// Whether the answers carry the audited reports of the request in `Veld-Test-Audited`
@@ -1392,6 +1403,17 @@ impl<E: Endpoints> Handler<E> {
         // #if endpoint_rules
         }
         // #endif
+        // @if derived
+        if ctx.principal.is_some() {
+            if let Err(violations) = e.complete_principal(ctx) {
+                for v in &violations {
+                    self.inner.report(ep, v, super::rules::Position::Output, super::rules::Outcome::Rejected, 0);
+                }
+                let err = Error::other(format!("{}: a derived field of the caller could not be computed", ep.name));
+                return Err(self.failure(&err, ep, ctx));
+            }
+        }
+        // @end
         let bound = self.bind(ep, caps, req, ctx, ws);
         // @if conditional
         let headers = Self::header_issues(ctx);

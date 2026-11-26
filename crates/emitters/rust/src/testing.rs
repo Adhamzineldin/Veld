@@ -221,6 +221,11 @@ fn dispatch(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, name: &str) {
     audited(w, ctx, svc);
     prepare(w, svc);
     trusted(w, ctx, svc);
+    if crate::server::principal_has_derived(ctx.tree, svc) {
+        w.open("fn complete_principal(&self, ctx: &mut RequestContext) -> Result<(), Vec<veld::rules::Violation>>");
+        w.line("self.inner.complete_principal(ctx)");
+        w.close().blank();
+    }
     call(w, svc);
     w.close().blank();
 }
@@ -648,7 +653,9 @@ fn event_endpoint(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     w.line("Ok(EventOutcome { outcome, reason, called, violations, dead_letters: copies.load(std::sync::atomic::Ordering::SeqCst) })");
     w.close().blank();
     w.line("/// `POST /__veld/test/event`: the body is the message, the headers are `Veld-Test-Topic`,");
-    w.line("/// `Veld-Test-Key` and `Veld-Test-Deliveries`. A missing or empty topic and a number of");
+    w.line(
+        "/// `Veld-Test-Key` and `Veld-Test-Deliveries`. A missing or empty topic and a number of",
+    );
     w.line("/// deliveries that is neither 1 nor 2 are `400` with `{ \"error\": \"...\" }` (`spec/events.md` 10.9).");
     w.open("async fn event(headers: ::axum::http::HeaderMap, body: ::axum::body::Bytes) -> ::axum::response::Response");
     w.line("use ::axum::response::IntoResponse;");

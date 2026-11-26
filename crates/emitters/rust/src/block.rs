@@ -411,19 +411,8 @@ fn step6(
         let ty = guards::principal_type(ctx, svc)
             .ok_or("the endpoint reads the principal, which the package does not declare")?;
         guards::bind_principal(w, &ty);
-        if ctx.tree.derived
-            && svc
-                .principal
-                .as_ref()
-                .is_some_and(|p| ctx.tree.ir.decl(p.decl).has_derived())
-        {
-            // The principal is given its derived fields when it is handed to the block.
-            w.line("let mut principal_value = principal.clone();");
-            w.line(format!(
-                "vr::complete_with(<{ty} as veld::VeldDecl>::schema(), &mut principal_value).map_err(Halt::Broken)?;"
-            ));
-            w.line("let principal = &principal_value;");
-        }
+        // The principal was given its derived fields once per request, after authentication
+        // (`veld::server::Endpoints::complete_principal`).
     }
     for f in &ep.rules.facts {
         load_fact(w, ctx, svc, f, &sc)?;
