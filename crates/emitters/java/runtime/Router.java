@@ -48,6 +48,11 @@ public final class Router implements VeldHandler {
   // #if conditional
   private Map<String, Conditions> conditions = Map.of();
   // #endif
+  // #if audit
+  /** The state of the audited requests in flight, by request: the pipeline may run on another thread. */
+  private final Map<VeldRequest, Platform.State> inflight =
+      Collections.synchronizedMap(new java.util.IdentityHashMap<>());
+  // #endif
 
   private Router(List<Route> routes, StdSigs std, HandlerHooks hooks) {
     this.routes = routes;
@@ -174,7 +179,12 @@ public final class Router implements VeldHandler {
       }
       Matcher m = r.pattern().matcher(path);
       if (m.matches()) {
+        // #if audit
+        return Optional.of(audited(r, m, request));
+        // #endif
+        // #if not_audit
         return Optional.of(run(r, m, request));
+        // #endif
       }
     }
     return Optional.empty();
@@ -186,13 +196,56 @@ public final class Router implements VeldHandler {
     for (Route r : routes) {
       if (r.endpoint().spec().name().equals(endpoint)) {
         Matcher m = r.pattern().matcher(path);
+        // #if audit
+        return m.matches() ? Optional.of(audited(r, m, request)) : Optional.empty();
+        // #endif
+        // #if not_audit
         return m.matches() ? Optional.of(run(r, m, request)) : Optional.empty();
+        // #endif
       }
     }
     return Optional.empty();
   }
 
   // -- pipeline ------------------------------------------------------------------------------
+  // #if audit
+
+  /**
+   * The audit log of an audited endpoint (spec/platform.md section 4): wraps everything after the
+   * match, the deadline and the settlement of an idempotency key included, so that a {@code 504} and
+   * a pipeline that throws are recorded, once. The event is built from the answer that is about to
+   * be written and handed to the hook before it is.
+   */
+  private VeldResponse audited(Route route, Matcher match, VeldRequest request) {
+    EndpointSpec spec = route.endpoint().spec();
+    Platform.Audited info = hooks.audited(spec.sig());
+    // #endif
+    // #if audit_timed
+    if (info == null || request.raw() instanceof DueMoves.Call) {
+      // #endif
+      // #if audit_plain
+    if (info == null) {
+      // #endif
+      // #if audit
+      return run(route, match, request);
+    }
+    Platform.State state = new Platform.State();
+    Platform.recording(state);
+    inflight.put(request, state);
+    VeldResponse response;
+    try {
+      response = run(route, match, request);
+    } catch (RuntimeException | Error err) {
+      // The caller gets what the adapter gives for a pipeline that throws; the event says 500.
+      Platform.record(hooks, spec, info, state, problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build()));
+      throw err;
+    } finally {
+      inflight.remove(request);
+    }
+    Platform.record(hooks, spec, info, state, response);
+    return response;
+  }
+  // #endif
 
   // #if slo
   private VeldResponse run(Route route, Matcher match, VeldRequest request) {
@@ -321,6 +374,11 @@ public final class Router implements VeldHandler {
     // #endif
     // #if platform
     Platform.State enclosingState = Platform.current();
+    // #endif
+    // #if audit
+    Platform.open(hooks, ctx, inflight.get(request));
+    // #endif
+    // #if platform_only
     Platform.open(hooks, ctx, null);
     // #endif
     try {
@@ -560,6 +618,12 @@ public final class Router implements VeldHandler {
     if (!out.bound.issues.isEmpty()) {
       out.failure = problem(std.validation(), "ValidationError", 422, spec.sig(), issuesData(out.bound.issues));
     }
+    // #if audit
+    if (out.failure == null) {
+      // Step 4 has passed: the audit event has the parameters, also when step 5 then refuses the request.
+      Platform.parameters(Platform.current(), out.bound.prepared);
+    }
+    // #endif
     // #if flags
     if (out.failure == null) {
       readFlags(spec, ctx);
@@ -1000,6 +1064,10 @@ public final class Router implements VeldHandler {
     boolean check = true;
     final Map<String, Json> values = new LinkedHashMap<>();
     final List<Issue> issues = new ArrayList<>();
+    // #if audit
+    /** The parameters in wire form, with their defaults and without the placeholders of a read-only field. */
+    final Map<String, Json> prepared = new LinkedHashMap<>();
+    // #endif
     // #if conditional
     /** The parameters as the fingerprint of an idempotency key sees them: defaults applied, no placeholders. */
     final Map<String, Json> canonical = new LinkedHashMap<>();
@@ -1051,6 +1119,9 @@ public final class Router implements VeldHandler {
       // #if conditional
       b.canonical.put(p.name(), Canon.scalars(p.type(), v, true));
       // #endif
+      // #if audit
+      b.prepared.put(p.name(), v);
+      // #endif
       b.values.put(p.name(), v);
     }
   }
@@ -1091,6 +1162,12 @@ public final class Router implements VeldHandler {
       // #if derived
       b.values.put(p.name(), Wire.fillReadonly(p.type(), prepared));
       // #endif
+      // #if audit_plain_values
+      b.prepared.put(p.name(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST));
+      // #endif
+      // #if audit_derived
+      b.prepared.put(p.name(), prepared);
+      // #endif
     }
   }
 
@@ -1129,6 +1206,12 @@ public final class Router implements VeldHandler {
       // #endif
       // #if derived
       b.values.put(p.name(), Wire.fillReadonly(p.type(), prepared));
+      // #endif
+      // #if audit_plain_values
+      b.prepared.put(p.name(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST));
+      // #endif
+      // #if audit_derived
+      b.prepared.put(p.name(), prepared);
       // #endif
     }
   }

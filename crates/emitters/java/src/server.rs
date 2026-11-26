@@ -290,6 +290,7 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
     .collect();
     let needs_flags = crate::flags::service_uses(fc.tree, svc);
     let needs_outbox = outbox::service_emits(svc);
+    let needs_audit = crate::platform::service_audited(svc);
     let params = unique(
         auth.iter()
             .map(|a| a.0.to_string())
@@ -297,6 +298,7 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
             .chain(idempotency.iter().map(|n| (*n).to_string()))
             .chain(needs_flags.then(|| "flags".to_string()))
             .chain(needs_outbox.then(|| "outbox".to_string()))
+            .chain(needs_audit.then(|| "audit".to_string()))
             .collect(),
     );
     let principal = match (&svc.principal, fc.tree.policies, auth.is_empty()) {
@@ -372,6 +374,21 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
             ty: fc.rt("Outbox"),
             register: format!("this.outbox = {};", params[at]),
             doc: "the outbox the moves that emit write to (`MemoryOutbox` for tests)".to_string(),
+            iface: Vec::new(),
+        });
+    }
+    if needs_audit {
+        let at = first
+            + usize::from(needs_store)
+            + usize::from(needs_caller)
+            + usize::from(needs_flags)
+            + usize::from(needs_outbox);
+        out.push(Hook {
+            param: params[at].clone(),
+            ty: format!("{hooks}.AuditHook"),
+            register: format!("builder.audit({});", params[at]),
+            doc: "the audit log: where the event of every audited request goes (`spec/platform.md` section 4)"
+                .to_string(),
             iface: Vec::new(),
         });
     }
@@ -1098,6 +1115,7 @@ pub(crate) fn needs_hooks(tree: &Tree<'_>, svc: &Service) -> bool {
         || conditional::hooks_needed(svc).0
         || crate::flags::service_uses(tree, svc)
         || outbox::service_emits(svc)
+        || crate::platform::service_audited(svc)
 }
 
 /// The services of the tree as the framework adapters see them, in tree order.

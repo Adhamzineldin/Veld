@@ -35,6 +35,9 @@ const TIMEOUT_FILES: &[&str] = &["Deadline"];
 const FLAG_FILES: &[&str] = &["Flags"];
 /// The platform phase P1 state and features (`spec/targets/java.md` section 17).
 const PLATFORM_FILES: &[&str] = &["Platform"];
+/// The audit event, its failure and the redaction (`spec/platform.md` section 4, `spec/rules.md`
+/// section 19.3).
+const AUDIT_FILES: &[&str] = &["AuditEvent", "AuditFailure", "Redact"];
 /// The runtime classes of the policies (`spec/targets/java.md` section 11).
 const POLICY_FILES: &[&str] = &["Policy"];
 /// The runtime class of audited rules (`@rollout(audit)`, `spec/rules.md` section 17.1).
@@ -80,6 +83,8 @@ macro_rules! runtime_files {
 
 runtime_files!(
     "Audit",
+    "AuditEvent",
+    "AuditFailure",
     "Canon",
     "ClientCore",
     "ClientDefaults",
@@ -112,6 +117,7 @@ runtime_files!(
     "Platform",
     "Policy",
     "Reconnect",
+    "Redact",
     "RequestContext",
     "RuleError",
     "RuleWalk",
@@ -359,7 +365,8 @@ pub fn emit_with(
             && (flags.rollout || !ROLLOUT_FILES.contains(&name))
             && (flags.outbox || !OUTBOX_FILES.contains(&name))
             && (flags.events || !EVENT_FILES.contains(&name))
-            && (flags.events || flags.conditional || !CANON_FILES.contains(&name))
+            && (flags.events || flags.conditional || flags.audit || !CANON_FILES.contains(&name))
+            && (flags.audit || !AUDIT_FILES.contains(&name))
             && (flags.derived || !DERIVED_FILES.contains(&name))
             && (flags.conditional || !CONDITIONAL_FILES.contains(&name))
             && (flags.preconditions || !PRECONDITION_FILES.contains(&name))
@@ -418,6 +425,15 @@ pub fn emit_with(
         "marks_derived" => flags.marks() && flags.derived,
         "visibility" => flags.visibility,
         "tenancy" => flags.tenancy,
+        "audit" => flags.audit,
+        "declared_of" => flags.shapes() || flags.audit,
+        "not_audit" => !flags.audit,
+        "audit_timed" => flags.audit && flags.timed,
+        "audit_plain" => flags.audit && !flags.timed,
+        "audit_derived" => flags.audit && flags.derived,
+        "audit_plain_values" => flags.audit && !flags.derived,
+        "audit_not_visibility" => flags.audit && !flags.visibility,
+        "platform_only" => flags.platform() && !flags.audit,
         "tenant_events" => flags.tenant_events,
         "not_tenant_events" => !flags.tenant_events,
         "tenant_fields" => flags.tenant_fields,

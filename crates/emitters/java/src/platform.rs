@@ -90,6 +90,47 @@ pub fn walks_fact(fc: &FileCtx<'_, '_>, ep: &Endpoint, fact: &EndpointFact) -> b
         || (fc.tree.platform.audit && ep.audited)
 }
 
+/// Whether the service has an endpoint that is `@audited`: its hooks require `audit`.
+#[must_use]
+pub fn service_audited(svc: &Service) -> bool {
+    svc.endpoints.iter().any(|e| e.audited)
+}
+
+/// The refusals of platform phase P1: an audited endpoint that streams (`sse`) or is a `ws`
+/// endpoint is `E0801` at the endpoint (`spec/platform.md` section 9.1): a stream has no single
+/// answer to record.
+#[must_use]
+pub fn refusals(ir: &Ir, services: &[ServiceId]) -> Vec<GenDiagnostic> {
+    let mut out = Vec::new();
+    for sid in services {
+        let svc = ir.service(*sid);
+        for ep in svc
+            .endpoints
+            .iter()
+            .filter(|e| e.audited && (e.success.stream || e.method == veld_ir::Method::Ws))
+        {
+            out.push(GenDiagnostic {
+                code: "E0801",
+                message: format!(
+                    "{}.{}: generator `java` cannot audit a streaming or `ws` endpoint (`@audited`)",
+                    svc.name, ep.name
+                ),
+                origin: Some(ep.origin.clone()),
+            });
+        }
+    }
+    out
+}
+
+/// The wire names of the fields marked `@pii` or `@secret`.
+fn pii_fields(d: &Decl) -> Vec<&str> {
+    d.fields()
+        .iter()
+        .filter(|f| f.pii || f.secret)
+        .map(|f| f.wire.as_str())
+        .collect()
+}
+
 /// Whether a declaration has a `@visible` field.
 fn has_visible(d: &Decl) -> bool {
     d.fields().iter().any(|f| f.visible.is_some())
@@ -121,6 +162,11 @@ pub fn schema_suffix(fc: &mut FileCtx<'_, '_>, d: &Decl, class: &str) -> String 
             java_str(&field.wire),
             java_str(field.tenant_id.as_deref().unwrap_or_default())
         ));
+    }
+    let pii = pii_fields(d);
+    if fc.tree.platform.audit && !pii.is_empty() {
+        let names: Vec<String> = pii.iter().map(|w| java_str(w)).collect();
+        marks.push_str(&format!(".pii({})", names.join(", ")));
     }
     if marks.is_empty() {
         return String::new();
@@ -224,8 +270,55 @@ pub fn registrations(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<String> {
             .tenant_field()
             .map_or_else(|| "null".to_string(), |f| java_str(&f.wire));
         out.push(format!(
-            "builder.principal({platform}.principal({class}.class, {class}::toWire, {tenant}));"
+            "builder.principal({platform}.principal({class}.class, {class}::toWire, {tenant}, {class}.SCHEMA));"
+        ));
+    }
+    let entries: Vec<String> = svc
+        .endpoints
+        .iter()
+        .filter(|e| e.audited)
+        .map(|ep| audited_entry(fc, ep))
+        .collect();
+    if !entries.is_empty() {
+        let map = fc.name("java.util.Map");
+        out.push(format!(
+            "builder.audited({map}.ofEntries({}));",
+            entries.join(", ")
         ));
     }
     out
+}
+
+/// `Map.entry("<operation>", Platform.audited(<has auth>, <facts>, <errors>))`: what an audit event
+/// needs to know of one endpoint.
+fn audited_entry(fc: &mut FileCtx<'_, '_>, ep: &Endpoint) -> String {
+    let ir = fc.tree.ir;
+    let (map, platform) = (fc.name("java.util.Map"), fc.rt("Platform"));
+    let facts: Vec<String> = ep
+        .rules
+        .facts
+        .iter()
+        .map(|f| {
+            let schema =
+                crate::types::schema_expr(fc, &f.ty, &veld_ir::Constraints::default(), false);
+            format!("{map}.entry({}, {schema})", java_str(&f.name))
+        })
+        .collect();
+    let facts = if facts.is_empty() {
+        format!("{map}.of()")
+    } else {
+        format!("{map}.ofEntries({})", facts.join(", "))
+    };
+    let mut args = vec![(ep.auth.kind != veld_ir::AuthKind::None).to_string(), facts];
+    for error in &ep.errors {
+        // The data of an error the contract declares is the result of the event; the prelude's is not.
+        if ir.package(ir.decl(error.decl).package).kind != veld_ir::PackageKind::Prelude {
+            args.push(format!("{}.VELD_SIG", fc.decl(error.decl)));
+        }
+    }
+    format!(
+        "{map}.entry({}, {platform}.audited({}))",
+        java_str(&ep.sig),
+        args.join(", ")
+    )
 }

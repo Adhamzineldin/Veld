@@ -54,6 +54,19 @@ public final class HandlerHooks {
   }
 
   // #endif
+  // #if audit
+  /**
+   * Records the audit event of every request that matched an audited endpoint (spec/platform.md
+   * section 4): called once, when the answer is ready and before it is written. A hook that throws
+   * does not change the answer: {@code onError} hears an {@link AuditFailure}.
+   */
+  @FunctionalInterface
+  public interface AuditHook {
+    /** Records one event. */
+    void audit(AuditEvent event) throws Exception;
+  }
+
+  // #endif
   // #if conditional
   /**
    * The caller of a request, as text, for the scope of an idempotency key. The scope of a key
@@ -95,6 +108,10 @@ public final class HandlerHooks {
   private volatile java.util.function.ToLongFunction<RequestContext> clock;
   private final Platform.Principal principal;
   // #endif
+  // #if audit
+  private final AuditHook auditHook;
+  private final Map<String, Platform.Audited> audited;
+  // #endif
 
   private HandlerHooks(Builder b) {
     this.bearer = b.bearer;
@@ -125,6 +142,10 @@ public final class HandlerHooks {
     // #if platform
     this.clock = b.clock;
     this.principal = b.principal;
+    // #endif
+    // #if audit
+    this.auditHook = b.auditHook;
+    this.audited = Map.copyOf(b.audited);
     // #endif
   }
 
@@ -199,6 +220,18 @@ public final class HandlerHooks {
   /** The principal's model of the service, or {@code null}. */
   Platform.Principal principal() {
     return principal;
+  }
+  // #endif
+  // #if audit
+
+  /** The audit hook, or {@code null}. */
+  AuditHook auditHook() {
+    return auditHook;
+  }
+
+  /** What the service says about the audited endpoint with this operation signature, or {@code null}. */
+  Platform.Audited audited(String sig) {
+    return audited.get(sig);
   }
   // #endif
   // #if testing_platform
@@ -295,6 +328,10 @@ public final class HandlerHooks {
     // #if platform
     private java.util.function.ToLongFunction<RequestContext> clock;
     private Platform.Principal principal;
+    // #endif
+    // #if audit
+    private AuditHook auditHook;
+    private final Map<String, Platform.Audited> audited = new LinkedHashMap<>();
     // #endif
 
     private Builder() {}
@@ -437,6 +474,20 @@ public final class HandlerHooks {
     /** The principal's model of the service: what visibility, tenancy and the audit event read of the caller. */
     public Builder principal(Platform.Principal value) {
       this.principal = value;
+      return this;
+    }
+
+    // #endif
+    // #if audit
+    /** Where the audit event of every audited request goes. */
+    public Builder audit(AuditHook hook) {
+      this.auditHook = hook;
+      return this;
+    }
+
+    /** The audited endpoints and what an event needs to know of each, by operation signature. */
+    public Builder audited(Map<String, Platform.Audited> byOperation) {
+      this.audited.putAll(byOperation);
       return this;
     }
 

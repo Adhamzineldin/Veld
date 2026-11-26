@@ -195,6 +195,9 @@ public final class EndpointRules {
         throw new Early(Router.problem(error.sig(), error.title(), 404, spec.sig(), error.dataWire()));
       }
       // #endif
+      // #if audit
+      Platform.fact(ctx, name, wire);
+      // #endif
       // #if platform_facts
       return value;
     }

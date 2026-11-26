@@ -1,6 +1,7 @@
 package dev.veld.runtime;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -34,11 +35,13 @@ public final class Platform {
     final Class<?> type;
     final Function<Object, Json> wire;
     final String tenant;
+    final Schema schema;
 
-    Principal(Class<?> type, Function<Object, Json> wire, String tenant) {
+    Principal(Class<?> type, Function<Object, Json> wire, String tenant, Schema schema) {
       this.type = type;
       this.wire = wire;
       this.tenant = tenant;
+      this.schema = schema;
     }
 
     /** The wire form of {@code caller} when it is a value of this model, else {@code null}. */
@@ -53,9 +56,10 @@ public final class Platform {
    * @param type the generated class of the model
    * @param wire the wire form of a value of it ({@code toWire})
    * @param tenant the wire name of its {@code @tenant} field, or {@code null}
+   * @param schema its wire description (what an audit event leaves out of the caller)
    */
-  public static <P> Principal principal(Class<P> type, Function<P, Json> wire, String tenant) {
-    return new Principal(type, caller -> wire.apply(type.cast(caller)), tenant);
+  public static <P> Principal principal(Class<P> type, Function<P, Json> wire, String tenant, Schema schema) {
+    return new Principal(type, caller -> wire.apply(type.cast(caller)), tenant, schema);
   }
 
   /** What one request keeps for the platform features. */
@@ -66,11 +70,56 @@ public final class Platform {
     // #if visibility
     private final TreeSet<String> hidden = new TreeSet<>(BYTES);
     // #endif
+    // #if audit
+    private volatile boolean recording;
+    private final Map<String, Json> parameters = new LinkedHashMap<>();
+    private final Map<String, Json> facts = new LinkedHashMap<>();
+    // #endif
 
     /** The clock reading of the request, in epoch milliseconds. */
     long now() {
       return now;
     }
+    // #if audit
+
+    /** The reading of the clock, or the system's when the request never reached the first statement of the pipeline. */
+    long nowOrSystem() {
+      return timed ? now : System.currentTimeMillis();
+    }
+
+    /** Whether the request is audited: it keeps its parameters and its facts. */
+    boolean recording() {
+      return recording;
+    }
+
+    void record() {
+      this.recording = true;
+    }
+
+    void parameters(Map<String, Json> bound) {
+      synchronized (parameters) {
+        parameters.putAll(bound);
+      }
+    }
+
+    Map<String, Json> parametersCopy() {
+      synchronized (parameters) {
+        return new LinkedHashMap<>(parameters);
+      }
+    }
+
+    void fact(String name, Json wire) {
+      synchronized (facts) {
+        facts.put(name, wire);
+      }
+    }
+
+    Map<String, Json> factsCopy() {
+      synchronized (facts) {
+        return new LinkedHashMap<>(facts);
+      }
+    }
+    // #endif
 
     RequestContext ctx() {
       return ctx;
@@ -194,6 +243,9 @@ public final class Platform {
     String tenantRule;
     TenantKind tenantKind;
     // #endif
+    // #if audit
+    java.util.Set<String> pii = java.util.Set.of();
+    // #endif
     // #if marks
 
     private Marks() {}
@@ -224,6 +276,14 @@ public final class Platform {
       this.tenantWire = wire;
       this.tenantRule = rule;
       this.tenantKind = kind;
+      return this;
+    }
+    // #endif
+    // #if audit
+
+    /** The wire names of the fields of this record marked {@code @pii} or {@code @secret} (spec/rules.md section 19.3). */
+    public Marks pii(String... wires) {
+      this.pii = java.util.Set.of(wires);
       return this;
     }
     // #endif
@@ -722,6 +782,9 @@ public final class Platform {
     return changed ? new VeldResponse(response.status(), response.headers(), body.with("data", data).write()) : response;
   }
 
+  // #endif
+  // #if declared_of
+  /** The declared error of the endpoint that a problem document of this {@code type} is. */
   private static EndpointSpec.Declared declaredOf(EndpointSpec spec, Json type) {
     if (type instanceof Json.Str str) {
       for (EndpointSpec.Declared d : spec.errors()) {
@@ -732,6 +795,8 @@ public final class Platform {
     }
     return null;
   }
+  // #endif
+  // #if shapes
 
   /** Whether a declared error of the endpoint can hold what the answer features act on. */
   private static boolean errorsReach(EndpointSpec spec) {
@@ -758,6 +823,217 @@ public final class Platform {
     // #endif
     // #if shapes
     return false;
+  }
+  // #endif
+  // #if audit
+
+  // -- the audit log ---------------------------------------------------------------------------
+
+  /** What a service says about one audited endpoint (spec/platform.md section 4). */
+  public static final class Audited {
+    final boolean authenticated;
+    final Map<String, Schema> facts;
+    final java.util.Set<String> errors;
+
+    Audited(boolean authenticated, Map<String, Schema> facts, java.util.Set<String> errors) {
+      this.authenticated = authenticated;
+      this.facts = facts;
+      this.errors = errors;
+    }
+  }
+
+  /**
+   * An audited endpoint.
+   *
+   * @param authenticated whether the endpoint has auth: its event has the principal
+   * @param facts the wire description of the facts of the endpoint, by name
+   * @param errors the signatures of the errors the contract declares itself (not the prelude's): the
+   *     data of such an error is the {@code result} of the event
+   */
+  public static Audited audited(boolean authenticated, Map<String, Schema> facts, String... errors) {
+    return new Audited(authenticated, Map.copyOf(facts), java.util.Set.of(errors));
+  }
+
+  /** Marks the state of an audited request: it keeps what it binds and loads. */
+  static void recording(State state) {
+    state.record();
+  }
+
+  /** Step 4 has passed: the parameters, in wire form, for the audit event. */
+  static void parameters(State state, Map<String, Json> bound) {
+    if (state != null && state.recording()) {
+      state.parameters(bound);
+    }
+  }
+
+  /** A fact was loaded (and is the caller's): its wire form, for the audit event. */
+  static void fact(RequestContext ctx, String name, Json wire) {
+    State state = ctx.platform();
+    if (state != null && state.recording()) {
+      state.fact(name, wire);
+    }
+  }
+
+  /**
+   * The audit event of a request, given to the hook once, when the answer is ready and before it is
+   * written. A hook that fails, and an event that cannot be built, do not change the answer: {@code
+   * onError} hears an {@link AuditFailure}.
+   */
+  static void record(
+      HandlerHooks hooks, EndpointSpec spec, Audited info, State state, VeldResponse response) {
+    HandlerHooks.AuditHook hook = hooks.auditHook();
+    if (hook == null) {
+      return;
+    }
+    AuditEvent event;
+    try {
+      event = build(hooks, spec, info, state, response);
+    } catch (RuntimeException | StackOverflowError err) {
+      report(hooks, state.ctx(), new AuditFailure("the audit event could not be built: " + err.getMessage(), null, err));
+      return;
+    }
+    try {
+      hook.audit(event);
+    } catch (InterruptedException err) {
+      Thread.currentThread().interrupt();
+      report(hooks, state.ctx(), new AuditFailure("the audit hook was interrupted", event, err));
+    } catch (Exception | StackOverflowError err) {
+      report(hooks, state.ctx(), new AuditFailure("the audit hook failed: " + err.getMessage(), event, err));
+    }
+  }
+
+  /** The event of a request that ended with {@code response}. */
+  private static AuditEvent build(
+      HandlerHooks hooks, EndpointSpec spec, Audited info, State state, VeldResponse response) {
+    List<String> redacted = new ArrayList<>();
+    RequestContext ctx = state.ctx();
+    Json principal = null;
+    if (info.authenticated && ctx != null && ctx.principal() != null) {
+      principal = principalJson(hooks, ctx.principal(), redacted);
+    }
+    Json body = bodyOf(response);
+    Json.Obj problem = response.status() >= 400 && body instanceof Json.Obj o ? o : null;
+    String error = null;
+    if (response.status() >= 400) {
+      error = problem != null && problem.get("title") instanceof Json.Str title ? title.value() : "HTTP " + response.status();
+    }
+    Json result = resultOf(spec, info, response.status(), body, problem, redacted);
+    // #endif
+    // #if visibility
+    List<String> hidden = state.hidden();
+    // #endif
+    // #if audit_not_visibility
+    List<String> hidden = List.of();
+    // #endif
+    // #if audit
+    TreeSet<String> sorted = new TreeSet<>(BYTES);
+    sorted.addAll(redacted);
+    return new AuditEvent(
+        spec.sig(),
+        Canon.isoMillis(Instant.ofEpochMilli(state.nowOrSystem())),
+        principal,
+        new AuditEvent.Outcome(response.status(), error),
+        new Json.Obj(parametersOf(spec, state, redacted)),
+        new Json.Obj(factsOf(info, state, redacted)),
+        result,
+        hidden,
+        new ArrayList<>(sorted));
+  }
+
+  private static Json bodyOf(VeldResponse response) {
+    if (response.body() == null || response.body().isEmpty()) {
+      return null;
+    }
+    try {
+      return Json.parse(response.body());
+    } catch (Json.ParseException err) {
+      return null;
+    }
+  }
+
+  /** The body of a success, or the data of an error the contract declares; nothing for an error of the prelude. */
+  private static Json resultOf(
+      EndpointSpec spec, Audited info, int status, Json body, Json.Obj problem, List<String> redacted) {
+    if (status < 400) {
+      if (body == null) {
+        return null;
+      }
+      return spec.success() == null ? body : Redact.value(spec.success(), body, "result", redacted);
+    }
+    EndpointSpec.Declared declared = problem == null ? null : declaredOf(spec, problem.get("type"));
+    if (declared == null || !info.errors.contains(declared.sig()) || problem.get("data") == null) {
+      return null;
+    }
+    return Redact.value(declared.schema(), problem.get("data"), "result", redacted);
+  }
+
+  private static Json principalJson(HandlerHooks hooks, Object caller, List<String> redacted) {
+    Principal model = hooks.principal();
+    Json wire = model == null ? null : model.wireOf(caller);
+    return wire == null ? toJson(caller) : Redact.value(model.schema, wire, "principal", redacted);
+  }
+
+  private static Map<String, Json> parametersOf(EndpointSpec spec, State state, List<String> redacted) {
+    Map<String, Json> out = new LinkedHashMap<>();
+    Map<String, Json> bound = state.parametersCopy();
+    for (EndpointSpec.Param p : spec.params()) {
+      Json value = bound.get(p.name());
+      if (value != null) {
+        out.put(p.name(), Redact.value(p.type(), value, "parameters." + p.name(), redacted));
+      }
+    }
+    return out;
+  }
+
+  private static Map<String, Json> factsOf(Audited info, State state, List<String> redacted) {
+    Map<String, Json> out = new LinkedHashMap<>();
+    for (Map.Entry<String, Json> e : state.factsCopy().entrySet()) {
+      Schema schema = info.facts.get(e.getKey());
+      out.put(
+          e.getKey(),
+          schema == null ? e.getValue() : Redact.value(schema, e.getValue(), "facts." + e.getKey(), redacted));
+    }
+    return out;
+  }
+
+  /**
+   * What a principal without a model of the contract (a hook that returns something of its own) is
+   * in an audit event: JSON values, maps, lists, texts, numbers and booleans as they are; anything
+   * else as its text.
+   */
+  static Json toJson(Object value) {
+    if (value == null) {
+      return Json.NULL;
+    }
+    if (value instanceof Json json) {
+      return json;
+    }
+    if (value instanceof CharSequence text) {
+      return Json.of(text.toString());
+    }
+    if (value instanceof Boolean flag) {
+      return Json.of(flag.booleanValue());
+    }
+    if (value instanceof Number number) {
+      return number instanceof Long || number instanceof Integer || number instanceof Short || number instanceof Byte
+          ? Json.of(number.longValue())
+          : Json.of(number.doubleValue());
+    }
+    if (value instanceof Map<?, ?> map) {
+      Map<String, Json> members = new LinkedHashMap<>();
+      for (Map.Entry<?, ?> e : map.entrySet()) {
+        members.put(String.valueOf(e.getKey()), toJson(e.getValue()));
+      }
+      return new Json.Obj(members);
+    }
+    if (value instanceof Iterable<?> items) {
+      List<Json> listed = new ArrayList<>();
+      for (Object item : items) {
+        listed.add(toJson(item));
+      }
+      return Json.array(listed);
+    }
+    return Json.of(String.valueOf(value));
   }
   // #endif
 }

@@ -196,6 +196,14 @@ impl Generator for Java {
         profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, &self.capabilities(req.role))?;
+        // An audited endpoint that streams is refused at the endpoint, before anything about the
+        // framework (`spec/platform.md` section 9.1).
+        if req.role == Role::Server {
+            let refused = platform::refusals(req.ir, &req.services);
+            if !refused.is_empty() {
+                return Err(refused);
+            }
+        }
         check_framework_features(req, profile)?;
         let base = base_package(req, opts)?;
         let runtime_package = runtime::package(&base);
