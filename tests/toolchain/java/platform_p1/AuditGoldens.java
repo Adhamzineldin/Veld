@@ -55,11 +55,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * by the test that generates the contract (an operation signature does not change with a limit), so
  * that the case of the limiter runs; the limiter of the program answers what the case says.
  *
- * <p>One difference of representation is bridged, and only for the page: the golden writes {@code
- * total} of a page as a JSON number as the reference wrote it, while a {@code long} is the text of
- * its digits on the wire of a Java server (spec/language.md section 5). The value the handler returns
- * has the number turned into text, and the same member of the event is turned back into a number
- * before the bytes are compared. Prints {@code OK}.
+ * <p>One difference of representation is bridged, and only for what the handler returns: the golden
+ * writes {@code total} of a page as a JSON number as the reference wrote it, while a {@code long} is
+ * the text of its digits in the Java value, so the number is turned into text before the handler
+ * returns it. The audit event is not touched: it carries {@code total} as a number and every case is
+ * compared byte for byte. Prints {@code OK}.
  */
 public final class AuditGoldens {
   private AuditGoldens() {}
@@ -222,10 +222,6 @@ public final class AuditGoldens {
         throw new AssertionError(name + ": the hook is called once, it was called " + events.size() + " times");
       }
       Json.Obj event = events.get(0).toJson();
-      if (c.get("endpoint").asString().equals("pageBookings") && event.get("result") instanceof Json.Obj result
-          && result.get("total") instanceof Json.Str total) {
-        event = event.with("result", result.with("total", Json.of(Long.parseLong(total.value()))));
-      }
       if (!event.canonical().equals(golden.value())) {
         throw new AssertionError(name + ": the event\n  got      " + event.canonical() + "\n  expected " + golden.value());
       }

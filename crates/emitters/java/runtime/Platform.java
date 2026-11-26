@@ -978,13 +978,78 @@ public final class Platform {
       if (body == null) {
         return null;
       }
-      return spec.success() == null ? body : Redact.value(spec.success(), body, "result", redacted);
+      return spec.success() == null
+          ? body
+          : numberTotals(spec.success(), Redact.value(spec.success(), body, "result", redacted));
     }
     EndpointSpec.Declared declared = problem == null ? null : declaredOf(spec, problem.get("type"));
     if (declared == null || !info.errors.contains(declared.sig()) || problem.get("data") == null) {
       return null;
     }
-    return Redact.value(declared.schema(), problem.get("data"), "result", redacted);
+    return numberTotals(declared.schema(), Redact.value(declared.schema(), problem.get("data"), "result", redacted));
+  }
+
+  /**
+   * The {@code total} of a page is a JSON number in an audit event, as the reference writes it,
+   * where it is the text of its digits in the answer (a {@code long}). A total that is not a plain
+   * integer of a {@code long} is left as it is.
+   */
+  private static Json numberTotals(Schema schema, Json v) {
+    if (v == null || v instanceof Json.Null) {
+      return v;
+    }
+    Schema s = schema.resolve();
+    switch (s.kind) {
+      case LIST:
+        if (v instanceof Json.Arr arr) {
+          List<Json> out = new ArrayList<>();
+          arr.items().forEach(i -> out.add(numberTotals(s.of, i)));
+          return Json.array(out);
+        }
+        return v;
+      case MAP:
+        if (v instanceof Json.Obj obj) {
+          Map<String, Json> out = new LinkedHashMap<>();
+          obj.fields().forEach((k, x) -> out.put(k, numberTotals(s.of, x)));
+          return new Json.Obj(out);
+        }
+        return v;
+      case PAGE:
+        return v instanceof Json.Obj obj ? numberPage(s, obj) : v;
+      case UNION:
+        Schema arm = v instanceof Json.Obj obj && obj.get(s.discriminator) instanceof Json.Str label
+            ? s.armFor(label.value())
+            : null;
+        return arm == null ? v : numberTotals(arm, v);
+      case OBJECT:
+        if (v instanceof Json.Obj obj) {
+          Map<String, Json> out = new LinkedHashMap<>(obj.fields());
+          for (Schema.Field f : s.fields) {
+            if (out.containsKey(f.wire())) {
+              out.put(f.wire(), numberTotals(f.type(), out.get(f.wire())));
+            }
+          }
+          return new Json.Obj(out);
+        }
+        return v;
+      default:
+        return v;
+    }
+  }
+
+  private static Json numberPage(Schema s, Json.Obj page) {
+    Json out = page;
+    if (page.get("items") != null) {
+      out = out.asObject().with("items", numberTotals(Schema.list(s.of), page.get("items")));
+    }
+    if (page.get("total") instanceof Json.Str digits) {
+      try {
+        out = out.asObject().with("total", Json.of(Long.parseLong(digits.value())));
+      } catch (NumberFormatException err) {
+        return out;
+      }
+    }
+    return out;
   }
 
   private static Json principalJson(HandlerHooks hooks, Object caller, List<String> redacted) {
