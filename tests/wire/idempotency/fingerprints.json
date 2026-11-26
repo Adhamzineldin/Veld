@@ -31,7 +31,6 @@
  {
   "name": "path_uuid_upper",
   "endpoint": "byUuid",
-  "note": "the reference hashes a scalar as sent",
   "request": {
    "method": "PUT",
    "path": "/fp/uuid/0B5C9C3E-7A2D-4C1B-9D3E-5F6A7B8C9D0E",
@@ -40,9 +39,9 @@
     "Idempotency-Key": "k"
    }
   },
-  "differs_from": "path_uuid_lower",
-  "hashed": "{\"id\":\"0B5C9C3E-7A2D-4C1B-9D3E-5F6A7B8C9D0E\"}",
-  "fingerprint": "c23312257b962928"
+  "same_as": "path_uuid_lower",
+  "hashed": "{\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\"}",
+  "fingerprint": "9d432866d209cfce"
  },
  {
   "name": "path_int_7",
@@ -251,7 +250,6 @@
  {
   "name": "path_datetime_offset",
   "endpoint": "byDatetime",
-  "note": "the same instant; the reference hashes the text as sent",
   "request": {
    "method": "PUT",
    "path": "/fp/datetime/2026-06-10T14:00:00+02:00",
@@ -260,9 +258,9 @@
     "Idempotency-Key": "k"
    }
   },
-  "differs_from": "path_datetime_z",
-  "hashed": "{\"when\":\"2026-06-10T14:00:00+02:00\"}",
-  "fingerprint": "577bd0f30926d335"
+  "same_as": "path_datetime_z",
+  "hashed": "{\"when\":\"2026-06-10T12:00:00Z\"}",
+  "fingerprint": "8ad999e7b366cfb0"
  },
  {
   "name": "path_datetime_millis_zero",
@@ -275,9 +273,9 @@
     "Idempotency-Key": "k"
    }
   },
-  "differs_from": "path_datetime_z",
-  "hashed": "{\"when\":\"2026-06-10T12:00:00.000Z\"}",
-  "fingerprint": "507554326bb3d963"
+  "same_as": "path_datetime_z",
+  "hashed": "{\"when\":\"2026-06-10T12:00:00Z\"}",
+  "fingerprint": "8ad999e7b366cfb0"
  },
  {
   "name": "path_datetime_millis_250",
@@ -568,7 +566,6 @@
  {
   "name": "query_datetime_offset",
   "endpoint": "queried",
-  "note": "the offset is sent percent-encoded (%2B02:00)",
   "request": {
    "method": "PUT",
    "path": "/fp/query",
@@ -579,9 +576,9 @@
     "Idempotency-Key": "k"
    }
   },
-  "differs_from": "query_datetime_z",
-  "hashed": "{\"when\":\"2026-06-10T14:00:00+02:00\"}",
-  "fingerprint": "577bd0f30926d335"
+  "same_as": "query_datetime_z",
+  "hashed": "{\"when\":\"2026-06-10T12:00:00Z\"}",
+  "fingerprint": "8ad999e7b366cfb0"
  },
  {
   "name": "query_uuid_lower",
@@ -612,9 +609,9 @@
     "Idempotency-Key": "k"
    }
   },
-  "differs_from": "query_uuid_lower",
-  "hashed": "{\"u\":\"0B5C9C3E-7A2D-4C1B-9D3E-5F6A7B8C9D0E\"}",
-  "fingerprint": "a9c862dab1d60cae"
+  "same_as": "query_uuid_lower",
+  "hashed": "{\"u\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\"}",
+  "fingerprint": "b5eb3aab3057e0a9"
  },
  {
   "name": "query_decimal_1_50",
@@ -994,9 +991,9 @@
     "X-Ref": "0B5C9C3E-7A2D-4C1B-9D3E-5F6A7B8C9D0E"
    }
   },
-  "differs_from": "header_ref_lower",
-  "hashed": "{\"ref\":\"0B5C9C3E-7A2D-4C1B-9D3E-5F6A7B8C9D0E\",\"tenant\":\"acme\"}",
-  "fingerprint": "54131ecb5aff2b1a"
+  "same_as": "header_ref_lower",
+  "hashed": "{\"ref\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"tenant\":\"acme\"}",
+  "fingerprint": "74e2a6604a0ec035"
  },
  {
   "name": "mixed_base",
@@ -1092,9 +1089,9 @@
     "start": "2026-06-10T12:00:00Z"
    }
   },
-  "differs_from": "mixed_base",
-  "hashed": "{\"body\":{\"start\":\"2026-06-10T12:00:00Z\"},\"id\":\"0B5C9C3E-7A2D-4C1B-9D3E-5F6A7B8C9D0E\",\"tenant\":\"acme\"}",
-  "fingerprint": "679efa0f7348e563"
+  "same_as": "mixed_base",
+  "hashed": "{\"body\":{\"start\":\"2026-06-10T12:00:00Z\"},\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"tenant\":\"acme\"}",
+  "fingerprint": "1e0cc3800472209a"
  },
  {
   "name": "mixed_end_sent",
@@ -1119,7 +1116,6 @@
  {
   "name": "mixed_unknown_member",
   "endpoint": "mixed",
-  "note": "the reference keeps a member the model does not have",
   "request": {
    "method": "PUT",
    "path": "/fp/mixed/0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e",
@@ -1133,9 +1129,9 @@
     "extra": 1
    }
   },
-  "differs_from": "mixed_base",
-  "hashed": "{\"body\":{\"extra\":1,\"start\":\"2026-06-10T12:00:00Z\"},\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"tenant\":\"acme\"}",
-  "fingerprint": "169d44f04dfaca1b"
+  "same_as": "mixed_base",
+  "hashed": "{\"body\":{\"start\":\"2026-06-10T12:00:00Z\"},\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"tenant\":\"acme\"}",
+  "fingerprint": "1e0cc3800472209a"
  },
  {
   "name": "mixed_member_order",
@@ -1400,9 +1396,9 @@
     }
    }
   },
-  "differs_from": "body_base",
-  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"flag\":true,\"id\":\"0B5C9C3E-7A2D-4C1B-9D3E-5F6A7B8C9D0E\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"9007199254740993\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T12:00:00Z\"}}",
-  "fingerprint": "3e5d8ded5000a35d"
+  "same_as": "body_base",
+  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"flag\":true,\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"9007199254740993\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T12:00:00Z\"}}",
+  "fingerprint": "dbf37bb83c9831d1"
  },
  {
   "name": "body_datetime_offset",
@@ -1441,9 +1437,9 @@
     }
    }
   },
-  "differs_from": "body_base",
-  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"flag\":true,\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"9007199254740993\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T14:00:00+02:00\"}}",
-  "fingerprint": "dff6d17311d08d79"
+  "same_as": "body_base",
+  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"flag\":true,\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"9007199254740993\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T12:00:00Z\"}}",
+  "fingerprint": "dbf37bb83c9831d1"
  },
  {
   "name": "body_datetime_millis_zero",
@@ -1482,9 +1478,9 @@
     }
    }
   },
-  "differs_from": "body_base",
-  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"flag\":true,\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"9007199254740993\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T12:00:00.000Z\"}}",
-  "fingerprint": "3e579dc5dda8b073"
+  "same_as": "body_base",
+  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"flag\":true,\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"9007199254740993\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T12:00:00Z\"}}",
+  "fingerprint": "dbf37bb83c9831d1"
  },
  {
   "name": "body_datetime_millis_250",
@@ -1564,9 +1560,135 @@
     }
    }
   },
-  "differs_from": "body_datetime_millis_250",
-  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"flag\":true,\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"9007199254740993\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T12:00:00.25Z\"}}",
-  "fingerprint": "9dae853884a34f2c"
+  "same_as": "body_datetime_millis_250",
+  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"flag\":true,\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"9007199254740993\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T12:00:00.250Z\"}}",
+  "fingerprint": "6f72c1e0327ad83c"
+ },
+ {
+  "name": "body_size_leading_zeros",
+  "endpoint": "posted",
+  "note": "a long is hashed as the canonical decimal string of its value; step 5 accepts leading zeros",
+  "request": {
+   "method": "PUT",
+   "path": "/fp/body",
+   "query": {},
+   "headers": {
+    "Idempotency-Key": "k"
+   },
+   "body": {
+    "id": "0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e",
+    "when": "2026-06-10T12:00:00Z",
+    "day": "2026-06-10",
+    "clock": "09:30:00",
+    "price": "1.50",
+    "size": "009007199254740993",
+    "ratio": 1.5,
+    "flag": true,
+    "blob": "aGVsbG8=",
+    "tier": "GOLD",
+    "tags": [
+     "a",
+     "b"
+    ],
+    "labels": {
+     "a": 1,
+     "b": 2
+    },
+    "slot": {
+     "start": "2026-06-10T12:00:00Z"
+    },
+    "money": {
+     "amount": "1.50"
+    }
+   }
+  },
+  "same_as": "body_base",
+  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"flag\":true,\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"9007199254740993\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T12:00:00Z\"}}",
+  "fingerprint": "dbf37bb83c9831d1"
+ },
+ {
+  "name": "body_size_minus_zero",
+  "endpoint": "posted",
+  "request": {
+   "method": "PUT",
+   "path": "/fp/body",
+   "query": {},
+   "headers": {
+    "Idempotency-Key": "k"
+   },
+   "body": {
+    "id": "0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e",
+    "when": "2026-06-10T12:00:00Z",
+    "day": "2026-06-10",
+    "clock": "09:30:00",
+    "price": "1.50",
+    "size": "-0",
+    "ratio": 1.5,
+    "flag": true,
+    "blob": "aGVsbG8=",
+    "tier": "GOLD",
+    "tags": [
+     "a",
+     "b"
+    ],
+    "labels": {
+     "a": 1,
+     "b": 2
+    },
+    "slot": {
+     "start": "2026-06-10T12:00:00Z"
+    },
+    "money": {
+     "amount": "1.50"
+    }
+   }
+  },
+  "differs_from": "body_base",
+  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"flag\":true,\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"0\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T12:00:00Z\"}}",
+  "fingerprint": "94f501ccb8bd195e"
+ },
+ {
+  "name": "body_slot_unknown_member",
+  "endpoint": "posted",
+  "note": "an unknown member is dropped at any depth",
+  "request": {
+   "method": "PUT",
+   "path": "/fp/body",
+   "query": {},
+   "headers": {
+    "Idempotency-Key": "k"
+   },
+   "body": {
+    "id": "0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e",
+    "when": "2026-06-10T12:00:00Z",
+    "day": "2026-06-10",
+    "clock": "09:30:00",
+    "price": "1.50",
+    "size": "9007199254740993",
+    "ratio": 1.5,
+    "flag": true,
+    "blob": "aGVsbG8=",
+    "tier": "GOLD",
+    "tags": [
+     "a",
+     "b"
+    ],
+    "labels": {
+     "a": 1,
+     "b": 2
+    },
+    "slot": {
+     "start": "2026-06-10T12:00:00Z",
+     "extra": 1
+    },
+    "money": {
+     "amount": "1.50"
+    }
+   }
+  },
+  "same_as": "body_base",
+  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"flag\":true,\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"9007199254740993\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T12:00:00Z\"}}",
+  "fingerprint": "dbf37bb83c9831d1"
  },
  {
   "name": "body_decimal_1_5",
@@ -2280,7 +2402,6 @@
  {
   "name": "body_unknown_member",
   "endpoint": "posted",
-  "note": "the reference keeps a member the model does not have",
   "request": {
    "method": "PUT",
    "path": "/fp/body",
@@ -2316,9 +2437,9 @@
     "extra": 7
    }
   },
-  "differs_from": "body_base",
-  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"extra\":7,\"flag\":true,\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"9007199254740993\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T12:00:00Z\"}}",
-  "fingerprint": "06dac11c499bc3f6"
+  "same_as": "body_base",
+  "hashed": "{\"body\":{\"blob\":\"aGVsbG8=\",\"clock\":\"09:30:00\",\"day\":\"2026-06-10\",\"flag\":true,\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"labels\":{\"a\":1,\"b\":2},\"money\":{\"amount\":\"1.50\",\"currency\":\"EUR\"},\"nick\":\"anon\",\"price\":\"1.50\",\"ratio\":1.5,\"size\":\"9007199254740993\",\"slot\":{\"start\":\"2026-06-10T12:00:00Z\"},\"tags\":[\"a\",\"b\"],\"tier\":\"GOLD\",\"when\":\"2026-06-10T12:00:00Z\"}}",
+  "fingerprint": "dbf37bb83c9831d1"
  },
  {
   "name": "body_optional_null",
@@ -2454,7 +2575,6 @@
  {
   "name": "holder_id_sent",
   "endpoint": "held",
-  "note": "language.md 5.4 says a @readonly member of a request is ignored; the reference keeps it",
   "request": {
    "method": "PUT",
    "path": "/fp/holder",
@@ -2468,9 +2588,9 @@
     "id": "0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e"
    }
   },
-  "differs_from": "holder_base",
-  "hashed": "{\"body\":{\"id\":\"0b5c9c3e-7a2d-4c1b-9d3e-5f6a7b8c9d0e\",\"name\":\"n\",\"seats\":2,\"total\":4}}",
-  "fingerprint": "2afa248a9f0ac04a"
+  "same_as": "holder_base",
+  "hashed": "{\"body\":{\"name\":\"n\",\"seats\":2,\"total\":4}}",
+  "fingerprint": "5204aba1b53595b5"
  },
  {
   "name": "list_default",
@@ -2505,6 +2625,27 @@
     {
      "amount": "1",
      "currency": "EUR"
+    }
+   ]
+  },
+  "same_as": "list_default",
+  "hashed": "{\"body\":[{\"amount\":\"1\",\"currency\":\"EUR\"}]}",
+  "fingerprint": "9a1dd8f05a90a62b"
+ },
+ {
+  "name": "list_unknown_member",
+  "endpoint": "listed",
+  "request": {
+   "method": "PUT",
+   "path": "/fp/list",
+   "query": {},
+   "headers": {
+    "Idempotency-Key": "k"
+   },
+   "body": [
+    {
+     "amount": "1",
+     "x": 1
     }
    ]
   },

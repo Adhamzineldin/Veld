@@ -11,7 +11,7 @@
 //! and `tests/wire` already use, and `veld-codegen` depends on nothing but `veld-ir`, so this
 //! crate takes the one extra edge instead of keeping a second copy of the writer.
 
-mod canon;
+pub(crate) mod canon;
 mod consume;
 mod dead_letter;
 mod delivery;

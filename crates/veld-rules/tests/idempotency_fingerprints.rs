@@ -267,7 +267,7 @@ fn the_pairs_that_must_be_equal_are_equal_and_the_pairs_that_must_differ_differ(
             if equal { seen.0 += 1 } else { seen.1 += 1 }
         }
     }
-    assert!(seen.0 >= 20 && seen.1 >= 40, "{seen:?}");
+    assert!(seen.0 >= 30 && seen.1 >= 30, "{seen:?}");
 }
 
 #[test]

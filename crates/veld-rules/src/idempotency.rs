@@ -10,7 +10,7 @@ use std::fmt::Write as _;
 
 use serde_json::{Map, Value as Json};
 use sha2::{Digest, Sha256};
-use veld_ir::Endpoint;
+use veld_ir::{DeclId, DeclKind, Endpoint, Ir, Scalar, Type};
 
 /// The longest key a request may carry, in characters.
 pub const MAX_KEY_LEN: usize = 255;
@@ -93,7 +93,7 @@ pub fn is_valid_key(key: &str) -> bool {
 }
 
 /// The fingerprint of a request: the first 16 hex characters of the SHA-256 of the RFC 8785 JSON of
-/// the bound parameters in wire form, keyed by parameter name. The header of the key is not a
+/// the bound parameters in their canonical form ([`hashed_params`]), keyed by parameter name. The header of the key is not a
 /// parameter and is not part of it.
 #[must_use]
 pub fn fingerprint(params: &BTreeMap<String, Json>) -> String {
@@ -105,6 +105,87 @@ pub fn fingerprint(params: &BTreeMap<String, Json>) -> String {
         let _ = write!(out, "{byte:02x}");
     }
     out
+}
+
+/// The bound parameters as the fingerprint sees them (`spec/rules.md` section 11.10): what the
+/// server understands of the request. A member the model does not have and a `@readonly` member
+/// are dropped at any depth, a `long` is the canonical decimal string of its value, and a `uuid`
+/// and a `datetime` are in the canonical form of an event's `data` (`envelope::canon`).
+pub(crate) fn hashed_params(
+    ir: &Ir,
+    endpoint: &Endpoint,
+    params: &BTreeMap<String, Json>,
+) -> BTreeMap<String, Json> {
+    let mut out = params.clone();
+    for p in &endpoint.params {
+        if let Some(value) = out.get_mut(&p.name) {
+            prune(ir, &p.ty, value);
+            crate::envelope::canon::scalars(ir, &p.ty, value);
+        }
+    }
+    out
+}
+
+fn prune(ir: &Ir, ty: &Type, value: &mut Json) {
+    match ty {
+        Type::Scalar(Scalar::Long) => {
+            if let Some(n) = value.as_str().and_then(|s| s.parse::<i64>().ok()) {
+                *value = Json::String(n.to_string());
+            }
+        }
+        Type::Scalar(_) => {}
+        Type::List(t) => {
+            for item in value.as_array_mut().into_iter().flatten() {
+                prune(ir, t, item);
+            }
+        }
+        Type::Map(t) => {
+            for item in value
+                .as_object_mut()
+                .into_iter()
+                .flat_map(|m| m.values_mut())
+            {
+                prune(ir, t, item);
+            }
+        }
+        Type::Page(t) => {
+            if let Some(items) = value.get_mut("items") {
+                prune(ir, &Type::List(t.clone()), items);
+            }
+        }
+        Type::Decl(id) => prune_decl(ir, *id, value, None),
+    }
+}
+
+/// `keep` is a member to keep besides the fields: the discriminator of a union.
+fn prune_decl(ir: &Ir, id: DeclId, value: &mut Json, keep: Option<&str>) {
+    let Some(decl) = ir.decls.get(id.index()) else {
+        return;
+    };
+    match &decl.kind {
+        DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Event(_) => {
+            let Some(obj) = value.as_object_mut() else {
+                return;
+            };
+            let fields = decl.fields();
+            obj.retain(|k, _| {
+                Some(k.as_str()) == keep || fields.iter().any(|f| !f.readonly && &f.wire == k)
+            });
+            for f in fields.iter().filter(|f| !f.readonly) {
+                if let Some(child) = obj.get_mut(&f.wire) {
+                    prune(ir, &f.ty, child);
+                }
+            }
+        }
+        DeclKind::Union(u) => {
+            let label = value.get(&u.discriminator).and_then(Json::as_str);
+            if let Some(arm) = u.arms.iter().find(|a| Some(a.label.as_str()) == label) {
+                let (arm, disc) = (arm.decl, u.discriminator.clone());
+                prune_decl(ir, arm, value, Some(&disc));
+            }
+        }
+        DeclKind::Enum(_) | DeclKind::Const(_) => {}
+    }
 }
 
 /// The `message` of the issue at the header of the key when it is not a key.
