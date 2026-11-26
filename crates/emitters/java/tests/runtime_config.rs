@@ -367,7 +367,6 @@ fn fixtures() -> Vec<Fixture> {
         let getters = getters_of(ir, role, sel, target);
         Fixture {
             id,
-            package,
             class,
             files,
             getters,

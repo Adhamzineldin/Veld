@@ -310,9 +310,9 @@ fn write_factories(w: &mut CodeWriter, (class, map, exception): &(&str, &str, &s
     w.line(format!("return new {class}(CHECK.map(values));"));
     w.close();
     w.blank();
-    w.line(format!(
-        "/** Builds the runtime config from a nested value: the maps and strings a JSON or YAML parser gives (`services.iam.url` is `{{services: {{iam: {{url: ...}}}}}}`). */"
-    ));
+    w.line(
+        "/** Builds the runtime config from a nested value: the maps and strings a JSON or YAML parser gives (`services.iam.url` is `{services: {iam: {url: ...}}}`). */",
+    );
     w.open(format!("public static {class} fromValue(Object value)"));
     w.line(format!("return new {class}(CHECK.value(value));"));
     w.close();
