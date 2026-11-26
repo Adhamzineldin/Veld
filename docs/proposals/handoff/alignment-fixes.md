@@ -64,3 +64,26 @@ Found by comparing the three targets' reports for `@version` and `@idempotent` (
 
 ## All three, later
 - A derived field that can be absent in a request (it reaches a `@readonly` field) should be marked so in the type a handler receives. The compiler could say which fields those are (one more key next to `derived`), so that three generators do not each work it out.
+
+# Events phase E2 (compared 26 Nov; `spec/events.md` 10.1, 10.7 and 10.9 now say the rule)
+
+The RabbitMQ topology, the dead-letter copy, retry and the inbox agree in all three targets. The differences:
+
+## Rust
+- **The Kafka partitioner** (wire, cross-target): the adapter sets none, so librdkafka's default (`consistent_random`, CRC32) applies, while the Java client and kafkajs use murmur2. A Rust producer and a Node or Java producer then put one key into different partitions and per-key order is lost across producers. Set `partitioner=murmur2_random` on the producer (check the property name against the rdkafka version in use), say so in `spec/targets/rust.md` 13, and add the row to the Kafka broker program (a key published by the Rust producer lands in the partition the Java rule gives: compute the expected partition with murmur2 in the test).
+- **A revoked partition**: the adapter keeps delivering a record again and commits it after its partition was taken away. Abandon the delivery on revoke (a rebalance callback sets a flag that the delivery loop checks; no commit, no further redelivery).
+- `allow.auto.create.topics=false` is set on the producer, where librdkafka does not read it (it is a consumer property). Remove the claim from the adapter's comment and from `spec/targets/rust.md` 13.
+- **`publish` on RabbitMQ waits without limit** for the confirm: add `publish_timeout_ms` (30000 by default).
+- The test handler's event endpoint: `400` with `{ "error": … }` for a missing or empty `Veld-Test-Topic` and for a `Veld-Test-Deliveries` that is neither `1` nor `2` (today: a plain-text body, and the number is clamped).
+
+## Java
+- The test handler's event endpoint: the `400` body is `{ "error": … }` (today `{ "message": … }`).
+
+## Node
+- **A message whose value cannot be decoded** (the step after the shape check, `fromWire` in `runOnce`) is treated as a handler failure and retried. It is a rejection with the reason `shape` (`spec/events.md` 8, step 3), as in Java and Rust: decode before the handler path.
+- **`publish` on RabbitMQ waits without limit** for the confirm: add `publishTimeoutMs` (30000 by default).
+- The test handler's event endpoint: `400` with `{ "error": … }` also for an empty topic and for a `Veld-Test-Deliveries` that is neither `1` nor `2` (today anything but `"2"` means 1).
+- The `E0802` of `messaging` lacks the "invalid options for generator" prefix the other option errors have.
+
+## All three
+- The test programs that serve several services' test handlers at one address (`events_serve.ts`, `EventsServe.java`, the generated `delivery_serve`) each merge the answers in their own way: make each follow the one rule now in 10.9.
