@@ -78,6 +78,58 @@ impl Item {
             format!("{} {}", self.subject, self.detail)
         }
     }
+
+    /// What the finding says (`E0970`).
+    #[must_use]
+    pub fn finding_message(&self) -> String {
+        match self.kind {
+            QuestionKind::Invariants => format!(
+                "no value of `{}` can exist: its rules and constraints contradict each other",
+                self.subject
+            ),
+            QuestionKind::Require => format!(
+                "{} of `{}` can never pass, given the invariants of the parameters and the \
+                 `require` lines before it",
+                self.detail, self.subject
+            ),
+            QuestionKind::Policy => format!("the policy `{}` permits nobody", self.subject),
+            QuestionKind::Tightened => {
+                format!("{} of `{}` got tighter", self.detail, self.subject)
+            }
+        }
+    }
+
+    /// The `E0970` block of a finding: the message, where it is, and the rules of the
+    /// unsatisfiable core. `file` says how a file is shown.
+    #[must_use]
+    pub fn finding_text(&self, file: &dyn Fn(&Origin) -> String) -> String {
+        let mut out = format!(
+            "error[E0970]: {}\n --> {}:{}:{}\n",
+            self.finding_message(),
+            file(&self.origin),
+            self.origin.line,
+            self.origin.col
+        );
+        if let Outcome::Proved { core } = &self.outcome
+            && !core.is_empty()
+            && self.kind != QuestionKind::Policy
+        {
+            let parts: Vec<String> = core
+                .iter()
+                .map(
+                    |what| match self.core_origins.iter().find(|(w, _)| w == what) {
+                        Some((_, o)) => format!("{what} ({}:{})", file(o), o.line),
+                        None => what.clone(),
+                    },
+                )
+                .collect();
+            out.push_str(&format!(
+                "  = note: unsatisfiable core: {}\n",
+                parts.join(", ")
+            ));
+        }
+        out
+    }
 }
 
 /// How many of each result.
@@ -152,6 +204,48 @@ impl Report {
             ),
             None => format!("an SMT solver (seed {}, {secs}s per question)", self.seed),
         }
+    }
+
+    /// The `W0970` block that lists the questions that ended *unknown* or *unsupported*, or
+    /// `None` when there are none.
+    #[must_use]
+    pub fn undecided_text(&self) -> Option<String> {
+        let items: Vec<&Item> = self.undecided().collect();
+        if items.is_empty() {
+            return None;
+        }
+        let s = if items.len() == 1 { "" } else { "s" };
+        let mut out = format!(
+            "warning[W0970]: {} question{s} ended unknown or unsupported\n",
+            items.len()
+        );
+        for i in items {
+            let (word, why) = match &i.outcome {
+                Outcome::Unknown { reason } => ("unknown", reason),
+                Outcome::Unsupported { reason } => ("unsupported", reason),
+                Outcome::Proved { .. } | Outcome::Counterexample { .. } => continue,
+            };
+            out.push_str(&format!("  = note: {}: {word}, {why}\n", i.name()));
+        }
+        Some(out)
+    }
+
+    /// The lines that close the report: the solver, the counts, the open parts, and what the
+    /// answers are about.
+    #[must_use]
+    pub fn closing_lines(&self) -> Vec<String> {
+        let mut out = vec![format!("prove: {}", self.solver_line())];
+        out.extend(
+            self.summary_lines()
+                .into_iter()
+                .map(|l| format!("prove: {l}")),
+        );
+        out.push(
+            "prove: the answers are about the rules of the contract, over the fragment of \
+             spec/rules.md section 18.3; they say nothing about handlers, data or deployed code"
+                .to_owned(),
+        );
+        out
     }
 
     /// The lines of the summary: the counts and the open parts that were used.

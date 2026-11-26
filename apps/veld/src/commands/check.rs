@@ -67,15 +67,30 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &CheckArgs) -> Result<Exit> {
         }
     };
     let example_errors = run_examples(ui, &project, &ir, scope.as_ref());
+    let prove_errors = match args.prove.prove {
+        true => super::prove::check(ui, &project, &ir, scope.as_ref(), &args.prove),
+        false => 0,
+    };
     summarize(
         ui,
         &ir,
         counts,
         &issues,
-        example_errors,
+        Failures {
+            examples: example_errors,
+            proofs: prove_errors,
+        },
         args.strict,
         started,
     )
+}
+
+/// What fails a check besides compiler errors and lint errors.
+struct Failures {
+    /// `E0953`.
+    examples: usize,
+    /// `E0970` of `--prove`. `W0970` (unknown or unsupported) is never counted here.
+    proofs: usize,
 }
 
 fn deps_format(f: GraphFormat) -> DepsFormat {
@@ -166,20 +181,30 @@ fn summarize(
     ir: &veld_ir::Ir,
     counts: Counts,
     issues: &[LintIssue],
-    example_errors: usize,
+    failures: Failures,
     strict: bool,
     started: Instant,
 ) -> Result<Exit> {
+    let Failures {
+        examples: example_errors,
+        proofs: prove_errors,
+    } = failures;
     let lint_errors = issues
         .iter()
         .filter(|i| i.level == LintLevel::Error)
         .count();
     let lint_warns = issues.len() - lint_errors;
-    let failed = lint_errors > 0 || example_errors > 0 || (strict && counts.warnings > 0);
+    let failed = lint_errors > 0
+        || example_errors > 0
+        || prove_errors > 0
+        || (strict && counts.warnings > 0);
     if failed {
         let mut parts = Vec::new();
         if example_errors > 0 {
             parts.push(pipeline::plural(example_errors, "example error"));
+        }
+        if prove_errors > 0 {
+            parts.push(pipeline::plural(prove_errors, "proof finding"));
         }
         if lint_errors > 0 {
             parts.push(pipeline::plural(lint_errors, "lint error"));

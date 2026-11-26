@@ -86,7 +86,7 @@ fn invariant_question<'a>(ir: &'a Ir, decl: &'a Decl) -> Option<Question<'a>> {
     let encoded = encode_rules(Problem::new(ir, roots), &rules, "");
     Some(Question {
         kind: QuestionKind::Invariants,
-        subject: decl.qualified.clone(),
+        subject: decl.name.clone(),
         detail: String::new(),
         origin: decl.origin.clone(),
         encoded,

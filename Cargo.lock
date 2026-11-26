@@ -1539,6 +1539,7 @@ dependencies = [
  "veld-lsp",
  "veld-plugin-host",
  "veld-project",
+ "veld-prove",
  "veld-registry-client",
  "veld-rules",
  "veld-test-support",

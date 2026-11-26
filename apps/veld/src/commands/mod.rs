@@ -12,6 +12,7 @@ mod hooks;
 mod init;
 mod lsp;
 mod plugin;
+mod prove;
 mod registry;
 mod setup;
 mod test;

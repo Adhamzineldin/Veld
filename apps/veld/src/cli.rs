@@ -159,6 +159,23 @@ pub struct CheckArgs {
     /// Print the service dependency graph instead of the summary
     #[arg(long, value_name = "FORMAT", num_args = 0..=1, default_missing_value = "text", value_enum)]
     pub graph: Option<GraphFormat>,
+    #[command(flatten)]
+    pub prove: ProveArgs,
+}
+
+/// The options of `--prove`, shared by `veld check` and `veld diff` (`spec/rules.md` section 18).
+#[derive(Debug, Args, Default, Clone)]
+pub struct ProveArgs {
+    /// Ask an external SMT solver about the rules: for `check`, whether they contradict each other;
+    /// for `diff`, whether a changed rule got tighter
+    #[arg(long)]
+    pub prove: bool,
+    /// With --prove: the solver program (default: VELD_SOLVER, then z3 and cvc5 on PATH)
+    #[arg(long, value_name = "PATH", requires = "prove")]
+    pub solver: Option<PathBuf>,
+    /// With --prove: the time limit of each question, in seconds (default: 5)
+    #[arg(long, value_name = "SECONDS", requires = "prove")]
+    pub prove_timeout: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -360,6 +377,8 @@ pub struct DiffArgs {
     /// Exit 1 if any change is breaking
     #[arg(long)]
     pub strict: bool,
+    #[command(flatten)]
+    pub prove: ProveArgs,
 }
 
 /// `veld test`.

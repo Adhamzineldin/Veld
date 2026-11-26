@@ -32,9 +32,16 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &DiffArgs) -> Result<Exit> {
             format!("`{}`", pipeline::LOCK_FILE),
         ),
     };
-    let changes = veld_tools::diff(&old, &done.ir);
+    let mut changes = veld_tools::diff(&old, &done.ir);
+    let report = match args.prove.prove {
+        true => super::prove::diff(ui, &old, &done.ir, &mut changes, &args.prove),
+        false => None,
+    };
     print_changes(ui, &changes, &label);
     print_owners(ui, &done.project, &changes);
+    if let Some(report) = &report {
+        super::prove::print_report(ui, report);
+    }
     let breaking = veld_tools::has_breaking(&changes);
     Ok(if breaking && args.strict {
         Exit::User
