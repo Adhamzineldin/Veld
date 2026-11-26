@@ -11,6 +11,7 @@ use veld_codegen::runtime_config::{
     not_a_setting, not_a_url, not_an_object, not_in_list,
 };
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
+use veld_ir::ServiceId;
 
 use crate::tree::{FileCtx, Tree};
 use crate::util::{add_file, is_ident, prop_key, ts_str};
@@ -30,8 +31,8 @@ pub struct ClientEntry {
     pub class: String,
     /// Root-relative module that exports the class.
     pub module: String,
-    /// The workspace service the client calls (its package): `services.<package>.url`.
-    pub package: String,
+    /// The service the client calls: the URL is the `services.<service>.url` setting that lists it.
+    pub service: ServiceId,
 }
 
 /// The settings as nested members, by key.
@@ -134,9 +135,7 @@ fn write_types(w: &mut CodeWriter, model: &RuntimeModel, tree_map: &BTreeMap<Str
     }
     w.close();
     w.blank();
-    w.line(format!(
-        "/** `fromEnv`: the name of the environment variable that holds each path. A name is required for every required path. */"
-    ));
+    w.line("/** `fromEnv`: the name of the environment variable that holds each path. A name is required for every required path. */");
     w.open(format!("export interface {name}Env"));
     for s in model.settings() {
         let opt = if s.required { "" } else { "?" };
@@ -213,13 +212,22 @@ fn write_api(w: &mut CodeWriter, model: &RuntimeModel) {
     w.close();
 }
 
-/// `services.iam.url` of a checked config: `checked.services.iam.url`.
-fn url_access(package: &str) -> String {
-    if is_ident(package) {
-        format!("checked.services.{package}.url")
-    } else {
-        format!("checked.services[{}].url", ts_str(package))
+/// The URL of a checked config for `service`, from the setting that lists it (`None`: the
+/// model has no URL for the service).
+fn url_access(model: &RuntimeModel, service: ServiceId) -> Option<String> {
+    let setting = model
+        .urls()
+        .find(|s| s.service.as_ref().is_some_and(|r| r.ids.contains(&service)))?;
+    let mut out = "config".to_string();
+    for key in &setting.segments {
+        if is_ident(key) {
+            out.push('.');
+            out.push_str(key);
+        } else {
+            out.push_str(&format!("[{}]", ts_str(key)));
+        }
     }
+    Some(out)
 }
 
 fn write_clients(
@@ -245,14 +253,16 @@ fn write_clients(
     w.open(format!(
         "export function createClients(runtime: {name}, options: Omit<{opts}, 'baseUrl'> = {{}}): Clients"
     ));
-    w.line("const checked = checkRuntime(runtime);");
+    w.line("const config = checkRuntime(runtime);");
     w.open_with("return", " {");
     for e in list {
+        let Some(url) = url_access(model, e.service) else {
+            continue;
+        };
         w.line(format!(
-            "{}: new {}({{ ...options, baseUrl: {} }}),",
+            "{}: new {}({{ ...options, baseUrl: {url} }}),",
             prop_key(&e.key),
-            e.class,
-            url_access(&e.package)
+            e.class
         ));
     }
     w.close_with("};");

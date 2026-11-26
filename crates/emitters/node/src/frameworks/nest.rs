@@ -150,7 +150,10 @@ fn runtime_pieces(svc: &ServiceModel, path: &str, runtime: Option<&RuntimeRef>) 
         option: format!(
             "  /** The settings of the deployment (`services.<service>.url`, `rules.output`). */\n  runtime{optional}: {ty};\n"
         ),
-        provider: format!("        {{ provide: {snake}_RUNTIME, useValue: options.runtime }},\n"),
+        provider: format!(
+            "        {{ provide: {snake}_RUNTIME, useValue: options.runtime{} }},\n",
+            if rt.required { "" } else { " ?? {}" }
+        ),
         param: format!(", runtime{optional}: {ty}"),
         arg: ", runtime".to_string(),
         inject: format!(", {snake}_RUNTIME"),

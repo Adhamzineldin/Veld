@@ -452,7 +452,11 @@ fn write_factory(
     w.open(format!("export function create{name}Handler(impl: {name}Service, hooks: {name}Hooks{default}{runtime_param}): {handler}"));
     if runtime.is_some() {
         fc.import("runtime", "checkRuntime", true);
-        w.line("const config = checkRuntime(runtime);");
+        if output_is_a_setting(runtime) {
+            w.line("const config = checkRuntime(runtime);");
+        } else {
+            w.line("checkRuntime(runtime);");
+        }
     }
     if ruled {
         let loaders = if svc.facts.is_empty() {

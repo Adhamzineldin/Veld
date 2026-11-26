@@ -119,6 +119,8 @@ impl Generator for Node {
         if let Some(model) = &runtime_model {
             // `rules.output` is typed with the runtime's output mode.
             gates.rules |= model.setting(RULES_OUTPUT).is_some();
+            // The runtime is the same for the server and its clients (`ClientCore`).
+            gates.runtime_config = true;
             modules.push(runtime_ts::emit(&mut files, &tree, model, &entries)?);
         }
         runtime::emit_gated(&mut files, gates)?;
@@ -190,17 +192,18 @@ fn emit_consumed(
         lines.push(format!("export * as {ns} from './clients/{dir}/index';"));
     }
     lines.sort();
-    qualify_duplicates(&mut entries);
+    qualify_duplicates(req.ir, &mut entries);
     Ok((lines, gates, entries))
 }
 
 /// Two consumed services of one name (in two packages) get their package in the key, as the
 /// clients of a client target do.
-fn qualify_duplicates(entries: &mut [ClientEntry]) {
+fn qualify_duplicates(ir: &veld_ir::Ir, entries: &mut [ClientEntry]) {
     let keys: Vec<String> = entries.iter().map(|e| e.key.clone()).collect();
     for e in entries.iter_mut() {
         if keys.iter().filter(|k| **k == e.key).count() > 1 {
-            let pkg = e.package.trim_start_matches('@').replace('/', "-");
+            let pkg = ir.package(ir.service(e.service).package).name.clone();
+            let pkg = pkg.trim_start_matches('@').replace('/', "-");
             e.key = format!("{}{}", naming::camel(&pkg), naming::pascal(&e.key));
         }
     }

@@ -34,7 +34,7 @@ pub fn entries(tree: &Tree<'_>) -> Vec<ClientEntry> {
             key,
             class: format!("{}Client", naming::pascal(&svc.name)),
             module: tree.client_module(svc.package),
-            package: tree.ir.package(svc.package).name.clone(),
+            service: *sid,
         });
     }
     out
