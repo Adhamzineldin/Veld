@@ -82,6 +82,7 @@ impl Generator for Node {
             .with(veld_ir::Feature::Slo)
             .with(veld_ir::Feature::EventsDelivery)
             .with(veld_ir::Feature::EventsOutbox)
+            .with(veld_ir::Feature::Visibility)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {

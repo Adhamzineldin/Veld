@@ -164,12 +164,13 @@ fn node_and_typescript_generate_deadlines_and_service_levels() {
     veld_emit_conformance::check_slo_is_generated(&TypeScript).unwrap();
 }
 
-/// `visibility` is opt-in (`spec/platform.md` section 2): the Node server refuses a `@visible`
-/// field; the TypeScript client has nothing to hide and is not asked.
+/// `visibility` is opt-in (`spec/platform.md` section 2): the Node server declares it and
+/// generates a `@visible` field; the TypeScript client has nothing to hide, is not asked, and
+/// still generates.
 #[test]
-fn node_and_typescript_refuse_visibility_as_a_server_only() {
-    veld_emit_conformance::check_visibility_is_refused(&Node).unwrap();
-    veld_emit_conformance::check_visibility_is_refused(&TypeScript).unwrap();
+fn node_generates_visibility_and_typescript_is_not_asked() {
+    veld_emit_conformance::check_visibility_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_visibility_is_generated(&TypeScript).unwrap();
 }
 
 /// `tenancy` is opt-in (`spec/platform.md` section 3): the Node server refuses a `@tenant` field,
