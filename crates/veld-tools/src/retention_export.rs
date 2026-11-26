@@ -87,9 +87,8 @@ fn model_section(out: &mut String, ir: &Ir, d: &Decl, carriers: &[Carrier]) {
                 if let Some(ep) = s.endpoints.get(*endpoint) {
                     let _ = writeln!(
                         out,
-                        "  - `{} {}{}` (`{}.{}`)",
+                        "  - `{} {}` (`{}.{}`)",
                         ep.method.as_str(),
-                        s.prefix,
                         ep.path,
                         s.name,
                         ep.name
