@@ -1,0 +1,51 @@
+// `ifMatch`, `any`, `stored`, `other`, `running` and `key` are words only inside an example
+// (spec/rules.md section 2.2): everywhere else they are ordinary names, and an endpoint of that
+// name is still called with `name(`.
+
+model Row {
+  ifMatch: string
+  any: int
+  stored: bool
+  other?: string
+  running?: string
+  key: uuid
+}
+
+service Names at "/names" {
+  get "/ifMatch" ifMatch() -> Row
+  get "/any" any() -> Row
+  @idempotent
+  get "/stored" stored() -> Row
+  @idempotent
+  get "/other" other() -> Row
+  @idempotent
+  get "/running" running() -> Row
+  get "/key" key() -> Row
+}
+
+example "ifMatch is an endpoint" {
+  ifMatch() -> ok
+}
+
+example "stored is an endpoint after a key" {
+  key "k"
+  stored() -> ok
+}
+
+example "other is an endpoint after a key" {
+  key "k"
+  other() -> ok
+}
+
+example "running is an endpoint after a key" {
+  key "k"
+  running() -> ok
+}
+
+example "key is an endpoint" {
+  key() -> ok
+}
+
+example "any is an endpoint" {
+  any() -> ok
+}

@@ -1,0 +1,58 @@
+// `@idempotent` (spec/rules.md sections 11.8 and 11.9) in every form, and the `key` line of an
+// example in every state of the store. Conflict is the prelude's own error.
+
+model Booking {
+  id: uuid
+  guests: int
+}
+
+error RoomFull 409 { capacity: int }
+
+service Bookings at "/bookings" {
+  @idempotent
+  post "/" book(body: Booking) -> 201 Booking | RoomFull
+
+  @idempotent(required: true)
+  post "/paid" pay(body: Booking) -> 201 Booking
+
+  @idempotent(header: "X-Request-Id", required: false)
+  put "/{id}" replace(id: uuid, body: Booking) -> Booking
+
+  @auth(bearer)
+  @idempotent(required: true, header: "Idempotency-Token")
+  post "/mine" bookMine(body: Booking) -> 201 Booking
+}
+
+example "a key nobody used runs the request" {
+  key "k-1"
+  book(body: { guests: 2 }) returns { guests: 2 } -> ok
+}
+
+example "a stored error is sent again" {
+  key "k-2" stored RoomFull { capacity: 2 }
+  book(body: { guests: 9 }) -> RoomFull { capacity: 2 }
+}
+
+example "a stored success is sent again" {
+  key "k-3" stored ok { guests: 2 }
+  book(body: { guests: 2 }) -> ok { guests: 2 }
+}
+
+example "the same key with other parameters is a conflict" {
+  key "k-4" other
+  book(body: { guests: 3 }) -> Conflict
+}
+
+example "a key whose first request is still running is a conflict" {
+  key "k-5" running
+  book(body: { guests: 2 }) -> Conflict
+}
+
+example "a required key that is missing is refused" {
+  pay(body: { guests: 2 }) -> ValidationError
+}
+
+example "a required key that is there runs the request" {
+  key "k-6"
+  pay(body: { guests: 2 }) returns { guests: 2 } -> ok
+}

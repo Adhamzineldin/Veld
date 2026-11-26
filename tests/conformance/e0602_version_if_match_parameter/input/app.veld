@@ -1,0 +1,14 @@
+// A guard reads `If-Match` itself (spec/rules.md section 11.9), so no parameter may be bound
+// to that header on the same endpoint.
+
+model Room {
+  id: uuid
+  @version
+  revision: long
+}
+
+service Rooms at "/rooms" {
+  put "/{id}" save(id: uuid, @header("If-Match") tag: string) -> Room {
+    fact room: Room = id
+  }
+}
