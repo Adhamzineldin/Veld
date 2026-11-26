@@ -528,7 +528,7 @@ fn write_subscription_list(
             java_str(&sub.group)
         ));
         w.indent().indent();
-        let tail = delivery_args(&events, channel);
+        let tail = delivery_args(events, channel);
         for (hi, h) in sub.handlers.iter().enumerate() {
             let def = ids
                 .iter()
