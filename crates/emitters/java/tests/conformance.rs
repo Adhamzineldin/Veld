@@ -119,11 +119,11 @@ fn java_server_generates_events_and_the_client_ignores_them() {
     veld_emit_conformance::check_events_are_ignored_by_clients(&Java).unwrap();
 }
 
-/// `@retry`, `@deadLetter` and `@ordered` (`spec/events.md` section 10.8): the Java server has not
-/// built them and refuses a service that uses one with `E0801`; the client keeps its bytes.
+/// `@retry`, `@deadLetter` and `@ordered` (`spec/events.md` section 10.8): the Java server declares
+/// `events_delivery` and generates a service that uses one; the client keeps its bytes.
 #[test]
-fn java_server_refuses_channel_annotations_and_the_client_ignores_them() {
-    veld_emit_conformance::check_events_delivery_is_refused(&Java).unwrap();
+fn java_server_generates_channel_annotations_and_the_client_ignores_them() {
+    veld_emit_conformance::check_events_delivery_is_generated(&Java).unwrap();
     veld_emit_conformance::check_events_delivery_is_ignored_by_clients(&Java).unwrap();
 }
 
