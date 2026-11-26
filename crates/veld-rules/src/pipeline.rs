@@ -22,7 +22,7 @@ use crate::eval::{Env, SavedOld, eval};
 use crate::helpers::num::EvalError;
 use crate::idempotency::{
     IdempotencyKey, OTHER_MESSAGE, RUNNING_MESSAGE, StoreEffect, StoreState, StoredAnswer,
-    fingerprint, is_valid_key,
+    fingerprint, hashed_params, is_valid_key,
 };
 use crate::machine;
 use crate::old::save_old;
@@ -367,7 +367,7 @@ impl<'a> Pipeline<'a> {
                 .endpoint
                 .idempotency
                 .as_ref()
-                .map(|_| fingerprint(&params)),
+                .map(|_| fingerprint(&hashed_params(self.ir, self.endpoint, &params))),
         };
         match self.lookup(request)? {
             Lookup::NewKey => stage.fresh = true,

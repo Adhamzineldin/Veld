@@ -1,0 +1,126 @@
+// The contract of the fingerprint goldens (spec/rules.md section 11.10). Compiled as the file
+// `t.veld` of the package `bookings`. Every endpoint is @idempotent and answers 204: the goldens
+// look at the fingerprint of the request, not at the answer.
+
+enum Tier { basic, gold = "GOLD" }
+
+model Slot {
+  start: datetime
+  end?: datetime
+}
+
+model Money {
+  amount: decimal
+  currency: string = "EUR"
+}
+
+model Filter {
+  limit: int = 10
+  q?: string
+  tier?: Tier
+}
+
+model Holder {
+  id: uuid @readonly
+  name: string
+  seats: int
+  total: int = seats * 2
+}
+
+model Everything {
+  id: uuid
+  when: datetime
+  day: date
+  clock: time
+  price: decimal
+  size: long
+  ratio: float
+  flag: bool
+  blob: bytes
+  tier: Tier
+  note?: string
+  nick: string = "anon"
+  tags: string[]
+  labels: Map<string, int>
+  slot: Slot
+  money: Money
+  any?: json
+  maybe?: Slot
+}
+
+service Fingerprints at "/fp" {
+  @idempotent
+  put "/uuid/{id}" byUuid(id: uuid) -> 204
+
+  @idempotent
+  put "/int/{n}" byInt(n: int) -> 204
+
+  @idempotent
+  put "/long/{n}" byLong(n: long) -> 204
+
+  @idempotent
+  put "/float/{x}" byFloat(x: float) -> 204
+
+  @idempotent
+  put "/bool/{b}" byBool(b: bool) -> 204
+
+  @idempotent
+  put "/date/{d}" byDate(d: date) -> 204
+
+  @idempotent
+  put "/datetime/{when}" byDatetime(when: datetime) -> 204
+
+  @idempotent
+  put "/decimal/{amount}" byDecimal(amount: decimal) -> 204
+
+  @idempotent
+  put "/tier/{tier}" byTier(tier: Tier) -> 204
+
+  @idempotent
+  put "/text/{s}" byText(s: string) -> 204
+
+  @idempotent
+  put "/query" queried(
+    @query n?: int,
+    @query l?: long,
+    @query x?: float,
+    @query b?: bool,
+    @query d?: date,
+    @query t?: time,
+    @query when?: datetime,
+    @query u?: uuid,
+    @query amount?: decimal,
+    @query s?: string,
+    @query ids?: int[]
+  ) -> 204
+
+  @idempotent
+  put "/filter" filtered(query: Filter) -> 204
+
+  @idempotent
+  put "/header" headed(
+    @header("X-Tenant") tenant: string,
+    @header("X-Count") count?: int,
+    @header("X-Ref") ref?: uuid
+  ) -> 204
+
+  @idempotent
+  put "/body" posted(body: Everything) -> 204
+
+  @idempotent
+  put "/holder" held(body: Holder) -> 204
+
+  @idempotent
+  put "/mixed/{id}" mixed(
+    id: uuid,
+    @query dry?: bool,
+    @header("X-Tenant") tenant: string,
+    body: Slot
+  ) -> 204
+
+  @idempotent
+  put "/list" listed(body: Money[]) -> 204
+
+  @idempotent
+  put "/map" mapped(body: Map<string, Money>) -> 204
+}
