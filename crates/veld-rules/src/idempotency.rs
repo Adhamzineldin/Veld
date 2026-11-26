@@ -139,6 +139,15 @@ mod tests {
         assert_eq!(fingerprint(&p).len(), 16);
     }
 
+    /// Goldens with real values: `sha256` of the canonical text, written down by hand.
+    #[test]
+    fn the_fingerprint_has_goldens() {
+        let two = params(&json!({ "body": { "guests": 2 } }));
+        assert_eq!(fingerprint(&two), "74ff6d8fbb076cfc");
+        let three = params(&json!({ "body": { "guests": 3 } }));
+        assert_eq!(fingerprint(&three), "19b1b33ecd669a6f");
+    }
+
     #[test]
     fn the_fingerprint_follows_the_parameters_and_nothing_else() {
         let a = fingerprint(&params(&json!({ "body": { "guests": 2 } })));

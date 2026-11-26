@@ -21,7 +21,7 @@ use crate::eval::{Env, SavedOld, eval};
 use crate::helpers::num::EvalError;
 use crate::idempotency::{
     IdempotencyKey, OTHER_MESSAGE, RUNNING_MESSAGE, StoreEffect, StoreState, StoredAnswer,
-    is_valid_key,
+    fingerprint, is_valid_key,
 };
 use crate::machine;
 use crate::old::save_old;
@@ -116,6 +116,10 @@ pub struct Reported {
     pub body: Option<Json>,
     /// The `ETag` of a success whose type is a model with a `@version` field.
     pub etag: Option<String>,
+    /// The fingerprint of the request: the bound parameters after step 5, with their defaults
+    /// applied and an optional parameter that was not sent left out. Only for an `@idempotent`
+    /// endpoint whose request passed step 5.
+    pub fingerprint: Option<String>,
 }
 
 /// Why the pipeline could not give an outcome: the input is not what the IR describes.
@@ -179,6 +183,14 @@ impl After {
     }
 }
 
+/// What step 5 and the lookup learned about a request that goes on to be stored.
+#[derive(Default)]
+struct Stage {
+    /// The key is new: the answer is stored when the request ends.
+    fresh: bool,
+    fingerprint: Option<String>,
+}
+
 /// What the store says about the key of a request (`spec/rules.md` section 11.9).
 enum Lookup {
     /// The endpoint is not `@idempotent`, or the request has no key.
@@ -227,7 +239,8 @@ impl<'a> Pipeline<'a> {
     /// [`RunError`] when the parameters, facts or result do not have the shape the IR says.
     pub fn run_reported(&self, request: &Request, mode: OutputMode) -> Result<Reported, RunError> {
         let mut audited = Vec::new();
-        let (before, fresh) = self.before_full(request, &mut audited)?;
+        let (before, stage) = self.before_full(request, &mut audited)?;
+        let fresh = stage.fresh;
         let mut reported = Reported {
             outcome: Outcome::Passes,
             audited: Vec::new(),
@@ -237,6 +250,7 @@ impl<'a> Pipeline<'a> {
             checked_version: None,
             body: None,
             etag: None,
+            fingerprint: stage.fingerprint,
         };
         match before {
             Before::Rejected(answer) => reported.outcome = Outcome::Error(answer),
@@ -335,19 +349,23 @@ impl<'a> Pipeline<'a> {
         &self,
         request: &Request,
         audited: &mut Vec<Violation>,
-    ) -> Result<(Before<'a>, bool), RunError> {
+    ) -> Result<(Before<'a>, Stage), RunError> {
         let params = match self.bind(request, audited)? {
             ControlFlow::Continue(params) => params,
-            ControlFlow::Break(answer) => return Ok((Before::Rejected(answer), false)),
+            ControlFlow::Break(answer) => return Ok((Before::Rejected(answer), Stage::default())),
         };
-        let fresh = match self.lookup(request)? {
-            Lookup::NewKey => true,
-            Lookup::NoKey => false,
-            Lookup::Replay(stored) => return Ok((Before::Replayed(stored), false)),
-            Lookup::Conflict(answer) => return Ok((Before::Rejected(answer), false)),
+        let mut stage = Stage {
+            fresh: false,
+            fingerprint: self.endpoint.idempotency.as_ref().map(|_| fingerprint(&params)),
         };
+        match self.lookup(request)? {
+            Lookup::NewKey => stage.fresh = true,
+            Lookup::NoKey => {}
+            Lookup::Replay(stored) => return Ok((Before::Replayed(stored), stage)),
+            Lookup::Conflict(answer) => return Ok((Before::Rejected(answer), stage)),
+        }
         let before = self.prepare(request, params, audited)?;
-        Ok((before, fresh))
+        Ok((before, stage))
     }
 
     /// Step 6, from the facts on.
@@ -385,6 +403,12 @@ impl<'a> Pipeline<'a> {
             .map(|e| &e.expr)
             .collect();
         let old = save_old(&env, &ensures)?;
+        let compared = self
+            .endpoint
+            .rules
+            .version
+            .as_ref()
+            .is_some_and(|v| env.facts.contains_key(&v.fact));
         Ok(Before::Ready(Prepared {
             pipeline: *self,
             params: env.params,
@@ -392,7 +416,7 @@ impl<'a> Pipeline<'a> {
             principal: request.principal.clone(),
             old,
             checked_version: match sent {
-                Some(IfMatch::Version(n)) if self.endpoint.rules.version.is_some() => Some(n),
+                Some(IfMatch::Version(n)) if compared => Some(n),
                 Some(IfMatch::Version(_) | IfMatch::Any) | None => None,
             },
         }))
