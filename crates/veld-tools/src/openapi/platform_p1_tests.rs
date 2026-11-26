@@ -38,3 +38,23 @@ fn a_contract_without_visibility_exports_no_extension() {
     let plain = VISIBLE.replace(" @visible(when: user.id == guestId)", "");
     assert!(!doc(&plain).to_string().contains("x-veld-visible"));
 }
+
+const TENANT: &str = "model User { id: uuid\n tenantId?: uuid @tenant }\nprincipal User\n\
+model Booking { id: uuid\n tenantId: uuid @tenant\n title: string }\n\
+@auth(bearer)\nservice S at \"/s\" { get \"/\" f() -> Booking[] }\n";
+
+#[test]
+fn a_tenant_field_is_read_only_and_carries_x_veld_tenant() {
+    let d = doc(TENANT);
+    let props = &d["components"]["schemas"]["app.Booking"]["properties"];
+    assert_eq!(props["tenantId"]["x-veld-tenant"], json!(true));
+    assert_eq!(props["tenantId"]["readOnly"], json!(true));
+    assert!(props["title"].get("x-veld-tenant").is_none(), "{props}");
+    assert!(props["title"].get("readOnly").is_none(), "{props}");
+}
+
+#[test]
+fn a_contract_without_a_tenant_exports_no_extension() {
+    let plain = TENANT.replace(" @tenant", "");
+    assert!(!doc(&plain).to_string().contains("x-veld-tenant"));
+}

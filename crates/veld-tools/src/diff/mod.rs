@@ -23,6 +23,7 @@ mod retention;
 mod rules;
 mod saga;
 mod service_levels;
+mod tenancy;
 mod usage;
 mod visibility;
 
@@ -149,6 +150,9 @@ pub enum ChangeKind {
     VisibleAdded,
     VisibleChanged,
     VisibleRemoved,
+    TenantAdded,
+    TenantChanged,
+    TenantRemoved,
 }
 
 /// One difference between the old and the new contract.
@@ -349,6 +353,7 @@ fn diff_plain(old: &Ir, new: &Ir) -> Vec<Change> {
     data_marks::diff_data_marks(&ctx, &mut out);
     retention::diff_retention(&ctx, &mut out);
     visibility::diff_visibility(&ctx, &mut out);
+    tenancy::diff_tenancy(&ctx, &mut out);
     rules::diff_decl_rules(&ctx, &usage, &mut out);
     endpoints::diff_endpoints(&ctx, &mut out);
     events::diff_events(&ctx, &mut out);
@@ -380,6 +385,8 @@ mod rule_tests;
 mod saga_tests;
 #[cfg(test)]
 mod service_levels_tests;
+#[cfg(test)]
+mod tenancy_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

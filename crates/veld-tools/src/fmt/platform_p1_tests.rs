@@ -46,3 +46,18 @@ fn when_and_visible_stay_names_where_they_are_names() {
         "{out}"
     );
 }
+
+#[test]
+fn tenant_stays_on_its_field_in_one_line() {
+    let out = stable(
+        "model Booking {\n  id: uuid @readonly\n  tenantId:uuid   @tenant\n  @tenant  other: string\n}",
+    );
+    assert!(out.contains("  tenantId: uuid @tenant\n"), "{out}");
+    assert!(out.contains("  other: string @tenant\n"), "{out}");
+}
+
+#[test]
+fn tenant_stays_a_name_where_it_is_a_name() {
+    let out = stable("model M {\n  tenant: string\n}");
+    assert!(out.contains("  tenant: string\n"), "{out}");
+}

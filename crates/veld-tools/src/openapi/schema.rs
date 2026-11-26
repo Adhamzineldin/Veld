@@ -164,7 +164,7 @@ pub(super) fn field_schema(ir: &Ir, f: &Field) -> Value {
         if f.deprecated.is_some() {
             m.insert("deprecated".into(), Value::Bool(true));
         }
-        if f.readonly || f.derived.is_some() {
+        if f.server_set() || f.derived.is_some() {
             m.insert("readOnly".into(), Value::Bool(true));
         }
         if let Some(e) = &f.derived {
@@ -181,6 +181,10 @@ pub(super) fn field_schema(ir: &Ir, f: &Field) -> Value {
         }
         if f.secret {
             m.insert("x-veld-secret".into(), Value::Bool(true));
+        }
+        // `spec/platform.md` section 3: the server sets the tenant; a request never carries it.
+        if f.tenant {
+            m.insert("x-veld-tenant".into(), Value::Bool(true));
         }
         // `spec/platform.md` section 2: the field may be left out of a response for some callers.
         if f.visible.is_some() {
