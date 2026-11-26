@@ -131,6 +131,15 @@ Example       += { "if_match": "any" | { "version": "3" },
 
 A service uses the feature `rules_version` when an endpoint has a guard **or** answers with a model that has a `version` field (the `ETag`), and `idempotency` when an endpoint has `idempotency`. Both are opt-in, like `rules_rollout`: `Capabilities::all_except` does not hand them out and a generator adds them with `Capabilities::with` once it implements them; until then it reports `E0801` at the first use (the fact of a guard, the endpoint that only owes an `ETag`, the `@idempotent` line). A guard is not a statement: an endpoint that has only a guard and no other statement does not use `rules_endpoint` on that account (a guard needs a fact, so it always has one).
 
+### Platform P2 (`spec/platform.md` sections 10 to 13)
+
+```jsonc
+Flow               += { "after_ms": "86400000" }            // a timed edge: milliseconds as text, omitted when the edge is not timed
+EndpointTransition += { "since": [ Step ] }                  // the datetime field below the fact; omitted when the transition is not timed
+```
+
+An enum with a flow that has `after_ms`, or an endpoint whose `transition` has `since`, uses the feature `rules_timed`. It is opt-in, like `rules_version`: a generator that does not declare it reports `E0801` at the first timed edge or transition. A contract without `after` and `since` has the IR it had before.
+
 ## 4. Capabilities
 
 The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`, `rules_rollout`, `rules_version`, `idempotency`, `events`, …). A feature that changes what a rule means or what a request does (`rules_rollout`, `rules_version`, `idempotency`) is opt-in: `Capabilities::all_except` does not hand it out, and a generator adds it with `Capabilities::with` once it implements it. Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.

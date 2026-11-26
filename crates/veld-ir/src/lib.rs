@@ -264,6 +264,9 @@ impl Ir {
                 if e.is_state_machine() {
                     f.insert(Feature::RulesTransitions);
                 }
+                if e.has_timed_edge() {
+                    f.insert(Feature::RulesTimed);
+                }
             }
         }
     }
@@ -317,6 +320,9 @@ impl Ir {
                 }
                 if ep.rules.transition.is_some() {
                     f.insert(Feature::RulesTransitions);
+                }
+                if ep.rules.transition.as_ref().is_some_and(|t| t.is_timed()) {
+                    f.insert(Feature::RulesTimed);
                 }
                 if ep.rules.first_policy_origin().is_some() {
                     f.insert(Feature::RulesPolicies);
@@ -579,6 +585,12 @@ impl Enum {
     pub fn is_state_machine(&self) -> bool {
         !self.flows.is_empty()
     }
+
+    /// True when at least one edge is timed (`spec/platform.md` section 10).
+    #[must_use]
+    pub fn has_timed_edge(&self) -> bool {
+        self.flows.iter().any(Flow::is_timed)
+    }
 }
 
 /// One edge of a state machine, by variant names.
@@ -586,6 +598,19 @@ impl Enum {
 pub struct Flow {
     pub from: String,
     pub to: String,
+    /// `flow a -> b after d` (`spec/platform.md` section 10): the milliseconds a value must have
+    /// been in `from` before it may move, a decimal string so it stays exact. Omitted from the
+    /// JSON when the edge is not timed, so the IR of a contract without `after` is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_ms: Option<String>,
+}
+
+impl Flow {
+    /// True for a timed edge.
+    #[must_use]
+    pub fn is_timed(&self) -> bool {
+        self.after_ms.is_some()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1125,6 +1150,8 @@ pub enum Feature {
     Idempotency,
     /// `publishes` or `subscribes` (`spec/events.md` section 13).
     Events,
+    /// `flow ... after` and `transition ... since` (`spec/platform.md` section 10).
+    RulesTimed,
 }
 
 impl Feature {
@@ -1137,12 +1164,13 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 3] = [
+    pub const OPT_IN: [Feature; 4] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
+        Feature::RulesTimed,
     ];
-    pub const ALL: [Feature; 18] = [
+    pub const ALL: [Feature; 19] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1161,6 +1189,7 @@ impl Feature {
         Feature::RulesVersion,
         Feature::Idempotency,
         Feature::Events,
+        Feature::RulesTimed,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1183,6 +1212,7 @@ impl Feature {
             Feature::RulesVersion => "rules_version",
             Feature::Idempotency => "idempotency",
             Feature::Events => "events",
+            Feature::RulesTimed => "rules_timed",
         }
     }
     #[must_use]

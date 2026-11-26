@@ -202,7 +202,20 @@ pub struct EndpointTransition {
     pub from: Vec<String>,
     /// Variant name of the target.
     pub to: String,
+    /// `since path` (`spec/platform.md` section 10): the steps below the fact of the `datetime`
+    /// field that holds the time the value entered its state. Empty, and omitted from the JSON,
+    /// for a transition that is not timed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub since: Vec<Step>,
     pub origin: Origin,
+}
+
+impl EndpointTransition {
+    /// True for a transition over a timed edge: it has a `since` path.
+    #[must_use]
+    pub fn is_timed(&self) -> bool {
+        !self.since.is_empty()
+    }
 }
 
 /// `fact name: T = key`.

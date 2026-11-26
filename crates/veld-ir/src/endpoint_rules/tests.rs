@@ -54,7 +54,10 @@ pub(crate) fn sample_rules() -> EndpointRules {
             wire: "rev".into(),
             origin: origin(10),
         }),
-        transition: Some(sample_transition()),
+        transition: Some(EndpointTransition {
+            since: vec![step("pendingSince")],
+            ..sample_transition()
+        }),
         facts: vec![EndpointFact {
             name: "room".into(),
             ty: Type::Decl(DeclId(1)),
@@ -604,6 +607,7 @@ fn sample_transition() -> EndpointTransition {
         decl: DeclId(0),
         from: vec!["pending".into(), "paid".into()],
         to: "cancelled".into(),
+        since: vec![],
         origin: origin(12),
     }
 }
@@ -629,6 +633,7 @@ fn flow(from: &str, to: &str) -> Flow {
     Flow {
         from: from.into(),
         to: to.into(),
+        after_ms: None,
     }
 }
 
@@ -770,4 +775,5 @@ fn the_exact_json_text_of_a_machine_and_a_transition() {
 
 mod policies;
 mod rollout;
+mod timed;
 mod version;

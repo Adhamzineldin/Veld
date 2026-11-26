@@ -236,7 +236,14 @@ pub const DEFS: &[Def] = &[
             ("deprecated", OPT_STR),
         ],
     ),
-    Def::Object("Flow", &[("from", T::Str), ("to", T::Str)]),
+    Def::Object(
+        "Flow",
+        &[
+            ("from", T::Str),
+            ("to", T::Str),
+            ("after_ms", T::Optional(&T::Str)),
+        ],
+    ),
     Def::Object("UnionArm", &[("label", T::Str), ("decl", DECL_ID)]),
     Def::Object("Field", FIELD),
     Def::Strings(
@@ -443,6 +450,7 @@ pub const DEFS: &[Def] = &[
             ("decl", DECL_ID),
             ("from", T::List(&T::Str)),
             ("to", T::Str),
+            ("since", T::Optional(&T::List(&T::Ref("Step")))),
             ("origin", ORIGIN),
         ],
     ),
@@ -741,6 +749,7 @@ pub const DEFS: &[Def] = &[
             "rules_version",
             "idempotency",
             "events",
+            "rules_timed",
         ],
     ),
     Def::Strings("Role", &["server", "client"]),
