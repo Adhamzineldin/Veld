@@ -92,7 +92,8 @@ impl Values<'_, '_, '_> {
                 .find(|(_, d)| d == decl)
                 .map(|(s, _)| *s)
                 .or(self.prog.decls[*decl].res.default_status);
-            if status.is_some_and(|s| s >= 500) {
+            // A saga keeps every answer, SagaFailed included (`spec/platform.md` section 18).
+            if ep.saga.is_none() && status.is_some_and(|s| s >= 500) {
                 self.line_error(
                     format!(
                         "`{}` answers with a 5xx status, which the store never holds",

@@ -318,3 +318,10 @@ fn rust_generates_version_and_idempotency() {
     veld_emit_conformance::check_version_is_generated(&Rust).unwrap();
     veld_emit_conformance::check_idempotency_is_generated(&Rust).unwrap();
 }
+
+/// Sagas (`spec/platform.md` sections 17 and 18): until the Rust generator declares `sagas`, a
+/// contract with a `saga post` endpoint is refused with `E0801` at the endpoint, in every role.
+#[test]
+fn rust_refuses_sagas() {
+    veld_emit_conformance::check_sagas_are_refused(&Rust).unwrap();
+}

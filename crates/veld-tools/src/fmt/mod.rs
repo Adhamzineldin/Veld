@@ -5,6 +5,7 @@
 mod expr;
 mod layout;
 mod print;
+mod saga;
 mod stmt;
 pub(crate) mod text;
 
@@ -49,5 +50,7 @@ mod event_tests;
 mod derived_tests;
 #[cfg(test)]
 mod rollout_tests;
+#[cfg(test)]
+mod saga_tests;
 #[cfg(test)]
 mod version_tests;

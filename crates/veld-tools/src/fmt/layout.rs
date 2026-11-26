@@ -306,6 +306,9 @@ fn enum_nodes(e: &ast::EnumDecl) -> Vec<Node> {
 /// comment of the block is the one on the line of its `{`.
 fn endpoint_node(e: &ast::Endpoint) -> Node {
     let start = first_start(e.span.start, &e.docs, &e.annotations);
+    if let Some(saga) = &e.saga {
+        return saga_node(start, e, saga);
+    }
     let Some(block) = &e.block else {
         return leaf(start, e.span.start, e.span.end);
     };
@@ -320,6 +323,27 @@ fn endpoint_node(e: &ast::Endpoint) -> Node {
             .iter()
             .map(|s| leaf(s.start(), stmt_kw(s), stmt_end(s)))
             .collect(),
+    }
+}
+
+/// A saga endpoint: a braced node whose children are its steps and its `timeout`. The header
+/// comment of the block is the one on the line of its `{`.
+fn saga_node(start: u32, e: &ast::Endpoint, saga: &ast::SagaDecl) -> Node {
+    let mut kids: Vec<Node> = saga
+        .steps
+        .iter()
+        .map(|s| leaf(s.span.start, s.span.start, s.span.end))
+        .collect();
+    if let Some(t) = &saga.timeout {
+        kids.push(leaf(t.span.start, t.span.start, t.span.end));
+    }
+    Node {
+        start,
+        kw: e.span.start,
+        anchor: saga.open.start,
+        end: e.span.end,
+        braced: true,
+        kids,
     }
 }
 
@@ -378,6 +402,16 @@ fn example_node(x: &ast::Example) -> Node {
         .iter()
         .map(|g| leaf(g.span.start, g.span.start, g.span.end))
         .collect();
+    if let Some(s) = &x.saga {
+        kids.extend(
+            s.givens
+                .iter()
+                .map(|g| leaf(g.span.start, g.span.start, g.span.end)),
+        );
+        if let Some(e) = &s.expect {
+            kids.push(leaf(e.span.start, e.span.start, e.span.end));
+        }
+    }
     if let Some(p) = &x.principal {
         kids.push(leaf(p.span.start, p.span.start, p.span.end));
     }
@@ -407,6 +441,7 @@ fn example_node(x: &ast::Example) -> Node {
             );
         }
     }
+    kids.sort_by_key(|n| n.start);
     Node {
         start: example_key(x),
         kw: x.span.start,

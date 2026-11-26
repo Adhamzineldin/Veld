@@ -26,6 +26,8 @@ mod resolve;
 #[cfg(test)]
 mod rollout_tests;
 pub mod rules;
+#[cfg(test)]
+mod saga_tests;
 mod services;
 #[cfg(test)]
 mod tests;
@@ -42,9 +44,13 @@ pub use events::{
     ChannelEntry, ChannelInfo, RChannel, RChannelKey, RHandler, RSubscription, legal_name,
     topic_is_legal,
 };
-pub use examples::{REventExample, REventExpect, RExample, RKey, RKeyStore, ROutcome};
+pub use examples::{
+    REventExample, REventExpect, RExample, RKey, RKeyStore, ROutcome, RSagaAnswer, RSagaExample,
+    RSagaExpect,
+};
 pub use policy::{PolicyEntry, PolicyInfo, RClause, RPolicy, RPolicyParam, RPrincipal};
-pub(crate) use rules::{RAllow, RBlock, RElse, REnsure, RRequire, RTransition};
+pub(crate) use rules::{RAllow, RBlock, RElse, REnsure, RRequire, RSaga, RTransition};
+pub(crate) use rules::{RArg, RCall, RObjectField, RStep, RValue};
 pub use rules::{RDerived, RRule};
 use veld_ir::{Auth, Constraints, Literal, Method, PackageKind, Type};
 
@@ -208,6 +214,8 @@ pub struct REndpoint {
     pub rules: RBlock,
     /// `@idempotent` (`spec/rules.md` section 11.8).
     pub idempotent: Option<RIdempotent>,
+    /// The checked saga of a `saga post` endpoint (`spec/platform.md` section 17).
+    pub saga: Option<RSaga>,
     pub span: Span,
 }
 
@@ -333,6 +341,7 @@ pub fn analyze_lenient<'a>(
     rules::check(&mut prog, diags);
     rules::check_policies(&mut prog, diags);
     services::analyze(&mut prog, diags);
+    rules::check_sagas(&mut prog, consumes, diags);
     examples::check(&mut prog, diags);
     events::check_graph(&prog, diags);
     resolve::report_unused_imports(&prog, diags);

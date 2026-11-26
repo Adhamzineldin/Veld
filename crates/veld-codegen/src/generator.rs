@@ -339,6 +339,7 @@ fn first_use(
                 Feature::RulesEndpoint => ep.rules.has_statements(),
                 Feature::RulesVersion => ep.rules.version.is_some() || ir.etag_field(ep).is_some(),
                 Feature::Idempotency => ep.idempotency.is_some(),
+                Feature::Sagas => ep.saga.is_some(),
                 Feature::RulesTransitions => ep.rules.transition.is_some(),
                 Feature::RulesPolicies => ep.rules.first_policy_origin().is_some(),
                 Feature::Unions
@@ -513,6 +514,7 @@ mod tests {
             errors: vec![],
             rules: EndpointRules::default(),
             idempotency: None,
+            saga: None,
             origin: Origin {
                 file: "a.veld".into(),
                 line: 3,

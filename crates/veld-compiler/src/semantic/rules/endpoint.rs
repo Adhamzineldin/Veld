@@ -130,7 +130,12 @@ pub(crate) fn has_bare_require(e: &ast::Endpoint) -> bool {
 }
 
 /// A parameter or fact as the checker's local scope sees it.
-fn scope_field(name: &str, ty: &Type, optional: bool, constraints: Constraints) -> RField {
+pub(super) fn scope_field(
+    name: &str,
+    ty: &Type,
+    optional: bool,
+    constraints: Constraints,
+) -> RField {
     RField {
         name: name.to_string(),
         wire: name.to_string(),

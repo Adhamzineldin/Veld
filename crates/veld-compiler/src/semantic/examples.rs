@@ -6,6 +6,7 @@
 
 mod events;
 mod idempotency;
+mod saga;
 mod values;
 
 use std::collections::BTreeMap;
@@ -37,9 +38,35 @@ pub struct RExample {
     pub if_match: Option<veld_ir::ExampleIfMatch>,
     /// The `key` line.
     pub key: Option<RKey>,
+    /// The saga lines (`spec/platform.md` section 18).
+    pub saga: Option<RSagaExample>,
     pub outcome: ROutcome,
     pub docs: Option<String>,
     pub span: Span,
+}
+
+/// The checked saga lines of an example: what each call answers, and what must have happened.
+#[derive(Debug, Clone, Default)]
+pub struct RSagaExample {
+    /// `given step`, in source order, by the name of the step.
+    pub steps: Vec<(String, RSagaAnswer)>,
+    /// `given undo`, in source order.
+    pub undos: Vec<(String, RSagaAnswer)>,
+    pub expect: Option<RSagaExpect>,
+}
+
+/// What a call of a saga answers.
+#[derive(Debug, Clone)]
+pub enum RSagaAnswer {
+    Unavailable,
+    Answer(ROutcome),
+}
+
+/// `expect compensated ..` or `expect stuck`.
+#[derive(Debug, Clone)]
+pub enum RSagaExpect {
+    Compensated(Vec<String>),
+    Stuck,
 }
 
 /// A checked `key` line (`spec/rules.md` section 11.9).
@@ -251,10 +278,11 @@ fn check_example(
     let returns = v.returns(call, ep);
     let if_match = v.if_match(call.if_match.as_ref(), ep);
     let key = v.key(call.key.as_deref(), ep);
+    let saga = v.saga_lines(ex.saga.as_ref(), call, ep);
     let outcome = v.outcome(call, ep);
     // Every part is checked before the first failure is acted on, so one run reports them all.
     let (now, args, returns, outcome) = (now?, args?, returns?, outcome?);
-    let (if_match, key) = (if_match?, key?);
+    let (if_match, key, saga) = (if_match?, key?, saga?);
     ok.then(|| RExample {
         name: ex.name.value.clone(),
         pkg,
@@ -268,6 +296,7 @@ fn check_example(
         returns,
         if_match,
         key,
+        saga,
         outcome,
         docs: doc_text(&ex.docs),
         span: ex.span,

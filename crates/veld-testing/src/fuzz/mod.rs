@@ -409,6 +409,11 @@ pub fn generate(
     seed: u64,
     count: usize,
 ) -> Result<Generated, GenerateError> {
+    if ep.saga.is_some() {
+        return Err(GenerateError::Skipped(
+            "a saga endpoint is not fuzzed: its steps call other services".to_owned(),
+        ));
+    }
     let key = format!("{}.{}", service.name, ep.name);
     let mut g = Gen::new(ir, derive(seed, &key));
     g.principal = service.principal.as_ref().map(|p| p.decl);

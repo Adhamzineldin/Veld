@@ -1,0 +1,33 @@
+model Hold { id: uuid }
+model Booking { id: uuid }
+model Req { roomId: uuid, note?: string }
+error RoomFull 409 { capacity: int }
+
+service Rooms at "/rooms" {
+  @idempotent
+  post "/hold" hold(body: Req) -> Hold | RoomFull
+
+  @idempotent
+  post "/release/{id}" release(id: uuid) -> 204
+
+  post "/loose" loose(body: Req) -> Hold
+
+  get "/watch" watch() -> stream Hold
+}
+
+service Bookings at "/bookings" {
+  @idempotent
+  post "/confirm/{id}" confirm(id: uuid) -> Booking
+}
+
+model saga { step: int, timeout: int, compensate: int, undo: int }
+enum Word { saga, step, timeout, compensate, unavailable, compensated, stuck }
+
+service step at "/step" {
+  get "/a" saga(@query timeout: int) -> saga
+  get "/b" timeout() -> 204
+}
+
+example "words as names" {
+  saga(timeout: 1) -> ok
+}

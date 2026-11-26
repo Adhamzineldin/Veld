@@ -163,6 +163,7 @@ const ENDPOINT: Fields = &[
     ("errors", T::List(&T::Ref("ErrorResponse"))),
     ("rules", T::Optional(&T::Ref("EndpointRules"))),
     ("idempotency", T::Optional(&T::Ref("Idempotency"))),
+    ("saga", T::Optional(&T::Ref("Saga"))),
     ("origin", ORIGIN),
 ];
 
@@ -555,6 +556,7 @@ pub const DEFS: &[Def] = &[
             ("returns", T::Nullable(&T::Ref("ExampleValue"))),
             ("if_match", T::Optional(&T::Ref("ExampleIfMatch"))),
             ("key", T::Optional(&T::Ref("ExampleKey"))),
+            ("saga", T::Optional(&T::Ref("ExampleSaga"))),
             ("outcome", T::Optional(&T::Ref("ExampleOutcome"))),
             ("event", T::Optional(&T::Ref("ExampleEvent"))),
             ("expect", T::Optional(&T::Ref("EventExpect"))),
@@ -625,6 +627,70 @@ pub const DEFS: &[Def] = &[
         T::Union(&[T::Lit("other"), T::Lit("running"), T::Ref("KeyStored")]),
     ),
     Def::Object("KeyStored", &[("stored", T::Ref("ExampleOutcome"))]),
+    Def::Object(
+        "Saga",
+        &[
+            ("steps", T::List(&T::Ref("SagaStep"))),
+            ("timeout_ms", T::Str),
+            ("passes", T::Optional(&T::List(&DECL_ID))),
+        ],
+    ),
+    Def::Object(
+        "SagaStep",
+        &[
+            ("name", T::Str),
+            ("call", T::Ref("SagaCall")),
+            ("compensate", T::Optional(&T::Ref("SagaCall"))),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "SagaCall",
+        &[
+            ("service", T::Ref("ServiceId")),
+            ("endpoint", T::Str),
+            ("args", T::List(&T::Ref("SagaArg"))),
+        ],
+    ),
+    Def::Object(
+        "SagaArg",
+        &[("name", T::Str), ("value", T::Ref("SagaValue"))],
+    ),
+    Def::Alias(
+        "SagaValue",
+        T::Union(&[T::Ref("Expr"), T::Ref("SagaObject")]),
+    ),
+    Def::Object("SagaObject", &[("object", T::List(&T::Ref("SagaField")))]),
+    Def::Object(
+        "SagaField",
+        &[
+            ("name", T::Str),
+            ("wire", T::Str),
+            ("value", T::Ref("SagaValue")),
+        ],
+    ),
+    Def::Object(
+        "ExampleSaga",
+        &[
+            ("steps", T::Optional(&T::List(&T::Ref("SagaGiven")))),
+            ("undos", T::Optional(&T::List(&T::Ref("SagaGiven")))),
+            ("expect", T::Optional(&T::Ref("SagaExpect"))),
+        ],
+    ),
+    Def::Object(
+        "SagaGiven",
+        &[("step", T::Str), ("answer", T::Ref("SagaAnswer"))],
+    ),
+    Def::Alias(
+        "SagaAnswer",
+        T::Union(&[T::Lit("unavailable"), T::Ref("SagaAnswered")]),
+    ),
+    Def::Object("SagaAnswered", &[("answer", T::Ref("ExampleOutcome"))]),
+    Def::Alias(
+        "SagaExpect",
+        T::Union(&[T::Lit("stuck"), T::Ref("SagaCompensated")]),
+    ),
+    Def::Object("SagaCompensated", &[("compensated", T::List(&T::Str))]),
     Def::Object(
         "ExampleEvent",
         &[
@@ -749,6 +815,7 @@ pub const DEFS: &[Def] = &[
             "rules_version",
             "idempotency",
             "rules_derived",
+            "sagas",
             "events",
             "events_delivery",
         ],

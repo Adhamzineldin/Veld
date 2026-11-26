@@ -2,7 +2,7 @@
 
 use veld_compiler::Comment;
 use veld_compiler::syntax::ast::{
-    Annotation, Decl, DeclKind, Doc, Endpoint, EnumDecl, Example, ExampleBody, Field, File,
+    self, Annotation, Decl, DeclKind, Doc, Endpoint, EnumDecl, Example, ExampleBody, Field, File,
     HttpMethod, Param, PolicyDecl, PrincipalDecl, RespItem, Rule, Stmt, UnionDecl, Use, Variant,
 };
 use veld_compiler::syntax::lexer::CommentKind;
@@ -10,6 +10,7 @@ use veld_compiler::syntax::lexer::CommentKind;
 use super::WIDTH;
 use super::expr::{derived_text, rule_lines};
 use super::layout::{self, Attached, Layout, Lead, ROOT};
+use super::saga;
 use super::stmt;
 use super::text::{annotation, literal, quote, type_expr};
 
@@ -471,6 +472,13 @@ impl Printer<'_> {
         self.leading(key, ind);
         self.docs(&e.docs, ind);
         self.annotations_own_lines(&e.annotations, ind);
+        if let Some(saga) = &e.saga {
+            let joined = lines.join("\n");
+            let head = joined.strip_prefix(&pad(ind)).unwrap_or(&joined);
+            let empty = saga.steps.is_empty() && saga.timeout.is_none();
+            self.block(key, head, ind, empty, |p| p.saga_lines(saga, ind + 2));
+            return;
+        }
         let Some(block) = &e.block else {
             self.out.push_str(&lines.join("\n"));
             self.end_line(key, ind);
@@ -481,6 +489,22 @@ impl Printer<'_> {
         self.block(key, head, ind, block.stmts.is_empty(), |p| {
             p.statements(&block.stmts, ind + 2);
         });
+    }
+
+    /// The steps of a saga in source order, then its `timeout` (`spec/platform.md` section 17).
+    fn saga_lines(&mut self, saga: &ast::SagaDecl, ind: usize) {
+        for s in &saga.steps {
+            let key = s.span.start;
+            self.leading(key, ind);
+            self.out.push_str(&saga::step_lines(s, ind).join("\n"));
+            self.end_line(key, ind);
+        }
+        if let Some(t) = &saga.timeout {
+            let key = t.span.start;
+            self.leading(key, ind);
+            self.out.push_str(&saga::timeout_line(t, ind));
+            self.end_line(key, ind);
+        }
     }
 
     /// Facts, `allow`, `transition`, `require`, then `ensure`, each group in source order (`spec/rules.md` 9).
@@ -505,6 +529,9 @@ impl Printer<'_> {
             for g in &x.givens {
                 p.example_line(g.span.start, &stmt::given_line(g));
             }
+            for g in x.saga.iter().flat_map(|s| &s.givens) {
+                p.example_line(g.span.start, &saga::given_line(g));
+            }
             if let Some(a) = &x.principal {
                 p.example_line(a.span.start, &format!("as {}", stmt::value_text(&a.value)));
             }
@@ -523,6 +550,9 @@ impl Printer<'_> {
                     p.leading(key, 2);
                     p.out.push_str(&stmt::call_lines(c, 2).join("\n"));
                     p.end_line(key, 2);
+                    if let Some(e) = x.saga.as_ref().and_then(|s| s.expect.as_ref()) {
+                        p.example_line(e.span.start, &saga::expect_line(e));
+                    }
                 }
                 ExampleBody::Event(e) => p.event_example(e),
             }
@@ -636,8 +666,9 @@ fn response_text(r: &RespItem) -> String {
 fn endpoint_lines(e: &Endpoint, ind: usize) -> Vec<String> {
     let params: Vec<String> = e.params.iter().map(param_text).collect();
     let head = format!(
-        "{}{} {} {}({})",
+        "{}{}{} {} {}({})",
         pad(ind),
+        if e.saga.is_some() { "saga " } else { "" },
         method_word(e.method),
         quote(&e.path.value),
         e.name.name,

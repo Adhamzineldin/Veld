@@ -245,10 +245,14 @@ impl Ctx<'_, '_> {
             errors: Vec::new(),
             rules: RBlock::default(),
             idempotent: None,
+            saga: None,
             span: e.name.span,
         };
         self.responses(e, method, &mut ep, diags);
         ep.idempotent = self.idempotency(&anns, &ep, diags);
+        if e.saga.is_some() {
+            ep.idempotent = Some(saga_idempotency(ep.idempotent.take(), e));
+        }
         self.implicit_errors(&mut ep, e);
         if e.block.is_some() {
             ep.rules = rules::check_block(self.prog, self.module, e, &ep, diags);
@@ -771,6 +775,10 @@ impl Ctx<'_, '_> {
             self.add_implicit(ep, "ValidationError", 422);
             self.add_implicit(ep, "Conflict", 409);
         }
+        // A saga that fails answers `502 SagaFailed` (`spec/platform.md` section 18).
+        if e.saga.is_some() {
+            self.add_implicit(ep, "SagaFailed", 502);
+        }
         // A `transition` whose guard fails answers `409 InvalidTransition` (`spec/rules.md` 10.2).
         if rules::has_transition(e) {
             self.add_implicit(ep, "InvalidTransition", 409);
@@ -792,6 +800,22 @@ impl Ctx<'_, '_> {
         if !listed {
             ep.errors.push((status, v));
         }
+    }
+}
+
+/// A saga endpoint is `@idempotent(required: true)` whether or not it says so: the key of the
+/// caller is the id of the saga (`spec/platform.md` section 17).
+fn saga_idempotency(own: Option<RIdempotent>, e: &ast::Endpoint) -> RIdempotent {
+    match own {
+        Some(i) => RIdempotent {
+            required: true,
+            ..i
+        },
+        None => RIdempotent {
+            header: annotations::DEFAULT_IDEMPOTENCY_HEADER.to_string(),
+            required: true,
+            span: e.name.span,
+        },
     }
 }
 

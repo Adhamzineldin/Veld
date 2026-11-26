@@ -132,6 +132,7 @@ pub fn endpoint(
             .collect(),
         rules,
         idempotency: None,
+        saga: None,
         origin: Origin::default(),
     }
 }
@@ -202,6 +203,7 @@ pub fn example(name: &str, endpoint: &str, outcome: ExampleOutcome) -> Example {
         returns: None,
         if_match: None,
         key: None,
+        saga: None,
         outcome: Some(outcome),
         docs: None,
         event: None,

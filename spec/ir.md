@@ -123,6 +123,9 @@ Field         += { "version": true }                       // the @version field
 EndpointRules += { "version": { "id": "veld:<pkg>/<Service>.<endpoint>.version@<hex16>",
                                 "fact": "room", "field": "revision", "wire": "rev", "origin": Origin } }
 Endpoint      += { "idempotency": { "header": "Idempotency-Key", "required": false, "caller": true, "origin": Origin } }
+Endpoint      += { "saga": { "steps": [ { "name", "call": SagaCall, "compensate": SagaCall (absent when none), "origin" } ], "timeout_ms": "300000", "passes": [DeclId] (absent when empty) } }
+SagaCall      = { "service": ServiceId, "endpoint": string, "args": [ { "name": param, "value": Expr | { "object": [ { "name", "wire", "value": same } ] } } ] }
+Example       += { "saga": { "steps": [ { "step", "answer" } ], "undos": [ .. ], "expect": { "compensated": [string] } | "stuck" } }   // answer: "unavailable" | { "answer": ExampleOutcome }
 Example       += { "if_match": "any" | { "version": "3" },
                    "key": { "value": "k-1", "store": "other" | "running" | { "stored": ExampleOutcome } } }
 ```
@@ -133,6 +136,7 @@ A derived field (`spec/rules.md` §17.2: `total: decimal = subtotal - discount`)
 Field += { "derived": Expr,                                 // the expression, typed as in a rule; the type of the field
            "derived_id": "veld:<pkg>/<Decl>.<wire>@<hex16>" } // the identity of §17.2; an inherited field keeps the id of its parent
 ```
+`Endpoint.saga` is the body of a `saga post` endpoint (`spec/platform.md` sections 17 and 18); it is omitted when absent, so the IR of a contract without a saga is unchanged. A step is read in an argument as `{ "fact": "<step name>" }` and a parameter as `{ "param": .. }`. The feature `sagas` is opt-in. A saga endpoint also has `idempotency` with `required: true` and `SagaFailed` (502), `Conflict` and `ValidationError` among its errors. No signature depends on a saga.
 
 `EndpointRules.version` is the guard: the first fact, in declaration order, whose type is a model with a `version` field (an optional fact too: when it is absent there is nothing to compare). `id` is the rule id of §11.9; `field` and `wire` name the version field of the fact's model. `Idempotency.caller` is true when the endpoint's effective auth is not `none`: the scope of a key then includes the caller. `ExampleKey.store` is left out when the line is the key alone (the store holds nothing for it). The errors of the two features are in `Endpoint.errors` like any other: `PreconditionFailed` (412) with a guard, `Conflict` (409) with `@idempotent`, and `ValidationError` (422) with either, because a malformed header is refused with it. They are not declared by the author and they appear in the IR only when a contract reaches them, like `InvalidTransition`. No declaration signature and no operation signature depends on either annotation.
 

@@ -164,7 +164,9 @@ pub(super) fn implied_error(q: &str, o: &Endpoint, n: &Endpoint) -> bool {
     }
     let guard = o.rules.version.is_some() != n.rules.version.is_some();
     let key = o.idempotency.is_some() != n.idempotency.is_some();
+    let saga = o.saga.is_some() != n.saga.is_some();
     match name {
+        "SagaFailed" => saga,
         "PreconditionFailed" => guard,
         "Conflict" => key,
         "ValidationError" => guard || key,

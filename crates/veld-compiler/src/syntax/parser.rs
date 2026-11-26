@@ -27,6 +27,9 @@ mod policy;
 mod policy_tests;
 #[cfg(test)]
 mod rule_tests;
+mod saga;
+#[cfg(test)]
+mod saga_tests;
 
 use super::ast::{
     Annotation, Arg, ArgValue, ConstDecl, Decl, DeclKind, Doc, Endpoint, EnumDecl, ErrorDecl,
@@ -244,8 +247,9 @@ impl Parser<'_> {
     }
 
     fn is_endpoint_start_at(&self, n: usize) -> bool {
-        matches!(self.tok_at(n), Tok::Ident(w) if language::is_method_word(w))
-            && matches!(self.tok_at(n + 1), Tok::Str(_))
+        (matches!(self.tok_at(n), Tok::Ident(w) if language::is_method_word(w))
+            && matches!(self.tok_at(n + 1), Tok::Str(_)))
+            || self.is_saga_start_at(n)
     }
 
     // ---- file ----------------------------------------------------------
@@ -1167,6 +1171,11 @@ impl Parser<'_> {
     }
 
     fn parse_endpoint(&mut self, docs: Vec<Doc>, annotations: Vec<Annotation>) -> Option<Endpoint> {
+        let saga_word = if self.is_saga_start_at(0) {
+            Some(self.advance().span)
+        } else {
+            None
+        };
         let method_span = self.span();
         let method = match self.peek().clone() {
             Tok::Ident(w) if HttpMethod::from_word(&w).is_some() => {
@@ -1188,10 +1197,15 @@ impl Parser<'_> {
         } else {
             None
         };
-        let block = if matches!(self.peek(), Tok::LBrace) {
-            Some(self.parse_block()?)
+        let (block, saga) = if let Some(word) = saga_word {
+            if method != HttpMethod::Post {
+                self.err("E1203", "a saga is a `post` endpoint", method_span);
+            }
+            (None, Some(self.parse_saga_block(word)?))
+        } else if matches!(self.peek(), Tok::LBrace) {
+            (Some(self.parse_block()?), None)
         } else {
-            None
+            (None, None)
         };
         let end = Span {
             file: self.file,
@@ -1208,7 +1222,8 @@ impl Parser<'_> {
             params,
             responses,
             block,
-            span: method_span.to(end),
+            saga,
+            span: saga_word.unwrap_or(method_span).to(end),
         })
     }
 

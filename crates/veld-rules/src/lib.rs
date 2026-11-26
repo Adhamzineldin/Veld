@@ -26,6 +26,7 @@ mod old;
 mod ops;
 mod pipeline;
 pub mod policy;
+pub mod saga;
 mod value;
 pub mod vectors;
 pub mod version;

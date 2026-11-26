@@ -1,0 +1,29 @@
+model Hold { id: uuid }
+model Booking { id: uuid }
+model Req { roomId: uuid, note?: string }
+error RoomFull 409 { capacity: int }
+
+service Rooms at "/rooms" {
+  @idempotent
+  post "/hold" hold(body: Req) -> Hold | RoomFull
+
+  @idempotent
+  post "/release/{id}" release(id: uuid) -> 204
+
+  post "/loose" loose(body: Req) -> Hold
+
+  get "/watch" watch() -> stream Hold
+}
+
+service Bookings at "/bookings" {
+  @idempotent
+  post "/confirm/{id}" confirm(id: uuid) -> Booking
+}
+
+service Checkout at "/checkout" {
+  saga post "/" checkout(body: Req) -> Booking {
+    step hold = Rooms.hold(body: body)
+    step confirm = Bookings.confirm(id: hold.id)
+    timeout seconds(5)
+  }
+}

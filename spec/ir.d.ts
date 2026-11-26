@@ -424,6 +424,7 @@ export interface Example {
   returns: ExampleValue | null;
   if_match?: ExampleIfMatch;
   key?: ExampleKey;
+  saga?: ExampleSaga;
   outcome?: ExampleOutcome;
   event?: ExampleEvent;
   expect?: EventExpect;
@@ -482,6 +483,65 @@ export type KeyStore = "other" | "running" | KeyStored;
 
 export interface KeyStored {
   stored: ExampleOutcome;
+}
+
+export interface Saga {
+  steps: SagaStep[];
+  timeout_ms: string;
+  passes?: DeclId[];
+}
+
+export interface SagaStep {
+  name: string;
+  call: SagaCall;
+  compensate?: SagaCall;
+  origin: Origin;
+}
+
+export interface SagaCall {
+  service: ServiceId;
+  endpoint: string;
+  args: SagaArg[];
+}
+
+export interface SagaArg {
+  name: string;
+  value: SagaValue;
+}
+
+export type SagaValue = Expr | SagaObject;
+
+export interface SagaObject {
+  object: SagaField[];
+}
+
+export interface SagaField {
+  name: string;
+  wire: string;
+  value: SagaValue;
+}
+
+export interface ExampleSaga {
+  steps?: SagaGiven[];
+  undos?: SagaGiven[];
+  expect?: SagaExpect;
+}
+
+export interface SagaGiven {
+  step: string;
+  answer: SagaAnswer;
+}
+
+export type SagaAnswer = "unavailable" | SagaAnswered;
+
+export interface SagaAnswered {
+  answer: ExampleOutcome;
+}
+
+export type SagaExpect = "stuck" | SagaCompensated;
+
+export interface SagaCompensated {
+  compensated: string[];
 }
 
 export interface ExampleEvent {
@@ -581,6 +641,7 @@ export interface Endpoint {
   errors: ErrorResponse[];
   rules?: EndpointRules;
   idempotency?: Idempotency;
+  saga?: Saga;
   origin: Origin;
 }
 
@@ -614,7 +675,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "events" | "events_delivery";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "sagas" | "events" | "events_delivery";
 
 export type Role = "server" | "client";
 
