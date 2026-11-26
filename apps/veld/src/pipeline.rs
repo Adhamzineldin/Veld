@@ -145,11 +145,35 @@ pub fn compile_project(project: &Project) -> Result<CompileOutput> {
         allowed: project.registry_access()?,
     };
     let compile_input = compile_input(project)?;
-    Ok(veld_compiler::compile_prefixed(
+    Ok(veld_compiler::messages::compile_with_catalogs(
         &compile_input,
         Some(&rules),
         &project.prefixes(),
+        &catalogs(project)?,
     ))
+}
+
+/// The message catalogs of every service of the project (`spec/platform.md` section 22).
+fn catalogs(project: &Project) -> Result<veld_compiler::messages::Catalogs> {
+    use veld_compiler::messages::{CatalogFile, MemberCatalogs};
+    let mut out = BTreeMap::new();
+    for pkg in &project.packages {
+        if let Some(set) = config::collect_catalogs(pkg)? {
+            let files = set
+                .files
+                .into_iter()
+                .map(|(name, text)| CatalogFile { name, text })
+                .collect();
+            out.insert(
+                pkg.name.clone(),
+                MemberCatalogs {
+                    dir: set.dir,
+                    files,
+                },
+            );
+        }
+    }
+    Ok(out)
 }
 
 fn compile_input(project: &Project) -> Result<CompileInput> {

@@ -1,0 +1,7 @@
+# Arabic. It leaves out the version message and the second forbid.
+"bookings/Booking.endAfterStart" = "يجب أن تنتهي الإقامة بعد بدايتها"
+"bookings/Bookings.pay.notZero" = "يجب أن يكون المبلغ موجبا"
+"bookings/Bookings.pay.require" = "المبلغ كبير جدا"
+"bookings/Manage.forbid1" = "لا يمكن لحساب موقوف إدارة الحجوزات"
+"veld/transition" = "هذا الانتقال غير مسموح"
+"veld/not-permitted" = "غير مسموح"

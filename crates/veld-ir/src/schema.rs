@@ -77,6 +77,7 @@ const MODEL_FIELDS: Fields = &[
     ("parent", T::Nullable(&DECL_ID)),
     ("fields", T::List(&T::Ref("Field"))),
     ("rules", RULES),
+    ("retain", T::Optional(&T::Ref("Retain"))),
 ];
 
 const DECL_COMMON: Fields = &[
@@ -141,6 +142,8 @@ const FIELD: Fields = &[
     ("version", T::Optional(&T::Bool)),
     ("derived", T::Optional(&EXPR)),
     ("derived_id", T::Optional(&T::Str)),
+    ("pii", T::Optional(&T::Bool)),
+    ("secret", T::Optional(&T::Bool)),
     ("inherited_from", T::Nullable(&DECL_ID)),
     ("constraints", T::Ref("Constraints")),
     ("example", T::Nullable(&T::Ref("Literal"))),
@@ -216,6 +219,8 @@ pub const DEFS: &[Def] = &[
             ("id", T::Ref("PackageId")),
             ("name", T::Str),
             ("kind", T::Ref("PackageKind")),
+            ("messages", T::Optional(&T::Map(&T::Map(&T::Str)))),
+            ("messages_dir", T::Optional(&T::Str)),
         ],
     ),
     Def::Strings(
@@ -559,6 +564,15 @@ pub const DEFS: &[Def] = &[
         ],
     ),
     Def::Object(
+        "Retain",
+        &[
+            ("after_ms", T::Str),
+            ("since", T::Str),
+            ("then", T::Ref("RetainThen")),
+        ],
+    ),
+    Def::Strings("RetainThen", &["delete", "anonymize"]),
+    Def::Object(
         "ServiceFact",
         &[
             ("name", T::Str),
@@ -848,6 +862,8 @@ pub const DEFS: &[Def] = &[
             "rules_flags",
             "timeouts",
             "slo",
+            "messages",
+            "retention",
         ],
     ),
     Def::Strings("Role", &["server", "client"]),

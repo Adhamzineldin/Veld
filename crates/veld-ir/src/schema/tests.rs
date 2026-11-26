@@ -247,6 +247,8 @@ fn field(name: &str, ty: Type, lit: Literal) -> Field {
         version: true,
         derived: Some(int_lit(1)),
         derived_id: Some("veld:p/m.B.f@0".into()),
+        pii: true,
+        secret: true,
         inherited_from: Some(DeclId(0)),
         constraints: Constraints {
             min: Some(0.0),
@@ -298,6 +300,11 @@ fn decls() -> Vec<Decl> {
         parent: Some(DeclId(0)),
         fields,
         rules: vec![sample_rule()],
+        retain: Some(crate::retention::Retain {
+            after_ms: 2_592_000_000,
+            since: "checkedOutAt".into(),
+            then: crate::retention::RetainThen::Anonymize,
+        }),
     };
     let variant = Variant {
         name: "A".into(),
@@ -313,6 +320,7 @@ fn decls() -> Vec<Decl> {
                 parent: None,
                 fields: vec![],
                 rules: vec![],
+                retain: None,
             }),
         ),
         decl(1, "B", DeclKind::Model(model.clone())),
@@ -505,6 +513,12 @@ fn full_ir() -> Ir {
             id: PackageId(i as u32),
             name: format!("p{i}"),
             kind,
+            messages: [(
+                "ar".to_owned(),
+                [("p/m.B.r".to_owned(), "m".to_owned())].into(),
+            )]
+            .into(),
+            messages_dir: Some("messages".into()),
         })
         .collect();
     Ir {

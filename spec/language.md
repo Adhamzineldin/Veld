@@ -256,6 +256,8 @@ An unknown annotation is `E0601`. Annotations with the wrong arguments or the wr
 | `@retry(max: n, backoff: fixed \| exponential)` | channel | How often a consumer handles a message again after its handler failed: `max` is 0 to 100 and required, `backoff` defaults to `exponential` (`spec/events.md` §10.2). `E0602` anywhere else, written twice, or with another argument. |
 | `@deadLetter` | channel | A rejected message, and a message whose retries are used up, is copied to `<topic>.dlq` (`spec/events.md` §10.2, §10.5). Takes no argument. |
 | `@ordered` | channel | One total order across keys (`spec/events.md` §10.2). Takes no argument. |
+| `@pii` | field of a model, an error or an event | The field holds personal data (`spec/rules.md` §19.3). No argument. Changes nothing on the wire. |
+| `@secret` | field of a model, an error or an event | The value must never be shown: a password, a token, a key (`spec/rules.md` §19.3). No argument. Changes nothing on the wire. |
 
 ### 7.1 Regex subset
 The allowed syntax is literal characters, `.`, classes `[...]`, `\d \w \s`, the quantifiers `* + ? {n,m}`, groups `( )`, alternation `|`, and the anchors `^ $`. Lookaround and backreferences are `E0603`, because every target must enforce the same pattern.

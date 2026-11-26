@@ -160,3 +160,21 @@ fn node_and_typescript_refuse_deadlines_and_service_levels() {
     veld_emit_conformance::check_timeouts_are_refused(&TypeScript).unwrap();
     veld_emit_conformance::check_slo_is_refused(&TypeScript).unwrap();
 }
+
+/// Message catalogs (`spec/platform.md` section 22): until a generator implements them, the Node
+/// server and the TypeScript client both refuse a member that has catalogs with `E0801`, at the
+/// first catalog file, and make no files.
+#[test]
+fn node_and_typescript_refuse_message_catalogs() {
+    veld_emit_conformance::check_messages_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_messages_is_refused(&TypeScript).unwrap();
+}
+
+/// Retention (`spec/platform.md` section 23): until a generator implements it, the Node server
+/// refuses a contract with `@retain` models with `E0801`, and the TypeScript client, which has
+/// nothing to generate for it, is not affected.
+#[test]
+fn node_refuses_retention_and_typescript_ignores_it() {
+    veld_emit_conformance::check_retention_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_retention_is_refused(&TypeScript).unwrap();
+}

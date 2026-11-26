@@ -264,6 +264,7 @@ fn a_model_without_rules_has_no_rules_key() {
         parent: None,
         fields: vec![],
         rules: vec![],
+        retain: None,
     };
     let v = serde_json::to_value(&m).unwrap();
     assert!(v.get("rules").is_none(), "{v}");
@@ -278,6 +279,7 @@ fn a_model_with_a_rule_serialises_the_rules_key_and_round_trips() {
         parent: None,
         fields: vec![],
         rules: vec![rule(everything())],
+        retain: None,
     };
     let v: Value = serde_json::to_value(&m).unwrap();
     assert_eq!(v["rules"][0]["name"], json!("endAfterStart"));

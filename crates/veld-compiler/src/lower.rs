@@ -214,6 +214,8 @@ impl Lowerer<'_, '_> {
                     id,
                     name: self.prog.packages[old].name.clone(),
                     kind: self.prog.packages[old].kind,
+                    messages: std::collections::BTreeMap::new(),
+                    messages_dir: None,
                 }
             })
             .collect()
@@ -246,6 +248,8 @@ impl Lowerer<'_, '_> {
             // The id needs every declaration in place: `signature::derived_ids` fills it.
             derived_id: derived.as_ref().map(|_| String::new()),
             derived,
+            pii: f.pii,
+            secret: f.secret,
             inherited_from: f.inherited_from.map(|d| self.decl_id(d)),
             constraints: f.constraints.clone(),
             example: f.example.clone(),
@@ -253,6 +257,19 @@ impl Lowerer<'_, '_> {
             deprecated: f.deprecated.clone(),
             origin: self.origin(f.span, module),
         }
+    }
+
+    /// `@retain` of a model, with its `since` field by wire name. The checks of the compiler have
+    /// seen that the field exists.
+    fn retain_of(&self, old: usize) -> Option<veld_ir::retention::Retain> {
+        let d = &self.prog.decls[old];
+        let r = d.res.retain.as_ref()?;
+        let since = d.res.fields.iter().find(|f| f.name == r.since)?;
+        Some(veld_ir::retention::Retain {
+            after_ms: r.after_ms,
+            since: since.wire.clone(),
+            then: r.then,
+        })
     }
 
     fn decl(&self, old: usize) -> Decl {
@@ -269,6 +286,7 @@ impl Lowerer<'_, '_> {
                 parent: d.res.parent.map(|p| self.decl_id(p)),
                 fields: fields(),
                 rules: self.rules_of(old),
+                retain: self.retain_of(old),
             }),
             DKind::Error => DeclKind::Error(ErrorDecl {
                 default_status: d.res.default_status,
@@ -276,6 +294,7 @@ impl Lowerer<'_, '_> {
                     parent: None,
                     fields: fields(),
                     rules: self.rules_of(old),
+                    retain: None,
                 },
             }),
             DKind::Event => DeclKind::Event(Event {

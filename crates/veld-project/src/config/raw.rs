@@ -89,6 +89,8 @@ pub struct WorkspaceSection {
 pub struct ServiceSection {
     pub name: Option<String>,
     pub contracts: Option<String>,
+    /// The directory of the message catalogs (`spec/platform.md` section 22); default `messages`.
+    pub messages: Option<String>,
     #[serde(default)]
     pub consumes: Vec<String>,
     /// Route prefix (`/v1`) prepended to this service's prefixes, after `[workspace].prefix`.
@@ -195,6 +197,7 @@ const WORKSPACE: &[&str] = &[
 const SERVICE: &[&str] = &[
     "name",
     "contracts",
+    "messages",
     "consumes",
     "prefix",
     "base-url",

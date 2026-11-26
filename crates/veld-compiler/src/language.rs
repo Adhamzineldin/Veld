@@ -175,6 +175,8 @@ pub enum ArgShape {
     /// Named objectives: `p50`, `p90`, `p95`, `p99` (durations) and `errors` (a percent), at
     /// least one (`spec/platform.md` section 13).
     Slo,
+    /// `days(n), since: field, then: delete | anonymize`.
+    Retain,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -196,7 +198,7 @@ const DEPRECATABLE: [Target; 12] = [
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 23] = [
+pub const ANNOTATIONS: [AnnotationSpec; 26] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -334,6 +336,24 @@ pub const ANNOTATIONS: [AnnotationSpec; 23] = [
         targets: &[Service, Endpoint],
         args: ArgShape::Slo,
         usage: "@slo(p99: ms(300), errors: 0.1)",
+    },
+    AnnotationSpec {
+        name: "pii",
+        targets: &[Field],
+        args: ArgShape::None,
+        usage: "@pii",
+    },
+    AnnotationSpec {
+        name: "secret",
+        targets: &[Field],
+        args: ArgShape::None,
+        usage: "@secret",
+    },
+    AnnotationSpec {
+        name: "retain",
+        targets: &[Model],
+        args: ArgShape::Retain,
+        usage: "@retain(days(30), since: checkedOutAt, then: delete | anonymize)",
     },
 ];
 

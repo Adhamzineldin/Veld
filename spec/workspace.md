@@ -182,6 +182,7 @@ name = "bookings"            # default: the directory name
 contracts = "contracts"      # default
 consumes = ["payments"]      # default: none; cycles are legal; "*" is every other service
 prefix = "/v1"               # optional
+messages = "messages"        # default: the message catalogs, see below
 base-url = "http://bookings:3001"   # optional; see below
 owners = ["team-bookings"]
 package = "@shop/bookings"   # publishing, with `version` and `description`, as today
@@ -190,6 +191,7 @@ version = "1.0.0"
 
 - The name is the package name of the service: what `use bookings:...` and `consumes` refer to.
 - `consumes` entries MUST name services of the workspace (`E0702`). Listing the service itself is a warning (`W0701`).
+- `messages` names the directory of the member's message catalogs (`spec/platform.md` §22), relative to the member like `contracts`. The default `messages` need not exist. A directory that was named and is not there is `E0700`. Only the `*.toml` files directly in it count; it is read for a service, never for a library or an app.
 - `base-url` keeps today's meaning in this change. The runtime config change removes it.
 - A service member may hold `[server]` and `[client]` targets (section 6).
 
@@ -351,7 +353,7 @@ The relation is followed until nothing is added. Cycles are legal and end the wa
 
 ### 10.4 Output
 
-Before generating, the run prints each affected member with one reason, the first that applies in this order: the root file or the lock changed, its own file changed, its contracts changed, its output changed, or the name of the affected member it depends on.
+Before generating, the run prints each affected member with one reason, the first that applies in this order: the root file or the lock changed, its own file changed, its contracts changed, its message catalogs changed, its output changed, or the name of the affected member it depends on.
 
 ```
 affected since origin/master:
@@ -451,7 +453,7 @@ Where this text was silent or could be read two ways, the implementation chose a
 9. **`veld clean --lock`** removes the snapshot of the whole workspace, so with a selection that is not every member it is an error.
 10. **`veld publish`** without `--package` publishes the current member when it is a service or a library; otherwise the earlier choice applies (the only one, or the only one that declares `package`).
 11. **`veld add`** edits `[dependencies]` (and `[registry]`) in the root `veld.toml`, whichever member the command runs in. `veld install` and the automatic install read the root file.
-12. **`--affected` reasons.** The lines read `veld.toml or veld.lock of the workspace changed`, `veld.toml changed`, `contracts changed`, `output changed`, and `consumes <member>`, `uses <member>` or `imports <member>` for a member that is affected through the member it depends on. When a member depends on several affected members the first in this order is named: its `consumes` or `uses` list, then the members its contracts import, sorted. Contract imports are read from the `use` declarations of the member's own contracts; a registry package is not a member. The output lists members in member order, and the names are padded to one column.
+12. **`--affected` reasons.** The lines read `veld.toml or veld.lock of the workspace changed`, `veld.toml changed`, `contracts changed`, `messages changed`, `output changed`, and `consumes <member>`, `uses <member>` or `imports <member>` for a member that is affected through the member it depends on. When a member depends on several affected members the first in this order is named: its `consumes` or `uses` list, then the members its contracts import, sorted. Contract imports are read from the `use` declarations of the member's own contracts; a registry package is not a member. The output lists members in member order, and the names are padded to one column.
 13. **Selection and `veld test`.** `veld test` limits the examples to those written in the contracts of the selected members, and combines with `PATH` arguments by intersection.
 14. **`owners` in `veld diff`.** After the three groups of changes, a block `Who is affected:` lists each package that has a breaking or possibly breaking change, with `owners: ...` for its member (when it has owners) and one `affects <member> (<owners>)` line for each member that depends on it directly (through `consumes`, `uses` or a contract `use`). No block is printed when no member has owners. `veld check --graph=json` adds `owners` to the nodes of services that have them; libraries and apps are not nodes of that graph.
 15. **The playground.** `veld-wasm` resolves a workspace from virtual files with `api::workspace` (`resolveWorkspace` in JavaScript), which calls the same `load_virtual` and `resolve` as the CLI. The browser's presets keep their JSON description of packages and targets; the parity test builds every preset as a workspace on disk and compares the bytes.

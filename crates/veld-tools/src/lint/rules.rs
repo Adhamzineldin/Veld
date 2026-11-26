@@ -34,7 +34,13 @@ impl Raw {
     }
 }
 
-fn push(out: &mut Vec<Raw>, rule: &'static str, subject: String, message: String, o: &Origin) {
+pub(super) fn push(
+    out: &mut Vec<Raw>,
+    rule: &'static str,
+    subject: String,
+    message: String,
+    o: &Origin,
+) {
     out.push(Raw {
         rule,
         subject,
@@ -60,6 +66,7 @@ pub(super) fn run(ir: &Ir, out: &mut Vec<Raw>) {
     empty_constants(&user, out);
     missing_description(&services, out);
     auth_required(&services, out);
+    super::pii::run(ir, out);
     deprecations(&user, &services, out);
     naming(&user, &services, out);
     file_naming(ir, &user, &services, out);

@@ -15,6 +15,7 @@ pub fn flatten(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
         prog.decls[i].res.fields = fields.unwrap_or_default();
         prog.decls[i].res.cyclic = cyclic[i];
         one_version_field(&prog.decls[i], diags);
+        super::retain::check(&prog.decls[i], diags);
     }
 }
 

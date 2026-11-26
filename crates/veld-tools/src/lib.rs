@@ -10,6 +10,7 @@ pub mod fmt;
 pub mod gate;
 pub mod lint;
 pub mod openapi;
+mod retention_export;
 pub mod rulebook;
 pub mod runtime_schema;
 pub mod slo;
@@ -21,9 +22,13 @@ pub use diff::{
 pub use fmt::format;
 pub use gate::{GateDecision, GatePolicy, GateResult, breaking_gate};
 pub use openapi::openapi;
+pub use retention_export::retention_report;
 pub use rulebook::{NO_RULES, rule_book};
 pub use runtime_schema::runtime_schema;
 pub use slo::openslo;
+
+#[cfg(test)]
+mod retention_export_tests;
 
 #[cfg(test)]
 pub(crate) mod testutil {

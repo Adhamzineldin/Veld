@@ -18,7 +18,9 @@ mod event_rollout;
 mod events;
 mod events_delivery;
 mod fixtures;
+mod messages;
 mod platform_p2;
+mod retention;
 mod rollout;
 mod sagas;
 mod version;
@@ -43,10 +45,17 @@ pub use events_delivery::{
     compiled_events_delivery_contract,
 };
 pub use fixtures::{FIXTURES, Fixture};
+pub use messages::{
+    CATALOG_FILE, check_messages_are_generated, check_messages_is_refused,
+    compiled_messages_contract,
+};
 pub use platform_p2::{
     check_flags_are_refused, check_slo_is_refused, check_timed_is_refused,
     check_timeouts_are_refused, compiled_flag_contracts, compiled_slo_contracts,
     compiled_timed_contracts, compiled_timeout_contracts,
+};
+pub use retention::{
+    check_retention_is_generated, check_retention_is_refused, compiled_retention_contract,
 };
 pub use rollout::{
     check_rollout_is_generated, check_rollout_is_refused, compiled_rollout_contracts,

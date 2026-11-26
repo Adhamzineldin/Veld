@@ -302,6 +302,12 @@ pub fn checked_features(ir: &Ir, req: &GenRequest<'_>) -> std::collections::BTre
         // A client never sees a fact or the principal: only what an endpoint reaches counts.
         used.remove(&Feature::RulesDerived);
     }
+    // Retention is a server's own: the models of the services it serves, not of those it only
+    // calls, and nothing for a client (`spec/platform.md` section 23).
+    used.remove(&Feature::Retention);
+    if req.role == Role::Server && !ir.retention_plan(&req.services).is_empty() {
+        used.insert(Feature::Retention);
+    }
     used
 }
 
@@ -353,6 +359,8 @@ fn first_use(
                 | Feature::Bytes
                 | Feature::Events
                 | Feature::EventsDelivery
+                | Feature::Messages
+                | Feature::Retention
                 | Feature::RulesRollout
                 | Feature::RulesDerived
                 | Feature::RulesInvariants => false,
@@ -385,6 +393,17 @@ fn first_use(
                 return Some(ep.origin.clone());
             }
         }
+    }
+    if feature == Feature::Retention {
+        return ir
+            .retention_plan(&req.services)
+            .first()
+            .map(|e| ir.decl(e.decl).origin.clone());
+    }
+    if feature == Feature::Messages {
+        return services
+            .iter()
+            .find_map(|s| ir.package(ir.service(*s).package).first_catalog_origin());
     }
     if feature == Feature::Events {
         return req
@@ -569,6 +588,8 @@ mod tests {
                 id: PackageId(0),
                 name: "a".into(),
                 kind: PackageKind::Service,
+                messages: Default::default(),
+                messages_dir: None,
             }],
             decls: vec![],
             services: vec![Service {

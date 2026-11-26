@@ -13,9 +13,13 @@ pub mod diagnostics;
 pub mod index;
 pub mod language;
 pub mod lower;
+pub mod messages;
 pub mod semantic;
 pub mod signature;
 pub mod syntax;
+
+#[cfg(test)]
+mod messages_tests;
 
 pub use access::AccessRules;
 pub use diagnostics::{Diagnostic, FileId, Severity, SourceMap, Span};

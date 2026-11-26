@@ -100,6 +100,7 @@ fn event_model(e: &veld_ir::Event) -> Model {
         parent: None,
         fields: e.fields.clone(),
         rules: e.rules.clone(),
+        retain: None,
     }
 }
 

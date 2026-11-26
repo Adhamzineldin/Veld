@@ -14,6 +14,8 @@ fn a_field() -> Field {
         version: false,
         derived: None,
         derived_id: None,
+        pii: false,
+        secret: false,
         inherited_from: None,
         constraints: Constraints::default(),
         example: None,

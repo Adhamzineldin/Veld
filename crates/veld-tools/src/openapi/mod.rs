@@ -138,6 +138,8 @@ mod derived_tests;
 #[cfg(test)]
 mod event_tests;
 #[cfg(test)]
+mod pii_tests;
+#[cfg(test)]
 mod rollout_tests;
 #[cfg(test)]
 mod saga_tests;

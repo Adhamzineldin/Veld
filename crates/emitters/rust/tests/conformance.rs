@@ -341,3 +341,17 @@ fn rust_refuses_deadlines_and_service_levels() {
     veld_emit_conformance::check_timeouts_are_refused(&Rust).unwrap();
     veld_emit_conformance::check_slo_is_refused(&Rust).unwrap();
 }
+
+/// Message catalogs (`spec/platform.md` section 22): until the Rust generator implements them, it
+/// refuses a member that has catalogs with `E0801`, in every role.
+#[test]
+fn rust_refuses_message_catalogs() {
+    veld_emit_conformance::check_messages_is_refused(&Rust).unwrap();
+}
+
+/// Retention (`spec/platform.md` section 23): until the Rust generator implements it, its server
+/// refuses a contract with `@retain` models with `E0801`; its client is not affected.
+#[test]
+fn rust_refuses_retention_in_the_server_only() {
+    veld_emit_conformance::check_retention_is_refused(&Rust).unwrap();
+}

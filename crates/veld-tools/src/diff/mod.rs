@@ -11,6 +11,7 @@
 
 mod changed;
 mod conditional;
+mod data_marks;
 mod decls;
 mod delivery;
 mod endpoint_rules;
@@ -18,6 +19,7 @@ mod endpoints;
 mod events;
 pub(crate) mod expr_text;
 mod flags;
+mod retention;
 mod rules;
 mod saga;
 mod service_levels;
@@ -133,6 +135,16 @@ pub enum ChangeKind {
     SagaAdded,
     SagaRemoved,
     SagaChanged,
+    PiiAdded,
+    PiiRemoved,
+    SecretAdded,
+    SecretRemoved,
+    RetentionAdded,
+    RetentionRemoved,
+    RetentionShortened,
+    RetentionLengthened,
+    RetentionSinceChanged,
+    RetentionThenChanged,
 }
 
 /// One difference between the old and the new contract.
@@ -330,6 +342,8 @@ fn diff_plain(old: &Ir, new: &Ir) -> Vec<Change> {
     let mut out = Vec::new();
     decls::diff_decls(&ctx, &usage, &mut out);
     conditional::diff_version_fields(&ctx, &mut out);
+    data_marks::diff_data_marks(&ctx, &mut out);
+    retention::diff_retention(&ctx, &mut out);
     rules::diff_decl_rules(&ctx, &usage, &mut out);
     endpoints::diff_endpoints(&ctx, &mut out);
     events::diff_events(&ctx, &mut out);
@@ -342,6 +356,8 @@ mod changed_tests;
 #[cfg(test)]
 mod conditional_tests;
 #[cfg(test)]
+mod data_marks_tests;
+#[cfg(test)]
 mod delivery_tests;
 #[cfg(test)]
 mod derived_tests;
@@ -349,6 +365,8 @@ mod derived_tests;
 mod event_tests;
 #[cfg(test)]
 mod flags_tests;
+#[cfg(test)]
+mod retention_tests;
 #[cfg(test)]
 mod rollout_tests;
 #[cfg(test)]

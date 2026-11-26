@@ -213,7 +213,7 @@ pub struct EnumLit {
     pub wire: String,
 }
 
-mod long_text {
+pub(crate) mod long_text {
     use serde::de::Error as _;
     use serde::{Deserialize, Deserializer, Serializer};
 

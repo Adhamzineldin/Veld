@@ -203,6 +203,8 @@ fn field(name: &str, ty: Type) -> Field {
         version: false,
         derived: None,
         derived_id: None,
+        pii: false,
+        secret: false,
         inherited_from: None,
         constraints: Constraints::default(),
         example: None,
@@ -232,6 +234,7 @@ fn model(parent: Option<DeclId>, fields: Vec<Field>) -> DeclKind {
         parent,
         fields,
         rules: vec![],
+        retain: None,
     })
 }
 

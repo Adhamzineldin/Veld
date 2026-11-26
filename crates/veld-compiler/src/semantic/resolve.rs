@@ -681,6 +681,7 @@ fn resolve_one(prog: &Program<'_>, i: usize, diags: &mut Vec<Diagnostic>) -> Res
     };
     let anns = annotations::parse(&d.ast.annotations, target, None, diags);
     res.deprecated = anns.deprecated.clone();
+    res.retain = anns.retain.clone();
     match &d.ast.kind {
         DeclKind::Model(m) => {
             res.parent = m
@@ -860,6 +861,8 @@ fn build_field(
         readonly: a.readonly,
         version: a.version.is_some(),
         derived: f.derived.is_some(),
+        pii: a.pii,
+        secret: a.secret,
         inherited_from: None,
         constraints: a.constraints.clone(),
         example,

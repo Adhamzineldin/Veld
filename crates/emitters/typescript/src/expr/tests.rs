@@ -106,6 +106,7 @@ fn ir() -> Ir {
         parent: None,
         fields: vec![],
         rules: vec![],
+        retain: None,
     };
     let variant = |name: &str, wire: &str| Variant {
         name: name.into(),
@@ -774,6 +775,8 @@ fn wire_names_come_from_the_fields() {
         version: false,
         derived: None,
         derived_id: None,
+        pii: false,
+        secret: false,
         constraints: veld_ir::Constraints::default(),
         docs: None,
         deprecated: None,

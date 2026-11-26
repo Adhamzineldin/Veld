@@ -11,6 +11,9 @@ use std::fmt;
 pub mod endpoint_rules;
 pub mod flags;
 pub use flags::FlagUsage;
+pub mod exposure;
+pub mod message_keys;
+pub mod retention;
 pub mod rules;
 pub mod saga;
 pub mod schema;
@@ -379,6 +382,12 @@ impl Ir {
         }
         for sid in services {
             let s = self.service(*sid);
+            if !self.package(s.package).messages.is_empty() {
+                f.insert(Feature::Messages);
+            }
+            if !self.retention_plan(&[*sid]).is_empty() {
+                f.insert(Feature::Retention);
+            }
             for ep in &s.endpoints {
                 if ep.auth.kind != AuthKind::None {
                     f.insert(Feature::Auth);
@@ -458,6 +467,29 @@ pub struct Package {
     pub id: PackageId,
     pub name: String,
     pub kind: PackageKind,
+    /// The message catalogs of the member (`spec/platform.md` section 22): language tag, then
+    /// message key, then text. Sorted. Omitted from the JSON when the member has none.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub messages: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
+    /// The directory of the catalogs, relative to the member (`messages`), so that a diagnostic can
+    /// name a catalog file. Omitted when there is no catalog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messages_dir: Option<String>,
+}
+
+impl Package {
+    /// The place of the first catalog file (`<messages_dir>/<tag>.toml`), the origin that
+    /// `E0801` names when a generator cannot use catalogs. `None` without a catalog.
+    #[must_use]
+    pub fn first_catalog_origin(&self) -> Option<Origin> {
+        let tag = self.messages.keys().next()?;
+        let dir = self.messages_dir.as_deref().unwrap_or("messages");
+        Some(Origin {
+            file: format!("{dir}/{tag}.toml"),
+            line: 1,
+            col: 1,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -712,6 +744,9 @@ pub struct Model {
     /// without rules is unchanged (`spec/rules.md` section 13).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<Rule>,
+    /// `@retain` (`spec/platform.md` section 23). Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retain: Option<retention::Retain>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -830,6 +865,13 @@ pub struct Field {
     /// `derived` is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derived_id: Option<String>,
+    /// `@pii` (`spec/rules.md` section 19.3): the field holds personal data. Omitted from the
+    /// JSON when false, so the IR of a contract without the annotation is unchanged.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pii: bool,
+    /// `@secret` (`spec/rules.md` section 19.3): the value must never be shown. Omitted when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub secret: bool,
     pub inherited_from: Option<DeclId>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -1407,6 +1449,12 @@ pub enum Feature {
     Timeouts,
     /// `@slo` (`spec/platform.md` section 13): the metrics hook.
     Slo,
+    /// A member with message catalogs (`spec/platform.md` section 22). Opt-in: a generator that
+    /// does not declare it would send the contract's text where a catalog was meant to be used.
+    Messages,
+    /// A server with `@retain` models (`spec/platform.md` section 23). Opt-in, and only a server
+    /// is concerned: a client generates nothing for it.
+    Retention,
 }
 
 impl Feature {
@@ -1419,7 +1467,7 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 10] = [
+    pub const OPT_IN: [Feature; 12] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
@@ -1430,8 +1478,10 @@ impl Feature {
         Feature::RulesFlags,
         Feature::Timeouts,
         Feature::Slo,
+        Feature::Messages,
+        Feature::Retention,
     ];
-    pub const ALL: [Feature; 25] = [
+    pub const ALL: [Feature; 27] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1457,6 +1507,8 @@ impl Feature {
         Feature::RulesFlags,
         Feature::Timeouts,
         Feature::Slo,
+        Feature::Messages,
+        Feature::Retention,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1486,6 +1538,8 @@ impl Feature {
             Feature::RulesFlags => "rules_flags",
             Feature::Timeouts => "timeouts",
             Feature::Slo => "slo",
+            Feature::Messages => "messages",
+            Feature::Retention => "retention",
         }
     }
     #[must_use]

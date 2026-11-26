@@ -25,6 +25,11 @@ pub struct PolicyVerdict {
     /// The message of the first `forbid` that was true (one that cannot be evaluated counts as
     /// true), when the policy denies and that clause has a message. `None` otherwise.
     pub message: Option<String>,
+    /// The number, counted from 1 among the `forbid` clauses of the policy, of the one that denied,
+    /// when it has a message: what the message key `<package>/<Policy>.forbid<n>` names
+    /// (`spec/platform.md` section 22). `None` when the policy permits or no `forbid` with a
+    /// message explains the denial.
+    pub forbid: Option<usize>,
 }
 
 impl PolicyVerdict {
@@ -87,7 +92,10 @@ pub fn eval_policy(
     let mut permitted = false;
     let mut forbidden = false;
     let mut message = None;
+    let mut forbid = None;
+    let mut forbids = 0;
     for c in &policy.clauses {
+        forbids += usize::from(c.effect == PolicyEffect::Forbid);
         let held = clause(&env, &c.expr)?;
         match (c.effect, held) {
             (PolicyEffect::Permit, Clause::Holds) => permitted = true,
@@ -96,6 +104,7 @@ pub fn eval_policy(
             (PolicyEffect::Forbid, Clause::Holds | Clause::Errors) => {
                 if !forbidden {
                     message.clone_from(&c.message);
+                    forbid = c.message.is_some().then_some(forbids);
                 }
                 forbidden = true;
             }
@@ -104,5 +113,6 @@ pub fn eval_policy(
     Ok(PolicyVerdict {
         permitted: permitted && !forbidden,
         message: if forbidden { message } else { None },
+        forbid: if forbidden { forbid } else { None },
     })
 }

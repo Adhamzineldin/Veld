@@ -23,10 +23,12 @@ pub mod flags;
 pub mod helpers;
 pub mod idempotency;
 pub mod machine;
+pub mod messages;
 mod old;
 mod ops;
 mod pipeline;
 pub mod policy;
+pub mod redact;
 pub mod saga;
 mod value;
 pub mod vectors;
@@ -57,6 +59,7 @@ pub use pipeline::{
     RunError,
 };
 pub use policy::{NOT_PERMITTED, PolicyVerdict, eval_policy};
+pub use redact::{Redacted, redact_decl, redact_decl_at, redact_type, redact_type_at};
 pub use value::Value;
 pub use version::{IfMatch, etag, parse_if_match};
 pub use wire::{format_date, format_datetime, format_time};

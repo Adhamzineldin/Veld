@@ -22,11 +22,18 @@ mod inherit;
 mod machine;
 #[cfg(test)]
 mod machine_tests;
+#[cfg(test)]
+mod message_key_tests;
+#[cfg(test)]
+mod pii_tests;
 mod policy;
 #[cfg(test)]
 mod policy_tests;
 pub mod regex;
 mod resolve;
+mod retain;
+#[cfg(test)]
+mod retain_tests;
 #[cfg(test)]
 mod rollout_tests;
 pub mod rules;
@@ -125,6 +132,9 @@ pub struct RField {
     /// A derived field (`spec/rules.md` section 17.2). Its checked expression is in
     /// [`Resolved::own_derived`] of the declaration that wrote it.
     pub derived: bool,
+    /// `@pii` and `@secret` (`spec/rules.md` section 19.3).
+    pub pii: bool,
+    pub secret: bool,
     pub inherited_from: Option<usize>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -183,6 +193,8 @@ pub struct Resolved {
     /// Checked expressions of the derived fields the declaration writes itself, by field name
     /// (`spec/rules.md` section 17.2).
     pub own_derived: BTreeMap<String, RDerived>,
+    /// `@retain` on a model (`spec/platform.md` section 23); checked after inheritance.
+    pub retain: Option<annotations::RetainAnn>,
 }
 
 #[derive(Debug)]

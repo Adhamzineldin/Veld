@@ -554,6 +554,9 @@ fn annotation_snippet(name: &str, shape: ArgShape) -> String {
         ArgShape::Retry => format!("{name}(max: ${{1:3}}, backoff: ${{2|exponential,fixed|}})"),
         ArgShape::Timeout => format!("{name}(seconds(${{1:2}}))"),
         ArgShape::Slo => format!("{name}(p99: ms(${{1:300}}), errors: ${{2:0.1}})"),
+        ArgShape::Retain => {
+            format!("{name}(days(${{1:30}}), since: ${{2:field}}, then: ${{3|delete,anonymize|}})")
+        }
     }
 }
 

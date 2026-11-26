@@ -1,4 +1,4 @@
-//! `veld export <openapi|rules|runtime-schema|slo|ir>`.
+//! `veld export <openapi|rules|runtime-schema|slo|retention|ir>`.
 //!
 //! The exports print to stdout, or to `-o FILE`. A file is written with
 //! `output::write_unmanaged`: staged and contained like generated output, but never tracked in a
@@ -31,6 +31,14 @@ pub fn run(ui: &Ui, config: Option<&Path>, cmd: &ExportCommand) -> Result<Exit> 
             document(ui, out, "rules.md", &text)
         }
         ExportCommand::RuntimeSchema(args) => super::runtime_schema::run(ui, &done, args),
+        ExportCommand::Retention(out) => {
+            let out = DocOut {
+                output: out.output.clone(),
+                service: Vec::new(),
+                force: out.force,
+            };
+            document(ui, &out, "retention.md", &veld_tools::retention_report(ir))
+        }
         ExportCommand::Openapi(out) => {
             let value = veld_tools::openapi(ir, &selected_services(ir, &out.service)?);
             document(ui, out, "openapi.json", &pretty(&value)?)

@@ -489,6 +489,7 @@ fn kind_ir() -> Ir {
         parent: None,
         fields: vec![],
         rules: vec![],
+        retain: None,
     };
     let decls = vec![
         decl(

@@ -172,3 +172,17 @@ fn java_refuses_deadlines_and_service_levels() {
     veld_emit_conformance::check_timeouts_are_refused(&Java).unwrap();
     veld_emit_conformance::check_slo_is_refused(&Java).unwrap();
 }
+
+/// Message catalogs (`spec/platform.md` section 22): until Java implements them, it refuses a
+/// member that has catalogs with `E0801`, as a server and as a client.
+#[test]
+fn java_refuses_message_catalogs() {
+    veld_emit_conformance::check_messages_is_refused(&Java).unwrap();
+}
+
+/// Retention (`spec/platform.md` section 23): until Java implements it, its server refuses a
+/// contract with `@retain` models with `E0801`; its client is not affected.
+#[test]
+fn java_refuses_retention_in_the_server_only() {
+    veld_emit_conformance::check_retention_is_refused(&Java).unwrap();
+}

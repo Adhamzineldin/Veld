@@ -126,6 +126,16 @@ fn own_reason(project: &Project, m: &MemberSpec, changed: &[PathBuf]) -> Option<
     {
         return Some("contracts changed");
     }
+    let messages = project
+        .packages
+        .iter()
+        .find(|p| p.name == m.name)
+        .and_then(|p| p.messages.as_ref());
+    if let Some(spec) = messages
+        && any(&|p| under(p, &spec.dir))
+    {
+        return Some("messages changed");
+    }
     let outs: Vec<&PathBuf> = project
         .targets
         .iter()
@@ -320,6 +330,20 @@ mod tests {
                 ("web".to_string(), "uses bookings".to_string()),
                 ("bookings".to_string(), "consumes payments".to_string()),
                 ("payments".to_string(), "contracts changed".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_catalog_change_reaches_the_member_and_its_dependents() {
+        let p = project();
+        let got = reasons(&p, &["services/payments/messages/ar.toml"]);
+        assert_eq!(
+            got,
+            [
+                ("web".to_string(), "uses bookings".to_string()),
+                ("bookings".to_string(), "consumes payments".to_string()),
+                ("payments".to_string(), "messages changed".to_string()),
             ]
         );
     }

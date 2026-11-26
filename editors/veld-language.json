@@ -312,6 +312,30 @@
       ],
       "args": "slo",
       "usage": "@slo(p99: ms(300), errors: 0.1)"
+    },
+    {
+      "name": "pii",
+      "targets": [
+        "field"
+      ],
+      "args": "none",
+      "usage": "@pii"
+    },
+    {
+      "name": "secret",
+      "targets": [
+        "field"
+      ],
+      "args": "none",
+      "usage": "@secret"
+    },
+    {
+      "name": "retain",
+      "targets": [
+        "model"
+      ],
+      "args": "retain",
+      "usage": "@retain(days(30), since: checkedOutAt, then: delete | anonymize)"
     }
   ],
   "prelude": "error BadRequest 400      { message: string }\nerror Unauthorized 401    { message?: string }\nerror Forbidden 403       { message?: string }\nerror NotFound 404        { resource?: string }\nerror Conflict 409        { message: string }\nerror ValidationError 422 { issues: ValidationIssue[] }\nerror TooManyRequests 429 { retryAfter?: int }\nerror Internal 500        { message?: string }\nmodel ValidationIssue     { path: string, code: string, message: string }\nerror InvalidTransition 409 { field: string, from: string, to: string }\nerror PreconditionFailed 412 { expected: long, actual: long }\nerror SagaFailed 502 { step: string, compensated: bool }\nerror DeadlineExceeded 504 { timeoutMs: long }\n"

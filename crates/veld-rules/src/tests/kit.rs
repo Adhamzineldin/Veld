@@ -67,6 +67,8 @@ pub fn field(name: &str, ty: Type) -> Field {
         version: false,
         derived: None,
         derived_id: None,
+        pii: false,
+        secret: false,
         inherited_from: None,
         constraints: Constraints::default(),
         example: None,
@@ -439,6 +441,7 @@ impl Kit {
             parent: parent_id,
             fields,
             rules: all_rules,
+            retain: None,
         }
     }
 

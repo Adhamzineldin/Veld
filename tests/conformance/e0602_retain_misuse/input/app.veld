@@ -1,0 +1,13 @@
+// `@retain` stands on a model and nowhere else (spec/platform.md section 23).
+
+@retain(days(30), since: seen, then: delete)
+error Gone 410 {
+  seen: datetime
+}
+
+@retain(days(30), since: seen, then: delete)
+enum Phase { open, closed }
+
+model OnAField {
+  seen: datetime @retain(days(30), since: seen, then: delete)
+}

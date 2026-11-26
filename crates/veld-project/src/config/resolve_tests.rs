@@ -184,6 +184,34 @@ fn self_consumption_warns() {
 }
 
 #[test]
+fn the_messages_directory_of_a_service_defaults_to_messages_next_to_the_member() {
+    let p = load("[service]\nname = \"s\"\n", &[]).unwrap();
+    let m = p.package("s").unwrap().messages.clone().unwrap();
+    assert_eq!(m.name, "messages");
+    assert_eq!(m.dir, normalize(&root().join("messages")));
+    assert!(!m.explicit);
+}
+
+#[test]
+fn the_messages_key_names_another_directory_and_a_library_has_none() {
+    let p = load("[service]\nname = \"s\"\nmessages = \"./texts/\"\n", &[]).unwrap();
+    let m = p.package("s").unwrap().messages.clone().unwrap();
+    assert_eq!((m.name.as_str(), m.explicit), ("texts", true));
+    assert_eq!(m.dir, normalize(&root().join("texts")));
+    let bank = load(BANK, &[COMMON, IAM]).unwrap();
+    assert_eq!(bank.package("common").unwrap().messages, None);
+    assert!(bank.package("iam").unwrap().messages.is_some());
+}
+
+#[test]
+fn a_messages_key_that_is_empty_or_absolute_is_refused() {
+    for bad in ["", "/etc/messages"] {
+        let text = format!("[service]\nname = \"s\"\nmessages = \"{bad}\"\n");
+        assert!(load(&text, &[]).is_err(), "{bad:?}");
+    }
+}
+
+#[test]
 fn prefixes_join_workspace_then_service() {
     let root_text = "[workspace]\nname = \"b\"\nmembers = [\"s/*\"]\nprefix = \"/api/\"\n";
     let iam = ("s/iam", "[service]\nprefix = \"/v1\"\n");

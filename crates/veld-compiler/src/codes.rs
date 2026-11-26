@@ -465,6 +465,16 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "A saga is not well formed: two steps with one name, a step called like a parameter, an expression that reads a later step, a last step whose type is not the success type, a missing or wrong `timeout`, a saga without a step, or a statement of an endpoint block in it",
     ),
+    e(
+        "E1301",
+        C,
+        "A message catalog is not a flat table of strings, or its file name is not a language tag",
+    ),
+    e(
+        "E1310",
+        C,
+        "`@retain` is wrong: the duration, the `since` field, `then`, or `anonymize` without a `@pii` field",
+    ),
     w("W0001", C, "Doc comment is not attached to anything"),
     w("W0201", C, "Unused import"),
     w("W0202", C, "Declaration shadows a prelude declaration"),
@@ -510,6 +520,16 @@ pub const CODES: &[CodeInfo] = &[
         "W1201",
         C,
         "A step of a saga that is not the last has no `compensate`: once it has run, the saga cannot be undone past it",
+    ),
+    w(
+        "W1301",
+        C,
+        "A message catalog has a key that no rule of the member has",
+    ),
+    w(
+        "W1302",
+        C,
+        "A message catalog lacks the message of a rule of the member",
     ),
     l(
         "L0001",
@@ -557,10 +577,25 @@ pub const CODES: &[CodeInfo] = &[
         T,
         "`auth-required`: an endpoint whose auth comes from neither its own `@auth` nor its service's",
     ),
+    l(
+        "L0015",
+        T,
+        "`pii-without-auth`: an endpoint with no auth can answer with a `@pii` field",
+    ),
+    l(
+        "L0016",
+        T,
+        "`secret-in-output`: a `@secret` field that a response, a declared error, a stream item or an event can contain",
+    ),
+    l(
+        "L0017",
+        T,
+        "`pii-without-retention`: a model with a `@pii` field and no `@retain`",
+    ),
 ];
 
 /// Lint rule names by code, in code order. The names are what `[lint]` in `veld.toml` uses.
-pub const LINT_RULES: [(&str, &str); 14] = [
+pub const LINT_RULES: [(&str, &str); 17] = [
     ("L0001", "unused-model"),
     ("L0002", "empty-service"),
     ("L0003", "empty-model"),
@@ -575,6 +610,9 @@ pub const LINT_RULES: [(&str, &str); 14] = [
     ("L0012", "variant-name-case"),
     ("L0013", "deprecated-declaration"),
     ("L0014", "auth-required"),
+    ("L0015", "pii-without-auth"),
+    ("L0016", "secret-in-output"),
+    ("L0017", "pii-without-retention"),
 ];
 
 /// The entry for `code`, if it is documented.

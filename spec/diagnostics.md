@@ -114,6 +114,8 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E1201` | error | veld-compiler | A step or a `compensate` of a saga names a service that is not consumed, an endpoint that does not exist or cannot be called (a stream or `ws`), or arguments that do not fit |
 | `E1202` | error | veld-compiler | The endpoint of a step or of a `compensate` is not `@idempotent` |
 | `E1203` | error | veld-compiler | A saga is not well formed: two steps with one name, a step called like a parameter, an expression that reads a later step, a last step whose type is not the success type, a missing or wrong `timeout`, a saga without a step, or a statement of an endpoint block in it |
+| `E1301` | error | veld-compiler | A message catalog is not a flat table of strings, or its file name is not a language tag |
+| `E1310` | error | veld-compiler | `@retain` is wrong: the duration, the `since` field, `then`, or `anonymize` without a `@pii` field |
 | `W0001` | warning | veld-compiler | Doc comment is not attached to anything |
 | `W0201` | warning | veld-compiler | Unused import |
 | `W0202` | warning | veld-compiler | Declaration shadows a prelude declaration |
@@ -132,6 +134,8 @@ never reused. The ranges are listed in `language.md` section 9.
 | `W1002` | warning | veld-compiler | An event of a published channel that no subscription handles |
 | `W1003` | warning | veld-compiler | A channel has `@retry` and no `@deadLetter` |
 | `W1201` | warning | veld-compiler | A step of a saga that is not the last has no `compensate`: once it has run, the saga cannot be undone past it |
+| `W1301` | warning | veld-compiler | A message catalog has a key that no rule of the member has |
+| `W1302` | warning | veld-compiler | A message catalog lacks the message of a rule of the member |
 | `L0001` | lint | veld-tools | `unused-model`: declaration is never used by any endpoint, model or constant |
 | `L0002` | lint | veld-tools | `empty-service`: service has no endpoints |
 | `L0003` | lint | veld-tools | `empty-model`: model has no fields |
@@ -146,3 +150,6 @@ never reused. The ranges are listed in `language.md` section 9.
 | `L0012` | lint | veld-tools | `variant-name-case`: enum variant is neither camelCase nor snake_case |
 | `L0013` | lint | veld-tools | `deprecated-declaration`: declaration or enum variant is deprecated |
 | `L0014` | lint | veld-tools | `auth-required`: an endpoint whose auth comes from neither its own `@auth` nor its service's |
+| `L0015` | lint | veld-tools | `pii-without-auth`: an endpoint with no auth can answer with a `@pii` field |
+| `L0016` | lint | veld-tools | `secret-in-output`: a `@secret` field that a response, a declared error, a stream item or an event can contain |
+| `L0017` | lint | veld-tools | `pii-without-retention`: a model with a `@pii` field and no `@retain` |

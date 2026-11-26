@@ -102,6 +102,10 @@
           "type": "string",
           "description": "Route prefix such as `/v1`, prepended to this service's prefixes after `[workspace].prefix`. Must start with `/`."
         },
+        "messages": {
+          "type": "string",
+          "description": "Directory of the message catalogs, relative to the member, one `<language>.toml` per language (default `messages`)."
+        },
         "base-url": {
           "type": "string",
           "description": "Default base URL of the service for generated clients (lower priority than the constructor argument and `VELD_<SERVICE>_URL`)."
@@ -1043,6 +1047,18 @@
         "auth-required": {
           "$ref": "#/$defs/lintLevel",
           "description": "Lint rule L0014."
+        },
+        "pii-without-auth": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0015."
+        },
+        "secret-in-output": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0016."
+        },
+        "pii-without-retention": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0017."
         }
       },
       "description": "Lint rule levels (`off`, `warn`, `error`). Every rule defaults to `warn`; `veld check` reports them."

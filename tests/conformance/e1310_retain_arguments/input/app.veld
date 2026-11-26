@@ -1,0 +1,46 @@
+// Every mistake in the arguments of `@retain` is E1310 (spec/platform.md section 23).
+
+@retain
+model NoArguments {
+  seen: datetime
+}
+
+@retain(days(30), since: seen)
+model NoThen {
+  seen: datetime
+}
+
+@retain(since: seen, then: delete)
+model NoDuration {
+  seen: datetime
+}
+
+@retain(hours(24), since: seen, then: delete)
+model Hours {
+  seen: datetime
+}
+
+@retain(days(0), since: seen, then: delete)
+model Zero {
+  seen: datetime
+}
+
+@retain(days(1.5), since: seen, then: delete)
+model Fraction {
+  seen: datetime
+}
+
+@retain(days(30), since: seen, then: archive)
+model UnknownThen {
+  seen: datetime
+}
+
+@retain(days(30), since: seen, then: delete, keep: true)
+model UnknownArgument {
+  seen: datetime
+}
+
+@retain(days(30), since: seen, since: seen, then: delete)
+model Twice {
+  seen: datetime
+}
