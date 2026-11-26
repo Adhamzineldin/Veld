@@ -9,6 +9,8 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 pub mod endpoint_rules;
+pub mod flags;
+pub use flags::FlagUsage;
 pub mod rules;
 pub mod schema;
 pub mod suggest;
@@ -267,6 +269,9 @@ impl Ir {
                 if e.has_timed_edge() {
                     f.insert(Feature::RulesTimed);
                 }
+                if e.flows.iter().any(|fl| fl.flag.is_some()) {
+                    f.insert(Feature::RulesFlags);
+                }
             }
         }
     }
@@ -290,6 +295,13 @@ impl Ir {
             | DeclKind::Union(_)
             | DeclKind::Const(_) => None,
         }
+    }
+
+    /// True when a `require`, an `ensure` or a clause of a policy that an `allow` of `ep` names
+    /// carries a flag (`spec/platform.md` section 11).
+    #[must_use]
+    pub fn endpoint_uses_flags(&self, ep: &Endpoint) -> bool {
+        ep.rules.first_flag_origin(self).is_some()
     }
 
     /// Features of the endpoints of the services and the declarations they reach, without what
@@ -329,6 +341,9 @@ impl Ir {
                 }
                 if ep.rules.first_audited_origin().is_some() {
                     f.insert(Feature::RulesRollout);
+                }
+                if self.endpoint_uses_flags(ep) {
+                    f.insert(Feature::RulesFlags);
                 }
                 for p in &ep.params {
                     p.ty.features(&mut f);
@@ -603,6 +618,10 @@ pub struct Flow {
     /// JSON when the edge is not timed, so the IR of a contract without `after` is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub after_ms: Option<String>,
+    /// `flow a -> b when flag("name")` (`spec/platform.md` section 11): the edge exists only
+    /// while the flag is on. Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flag: Option<String>,
 }
 
 impl Flow {
@@ -769,6 +788,9 @@ fn rule_features(rules: &[Rule], f: &mut BTreeSet<Feature>) {
     }
     if rules.iter().any(Rule::is_audited) {
         f.insert(Feature::RulesRollout);
+    }
+    if rules.iter().any(|r| r.flag.is_some()) {
+        f.insert(Feature::RulesFlags);
     }
 }
 
@@ -1152,6 +1174,9 @@ pub enum Feature {
     Events,
     /// `flow ... after` and `transition ... since` (`spec/platform.md` section 10).
     RulesTimed,
+    /// `when flag("name")` on a rule, a `require`, an `ensure`, a `permit` or `forbid` clause or
+    /// a `flow` (`spec/platform.md` section 11).
+    RulesFlags,
 }
 
 impl Feature {
@@ -1164,13 +1189,14 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 4] = [
+    pub const OPT_IN: [Feature; 5] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
         Feature::RulesTimed,
+        Feature::RulesFlags,
     ];
-    pub const ALL: [Feature; 19] = [
+    pub const ALL: [Feature; 20] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1190,6 +1216,7 @@ impl Feature {
         Feature::Idempotency,
         Feature::Events,
         Feature::RulesTimed,
+        Feature::RulesFlags,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1213,6 +1240,7 @@ impl Feature {
             Feature::Idempotency => "idempotency",
             Feature::Events => "events",
             Feature::RulesTimed => "rules_timed",
+            Feature::RulesFlags => "rules_flags",
         }
     }
     #[must_use]

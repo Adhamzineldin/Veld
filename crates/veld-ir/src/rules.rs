@@ -29,6 +29,11 @@ pub struct Rule {
     /// enforced, so the IR of a contract without the annotation is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rollout: Option<Rollout>,
+    /// `when flag("name")` (`spec/platform.md` section 11): the rule exists only while the flag
+    /// is on. Omitted from the JSON when absent, so the IR of a contract without flags is
+    /// unchanged. The flag is not part of the rule id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flag: Option<String>,
     pub origin: Origin,
 }
 

@@ -221,6 +221,7 @@ fn sample_rule() -> Rule {
         ExprKind::List(rule_exprs()),
     );
     Rule {
+        flag: Some("shortStays".into()),
         name: "r".into(),
         id: "veld:p/m.B.r@0".into(),
         expr: all,
@@ -327,6 +328,7 @@ fn decls() -> Vec<Decl> {
             DeclKind::Enum(Enum {
                 variants: vec![variant],
                 flows: vec![Flow {
+                    flag: Some("shortStays".into()),
                     from: "A".into(),
                     to: "A".into(),
                     after_ms: Some("86400000".into()),

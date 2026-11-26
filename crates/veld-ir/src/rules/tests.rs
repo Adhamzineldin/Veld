@@ -118,6 +118,7 @@ fn everything() -> Expr {
 
 fn rule(expr: Expr) -> Rule {
     Rule {
+        flag: None,
         name: "endAfterStart".into(),
         id: "veld:bookings/Booking.endAfterStart@91c0d2aa0b1c2d3e".into(),
         expr,

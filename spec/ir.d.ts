@@ -138,6 +138,7 @@ export interface Flow {
   from: string;
   to: string;
   after_ms?: string;
+  flag?: string;
 }
 
 export interface UnionArm {
@@ -208,6 +209,7 @@ export interface Rule {
   docs: string | null;
   deprecated: string | null;
   rollout?: Rollout;
+  flag?: string;
   origin: Origin;
 }
 
@@ -352,6 +354,7 @@ export interface PolicyClause {
   effect: PolicyEffect;
   expr: Expr;
   message: string | null;
+  flag?: string;
   origin: Origin;
 }
 
@@ -378,6 +381,7 @@ export interface EndpointRequire {
   reads: string[];
   else: ElseError | null;
   rollout?: Rollout;
+  flag?: string;
   docs: string | null;
   origin: Origin;
 }
@@ -401,6 +405,7 @@ export interface EndpointEnsure {
   message: string | null;
   reads: string[];
   rollout?: Rollout;
+  flag?: string;
   docs: string | null;
   origin: Origin;
 }
@@ -424,6 +429,7 @@ export interface Example {
   returns: ExampleValue | null;
   if_match?: ExampleIfMatch;
   key?: ExampleKey;
+  flags?: string[];
   outcome?: ExampleOutcome;
   event?: ExampleEvent;
   expect?: EventExpect;
@@ -603,7 +609,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "events" | "rules_timed";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "events" | "rules_timed" | "rules_flags";
 
 export type Role = "server" | "client";
 

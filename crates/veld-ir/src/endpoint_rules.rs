@@ -64,6 +64,23 @@ impl EndpointRules {
             .or_else(|| self.requires.first().map(|r| &r.origin))
             .or_else(|| self.ensures.first().map(|e| &e.origin))
     }
+    /// The origin of the first `require` or `ensure` with a flag, or of the first `allow` whose
+    /// policy has a clause with a flag (`spec/platform.md` section 11).
+    #[must_use]
+    pub fn first_flag_origin<'a>(&'a self, ir: &'a crate::Ir) -> Option<&'a Origin> {
+        let require = self.requires.iter().find(|r| r.flag.is_some());
+        let ensure = self.ensures.iter().find(|e| e.flag.is_some());
+        let allow = self.allows.iter().find(|a| {
+            ir.policies
+                .get(a.policy.index())
+                .is_some_and(|p| p.clauses.iter().any(|c| c.flag.is_some()))
+        });
+        require
+            .map(|r| &r.origin)
+            .or_else(|| ensure.map(|e| &e.origin))
+            .or_else(|| allow.map(|a| &a.origin))
+    }
+
     /// The origin of the first `require` or `ensure` that is audited (`@rollout(audit)`).
     #[must_use]
     pub fn first_audited_origin(&self) -> Option<&Origin> {
@@ -168,6 +185,9 @@ pub struct PolicyClause {
     pub effect: PolicyEffect,
     pub expr: Expr,
     pub message: Option<String>,
+    /// `when flag("name")` (`spec/platform.md` section 11); omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flag: Option<String>,
     pub origin: Origin,
 }
 
@@ -245,6 +265,9 @@ pub struct EndpointRequire {
     /// `@rollout(audit)` (`spec/rules.md` section 17.1); omitted from the JSON when enforced.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rollout: Option<Rollout>,
+    /// `when flag("name")` (`spec/platform.md` section 11); omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flag: Option<String>,
     pub origin: Origin,
 }
 
@@ -276,6 +299,9 @@ pub struct EndpointEnsure {
     /// `@rollout(audit)` (`spec/rules.md` section 17.1); omitted from the JSON when enforced.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rollout: Option<Rollout>,
+    /// `when flag("name")` (`spec/platform.md` section 11); omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flag: Option<String>,
     pub origin: Origin,
 }
 
@@ -315,6 +341,10 @@ pub struct Example {
     /// The `key` line (`spec/rules.md` section 11.9). Omitted when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<ExampleKey>,
+    /// `given flag "name"` (`spec/platform.md` section 11): the flags that are on in this example,
+    /// sorted, without repeats. A flag the example does not name is off. Omitted when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<ExampleOutcome>,
     pub docs: Option<String>,
