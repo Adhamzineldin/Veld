@@ -32,7 +32,7 @@ pub(crate) use endpoint::{
     has_bare_require, has_required_fact, has_transition,
 };
 pub(super) use policy::check_policies;
-pub(crate) use transition::RTransition;
+pub(crate) use transition::{REmitted, RTransition};
 use veld_ir::Rollout;
 use veld_ir::rules::Expr;
 pub(crate) use version::{RVersion, guard as version_guard};

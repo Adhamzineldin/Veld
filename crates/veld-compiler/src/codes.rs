@@ -424,6 +424,11 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected`",
     ),
+    e(
+        "E1011",
+        C,
+        "`emits` is wrong: on a flow with several edges, not an event, or a transition whose service publishes no channel that carries it",
+    ),
     w("W0001", C, "Doc comment is not attached to anything"),
     w("W0201", C, "Unused import"),
     w("W0202", C, "Declaration shadows a prelude declaration"),

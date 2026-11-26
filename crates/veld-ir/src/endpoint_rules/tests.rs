@@ -200,6 +200,7 @@ pub(crate) fn sample_examples() -> Vec<Example> {
         })),
         event: None,
         expect: None,
+        emitted: None,
         docs: Some("d".into()),
         origin: origin(20),
     };
@@ -275,6 +276,7 @@ pub(crate) fn sample_event_examples() -> Vec<Example> {
                 once: false,
             },
         ])),
+        emitted: None,
         origin: origin(30),
     };
     let rejected = Example {
@@ -606,6 +608,7 @@ fn sample_transition() -> EndpointTransition {
         decl: DeclId(0),
         from: vec!["pending".into(), "paid".into()],
         to: "cancelled".into(),
+        emits: Vec::new(),
         origin: origin(12),
     }
 }
@@ -631,6 +634,7 @@ fn flow(from: &str, to: &str) -> Flow {
     Flow {
         from: from.into(),
         to: to.into(),
+        emits: None,
     }
 }
 

@@ -281,6 +281,14 @@ fn rust_server_refuses_channel_annotations_and_the_client_ignores_them() {
     veld_emit_conformance::check_events_delivery_is_ignored_by_clients(&Rust).unwrap();
 }
 
+/// `emits` and the outbox (`spec/events.md` section 11): the Rust server has not built them and
+/// refuses a service with an emitting `transition` with `E0801`; the client keeps its bytes.
+#[test]
+fn rust_server_refuses_the_outbox_and_the_client_ignores_it() {
+    veld_emit_conformance::check_events_outbox_is_refused(&Rust).unwrap();
+    veld_emit_conformance::check_events_outbox_is_ignored_by_clients(&Rust).unwrap();
+}
+
 /// `@rollout(audit)` (`spec/rules.md` section 17.1): Rust declares `rules_rollout` as a server and
 /// as a client, so an audited invariant, `require` and `ensure` pass the gate and generate.
 #[test]

@@ -23,7 +23,20 @@ pub struct RTransition {
     /// Wire values of `from` (same order) and of `to`.
     pub from_wire: Vec<String>,
     pub to_wire: String,
+    /// The events the move emits (`spec/events.md` section 11), filled after the service's
+    /// `publishes` lines are known; empty for a move without `emits`.
+    pub emits: Vec<REmitted>,
     pub span: Span,
+}
+
+/// One event a transition emits and the channel the service sends it on.
+#[derive(Debug, Clone, Copy)]
+pub struct REmitted {
+    /// An index into `Program::decls`.
+    pub event: usize,
+    /// An index into `Program::channels`: the first channel of the service's `publishes` lines
+    /// that carries the event.
+    pub channel: usize,
 }
 
 /// What the checker knows while it looks at the statement.
@@ -119,6 +132,7 @@ impl Scope<'_, '_> {
             from: from.into_iter().map(|(n, _)| n).collect(),
             to: to.name.clone(),
             to_wire: to.wire.clone(),
+            emits: Vec::new(),
             span: t.span,
         })
     }

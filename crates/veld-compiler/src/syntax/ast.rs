@@ -297,6 +297,8 @@ pub struct EnumDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlowStmt {
     pub states: Vec<Ident>,
+    /// `emits Event` (`spec/events.md` section 11), when the line has it.
+    pub emits: Option<Ident>,
     pub span: Span,
 }
 
@@ -656,6 +658,16 @@ pub struct ExampleCall {
     pub args: Vec<ExampleArgument>,
     pub returns: Option<Value>,
     pub outcome: Outcome,
+    /// `expect emitted E` and `expect not emitted` after the call (`spec/events.md` section
+    /// 11.1), in source order. The checker rejects a mix.
+    pub emitted: Vec<ExpectEmitted>,
+    pub span: Span,
+}
+
+/// `expect emitted Event`, or `expect not emitted` when `event` is `None`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExpectEmitted {
+    pub event: Option<TypeExpr>,
     pub span: Span,
 }
 

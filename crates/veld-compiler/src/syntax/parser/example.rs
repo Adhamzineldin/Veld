@@ -186,6 +186,7 @@ impl Parser<'_> {
         };
         self.expect(&Tok::Arrow, "`->` and the outcome of the call")?;
         let outcome = self.parse_outcome(false)?;
+        let emitted = self.parse_emitted_lines()?;
         Some(ExampleCall {
             if_match,
             key,
@@ -194,6 +195,7 @@ impl Parser<'_> {
             args,
             returns,
             outcome,
+            emitted,
             span: self.end_from(start),
         })
     }
@@ -209,7 +211,7 @@ impl Parser<'_> {
             Some(self.parse_typeref()?)
         };
         let value_here = !same_line || !self.newline_between(self.prev_end(), self.span().start);
-        let value = if self.starts_value() && value_here {
+        let value = if self.starts_value() && value_here && !self.at_emitted_expect() {
             Some(self.parse_value()?)
         } else {
             None

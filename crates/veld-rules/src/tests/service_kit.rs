@@ -206,6 +206,7 @@ pub fn example(name: &str, endpoint: &str, outcome: ExampleOutcome) -> Example {
         docs: None,
         event: None,
         expect: None,
+        emitted: None,
         origin: Origin::default(),
     }
 }

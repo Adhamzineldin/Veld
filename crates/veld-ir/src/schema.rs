@@ -236,7 +236,14 @@ pub const DEFS: &[Def] = &[
             ("deprecated", OPT_STR),
         ],
     ),
-    Def::Object("Flow", &[("from", T::Str), ("to", T::Str)]),
+    Def::Object(
+        "Flow",
+        &[
+            ("from", T::Str),
+            ("to", T::Str),
+            ("emits", T::Optional(&DECL_ID)),
+        ],
+    ),
     Def::Object("UnionArm", &[("label", T::Str), ("decl", DECL_ID)]),
     Def::Object("Field", FIELD),
     Def::Strings(
@@ -443,8 +450,13 @@ pub const DEFS: &[Def] = &[
             ("decl", DECL_ID),
             ("from", T::List(&T::Str)),
             ("to", T::Str),
+            ("emits", T::Optional(&T::List(&T::Ref("TransitionEmit")))),
             ("origin", ORIGIN),
         ],
+    ),
+    Def::Object(
+        "TransitionEmit",
+        &[("event", DECL_ID), ("channel", T::Ref("ChannelId"))],
     ),
     Def::Object(
         "EndpointAllow",
@@ -748,6 +760,7 @@ pub const DEFS: &[Def] = &[
             "idempotency",
             "events",
             "events_delivery",
+            "events_outbox",
         ],
     ),
     Def::Strings("Role", &["server", "client"]),

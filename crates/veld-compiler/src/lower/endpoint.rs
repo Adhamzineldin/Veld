@@ -7,7 +7,7 @@ use crate::semantic::{RElse, REndpoint, REnsure, RRequire, RTransition, ServiceI
 use crate::signature::{self, EndpointRef, StatementKind, TransitionRef};
 use veld_ir::endpoint_rules::{
     ElseError, ElseField, EndpointEnsure, EndpointFact, EndpointRequire, EndpointRules,
-    EndpointTransition, EndpointVersion, ServiceFact,
+    EndpointTransition, EndpointVersion, ServiceFact, TransitionEmit,
 };
 use veld_ir::{Decl, Type};
 
@@ -134,6 +134,14 @@ impl Lowerer<'_, '_> {
             decl: self.decl_id(t.decl),
             from: t.from.clone(),
             to: t.to.clone(),
+            emits: t
+                .emits
+                .iter()
+                .map(|e| TransitionEmit {
+                    event: self.decl_id(e.event),
+                    channel: self.channel_id(e.channel),
+                })
+                .collect(),
             origin: self.origin(t.span, module),
         }
     }

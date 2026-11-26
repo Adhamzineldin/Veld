@@ -140,6 +140,7 @@ impl Lowerer<'_, '_> {
                 value: ex.value.clone(),
             }),
             expect: Some(expect),
+            emitted: None,
             origin: self.origin(ex.span, ex.module),
         }
     }

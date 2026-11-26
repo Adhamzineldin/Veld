@@ -1,0 +1,84 @@
+// `expect emitted` and `expect not emitted` (spec/events.md section 11.1): the endpoint must have
+// a transition that emits, an `expect emitted` line needs `ok` and `returns` and names an event
+// that transition emits, once, and `expect not emitted` stands alone.
+
+event BookingPaid { bookingId: uuid }
+event BookingCancelled { bookingId: uuid }
+
+channel BookingEvents {
+  carries BookingPaid, BookingCancelled
+  key bookingId
+}
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid emits BookingPaid
+  flow paid -> cancelled
+}
+
+model Booking { id: uuid, status: Status }
+
+service Bookings at "/bookings" {
+  publishes BookingEvents
+
+  post "/{id}/pay" pay(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+  }
+
+  post "/{id}/cancel" cancel(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: paid -> cancelled
+  }
+
+  get "/ping" ping() -> 204
+}
+
+example "the move of cancel emits nothing" {
+  given booking = { status: .paid }
+  cancel() returns { status: .cancelled } -> ok
+  expect emitted BookingPaid
+}
+
+example "pay does not emit this event" {
+  given booking = { status: .pending }
+  pay() returns { status: .paid } -> ok
+  expect emitted BookingCancelled
+}
+
+example "an error is not a success" {
+  given booking = { status: .paid }
+  pay() -> InvalidTransition
+  expect emitted BookingPaid
+}
+
+example "ok without returns" {
+  given booking = { status: .pending }
+  pay() -> ok
+  expect emitted BookingPaid
+}
+
+example "not combined" {
+  given booking = { status: .pending }
+  pay() returns { status: .paid } -> ok
+  expect emitted BookingPaid
+  expect not emitted
+}
+
+example "an event twice" {
+  given booking = { status: .pending }
+  pay() returns { status: .paid } -> ok
+  expect emitted BookingPaid
+  expect emitted BookingPaid
+}
+
+example "not a transition that emits" {
+  ping() -> ok
+  expect not emitted
+}
+
+example "a model is no event" {
+  given booking = { status: .pending }
+  pay() returns { status: .paid } -> ok
+  expect emitted Booking
+}

@@ -329,6 +329,7 @@ fn decls() -> Vec<Decl> {
                 flows: vec![Flow {
                     from: "A".into(),
                     to: "A".into(),
+                    emits: None,
                 }],
                 finals: vec!["A".into()],
             }),

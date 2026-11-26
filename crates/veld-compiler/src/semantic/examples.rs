@@ -4,6 +4,7 @@
 //! An example states only what it cares about. The values it leaves out are filled in when it
 //! runs (section 12.2), so nothing here requires a field, a parameter or a given.
 
+mod emitted;
 mod events;
 mod idempotency;
 mod values;
@@ -38,6 +39,9 @@ pub struct RExample {
     /// The `key` line.
     pub key: Option<RKey>,
     pub outcome: ROutcome,
+    /// `expect emitted` (`spec/events.md` section 11.1): the events, as indices into
+    /// `Program::decls`; empty for `expect not emitted`, `None` without such a line.
+    pub emitted: Option<Vec<usize>>,
     pub docs: Option<String>,
     pub span: Span,
 }
@@ -251,9 +255,10 @@ fn check_example(
     let if_match = v.if_match(call.if_match.as_ref(), ep);
     let key = v.key(call.key.as_deref(), ep);
     let outcome = v.outcome(call, ep);
+    let emitted = emitted::check_emitted(prog, module, call, ep, call.returns.is_some(), diags);
     // Every part is checked before the first failure is acted on, so one run reports them all.
     let (now, args, returns, outcome) = (now?, args?, returns?, outcome?);
-    let (if_match, key) = (if_match?, key?);
+    let (if_match, key, emitted) = (if_match?, key?, emitted?);
     ok.then(|| RExample {
         name: ex.name.value.clone(),
         pkg,
@@ -268,6 +273,7 @@ fn check_example(
         if_match,
         key,
         outcome,
+        emitted,
         docs: doc_text(&ex.docs),
         span: ex.span,
     })

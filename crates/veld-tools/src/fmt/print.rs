@@ -408,18 +408,20 @@ impl Printer<'_> {
         if !e.variants.is_empty() {
             self.out.push('\n');
         }
-        let flows = e
-            .flows
-            .iter()
-            .map(|f| (f.span.start, "flow", " -> ", &f.states));
+        let flows = e.flows.iter().map(|f| {
+            let emits = f.emits.as_ref().map(|i| format!(" emits {}", i.name));
+            (f.span.start, "flow", " -> ", &f.states, emits)
+        });
         let finals = e
             .finals
             .iter()
-            .map(|f| (f.span.start, "final", ", ", &f.states));
-        for (key, word, sep, states) in flows.chain(finals) {
+            .map(|f| (f.span.start, "final", ", ", &f.states, None));
+        for (key, word, sep, states, tail) in flows.chain(finals) {
             let names: Vec<&str> = states.iter().map(|s| s.name.as_str()).collect();
             self.leading(key, 2);
-            self.out.push_str(&format!("  {word} {}", names.join(sep)));
+            let tail = tail.unwrap_or_default();
+            self.out
+                .push_str(&format!("  {word} {}{tail}", names.join(sep)));
             self.end_line(key, 2);
         }
     }
@@ -523,6 +525,9 @@ impl Printer<'_> {
                     p.leading(key, 2);
                     p.out.push_str(&stmt::call_lines(c, 2).join("\n"));
                     p.end_line(key, 2);
+                    for x in &c.emitted {
+                        p.example_line(x.span.start, &stmt::emitted_line(x));
+                    }
                 }
                 ExampleBody::Event(e) => p.event_example(e),
             }

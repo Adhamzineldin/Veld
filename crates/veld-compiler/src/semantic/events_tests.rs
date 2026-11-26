@@ -300,8 +300,11 @@ fn topic_is_only_for_channels() {
 }
 
 #[test]
-fn flow_emits_is_still_a_syntax_error() {
-    assert!(codes("enum S { a, b\n flow a -> b emits P }").contains(&"E0003"));
+fn flow_emits_is_a_clause_of_phase_e3() {
+    // `emits` is no longer a syntax error: it names an event (`E1011` when it names none).
+    let found = codes("enum S { a, b\n flow a -> b emits P }");
+    assert!(!found.contains(&"E0003"), "{found:?}");
+    assert!(found.contains(&"E1011"), "{found:?}");
 }
 
 #[test]

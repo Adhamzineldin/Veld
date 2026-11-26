@@ -9,6 +9,9 @@
     reason = "token scanning: only a few tokens matter, the rest are skipped"
 )]
 
+mod emitted;
+#[cfg(test)]
+mod emitted_tests;
 mod endpoint;
 #[cfg(test)]
 mod endpoint_tests;

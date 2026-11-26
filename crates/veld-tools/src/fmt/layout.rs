@@ -393,6 +393,11 @@ fn example_node(x: &ast::Example) -> Node {
                 kids.push(leaf(k.span.start, k.span.start, k.span.end));
             }
             kids.push(leaf(c.span.start, c.span.start, c.span.end));
+            kids.extend(
+                c.emitted
+                    .iter()
+                    .map(|x| leaf(x.span.start, x.span.start, x.span.end)),
+            );
         }
         ast::ExampleBody::Event(e) => {
             let given_end = e

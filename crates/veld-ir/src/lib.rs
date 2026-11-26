@@ -219,6 +219,12 @@ impl Ir {
         {
             f.insert(Feature::EventsDelivery);
         }
+        if services
+            .iter()
+            .any(|s| self.service(*s).first_emitting_transition().is_some())
+        {
+            f.insert(Feature::EventsOutbox);
+        }
         let mut ids = self.events_of(services);
         ids.extend(self.event_reachable_decls(services));
         for id in ids {
@@ -652,6 +658,10 @@ impl Enum {
 pub struct Flow {
     pub from: String,
     pub to: String,
+    /// The event the move emits (`spec/events.md` section 11). It is not part of any id: the id
+    /// of a transition names the guard. Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emits: Option<DeclId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -926,6 +936,16 @@ impl Service {
         }
     }
 
+    /// The transition of the first endpoint whose move emits an event, in source order
+    /// (`spec/events.md` section 11). This is where the gate of `events_outbox` points.
+    #[must_use]
+    pub fn first_emitting_transition(&self) -> Option<&endpoint_rules::EndpointTransition> {
+        self.endpoints
+            .iter()
+            .filter_map(|e| e.rules.transition.as_ref())
+            .find(|t| !t.emits.is_empty())
+    }
+
     /// The channels the service publishes to, in source order.
     pub fn published_channels(&self) -> impl Iterator<Item = ChannelId> + '_ {
         self.publishes.iter().map(|p| p.channel)
@@ -1194,6 +1214,8 @@ pub enum Feature {
     /// `@retry`, `@deadLetter` or `@ordered` on a channel that a service publishes or subscribes
     /// to (`spec/events.md` section 10.8).
     EventsDelivery,
+    /// A `transition` over a flow that `emits` an event (`spec/events.md` section 11).
+    EventsOutbox,
 }
 
 impl Feature {
@@ -1206,13 +1228,14 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 4] = [
+    pub const OPT_IN: [Feature; 5] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
         Feature::EventsDelivery,
+        Feature::EventsOutbox,
     ];
-    pub const ALL: [Feature; 19] = [
+    pub const ALL: [Feature; 20] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1232,6 +1255,7 @@ impl Feature {
         Feature::Idempotency,
         Feature::Events,
         Feature::EventsDelivery,
+        Feature::EventsOutbox,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1255,6 +1279,7 @@ impl Feature {
             Feature::Idempotency => "idempotency",
             Feature::Events => "events",
             Feature::EventsDelivery => "events_delivery",
+            Feature::EventsOutbox => "events_outbox",
         }
     }
     #[must_use]
@@ -1301,3 +1326,6 @@ mod events_tests;
 
 #[cfg(test)]
 mod delivery_tests;
+
+#[cfg(test)]
+mod outbox_tests;

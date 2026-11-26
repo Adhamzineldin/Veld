@@ -137,6 +137,7 @@ export interface Variant {
 export interface Flow {
   from: string;
   to: string;
+  emits?: DeclId;
 }
 
 export interface UnionArm {
@@ -319,7 +320,13 @@ export interface EndpointTransition {
   decl: DeclId;
   from: string[];
   to: string;
+  emits?: TransitionEmit[];
   origin: Origin;
+}
+
+export interface TransitionEmit {
+  event: DeclId;
+  channel: ChannelId;
 }
 
 export interface EndpointAllow {
@@ -612,7 +619,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "events" | "events_delivery";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "events" | "events_delivery" | "events_outbox";
 
 export type Role = "server" | "client";
 
