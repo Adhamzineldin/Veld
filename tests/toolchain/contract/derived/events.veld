@@ -1,0 +1,28 @@
+// Derived fields of an event (spec/rules.md section 17.2, spec/events.md section 6): the publisher
+// computes them before the invariants, the subscriber computes them again from the data of the
+// message and does not believe the one the message carries. Compiled as the package `bookings`
+// by crates/emitters/node/tests/derived.rs.
+
+event Invoiced {
+  id: uuid
+  net: int
+  tax: int
+  gross: int = net + tax
+  rule positive: gross > 0
+}
+
+@topic("shop.invoices.v1")
+channel Invoices {
+  carries Invoiced
+  key id
+}
+
+service Biller {
+  publishes Invoices
+}
+
+service Ledger {
+  subscribes Invoices as "ledger" {
+    on Invoiced -> record
+  }
+}
