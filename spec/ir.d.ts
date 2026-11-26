@@ -494,6 +494,7 @@ export interface ExpectedCall {
   service: ServiceId;
   handler: string;
   called: boolean;
+  once?: boolean;
 }
 
 export interface Channel {
@@ -506,8 +507,18 @@ export interface Channel {
   key: ChannelKey | null;
   docs: string | null;
   deprecated: string | null;
+  retry?: Retry;
+  dead_letter?: boolean;
+  ordered?: boolean;
   origin: Origin;
 }
+
+export interface Retry {
+  max: number;
+  backoff: Backoff;
+}
+
+export type Backoff = "fixed" | "exponential";
 
 export interface ChannelKey {
   name: string;
@@ -601,7 +612,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "events";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "events" | "events_delivery";
 
 export type Role = "server" | "client";
 

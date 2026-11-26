@@ -1,0 +1,22 @@
+// The three annotations of a channel are `E0602` on anything else (spec/events.md section 10.2).
+
+@retry(max: 3)
+event OnAnEvent {
+  id: uuid
+  @ordered
+  seq: int
+}
+
+@deadLetter
+model OnAModel { a: int }
+
+@ordered
+enum OnAnEnum { a, b }
+
+@retry(max: 1)
+@deadLetter
+@ordered
+service OnAService at "/s" {
+  @ordered
+  get "/a" a() -> OnAModel
+}

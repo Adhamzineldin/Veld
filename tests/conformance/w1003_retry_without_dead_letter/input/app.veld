@@ -1,0 +1,26 @@
+// `@retry` without `@deadLetter`: a message whose retries are used up is gone (spec/events.md
+// section 10.2). Only the first channel is reported.
+
+event Paid { id: uuid }
+
+@retry(max: 3)
+channel Retried { carries Paid }
+
+@retry(max: 3)
+@deadLetter
+channel Kept { carries Paid }
+
+@deadLetter
+channel OnlyDeadLetter { carries Paid }
+
+@ordered
+channel OnlyOrdered { carries Paid }
+
+service Publisher { publishes Retried, Kept, OnlyDeadLetter, OnlyOrdered }
+
+service Consumer {
+  subscribes Retried as "g" { on Paid -> a }
+  subscribes Kept as "g" { on Paid -> b }
+  subscribes OnlyDeadLetter as "g" { on Paid -> c }
+  subscribes OnlyOrdered as "g" { on Paid -> d }
+}

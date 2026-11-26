@@ -422,7 +422,7 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E1010",
         C,
-        "An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, or `rejected` is combined with `called`",
+        "An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected`",
     ),
     w("W0001", C, "Doc comment is not attached to anything"),
     w("W0201", C, "Unused import"),
@@ -463,6 +463,7 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "An event of a published channel that no subscription handles",
     ),
+    w("W1003", C, "A channel has `@retry` and no `@deadLetter`"),
     l(
         "L0001",
         T,
