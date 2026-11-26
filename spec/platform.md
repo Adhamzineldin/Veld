@@ -195,6 +195,7 @@ transition  = "transition" path ":" IDENT { "," IDENT } "->" IDENT [ "since" pat
 - **The guard** (`spec/rules.md` §10.2) of such a transition also requires `now - since >= d`. A move that is not due answers `409 InvalidTransition` with `from` and `to` as usual; the violation's `message` is `violates rule transition: not due`. A fact whose `since` is in the future is not due.
 - The id of a timed transition adds `"a": "<milliseconds of d>"` and `"n": [<wire names of the since path>]` to the hashed object of §10.2. The id of every other transition is what it was.
 - `W0933`: a timed edge that no `transition` of the workspace takes.
+- **`veld check` names the timed endpoints.** After its summary, and after the `flags:` line, it prints `timed: Bookings.expire (pending -> cancelled after 86400000 ms), ...`, one entry per endpoint with a timed transition, sorted by service and endpoint, the wait in milliseconds. `--graph=json` has the same list under `timed`, each entry `{ "service", "endpoint", "from", "to", "after_ms" }`; the key and the line are absent when nothing is timed. The list is `veld_rules::timed_endpoints`.
 - An endpoint with a timed transition is an ordinary endpoint: it has auth, policies and rules, and a caller who is permitted may call it. What is new is that the server can call it by itself.
 
 ### 10.1 The timer

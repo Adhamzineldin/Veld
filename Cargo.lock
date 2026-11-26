@@ -1772,6 +1772,7 @@ dependencies = [
  "veld-codegen",
  "veld-compiler",
  "veld-ir",
+ "veld-rules",
  "veld-test-support",
 ]
 

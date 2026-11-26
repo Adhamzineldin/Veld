@@ -33,6 +33,9 @@ pub struct DepGraph {
     /// The feature flags the workspace uses and what each gates (`spec/platform.md` section 11).
     /// Empty without flags, and then absent from the JSON.
     pub flags: BTreeMap<String, veld_ir::FlagUsage>,
+    /// The endpoints with a timed transition (`spec/platform.md` section 10), sorted. Empty
+    /// without any, and then absent from the JSON.
+    pub timed: Vec<crate::timed::TimedMove>,
 }
 
 impl DepGraph {
@@ -87,6 +90,7 @@ pub fn graph(ir: &Ir) -> DepGraph {
         cycles,
         owners: BTreeMap::new(),
         flags: ir.flag_usage(),
+        timed: crate::timed::timed_moves(ir),
     }
 }
 
@@ -178,6 +182,9 @@ fn json_text(g: &DepGraph) -> String {
     if let (false, Some(map)) = (g.flags.is_empty(), value.as_object_mut()) {
         map.insert("flags".to_string(), json!(g.flags));
     }
+    if let (false, Some(map)) = (g.timed.is_empty(), value.as_object_mut()) {
+        map.insert("timed".to_string(), json!(g.timed));
+    }
     let mut text = serde_json::to_string_pretty(&value).unwrap_or_default();
     text.push('\n');
     text
@@ -264,6 +271,7 @@ mod tests {
             cycles: cycles(&consumes),
             owners: BTreeMap::new(),
             flags: BTreeMap::new(),
+            timed: Vec::new(),
             consumes,
         }
     }

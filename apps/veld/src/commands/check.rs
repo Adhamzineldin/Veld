@@ -250,5 +250,8 @@ fn summarize(
     if let Some(line) = flags_line(ir) {
         ui.info(&line);
     }
+    if let Some(line) = veld_tools::timed_line(ir) {
+        ui.info(&line);
+    }
     Ok(Exit::Ok)
 }

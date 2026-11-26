@@ -15,6 +15,7 @@ mod retention_export;
 pub mod rulebook;
 pub mod runtime_schema;
 pub mod slo;
+mod timed;
 
 pub use asyncapi::{NoChannels, asyncapi};
 pub use deps::{DepGraph, DepsFormat, deps, deps_with_owners};
@@ -28,6 +29,7 @@ pub use retention_export::retention_report;
 pub use rulebook::{NO_RULES, rule_book};
 pub use runtime_schema::runtime_schema;
 pub use slo::openslo;
+pub use timed::{TimedMove, timed_line, timed_moves};
 
 #[cfg(test)]
 mod retention_export_tests;

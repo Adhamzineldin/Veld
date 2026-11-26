@@ -93,6 +93,49 @@ fn check_lists_the_flags_and_graph_json_has_them() {
 }
 
 #[test]
+fn check_names_the_timed_endpoints_and_graph_json_lists_them() {
+    let tmp = project_with(&vectors("timed.veld.pending"));
+    veld(tmp.path())
+        .arg("check")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "timed: Bookings.archiveBooking (pending -> expired after 172800000 ms), Bookings.expireBooking (pending -> cancelled after 86400000 ms)",
+        ));
+    let out = veld(tmp.path())
+        .args(["check", "--graph=json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let graph: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(
+        graph["timed"],
+        serde_json::json!([
+            { "service": "Bookings", "endpoint": "archiveBooking", "from": "pending", "to": "expired", "after_ms": 172_800_000 },
+            { "service": "Bookings", "endpoint": "expireBooking", "from": "pending", "to": "cancelled", "after_ms": 86_400_000 }
+        ])
+    );
+    // A workspace with no timed edge has neither the key nor the line.
+    let plain = project_with(&vectors("flags.veld.pending"));
+    veld(plain.path())
+        .arg("check")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("timed:").not());
+    let out = veld(plain.path())
+        .args(["check", "--graph=json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let graph: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    assert!(graph.get("timed").is_none());
+}
+
+#[test]
 fn check_accepts_the_contracts_and_fmt_is_stable() {
     for name in ["timed.veld.pending", "flags.veld.pending"] {
         let tmp = project_with(&vectors(name));
