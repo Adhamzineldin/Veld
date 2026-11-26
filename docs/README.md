@@ -7,7 +7,7 @@
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md): workspace layout, commands, the definition of done, the commit convention.
 
 ## Guides
-- [Getting started](guides/getting-started.md), [generated output](guides/generated-output.md), [workspaces](guides/workspaces.md), [microservices](guides/microservices.md), [CI](guides/ci.md), [testing with examples](guides/testing.md), [business rules](guides/rules.md)
+- [Getting started](guides/getting-started.md), [generated output](guides/generated-output.md), [workspaces](guides/workspaces.md), [microservices](guides/microservices.md), [CI](guides/ci.md), [testing with examples](guides/testing.md), [business rules](guides/rules.md), [events](guides/events.md)
 - [Developer guide](DEVELOPER_GUIDE.md): the compiler, generators and tests, for contributors
 - [Writing an emitter](emitter-guide.md): built-in Rust emitters and plugins, and the tests they need.
 - [`distribution/`](../distribution): how the npm, pip, Homebrew, apt/rpm, Chocolatey and Scoop packages and the release workflow fit together.
