@@ -164,6 +164,7 @@ Annotations may appear before a field (`@deprecated("…") name: T`) or after it
 - `name?: T` means the field MAY be absent. `null` is not accepted for an optional field. It is accepted only where the type is `json`.
 - A required field MUST be present.
 - A default (`= literal`) is applied when the field is absent. A field with a default is required in the output and optional in the input.
+- `= expr`, where `expr` is not one literal, makes the field **derived**: the server computes it from the other fields, and nobody supplies it. A negative number is a literal (`= -1`). There is no keyword; `spec/rules.md` §17.2 says what a derived field is, where it is computed and what it costs a generator.
 
 ### 5.4 Declarations
 - **model**: a record with named fields.

@@ -937,7 +937,7 @@ Range `E09xx` (errors) and `W09xx` (warnings). Codes are never reused.
 | `E0924` | `ensure` on an endpoint whose success is a stream |
 | `E0950` | Duplicate example name; unknown or ambiguous endpoint in an example |
 | `E0951` | `given` names something that is not a fact of the called endpoint |
-| `E0952` | A value in an example does not fit the type it is used at; an `ifMatch` line on an endpoint with no version guard, a `key` line on an endpoint that is not `@idempotent`, a key that is not 1 to 255 visible ASCII characters, a `stored` answer with a status of 500 or more or one the endpoint cannot give |
+| `E0952` | A value in an example does not fit the type it is used at, or writes a derived field (§17.2); an `ifMatch` line on an endpoint with no version guard, a `key` line on an endpoint that is not `@idempotent`, a key that is not 1 to 255 visible ASCII characters, a `stored` answer with a status of 500 or more or one the endpoint cannot give |
 | `E0953` | A value the example leaves out cannot be filled in, or the filled-in value breaks an invariant |
 
 | `E0930` | A `flow` or `final` names something that is not a variant of the enum |
@@ -1001,7 +1001,7 @@ tests/rules/<group>/<name>.json      cases for it
 
 ## 17. Lifecycle (Phase 5)
 
-**Status: 17.1 is implemented in the compiler, the tools, the reference evaluator and the four built-in generators (`node`, `typescript`, `java`, `rust`); a generator that does not declare `rules_rollout` refuses it with `E0801`. 17.2, 17.3 and 18 are drafts, not implemented.** Sections 17 and 18 are written before their code, as the rest of this document was.
+**Status: 17.1 is implemented in the compiler, the tools, the reference evaluator and the four built-in generators (`node`, `typescript`, `java`, `rust`); a generator that does not declare `rules_rollout` refuses it with `E0801`. 17.2 is implemented outside the generators (the compiler, the IR, the reference evaluator, `veld test`, `veld fmt`, `veld diff`, the OpenAPI export and the fuzzer); no generator implements it yet, so each reports `E0801` for `rules_derived`. 17.3 and 18 are drafts, not implemented.** Sections 17 and 18 are written before their code, as the rest of this document was.
 
 ### 17.1 Rolling a rule out: `@rollout(audit)`
 
@@ -1073,7 +1073,9 @@ model Order {
 - Identity: `veld:<package>/<Decl>.<field>@<hex16>` over the RFC 8785 JSON of `{ "d": "<qualified decl name>", "k": "derived", "n": "<wire name>", "e": ExprShape }`. The expression is not part of the declaration's signature; the field is, like any other.
 - The rules digest (§9.7) also covers the ids of the derived fields a service reaches, because a client's local check reads values it derived itself. A contract with no derived field has the digest it has today.
 - In an example, a derived field is never filled in (§12.2) and MUST NOT be written (`E0952`); it is computed.
-- `veld diff`: a changed derived expression is "possibly breaking". The OpenAPI export marks the field `readOnly` with `x-veld-derived`.
+- `veld diff`: a changed derived expression is "possibly breaking" (`DerivedChanged`). A field that becomes derived is possibly breaking where callers send the type, because what they send is now ignored without an error, and a note where only consumers read it (`FieldBecameDerived`). A field that stops being derived is a note (`FieldNoLongerDerived`), and is breaking where callers send the type because it became required (`FieldBecameRequired`). A derived field is not required of a caller, so adding one is never `RequiredFieldAdded`.
+- The OpenAPI export marks the property `readOnly` with `x-veld-derived` (its expression), keeps it in `required` (a response always has it) and does not expand it into a parameter of a query object. A contract without derived fields exports the same bytes.
+- `veld fmt` prints the expression, and keeps the parentheses of a literal written in parentheses: without them the field would read as a field with a default. The fuzzer draws no value for a derived field and removes what a repair wrote into one; a rule on a derived field gets no boundary of its own. `veld check --prove` leaves a derived field open, like any value it cannot model: a counterexample that sets one is not confirmed by the evaluator, which computes it, and is reported as unknown.
 - In the IR, `Field` gains `"derived": Expr` and `"derived_id": "<id>"`, both omitted when absent. The feature is `rules_derived`; it is opt-in (§17.1), so every generator refuses a contract with a derived field (`E0801`) until it declares the feature.
 
 What the implementation chose where the text above is silent:
