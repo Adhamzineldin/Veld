@@ -1,0 +1,47 @@
+// An emitting move next to the features of platform phase P2 and the idempotency key
+// (spec/events.md section 11, spec/platform.md sections 10 to 13): the move is timed, flagged,
+// idempotent and has a deadline and a service level; the event has a flagged invariant and a
+// derived field. Compiled as the package `outbox_four` by
+// crates/emitters/rust/tests/events_outbox.rs (it only has to generate and build).
+
+event Archived {
+  roomId: uuid
+  guests: int
+  note: string = "none"
+  rule small: guests <= 6 when flag("smallGroups")
+}
+
+channel RoomEvents {
+  carries Archived
+  key roomId
+}
+
+enum Phase {
+  draft, live, archived
+  flow draft -> live
+  flow live -> archived after hours(1) emits Archived when flag("archiving")
+  final archived
+}
+
+model Room {
+  id: uuid
+  open: bool
+  guests: int
+  phase: Phase = .draft
+  liveSince: datetime
+}
+
+@slo(p99: ms(300), errors: 0.1)
+service Rooms at "/rooms" {
+  publishes RoomEvents
+
+  @timeout(seconds(2))
+  @idempotent
+  post "/{id}/archive" archive(id: uuid) -> Room {
+    fact room: Room = id
+    require room.open when flag("openOnly")
+    transition room.phase: live -> archived since room.liveSince
+  }
+
+  get "/{id}" getRoom(id: uuid) -> Room
+}

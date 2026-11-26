@@ -183,6 +183,12 @@ pub struct RequestContext {
     #[doc(hidden)]
     pub absent: BTreeMap<String, Vec<String>>,
     // @end
+    // @if outbox
+    /// The events this request wrote to the outbox, by name (`spec/events.md` section 11.1): the
+    /// server checks them after the handler of a move that emits.
+    #[doc(hidden)]
+    pub emitted: super::events::EmitLog,
+    // @end
 }
 // #if rollout
 
@@ -430,6 +436,15 @@ pub trait Endpoints: Send + Sync + 'static {
     /// `Err`.
     fn complete_principal(&self, _ctx: &mut RequestContext) -> Result<(), Vec<super::rules::Violation>> {
         Ok(())
+    }
+    // @end
+    // @if outbox
+
+    /// Whether the answers carry the events the request wrote in `Veld-Test-Emitted`, and the
+    /// events go to an outbox of the request's own (`spec/events.md` section 11.2). Only a test
+    /// handler says so.
+    fn test_emitted(&self) -> bool {
+        false
     }
     // @end
     // #if rollout
@@ -1633,6 +1648,9 @@ impl<E: Endpoints> Handler<E> {
             // @if derived
             absent: BTreeMap::new(),
             // @end
+            // @if outbox
+            emitted: super::events::EmitLog::new(self.inner.endpoints.test_emitted()),
+            // @end
         }
     }
 
@@ -1666,7 +1684,14 @@ impl<E: Endpoints> Handler<E> {
     async fn run(&self, index: usize, caps: Vec<(String, String)>, req: Request) -> Response {
         // #if !rollout
         let ctx = self.context(&self.inner.endpoints.endpoints()[index], &req);
+        // @if outbox
+        let emitted = ctx.emitted.clone();
+        let resp = self.run_ctx(index, caps, req, ctx).await;
+        self.stamp_emitted(resp, &emitted)
+        // @end
+        // @if !outbox
         self.run_ctx(index, caps, req, ctx).await
+        // @end
         // #endif
         // #if rollout
         self.run_logged(index, caps, req).await
@@ -1680,13 +1705,33 @@ impl<E: Endpoints> Handler<E> {
         let audit = AuditLog::default();
         let mut ctx = self.context(&self.inner.endpoints.endpoints()[index], &req);
         ctx.audit = audit.clone();
+        // @if outbox
+        let emitted = ctx.emitted.clone();
+        // @end
         let resp = self.run_ctx(index, caps, req, ctx).await;
+        // @if outbox
+        let resp = self.stamp_emitted(resp, &emitted);
+        // @end
         if self.inner.endpoints.test_audited() {
             return stamp_audited(resp, &audit);
         }
         resp
     }
     // #endif
+    // @if outbox
+
+    /// `Veld-Test-Emitted` (`spec/events.md` section 11.2): the declaration names of the events the
+    /// request wrote, `,` without spaces, in the order written; absent when nothing was written. Only
+    /// a test handler stamps it.
+    fn stamp_emitted(&self, mut resp: Response, log: &super::events::EmitLog) -> Response {
+        if self.inner.endpoints.test_emitted() {
+            if let Some(names) = log.header() {
+                resp.headers.push(("veld-test-emitted".into(), names));
+            }
+        }
+        resp
+    }
+    // @end
 
     /// The pipeline from the guard on, for a context that is ready.
     #[allow(unused_mut)]

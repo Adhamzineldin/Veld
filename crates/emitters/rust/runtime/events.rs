@@ -1001,6 +1001,22 @@ pub async fn publish_event_with<E: Serialize + Sync>(
     def: &EventDef,
     event: &E,
 ) -> Result<PublishedEvent, Error> {
+    // @if outbox
+    let (published, bytes) = build_message(ctx, channel, def, event).await?;
+    ctx.transport.publish(channel.topic, published.subject.as_deref(), &bytes, options).await?;
+    Ok(published)
+}
+
+/// Steps 1 to 5 of section 7 for one event: defaults and shape, invariants, the key, the id and the
+/// clock, the envelope and its bytes. Publishing sends them to a transport and `emit` saves them in
+/// an outbox: this is the code they share.
+async fn build_message<E: Serialize + Sync>(
+    ctx: &PublisherContext,
+    channel: &ChannelDef,
+    def: &EventDef,
+    event: &E,
+) -> Result<(PublishedEvent, Vec<u8>), Error> {
+    // @end
     // @if event_flags
     let readings = read_flags(ctx.options.flags.as_ref(), ctx.options.on_flag_error.as_ref(), def).await;
     let (wire, subject) = prepare(ctx, channel, def, event, &readings)?;
@@ -1029,9 +1045,307 @@ pub async fn publish_event_with<E: Serialize + Sync>(
         envelope.insert("veldrules".into(), Value::from(digest));
     }
     let bytes = canonical_bytes(&Value::Object(envelope));
+    // @if outbox
+    Ok((PublishedEvent { id, source: ctx.source.to_string(), r#type: def.sig.to_string(), subject, time }, bytes))
+    // @end
+    // @if !outbox
     ctx.transport.publish(channel.topic, subject.as_deref(), &bytes, options).await?;
     Ok(PublishedEvent { id, source: ctx.source.to_string(), r#type: def.sig.to_string(), subject, time })
+    // @end
 }
+// @if outbox
+
+// ---------------------------------------------------------------------------
+// The outbox (section 11)
+// ---------------------------------------------------------------------------
+
+/// One message an outbox keeps until the relay has sent it. `id` is the application's own and
+/// opaque.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutboxEntry {
+    pub id: String,
+    pub topic: String,
+    /// The key text (the `subject` of the message), or `None` for a channel without a key.
+    pub key: Option<String>,
+    pub bytes: Vec<u8>,
+}
+
+/// Where the events of a move are written, in the transaction that changes the state. The
+/// application implements it over its own store: `save` is called by `emit`, `pending` and `done`
+/// by the relay. Like the transport, it is object safe and its methods are async.
+pub trait Outbox: Send + Sync + 'static {
+    /// Keeps one message. It belongs to the application's transaction.
+    fn save<'a>(&'a self, topic: &'a str, key: Option<&'a str>, bytes: &'a [u8]) -> BoxFuture<'a, Result<(), Error>>;
+
+    /// The oldest entries not yet sent, at most `limit`, in the order they were saved.
+    fn pending(&self, limit: usize) -> BoxFuture<'_, Result<Vec<OutboxEntry>, Error>>;
+
+    /// Marks an entry as sent.
+    fn done<'a>(&'a self, entry: &'a OutboxEntry) -> BoxFuture<'a, Result<(), Error>>;
+}
+
+/// An outbox in memory, for tests: the ids are `"1"`, `"2"`, ... in the order of the saves,
+/// `pending(limit)` is the first `limit` entries and `done` removes one.
+#[derive(Debug, Default)]
+pub struct MemoryOutbox {
+    state: Mutex<(u64, Vec<OutboxEntry>)>,
+}
+
+impl MemoryOutbox {
+    /// An empty outbox.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// How many entries are pending.
+    #[must_use]
+    pub fn size(&self) -> usize {
+        lock(&self.state).1.len()
+    }
+
+    /// The pending entries, oldest first.
+    #[must_use]
+    pub fn entries(&self) -> Vec<OutboxEntry> {
+        lock(&self.state).1.clone()
+    }
+}
+
+impl Outbox for MemoryOutbox {
+    fn save<'a>(&'a self, topic: &'a str, key: Option<&'a str>, bytes: &'a [u8]) -> BoxFuture<'a, Result<(), Error>> {
+        let mut state = lock(&self.state);
+        state.0 += 1;
+        let id = state.0.to_string();
+        state.1.push(OutboxEntry { id, topic: topic.to_string(), key: key.map(str::to_string), bytes: bytes.to_vec() });
+        Box::pin(std::future::ready(Ok(())))
+    }
+
+    fn pending(&self, limit: usize) -> BoxFuture<'_, Result<Vec<OutboxEntry>, Error>> {
+        let entries: Vec<OutboxEntry> = lock(&self.state).1.iter().take(limit).cloned().collect();
+        Box::pin(std::future::ready(Ok(entries)))
+    }
+
+    fn done<'a>(&'a self, entry: &'a OutboxEntry) -> BoxFuture<'a, Result<(), Error>> {
+        lock(&self.state).1.retain(|e| e.id != entry.id);
+        Box::pin(std::future::ready(Ok(())))
+    }
+}
+
+/// The names of the events a request wrote to its outbox, in order. The server keeps one per
+/// request (`RequestContext::emitted`) so that it can check, after the handler, what was written;
+/// the test handler answers with it.
+#[derive(Debug, Clone, Default)]
+pub struct EmitLog {
+    names: Arc<Mutex<Vec<&'static str>>>,
+    /// Set by a test handler: the events go to an outbox of the request's own.
+    scratch: bool,
+}
+
+impl EmitLog {
+    /// A log for a request; `scratch` makes `emit` write to a memory outbox of its own instead of
+    /// the application's (only a test handler does).
+    #[doc(hidden)]
+    #[must_use]
+    pub fn new(scratch: bool) -> Self {
+        EmitLog { names: Arc::default(), scratch }
+    }
+
+    fn record(&self, name: &'static str) {
+        lock(&self.names).push(name);
+    }
+
+    /// Replaces what was written: the events the edge taken emits, for a test handler that does not
+    /// call the application's handler.
+    #[doc(hidden)]
+    pub fn set(&self, names: &[&'static str]) {
+        *lock(&self.names) = names.to_vec();
+    }
+
+    /// What was written, in order.
+    #[must_use]
+    pub fn names(&self) -> Vec<&'static str> {
+        lock(&self.names).clone()
+    }
+
+    /// The text of `Veld-Test-Emitted`: the names separated by `,`, or `None` when nothing was written.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn header(&self) -> Option<String> {
+        let names = self.names();
+        (!names.is_empty()).then(|| names.join(","))
+    }
+}
+
+/// What the check after a handler says (`tests/wire/events/outbox.json`, `written`): `ok`, or
+/// `missing E`, `twice E` or `unexpected E` for the first fault: a missing event first (in the
+/// order of `expected`), then a repeated one, then an unexpected one (in the order written).
+#[must_use]
+pub fn check_written(expected: &[&str], written: &[&str]) -> String {
+    let count = |e: &str| written.iter().filter(|w| **w == e).count();
+    for e in expected {
+        match count(e) {
+            0 => return format!("missing {e}"),
+            1 => {}
+            _ => return format!("twice {e}"),
+        }
+    }
+    match written.iter().find(|w| !expected.contains(w)) {
+        Some(w) => format!("unexpected {w}"),
+        None => "ok".to_string(),
+    }
+}
+
+/// The check after the handler of a move that emits, for a success: every event of the edge was
+/// written once and nothing else. A fault is an `Error::Other`, so the server answers `500 Internal`
+/// and reports it to `on_error`; what was already saved stays in the outbox, which is why the
+/// application's transaction has to end with the failure.
+///
+/// # Errors
+/// `Error::Other` that names the endpoint and the first fault.
+#[doc(hidden)]
+pub fn check_emitted(endpoint: &str, expected: &[&str], log: &EmitLog) -> Result<(), Error> {
+    match check_written(expected, &log.names()).as_str() {
+        "ok" => Ok(()),
+        fault => Err(Error::other(format!("{endpoint}: the move wrote the wrong events to the outbox: {fault}"))),
+    }
+}
+
+/// The wire value of the state a move started from, as step 6 handed it over in `args["transition"]`.
+#[doc(hidden)]
+#[must_use]
+pub fn transition_from(args: &Map<String, Value>) -> &str {
+    args.get("transition").and_then(|t| t.get("from")).and_then(Value::as_str).unwrap_or_default()
+}
+
+/// A transport that sends nothing: `emit` shares the publisher's context, and its transport is never
+/// asked.
+struct NoTransport;
+
+impl Transport for NoTransport {
+    fn publish<'a>(&'a self, _topic: &'a str, _key: Option<&'a str>, _bytes: &'a [u8], _options: ChannelOptions) -> BoxFuture<'a, Result<(), Error>> {
+        Box::pin(std::future::ready(Err(Error::other("veld events: an outbox sends nothing"))))
+    }
+
+    fn subscribe<'a>(&'a self, _topic: &'a str, _group: &'a str, _deliver: Deliver, _options: ChannelOptions) -> BoxFuture<'a, Result<Box<dyn TransportSubscription>, Error>> {
+        Box::pin(std::future::ready(Err(Error::other("veld events: an outbox sends nothing"))))
+    }
+}
+
+/// Where an [`Emission`] saves: the application's outbox, or the request's own in a test handler.
+enum Sink<'a> {
+    Outbox(&'a dyn Outbox),
+    Scratch(MemoryOutbox),
+}
+
+/// What the handler of a move that emits writes through (`<Endpoint>Emit` wraps one): the publisher's
+/// pipeline of steps 1 to 5, then `Outbox::save`. Nothing is sent to a transport.
+pub struct Emission<'a> {
+    ctx: PublisherContext,
+    sink: Sink<'a>,
+    log: EmitLog,
+}
+
+impl<'a> Emission<'a> {
+    /// Writes to `outbox` (or, for a test handler, to an outbox of its own), with the id source,
+    /// the clock and the hooks of `options`, and tells `log` the name of every event written.
+    #[must_use]
+    pub fn new<O: Outbox>(outbox: &'a O, (source, validation_sig): (&'static str, &'static str), options: PublisherOptions, log: &EmitLog) -> Self {
+        let sink = if log.scratch { Sink::Scratch(MemoryOutbox::new()) } else { Sink::Outbox(outbox) };
+        Emission { ctx: PublisherContext::new(Arc::new(NoTransport), source, validation_sig, options), sink, log: log.clone() }
+    }
+
+    /// Steps 1 to 5 of publishing and then `save`: the same checks as a publisher, the same bytes.
+    ///
+    /// # Errors
+    /// The `ValidationError` of a value that does not hold, nothing is written then; the outbox's
+    /// own error.
+    pub async fn emit<E: Serialize + Sync>(&self, channel: &ChannelDef, def: &EventDef, event: &E) -> Result<PublishedEvent, Error> {
+        let (published, bytes) = build_message(&self.ctx, channel, def, event).await?;
+        let key = published.subject.as_deref();
+        match &self.sink {
+            Sink::Outbox(outbox) => outbox.save(channel.topic, key, &bytes).await?,
+            Sink::Scratch(outbox) => outbox.save(channel.topic, key, &bytes).await?,
+        }
+        self.log.record(def.name);
+        Ok(published)
+    }
+}
+
+/// The options of [`relay_outbox`]: how many entries one run takes, and what hears a failure.
+#[derive(Clone)]
+pub struct RelayOptions {
+    limit: usize,
+    on_error: Option<Arc<dyn Fn(&Error, Option<&OutboxEntry>) + Send + Sync>>,
+}
+
+impl Default for RelayOptions {
+    fn default() -> Self {
+        RelayOptions { limit: 100, on_error: None }
+    }
+}
+
+impl RelayOptions {
+    /// A run takes up to 100 entries and reports nothing.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// How many entries one run takes at most (default 100).
+    #[must_use]
+    pub fn limit(mut self, limit: usize) -> Self {
+        self.limit = limit;
+        self
+    }
+
+    /// Hears the failure that stopped a run: the entry that failed (`None` when `pending` itself
+    /// failed). A hook that panics is ignored.
+    #[must_use]
+    pub fn on_error(mut self, f: impl Fn(&Error, Option<&OutboxEntry>) + Send + Sync + 'static) -> Self {
+        self.on_error = Some(Arc::new(f));
+        self
+    }
+}
+
+/// The relay (section 11.1): takes up to `limit` pending entries, publishes each with the options of
+/// its channel (`channels` is by topic; a topic nobody knows gets none), in the order `pending` gave
+/// them, and calls `done` after the transport accepted it. It stops at the first entry that fails,
+/// so the order of a key is kept, and answers how many it sent: an entry whose `done` failed is
+/// counted and stays pending, so it is sent again (delivery is at least once). The failure goes to
+/// the `on_error` of `options`.
+pub async fn relay_outbox(
+    (outbox, transport): (&dyn Outbox, &dyn Transport),
+    channels: &[(&str, ChannelOptions)],
+    options: &RelayOptions,
+) -> usize {
+    let report = |error: &Error, entry: Option<&OutboxEntry>| {
+        if let Some(f) = &options.on_error {
+            let _ = catch_unwind(AssertUnwindSafe(|| f(error, entry)));
+        }
+    };
+    let entries = match outbox.pending(options.limit).await {
+        Ok(entries) => entries,
+        Err(error) => {
+            report(&error, None);
+            return 0;
+        }
+    };
+    let mut sent = 0;
+    for entry in entries.iter().take(options.limit) {
+        let channel = channels.iter().find(|(topic, _)| *topic == entry.topic).map_or(ChannelOptions::NONE, |(_, o)| *o);
+        if let Err(error) = transport.publish(&entry.topic, entry.key.as_deref(), &entry.bytes, channel).await {
+            report(&error, Some(entry));
+            return sent;
+        }
+        sent += 1;
+        if let Err(error) = outbox.done(entry).await {
+            report(&error, Some(entry));
+            return sent;
+        }
+    }
+    sent
+}
+// @end
 
 // ---------------------------------------------------------------------------
 // Consuming (section 8)

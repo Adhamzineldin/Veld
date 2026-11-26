@@ -82,6 +82,7 @@ fn service_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     }
     if publishes {
         write_publisher(w, ctx, svc);
+        crate::outbox::write(w, ctx, svc);
     }
     if subscribes {
         write_subscriber(w, ctx, svc);
@@ -102,7 +103,7 @@ fn used_events(ctx: &Ctx<'_, '_>, svc: &Service) -> BTreeSet<DeclId> {
 }
 
 /// The static that describes an event to the pipelines.
-fn def_name(ctx: &Ctx<'_, '_>, id: DeclId) -> String {
+pub(crate) fn def_name(ctx: &Ctx<'_, '_>, id: DeclId) -> String {
     format!(
         "{}_DEF",
         naming::screaming_snake(&ctx.tree.ir.decl(id).name)
@@ -110,7 +111,7 @@ fn def_name(ctx: &Ctx<'_, '_>, id: DeclId) -> String {
 }
 
 /// The static that describes a channel to the publisher.
-fn channel_static(channel: &Channel) -> String {
+pub(crate) fn channel_static(channel: &Channel) -> String {
     format!("{}_CHANNEL", naming::screaming_snake(&channel.name))
 }
 

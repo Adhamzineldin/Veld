@@ -221,6 +221,7 @@ fn dispatch(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, name: &str) {
     delegates(w);
     conditional(w, ctx, svc);
     audited(w, ctx, svc);
+    emitted(w, svc);
     prepare(w, svc);
     trusted(w, ctx, svc);
     if crate::server::principal_has_derived(ctx.tree, svc) {
@@ -231,7 +232,7 @@ fn dispatch(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, name: &str) {
     if crate::flags::svc_reads_flags(ctx.tree, svc) {
         test_flags(w, ctx, svc);
     }
-    call(w, svc);
+    call(w, ctx, svc);
     w.close().blank();
 }
 
@@ -252,6 +253,17 @@ fn test_flags(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     w.line("view.insert(name, if on.iter().any(|n| n == name) { veld::rules::Reading::On } else { veld::rules::Reading::Off });");
     w.close();
     w.line("view");
+    w.close().blank();
+}
+
+/// `test_emitted` of a test handler of a service whose moves emit: the request's events go to an
+/// outbox of its own and the answer carries them in `Veld-Test-Emitted` (`spec/events.md` 11.2).
+fn emitted(w: &mut CodeWriter, svc: &Service) {
+    if !crate::outbox::svc_emits(svc) {
+        return;
+    }
+    w.open("fn test_emitted(&self) -> bool");
+    w.line("true");
     w.close().blank();
 }
 
@@ -405,10 +417,18 @@ fn trusted(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     w.close().blank();
 }
 
-fn call(w: &mut CodeWriter, svc: &Service) {
+fn call(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     let args = "args: serde_json::Map<String, serde_json::Value>";
     w.open(format!("async fn call(&self, endpoint: usize, {args}, ctx: &RequestContext) -> Result<serde_json::Value, veld::Error>"));
     w.open("if let Some(wire) = header_json(ctx, \"veld-test-result\")?");
+    if crate::outbox::svc_emits(svc) {
+        // The handler does not run, so nothing is written: the header lists what a handler that
+        // succeeded must have written, the events of the edge taken.
+        w.line(format!(
+            "ctx.emitted.set({}::emitted_by(endpoint, veld::events::transition_from(&args)));",
+            crate::outbox::events_path(ctx.tree, svc)
+        ));
+    }
     w.line("let schema = self.inner.endpoints().get(endpoint).and_then(|e| e.success);");
     w.line("return Ok(schema.map_or(serde_json::Value::Null, |s| s.from_wire(&wire, false)));");
     w.close();

@@ -15,6 +15,7 @@ pub mod events;
 pub mod flags;
 pub mod guards;
 pub mod models;
+pub mod outbox;
 pub mod package;
 pub mod policies;
 pub mod rules;
@@ -106,6 +107,7 @@ fn all_capabilities() -> Capabilities {
         .with(Feature::RulesFlags)
         .with(Feature::Timeouts)
         .with(Feature::Slo)
+        .with(Feature::EventsOutbox)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -268,6 +270,9 @@ impl Generator for Rust {
             ));
         }
         refuse_ws_blocks(req)?;
+        if server {
+            outbox::refusals(req.ir, &req.services)?;
+        }
         conditional::check(req.ir, &used)?;
         if opts.testing == Some(true) && req.role != Role::Server {
             return Err(vec![GenDiagnostic::new(
@@ -360,6 +365,7 @@ impl Generator for Rust {
             timeouts,
             flags,
             event_flags,
+            outbox: server && outbox::served_emits(req.ir, &served_http(req)),
             flags_server,
             policies,
             rollout,

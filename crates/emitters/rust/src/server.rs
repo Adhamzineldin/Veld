@@ -32,6 +32,8 @@ pub(crate) struct Needs {
     caller: bool,
     /// An endpoint can reach a flag: the hooks give the provider.
     flags: bool,
+    /// An endpoint whose move emits an event: the hooks give the outbox.
+    outbox: bool,
 }
 
 pub(crate) fn needs(tree: &Tree<'_>, svc: &Service) -> Needs {
@@ -43,6 +45,7 @@ pub(crate) fn needs(tree: &Tree<'_>, svc: &Service) -> Needs {
         idempotency: crate::conditional::svc_idempotent(svc),
         caller: crate::conditional::svc_needs_caller(svc),
         flags: crate::flags::svc_reads_flags(tree, svc),
+        outbox: crate::outbox::svc_emits(svc),
     };
     for ep in &svc.endpoints {
         match ep.auth.kind {
@@ -68,7 +71,7 @@ impl Needs {
             || !self.middleware.is_empty()
             || self.idempotency
             || self.flags
-            || self.flags
+            || self.outbox
     }
 }
 
@@ -182,11 +185,12 @@ fn service_trait(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
         endpoints::method_docs(w, ep);
         block::transition_docs(w, ep);
         crate::conditional::version_docs(w, ep);
+        crate::outbox::emit_docs(w, ep);
         if endpoints::kind(ep) == Kind::Ws {
             let (incoming, outgoing) = endpoints::ws_types(ctx, ep);
             w.line(format!("fn {}(&self, request: {}, ctx: {}, ws: veld::server::WsSession<{incoming}, {outgoing}>) -> impl std::future::Future<Output = Result<(), veld::Error>> + Send;", method(&ep.name), request_name(ep), context_type()));
         } else {
-            w.line(format!("fn {}(&self, request: {}{}{}{}, ctx: {}) -> impl std::future::Future<Output = Result<{}, veld::Error>> + Send;", method(&ep.name), request_name(ep), block::facts_param(ep), crate::conditional::version_param(ctx, ep), block::transition_param(ctx, ep), context_type(), success_type(ctx, ep)));
+            w.line(format!("fn {}(&self, request: {}{}{}{}, ctx: {}) -> impl std::future::Future<Output = Result<{}, veld::Error>> + Send;", method(&ep.name), request_name(ep), block::facts_param(ep), crate::conditional::version_param(ctx, ep), block::transition_param(ctx, ep) + &crate::outbox::emit_param(ctx.tree, svc, ep), context_type(), success_type(ctx, ep)));
         }
         w.blank();
     }
@@ -262,6 +266,9 @@ fn hooks_trait(
     }
     if reads_flags {
         crate::flags::hooks(w);
+    }
+    if n.outbox {
+        crate::outbox::hooks(w);
     }
     if svc.endpoints.iter().any(|e| e.slo.is_some()) {
         w.blank();
@@ -386,7 +393,7 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
         idempotency_forwards(w, n, typed);
     }
     auth_forwards(w, n, typed);
-    call_methods(w, svc);
+    call_methods(w, tree, svc);
     w.close().blank();
 }
 
@@ -611,7 +618,7 @@ fn decode_request(w: &mut CodeWriter, ep: &Endpoint) -> &'static str {
     }
 }
 
-fn call_methods(w: &mut CodeWriter, svc: &Service) {
+fn call_methods(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service) {
     let args = "args: serde_json::Map<String, serde_json::Value>";
     let http: Vec<(usize, &Endpoint)> = svc
         .endpoints
@@ -624,7 +631,7 @@ fn call_methods(w: &mut CodeWriter, svc: &Service) {
         w.line("let _ = (endpoint, &args, ctx);");
         w.line("Err(veld::Error::other(\"not an HTTP endpoint\"))");
         w.close();
-        call_sse_method(w, svc, args);
+        call_sse_method(w, tree, svc, args);
         call_ws_method(w, svc, args);
         return;
     }
@@ -632,28 +639,43 @@ fn call_methods(w: &mut CodeWriter, svc: &Service) {
     for (i, ep) in &http {
         w.open(format!("{i} =>"));
         let pass = decode_request(w, ep);
+        let emits = crate::outbox::emits(ep);
+        let pass = if emits {
+            format!("{pass}, emit")
+        } else {
+            pass.to_string()
+        };
+        if emits {
+            crate::outbox::write_begin(w, tree, svc, ep, true);
+        }
         if ep.success.ty.is_some() {
             w.line(format!(
                 "let out = self.service.{}({pass}, ctx).await?;",
                 method(&ep.name)
             ));
+            if emits {
+                crate::outbox::write_check(w, ep);
+            }
             w.line("veld::server::encode_value(&out)");
         } else {
             w.line(format!(
                 "self.service.{}({pass}, ctx).await?;",
                 method(&ep.name)
             ));
+            if emits {
+                crate::outbox::write_check(w, ep);
+            }
             w.line("Ok(serde_json::Value::Null)");
         }
         w.close();
     }
     w.line("_ => Err(veld::Error::other(\"not an HTTP endpoint\")),");
     w.close().close();
-    call_sse_method(w, svc, args);
+    call_sse_method(w, tree, svc, args);
     call_ws_method(w, svc, args);
 }
 
-fn call_sse_method(w: &mut CodeWriter, svc: &Service, args: &str) {
+fn call_sse_method(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, args: &str) {
     let sse: Vec<(usize, &Endpoint)> = svc
         .endpoints
         .iter()
@@ -669,6 +691,13 @@ fn call_sse_method(w: &mut CodeWriter, svc: &Service, args: &str) {
     for (i, ep) in &sse {
         w.open(format!("{i} =>"));
         let pass = decode_request(w, ep);
+        let pass = if crate::outbox::emits(ep) {
+            // A stream is not checked after the handler: it has no single result.
+            crate::outbox::write_begin(w, tree, svc, ep, false);
+            format!("{pass}, emit")
+        } else {
+            pass.to_string()
+        };
         w.line(format!(
             "let stream = self.service.{}({pass}, ctx).await?;",
             method(&ep.name)

@@ -427,10 +427,10 @@ fn rust_refuses_retention_in_the_server_only() {
     veld_emit_conformance::check_retention_is_refused(&Rust).unwrap();
 }
 
-/// `emits` and the outbox (`spec/events.md` section 11): the Rust server has not built them and
-/// refuses a service with an emitting `transition` with `E0801`; the client keeps its bytes.
+/// `emits` and the outbox (`spec/events.md` section 11): the Rust server declares `events_outbox` and
+/// generates a service with an emitting `transition`; the client keeps its bytes.
 #[test]
-fn rust_server_refuses_the_outbox_and_the_client_ignores_it() {
-    veld_emit_conformance::check_events_outbox_is_refused(&Rust).unwrap();
+fn rust_server_generates_the_outbox_and_the_client_ignores_it() {
+    veld_emit_conformance::check_events_outbox_is_generated(&Rust).unwrap();
     veld_emit_conformance::check_events_outbox_is_ignored_by_clients(&Rust).unwrap();
 }
