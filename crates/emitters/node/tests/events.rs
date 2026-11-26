@@ -1124,11 +1124,13 @@ struct Served {
 }
 
 impl Served {
-    fn start(work: &Path, module: &str, factory: &str) -> Served {
+    /// `handlers` are `<module>#<factory>`: the test handlers the one server mounts.
+    fn start(work: &Path, handlers: &[String]) -> Served {
         use std::io::{BufRead, BufReader};
         use std::process::Stdio;
         let mut cmd = Command::new("node");
-        cmd.args(["out/events_serve.js", module, factory])
+        cmd.arg("out/events_serve.js")
+            .args(handlers)
             .current_dir(work)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -1156,10 +1158,15 @@ impl Drop for Served {
     }
 }
 
-/// Every event example of `path` through the test handler of every service that subscribes, one
-/// server each, with the shared live runner. An example passes when no handler fails it and at
-/// least one passes it: a handler without a subscriber of the topic skips it, and the line of
-/// another service is not judged. Nothing may be skipped by every handler.
+/// Every event example of `path` through the generated test handlers of every service that
+/// subscribes, mounted in one server (`events_serve.ts`), with the shared live runner. Every
+/// example must pass: none may fail, and none may be skipped.
+///
+/// The handlers are mounted together because the runner compares the outcome of the whole
+/// message with the reference's, which rejects a message at the first subscription that rejects it:
+/// a service that has no `on` line for the event ignores it at step 2 of section 8, so alone it
+/// answers `ignored` where the reference says `rejected` (the example "an optional field that is
+/// present is checked" of `bookings.veld`, for `Ledger`).
 fn live_event_examples(tsc_path: &Path, edition: &str, path: &str) -> usize {
     let ir = compile_text(read(path));
     let guard = scratch("events-live-");
@@ -1174,43 +1181,27 @@ fn live_event_examples(tsc_path: &Path, edition: &str, path: &str) -> usize {
         edition,
         &json!({ "typescript": edition, "testing": true }),
     );
-    let servers: Vec<Served> = ir
+    let handlers: Vec<String> = ir
         .services
         .iter()
         .filter(|s| !s.subscriptions.is_empty())
         .map(|s| {
-            Served::start(
-                work,
-                &format!("./server/server/{}-test-handler", kebab(&s.name)),
-                &format!("create{}TestHandler", pascal(&s.name)),
+            format!(
+                "./server/server/{}-test-handler#create{}TestHandler",
+                kebab(&s.name),
+                pascal(&s.name)
             )
         })
         .collect();
-    assert!(!servers.is_empty(), "{path}: no service subscribes");
-    let lives: Vec<veld_testing::Live> = servers
-        .iter()
-        .map(|s| veld_testing::Live::connect(&s.url, true).unwrap())
-        .collect();
+    assert!(!handlers.is_empty(), "{path}: no service subscribes");
+    let served = Served::start(work, &handlers);
+    let live = veld_testing::Live::connect(&served.url, true).unwrap();
     let mut run = 0;
     for ex in ir.examples.iter().filter(|e| e.event.is_some()) {
-        let (mut passed, mut failures) = (0, Vec::new());
-        for live in &lives {
-            let report = live.run_example(&ir, ex).unwrap();
-            match &report.verdict {
-                veld_rules::Verdict::Passed => passed += 1,
-                veld_rules::Verdict::Skipped(_) => {}
-                veld_rules::Verdict::Failed(_) => failures.push(format!("{report}")),
-            }
-        }
+        let report = live.run_example(&ir, ex).unwrap();
         assert!(
-            failures.is_empty(),
-            "{path}: \"{}\" failed live:\n{}",
-            ex.name,
-            failures.join("\n")
-        );
-        assert!(
-            passed > 0,
-            "{path}: \"{}\" was skipped by every test handler",
+            report.passed(),
+            "{path}: \"{}\" did not pass live: {report}",
             ex.name
         );
         run += 1;
@@ -1461,4 +1452,59 @@ fn a_contract_without_subscriptions_keeps_its_test_handler_bytes() {
         assert!(!source.contains("/__veld/test/event"), "{path}");
         assert!(!source.contains("subscribes"), "{path}");
     }
+}
+
+const MIXED: &str = "event Pinged {
+  when: datetime
+}
+
+channel Pings {
+  carries Pinged
+}
+
+error TooSmall 422 {
+  n: int
+}
+
+model Body {
+  n: int
+}
+
+service Mixed at \"/m\" {
+  publishes Pings
+  subscribes Pings as \"m\" {
+    on Pinged -> heard
+  }
+
+  post \"/x\" doit(body: Body) -> 204 | TooSmall {
+    require body.n > 0 else TooSmall { n: body.n }
+  }
+}
+";
+
+fn mixed(tsc_path: &Path, edition: &str, _target: &str) {
+    let ir = compile_text(MIXED.to_owned());
+    let guard = scratch("events-mixed-");
+    let work = guard.path();
+    build_with(
+        work,
+        tsc_path,
+        &ir,
+        &["Mixed"],
+        &[],
+        edition,
+        &json!({ "typescript": edition, "testing": true }),
+    );
+    let handler =
+        std::fs::read_to_string(work.join("server/server/mixed-test-handler.ts")).unwrap();
+    // One file: the handler of the endpoint rules, which also answers the events.
+    assert!(handler.contains("export function createMixedTestHandler(impl: MixedService"));
+    assert!(handler.contains("return testEvent(req);"));
+    assert!(handler.contains("subscribes: { 'Mixed': ['"));
+    assert!(handler.contains("/__veld/test'"));
+}
+
+#[test]
+fn a_service_with_endpoint_rules_and_subscriptions_has_one_test_handler_that_answers_both() {
+    matrix(mixed);
 }
