@@ -38,6 +38,8 @@ mod rule_tests;
 mod endpoint_tests;
 
 #[cfg(test)]
+mod platform_tests;
+#[cfg(test)]
 mod policy_tests;
 
 #[cfg(test)]
