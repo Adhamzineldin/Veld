@@ -19,11 +19,20 @@ const REDACTION_CONTRACT: &str = "tests/wire/redaction/contract.veld";
 const REDACTION_CASES: &str = "tests/wire/redaction/cases.json";
 
 /// The 17 cases of `tests/wire/audit/cases.json` through the production handler with the stubs of
-/// each case; the case of the limiter is not run (the contract has no `@limit`).
+/// each case. The contract has no `@limit` and the case of the limiter needs one, so `payBooking`
+/// is given `@limit(10, per: minute, by: user)` here: it changes no operation signature (the
+/// expected events are compared byte for byte), and the limiter of the program answers `limiter`.
 #[test]
 fn every_case_of_the_audit_goldens_gives_the_event_of_the_reference() {
     let Some(tsc) = tsc_path() else { return };
-    let ir = compile_as_t(std::fs::read_to_string(repo_root().join(GOLDEN_CONTRACT)).unwrap());
+    let text = std::fs::read_to_string(repo_root().join(GOLDEN_CONTRACT)).unwrap();
+    let limited = text.replacen(
+        "  @audited\n  post \"/{id}/pay\" payBooking",
+        "  @audited\n  @limit(10, per: minute, by: user)\n  post \"/{id}/pay\" payBooking",
+        1,
+    );
+    assert_ne!(limited, text, "the limit was added");
+    let ir = compile_as_t(limited);
     for (edition, _) in TARGETS {
         let guard = scratch("audit-goldens-");
         let work = guard.path();

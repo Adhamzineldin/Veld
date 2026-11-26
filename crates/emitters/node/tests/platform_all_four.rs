@@ -128,3 +128,32 @@ fn the_hooks_of_the_four_features_are_required_by_type() {
         }
     }
 }
+
+/// The small contracts of the conformance checks (`veld-emit-conformance`): a tenancy that only
+/// loads a fact, a limit with no principal, an audited endpoint with nothing else, a `@visible`
+/// error. Each one alone compiles under `tsc --strict` as a server (with and without the test
+/// handler) and as a client: a symbol of one region that is missing from another shows up here.
+#[test]
+fn every_conformance_contract_compiles_strict_alone() {
+    let Some(tsc) = tsc_path() else { return };
+    let contracts: Vec<(veld_ir::Ir, u32)> = veld_emit_conformance::compiled_visibility_contracts()
+        .into_iter()
+        .chain(veld_emit_conformance::compiled_tenancy_contracts())
+        .chain(
+            veld_emit_conformance::compiled_audit_contracts()
+                .into_iter()
+                // The `ws` contract is refused at the endpoint.
+                .take(2),
+        )
+        .chain(veld_emit_conformance::compiled_limit_contracts())
+        .collect();
+    assert!(contracts.len() >= 8);
+    for (ir, _) in &contracts {
+        // The events contract has no endpoint to speak of: its one service publishes.
+        let services: Vec<&str> = ir.services.iter().map(|s| s.name.as_str()).collect();
+        for (edition, _) in TARGETS {
+            let guard = scratch("conformance-alone-");
+            build_services(guard.path(), &tsc, ir, &services, &[], edition, &json!({}));
+        }
+    }
+}

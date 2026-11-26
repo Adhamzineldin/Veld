@@ -189,6 +189,7 @@ fn limits_compile_next_to_the_other_features() {
     let base = std::fs::read_to_string(repo_root().join(CONTRACT)).unwrap();
     let extra = [
         "",
+        "\npolicy Ok(user: User, room: Room) {\n  permit when user.id == room.id\n}\n\n@auth(bearer)\nservice Gate at \"/gate\" {\n  @limit(3, per: minute, by: user)\n  get \"/{id}\" one(id: uuid) -> Room {\n    fact room: Room = id\n    allow Ok(user, room)\n  }\n}\n",
         "\nmodel Memo {\n  note: string\n  shout: string = note\n  rule short: len(note) < 100\n}\n",
         "\n@auth(bearer)\nservice Slow at \"/slow\" {\n  @timeout(seconds(2))\n  @slo(p99: ms(300))\n  @limit(5, per: day, by: tenant)\n  get \"/{id}\" slow(id: uuid) -> Room\n}\n",
         "\nmodel Held {\n  id: uuid\n  tenantId: uuid @tenant\n  note?: string @visible(when: user.id == id)\n}\n\n@auth(bearer)\nservice Keeps at \"/held\" {\n  @audited\n  @limit(5, per: day, by: user)\n  get \"/{id}\" held(id: uuid) -> Held\n}\n",

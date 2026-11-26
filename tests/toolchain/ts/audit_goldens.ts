@@ -7,8 +7,9 @@
 // tests/wire/audit/contract.veld (compiled as the file `t.veld` of the package `bookings`) and the
 // cases copied next to this file as `cases.json`.
 //
-// The case of the `429` is not run here: the contract has no `@limit`, so a generated server has no
-// limiter to refuse the call. `platform_limits_http.ts` audits a refused call of its own contract.
+// The contract of the goldens has no `@limit`, and a refused call needs one: the Rust test adds
+// `@limit(10, per: minute, by: user)` to `payBooking`, which changes no signature, and the limiter
+// of this program answers what the case says `limiter` is (`null`: the call is allowed).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as srv from './server/index';
@@ -46,6 +47,12 @@ const impl = new Proxy(
 ) as unknown as srv.BookingsService & srv.PublicService;
 
 const common = {
+  limiter: {
+    take: () => {
+      const c = here();
+      return c.limiter === null ? { allowed: true, retryAfterSeconds: 0 } : (c.limiter as { allowed: boolean; retryAfterSeconds: number });
+    },
+  },
   clock: () => new Date(here().clock),
   audit: (event: srv.veld.AuditEvent) => {
     events.push(event);
@@ -54,6 +61,7 @@ const common = {
 const handlers = {
   Bookings: srv.createBookingsHandler(impl, {
     auth: { bearer: async () => here().principal },
+    caller: async (principal: { id: string }) => principal.id,
     facts: { booking: async () => here().facts['booking'] ?? undefined },
     ...common,
   } as unknown as srv.BookingsHooks),
@@ -62,12 +70,7 @@ const handlers = {
 
 async function main(): Promise<void> {
   let ran = 0;
-  let skipped = 0;
   for (const c of cases) {
-    if (c.limiter !== null) {
-      skipped++;
-      continue;
-    }
     current = c;
     events.length = 0;
     assert.deepEqual(c.request.query, {}, `${c.name}: the cases send no query`);
@@ -92,7 +95,7 @@ async function main(): Promise<void> {
     }
     ran++;
   }
-  assert.equal(skipped, 1, 'only the case of the limiter is not run');
+  assert.equal(ran, cases.length, 'every case ran');
   assert.ok(ran >= 15, 'the goldens have their cases');
   console.log(`audit goldens: ${ran} cases`);
 }

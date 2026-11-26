@@ -406,7 +406,7 @@ fn check_reverse(g: &Golden, out: &Value) {
         let d = &delivered[0];
         assert_eq!(d["event"], case["event"], "{name}");
         assert_eq!(d["data"], canonical["data"], "{name}: the typed event");
-        for attr in ["id", "source", "type", "subject", "time"] {
+        for attr in ["id", "source", "type", "subject", "time", "veldtenant"] {
             assert_eq!(
                 d["meta"].get(attr).cloned().unwrap_or(Value::Null),
                 canonical.get(attr).cloned().unwrap_or(Value::Null),
