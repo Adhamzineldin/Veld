@@ -111,6 +111,8 @@ pub fn endpoint(
     rules: EndpointRules,
 ) -> Endpoint {
     Endpoint {
+        slo: None,
+        timeout_ms: None,
         name: name.to_owned(),
         method: Method::Post,
         path: format!("/{name}"),

@@ -285,6 +285,22 @@ get "/{id}" getBooking(id: uuid) -> Booking
 - **Client.** A generated client method of such an endpoint uses `d` as its default timeout when the caller sets none, and fails with the client's existing timeout error.
 - **IR.** `Endpoint` gains `"timeout_ms": "2000"`, omitted when absent. The feature is `timeouts`, opt-in.
 
+### 12.1 What the implementation chose where the text was silent
+
+- **Where it stands.** On an endpoint, or on a service as the default. An endpoint's own `@timeout` replaces the service's; they are not combined. A service's `@timeout` skips an endpoint that streams (`sse` or `ws`); an `@timeout` on such an endpoint itself is `E0602`.
+- **The argument** is one positional constant duration (`seconds(2)`, `ms(500)`, `minutes(1)`: a unit of a whole number, no operators). Zero, a negative one, one above `hours(1)`, a number, a string, a name argument, two arguments and no argument are `E0602`, and so is a second `@timeout` on one target.
+- **`DeadlineExceeded` is reached only by a contract that has a deadline,** as `PreconditionFailed` is reached only with a version guard: an endpoint with `timeout_ms` lists `504 DeadlineExceeded` among its errors, and the prelude declaration is in the IR only then.
+- **An example cannot state a deadline:** the reference evaluator has no clock for running time, so no example can make a request run past one.
+- **OpenAPI.** The operation has `"x-veld-timeout-ms": 2000` (a number) and the `504` answer of its error list.
+- **`veld diff`.**
+
+  | Change | Judged |
+  |---|---|
+  | a deadline is added, or made shorter | possibly breaking: a call that was slow enough may now answer `504` |
+  | a deadline is removed, or made longer | compatible |
+
+  The `504 DeadlineExceeded` that comes with a deadline is not reported as an added error as well.
+
 ## 13. Service levels: `@slo`
 
 ```veld
