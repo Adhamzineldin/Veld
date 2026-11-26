@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   assert.equal(ok.attributes['http.request.method'], 'GET');
   assert.equal(ok.attributes['http.route'], '/rooms/{id}');
   assert.equal(ok.attributes['http.response.status_code'], 200);
-  assert.equal(ok.attributes['veld.service'], 'rooms/Rooms');
+  assert.equal(ok.attributes['veld.service'], 'bookings/Rooms');
   assert.equal(ok.attributes['veld.endpoint'], 'getRoom');
 
   // A declared error: the status of the error, no `error.type` below 500; `veld.operation` is the

@@ -61,7 +61,7 @@ fn snapshots_of_a_contract_with_deadlines_and_service_levels() {
         text(&server, "server/rooms.ts")
     );
     let client = gen_client(&ir);
-    insta::assert_snapshot!("service_levels_client", text(&client, "rooms/client.ts"));
+    insta::assert_snapshot!("service_levels_client", text(&client, "bookings/client.ts"));
 }
 
 #[test]
@@ -72,13 +72,13 @@ fn the_names_of_the_spec_are_there_and_a_server_without_slo_has_no_hook() {
     for word in [
         "metrics?: (m: veld.Metric) => void | Promise<void>;",
         "timeoutMs: 200,",
-        "service: 'rooms/Rooms',",
+        "service: 'bookings/Rooms',",
         "deadline: DeadlineExceeded.sig",
     ] {
         assert!(module.contains(word), "`{word}` is missing");
     }
     let client = gen_client(&ir);
-    let text_of = text(&client, "rooms/client.ts");
+    let text_of = text(&client, "bookings/client.ts");
     assert!(text_of.contains("timeoutMs: 200,"));
     assert!(
         !text_of.contains("service:"),
