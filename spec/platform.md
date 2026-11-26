@@ -154,6 +154,24 @@ The owner confirmed points 1 to 5 and 7 on 25 November 2026 (asked for 4 and 5: 
 6. **The loaders keep their signature** (section 3): the caller is in the context they already get, and the generated check after loading is what the contract guarantees.
 7. **`@visible` is refused in events** (section 2), not silently dropped or silently kept.
 
+### 9.1 What the implementation chose where the text was silent
+
+Built as drafted; each point below fills a gap or fixes a form the draft could not have.
+
+**Visibility (section 2)**
+
+- **The examples of sections 2 and 3 write `principal User { … }`.** The grammar of `spec/rules.md` §11 is `principal User`, with the model declared on its own; the examples are shorthand for `model User { … }` followed by `principal User`.
+- **Syntax.** `@visible(when: e)` is the only annotation whose argument is an expression. The parser reads it after `when:` and keeps it in the annotation (`Annotation.when`); every other annotation keeps the argument grammar it had. `@visible` without `when:` or with another argument is `E0602`. `visible` and `when` stay ordinary names.
+- **Scope.** The fields of the declaration (inherited ones included), the caller under the principal's name, and `now`. A field called like the principal, or `now`, is `E0920`. `result` and `old(...)` stay refused (`E0904`). An optional field is read only where it is known present (`E0903`), as in an invariant. An expression that is not `bool` is `E0902`.
+- **`visible_principal`.** The IR adds `Field.visible_principal`, the model of the principal the expression was checked against (`spec/ir.md` §3.8). A caller is a caller of that type only when the service's own principal is that model; a service whose principal is another model hides the field, as `@auth(none)` does. The draft's `visible` alone could not say which principal a package without a service meant.
+- **Where `E1101` and `W1101` are reported.** A field of an event, or an event that reaches a `@visible` field through its types, parents or union arms, is `E1101` at the event. `W1101` is reported once per endpoint, for the first reachable model or error with a `@visible` field whose principal is not the endpoint's caller, and names it.
+- **Evaluation** (`veld_rules::visibility`). Every `@visible` of a record is evaluated against the whole record as received, before any of its fields is dropped: one verdict never changes another. A field the value lacks is not evaluated and not listed. A field with the value `null` is dropped and listed. A value that does not have the shape of its declaration is an error of the reference, not a pass. Evaluation errors of any kind (§3.7 of `spec/rules.md`, or a read the value does not allow) drop the field.
+- **Paths.** `hidden` paths are written like the paths of violations (`$.guestPhone`, `$.items[0].guestPhone`, sorted by bytes, without duplicates). The `hidden` list of an audit event (section 4) is the same list without the `$`: `guestPhone`, `items[0].guestPhone`, and `[0].guestPhone` for a result that is a list.
+- **What the reference applies it to.** The body of a success (not a stream), the data of a declared error, and, through `Pipeline::shown`, a stream item: for an item the reference function is the same, with the type of the stream. The `ETag` is taken from the whole value, before. A replayed idempotent answer is not filtered again: the stored answer is the one that was sent.
+- **Examples.** `field: absent` is read in a pattern after `ok` or an error, for an optional field; the word `absent` stays an ordinary name where a given has it. In the IR it is `{ "absent": true }` (`ExampleValue::Absent`), and the matcher takes it to mean that the member is not in the answer. A required field cannot be `absent` (`E0952`).
+- **`veld diff`.** `@visible` added: possibly breaking (`visible_added`); the expression changed (compared as the typed expression, so spelling does not count): possibly breaking (`visible_changed`); removed: compatible (`visible_removed`).
+- **Clients.** The gate does not ask a client about `visibility`: it has nothing to enforce. A server generator declares the feature when it implements section 2 and the vectors pass.
+
 ---
 
 # Phase P2: time, flags and service levels
