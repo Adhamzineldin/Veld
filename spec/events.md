@@ -355,7 +355,7 @@ Channel      += { "retry": { "max": 5, "backoff": "exponential" },   // each omi
 Example.expect[] += { "once": true }                                  // `called once`; omitted when false
 ```
 
-A service that publishes or subscribes to a channel with one of the three annotations uses the feature `events_delivery`. It is opt-in (`spec/ir.md` §4): a generator that built E1 does not get it by accident, and reports `E0801` at the first such annotation until it declares it. The inbox and the adapters are options of a target and need no feature.
+A service that publishes or subscribes to a channel with one of the three annotations uses the feature `events_delivery`. It is opt-in (`spec/ir.md` §4): a generator that built E1 does not get it by accident, and reports `E0801` at the name of the first such channel until it declares it (the IR keeps no position for an annotation). The inbox and the adapters are options of a target and need no feature.
 
 ### 10.9 `called once`, and live event examples
 
