@@ -32,6 +32,7 @@ pub struct Tree<'a> {
     version: bool,
     idempotency: bool,
     derived: bool,
+    timed: bool,
     events: bool,
     runtime_config: bool,
     decls: Vec<DeclId>,
@@ -100,6 +101,7 @@ impl<'a> Tree<'a> {
             version,
             idempotency,
             derived,
+            timed: false,
             events: false,
             runtime_config: false,
             decls: set.into_iter().collect(),
@@ -117,6 +119,13 @@ impl<'a> Tree<'a> {
         set.extend(ir.events_of(&self.services));
         set.extend(ir.event_reachable_decls(&self.services));
         self.events = self.services.iter().any(|s| ir.service(*s).uses_events());
+        // The due check and the due-moves runner are server code: a client has no use for them.
+        self.timed = self.services.iter().any(|s| {
+            ir.service(*s)
+                .endpoints
+                .iter()
+                .any(|ep| ep.rules.transition.as_ref().is_some_and(|t| t.is_timed()))
+        });
         self.derived = self.derived || set.iter().any(|id| ir.decl(*id).has_derived());
         self.rules =
             self.rules || self.derived || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
@@ -187,6 +196,7 @@ impl<'a> Tree<'a> {
             version: self.version,
             idempotency: self.idempotency,
             derived: self.derived,
+            timed: self.timed,
             runtime_config: self.runtime_config,
         }
     }
@@ -217,6 +227,13 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn uses_idempotency(&self) -> bool {
         self.idempotency
+    }
+
+    /// Whether an endpoint of a server tree has a timed `transition` (`spec/platform.md` section
+    /// 10): the `timed` regions, the due check and the due-moves runner.
+    #[must_use]
+    pub fn uses_timed(&self) -> bool {
+        self.timed
     }
 
     /// Whether an emitted declaration has a derived field (`spec/rules.md` section 17.2): the

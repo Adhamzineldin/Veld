@@ -48,7 +48,8 @@ fn helper_clashes(tree: &Tree<'_>) -> Vec<GenDiagnostic> {
             continue;
         };
         for v in &e.variants {
-            let clash = e.is_state_machine() && matches!(v.name.as_str(), "nextStates" | "isFinal");
+            let clash = e.is_state_machine() && matches!(v.name.as_str(), "nextStates" | "isFinal")
+                || (e.has_timed_edge() && v.name == "timedMoves");
             if clash {
                 let mut diag = GenDiagnostic::new(
                     "E0801",
@@ -309,6 +310,32 @@ fn write_machine_helpers(w: &mut CodeWriter, name: &str, e: &Enum) {
         w.line("default: return false;");
         w.close();
     }
+    w.close_with("},");
+    if e.has_timed_edge() {
+        write_timed_moves(w, name, e);
+    }
+}
+
+/// `timedMoves()` of a state machine with a timed edge (`spec/platform.md` section 10.1): the
+/// source, the target and the milliseconds of each timed edge, in the order of the edges.
+fn write_timed_moves(w: &mut CodeWriter, name: &str, e: &Enum) {
+    w.line("/** The timed edges (`flow a -> b after d`): the source, the target and the milliseconds a value must have waited. */");
+    w.open(format!(
+        "timedMoves(): readonly {{ from: {name}; to: {name}; ms: number }}[]"
+    ));
+    let items: Vec<String> = e
+        .flows
+        .iter()
+        .filter_map(|f| {
+            let ms = f.after_ms.as_deref()?;
+            Some(format!(
+                "{{ from: {}, to: {}, ms: {ms} }}",
+                ts_str(wire_of(e, &f.from)),
+                ts_str(wire_of(e, &f.to))
+            ))
+        })
+        .collect();
+    w.line(format!("return [{}];", items.join(", ")));
     w.close_with("},");
 }
 

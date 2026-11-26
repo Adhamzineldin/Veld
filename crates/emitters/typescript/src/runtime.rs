@@ -66,6 +66,9 @@ pub struct Gates {
     /// invariant machinery (`rules`), because the expressions call the helpers of
     /// `runtime/rules.ts` and a derived value is read by invariants.
     pub derived: bool,
+    /// A timed `transition` (`spec/platform.md` section 10): the `timed` regions. They need the
+    /// transition guard (`transitions`).
+    pub timed: bool,
     /// The target has a typed runtime config (`spec/runtime-config.md`): a client takes its
     /// `baseUrl` from the options alone (no environment variable, no compiled-in address).
     pub runtime_config: bool,
@@ -75,10 +78,12 @@ impl Gates {
     /// The same gates with everything they build on switched on.
     #[must_use]
     pub fn normalised(self) -> Self {
-        let endpoint_rules = self.endpoint_rules || self.transitions || self.policies;
+        let transitions = self.transitions || self.timed;
+        let endpoint_rules = self.endpoint_rules || transitions || self.policies;
         Self {
             rules: self.rules || endpoint_rules || self.rollout || self.derived,
             endpoint_rules,
+            transitions,
             ..self
         }
     }
@@ -90,6 +95,7 @@ impl Gates {
             rules: self.rules || other.rules,
             endpoint_rules: self.endpoint_rules || other.endpoint_rules,
             transitions: self.transitions || other.transitions,
+            timed: self.timed || other.timed,
             policies: self.policies || other.policies,
             rollout: self.rollout || other.rollout,
             version: self.version || other.version,
@@ -126,6 +132,9 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "rollout_endpoint" => g.rollout && g.endpoint_rules,
         "endpoint_rules" => g.endpoint_rules,
         "transitions" => g.transitions,
+        // Timed moves (`spec/platform.md` section 10) and what a build without them has.
+        "timed" => g.timed,
+        "not_timed" => !g.timed,
         "policies" => g.policies,
         // The code the transition guard and `allow` share.
         "guards" => g.transitions || g.policies || (g.version && g.endpoint_rules),
@@ -362,7 +371,7 @@ mod tests {
 
     #[test]
     fn every_combination_with_derived_fields_pairs_up_and_keeps_no_marker() {
-        for bits in 0..512u32 {
+        for bits in 0..1024u32 {
             let gates = Gates {
                 rules: bits & 1 != 0,
                 endpoint_rules: bits & 2 != 0,
@@ -373,6 +382,7 @@ mod tests {
                 rollout: bits & 64 != 0,
                 runtime_config: bits & 128 != 0,
                 derived: bits & 256 != 0,
+                timed: bits & 512 != 0,
             };
             let text = source_gated(gates).unwrap();
             assert!(!text.contains("// #"), "{gates:?}");
@@ -389,6 +399,35 @@ mod tests {
         assert!(etag.contains("withEtag") && etag.contains("ifMatchText"));
         // The guard needs the endpoint machinery; an `ETag` alone does not.
         assert!(!etag.contains("checkVersion") && !etag.contains("EndpointRuleSet"));
+    }
+
+    #[test]
+    fn timed_moves_add_their_regions_and_nothing_else_sees_them() {
+        let words = [
+            "runDueMoves",
+            "checkDue",
+            "timerCalls",
+            "DueStep",
+            "TimerHooks",
+        ];
+        let plain = source_gated(Gates {
+            transitions: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(!plain.contains(word), "`{word}` leaked into the runtime");
+        }
+        let timed = source_gated(Gates {
+            timed: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(timed.contains(word), "`{word}` is missing");
+        }
+        // A timed move needs the transition guard.
+        assert!(timed.contains("checkTransition"));
     }
 
     #[test]

@@ -1373,6 +1373,10 @@ async function prepare(
   const illegal = checkTransition(ep, rules, ctx, std, hooks, { p, f }, started);
   if (illegal !== null) return illegal;
   // #endif
+  // #if timed
+  const early = checkDue(ep, rules, ctx, std, hooks, { f, now }, started);
+  if (early !== null) return early;
+  // #endif
   // #if endpoint_rules
   if (hooks.validateRequests === false) {
     // #endif
@@ -1678,6 +1682,205 @@ function describeTarget(rules: EndpointRuleSet, violations: Violation[], result:
   if (failed !== undefined) failed.message = `${failed.message}, found \`${step.found(result as never)}\``;
 }
 // #endif
+// #if timed
+
+// ---------------------------------------------------------------------------
+// Timed moves (spec/platform.md section 10)
+// ---------------------------------------------------------------------------
+
+/** The due check of a timed `transition`: the edge's wait and the time the fact entered its state. */
+export interface DueStep {
+  /** The milliseconds the fact must have waited in the source state. */
+  afterMs: bigint;
+  /** The time the fact entered the state, in milliseconds since the epoch. Throws when it cannot be read. */
+  since: (f: never) => bigint;
+}
+
+export interface TransitionStep {
+  due?: DueStep;
+}
+
+/** What the due-moves runner gives a request it makes in process: the caller. */
+const timerCalls = new WeakMap<VeldRequest, { principal: unknown }>();
+
+/**
+ * Step 6, after the state check: `409 InvalidTransition` with the message `violates rule transition:
+ * not due` when `now - since < d`. A `since` in the future, or one that cannot be read, is not due.
+ */
+function checkDue(
+  ep: ServerEndpoint,
+  rules: EndpointRuleSet,
+  ctx: RequestContext,
+  std: StdSigs,
+  hooks: HandlerHooks,
+  scope: { f: Record<string, unknown>; now: bigint },
+  started: number,
+): VeldResponse | null {
+  const step = rules.transition;
+  if (step?.due === undefined) return null;
+  let due = false;
+  try {
+    due = scope.now - step.due.since(scope.f as never) >= step.due.afterMs;
+  } catch {
+    due = false;
+  }
+  if (due) return null;
+  const violation: Violation = { rule: step.id, path: 'request', fields: [], message: 'violates rule transition: not due' };
+  const data = { field: step.field, from: step.current(scope.f as never), to: step.to };
+  return refusal(ep, ctx, std, hooks, { sig: step.otherwise.sig, data, violation, started });
+}
+
+export interface TimerHooks {
+  /** The principal the application gives its own timer. */
+  principal: () => unknown | Promise<unknown>;
+}
+
+/** One endpoint with a timed transition, as `run<Service>DueMoves` hands it to the runner. */
+export interface DueTarget {
+  endpoint: string;
+  /** The wait of its timed edge in milliseconds: the loader is asked for what entered the state at or before `now - afterMs`. */
+  afterMs: number;
+  /** The parameters (in developer-facing form) of up to `limit` calls that are due. */
+  load: (before: Date, limit: number, ctx: RequestContext) => Promise<readonly object[]>;
+}
+
+export interface DueOptions {
+  /** The time of the run. Default: the clock of the hooks, else the system clock. */
+  now?: Date;
+  /** The most calls per endpoint. Default 100. */
+  limit?: number;
+}
+
+/** What one endpoint did in a run. */
+export interface DueCounts {
+  /** Calls that were run. */
+  ran: number;
+  /** Calls that answered with a success. */
+  moved: number;
+  /** Calls refused with `InvalidTransition`: another request was first, which is expected. */
+  refused: number;
+  /** Calls that failed in any other way. They also went to `onError`. */
+  failed: number;
+}
+
+export type DueReport = Record<string, DueCounts>;
+
+/** The request a call of `ep` with `params` would have been, in wire form. */
+function dueRequest(ep: ServerEndpoint, params: Record<string, unknown>): VeldRequest {
+  let path = ep.path;
+  const query: string[] = [];
+  const headers: Headers = {};
+  let body: unknown;
+  const add = (key: string, v: unknown): void => {
+    if (v === undefined) return;
+    for (const x of Array.isArray(v) ? v : [v]) query.push(`${encodeURIComponent(key)}=${encodeURIComponent(scalarString(x))}`);
+  };
+  for (const p of ep.params) {
+    const v = params[p.name];
+    if (v === undefined || p.s) continue;
+    const wire = toWire(p.t, v);
+    if (p.binding === 'path') path = path.replace(`{${p.name}}`, encodeURIComponent(scalarString(wire)));
+    else if (p.binding === 'query') add(p.name, wire);
+    else if (p.binding === 'query_object') {
+      if (isObject(wire)) for (const k of Object.keys(wire)) add(k, wire[k]);
+    } else if (p.binding === 'header') headers[p.header ?? p.name] = scalarString(wire);
+    else body = wire;
+  }
+  const req: VeldRequest = { method: ep.method, path, headers };
+  if (query.length > 0) req.query = query.join('&');
+  if (body !== undefined) req.body = body;
+  return req;
+}
+
+function isInvalidTransition(ep: ServerEndpoint, res: VeldResponse): boolean {
+  const sig = ep.rules?.transition?.otherwise.sig;
+  if (sig === undefined || res.status !== 409 || res.body === null) return false;
+  try {
+    return (JSON.parse(res.body) as { type?: unknown }).type === sig;
+  } catch {
+    return false;
+  }
+}
+
+function reportFailure(hooks: HandlerHooks, err: unknown, ctx: RequestContext): void {
+  try {
+    hooks.onError?.(err, ctx);
+  } catch {
+    // A failing hook must not stop the run.
+  }
+}
+
+/** One call of the runner, through steps 4 to 10 in process. */
+async function dueCall(
+  r: Route,
+  params: object,
+  env: { std: StdSigs; hooks: HandlerHooks; principal: unknown; ctx: RequestContext },
+  counts: DueCounts,
+): Promise<void> {
+  counts.ran += 1;
+  try {
+    const req = dueRequest(r.ep, params as Record<string, unknown>);
+    timerCalls.set(req, { principal: env.principal });
+    const m = r.re.exec(normalizePath(req.path));
+    if (m === null) throw new Error(`${r.ep.name}: the parameters do not make a path of the endpoint`);
+    const res = await run(r, m, req, env.std, env.hooks);
+    if (res.status < 300) counts.moved += 1;
+    else if (isInvalidTransition(r.ep, res)) counts.refused += 1;
+    else {
+      counts.failed += 1;
+      if (res.status < 500) reportFailure(env.hooks, new Error(`${r.ep.name}: the call answered ${res.status}`), env.ctx);
+    }
+  } catch (err) {
+    counts.failed += 1;
+    reportFailure(env.hooks, err, env.ctx);
+  }
+}
+
+/**
+ * Runs the moves that are due (`run<Service>DueMoves` calls it): for each target, asks its loader for
+ * the calls whose fact entered the source state at or before `now - afterMs` and runs each through
+ * the pipeline, in process, as the timer's principal. One failure does not stop the others.
+ *
+ * The guard is not an atomic guarantee: two runs at once, or a run next to a request, are safe
+ * exactly as far as the handler's conditional write is.
+ */
+export async function runDueMoves(
+  endpoints: readonly ServerEndpoint[],
+  std: StdSigs,
+  hooks: HandlerHooks,
+  targets: readonly DueTarget[],
+  options: DueOptions = {},
+): Promise<DueReport> {
+  const routes = targets.map((t) => {
+    const ep = endpoints.find((e) => e.name === t.endpoint);
+    if (ep === undefined) throw new Error(`${t.endpoint}: not an endpoint of this server`);
+    if (ep.auth && hooks.timer === undefined) throw new Error(`${ep.name}: hooks.timer.principal is required`);
+    return compileRoute(ep);
+  });
+  const ctx: RequestContext = { method: 'TIMER', path: '', headers: {}, principal: undefined, raw: undefined };
+  const principal = hooks.timer === undefined ? undefined : await hooks.timer.principal();
+  ctx.principal = principal;
+  const now = options.now ?? hooks.clock?.(ctx) ?? new Date();
+  const limit = options.limit ?? 100;
+  const fixed: HandlerHooks = { ...hooks, clock: () => now };
+  const report: DueReport = {};
+  for (const [i, target] of targets.entries()) {
+    const counts: DueCounts = { ran: 0, moved: 0, refused: 0, failed: 0 };
+    report[target.endpoint] = counts;
+    let due: readonly object[] = [];
+    try {
+      due = await target.load(new Date(now.getTime() - target.afterMs), limit, ctx);
+    } catch (err) {
+      counts.failed += 1;
+      reportFailure(hooks, err, ctx);
+    }
+    const r = routes[i];
+    if (r === undefined) continue;
+    for (const params of due.slice(0, limit)) await dueCall(r, params, { std, hooks: fixed, principal, ctx }, counts);
+  }
+  return report;
+}
+// #endif
 
 // ---------------------------------------------------------------------------
 // Companion objects
@@ -1925,6 +2128,10 @@ export interface HandlerHooks {
   // #if endpoint_rules
   /** The server's clock, read once per request before the facts load. Default: the system clock. */
   clock?: (ctx: RequestContext) => Date;
+  // #endif
+  // #if timed
+  /** The principal the application gives its own timer, for `run<Service>DueMoves` (spec/platform.md section 10.1). */
+  timer?: TimerHooks;
   // #endif
   // #if idempotency
   /** The store of `@idempotent` endpoints, and who the caller is for the scope of a key (spec/rules.md section 11.12). */
@@ -2259,11 +2466,29 @@ async function guard(
   ws: boolean,
 ): Promise<Bound | VeldResponse> {
   const ep = r.ep;
+  // #if not_timed
   if (ep.auth) {
     ctx.principal = await authenticate(ep.auth, ctx, hooks.auth ?? {});
     if (ctx.principal === null) return problem(std.unauthorized, 'Unauthorized', 401, ep.sig, {});
   }
   for (const name of ep.middleware) await hooks.middleware?.[name]?.(ctx);
+  // #endif
+  // #if timed
+  const timer = timerCalls.get(req);
+  if (timer !== undefined) {
+    // The due-moves runner enters here: the caller is the timer's principal, and there is no middleware.
+    ctx.principal = timer.principal;
+    if (ep.auth && (ctx.principal === null || ctx.principal === undefined)) {
+      return problem(std.unauthorized, 'Unauthorized', 401, ep.sig, {});
+    }
+  } else {
+    if (ep.auth) {
+      ctx.principal = await authenticate(ep.auth, ctx, hooks.auth ?? {});
+      if (ctx.principal === null) return problem(std.unauthorized, 'Unauthorized', 401, ep.sig, {});
+    }
+    for (const name of ep.middleware) await hooks.middleware?.[name]?.(ctx);
+  }
+  // #endif
   const bound = await bind(r, m, req, ctx.headers, ws, hooks.validateRequests !== false);
   if (bound.issues.length > 0) {
     return problem(std.validation, 'ValidationError', 422, ep.sig, { issues: bound.issues });

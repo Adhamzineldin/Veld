@@ -8,7 +8,7 @@ use veld_emit_typescript::derived;
 use veld_emit_typescript::tree::{FileCtx, Tree};
 use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{add_file, doc_comment, method_key, prop_key, ts_str};
-use veld_ir::{AuthKind, Endpoint, Method, Service};
+use veld_ir::{AuthKind, DeclKind, Endpoint, Ir, Method, Service};
 
 use crate::events;
 use crate::frameworks::{EndpointModel, ServiceModel};
@@ -75,6 +75,121 @@ fn write_service(
     write_hooks(w, fc, svc, runtime);
     w.blank();
     write_factory(w, fc, names, (svc, runtime), diags);
+    if !timed_endpoints(fc.tree.ir, svc).is_empty() {
+        w.blank();
+        write_due_moves(w, fc, names, (svc, runtime));
+    }
+}
+
+/// The endpoints of a service that take a timed edge, with the milliseconds of that edge
+/// (`spec/platform.md` section 10.1).
+pub(crate) fn timed_endpoints<'a>(ir: &'a Ir, svc: &'a Service) -> Vec<(&'a Endpoint, &'a str)> {
+    svc.endpoints
+        .iter()
+        .filter_map(|ep| {
+            let t = ep.rules.transition.as_ref().filter(|t| t.is_timed())?;
+            let source = t.from.first()?;
+            let DeclKind::Enum(machine) = &ir.decl(t.decl).kind else {
+                return None;
+            };
+            let after = machine
+                .flows
+                .iter()
+                .find(|f| f.from == *source && f.to == t.to)?
+                .after_ms
+                .as_deref()?;
+            Some((ep, after))
+        })
+        .collect()
+}
+
+/// `<Service>DueLoaders`, `<Service>DueOptions` and `run<Service>DueMoves` (`spec/platform.md`
+/// section 10.1, `spec/targets/typescript.md` section 5j).
+fn write_due_moves(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    names: &RequestNames,
+    (svc, runtime): (&Service, Option<&RuntimeModel>),
+) {
+    let name = naming::pascal(&svc.name);
+    let ctx = fc.rt("RequestContext");
+    let timed = timed_endpoints(fc.tree.ir, svc);
+    w.line(format!(
+        "/** One loader per endpoint of `{}` that takes a timed edge: it answers the parameters of up to `limit` calls whose fact entered the source state at or before `before`. */",
+        svc.name
+    ));
+    w.open(format!("export interface {name}DueLoaders"));
+    for (ep, _) in &timed {
+        let request = names.get(svc.id, &ep.name);
+        w.line(format!(
+            "{}(before: Date, limit: number, ctx: {ctx}): Promise<readonly {request}[]>;",
+            method_key(&ep.name)
+        ));
+    }
+    w.close();
+    w.blank();
+    let options = fc.rt("DueOptions");
+    w.open(format!(
+        "export interface {name}DueOptions extends {options}"
+    ));
+    w.line(format!("loaders: {name}DueLoaders;"));
+    w.close();
+    w.blank();
+    let report = fc.rt("DueReport");
+    let runtime_param = match runtime {
+        Some(m) => {
+            let ty = m.type_name();
+            fc.import("runtime", &ty, false);
+            let optional = if m.has_required() { "" } else { "?" };
+            format!(", runtime{optional}: {ty}")
+        }
+        None => String::new(),
+    };
+    doc_comment(
+        w,
+        Some(&format!(
+            "Runs the moves of `{}` that are due, through the pipeline and in process, as the caller `hooks.timer.principal()` answers. Run it from an interval, a cron job or a queue worker. The guard is not an atomic guarantee: two runs at once are safe exactly as far as the handler's conditional write is.",
+            svc.name
+        )),
+        None,
+    );
+    w.open(format!(
+        "export function run{name}DueMoves(impl: {name}Service, hooks: {name}Hooks, options: {name}DueOptions{runtime_param}): Promise<{report}>"
+    ));
+    if runtime.is_some() {
+        fc.import("runtime", "checkRuntime", true);
+        if output_is_a_setting(runtime) {
+            w.line("const config = checkRuntime(runtime);");
+        } else {
+            w.line("checkRuntime(runtime);");
+        }
+    }
+    let loaders = if svc.facts.is_empty() {
+        ""
+    } else {
+        ", hooks.facts"
+    };
+    w.line(format!(
+        "const endpoints = {}(impl{loaders});",
+        builder_name(svc)
+    ));
+    let target = fc.rt("DueTarget");
+    w.open_with(format!("const targets: {target}[] ="), " [");
+    for (ep, after) in &timed {
+        let key = method_key(&ep.name);
+        w.line(format!(
+            "{{ endpoint: {}, afterMs: {after}, load: (before, limit, ctx) => options.loaders.{key}(before, limit, ctx) }},",
+            ts_str(&ep.name)
+        ));
+    }
+    w.close_with("];");
+    let std = std_sigs(fc);
+    let run = fc.rt("runDueMoves");
+    let hooks = handler_hooks(fc.tree.validate, runtime);
+    w.line(format!(
+        "return {run}(endpoints, {std}, {hooks}, targets, options);"
+    ));
+    w.close();
 }
 
 /// The request type of an endpoint as the implementation receives it: with its loaded facts.
@@ -232,6 +347,12 @@ fn write_hooks(
     if rules::service_has_rules(svc) {
         w.line("/** The server's clock, read once per request before the facts load. Default: the system clock. */");
         w.line(format!("clock?: (ctx: {ctx}) => Date;"));
+    }
+    if !timed_endpoints(fc.tree.ir, svc).is_empty() {
+        w.line("/** The principal the application gives its own timer, for `run<Service>DueMoves`. Required there when a timed endpoint has auth. */");
+        w.line(format!(
+            "timer?: {{ principal: () => {who} | Promise<{who}> }};"
+        ));
     }
     write_idempotency_hook(w, fc, svc, (&ctx, &who));
     if !auth.is_empty() {

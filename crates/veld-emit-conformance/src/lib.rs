@@ -61,9 +61,10 @@ pub use platform_p1::{
     compiled_tenancy_contracts, compiled_visibility_contracts,
 };
 pub use platform_p2::{
-    check_flags_are_refused, check_slo_is_refused, check_timed_is_refused,
-    check_timeouts_are_refused, compiled_flag_contracts, compiled_slo_contracts,
-    compiled_timed_contracts, compiled_timeout_contracts,
+    check_flags_are_generated, check_flags_are_refused, check_slo_is_generated,
+    check_slo_is_refused, check_timed_is_generated, check_timed_is_refused,
+    check_timeouts_are_generated, check_timeouts_are_refused, compiled_flag_contracts,
+    compiled_slo_contracts, compiled_timed_contracts, compiled_timeout_contracts,
 };
 pub use retention::{
     check_retention_is_generated, check_retention_is_refused, compiled_retention_contract,

@@ -139,11 +139,12 @@ fn node_and_typescript_refuse_sagas() {
     veld_emit_conformance::check_sagas_are_refused(&TypeScript).unwrap();
 }
 
-/// `rules_timed` is opt-in: Node and TypeScript refuse a timed edge or a timed transition.
+/// `rules_timed` is opt-in and Node and TypeScript declare it: a timed edge and a timed
+/// transition generate.
 #[test]
-fn node_and_typescript_refuse_timed_moves() {
-    veld_emit_conformance::check_timed_is_refused(&Node).unwrap();
-    veld_emit_conformance::check_timed_is_refused(&TypeScript).unwrap();
+fn node_and_typescript_generate_timed_moves() {
+    veld_emit_conformance::check_timed_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_timed_is_generated(&TypeScript).unwrap();
 }
 
 /// `rules_flags` is opt-in: Node and TypeScript refuse a flagged statement.

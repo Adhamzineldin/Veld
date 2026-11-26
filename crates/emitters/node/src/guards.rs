@@ -12,7 +12,7 @@ use veld_emit_typescript::tree::FileCtx;
 use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{doc_comment, prop_key, ts_str};
 use veld_emit_typescript::validate::schema_expr;
-use veld_ir::{Constraints, Endpoint, EndpointAllow};
+use veld_ir::{Constraints, Endpoint, EndpointAllow, Root};
 
 use crate::rules::{Sig, Site, unsupported};
 
@@ -208,7 +208,39 @@ fn transition_step(
         };
         w.line(format!("found: (result: {result}) => String({state}),"));
     }
+    write_due(w, fc, printer, sig, mv);
     w.line(format!("otherwise: {{ sig: {class}.sig }},"));
+    w.close_with("},");
+}
+
+/// `due: { afterMs, since }` of a timed transition (`spec/platform.md` section 10): the wait of
+/// its edge and the reading of the `since` field.
+fn write_due(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    printer: &EndpointPrinter<'_>,
+    sig: &Sig,
+    mv: &Move<'_>,
+) {
+    let t = mv.transition;
+    if t.since.is_empty() {
+        return;
+    }
+    let after = t.from.first().and_then(|source| {
+        mv.machine
+            .flows
+            .iter()
+            .find(|f| f.from == *source && f.to == t.to)
+            .and_then(|f| f.after_ms.as_deref())
+    });
+    let since = printer.field_code(&Root::Fact(t.fact.clone()), &t.since);
+    let (Some(after), Some(since)) = (after, since) else {
+        return;
+    };
+    let ns = fc.rules_ns();
+    w.open_with("due:", " {");
+    w.line(format!("afterMs: {after}n,"));
+    w.line(format!("since: ({}) => {ns}.toDatetime({since}),", sig.f));
     w.close_with("},");
 }
 

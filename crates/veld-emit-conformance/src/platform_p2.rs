@@ -257,6 +257,76 @@ pub fn check_timed_is_refused(generator: &dyn DynGenerator) -> Result<(), String
     all_refused(generator, Feature::RulesTimed, &compiled_timed_contracts())
 }
 
+/// The generator must declare `rules_timed` and generate the timed contracts, in every role: no
+/// diagnostic from the gate, and at least one file.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_timed_is_generated(generator: &dyn DynGenerator) -> Result<(), String> {
+    all_generated(generator, Feature::RulesTimed, &compiled_timed_contracts())
+}
+
+/// The generator must declare `rules_flags` and generate the flagged contracts, in every role.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_flags_are_generated(generator: &dyn DynGenerator) -> Result<(), String> {
+    all_generated(generator, Feature::RulesFlags, &compiled_flag_contracts())
+}
+
+/// The generator must declare `timeouts` and generate the contracts with a deadline, in every role.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_timeouts_are_generated(generator: &dyn DynGenerator) -> Result<(), String> {
+    all_generated(generator, Feature::Timeouts, &compiled_timeout_contracts())
+}
+
+/// The generator must declare `slo` and generate the contracts with a service level, in every role.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_slo_is_generated(generator: &dyn DynGenerator) -> Result<(), String> {
+    all_generated(generator, Feature::Slo, &compiled_slo_contracts())
+}
+
+fn all_generated(
+    generator: &dyn DynGenerator,
+    feature: Feature,
+    contracts: &[(Ir, u32)],
+) -> Result<(), String> {
+    for (ir, line) in contracts {
+        for role in generator.roles() {
+            let caps = generator.capabilities(*role);
+            if !caps.supports(feature) {
+                return Err(format!(
+                    "{}: does not declare `{}`",
+                    role.name(),
+                    feature.name()
+                ));
+            }
+            let req = request(ir, *role);
+            let gate = check_capabilities(ir, &req, &caps);
+            if !gate.is_empty() {
+                return Err(format!(
+                    "{} / line {line}: the gate reported {gate:?}",
+                    role.name()
+                ));
+            }
+            match generator.generate_dyn(&req, &crate::options()) {
+                Ok(files) if !files.is_empty() => {}
+                other => {
+                    return Err(format!(
+                        "{} / line {line}: generate did not make files: {other:?}",
+                        role.name()
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn request(ir: &Ir, role: Role) -> GenRequest<'_> {
     GenRequest {
         ir,
