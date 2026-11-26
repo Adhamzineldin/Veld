@@ -308,7 +308,7 @@ flagged = "when" "flag" "(" STRING ")" ;      // after a rule, a require, an ens
 
 - `when flag("f")` is a suffix of one statement: an invariant, a `require` (after its `else`), an `ensure`, a `permit` or `forbid` clause (after its own `when`), and a `flow` with one edge. It says the statement exists only while the flag `f` is on. It is not an expression: `flag` cannot be called inside one. A flag name is 1 to 64 characters of `A-Z a-z 0-9 _ . -`, starting with a letter (`E0937`, also for the suffix on anything else and for a `flow` with more than one edge).
 - **The provider.** The hooks object of a server whose contract uses flags requires `flags`, an interface with one operation: `isOn(name, context)`, where the context has the principal (absent without one), the caller's tenant text (absent without one) and the operation signature. A memory provider is generated for tests.
-- **One reading per request.** The server asks for each flag at most once per request, the first time a statement with it is reached, and uses that answer until the response is sent.
+- **One reading per request.** The server asks for each flag at most once per request and uses that answer until the response is sent. It asks before the first statement that could need the flag; a target may ask at once, after authentication, for every flag the endpoint can reach (its own statements, the clauses of the policies it names, the edges of its transition, the flagged invariants of the declarations it reaches), which is what the three built-in generators do.
 - **Off** means the statement is not there: not evaluated, not reported, and for a `flow`, not an edge. **On** means it is an ordinary statement.
 - **When the provider fails**, the statement that restricts applies and the one that grants does not: an invariant, a `require`, an `ensure` and a `forbid` count as on; a `permit` and a `flow` count as off. The failure goes to `onError`.
 - **Clients.** A client has no provider. It skips flagged invariants in its local check, as it skips audited ones, and the rules digest leaves them out. `can<Endpoint>` and the policy functions take an optional last argument, a function from a flag name to a boolean; without it they decide as a failing provider does. `nextStates` lists flagged edges too: the server still decides.
@@ -375,7 +375,7 @@ get "/{id}" getBooking(id: uuid) -> Booking
 
 - `@slo(...)` stands on an endpoint, or on a service as the default of its endpoints. Its arguments, at least one: `p50`, `p90`, `p95`, `p99` (a positive constant duration: that share of requests answers within it) and `errors` (a decimal above 0 and below 100: at most that many **percent** of requests end in a `5xx`). Anything else is `E0602`.
 - **The contract only states the objective.** Generated code measures; it does not alert, shed load or refuse a request.
-- **The metrics hook.** The hooks object of a server with an `@slo` takes `metrics(m)`, optional, called once for every request that matched an endpoint of that server, after the response is written:
+- **The metrics hook.** The hooks object of a server with an `@slo` takes `metrics(m)`, optional, called once for every request that matched an endpoint of that server, when its answer is ready to be written (the runtime core does not see the framework write it):
 
   ```jsonc
   { "name": "http.server.request.duration", "unit": "s", "value": 0.0421,
@@ -443,7 +443,7 @@ get "/{id}" getBooking(id: uuid) -> Booking
 
 ## 14. The pipeline with P2
 
-Added to section 6: the deadline starts at step 1 and can end any later step; a flag is read where its statement stands; `metrics` is called after step 10. `run<Service>DueMoves` enters at step 3.
+Added to section 6: the deadline starts at step 1 and can end any later step; a flag is read where its statement stands; `metrics` is called after step 10. `run<Service>DueMoves` enters after step 3: it runs steps 4 to 10 (section 10.1), and no middleware runs, because there is no request.
 
 ## 15. Diagnostics of P2
 

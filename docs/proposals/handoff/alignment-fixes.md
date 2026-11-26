@@ -87,3 +87,10 @@ The RabbitMQ topology, the dead-letter copy, retry and the inbox agree in all th
 
 ## All three
 - The test programs that serve several services' test handlers at one address (`events_serve.ts`, `EventsServe.java`, the generated `delivery_serve`) each merge the answers in their own way: make each follow the one rule now in 10.9.
+
+# Platform P2 (Node is in; Java and Rust mirror `spec/targets/typescript.md` 5j)
+
+Settled in `spec/platform.md` after the Node work: every flag an endpoint can reach is read once, after authentication (not at the first statement that has it); `metrics` is called when the answer is ready to be written; the due-moves runner enters after step 3 and runs no middleware.
+
+## Node (owed)
+- The operands of `old(...)` that only a flagged `ensure` uses are still evaluated when the flag is off; the reference removes the statement. It shows only when the operand raises an evaluation error.
