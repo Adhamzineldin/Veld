@@ -151,52 +151,93 @@ fn run_program(ws: &std::path::Path, bin: &str) -> String {
 
 // ---- `entries`: what `emit` saves ----------------------------------------------------------------
 
-/// The cases of `entries` in `outbox.json`, grouped by contract.
-fn entry_cases() -> BTreeMap<String, Vec<Value>> {
+/// The cases of `entries` in `outbox.json`, grouped by contract, service and channel: the `source` of
+/// a message is the service that owns the move, and the event goes to the first channel of that
+/// service that carries it, so a group is one generated crate.
+fn entry_groups() -> BTreeMap<(String, String, String), Vec<Value>> {
     let golden: Value = serde_json::from_str(&read(GOLDEN)).unwrap();
-    let mut by_contract: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+    let mut groups: BTreeMap<(String, String, String), Vec<Value>> = BTreeMap::new();
     for case in golden["entries"].as_array().unwrap() {
-        by_contract
-            .entry(case["contract"].as_str().unwrap().to_owned())
+        let key = |k: &str| case[k].as_str().unwrap().to_owned();
+        groups
+            .entry((key("contract"), key("service"), key("channel")))
             .or_default()
             .push(case.clone());
     }
-    by_contract
+    groups
 }
 
-/// One probe service for each pair of channel and event of the cases: it publishes that channel only
-/// (so the event goes to it, whatever else the real service does with the event) and has a move
-/// that emits the event, `zz<Event>`, over a machine of its own. The generated `emit` of that move
-/// is what the driver calls. Returns the text to add to the contract.
-fn probe_services(cases: &[Value]) -> (String, Vec<(usize, String)>) {
-    let mut text = String::new();
-    let mut probes: Vec<(String, String)> = Vec::new();
-    let mut used: Vec<(usize, String)> = Vec::new();
-    for case in cases {
-        let (channel, event) = (
-            case["channel"].as_str().unwrap().to_owned(),
-            case["event"].as_str().unwrap().to_owned(),
-        );
-        let at = probes
-            .iter()
-            .position(|p| *p == (channel.clone(), event.clone()))
-            .unwrap_or_else(|| {
-                probes.push((channel.clone(), event.clone()));
-                let i = probes.len() - 1;
-                text.push_str(&format!(
-                    "\nenum Zz{i}State {{\n  a, b\n  flow a -> b emits {event}\n  final b\n}}\n\nmodel Zz{i}Box {{\n  id: uuid\n  state: Zz{i}State\n}}\n\nservice Zz{i} at \"/zz{i}\" {{\n  publishes {channel}\n\n  post \"/{{id}}/go\" zz{event}(id: uuid) -> Zz{i}Box {{\n    fact zz{event}: Zz{i}Box = id\n    transition zz{event}.state: a -> b\n  }}\n}}\n"
-                ));
-                i
-            });
-        used.push((at, event));
+fn find_from(text: &str, pattern: &str, from: usize) -> Option<usize> {
+    text[from..].find(pattern).map(|i| from + i)
+}
+
+/// `contract` with, for each of `events`, a machine `Zz<Event>State` with one edge that emits the
+/// event, a model, and a move `zz<Event>` that the driver writes the event from, added to `service`.
+/// `channel` is moved to the front of the `publishes` lines of the service, because the event goes
+/// to the first channel of the service that carries it, and a service without `at` gets one (a copy
+/// of `probe_contract` in `crates/emitters/node/tests/events.rs`).
+fn probe_contract(contract: &str, service: &str, channel: &str, events: &[&str]) -> String {
+    let at = contract
+        .find(&format!("service {service}"))
+        .expect("the service is in the contract");
+    let open = find_from(contract, "{", at).expect("the service has a body");
+    let line_end = contract[at..open].to_string();
+    let head = if line_end.contains(" at \"") {
+        line_end.clone()
+    } else {
+        format!("{} at \"/zz\" ", line_end.trim_end())
+    };
+    // The end of the body: the brace that closes the one at `open`.
+    let (mut depth, mut close) = (0usize, open);
+    for (i, ch) in contract[open..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = open + i;
+                    break;
+                }
+            }
+            _ => {}
+        }
     }
-    (text, used)
+    let body = &contract[open + 1..close];
+    let mut channels = vec![channel.to_string()];
+    let mut kept = Vec::new();
+    for line in body.lines() {
+        if let Some(list) = line.trim().strip_prefix("publishes ") {
+            for name in list.split(',').map(str::trim).filter(|n| !n.is_empty()) {
+                if !channels.iter().any(|c| c == name) {
+                    channels.push(name.to_string());
+                }
+            }
+        } else {
+            kept.push(line.to_string());
+        }
+    }
+    let (mut moves, mut machines) = (String::new(), String::new());
+    for e in events {
+        moves.push_str(&format!(
+            "  post \"/zz/{{id}}/{e}\" zz{e}(id: uuid) -> Zz{e}Box {{\n    fact zz{e}: Zz{e}Box = id\n    transition zz{e}.state: a -> b\n  }}\n"
+        ));
+        machines.push_str(&format!(
+            "\nenum Zz{e}State {{\n  a, b\n  flow a -> b emits {e}\n  final b\n}}\n\nmodel Zz{e}Box {{\n  id: uuid\n  state: Zz{e}State\n}}\n"
+        ));
+    }
+    format!(
+        "{}{head}{{\n  publishes {}\n{}\n{moves}}}{}{machines}",
+        &contract[..at],
+        channels.join(", "),
+        kept.join("\n"),
+        &contract[close + 1..],
+    )
 }
 
-/// The driver of the `entries` cases of one contract: for each case, the `emit` of the probe move
+/// The driver of the `entries` cases of one group: for each case, the `emit` of the probe move
 /// saves the message of the golden in a recording outbox (the id and the clock are fixed), and the
-/// driver prints what the outbox received and that no transport was asked.
-fn entries_driver(used: &[(usize, String)]) -> String {
+/// driver prints what the outbox received.
+fn entries_driver(service: &str, events: &[String]) -> String {
     let mut s = String::from(
         r#"#[path = "../common.rs"]
 mod common;
@@ -239,11 +280,8 @@ async fn entry_case(i: usize, case: &Value) -> Value {
     let result: Result<(), Error> = match i {
 "#,
     );
-    for (i, (probe, event)) in used.iter().enumerate() {
-        let module = format!(
-            "events_server::bookings::{}_events",
-            snake(&format!("Zz{probe}"))
-        );
+    let module = format!("events_server::bookings::{}_events", snake(service));
+    for (i, event) in events.iter().enumerate() {
         let emit = format!("Zz{}Emit", pascal(event));
         s += &format!(
             "        {i} => {{\n            let emit = {module}::{emit}::begin(&*outbox, options, &log);\n            let event = <events_server::bookings::t::{event} as VeldDecl>::from_wire(&case[\"value\"]).unwrap();\n            emit.{}(&event).await.map(drop)\n        }}\n",
@@ -277,20 +315,43 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 /// Every `entries` case of the golden through the generated `emit`: the topic, the key and the
-/// bytes the outbox received are the golden's, the event is named in the log of the request, and
-/// nothing reached a transport (an outbox has none).
+/// bytes the outbox received are the golden's (so the `source` is the service that owns the move and
+/// the channel is the case's), the event is named in the log of the request, and nothing reached a
+/// transport (an outbox has none).
 #[test]
 fn the_entries_of_the_golden_are_what_emit_saves() {
     if !cargo_or_skip() {
         return;
     }
-    for (n, (contract, cases)) in entry_cases().iter().enumerate() {
-        let (probes, used) = probe_services(cases);
-        let ir = compile_text(format!("{}{probes}", read(contract)));
+    for (n, ((contract, service, channel), cases)) in entry_groups().iter().enumerate() {
+        let events: Vec<String> = cases
+            .iter()
+            .map(|c| c["event"].as_str().unwrap().to_owned())
+            .collect();
+        let mut distinct: Vec<&str> = events.iter().map(String::as_str).collect();
+        distinct.sort_unstable();
+        distinct.dedup();
+        let ir = compile_text(probe_contract(&read(contract), service, channel, &distinct));
+        // The event goes where the case says: the channel of each probe move is the case's.
+        let owner = ir.services.iter().find(|s| &s.name == service).unwrap();
+        for event in &distinct {
+            let ep = owner
+                .endpoints
+                .iter()
+                .find(|e| e.name == format!("zz{event}"))
+                .unwrap();
+            let emits = &ep.rules.transition.as_ref().unwrap().emits;
+            assert_eq!(emits.len(), 1, "{contract}: {service}.zz{event}");
+            assert_eq!(
+                &ir.channel(emits[0].channel).name,
+                channel,
+                "{contract}: {service}.zz{event}"
+            );
+        }
         let ws = workspace(
             &format!("outbox-entries-{n}"),
             &server_crate(&ir, &json!({})),
-            &[("entries", entries_driver(&used))],
+            &[("entries", entries_driver(service, &events))],
             &[(
                 "cases.json",
                 serde_json::to_string(
@@ -305,7 +366,7 @@ fn the_entries_of_the_golden_are_what_emit_saves() {
         build_and_lint(&ws);
         let out: Value = serde_json::from_str(&run_program(&ws, "entries")).unwrap();
         let results = out.as_array().unwrap();
-        assert_eq!(results.len(), cases.len(), "{contract}");
+        assert_eq!(results.len(), cases.len(), "{contract} {service} {channel}");
         for (case, got) in cases.iter().zip(results) {
             let name = case["name"].as_str().unwrap();
             assert_eq!(got["error"], Value::Null, "{name}: {got}");
