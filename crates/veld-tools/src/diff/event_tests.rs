@@ -1,13 +1,13 @@
-//! Events in `veld diff` (`spec/events.md` section 16). An addition is compatible; every other
-//! change to an event, a channel, `publishes` or `subscribes` is one entry, "possibly breaking",
-//! until the classification of section 16 is built.
+//! Events in `veld diff` (`spec/events.md` section 16): additions, `publishes` and
+//! subscriptions. The table of the fields of an event, of a channel's topic, key and events, and
+//! of `emits` is in `event_table_tests.rs`.
 
 use super::ChangeKind::{self, *};
-use super::Severity::{self, NonBreaking as N, PossiblyBreaking as P};
+use super::Severity::{self, Breaking as B, NonBreaking as N, PossiblyBreaking as P};
 use super::{diff, has_breaking};
 use crate::testutil::ir;
 
-fn run(old: &str, new: &str) -> Vec<(ChangeKind, Severity)> {
+pub(super) fn run(old: &str, new: &str) -> Vec<(ChangeKind, Severity)> {
     let mut v: Vec<_> = diff(&ir(old), &ir(new))
         .into_iter()
         .map(|c| (c.kind, c.severity))
@@ -47,13 +47,15 @@ fn an_added_event_is_compatible_and_a_removed_or_changed_one_is_possibly_breakin
     assert_eq!(run(&old, &added), [(EventAdded, N)]);
     assert!(!has_breaking(&diff(&ir(&old), &ir(&added))));
     assert_eq!(run(&added, &old), [(EventRemoved, P)]);
+    // An optional field is added: compatible since phase E3 (it was one "possibly breaking"
+    // entry before the table of `spec/events.md` section 16).
     let changed = contract(
         "event Paid { id: uuid\n note?: string }\nevent Gone { id: uuid }\n",
         CH,
         &svc,
     );
-    assert_eq!(run(&old, &changed), [(EventChanged, P)]);
-    assert!(has_breaking(&diff(&ir(&old), &ir(&changed))));
+    assert_eq!(run(&old, &changed), [(FieldAdded, N)]);
+    assert!(!has_breaking(&diff(&ir(&old), &ir(&changed))));
 }
 
 #[test]
@@ -73,14 +75,16 @@ fn a_changed_rule_of_an_event_is_one_entry_not_two() {
 }
 
 #[test]
-fn a_channel_that_changes_topic_key_or_events_is_one_entry() {
+fn a_channel_that_changes_topic_key_or_events_is_one_entry_each() {
+    // Breaking since phase E3: a consumer of the old topic, the order per key and an event a
+    // consumer handles are each lost.
     let old = contract(BASE, CH, PUB);
     let topic = contract(BASE, &format!("@topic(\"a.b\")\n{CH}"), PUB);
-    assert_eq!(run(&old, &topic), [(ChannelChanged, P)]);
+    assert_eq!(run(&old, &topic), [(ChannelChanged, B)]);
     let key = contract(BASE, "channel C { carries Paid, Gone\n key id }\n", PUB);
-    assert_eq!(run(&old, &key), [(ChannelChanged, P)]);
+    assert_eq!(run(&old, &key), [(ChannelChanged, B)]);
     let fewer = contract(BASE, "channel C { carries Paid }\n", PUB);
-    assert_eq!(run(&old, &fewer), [(ChannelChanged, P)]);
+    assert_eq!(run(&old, &fewer), [(ChannelChanged, B)]);
     let reordered = contract(BASE, "channel C { carries Gone, Paid }\n", PUB);
     assert!(run(&old, &reordered).is_empty());
 }
@@ -139,10 +143,17 @@ fn a_channel_that_only_carries_more_events_is_compatible_and_names_them() {
     assert_eq!(changes[0].message, "channel `C` now also carries `Gone`");
     // One event more and one fewer: an old consumer loses an event it handles.
     let swapped = contract(BASE, "channel C { carries Gone }\n", PUB);
-    assert_eq!(run(&one, &swapped), [(ChannelChanged, P)]);
-    // More events and another key: the key decides.
+    assert_eq!(
+        run(&one, &swapped),
+        [(ChannelChanged, B), (ChannelChanged, N)]
+    );
+    // More events and another key: the key is breaking, the events are compatible, and each is
+    // its own entry.
     let keyed = contract(BASE, "channel C { carries Paid, Gone\n key id }\n", PUB);
-    assert_eq!(run(&one, &keyed), [(ChannelChanged, P)]);
+    assert_eq!(
+        run(&one, &keyed),
+        [(ChannelChanged, B), (ChannelChanged, N)]
+    );
 }
 
 /// The whole of a first events change, as a team would make it: nothing in it may fail

@@ -24,10 +24,10 @@ pub(super) struct Position {
 
 impl Position {
     pub(super) fn of(role: Role) -> Position {
-        if role.request || role.response {
+        if role.request || role.response || role.stream {
             Position {
-                request: role.request,
-                response: role.response,
+                request: role.request || role.stream,
+                response: role.response || role.stream,
             }
         } else {
             Position {
@@ -198,14 +198,18 @@ fn diff_flows(q: &str, o: &Decl, n: &Decl, out: &mut Vec<Change>) {
     let (Some(a), Some(b)) = (enum_of(o), enum_of(n)) else {
         return;
     };
-    for f in a.flows.iter().filter(|f| !b.flows.contains(f)) {
+    // Edges are the same edge whatever event they emit: `emits` is judged in `emits.rs`.
+    let has = |flows: &[veld_ir::Flow], f: &veld_ir::Flow| {
+        flows.iter().any(|g| g.from == f.from && g.to == f.to)
+    };
+    for f in a.flows.iter().filter(|f| !has(&b.flows, f)) {
         out.push(Change::breaking(
             ChangeKind::FlowRemoved,
             q,
             format!("flow `{} -> {}` was removed", f.from, f.to),
         ));
     }
-    for f in b.flows.iter().filter(|f| !a.flows.contains(f)) {
+    for f in b.flows.iter().filter(|f| !has(&a.flows, f)) {
         out.push(Change::non_breaking(
             ChangeKind::FlowAdded,
             q,

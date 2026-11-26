@@ -515,7 +515,42 @@ A change to an event is judged for both sides of the stream: consumers generated
 | An event is added to a channel | compatible (§8, step 2) |
 | An event is removed from a channel, the topic or the key changes | breaking |
 
-**Before phase E3** `veld diff` does not look inside an event. It reports an **addition** as compatible: a new event, a new channel, an event a channel newly carries, a new `publishes` line, a new subscription, and a new `on` line of a subscription that keeps its group and its other lines. Every other change to an event, a channel, a `publishes` line or a subscription is one entry, **possibly breaking**, which fails `veld diff --strict`: the tool does not know yet which side of the stream it hurts.
+**What `veld diff` does** (phase E3, in `veld-tools`). The table above is carried out, and each change is one entry of its own:
+
+| Change | Result | Entry |
+|---|---|---|
+| a field is added, and it is optional or has a default | compatible | `FieldAdded` |
+| a field without a default that is not optional is added | breaking | `RequiredFieldAdded` |
+| such a field is removed | breaking | `FieldRemoved` |
+| an optional field, or one with a default, is removed | possibly breaking | `FieldRemoved` |
+| the type of a field changes | breaking | `FieldTypeChanged` |
+| a field becomes required | breaking: a new consumer cannot read the old messages that leave it out | `FieldBecameRequired` |
+| a field stops being required (optional, or a default) | breaking: an old consumer rejects the messages that leave it out | `FieldBecameOptional` |
+| a constraint is tightened | breaking: a new consumer rejects the old messages that break it | `ConstraintTightened` |
+| a constraint is loosened | possibly breaking: an old consumer rejects the new values | `ConstraintLoosened` |
+| docs, `@deprecated` | compatible | `DocsChanged`, `Deprecated`, `Undeprecated` |
+| a rule is added, removed or changed, on the event or on a declaration it reaches (the rules digest differs) | possibly breaking | `EventChanged` |
+| an event is added to a channel | compatible | `ChannelChanged` |
+| an event is removed from a channel | breaking | `ChannelChanged` |
+| the topic of a channel changes | breaking | `ChannelChanged` |
+| the key of a channel is added, removed or changed | breaking | `ChannelChanged` |
+| an event declaration is added | compatible | `EventAdded` |
+| an event declaration is removed or renamed | possibly breaking | `EventRemoved` |
+
+- Fields are matched by wire name; events, channels and enums by qualified name. A "required" field is one that is not optional and has no default: a consumer applies a default (§8, step 3).
+- **What an event reaches is read by both sides.** A model, an enum or a union that an event reaches (§6.1) is a type of the stream: a field that becomes required, a required field that is added, a field that stops being required, and a value added to an enum or a union arm are each breaking there, as the table says for the fields of an event itself. A declaration that an endpoint also uses is judged for the endpoint as before and, in addition, for the stream.
+- A channel that changes in several ways has an entry for each (a changed topic and a new event are two).
+- **`emits` is judged by what a consumer sees**: messages on a topic with a key.
+
+  | Change | Result | Entry |
+  |---|---|---|
+  | a flow gains `emits` | compatible: the service sends one more message on that move, and a consumer that does not handle the event ignores it (§8, step 2) | `EmitsAdded` |
+  | a flow loses `emits` | possibly breaking: a consumer that handles the event no longer gets it for that move | `EmitsRemoved` |
+  | a flow emits another event | both entries above | |
+  | a transition keeps sending an event, and the first of the service's `publishes` lines that carries it now has another topic or key | breaking: the consumers of the old topic no longer get it | `EmitsTopicChanged` |
+
+  The edge of a flow is the pair of its states; an edge that is added or removed is a `FlowAdded` or a `FlowRemoved` of `spec/rules.md` §10, and is not reported again as `emits`. `emits` is no part of the id of a transition, so `TransitionChanged` is not reported for it.
+- A `publishes` line that goes away and a subscription that goes away or changes group or handler stay one entry each, **possibly breaking**, as the tool does not know which consumers rely on them. An addition of any of these is compatible.
 
 **The annotations of §10.2 (phase E2).** None of the three changes a byte on the wire: a consumer generated from the old contract and one generated from the new read the same messages. What differs is what each does with a message it cannot handle, and the objects the adapter declares on the broker. Each change is judged by what it does to a consumer generated from the old contract and to one generated from the new, and is one entry of its own:
 
@@ -533,7 +568,7 @@ A change to an event is judged for both sides of the stream: consumers generated
 
 The new channel decides when two changes meet: `max` lowered while `@deadLetter` is added in the same change is compatible. A channel that is new, or that is removed, is judged as before, not by its annotations.
 
-`veld export asyncapi` writes an AsyncAPI 3.0 document: channels, their messages with the event schemas, and the operations of each service.
+`veld export asyncapi` writes an AsyncAPI 3.0 document: channels, their messages with the event schemas, and the operations of each service (§16.1).
 
 ## 17. Diagnostics
 
