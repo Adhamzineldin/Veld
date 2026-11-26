@@ -110,7 +110,8 @@ fn driver(ir: &Ir, stem: &str) -> String {
         ));
         arms.push_str(&format!("            {:?} => 0,\n", d.name));
     }
-    let runtime_use = format!("use {krate}::runtime_config::{{{rt}, RuleOutputMode, RulesSettings}};");
+    let runtime_use =
+        format!("use {krate}::runtime_config::{{{rt}, RuleOutputMode, RulesSettings}};");
     let mode = "    let mode = if off { RuleOutputMode::Off } else { RuleOutputMode::Strict };";
     let create = format!(
         "{krate}::t::vectors_server::VectorsHandler::create(Impl, Hooks {{ events: events.clone() }}, Some(&{rt} {{ rules: RulesSettings {{ output: mode }} }})).unwrap()"

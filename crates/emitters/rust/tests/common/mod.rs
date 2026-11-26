@@ -206,7 +206,10 @@ pub fn run(
     assert!(diags.is_empty(), "capability errors: {diags:?}");
     // The target is named after its crate, so `orders-server` has the runtime config
     // `OrdersServerRuntime` (`runtime_config::OrdersServerRuntime`).
-    let target = options["crate-name"].as_str().unwrap_or(role.name()).to_string();
+    let target = options["crate-name"]
+        .as_str()
+        .unwrap_or(role.name())
+        .to_string();
     let options = veld_codegen::with_target_name(&options, &target);
     Rust.generate_dyn(&req, &options)
         .unwrap_or_else(|d| panic!("generation failed: {d:?}"))

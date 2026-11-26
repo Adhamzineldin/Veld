@@ -329,7 +329,8 @@ impl Generator for Rust {
         let mut files = FileSet::new();
         runtime::emit(&mut files, &f)?;
         package::emit_cargo(&mut files, &name, &f)?;
-        package::emit_readme(&mut files, &name, req.role, &f)?;
+        let runtime_type = model.as_ref().map(RuntimeModel::type_name);
+        package::emit_readme(&mut files, &name, req.role, &f, runtime_type.as_deref())?;
         let validate = opts.validate != Some(false);
         let main = main_tree(req)
             .with_validate(validate)

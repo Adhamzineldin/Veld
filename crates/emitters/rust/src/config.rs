@@ -142,7 +142,8 @@ pub fn emit(
     w.line("//!");
     w.line("//! Fill it from any `serde` source, from a flat map of paths (`from_map`), from environment");
     w.line("//! variables whose names you choose (`from_env`) or from a nested JSON value (`from_value`).");
-    w.line("//! Every way ends in `check`, which reports every problem at once.").blank();
+    w.line("//! Every way ends in `check`, which reports every problem at once.")
+        .blank();
     imports(&mut w);
     if model.setting(rc::RULES_OUTPUT).is_some() {
         output_mode(&mut w);
@@ -159,7 +160,8 @@ pub fn emit(
 fn imports(w: &mut CodeWriter) {
     w.line("use std::collections::BTreeMap;").blank();
     w.line("use crate::veld::config::{Kind, Setting, Table, Values};");
-    w.line("pub use crate::veld::config::{ConfigError, Problem};").blank();
+    w.line("pub use crate::veld::config::{ConfigError, Problem};")
+        .blank();
 }
 
 fn output_mode(w: &mut CodeWriter) {
@@ -232,7 +234,11 @@ fn structs(w: &mut CodeWriter, model: &RuntimeModel, svcs: &[ServiceEntry<'_>], 
         "/// The runtime config of the target `{}`.",
         model.target()
     ));
-    let default = if model.has_required() { "" } else { " Default," };
+    let default = if model.has_required() {
+        ""
+    } else {
+        " Default,"
+    };
     w.line(format!(
         "#[derive(Debug, Clone,{default} serde::Deserialize)]"
     ));
@@ -327,7 +333,9 @@ fn methods(w: &mut CodeWriter, model: &RuntimeModel, svcs: &[ServiceEntry<'_>]) 
     w.line("TABLE.check_map(map).map(|values| Self::from_values(&values))");
     w.close().blank();
     w.line("/// Builds the config from environment variables: `names` pairs a path with the name of the");
-    w.line("/// variable that holds it. A variable that is not set, or is empty, counts as not set.");
+    w.line(
+        "/// variable that holds it. A variable that is not set, or is empty, counts as not set.",
+    );
     w.line("///");
     w.line("/// # Errors");
     w.line("/// [`ConfigError`], with every problem, in path order.");
@@ -360,7 +368,10 @@ fn values_fn(w: &mut CodeWriter, model: &RuntimeModel, svcs: &[ServiceEntry<'_>]
             Some(o) => format!("self.services.{}.url.clone()", o.field),
             None => "self.rules.output.text().to_string()".to_string(),
         };
-        w.line(format!("values.insert({}.to_string(), {expr});", lit(&s.path)));
+        w.line(format!(
+            "values.insert({}.to_string(), {expr});",
+            lit(&s.path)
+        ));
     }
     w.line("values");
     w.close().blank();

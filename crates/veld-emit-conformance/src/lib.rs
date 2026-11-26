@@ -820,18 +820,16 @@ fn all_services(ir: &Ir) -> Vec<ServiceId> {
 }
 
 fn generate(generator: &dyn DynGenerator, req: &GenRequest<'_>) -> Result<FileSet, String> {
-    generator
-        .generate_dyn(req, &crate::options())
-        .map_err(|d| {
-            let lines: Vec<String> = d
-                .iter()
-                .map(|d| format!("{}: {}", d.code, d.message))
-                .collect();
-            format!(
-                "generation failed although every used feature is declared:\n    {}",
-                lines.join("\n    ")
-            )
-        })
+    generator.generate_dyn(req, &crate::options()).map_err(|d| {
+        let lines: Vec<String> = d
+            .iter()
+            .map(|d| format!("{}: {}", d.code, d.message))
+            .collect();
+        format!(
+            "generation failed although every used feature is declared:\n    {}",
+            lines.join("\n    ")
+        )
+    })
 }
 
 #[cfg(test)]

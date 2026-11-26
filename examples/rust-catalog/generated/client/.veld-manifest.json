@@ -3,7 +3,7 @@
   "generator": "veld 2.0",
   "files": {
     "Cargo.toml": "a2ff80ebe063bf033bccc6cfdffe0f8c2c6b0d85b8d76d3d371605d62f679474",
-    "README.md": "f147d53d675936c1338f3deccc7984a134d295f7776786e2e6c23e4f8ac83fc6",
+    "README.md": "3fee9aff651cb58325fac76815489a1366567ff38d13d5e80fad4073cd8160b1",
     "src/catalog/books.rs": "3fcac99984176587ead5b7f09aa75580f9cd5caa4945dc6549933f603a5b899b",
     "src/catalog/catalog_client.rs": "f0c49946e5881c5f1d4a480a2524a67b047e6467ca2e122ff272193f80dbaccb",
     "src/catalog/mod.rs": "888f16b96875c29de6b51d1bdc5dd1f93d5b9b7ee70efd439aa4b5507cf4e58d",

@@ -24,7 +24,12 @@ fn every_generated_sig_equals_the_ir_sig() {
             consumes: vec![],
             framework: None,
         };
-        let files = Rust.generate_dyn(&req, &veld_codegen::with_target_name(&serde_json::Value::Null, "t")).unwrap();
+        let files = Rust
+            .generate_dyn(
+                &req,
+                &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+            )
+            .unwrap();
         check_signatures(&ir, &services, &files).unwrap();
     }
 }
@@ -41,8 +46,18 @@ fn output_is_deterministic() {
         consumes: vec![],
         framework: None,
     };
-    let a = Rust.generate_dyn(&req, &veld_codegen::with_target_name(&serde_json::Value::Null, "t")).unwrap();
-    let b = Rust.generate_dyn(&req, &veld_codegen::with_target_name(&serde_json::Value::Null, "t")).unwrap();
+    let a = Rust
+        .generate_dyn(
+            &req,
+            &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+        )
+        .unwrap();
+    let b = Rust
+        .generate_dyn(
+            &req,
+            &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+        )
+        .unwrap();
     assert_eq!(a, b);
 }
 
@@ -100,7 +115,10 @@ fn the_ureq_client_rejects_websockets_with_e0801_and_serves_the_rest() {
         let uses_ws = ir
             .features_used(&req.services)
             .contains(&veld_ir::Feature::StreamingWs);
-        match Rust.generate_dyn(&req, &veld_codegen::with_target_name(&serde_json::Value::Null, "t")) {
+        match Rust.generate_dyn(
+            &req,
+            &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+        ) {
             Ok(files) => {
                 assert!(!uses_ws, "{}: a ws contract must be refused", fixture.name);
                 check_signatures(&ir, &req.services, &files).unwrap();
@@ -119,7 +137,10 @@ fn unknown_frameworks_and_options_are_reported() {
     let ir = compile(plain.name, plain.source);
     let mut req = client_request(&ir, Some("hyper"));
     let err = Rust
-        .generate_dyn(&req, &veld_codegen::with_target_name(&serde_json::Value::Null, "t"))
+        .generate_dyn(
+            &req,
+            &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+        )
         .unwrap_err();
     assert_eq!(err[0].code, "E0803");
     assert!(
@@ -129,11 +150,17 @@ fn unknown_frameworks_and_options_are_reported() {
     );
     req.framework = None;
     let err = Rust
-        .generate_dyn(&req, &veld_codegen::with_target_name(&serde_json::json!({ "bogus": true }), "t"))
+        .generate_dyn(
+            &req,
+            &veld_codegen::with_target_name(&serde_json::json!({ "bogus": true }), "t"),
+        )
         .unwrap_err();
     assert_eq!(err[0].code, "E0802");
     let err = Rust
-        .generate_dyn(&req, &veld_codegen::with_target_name(&serde_json::json!({ "crate-name": "1 bad" }), "t"))
+        .generate_dyn(
+            &req,
+            &veld_codegen::with_target_name(&serde_json::json!({ "crate-name": "1 bad" }), "t"),
+        )
         .unwrap_err();
     assert_eq!(err[0].code, "E0802");
     // A server takes `axum` only, and no `actix`.
@@ -143,7 +170,10 @@ fn unknown_frameworks_and_options_are_reported() {
         ..client_request(&ir, None)
     };
     let err = Rust
-        .generate_dyn(&server, &veld_codegen::with_target_name(&serde_json::Value::Null, "t"))
+        .generate_dyn(
+            &server,
+            &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+        )
         .unwrap_err();
     assert_eq!(err[0].code, "E0803");
     assert!(err[0].message.contains("axum"), "{}", err[0].message);
@@ -161,7 +191,12 @@ fn a_crate_with_a_rule_has_no_gate_markers() {
             consumes: vec![],
             framework: None,
         };
-        let files = Rust.generate_dyn(&req, &veld_codegen::with_target_name(&serde_json::Value::Null, "t")).unwrap();
+        let files = Rust
+            .generate_dyn(
+                &req,
+                &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+            )
+            .unwrap();
         assert!(files.contains("src/veld/rules/mod.rs"));
         for (path, bytes) in files.iter() {
             let text = String::from_utf8_lossy(bytes);
@@ -222,7 +257,10 @@ fn rust_enforces_every_rules_feature() {
                 "{}: the gate reported {gate:?}",
                 role.name()
             );
-            let files = match Rust.generate_dyn(&req, &veld_codegen::with_target_name(&serde_json::Value::Null, "t")) {
+            let files = match Rust.generate_dyn(
+                &req,
+                &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+            ) {
                 Ok(files) => files,
                 Err(d) => panic!("{}: generate failed: {d:?}", role.name()),
             };
@@ -253,7 +291,12 @@ fn a_crate_with_endpoint_rules_has_no_gate_markers() {
                 consumes: vec![],
                 framework: None,
             };
-            let files = Rust.generate_dyn(&req, &veld_codegen::with_target_name(&serde_json::Value::Null, "t")).unwrap();
+            let files = Rust
+                .generate_dyn(
+                    &req,
+                    &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+                )
+                .unwrap();
             for (path, bytes) in files.iter() {
                 let text = String::from_utf8_lossy(bytes);
                 assert!(

@@ -117,7 +117,9 @@ fn constructor(w: &mut CodeWriter, svc: &Service, validate: bool) {
     let digest = svc.rules_digest.as_ref().map_or(String::new(), |d| {
         format!(".with_digest({}, {})", lit(&svc.name), lit(d))
     });
-    w.line(format!("Ok(Self {{ core: veld::client::Core::new(transport, STD, {validate}, options)?{digest} }})"));
+    w.line(format!(
+        "Ok(Self {{ core: veld::client::Core::new(transport, STD, {validate}, options)?{digest} }})"
+    ));
     w.close().blank();
 }
 
