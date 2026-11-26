@@ -121,7 +121,6 @@ fn service_file(
         ctx.tree.validate,
         ctx.tree.rules,
         typed.as_deref(),
-        mode_in_runtime(ctx.tree),
     );
     if !svc.facts.is_empty() {
         block::loader_trait(w, ctx, svc);
@@ -182,7 +181,6 @@ fn hooks_trait(
     validate: bool,
     rules: bool,
     typed: Option<&str>,
-    mode_in_runtime: bool,
 ) {
     let name = service_type(svc);
     w.line(format!(
@@ -236,15 +234,6 @@ fn hooks_trait(
     w.close();
     if rules {
         w.blank();
-        if !mode_in_runtime {
-            w.line(
-                "/// What happens when the result of an endpoint violates an invariant: `Strict` (the",
-            );
-            w.line("/// default) answers `500 Internal`, `Audit` sends it and reports, `Off` does not check.");
-            w.open("fn rules_output(&self) -> veld::rules::RuleOutput");
-            w.line("veld::rules::RuleOutput::Strict");
-            w.close().blank();
-        }
         w.line("/// Observes every violated invariant of an input (rejected) or an output (rejected or");
         w.line("/// audited). It cannot change the response.");
         w.line("fn on_rule_violation(&self, _event: &veld::rules::RuleEvent) {}");
@@ -352,13 +341,13 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
 
 /// The rule hooks of a dispatch, the input reach and the digest.
 fn rules_forwards(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service) {
-    w.open("fn rules_output(&self) -> veld::rules::RuleOutput");
-    w.line(if mode_in_runtime(tree) {
-        "self.output"
-    } else {
-        "self.hooks.rules_output()"
-    });
-    w.close().blank();
+    // A server whose rules are all in consumed services has no output mode (the default, `Strict`,
+    // of the runtime): `spec/runtime-config.md` section 5.
+    if mode_in_runtime(tree) {
+        w.open("fn rules_output(&self) -> veld::rules::RuleOutput");
+        w.line("self.output");
+        w.close().blank();
+    }
     w.open("fn on_rule_violation(&self, event: &veld::rules::RuleEvent)");
     w.line("self.hooks.on_rule_violation(event);");
     w.close().blank();
@@ -632,6 +621,16 @@ pub(crate) struct Entry {
     pub member: String,
 }
 
+/// The dispatch member that holds the output mode: the config's `rules.output`. A server that has
+/// no such setting has no mode (`spec/runtime-config.md` section 5).
+fn output_member(tree: &Tree<'_>) -> String {
+    if mode_in_runtime(tree) {
+        ", output: runtime.rule_output()".to_string()
+    } else {
+        String::new()
+    }
+}
+
 impl Entry {
     pub(crate) fn of(tree: &Tree<'_>) -> Entry {
         match &tree.runtime {
@@ -639,17 +638,13 @@ impl Entry {
                 param: String::new(),
                 pass: String::new(),
                 check: None,
-                member: String::new(),
+                member: output_member(tree),
             },
             Some(rt) => Entry {
                 param: format!(", {}", rt.param()),
                 pass: ", runtime".to_string(),
                 check: Some(rt.check_stmt()),
-                member: if mode_in_runtime(tree) {
-                    ", output: runtime.rule_output()".to_string()
-                } else {
-                    String::new()
-                },
+                member: output_member(tree),
             },
         }
     }

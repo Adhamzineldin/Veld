@@ -464,3 +464,29 @@ fn the_goldens_and_the_behaviour_through_generated_code() {
     );
     assert!(behave.contains("runtime behaviour ok"), "{behave}");
 }
+
+/// `spec/runtime-config.md` section 5: a server whose rules are all in consumed services has no
+/// output mode: no `rules_output` in its hooks, and no mode in its dispatch.
+#[test]
+fn a_server_with_rules_only_through_consumed_services_has_no_output_mode() {
+    let front = ping("Front", "/front");
+    let bookings = format!(
+        "model Booking {{\n  guests: int\n  rule party: guests <= 10\n}}\n{}",
+        ping("Bookings", "/bookings")
+    );
+    let out = compile(&CompileInput {
+        packages: vec![package("bookings", &bookings), package("front", &front)],
+        consumes: BTreeMap::from([("front".to_string(), vec!["bookings".to_string()])]),
+    });
+    let rendered = out.render();
+    let ir = out.ir.unwrap_or_else(|| panic!("{rendered}"));
+    let files = server(&ir, "Front", &["Bookings"], "front");
+    let module = text(&files, "src/front/front_server.rs");
+    assert!(!module.contains("fn rules_output"), "{module}");
+    assert!(
+        !module.contains("output: veld::rules::RuleOutput"),
+        "{module}"
+    );
+    let config = text(&files, "src/runtime_config.rs");
+    assert!(!config.contains("rules.output"), "{config}");
+}

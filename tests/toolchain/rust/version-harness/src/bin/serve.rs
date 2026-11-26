@@ -4,7 +4,7 @@
 
 use axum::routing::get;
 use rooms_server::rooms::orders_server::{OrdersHooks, OrdersService, PayOrderFacts, PayOrderRequest};
-use rooms_server::rooms::orders_test_server::OrdersTestHandler;
+use rooms_server::rooms::orders_test_server::{OrdersTestHandler, OrdersTestHooks};
 use rooms_server::rooms::rooms::{Counter, Order, Room, Status, User};
 use rooms_server::rooms::rooms_server::{
     GetRoomRequest, RenameFacts, RenameRequest, RoomsService, TickFacts, TickRequest, TouchFacts,
@@ -75,6 +75,8 @@ impl OrdersService for Stub {
 /// The test handler never calls the authentication hook.
 struct Hooks;
 
+impl OrdersTestHooks for Hooks {}
+
 impl OrdersHooks for Hooks {
     async fn auth_bearer<'a>(&'a self, _token: &'a str, _ctx: &'a RequestContext) -> Option<User> {
         None
@@ -85,8 +87,8 @@ const PROBE: &str = r#"{"veldTestHandler":1,"digests":{"Rooms":null,"Orders":nul
 
 #[tokio::main]
 async fn main() {
-    let rooms = rooms_server::adapters::axum::router(RoomsTestHandler::plain(Stub, None).unwrap());
-    let orders = rooms_server::adapters::axum::router(OrdersTestHandler::create(Stub, Hooks, None).unwrap());
+    let rooms = rooms_server::adapters::axum::router(RoomsTestHandler::plain(Stub));
+    let orders = rooms_server::adapters::axum::router(OrdersTestHandler::create(Stub, Hooks));
     let app = rooms.merge(orders).route(
         "/__veld/test",
         get(|| async { ([(axum::http::header::CONTENT_TYPE, "application/json")], PROBE) }),

@@ -127,7 +127,7 @@ fn account(tier: &str) -> Value {
 }
 
 async fn the_test_handler() {
-    let base = start(router(EdgesTestHandler::plain(Impl, None).unwrap())).await;
+    let base = start(router(EdgesTestHandler::plain(Impl))).await;
     let probe_text = reqwest::get(format!("{base}/__veld/test")).await.unwrap().text().await.unwrap();
     let probe_doc: Value = serde_json::from_str(&probe_text).unwrap();
     assert_eq!(probe_doc, serde_json::from_str::<Value>(&probe()).unwrap());
@@ -163,7 +163,7 @@ async fn the_test_handler() {
     let basic = json!({ "account": account("basic") });
     assert_eq!(send("GET", &watch, &test_headers(&basic, true), None).await.status, 409);
     // A service with blocks and no facts: the result comes from the header, and `ensure` judges it.
-    let plain = start(plain_router(PlainTestHandler::plain(PlainImpl(0), None).unwrap())).await;
+    let plain = start(plain_router(PlainTestHandler::plain(PlainImpl(0)))).await;
     let result = |count: i32| vec![("veld-test-result", b64(&json!({ "id": ID, "count": count }).to_string()))];
     let echo = format!("{plain}/plain/echo");
     let good = send("POST", &echo, &result(3), Some(json!({ "count": 3 }))).await;

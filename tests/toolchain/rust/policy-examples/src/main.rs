@@ -6,7 +6,7 @@ use policies_server::bookings::bookings_server::{
     BookingsHooks, BookingsService, GetBookingFacts, GetBookingRequest, PayBookingFacts,
     PayBookingRequest,
 };
-use policies_server::bookings::bookings_test_server::{BookingsTestHandler, router};
+use policies_server::bookings::bookings_test_server::{BookingsTestHandler, BookingsTestHooks, router};
 use policies_server::veld::Error;
 use policies_server::veld::server::RequestContext;
 
@@ -37,6 +37,8 @@ impl BookingsService for Stub {
 /// The test handler never calls the authentication hook.
 struct Hooks;
 
+impl BookingsTestHooks for Hooks {}
+
 impl BookingsHooks for Hooks {
     async fn auth_bearer<'a>(&'a self, _token: &'a str, _ctx: &'a RequestContext) -> Option<User> {
         None
@@ -45,7 +47,7 @@ impl BookingsHooks for Hooks {
 
 #[tokio::main]
 async fn main() {
-    let app = router(BookingsTestHandler::create(Stub, Hooks, None).unwrap());
+    let app = router(BookingsTestHandler::create(Stub, Hooks));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     println!("PORT={}", listener.local_addr().unwrap().port());
     axum::serve(listener, app).await.unwrap();

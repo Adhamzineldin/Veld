@@ -23,7 +23,7 @@ const PROBE: &str = r#"{"veldTestHandler":1,"digests":{"Shop":null}}"#;
 
 #[tokio::main]
 async fn main() {
-    let shop = derived_server::adapters::axum::router(ShopTestHandler::plain(Stub, None).unwrap());
+    let shop = derived_server::adapters::axum::router(ShopTestHandler::plain(Stub));
     let app = shop.route(
         "/__veld/test",
         get(|| async { ([(axum::http::header::CONTENT_TYPE, "application/json")], PROBE) }),
