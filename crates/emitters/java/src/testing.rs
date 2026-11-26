@@ -262,7 +262,7 @@ fn write_create_body(
     if crate::flags::service_uses(fc.tree, svc) {
         w.line(format!("{support}.flags(built);"));
     }
-    if crate::platform::service_uses(fc.tree.ir, svc) {
+    if crate::platform::service_state(fc.tree, svc) {
         w.line(format!("{support}.platform(built);"));
     }
     let given = if has_loaders { "new Loaders(), " } else { "" };
