@@ -68,7 +68,7 @@ public final class TenancyServe {
       }
     };
     HttpServer server = JdkHttpServerAdapter.listen(
-        BookingsTestHandler.create(stub, new BookingsHooks(null)), new InetSocketAddress("127.0.0.1", 0));
+        BookingsTestHandler.create(stub, new BookingsHooks((token, ctx) -> null)), new InetSocketAddress("127.0.0.1", 0));
     System.out.println("PORT=" + server.getAddress().getPort());
     System.out.flush();
     Thread.sleep(Long.MAX_VALUE);

@@ -8,7 +8,7 @@ import gen.b.runtime.SseEvent;
 import gen.b.runtime.VeldHandler;
 import gen.b.runtime.VeldRequest;
 import gen.b.runtime.VeldResponse;
-import gen.b.runtimeconfig.VisibilityRuntime;
+import gen.b.runtimeconfig.GenBRuntime;
 import gen.b.visibility.server.CancelBookingFacts;
 import gen.b.visibility.server.CancelBookingRequest;
 import gen.b.visibility.server.CheckedBookingRequest;
@@ -127,7 +127,7 @@ public final class VisibilityHttp {
     DeskHooks hooks = new DeskHooks((token, ctx) -> caller(token)).clock(clock).onError((e, ctx) -> errors.add(e));
     if (off) {
       return DeskHandler.create(
-          new Impl(), LOADERS, hooks, VisibilityRuntime.builder().rulesOutput(RuleWalk.OutputMode.OFF).build());
+          new Impl(), LOADERS, hooks, GenBRuntime.builder().rulesOutput(RuleWalk.OutputMode.OFF).build());
     }
     return DeskHandler.create(new Impl(), LOADERS, hooks);
   }

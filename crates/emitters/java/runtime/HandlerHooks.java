@@ -282,10 +282,10 @@ public final class HandlerHooks {
     return limits.get(sig);
   }
   // #endif
-  // #if testing_platform
+  // #if platform
 
-  /** The test handler reads the clock of the request from {@code Veld-Test-Now}. */
-  void setClock(java.util.function.ToLongFunction<RequestContext> value) {
+  /** The test handler reads the clock of the request from {@code Veld-Test-Now}; the due-moves runner gives its own. */
+  public void setClock(java.util.function.ToLongFunction<RequestContext> value) {
     this.clock = value;
   }
   // #endif

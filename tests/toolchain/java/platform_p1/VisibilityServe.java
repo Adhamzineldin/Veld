@@ -75,7 +75,7 @@ public final class VisibilityServe {
         throw never();
       }
     };
-    VeldHandler first = BookingsTestHandler.create(bookings, new BookingsHooks(null));
+    VeldHandler first = BookingsTestHandler.create(bookings, new BookingsHooks((token, ctx) -> null));
     VeldHandler second = NoticesTestHandler.create(notices, new NoticesHooks());
     return request -> {
       if (request.method().equalsIgnoreCase("GET") && request.path().equals("/__veld/test")) {
