@@ -21,6 +21,8 @@ pub mod regex;
 mod resolve;
 mod retain;
 #[cfg(test)]
+mod retain_tests;
+#[cfg(test)]
 mod rollout_tests;
 pub mod rules;
 mod services;

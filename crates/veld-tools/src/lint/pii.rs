@@ -16,6 +16,45 @@ const LISTED: usize = 4;
 pub(super) fn run(ir: &Ir, out: &mut Vec<Raw>) {
     pii_without_auth(ir, out);
     secret_in_output(ir, out);
+    pii_without_retention(ir, out);
+}
+
+/// `pii-without-retention` (`L0017`, `spec/platform.md` section 23): a model that holds personal
+/// data, its own or inherited, and says nothing about how long it is kept. `@retain` is not
+/// inherited, so a child of such a model needs its own.
+fn pii_without_retention(ir: &Ir, out: &mut Vec<Raw>) {
+    for d in ir
+        .decls
+        .iter()
+        .filter(|d| is_linted(ir.package(d.package).kind))
+    {
+        let veld_ir::DeclKind::Model(m) = &d.kind else {
+            continue;
+        };
+        if m.retain.is_some() {
+            continue;
+        }
+        let pii: Vec<String> = d
+            .fields()
+            .iter()
+            .filter(|f| f.pii)
+            .map(|f| format!("`{}`", f.name))
+            .collect();
+        if pii.is_empty() {
+            continue;
+        }
+        push(
+            out,
+            "pii-without-retention",
+            d.name.clone(),
+            format!(
+                "model `{}` holds personal data ({}) and has no `@retain`: say how long it is kept, or `kept without limit` shows in `veld export retention`",
+                d.name,
+                pii.join(", ")
+            ),
+            &d.origin,
+        );
+    }
 }
 
 /// The fields a declaration wrote itself (an inherited field belongs to the parent).

@@ -134,3 +134,45 @@ fn the_rules_are_named_by_the_code_table() {
     assert!(names.contains(&("pii-without-auth", "L0015")));
     assert!(names.contains(&("secret-in-output", "L0016")));
 }
+
+// ---- pii-without-retention (`L0017`, `spec/platform.md` section 23) -------------------------
+
+const GUEST_RETAINED: &str = "@retain(days(30), since: at, then: anonymize)\nmodel Guest {\n  at?: datetime\n  name: string @pii\n}\n";
+
+#[test]
+fn a_model_with_a_pii_field_and_no_retain_is_reported() {
+    let src = "model Guest {\n  name: string @pii\n  phone?: string @pii\n}\n";
+    assert_eq!(subjects(src, "pii-without-retention"), ["Guest"]);
+    let issue = &found(src, "pii-without-retention")[0];
+    assert_eq!(issue.code, "L0017");
+    assert_eq!(issue.level, LintLevel::Warn);
+    assert!(issue.message.contains("`name`") && issue.message.contains("`phone`"));
+}
+
+#[test]
+fn retain_silences_it() {
+    assert!(subjects(GUEST_RETAINED, "pii-without-retention").is_empty());
+}
+
+#[test]
+fn a_child_of_a_model_with_pii_needs_its_own_retain() {
+    let src = format!("{GUEST_RETAINED}model Vip extends Guest {{\n  tier: int\n}}\n");
+    assert_eq!(subjects(&src, "pii-without-retention"), ["Vip"]);
+}
+
+#[test]
+fn a_secret_is_not_personal_data_and_errors_and_events_are_not_stored_models() {
+    let src = "model Key {\n  token: string @secret\n}\nerror Leak 400 {\n  who: string @pii\n}\nevent Registered {\n  email: string @pii\n}\nchannel Registrations { carries Registered }\n";
+    assert!(subjects(src, "pii-without-retention").is_empty());
+}
+
+#[test]
+fn the_retention_level_is_configurable() {
+    let src = "model Guest {\n  name: string @pii\n}\n";
+    let ir = ir(src);
+    let off: BTreeMap<String, LintLevel> =
+        [("pii-without-retention".to_string(), LintLevel::Off)].into();
+    let cfg = LintConfig::from_levels(off.iter()).unwrap();
+    assert!(lint(&ir, &cfg).iter().all(|i| i.rule != "pii-without-retention"));
+    assert!(rule_names().contains(&("pii-without-retention", "L0017")));
+}

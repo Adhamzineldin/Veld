@@ -17,6 +17,7 @@ mod endpoint_rules;
 mod endpoints;
 mod events;
 pub(crate) mod expr_text;
+mod retention;
 mod rules;
 mod usage;
 
@@ -117,6 +118,12 @@ pub enum ChangeKind {
     PiiRemoved,
     SecretAdded,
     SecretRemoved,
+    RetentionAdded,
+    RetentionRemoved,
+    RetentionShortened,
+    RetentionLengthened,
+    RetentionSinceChanged,
+    RetentionThenChanged,
 }
 
 /// One difference between the old and the new contract.
@@ -303,6 +310,7 @@ pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
     decls::diff_decls(&ctx, &usage, &mut out);
     conditional::diff_version_fields(&ctx, &mut out);
     data_marks::diff_data_marks(&ctx, &mut out);
+    retention::diff_retention(&ctx, &mut out);
     rules::diff_decl_rules(&ctx, &usage, &mut out);
     endpoints::diff_endpoints(&ctx, &mut out);
     events::diff_events(&ctx, &mut out);
@@ -317,6 +325,8 @@ mod conditional_tests;
 mod data_marks_tests;
 #[cfg(test)]
 mod event_tests;
+#[cfg(test)]
+mod retention_tests;
 #[cfg(test)]
 mod rollout_tests;
 #[cfg(test)]
