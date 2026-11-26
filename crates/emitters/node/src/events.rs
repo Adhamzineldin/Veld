@@ -10,7 +10,7 @@ use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GateError, GenDiagnostic, gate_regions};
 use veld_emit_typescript::tree::{FileCtx, Tree};
 use veld_emit_typescript::util::{add_file, doc_comment, method_key, ts_str};
-use veld_ir::{Channel, ChannelId, DeclId, DeclKind, Scalar, Service, Type};
+use veld_ir::{Backoff, Channel, ChannelId, DeclId, DeclKind, Scalar, Service, Type};
 
 /// The embedded `runtime/events.ts`, markers and all.
 const RAW: &str = include_str!("../runtime/events.ts");
@@ -150,8 +150,16 @@ fn write_channel_def(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, channel: &Cha
         ),
         None => "null".to_string(),
     };
+    // Only an annotation that is there is written: a channel without one keeps its bytes.
+    let mut options = String::new();
+    if channel.ordered {
+        options.push_str(", ordered: true");
+    }
+    if channel.dead_letter {
+        options.push_str(", deadLetter: true");
+    }
     w.line(format!(
-        "const {}: {ns}.ChannelDef = {{ topic: {}, key: {key} }};",
+        "const {}: {ns}.ChannelDef = {{ topic: {}, key: {key}{options} }};",
         channel_name(channel),
         ts_str(&channel.topic)
     ));
@@ -373,6 +381,7 @@ fn write_subscriber(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service)
             ts_str(&fc.tree.ir.channel(sub.channel).topic)
         ));
         w.line(format!("group: {},", ts_str(&sub.group)));
+        write_delivery_options(w, fc.tree.ir.channel(sub.channel));
         w.open_with("on:", " [");
         for h in &sub.handlers {
             let ty = fc.type_ref(h.event);
@@ -387,6 +396,27 @@ fn write_subscriber(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service)
     }
     w.close_with("], options);");
     w.close();
+}
+
+/// `retry`, `deadLetter` and `ordered` of a subscription, each only when the channel has the
+/// annotation (`spec/events.md` section 10.2).
+fn write_delivery_options(w: &mut CodeWriter, channel: &Channel) {
+    if let Some(retry) = channel.retry {
+        let backoff = match retry.backoff {
+            Backoff::Fixed => "fixed",
+            Backoff::Exponential => "exponential",
+        };
+        w.line(format!(
+            "retry: {{ max: {}, backoff: '{backoff}' }},",
+            retry.max
+        ));
+    }
+    if channel.dead_letter {
+        w.line("deadLetter: true,");
+    }
+    if channel.ordered {
+        w.line("ordered: true,");
+    }
 }
 
 fn write_handlers_interface(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {

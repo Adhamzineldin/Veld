@@ -93,11 +93,11 @@ fn node_generates_events_and_typescript_ignores_them() {
     veld_emit_conformance::check_events_are_ignored_by_clients(&TypeScript).unwrap();
 }
 
-/// `@retry`, `@deadLetter` and `@ordered` (`spec/events.md` section 10.8): the Node server has not
-/// built them and refuses a service that uses one with `E0801`; the TypeScript client keeps its bytes.
+/// `@retry`, `@deadLetter` and `@ordered` (`spec/events.md` section 10.8): the Node server declares
+/// `events_delivery` and generates a service that uses one; the TypeScript client keeps its bytes.
 #[test]
-fn node_refuses_channel_annotations_and_typescript_ignores_them() {
-    veld_emit_conformance::check_events_delivery_is_refused(&Node).unwrap();
+fn node_generates_channel_annotations_and_typescript_ignores_them() {
+    veld_emit_conformance::check_events_delivery_is_generated(&Node).unwrap();
     veld_emit_conformance::check_events_delivery_is_ignored_by_clients(&TypeScript).unwrap();
 }
 
