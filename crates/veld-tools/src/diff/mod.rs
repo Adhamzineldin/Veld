@@ -10,6 +10,7 @@
 //! old IR never uses falls back to the new IR.
 
 mod changed;
+mod conditional;
 mod decls;
 mod endpoint_rules;
 mod endpoints;
@@ -101,6 +102,16 @@ pub enum ChangeKind {
     SubscriptionAdded,
     SubscriptionRemoved,
     SubscriptionChanged,
+    VersionAdded,
+    VersionRemoved,
+    VersionFieldChanged,
+    GuardAdded,
+    GuardRemoved,
+    GuardChanged,
+    IdempotencyAdded,
+    IdempotencyRemoved,
+    IdempotencyHeaderChanged,
+    IdempotencyRequiredChanged,
 }
 
 /// One difference between the old and the new contract.
@@ -285,6 +296,7 @@ pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
     let usage = usage::Usage::of(old, new);
     let mut out = Vec::new();
     decls::diff_decls(&ctx, &usage, &mut out);
+    conditional::diff_version_fields(&ctx, &mut out);
     rules::diff_decl_rules(&ctx, &usage, &mut out);
     endpoints::diff_endpoints(&ctx, &mut out);
     events::diff_events(&ctx, &mut out);
@@ -293,6 +305,7 @@ pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
 
 #[cfg(test)]
 mod changed_tests;
+mod conditional_tests;
 #[cfg(test)]
 mod event_tests;
 #[cfg(test)]
