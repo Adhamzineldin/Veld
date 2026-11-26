@@ -164,6 +164,52 @@ fn write_channel_def(w: &mut CodeWriter, channel: &Channel) {
         lit(&channel.topic)
     ));
     w.blank();
+    if channel.dead_letter || channel.ordered {
+        w.line(format!(
+            "/// The options of the channel `{}` that the transport gets (`spec/events.md` section 10.6).",
+            channel.name
+        ));
+        w.line(format!(
+            "static {}: veld::events::ChannelOptions = {};",
+            options_static(channel),
+            channel_options(channel)
+        ));
+        w.blank();
+    }
+}
+
+/// `veld::events::ChannelOptions { ordered: true, dead_letter: false }` of a channel.
+fn channel_options(channel: &Channel) -> String {
+    format!(
+        "veld::events::ChannelOptions {{ ordered: {}, dead_letter: {} }}",
+        channel.ordered, channel.dead_letter
+    )
+}
+
+/// The static that holds the options of a channel with `@ordered` or `@deadLetter`.
+fn options_static(channel: &Channel) -> String {
+    format!("{}_OPTIONS", naming::screaming_snake(&channel.name))
+}
+
+/// The `Delivery` of a subscription: what `@retry`, `@deadLetter` and `@ordered` of its channel say.
+fn delivery(channel: &Channel) -> String {
+    if !channel.has_delivery_options() {
+        return "veld::events::Delivery::NONE".to_string();
+    }
+    let retry = channel.retry.map_or("None".to_string(), |r| {
+        let backoff = match r.backoff {
+            veld_ir::Backoff::Fixed => "Fixed",
+            veld_ir::Backoff::Exponential => "Exponential",
+        };
+        format!(
+            "Some(veld::events::RetryPolicy {{ max: {}, backoff: veld::events::Backoff::{backoff} }})",
+            r.max
+        )
+    });
+    format!(
+        "veld::events::Delivery {{ retry: {retry}, dead_letter: {}, ordered: {} }}",
+        channel.dead_letter, channel.ordered
+    )
 }
 
 /// The channels a service publishes to, once each, in source order.
@@ -316,11 +362,20 @@ fn write_channel_type(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, channel: &Channel) 
             snake(&decl.name),
             ctx.tree.type_path(*ev, ctx.here)
         ));
-        w.line(format!(
-            "veld::events::publish_event(self.ctx, &{}, &{}, event).await",
-            channel_static(channel),
-            def_name(ctx, *ev)
-        ));
+        if channel.dead_letter || channel.ordered {
+            w.line(format!(
+                "veld::events::publish_event_with(self.ctx, &{}, {}, &{}, event).await",
+                channel_static(channel),
+                options_static(channel),
+                def_name(ctx, *ev)
+            ));
+        } else {
+            w.line(format!(
+                "veld::events::publish_event(self.ctx, &{}, &{}, event).await",
+                channel_static(channel),
+                def_name(ctx, *ev)
+            ));
+        }
         w.close();
     }
     w.close().blank();
@@ -347,9 +402,18 @@ fn write_subscriber(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
         "pub async fn subscribe_{}_events<H: {name}EventHandlers>(transport: std::sync::Arc<dyn veld::events::Transport>, handlers: std::sync::Arc<H>, options: {name}SubscriberOptions) -> Result<veld::events::SubscriptionHandle, veld::Error>",
         snake(&svc.name)
     ));
-    w.open_with("veld::events::subscribe_events(transport,", " vec![");
+    let annotated = svc
+        .subscriptions
+        .iter()
+        .any(|s| ctx.tree.ir.channel(s.channel).has_delivery_options());
+    let entry = if annotated { "subscribe_events_with" } else { "subscribe_events" };
+    w.open_with(format!("veld::events::{entry}(transport,"), " vec![");
     for sub in &svc.subscriptions {
-        w.open_with("veld::events::SubscriptionDef", " {");
+        if annotated {
+            w.open_with("(veld::events::SubscriptionDef", " {");
+        } else {
+            w.open_with("veld::events::SubscriptionDef", " {");
+        }
         w.line(format!(
             "topic: {},",
             lit(&ctx.tree.ir.channel(sub.channel).topic)
@@ -360,7 +424,14 @@ fn write_subscriber(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
             write_binding(w, ctx, h);
         }
         w.close_with("],");
-        w.close_with("},");
+        if annotated {
+            w.close_with(&format!(
+                "}}, {}),",
+                delivery(ctx.tree.ir.channel(sub.channel))
+            ));
+        } else {
+            w.close_with("},");
+        }
     }
     w.close_with("], options).await");
     w.close();
