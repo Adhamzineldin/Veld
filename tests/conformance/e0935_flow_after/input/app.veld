@@ -1,0 +1,22 @@
+// `after` belongs to a `flow` with exactly one edge, and takes a positive constant duration.
+
+enum Status {
+  pending, paid, cancelled, expired
+  flow pending -> paid
+  flow pending -> paid -> cancelled after hours(1)
+  flow pending -> cancelled after hours(0)
+  flow pending -> expired after 5
+  flow paid -> expired after hours(1)
+  flow paid -> expired after hours(2)
+  flow cancelled -> expired after now
+  final cancelled, expired
+}
+
+model Booking { id: uuid, status: Status }
+
+service Bookings at "/bookings" {
+  post "/{id}/a" expire(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: pending -> cancelled
+  }
+}
