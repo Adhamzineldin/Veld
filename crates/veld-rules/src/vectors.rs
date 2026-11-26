@@ -4,14 +4,14 @@
 //! The harness that compiles the `.veld` files and the per-language harnesses reuse this
 //! module: [`load_cases`] reads a vector file, [`run_case`] checks one case.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use serde::Deserialize;
 use serde_json::Value as Json;
 use veld_ir::Ir;
 
-use crate::check::{Options, check_value_audited};
+use crate::check::{Options, check_value_audited, with_defaults};
 use crate::error::InputError;
 
 /// One expected violation. Messages and rule ids are covered by snapshots, not by vectors.
@@ -52,6 +52,13 @@ pub struct Case {
     /// evaluated.
     #[serde(default)]
     pub output: Option<String>,
+    /// What the derived fields of the value are computed to (`spec/rules.md` sections 15 and
+    /// 17.2): a path from `$` (`$.total`, `$.items[1].line`) to the value in wire form that the
+    /// value has there once its defaults are applied and its derived fields computed. Only the
+    /// paths named are compared. Absent means nothing is said. A field a failed expression left
+    /// without a value is `null`.
+    #[serde(default)]
+    pub computed: BTreeMap<String, Json>,
 }
 
 impl Case {
@@ -124,6 +131,13 @@ pub enum Mismatch {
         missing: Vec<Key>,
         unexpected: Vec<Key>,
     },
+    #[error("case `{case}`: the value at `{path}` is {found}, the case computes {expected}")]
+    Computed {
+        case: String,
+        path: String,
+        expected: String,
+        found: String,
+    },
     #[error(
         "case `{case}`: audited violations differ
   expected but not reported:{}
@@ -177,7 +191,57 @@ pub fn run_case(ir: &Ir, case: &Case) -> Result<(), Mismatch> {
             .collect()
     };
     diff(case, keys(found.violations))?;
-    diff_audited(case, keys(found.audited))
+    diff_audited(case, keys(found.audited))?;
+    check_computed(ir, decl, case, options)
+}
+
+/// Compares the values at the paths of `computed` with the value completed by the evaluator.
+fn check_computed(
+    ir: &Ir,
+    decl: &veld_ir::Decl,
+    case: &Case,
+    options: Options,
+) -> Result<(), Mismatch> {
+    if case.computed.is_empty() {
+        return Ok(());
+    }
+    let full = with_defaults(ir, decl, &case.value, options).map_err(|error| Mismatch::Input {
+        case: case.name.clone(),
+        error,
+    })?;
+    for (path, want) in &case.computed {
+        let got = value_at(&full, path).unwrap_or(&Json::Null);
+        if got != want {
+            return Err(Mismatch::Computed {
+                case: case.name.clone(),
+                path: path.clone(),
+                expected: want.to_string(),
+                found: got.to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// The value at `$`, `$.name`, `$.items[1].line`: the path syntax of a violation. A name with a
+/// dot in it is not supported.
+#[must_use]
+pub fn value_at<'a>(root: &'a Json, path: &str) -> Option<&'a Json> {
+    let mut cur = root;
+    let mut rest = path.strip_prefix('$')?;
+    while !rest.is_empty() {
+        if let Some(after) = rest.strip_prefix('[') {
+            let (index, tail) = after.split_once(']')?;
+            cur = cur.get(index.parse::<usize>().ok()?)?;
+            rest = tail;
+        } else {
+            let after = rest.strip_prefix('.')?;
+            let end = after.find(['.', '[']).unwrap_or(after.len());
+            cur = cur.get(&after[..end])?;
+            rest = &after[end..];
+        }
+    }
+    Some(cur)
 }
 
 /// A violation as generated code reported it: the JSON object of `spec/rules.md` section 7.

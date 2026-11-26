@@ -1,0 +1,91 @@
+// Derived fields (spec/rules.md section 17.2): an expression after `=` makes a field derived. The
+// server computes it, in dependency order, after the defaults and before the invariants; a value
+// the caller sent is ignored. The file waits under a `.pending` suffix until a generator declares
+// `rules_derived`; the reference evaluator runs it already.
+
+// A derived field of a line, read by an invariant of the line.
+model Line {
+  price: decimal
+  qty: int
+  total: decimal = price * qty
+  units: int = qty * 2
+  rule cheap: total <= 100
+}
+
+// A sum over a list of models that have derived fields of their own, and a chain.
+model Order {
+  items: Line[] @length(max: 20)
+  discount: decimal = 0
+  subtotal: decimal = sum(items, i => i.total)
+  total: decimal = subtotal - discount
+  count: int = len(items)
+  rule notNegative: total >= 0
+  rule discountFits: discount <= subtotal
+}
+
+// Declared out of order: `d` reads `c`, which reads `b`, which reads `a`.
+model Chain {
+  a: int
+  d: int = c + b
+  c: int = b + 1
+  b: int = a * 2
+  rule small: d < 100
+}
+
+// Evaluation errors: the field stays absent and the rules that read it are skipped.
+model Risky {
+  n: int
+  next: int = n + 1
+  ratio: int = 100 / n
+  rule bigger: next > n
+  rule positive: ratio > 0
+}
+
+// Inherited: the derived field of the parent is computed on the child.
+model Base {
+  a: int
+  double: int = a * 2
+}
+
+model Child extends Base {
+  b: int
+  sum: int = double + b
+  rule below: sum < 10
+}
+
+// Everywhere a model can be: a field, a list, a map, an optional field, a page.
+model Holder {
+  child: Child
+  many: Child[]
+  named: Map<string, Child>
+  main?: Child
+  page: Page<Child>
+}
+
+// A union arm.
+model Priced {
+  qty: int
+  cost: int = qty * 2
+  rule cheap: cost < 100
+}
+
+model Free {
+  note: string
+}
+
+union Offer { priced: Priced, free: Free }
+
+model Basket {
+  offer: Offer
+}
+
+// Request position: a derived field that reads a @readonly field is absent in a request body.
+model Draft {
+  id: uuid @readonly
+  serial: int @readonly
+  qty: int
+  double: int = qty * 2
+  next: int = serial + 1
+  rule after: next > 0
+  rule doubled: double > 0
+}

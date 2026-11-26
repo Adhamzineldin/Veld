@@ -98,7 +98,8 @@ pub fn with_defaults(
     value: &Json,
     options: Options,
 ) -> Result<Json, InputError> {
-    Cx { ir, opts: options }.normalize_decl(decl, value, "$")
+    let cx = Cx::new(ir, options);
+    cx.normalize_decl(decl, value, "$", &mut Derivation::default())
 }
 
 /// Like [`check_value`], and also returns the value with its defaults applied.
@@ -118,9 +119,10 @@ pub(crate) fn check_decl_audited(
     value: &Json,
     options: Options,
 ) -> Result<(Json, Checked), InputError> {
-    let cx = Cx { ir, opts: options };
-    let full = cx.normalize_decl(decl, value, "$")?;
-    let mut out = Checked::default();
+    let mut cx = Cx::new(ir, options);
+    let mut derivation = Derivation::default();
+    let full = cx.normalize_decl(decl, value, "$", &mut derivation)?;
+    let mut out = cx.begin(derivation);
     cx.walk_decl(decl, &full, "$", &mut out)?;
     Ok((full, out))
 }
@@ -144,16 +146,45 @@ pub(crate) fn check_type_audited(
     value: &Json,
     options: Options,
 ) -> Result<(Json, Checked), InputError> {
-    let cx = Cx { ir, opts: options };
-    let full = cx.normalize_type(ty, value, "$")?;
-    let mut out = Checked::default();
+    let mut cx = Cx::new(ir, options);
+    let mut derivation = Derivation::default();
+    let full = cx.normalize_type(ty, value, "$", &mut derivation)?;
+    let mut out = cx.begin(derivation);
     cx.walk_type(ty, &full, "$", &mut out)?;
     Ok((full, out))
+}
+
+/// A value of any type with its defaults applied and its derived fields computed
+/// (`spec/rules.md` section 17.2), and the violations of the derived fields that could not be
+/// computed. No rule is evaluated. Facts and the principal go through this when they are handed to
+/// an endpoint block.
+pub(crate) fn complete_type(
+    ir: &Ir,
+    ty: &Type,
+    value: &Json,
+    options: Options,
+) -> Result<(Json, Vec<Violation>), InputError> {
+    let mut derivation = Derivation::default();
+    let full = Cx::new(ir, options).normalize_type(ty, value, "$", &mut derivation)?;
+    Ok((full, derivation.violations))
+}
+
+/// What computing the derived fields of a value left behind.
+#[derive(Default)]
+struct Derivation {
+    /// One violation for each derived field whose expression raised an evaluation error.
+    violations: Vec<Violation>,
+    /// True when some derived field was left without a value: its expression failed or read a
+    /// field that is absent. A rule that reads such a field is skipped, because the cause is
+    /// already reported or is the position of the value (section 17.2).
+    absent: bool,
 }
 
 struct Cx<'a> {
     ir: &'a Ir,
     opts: Options,
+    /// A rule that reads an absent field is skipped instead of failing the whole check.
+    skip_missing: bool,
 }
 
 fn shape(expected: &str, found: &Json, path: &str) -> InputError {
@@ -190,6 +221,24 @@ pub(crate) fn default_json(lit: &Literal, ty: &Type) -> Option<Json> {
 }
 
 impl Cx<'_> {
+    fn new(ir: &Ir, opts: Options) -> Cx<'_> {
+        Cx {
+            ir,
+            opts,
+            skip_missing: false,
+        }
+    }
+
+    /// Starts the result of the walk with the violations of the derived fields, and remembers
+    /// whether a rule may meet a derived field without a value.
+    fn begin(&mut self, derivation: Derivation) -> Checked {
+        self.skip_missing = derivation.absent;
+        Checked {
+            violations: derivation.violations,
+            audited: Vec::new(),
+        }
+    }
+
     fn decl_of(&self, id: veld_ir::DeclId) -> Result<&Decl, InputError> {
         self.ir
             .decls
@@ -217,31 +266,81 @@ impl Cx<'_> {
 
     // ---- defaults and shape ------------------------------------------------------------
 
-    fn normalize_decl(&self, decl: &Decl, v: &Json, path: &str) -> Result<Json, InputError> {
+    fn normalize_decl(
+        &self,
+        decl: &Decl,
+        v: &Json,
+        path: &str,
+        d: &mut Derivation,
+    ) -> Result<Json, InputError> {
         match &decl.kind {
             DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Event(_) => {
-                self.normalize_model(decl, v, path)
+                self.normalize_model(decl, v, path, d)
             }
             DeclKind::Union(u) => {
                 let arm = self.arm(u, v, path)?;
-                self.normalize_decl(arm, v, path)
+                self.normalize_decl(arm, v, path, d)
             }
             DeclKind::Enum(_) | DeclKind::Const(_) => Ok(v.clone()),
         }
     }
 
-    fn normalize_model(&self, decl: &Decl, v: &Json, path: &str) -> Result<Json, InputError> {
+    fn normalize_model(
+        &self,
+        decl: &Decl,
+        v: &Json,
+        path: &str,
+        d: &mut Derivation,
+    ) -> Result<Json, InputError> {
         let obj = v.as_object().ok_or_else(|| shape("object", v, path))?;
         let mut out = obj.clone();
         for f in decl.fields() {
+            if f.derived.is_some() {
+                // Nobody supplies a derived value: what the caller sent is dropped, whatever it is.
+                out.remove(&f.wire);
+                continue;
+            }
             let here = format!("{path}.{}", f.wire);
             if let Some(child) = obj.get(&f.wire) {
-                out.insert(f.wire.clone(), self.normalize_type(&f.ty, child, &here)?);
-            } else if let Some(d) = self.absent(f, path)? {
-                out.insert(f.wire.clone(), d);
+                out.insert(f.wire.clone(), self.normalize_type(&f.ty, child, &here, d)?);
+            } else if let Some(default) = self.absent(f, path)? {
+                out.insert(f.wire.clone(), default);
             }
         }
-        Ok(Json::Object(out))
+        // The values inside are complete now, so a derived field can read them.
+        self.derive(decl, Json::Object(out), path, d)
+    }
+
+    /// Computes the derived fields of `decl` on `this`, in dependency order (section 17.2). A
+    /// field whose expression fails is left absent with one violation; one that reads an absent
+    /// field is left absent.
+    fn derive(
+        &self,
+        decl: &Decl,
+        mut this: Json,
+        path: &str,
+        d: &mut Derivation,
+    ) -> Result<Json, InputError> {
+        for f in decl.derived_fields() {
+            let Some(expr) = &f.derived else { continue };
+            let verdict = eval(&Env::for_value(self.ir, &this), expr);
+            let found = match verdict {
+                Ok(value) => Some(value.to_json()?),
+                Err(Failure::Eval(e)) => {
+                    d.violations.push(derived_violation(decl, f, path, e));
+                    None
+                }
+                Err(Failure::Input(InputError::MissingField { .. })) => None,
+                Err(Failure::Input(e)) => return Err(e.at_path(path)),
+            };
+            match (found, this.as_object_mut()) {
+                (Some(j), Some(obj)) => {
+                    obj.insert(f.wire.clone(), j);
+                }
+                _ => d.absent = true,
+            }
+        }
+        Ok(this)
     }
 
     /// What an absent field becomes: its default, nothing, or an error when it is required.
@@ -260,7 +359,13 @@ impl Cx<'_> {
         }
     }
 
-    fn normalize_type(&self, ty: &Type, v: &Json, path: &str) -> Result<Json, InputError> {
+    fn normalize_type(
+        &self,
+        ty: &Type,
+        v: &Json,
+        path: &str,
+        d: &mut Derivation,
+    ) -> Result<Json, InputError> {
         match ty {
             Type::Scalar(_) => Ok(v.clone()),
             Type::List(t) => {
@@ -268,7 +373,7 @@ impl Cx<'_> {
                 let out: Result<Vec<Json>, InputError> = items
                     .iter()
                     .enumerate()
-                    .map(|(i, e)| self.normalize_type(t, e, &format!("{path}[{i}]")))
+                    .map(|(i, e)| self.normalize_type(t, e, &format!("{path}[{i}]"), d))
                     .collect();
                 Ok(Json::Array(out?))
             }
@@ -278,17 +383,23 @@ impl Cx<'_> {
                 for (k, e) in entries {
                     out.insert(
                         k.clone(),
-                        self.normalize_type(t, e, &format!("{path}.{k}"))?,
+                        self.normalize_type(t, e, &format!("{path}.{k}"), d)?,
                     );
                 }
                 Ok(Json::Object(out))
             }
-            Type::Page(t) => self.normalize_page(t, v, path),
-            Type::Decl(id) => self.normalize_decl(self.decl_of(*id)?, v, path),
+            Type::Page(t) => self.normalize_page(t, v, path, d),
+            Type::Decl(id) => self.normalize_decl(self.decl_of(*id)?, v, path, d),
         }
     }
 
-    fn normalize_page(&self, item: &Type, v: &Json, path: &str) -> Result<Json, InputError> {
+    fn normalize_page(
+        &self,
+        item: &Type,
+        v: &Json,
+        path: &str,
+        d: &mut Derivation,
+    ) -> Result<Json, InputError> {
         let obj = v.as_object().ok_or_else(|| shape("object", v, path))?;
         let mut out = obj.clone();
         match obj.get("items") {
@@ -297,7 +408,7 @@ impl Cx<'_> {
                 let here = format!("{path}.items");
                 out.insert(
                     "items".to_owned(),
-                    self.normalize_type(&list, items, &here)?,
+                    self.normalize_type(&list, items, &here, d)?,
                 );
             }
             None if self.opts.partial => {}
@@ -405,7 +516,8 @@ impl Cx<'_> {
                     return Err(InputError::Ir(what));
                 }
                 Err(Failure::Eval(e)) => sink.push(violation(decl, rule, path, Some(e))),
-                Err(Failure::Input(InputError::MissingField { .. })) if self.opts.partial => {}
+                Err(Failure::Input(InputError::MissingField { .. }))
+                    if self.opts.partial || self.skip_missing => {}
                 Err(Failure::Input(e)) => return Err(e.at_path(path)),
             }
         }
@@ -419,18 +531,37 @@ fn violation(decl: &Decl, rule: &Rule, path: &str, error: Option<EvalError>) -> 
         (None, Some(m)) => m.clone(),
         (None, None) => format!("violates rule {}", rule.name),
     };
-    let wire = |name: &String| {
-        decl.fields()
-            .iter()
-            .find(|f| &f.name == name)
-            .map_or_else(|| name.clone(), |f| f.wire.clone())
-    };
     Violation {
         rule_name: rule.name.clone(),
         rule_id: rule.id.clone(),
         path: path.to_owned(),
-        fields: rule.reads.iter().map(wire).collect(),
+        fields: rule.reads.iter().map(|n| wire_of(decl, n)).collect(),
         message,
         error,
+    }
+}
+
+/// The wire name of the field `name` of `decl`; the name itself when there is no such field.
+fn wire_of(decl: &Decl, name: &str) -> String {
+    decl.fields()
+        .iter()
+        .find(|f| f.name == name)
+        .map_or_else(|| name.to_owned(), |f| f.wire.clone())
+}
+
+/// The violation of a derived field whose expression raised an evaluation error (section 17.2):
+/// its rule is the id of the field, its name the wire name of the field (the name inside the id).
+fn derived_violation(decl: &Decl, field: &Field, path: &str, error: EvalError) -> Violation {
+    Violation {
+        rule_name: field.wire.clone(),
+        rule_id: field.derived_id.clone().unwrap_or_default(),
+        path: path.to_owned(),
+        fields: field
+            .derived_reads()
+            .iter()
+            .map(|n| wire_of(decl, n))
+            .collect(),
+        message: format!("field {} could not be computed", field.name),
+        error: Some(error),
     }
 }

@@ -298,6 +298,17 @@ impl Ir {
             .any(|id| self.decl(id).has_derived())
     }
 
+    /// True when a value of the type has a derived field: on the declaration of the type or on
+    /// any declaration it reaches through field types, parents and union arms.
+    #[must_use]
+    pub fn type_reaches_derived(&self, ty: &Type) -> bool {
+        let mut stack = Vec::new();
+        ty.collect_decls(&mut stack);
+        self.close_over(stack)
+            .into_iter()
+            .any(|id| self.decl(id).has_derived())
+    }
+
     /// The types of the facts and the principal of the services and everything those reach,
     /// sorted by id. No endpoint reaches them (`reachable_decls` leaves them out), but the
     /// application hands the server values of them.

@@ -1,0 +1,103 @@
+// Derived fields in endpoint rules (spec/rules.md section 17.2). The examples are the vectors:
+// a request whose derived value decides a `require`, a fact that is given its derived field once
+// it is loaded, a result whose derived field is computed before the `ensure` reads it, and an
+// error with a derived field. Amounts are whole numbers so that a pattern can name the computed
+// value in one way. The file waits under a `.pending` suffix until a generator declares
+// `rules_derived`; the reference evaluator runs it already.
+
+model Line {
+  price: int
+  qty: int
+  total: int = price * qty
+}
+
+model Cart {
+  items: Line[]
+  coupon: int = 0
+  subtotal: int = sum(items, i => i.total)
+  payable: int = subtotal - coupon
+  rule payableFits: payable >= 0
+}
+
+model Wallet {
+  id: uuid
+  balance: int
+  held: int
+  available: int = balance - held
+}
+
+model Receipt {
+  id: uuid
+  amount: int
+  fee: int
+  net: int = amount - fee
+}
+
+error NotEnough 402 {
+  needed: int
+  have: int
+  short: int = needed - have
+}
+
+service Shop at "/shop" {
+  post "/pay/{id}" pay(id: uuid, body: Cart) -> 200 Receipt | NotEnough {
+    fact wallet: Wallet = id
+    require body.payable <= wallet.available else NotEnough { needed: body.payable, have: wallet.available }
+    ensure result.net >= 0 message "A receipt never has a negative net"
+  }
+}
+
+// --- a request: the derived value is there before the invariants and the require ---
+
+example "the payable amount is computed from the items and fits the wallet" {
+  given wallet = { balance: 100, held: 20 }
+  pay(id: wallet.id, body: { items: [ { price: 30, qty: 2 } ] }) -> ok
+}
+
+example "a payable amount above the available one fails the require with computed numbers" {
+  given wallet = { balance: 100, held: 20 }
+  pay(id: wallet.id, body: { items: [ { price: 50, qty: 2 } ] }) -> NotEnough { needed: 100, have: 80, short: 20 }
+}
+
+example "a coupon makes the payable amount smaller" {
+  given wallet = { balance: 100, held: 20 }
+  pay(id: wallet.id, body: { items: [ { price: 50, qty: 2 } ], coupon: 30 }) -> ok
+}
+
+example "an invariant reads the payable amount: a coupon above the subtotal is a validation error" {
+  given wallet = { balance: 100, held: 20 }
+  pay(id: wallet.id, body: { items: [ { price: 5, qty: 2 } ], coupon: 50 }) -> ValidationError
+}
+
+example "the sum of no items is zero" {
+  given wallet = { balance: 0, held: 0 }
+  pay(id: wallet.id, body: { items: [] }) -> ok
+}
+
+// --- a fact: its derived field is computed after it is loaded ---
+
+example "a fact is given its derived field" {
+  given wallet = { balance: 100, held: 100 }
+  pay(id: wallet.id, body: { items: [ { price: 1, qty: 1 } ] }) -> NotEnough { needed: 1, have: 0, short: 1 }
+}
+
+example "a fact whose derived field is negative" {
+  given wallet = { balance: 10, held: 25 }
+  pay(id: wallet.id, body: { items: [] }) -> NotEnough { needed: 0, have: -15, short: 15 }
+}
+
+// --- a result: the derived field is computed before the output rules ---
+
+example "the result is given its derived field" {
+  given wallet = { balance: 100, held: 0 }
+  pay(id: wallet.id, body: { items: [ { price: 1, qty: 1 } ] })
+    returns { amount: 100, fee: 30 }
+    -> ok { net: 70 }
+}
+
+example "an ensure reads the derived field of the result" {
+  given wallet = { balance: 100, held: 0 }
+  pay(id: wallet.id, body: { items: [ { price: 1, qty: 1 } ] })
+    returns { amount: 10, fee: 30 }
+    -> Internal
+}
