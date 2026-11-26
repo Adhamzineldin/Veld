@@ -15,7 +15,7 @@ use events_server::bookings::notifications_events::{
     NotificationsEventHandlers, subscribe_notifications_events,
 };
 use events_server::bookings::t::{BookingArchived, BookingCancelled, BookingPaid};
-use events_server::veld::events::{ConsumerOptions, EventMeta, MemoryTransport, PublisherOptions, Transport};
+use events_server::veld::events::{ChannelOptions, ConsumerOptions, EventMeta, MemoryTransport, PublisherOptions, Transport};
 use events_server::veld::{Error, VeldDecl, block_on};
 use serde_json::{Value, json};
 
@@ -67,7 +67,7 @@ fn sorted(log: &Log) -> Vec<String> {
 async fn raw(case: &Value) -> Vec<String> {
     let (transport, t, log) = world().await;
     let key = case["key"].as_str();
-    t.publish(case["topic"].as_str().unwrap(), key, case["message"].as_str().unwrap().as_bytes()).await.unwrap();
+    t.publish(case["topic"].as_str().unwrap(), key, case["message"].as_str().unwrap().as_bytes(), ChannelOptions::NONE).await.unwrap();
     transport.idle().await;
     sorted(&log)
 }

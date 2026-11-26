@@ -12,7 +12,7 @@ use events_server::bookings::billing_events::create_billing_publisher;
 use events_server::bookings::audit_probe_events::{AuditProbeEventHandlers, subscribe_audit_probe_events};
 use events_server::bookings::t::InvoiceNudged;
 use events_server::veld::events::{
-    BoxFuture, ConsumerOptions, Deliver, EventMeta, MemoryTransport, PublisherOptions, Transport, TransportSubscription,
+    BoxFuture, ChannelOptions, ConsumerOptions, Deliver, EventMeta, MemoryTransport, PublisherOptions, Transport, TransportSubscription,
 };
 use events_server::veld::{Error, block_on};
 use serde_json::{Value, json};
@@ -39,9 +39,9 @@ struct Spy {
 }
 
 impl Transport for Spy {
-    fn publish<'a>(&'a self, topic: &'a str, key: Option<&'a str>, bytes: &'a [u8]) -> BoxFuture<'a, Result<(), Error>> {
+    fn publish<'a>(&'a self, topic: &'a str, key: Option<&'a str>, bytes: &'a [u8], options: ChannelOptions) -> BoxFuture<'a, Result<(), Error>> {
         self.sent.lock().unwrap().push(String::from_utf8_lossy(bytes).into_owned());
-        self.inner.publish(topic, key, bytes)
+        self.inner.publish(topic, key, bytes, options)
     }
 
     fn subscribe<'a>(
@@ -49,8 +49,9 @@ impl Transport for Spy {
         topic: &'a str,
         group: &'a str,
         deliver: Deliver,
+        options: ChannelOptions,
     ) -> BoxFuture<'a, Result<Box<dyn TransportSubscription>, Error>> {
-        self.inner.subscribe(topic, group, deliver)
+        self.inner.subscribe(topic, group, deliver, options)
     }
 }
 

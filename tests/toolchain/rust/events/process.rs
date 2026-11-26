@@ -17,7 +17,7 @@ use events_server::bookings::notifications_events::{
 };
 use events_server::bookings::t::{BookingCancelled, BookingPaid, Reason};
 use events_server::veld::events::{
-    BoxFuture, ConsumerOptions, EventMeta, MemoryTransport, PublisherOptions, Transport,
+    BoxFuture, ChannelOptions, ConsumerOptions, EventMeta, MemoryTransport, PublisherOptions, Transport,
 };
 use events_server::veld::{Error, block_on};
 
@@ -391,9 +391,9 @@ fn a_rejected_message_is_acknowledged_and_reported() {
         };
         let topic = "shop.bookings.v1";
         let broken = message(&format!("{{\"bookingId\":\"{A}\",\"amount\":\"0.00\",\"paidAt\":\"2026-06-10T11:59:58Z\"}}"));
-        t.publish(topic, None, broken.as_bytes()).await.unwrap();
-        t.publish(topic, None, message("{\"amount\":\"1.00\"}").as_bytes()).await.unwrap();
-        t.publish(topic, None, b"{").await.unwrap();
+        t.publish(topic, None, broken.as_bytes(), ChannelOptions::NONE).await.unwrap();
+        t.publish(topic, None, message("{\"amount\":\"1.00\"}").as_bytes(), ChannelOptions::NONE).await.unwrap();
+        t.publish(topic, None, b"{", ChannelOptions::NONE).await.unwrap();
         transport.idle().await;
         let got = rejected.lock().unwrap().clone();
         assert_eq!(
