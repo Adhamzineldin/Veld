@@ -56,7 +56,7 @@ fn a_derived_field_stays_in_required_for_responses_like_a_readonly_one() {
 #[test]
 fn a_derived_field_is_not_a_query_parameter() {
     let d = doc("model Q { limit: int, double: int = limit * 2 }\n\
-         service S at \"/s\" { get \"/\" f(@query q: Q) -> 200 }\n");
+         service S at \"/s\" { get \"/\" f(query: Q) -> 200 }\n");
     let params = d["paths"]["/s"]["get"]["parameters"].as_array().unwrap();
     let names: Vec<&str> = params.iter().filter_map(|p| p["name"].as_str()).collect();
     assert_eq!(names, ["limit"]);
