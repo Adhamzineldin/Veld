@@ -3,6 +3,8 @@
 
 pub mod annotations;
 mod collect;
+#[cfg(test)]
+mod derived_tests;
 mod events;
 #[cfg(test)]
 mod events_groundwork_tests;
@@ -40,8 +42,8 @@ pub use events::{
 };
 pub use examples::{REventExample, REventExpect, RExample, RKey, RKeyStore, ROutcome};
 pub use policy::{PolicyEntry, PolicyInfo, RClause, RPolicy, RPolicyParam, RPrincipal};
-pub use rules::RRule;
 pub(crate) use rules::{RAllow, RBlock, RElse, REnsure, RRequire, RTransition};
+pub use rules::{RDerived, RRule};
 use veld_ir::{Auth, Constraints, Literal, Method, PackageKind, Type};
 
 /// One parsed `.veld` file of a package.
@@ -102,6 +104,9 @@ pub struct RField {
     pub readonly: bool,
     /// `@version` (`spec/rules.md` section 11.7).
     pub version: bool,
+    /// A derived field (`spec/rules.md` section 17.2). Its checked expression is in
+    /// [`Resolved::own_derived`] of the declaration that wrote it.
+    pub derived: bool,
     pub inherited_from: Option<usize>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -153,6 +158,9 @@ pub struct Resolved {
     pub cyclic: bool,
     /// Checked rules the declaration writes itself, in source order (`spec/rules.md` section 5).
     pub own_rules: Vec<RRule>,
+    /// Checked expressions of the derived fields the declaration writes itself, by field name
+    /// (`spec/rules.md` section 17.2).
+    pub own_derived: BTreeMap<String, RDerived>,
 }
 
 #[derive(Debug)]

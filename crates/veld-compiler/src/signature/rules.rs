@@ -34,6 +34,73 @@ pub fn rule_ids(decls: &mut [Decl], packages: &[Package]) {
     }
 }
 
+/// Fills the `derived_id` of every derived field (`spec/rules.md` section 17.2). An inherited
+/// field has the id it has in the declaration that wrote it.
+pub fn derived_ids(decls: &mut [Decl], packages: &[Package]) {
+    let ids: Vec<Vec<Option<String>>> = decls
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            d.fields()
+                .iter()
+                .map(|f| {
+                    let expr = f.derived.as_ref()?;
+                    let from = f.inherited_from.map_or(i, veld_ir::DeclId::index);
+                    Some(derived_id(decls, packages, from, &f.wire, expr))
+                })
+                .collect()
+        })
+        .collect();
+    for (d, ids) in decls.iter_mut().zip(ids) {
+        for (field, id) in fields_mut(d).iter_mut().zip(ids) {
+            field.derived_id = id;
+        }
+    }
+}
+
+fn fields_mut(d: &mut Decl) -> &mut [veld_ir::Field] {
+    match &mut d.kind {
+        veld_ir::DeclKind::Model(m) => &mut m.fields,
+        veld_ir::DeclKind::Error(e) => &mut e.fields.fields,
+        veld_ir::DeclKind::Event(e) => &mut e.fields,
+        veld_ir::DeclKind::Enum(_) | veld_ir::DeclKind::Union(_) | veld_ir::DeclKind::Const(_) => {
+            &mut []
+        }
+    }
+}
+
+/// The id of the derived field with wire name `wire`, written by `decls[declarer]`:
+/// `veld:<package>/<Decl>.<field>@<hex16>`. The name in the text is the wire name, as in the
+/// bytes.
+#[must_use]
+pub fn derived_id(
+    decls: &[Decl],
+    packages: &[Package],
+    declarer: usize,
+    wire: &str,
+    expr: &Expr,
+) -> String {
+    let d = &decls[declarer];
+    format!(
+        "veld:{}/{}.{wire}@{}",
+        packages[d.package.index()].name,
+        d.name,
+        hex16(derived_bytes(decls, declarer, wire, expr).as_bytes())
+    )
+}
+
+/// The bytes the id of a derived field hashes: the canonical JSON of
+/// `{ "d": qualified name, "k": "derived", "n": wire name, "e": ExprShape }`.
+#[must_use]
+pub fn derived_bytes(decls: &[Decl], declarer: usize, wire: &str, expr: &Expr) -> String {
+    canonical(&obj(vec![
+        ("d", text(&decls[declarer].qualified)),
+        ("k", text("derived")),
+        ("n", text(wire)),
+        ("e", shape(expr, decls, &mut Vec::new())),
+    ]))
+}
+
 fn rules_mut(d: &mut Decl) -> &mut [veld_ir::rules::Rule] {
     match &mut d.kind {
         veld_ir::DeclKind::Model(m) => &mut m.rules,

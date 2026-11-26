@@ -1,0 +1,37 @@
+// An example never writes a derived field (spec/rules.md section 17.2): not in an argument, not in
+// a given, not in `returns`. After `ok` it may name one, to say what it is computed to be.
+
+model Line {
+  price: decimal
+  qty: int
+  total: decimal = price * qty
+}
+
+model Room {
+  id: uuid
+  seats: int
+  free: int = seats - 1
+}
+
+service Shop at "/shop" {
+  post "/{id}" add(id: uuid, body: Line) -> 201 Line {
+    fact room: Room = id
+  }
+}
+
+example "writes it in the body" {
+  add(id: "00000000-0000-4000-8000-000000000001", body: { price: "2.50", qty: 2, total: "5.00" }) -> ok
+}
+
+example "writes it in a given" {
+  given room = { id: "00000000-0000-4000-8000-000000000001", seats: 3, free: 2 }
+  add(id: "00000000-0000-4000-8000-000000000001", body: { price: "2.50", qty: 2 }) -> ok
+}
+
+example "writes it in returns" {
+  add(id: "00000000-0000-4000-8000-000000000001", body: { price: "2.50", qty: 2 }) returns { price: "2.50", qty: 2, total: "5.00" } -> ok
+}
+
+example "names it after ok" {
+  add(id: "00000000-0000-4000-8000-000000000001", body: { price: "2.50", qty: 2 }) -> ok { total: "5.00" }
+}

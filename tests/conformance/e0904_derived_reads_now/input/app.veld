@@ -1,0 +1,8 @@
+// The scope of a derived field is that of an invariant: no `now`.
+
+model M {
+  start: datetime
+  late: bool = now > start
+}
+
+service S at "/s" { get "/" f() -> M }

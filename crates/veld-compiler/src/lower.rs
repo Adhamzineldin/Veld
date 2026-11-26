@@ -68,6 +68,7 @@ pub fn lower(
         d.sig = s;
     }
     signature::rule_ids(&mut decls, &packages);
+    signature::derived_ids(&mut decls, &packages);
     let services = lw.services(&decls);
     let policies = lw.policies(&decls);
     let mut ir = Ir {
@@ -216,7 +217,14 @@ impl Lowerer<'_, '_> {
             .unwrap_or(PackageId(u32::MAX))
     }
 
-    fn field(&self, f: &RField, module: usize) -> Field {
+    fn field(&self, f: &RField, old: usize) -> Field {
+        let module = self.prog.decls[old].module;
+        let writer = f.inherited_from.unwrap_or(old);
+        let derived = f
+            .derived
+            .then(|| self.prog.decls[writer].res.own_derived.get(&f.name))
+            .flatten()
+            .map(|r| self.remap_expr(&r.expr));
         Field {
             name: f.name.clone(),
             wire: f.wire.clone(),
@@ -225,8 +233,9 @@ impl Lowerer<'_, '_> {
             default: f.default.clone(),
             readonly: f.readonly,
             version: f.version,
-            derived: None,
-            derived_id: None,
+            // The id needs every declaration in place: `signature::derived_ids` fills it.
+            derived_id: derived.as_ref().map(|_| String::new()),
+            derived,
             inherited_from: f.inherited_from.map(|d| self.decl_id(d)),
             constraints: f.constraints.clone(),
             example: f.example.clone(),
@@ -242,7 +251,7 @@ impl Lowerer<'_, '_> {
             d.res
                 .fields
                 .iter()
-                .map(|f| self.field(f, d.module))
+                .map(|f| self.field(f, old))
                 .collect::<Vec<_>>()
         };
         let kind = match d.kind {

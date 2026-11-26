@@ -1,0 +1,14 @@
+// Derived fields may read each other, but not in a cycle: directly, through another field, or
+// a field reading itself. `fine` reads a derived field and is not in a cycle.
+
+model M {
+  seed: int
+  a: int = b + 1
+  b: int = c + 1
+  c: int = a + 1
+  itself: int = itself + 1
+  fine: int = seed + seed
+  after: int = fine + 1
+}
+
+service S at "/s" { get "/" f() -> M }

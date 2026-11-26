@@ -166,6 +166,9 @@ pub fn version_rule_id(at: &EndpointRef<'_>, fact: &str, path: &[String]) -> Str
 /// every declaration its endpoints reach. `None` when it reaches no invariant. An audited invariant
 /// (`@rollout(audit)`, section 17.1) is left out: the digest covers what a client may enforce.
 ///
+/// The ids of the derived fields it reaches count like the ids of invariants (`spec/rules.md`
+/// section 17.2).
+///
 /// What an endpoint reaches is what `Ir::reachable_decls` says: parameters, the success value
 /// and the errors, with their fields, parents and union arms. Facts are values of the
 /// application that a client never sees, so they are not part of it.
@@ -174,9 +177,13 @@ pub fn rules_digest(ir: &Ir, service: ServiceId) -> Option<String> {
     let ids: BTreeSet<&str> = ir
         .reachable_decls(&[service])
         .into_iter()
-        .flat_map(|d| ir.decl(d).rules())
-        .filter(|r| !r.is_audited())
-        .map(|r| r.id.as_str())
+        .flat_map(|d| {
+            let decl = ir.decl(d);
+            let rules = decl.rules().iter().filter(|r| !r.is_audited());
+            // A client's local check reads values it derived itself (`spec/rules.md` 17.2).
+            let derived = decl.fields().iter().filter_map(|f| f.derived_id.as_deref());
+            rules.map(|r| r.id.as_str()).chain(derived)
+        })
         .collect();
     if ids.is_empty() {
         return None;

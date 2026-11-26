@@ -9,6 +9,8 @@
     reason = "token scanning: only a few tokens matter, the rest are skipped"
 )]
 
+#[cfg(test)]
+mod derived_tests;
 mod endpoint;
 #[cfg(test)]
 mod endpoint_tests;
@@ -28,7 +30,7 @@ mod rule_tests;
 
 use super::ast::{
     Annotation, Arg, ArgValue, ConstDecl, Decl, DeclKind, Doc, Endpoint, EnumDecl, ErrorDecl,
-    Example, Field, File, FinalStmt, FlowStmt, HttpMethod, Ident, Import, LitKind, Literal,
+    Example, Expr, Field, File, FinalStmt, FlowStmt, HttpMethod, Ident, Import, LitKind, Literal,
     ModelDecl, Param, PolicyDecl, PrincipalDecl, RespItem, Responses, Rule, ServiceDecl, StrLit,
     TypeExpr, TypeExprKind, UnionArm, UnionDecl, Use, Variant,
 };
@@ -849,11 +851,7 @@ impl Parser<'_> {
         let optional = self.eat(&Tok::Question);
         self.expect(&Tok::Colon, "`:` after the field name")?;
         let ty = self.parse_type()?;
-        let default = if self.eat(&Tok::Eq) {
-            Some(self.parse_literal()?)
-        } else {
-            None
-        };
+        let (default, derived) = self.parse_default_or_derived()?;
         while matches!(self.peek(), Tok::At)
             && !self.newline_between(self.prev_end(), self.span().start)
         {
@@ -872,7 +870,47 @@ impl Parser<'_> {
             optional,
             ty,
             default,
+            derived,
         })
+    }
+
+    /// What follows `=` in a field: a literal is a default, any other expression makes the field
+    /// derived (`spec/rules.md` section 17.2). A literal is tried first and kept only when no
+    /// operator or `.name` continues it, so every default parses and fails as it always did.
+    fn parse_default_or_derived(&mut self) -> Option<(Option<Literal>, Option<Expr>)> {
+        if !self.eat(&Tok::Eq) {
+            return Some((None, None));
+        }
+        if !self.starts_expression_not_literal() {
+            let (pos, diags, depth) = (self.pos, self.diags.len(), self.depth);
+            let lit = self.parse_literal()?;
+            if !self.continues_expression() {
+                return Some((Some(lit), None));
+            }
+            self.pos = pos;
+            self.diags.truncate(diags);
+            self.depth = depth;
+        }
+        Some((None, Some(self.parse_expr()?)))
+    }
+
+    /// A name that is not `true`, `false` or `null`, a parenthesis, `!` or a `-` that is not the
+    /// sign of a literal: these start an expression, not a literal.
+    fn starts_expression_not_literal(&self) -> bool {
+        match self.peek() {
+            Tok::Ident(w) => !matches!(w.as_str(), "true" | "false" | "null"),
+            Tok::LParen | Tok::Bang | Tok::Minus => true,
+            _ => false,
+        }
+    }
+
+    /// True when the token after a literal continues it as an expression: a binary operator, or
+    /// `.name` on the same line.
+    fn continues_expression(&self) -> bool {
+        self.binary_op().is_some()
+            || (matches!(self.peek(), Tok::Dot)
+                && matches!(self.tok_at(1), Tok::Ident(_))
+                && !self.newline_between(self.prev_end(), self.span().start))
     }
 
     fn recover_field(&mut self) {

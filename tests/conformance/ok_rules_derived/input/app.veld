@@ -1,0 +1,41 @@
+// Derived fields (spec/rules.md section 17.2): an expression after `=` makes a field derived, a
+// literal makes it a default. A chain of derived fields, a sum over a list of models that have
+// derived fields of their own, a field inherited from a parent, a derived field of an error, a
+// derived field read by an invariant, and a derived field read through a guard.
+
+enum Status { open, closed }
+
+model Line {
+  price: decimal
+  qty: int
+  total: decimal = price * qty
+}
+
+model Base {
+  net: decimal
+  tax: decimal = net * 0.2
+}
+
+model Order extends Base {
+  items: Line[] @length(max: 100)
+  discount: decimal = 0
+  note?: string
+  status: Status = .open
+  subtotal: decimal = sum(items, i => i.total)
+  due: decimal = subtotal - discount + tax
+  noted: bool = has(note) && len(note) > 0
+  big: bool = due > 1000
+  rule discountFits: discount <= subtotal
+  rule bigOrdersAreClosed: big implies status == .closed
+}
+
+error OverLimit 422 {
+  limit: decimal
+  used: decimal
+  left: decimal = limit - used
+}
+
+service Orders at "/orders" {
+  post "/" place(body: Order) -> 201 Order | OverLimit
+  get "/{id}" get(id: uuid) -> Order
+}

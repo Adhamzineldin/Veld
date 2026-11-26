@@ -92,8 +92,10 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0942` | error | veld-compiler | `allow` names an unknown policy, or its arguments do not fit the policy's parameters |
 | `E0950` | error | veld-compiler | Duplicate example name; unknown or ambiguous endpoint in an example |
 | `E0951` | error | veld-compiler | `given` names something that is not a fact of the called endpoint |
-| `E0952` | error | veld-compiler | A value in an example does not fit the type it is used at |
+| `E0952` | error | veld-compiler | A value in an example does not fit the type it is used at, or writes a derived field |
 | `E0953` | error | veld-rules | A value an example leaves out cannot be filled in, or the filled-in value breaks an invariant |
+| `E0960` | error | veld-compiler | Derived fields depend on each other in a cycle |
+| `E0961` | error | veld-compiler | A derived field is optional, or has `@readonly` or `@example` |
 | `E0970` | error | veld-prove | `--prove`: the rules contradict each other, a `require` can never pass, or a policy permits nobody |
 | `E1001` | error | veld-compiler | An event is used as a type, or an event field has an event type |
 | `E1002` | error | veld-compiler | `carries` names something that is not an event, names an event twice, or is missing |

@@ -234,6 +234,7 @@ fn check_example(
         module,
         diags,
         givens: Vec::new(),
+        pattern: false,
     };
     let mut ok = true;
     let mut givens = Vec::new();
