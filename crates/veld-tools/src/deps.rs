@@ -30,6 +30,9 @@ pub struct DepGraph {
     pub cycles: Vec<Vec<String>>,
     /// `service -> owners` for the services that declare owners (`[service] owners`); empty when none do.
     pub owners: BTreeMap<String, Vec<String>>,
+    /// The feature flags the workspace uses and what each gates (`spec/platform.md` section 11).
+    /// Empty without flags, and then absent from the JSON.
+    pub flags: BTreeMap<String, veld_ir::FlagUsage>,
 }
 
 impl DepGraph {
@@ -83,6 +86,7 @@ pub fn graph(ir: &Ir) -> DepGraph {
         consumes,
         cycles,
         owners: BTreeMap::new(),
+        flags: ir.flag_usage(),
     }
 }
 
@@ -170,7 +174,10 @@ fn json_text(g: &DepGraph) -> String {
             node
         })
         .collect();
-    let value = json!({ "services": services, "cycles": g.cycles });
+    let mut value = json!({ "services": services, "cycles": g.cycles });
+    if let (false, Some(map)) = (g.flags.is_empty(), value.as_object_mut()) {
+        map.insert("flags".to_string(), json!(g.flags));
+    }
     let mut text = serde_json::to_string_pretty(&value).unwrap_or_default();
     text.push('\n');
     text
@@ -256,6 +263,7 @@ mod tests {
             services: consumes.keys().cloned().collect(),
             cycles: cycles(&consumes),
             owners: BTreeMap::new(),
+            flags: BTreeMap::new(),
             consumes,
         }
     }
